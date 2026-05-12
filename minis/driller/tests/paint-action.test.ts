@@ -122,10 +122,10 @@ describe('pointerHeldTick', () => {
     expect(world.get(GameState)!.gems).toBe(10)
   })
 
-  it('mode lock: pressing a rock then dragging onto soil does NOT consume paint', () => {
-    // The user pressed down on a rock (lockedAction = 'shake'). Their
-    // cursor then crosses a soil cell — paint must NOT fire because
-    // the press was bound to shake.
+  it('mode lock: pressing a falling chunk then dragging onto soil does NOT consume paint', () => {
+    // The user pressed down on a SHAKING/FALLING chunk (lockedAction
+    // = 'drag'). Their cursor then crosses a soil cell — paint must
+    // NOT fire because the press was bound to drag.
     const world = setupPaintWorld()
     world.set(GameState, { gems: 10 })
     world.set(Pointer, {
@@ -133,7 +133,7 @@ describe('pointerHeldTick', () => {
       hoverTargetCol: 5,
       hoverTargetRow: 2,
       hoverAction: 'paint', // cursor IS over soil now (re-resolved)
-      lockedAction: 'shake', // but the press was on a rock
+      lockedAction: 'drag', // but the press was on a falling chunk
     })
     pointerHeldTick(world)
     expect(world.get(GameState)!.gems).toBe(10)

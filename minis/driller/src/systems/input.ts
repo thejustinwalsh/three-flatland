@@ -15,7 +15,6 @@ import {
   SaggingChunk,
   TILE_AIR,
   TILE_SOIL,
-  TILE_STONE,
   isFixtureTile,
 } from '../traits'
 import {
@@ -32,7 +31,6 @@ import {
   PET_PAUSE_TICKS,
   ROCK_BRACE_EXTEND_TICKS,
   SAG_DURATION_TICKS,
-  SHAKE_COST,
   TILE_PX,
 } from '../constants'
 import { detectChunks } from '../lib/chunk-detect'
@@ -112,14 +110,6 @@ export function resolveHoverAction(
     return { action: 'brace', gemEntity: null }
   }
 
-  // A stable rock cell (not in motion, not yet shaking) → 'shake'.
-  // Wiggle-detection in Game.tsx upgrades a stable-rock hover into the
-  // commit; a plain click on the cell does nothing. The wiggle gesture
-  // is the deliberate trigger that prevents accidental rock drops.
-  if (tile === TILE_STONE && (flag & (FLAG_SHAKING | FLAG_FALLING)) === 0) {
-    return { action: 'shake', gemEntity: null }
-  }
-
   // SOIL anywhere → 'paint'. The player click-and-holds to accelerate
   // the cell toward collapse (anchor-distance bump per tick). Above
   // OR below the driller — paint is just a creative-chaos tool that
@@ -163,8 +153,6 @@ export function commitAction(world: World, action: ActionKind, target: Entity | 
     case 'trigger':
       // Legacy alias for paint — kept so any older callers still work.
       return doPaint(world)
-    case 'shake':
-      return doShake(world)
     case 'paint':
       return doPaint(world)
     case 'drag':
@@ -312,52 +300,6 @@ function doBrace(world: World): boolean {
     const m = drillerEntity.get(Mood)
     if (m) {
       const next = applyMoodEvent({ greed: m.greed, fear: m.fear, drive: m.drive }, 'helpful-tap')
-      drillerEntity.set(Mood, next)
-    }
-  }
-  return true
-}
-
-/**
- * Shake action: a deliberate wiggle gesture on a stable rock dislodges
- * it and the entire cluster instantly enters the falling state — no
- * shake telegraph (the user's wiggle WAS the telegraph). Used for
- * non-chunk solo rocks the player wants to drop on something. The
- * wiggle-detection lives in Game.tsx (pointer-path threshold); this
- * function just applies the gameplay consequence: 1 gem cost, set
- * FLAG_FALLING on the rock + every cluster sibling, clear FLAG_SHAKING.
- */
-function doShake(world: World): boolean {
-  const gs = world.get(GameState)
-  const ptr = world.get(Pointer)
-  const grid = world.get(Grid)
-  if (!gs || !ptr || !grid) return false
-  if (gs.gems < SHAKE_COST) return false
-  const { cols, tiles, flags, clusterId } = grid
-  const idx = ptr.hoverTargetRow * cols + ptr.hoverTargetCol
-  const t = tiles[idx]
-  if (t !== TILE_STONE) return false
-  // Already in motion → no-op (the avalanche path is already running).
-  if (((flags[idx] ?? 0) & (FLAG_SHAKING | FLAG_FALLING)) !== 0) return false
-
-  const cid = clusterId[idx] ?? 0
-  for (let i = 0; i < clusterId.length; i++) {
-    if (tiles[i] !== TILE_STONE) continue
-    // Solo stone (cluster id 0): only the clicked cell falls.
-    if (cid === 0) {
-      if (i !== idx) continue
-    } else {
-      if (clusterId[i] !== cid) continue
-    }
-    flags[i] = ((flags[i] ?? 0) & ~FLAG_SHAKING) | FLAG_FALLING | FLAG_AUTOTILE_DIRTY
-  }
-
-  world.set(GameState, { gems: gs.gems - SHAKE_COST })
-  const drillerEntity = world.queryFirst(Driller)
-  if (drillerEntity) {
-    const m = drillerEntity.get(Mood)
-    if (m) {
-      const next = applyMoodEvent({ greed: m.greed, fear: m.fear, drive: m.drive }, 'evil-tap')
       drillerEntity.set(Mood, next)
     }
   }

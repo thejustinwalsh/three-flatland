@@ -11,7 +11,7 @@ import { trait } from 'koota'
  *   4. cell above driller in intact soil → 'trigger'
  *   5. anything else                   → 'none'
  */
-export type ActionKind = 'none' | 'collect' | 'brace' | 'trigger' | 'pet' | 'shake' | 'paint' | 'drag'
+export type ActionKind = 'none' | 'collect' | 'brace' | 'trigger' | 'pet' | 'paint' | 'drag'
 
 /**
  * Pointer state. Updated by DOM event handlers in the input system.
@@ -30,34 +30,10 @@ export const Pointer = trait({
   /** Entity id of the gem currently under the cursor (0 = none). */
   hoverGemEntity: 0,
   /**
-   * Wiggle-shake state. While the pointer is held down on a stable rock,
-   * `wiggleCol/Row` lock to that cell and `wiggleDistance` accumulates
-   * raw pointer-pixel travel. When the total crosses WIGGLE_THRESHOLD_PX
-   * the shake action commits. Reset on pointer-up or hover-cell change.
-   */
-  wiggleCol: -1,
-  wiggleRow: -1,
-  wiggleDistance: 0,
-  /**
-   * Cluster id locked at the start of the wiggle so the renderer can
-   * tell "is this cell part of the rock the player is currently
-   * shaking?" → render with cursor-coupled motion instead of the
-   * default avalanche canned wobble. 0 = no wiggle in progress.
-   */
-  wiggleClusterId: 0,
-  /**
-   * Smoothed cursor speed during wiggle. Bumped on pointermove,
-   * decayed each render frame. The renderer multiplies the shake-
-   * jitter amplitude by this so the rock follows the user's wiggle
-   * literally — still cursor = still rock, fast wiggle = big wobble.
-   */
-  wiggleVelocity: 0,
-  /**
    * Mode lock — what action was bound at pointerdown. The held-tick
-   * loop refuses to switch modes mid-press (clicking a rock and
-   * dragging onto soil should NOT silently start consuming paint;
-   * clicking soil and crossing a rock should NOT trigger shake).
-   * Cleared to 'none' on pointer-up.
+   * loop refuses to switch modes mid-press, so dragging the cursor
+   * from a paint-resolved soil cell onto a drag-resolved falling
+   * chunk doesn't accidentally start dragging. Cleared on pointer-up.
    */
   lockedAction: 'none' as ActionKind,
   /**

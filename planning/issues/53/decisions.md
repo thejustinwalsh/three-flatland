@@ -445,3 +445,18 @@ E. **Paint pivot: destroy, don't weaken.** The anchor-bump version (1 gem per ti
 5. **Restoring on release.** If the player releases before crossing the threshold, the cluster's FLAG_SHAKING is cleared so the rock visually settles back. FLAG_FALLING is left alone in case the threshold was already crossed and the cluster is now committed.
 
 **Tests pinning the rule:** `tests/paint-action.test.ts` extended with the mode-mutex case: `lockedAction='shake'` over a paint-resolved soil cell, `pointerHeldTick` must NOT fire paint. Existing paint tests updated to include `lockedAction='paint'` so they exercise the gated path. 177/177 total pass.
+
+## User-action skill reform — Phase 6 (shake removed)
+**File:** `minis/driller/src/{traits/input-traits.ts,constants.ts,systems/input.ts,Game.tsx,components/TileRenderer.tsx,world.ts}`, deleted `tests/shake-action.test.ts`, updated `tests/paint-action.test.ts`
+**Date:** 2026-05-12
+
+**Decision:** Remove the `shake` action entirely. Paint already produces the same gameplay outcome (destroy soil → rock falls) for the same gem cost, so shake had no unique value worth its own mode + wiggle gesture + cursor-coupled visual.
+
+**Why:**
+1. **Redundancy with paint.** Both ended with "rock falls"; paint reaches the rock's support via destroying the soil below; shake reached it via cluster cascade. Same gems, same result, paint also works on rocks supported by other rocks (the cluster cascade carries through). Shake was strictly a subset.
+2. **Mode mutex stayed useful even without shake.** `Pointer.lockedAction` still prevents paint/drag mode switching mid-press. Updated the mutex regression test from `lockedAction='shake'` to `lockedAction='drag'` — the gate is identical, the example is what changed.
+3. **Renderer simplification.** TileRenderer's shake jitter dropped its cursor-coupled branch (wiggle cluster id + velocity); shake is again a single canned 6Hz wobble from the avalanche pipeline.
+4. **Constants dropped:** `SHAKE_COST`, `WIGGLE_THRESHOLD_PX`. Pointer trait dropped `wiggleCol`, `wiggleRow`, `wiggleDistance`, `wiggleClusterId`, `wiggleVelocity`. ActionKind dropped `'shake'`.
+5. **No follow-up needed.** This is a strict deletion — no replacement mechanic, no migration. The user's instinct ("my bad, paint covers it") was the simplification.
+
+**Tests:** `tests/shake-action.test.ts` deleted. 172/172 total pass (was 177; -5 shake tests).

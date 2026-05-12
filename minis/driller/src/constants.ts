@@ -118,17 +118,6 @@ export const PET_COST = 1
 /** Driller pause duration per non-over-pet pet, in ticks (~1s @ 60Hz). */
 export const PET_PAUSE_TICKS = 60
 
-/** Gem cost to wiggle-shake a stable rock into FALLING. */
-export const SHAKE_COST = 1
-/**
- * Logical-pixel total path the pointer must travel while held over the
- * SAME rock cell to register as a "wiggle" and trigger shake. Tuned to
- * filter accidental clicks (no movement) and deliberate hover-and-drag
- * sweeps (move off the cell) while still catching a natural back-and-
- * forth wiggle gesture.
- */
-export const WIGGLE_THRESHOLD_PX = 80
-
 /** Gem cost per cell-tick of paint (continuous, while button held). */
 export const PAINT_COST_PER_TICK = 1
 /**

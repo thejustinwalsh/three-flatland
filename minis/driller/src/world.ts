@@ -41,11 +41,6 @@ function initWorld(world: World): void {
     hoverTargetCol: 0,
     hoverTargetRow: 0,
     hoverGemEntity: 0,
-    wiggleCol: -1,
-    wiggleRow: -1,
-    wiggleDistance: 0,
-    wiggleClusterId: 0,
-    wiggleVelocity: 0,
     lockedAction: 'none',
   }))
   world.add(Drag({ clusterId: 0, anchorCol: 0, anchorRow: 0, startTick: 0, intervalsCharged: 0 }))

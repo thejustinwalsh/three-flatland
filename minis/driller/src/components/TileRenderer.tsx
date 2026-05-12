@@ -10,7 +10,6 @@ import {
   FLAG_SAGGING,
   FLAG_SHAKING,
   Grid,
-  Pointer,
   TILE_AIR,
   TILE_EXPLOSIVE,
   TILE_SOIL,
@@ -254,16 +253,6 @@ export function TileRenderer({ material }: TileRendererProps) {
       const e = entity.get(Explosive)
       if (e?.triggered) triggeredExplosives.add(e.row * cols + e.col)
     })
-    // Cursor-coupled shake (wiggle gesture in progress): the cluster
-    // the player is currently shaking gets jitter amplitude driven by
-    // cursor velocity instead of the canned 6Hz sin loop. Velocity
-    // decays each frame so the rock settles when the cursor stops.
-    const ptr = world.get(Pointer)
-    if (ptr && ptr.wiggleVelocity > 0) {
-      world.set(Pointer, { wiggleVelocity: ptr.wiggleVelocity * 0.85 })
-    }
-    const wiggleClusterId = ptr?.wiggleClusterId ?? 0
-    const wiggleAmp = ptr ? ptr.wiggleVelocity : 0
     // Pulse: alternate the lit tint every 8 ticks for a flashing effect.
     const now = Date.now()
     const pulse = Math.floor(now / 80) % 2 === 0
@@ -334,32 +323,14 @@ export function TileRenderer({ material }: TileRendererProps) {
         } else {
           tint = pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, distance, MAX_REACH, precarious, sagging, falling, litExplosive, northIsAir, now, palette)
         }
-        // Shake telegraph. Two sources:
-        //   1. Avalanche-induced (collapse pre-fall): canned 6Hz sin
-        //      wobble at constant amplitude. Communicates the rock
-        //      is about to drop on its own.
-        //   2. Player wiggle-shake (this cluster matches the active
-        //      wiggleClusterId): amplitude scales by wiggleVelocity
-        //      so the rock literally follows the cursor's recent
-        //      motion. Still cursor = still rock; fast wiggle = big
-        //      wobble. Feels instant, not canned.
+        // Shake telegraph: canned 6Hz wobble during the avalanche
+        // pre-fall window. Communicates "this is about to drop".
         let jitterX = 0
         let jitterY = 0
         if (shaking) {
-          const isPlayerWiggled =
-            wiggleClusterId !== 0 && tile === TILE_STONE && (clusterId[idx] ?? 0) === wiggleClusterId
-          if (isPlayerWiggled) {
-            // Higher-frequency, lower-amplitude per cycle — scaled by
-            // cursor velocity. MAX_AMP=3px at full velocity.
-            const phase = (now / 1000) * Math.PI * 2 * 14
-            const amp = wiggleAmp * 3
-            jitterX = Math.sin(phase) * amp
-            jitterY = Math.sin(phase * 0.7) * amp
-          } else {
-            const phase = (now / 1000) * Math.PI * 2 * 6
-            jitterX = Math.sin(phase) * 1.0
-            jitterY = Math.sin(phase * 0.5) * 1.0
-          }
+          const phase = (now / 1000) * Math.PI * 2 * 6
+          jitterX = Math.sin(phase) * 1.0
+          jitterY = Math.sin(phase * 0.5) * 1.0
         }
         const posX = c * TILE_PX + TILE_PX / 2 + jitterX
         const posY = -(r * TILE_PX + TILE_PX / 2) + jitterY
