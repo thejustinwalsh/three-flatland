@@ -383,24 +383,38 @@ void main() {
     window.addEventListener('resize', resize, { passive: true })
     resize()
 
-    function updateMouseFromEvent(e: PointerEvent) {
+    /**
+     * Hit-test against the canvas rect — the hero overlay (h1, CTAs,
+     * scroll cue) sits ON TOP of the canvas in the DOM and intercepts
+     * pointer events when registered on `cvs`. Window-level listeners
+     * fix that: every pointer event is observed regardless of which
+     * element the cursor is over, then we compute canvas-relative
+     * coords and toggle "in hero region" via the rect bounds. Listeners
+     * are always passive — never stop propagation, never block scroll.
+     */
+    function updateMouseFromEvent(e: PointerEvent): boolean {
       const r = cvs.getBoundingClientRect()
-      mouse.x = (e.clientX - r.left) / r.width
-      mouse.y = 1 - (e.clientY - r.top) / r.height // flip Y
+      // Inside the canvas's visual region?
+      const inside =
+        e.clientX >= r.left && e.clientX <= r.right &&
+        e.clientY >= r.top && e.clientY <= r.bottom
+      if (inside) {
+        mouse.x = (e.clientX - r.left) / r.width
+        mouse.y = 1 - (e.clientY - r.top) / r.height // flip Y
+      }
+      return inside
     }
     function onMove(e: PointerEvent) {
-      updateMouseFromEvent(e)
-      mouseTarget = 1
-    }
-    function onLeave() {
-      mouseTarget = 0
-      pressTarget = 0 // releasing capture also releases press
+      mouseTarget = updateMouseFromEvent(e) ? 1 : 0
+      // If user moves out of hero while pressed, release the press
+      // so the void hole doesn't linger off-screen-anchored.
+      if (!mouseTarget) pressTarget = 0
     }
     function onDown(e: PointerEvent) {
-      // Sync mouse position for touch (touchstart fires without prior
-      // pointermove on mobile, so the press would otherwise apply at
-      // the last known cursor location — typically (0.5, 0.5)).
-      updateMouseFromEvent(e)
+      // Press only registers if the click lands inside the hero region —
+      // clicking on a search button or a doc page link shouldn't punch a
+      // black hole into the hero from across the layout.
+      if (!updateMouseFromEvent(e)) return
       mouseTarget = 1
       pressTarget = 1
       pressTime = 0 // restart the swirl from rest on each new press
@@ -408,13 +422,11 @@ void main() {
     function onUp() {
       pressTarget = 0
     }
-    cvs.addEventListener('pointermove', onMove, { passive: true })
-    cvs.addEventListener('pointerenter', () => { mouseTarget = 1 })
-    cvs.addEventListener('pointerleave', onLeave)
-    cvs.addEventListener('pointerdown', onDown, { passive: true })
-    /* Listen on window for up/cancel — pointer might leave the canvas
-     * while still pressed (drag-off), and we want the press to release
-     * cleanly rather than stick. */
+    /* All listeners on window so overlay siblings (h1, CTAs, scroll
+     * cue) don't intercept events before they reach the canvas. All
+     * passive — we only read state, never block default behavior. */
+    window.addEventListener('pointermove', onMove, { passive: true })
+    window.addEventListener('pointerdown', onDown, { passive: true })
     window.addEventListener('pointerup', onUp, { passive: true })
     window.addEventListener('pointercancel', onUp, { passive: true })
 
@@ -488,11 +500,10 @@ void main() {
       cancelAnimationFrame(raf)
       io.disconnect()
       window.removeEventListener('resize', resize)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerdown', onDown)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
-      cvs.removeEventListener('pointermove', onMove)
-      cvs.removeEventListener('pointerleave', onLeave)
-      cvs.removeEventListener('pointerdown', onDown)
       gl.deleteProgram(prog)
       gl.deleteShader(vs)
       gl.deleteShader(fs)
