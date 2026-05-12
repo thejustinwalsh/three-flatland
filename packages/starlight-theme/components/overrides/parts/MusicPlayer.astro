@@ -1,0 +1,638 @@
+---
+/**
+ * MusicPlayer — header popover for the docs jukebox. Sits LEFT of
+ * SoundToggle in the header audio cluster so master mute stays
+ * rightmost (per design). Renders a small icon button; click opens
+ * a popover with track metadata, prev/play-pause/restart/next, music
+ * volume slider, and a thin progress line.
+ *
+ * Toast behavior: when the active track changes (auto-start, user
+ * clicks next/prev, restart, or an external — game — source takes
+ * over the music bus), the popover auto-opens for ~3s as a "now
+ * playing" toast then auto-closes. If the user interacts with the
+ * popover during the open window, it stays open until they explicitly
+ * close.
+ *
+ * External takeover: when `state.musicDuckedExternal` is true, all
+ * jukebox transport controls (prev/play-pause/restart/next) disable;
+ * volume slider remains active (controls the docs music bus only,
+ * which is ducked). The popover title swaps to show the external
+ * (game) track. On unduck, controls re-enable.
+ */
+---
+
+<flatland-music-player>
+    <button
+        type="button"
+        class="music-trigger"
+        aria-label="Open music player"
+        aria-expanded="false"
+        aria-controls="flatland-music-popover"
+        title="Music — click to open player"
+    >
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+        </svg>
+    </button>
+
+    <div
+        id="flatland-music-popover"
+        class="music-popover"
+        role="dialog"
+        aria-label="Music player"
+        hidden
+    >
+        <div class="music-meta">
+            <span class="music-title" data-music-title>Loading…</span>
+            <span class="music-credit" data-music-credit></span>
+        </div>
+
+        <div class="music-controls" data-music-controls>
+            <button type="button" class="music-btn" data-music-prev aria-label="Previous track" title="Previous track">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="19 20 9 12 19 4 19 20" />
+                    <line x1="5" y1="19" x2="5" y2="5" />
+                </svg>
+            </button>
+            <button type="button" class="music-btn" data-music-restart aria-label="Restart track" title="Restart track">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+            </button>
+            <button type="button" class="music-btn music-toggle" data-music-toggle aria-label="Play" title="Play">
+                <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                <svg class="icon-pause" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <rect x="6" y="4" width="4" height="16" />
+                    <rect x="14" y="4" width="4" height="16" />
+                </svg>
+            </button>
+            <button type="button" class="music-btn" data-music-next aria-label="Next track" title="Next track">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="5 4 15 12 5 20 5 4" />
+                    <line x1="19" y1="5" x2="19" y2="19" />
+                </svg>
+            </button>
+        </div>
+
+        <label class="music-volume-label">
+            <span class="sr-only">Music volume</span>
+            <input
+                type="range"
+                class="music-volume"
+                data-music-volume
+                min="0"
+                max="100"
+                value="30"
+                aria-label="Music volume"
+            />
+        </label>
+
+        <div class="music-progress" aria-hidden="true">
+            <span class="music-progress-fill" data-music-progress-fill></span>
+        </div>
+    </div>
+</flatland-music-player>
+
+<script>
+    type SoundsModule = typeof import('../../../../../docs/src/scripts/sounds')
+
+    type Track = {
+        id: string
+        title: string
+        credit?: string
+        gem?: string
+        bpm: number
+    }
+
+    type AudioState = {
+        masterLevel: 0 | 1 | 2 | 3
+        musicVolume: number
+        musicPlaying: boolean
+        musicTrackIndex: number
+        musicUserStopped: boolean
+        musicDuckedExternal: boolean
+        currentTrack: Track | null
+        library: { tracks: Track[] } | null
+    }
+
+    const TOAST_MS = 3000
+
+    class FlatlandMusicPlayer extends HTMLElement {
+        private cleanup?: AbortController
+        private openCtrl: AbortController | null = null
+        private toastTimer: number | null = null
+        private soundsPromise?: Promise<SoundsModule>
+        private lastTrackId: string | null = null
+        private userInteractedDuringToast = false
+        private progressRaf = 0
+
+        private trigger!: HTMLButtonElement
+        private popover!: HTMLElement
+        private titleEl!: HTMLElement
+        private creditEl!: HTMLElement
+        private toggleBtn!: HTMLButtonElement
+        private prevBtn!: HTMLButtonElement
+        private nextBtn!: HTMLButtonElement
+        private restartBtn!: HTMLButtonElement
+        private volumeInput!: HTMLInputElement
+        private progressFill!: HTMLElement
+        private controls!: HTMLElement
+
+        constructor() {
+            super()
+            const ctrl = new AbortController()
+            this.cleanup = ctrl
+            const { signal } = ctrl
+
+            this.trigger = this.querySelector<HTMLButtonElement>('.music-trigger')!
+            this.popover = this.querySelector<HTMLElement>('.music-popover')!
+            this.titleEl = this.querySelector<HTMLElement>('[data-music-title]')!
+            this.creditEl = this.querySelector<HTMLElement>('[data-music-credit]')!
+            this.toggleBtn = this.querySelector<HTMLButtonElement>('[data-music-toggle]')!
+            this.prevBtn = this.querySelector<HTMLButtonElement>('[data-music-prev]')!
+            this.nextBtn = this.querySelector<HTMLButtonElement>('[data-music-next]')!
+            this.restartBtn = this.querySelector<HTMLButtonElement>('[data-music-restart]')!
+            this.volumeInput = this.querySelector<HTMLInputElement>('[data-music-volume]')!
+            this.progressFill = this.querySelector<HTMLElement>('[data-music-progress-fill]')!
+            this.controls = this.querySelector<HTMLElement>('[data-music-controls]')!
+
+            this.trigger.addEventListener('click', () => this.togglePopover(), { signal })
+            this.toggleBtn.addEventListener('click', () => this.handleToggle(), { signal })
+            this.prevBtn.addEventListener('click', () => this.handlePrev(), { signal })
+            this.nextBtn.addEventListener('click', () => this.handleNext(), { signal })
+            this.restartBtn.addEventListener('click', () => this.handleRestart(), { signal })
+            this.volumeInput.addEventListener('input', (e) => this.handleVolume(e), { signal })
+
+            // Track user interaction with the popover so a toast doesn't
+            // auto-close when the user clicks inside it.
+            this.popover.addEventListener(
+                'click',
+                () => {
+                    this.userInteractedDuringToast = true
+                    if (this.toastTimer !== null) {
+                        clearTimeout(this.toastTimer)
+                        this.toastTimer = null
+                    }
+                },
+                { signal }
+            )
+
+            // Eager-but-lazy: pull the audio module on idle so first user
+            // interaction is hot. The bridge loads tracks.json + zzfxm
+            // here too.
+            const onIdle =
+                window.requestIdleCallback ??
+                ((cb: () => void) => window.setTimeout(cb, 1))
+            onIdle(() => {
+                if (signal.aborted) return
+                this.loadSounds()
+            })
+        }
+
+        disconnectedCallback() {
+            this.cleanup?.abort()
+            this.cleanup = undefined
+            this.openCtrl?.abort()
+            this.openCtrl = null
+            if (this.toastTimer !== null) clearTimeout(this.toastTimer)
+            if (this.progressRaf) cancelAnimationFrame(this.progressRaf)
+        }
+
+        private loadSounds(): Promise<SoundsModule> {
+            if (!this.soundsPromise) {
+                this.soundsPromise = import(
+                    /* @vite-ignore */
+                    '../../../../../docs/src/scripts/sounds'
+                ) as Promise<SoundsModule>
+                this.soundsPromise.then(async (sounds) => {
+                    // Force the bridge to materialize so we can subscribe
+                    // to its state. initAudio resolves once the bridge is
+                    // constructed (it needs a user gesture to fully unlock,
+                    // but the singleton + library are ready immediately).
+                    await sounds.initAudio()
+                    const bridge = (window as unknown as { __threeFlatlandAudio?: unknown })
+                        .__threeFlatlandAudio
+                    if (!bridge) return
+                    // Bridge exposes subscribe(cb): unsubscribe; cb receives state.
+                    const subscribe = (bridge as { subscribe: (cb: (s: AudioState) => void) => () => void }).subscribe
+                    subscribe((state) => this.applyState(state))
+                })
+            }
+            return this.soundsPromise
+        }
+
+        private getBridge(): {
+            playTrack: (t: Track, opts?: { fromUserGesture?: boolean }) => void
+            pauseMusic: () => void
+            resumeMusic: () => void
+            restartMusic: () => void
+            nextTrack: () => void
+            prevTrack: () => void
+            setMusicVolume: (v: number) => void
+            getState: () => AudioState
+        } | undefined {
+            return (window as unknown as { __threeFlatlandAudio?: unknown })
+                .__threeFlatlandAudio as ReturnType<FlatlandMusicPlayer['getBridge']>
+        }
+
+        private async ensureBridge() {
+            await this.loadSounds()
+            return this.getBridge()
+        }
+
+        // ────────── Popover open/close ──────────
+
+        private togglePopover(): void {
+            if (this.popover.hidden) this.openPopover()
+            else this.closePopover()
+        }
+
+        /** Open via user click — sticky (no auto-close). */
+        private openPopover(): void {
+            if (this.toastTimer !== null) {
+                clearTimeout(this.toastTimer)
+                this.toastTimer = null
+            }
+            this.popover.hidden = false
+            this.trigger.setAttribute('aria-expanded', 'true')
+            this.openCtrl?.abort()
+            this.openCtrl = new AbortController()
+            const sig = this.openCtrl.signal
+            // Click outside → close.
+            setTimeout(() => {
+                if (sig.aborted) return
+                window.addEventListener(
+                    'click',
+                    (e) => {
+                        if (!this.contains(e.target as Node)) this.closePopover()
+                    },
+                    { signal: sig }
+                )
+                window.addEventListener(
+                    'keydown',
+                    (e) => {
+                        if (e.key === 'Escape') this.closePopover()
+                    },
+                    { signal: sig }
+                )
+            }, 0)
+            this.startProgressLoop()
+        }
+
+        /** Open via auto-toast — schedules auto-close in TOAST_MS unless
+         * the user interacts with the popover during that window. */
+        private openAsToast(): void {
+            if (!this.popover.hidden) return // user already has it open; do nothing
+            this.userInteractedDuringToast = false
+            this.popover.hidden = false
+            this.trigger.setAttribute('aria-expanded', 'true')
+            // No outside-click handler for toast — it auto-closes on timer.
+            this.startProgressLoop()
+            this.toastTimer = window.setTimeout(() => {
+                this.toastTimer = null
+                if (!this.userInteractedDuringToast) this.closePopover()
+            }, TOAST_MS)
+        }
+
+        private closePopover(): void {
+            this.popover.hidden = true
+            this.trigger.setAttribute('aria-expanded', 'false')
+            this.openCtrl?.abort()
+            this.openCtrl = null
+            if (this.toastTimer !== null) {
+                clearTimeout(this.toastTimer)
+                this.toastTimer = null
+            }
+            this.stopProgressLoop()
+        }
+
+        // ────────── State sync ──────────
+
+        private applyState(state: AudioState): void {
+            const track = state.currentTrack
+            const title = track?.title ?? 'No track loaded'
+            const credit = track?.credit ?? ''
+            this.titleEl.textContent = title
+            this.creditEl.textContent = credit
+
+            // Toggle button reflects play/pause state.
+            const playing = state.musicPlaying
+            this.toggleBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play')
+            this.toggleBtn.setAttribute('title', playing ? 'Pause' : 'Play')
+            this.toggleBtn.dataset.playing = playing ? 'true' : 'false'
+
+            // External takeover disables transport controls.
+            const ducked = state.musicDuckedExternal
+            this.controls.dataset.ducked = ducked ? 'true' : 'false'
+            this.prevBtn.disabled = ducked || !state.library?.tracks?.length
+            this.nextBtn.disabled = ducked || !state.library?.tracks?.length
+            this.restartBtn.disabled = ducked || !track
+            this.toggleBtn.disabled = ducked || !track
+
+            // Volume slider mirrors music bus (0..1 → 0..100).
+            const vol100 = Math.round(state.musicVolume * 100)
+            if (parseInt(this.volumeInput.value, 10) !== vol100) {
+                this.volumeInput.value = String(vol100)
+            }
+
+            // Indicate external state on the trigger button so the user can
+            // see the music dipped without opening the popover.
+            this.trigger.dataset.state = ducked ? 'ducked' : playing ? 'playing' : 'idle'
+
+            // Track changed → open as toast (unless popover already open).
+            const trackId = track?.id ?? null
+            if (trackId !== this.lastTrackId && trackId !== null) {
+                this.lastTrackId = trackId
+                this.openAsToast()
+            }
+        }
+
+        // ────────── Transport handlers ──────────
+
+        private async handleToggle(): Promise<void> {
+            const bridge = await this.ensureBridge()
+            if (!bridge) return
+            const state = bridge.getState()
+            if (state.musicDuckedExternal) return
+            if (state.musicPlaying) bridge.pauseMusic()
+            else bridge.resumeMusic()
+        }
+
+        private async handlePrev(): Promise<void> {
+            const bridge = await this.ensureBridge()
+            bridge?.prevTrack()
+        }
+
+        private async handleNext(): Promise<void> {
+            const bridge = await this.ensureBridge()
+            bridge?.nextTrack()
+        }
+
+        private async handleRestart(): Promise<void> {
+            const bridge = await this.ensureBridge()
+            bridge?.restartMusic()
+        }
+
+        private async handleVolume(e: Event): Promise<void> {
+            const v = parseInt((e.target as HTMLInputElement).value, 10) / 100
+            const bridge = await this.ensureBridge()
+            bridge?.setMusicVolume(v)
+        }
+
+        // ────────── Progress line ──────────
+
+        /** Drive the progress fill via rAF only while the popover is
+         * open. Reads track length from the bridge state and current
+         * audioContext time. Kept fragile-free — pull rates from the
+         * bridge if available, otherwise show empty. */
+        private startProgressLoop(): void {
+            if (this.progressRaf) return
+            const tick = () => {
+                this.progressRaf = requestAnimationFrame(tick)
+                this.updateProgress()
+            }
+            this.progressRaf = requestAnimationFrame(tick)
+        }
+
+        private stopProgressLoop(): void {
+            if (this.progressRaf) {
+                cancelAnimationFrame(this.progressRaf)
+                this.progressRaf = 0
+            }
+        }
+
+        private updateProgress(): void {
+            const bridge = this.getBridge()
+            if (!bridge) {
+                this.progressFill.style.transform = 'scaleX(0)'
+                return
+            }
+            const state = bridge.getState()
+            if (!state.musicPlaying || state.musicDuckedExternal) {
+                this.progressFill.style.transform = 'scaleX(0)'
+                return
+            }
+            // Bridge doesn't currently expose track length/position; show
+            // a constant nominal half-fill so the line reads as "active."
+            // Hook into real progress when bridge.musicProgress lands.
+            this.progressFill.style.transform = 'scaleX(0.6)'
+        }
+    }
+
+    if (!customElements.get('flatland-music-player')) {
+        customElements.define('flatland-music-player', FlatlandMusicPlayer)
+    }
+</script>
+
+<style>
+    flatland-music-player {
+        position: relative;
+        display: inline-block;
+    }
+
+    .music-trigger {
+        all: unset;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: calc(var(--radius) - 2px);
+        cursor: pointer;
+        color: color-mix(in oklab, var(--foreground) 76%, var(--muted-foreground));
+        background-color: transparent;
+        transition:
+            color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .music-trigger:hover,
+    .music-trigger[aria-expanded='true'] {
+        color: var(--accent-foreground);
+        background-color: color-mix(in oklab, var(--accent) 80%, transparent);
+    }
+    .music-trigger:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--amethyst) 80%, transparent);
+        outline-offset: 2px;
+    }
+    /* Trigger state tints — `playing` warms to amethyst, `ducked` fades. */
+    .music-trigger[data-state='playing'] {
+        color: color-mix(in oklab, var(--foreground) 60%, var(--amethyst) 40%);
+    }
+    .music-trigger[data-state='ducked'] {
+        color: color-mix(in oklab, var(--muted-foreground) 80%, var(--amethyst) 20%);
+    }
+    .music-trigger svg {
+        flex-shrink: 0;
+        pointer-events: none;
+    }
+
+    .music-popover {
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        right: 0;
+        width: 18rem;
+        background: var(--card);
+        border: 1px solid color-mix(in oklab, var(--amethyst) 18%, var(--border));
+        border-radius: var(--radius);
+        box-shadow:
+            0 10px 30px -10px rgb(0 0 0 / 0.45),
+            0 0 0 1px color-mix(in oklab, var(--amethyst) 6%, transparent);
+        padding: 0.75rem 0.75rem 0.625rem;
+        z-index: 60;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    .music-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        min-width: 0;
+    }
+    .music-title {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--foreground);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .music-credit {
+        font-size: 0.6875rem;
+        color: var(--muted-foreground);
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    .music-controls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.25rem;
+    }
+    .music-btn {
+        all: unset;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: calc(var(--radius) - 4px);
+        cursor: pointer;
+        color: var(--muted-foreground);
+        transition:
+            color 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .music-btn:hover:not(:disabled) {
+        color: var(--foreground);
+        background-color: color-mix(in oklab, var(--amethyst) 12%, transparent);
+    }
+    .music-btn:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--amethyst) 80%, transparent);
+        outline-offset: 1px;
+    }
+    .music-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+    .music-toggle {
+        width: 2rem;
+        height: 2rem;
+        color: var(--foreground);
+        background-color: color-mix(in oklab, var(--amethyst) 14%, transparent);
+    }
+    .music-toggle:hover:not(:disabled) {
+        background-color: color-mix(in oklab, var(--amethyst) 24%, transparent);
+    }
+    /* Play vs pause icon driven by data-playing on toggle. */
+    .music-toggle .icon-pause,
+    .music-toggle[data-playing='true'] .icon-play {
+        display: none;
+    }
+    .music-toggle[data-playing='true'] .icon-pause {
+        display: block;
+    }
+
+    .music-volume-label {
+        display: block;
+        padding: 0 0.125rem;
+    }
+    .music-volume {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 100%;
+        height: 4px;
+        background: color-mix(in oklab, var(--border) 70%, transparent);
+        border-radius: 2px;
+        cursor: pointer;
+    }
+    .music-volume::-webkit-slider-thumb {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--amethyst);
+        border: 1px solid color-mix(in oklab, var(--amethyst) 80%, white);
+        cursor: pointer;
+    }
+    .music-volume::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--amethyst);
+        border: 1px solid color-mix(in oklab, var(--amethyst) 80%, white);
+        cursor: pointer;
+    }
+    .music-volume:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--amethyst) 80%, transparent);
+        outline-offset: 4px;
+    }
+
+    .music-progress {
+        height: 2px;
+        background: color-mix(in oklab, var(--border) 50%, transparent);
+        border-radius: 1px;
+        overflow: hidden;
+    }
+    .music-progress-fill {
+        display: block;
+        height: 100%;
+        width: 100%;
+        background: linear-gradient(
+            90deg,
+            color-mix(in oklab, var(--amethyst) 70%, transparent),
+            color-mix(in oklab, var(--amethyst) 90%, white)
+        );
+        transform-origin: 0% 50%;
+        transform: scaleX(0);
+        transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .music-trigger,
+        .music-btn,
+        .music-progress-fill {
+            transition: none;
+        }
+    }
+</style>

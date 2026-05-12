@@ -8,6 +8,7 @@ import SiteTitle from './SiteTitle.astro';
 import NavBar from './parts/NavBar.astro';
 import MobileMenuToggle from './parts/MobileMenuToggle.astro';
 import SoundToggle from './parts/SoundToggle.astro';
+import MusicPlayer from './parts/MusicPlayer.astro';
 
 /** render the `Search` component if Pagefind is enabled or the default search component has been overridden. */
 const shouldRenderSearch =
@@ -41,8 +42,7 @@ const shouldRenderSearch =
             <SocialIcons />
         </div>
         <div class="audio-cluster">
-            {/* MusicPlayer (jukebox popover) slots here as Phase 4 lands,
-                LEFT of SoundToggle so the master mute stays rightmost. */}
+            <MusicPlayer />
             <SoundToggle />
         </div>
     </nav>
@@ -155,6 +155,17 @@ const shouldRenderSearch =
         position: relative;
         margin-left: calc(var(--spacing) * 1);
         padding-left: calc(var(--spacing) * 3);
+    }
+
+    /* Audio cluster — MusicPlayer (left) + SoundToggle (right). Both
+     * are 2rem × 2rem buttons; gap matches the visual rhythm of the
+     * header-nav children. Position: relative so MusicPlayer's popover
+     * can anchor against this container's right edge if needed. */
+    .audio-cluster {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.125rem;
+        position: relative;
     }
 
     /* Vertical divider between nav groups — slightly bolder than lucode default
