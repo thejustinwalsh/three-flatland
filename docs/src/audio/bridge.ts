@@ -378,13 +378,7 @@ class AudioBridge {
         const next = (this.state.musicTrackIndex + 1) % tracks.length
         this.state.musicTrackIndex = next
         saveMusicTrackIndex(next)
-        // fromUserGesture: callers of nextTrack/prevTrack come from UI
-        // clicks (the MusicPlayer skip button). Without the flag,
-        // playTrack bails when masterLevel === 0 and the user sees no
-        // change after clicking — they should still be able to scroll
-        // the library while muted, see the new track in the popover,
-        // and have it queued for the next unmute/play.
-        this.playTrack(tracks[next]!, { fromUserGesture: true })
+        this.advanceToTrack(tracks[next]!)
     }
 
     prevTrack(): void {
@@ -394,7 +388,31 @@ class AudioBridge {
         const prev = (this.state.musicTrackIndex - 1 + tracks.length) % tracks.length
         this.state.musicTrackIndex = prev
         saveMusicTrackIndex(prev)
-        this.playTrack(tracks[prev]!, { fromUserGesture: true })
+        this.advanceToTrack(tracks[prev]!)
+    }
+
+    /** Honor current play state when moving between tracks. If music is
+     * currently playing, start the new track. If paused / never started /
+     * muted, just cue the new track for display — clicking skip changes
+     * what's SELECTED, not the play state. The popover updates the title
+     * + gem via the state emit, but no audio fires until the user
+     * explicitly clicks Play. */
+    private advanceToTrack(track: Track): void {
+        if (this.state.musicPlaying) {
+            this.playTrack(track, { fromUserGesture: true })
+            return
+        }
+        // Cue the new track without playing. Stops any leftover source,
+        // clears the cached buffer (which was for the old track), and
+        // emits so the popover re-renders title/credit/gem/avatar.
+        // Preserves `musicUserStopped` — the user's pause intent carries
+        // over to the new track.
+        this.stopMusicSource()
+        this.musicBuffer = null
+        this.musicPosition = 0
+        this.state.currentTrack = track
+        this.state.musicPlaying = false
+        this.emit()
     }
 
     /** Live music position (seconds since track start, wrapping at the
