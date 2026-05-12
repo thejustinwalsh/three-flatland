@@ -509,3 +509,30 @@ E. **Paint pivot: destroy, don't weaken.** The anchor-bump version (1 gem per ti
 - Both sheets + their regions TS files committed. Re-bake with `pnpm bake-icons …`.
 
 **Verification:** baked both sheets, inspected output PNGs (legible emojis at 8×8, legible digits at 6×6). The regions TS files round-trip through TypeScript (`pnpm typecheck` will catch them in subsequent phases when consumed).
+
+## In-canvas feedback HUD — Phase 2 (hover-target outline)
+**File:** `minis/driller/src/{materials.ts,components/{HoverOutlineRenderer.tsx,Scene.tsx}}`
+**Date:** 2026-05-12
+
+**Decision:** A pool of 64 `Sprite2D` instances, each tinted per-frame to outline the currently-targeted cell(s). Single hollow-square 16×16 `DataTexture` (1-pixel white border, transparent interior) shared via `useOutlineMaterial`; per-cell color comes from the sprite's `tint` (no per-cell texture work).
+
+**Color mapping (matches §3 of the spec):**
+- `collect` → `#fcd34d` gold — single gem cell (NOT the halo extent)
+- `pet` → `#f472b6` pink — driller's cell
+- `drag` → `#60a5fa` sky — every cluster cell with FLAG_SHAKING|FALLING, OR the SaggingChunk's cells if hovering soil-in-motion
+- `brace` → `#fb923c` orange — every cell of the sagging chunk under cursor
+- `paint` → `#ef4444` red — single hover cell
+
+**Why pool, not entity-per-outline:**
+- Per-frame action resolution is already done in `Pointer.hoverAction`. The outline is a pure visual derivative — no entity lifecycle to manage.
+- A fixed 64-slot pool covers the worst-case multi-cell chunk; unused slots are hidden via `scale.set(0,0,1)` (the canonical Sprite2D hide pattern in the rest of the codebase).
+- One material, tinted per sprite — same pattern as `useDrillerMaterial` for the rest of the rendering surface.
+
+**Cluster targeting logic:**
+- For `drag` while a drag is already active, reads `Drag.clusterId` so the outline follows the dragged cluster (it's literally moving each tick — the outline tracks the new cell positions automatically because `Grid.clusterId` updates atomically with the translation).
+- For `drag` over a chunk we're ABOUT to grab (not yet dragging), reads `clusterId[hoverCell]` so the outline previews the whole cluster before the player commits.
+- `SaggingChunk` falling-soil case detected via `world.query(SaggingChunk)` + cells-contains-hover check.
+
+**Render order = 100** so outlines draw on top of tiles within the Flatland scene.
+
+**Verification:** typecheck clean; 179/179 tests pass (no behavior change for existing tests — the renderer is read-only).

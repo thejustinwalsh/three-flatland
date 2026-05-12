@@ -68,3 +68,33 @@ export function useRockAutotileMaterial(): Sprite2DMaterial {
     return new Sprite2DMaterial({ map: tex, transparent: true })
   }, [])
 }
+
+/**
+ * Hollow-square 16×16 texture for the hover-target outline. 1-pixel
+ * white border, transparent interior. Tinted per-cell at runtime so
+ * one material covers every action's color.
+ */
+function createOutlineTexture(): DataTexture {
+  const size = 16
+  const data = new Uint8Array(size * size * 4)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4
+      const onBorder = x === 0 || x === size - 1 || y === 0 || y === size - 1
+      data[i] = 255
+      data[i + 1] = 255
+      data[i + 2] = 255
+      data[i + 3] = onBorder ? 255 : 0
+    }
+  }
+  const tex = new DataTexture(data, size, size, RGBAFormat)
+  tex.minFilter = NearestFilter
+  tex.magFilter = NearestFilter
+  tex.colorSpace = SRGBColorSpace
+  tex.needsUpdate = true
+  return tex
+}
+
+export function useOutlineMaterial(): Sprite2DMaterial {
+  return useMemo(() => new Sprite2DMaterial({ map: createOutlineTexture(), transparent: true }), [])
+}

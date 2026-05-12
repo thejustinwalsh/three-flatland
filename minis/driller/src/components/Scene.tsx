@@ -21,11 +21,12 @@ import { plannerTick } from '../systems/ai-planner'
 import { resetStreaming, streamChunks } from '../systems/generation'
 import { hazardSpawnSystem, hazardTickSystem, resetAvalanche, resetHazardSpawn, rockAvalancheSystem } from '../systems/hazard'
 import { particlesSystem } from '../systems/particles'
-import { useDrillerMaterial } from '../materials'
+import { useDrillerMaterial, useOutlineMaterial } from '../materials'
 import { DebugPanel, shouldShowDebugPanel } from './DebugPanel'
 import { DrillerView } from './DrillerView'
 import { FallingChunkView } from './FallingChunkView'
 import { GemRenderer } from './GemRenderer'
+import { HoverOutlineRenderer } from './HoverOutlineRenderer'
 import { GhostBeam } from './GhostBeam'
 import { HazardView } from './HazardView'
 import { TileRenderer } from './TileRenderer'
@@ -72,6 +73,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
   const gl = useThree((s) => s.gl)
   const size = useThree((s) => s.size)
   const material = useDrillerMaterial()
+  const outlineMaterial = useOutlineMaterial()
   const accumRef = useRef(0)
 
   // Game render target — Flatland renders into this texture at the
@@ -172,6 +174,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
         <HazardView material={material} />
         <DrillerView material={material} />
         <GhostBeam material={material} />
+        <HoverOutlineRenderer material={outlineMaterial} />
         {shouldShowDebugPanel() && <DebugPanel />}
       </flatland>
       <Compositor gameTexture={gameRt.texture} viewportSize={size} />
