@@ -71,7 +71,7 @@
                 buttons; slider matches that width. */}
             <div class="music-actions">
                 <div class="music-controls" data-music-controls>
-                    <button type="button" class="music-btn" data-music-toggle aria-label="Play" title="Play">
+                    <button type="button" class="music-btn u-holo" data-music-toggle aria-label="Play" title="Play">
                         <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                             <polygon points="5 3 19 12 5 21 5 3" />
                         </svg>
@@ -80,7 +80,7 @@
                             <rect x="14" y="4" width="4" height="16" />
                         </svg>
                     </button>
-                    <button type="button" class="music-btn" data-music-next aria-label="Next track" title="Next track">
+                    <button type="button" class="music-btn u-holo" data-music-next aria-label="Next track" title="Next track">
                         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="5 4 15 12 5 20 5 4" />
                             <line x1="19" y1="5" x2="19" y2="19" />
@@ -206,14 +206,17 @@
             this.nextBtn.addEventListener('click', () => this.handleNext(), { signal })
             this.volumeInput.addEventListener('input', (e) => this.handleVolume(e), { signal })
 
-            // Anchor the popover's right edge + width to the header's
-            // search button so the player + search read as a visually-
-            // aligned vertical strip. When the search button isn't
-            // present (e.g., Starlight pagefind disabled, or narrow
-            // viewports), fall back to the search button's standard
-            // width (16rem ≈ 256px at desktop) at the same offset the
-            // audio cluster sits at, so the popover keeps a consistent
-            // place regardless of search rendering.
+            // Anchor the popover so its LEFT edge aligns with the search
+            // button's left edge, and its RIGHT edge stays at the audio
+            // cluster's right edge (same spot as the SoundToggle icon).
+            // Net effect: popover spans from search-left to audio-cluster-
+            // right — a hair wider than search, visually a clean rectangle
+            // anchored to the same vertical column as the search bar.
+            //
+            // Fallback when search isn't rendered: position the left edge
+            // where search would be (uses its standard 16rem width
+            // at desktop / 12rem at tablet, offset from the audio-cluster
+            // right edge).
             this.popoverEl.addEventListener(
                 'beforetoggle',
                 (e: Event) => {
@@ -222,18 +225,25 @@
                     const search = document.querySelector<HTMLElement>(
                         'site-search button[data-open-modal], button[data-open-modal]'
                     )
+                    const cluster = this.closest('.audio-cluster') as HTMLElement | null
+                    // Right edge: align to the audio cluster's right edge
+                    // (its rightmost child = SoundToggle icon).
+                    const rightOffset = cluster
+                        ? window.innerWidth - cluster.getBoundingClientRect().right
+                        : 24
                     if (search) {
                         const r = search.getBoundingClientRect()
-                        const right = window.innerWidth - r.right
-                        this.popoverEl.style.right = `${Math.max(8, right)}px`
-                        this.popoverEl.style.width = `${r.width}px`
+                        this.popoverEl.style.left = `${r.left}px`
+                        this.popoverEl.style.right = `${Math.max(8, rightOffset)}px`
+                        this.popoverEl.style.width = 'auto'
                     } else {
-                        // No search — match search's natural width but keep
-                        // the popover under the audio cluster's right edge.
-                        this.popoverEl.style.right = ''
-                        this.popoverEl.style.width = window.matchMedia('(min-width: 64rem)').matches
-                            ? '16rem'
-                            : '12rem'
+                        // No search — pretend it had its standard width and
+                        // align left edge accordingly.
+                        const searchW = window.matchMedia('(min-width: 64rem)').matches ? 256 : 192
+                        const rightEdge = window.innerWidth - rightOffset
+                        this.popoverEl.style.left = `${rightEdge - searchW}px`
+                        this.popoverEl.style.right = `${Math.max(8, rightOffset)}px`
+                        this.popoverEl.style.width = 'auto'
                     }
                 },
                 { signal }
@@ -1054,11 +1064,6 @@
         border-radius: calc(var(--radius) - 5px);
         cursor: pointer;
         color: var(--foreground);
-        /* Neutral surface — same effect-stack (u-holo foil sheen on
-         * top, rim ring via box-shadow) but with the gem tint
-         * deliberately omitted. Buttons stay readable against any
-         * popover gem theme. Holofoil utility provides the moving
-         * highlight; the gem only enters via the foil's gem flecks. */
         background: color-mix(in oklab, var(--card) 80%, var(--background));
         box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 18%, transparent);
         transition:
@@ -1066,6 +1071,14 @@
             box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
         flex: none;
         isolation: isolate;
+        /* Neutralize the u-holo foil — same effect stack (perspective
+         * tilt, scene-light drift, mouse-driven highlight, sparkle
+         * conic flecks) but with the gem palette swapped for grayscale
+         * tokens. Reads as a "polished metal" button rather than a
+         * gem-tinted holofoil. */
+        --gem-base: color-mix(in oklab, var(--foreground) 25%, var(--background));
+        --gem-spec: color-mix(in oklab, var(--foreground) 65%, var(--background));
+        --gem-low: var(--card);
     }
     .music-btn svg {
         position: relative;
