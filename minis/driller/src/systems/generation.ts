@@ -141,20 +141,39 @@ export function carveFixtureTrapEscapes(tiles: Uint8Array, cols: number, rows: n
       // If at least one side opens to the chunk edge, the driller can
       // drop into the next chunk via that path — not a trap.
       if (!leftIsFixture || !rightIsFixture) continue
-      // True trap. Pick the closer wall to carve. Default: left.
-      const leftDist = c - leftWallC // always 1 from cell c
-      const rightDist = rightWallC - c // always 1 from cell c
-      // Both walls are 1 cell away from the rightmost / leftmost AIR
-      // cell, so pick the side whose carved cell sits adjacent to the
-      // most-open AIR region. Simpler heuristic: carve LEFT unless the
-      // left wall is at world edge (leftWallC == 0 means carving the
-      // very first column → still works but feels visually wrong),
-      // in which case carve right.
-      void leftDist
-      void rightDist
-      const carveCol = leftWallC === 0 ? rightWallC : leftWallC
-      const carveIdx = r * cols + carveCol
-      tiles[carveIdx] = TILE_SOIL
+      // True trap. Carve the SHORTER fixture chain from the pocket
+      // wall to the first non-fixture cell beyond — converting EVERY
+      // fixture cell in between to SOIL. Carving a single cell isn't
+      // enough: if the fixture wall is 2+ cols thick, the driller
+      // would drill the carved SOIL and immediately hit another
+      // fixture cell, creating a new 1-cell trap. The full-chain
+      // carve guarantees one straight drill path connects the pocket
+      // to drillable terrain.
+      let leftChainEnd = leftWallC // walk left from the wall
+      while (leftChainEnd >= 0 && isFixtureTile(tiles[r * cols + leftChainEnd] ?? TILE_AIR)) {
+        leftChainEnd--
+      }
+      let rightChainEnd = rightWallC
+      while (rightChainEnd < cols && isFixtureTile(tiles[r * cols + rightChainEnd] ?? TILE_AIR)) {
+        rightChainEnd++
+      }
+      const leftChainLen = leftChainEnd >= 0 ? leftWallC - leftChainEnd : Infinity
+      const rightChainLen = rightChainEnd < cols ? rightChainEnd - rightWallC : Infinity
+      // Both chains run to the world edge without ever finding non-fixture
+      // terrain at this row → the entire row is enclosed (worldgen
+      // pathology, shouldn't happen with current band widths). Skip;
+      // no carve can rescue this.
+      if (!Number.isFinite(leftChainLen) && !Number.isFinite(rightChainLen)) continue
+      const carveLeft = leftChainLen <= rightChainLen
+      if (carveLeft) {
+        for (let cc = leftWallC; cc > leftChainEnd; cc--) {
+          tiles[r * cols + cc] = TILE_SOIL
+        }
+      } else {
+        for (let cc = rightWallC; cc < rightChainEnd; cc++) {
+          tiles[r * cols + cc] = TILE_SOIL
+        }
+      }
     }
   }
 }

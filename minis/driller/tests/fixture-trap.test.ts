@@ -29,20 +29,34 @@ function mkGrid(art: number[][]): { tiles: Uint8Array; cols: number; rows: numbe
 }
 
 describe('carveFixtureTrapEscapes', () => {
-  it('carves an escape from a 1-cell trap (F-A-F over FFF)', () => {
-    // Row 0: AIR pocket bounded by fixtures.
-    // Row 1: fixture floor.
-    // Trap: driller falls into col 1, surrounded by F on left/right/below.
+  it('carves an escape from a 1-cell trap when one side has a drillable cell beyond the wall', () => {
+    // Pocket at col 1. Left wall col 0 (world edge — no escape that way).
+    // Right wall col 2 (fixture). Col 3 is SOIL (drillable terrain) —
+    // carve col 2 to SOIL so the driller can drill cols 2 then 3 out.
+    const { tiles, cols, rows } = mkGrid([
+      [F, A, F, S],
+      [F, F, F, S],
+    ])
+    carveFixtureTrapEscapes(tiles, cols, rows)
+    expect(tiles[0]).toBe(F) // left edge unchanged (no non-fixture beyond)
+    expect(tiles[1]).toBe(A) // pocket preserved
+    expect(tiles[2]).toBe(S) // right wall carved
+    expect(tiles[3]).toBe(S) // pre-existing SOIL unchanged
+  })
+
+  it('does not carve when the entire row is fixture except the pocket', () => {
+    // No non-fixture cell at this row on either side — the trap is
+    // physically unsolvable at this row. The carve correctly leaves
+    // the grid alone (carving wouldn't help; row r+1 has no path
+    // either). This is a worldgen pathology that shouldn't occur with
+    // the production band widths.
     const { tiles, cols, rows } = mkGrid([
       [F, A, F],
       [F, F, F],
     ])
+    const before = tiles.slice()
     carveFixtureTrapEscapes(tiles, cols, rows)
-    // Carve target is the left wall (col 0) — but col 0 is the world
-    // edge so the carve prefers the right wall (col 2).
-    expect(tiles[0]).toBe(F) // left edge preserved
-    expect(tiles[1]).toBe(A) // pocket cell unchanged
-    expect(tiles[2]).toBe(S) // right wall carved to SOIL
+    expect(tiles).toEqual(before)
   })
 
   it('carves the left wall when neither side is the edge', () => {
@@ -58,18 +72,23 @@ describe('carveFixtureTrapEscapes', () => {
     expect(tiles[3]).toBe(F) // right wall preserved
   })
 
-  it('carves a multi-cell pocket (F-AAA-F over FFFFF)', () => {
+  it('carves a multi-cell pocket and tunnels through a multi-cell fixture wall', () => {
+    // Pocket cols 1-3, both walls fixtures (cols 0 and 4-5), drillable
+    // SOIL at col 6. Right chain extends 2 cells (cols 4, 5) before
+    // reaching SOIL — the carve must convert BOTH so the driller can
+    // drill straight through. A 1-cell carve would leave a new trap
+    // (drill col 4, find col 5 is fixture).
     const { tiles, cols, rows } = mkGrid([
-      [F, A, A, A, F],
-      [F, F, F, F, F],
+      [F, A, A, A, F, F, S],
+      [F, F, F, F, F, F, S],
     ])
     carveFixtureTrapEscapes(tiles, cols, rows)
-    // Col 0 is left wall AT edge → carve right wall (col 4).
-    expect(tiles[0]).toBe(F)
     expect(tiles[1]).toBe(A)
     expect(tiles[2]).toBe(A)
     expect(tiles[3]).toBe(A)
-    expect(tiles[4]).toBe(S)
+    expect(tiles[4]).toBe(S) // first wall cell carved
+    expect(tiles[5]).toBe(S) // second wall cell carved
+    expect(tiles[6]).toBe(S) // pre-existing SOIL
   })
 
   it('does not carve when the pocket has a drillable floor exit', () => {

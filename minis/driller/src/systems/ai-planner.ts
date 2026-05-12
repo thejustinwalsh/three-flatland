@@ -28,48 +28,116 @@ interface DrillerCell {
   facing?: 1 | -1
 }
 
+/**
+ * Cost-based greedy: pick the next cell that gives the lowest TIME
+ * COST per row of depth gained. Costs are in DRILL_COOLDOWN units:
+ *
+ *   AIR / SOIL = 1   (walk-step or single drill hit)
+ *   STONE      = 4   (STONE_MAX_HITS to break)
+ *   FIXTURE    = ∞   (cannot drill)
+ *   world edge = ∞
+ *
+ * Candidates are evaluated as the cost to advance one row deeper:
+ *
+ *   Direct DOWN:    cost(cell below)
+ *   SIDE + DOWN:    cost(side cell) + cost(cell below side cell)
+ *
+ * Examples:
+ *   - down=SOIL (1) beats side=AIR + soil-below (1+1=2)  → straight down
+ *   - down=STONE (4) loses to side=AIR + soil-below (2)   → sidestep around
+ *   - down=STONE (4) beats side=AIR + stone-below (5)     → drill through
+ *   - down=FIXTURE (∞) → sidestep anywhere drillable
+ *
+ * If every candidate is "lateral-only" (no immediate descent from any
+ * adjacent cell — typically because the driller is mid-fixture-surface),
+ * commit to FACING direction so the AI doesn't oscillate. The user's
+ * canonical bug: stuck on a fixture with rock blocking one side; the
+ * facing-commit forces the driller to drill through the rock instead
+ * of bouncing off the soft side forever.
+ */
+const COST_AIR_OR_SOIL = 1
+const COST_STONE = 4
+const COST_LATERAL_ONLY_PENALTY = 100
+
+function tileStepCost(t: number | undefined): number {
+  if (t === undefined) return Infinity
+  if (isFixtureTile(t)) return Infinity
+  if (t === TILE_STONE) return COST_STONE
+  return COST_AIR_OR_SOIL
+}
+
 export function planGreedy(world: World, d: DrillerCell): [number, number] | null {
   const grid = world.get(Grid)
   if (!grid) return null
   const { cols, rows, tiles } = grid
 
-  // Greedy = "go down at all costs". Priority:
-  //   1. Down through AIR/SOIL (soft) → walk/fall
-  //   2. Down through STONE (4-hit drill — breaks any side-oscillation
-  //      that would otherwise occur with open sides flanking a stone
-  //      below)
-  //   3. Sideways: commit to FACING direction. Whatever's there
-  //      (AIR / SOIL / STONE) is the target — STONE gets drilled. Only
-  //      reverse if facing direction is truly blocked (fixture/edge).
-  //      Without this commit, a driller on a fixture with one AIR side
-  //      and one rock-blocked side walks into AIR, reverses (facing
-  //      flips), walks back, and never drills the rock that would let
-  //      him drop off the fixture.
-  // Fixtures stay impassable in all passes — they can't be drilled.
-  const isPassable = (t: number | undefined): boolean => {
-    if (t === undefined) return false
-    return !isFixtureTile(t)
+  const descendCostFrom = (c: number, r: number): number => {
+    // Bottom of streaming grid → assume the next chunk is soft (deeper
+    // chunks load in, this is the natural fall-off-the-bottom case).
+    if (r + 1 >= rows) return COST_AIR_OR_SOIL
+    return tileStepCost(tiles[(r + 1) * cols + c])
   }
-  // Down preference: include stones in the SAME pass — drilling down
-  // through stone always beats sidewinding around it.
-  if (d.row + 1 < rows) {
-    const below = tiles[(d.row + 1) * cols + d.col]
-    if (isPassable(below)) return [d.col, d.row + 1]
+
+  type Candidate = { col: number; row: number; cost: number; lateralOnly: boolean }
+  const candidates: Candidate[] = []
+
+  // Direct DOWN
+  const downC = descendCostFrom(d.col, d.row)
+  if (Number.isFinite(downC)) {
+    candidates.push({ col: d.col, row: d.row + 1, cost: downC, lateralOnly: false })
   }
-  // Sideways commit. Try facing direction first; ANY non-fixture cell
-  // (AIR, SOIL, or STONE) is acceptable — the side-cell drill path
-  // handles each correctly.
+
+  // SIDE candidates (each evaluated as side-step + descend-from-side).
+  for (const dc of [-1, 1] as const) {
+    const nc = d.col + dc
+    if (nc < 0 || nc >= cols) continue
+    const sStep = tileStepCost(tiles[d.row * cols + nc])
+    if (!Number.isFinite(sStep)) continue
+    const sDown = descendCostFrom(nc, d.row)
+    if (Number.isFinite(sDown)) {
+      candidates.push({ col: nc, row: d.row, cost: sStep + sDown, lateralOnly: false })
+    } else {
+      // Side cell exists, but no descent path from there (fixture floor).
+      // Kept as a fallback so the driller can still walk along a
+      // fixture surface searching for a column it can descend from.
+      candidates.push({ col: nc, row: d.row, cost: sStep + COST_LATERAL_ONLY_PENALTY, lateralOnly: true })
+    }
+  }
+  if (candidates.length === 0) return null
+
+  // Prefer descending candidates (any candidate that makes downward
+  // progress) over lateral-only candidates. Among descending: lowest
+  // cost wins; ties go to DIRECT DOWN over sidestep, then facing.
+  const descending = candidates.filter((c) => !c.lateralOnly)
+  if (descending.length > 0) {
+    const forward = (d.facing ?? 1) as 1 | -1
+    descending.sort((a, b) => {
+      if (a.cost !== b.cost) return a.cost - b.cost
+      // Same cost: prefer the direct-down candidate (deeper row).
+      if (a.row !== b.row) return b.row - a.row
+      // Both lateral with same cost: facing tiebreak.
+      const aForward = a.col - d.col === forward
+      const bForward = b.col - d.col === forward
+      if (aForward !== bForward) return aForward ? -1 : 1
+      return 0
+    })
+    return [descending[0]!.col, descending[0]!.row]
+  }
+
+  // ALL candidates are lateral-only — stuck on a fixture surface with
+  // no immediate way down on either side. Commit to facing direction
+  // regardless of cell type (AIR walk / SOIL or STONE drill) to avoid
+  // the soft-side bounce. Reverse only if forward is impossible
+  // (fixture or world edge); the reverse flips facing, so subsequent
+  // ticks continue in the new direction without ping-pong.
   const forward = (d.facing ?? 1) as 1 | -1
   const fc = d.col + forward
-  if (fc >= 0 && fc < cols && isPassable(tiles[d.row * cols + fc])) {
+  if (fc >= 0 && fc < cols && !isFixtureTile(tiles[d.row * cols + fc] ?? TILE_AIR)) {
     return [fc, d.row]
   }
-  // Forward blocked by fixture/edge — reverse. This flips facing on
-  // the next tick, so subsequent ticks commit to the new direction
-  // and don't ping-pong back.
   const back = -forward as 1 | -1
   const bc = d.col + back
-  if (bc >= 0 && bc < cols && isPassable(tiles[d.row * cols + bc])) {
+  if (bc >= 0 && bc < cols && !isFixtureTile(tiles[d.row * cols + bc] ?? TILE_AIR)) {
     return [bc, d.row]
   }
   return null

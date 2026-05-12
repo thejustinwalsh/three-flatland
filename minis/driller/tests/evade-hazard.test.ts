@@ -261,24 +261,51 @@ describe('planGreedy — drills through stones', () => {
     expect(next).toEqual([4, 5])
   })
 
-  it('prefers drilling down through a stone over sidestepping into AIR', () => {
-    // Greedy = "down at all costs". Even if AIR is open to the sides,
-    // a stone below is the preferred target. Without this priority the
-    // driller bounces between two AIR cells (the dance) when bracketed
-    // by stones/fixtures that close off the sides one tick later, never
-    // making progress through the rock that would free him.
+  it('prefers sidestepping into AIR + drilling soil below over drilling a stone straight down', () => {
+    // Cost-based greedy: a STONE drill costs 4 hits; a SOIL drill costs
+    // 1. So when down is stone but a sidestep into AIR opens a soil
+    // path below, the side route is 2 cost (1 step + 1 drill) vs 4
+    // cost (direct stone drill). Side wins.
     const rows = [
       '..........',
       '..........',
       '..........',
       '..........',
       '..........',
+      '..........', // driller at (5,5), row 5 is all AIR
+      '.....S....', // stone directly below driller
+      '..........', // soil/air below — both sides have soft descent
       '..........',
-      '.....S....', // stone directly below driller at (5,5)
+      '##########',
+    ]
+    // Make rows around row 6 mostly SOIL so the side-down path resolves
+    // to soft descent (cost 1+1=2).
+    rows[6] = '....#S#...'
+    rows[7] = '..........'
+    const world = makeWorldFromGrid(rows)
+    const next = planGreedy(world, { col: 5, row: 5, facing: 1 })
+    expect(next).not.toBeNull()
+    // Sidesteps to col 4 or 6 (NOT [5,6] direct stone).
+    expect(next).not.toEqual([5, 6])
+    expect([4, 5, 6]).toContain(next![0])
+    expect(next![1]).toBe(5)
+  })
+
+  it('drills straight down through SOIL when the side detour is more expensive', () => {
+    // Direct DOWN soft = 1, sidestep + side-down = 2. Down wins.
+    const rows = [
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........', // driller at (5,5)
+      '..........', // all AIR / SOIL below
       '..........',
       '..........',
       '##########',
     ]
+    rows[6] = '##########' // soil below driller
     const world = makeWorldFromGrid(rows)
     const next = planGreedy(world, { col: 5, row: 5, facing: 1 })
     expect(next).toEqual([5, 6])
