@@ -34,6 +34,21 @@ const TRACKS_PATH = resolve(REPO_ROOT, 'docs/public/audio/tracks.json')
 type Gem = 'gold' | 'ruby' | 'emerald' | 'diamond' | 'amethyst' | 'pink' | 'salmon' | 'turquoize'
 const GEM_VALUES: readonly Gem[] = ['gold', 'ruby', 'emerald', 'diamond', 'amethyst', 'pink', 'salmon', 'turquoize']
 
+/** ZzFX Studio's five vibe presets, mapped to our gem palette. Each vibe
+ * has a distinct mood the DAW expresses through scale, density, and
+ * instrument choice — we mirror those moods to gems that fit the
+ * brand: titleScreen (heroic, bright) → gold, battle (intensity) →
+ * ruby, dungeon (deep, mossy) → emerald, adventure (exploration) →
+ * amethyst, boss (dramatic) → pink. Falls back to amethyst when the
+ * vibe is missing or unrecognized. */
+const VIBE_TO_GEM: Record<string, Gem> = {
+    titleScreen: 'gold',
+    battle: 'ruby',
+    dungeon: 'emerald',
+    adventure: 'amethyst',
+    boss: 'pink',
+}
+
 type Track = {
     id: string
     title: string
@@ -99,6 +114,22 @@ function normalizeJsArrayLiteral(src: string): string {
     // bracket, whitespace, or operator (so we don't break e.g. `1.5`).
     out = out.replace(/(^|[,\[\s\-+])\.(\d)/g, '$10.$2')
     return out
+}
+
+/** Extract the `// @zzfx-studio {…json…}` metadata comment ZzFX Studio's
+ * Export Code / Export JS includes. The JSON is single-line and lives
+ * on a comment line of its own. Returns the parsed object, or null when
+ * absent (e.g., hand-authored snippets). */
+function extractZzfxStudioMetadata(src: string): {
+    config?: { name?: string; vibe?: string; bpm?: number }
+} | null {
+    const match = src.match(/\/\/\s*@zzfx-studio\s+(\{.*?\})\s*$/m)
+    if (!match) return null
+    try {
+        return JSON.parse(match[1]!) as { config?: { name?: string; vibe?: string; bpm?: number } }
+    } catch {
+        return null
+    }
 }
 
 /** Walk forward from `i` matching `open`/`close` brackets, return the
@@ -255,10 +286,20 @@ async function main(): Promise<void> {
         return
     }
 
-    let title = args.title
-    let id = args.id
-    let gem = args.gem
-    let credit = args.credit
+    // Auto-fill from the `// @zzfx-studio {json}` metadata comment that
+    // ZzFX Studio's Export Code / Export JS includes. `config.name` is
+    // the DAW's auto-generated song title (e.g., "The Frozen Undercroft").
+    // `config.vibe` maps to a gem. With this metadata present, the only
+    // user input required is the snippet itself.
+    const meta = extractZzfxStudioMetadata(snippet)
+    const metaName = meta?.config?.name
+    const metaVibe = meta?.config?.vibe
+    const metaGem = metaVibe ? VIBE_TO_GEM[metaVibe] : undefined
+
+    let title = args.title ?? metaName
+    let id = args.id ?? (title ? slugify(title) : undefined)
+    let gem = args.gem ?? metaGem
+    let credit = args.credit ?? 'zzfx-studio'
 
     if (!title || !id || !gem) {
         const rl = createInterface({ input: getPromptInput(), output })
@@ -278,7 +319,7 @@ async function main(): Promise<void> {
             return
         }
         gem = gemStr as Gem
-        credit = credit ?? (await prompt(rl, 'Credit', 'zzfx-studio'))
+        credit = args.credit ?? (await prompt(rl, 'Credit', credit))
         rl.close()
     }
 
@@ -309,7 +350,12 @@ async function main(): Promise<void> {
     )
 }
 
-main().catch((err) => {
-    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`)
-    process.exitCode = 1
-})
+main()
+    .catch((err) => {
+        console.error(`Error: ${err instanceof Error ? err.message : String(err)}`)
+        process.exitCode = 1
+    })
+    // Explicit exit — the /dev/tty fallback in getPromptInput() opens a
+    // file descriptor that Node won't auto-close at end of main, which
+    // otherwise hangs the process. Force termination once the work is done.
+    .finally(() => process.exit(process.exitCode ?? 0))
