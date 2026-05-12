@@ -1,6 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
-import { initAudio } from '../scripts/sounds'
-import type { PlaySoundFn } from '../scripts/sounds'
+import type { PlaySoundFn } from '../audio/types'
 import { useGPUSupport } from '../utils/useGPUSupport'
 
 // Lazy load the mini-game
@@ -102,7 +101,11 @@ function HeroGameInner() {
   const noopZzfx: PlaySoundFn = () => {}
 
   const handleInteraction = useCallback(() => {
-    initAudio().catch(() => {})
+    // Lazy-import the audio bridge on first interaction so it stays out
+    // of the main bundle. The first call unlocks the AudioContext.
+    import('../scripts/sounds')
+      .then((sounds) => sounds.initAudio())
+      .catch(() => {})
   }, [])
 
   return (

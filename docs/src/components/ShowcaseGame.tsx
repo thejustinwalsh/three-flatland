@@ -1,6 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
-import { initAudio } from '../scripts/sounds'
-import type { PlaySoundFn } from '../scripts/sounds'
+import type { PlaySoundFn } from '../audio/types'
 import { useGPUSupport } from '../utils/useGPUSupport'
 
 const MiniBreakout = lazy(() => import('@three-flatland/mini-breakout'))
@@ -10,10 +9,22 @@ function ShowcaseGameInner() {
   const [isVisible, setVisible] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Audio module is dynamically imported so the bridge + zzfx + zzfxm
+  // code-splits out of the main bundle. The static `PlaySoundFn` type
+  // import above is type-only and erases at compile time. The proxy
+  // factory is fetched lazily on mount; the noop fallback covers the
+  // brief window before the import resolves.
   useEffect(() => {
-    import('../scripts/sounds').then((sounds) => {
-      setProxy(() => sounds.createZzfxProxy())
-    }).catch(() => {})
+    let cancelled = false
+    import('../scripts/sounds')
+      .then((sounds) => {
+        if (cancelled) return
+        setProxy(() => sounds.createZzfxProxy())
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -36,7 +47,9 @@ function ShowcaseGameInner() {
   const noopZzfx: PlaySoundFn = () => {}
 
   const handleInteraction = useCallback(() => {
-    initAudio().catch(() => {})
+    import('../scripts/sounds')
+      .then((sounds) => sounds.initAudio())
+      .catch(() => {})
   }, [])
 
   return (

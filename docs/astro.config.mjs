@@ -384,9 +384,19 @@ export default defineConfig({
     rehypePlugins: [rehypeExternalLinks],
   },
   vite: {
-    resolve: {
-      conditions: ['source'],
-    },
+    /**
+     * `resolve.conditions: ['source']` would let Vite pick workspace
+     * packages' source `.ts` files via their `exports['.']['source']`
+     * branch — handy in dev but breaks for npm packages that declare a
+     * `source` condition pointing at a path not included in the
+     * published tarball (`@zzfx-studio/zzfxm` is an example: its
+     * `exports` map declares `source: ./src/zzfxm.ts`, but the
+     * published package ships only `dist/`). Letting Vite fall through
+     * to its default conditions (`import` / `module` / `default`)
+     * resolves both cases cleanly — workspace packages get their
+     * built `dist/` (tsup --watch keeps it fresh in dev), npm packages
+     * get their dist too.
+     */
     plugins: [
       watchExamples(),
       copyExamples(),
