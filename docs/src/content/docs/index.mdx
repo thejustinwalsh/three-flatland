@@ -180,27 +180,27 @@ function Game() {
 <h2 class="section-heading">Why Flatland?</h2>
 
 <ValueProp title="Built into three.js, not on top of it" color="diamond">
-  Most 2D rendering libraries on the web run their own renderer alongside three.js. You end up coordinating two render loops, sharing GPU resources by hand, and in react-three-fiber the trouble multiplies — two reconcilers, state marshaled between React instances.
+  Most 2D rendering libraries on the web run their own renderer alongside three.js. You end up coordinating two render loops, sharing GPU resources by hand, and inside react-three-fiber the trouble multiplies into two reconcilers passing state between React instances.
 
-  three-flatland is built directly on three.js. Sprites, tilemaps, particles — every primitive is a real `Object3D` that mounts into the scenegraph and react-three-fiber the same way any Mesh does. No second renderer, no bridge layer to maintain.
+  three-flatland is built directly on three.js. Sprites, tilemaps, particles — every primitive is an `Object3D` that mounts into the scenegraph and react-three-fiber the same way any `Mesh` does.
 </ValueProp>
 
-<ValueProp title="Batches that survive your effects" color="emerald" align="right">
-  Sprite batchers usually shatter the moment you touch one sprite. Add a glow, change a uniform, shift a z-index — your batch tanks, you rebuild your scenegraph, or the new effect forces you to reflow the whole scene.
+<ValueProp title="Sprite batches that survive your effects" color="emerald" align="right">
+  Sprite batchers usually shatter the moment you touch one sprite. Add a glow, change a uniform, shift a z-index, and the batch tanks or the effect forces a scene reflow.
 
-  three-flatland's batcher applies effects on a shared material. An **ECS** keeps batch archetypes optimal as effects come and go, and the uber-shader is built in **TSL** so unused effect branches compile away — you pay for the effects in your batch, not for everything the library can do. When the defaults aren't enough, override the color node or compose your own effect; the same TSL primitives we used to build the library are the ones you use to extend it.
+  three-flatland's batcher applies effects on a shared material. An ECS keeps batch archetypes optimal as effects come and go, and the uber-shader compiles away unused branches via TSL — the cost is the effects in the batch, not every effect the library supports. When the defaults aren't enough, override the color node or compose your own effect.
 </ValueProp>
 
 <ValueProp title="The ecosystem is three.js" color="amethyst">
   three-flatland's core is tree-shakable. The `@three-flatland` namespace is a set of independent packages — every one of them works in any three.js project, with or without three-flatland in the mix.
 
-  `@three-flatland/skia` is a CanvasKit port we rebuilt from the ground up for size and speed, with SIMD enabled and full WebGL + WebGPU support. A port of the **Slug** font renderer to TSL is in flight — fully shader-driven glyph rendering, more accurate than SDF atlases, with real dynamic kerning instead of bitmap hacks. A **KTX2 Basis** transcoder ships with SIMD on, alongside a runtime **WebP** encoder for compressed textures over the wire. A VS Code plugin handles the asset-pipeline side.
+  `@three-flatland/skia` is a Zig-built Skia port: roughly 1 MB of WASM (less than half CanvasKit's size), with a native WebGPU backend on Graphite/Dawn alongside WebGL. A port of the Slug glyph-rendering algorithm to TSL is in flight — fully shader-driven, more accurate than SDF atlases at any scale, with real dynamic kerning. KTX2 Basis transcoding and WebP tooling for the asset pipeline are in development, alongside a VS Code plugin.
 </ValueProp>
 
 <ValueProp title="When not to reach for Flatland" color="ruby" align="right">
-  If your only 2D need is in-canvas app UI, **[pmndrs/uikit](https://github.com/pmndrs/uikit)** is purpose-built for that and a better fit. That's the only case I'd reach elsewhere.
+  If your only 2D need is in-canvas app UI, uikit is purpose-built for that and a better fit. That's the only case I'd reach elsewhere.
 
-  For everything else — sprites, tilemaps, particles, shaders, data viz, hybrid 2.5D scenes — this is the work three-flatland is built for. Every `@three-flatland/*` package stands on its own, so adopting it isn't a binary commitment; pull the pieces that fit your project.
+  For sprites, tilemaps, particles, shaders, data viz, hybrid 2.5D — this is what three-flatland is built for. Every `@three-flatland/*` package stands on its own, so adopting it isn't a binary choice.
 </ValueProp>
 
 </div>
