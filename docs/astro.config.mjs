@@ -70,6 +70,39 @@ export default defineConfig({
         },
         favicon: '/favicon.svg',
         head: [
+          // Theme boot — runs after Starlight's own ThemeProvider inline
+          // script (entries in the `head` config land in DOM order, and
+          // Starlight injects its provider earlier). Strategy:
+          //   1. Clear any legacy `starlight-theme` localStorage key so
+          //      old preferences don't persist past the toggle removal.
+          //   2. Set `data-theme` from `prefers-color-scheme`, defaulting
+          //      dark when matchMedia is unavailable or returns false.
+          //   3. Attach a `change` listener so live OS-pref flips update
+          //      the page without reload.
+          //
+          // The user-facing theme switcher is removed in this same phase;
+          // theme tracks the OS preference exclusively from here forward.
+          // `data-theme` remains the load-bearing CSS selector across the
+          // theme.css palette and every light-mode-polish override — that
+          // contract is preserved; only the source of truth changes.
+          {
+            tag: 'script',
+            content: `;(() => {
+              try { localStorage.removeItem('starlight-theme'); } catch {}
+              var theme = 'dark';
+              try {
+                if (typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: light)').matches) {
+                  theme = 'light';
+                }
+              } catch {}
+              document.documentElement.dataset.theme = theme;
+              try {
+                matchMedia('(prefers-color-scheme: light)').addEventListener('change', function(e) {
+                  document.documentElement.dataset.theme = e.matches ? 'light' : 'dark';
+                });
+              } catch {}
+            })();`,
+          },
           // Open Graph
           {
             tag: 'meta',

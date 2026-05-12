@@ -4,7 +4,6 @@ import MobileTableOfContents from 'virtual:starlight/components/MobileTableOfCon
 import Search from './Search.astro';
 import SocialIcons from './SocialIcons.astro';
 
-import ThemeSelect from './ThemeSelect.astro';
 import SiteTitle from './SiteTitle.astro';
 import NavBar from './parts/NavBar.astro';
 import MobileMenuToggle from './parts/MobileMenuToggle.astro';
@@ -40,9 +39,10 @@ const shouldRenderSearch =
         <div>
             <SocialIcons />
         </div>
-        <div>
-            <ThemeSelect />
-        </div>
+        {/* Audio cluster (SoundToggle + MusicPlayer) slots in here as
+            Phase 3/4 land. Until then the nav row carries SocialIcons
+            only; the divider between social and audio appears once
+            audio renders. */}
     </nav>
 </div>
 
