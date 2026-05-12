@@ -71,7 +71,7 @@
                 buttons; slider matches that width. */}
             <div class="music-actions">
                 <div class="music-controls" data-music-controls>
-                    <button type="button" class="music-btn u-holo" data-music-toggle aria-label="Play" title="Play">
+                    <button type="button" class="music-btn" data-music-toggle aria-label="Play" title="Play">
                         <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                             <polygon points="5 3 19 12 5 21 5 3" />
                         </svg>
@@ -80,7 +80,7 @@
                             <rect x="14" y="4" width="4" height="16" />
                         </svg>
                     </button>
-                    <button type="button" class="music-btn u-holo" data-music-next aria-label="Next track" title="Next track">
+                    <button type="button" class="music-btn" data-music-next aria-label="Next track" title="Next track">
                         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="5 4 15 12 5 20 5 4" />
                             <line x1="19" y1="5" x2="19" y2="19" />
@@ -261,6 +261,34 @@
             // trigger button rather than as a transient toast. User
             // dismisses via outside click, Escape, or clicking the
             // trigger again (all browser-native via popover="auto").
+
+            // Manual pointer-tracking for the rim-glint. motion.ts'
+            // global registry doesn't pick up the popover because it's
+            // a native top-layer element (display: none until opened,
+            // and its IntersectionObserver semantics differ from
+            // regular flow elements). Run a scoped pointermove listener
+            // here so the cursor-driven `--mx`/`--my` highlight ON THE
+            // popover surface tracks the actual mouse position, like
+            // every other .u-light card/button in the design system.
+            this.popoverEl.addEventListener(
+                'pointermove',
+                (e: PointerEvent) => {
+                    const r = this.popoverEl.getBoundingClientRect()
+                    const mx = ((e.clientX - r.left) / r.width) * 100
+                    const my = ((e.clientY - r.top) / r.height) * 100
+                    this.popoverEl.style.setProperty('--mx', `${mx.toFixed(2)}%`)
+                    this.popoverEl.style.setProperty('--my', `${my.toFixed(2)}%`)
+                    this.popoverEl.style.setProperty('--mouse-active', '1')
+                },
+                { passive: true, signal }
+            )
+            this.popoverEl.addEventListener(
+                'pointerleave',
+                () => {
+                    this.popoverEl.style.setProperty('--mouse-active', '0')
+                },
+                { signal }
+            )
         }
 
         disconnectedCallback() {
