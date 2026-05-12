@@ -485,3 +485,27 @@ E. **Paint pivot: destroy, don't weaken.** The anchor-bump version (1 gem per ti
 6. **Free-fall branch unchanged.** The void band already had its own "nearest gem anywhere, no halo limit" logic; the new halo applies only to the gameplay branch.
 
 **Tests pinning the rule:** `tests/hover-priority.test.ts` covers (a) active drag overrides every cell, (b) exact-cell gem beats pet, (c) halo collect on ±1 cell, (d) halo does NOT extend past Chebyshev 1, (e) exact-cell gem wins over halo neighbor, (f) pet beats paint when no gem nearby, (g) paint as fallback. 179/179 total pass.
+
+## In-canvas feedback HUD — Phase 1 (bake-icons CLI)
+**File:** `scripts/bake-icons.ts`, `package.json` (script entry), `minis/driller/src/generated/{icons,digits}.{png,ts}` (committed sheets)
+**Date:** 2026-05-12
+
+**Decision:** Glyph→pixel-sprite-sheet baking is a standalone CLI driven by Playwright (no native deps). Takes a list of `name=glyph` pairs, renders each in a headless Chromium canvas at `renderSize` (default 64), box-average downsamples to `size` (default 8), packs into a single PNG with `padding` (default 1) transparent pixels between cells. Emits `{out}.png` + `{out}.ts` (regions table + sheet dims).
+
+**Why Playwright over node-canvas/@napi-rs/canvas:**
+1. **Zero new native deps.** `@playwright/test` is already a workspace devDep. No additional install / no postinstall surprises on CI.
+2. **Browser-side rendering matches what users see.** System emoji fonts vary; rendering in Chromium gives us the same rasterization end users would get from a runtime canvas approach — but pre-baked and committed for determinism.
+3. **The entire sheet assembly lives in one `page.evaluate` block.** Single shot: render → downsample → blit → toDataURL, returns base64 PNG to Node, which writes the file. No multi-pass orchestration, no per-glyph round-trips.
+
+**Pipeline choices:**
+- **Box-average downsample** (not nearest-neighbor): the source emoji is anti-aliased; averaging each `block × block` region produces clean small-pixel sprites without harsh aliasing.
+- **One row of cells**, sheet width = next-power-of-two of `cells × stride`. Predictable layout; the `regions.ts` `x/y/w/h` table is the source of truth for UV math at runtime.
+- **`--render-size` flag** so digits (typically thinner than emoji) can use a smaller source canvas (48 vs 64) — less anti-aliased material to average over → crisper digit edges.
+- **`--font` per invocation, one sheet per font.** Emojis bake with `"Apple Color Emoji"`; digits bake with `"Menlo"`. Run twice, two output files. Simpler than multi-font sheets.
+
+**Generated assets:**
+- `minis/driller/src/generated/icons.png` (128×16): `drag, paint, brace, pet.happy, pet.neutral, pet.angry, timer, gem`
+- `minis/driller/src/generated/digits.png` (128×8): `0–9, minus, plus, m`
+- Both sheets + their regions TS files committed. Re-bake with `pnpm bake-icons …`.
+
+**Verification:** baked both sheets, inspected output PNGs (legible emojis at 8×8, legible digits at 6×6). The regions TS files round-trip through TypeScript (`pnpm typecheck` will catch them in subsequent phases when consumed).
