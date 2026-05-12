@@ -947,11 +947,16 @@
      *  65–100%  scroll back to start  */
     .music-title:hover .music-title-text {
         display: inline-block;
-        animation: music-title-marquee 5.2s cubic-bezier(0.4, 0, 0.2, 1) 200ms infinite;
+        animation: music-title-marquee 4.6s cubic-bezier(0.4, 0, 0.2, 1) 0s infinite;
     }
+    /* Animation starts in motion immediately on hover (no leading pause).
+     * Phases:
+     *   0–45%   scroll to end
+     *  45–55%   pause at end (~460ms)
+     *  55–100%  scroll back to start (loops without a trailing pause) */
     @keyframes music-title-marquee {
-        0%, 15% { transform: translateX(0); }
-        50%, 65% { transform: translateX(var(--marquee-end, 0px)); }
+        0%   { transform: translateX(0); }
+        45%, 55% { transform: translateX(var(--marquee-end, 0px)); }
         100% { transform: translateX(0); }
     }
     @media (prefers-reduced-motion: reduce) {
