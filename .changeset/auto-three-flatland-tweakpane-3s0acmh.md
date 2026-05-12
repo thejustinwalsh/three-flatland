@@ -5,15 +5,19 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-- `usePaneRadioGrid` hook (react subpath): inline button-bar selector backed by tweakpane-essentials radiogrid blade; deferred disposal + synchronous creation mirrors `usePaneButton`/`usePaneInput`
-- `PaneInputOptions`: new `readonly` and `format` fields for read-only monitor bindings with custom formatters
-- Fix: z-index applied to `.tp-dfwv` wrapper (body-sibling stacking context) instead of inner pane root; pane now reliably layers above other overlays
-- Fix: checkbox hit target stretched to full box size (`.tp-ckbv_i` `width`/`height` set to `var(--cnt-usz)`); eliminates multi-click failures under pointer-events/z-index combinations
-- Theme: checkbox box surface matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent-pink on `:checked`
+## New features
 
-Minor additive release adding `usePaneRadioGrid`, readonly monitor support, and correcting z-index stacking and checkbox hit-target bugs.
+- `usePaneRadioGrid` hook (react subpath) backed by Tweakpane Essentials `radiogrid` blade — inline button-bar selector with active-state affordance; deferred disposal + synchronous creation match existing hook patterns
+- `PaneInputOptions` extended with `readonly` and `format` fields so React hook users can create read-only monitors with custom value formatters
 
-<!--
+## Bug fixes
+
+- `z-index: 1000` now applied to the `.tp-dfwv` body-sibling wrapper instead of the inner pane root — fixes stacking against other overlays when no container is provided
+- Checkbox hit target expanded to the full 20×20 label box (`.tp-ckbv_i` stretched to `var(--cnt-usz)`) — clicks now land on the input directly without relying on flaky `<label>` forwarding
+- Checkbox box surface matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink on `:checked`
+
+Adds `usePaneRadioGrid`, readonly monitor support, and fixes checkbox hit-target and z-index stacking issues.
+
 ### b90509fa9cec75766d96e36d7f3b11126f70839f
 fix: DPR + fullscreen tracking, checkbox hit target
 Three cross-cutting bugs hit between Phase 4 finishing and Phase 5
@@ -219,4 +223,3 @@ effect on how tweakpane stacked against other overlays; apply to the
 wrapper when it exists.
 Files: examples/react/slug-text/App.tsx, examples/react/slug-text/index.html, examples/react/slug-text/package.json, examples/three/slug-text/index.html, examples/three/slug-text/main.ts, examples/three/slug-text/package.json, packages/tweakpane/src/create-pane.ts, pnpm-lock.yaml
 Stats: 8 files changed, 188 insertions(+), 703 deletions(-)
--->
