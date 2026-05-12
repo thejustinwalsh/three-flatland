@@ -101,3 +101,9 @@ export function saveMusicTrackIndex(index: number): void {
     if (typeof localStorage === 'undefined') return
     localStorage.setItem(KEY_MUSIC_TRACK, String(Math.max(0, Math.floor(index))))
 }
+
+
+/* Accept HMR — keep audio state alive across dev iterations. */
+if (import.meta.hot) {
+    import.meta.hot.accept()
+}

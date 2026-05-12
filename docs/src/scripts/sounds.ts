@@ -325,3 +325,9 @@ export function setupViewTransitionSupport(): void {
 // ────────── ZzFX proxy for mini consumers ──────────
 
 export { createZzfxProxy }
+
+
+/* Accept HMR — keep audio state alive across dev iterations. */
+if (import.meta.hot) {
+    import.meta.hot.accept()
+}

@@ -28,19 +28,19 @@
         {/* Four state icons stacked in-place; CSS reveals the one
             matching `data-state` on the parent button. SVGs over icon
             font means no flash on first paint. */}
-        <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M16 9a5 5 0 0 1 .95 2.293" />
             <path d="M11 5l-7 4H1v6h3l7 4z" />
             <line x1="22" y1="2" x2="2" y2="22" />
         </svg>
-        <svg class="icon-low" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="icon-low" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M11 5l-7 4H1v6h3l7 4z" />
         </svg>
-        <svg class="icon-med" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="icon-med" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M11 5l-7 4H1v6h3l7 4z" />
             <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
         </svg>
-        <svg class="icon-high" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="icon-high" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M11 5l-7 4H1v6h3l7 4z" />
             <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
             <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
@@ -108,15 +108,20 @@
                     /* @vite-ignore */
                     '../../../../../docs/src/scripts/sounds'
                 ) as Promise<SoundsModule>
-                this.soundsPromise.then((sounds) => {
+                this.soundsPromise.then(async (sounds) => {
                     sounds.initVolumeLevel()
-                    const level = sounds.getVolumeLevel()
-                    this.applyState(level)
-                    // Subscribe to bridge state changes so external mutes
-                    // (e.g. system-pref shifts in the future, or another
-                    // tab) re-render the icon.
-                    sounds.onAudioStateChange(() => {
-                        this.applyState(sounds.getVolumeLevel())
+                    this.applyState(sounds.getVolumeLevel())
+                    // Subscribe to bridge state directly — the SoundToggle
+                    // is the global audio authority but its icon also
+                    // needs to react when *other* surfaces mutate the
+                    // master level (notably the MusicPlayer auto-unlock
+                    // path when a default-off user clicks play).
+                    await sounds.initAudio()
+                    const bridge = (window as unknown as {
+                        __threeFlatlandAudio?: { subscribe: (cb: (s: { masterLevel: VolumeLevel }) => void) => () => void }
+                    }).__threeFlatlandAudio
+                    bridge?.subscribe((state) => {
+                        this.applyState(state.masterLevel)
                     })
                 })
             }

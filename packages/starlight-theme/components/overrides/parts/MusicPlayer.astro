@@ -22,15 +22,19 @@
 ---
 
 <flatland-music-player>
+    {/* Native HTML Popover API — `popover="auto"` gives us light dismiss
+        (click outside) + Escape close + top-layer rendering for free.
+        The trigger uses `popovertarget` to reference the popover by id;
+        the browser also wires implicit aria-expanded on the button so
+        we don't have to manage that attribute manually. */}
     <button
         type="button"
         class="music-trigger"
         aria-label="Open music player"
-        aria-expanded="false"
-        aria-controls="flatland-music-popover"
+        popovertarget="flatland-music-popover"
         title="Music — click to open player"
     >
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 18V5l12-2v13" />
             <circle cx="6" cy="18" r="3" />
             <circle cx="18" cy="16" r="3" />
@@ -42,7 +46,7 @@
         class="music-popover"
         role="dialog"
         aria-label="Music player"
-        hidden
+        popover="auto"
     >
         <div class="music-meta">
             <span class="music-title" data-music-title>Loading…</span>
@@ -124,7 +128,6 @@
 
     class FlatlandMusicPlayer extends HTMLElement {
         private cleanup?: AbortController
-        private openCtrl: AbortController | null = null
         private toastTimer: number | null = null
         private soundsPromise?: Promise<SoundsModule>
         private lastTrackId: string | null = null
@@ -132,7 +135,7 @@
         private progressRaf = 0
 
         private trigger!: HTMLButtonElement
-        private popover!: HTMLElement
+        private popoverEl!: HTMLElement
         private titleEl!: HTMLElement
         private creditEl!: HTMLElement
         private toggleBtn!: HTMLButtonElement
@@ -150,7 +153,7 @@
             const { signal } = ctrl
 
             this.trigger = this.querySelector<HTMLButtonElement>('.music-trigger')!
-            this.popover = this.querySelector<HTMLElement>('.music-popover')!
+            this.popoverEl = this.querySelector<HTMLElement>('.music-popover')!
             this.titleEl = this.querySelector<HTMLElement>('[data-music-title]')!
             this.creditEl = this.querySelector<HTMLElement>('[data-music-credit]')!
             this.toggleBtn = this.querySelector<HTMLButtonElement>('[data-music-toggle]')!
@@ -161,16 +164,43 @@
             this.progressFill = this.querySelector<HTMLElement>('[data-music-progress-fill]')!
             this.controls = this.querySelector<HTMLElement>('[data-music-controls]')!
 
-            this.trigger.addEventListener('click', () => this.togglePopover(), { signal })
+            // Transport handlers — the popover open/close itself is owned
+            // by the native `popover` attribute on the panel + the
+            // `popovertarget` attribute on the trigger button. The browser
+            // handles light dismiss + Escape + top-layer rendering.
             this.toggleBtn.addEventListener('click', () => this.handleToggle(), { signal })
             this.prevBtn.addEventListener('click', () => this.handlePrev(), { signal })
             this.nextBtn.addEventListener('click', () => this.handleNext(), { signal })
             this.restartBtn.addEventListener('click', () => this.handleRestart(), { signal })
             this.volumeInput.addEventListener('input', (e) => this.handleVolume(e), { signal })
 
+            // Popover position is static — CSS pins it relative to the
+            // header (top: header-height + gap; right: container padding).
+            // The trigger button doesn't move laterally between routes,
+            // so no per-open position computation needed.
+
+            // Toast logic + progress loop hook into the popover's state
+            // changes. `toggle` fires after the state has changed.
+            this.popoverEl.addEventListener(
+                'toggle',
+                (e: Event) => {
+                    const ev = e as { newState?: string } & Event
+                    if (ev.newState === 'open') {
+                        this.startProgressLoop()
+                    } else {
+                        this.stopProgressLoop()
+                        if (this.toastTimer !== null) {
+                            clearTimeout(this.toastTimer)
+                            this.toastTimer = null
+                        }
+                    }
+                },
+                { signal }
+            )
+
             // Track user interaction with the popover so a toast doesn't
             // auto-close when the user clicks inside it.
-            this.popover.addEventListener(
+            this.popoverEl.addEventListener(
                 'click',
                 () => {
                     this.userInteractedDuringToast = true
@@ -192,13 +222,31 @@
                 if (signal.aborted) return
                 this.loadSounds()
             })
+
+            // Close the popover on scroll — it's a transient surface,
+            // not a sticky modal. Passive listener so scrolling stays
+            // smooth; checking matches(:popover-open) each tick is
+            // O(1).
+            window.addEventListener(
+                'scroll',
+                () => {
+                    if (
+                        (this.popoverEl as HTMLElement & { matches: (s: string) => boolean }).matches(
+                            ':popover-open'
+                        )
+                    ) {
+                        try {
+                            ;(this.popoverEl as HTMLElement & { hidePopover: () => void }).hidePopover()
+                        } catch {}
+                    }
+                },
+                { passive: true, signal }
+            )
         }
 
         disconnectedCallback() {
             this.cleanup?.abort()
             this.cleanup = undefined
-            this.openCtrl?.abort()
-            this.openCtrl = null
             if (this.toastTimer !== null) clearTimeout(this.toastTimer)
             if (this.progressRaf) cancelAnimationFrame(this.progressRaf)
         }
@@ -215,12 +263,14 @@
                     // constructed (it needs a user gesture to fully unlock,
                     // but the singleton + library are ready immediately).
                     await sounds.initAudio()
-                    const bridge = (window as unknown as { __threeFlatlandAudio?: unknown })
+                    const bridge = (window as unknown as { __threeFlatlandAudio?: { subscribe: (cb: (s: AudioState) => void) => () => void } })
                         .__threeFlatlandAudio
                     if (!bridge) return
                     // Bridge exposes subscribe(cb): unsubscribe; cb receives state.
-                    const subscribe = (bridge as { subscribe: (cb: (s: AudioState) => void) => () => void }).subscribe
-                    subscribe((state) => this.applyState(state))
+                    // Don't destructure — destructured methods lose their
+                    // `this` binding and `subscribe` would call into a
+                    // detached function, breaking `this.listeners.add()`.
+                    bridge.subscribe((state) => this.applyState(state))
                 })
             }
             return this.soundsPromise
@@ -246,69 +296,41 @@
         }
 
         // ────────── Popover open/close ──────────
+        //
+        // Native popover API handles user-driven open/close via the
+        // `popovertarget` attribute on the trigger button + the
+        // `popover="auto"` attribute on the panel. Light dismiss
+        // (click outside) and Escape close are automatic.
+        //
+        // This component only programmatically opens the popover as a
+        // *toast* on track change — see `openAsToast`. Closing the toast
+        // is also explicit: a timer fires `hidePopover()` after TOAST_MS
+        // unless the user interacted with the panel during the window.
 
-        private togglePopover(): void {
-            if (this.popover.hidden) this.openPopover()
-            else this.closePopover()
-        }
-
-        /** Open via user click — sticky (no auto-close). */
-        private openPopover(): void {
-            if (this.toastTimer !== null) {
-                clearTimeout(this.toastTimer)
-                this.toastTimer = null
-            }
-            this.popover.hidden = false
-            this.trigger.setAttribute('aria-expanded', 'true')
-            this.openCtrl?.abort()
-            this.openCtrl = new AbortController()
-            const sig = this.openCtrl.signal
-            // Click outside → close.
-            setTimeout(() => {
-                if (sig.aborted) return
-                window.addEventListener(
-                    'click',
-                    (e) => {
-                        if (!this.contains(e.target as Node)) this.closePopover()
-                    },
-                    { signal: sig }
-                )
-                window.addEventListener(
-                    'keydown',
-                    (e) => {
-                        if (e.key === 'Escape') this.closePopover()
-                    },
-                    { signal: sig }
-                )
-            }, 0)
-            this.startProgressLoop()
-        }
-
-        /** Open via auto-toast — schedules auto-close in TOAST_MS unless
-         * the user interacts with the popover during that window. */
+        /** Open as a transient toast on track change. Auto-closes after
+         * TOAST_MS unless the user clicks inside the popover during the
+         * window (in which case it stays open until they dismiss it via
+         * Escape or outside click — both browser-handled). */
         private openAsToast(): void {
-            if (!this.popover.hidden) return // user already has it open; do nothing
+            // Already open (user clicked through to it) — leave alone.
+            const popoverEl = this.popoverEl as HTMLElement & { matches: (s: string) => boolean }
+            if (popoverEl.matches(':popover-open')) return
             this.userInteractedDuringToast = false
-            this.popover.hidden = false
-            this.trigger.setAttribute('aria-expanded', 'true')
-            // No outside-click handler for toast — it auto-closes on timer.
-            this.startProgressLoop()
+            try {
+                ;(this.popoverEl as HTMLElement & { showPopover: () => void }).showPopover()
+            } catch {
+                // showPopover throws if browser doesn't support the API or
+                // the popover is already open from a stale state — silent
+                // fallback is fine.
+                return
+            }
             this.toastTimer = window.setTimeout(() => {
                 this.toastTimer = null
-                if (!this.userInteractedDuringToast) this.closePopover()
+                if (this.userInteractedDuringToast) return
+                try {
+                    ;(this.popoverEl as HTMLElement & { hidePopover: () => void }).hidePopover()
+                } catch {}
             }, TOAST_MS)
-        }
-
-        private closePopover(): void {
-            this.popover.hidden = true
-            this.trigger.setAttribute('aria-expanded', 'false')
-            this.openCtrl?.abort()
-            this.openCtrl = null
-            if (this.toastTimer !== null) {
-                clearTimeout(this.toastTimer)
-                this.toastTimer = null
-            }
-            this.stopProgressLoop()
         }
 
         // ────────── State sync ──────────
@@ -355,12 +377,33 @@
         // ────────── Transport handlers ──────────
 
         private async handleToggle(): Promise<void> {
+            const sounds = await this.loadSounds()
             const bridge = await this.ensureBridge()
             if (!bridge) return
             const state = bridge.getState()
             if (state.musicDuckedExternal) return
-            if (state.musicPlaying) bridge.pauseMusic()
-            else bridge.resumeMusic()
+            if (state.musicPlaying) {
+                bridge.pauseMusic()
+                return
+            }
+            // Authority model: SoundToggle is the global audio gate.
+            //   - level > 0           → play normally
+            //   - level = 0, never set → auto-unlock to low (icon updates
+            //                            reactively via bridge subscription)
+            //   - level = 0, explicit  → respect user's mute, don't play
+            // Explicit mute is detected by the presence of the localStorage
+            // key (any value set, even "0", means the user has interacted).
+            if (state.masterLevel === 0) {
+                const explicit = localStorage.getItem('flatland-sound-volume') !== null
+                if (explicit) return // muted on purpose; honor the choice
+                // Default off → elevate to low. setVolumeLevel writes
+                // storage + calls bridge.setMasterLevel which fires the
+                // first-unmute autostart path (music begins automatically
+                // because we've now transitioned from 0 → 1).
+                sounds.setVolumeLevel(1)
+                return
+            }
+            bridge.resumeMusic()
         }
 
         private async handlePrev(): Promise<void> {
@@ -471,10 +514,25 @@
         pointer-events: none;
     }
 
+    /* Native popover panel — `popover="auto"` puts this in the top
+     * layer when open (above everything, no z-index battles).
+     *
+     * Positioning: the UA stylesheet for `[popover]` defaults to
+     * `inset: 0; margin: auto; width/height: fit-content` which centers
+     * the popover in the viewport. We override the insets to pin it
+     * just below the header on the right side — anchored under the
+     * music trigger icon. Static positioning is fine because the
+     * trigger button doesn't move laterally across routes.
+     *
+     *   top:   --header-height + 0.5rem gap below the chrome
+     *   right: container padding (--spacing × 6) so the popover's
+     *          right edge aligns with the audio cluster's right edge */
     .music-popover {
-        position: absolute;
-        top: calc(100% + 0.5rem);
-        right: 0;
+        top: calc(var(--header-height, 3.5rem) + 0.5rem);
+        right: calc(var(--spacing) * 6);
+        bottom: auto;
+        left: auto;
+        margin: 0;
         width: 18rem;
         background: var(--card);
         border: 1px solid color-mix(in oklab, var(--amethyst) 18%, var(--border));
@@ -483,11 +541,42 @@
             0 10px 30px -10px rgb(0 0 0 / 0.45),
             0 0 0 1px color-mix(in oklab, var(--amethyst) 6%, transparent);
         padding: 0.75rem 0.75rem 0.625rem;
-        z-index: 60;
-        display: flex;
         flex-direction: column;
         gap: 0.5rem;
         font-family: 'Inter', system-ui, sans-serif;
+    }
+    .music-popover:popover-open {
+        display: flex;
+        /* Entry animation — fade + tiny slide. Runs every time the
+         * popover transitions to open. Native popover handles the
+         * display: none ↔ flex flip; animation handles the visual
+         * polish on top. `both` keeps the final keyframe state applied
+         * after the animation ends so we don't snap-back to opacity:0. */
+        animation: music-popover-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+    @keyframes music-popover-in {
+        from {
+            opacity: 0;
+            transform: translateY(-4px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .music-popover:popover-open {
+            animation: none;
+        }
+    }
+    /* Mobile: popover spans most of the viewport with the right edge
+     * still aligned to the container padding. Width capped just under
+     * full viewport so the rounded corners and shadow are visible. */
+    @media (max-width: 32rem) {
+        .music-popover {
+            width: calc(100vw - calc(var(--spacing) * 12));
+            max-width: 22rem;
+        }
     }
 
     .music-meta {

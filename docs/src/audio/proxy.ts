@@ -33,3 +33,9 @@ export function createZzfxProxy(): PlaySoundFn {
             .catch(() => {})
     }
 }
+
+
+/* Accept HMR — keep audio state alive across dev iterations. */
+if (import.meta.hot) {
+    import.meta.hot.accept()
+}

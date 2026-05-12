@@ -148,6 +148,24 @@ class AudioBridge {
             currentTrack: trackList[safeTrackIndex] ?? null,
             library,
         }
+
+        // Construction-time autostart — the bridge only ever materializes
+        // on a real user gesture (SoundToggle click, popover open, or
+        // first `[data-sound]` interaction), so the AudioContext is in
+        // a valid state to start playback immediately. Triggers when:
+        //   - persisted master volume > 0 (user previously unmuted)
+        //   - track library is non-empty
+        //   - user hasn't explicitly paused music before
+        // Without this, returning visitors would have to click
+        // SoundToggle again before music resumed across reloads.
+        if (masterLevel > 0 && !userStopped && trackList[safeTrackIndex]) {
+            // Defer to next microtask so the constructor returns first
+            // and subscribers can register before the play emit fires.
+            queueMicrotask(() => {
+                const track = trackList[safeTrackIndex]
+                if (track) this.playTrack(track, { fromUserGesture: true })
+            })
+        }
     }
 
     // ────────── Subscriptions ──────────
@@ -461,3 +479,14 @@ export function getBridgeSync(): AudioBridge | undefined {
 }
 
 export type { AudioBridge }
+
+/* HMR — explicitly accept module updates so Vite doesn't full-reload
+ * the page when this file or its imports change. The bridge is parked
+ * on `window.__threeFlatlandAudio` which survives across module
+ * re-execution; the new module-level `bridgePromise` defers to the
+ * existing singleton on first `getBridge()` call after the update
+ * (line 445 of this file). Net effect: music keeps playing through
+ * dev iterations. */
+if (import.meta.hot) {
+    import.meta.hot.accept()
+}
