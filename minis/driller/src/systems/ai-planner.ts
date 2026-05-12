@@ -33,33 +33,39 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
   if (!grid) return null
   const { cols, rows, tiles } = grid
 
-  // Stones aren't impassable — drill cadence breaks them in
-  // STONE_MAX_HITS=4 hits. Two-pass search: first prefer soft (AIR/SOIL)
-  // cells, then fall back to drilling through stones. Without the
-  // stone-aware fallback the driller dances sideways forever in front
-  // of any stone column instead of just punching through.
-  // Fixtures stay impassable; they cannot be drilled.
+  // Greedy = "go down at all costs". Priority:
+  //   1. Down through AIR/SOIL (soft)
+  //   2. Down through STONE (4-hit drill — slower, but breaks ANY
+  //      sideways oscillation, since a stone-below scenario with
+  //      open sides used to trap the driller in a left-right dance)
+  //   3. Side through AIR/SOIL
+  //   4. Side through STONE
+  // Fixtures stay impassable in all passes — they can't be drilled.
   const canMove = (idx: number, includeStone: boolean): boolean => {
     const t = tiles[idx] ?? TILE_AIR
     if (isFixtureTile(t)) return false
     if (!includeStone && t === TILE_STONE) return false
     return true
   }
-  // Anti-oscillation: prefer facing direction when forced sideways.
-  const order = d.facing === -1 ? [-1, 1] : [1, -1]
-  for (const includeStone of [false, true] as const) {
+  const tryDown = (includeStone: boolean): [number, number] | null => {
     const belowIdx = (d.row + 1) * cols + d.col
     if (d.row + 1 < rows && canMove(belowIdx, includeStone)) {
       return [d.col, d.row + 1]
     }
+    return null
+  }
+  // Anti-oscillation: prefer facing direction when forced sideways.
+  const order = d.facing === -1 ? [-1, 1] : [1, -1]
+  const trySides = (includeStone: boolean): [number, number] | null => {
     for (const dc of order) {
       const nc = d.col + dc
       if (nc < 0 || nc >= cols) continue
       const idx = d.row * cols + nc
       if (canMove(idx, includeStone)) return [nc, d.row]
     }
+    return null
   }
-  return null
+  return tryDown(false) ?? tryDown(true) ?? trySides(false) ?? trySides(true)
 }
 
 /**

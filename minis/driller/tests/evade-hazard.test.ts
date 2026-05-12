@@ -173,9 +173,12 @@ describe('planGreedy — drills through stones', () => {
     expect(next).toEqual([5, 6])
   })
 
-  it('prefers soft cells over drilling a stone', () => {
-    // Stone below but AIR to the right. Soft-pass takes a side step
-    // rather than drilling the stone.
+  it('prefers drilling down through a stone over sidestepping into AIR', () => {
+    // Greedy = "down at all costs". Even if AIR is open to the sides,
+    // a stone below is the preferred target. Without this priority the
+    // driller bounces between two AIR cells (the dance) when bracketed
+    // by stones/fixtures that close off the sides one tick later, never
+    // making progress through the rock that would free him.
     const rows = [
       '..........',
       '..........',
@@ -183,14 +186,13 @@ describe('planGreedy — drills through stones', () => {
       '..........',
       '..........',
       '..........',
-      '.....S....', // row 6: stone directly below driller at (5,5)
+      '.....S....', // stone directly below driller at (5,5)
       '..........',
       '..........',
       '##########',
     ]
     const world = makeWorldFromGrid(rows)
     const next = planGreedy(world, { col: 5, row: 5, facing: 1 })
-    expect(next).not.toBeNull()
-    expect(next).not.toEqual([5, 6])
+    expect(next).toEqual([5, 6])
   })
 })

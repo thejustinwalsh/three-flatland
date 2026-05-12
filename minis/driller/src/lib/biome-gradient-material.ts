@@ -6,10 +6,14 @@ import { buildBiomeGradientTexture } from './biome-gradient'
 
 /**
  * Parallax factor — the gradient scrolls at this fraction of the
- * digger's scroll rate. <1 means slower than gameplay (distant feel);
- * 1.0 means lock-step.
+ * digger's scroll rate. MUST be 1.0: the gradient LUT is keyed to
+ * world depth, so any value <1 desyncs biome color transitions from
+ * actual biome boundaries (e.g., at 0.85 the void fade-to-black
+ * appears ~30 rows late, dragging biome N's color through biome
+ * N+1's start). For "distance feel" parallax, use a separate
+ * ambient/noise layer that's NOT tied to biome identity.
  */
-export const GRADIENT_PARALLAX = 0.85
+export const GRADIENT_PARALLAX = 1.0
 
 /** Rows of sky-fade at absolute depth 0 (before any descent). */
 export const SKY_FADE_ROWS = 30
