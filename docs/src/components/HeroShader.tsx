@@ -207,16 +207,13 @@ void main() {
   col += C_GOLD * smoothstep(0.55, 0.95, dirShade) * 0.35;
   col -= 0.10 * smoothstep(0.0, 0.5, 1.0 - dirShade);
 
-  // Vignette in canvas-edge space. Use a SEPARATE coord (uv*2-1, NOT
-  // aspect-corrected) so the vignette tracks the canvas's own edges
-  // regardless of aspect ratio. Box-shape via max(abs) — fades from
-  // ~70% of the half-extent out to the very edge on both axes.
-  // Previously used length(p) where p was aspect-corrected for the
-  // gem flow; on a tall canvas the corner distance was only ~1.89 vs
-  // ~2.85 on wide, so the smoothstep range tuned for wide left tall
-  // canvases barely vignetted at all.
+  // Vignette in canvas-edge space. Tracks the canvas's own edges
+  // regardless of aspect ratio (left, right, BOTTOM only — the top
+  // stays a hard edge so the hero meets the page header cleanly).
+  // vp.y is +1 at top, -1 at bottom; max(0, -vp.y) is non-zero only
+  // in the lower half, so the top half never vignettes.
   vec2 vp = uv * 2.0 - 1.0; // -1..1, NOT aspect-corrected
-  float boxDist = max(abs(vp.x), abs(vp.y));
+  float boxDist = max(abs(vp.x), max(0.0, -vp.y));
   float v = 1.0 - smoothstep(0.7, 1.0, boxDist);
   col = mix(C_BG, col, v);
 
