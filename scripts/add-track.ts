@@ -53,12 +53,18 @@ type Track = {
     id: string
     title: string
     credit?: string
+    /** Optional URL for the credit link in the player popover. Omitted
+     * when the credit defaults to "zzfx-studio" — the player resolves
+     * to https://thejustinwalsh.github.io/zzfx-studio/ in that case. */
+    creditUrl?: string
     gem?: Gem
     bpm: number
     instruments: number[][]
     patterns: number[][][]
     sequence: number[]
 }
+
+const ZZFX_STUDIO_URL = 'https://thejustinwalsh.github.io/zzfx-studio/'
 
 type TracksLibrary = {
     version: 1
@@ -71,6 +77,7 @@ type Args = {
     title?: string
     gem?: Gem
     credit?: string
+    creditUrl?: string
     force: boolean
 }
 
@@ -86,6 +93,7 @@ function parseArgs(argv: string[]): Args {
             if (!GEM_VALUES.includes(v)) throw new Error(`Invalid gem '${v}'. Valid: ${GEM_VALUES.join(', ')}`)
             args.gem = v
         } else if (a === '--credit' && argv[i + 1]) args.credit = argv[++i]
+        else if (a === '--credit-url' && argv[i + 1]) args.creditUrl = argv[++i]
         else if (!a.startsWith('--')) args.file = a
     }
     return args
@@ -374,10 +382,30 @@ async function main(): Promise<void> {
         rl.close()
     }
 
+    // Credit URL defaulting: when the credit is the canonical
+    // "zzfx-studio" and the user didn't supply a URL, omit the field
+    // entirely. The player resolves the default at render time, which
+    // means a future ZzFX Studio URL change only needs an update in the
+    // player component — existing tracks.json doesn't have to migrate.
+    let creditUrl = args.creditUrl
+    if (!creditUrl && credit && credit !== 'zzfx-studio') {
+        // Non-default credit without a URL → leave undefined; player
+        // renders as plain text. User can re-run with --credit-url to
+        // attach a link.
+    } else if (!creditUrl && credit === 'zzfx-studio') {
+        // Default URL is handled by the player; don't write to JSON to
+        // avoid stale-link risk.
+        creditUrl = undefined
+    }
+    // Touch the constant so the import isn't dead — also lets us hint
+    // the default to anyone reading this script.
+    void ZZFX_STUDIO_URL
+
     const track: Track = {
         id: id!,
         title: title!,
         credit: credit || undefined,
+        creditUrl,
         gem: gem!,
         bpm: parsed.bpm,
         instruments: parsed.instruments,

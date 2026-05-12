@@ -48,25 +48,24 @@
         aria-label="Music player"
         popover="auto"
     >
-        <div class="music-meta">
-            <span class="music-title" data-music-title>Loading…</span>
-            <span class="music-credit" data-music-credit></span>
+        <div class="music-head">
+            {/* Retro 5×5 mirrored avatar — generated client-side from
+                the track id (deterministic, FNV-style hash). Fill color
+                tracks the gem of the active track. */}
+            <svg class="music-avatar" data-music-avatar viewBox="0 0 5 5" aria-hidden="true" focusable="false"></svg>
+            <div class="music-meta">
+                <span class="music-title" data-music-title>Loading…</span>
+                <span class="music-credit" data-music-credit></span>
+            </div>
         </div>
 
+        {/* FFT visualizer — canvas fills the width below the meta row.
+            Driven by the bridge's music-bus analyser node. Goes flat
+            when paused. */}
+        <canvas class="music-fft" data-music-fft width="256" height="36" aria-hidden="true"></canvas>
+
         <div class="music-controls" data-music-controls>
-            <button type="button" class="music-btn" data-music-prev aria-label="Previous track" title="Previous track">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polygon points="19 20 9 12 19 4 19 20" />
-                    <line x1="5" y1="19" x2="5" y2="5" />
-                </svg>
-            </button>
-            <button type="button" class="music-btn" data-music-restart aria-label="Restart track" title="Restart track">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="1 4 1 10 7 10" />
-                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-                </svg>
-            </button>
-            <button type="button" class="music-btn music-toggle" data-music-toggle aria-label="Play" title="Play">
+            <button type="button" class="music-btn u-holo" data-music-toggle aria-label="Play" title="Play">
                 <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                     <polygon points="5 3 19 12 5 21 5 3" />
                 </svg>
@@ -75,29 +74,24 @@
                     <rect x="14" y="4" width="4" height="16" />
                 </svg>
             </button>
-            <button type="button" class="music-btn" data-music-next aria-label="Next track" title="Next track">
+            <button type="button" class="music-btn u-holo" data-music-next aria-label="Next track" title="Next track">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polygon points="5 4 15 12 5 20 5 4" />
                     <line x1="19" y1="5" x2="19" y2="19" />
                 </svg>
             </button>
-        </div>
-
-        <label class="music-volume-label">
-            <span class="sr-only">Music volume</span>
-            <input
-                type="range"
-                class="music-volume"
-                data-music-volume
-                min="0"
-                max="100"
-                value="30"
-                aria-label="Music volume"
-            />
-        </label>
-
-        <div class="music-progress" aria-hidden="true">
-            <span class="music-progress-fill" data-music-progress-fill></span>
+            <label class="music-volume-label">
+                <span class="sr-only">Music volume</span>
+                <input
+                    type="range"
+                    class="music-volume"
+                    data-music-volume
+                    min="0"
+                    max="100"
+                    value="30"
+                    aria-label="Music volume"
+                />
+            </label>
         </div>
     </div>
 </flatland-music-player>
@@ -109,9 +103,18 @@
         id: string
         title: string
         credit?: string
+        /** Optional URL for the credit — when present, the credit text
+         * renders as a link. Defaults to the zzfx-studio site when
+         * credit === "zzfx-studio" and the field is absent. */
+        creditUrl?: string
         gem?: string
         bpm: number
     }
+
+    const ZZFX_STUDIO_URL = 'https://thejustinwalsh.github.io/zzfx-studio/'
+    const VALID_GEMS = new Set([
+        'gold', 'ruby', 'emerald', 'diamond', 'amethyst', 'pink', 'salmon', 'turquoize'
+    ])
 
     type AudioState = {
         masterLevel: 0 | 1 | 2 | 3
@@ -132,19 +135,22 @@
         private soundsPromise?: Promise<SoundsModule>
         private lastTrackId: string | null = null
         private userInteractedDuringToast = false
-        private progressRaf = 0
 
         private trigger!: HTMLButtonElement
         private popoverEl!: HTMLElement
         private titleEl!: HTMLElement
         private creditEl!: HTMLElement
+        private avatarEl!: SVGSVGElement
         private toggleBtn!: HTMLButtonElement
-        private prevBtn!: HTMLButtonElement
         private nextBtn!: HTMLButtonElement
-        private restartBtn!: HTMLButtonElement
         private volumeInput!: HTMLInputElement
-        private progressFill!: HTMLElement
+        private fftCanvas!: HTMLCanvasElement
+        private fftCtx2d: CanvasRenderingContext2D | null = null
         private controls!: HTMLElement
+        /** rAF id for the FFT visualizer loop. Only running while the
+         * popover is open (started/stopped in the toggle handler). */
+        private fftRaf = 0
+        private analyserData?: Uint8Array
 
         constructor() {
             super()
@@ -156,12 +162,12 @@
             this.popoverEl = this.querySelector<HTMLElement>('.music-popover')!
             this.titleEl = this.querySelector<HTMLElement>('[data-music-title]')!
             this.creditEl = this.querySelector<HTMLElement>('[data-music-credit]')!
+            this.avatarEl = this.querySelector<SVGSVGElement>('[data-music-avatar]')!
             this.toggleBtn = this.querySelector<HTMLButtonElement>('[data-music-toggle]')!
-            this.prevBtn = this.querySelector<HTMLButtonElement>('[data-music-prev]')!
             this.nextBtn = this.querySelector<HTMLButtonElement>('[data-music-next]')!
-            this.restartBtn = this.querySelector<HTMLButtonElement>('[data-music-restart]')!
             this.volumeInput = this.querySelector<HTMLInputElement>('[data-music-volume]')!
-            this.progressFill = this.querySelector<HTMLElement>('[data-music-progress-fill]')!
+            this.fftCanvas = this.querySelector<HTMLCanvasElement>('[data-music-fft]')!
+            this.fftCtx2d = this.fftCanvas.getContext('2d')
             this.controls = this.querySelector<HTMLElement>('[data-music-controls]')!
 
             // Transport handlers — the popover open/close itself is owned
@@ -169,9 +175,7 @@
             // `popovertarget` attribute on the trigger button. The browser
             // handles light dismiss + Escape + top-layer rendering.
             this.toggleBtn.addEventListener('click', () => this.handleToggle(), { signal })
-            this.prevBtn.addEventListener('click', () => this.handlePrev(), { signal })
             this.nextBtn.addEventListener('click', () => this.handleNext(), { signal })
-            this.restartBtn.addEventListener('click', () => this.handleRestart(), { signal })
             this.volumeInput.addEventListener('input', (e) => this.handleVolume(e), { signal })
 
             // Popover position is static — CSS pins it relative to the
@@ -248,7 +252,7 @@
             this.cleanup?.abort()
             this.cleanup = undefined
             if (this.toastTimer !== null) clearTimeout(this.toastTimer)
-            if (this.progressRaf) cancelAnimationFrame(this.progressRaf)
+            if (this.fftRaf) cancelAnimationFrame(this.fftRaf)
         }
 
         private loadSounds(): Promise<SoundsModule> {
@@ -280,11 +284,10 @@
             playTrack: (t: Track, opts?: { fromUserGesture?: boolean }) => void
             pauseMusic: () => void
             resumeMusic: () => void
-            restartMusic: () => void
             nextTrack: () => void
-            prevTrack: () => void
             setMusicVolume: (v: number) => void
             getState: () => AudioState
+            musicAnalyser?: AnalyserNode
         } | undefined {
             return (window as unknown as { __threeFlatlandAudio?: unknown })
                 .__threeFlatlandAudio as ReturnType<FlatlandMusicPlayer['getBridge']>
@@ -338,9 +341,45 @@
         private applyState(state: AudioState): void {
             const track = state.currentTrack
             const title = track?.title ?? 'No track loaded'
-            const credit = track?.credit ?? ''
             this.titleEl.textContent = title
-            this.creditEl.textContent = credit
+
+            // Credit renders as a link when a URL is known. Defaults to
+            // the ZzFX Studio site when credit === "zzfx-studio" and no
+            // explicit creditUrl was set during ingestion.
+            const credit = track?.credit ?? ''
+            const creditUrl =
+                track?.creditUrl ??
+                (credit === 'zzfx-studio' ? ZZFX_STUDIO_URL : undefined)
+            this.creditEl.textContent = ''
+            if (credit) {
+                if (creditUrl) {
+                    const a = document.createElement('a')
+                    a.href = creditUrl
+                    a.textContent = credit
+                    a.target = '_blank'
+                    a.rel = 'noopener noreferrer'
+                    a.className = 'music-credit-link'
+                    this.creditEl.appendChild(a)
+                } else {
+                    this.creditEl.textContent = credit
+                }
+            }
+
+            // Bind the current track's gem to a CSS custom property so
+            // the popover surface (rim, FFT bars, holofoil) tints to
+            // match. Falls back to amethyst when no gem is declared.
+            const gem = track?.gem && VALID_GEMS.has(track.gem) ? track.gem : 'amethyst'
+            this.popoverEl.style.setProperty('--player-gem', `var(--${gem})`)
+            this.popoverEl.style.setProperty('--player-gem-low', `var(--${gem}-low, var(--${gem}))`)
+            this.popoverEl.dataset.gem = gem
+
+            // Generate (and cache by track id) the retro 5×5 avatar. The
+            // grid pattern is deterministic from the track id via a
+            // FNV-style hash — same track always produces the same icon.
+            if (track && track.id !== this.lastAvatarTrackId) {
+                this.lastAvatarTrackId = track.id
+                this.renderAvatar(track.id, gem)
+            }
 
             // Toggle button reflects play/pause state.
             const playing = state.musicPlaying
@@ -351,9 +390,7 @@
             // External takeover disables transport controls.
             const ducked = state.musicDuckedExternal
             this.controls.dataset.ducked = ducked ? 'true' : 'false'
-            this.prevBtn.disabled = ducked || !state.library?.tracks?.length
             this.nextBtn.disabled = ducked || !state.library?.tracks?.length
-            this.restartBtn.disabled = ducked || !track
             this.toggleBtn.disabled = ducked || !track
 
             // Volume slider mirrors music bus (0..1 → 0..100).
@@ -371,6 +408,91 @@
             if (trackId !== this.lastTrackId && trackId !== null) {
                 this.lastTrackId = trackId
                 this.openAsToast()
+            }
+        }
+
+        // ────────── Avatar generation ──────────
+
+        private lastAvatarTrackId: string | null = null
+
+        /** FNV-1a hash → array of unsigned 32-bit ints. Deterministic per
+         * input string; used to seed the avatar's pixel grid bits. */
+        private hashString(str: string): number[] {
+            const out: number[] = []
+            let h = 0x811c9dc5 >>> 0
+            for (let i = 0; i < str.length; i++) {
+                h ^= str.charCodeAt(i)
+                h = Math.imul(h, 0x01000193) >>> 0
+            }
+            for (let i = 0; i < 20; i++) {
+                h ^= i + 1
+                h = Math.imul(h, 0x01000193) >>> 0
+                out.push(h >>> 0)
+            }
+            return out
+        }
+
+        /** Generate a 5×5 mirrored pixel grid + paint into the avatar
+         * SVG. The left 3 columns are derived from the hash, columns 4-5
+         * mirror columns 1-0 for horizontal symmetry (the retro pattern
+         * ZzFX Studio uses on track cards). Fill color tracks --player-gem. */
+        private renderAvatar(seed: string, _gem: string): void {
+            const tiles = 5
+            const mid = Math.ceil(tiles / 2)
+            const hash = this.hashString(seed || 'flatland')
+            const pixels: boolean[][] = []
+            let bitIdx = 1
+            let filled = 0
+            const total = tiles * mid
+            for (let row = 0; row < tiles; row++) {
+                pixels[row] = []
+                for (let col = 0; col < mid; col++) {
+                    const val = hash[bitIdx % hash.length] ?? 0
+                    const bit = ((val >>> ((bitIdx * 3) % 28)) & 1) === 1
+                    pixels[row][col] = bit
+                    if (bit) filled++
+                    bitIdx++
+                }
+            }
+            // Coerce density into a comfortable middle band — too sparse
+            // or too dense reads as random pixels rather than a sigil.
+            const ratio = filled / total
+            if (ratio < 0.3) {
+                outer: for (let row = 0; row < tiles; row++) {
+                    for (let col = 0; col < mid; col++) {
+                        if (!pixels[row]![col]) {
+                            pixels[row]![col] = true
+                            filled++
+                            if (filled / total >= 0.3) break outer
+                        }
+                    }
+                }
+            } else if (ratio > 0.85) {
+                outer: for (let row = tiles - 1; row >= 0; row--) {
+                    for (let col = mid - 1; col >= 0; col--) {
+                        if (pixels[row]![col]) {
+                            pixels[row]![col] = false
+                            filled--
+                            if (filled / total <= 0.85) break outer
+                        }
+                    }
+                }
+            }
+            // Render: 5×5 SVG rects, mirrored.
+            const ns = 'http://www.w3.org/2000/svg'
+            while (this.avatarEl.firstChild) this.avatarEl.removeChild(this.avatarEl.firstChild)
+            for (let row = 0; row < tiles; row++) {
+                for (let col = 0; col < tiles; col++) {
+                    const srcCol = col < mid ? col : tiles - 1 - col
+                    if (!pixels[row]![srcCol]) continue
+                    const r = document.createElementNS(ns, 'rect')
+                    r.setAttribute('x', String(col))
+                    r.setAttribute('y', String(row))
+                    r.setAttribute('width', '1')
+                    r.setAttribute('height', '1')
+                    r.setAttribute('fill', 'currentColor')
+                    this.avatarEl.appendChild(r)
+                }
             }
         }
 
@@ -406,19 +528,9 @@
             bridge.resumeMusic()
         }
 
-        private async handlePrev(): Promise<void> {
-            const bridge = await this.ensureBridge()
-            bridge?.prevTrack()
-        }
-
         private async handleNext(): Promise<void> {
             const bridge = await this.ensureBridge()
             bridge?.nextTrack()
-        }
-
-        private async handleRestart(): Promise<void> {
-            const bridge = await this.ensureBridge()
-            bridge?.restartMusic()
         }
 
         private async handleVolume(e: Event): Promise<void> {
@@ -427,43 +539,82 @@
             bridge?.setMusicVolume(v)
         }
 
-        // ────────── Progress line ──────────
+        // ────────── FFT visualizer ──────────
 
-        /** Drive the progress fill via rAF only while the popover is
-         * open. Reads track length from the bridge state and current
-         * audioContext time. Kept fragile-free — pull rates from the
-         * bridge if available, otherwise show empty. */
+        /** rAF-driven loop reading byte-frequency data off the bridge's
+         * music analyser. Runs ONLY while the popover is open (started
+         * by the toggle/show event, stopped on close) so we don't burn
+         * CPU on an invisible canvas. */
         private startProgressLoop(): void {
-            if (this.progressRaf) return
+            if (this.fftRaf) return
             const tick = () => {
-                this.progressRaf = requestAnimationFrame(tick)
-                this.updateProgress()
+                this.fftRaf = requestAnimationFrame(tick)
+                this.drawFft()
             }
-            this.progressRaf = requestAnimationFrame(tick)
+            this.fftRaf = requestAnimationFrame(tick)
         }
 
         private stopProgressLoop(): void {
-            if (this.progressRaf) {
-                cancelAnimationFrame(this.progressRaf)
-                this.progressRaf = 0
+            if (this.fftRaf) {
+                cancelAnimationFrame(this.fftRaf)
+                this.fftRaf = 0
+            }
+            // Leave one final flat-line frame so a paused popover doesn't
+            // freeze on the last energetic frame.
+            this.drawFlat()
+        }
+
+        private drawFft(): void {
+            const ctx = this.fftCtx2d
+            if (!ctx) return
+            const bridge = this.getBridge()
+            if (!bridge?.musicAnalyser) {
+                this.drawFlat()
+                return
+            }
+            const analyser = bridge.musicAnalyser
+            if (!this.analyserData || this.analyserData.length !== analyser.frequencyBinCount) {
+                this.analyserData = new Uint8Array(analyser.frequencyBinCount)
+            }
+            analyser.getByteFrequencyData(this.analyserData)
+            const w = this.fftCanvas.width
+            const h = this.fftCanvas.height
+            ctx.clearRect(0, 0, w, h)
+            // Pull gem color from the popover's computed style so the bars
+            // track the active track's theme.
+            const gem = getComputedStyle(this.popoverEl).getPropertyValue('--player-gem').trim() || '#bbb'
+            ctx.fillStyle = gem
+            const bins = this.analyserData.length
+            const barCount = Math.min(28, bins)
+            const binsPerBar = Math.floor(bins / barCount)
+            const gap = 1
+            const barW = (w - gap * (barCount - 1)) / barCount
+            for (let i = 0; i < barCount; i++) {
+                let sum = 0
+                for (let j = 0; j < binsPerBar; j++) {
+                    sum += this.analyserData[i * binsPerBar + j] ?? 0
+                }
+                const avg = sum / binsPerBar / 255
+                const barH = Math.max(1, Math.round(avg * h))
+                const x = i * (barW + gap)
+                const y = h - barH
+                ctx.fillRect(x, y, barW, barH)
             }
         }
 
-        private updateProgress(): void {
-            const bridge = this.getBridge()
-            if (!bridge) {
-                this.progressFill.style.transform = 'scaleX(0)'
-                return
-            }
-            const state = bridge.getState()
-            if (!state.musicPlaying || state.musicDuckedExternal) {
-                this.progressFill.style.transform = 'scaleX(0)'
-                return
-            }
-            // Bridge doesn't currently expose track length/position; show
-            // a constant nominal half-fill so the line reads as "active."
-            // Hook into real progress when bridge.musicProgress lands.
-            this.progressFill.style.transform = 'scaleX(0.6)'
+        /** Draw a 1px gem-tinted baseline so the canvas region stays
+         * visually anchored even when the music is paused or muted. */
+        private drawFlat(): void {
+            const ctx = this.fftCtx2d
+            if (!ctx) return
+            const w = this.fftCanvas.width
+            const h = this.fftCanvas.height
+            ctx.clearRect(0, 0, w, h)
+            const gem = getComputedStyle(this.popoverEl).getPropertyValue('--player-gem').trim() || '#bbb'
+            ctx.fillStyle = gem
+            ctx.globalAlpha = 0.35
+            ctx.fillRect(0, h - 1, w, 1)
+            ctx.globalAlpha = 1
         }
     }
 
@@ -527,23 +678,38 @@
      *   top:   --header-height + 0.5rem gap below the chrome
      *   right: container padding (--spacing × 6) so the popover's
      *          right edge aligns with the audio cluster's right edge */
+    /* Popover surface — mirrors `.sl-link-button.secondary`'s subtle
+     * grayish/black gradient + gem-tinted rim, scaled up to a panel.
+     * Background is built from --player-gem so when the track changes,
+     * the entire surface re-tints. Rim is a thin gem-colored 1px inner
+     * border (via box-shadow inset) — same affordance as the View on
+     * GitHub button, just rolled up to popover proportions. */
     .music-popover {
+        --player-gem: var(--amethyst);
+        --player-gem-low: var(--amethyst-low, var(--amethyst));
         top: calc(var(--header-height, 3.5rem) + 0.5rem);
         right: calc(var(--spacing) * 6);
         bottom: auto;
         left: auto;
         margin: 0;
-        width: 18rem;
-        background: var(--card);
-        border: 1px solid color-mix(in oklab, var(--amethyst) 18%, var(--border));
+        width: 15rem;
+        background:
+            linear-gradient(
+                135deg,
+                color-mix(in oklab, var(--player-gem) 8%, var(--background)) 0%,
+                color-mix(in oklab, var(--background) 94%, var(--player-gem)) 100%
+            );
+        border: 0;
         border-radius: var(--radius);
         box-shadow:
-            0 10px 30px -10px rgb(0 0 0 / 0.45),
-            0 0 0 1px color-mix(in oklab, var(--amethyst) 6%, transparent);
-        padding: 0.75rem 0.75rem 0.625rem;
+            inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 32%, transparent),
+            0 10px 30px -10px rgb(0 0 0 / 0.5),
+            0 0 0 1px color-mix(in oklab, var(--player-gem) 5%, transparent);
+        padding: 0.625rem 0.75rem 0.5rem;
         flex-direction: column;
         gap: 0.5rem;
         font-family: 'Inter', system-ui, sans-serif;
+        isolation: isolate;
     }
     .music-popover:popover-open {
         display: flex;
@@ -579,11 +745,33 @@
         }
     }
 
+    /* Head row — retro avatar + title/credit. The avatar uses the
+     * track's gem color via currentColor inheritance from the wrapping
+     * SVG which sets `color: var(--player-gem)`. */
+    .music-head {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+    .music-avatar {
+        width: 1.625rem;
+        height: 1.625rem;
+        flex: none;
+        color: var(--player-gem);
+        image-rendering: pixelated;
+        border-radius: 2px;
+        background: color-mix(in oklab, var(--player-gem) 8%, var(--background));
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 28%, transparent);
+        padding: 1px;
+        box-sizing: content-box;
+    }
     .music-meta {
         display: flex;
         flex-direction: column;
-        gap: 0.125rem;
+        gap: 0.0625rem;
         min-width: 0;
+        flex: 1;
     }
     .music-title {
         font-size: 0.8125rem;
@@ -592,21 +780,48 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        line-height: 1.2;
     }
     .music-credit {
-        font-size: 0.6875rem;
+        font-size: 0.625rem;
         color: var(--muted-foreground);
         font-family: 'JetBrains Mono', ui-monospace, monospace;
+        line-height: 1.2;
+    }
+    .music-credit-link {
+        color: inherit;
+        text-decoration: none;
+        border-bottom: 1px dotted color-mix(in oklab, var(--player-gem) 50%, transparent);
+        transition: color 140ms ease, border-color 140ms ease;
+    }
+    .music-credit-link:hover {
+        color: var(--player-gem);
+        border-bottom-color: var(--player-gem);
+    }
+
+    /* FFT visualizer canvas — full-width, short. Bars rendered in JS
+     * with --player-gem fill. CSS only sets the box; pixel paint is
+     * canvas. */
+    .music-fft {
+        display: block;
+        width: 100%;
+        height: 28px;
+        border-radius: 2px;
+        background: color-mix(in oklab, var(--background) 88%, var(--player-gem));
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 16%, transparent);
     }
 
     .music-controls {
         display: flex;
         align-items: center;
-        justify-content: center;
-        gap: 0.25rem;
+        gap: 0.375rem;
     }
+    /* Holofoil buttons — `u-holo` utility (defined in starlight-theme/
+     * styles/base.css) drives the foil sheen via `data-gem`. Each button
+     * inherits the popover's --player-gem so the foil tracks the song. */
     .music-btn {
         all: unset;
+        position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -614,95 +829,88 @@
         height: 1.75rem;
         border-radius: calc(var(--radius) - 4px);
         cursor: pointer;
-        color: var(--muted-foreground);
+        color: var(--foreground);
+        background: color-mix(in oklab, var(--player-gem) 18%, var(--background));
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 35%, transparent);
         transition:
-            color 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
-            background-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+            background-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        flex: none;
+        isolation: isolate;
+    }
+    .music-btn svg {
+        position: relative;
+        z-index: 1;
+        pointer-events: none;
     }
     .music-btn:hover:not(:disabled) {
-        color: var(--foreground);
-        background-color: color-mix(in oklab, var(--amethyst) 12%, transparent);
+        background: color-mix(in oklab, var(--player-gem) 28%, var(--background));
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 60%, transparent);
     }
     .music-btn:focus-visible {
-        outline: 2px solid color-mix(in oklab, var(--amethyst) 80%, transparent);
-        outline-offset: 1px;
+        outline: 2px solid color-mix(in oklab, var(--player-gem) 80%, transparent);
+        outline-offset: 2px;
     }
     .music-btn:disabled {
         opacity: 0.4;
         cursor: not-allowed;
     }
-    .music-toggle {
-        width: 2rem;
-        height: 2rem;
-        color: var(--foreground);
-        background-color: color-mix(in oklab, var(--amethyst) 14%, transparent);
-    }
-    .music-toggle:hover:not(:disabled) {
-        background-color: color-mix(in oklab, var(--amethyst) 24%, transparent);
-    }
     /* Play vs pause icon driven by data-playing on toggle. */
-    .music-toggle .icon-pause,
-    .music-toggle[data-playing='true'] .icon-play {
+    .music-btn .icon-pause,
+    .music-btn[data-playing='true'] .icon-play {
         display: none;
     }
-    .music-toggle[data-playing='true'] .icon-pause {
+    .music-btn[data-playing='true'] .icon-pause {
         display: block;
     }
+    [data-music-toggle] {
+        width: 2rem;
+        height: 2rem;
+    }
 
+    /* Volume slider — fills the remaining horizontal space in the
+     * controls row. Track + thumb both pull from --player-gem. */
     .music-volume-label {
-        display: block;
-        padding: 0 0.125rem;
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
+        padding-inline: 0.125rem;
     }
     .music-volume {
         appearance: none;
         -webkit-appearance: none;
         width: 100%;
-        height: 4px;
-        background: color-mix(in oklab, var(--border) 70%, transparent);
+        height: 3px;
+        background: linear-gradient(
+            90deg,
+            color-mix(in oklab, var(--player-gem) 45%, transparent) 0%,
+            color-mix(in oklab, var(--border) 65%, transparent) 100%
+        );
         border-radius: 2px;
         cursor: pointer;
     }
     .music-volume::-webkit-slider-thumb {
         appearance: none;
         -webkit-appearance: none;
-        width: 12px;
-        height: 12px;
+        width: 11px;
+        height: 11px;
         border-radius: 50%;
-        background: var(--amethyst);
-        border: 1px solid color-mix(in oklab, var(--amethyst) 80%, white);
+        background: var(--player-gem);
+        border: 1px solid color-mix(in oklab, var(--player-gem) 70%, white);
         cursor: pointer;
     }
     .music-volume::-moz-range-thumb {
-        width: 12px;
-        height: 12px;
+        width: 11px;
+        height: 11px;
         border-radius: 50%;
-        background: var(--amethyst);
-        border: 1px solid color-mix(in oklab, var(--amethyst) 80%, white);
+        background: var(--player-gem);
+        border: 1px solid color-mix(in oklab, var(--player-gem) 70%, white);
         cursor: pointer;
     }
     .music-volume:focus-visible {
-        outline: 2px solid color-mix(in oklab, var(--amethyst) 80%, transparent);
+        outline: 2px solid color-mix(in oklab, var(--player-gem) 80%, transparent);
         outline-offset: 4px;
-    }
-
-    .music-progress {
-        height: 2px;
-        background: color-mix(in oklab, var(--border) 50%, transparent);
-        border-radius: 1px;
-        overflow: hidden;
-    }
-    .music-progress-fill {
-        display: block;
-        height: 100%;
-        width: 100%;
-        background: linear-gradient(
-            90deg,
-            color-mix(in oklab, var(--amethyst) 70%, transparent),
-            color-mix(in oklab, var(--amethyst) 90%, white)
-        );
-        transform-origin: 0% 50%;
-        transform: scaleX(0);
-        transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
     }
 
     .sr-only {

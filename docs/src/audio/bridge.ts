@@ -85,6 +85,11 @@ class AudioBridge {
     readonly masterGain: GainNode
     readonly sfxGain: GainNode
     readonly musicGain: GainNode
+    /** FFT analyser tapped off the music bus — visualizers (MusicPlayer
+     * popover, future hero scopes) read frequency data each frame
+     * via `getAnalyser()`. fftSize 128 → 64 bins → enough fidelity
+     * for a small bar visualizer without burning CPU. */
+    readonly musicAnalyser: AnalyserNode
 
     private zzfxModule: typeof import('zzfx') | null = null
     private zzfxmModule: typeof import('@zzfx-studio/zzfxm') | null = null
@@ -122,8 +127,18 @@ class AudioBridge {
         this.sfxGain = this.ctx.createGain()
         this.musicGain = this.ctx.createGain()
 
+        this.musicAnalyser = this.ctx.createAnalyser()
+        this.musicAnalyser.fftSize = 128
+        this.musicAnalyser.smoothingTimeConstant = 0.78
+
         this.sfxGain.connect(this.masterGain)
-        this.musicGain.connect(this.masterGain)
+        // Music routes through the analyser before hitting master, so the
+        // visualizer sees the raw music bus level (not affected by master
+        // mute). Listeners get analyser data regardless of whether the
+        // master is muted — the popover keeps animating during ducking,
+        // just at the post-master volume.
+        this.musicGain.connect(this.musicAnalyser)
+        this.musicAnalyser.connect(this.masterGain)
         this.masterGain.connect(this.ctx.destination)
 
         const masterLevel = loadVolumeLevel()
