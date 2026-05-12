@@ -159,9 +159,33 @@ function matchBracket(src: string, i: number, open: string, close: string): numb
     throw new Error(`Unbalanced '${open}'`)
 }
 
-/** Parse the four-argument shape `zzfxm([...],[...],[...],N)`. Returns
- * `[instruments, patterns, sequence, bpm]` — the four pieces ready to
- * JSON.parse and assemble into a Track. */
+/** Locate the array literal assigned to `const NAME = [...]` (or `let`/
+ * `var`) in `src` and return its textual range. Returns null if no
+ * declaration found. This handles ZzFX Studio's "Copy Code" output
+ * which splits song data across three `const` declarations and passes
+ * variable names into `zzfxm()` — the oneliner-only parser would see
+ * `zzfxm(instruments, patterns, sequence, 82)` with no inline arrays
+ * and bail. */
+function findNamedArrayDeclaration(src: string, name: string): string | null {
+    const re = new RegExp(`(?:const|let|var)\\s+${name}\\s*=\\s*\\[`)
+    const m = re.exec(src)
+    if (!m) return null
+    const lb = m.index + m[0].length - 1 // position of `[`
+    const rb = matchBracket(src, lb, '[', ']')
+    return src.slice(lb, rb + 1)
+}
+
+/** Parse a ZzFX Studio snippet — handles BOTH variants the DAW exports:
+ *
+ *   - Oneliner / Copy Oneliner: `zzfxm([...],[...],[...],bpm);`
+ *     (all data inline as the call's positional args)
+ *   - Copy Code / Export JS: full file with
+ *       const instruments = [...];
+ *       const patterns = [...];
+ *       const sequence = [...];
+ *       zzfxm(instruments, patterns, sequence, bpm);
+ *
+ * Returns the four logical pieces ready to assemble into a Track. */
 function parseZzfxmSnippet(src: string): {
     instruments: number[][]
     patterns: number[][][]
@@ -174,17 +198,44 @@ function parseZzfxmSnippet(src: string): {
     const parenClose = matchBracket(src, parenOpen, '(', ')')
     const argsStr = src.slice(parenOpen + 1, parenClose)
 
-    // Walk the three array args by matching `[` ... `]`, then the trailing BPM.
-    const arrays: string[] = []
+    // First try the oneliner: walk three inline arrays inside zzfxm(...).
+    const inlineArrays: string[] = []
     let cursor = 0
-    while (arrays.length < 3) {
+    while (inlineArrays.length < 3) {
         const lb = argsStr.indexOf('[', cursor)
-        if (lb < 0) throw new Error(`Expected 3 array arguments, found ${arrays.length}.`)
+        if (lb < 0) break
         const rb = matchBracket(argsStr, lb, '[', ']')
-        arrays.push(argsStr.slice(lb, rb + 1))
+        inlineArrays.push(argsStr.slice(lb, rb + 1))
         cursor = rb + 1
     }
-    const tail = argsStr.slice(cursor).replace(/^[\s,]+/, '').replace(/[\s,;]+$/, '')
+
+    // If oneliner didn't yield 3 arrays, fall back to `const instruments
+    // = [...]` / `const patterns = [...]` / `const sequence = [...]`
+    // declarations — the Copy Code shape.
+    const arrays =
+        inlineArrays.length === 3
+            ? inlineArrays
+            : (() => {
+                  const i = findNamedArrayDeclaration(src, 'instruments')
+                  const p = findNamedArrayDeclaration(src, 'patterns')
+                  const s = findNamedArrayDeclaration(src, 'sequence')
+                  if (!i || !p || !s) {
+                      const found = [i && 'instruments', p && 'patterns', s && 'sequence']
+                          .filter(Boolean)
+                          .join(', ')
+                      throw new Error(
+                          `Expected 3 array arguments inside zzfxm(...) OR three named declarations (const instruments/patterns/sequence). Found inline: ${inlineArrays.length}, named: ${found || 'none'}.`
+                      )
+                  }
+                  return [i, p, s]
+              })()
+
+    // BPM: parse the trailing arg of zzfxm(...). In the oneliner case
+    // this is the slice after the 3 arrays; in the Copy Code case it's
+    // the slice after the 3 variable names (commas + identifiers + BPM).
+    const tail = inlineArrays.length === 3
+        ? argsStr.slice(cursor).replace(/^[\s,]+/, '').replace(/[\s,;]+$/, '')
+        : argsStr.split(',').slice(3).join(',').replace(/[\s,;]+$/, '').trim()
     const bpm = parseFloat(tail || '125')
     if (!Number.isFinite(bpm)) throw new Error(`Could not parse BPM from '${tail}'.`)
 
