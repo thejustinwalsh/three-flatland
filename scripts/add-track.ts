@@ -20,11 +20,12 @@
  * don't execute the snippet.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, createReadStream, openSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createInterface } from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
+import type { Readable } from 'node:stream'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(__dirname, '..')
@@ -227,6 +228,22 @@ async function prompt(rl: ReturnType<typeof createInterface>, q: string, fallbac
     return ans.trim() || fallback || ''
 }
 
+/** Return a readable stream the prompts should read from. When stdin is
+ * a TTY, that's stdin itself. When stdin was piped (e.g., `pbpaste |
+ * pnpm tracks:add`), stdin is at EOF and readline can't prompt — open
+ * the terminal directly via `/dev/tty` so prompts still work after the
+ * pipe has been consumed. Falls back to stdin if /dev/tty is unavailable
+ * (won't happen on macOS/Linux; Windows would need different handling). */
+function getPromptInput(): Readable {
+    if (input.isTTY) return input as unknown as Readable
+    try {
+        const fd = openSync('/dev/tty', 'r')
+        return createReadStream('', { fd })
+    } catch {
+        return input as unknown as Readable
+    }
+}
+
 async function main(): Promise<void> {
     const args = parseArgs(process.argv.slice(2))
     const snippet = await readSnippet(args)
@@ -244,7 +261,7 @@ async function main(): Promise<void> {
     let credit = args.credit
 
     if (!title || !id || !gem) {
-        const rl = createInterface({ input, output })
+        const rl = createInterface({ input: getPromptInput(), output })
         title = title || (await prompt(rl, 'Track title'))
         if (!title) {
             console.error('Title is required.')
