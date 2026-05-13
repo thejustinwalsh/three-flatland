@@ -314,9 +314,14 @@ for (const { slug, path } of targets) {
           await stop
           const blob = new Blob(chunks, { type: 'video/webm' })
           const buf = new Uint8Array(await blob.arrayBuffer())
-          let bin = ''
-          for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i])
-          return btoa(bin)
+          // Chunked fromCharCode avoids the O(n) flatten that btoa(bin)
+          // would do on a 9MB+ rope; risks Playwright's 30s timeout.
+          const chunkSize = 65536
+          const parts = []
+          for (let i = 0; i < buf.length; i += chunkSize) {
+            parts.push(String.fromCharCode(...buf.subarray(i, i + chunkSize)))
+          }
+          return btoa(parts.join(''))
         },
         { durationMs: VIDEO_DURATION_MS, fps: VIDEO_FPS }
       )

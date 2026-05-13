@@ -231,6 +231,10 @@ class AudioBridge {
     playSfx(params: ZzFxParams): void {
         if (this.state.masterLevel === 0) return
         if (!this.zzfxModule) return
+        // Safari/iOS create the context in 'suspended' if the originating
+        // gesture's transient-activation window expired during the async
+        // factory's awaits. resume() is a no-op when already running.
+        void this.ctx.resume()
         // Build samples from zzfx (pure DSP, no AudioContext touch) then
         // route through OUR context + sfxGain. This avoids leaking the
         // zzfx-internal AudioContext into the audible chain.
@@ -477,6 +481,8 @@ class AudioBridge {
 
     private startMusicSource(offset: number): void {
         if (!this.musicBuffer) return
+        // Same Safari/iOS suspended-context defense as playSfx.
+        void this.ctx.resume()
         this.stopMusicSource()
         const source = this.ctx.createBufferSource()
         source.buffer = this.musicBuffer
