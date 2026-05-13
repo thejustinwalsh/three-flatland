@@ -8,7 +8,7 @@
  * as emphasis stripes in the lower signal rail. Five ambient gems
  * (emerald, ruby, turquoize, salmon, pink) round out the "all channels
  * lit" lower edge. Each gem stripe carries a tech-feature label (TSL,
- * WEBGPU, R3F, BATCH, SPRITES, SKIA, TILES) so the asset communicates
+ * WEBGPU, R3F, BATCHED, SPRITES, SKIA, TILES) so the asset communicates
  * what the library actually does, not just our internal color taxonomy.
  *
  * Per-aspect:
@@ -83,7 +83,7 @@ const eyebrowText = '2D · THREE.JS · R3F'
  *   amethyst TSL       — @three-flatland/nodes (composable shaders)
  *   diamond  WEBGPU    — renderer target
  *   emerald  R3F       — first-class React Three Fiber integration
- *   ruby     BATCH     — auto-instanced sprite batching
+ *   ruby     BATCHED — ECS-driven sprite batching
  *   turquoize SPRITES  — core sprite system
  *   salmon   SKIA      — @three-flatland/skia (vector / text)
  *   pink     TILES     — Tiled / LDtk loaders + chunked render
@@ -104,7 +104,7 @@ const railEmphasis = [
 ]
 const railAmbient = [
     { gem: 'emerald', role: 'FIBER' },
-    { gem: 'ruby', role: 'BATCH' },
+    { gem: 'ruby', role: 'BATCHED' },
     { gem: 'turquoize', role: 'SPRITES' },
     { gem: 'salmon', role: 'SKIA' },
     { gem: 'pink', role: 'TILES' },
@@ -157,7 +157,7 @@ const railAmbient = [
 
                 {/* Lower signal rail — 7 stripes, library capabilities
                     per gem. Emphasis pair (amethyst TSL, diamond WEBGPU)
-                    leads, ambient five (R3F / BATCH / SPRITES / ANIM /
+                    leads, ambient five (R3F / BATCHED / SPRITES / ANIM /
                     TILES) round out the chord. */}
                 <div class="signal-rail" aria-label="FLATLAND capabilities">
                     {railEmphasis.map(({ gem, role }) => (
