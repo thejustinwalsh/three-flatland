@@ -386,18 +386,16 @@ const shouldRenderSearch =
         }
     }
 
-    /* Open-state dropdown — anchored to the right edge of the toggle so
-     * it never extends off-screen on small viewports. min-width clamps
-     * with the viewport so a narrower-than-18rem screen still keeps the
-     * dropdown on-screen; max-width caps to viewport with a gutter.
-     * max-height: viewport-relative with the header subtracted so the
-     * user can always reach the bottom of the list. */
+    /* Open-state dropdown — left-aligned with the toggle button, drops
+     * to the same vertical offset as the MusicPlayer popover (0.5rem
+     * below the header bottom) for visual consistency. Width fixed at
+     * 18rem on roomy viewports; shrinks with the viewport when narrow. */
     .header-toc mobile-starlight-toc details[open] .dropdown {
         position: absolute;
-        top: calc(100% + 0.5rem);
-        right: 0;
-        min-width: min(18rem, calc(100vw - 2rem));
-        max-width: calc(100vw - 2rem);
+        top: calc(100% + 1rem);
+        left: 0;
+        right: auto;
+        width: min(18rem, calc(100vw - calc(var(--spacing) * 8)));
         max-height: calc(85vh - var(--header-height, 3.5rem));
         margin-top: 0;
         overflow-y: auto;

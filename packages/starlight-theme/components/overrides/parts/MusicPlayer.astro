@@ -224,54 +224,9 @@
             this.nextBtn.addEventListener('click', () => this.handleNext(), { signal })
             this.volumeInput.addEventListener('input', (e) => this.handleVolume(e), { signal })
 
-            // Position the popover anchored to the audio cluster's right
-            // edge with a FIXED width that matches the desktop "search-
-            // bar-aligned" footprint — spans from where the search bar's
-            // left edge sits down to the audio cluster's right edge.
-            //
-            // Width is computed once on open and never exceeds that
-            // initial value. On smaller viewports where the search bar
-            // collapses or repositions, the popover stays its original
-            // width and right-anchored to the cluster — it does NOT
-            // stretch across the screen.
-            //
-            // The 8px viewport-edge cap is the absolute floor: even if
-            // someone shrinks the window narrower than the popover's
-            // natural width, we keep an 8px left gutter.
-            this.popoverEl.addEventListener(
-                'beforetoggle',
-                (e: Event) => {
-                    const ev = e as { newState?: string } & Event
-                    if (ev.newState !== 'open') return
-                    const search = document.querySelector<HTMLElement>(
-                        'site-search button[data-open-modal], button[data-open-modal]'
-                    )
-                    const cluster = this.closest('.audio-cluster') as HTMLElement | null
-                    const rightOffset = cluster
-                        ? window.innerWidth - cluster.getBoundingClientRect().right
-                        : 24
-                    // Desktop alignment width: from search-bar-left to
-                    // cluster-right. When search is rendered, measure it
-                    // directly; otherwise reconstruct from the breakpoint
-                    // and the cluster's known geometry.
-                    let targetWidth: number
-                    if (search) {
-                        const r = search.getBoundingClientRect()
-                        targetWidth = (window.innerWidth - rightOffset) - r.left
-                    } else {
-                        const searchW = window.matchMedia('(min-width: 64rem)').matches ? 256 : 192
-                        targetWidth = searchW + (cluster?.offsetWidth ?? 64) + 16
-                    }
-                    // Hard floor + viewport cap.
-                    const minSafeWidth = 180
-                    const maxAllowed = window.innerWidth - Math.max(8, rightOffset) - 8
-                    const width = Math.max(minSafeWidth, Math.min(targetWidth, maxAllowed))
-                    this.popoverEl.style.left = 'auto'
-                    this.popoverEl.style.right = `${Math.max(8, rightOffset)}px`
-                    this.popoverEl.style.width = `${width}px`
-                },
-                { signal }
-            )
+            // Popover width + anchor live in CSS as a fixed value. No
+            // dynamic measurement — popover stays the same visual
+            // footprint at every viewport.
 
             // Toast logic + progress loop hook into the popover's state
             // changes. `toggle` fires after the state has changed.
@@ -963,7 +918,7 @@
         bottom: auto;
         left: auto;
         margin: 0;
-        width: 15rem;
+        width: 16rem;
         /* Surface — same diamond-tinted gradient ramp as
          * `.sl-link-button.secondary`, scaled to a panel, swapping
          * `--diamond` for the per-track `--player-gem`. The
@@ -1099,15 +1054,6 @@
         }
         .music-popover:popover-open {
             transform: none;
-        }
-    }
-    /* Mobile: popover spans most of the viewport with the right edge
-     * still aligned to the container padding. Width capped just under
-     * full viewport so the rounded corners and shadow are visible. */
-    @media (max-width: 32rem) {
-        .music-popover {
-            width: calc(100vw - calc(var(--spacing) * 12));
-            max-width: 22rem;
         }
     }
 
