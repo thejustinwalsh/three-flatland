@@ -20,12 +20,14 @@ import { REGIONS as ICON_REGIONS, SHEET_H, SHEET_W } from '../generated/icons'
  * pet-window threshold.
  */
 
+// See GemSpendPopupRenderer.frameFromRegion for the y-flip rationale —
+// asset rects are top-left pixel origin; three.js UV is bottom-left.
 const ANGRY_FRAME = (() => {
   const r = ICON_REGIONS['pet.angry']
   return {
     name: '',
     x: r.x / SHEET_W,
-    y: r.y / SHEET_H,
+    y: (SHEET_H - r.y - r.h) / SHEET_H,
     width: r.w / SHEET_W,
     height: r.h / SHEET_H,
     sourceWidth: r.w,

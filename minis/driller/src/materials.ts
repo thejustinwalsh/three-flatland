@@ -114,10 +114,10 @@ function useSheetMaterial(url: string): Sprite2DMaterial {
     tex.minFilter = NearestFilter
     tex.magFilter = NearestFilter
     tex.colorSpace = SRGBColorSpace
-    // Default flipY = true: Sprite2D.setFrame's pixel-y origin is
-    // top-left of the image, the WebGL UV flip is handled internally.
-    // (See rock-autotile material — same loader, default flipY,
-    // top-left pixel coords in ROCK_FRAMES; renders right-side up.)
+    // Default flipY=true (three.js standard). Sprite2D.setFrame expects
+    // bottom-left-origin UV coords (three.js convention); callers must
+    // flip their pixel-y when converting top-left asset rects → frame.
+    // See e.g. MoodBubbleRenderer.frameOf for the y-flip.
     return new Sprite2DMaterial({ map: tex, transparent: true })
   }, [url])
 }

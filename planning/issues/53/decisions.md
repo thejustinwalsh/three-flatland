@@ -701,3 +701,19 @@ The user specifically called out "a little chibi pixelated bubble" — that's a 
 Strong suspicion: the SpriteBatch's UV writes (`_uvX[idx]`, `_uvY[idx]`) may not propagate to the GPU shader correctly for sprites that enroll AFTER the initial frame is set, or there's a sync-system gate I'm missing. Comparing to TileRenderer (which works) — the only material difference is the source image (SVG vs PNG). Next investigation step: test with an SVG-based icon material, OR instrument the SpriteBatch's transformSyncSystem to dump UV state for the icon sprites.
 
 Filed as task #91 for follow-up.
+
+## RESOLVED — atlas-sprite rendering: pixel-rect → frame UV had the y-axis wrong
+**File:** `minis/driller/src/components/{GemSpendPopup,InfoPopup,MoodBubble,OverPet}Renderer.tsx`
+**Date:** 2026-05-13
+
+**Root cause.** `frameOf` / `frameFromRegion` computed `y: region.y / sheetH` treating top-left pixel y as if it were a UV coordinate. three.js / WebGL UV is **bottom-left origin** with the default `texture.flipY = true`. With our 128×16 sheet where icons sit at PNG rows 1–8 (top half), the broken math sampled PNG rows 7–15 (bottom half, empty padding) — the "doesn't render at all" symptom.
+
+**Fix.** Flip y when normalizing: `y: (sheetH - region.y - region.h) / sheetH`. Applied to all four HUD renderers and the inline `ANGRY_FRAME`.
+
+**Why the rock-autotile "worked" with the same bad math.** Its asset has content at PNG rows 2–18 of a 20px sheet (2px gutter top + 2px gutter bottom — **symmetric layout**). Sampling rows 18..2 with the broken math happens to land on the same rectangle as rows 2..18, just vertically reflected. Rock-autotile graphics are roughly symmetric (NSEW edge strokes have similar styling), so the flip was invisible to the naked eye. **The rock-autotile material is not a working precedent — it has the same bug, hidden by symmetric content.** Not fixing it in this commit (separate concern, no visible defect, and the upcoming real-art pass for issue #60 will re-derive frames anyway).
+
+**Not a three-flatland API bug.** `Sprite2DMaterial` is correct: it samples at `atlasUV = baseUV * (frame.w, frame.h) + (frame.x, frame.y)` using three.js's standard bottom-left-origin UV from `uv()`. Caller error: we converted top-left pixel rects to UVs without flipping y.
+
+**Useful upstream enhancement** (not in scope for this fix): three-flatland could ship a `SpriteFrame.fromPixelRect(rect, sheetW, sheetH)` convenience that does the y-flip, since top-left pixel coords are the de facto asset-authoring convention (Aseprite, TexturePacker, Spritely). Currently every caller has to know about the flip.
+
+**Verification.** vitexec probe + screenshot at `/tmp/heart-render.png` shows the pink mood bubble with the red heart icon rendering right-side up over the driller's head, post `commitAction('pet', null)`. 188/188 unit tests pass; typecheck clean.

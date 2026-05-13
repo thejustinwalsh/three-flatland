@@ -47,6 +47,12 @@ interface Props {
 }
 
 // Cell-pixel-coords → normalized UV frame for Sprite2D.setFrame.
+//
+// IMPORTANT: pixel-y in `region` is top-left origin (asset convention), but
+// three.js / WebGL UV space is bottom-left origin with `texture.flipY = true`
+// (default). Sampling at `atlasUV.y` reads PNG row (1 - atlasUV.y) * H. So we
+// flip the y coordinate when normalizing to put the region in the right place
+// regardless of whether the asset is top-loaded or symmetric on the sheet.
 function frameFromRegion(
   region: { x: number; y: number; w: number; h: number },
   sheetW: number,
@@ -55,7 +61,7 @@ function frameFromRegion(
   return {
     name: '',
     x: region.x / sheetW,
-    y: region.y / sheetH,
+    y: (sheetH - region.y - region.h) / sheetH,
     width: region.w / sheetW,
     height: region.h / sheetH,
     sourceWidth: region.w,

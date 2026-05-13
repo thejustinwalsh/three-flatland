@@ -31,11 +31,13 @@ import {
  * cleared instantly so this branch doesn't fire then.
  */
 
+// See GemSpendPopupRenderer.frameFromRegion for the y-flip rationale —
+// asset rects are top-left pixel origin; three.js UV is bottom-left.
 function frameOf(region: { x: number; y: number; w: number; h: number }) {
   return {
     name: '',
     x: region.x / ICON_SHEET_W,
-    y: region.y / ICON_SHEET_H,
+    y: (ICON_SHEET_H - region.y - region.h) / ICON_SHEET_H,
     width: region.w / ICON_SHEET_W,
     height: region.h / ICON_SHEET_H,
     sourceWidth: region.w,
