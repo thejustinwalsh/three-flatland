@@ -278,13 +278,13 @@ function sectionAccent(idx: number): string {
     }
 
     /* ────────── Top nav links (Docs / Examples / Showcases) ──────────
-     * Larger tap targets than the desktop NavBar (mobile thumb), full
-     * width pill rows with per-link gem accent. Active state = gem-
-     * tinted bg + bold; hover = lighter gem tint. Matches NavBar.astro
-     * gem cycling exactly. */
+     * Single row, three columns — each link gets equal share of the
+     * width. Same gem accent + hover/active treatment as before; the
+     * pills just go horizontal so the drawer doesn't burn vertical
+     * real estate on the primary nav. */
     .links-nav {
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
         gap: calc(var(--spacing) * 1.5);
         margin-bottom: calc(var(--spacing) * 2);
     }
@@ -292,18 +292,21 @@ function sectionAccent(idx: number): string {
     .links-nav .nav-link {
         --nav-gem: var(--diamond);
         position: relative;
+        flex: 1 1 0;
+        min-width: 0;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: calc(var(--spacing) * 2);
+        justify-content: center;
+        gap: calc(var(--spacing) * 1.5);
         min-height: 2.75rem;
-        padding: 0 calc(var(--spacing) * 4);
+        padding: 0 calc(var(--spacing) * 2);
         font-family: 'Inter', system-ui, sans-serif;
         font-size: 0.9375rem;
         font-weight: 500;
         line-height: 1.25rem;
         color: var(--foreground);
         text-decoration: none;
+        text-align: center;
         background-color: color-mix(in oklab, var(--background) 60%, var(--card));
         border: 1px solid color-mix(in oklab, var(--nav-gem) 14%, var(--border));
         border-radius: calc(var(--radius) - 1px);

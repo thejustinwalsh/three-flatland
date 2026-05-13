@@ -149,30 +149,17 @@
 
     const TOAST_MS = 3000
 
-    /** Session-level state that survives client-router navigation. Stored
-     * on `window` so re-mounted MusicPlayer instances (after `astro:after-
-     * swap`) pick up where the previous instance left off:
-     *   - `lastTrackId`: the last track id we ran the toast for. Used to
-     *     decide whether a popover open is "track change" (toast-worthy)
-     *     or "initial state sync after nav" (skip toast).
-     *   - `initialToastShown`: true once the first-visit toast has fired.
-     *     Prevents the toast from re-firing on the next page load if the
-     *     user closed it before navigating.
-     *   - `closedByUser`: true once the user has explicitly dismissed the
-     *     popover this session. Track-change toasts still override this
-     *     (per spec: "It will toast when any example or mini/showcase
-     *     requests to play a song"), but the auto-open on initial state
-     *     sync is suppressed across nav once set. */
+    /** Session-level state that survives client-router navigation.
+     * `lastTrackId` lets us distinguish "track id change" (toast-worthy)
+     * from "initial state sync after swap" (skip toast). */
     type SessionState = {
         lastTrackId: string | null
-        initialToastShown: boolean
-        closedByUser: boolean
     }
     const SESSION_KEY = '__flatlandMusicPlayerSession'
     function readSession(): SessionState {
         const w = window as unknown as { [SESSION_KEY]?: SessionState }
         if (!w[SESSION_KEY]) {
-            w[SESSION_KEY] = { lastTrackId: null, initialToastShown: false, closedByUser: false }
+            w[SESSION_KEY] = { lastTrackId: null }
         }
         return w[SESSION_KEY]!
     }
@@ -237,17 +224,20 @@
             this.nextBtn.addEventListener('click', () => this.handleNext(), { signal })
             this.volumeInput.addEventListener('input', (e) => this.handleVolume(e), { signal })
 
-            // Anchor the popover so its LEFT edge aligns with the search
-            // button's left edge, and its RIGHT edge stays at the audio
-            // cluster's right edge (same spot as the SoundToggle icon).
-            // Net effect: popover spans from search-left to audio-cluster-
-            // right — a hair wider than search, visually a clean rectangle
-            // anchored to the same vertical column as the search bar.
+            // Position the popover anchored to the audio cluster's right
+            // edge with a FIXED width that matches the desktop "search-
+            // bar-aligned" footprint — spans from where the search bar's
+            // left edge sits down to the audio cluster's right edge.
             //
-            // Fallback when search isn't rendered: position the left edge
-            // where search would be (uses its standard 16rem width
-            // at desktop / 12rem at tablet, offset from the audio-cluster
-            // right edge).
+            // Width is computed once on open and never exceeds that
+            // initial value. On smaller viewports where the search bar
+            // collapses or repositions, the popover stays its original
+            // width and right-anchored to the cluster — it does NOT
+            // stretch across the screen.
+            //
+            // The 8px viewport-edge cap is the absolute floor: even if
+            // someone shrinks the window narrower than the popover's
+            // natural width, we keep an 8px left gutter.
             this.popoverEl.addEventListener(
                 'beforetoggle',
                 (e: Event) => {
@@ -257,37 +247,34 @@
                         'site-search button[data-open-modal], button[data-open-modal]'
                     )
                     const cluster = this.closest('.audio-cluster') as HTMLElement | null
-                    // Right edge: align to the audio cluster's right edge
-                    // (its rightmost child = SoundToggle icon).
                     const rightOffset = cluster
                         ? window.innerWidth - cluster.getBoundingClientRect().right
                         : 24
+                    // Desktop alignment width: from search-bar-left to
+                    // cluster-right. When search is rendered, measure it
+                    // directly; otherwise reconstruct from the breakpoint
+                    // and the cluster's known geometry.
+                    let targetWidth: number
                     if (search) {
                         const r = search.getBoundingClientRect()
-                        this.popoverEl.style.left = `${r.left}px`
-                        this.popoverEl.style.right = `${Math.max(8, rightOffset)}px`
-                        this.popoverEl.style.width = 'auto'
+                        targetWidth = (window.innerWidth - rightOffset) - r.left
                     } else {
-                        // No search — pretend it had its standard width and
-                        // align left edge accordingly.
                         const searchW = window.matchMedia('(min-width: 64rem)').matches ? 256 : 192
-                        const rightEdge = window.innerWidth - rightOffset
-                        this.popoverEl.style.left = `${rightEdge - searchW}px`
-                        this.popoverEl.style.right = `${Math.max(8, rightOffset)}px`
-                        this.popoverEl.style.width = 'auto'
+                        targetWidth = searchW + (cluster?.offsetWidth ?? 64) + 16
                     }
+                    // Hard floor + viewport cap.
+                    const minSafeWidth = 180
+                    const maxAllowed = window.innerWidth - Math.max(8, rightOffset) - 8
+                    const width = Math.max(minSafeWidth, Math.min(targetWidth, maxAllowed))
+                    this.popoverEl.style.left = 'auto'
+                    this.popoverEl.style.right = `${Math.max(8, rightOffset)}px`
+                    this.popoverEl.style.width = `${width}px`
                 },
                 { signal }
             )
 
             // Toast logic + progress loop hook into the popover's state
             // changes. `toggle` fires after the state has changed.
-            //
-            // Close detection: if a close fires WITHOUT the toast timer
-            // being the trigger AND the user interacted with the popover,
-            // assume they explicitly dismissed it. Record in session so
-            // the next page-mount's initial state sync doesn't re-toast.
-            // (Track-change toasts still override closedByUser per spec.)
             this.popoverEl.addEventListener(
                 'toggle',
                 (e: Event) => {
@@ -296,16 +283,6 @@
                         this.startProgressLoop()
                     } else {
                         this.stopProgressLoop()
-                        // Distinguish toast-auto-close (timer fired) from
-                        // user dismissal. If the timer is still pending
-                        // we treat this as auto-close (light-dismiss
-                        // outside the toast window). Otherwise it's a
-                        // deliberate close.
-                        const userDismissed =
-                            this.toastTimer === null || this.userInteractedDuringToast
-                        if (userDismissed) {
-                            readSession().closedByUser = true
-                        }
                         if (this.toastTimer !== null) {
                             clearTimeout(this.toastTimer)
                             this.toastTimer = null
@@ -418,10 +395,7 @@
             // persisted depending on transition: directives. Either way,
             // dismissing the popover before swap gives a clean exit
             // animation and ensures `:popover-open` doesn't survive into
-            // the next page (where the toast-already-shown checkpoint
-            // would otherwise need to be re-evaluated on a still-open
-            // popover). Also marks closedByUser=false so the post-nav
-            // applyState path doesn't bias toward "stay closed."
+            // the next page.
             document.addEventListener(
                 'astro:before-preparation',
                 () => {
@@ -606,42 +580,20 @@
 
             // Toast policy (session-aware, survives client-router nav):
             //   - First applyState after subscribe = "initial state sync".
-            //     Hydrate session.lastTrackId from the bridge so a track
-            //     id transition isn't falsely detected on every page mount.
-            //     Then, ONLY on the very first page visit of the session
-            //     (initialToastShown === false), open the toast — and only
-            //     if audio is enabled at master (level > 0) AND the user
-            //     hasn't explicitly stopped music. Subsequent client-router
-            //     navigations skip the open entirely so the popover doesn't
-            //     re-toast on every page load.
+            //     Hydrate session.lastTrackId from the bridge — no toast.
+            //     Page load should never pop the player open. Music
+            //     doesn't auto-play across sessions, so there's nothing
+            //     to announce.
             //   - Subsequent applyState calls fire on bridge mutations
-            //     (next, prev, duckForExternal, etc.). Any track-id
-            //     transition opens the toast UNCONDITIONALLY — explicit
-            //     song change is always toast-worthy, including when
-            //     ducked-for-external (game requested a song). Per spec:
-            //     "It will toast when any example or mini/showcase
-            //     requests to play a song."
+            //     (next, prev, duckForExternal). Any track-id transition
+            //     opens the toast — explicit song change is always
+            //     toast-worthy, including ducked-for-external (game
+            //     requested a song).
             const trackId = track?.id ?? null
             const session = readSession()
             if (this.firstStateSync) {
                 this.firstStateSync = false
                 session.lastTrackId = trackId
-                if (
-                    !session.initialToastShown &&
-                    !session.closedByUser &&
-                    trackId !== null &&
-                    state.masterLevel > 0 &&
-                    !state.musicUserStopped
-                ) {
-                    session.initialToastShown = true
-                    this.openAsToast()
-                } else if (trackId !== null) {
-                    // Mark the initial-toast checkpoint as "passed" even
-                    // when we suppressed the open — otherwise muting,
-                    // navigating, and unmuting would re-trigger the
-                    // first-visit auto-toast.
-                    session.initialToastShown = true
-                }
                 return
             }
             if (trackId !== session.lastTrackId && trackId !== null) {

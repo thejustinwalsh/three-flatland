@@ -387,15 +387,16 @@ const shouldRenderSearch =
     }
 
     /* Open-state dropdown — anchored to the right edge of the toggle so
-     * it never extends off-screen on small viewports. min-width keeps
-     * the list readable; max-width clamps to the viewport with a
-     * gutter. max-height: viewport-relative with the header subtracted
-     * so the user can always reach the bottom of the list. */
+     * it never extends off-screen on small viewports. min-width clamps
+     * with the viewport so a narrower-than-18rem screen still keeps the
+     * dropdown on-screen; max-width caps to viewport with a gutter.
+     * max-height: viewport-relative with the header subtracted so the
+     * user can always reach the bottom of the list. */
     .header-toc mobile-starlight-toc details[open] .dropdown {
         position: absolute;
         top: calc(100% + 0.5rem);
         right: 0;
-        min-width: 18rem;
+        min-width: min(18rem, calc(100vw - 2rem));
         max-width: calc(100vw - 2rem);
         max-height: calc(85vh - var(--header-height, 3.5rem));
         margin-top: 0;
