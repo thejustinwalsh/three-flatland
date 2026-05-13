@@ -7,7 +7,7 @@
 2D sprites, tilemaps, and TSL-composable effects for Three.js, built for WebGPU.
 
 > [!IMPORTANT]
-> **Early Alpha** — three-flatland is in active development. The library targets GPU-driven 2D rendering on WebGPU; the API will evolve as the underlying systems settle. Open an issue or comment on [GitHub](https://github.com/thejustinwalsh/three-flatland/issues) to shape what gets built.
+> **Alpha** — three-flatland is in active development. The library targets GPU-driven 2D rendering on WebGPU; the API will evolve as the underlying systems settle. Open an issue or comment on [GitHub](https://github.com/thejustinwalsh/three-flatland/issues) to shape what gets built.
 
 ## Features
 
