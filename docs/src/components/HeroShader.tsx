@@ -238,7 +238,16 @@ void main() {
   // the band/ridge artifacts.
   // ────────────────────────────────────────────────────────────────
   float density = m1 + m2 + m3 + m4;
-  vec2 ldir = vec2(sin(u_scene_angle), cos(u_scene_angle));
+  // Light direction with an UPWARD bias on the y-component. motion.ts
+  // sweeps scene-angle 30°→150° expecting "upper-hemisphere arc," but
+  // at the 90° midpoint cos(90°) = 0 and ldir collapses to a pure-
+  // horizontal vector — every cloud's right-facing edge lights up
+  // and the cumulative gold rims read as one-sided "mud" on whichever
+  // screen side the sun happens to be on. Adding +0.6 to cos() and
+  // re-normalizing keeps the sun "above the horizon" through the
+  // whole arc, so lighting spreads across cloud tops/bottoms instead
+  // of piling on one side.
+  vec2 ldir = normalize(vec2(sin(u_scene_angle), cos(u_scene_angle) + 0.6));
   // Sample distance toward the light — small enough to read as
   // "self-shadow inside the cloud body" rather than "directional
   // gradient across the canvas." 0.10 in noise-space ≈ a single
