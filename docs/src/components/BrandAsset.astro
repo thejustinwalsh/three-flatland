@@ -394,7 +394,7 @@ const railAmbient = [
         align-items: baseline;
         gap: 0.6cqi;
         font-family: 'JetBrains Mono', ui-monospace, monospace;
-        font-size: clamp(8px, 1.1cqi, 14px);
+        font-size: max(8px, 1.1cqi);
         font-weight: 600;
         letter-spacing: 0.16em;
         text-transform: uppercase;
@@ -413,7 +413,7 @@ const railAmbient = [
     .brand-wordmark {
         font-family: 'Silkscreen', monospace;
         font-weight: 700;
-        font-size: clamp(36px, 10cqi, 152px);
+        font-size: max(36px, 10cqi);
         line-height: 0.95;
         letter-spacing: -0.04em;
         color: var(--tf-fg);
@@ -424,11 +424,11 @@ const railAmbient = [
     }
     .banner .brand-wordmark,
     .wide .brand-wordmark {
-        font-size: clamp(36px, 7.5cqi, 116px);
+        font-size: max(36px, 7.5cqi);
     }
     .social-x .brand-wordmark,
     .og .brand-wordmark {
-        font-size: clamp(36px, 9.5cqi, 138px);
+        font-size: max(36px, 9.5cqi);
         text-shadow:
             0 0 0.3cqi color-mix(in oklab, var(--gold) 30%, transparent),
             0 1.2cqi 3cqi color-mix(in oklab, var(--amethyst) 18%, transparent);
@@ -437,7 +437,7 @@ const railAmbient = [
     .brand-tagline {
         font-family: 'Public Sans', system-ui, sans-serif;
         font-weight: 400;
-        font-size: clamp(11px, 2cqi, 26px);
+        font-size: max(11px, 2cqi);
         line-height: 1.5;
         color: var(--tf-fg-muted);
         margin: 0;
@@ -445,7 +445,7 @@ const railAmbient = [
         letter-spacing: -0.005em;
     }
     .wide .brand-tagline {
-        font-size: clamp(11px, 1.5cqi, 20px);
+        font-size: max(11px, 1.5cqi);
         max-width: none;
     }
 
@@ -520,7 +520,7 @@ const railAmbient = [
     .signal-role {
         font-family: 'JetBrains Mono', ui-monospace, monospace;
         font-weight: 600;
-        font-size: clamp(7px, 0.95cqi, 11px);
+        font-size: max(7px, 0.95cqi);
         letter-spacing: 0.14em;
         text-transform: uppercase;
         color: color-mix(in oklab, var(--stripe-accent) 50%, var(--tf-fg-muted));
@@ -530,7 +530,7 @@ const railAmbient = [
         text-overflow: clip;
     }
     .signal-stripe.is-emphasis .signal-role {
-        font-size: clamp(8px, 1.1cqi, 13px);
+        font-size: max(8px, 1.1cqi);
         color: color-mix(in oklab, var(--stripe-accent) 75%, var(--tf-fg));
         font-weight: 700;
     }
@@ -540,7 +540,7 @@ const railAmbient = [
         display: flex;
         gap: 4cqi;
         font-family: 'JetBrains Mono', ui-monospace, monospace;
-        font-size: clamp(9px, 1.4cqi, 16px);
+        font-size: max(9px, 1.4cqi);
         font-weight: 500;
         opacity: 0.92;
     }
@@ -550,7 +550,7 @@ const railAmbient = [
     }
     .wide .brand-info-inline {
         margin-top: 1cqi;
-        font-size: clamp(8px, 0.95cqi, 12px);
+        font-size: max(8px, 0.95cqi);
         gap: 2.5cqi;
     }
     .info-chip {

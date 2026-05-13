@@ -122,7 +122,7 @@ export default defineConfig({
             tag: 'meta',
             attrs: {
               property: 'og:image',
-              content: 'https://thejustinwalsh.com/three-flatland/social/og-image.png',
+              content: 'https://thejustinwalsh.com/three-flatland/social/og-image.webp',
             },
           },
           {
@@ -151,7 +151,7 @@ export default defineConfig({
             tag: 'meta',
             attrs: {
               name: 'twitter:image',
-              content: 'https://thejustinwalsh.com/three-flatland/social/x-card-image.png',
+              content: 'https://thejustinwalsh.com/three-flatland/social/x-card-image.webp',
             },
           },
         ],

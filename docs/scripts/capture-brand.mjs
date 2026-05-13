@@ -1,26 +1,22 @@
 #!/usr/bin/env node
 /**
- * Capture the BrandAsset compositions rendered live on `/branding/` and
- * save them as PNGs under `docs/public/social/`. Used to regenerate
- * `og-image.png`, `x-card-image.png`, and `bk-banner-image.png` when
- * `BrandAsset.astro` changes.
+ * Capture the BrandAsset compositions rendered live on `/branding/`
+ * and save them as WebP under `docs/public/social/`.
  *
- * Unlike `capture-examples.mjs` (which reads canvas pixel buffers
- * directly because the targets are r3f canvases), this script uses
- * Playwright's `locator.screenshot()` because the targets are plain
- * HTML/CSS elements — the element screenshot is exactly what we want
- * (rendered region of a DOM node, no overlapping concerns since the
- * capture targets are absolutely-positioned and the scanlines are
- * gone in the new substrate).
+ * For each artifact: launch context with viewport sized exactly to the
+ * asset's native dimensions, navigate to /branding/, reveal that one
+ * capture target full-viewport, take a full-page screenshot. Re-encode
+ * PNG → WebP via sharp.
+ *
+ * Headless Chromium isn't bound by monitor size, so the 3000×1000
+ * Bluesky banner renders fine in a 3000×1000 virtual viewport.
  *
  * Usage:
  *   pnpm --filter=docs capture:brand        # all 5 artifacts
  *   pnpm --filter=docs capture:brand og social-x  # filtered subset
- *
- * Prereq: docs dev server running on port 4321. Auto-spawned if not
- * already up; reused if found, same pattern as capture-examples.
  */
 import { chromium } from '@playwright/test'
+import sharp from 'sharp'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -32,44 +28,51 @@ const __dirname = dirname(__filename)
 
 // ── Configuration ──────────────────────────────────────────────────────
 
-const PORT = 4321
+const PORT = Number(process.env.CAPTURE_PORT ?? 4321)
 const BASE_URL = `http://localhost:${PORT}`
 const BRANDING_PATH = '/three-flatland/branding/'
 
-/**
- * Each artifact maps a `<BrandAsset isCapture>` element ID on the
- * /branding/ page to an output filename + dimensions. The dimensions
- * are duplicated from BrandAsset.astro deliberately so the capture
- * script asserts what we expect to render.
- */
+// icon-only isn't referenced in any deployed asset chain (favicon is
+// favicon.svg, no PNG icon refs), but kept for personal reuse —
+// Discord avatar, profile pic, etc.
 const ARTIFACTS = [
-  // Used by og:image meta tag — the most-referenced asset.
-  { id: 'capture-og', file: 'og-image.png', w: 1200, h: 630 },
-  // Used by twitter:image meta tag.
-  { id: 'capture-social-x', file: 'x-card-image.png', w: 1200, h: 628 },
-  // Bluesky profile banner.
-  { id: 'capture-wide', file: 'bk-banner-image.png', w: 3000, h: 1000 },
-  // GitHub repo social preview / generic banner — not currently linked
-  // from meta tags but kept alongside for the /branding/ page.
-  { id: 'capture-banner', file: 'repo-banner-image.png', w: 1280, h: 640 },
-  // Pixel-art icon at full mark size for any reuse.
-  { id: 'capture-icon-only', file: 'icon-512.png', w: 512, h: 512 },
+  { id: 'capture-og', file: 'og-image.webp', w: 1200, h: 630 },
+  { id: 'capture-social-x', file: 'x-card-image.webp', w: 1200, h: 628 },
+  { id: 'capture-wide', file: 'bk-banner-image.webp', w: 3000, h: 1000 },
+  { id: 'capture-banner', file: 'repo-banner-image.webp', w: 1280, h: 640 },
+  { id: 'capture-icon-only', file: 'icon-512.webp', w: 512, h: 512 },
 ]
 
-const VIEWPORT = { width: 3200, height: 1400 } // big enough for the 3000-wide banner
 const SETTLE_MS = 1_500
+const WEBP_QUALITY = 95
+const WEBP_EFFORT = 6
 const OUT_DIR = resolve(__dirname, '..', 'public', 'social')
+
+// Chromium launch args. html-in-canvas enables ctx.drawElementImage
+// for future canvas-rendered use cases (not used in this script — the
+// API drops CSS transforms on the source, which BrandAsset depends on).
+// GPU mode matches vitexec's --gpu profile so GPU-backed compositing
+// (mix-blend-modes, foil gradients) renders consistently with dev.
+const BROWSER_ARGS = [
+  '--enable-blink-features=CanvasDrawElement',
+  '--enable-gpu',
+  '--ignore-gpu-blocklist',
+  '--enable-unsafe-webgpu',
+]
+
+// `slug` here is the data-type value on the .asset-preview-link
+// (e.g., 'og', 'social-x'). Mirrors the CaptureModal's click handler.
+const slugFromId = (id) => id.replace(/^capture-/, '')
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2)
 const filter = args.length > 0 ? new Set(args) : null
-// Match against either the bare slug ("og") or the capture-id ("capture-og").
 const matches = (a) =>
   filter === null ||
   filter.has(a.id) ||
   filter.has(a.id.replace(/^capture-/, '')) ||
-  filter.has(a.file.replace(/\.png$/, ''))
+  filter.has(a.file.replace(/\.webp$/, ''))
 const targets = ARTIFACTS.filter(matches)
 
 if (targets.length === 0) {
@@ -80,7 +83,6 @@ if (targets.length === 0) {
   process.exit(1)
 }
 
-const DOCS_PKG_DIR = resolve(__dirname, '..')
 const SERVER_READY_TIMEOUT_MS = 60_000
 const SERVER_POLL_INTERVAL_MS = 500
 let spawnedServer = null
@@ -175,122 +177,58 @@ if (!existsSync(OUT_DIR)) await mkdir(OUT_DIR, { recursive: true })
 
 // ── Capture loop ───────────────────────────────────────────────────────
 
-const browser = await chromium.launch({
-  // No special GPU flags needed — these are CSS-only assets.
-})
+const browser = await chromium.launch({ args: BROWSER_ARGS })
 
 let totalOk = 0
 let totalFail = 0
 
+// Single context — biggest asset (3000×1000) plus the modal's 100px
+// padding on each side determines the viewport.
+const VIEWPORT = { width: 3200, height: 1200 }
+
 try {
   const context = await browser.newContext({
     viewport: VIEWPORT,
-    deviceScaleFactor: 1, // 1:1 with asset dimensions; output PNG = exact pixel size.
-    reducedMotion: 'reduce', // Pin any subtle animations so captures are stable.
+    deviceScaleFactor: 1,
+    reducedMotion: 'reduce',
   })
   const page = await context.newPage()
   page.on('console', (msg) => {
-    const t = msg.type()
-    if (t === 'error' || t === 'warning') {
-      process.stdout.write(`[browser:${t}] ${msg.text()}\n`)
-    }
+    if (msg.type() === 'error') process.stdout.write(`\n  [browser:error] ${msg.text()}`)
   })
 
-  process.stdout.write(`[capture-brand]   navigating to ${BRANDING_PATH}...`)
-  await page.goto(`${BASE_URL}${BRANDING_PATH}`, { waitUntil: 'domcontentloaded' })
-  process.stdout.write(' ok\n')
-
-  // Wait for first BrandAsset to mount + CSS to apply. We wait for the
-  // largest one (capture-wide at 3000px) since it carries the most
-  // layout work and indicates the others have rendered too.
-  process.stdout.write(`[capture-brand]   waiting for capture targets...`)
-  await page.waitForSelector('#capture-wide', { state: 'attached', timeout: 15_000 })
-  process.stdout.write(' ok\n')
-
-  // The .hidden-capture-targets wrapper hides offscreen via CSS. The
-  // browser still rasterizes them for layout, so locator.screenshot
-  // captures the rendered output. Sanity-check the wrapper exists.
-  const hiddenExists = await page.$('.hidden-capture-targets')
-  if (!hiddenExists) {
-    console.error(
-      '[capture-brand] .hidden-capture-targets not found — branding page structure changed?'
-    )
-    process.exit(1)
-  }
-
-  // Reveal the capture-mode targets inline. We can't move them
-  // off-page because Playwright's `locator.screenshot()` resolves the
-  // bounding box via `getBoundingClientRect()` and captures from there
-  // — at left:-99999px, the bbox falls outside the document and the
-  // capture grabs the visible viewport instead of the element. So we
-  // keep them in normal flow, stacked vertically, and let Playwright
-  // scroll into view per element. The targets briefly push page
-  // content down but that's invisible (we never display the page in
-  // a real browser session).
-  await page.addStyleTag({
-    content: `
-      /* Hide page chrome so nothing (sticky TOC, sidebar, mobile-toc
-       * fixed nav, header) overlaps the capture targets — particularly
-       * important for the 3000-wide banner whose width exceeds the
-       * normal content column and runs under the right rail. */
-      header,
-      aside,
-      .toc,
-      mobile-starlight-toc,
-      .alpha-ribbon,
-      footer,
-      .container-sidebar,
-      .asset-preview-link {
-        display: none !important;
-      }
-      main,
-      .container-main,
-      .main {
-        max-width: none !important;
-        padding: 0 !important;
-        margin: 0 !important;
-      }
-      .hidden-capture-targets {
-        display: block !important;
-        opacity: 1 !important;
-        pointer-events: none !important;
-      }
-      .hidden-capture-targets > * {
-        margin: 0 !important;
-        display: block !important;
-      }
-    `,
-  })
-  await page.waitForTimeout(SETTLE_MS)
-  process.stdout.write(`[capture-brand]   settled ${SETTLE_MS}ms, capturing\n`)
+  await page.goto(`${BASE_URL}${BRANDING_PATH}`, { waitUntil: 'load' })
+  await page.evaluate(() => document.fonts.ready)
 
   for (const a of targets) {
     const out = resolve(OUT_DIR, a.file)
-    const tag = `[${a.id.replace(/^capture-/, '')}]`
+    const slug = slugFromId(a.id)
+    const tag = `[${slug}]`
     process.stdout.write(`[capture-brand] ${tag.padEnd(14)} ${a.w}x${a.h} → ${a.file}`)
     try {
-      const locator = page.locator(`#${a.id}`)
-      const count = await locator.count()
-      if (count === 0) {
-        process.stdout.write(' missing #id\n')
-        totalFail++
-        continue
-      }
-      // Scroll the element into view so locator.screenshot reads the
-      // correct on-screen rect. (When the page is taller than the
-      // viewport — which it is, with stacked capture targets — the
-      // rect resolves correctly only after the element is in-frame.)
-      await locator.scrollIntoViewIfNeeded()
-      await page.waitForTimeout(120) // micro-settle for any reflow / motion-layer redraw
-      const buf = await locator.screenshot({
-        type: 'png',
-        omitBackground: false,
-        scale: 'css',
-      })
-      await writeFile(out, buf)
-      const size = `${(buf.byteLength / 1024).toFixed(0)}k`
+      // Click the preview link — CaptureModal listens for this and
+      // opens the modal with #capture-<slug> cloned in at native size.
+      await page.click(`.asset-preview-link[data-type="${slug}"]`)
+      // Modal's clone has the same classes as the source, so we target
+      // the visible one inside #modal-content.
+      const asset = page.locator(`#modal-content .brand-asset-root.${slug}`)
+      await asset.waitFor({ state: 'visible', timeout: 10_000 })
+      await page.waitForTimeout(SETTLE_MS)
+
+      const pngBuf = await asset.screenshot({ type: 'png', omitBackground: false })
+      const webpBuf = await sharp(pngBuf)
+        .webp({ quality: WEBP_QUALITY, effort: WEBP_EFFORT })
+        .toBuffer()
+      await writeFile(out, webpBuf)
+      const size = `${(webpBuf.byteLength / 1024).toFixed(0)}k`
       process.stdout.write(` ok (${size})\n`)
       totalOk++
+
+      // Close modal for next iteration.
+      await page.click('#close-modal')
+      await page.waitForFunction(
+        () => !document.getElementById('capture-modal')?.hasAttribute('open')
+      )
     } catch (err) {
       process.stdout.write(' fail\n')
       console.error(`  → ${err.message}`)
