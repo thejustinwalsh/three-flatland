@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Rock autotile atlas — placeholder.
+
+  Layout: 400 × 20 px = 20 frames × 20×20 slots.
+  Frames 0..15 are the standard 4-bit (NSEW) base frames.
+  Frames 16..19 are corner-overlay frames (NW, NE, SW, SE) used to
+  mark inner corners — when a cell's cardinal mask is "interior" but
+  a diagonal neighbor is air, the renderer composites the matching
+  corner overlay on top of the base frame to draw the concave-corner
+  stroke. This is what makes connected rocks read as proper Tetris
+  shapes (2px black wrapping around the inside of L / T / U joints)
+  rather than smooth blobs.
+  Each slot is a 16×16 content area centered inside 2px of transparent
+  padding (top/bottom/left/right). The padding is bleed-room: when the
+  GPU samples between adjacent tiles (linear filtering, mipmaps, or
+  sub-pixel UV math), it pulls from transparent gutters instead of
+  the next frame's content. Even though the driller currently uses
+  NearestFilter (sub-pixel-safe), the padding is mandatory atlas
+  hygiene for any future filter swap or zoom.
+
+  Frame index = the 4-bit autotile mask (matches src/lib/autotile.ts):
+    bit 0 = N, bit 1 = S, bit 2 = E, bit 3 = W.
+  A SET bit = neighbor present on that side → that edge is INTERIOR
+  → no stroke. An UNSET bit = no neighbor → 2px perimeter stroke.
+
+  Fill color is white (#ffffff) inside each 16×16 content area; the
+  rendering material multiplies texture * tint, so all rocks tint
+  uniformly. Stroke is #2d2d2d (~18% brightness) so the outline reads
+  ~0.18 × tint — plenty of contrast against the rock body.
+
+  When the cluster is composed via the 16-mask resolver, adjacent
+  cells in the SAME cluster have their shared edges OPEN (no stroke
+  on either side), so the outline forms a clean perimeter around the
+  whole connected unit. Cross-cluster boundaries render with strokes
+  on both sides — the visible 1-cell air gap that tells the player
+  "these aren't going to glom together."
+
+  Frame 15 (mask=0b1111) is the stroke-free fill tile — used for
+  cluster interiors with neighbors on all 4 sides.
+
+  UV math at runtime (per frame N):
+    src x: N * 20 + 2  →  N * 20 + 18   (16 content cols)
+    src y: 2           →  18            (16 content rows)
+
+  Per the mini-game-skill rule, this asset is inlined as a data URL
+  via Vite's `?inline` (see src/textures.ts).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="20" viewBox="0 0 400 20" shape-rendering="crispEdges">
+  <!-- Frame 0: mask=0b0000 — no neighbors. All 4 edges stroked. -->
+  <rect x="2"   y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="2"   y="2"  width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="2"   y="16" width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="2"   y="2"  width="2"  height="16" fill="#2d2d2d"/>
+  <rect x="16"  y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 1: mask=0b0001 (N) — top edge OPEN. -->
+  <rect x="22"  y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="22"  y="16" width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="22"  y="2"  width="2"  height="16" fill="#2d2d2d"/>
+  <rect x="36"  y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 2: mask=0b0010 (S) — bottom edge OPEN. -->
+  <rect x="42"  y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="42"  y="2"  width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="42"  y="2"  width="2"  height="16" fill="#2d2d2d"/>
+  <rect x="56"  y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 3: mask=0b0011 (NS) — top+bottom OPEN, vertical strip. -->
+  <rect x="62"  y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="62"  y="2"  width="2"  height="16" fill="#2d2d2d"/>
+  <rect x="76"  y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 4: mask=0b0100 (E) — right edge OPEN. -->
+  <rect x="82"  y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="82"  y="2"  width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="82"  y="16" width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="82"  y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 5: mask=0b0101 (NE) — top+right OPEN. -->
+  <rect x="102" y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="102" y="16" width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="102" y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 6: mask=0b0110 (SE) — bottom+right OPEN. -->
+  <rect x="122" y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="122" y="2"  width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="122" y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 7: mask=0b0111 (NSE) — only W stroked. -->
+  <rect x="142" y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="142" y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 8: mask=0b1000 (W) — left edge OPEN. -->
+  <rect x="162" y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="162" y="2"  width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="162" y="16" width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="176" y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 9: mask=0b1001 (NW) — top+left OPEN. -->
+  <rect x="182" y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="182" y="16" width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="196" y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 10: mask=0b1010 (SW) — bottom+left OPEN. -->
+  <rect x="202" y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="202" y="2"  width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="216" y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 11: mask=0b1011 (NSW) — only E stroked. -->
+  <rect x="222" y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="236" y="2"  width="2"  height="16" fill="#2d2d2d"/>
+
+  <!-- Frame 12: mask=0b1100 (EW) — left+right OPEN, horizontal strip. -->
+  <rect x="242" y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="242" y="2"  width="16" height="2"  fill="#2d2d2d"/>
+  <rect x="242" y="16" width="16" height="2"  fill="#2d2d2d"/>
+
+  <!-- Frame 13: mask=0b1101 (NEW) — only S stroked. -->
+  <rect x="262" y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="262" y="16" width="16" height="2"  fill="#2d2d2d"/>
+
+  <!-- Frame 14: mask=0b1110 (SEW) — only N stroked. -->
+  <rect x="282" y="2"  width="16" height="16" fill="#ffffff"/>
+  <rect x="282" y="2"  width="16" height="2"  fill="#2d2d2d"/>
+
+  <!-- Frame 15: mask=0b1111 — fully interior, no strokes. Stroke-free fill. -->
+  <rect x="302" y="2"  width="16" height="16" fill="#ffffff"/>
+
+  <!-- Frame 16: NW corner overlay. Drawn over the base frame when the
+       cell has N AND W cardinals but NO NW diagonal. A 2×2 black
+       block at the top-left corner of the content area "fills in" the
+       missing corner of the Tetris-piece silhouette. -->
+  <rect x="322" y="2"  width="2" height="2"  fill="#2d2d2d"/>
+
+  <!-- Frame 17: NE corner overlay. N AND E cardinals, no NE diagonal. -->
+  <rect x="356" y="2"  width="2" height="2"  fill="#2d2d2d"/>
+
+  <!-- Frame 18: SW corner overlay. S AND W cardinals, no SW diagonal. -->
+  <rect x="362" y="16" width="2" height="2"  fill="#2d2d2d"/>
+
+  <!-- Frame 19: SE corner overlay. S AND E cardinals, no SE diagonal. -->
+  <rect x="396" y="16" width="2" height="2"  fill="#2d2d2d"/>
+</svg>

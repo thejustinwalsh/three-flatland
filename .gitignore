@@ -62,3 +62,4 @@ traces/
 .restruct/
 !.restruct/verify.yaml
 !.restruct/permissions.yaml
+.superpowers/

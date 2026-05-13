@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Slug Text - Three.js</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #00021c;
+      }
+      canvas { display: block; }
+
+      @font-face {
+        font-family: 'Inter-Slug';
+        src: url('./Inter-Regular.ttf') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+      }
+
+      /* FA Solid — Canvas2D fallback for the icons-mode compare overlay,
+         so the browser mirrors the Slug font stack (Inter → FA) for PUA
+         codepoints. */
+      @font-face {
+        font-family: 'FA-Solid';
+        src: url('./fa-solid-900.ttf') format('truetype');
+        /* normal weight so Canvas2D's default 400 request matches — see
+           react index.html for detail. */
+        font-weight: normal;
+        font-style: normal;
+      }
+
+      /* Comparison canvas overlays the WebGPU canvas exactly.
+         Kept below tweakpane (z-index: 1000) so controls stay interactive. */
+      #compare-canvas {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      /* Draggable split divider */
+      #split-handle {
+        position: fixed;
+        top: 0;
+        width: 32px;
+        height: 100%;
+        z-index: 2;
+        cursor: col-resize;
+      }
+      #split-handle::before {
+        content: '';
+        position: absolute;
+        left: 15px;
+        top: 0;
+        width: 2px;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.5);
+      }
+      #split-handle::after {
+        content: '⋮';
+        position: absolute;
+        left: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 40px;
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 16px;
+        line-height: 40px;
+        text-align: center;
+      }
+
+      /* Labels on each side of the split */
+      .split-label {
+        position: fixed;
+        top: 8px;
+        z-index: 3;
+        font-family: monospace;
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        background: rgba(0, 2, 28, 0.7);
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      #split-label-left { color: #fff; }
+      #split-label-right { color: #ff6464; }
+
+      @keyframes slug-spin { to { transform: rotate(360deg); } }
+      #computing {
+        display: none;
+        position: fixed;
+        top: 12px; left: 12px;
+        z-index: 4;
+      }
+      #computing svg { animation: slug-spin 0.7s linear infinite; }
+      #computing[data-visible] { display: block; }
+
+      /* measureText() bounds overlays — positioned in JS */
+      .measure-bounds {
+        position: fixed;
+        display: none;
+        pointer-events: none;
+        z-index: 5;
+      }
+      /* actual bounds sit inside font bounds — bump above so the cyan solid
+         isn't obscured by the yellow dashed. */
+      #bounds-actual { border: 1px solid rgba(102, 217, 239, 0.9); z-index: 6; }
+      #bounds-font { border: 1px dashed rgba(255, 214, 102, 0.8); }
+
+      /* Per-line click hit-targets for click-to-measure.
+         Kept below the split handle (z:2) so the handle drag wins when
+         the two overlap. Bounds overlays (z:5/6) still sit on top so
+         selection is visible. */
+      .measure-hit {
+        position: fixed;
+        cursor: pointer;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="computing">
+      <svg width="20" height="20" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.15)" stroke-width="3" fill="none"/>
+        <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <canvas id="compare-canvas"></canvas>
+    <div id="split-handle"></div>
+    <div id="split-label-left" class="split-label">SLUG</div>
+    <div id="split-label-right" class="split-label">Canvas2D</div>
+    <div id="bounds-actual" class="measure-bounds"></div>
+    <div id="bounds-font" class="measure-bounds"></div>
+    <div id="measure-hits"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
