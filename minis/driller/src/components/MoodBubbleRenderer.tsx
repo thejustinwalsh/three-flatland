@@ -85,10 +85,17 @@ export function MoodBubbleRenderer({ iconsMaterial, bubbleMaterial }: Props) {
     const inWindow = pe
       ? pe.recentTicks.filter((t) => gs.tick - t <= OVER_PET_WINDOW_TICKS).length
       : 0
-    let iconName: IconName = 'pet.happy'
+    // Affection-first feedback per the user's spec: love until we hit
+    // the warning threshold. The previous variant (1=love only) hid
+    // the heart on the 2nd+ pet in a window — the user reported "heart
+    // is gone again" because subsequent pets fell to a different icon.
+    //
+    //   count 1..(OVER_PET_THRESHOLD-1) → love
+    //   count == OVER_PET_THRESHOLD     → warning ("one more = mad")
+    //   count >= OVER_PET_THRESHOLD+1   → handled by OverPetRenderer
+    let iconName: IconName
     if (inWindow >= OVER_PET_THRESHOLD) iconName = 'pet.warning'
-    else if (inWindow === 1) iconName = 'pet.love'
-    else iconName = 'pet.happy'
+    else iconName = 'pet.love'
 
     // Pop animation: bubble grows on entry then settles, fades at the
     // end of the pause window.
