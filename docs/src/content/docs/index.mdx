@@ -218,7 +218,10 @@ function Game() {
      left to inherit from the active site theme. */
   @media (prefers-color-scheme: light) {
     .hero-fullscreen {
-      --background: oklch(18% 0.006 250);
+      /* Match the shader's light-mode bg paint (HeroShader.tsx bgLight =
+       * oklch(42% 0.006 250)). Previously near-black (18%), which caused
+       * a noticeable black flash before WebGL composited its first frame. */
+      --background: oklch(42% 0.006 250);
       --foreground: oklch(92% 0.008 250);
       --muted-foreground: oklch(68% 0.011 250);
       --card: oklch(20% 0.008 250);
