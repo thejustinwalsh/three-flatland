@@ -202,7 +202,11 @@ Full docs, interactive examples, and API reference at **[thejustinwalsh.com/thre
 - [x] React Three Fiber integration
 - [x] Skia GPU text rendering via WASM
 - [x] Render targets for 2D-on-3D (via `Flatland` class)
+- [ ] Slug text rendering (in development)
+- [ ] 2D lighting & shadows (in development)
+- [ ] VS Code tools (in development)
 - [ ] Effect presets
+- [ ] Particles
 
 ## License
 
