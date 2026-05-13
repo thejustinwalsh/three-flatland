@@ -91,9 +91,9 @@ export function OverPetRenderer({ iconsMaterial }: Props) {
           }}
           material={iconsMaterial}
           tint="#ffffff"
-          position={[-9999, -9999, 0]}
+          position={[0, 0, 0]}
           scale={[0, 0, 1]}
-          renderOrder={260}
+          frame={ANGRY_FRAME}
         />
       ))}
     </>

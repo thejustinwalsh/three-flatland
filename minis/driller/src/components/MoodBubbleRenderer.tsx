@@ -48,8 +48,6 @@ const FRAMES: Record<IconName, ReturnType<typeof frameOf>> = {} as Record<
 >
 for (const k of Object.keys(ICON_REGIONS) as IconName[]) FRAMES[k] = frameOf(ICON_REGIONS[k])
 
-// Scaled up — the previous 12/16px sizing was visible but small.
-// 20/28 reads as a proper chibi speech bubble over a 16px tile.
 const ICON_PX = 20
 const BUBBLE_PX = 28
 
@@ -147,17 +145,16 @@ export function MoodBubbleRenderer({ iconsMaterial, bubbleMaterial }: Props) {
         ref={bubbleRef}
         material={bubbleMaterial}
         tint="#ffffff"
-        position={[-9999, -9999, 0]}
+        position={[0, 0, 0]}
         scale={[0, 0, 1]}
-        renderOrder={240}
       />
       <sprite2D
         ref={iconRef}
         material={iconsMaterial}
         tint="#ffffff"
-        position={[-9999, -9999, 0]}
+        position={[0, 0, 0]}
         scale={[0, 0, 1]}
-        renderOrder={241}
+        frame={FRAMES['pet.love']}
       />
     </>
   )

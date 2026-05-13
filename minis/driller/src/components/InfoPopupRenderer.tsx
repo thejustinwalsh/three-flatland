@@ -140,25 +140,23 @@ export function InfoPopupRenderer({ iconsMaterial, barMaterial }: Props) {
         ref={iconRef}
         material={iconsMaterial}
         tint="#ffffff"
-        position={[-9999, -9999, 0]}
+        position={[0, 0, 0]}
         scale={[0, 0, 1]}
-        renderOrder={250}
+        frame={ICON_FRAMES.drag}
       />
       <sprite2D
         ref={barBgRef}
         material={barMaterial}
         tint="#1f2937"
-        position={[-9999, -9999, 0]}
+        position={[0, 0, 0]}
         scale={[0, 0, 1]}
-        renderOrder={250}
       />
       <sprite2D
         ref={barFillRef}
         material={barMaterial}
         tint="#86efac"
-        position={[-9999, -9999, 0]}
+        position={[0, 0, 0]}
         scale={[0, 0, 1]}
-        renderOrder={251}
       />
     </>
   )

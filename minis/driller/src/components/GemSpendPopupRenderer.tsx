@@ -171,9 +171,9 @@ export function GemSpendPopupRenderer({ iconsMaterial, digitsMaterial }: Props) 
           }}
           material={digitsMaterial}
           tint="#ffffff"
-          position={[-9999, -9999, 0]}
+          position={[0, 0, 0]}
           scale={[0, 0, 1]}
-          renderOrder={200}
+          frame={DIGIT_FRAMES['0']}
         />
       ))}
       {Array.from({ length: POOL }).map((_, i) => (
@@ -184,9 +184,9 @@ export function GemSpendPopupRenderer({ iconsMaterial, digitsMaterial }: Props) 
           }}
           material={iconsMaterial}
           tint="#ffffff"
-          position={[-9999, -9999, 0]}
+          position={[0, 0, 0]}
           scale={[0, 0, 1]}
-          renderOrder={200}
+          frame={GEM_FRAME}
         />
       ))}
     </>

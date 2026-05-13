@@ -678,3 +678,26 @@ The user specifically called out "a little chibi pixelated bubble" — that's a 
 **This is the "trait + NOT" pattern** the user prescribed: a single ECS source-of-truth (`Drag`) that other systems consult to know whether they should be touching a particular cell. Pause via "skip in the right systems" rather than via per-cell flags that get overwritten by the next system to look at them.
 
 **Regression test:** `tests/drag-action.test.ts > rockAvalancheSystem skips the held cluster` — starts a drag, ticks the avalanche 5× across multiple game ticks, asserts FLAG_FALLING/SHAKING stay zero on all cluster cells. Would have caught this immediately.
+
+## HUD probe findings — atlas-sprite rendering investigation
+**File:** various HUD renderers
+**Date:** 2026-05-13
+
+**Probe results (via vitexec + screenshots):**
+
+1. **flipY = true** (Sprite2D default) is the correct setting — the rock-autotile material proves it. My earlier `tex.flipY = false` flipped icons upside down. Reverted; UV math is now `region.x/W, region.y/H` (top-left pixel origin), matching `ROCK_FRAMES`.
+
+2. **Asset loader is `import url from './x.png'`** (no `?inline`). `new URL(import.meta.url)` doesn't survive the tsup library build path. Confirmed in-browser: `ICONS_SHEET_URL` resolves to `/src/generated/icons.png` and the file serves correctly.
+
+3. **The icon `<sprite2D>` requires an initial `frame={...}` prop** on the JSX. Without it, the underlying `Sprite2D._frame` starts as `null` and `updateSize()` never fires, leaving the sprite at scale 0. Matches the rock-pool pattern (`frame={ROCK_FRAMES[15]}` in TileRenderer).
+
+4. **Sprite-pool init position** changed from `[-9999, -9999, 0]` to `[0, 0, 0]` to match the rock-pool pattern. The off-screen sentinel may have interacted poorly with the SpriteBatch's enrollment / bounding logic.
+
+**Still unresolved — the heart icon is not visible in screenshots.** Probes confirm:
+- The icons.png loads (image element + getImageData verified pet.love at 65.6% opacity).
+- The Sprite2D ref exists, `frame` is set (`hasIconFrame: true`), scale resolves to 54×54, position is `(200, 6, 0)` (above driller cell), alpha is 1.
+- Bubble bg renders fine (driller material, no atlas).
+
+Strong suspicion: the SpriteBatch's UV writes (`_uvX[idx]`, `_uvY[idx]`) may not propagate to the GPU shader correctly for sprites that enroll AFTER the initial frame is set, or there's a sync-system gate I'm missing. Comparing to TileRenderer (which works) — the only material difference is the source image (SVG vs PNG). Next investigation step: test with an SVG-based icon material, OR instrument the SpriteBatch's transformSyncSystem to dump UV state for the icon sprites.
+
+Filed as task #91 for follow-up.
