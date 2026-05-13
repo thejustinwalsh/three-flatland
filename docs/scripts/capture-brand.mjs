@@ -32,14 +32,16 @@ const PORT = Number(process.env.CAPTURE_PORT ?? 4321)
 const BASE_URL = `http://localhost:${PORT}`
 const BRANDING_PATH = '/three-flatland/branding/'
 
-// icon-only isn't referenced in any deployed asset chain (favicon is
-// favicon.svg, no PNG icon refs), but kept for personal reuse —
-// Discord avatar, profile pic, etc.
+// `dpr` defaults to 1. Banner gets 2× because GitHub renders the
+// README image at native CSS width (~1280px) on retina screens —
+// retina-quality source keeps it sharp. og/x-card stay at 1× because
+// their meta tags declare exact pixel dims (1200×630, 1200×628) and
+// scrapers expect the file to match.
 const ARTIFACTS = [
   { id: 'capture-og', file: 'og-image.webp', w: 1200, h: 630 },
   { id: 'capture-social-x', file: 'x-card-image.webp', w: 1200, h: 628 },
   { id: 'capture-wide', file: 'bk-banner-image.webp', w: 3000, h: 1000 },
-  { id: 'capture-banner', file: 'repo-banner-image.webp', w: 1280, h: 640 },
+  { id: 'capture-banner', file: 'repo-banner-image.webp', w: 1280, h: 640, dpr: 2 },
   { id: 'capture-icon-only', file: 'icon-512.webp', w: 512, h: 512 },
 ]
 
@@ -182,29 +184,41 @@ const browser = await chromium.launch({ args: BROWSER_ARGS })
 let totalOk = 0
 let totalFail = 0
 
-// Single context — biggest asset (3000×1000) plus the modal's 100px
-// padding on each side determines the viewport.
+// Biggest asset (3000×1000) + modal's 100px padding determines viewport.
 const VIEWPORT = { width: 3200, height: 1200 }
 
-try {
-  const context = await browser.newContext({
+// Per-DPR context cache. Only unique deviceScaleFactor values pay the
+// page-load + font-ready cost.
+const contextsByDpr = new Map()
+async function getPageForDpr(dpr) {
+  if (contextsByDpr.has(dpr)) return contextsByDpr.get(dpr)
+  const ctx = await browser.newContext({
     viewport: VIEWPORT,
-    deviceScaleFactor: 1,
+    deviceScaleFactor: dpr,
     reducedMotion: 'reduce',
   })
-  const page = await context.newPage()
+  const page = await ctx.newPage()
   page.on('console', (msg) => {
-    if (msg.type() === 'error') process.stdout.write(`\n  [browser:error] ${msg.text()}`)
+    if (msg.type() === 'error') process.stdout.write(`\n  [browser:error @${dpr}x] ${msg.text()}`)
   })
-
   await page.goto(`${BASE_URL}${BRANDING_PATH}`, { waitUntil: 'load' })
   await page.evaluate(() => document.fonts.ready)
+  const entry = { ctx, page }
+  contextsByDpr.set(dpr, entry)
+  return entry
+}
 
+try {
   for (const a of targets) {
+    const dpr = a.dpr ?? 1
+    const { page } = await getPageForDpr(dpr)
     const out = resolve(OUT_DIR, a.file)
     const slug = slugFromId(a.id)
     const tag = `[${slug}]`
-    process.stdout.write(`[capture-brand] ${tag.padEnd(14)} ${a.w}x${a.h} → ${a.file}`)
+    const dprLabel = dpr === 1 ? '' : ` @${dpr}x`
+    process.stdout.write(
+      `[capture-brand] ${tag.padEnd(14)} ${a.w}x${a.h}${dprLabel} → ${a.file}`
+    )
     try {
       // Click the preview link — CaptureModal listens for this and
       // opens the modal with #capture-<slug> cloned in at native size.
@@ -235,9 +249,8 @@ try {
       totalFail++
     }
   }
-
-  await context.close()
 } finally {
+  for (const { ctx } of contextsByDpr.values()) await ctx.close()
   await browser.close()
   await teardownServer()
 }
