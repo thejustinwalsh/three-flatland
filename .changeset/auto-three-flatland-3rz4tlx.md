@@ -5,36 +5,36 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-## Docs site footer, API routing, and landing copy
+### Docs site
 
-### Site footer
-
-- Added `SiteFooter.astro`: structured brand lockup with three link columns (Docs, Packages, Community), version row, gem-tinted headings, and a foil accent rule; renders on every page
-- Added `lib/packages.ts`: build-time workspace package discovery; drives footer Packages column and landing alpha-ribbon from a single source; suppresses badges that match the project baseline
+**SiteFooter**
+- New `SiteFooter.astro` component: brand lockup (FL | Flatland), three link columns (Docs, Packages, Community), version row, gem-tinted column headings with per-section hover colors, foil top rule
+- Replaces the old AI-disclaimer `footerText` string; renders on every page including docs and examples
+- New `lib/packages.ts`: reads `packages/*/package.json` at build time; drives both the footer Packages column and the landing alpha-ribbon from a single source; suppresses badges that match the project baseline (all alpha = noise)
 - `packages/three-flatland/package.json`: added `flatland.badge="Alpha"` to signal project-level alpha state to the corner ribbon
-- Replaced the AI-disclaimer `footerText` string with the structured `SiteFooter` component; `footerText` cleared (retained for schema compat)
-- Header wordmark: removed +2px vertical offset so it baselines with header text
-- API sidebar: nested groups in the API reference are always-open (`forceCollapsable` cascade), giving full tree visibility on any API page
-- Removed legacy `[data-slot=footer-text]` CSS rules
 
-### API reference routing
+**API reference routing**
+- New `typedoc-plugins/strip-index-links.mjs` remark plugin: strips trailing `/index/` segments from TypeDoc-generated URLs so module links resolve to Astro directory roots
+- `astro.config.mjs`: set `entryFileName: 'index'`, wired `stripIndexLinks` in `markdown.remarkPlugins`, added site `description` (feeds `<meta description>` and `SiteFooter` tagline), cleared `footerText`
 
-- Added `typedoc-plugins/strip-index-links.mjs`: remark plugin that strips trailing `/index/` segments from TypeDoc-generated link URLs
-- `astro.config.mjs`: set `entryFileName: 'index'` so per-module files route to directory roots; wired `stripIndexLinks` into `markdown.remarkPlugins`; set `starlight.description` (feeds `SiteFooter` tagline and `<meta description>`)
+**Theme polish**
+- `Header.astro`: removed +2px wordmark vertical offset — wordmark now baseline-aligns with header text
+- `SidebarSublist.astro`: API ref nested groups are always-open via `forceCollapsable` cascade; full API tree visible on any API page
+- `styles/base.css`: removed legacy `[data-slot=footer-text]` rules
 
-### Landing copy
-
-- Hero subtagline: removed em-dash; split into two short declaratives
-- Section heading: "Built into three.js, not on top of it" changed to "Built for three.js"
-- VP1 opener: dropped false-universal categorical claim; reworded to a specific observation
-- StatsBanner: 10K+ changed to 20K+ sprites
-- `HeroShader.tsx`: removed side vignette; gem flow now runs edge-to-edge
+**Landing copy**
+- Hero subtagline: removed em-dash; rewritten as two short declaratives
+- Section heading: "Built into three.js, not on top of it" → "Built for three.js"
+- VP1 opener: dropped false-universal categorical claim; rewritten as specific problem statement
+- StatsBanner sprite count: 10K+ → 20K+
+- `HeroShader.tsx`: removed side vignette — gem flow now runs edge-to-edge
 
 ### StatsBanner gem accents
 
-- Re-enabled the `color` prop on `StatsBanner` stat items (was accepted but silently ignored)
-- `color` resolves to a gem name via the same `legacyToGem` table used by `FeatureCard` and `ValueProp` (maps `cyan/blue/green/orange/red/yellow/purple` to gem equivalents)
-- Stat value text is tinted with a gem-mixed color (65% gem + 35% foreground) and a soft gem text-shadow glow
-- Each stat renders a thin gem-tinted hairline underline (gradient fading to transparent on the right); the four stats read as a colored chord across the row
+- Re-enabled the `color` prop on `StatsBanner` stat items (was marked deprecated and silently ignored)
+- Each stat resolves its `color` to a gem via a `legacyToGem` table (e.g. `cyan` → `diamond`, `red` → `ruby`) consistent with `FeatureCard` and `ValueProp`
+- Stat value text uses a gem-mixed color (65% gem + 35% foreground) with a soft gem-tinted `text-shadow` glow for legibility
+- Thin gem-tinted hairline underline (gradient fading right to transparent) added per stat; four stats read as a colored chord across the banner row
+- README: section heading "Why three-flatland?" → "Why Flatland?"
 
-Adds a structured site footer with gem-tinted columns, fixes API reference link routing so module URLs resolve to directory roots, refreshes landing copy for accuracy and voice, and restores gem color accents to the StatsBanner component.
+Adds a structured site footer, fixes API reference URL routing, and brings full gem-color taxonomy to the landing stats banner.
