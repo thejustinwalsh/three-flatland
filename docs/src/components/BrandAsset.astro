@@ -444,12 +444,12 @@ const railAmbient = [
         line-height: 0.95;
         letter-spacing: -0.04em;
         color: var(--tf-fg);
-        /* Silkscreen places the F's lit pixel inset from its glyph
-         * cell's left. Negative margin nudges so the painted white
-         * edge of F aligns with the painted edges of the tally,
-         * tagline, install arrow, and signal rail in the spine
-         * column. Scales with font-size via em. */
-        margin: 0 0 0 -0.12em;
+        /* Silkscreen 700's LSB is exactly 0.125em (1/8em — coincides
+         * with the classical musical-fraction adjustment). Compensate
+         * so F's painted edge sits at the H1 box's left, aligning with
+         * the spine column. Math-pure value from the font's hmtx
+         * table (FUnits 125 / unitsPerEm 1000). */
+        margin: 0 0 0 -0.125em;
         text-shadow:
             0 0 0.4cqi color-mix(in oklab, var(--gold) 38%, transparent),
             0 1.5cqi 4cqi color-mix(in oklab, var(--amethyst) 22%, transparent);
