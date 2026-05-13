@@ -417,13 +417,12 @@ const railAmbient = [
         line-height: 0.95;
         letter-spacing: -0.04em;
         color: var(--tf-fg);
-        /* Silkscreen has ~0.35em internal left-bearing — F's painted
-         * edge sits 35% of an em inset from the glyph cell's origin.
-         * Inter / Public Sans have near-zero bearing, so the H1 box's
-         * left edge aligns with the tally + tagline boxes but F reads
-         * shifted right. Negative margin compensates so the painted
-         * stroke aligns with the spine column. */
-        margin: 0 0 0 -0.35em;
+        /* Silkscreen places the F's lit pixel inset from its glyph
+         * cell's left. Negative margin nudges so the painted white
+         * edge of F aligns with the painted edges of the tally,
+         * tagline, install arrow, and signal rail in the spine
+         * column. Scales with font-size via em. */
+        margin: 0 0 0 -0.13em;
         text-shadow:
             0 0 0.4cqi color-mix(in oklab, var(--gold) 38%, transparent),
             0 1.5cqi 4cqi color-mix(in oklab, var(--amethyst) 22%, transparent);
