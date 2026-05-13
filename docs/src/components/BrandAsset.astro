@@ -66,7 +66,7 @@ const isIconOnly = type === 'icon-only'
 
 const repoLine = 'thejustinwalsh/three-flatland'
 const installLine = '# npm i three-flatland@alpha'
-const eyebrowText = 'ALPHA · THREE.JS · R3F'
+const eyebrowText = '2D · THREE.JS · R3F'
 
 /**
  * Signal rail — 7 gem stripes (gold lives in the structural spine
@@ -103,7 +103,7 @@ const railEmphasis = [
     { gem: 'diamond', role: 'WEBGPU' },
 ]
 const railAmbient = [
-    { gem: 'emerald', role: 'R3F' },
+    { gem: 'emerald', role: 'FIBER' },
     { gem: 'ruby', role: 'BATCH' },
     { gem: 'turquoize', role: 'SPRITES' },
     { gem: 'salmon', role: 'SKIA' },
@@ -390,7 +390,7 @@ const railAmbient = [
         align-items: flex-start;
     }
 
-    /* Eyebrow — "ALPHA · THREE.JS · R3F" positioning header. Tells the
+    /* Eyebrow — "2D · THREE.JS · R3F" positioning header. Tells the
      * reader at a glance the maturity state plus the two host
      * environments this library slots into. */
     .brand-eyebrow {
@@ -404,17 +404,16 @@ const railAmbient = [
         text-transform: uppercase;
     }
     .brand-eyebrow-tally {
-        /* Rule: bar = cap-height (0.7em Inter) + smallest rhythm (1/24em
-         * overshoot). Bar centers on cap-line midpoint via half-overshoot
-         * shift down (1/48em). Pure-em → scales at every size. */
+        /* Rule: bar = cap-height (0.7em Inter) + 2 rhythm steps (1/4em).
+         * Width = height / 5 (locked rhythm-based aspect). */
         font-size: inherit;
         display: inline-block;
-        width: 0.18em;
-        height: calc(0.7em + 1em / 24);
+        height: calc(0.7em + 1em / 4);
+        width: calc((0.7em + 1em / 4) / 5);
         background: var(--gold);
         vertical-align: baseline;
         position: relative;
-        top: calc(1em / 48);
+        top: calc(1em / 8);
         text-indent: -9999px;
         overflow: hidden;
         box-shadow: 0 0 0.4cqi color-mix(in oklab, var(--gold) 60%, transparent);
