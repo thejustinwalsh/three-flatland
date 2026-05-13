@@ -163,17 +163,19 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
    * the tile form to sit on. Multi-stop list keeps the gem ring
    * (inset 0,0,0,1px equivalent via box-shadow first slot) and
    * adds y-offset ambient shadow stops below it. */
-  :global(:root[data-theme='light']) .gallery-tile {
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent),
-      0 1px 2px rgba(0, 0, 0, 0.08),
-      0 8px 20px rgba(0, 0, 0, 0.10);
-  }
-  :global(:root[data-theme='light']) .gallery-tile:hover {
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--tile-accent) 60%, transparent),
-      0 2px 4px rgba(0, 0, 0, 0.10),
-      0 14px 32px rgba(0, 0, 0, 0.13);
+  @media (prefers-color-scheme: light) {
+    .gallery-tile {
+      box-shadow:
+        0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent),
+        0 1px 2px rgba(0, 0, 0, 0.08),
+        0 8px 20px rgba(0, 0, 0, 0.10);
+    }
+    .gallery-tile:hover {
+      box-shadow:
+        0 0 0 1px color-mix(in oklab, var(--tile-accent) 60%, transparent),
+        0 2px 4px rgba(0, 0, 0, 0.10),
+        0 14px 32px rgba(0, 0, 0, 0.13);
+    }
   }
 
   /* ── Foil rim ──

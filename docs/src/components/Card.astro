@@ -73,28 +73,26 @@ const { icon, iconColor = 'var(--retro-cyan)', title } = Astro.props;
   }
 
   /* Light mode overrides */
-  :global([data-theme='light']) .card {
-    background: #e8e5d0;
-    border: 2px solid #a8a593;
-    box-shadow: 3px 3px 0 #a8a593;
-  }
-
-  :global([data-theme='light']) .card:hover {
-    border-color: #732866;
-    box-shadow:
-      3px 3px 0 #732866,
-      6px 6px 0 #a8a593;
-  }
-
-  :global([data-theme='light']) .title {
-    color: #5a1f50;
-  }
-
-  :global([data-theme='light']) .card:hover .title {
-    color: #1a5247;
-  }
-
-  :global([data-theme='light']) .card .body {
-    color: #00021c;
+  @media (prefers-color-scheme: light) {
+    .card {
+      background: #e8e5d0;
+      border: 2px solid #a8a593;
+      box-shadow: 3px 3px 0 #a8a593;
+    }
+    .card:hover {
+      border-color: #732866;
+      box-shadow:
+        3px 3px 0 #732866,
+        6px 6px 0 #a8a593;
+    }
+    .title {
+      color: #5a1f50;
+    }
+    .card:hover .title {
+      color: #1a5247;
+    }
+    .card .body {
+      color: #00021c;
+    }
   }
 </style>

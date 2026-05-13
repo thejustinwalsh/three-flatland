@@ -1235,7 +1235,10 @@
     }
     .music-btn svg {
         position: relative;
-        z-index: 1;
+        /* Above u-holo::after (z-index 1, mix-blend-mode: color-dodge).
+         * In light mode the color-dodge layer was washing the dark SVG
+         * icon to pure white (same as the button surface → invisible). */
+        z-index: 2;
         pointer-events: none;
     }
     .music-btn:hover:not(:disabled) {

@@ -72,34 +72,49 @@ export default defineConfig({
         head: [
           // Theme boot — runs after Starlight's own ThemeProvider inline
           // script (entries in the `head` config land in DOM order, and
-          // Starlight injects its provider earlier). Strategy:
-          //   1. Clear any legacy `starlight-theme` localStorage key so
-          //      old preferences don't persist past the toggle removal.
-          //   2. Set `data-theme` from `prefers-color-scheme`, defaulting
-          //      dark when matchMedia is unavailable or returns false.
-          //   3. Attach a `change` listener so live OS-pref flips update
-          //      the page without reload.
-          //
-          // The user-facing theme switcher is removed in this same phase;
-          // theme tracks the OS preference exclusively from here forward.
-          // `data-theme` remains the load-bearing CSS selector across the
-          // theme.css palette and every light-mode-polish override — that
-          // contract is preserved; only the source of truth changes.
+          // Starlight injects its provider earlier). Architecture:
+          //   - CSS reacts to OS preference via `@media (prefers-color-
+          //     scheme: light)` directly — no `data-theme` selector
+          //     anywhere; the static HTML's hardcoded `data-theme="dark"`
+          //     is dead state that nothing reads.
+          //   - JS consumers use `window.__threeFlatlandTheme` (same
+          //     naming convention as `__threeFlatlandAudio`). The API is:
+          //     - `current` — `'light' | 'dark'`
+          //     - `subscribe(cb)` — fires cb immediately with current,
+          //       then on every theme change. Returns an unsubscribe fn.
+          //   - Live OS-pref change updates the global via matchMedia
+          //     listener (persists at the browser level across swaps;
+          //     no astro:after-swap wiring needed since the global lives
+          //     on `window`, not on a DOM attribute that gets reset).
           {
             tag: 'script',
             content: `;(() => {
-              try { localStorage.removeItem('starlight-theme'); } catch {}
-              var theme = 'dark';
+              function currentTheme() {
+                try {
+                  if (typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: light)').matches) {
+                    return 'light';
+                  }
+                } catch {}
+                return 'dark';
+              }
+              var listeners = new Set();
+              var api = {
+                current: currentTheme(),
+                subscribe: function(cb) {
+                  listeners.add(cb);
+                  try { cb(api.current); } catch (e) {}
+                  return function() { listeners.delete(cb); };
+                },
+              };
+              window.__threeFlatlandTheme = api;
+              function emit() {
+                var theme = currentTheme();
+                if (api.current === theme) return;
+                api.current = theme;
+                listeners.forEach(function(cb) { try { cb(theme); } catch (e) {} });
+              }
               try {
-                if (typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: light)').matches) {
-                  theme = 'light';
-                }
-              } catch {}
-              document.documentElement.dataset.theme = theme;
-              try {
-                matchMedia('(prefers-color-scheme: light)').addEventListener('change', function(e) {
-                  document.documentElement.dataset.theme = e.matches ? 'light' : 'dark';
-                });
+                matchMedia('(prefers-color-scheme: light)').addEventListener('change', emit);
               } catch {}
             })();`,
           },

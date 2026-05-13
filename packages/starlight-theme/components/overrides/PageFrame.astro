@@ -189,11 +189,13 @@ const projectBadge = getPackageBadge('three-flatland');
      * snaps back to dark-mode chroma. Scoped to the landing layout so
      * docs-page consumers of `--gold` aren't affected (the ribbon is
      * landing-only anyway, but keeping the scope tight). */
-    :root[data-theme='light'] [data-slot='layout'][data-landing] .alpha-ribbon {
-        --gold: oklch(72% 0.16 85);
-        --gold-high: oklch(82% 0.17 88);
-        --gold-low: oklch(34% 0.10 80);
-        --orange: oklch(67% 0.18 60);
+    @media (prefers-color-scheme: light) {
+        [data-slot='layout'][data-landing] .alpha-ribbon {
+            --gold: oklch(72% 0.16 85);
+            --gold-high: oklch(82% 0.17 88);
+            --gold-low: oklch(34% 0.10 80);
+            --orange: oklch(67% 0.18 60);
+        }
     }
 
     /* Landing: header is FULLY transparent (no glass backdrop) so the

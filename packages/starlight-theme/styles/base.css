@@ -214,10 +214,9 @@
      *
      * Hex fallback ensures the bg lands even before custom-property
      * tokens resolve at first paint. `--background` is defined on
-     * `:root[data-theme='dark']` (and `:root[data-theme='light']`),
-     * so before the StarlightThemeProvider script applies the data
-     * attribute, an unfallback'd `var(--background)` would resolve
-     * empty (= transparent = browser white). */
+     * `:root` (default = dark) and inside `@media (prefers-color-
+     * scheme: light)` (light variant), so the @media query resolves
+     * before paint and there's no flash regardless of OS preference. */
     /* ────────── Metric-adjusted font fallbacks (CLS fix) ──────────
      * Lighthouse flagged 0.33 CLS on the landing page's .page-body —
      * the dominant cause is web fonts loading after first paint and
@@ -286,10 +285,11 @@
         background-color: #111418;
         background-color: var(--background, #111418);
     }
-    :root[data-theme='light'] html,
-    html:has(:root[data-theme='light']) {
-        background-color: #f6f5f1;
-        background-color: var(--background, #f6f5f1);
+    @media (prefers-color-scheme: light) {
+        html {
+            background-color: #f6f5f1;
+            background-color: var(--background, #f6f5f1);
+        }
     }
     body {
         font-family: 'Public Sans', system-ui, sans-serif;
@@ -301,9 +301,11 @@
         background-attachment: fixed;
         background-blend-mode: screen;
     }
-    :root[data-theme='light'] body {
-        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.025 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
-        background-blend-mode: multiply;
+    @media (prefers-color-scheme: light) {
+        body {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.025 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+            background-blend-mode: multiply;
+        }
     }
     /* Honor accessibility preferences — texture vanishes when users prefer
      * reduced transparency/translucency. */
@@ -634,11 +636,7 @@
      * The `--0` / `--1` custom properties are written by EC onto each
      * token span as inline style; the rules pick whichever based on
      * the active theme. */
-    .expressive-code .ec-line :where(span[style^='--']:not([class])),
-    :root:not([data-theme='dark'])
-        .expressive-code[data-theme='dark']
-        .ec-line
-        :where(span[style^='--']:not([class])) {
+    .expressive-code .ec-line :where(span[style^='--']:not([class])) {
         color: var(--0, inherit);
         background-color: var(--0bg, transparent);
         font-style: var(--0fs, inherit);
@@ -647,17 +645,19 @@
         font-size: 0.933em;
     }
 
-    :root:not([data-theme='dark'])
-        .expressive-code
-        .ec-line
-        :where(span[style^='--']:not([class])),
-    :root[data-theme='light']
-        .expressive-code:not([data-theme='dark'])
-        .ec-line
-        :where(span[style^='--']:not([class])),
-    .expressive-code[data-theme='light']
-        .ec-line
-        :where(span[style^='--']:not([class])) {
+    /* Light-mode token colors apply when OS is light AND the block has
+     * no explicit dark override, OR when the block forces light. EC
+     * writes `--1` for the light variant; `--0` is the dark variant. */
+    @media (prefers-color-scheme: light) {
+        .expressive-code:not([data-theme='dark']) .ec-line :where(span[style^='--']:not([class])) {
+            color: var(--1, inherit);
+            background-color: var(--1bg, transparent);
+            font-style: var(--1fs, inherit);
+            font-weight: var(--1fw, inherit);
+            text-decoration: var(--1td, inherit);
+        }
+    }
+    .expressive-code[data-theme='light'] .ec-line :where(span[style^='--']:not([class])) {
         color: var(--1, inherit);
         background-color: var(--1bg, transparent);
         font-style: var(--1fs, inherit);
@@ -2062,19 +2062,21 @@
      *      saturation reads as "tinted card" rather than "stained glass."
      *
      * Dark mode is untouched. */
-    :root[data-theme='light'] .u-holo::before,
-    :root[data-theme='light'] [data-holo]::before {
-        opacity: 0.78;
-    }
-    :root[data-theme='light'] .u-holo::after,
-    :root[data-theme='light'] [data-holo]::after {
-        mix-blend-mode: overlay;
-        opacity: 0.28;
-    }
-    @media (prefers-reduced-motion: reduce) {
-        :root[data-theme='light'] .u-holo::after,
-        :root[data-theme='light'] [data-holo]::after {
-            opacity: 0.18;
+    @media (prefers-color-scheme: light) {
+        .u-holo::before,
+        [data-holo]::before {
+            opacity: 0.78;
+        }
+        .u-holo::after,
+        [data-holo]::after {
+            mix-blend-mode: overlay;
+            opacity: 0.28;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .u-holo::after,
+            [data-holo]::after {
+                opacity: 0.18;
+            }
         }
     }
 

@@ -497,14 +497,25 @@ void main() {
       set('amethyst', readGemSrgb('amethyst'))
       set('pink',     readGemSrgb('pink'))
       set('salmon',   readGemSrgb('salmon'))
-      const isLight = root.getAttribute('data-theme') === 'light'
+      // Window global is the source of truth (see astro.config.mjs head
+       // script). `data-theme` on <html> is dead state after the pure-CSS
+       // refactor; reading it would yield 'dark' for OS=light users.
+      const isLight =
+        (window as unknown as { __threeFlatlandTheme?: { current: 'light' | 'dark' } })
+          .__threeFlatlandTheme?.current === 'light'
       set('bg',       isLight ? bgLight : fallback.bg)
     }
 
-    /** Re-seed gem uniforms when `data-theme` flips on documentElement.
-     * Cheap — runs a few getComputedStyle reads + 8 uniform3f calls. */
-    const themeObserver = new MutationObserver(() => updateGemUniforms())
-    themeObserver.observe(root, { attributes: true, attributeFilter: ['data-theme'] })
+    /** Re-seed gem uniforms when the OS theme flips. Subscribe via the
+     * theme global; subscribe() fires immediately with the current value
+     * and on every subsequent change. Returns an unsubscribe fn. */
+    const themeApi = (window as unknown as {
+      __threeFlatlandTheme?: {
+        current: 'light' | 'dark'
+        subscribe: (cb: (theme: 'light' | 'dark') => void) => () => void
+      }
+    }).__threeFlatlandTheme
+    const themeUnsubscribe = themeApi?.subscribe(() => updateGemUniforms()) ?? (() => {})
 
     /** Initial seed — without this, uniforms default to vec3(0,0,0) and
      * the shader composites a pure-black canvas. Must run before the
@@ -697,7 +708,7 @@ void main() {
       alive = false
       cancelAnimationFrame(raf)
       io.disconnect()
-      themeObserver.disconnect()
+      themeUnsubscribe()
       window.removeEventListener('resize', resize)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerdown', onDown)

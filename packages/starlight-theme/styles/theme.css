@@ -181,7 +181,8 @@
     --sl-color-yellow-high: var(--yellow-high);
   }
 
-  :root[data-theme='light'] {
+  @media (prefers-color-scheme: light) {
+    :root {
     /* Paper-toned background — slightly warm so saturated accents feel like
      * pigment on paper, not pixels on a flat plane. */
     --background: oklch(98% 0.008 80);
@@ -322,5 +323,6 @@
     --sl-color-yellow: var(--yellow);
     --sl-color-yellow-low: var(--yellow-low);
     --sl-color-yellow-high: var(--yellow-high);
+    }
   }
 }
