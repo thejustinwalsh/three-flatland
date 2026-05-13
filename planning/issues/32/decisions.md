@@ -1051,3 +1051,66 @@ The five-flaw light-mode brief above shipped, plus three adjacent fixes that sur
 - **Header crossfade excludes the alpha-ribbon** — intentional (ribbon owns its own colors).
 - **Aside-link `:not([class])` hack** — excludes aside descendants that have a class (e.g., `sl-link-card`). Behavior matches the brief; flag if ALL aside descendants should theme.
 - **Hero token override list in `index.mdx`** — hand-curated to what the hero subtree actually consumes. If new hero components are added later that read different tokens, append to the override block.
+
+
+# Session 2026-05-12/13 — Audio + Music player + @zzfx-studio/zzfxm library
+
+A music player popover + audio engine for the docs, plus an upstream chain of fixes to `@zzfx-studio/zzfxm` so consumer playback (the docs) sounds byte-identical to the studio's DAW playback.
+
+## Audio bridge architecture
+- **Singleton on `window.__threeFlatlandAudio`** — survives view-transition route changes; same AudioContext + gain nodes across pages.
+- **Two-bus graph**: `sfxGain` (one-shot SFX) + `musicGain → musicAnalyser → masterGain → destination`. Analyser sits pre-master so the FFT keeps animating when master is muted but post-music-volume so it reflects the slider.
+- **Lazy load**: `getBridge()` dynamic-imports zzfx + @zzfx-studio/zzfxm + fetches tracks.json on first call. SoundToggle triggers it on `requestIdleCallback`.
+- **HMR-safe**: `import.meta.hot.accept()` keeps the singleton alive through module reloads — music doesn't restart on dev iterations.
+
+## Music player UX policy
+- **No autoplay across sessions.** Dropped the bridge constructor's autostart. `masterLevel > 0` persists for SFX but music requires a per-session Play click. Avoids spec-noncompliant autoplay surprise for returning visitors.
+- **Mute is full mute.** `masterLevel === 0` gates `playSfx`, `playTrack`, `resumeMusic`, mini-game proxy — every audio output path early-returns.
+- **Skip honors play state.** `nextTrack`/`prevTrack` route through `advanceToTrack`: cue new track silently if music was paused; start from 0 only if it was already playing.
+- **Toast on track id change only.** Page load NEVER auto-shows the popover. Toast fires when `currentTrack.id` transitions (next/prev/game `duckForExternal`). Dropped initial-toast + closedByUser session fields.
+- **Scroll-dismiss = same exit animation as click-outside.** Defer `hidePopover()` via `requestAnimationFrame` so the close transition composites in a clean paint frame instead of being torn apart by the scroll commit.
+
+## Music player visual decisions
+- **Fixed-width popover (15.25rem) with right-anchor.** Dropped a JS `beforetoggle` handler that dynamically measured search + cluster to position the popover — it kept stretching on narrow viewports. Just punch a constant width and right-anchor to the audio cluster.
+- **Gem-themed button border, neutral holo foil.** `.music-btn` ring is `var(--player-gem)` (active song's gem); the `.u-holo` foil treatment uses grayscale `--gem-base`/`--gem-spec` overrides so the FILL reads as polished metal while the BORDER carries the active-song color identity.
+- **Foil rim glint via conic-gradient `::before`** with `mask-composite: exclude` — same ring pattern as `.sl-link-button.secondary`, scaled to a panel. Pointermove handler drives `--light-angle` so the glint sweeps with the cursor (the global motion.ts registry doesn't pick up top-layer popovers).
+- **FFT bars tinted by active gem.** Reverted from the multi-gem spectrum blend after testing — didn't read clearly at 256×32 canvas.
+- **Marquee title scroll on hover (ping-pong).** JS measures overflow via the OUTER `.music-title`'s `scrollWidth` (not the inner span which is `display: inline` for ellipsis — inline elements report `scrollWidth: 0`). CSS `--marquee-end` only animates the actual hidden distance.
+- **Avatar.** 5×5 mirrored pixel pattern, FNV-1a hashed per-track id; fill tracks `--player-gem`.
+
+## @zzfx-studio/zzfxm — three library fixes (0.1.2 → 0.1.5)
+The package shipped the canonical Keith Clark / Frank Force ZZFXM build verbatim — which has audible artifacts that the studio's in-repo `zzfxMChannels` quietly fixes. Consumers got the buggy version. Three patches over three releases:
+
+- **0.1.3 — per-channel state isolation.** Upstream declared `instrument`, `attenuation`, `panning`, `sampleOffset`, `notFirstBeat`, `pitch`, `outSampleOffset`, `sampleBuffer` at function scope. The outer `for (;hasMore; channelIndex++)` carried channel N's final state into channel N+1's first beat → audible cross-channel artifact at every pattern boundary AND at every loop wrap. Move state declarations inside the channel loop body. Also replaced `hasMore` walk with a counted loop over upfront `channelCount` (widest pattern) and pre-allocated buffers to deterministic length `Σ(pattern_steps) × beatLength`.
+- **0.1.4 — per-pattern max-channel-length advancement.** Canonical `build` used `patterns[patternIndex][0].length` as the step count for `outSampleOffset` advancement. When authoring tools trim trailing zeros per channel (zzfx-studio's `fmtChannel`) and channel 0 happens to end with rests, sibling channels overshoot their allotted span — overshoot writes overlap the next pattern's contribution, audible as a ghost note at every loop boundary. Fix: use `MAX channel length per pattern`, so no channel can overshoot.
+- **0.1.5 — inner-loop bound canonical extension.** `outSampleOffset` advanced by per-pattern-max but the inner `for (i = 2; i < patternChannel.length + ext; ...)` still used the channel's own length. Shorter (trimmed) channels exited the loop early → release tails clipped. Fix: inner loop also uses `canonicalLen`. Trimmed channels iterate their rest rows the same way un-trimmed channels do; the j-loop reads any active note's release tail across the rest rows. DSP math unchanged.
+
+## zzfx-studio app serializer fix (paired with library 0.1.5)
+`fmtChannel`/`trimZeros` trimmed every channel independently. When EVERY channel in a pattern happened to land on a zero in the canonical final row (breakdowns with sustained drones, intro patterns), the trim dropped all channels below canonical and the row count became unrecoverable downstream.
+
+Fix: `trimChannelsPreservingRowCount` helper — trim each channel, then if the longest trimmed channel falls below pre-trim canonical, pad it back. Costs at most `(canonicalLen - trimmedMax)` zeros per pattern; other channels keep full trim. Compression preserved, row-count signal preserved. Applied at all three serialization sites (`songToJson`, `songToCode`, `songToClipboard`); old `fmtChannel` removed.
+
+Export dialog's PLAY ZZFXM button now feeds `trimChannelsPreservingRowCount`-output to `ZZFXM.build` — same data shape consumers paste from Copy Code. If preview sounds wrong, downstream consumers hear it too.
+
+## Tests pinned in packages/zzfxm/test/
+- **engine-equivalence** — `ZZFXM.build(uniform) === mixChannels(zzfxMChannels(uniform))` byte-identical. Pins library output to the studio's reference renderer forever.
+- **serialization-roundtrip** — `ZZFXM.build(uniform)` and `ZZFXM.build(trimChannelsPreservingRowCount(uniform))` both byte-identical to DAW reference.
+- **withered-realm-deterministic** — real exported song (7 channels with effect variants + breakdown pattern with all-silent leads) rendered through both engines with seeded `Math.random` — byte-identical.
+- **zzfxm.test.mjs** — 12 baseline regressions (API, deterministic length, main↔micro identity, no NaN, audible peaks, clean loop boundary, per-channel state isolation, mixed-channel-lengths, empty inputs).
+
+## Discovery: ZzFX's `randomness` param is non-deterministic
+`ZZFX.buildSamples` rolls `Math.random()` on the frequency (per the `randomness` parameter at index 1, default 0.05). Every render produces a slightly different waveform. DAW preview and consumer playback render INDEPENDENTLY → slightly different audio. By design (chiptune organic feel). Not a bug; accepted as-is. Tests seed `Math.random` to prove the engines are otherwise byte-identical.
+
+## Track library + ingestion
+- **`tracks.json` schema**: `{ tracks: [{ id, title, credit?, gem?, bpm, instruments, patterns, sequence }] }`.
+- **`pnpm tracks:add`**: parses zzfx-studio's `Copy Oneliner` OR `Copy Code`; supports `--credit-url` (defaults to zzfx-studio site for `credit === "zzfx-studio"`); reads `// @zzfx-studio {json}` metadata comment for auto-fill of title/gem; vibe → gem mapping (titleScreen→gold, battle→ruby, dungeon→emerald, adventure→amethyst, boss→pink).
+- **Re-ingest required after 0.1.5** — all four legacy tracks were ingested under the pre-0.1.5 serializer and had the row-count-undercount pathology. The docs bridge had a defensive global-pad workaround that recovered the row count at runtime. After re-ingesting against the deployed studio (now 0.1.5-compatible), every pattern has at least one channel at canonical length 34 — workaround removed.
+
+## Light-mode header polish (final fixes)
+- **Audio cluster icons fade with chrome.** Added `.audio-cluster button` to the existing `hdr-text-light-fade` scroll-driven keyframe selector. Buttons now go light at scroll=0 (over dark hero) and fade to dark foreground as the chrome opacifies — same pattern as the wordmark + nav anchors.
+- **Softer hover** on all right-side icons (MusicPlayer trigger, SoundToggle, SocialIcons). Was `var(--accent-foreground)` text on 80%-accent background (cream-on-dark-purple, way too aggressive against paper chrome). Now `var(--foreground)` on 12%-accent-tinted pill. Consistent with the mobile-TOC toggle's hover pattern.
+- **SoundToggle monochrome at all states.** Dropped the ruby tint on mute (read too loud) and the diamond tint on active. Mute uses `--muted-foreground`, active uses `--foreground`. Gem identity belongs to the MusicPlayer surface (via `--player-gem`); SoundToggle is just a master gate.
+
+## Mobile + narrow-viewport polish (final fixes)
+- **Mobile drawer top-nav row layout.** `Drawer.astro` `.links-nav` switched from `flex-direction: column` to `row` with `flex: 1` per pill. Docs / Examples / Showcases share one row instead of stacking.
+- **On-this-page dropdown stays on-screen at narrow viewports.** `min-width: 18rem` forced overflow past the left edge below ~320px. Wrapped: `min-width: min(18rem, calc(100vw - 2rem))`. Also left-aligned with the toggle button (`left: 0; right: auto`) and dropped `top: calc(100% + 1rem)` to roughly match the MusicPlayer popover's ~0.5rem-below-header rhythm.
