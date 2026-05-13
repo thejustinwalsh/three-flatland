@@ -23,7 +23,7 @@ npm install @three-flatland/presets@alpha
 - **three-flatland** >= 0.1.0-alpha.0
 - **@three-flatland/nodes** >= 0.1.0-alpha.0
 
-## Planned Presets
+## Presets in development
 
 - **Pixel Art** — nearest-neighbor filtering, pixel-perfect rendering, integer scaling
 - **CRT** — scanlines, phosphor mask, curvature, chromatic aberration
@@ -33,12 +33,8 @@ npm install @three-flatland/presets@alpha
 
 ## Documentation
 
-Full docs at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**
+Full docs at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**.
 
 ## License
 
 [MIT](./LICENSE)
-
----
-
-<sub>This README was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).</sub>

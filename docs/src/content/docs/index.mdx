@@ -1,6 +1,6 @@
 ---
 title: 'three-flatland: Composable 2D library for three.js + react-three-fiber'
-description: The composable 2D library for Three.js. Primitives for 2D graphics, TSL composability, react-three-fiber, performance by default.
+description: The composable 2D library for Three.js. Primitives for 2D graphics, TSL composability, react-three-fiber, ECS-driven sprite batching.
 template: splash
 head:
   - tag: script
@@ -12,7 +12,7 @@ head:
         "@type": "SoftwareSourceCode",
         "name": "three-flatland",
         "alternateName": "flatland",
-        "description": "The composable 2D library for Three.js. Primitives for 2D graphics, TSL composability, react-three-fiber, performance by default.",
+        "description": "The composable 2D library for Three.js. Primitives for 2D graphics, TSL composability, react-three-fiber, ECS-driven sprite batching.",
         "programmingLanguage": ["TypeScript", "JavaScript"],
         "codeRepository": "https://github.com/thejustinwalsh/three-flatland",
         "url": "https://thejustinwalsh.com/three-flatland/",
@@ -63,7 +63,7 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
 
 <StatsBanner stats={[
   { value: "20K+", label: "Sprites at 60fps", color: "diamond" },
-  { value: "Auto", label: "Instanced GPU batches", color: "pink" },
+  { value: "ECS", label: "Batch archetypes", color: "pink" },
   { value: "TSL", label: "Composable shader nodes", color: "gold" },
   { value: "WebGPU", label: "and WebGL rendering", color: "amethyst" },
 ]} />

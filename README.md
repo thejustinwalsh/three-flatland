@@ -4,21 +4,20 @@
 
 # three-flatland
 
-High-performance 2D sprites, tilemaps, and effects for Three.js — built for WebGPU with composable TSL shaders.
+2D sprites, tilemaps, and TSL-composable effects for Three.js, built for WebGPU.
 
 > [!IMPORTANT]
-> **Early Alpha** — three-flatland is in active development. We're exploring performant, maintainable, and extensible patterns for GPU-driven 2D rendering with WebGPU. The API will evolve as we refine these systems. Your feedback shapes what we build.
+> **Early Alpha** — three-flatland is in active development. The library targets GPU-driven 2D rendering on WebGPU; the API will evolve as the underlying systems settle. Open an issue or comment on [GitHub](https://github.com/thejustinwalsh/three-flatland/issues) to shape what gets built.
 
 ## Features
 
-- **WebGPU Native** — all shaders built with TSL (Three Shader Language), works on WebGPU and WebGL
-- **Automatic Batching** — sprites sharing a material batch into single draw calls
-- **Decoupled Scene Graph** — transform hierarchy and render order are independent (layer + zIndex)
-- **Composable Effects** — TSL shader nodes for tint, outline, dissolve, CRT, palette swap, and more
-- **Animation System** — spritesheet-driven with frame-perfect timing and callbacks
-- **Tilemap Support** — Tiled and LDtk editor formats with animated tiles
-- **Tree-Shakeable** — import only what you use, deep imports for maximum control
-- **React Three Fiber** — first-class R3F integration via `three-flatland/react`
+- **2D primitives on the Three.js scene graph.** `Sprite2D`, `AnimatedSprite2D`, `SpriteGroup`, and `TileMap2D` as plain `Object3D` subclasses. Transform hierarchy and render order are independent (`layer` + `zIndex`).
+- **TSL-native effect composition.** Effects are TSL node graphs that ride on a shared material. Sprites in a batch stay batched as effects come and go.
+- **Sprite batching via ECS.** A `koota`-backed batch system keeps archetypes optimal; per-sprite uniforms pack into shared GPU buffers.
+- **Spritesheet animation with frame-precise timing.** `AnimationController` handles play/pause/onComplete; declare named animations against a sheet.
+- **Tilemap loaders for [Tiled](https://www.mapeditor.org/) and [LDtk](https://ldtk.io/).** Animated tiles supported.
+- **React Three Fiber integration** via `three-flatland/react`. Re-exports the core surface plus JSX type augmentation; `attachEffect` covers the add/remove lifecycle.
+- **Tree-shakeable subpath exports.** `three-flatland/sprites`, `/animation`, `/loaders`, `/pipeline`, `/tilemap`, `/materials`. Import only what you use.
 
 ## Installation
 
@@ -29,7 +28,7 @@ npm install three-flatland@alpha three koota
 # For React Three Fiber
 npm install three-flatland@alpha @react-three/fiber@alpha react react-dom
 
-# TSL shader nodes (optional)
+# TSL shader nodes
 npm install @three-flatland/nodes@alpha
 ```
 
@@ -147,7 +146,7 @@ player.play('attack', { onComplete: () => player.play('idle') })
 
 ```typescript
 import { createMaterialEffect } from 'three-flatland'
-import { tintAdditive, hueShift } from '@three-flatland/nodes'
+import { tintAdditive } from '@three-flatland/nodes'
 import { vec4 } from 'three/tsl'
 
 const DamageFlash = createMaterialEffect({
@@ -168,29 +167,35 @@ flash.intensity = 0.8 // Animate per frame
 
 | Package | Description |
 |---------|-------------|
-| [`three-flatland`](https://www.npmjs.com/package/three-flatland) | Core library — sprites, materials, animation, loaders, tilemaps, render pipeline |
-| [`three-flatland/react`](https://www.npmjs.com/package/three-flatland) | React Three Fiber subpath — re-exports core + JSX type augmentation |
-| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | TSL shader nodes for effects (per-category subpaths) |
-| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia) | Skia GPU rendering via WASM — text, paths, and image filters |
-| [`@three-flatland/tweakpane`](https://www.npmjs.com/package/@three-flatland/tweakpane) | Tweakpane v4 integration — theme, helpers, and React hooks |
-| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Pre-configured effect combinations (coming soon) |
+| [`three-flatland`](https://www.npmjs.com/package/three-flatland) | Core library. Sprites, materials, animation, loaders, tilemaps, render pipeline. |
+| [`three-flatland/react`](https://www.npmjs.com/package/three-flatland) | React Three Fiber subpath. Re-exports core plus JSX type augmentation. |
+| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | TSL shader nodes for effects (per-category subpaths). |
+| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia) | Skia compiled to WASM. GPU vector graphics, text, paths, image filters. |
+| [`@three-flatland/tweakpane`](https://www.npmjs.com/package/@three-flatland/tweakpane) | Tweakpane v4 theme + React hooks (transitioning to a devtools package). |
+| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Pre-configured effect combinations (in development). |
 
 ## Requirements
 
-- **three.js** >= 0.183.1 (TSL/WebGPU support)
+- **three** >= 0.183.1 (TSL/WebGPU support)
 - **koota** >= 0.6.5 (ECS for batch rendering)
 - **React** >= 19.0.0 (for `three-flatland/react`, uses `use()` hook)
 - **@react-three/fiber** >= 10.0.0-alpha.2 (for React, WebGPU support)
 
 ## Documentation
 
-Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**
+Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**.
+
+## When not to reach for three-flatland
+
+- **3D scenes.** Use Three.js directly. three-flatland adds nothing for non-2D work and the batching system assumes orthographic-style 2D composition.
+- **WebGL-1-only targets.** TSL targets WebGPU and WebGL 2; legacy WebGL 1 is out of scope.
+- **DOM-overlay UI.** For HTML UI layered over a canvas, use the DOM. three-flatland is a renderer, not a UI toolkit.
 
 ## Roadmap
 
 - [x] Core sprite system (Sprite2D, materials, loaders)
 - [x] Animation system (AnimatedSprite2D, AnimationController)
-- [x] 2D render pipeline with automatic batching
+- [x] 2D render pipeline with ECS-driven batching
 - [x] TSL effect nodes (composable shader nodes)
 - [x] Tilemap support (Tiled, LDtk)
 - [x] React Three Fiber integration
@@ -201,7 +206,3 @@ Full docs, interactive examples, and API reference at **[thejustinwalsh.com/thre
 ## License
 
 [MIT](./LICENSE)
-
----
-
-<sub>This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).</sub>

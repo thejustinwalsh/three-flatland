@@ -4,7 +4,7 @@
 
 # @three-flatland/nodes
 
-Composable TSL shader nodes for [three-flatland](https://www.npmjs.com/package/three-flatland) and Three.js WebGPU. Tint, outline, dissolve, blur, CRT, palette swap, dithering, and more — all built with Three Shader Language.
+TSL shader nodes for [three-flatland](https://www.npmjs.com/package/three-flatland) and Three.js WebGPU. Each node composes into a node graph that compiles to WebGPU or WebGL 2 via the Three.js renderer. Categories cover tint, outline, dissolve, blur, CRT, palette swap, dithering, and more.
 
 > **Alpha Release** — this package is in active development. The API will evolve and breaking changes are expected between releases. Pin your version and check the [changelog](https://github.com/thejustinwalsh/three-flatland/releases) before upgrading.
 
@@ -85,7 +85,7 @@ material.colorNode = Fn(() => {
 
 ## Deep Imports
 
-Every node is individually importable for maximum tree-shaking:
+Every node has its own export so bundlers can drop the ones you don't use:
 
 ```typescript
 // Import by category
@@ -99,12 +99,8 @@ import { hueShift, dissolve, bloom } from '@three-flatland/nodes'
 
 ## Documentation
 
-Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**
+Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**.
 
 ## License
 
 [MIT](./LICENSE)
-
----
-
-<sub>This README was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).</sub>
