@@ -129,6 +129,13 @@ void main() {
   vec2 pixCoord = floor(gl_FragCoord.xy / u_pixel_size) * u_pixel_size + u_pixel_size * 0.5;
   vec2 uv = pixCoord / u_res;
   vec2 p = uv * 2.0 - 1.0;
+  // pn — un-aspect-corrected p, both axes range [-1, 1]. Used for the
+  // directional scene-light dot() so the sheen stays viewport-invariant.
+  // Without this, at wide aspects p.x ran [-aspect, +aspect] and the
+  // smoothsteps below saturated long before the canvas edges, producing
+  // a hard left/right brightness split. Noise sampling + mouse hotspot
+  // still use aspect-corrected p / pp so flow + hotspot stay circular.
+  vec2 pn = p;
   p.x *= u_res.x / u_res.y;
 
   float t = u_time * 0.05;
@@ -219,9 +226,12 @@ void main() {
   col = mix(col, C_PINK,     m4 * 0.42);
 
   // Scene-light directional sheen — gem accent shifts by the global
-  // scene-angle. Aligned to the scene-angle vector projected onto p.
+  // scene-angle. Projected onto the un-aspect-corrected pn so the
+  // sheen reads consistently across viewport widths (using aspect-
+  // stretched p here produced a hard left/right split at wide aspects
+  // because the smoothsteps below saturated way before the edges).
   vec2 ldir = vec2(sin(u_scene_angle), cos(u_scene_angle));
-  float dirShade = dot(p, ldir) * 0.18 + 0.5;
+  float dirShade = dot(pn, ldir) * 0.18 + 0.5;
   col += C_GOLD * smoothstep(0.55, 0.95, dirShade) * 0.35;
   col -= 0.10 * smoothstep(0.0, 0.5, 1.0 - dirShade);
 
