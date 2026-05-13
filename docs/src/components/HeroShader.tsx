@@ -596,6 +596,10 @@ void main() {
       if (!mouseTarget) pressTarget = 0
     }
     function onDown(e: PointerEvent) {
+      // Left/primary only — right-click also fires the context menu, so
+      // skipping non-primary buttons prevents the swirl from punching
+      // through alongside it. For touch + pen primary contact, button is 0.
+      if (e.button !== 0) return
       // Press only registers if the click lands inside the hero region —
       // clicking on a search button or a doc page link shouldn't punch a
       // black hole into the hero from across the layout.
