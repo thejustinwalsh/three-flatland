@@ -5,15 +5,23 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-## New Features
+## New features
 
-- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by tweakpane-plugin-essentials `radiogrid` blade; active-state affordance, deferred disposal mirrors `usePaneButton`/`usePaneInput`
-- `PaneInputOptions` extended with `readonly` and `format` — create readonly monitors with custom formatters from any `usePaneInput` call
-- `createPane` z-index: applies `z-index: 1000` to the `.tp-dfwv` body-sibling wrapper instead of the inner pane element (was silently no-op)
+- `usePaneRadioGrid` React hook — inline button-bar selector backed by Tweakpane Essentials `radiogrid` blade; active-state affordance reads better than a dropdown for scene/mode toggles
+- `PaneInputOptions` extended with `readonly` and `format` fields; enables readonly monitors with custom formatters in React hooks
 
-## Bug Fixes
+## Bug fixes
 
-- Checkbox hit target expanded to full box via `width/height: var(--cnt-usz)` on `.tp-ckbv_i`; eliminates missed clicks caused by flaky label-forwarding under pointer-events/z-index combinations
-- Checkbox surface color changed to `rgba(28,40,77,0.6)` with hover/focus/active state parity; check stroke turns accent pink on `:checked`
+- Checkbox hit target expanded to full box size (`width/height: var(--cnt-usz)`); fixes multi-click required due to browser pointer-event forwarding failures
+- `z-index: 1000` now applied to the `.tp-dfwv` body-sibling wrapper instead of the inner pane root; fixes tweakpane stacking against other overlays
+- Checkbox theme updated: box surface now matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink on `:checked`
 
-Adds `usePaneRadioGrid`, readonly monitor support via `PaneInputOptions`, and fixes checkbox interactivity and pane z-index stacking.
+## Examples
+
+- Both `slug-text` examples migrated from Web Awesome (`@awesome.me/webawesome`) to `@three-flatland/tweakpane`
+- Stats monitor and Settings + Mode pane folders added to both React and Three examples
+- Overlay z-indexes lowered (1–4); computing spinner moved top-right → top-left to avoid fighting tweakpane corner
+
+Both examples maintain 1:1 feature parity; all public API changes are additive.
+
+---
