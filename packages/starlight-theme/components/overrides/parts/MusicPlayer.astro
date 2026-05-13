@@ -1235,11 +1235,27 @@
     }
     .music-btn svg {
         position: relative;
-        /* Above u-holo::after (z-index 1, mix-blend-mode: color-dodge).
-         * In light mode the color-dodge layer was washing the dark SVG
-         * icon to pure white (same as the button surface → invisible). */
+        /* Above u-holo::after (z-index 1) so the icon paints over the
+         * foil's mix-blend-mode layer regardless of mode. */
         z-index: 2;
         pointer-events: none;
+    }
+    /* Light-mode invert: dark surface + light icon, mirroring the dark-
+     * mode aesthetic. In light mode the default light surface + dark icon
+     * combo washed out under the metallic foil overlay. Inverting gives
+     * the icon the same high-contrast "lit metallic recess" reading the
+     * dark-mode buttons have. */
+    @media (prefers-color-scheme: light) {
+        .music-btn {
+            color: var(--background);
+            background: color-mix(in oklab, var(--foreground) 78%, var(--background));
+            --gem-base: color-mix(in oklab, var(--foreground) 60%, var(--background));
+            --gem-spec: color-mix(in oklab, var(--background) 70%, var(--foreground));
+            --gem-low: color-mix(in oklab, var(--foreground) 90%, var(--background));
+        }
+        .music-btn:hover:not(:disabled) {
+            background: color-mix(in oklab, var(--foreground) 60%, var(--player-gem));
+        }
     }
     .music-btn:hover:not(:disabled) {
         background: color-mix(in oklab, var(--card) 60%, var(--player-gem));
