@@ -401,8 +401,14 @@ const railAmbient = [
     }
     .brand-eyebrow-tally {
         color: var(--gold);
-        font-size: 1.2em;
-        line-height: 0.8;
+        font-size: 1.6em;
+        line-height: 1;
+        /* The `▍` block glyph fills the em-square (including descent).
+         * ALPHA letters sit on baseline with no descenders, so default
+         * baseline-alignment renders the block low. Shift up to center
+         * vertically with the text's x-height. */
+        position: relative;
+        top: -0.1em;
         text-shadow: 0 0 0.4cqi color-mix(in oklab, var(--gold) 60%, transparent);
     }
     .brand-eyebrow-text {
@@ -422,7 +428,7 @@ const railAmbient = [
          * edge of F aligns with the painted edges of the tally,
          * tagline, install arrow, and signal rail in the spine
          * column. Scales with font-size via em. */
-        margin: 0 0 0 -0.13em;
+        margin: 0 0 0 -0.12em;
         text-shadow:
             0 0 0.4cqi color-mix(in oklab, var(--gold) 38%, transparent),
             0 1.5cqi 4cqi color-mix(in oklab, var(--amethyst) 22%, transparent);
