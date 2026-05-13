@@ -219,50 +219,46 @@ void main() {
   col = mix(col, C_PINK,     m4 * 0.42);
 
   // ────────────────────────────────────────────────────────────────
-  // VOLUMETRIC SHADING via gradient-as-normal — without proper normal
-  // maps, the previous flat dot(p, ldir) sheen lifted blacks to grey
-  // on the dark side and uniformly gilded the lit side regardless of
-  // cloud presence. We instead derive a per-fragment 2D "normal" from
-  // the SCREEN-SPACE GRADIENT of the macro density field (dFdx/dFdy
-  // on m1+m3, the slowest-frequency gem layers — using all 4 layers
-  // here lit every micro-noise edge and read as crinkled foil rather
-  // than fluffy clouds). The gradient points INTO the cloud body, so
-  // the outward normal is its negation. Dotting that with the light
-  // direction gives proper N·L per cloud edge — lit rims pick up
-  // gold, away rims crush toward bg color. Cloud interiors (where
-  // macro density is locally flat) and pure-black areas (density ≈ 0)
-  // get no shading change either way, so blacks stay BLACK.
+  // VOLUMETRIC SHADING via single-step light marching — the canonical
+  // cheap 2D approximation of how real ray-marched volumetrics light.
+  // We sample the macro density field ONCE at a small offset TOWARD
+  // the light direction, then compare it to the density at this point:
+  //
+  //   - If density-toward-light is HIGH (more cloud between us and the
+  //     sun) → this point is in self-shadow → crush toward bg.
+  //   - If density-here is HIGH but density-toward-light is LOW → we're
+  //     at the cloud's lit rim (sun-facing edge) → add gold sheen.
+  //   - If both are 0 (pure bg) → no change. Blacks stay BLACK.
+  //
+  // This is one extra fbm() call per fragment but gives proper
+  // volumetric depth — cloud underbellies actually look in shadow,
+  // tops/rims actually look lit. Previously we used dFdx/dFdy as a
+  // 2D surface normal, which treated the density field as a height
+  // map and lit it like terrain — wrong physics for clouds, hence
+  // the band/ridge artifacts.
   // ────────────────────────────────────────────────────────────────
-  // Total composited density — used for the ADJ weight (don't paint
-  // shading onto bg pixels).
   float density = m1 + m2 + m3 + m4;
-  // Macro density — slowest single layer (m1 at pp*1.2) drives the
-  // gradient so we shade big cloud lumps, not noise speckle. Using
-  // multiple layers here put back the per-pixel crinkle.
-  float macroDensity = m1;
-  vec2 grad = vec2(dFdx(macroDensity), dFdy(macroDensity));
-  float gradLen = length(grad);
-  // Negate so normalDir points OUT of the cloud (away from density mass).
-  vec2 normalDir = gradLen > 0.0001 ? -grad / gradLen : vec2(0.0);
   vec2 ldir = vec2(sin(u_scene_angle), cos(u_scene_angle));
-  float NdotL = dot(normalDir, ldir);
-  // Density weighting — gates lighting so the bg never gets touched.
+  // Sample distance toward the light — small enough to read as
+  // "self-shadow inside the cloud body" rather than "directional
+  // gradient across the canvas." 0.10 in noise-space ≈ a single
+  // big-cloud diameter at the m1 scale.
+  vec2 ppLight = pp + ldir * 0.10;
+  // Re-evaluate the slowest gem mask at the offset position.
+  // Single fbm call — cheap relative to a per-pixel ray march.
+  float m1AtLight = smoothstep(0.20, 0.55,
+      fbm(ppLight * 1.2 + r * 0.5 + vec2(t, t * 0.7)));
+  // Density weighting — gate so the bg never gets shaded.
   float densW = smoothstep(0.05, 0.6, density);
-  // Gradient-magnitude gate — only STRONG cloud edges shade. Weak
-  // micro-noise gradients (cloud interiors + fbm speckle) get muted
-  // out so the result reads as soft macro shading, not faceted foil.
-  float edgeW = smoothstep(0.002, 0.035, gradLen);
-  // Power-curve falloff (≈ log-ish) on N·L — only the strongly-facing
-  // surfaces pick up light/shadow; the middle range falls off fast.
-  // Combined with edgeW this gives cloud-like soft volumetric depth,
-  // not per-pixel terrain.
-  float litResp    = pow(max( NdotL, 0.0), 2.2);
-  float shadowResp = pow(max(-NdotL, 0.0), 2.2);
-  // Lit rim — gold sheen on cloud sides facing the light.
-  col += C_GOLD * litResp * edgeW * 0.30 * densW;
-  // Shadow rim — crush toward bg on cloud sides facing away. mix() to
-  // C_BG (not subtract) prevents the result from going below bg.
-  col = mix(col, C_BG, shadowResp * edgeW * 0.38 * densW);
+  // Self-shadow: this point is occluded by cloud between it and the sun.
+  // High m1AtLight + this point has density → in shadow.
+  float selfShadow = m1AtLight * densW;
+  col = mix(col, C_BG, selfShadow * 0.45);
+  // Rim-lit: cloud edge facing the sun. m1 here is high, but m1AtLight
+  // is low (we're at the boundary toward empty sky). max(0,…) clamps
+  // so interior cloud pixels don't accidentally pick this up.
+  float rimLit = max(0.0, m1 - m1AtLight) * densW;
+  col += C_GOLD * rimLit * 0.55;
 
   // Side vignette removed — let the gem flow run to the canvas edges.
   // The bottom horizon is still handled by the .hero-overlay ::after
