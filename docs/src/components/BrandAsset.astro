@@ -426,6 +426,10 @@ const railAmbient = [
          * vertically with the text's x-height. */
         position: relative;
         top: -0.1em;
+        /* Horizontal — tally's LSB is -1px at rendered 21px (= -0.047em
+         * overhang). Other spine elements paint at +0 from origin, so
+         * +0.05em margin brings the tally into the same pixel column. */
+        margin-left: 0.05em;
         text-shadow: 0 0 0.4cqi color-mix(in oklab, var(--gold) 60%, transparent);
     }
     .brand-eyebrow-text {
