@@ -531,14 +531,16 @@
             const track = state.currentTrack
             const title = track?.title ?? 'No track loaded'
             this.titleEl.textContent = title
-            // Measure overflow so the marquee animation only travels the
-            // hidden distance. Run after the text mutation has settled.
-            // Deferred via rAF so layout has refreshed the inline-block
-            // child's scrollWidth before we read it.
+            // Measure overflow on the OUTER (clipping) element — its
+            // scrollWidth reflects the full content width including the
+            // hidden tail. The inner span is `display: inline` at rest
+            // (so the outer's text-overflow can paint the ellipsis), and
+            // an inline element's own `scrollWidth` always reports 0 —
+            // reading from there silently disabled the marquee.
             requestAnimationFrame(() => {
                 const outer = this.titleEl.parentElement as HTMLElement | null
                 if (!outer) return
-                const overflow = this.titleEl.scrollWidth - outer.clientWidth
+                const overflow = outer.scrollWidth - outer.clientWidth
                 outer.style.setProperty('--marquee-end', overflow > 0 ? `${-overflow - 4}px` : '0px')
             })
 
