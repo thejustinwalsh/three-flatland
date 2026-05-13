@@ -168,6 +168,17 @@ const shouldRenderSearch =
         position: relative;
     }
 
+    /* Override SocialIcons' default hover — Starlight ships its anchor-
+     * button (`a.sl-flex.button`) with a flip-to-accent-foreground hover
+     * that lands as cream-on-dark-purple at 80% opacity. Too aggressive
+     * against the paper chrome in light mode and inconsistent with the
+     * audio-cluster icons next to it. Match the subtler 12%-accent-tinted
+     * pill we use on the audio buttons. */
+    .header-nav :global(a.sl-flex.button:hover) {
+        color: var(--foreground);
+        background-color: color-mix(in oklab, var(--accent) 12%, transparent);
+    }
+
     /* Vertical divider between nav groups — slightly bolder than lucode default
      * (1.25rem vs 1rem) and steadier opacity so the rhythm reads. */
     .header-nav > div:has(> :not(script)) + div:has(> :not(script))::before {
@@ -251,7 +262,8 @@ const shouldRenderSearch =
              * lockstep. */
             :global(:root[data-theme='light'] [data-slot='layout'][data-landing] > header .title-text),
             :global(:root[data-theme='light'] [data-slot='layout'][data-landing] > header .header-nav a),
-            :global(:root[data-theme='light'] [data-slot='layout'][data-landing] > header nav a) {
+            :global(:root[data-theme='light'] [data-slot='layout'][data-landing] > header nav a),
+            :global(:root[data-theme='light'] [data-slot='layout'][data-landing] > header .audio-cluster button) {
                 animation: hdr-text-light-fade linear both;
                 animation-timeline: scroll(root);
                 animation-range: 0 96px;
