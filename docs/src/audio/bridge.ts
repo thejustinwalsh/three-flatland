@@ -261,30 +261,8 @@ class AudioBridge {
             return arr
         }
         const instruments = denull(track.instruments) as unknown as number[][]
-        const rawPatterns = denull(track.patterns) as unknown as number[][][]
+        const patterns = denull(track.patterns) as unknown as number[][][]
         const sequence = denull(track.sequence) as unknown as number[]
-
-        // Defensive pad — recover canonical row count from global max
-        // channel length for tracks ingested before the studio's
-        // row-count-preserving serializer (see zzfx-studio PR #5).
-        let canonicalLen = 0
-        for (const pat of rawPatterns) {
-            for (const ch of pat) {
-                if (ch && ch.length > canonicalLen) canonicalLen = ch.length
-            }
-        }
-        const patterns = rawPatterns.map((pat) =>
-            pat.map((ch) => {
-                const arr = ch ?? []
-                if (arr.length >= canonicalLen) return arr
-                const padded: number[] = new Array(canonicalLen)
-                for (let i = 0; i < canonicalLen; i++) {
-                    padded[i] = i < arr.length ? arr[i]! : 0
-                }
-                return padded
-            })
-        )
-
         const [left, right] = this.zzfxmModule.ZZFXM.build(instruments, patterns, sequence, track.bpm)
         if (!left || left.length === 0) return null
         const length = left.length
