@@ -16,6 +16,7 @@
 - **Sprite batching via ECS.** A `koota`-backed batch system keeps archetypes optimal; per-sprite uniforms pack into shared GPU buffers.
 - **Spritesheet animation with frame-precise timing.** `AnimationController` handles play/pause/onComplete; declare named animations against a sheet.
 - **Tilemap loaders for [Tiled](https://www.mapeditor.org/) and [LDtk](https://ldtk.io/).** Animated tiles supported.
+- **Render to texture for 2D-on-3D.** The `Flatland` class composes a 2D scene with an orthographic camera and optional `RenderTarget`; sample the result on any 3D material (`mesh.material.map = flatland.texture`).
 - **React Three Fiber integration** via `three-flatland/react`. Re-exports the core surface plus JSX type augmentation; `attachEffect` covers the add/remove lifecycle.
 - **Tree-shakeable subpath exports.** `three-flatland/sprites`, `/animation`, `/loaders`, `/pipeline`, `/tilemap`, `/materials`. Import only what you use.
 
@@ -200,7 +201,7 @@ Full docs, interactive examples, and API reference at **[thejustinwalsh.com/thre
 - [x] Tilemap support (Tiled, LDtk)
 - [x] React Three Fiber integration
 - [x] Skia GPU text rendering via WASM
-- [ ] Render targets for 2D-on-3D
+- [x] Render targets for 2D-on-3D (via `Flatland` class)
 - [ ] Effect presets
 
 ## License

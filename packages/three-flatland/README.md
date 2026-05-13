@@ -22,6 +22,7 @@ three-flatland exposes 2D primitives as plain `Object3D` subclasses on the Three
 - **Composable effects.** Tint, outline, dissolve, palette swap, CRT, bloom — combine on a shared material; sprites in a batch stay batched as effects come and go.
 - **Animation system.** `AnimatedSprite2D` + `AnimationController` for spritesheet-driven, frame-precise playback with completion callbacks.
 - **Tilemap support.** Loaders for [Tiled](https://www.mapeditor.org/) and [LDtk](https://ldtk.io/) editor formats; animated tiles included.
+- **2D-on-3D via render targets.** The `Flatland` class wraps a 2D scene with an orthographic camera and an optional `RenderTarget`; the resulting texture mounts on any 3D material for HUDs, dialogue panels, or in-world signage.
 - **React Three Fiber integration.** `three-flatland/react` re-exports the core surface with JSX type augmentation. `extend()`-friendly classes, `attachEffect` lifecycle helper.
 - **Tree-shakeable subpath exports.** Import per-category, deep imports for surgical bundles.
 
