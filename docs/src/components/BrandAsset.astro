@@ -364,23 +364,10 @@ const railAmbient = [
     }
     .brand-stack.is-wide {
         gap: 4cqi;
-        /* Align icon center with wordmark center, not the text block
-         * center. Wide banner's text column has tagline + install +
-         * signal-rail-spacer below the wordmark; centering on the
-         * whole block drops the icon visually low. align-items:
-         * flex-start + a measured margin-top puts the icon's vertical
-         * center at the wordmark's center. */
-        align-items: flex-start;
     }
     .wide .brand-mark {
-        /* Icon top sits at the eyebrow's baseline so its center
-         * lands at the wordmark's center. Empirically: eyebrow is
-         * ~1cqi tall + gap 1.2cqi → ~2.2cqi to icon-top. Icon is
-         * 11cqi tall, half = 5.5cqi to its center → 7.7cqi from
-         * stack top. Wordmark center is at eyebrow + gap +
-         * half-wordmark = ~2.2 + half(7.5cqi) = ~6cqi from stack
-         * top. Push icon up ~1.7cqi via negative margin-top. */
-        margin-top: -1.7cqi;
+        /* M3v: center icon on first 3 rows (eyebrow + wordmark + tagline). */
+        margin-top: -2.7cqi;
     }
 
     .brand-mark {
@@ -409,30 +396,32 @@ const railAmbient = [
     .brand-eyebrow {
         display: inline-flex;
         align-items: baseline;
-        gap: 0.6cqi;
+        gap: 0.8em;
         font-family: 'JetBrains Mono', ui-monospace, monospace;
-        font-size: max(8px, 1.1cqi);
+        font-size: max(11px, 1.6cqi);
         font-weight: 600;
         letter-spacing: 0.16em;
         text-transform: uppercase;
     }
     .brand-eyebrow-tally {
-        color: var(--gold);
-        font-size: 1.6em;
-        line-height: 1;
-        /* The `▍` block glyph fills the em-square (including descent).
-         * ALPHA letters sit on baseline with no descenders, so default
-         * baseline-alignment renders the block low. Shift up to center
-         * vertically with the text's x-height. */
+        /* Rule: bar = cap-height (0.7em Inter) + smallest rhythm (1/24em
+         * overshoot). Bar centers on cap-line midpoint via half-overshoot
+         * shift down (1/48em). Pure-em → scales at every size. */
+        font-size: inherit;
+        display: inline-block;
+        width: 0.18em;
+        height: calc(0.7em + 1em / 24);
+        background: var(--gold);
+        vertical-align: baseline;
         position: relative;
-        top: -0.1em;
-        /* Horizontal — tally's LSB is -1px at rendered 21px (= -0.047em
-         * overhang). Other spine elements paint at +0 from origin, so
-         * +0.05em margin brings the tally into the same pixel column. */
-        margin-left: 0.05em;
-        text-shadow: 0 0 0.4cqi color-mix(in oklab, var(--gold) 60%, transparent);
+        top: calc(1em / 48);
+        text-indent: -9999px;
+        overflow: hidden;
+        box-shadow: 0 0 0.4cqi color-mix(in oklab, var(--gold) 60%, transparent);
     }
     .brand-eyebrow-text {
+        /* Inherit from .brand-eyebrow — global span resets were sizing this 15px. */
+        font-size: inherit;
         color: color-mix(in oklab, var(--gold-high) 65%, var(--tf-fg-muted));
     }
 
@@ -506,10 +495,8 @@ const railAmbient = [
         gap: 0.7cqi;
         padding: 0.9cqi 1.4cqi 0.4cqi 0;
         min-width: 0;
-        border-right: 1px solid color-mix(in oklab, white 5%, transparent);
     }
     .signal-stripe:last-child {
-        border-right: none;
         padding-right: 0;
     }
     .signal-stripe.is-emphasis {
@@ -552,6 +539,7 @@ const railAmbient = [
     .signal-role {
         font-family: 'JetBrains Mono', ui-monospace, monospace;
         font-weight: 600;
+        /* Explicit + inherit-safe — global span resets would otherwise size this 15px. */
         font-size: max(7px, 0.95cqi);
         letter-spacing: 0.14em;
         text-transform: uppercase;
@@ -582,10 +570,10 @@ const railAmbient = [
     }
     .wide .brand-info-inline {
         margin-top: 1cqi;
-        font-size: max(8px, 0.95cqi);
         gap: 2.5cqi;
     }
     .info-chip {
+        font-size: inherit;
         display: inline-flex;
         align-items: center;
         gap: 0.6em;
