@@ -364,6 +364,23 @@ const railAmbient = [
     }
     .brand-stack.is-wide {
         gap: 4cqi;
+        /* Align icon center with wordmark center, not the text block
+         * center. Wide banner's text column has tagline + install +
+         * signal-rail-spacer below the wordmark; centering on the
+         * whole block drops the icon visually low. align-items:
+         * flex-start + a measured margin-top puts the icon's vertical
+         * center at the wordmark's center. */
+        align-items: flex-start;
+    }
+    .wide .brand-mark {
+        /* Icon top sits at the eyebrow's baseline so its center
+         * lands at the wordmark's center. Empirically: eyebrow is
+         * ~1cqi tall + gap 1.2cqi → ~2.2cqi to icon-top. Icon is
+         * 11cqi tall, half = 5.5cqi to its center → 7.7cqi from
+         * stack top. Wordmark center is at eyebrow + gap +
+         * half-wordmark = ~2.2 + half(7.5cqi) = ~6cqi from stack
+         * top. Push icon up ~1.7cqi via negative margin-top. */
+        margin-top: -1.7cqi;
     }
 
     .brand-mark {
