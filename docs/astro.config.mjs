@@ -265,6 +265,12 @@ export default defineConfig({
             // (`<ExamplePreview>`, `<StackBlitzEmbed>`, `<ShowcaseGame>`),
             // and raw source is what LLMs actually want anyway.
             rawContent: true,
+            // `exclude` is plumbed ONLY into llms-small.txt (see plugin
+            // source `llms-small.txt.ts`); llms-full.txt keeps everything.
+            // Drops the bulkiest, lowest-text-value content from the
+            // abridged variant so LLMs with tight context can ingest the
+            // small file without the full TypeDoc-generated API reference.
+            exclude: ['api/**', 'showcases/**', 'llm-prompts'],
           }),
           // Vtbot Starlight integration — wires the route middleware + CSS for
           // sidebar-aware view-transition direction (the bag-of-tricks runtime).

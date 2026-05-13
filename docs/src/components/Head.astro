@@ -8,7 +8,7 @@
  * theme across page swaps, so we no longer need a hand-rolled
  * `astro:after-swap` listener for theme persistence.
  *
- * Removed scripts (per planning/issues/32/phase-2-extract.md probe in Phase 3.2):
+ * Removed scripts (per the reinit-glue audit, see git history):
  * - Theme persistence on `astro:after-swap` — vtbot Base preserves data-theme.
  * - HMR `astro:page-load` re-dispatch — Astro 6's HMR fires page-load itself.
  * - Pagefind reinit + search-suggestions injection — the suggestion-list CSS

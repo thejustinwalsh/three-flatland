@@ -14,7 +14,7 @@
  *
  * History: previously this file was ~804 lines including two duplicate
  * ZzFX synth implementations. The dedup landed in issue #32's audio
- * restore phase. See planning/issues/32/audio-restore-plan.md.
+ * restore phase; see git history for the migration trail.
  */
 
 import type { PlaySoundFn, ZzFxParams } from '../audio/types'
