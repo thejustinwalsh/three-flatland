@@ -129,13 +129,6 @@ void main() {
   vec2 pixCoord = floor(gl_FragCoord.xy / u_pixel_size) * u_pixel_size + u_pixel_size * 0.5;
   vec2 uv = pixCoord / u_res;
   vec2 p = uv * 2.0 - 1.0;
-  // pn — un-aspect-corrected p, both axes range [-1, 1]. Used for the
-  // directional scene-light dot() so the sheen stays viewport-invariant.
-  // Without this, at wide aspects p.x ran [-aspect, +aspect] and the
-  // smoothsteps below saturated long before the canvas edges, producing
-  // a hard left/right brightness split. Noise sampling + mouse hotspot
-  // still use aspect-corrected p / pp so flow + hotspot stay circular.
-  vec2 pn = p;
   p.x *= u_res.x / u_res.y;
 
   float t = u_time * 0.05;
@@ -225,15 +218,51 @@ void main() {
   col = mix(col, C_EMERALD,  m3 * 0.45);
   col = mix(col, C_PINK,     m4 * 0.42);
 
-  // Scene-light directional sheen — gem accent shifts by the global
-  // scene-angle. Projected onto the un-aspect-corrected pn so the
-  // sheen reads consistently across viewport widths (using aspect-
-  // stretched p here produced a hard left/right split at wide aspects
-  // because the smoothsteps below saturated way before the edges).
+  // ────────────────────────────────────────────────────────────────
+  // VOLUMETRIC SHADING via gradient-as-normal — without proper normal
+  // maps, the previous flat dot(p, ldir) sheen lifted blacks to grey
+  // on the dark side and uniformly gilded the lit side regardless of
+  // cloud presence. We instead derive a per-fragment 2D "normal" from
+  // the SCREEN-SPACE GRADIENT of the macro density field (dFdx/dFdy
+  // on m1+m3, the slowest-frequency gem layers — using all 4 layers
+  // here lit every micro-noise edge and read as crinkled foil rather
+  // than fluffy clouds). The gradient points INTO the cloud body, so
+  // the outward normal is its negation. Dotting that with the light
+  // direction gives proper N·L per cloud edge — lit rims pick up
+  // gold, away rims crush toward bg color. Cloud interiors (where
+  // macro density is locally flat) and pure-black areas (density ≈ 0)
+  // get no shading change either way, so blacks stay BLACK.
+  // ────────────────────────────────────────────────────────────────
+  // Total composited density — used for the ADJ weight (don't paint
+  // shading onto bg pixels).
+  float density = m1 + m2 + m3 + m4;
+  // Macro density — slowest single layer (m1 at pp*1.2) drives the
+  // gradient so we shade big cloud lumps, not noise speckle. Using
+  // multiple layers here put back the per-pixel crinkle.
+  float macroDensity = m1;
+  vec2 grad = vec2(dFdx(macroDensity), dFdy(macroDensity));
+  float gradLen = length(grad);
+  // Negate so normalDir points OUT of the cloud (away from density mass).
+  vec2 normalDir = gradLen > 0.0001 ? -grad / gradLen : vec2(0.0);
   vec2 ldir = vec2(sin(u_scene_angle), cos(u_scene_angle));
-  float dirShade = dot(pn, ldir) * 0.18 + 0.5;
-  col += C_GOLD * smoothstep(0.55, 0.95, dirShade) * 0.35;
-  col -= 0.10 * smoothstep(0.0, 0.5, 1.0 - dirShade);
+  float NdotL = dot(normalDir, ldir);
+  // Density weighting — gates lighting so the bg never gets touched.
+  float densW = smoothstep(0.05, 0.6, density);
+  // Gradient-magnitude gate — only STRONG cloud edges shade. Weak
+  // micro-noise gradients (cloud interiors + fbm speckle) get muted
+  // out so the result reads as soft macro shading, not faceted foil.
+  float edgeW = smoothstep(0.002, 0.035, gradLen);
+  // Power-curve falloff (≈ log-ish) on N·L — only the strongly-facing
+  // surfaces pick up light/shadow; the middle range falls off fast.
+  // Combined with edgeW this gives cloud-like soft volumetric depth,
+  // not per-pixel terrain.
+  float litResp    = pow(max( NdotL, 0.0), 2.2);
+  float shadowResp = pow(max(-NdotL, 0.0), 2.2);
+  // Lit rim — gold sheen on cloud sides facing the light.
+  col += C_GOLD * litResp * edgeW * 0.30 * densW;
+  // Shadow rim — crush toward bg on cloud sides facing away. mix() to
+  // C_BG (not subtract) prevents the result from going below bg.
+  col = mix(col, C_BG, shadowResp * edgeW * 0.38 * densW);
 
   // Side vignette removed — let the gem flow run to the canvas edges.
   // The bottom horizon is still handled by the .hero-overlay ::after
