@@ -1113,6 +1113,12 @@ importers:
       marked:
         specifier: ^18.0.2
         version: 18.0.3
+      postcss:
+        specifier: ^8.5.6
+        version: 8.5.6
+      postcss-selector-parser:
+        specifier: ^6.1.2
+        version: 6.1.2
       rehype:
         specifier: ^13.0.2
         version: 13.0.2

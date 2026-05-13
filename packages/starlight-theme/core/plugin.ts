@@ -2,6 +2,11 @@ import type { StarlightPlugin } from '@astrojs/starlight/types';
 import { override, COMPONENT_OVERRIDES } from './config/override';
 import { vitePlugin } from './config/vite';
 import {
+    colorschemeTransformerVitePlugin,
+    colorschemeTransformerPostcss,
+    colorschemeTransformerBundlePlugin,
+} from './config/colorscheme-transformer';
+import {
     StarlightThemeConfigSchema,
     type StarlightThemeConfig,
     type StarlightThemeUserConfig,
@@ -50,7 +55,27 @@ const plugin = (userConfig?: StarlightThemeUserConfig): StarlightPlugin =>
                     hooks: {
                         'astro:config:setup': ({ updateConfig }) => {
                             updateConfig({
-                                vite: { plugins: [vitePlugin(parseConfig(userConfig))] },
+                                vite: {
+                                    plugins: [
+                                        vitePlugin(parseConfig(userConfig)),
+                                        // Semantic colorscheme transformer — three
+                                        // integration points covering every CSS path
+                                        // that reaches the bundle:
+                                        //   1. Vite transform: .css files + Astro <style>
+                                        //   2. Rollup generateBundle: emitted assets
+                                        //      (e.g. Expressive Code's ec.{hash}.css)
+                                        // PostCSS plugin is registered separately below
+                                        // via css.postcss.plugins so it also runs on
+                                        // CSS that flows through Vite's bundle stage.
+                                        colorschemeTransformerVitePlugin(),
+                                        colorschemeTransformerBundlePlugin(),
+                                    ],
+                                    css: {
+                                        postcss: {
+                                            plugins: [colorschemeTransformerPostcss()],
+                                        },
+                                    },
+                                },
                             });
                         },
                     },

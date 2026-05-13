@@ -25,7 +25,14 @@
  */
 
 @layer theme {
-  :root[data-theme='dark'] {
+  :root {
+    /* Default = dark tokens. Light tokens are applied below via
+     * @media (prefers-color-scheme: light), which beats `:root` via
+     * cascade order (later wins, same specificity). The previous
+     * `:root[data-theme='dark']` selector had specificity 0,1,1 which
+     * beat the @media @ 0,0,1 even when the OS was light — the
+     * static-HTML hardcoded `data-theme="dark"` kept dark tokens
+     * winning regardless of the user's preference. */
     /* Near-black background scale */
     --background: oklch(18% 0.006 250);     /* ≈ #111418 */
     --foreground: oklch(92% 0.008 250);     /* near-white, slight cool */
@@ -149,7 +156,23 @@
     --card-accent: var(--amethyst);
 
     /* Starlight built-in color tokens — bridge the gem palette into
-     * Starlight's --sl-color-* system so its own components inherit vibrance. */
+     * Starlight's --sl-color-* system so its own components inherit vibrance.
+     *
+     * Includes Starlight's PRIMITIVE token set (white/gray-1..7/black) which
+     * vendor CSS normally inverts via `:root[data-theme='light']`. We don't
+     * set data-theme anywhere; instead we alias these to OUR tokens, which
+     * already flip via @media (prefers-color-scheme: light) below. Same
+     * specificity as Starlight's `:root` block, but our CSS loads later in
+     * the cascade so our values win. */
+    --sl-color-white: var(--foreground);
+    --sl-color-gray-1: var(--gray-1);
+    --sl-color-gray-2: var(--gray-2);
+    --sl-color-gray-3: var(--gray-3);
+    --sl-color-gray-4: var(--gray-4);
+    --sl-color-gray-5: var(--gray-5);
+    --sl-color-gray-6: var(--gray-6);
+    --sl-color-gray-7: var(--gray-7);
+    --sl-color-black: var(--background);
     --sl-color-text: var(--foreground);
     --sl-color-text-accent: var(--link);
     --sl-color-bg: var(--background);

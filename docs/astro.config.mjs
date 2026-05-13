@@ -74,18 +74,17 @@ export default defineConfig({
           // script (entries in the `head` config land in DOM order, and
           // Starlight injects its provider earlier). Architecture:
           //   - CSS reacts to OS preference via `@media (prefers-color-
-          //     scheme: light)` directly — no `data-theme` selector
-          //     anywhere; the static HTML's hardcoded `data-theme="dark"`
-          //     is dead state that nothing reads.
+          //     scheme: light)` directly. Our theme.css also overrides
+          //     Starlight's `--sl-color-*` primitives so vendor selectors
+          //     like `[data-theme='light']` are never the source of truth.
           //   - JS consumers use `window.__threeFlatlandTheme` (same
-          //     naming convention as `__threeFlatlandAudio`). The API is:
-          //     - `current` — `'light' | 'dark'`
-          //     - `subscribe(cb)` — fires cb immediately with current,
-          //       then on every theme change. Returns an unsubscribe fn.
+          //     naming convention as `__threeFlatlandAudio`). API:
+          //       - `current` — `'light' | 'dark'`
+          //       - `subscribe(cb)` — fires cb immediately + on each
+          //         change, returns unsubscribe fn.
           //   - Live OS-pref change updates the global via matchMedia
-          //     listener (persists at the browser level across swaps;
-          //     no astro:after-swap wiring needed since the global lives
-          //     on `window`, not on a DOM attribute that gets reset).
+          //     listener (persists at browser level across page swaps).
+          //   - `data-theme` is not written or read.
           {
             tag: 'script',
             content: `;(() => {

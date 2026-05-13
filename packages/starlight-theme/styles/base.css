@@ -645,24 +645,18 @@
         font-size: 0.933em;
     }
 
-    /* Light-mode token colors apply when OS is light AND the block has
-     * no explicit dark override, OR when the block forces light. EC
-     * writes `--1` for the light variant; `--0` is the dark variant. */
+    /* Light-mode token colors apply when OS is light. EC writes `--1`
+     * for the light variant; `--0` is the dark variant. Pure OS-pref
+     * driven — no per-block data-theme overrides supported here (the
+     * plugin strips those from vendor CSS too). */
     @media (prefers-color-scheme: light) {
-        .expressive-code:not([data-theme='dark']) .ec-line :where(span[style^='--']:not([class])) {
+        .expressive-code .ec-line :where(span[style^='--']:not([class])) {
             color: var(--1, inherit);
             background-color: var(--1bg, transparent);
             font-style: var(--1fs, inherit);
             font-weight: var(--1fw, inherit);
             text-decoration: var(--1td, inherit);
         }
-    }
-    .expressive-code[data-theme='light'] .ec-line :where(span[style^='--']:not([class])) {
-        color: var(--1, inherit);
-        background-color: var(--1bg, transparent);
-        font-style: var(--1fs, inherit);
-        font-weight: var(--1fw, inherit);
-        text-decoration: var(--1td, inherit);
     }
 
     /* External link icon — the rehype plugin appends a span+SVG to
