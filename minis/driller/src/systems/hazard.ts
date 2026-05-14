@@ -408,6 +408,18 @@ const AVALANCHE_FALL_INTERVAL_TICKS = 12 // ~200ms at 60Hz
 // brace can extend it further (ROCK_BRACE_EXTEND_TICKS = 30).
 const AVALANCHE_SHAKE_TICKS = 90  // ~1.5s
 const AVALANCHE_SETTLE_TICKS = 30 // ~0.5s steady pause before commit
+/**
+ * Visible-shake commit threshold (ticks). Once a cluster's shake has
+ * been continuously telegraphing for this long, it's visually committed
+ * per the player's perception — the codex rule 1 contract kicks in
+ * ("anything that visually shakes must fall by ≥1 cell"). If canFall
+ * flips false past this threshold, we partial-fall the columns that can
+ * still drop instead of retracting the shake. Set well above the
+ * human change-detection threshold (~150ms ≈ 9 ticks at 60Hz) so the
+ * sub-perceptual 1–2-tick FLAG_SHAKING blips don't trigger the strict
+ * commit semantics.
+ */
+const SHAKE_VISIBLE_COMMIT_TICKS = 10
 let lastAvalancheTick = 0
 /**
  * For each cluster cell currently in the pre-fall telegraph, this
@@ -566,6 +578,111 @@ export function rockAvalancheSystem(world: World): void {
     }
     if (unstreamedBelow) continue
     if (!canFall) {
+      // Codex rule 1 fallback. The naive retract — clearing
+      // FLAG_SHAKING on every cluster cell — leaves cells that
+      // visually shook but didn't fall. If the cluster has been
+      // telegraphing past the visible-commit threshold, force a
+      // partial fall instead: any column whose bottom cluster cell
+      // has TILE_AIR directly below moves DOWN one row (whole column,
+      // top to bottom). Columns with blocked bottoms stay put.
+      //
+      // Cells that stay are residual codex violators (shake without
+      // motion), but bounded to the blocked-column tail rather than
+      // the entire cluster. The previous behavior retracted the WHOLE
+      // shake on any canFall=false flip — that was the bug.
+      //
+      // `inMotion` clusters bypass this: their FLAG_FALLING gate at
+      // line 514-524 owns motion entirely, and the codex rule 5
+      // (rocks resolve fully once started) is enforced elsewhere.
+      let earliestShake = Infinity
+      let anyTelegraphed = false
+      if (!inMotion) {
+        for (const idx of cells) {
+          const t = shakeStartTick.get(idx)
+          if (t !== undefined) {
+            anyTelegraphed = true
+            if (t < earliestShake) earliestShake = t
+          }
+        }
+      }
+      const visiblyCommitted =
+        anyTelegraphed && gs.tick - earliestShake >= SHAKE_VISIBLE_COMMIT_TICKS
+
+      if (visiblyCommitted) {
+        // Group cluster cells by column. Move whole columns down by
+        // 1 row when the bottom-most cell has AIR below; leave
+        // blocked columns in place.
+        const cellsByCol = new Map<number, number[]>()
+        for (const idx of cells) {
+          const c = idx % cols
+          let arr = cellsByCol.get(c)
+          if (!arr) {
+            arr = []
+            cellsByCol.set(c, arr)
+          }
+          arr.push(idx)
+        }
+        const stayedCells: number[] = []
+        for (const [c, colCells] of cellsByCol) {
+          let bottomIdx = colCells[0]!
+          for (const idx of colCells) if (idx > bottomIdx) bottomIdx = idx
+          const r = Math.floor(bottomIdx / cols)
+          if (r + 1 >= rows) {
+            for (const idx of colCells) stayedCells.push(idx)
+            continue
+          }
+          const belowIdx = (r + 1) * cols + c
+          if (tiles[belowIdx] !== TILE_AIR) {
+            for (const idx of colCells) stayedCells.push(idx)
+            continue
+          }
+          // Column-wise partial fall. Snapshot, clear, write — same
+          // pattern as the rigid-cluster move below.
+          const moves: { from: number; to: number; hits: number; cid: number }[] =
+            colCells.map((idx) => ({
+              from: idx,
+              to: idx + cols, // 1 row down = +cols indices
+              hits: hits[idx] ?? 0,
+              cid: clusterIdArr[idx] ?? 0,
+            }))
+          for (const m of moves) {
+            tiles[m.from] = TILE_AIR
+            flags[m.from] =
+              ((flags[m.from] ?? 0) & ~FLAG_SHAKING & ~FLAG_FALLING) | FLAG_AUTOTILE_DIRTY
+            hits[m.from] = 0
+            clusterIdArr[m.from] = 0
+            shakeStartTick.delete(m.from)
+          }
+          for (const m of moves) {
+            tiles[m.to] = TILE_STONE
+            flags[m.to] = (flags[m.to] ?? 0) | FLAG_FALLING | FLAG_AUTOTILE_DIRTY
+            hits[m.to] = m.hits
+            clusterIdArr[m.to] = m.cid
+          }
+          for (const m of moves) {
+            const sc = m.from % cols
+            const sr = Math.floor(m.from / cols)
+            const tc = m.to % cols
+            const tr = Math.floor(m.to / cols)
+            markCellAndNeighborsDirty(world, sc, sr)
+            markCellAndNeighborsDirty(world, tc, tr)
+          }
+        }
+        // Residual: cells in fully-blocked columns. Codex violators
+        // (shake without fall) — accept as the strictly-better-than-
+        // retract tail.
+        for (const idx of stayedCells) {
+          shakeStartTick.delete(idx)
+          flags[idx]! &= ~FLAG_SHAKING
+        }
+        advancedAny = true
+        continue
+      }
+
+      // Not visibly committed (sub-perceptual shake) OR already in
+      // motion — retract / clear as before. The brief FLAG_SHAKING is
+      // below the human change-detection threshold and the renderer's
+      // jitter animation hasn't started; no codex breach to undo.
       for (const idx of cells) {
         shakeStartTick.delete(idx)
         if (inMotion) {
