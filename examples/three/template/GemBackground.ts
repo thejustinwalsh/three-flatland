@@ -257,3 +257,47 @@ export function gemGradientNode({
     return vec4(linear, float(1))
   })()
 }
+
+/**
+ * Canvas2D variant of the gem gradient. Paints the same radial-gradient
+ * pattern as `gemGradientNode` onto a 2D canvas context — used for
+ * compare/diff overlays where a Canvas2D surface needs a background
+ * that matches the Slug WebGPU canvas so the diff result reflects
+ * actual content differences instead of the BG mismatch.
+ *
+ * The two surfaces don't render byte-identical (TSL fragment shader vs
+ * Canvas2D's gradient interpolation) but the difference is far below
+ * the diff threshold (`lo = 20` luminance units) in practice, so the
+ * BG area resolves to no-diff and only text differences light up red.
+ *
+ * Gradient center matches the TSL version at (30%, 30%); radius
+ * defaults to 0.7 of the canvas diagonal — same as `gemGradientNode`.
+ */
+export function gemGradientCanvas2D(
+  ctx: CanvasRenderingContext2D,
+  gem: Gem,
+  options: { radius?: number } = {}
+): void {
+  const radius = options.radius ?? 0.7
+  const w = ctx.canvas.width
+  const h = ctx.canvas.height
+
+  const [c0r, c0g, c0b] = oklabMix(GEM_HEX[gem], CARD_HEX, 0.4)
+  const [c1r, c1g, c1b] = oklabMix(GEM_HEX[gem], BG_HEX, 0.12)
+  const [c2r, c2g, c2b] = BG_SRGB
+
+  const cx = w * 0.3
+  const cy = h * 0.3
+  const r1 = Math.sqrt(w * w + h * h) * radius
+
+  const toCss = (r: number, g: number, b: number) =>
+    `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`
+
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r1)
+  grad.addColorStop(0, toCss(c0r, c0g, c0b))
+  grad.addColorStop(0.6, toCss(c1r, c1g, c1b))
+  grad.addColorStop(1, toCss(c2r, c2g, c2b))
+
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, w, h)
+}

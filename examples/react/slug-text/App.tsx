@@ -11,7 +11,7 @@ import {
   useStatsMonitor,
 } from '@three-flatland/tweakpane/react'
 import type { StatsHandle } from '@three-flatland/tweakpane/react'
-import { GemBackground } from './GemBackground'
+import { GemBackground, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
 
 extend({ SlugText, SlugStackText })
@@ -120,13 +120,17 @@ function drawCompareText(
   const h = ctx.canvas.height / dpr
 
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+  /* Paint the SAME gem gradient as the Slug WebGPU canvas behind
+   * the compare text so the per-pixel BG matches. Diff mode then
+   * only highlights text differences instead of the full gradient
+   * mismatch. See gemGradientCanvas2D doc in GemBackground.tsx. */
+  if (mode !== 'onion') {
+    gemGradientCanvas2D(ctx, GEM)
+  }
+
   ctx.save()
   ctx.scale(dpr, dpr)
-
-  if (mode !== 'onion') {
-    ctx.fillStyle = '#00021c'
-    ctx.fillRect(0, 0, w, h)
-  }
 
   ctx.font = `${fontSize}px ${fontFamily}`
   ctx.fillStyle = mode === 'onion' ? 'rgba(255, 100, 100, 0.6)' : '#ffffff'
@@ -666,9 +670,26 @@ function SplitHandle({ splitX, onDrag }: { splitX: number; onDrag: (x: number) =
 }
 
 function SplitLabels({ splitX, mode }: { splitX: number; mode: CompareMode }) {
+  /* Labels are anchored to the canvas's bottom-left (SLUG) and
+   * bottom-right (compare). They stay locked there as the split line
+   * moves — only when the line approaches within `GAP` of a label do
+   * we slide that label horizontally via `transform: translateX(...)`
+   * so the line can pass without overlap. Math references the
+   * respective viewport edge (left for SLUG, right for compare). */
+  const slugRef = useRef<HTMLDivElement>(null)
+  const c2dRef = useRef<HTMLDivElement>(null)
+  const PADDING = 12
+  const GAP = 8
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 0
+  // Read live offsetWidth so changing the compare-mode label text
+  // (split/onion/diff) keeps the push threshold accurate.
+  const slugW = slugRef.current?.offsetWidth ?? 50
+  const c2dW = c2dRef.current?.offsetWidth ?? 80
+  const slugPush = Math.max(0, PADDING + slugW + GAP - splitX)
+  const c2dPush = Math.max(0, splitX - (vw - PADDING - c2dW - GAP))
   const base: React.CSSProperties = {
     position: 'fixed',
-    top: 8,
+    bottom: 12,
     zIndex: 3,
     fontFamily: 'monospace',
     fontSize: 11,
@@ -677,11 +698,13 @@ function SplitLabels({ splitX, mode }: { splitX: number; mode: CompareMode }) {
     background: 'rgba(0, 2, 28, 0.7)',
     pointerEvents: 'none',
     whiteSpace: 'nowrap',
+    // No transform transition — JS updates this every drag frame; a
+    // transition would lag behind the cursor and visibly oscillate.
   }
   return (
     <>
-      <div style={{ ...base, color: '#fff', left: splitX - 60 }}>SLUG</div>
-      <div style={{ ...base, color: '#ff6464', left: splitX + 20 }}>{MODE_LABELS[mode]}</div>
+      <div ref={slugRef} style={{ ...base, color: '#fff', left: PADDING, transform: `translateX(${-slugPush}px)` }}>SLUG</div>
+      <div ref={c2dRef} style={{ ...base, color: '#ff6464', right: PADDING, transform: `translateX(${c2dPush}px)` }}>{MODE_LABELS[mode]}</div>
     </>
   )
 }
@@ -839,7 +862,7 @@ export default function App() {
   // dropdown for a two-way scene switch.
   const [scene] = usePaneRadioGrid<'lorem' | 'icons'>(pane, {
     groupName: 'scene',
-    initialValue: 'lorem',
+    initialValue: 'icons',
     cells: [
       { title: 'Lorem', value: 'lorem' },
       { title: 'Icons', value: 'icons' },
@@ -865,7 +888,7 @@ export default function App() {
     max: 0.15,
     step: 0.001,
   })
-  const [outlineColor] = usePaneInput<string>(outline, 'color', '#999999')
+  const [outlineColor] = usePaneInput<string>(outline, 'color', '#000000')
 
   const mode = usePaneFolder(pane, 'Mode')
   const [compareMode] = usePaneInput<CompareMode>(mode, 'compare', 'onion', {

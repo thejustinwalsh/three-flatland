@@ -166,9 +166,16 @@ class SpatialHash {
 // MAIN
 // ============================================
 
+/* HMR-tracked teardown state. Without this, every dev save accumulates
+ * a fresh renderer + animate() loop while the previous one keeps
+ * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
+let rafId = 0
+let activeRenderer: WebGPURenderer | null = null
+
 async function main() {
   // WebGPU renderer
   const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
   renderer.domElement.style.imageRendering = 'pixelated'
@@ -369,7 +376,7 @@ async function main() {
   // --- Animation loop ---
   let lastTime = performance.now()
   function animate() {
-    requestAnimationFrame(animate)
+    rafId = requestAnimationFrame(animate)
     const now = performance.now()
     const deltaMs = now - lastTime
     lastTime = now
@@ -464,3 +471,17 @@ async function main() {
   animate()
 }
 main()
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    if (activeRenderer) {
+      activeRenderer.dispose?.()
+      activeRenderer.domElement.remove()
+      activeRenderer = null
+    }
+  })
+}

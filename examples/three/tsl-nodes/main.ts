@@ -151,6 +151,12 @@ function createNoiseTexture(size = 256): CanvasTexture {
   return texture
 }
 
+/* HMR-tracked teardown state. Without this, every dev save accumulates
+ * a fresh renderer + animate() loop while the previous one keeps
+ * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
+let rafId = 0
+let activeRenderer: WebGPURenderer | null = null
+
 async function main() {
   // Scene setup
   const scene = new Scene()
@@ -171,6 +177,7 @@ async function main() {
 
   // WebGPU Renderer (required for TSL materials)
   const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
   renderer.domElement.style.imageRendering = 'pixelated'
@@ -378,7 +385,7 @@ async function main() {
   let lastTime = performance.now()
 
   function animate() {
-    requestAnimationFrame(animate)
+    rafId = requestAnimationFrame(animate)
     stats.begin()
 
     const now = performance.now()
@@ -421,3 +428,17 @@ async function main() {
 }
 
 main()
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    if (activeRenderer) {
+      activeRenderer.dispose?.()
+      activeRenderer.domElement.remove()
+      activeRenderer = null
+    }
+  })
+}

@@ -3,7 +3,7 @@ import { Scene, OrthographicCamera } from 'three'
 import { SlugFontLoader, SlugFontStack, SlugStackText, SlugText } from '@three-flatland/slug'
 import type { SlugFont, StyleSpan } from '@three-flatland/slug'
 import { createPane } from '@three-flatland/tweakpane'
-import { gemGradientNode } from './GemBackground'
+import { gemGradientNode, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
 
 // --- Lorem ipsum generator ---
@@ -71,13 +71,22 @@ function drawCompareText(
   const h = ctx.canvas.height / dpr
 
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+  /* Paint the SAME gem gradient as the Slug WebGPU canvas behind
+   * the compare text. In `diff` mode the per-pixel BG match means
+   * the luminance delta is below threshold (~zero) everywhere
+   * outside text, so only actual text differences light up red
+   * (no false BG-mismatch ring). In `split` mode it gives visual
+   * parity with the left side. Painted in raw pixel space BEFORE
+   * the DPR scale so the gradient center / radius match the TSL
+   * version. Skipped in `onion` mode since that overlay is meant
+   * to be transparent over the live Slug canvas. */
+  if (mode !== 'onion') {
+    gemGradientCanvas2D(ctx, GEM)
+  }
+
   ctx.save()
   ctx.scale(dpr, dpr)
-
-  if (mode !== 'onion') {
-    ctx.fillStyle = '#00021c'
-    ctx.fillRect(0, 0, w, h)
-  }
 
   ctx.font = `${fontSize}px ${fontFamily}`
   ctx.fillStyle = mode === 'onion' ? 'rgba(255, 100, 100, 0.6)' : '#ffffff'
@@ -186,6 +195,12 @@ function setupSplitHandle(handle: HTMLElement, onDrag: (x: number) => void) {
 
 // --- Main ---
 
+/* HMR-tracked teardown state. Without this, every dev save accumulates
+ * a fresh renderer + animate() loop while the previous one keeps
+ * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
+let rafId = 0
+let activeRenderer: WebGPURenderer | null = null
+
 async function main() {
   const scene = new Scene()
   // Gem-tinted L2 backdrop — matches the masonry tile poster CSS so the
@@ -201,6 +216,7 @@ async function main() {
   // Slug's shader is analytically antialiased per-fragment; MSAA would add
   // 4× sample cost + a canvas-area resolve for zero visual gain.
   const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  activeRenderer = renderer
   renderer.setSize(w, h)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   // Insert the WebGPU canvas BEFORE the (HTML-declared) compare-canvas
@@ -226,10 +242,10 @@ async function main() {
     styleScope: 'word' as 'word' | 'sentence' | 'line',
     underline: false,
     strike: false,
-    icons: false,
+    icons: true,
     outlineStyle: 'fill' as 'fill' | 'outline' | 'both',
     outlineWidth: 0.025,
-    outlineColor: '#999999',
+    outlineColor: '#000000',
   }
 
   // Hover state drives the measure overlay only. No click-to-style —
@@ -330,15 +346,27 @@ async function main() {
     maxWidth: w * maxWidthFraction,
   })
   stackText.setViewportSize(w, h)
-  stackText.visible = false
-  scene.add(stackText)
+  /* Both `slugText` and `stackText` are constructed at init but only
+   * the active one is added to the scene — `.visible` toggling is
+   * fragile (slug-library internals sometimes reset it on resize /
+   * setViewportSize, causing both to render). Mount/unmount mirrors
+   * the React variant's conditional-render pattern exactly: scene
+   * graph IS the source of truth, no separate visibility flag to
+   * drift out of sync. `slugText` (Lorem) added by default;
+   * `applyIconsMode()` swaps based on `params.icons`. */
+  scene.add(slugText)
 
   let iconFont: SlugFont | null = null
   let stack: SlugFontStack | null = null
 
   function applyIconsMode() {
-    slugText.visible = !params.icons
-    stackText.visible = params.icons
+    if (params.icons) {
+      if (slugText.parent === scene) scene.remove(slugText)
+      if (stackText.parent !== scene) scene.add(stackText)
+    } else {
+      if (stackText.parent === scene) scene.remove(stackText)
+      if (slugText.parent !== scene) scene.add(slugText)
+    }
     // Measure overlays are primary-font only — in icons mode they would
     // misreport FA glyph widths (treated as notdef), so hide them. Compare
     // stays visible: Canvas2D mirrors the Slug stack via CSS @font-face
@@ -471,8 +499,19 @@ async function main() {
   function updateSplitPosition() {
     compareCanvas.style.clipPath = `inset(0 0 0 ${splitX}px)`
     splitHandle.style.left = `${splitX - 16}px`
-    splitLabelLeft.style.left = `${splitX - 60}px`
-    splitLabelRight.style.left = `${splitX + 20}px`
+    /* Labels are corner-anchored via CSS (#split-label-left at
+     * left:12, #split-label-right at right:12). Compute a translateX
+     * push so the split line slides them out of the way when within
+     * GAP px of overlap, otherwise they stay locked at the corner. */
+    const W_LEFT = splitLabelLeft.offsetWidth
+    const W_RIGHT = splitLabelRight.offsetWidth
+    const PADDING = 12
+    const GAP = 8
+    const VW = window.innerWidth
+    const slugPush = Math.max(0, PADDING + W_LEFT + GAP - splitX)
+    const c2dPush = Math.max(0, splitX - (VW - PADDING - W_RIGHT - GAP))
+    splitLabelLeft.style.transform = `translateX(${-slugPush}px)`
+    splitLabelRight.style.transform = `translateX(${c2dPush}px)`
   }
 
   function updateSplitUI() {
@@ -650,7 +689,7 @@ async function main() {
         title: ['Lorem', 'Icons'][x],
         value: (['lorem', 'icons'] as const)[x],
       }),
-      value: 'lorem',
+      value: 'icons',
     })
     .on('change', async (ev) => {
       params.icons = ev.value === 'icons'
@@ -791,6 +830,15 @@ async function main() {
   ])
   await loadFont()
 
+  // Default-to-icons initial pump — radio grid's `value: 'icons'`
+  // doesn't fire the `change` handler, and `ensureStack()` early-
+  // returns if `slugText.font` is null. Runs AFTER `loadFont()` so
+  // the primary font is in place before the stack is built.
+  if (params.icons) {
+    await ensureStack()
+    applyIconsMode()
+  }
+
   // --- Resize / DPR / fullscreen tracking ---
   // Unified re-layout. Triggered on:
   //  - window 'resize' (viewport size change)
@@ -835,12 +883,28 @@ async function main() {
   })
   attachDprListener()
 
+  // Coordinated post-init resize. Module-eval time runs scattered
+  // sizing (renderer + camera + canvases + maxWidth) against an
+  // `window.innerWidth` snapshot that, in iframed contexts (the docs
+  // example detail page), can be transient — the iframe sometimes
+  // mounts at one size, then the parent grid settles to a different
+  // one before painting. Without this call, the example renders with
+  // stale dimensions and switching compare modes uses the stale
+  // canvas buffer, breaking the layout. A trailing rAF catches the
+  // case where the iframe is still resolving its final size on the
+  // first paint.
+  relayout()
+  requestAnimationFrame(relayout)
+
   // --- Render loop ---
   function animate() {
-    requestAnimationFrame(animate)
+    rafId = requestAnimationFrame(animate)
     stats.begin()
-    slugText.update(camera)
-    stackText.update(camera)
+    // Only update whichever mesh is currently in the scene. The
+    // other one is detached (`applyIconsMode` swapped it out) so
+    // calling its update would do work for nothing.
+    if (params.icons) stackText.update(camera)
+    else slugText.update(camera)
     renderer.render(scene, camera)
     const render = renderer.info.render as unknown as {
       drawCalls: number
@@ -863,3 +927,17 @@ async function main() {
 }
 
 main()
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    if (activeRenderer) {
+      activeRenderer.dispose?.()
+      activeRenderer.domElement.remove()
+      activeRenderer = null
+    }
+  })
+}

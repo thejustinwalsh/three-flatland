@@ -3,6 +3,12 @@ import { Scene, OrthographicCamera, Color } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland'
 import { createPane } from '@three-flatland/tweakpane'
 
+/* HMR-tracked teardown state. Without this, every dev save accumulates
+ * a fresh renderer + animate() loop while the previous one keeps
+ * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
+let rafId = 0
+let activeRenderer: WebGPURenderer | null = null
+
 async function main() {
   const scene = new Scene()
   scene.background = new Color(0x00021c)
@@ -20,6 +26,7 @@ async function main() {
   camera.position.z = 100
 
   const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
   renderer.domElement.style.imageRendering = 'pixelated'
@@ -59,7 +66,7 @@ async function main() {
 
   // Render loop
   function animate() {
-    requestAnimationFrame(animate)
+    rafId = requestAnimationFrame(animate)
     stats.begin()
     renderer.render(scene, camera)
     stats.end()
@@ -69,3 +76,17 @@ async function main() {
 }
 
 main()
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    if (activeRenderer) {
+      activeRenderer.dispose?.()
+      activeRenderer.domElement.remove()
+      activeRenderer = null
+    }
+  })
+}
