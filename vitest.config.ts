@@ -10,7 +10,7 @@ export default defineConfig({
       'packages/starlight-theme/**/*.test.ts',
       'scripts/**/*.test.ts',
     ],
-    exclude: ['packages/skia/**', 'packages/tweakpane/**'],
+    exclude: ['packages/skia/**', 'packages/tweakpane/**', '**/node_modules/**'],
     setupFiles: ['./vitest.setup.ts'],
     coverage: {
       provider: 'v8',
