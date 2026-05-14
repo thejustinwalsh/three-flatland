@@ -194,6 +194,13 @@ async function runOnce<T>(
   const FIRST_OUTPUT_DEADLINE_MS = 30_000
 
   return new Promise<ProbeResult<T>>((resolveResult, reject) => {
+    // `detached: true` puts vitexec in its own process group via
+    // `setsid()`. SIGKILL on a non-detached parent leaves Vite +
+    // Playwright run-server children re-parented to init/launchd —
+    // their TCP sockets stay bound and pile up as orphans (we hit
+    // this on 5173 and a couple of ephemeral ports during the H
+    // refactor session). With detached, `process.kill(-pid, signal)`
+    // (note the negative pid) signals the whole group atomically.
     const proc = spawn('pnpm', args, {
       cwd: resolve(here, '../../'),
       env: {
@@ -201,7 +208,20 @@ async function runOnce<T>(
         FORCE_COLOR: '0',
         DRILLER_INTEGRATION_PORT: String(port),
       },
+      detached: true,
     })
+    // Group-aware kill: -pid signals every process in the group.
+    // Try this first; fall back to single-pid signal if the group
+    // call throws (e.g. process already gone, no such group).
+    const killGroup = (signal: NodeJS.Signals): void => {
+      const pid = proc.pid
+      if (typeof pid !== 'number') return
+      try {
+        process.kill(-pid, signal)
+      } catch {
+        try { proc.kill(signal) } catch { /* already gone */ }
+      }
+    }
     let stdout = ''
     let stderr = ''
     let killedByTimeout = false
@@ -212,7 +232,7 @@ async function runOnce<T>(
     const firstOutputTimer = setTimeout(() => {
       if (sawAnyOutput) return
       killedBySilence = true
-      try { proc.kill('SIGKILL') } catch { /* already exited */ }
+      killGroup('SIGKILL')
     }, FIRST_OUTPUT_DEADLINE_MS)
 
     const noteOutput = (): void => {
@@ -226,7 +246,7 @@ async function runOnce<T>(
       const m = chunk.match(FAIL_FAST_PATTERNS)
       if (!m) return
       killedByFatal = m[0]
-      try { proc.kill('SIGKILL') } catch { /* already exited */ }
+      killGroup('SIGKILL')
     }
 
     // Stream vitexec output to OUR stderr in real time so the user
@@ -250,9 +270,11 @@ async function runOnce<T>(
     })
     const hardTimer = setTimeout(() => {
       killedByTimeout = true
-      // SIGKILL — vitexec spawns child Chromium processes; SIGTERM
-      // gets caught and the cleanup hangs. Force-kill the group.
-      try { proc.kill('SIGKILL') } catch { /* already exited */ }
+      // SIGKILL the whole process group — vitexec spawns vite +
+      // Playwright run-server children; SIGTERM-on-parent gets caught
+      // (cleanup hangs) and SIGKILL-on-parent re-parents the
+      // children to init/launchd, leaving their TCP sockets orphaned.
+      killGroup('SIGKILL')
     }, hardTimeoutMs)
     proc.on('error', (err) => {
       clearTimeout(hardTimer)
