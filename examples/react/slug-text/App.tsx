@@ -11,6 +11,8 @@ import {
   useStatsMonitor,
 } from '@three-flatland/tweakpane/react'
 import type { StatsHandle } from '@three-flatland/tweakpane/react'
+import { GemBackground } from './GemBackground'
+import { GEM } from './gem'
 
 extend({ SlugText, SlugStackText })
 
@@ -1063,7 +1065,7 @@ export default function App() {
         // for zero visual gain. Keep it off.
         renderer={{ antialias: false, trackTimestamp: true }}
       >
-        <color attach="background" args={['#00021c']} />
+        <GemBackground gem={GEM} />
         <PixelCamera />
         <DprSync dpr={windowSize.dpr} />
         <StatsTracker stats={stats} />

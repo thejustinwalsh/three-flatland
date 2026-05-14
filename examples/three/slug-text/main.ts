@@ -1,8 +1,10 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Color } from 'three'
+import { Scene, OrthographicCamera } from 'three'
 import { SlugFontLoader, SlugFontStack, SlugStackText, SlugText } from '@three-flatland/slug'
 import type { SlugFont, StyleSpan } from '@three-flatland/slug'
 import { createPane } from '@three-flatland/tweakpane'
+import { gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 
 // --- Lorem ipsum generator ---
 
@@ -186,7 +188,10 @@ function setupSplitHandle(handle: HTMLElement, onDrag: (x: number) => void) {
 
 async function main() {
   const scene = new Scene()
-  scene.background = new Color(0x00021c)
+  // Gem-tinted L2 backdrop — matches the masonry tile poster CSS so the
+  // captured screenshot agrees with the pre-load fallback.
+  ;(scene as unknown as { backgroundNode?: ReturnType<typeof gemGradientNode> }).backgroundNode =
+    gemGradientNode({ gem: GEM })
 
   const w = window.innerWidth
   const h = window.innerHeight
@@ -198,7 +203,13 @@ async function main() {
   const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
   renderer.setSize(w, h)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-  document.body.appendChild(renderer.domElement)
+  // Insert the WebGPU canvas BEFORE the (HTML-declared) compare-canvas
+  // so `document.querySelector('canvas')` returns the live render
+  // surface, not the static compare overlay. Visual stacking is still
+  // controlled by z-index in the stylesheet — the compare canvas
+  // remains on top via `position: fixed; z-index: 2`. Without this,
+  // capture-examples.mjs records 0 frames from canvas.captureStream.
+  document.body.insertBefore(renderer.domElement, document.body.firstChild)
 
   await renderer.init()
 

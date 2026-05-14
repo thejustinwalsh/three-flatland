@@ -1,71 +1,188 @@
 ---
 title: Slug Text
 description: GPU-accelerated resolution-independent text rendering.
+template: splash
+sort: 9
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components'
-import ExamplePreview from '../../../components/ExamplePreview'
-import StackBlitzEmbed from '../../../components/StackBlitzEmbed'
-import ExampleTabs from '../../../components/ExampleTabs.astro'
+import { Tabs, TabItem } from 'starlight-theme/components'
+import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
 import { loadExample } from '../../../utils/loadExample'
 
 export const threeFiles = loadExample('three', 'slug-text')
 export const reactFiles = loadExample('react', 'slug-text')
 
-<ExampleTabs>
-  <Tabs>
-    <TabItem label="Preview" icon="rocket">
-      <ExamplePreview client:load type="three" name="slug-text" />
-    </TabItem>
-    <TabItem label="Three.js" icon="seti:javascript">
-      <StackBlitzEmbed
-        client:load
-        title="Slug Text - Three.js"
-        files={threeFiles}
-        openFile="main.ts"
-        height={600}
-      />
-    </TabItem>
-    <TabItem label="React" icon="seti:react">
-      <StackBlitzEmbed
-        client:load
-        title="Slug Text - React"
-        files={reactFiles}
-        openFile="App.tsx"
-        height={600}
-      />
-    </TabItem>
-  </Tabs>
-</ExampleTabs>
+<ExampleDetailLayout slug="slug-text" threeFiles={threeFiles} reactFiles={reactFiles}>
 
-## SlugFontLoader
+## What This Example Shows
 
-`SlugFontLoader.load()` is the single entry point. It tries baked data (`.slug.json` + `.slug.bin`) first and falls back to runtime parsing of TTF/OTF/WOFF — opentype.js is dynamic-imported only on the runtime path:
+This example demonstrates [`@three-flatland/slug`](../../guides/slug-text/) — GPU-accelerated text rendering that stays crisp at any zoom. Glyphs are evaluated as quadratic Bezier curves per-pixel in the fragment shader; there's no SDF atlas, no bitmap textures, no resolution ceiling.
 
-```typescript
-import { SlugFontLoader } from '@three-flatland/slug'
+| Feature                 | Demonstrated                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| Pixel-perfect rendering | A long Lorem passage at multiple sizes                                                |
+| Multi-font fallback     | `SlugFontStack` mixing Inter + FontAwesome icons in one paragraph                     |
+| Outlines                | `SlugText.outline` with runtime-uniform width + color, 60 % grey default              |
+| Measurement             | Live `font.measureText` overlay aligned to the rendered text                          |
+| Decorations             | Underline / strikethrough / super-sub via `StyleSpan[]`                               |
+| Canvas2D compare        | Onion / split / diff modes against `CanvasRenderingContext2D` for visual parity check |
 
-const font = await SlugFontLoader.load('/fonts/Inter-Regular.ttf')
-```
+## Loading a Font
 
-## SlugText
+`SlugFontLoader.load()` is the single entry point. It tries baked data (`.slug.json` + `.slug.bin`) first and falls back to runtime parsing of TTF/OTF/WOFF — opentype.js is dynamic-imported only on the runtime path, so baked-only bundles ship without it.
 
-`SlugText` extends `InstancedMesh` — each glyph is an instanced quad rendered per-pixel from Bezier curves. No texture atlases, no SDF, resolution-independent at any zoom:
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    import { SlugFontLoader } from '@three-flatland/slug'
 
-```typescript
-const text = new SlugText({
-  font,
-  text: 'Hello, Slug!',
-  fontSize: 48,
-  color: 0xffffff,
-  align: 'center',
-})
-scene.add(text)
-```
+    const font = await SlugFontLoader.load('/fonts/Inter-Regular.ttf')
+    ```
 
-Call `text.update(camera)` every frame to keep the MVP matrix current for dilation.
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    import { useLoader } from '@react-three/fiber/webgpu'
+    import { SlugFontLoader } from '@three-flatland/slug/react'
 
-## Next Steps
+    // Inside a component within <Canvas>, wrapped in <Suspense>
+    const font = useLoader(SlugFontLoader, '/fonts/Inter-Regular.ttf')
+    ```
 
-- [Slug Text Guide](../guides/slug-text) - Full API reference and patterns
-- [Sprites](../examples/basic-sprite) - 2D sprite rendering
+  </TabItem>
+</Tabs>
+
+## Rendering Text
+
+`SlugText` extends `InstancedMesh` — each glyph is an instanced quad evaluated per-pixel by the Slug fragment shader. Set `.text`, `.fontSize`, `.align` etc. and call `.update(camera)` once per frame.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    import { SlugText } from '@three-flatland/slug'
+
+    const text = new SlugText({
+      font,
+      text: 'Hello, Slug!',
+      fontSize: 48,
+      color: 0xffffff,
+      align: 'center',
+    })
+    scene.add(text)
+
+    function animate() {
+      requestAnimationFrame(animate)
+      text.update(camera)
+      renderer.render(scene, camera)
+    }
+    ```
+
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    import { extend, useFrame, useThree } from '@react-three/fiber/webgpu'
+    import { SlugText } from '@three-flatland/slug/react'
+    import { useRef } from 'react'
+
+    extend({ SlugText })
+
+    function Text({ font }) {
+      const ref = useRef(null)
+      const camera = useThree((s) => s.camera)
+      useFrame(() => ref.current?.update(camera))
+
+      return (
+        <slugText
+          ref={ref}
+          font={font}
+          text="Hello, Slug!"
+          fontSize={48}
+          color={0xffffff}
+          align="center"
+        />
+      )
+    }
+    ```
+
+  </TabItem>
+</Tabs>
+
+## Outlines
+
+Pass an `outline` option (or set `.outline` at runtime) to add a stroked outline behind the fill. Width and color are runtime uniforms — scrub them live, no rebuild.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    const text = new SlugText({
+      font,
+      text: 'Hello, Slug!',
+      fontSize: 96,
+      color: 0xffffff,
+      outline: { width: 0.025, color: 0x999999 },
+    })
+
+    // Animate later — uniform-only, no rebuild
+    text.setOutlineWidth(0.05)
+    text.setOutlineColor(0xff0000)
+    ```
+
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    <slugText
+      font={font}
+      text="Hello, Slug!"
+      fontSize={96}
+      color={0xffffff}
+      outline={{ width: 0.025, color: 0x999999 }}
+    />
+    ```
+  </TabItem>
+</Tabs>
+
+## Multi-font Fallback
+
+`SlugFontStack` composes multiple fonts and resolves missing codepoints per-character. `SlugStackText` renders one `InstancedMesh` per backing font, all parented under a `Group`.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    import { SlugFontStack, SlugStackText } from '@three-flatland/slug'
+
+    const [inter, faIcons] = await Promise.all([
+      SlugFontLoader.load('/fonts/Inter-Regular.ttf'),
+      SlugFontLoader.load('/fonts/fa-solid-900.ttf'),
+    ])
+    const stack = new SlugFontStack([inter, faIcons])
+
+    const text = new SlugStackText({
+      fontStack: stack,
+      text: 'Lorem  search', // last char is a FontAwesome icon
+      fontSize: 48,
+    })
+    ```
+
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    import { extend } from '@react-three/fiber/webgpu'
+    import { SlugStackText, SlugFontStack } from '@three-flatland/slug/react'
+
+    extend({ SlugStackText })
+
+    function StackedText({ fonts }) {
+      const stack = useMemo(() => new SlugFontStack(fonts), [fonts])
+      return <slugStackText fontStack={stack} text="Lorem  search" fontSize={48} />
+    }
+    ```
+
+  </TabItem>
+</Tabs>
+
+## Further Reading
+
+- [Slug Text Guide](../../guides/slug-text/) — Full API reference and patterns (measurement, decorations, pre-baking).
+- [TSL Nodes](../tsl-nodes/) — Custom shader effects via Three Shader Language.
+
+</ExampleDetailLayout>

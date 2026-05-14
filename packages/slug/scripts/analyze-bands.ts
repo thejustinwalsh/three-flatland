@@ -17,23 +17,36 @@ function analyze(fontPath: string) {
   const vCounts: number[] = []
   const curveCounts: number[] = []
 
-  let maxH = 0, maxV = 0, maxCurves = 0
-  let maxHGlyph = -1, maxVGlyph = -1, maxCurvesGlyph = -1
+  let maxH = 0,
+    maxV = 0,
+    maxCurves = 0
+  let maxHGlyph = -1,
+    maxVGlyph = -1,
+    maxCurvesGlyph = -1
 
   for (const [glyphId, g] of glyphs) {
     const cc = g.curves.length
     curveCounts.push(cc)
-    if (cc > maxCurves) { maxCurves = cc; maxCurvesGlyph = glyphId }
+    if (cc > maxCurves) {
+      maxCurves = cc
+      maxCurvesGlyph = glyphId
+    }
 
     for (const band of g.bands.hBands) {
       const n = band.curveIndices.length
       hCounts.push(n)
-      if (n > maxH) { maxH = n; maxHGlyph = glyphId }
+      if (n > maxH) {
+        maxH = n
+        maxHGlyph = glyphId
+      }
     }
     for (const band of g.bands.vBands) {
       const n = band.curveIndices.length
       vCounts.push(n)
-      if (n > maxV) { maxV = n; maxVGlyph = glyphId }
+      if (n > maxV) {
+        maxV = n
+        maxVGlyph = glyphId
+      }
     }
   }
 
@@ -46,9 +59,11 @@ function analyze(fontPath: string) {
   const report = (label: string, arr: number[]) => {
     console.log(
       `${label.padEnd(14)} n=${arr.length}  mean=${mean(arr).toFixed(2).padStart(5)}  ` +
-      `p50=${pct(arr, 0.5).toString().padStart(3)}  p90=${pct(arr, 0.9).toString().padStart(3)}  ` +
-      `p99=${pct(arr, 0.99).toString().padStart(3)}  p999=${pct(arr, 0.999).toString().padStart(3)}  ` +
-      `max=${Math.max(...arr).toString().padStart(3)}`
+        `p50=${pct(arr, 0.5).toString().padStart(3)}  p90=${pct(arr, 0.9).toString().padStart(3)}  ` +
+        `p99=${pct(arr, 0.99).toString().padStart(3)}  p999=${pct(arr, 0.999).toString().padStart(3)}  ` +
+        `max=${Math.max(...arr)
+          .toString()
+          .padStart(3)}`
     )
   }
 
@@ -68,7 +83,7 @@ function analyze(fontPath: string) {
   console.log('\nBand-fill coverage at candidate shader loop bounds:')
   for (const t of [8, 12, 16, 20, 24, 32, 48, 64]) {
     const covered = allBands.filter((n) => n <= t).length
-    const pct = (covered / allBands.length * 100).toFixed(3)
+    const pct = ((covered / allBands.length) * 100).toFixed(3)
     const over = allBands.filter((n) => n > t).length
     console.log(`  ≤${t.toString().padStart(2)} curves: ${pct}% (${over} bands exceed)`)
   }

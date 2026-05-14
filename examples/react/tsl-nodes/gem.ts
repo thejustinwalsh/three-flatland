@@ -4,4 +4,4 @@
 
 import type { Gem } from './GemBackground'
 
-export const GEM = 'turquoize' as const satisfies Gem
+export const GEM = 'pink' as const satisfies Gem
