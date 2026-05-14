@@ -1,0 +1,73 @@
+---
+import config from 'virtual:starlight/user-config';
+import { logos } from 'virtual:starlight/user-images';
+
+const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+---
+
+<a href={siteTitleHref} class="site-title">
+    {
+        config.logo && logos.dark && (
+            <>
+                <img
+                    class:list={[{ 'light:sl-hidden': !('src' in config.logo) }, 'logo']}
+                    alt={config.logo.alt}
+                    src={logos.dark.src}
+                    width={logos.dark.width}
+                    height={logos.dark.height}
+                />
+                {/* Show light alternate if a user configure both light and dark logos. */}
+                {!('src' in config.logo) && (
+                    <img
+                        class="dark:sl-hidden logo"
+                        alt={config.logo.alt}
+                        src={logos.light?.src}
+                        width={logos.light?.width}
+                        height={logos.light?.height}
+                    />
+                )}
+            </>
+        )
+    }
+    <span class:list={[{ 'sr-only': config.logo?.replacesTitle }, 'title-text']}>
+        {siteTitle}
+    </span>
+</a>
+
+<style>
+    .logo {
+        /* The icon.svg has an explicit width="384" attribute; without a
+         * matching CSS width constraint the IMG renders at 384×32 with
+         * the actual icon content centered in 176px of empty SVG on each
+         * side, leaving a giant gap before the wordmark. Force the
+         * rendered size to the icon's intended display size. */
+        width: 32px;
+        height: 32px;
+        max-height: 32px;
+        flex-shrink: 0;
+    }
+
+    .site-title {
+        gap: 0.625rem;
+        align-items: center;
+        display: inline-flex;
+        margin-right: calc(var(--spacing) * 3);
+        white-space: nowrap;
+    }
+
+    .title-text {
+        display: none;
+        flex-shrink: 0;
+    }
+
+    @media (min-width: 1024px) {
+        .title-text {
+            display: inline-block;
+        }
+    }
+
+    a {
+        color: inherit;
+        text-decoration: inherit;
+    }
+</style>

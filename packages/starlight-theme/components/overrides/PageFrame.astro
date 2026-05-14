@@ -1,0 +1,302 @@
+---
+import SiteFooter from '../SiteFooter.astro';
+import Drawer from './parts/Drawer.astro';
+import { getPackageBadge } from '../../lib/packages';
+
+const { hasSidebar } = Astro.locals.starlightRoute;
+
+/**
+ * Landing-only check — the corner ribbon stuck to the viewport only
+ * makes sense on the marketing landing page. Detect via path: landing
+ * is the root of the Starlight base (with or without trailing slash).
+ * Path-based instead of entry-id-based because Astro 6 + Starlight
+ * docsLoader normalizes ids in ways that vary across builds.
+ */
+const path = Astro.url.pathname.replace(/\/$/, '');
+const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+const isLanding = path === base || path === '';
+
+/**
+ * Project-level release badge sourced from the brand package's
+ * `flatland.badge` field in package.json (lib/packages.ts). When the
+ * project goes stable, drop the field and the ribbon disappears.
+ * One location to rule them all — same field drives SiteFooter's
+ * Packages-column badge and any future per-package badge surface.
+ */
+const projectBadge = getPackageBadge('three-flatland');
+---
+
+<div data-slot="layout" data-landing={isLanding ? '' : undefined}>
+    {isLanding && projectBadge && (
+        <aside class="alpha-ribbon" aria-label={`Project status: ${projectBadge}`}>
+            <a class="alpha-ribbon-tape" href="https://github.com/thejustinwalsh/three-flatland/issues">
+                {/* Square 45° ribbon: tape spans the wrapper's diagonal
+                    exactly, so `text-align: center` on the tape lands
+                    the text at the visible center of the diagonal —
+                    no margin offset needed. */}
+                <span class="alpha-ribbon-text">{projectBadge}</span>
+            </a>
+        </aside>
+    )}
+    <header>
+        <div class="container-wrapper px-6">
+            <div class="container">
+                <slot name="header" />
+            </div>
+        </div>
+    </header>
+
+    <main>
+        {!hasSidebar && <slot />}
+
+        {
+            hasSidebar && (
+                <div class="container-wrapper">
+                    <div class="container container-wrapper-main">
+                        <aside class="aside">
+                            <slot name="sidebar" />
+                        </aside>
+
+                        <slot />
+                    </div>
+                </div>
+            )
+        }
+    </main>
+
+    <SiteFooter />
+</div>
+
+<Drawer />
+
+<style>
+    /* ────────── Early-alpha corner ribbon (landing-only) ──────────
+     * Pinned to the viewport top-left, inset from the real corner so it
+     * sits clear of the header/logo and reads like a sticker placed on
+     * the page rather than crammed in the very corner. Wrapper has
+     * pointer-events: none so empty triangle space passes clicks through
+     * to whatever's underneath; only the rotated tape is clickable. */
+    .alpha-ribbon {
+        position: fixed;
+        top: 0;
+        left: 0;
+        /* Strict 45° square canvas — sticker placed flat on the
+         * corner. Allowed to overlap the flatland wordmark
+         * underneath (z-index 70 is above the header at 50). */
+        width: 12rem;
+        height: 12rem;
+        pointer-events: none;
+        z-index: 70;
+        overflow: hidden;
+    }
+    /* Tape: rotated -45° so it reads bottom-left to upper-right (`/`).
+     * Width spans well past the wrapper's 12rem diagonal (≈ 17rem)
+     * plus overrun on each side that overflow:hidden clips. Tape
+     * vertical center sits at the wrapper's diagonal midpoint (6, 6)
+     * so `text-align: center` lands the text exactly on the visible
+     * ribbon stripe's center. */
+    .alpha-ribbon-tape {
+        position: absolute;
+        top: 2.5rem;
+        left: -6rem;
+        width: 21rem;
+        padding: 0.55rem 0;
+        text-align: center;
+        text-decoration: none;
+        /* Static rotation — kept off the `transition` list so initial
+         * page load doesn't animate from rotate(0) → rotate(-45deg).
+         * The hover scale uses the individual `scale` property below
+         * so it can animate independently without involving transform. */
+        transform: rotate(-45deg);
+        transform-origin: 50% 50%;
+        scale: 1;
+        pointer-events: auto;
+        cursor: pointer;
+        /* Gold foil — base linear gradient tracking the scene light, plus
+         * a soft inner hairline at the top/bottom edges for the
+         * sticker-stuck-on look. Box-shadow tucks slight darkness into
+         * the corners that disappear under the .alpha-ribbon overflow,
+         * giving the impression it's been physically applied. */
+        background:
+            linear-gradient(
+                calc(var(--scene-angle, 135deg) - 45deg),
+                var(--gold-high) 0%,
+                var(--gold) 25%,
+                var(--orange) 55%,
+                var(--gold) 80%,
+                var(--gold-high) 100%
+            );
+        color: oklch(18% 0.025 65);
+        font-family: 'Silkscreen', system-ui, sans-serif;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        box-shadow:
+            inset 0 1px 0 color-mix(in oklab, var(--gold-high) 80%, white),
+            inset 0 -1px 0 color-mix(in oklab, var(--gold) 30%, black);
+        transition:
+            scale 180ms cubic-bezier(0.2, 0, 0.1, 1),
+            box-shadow 180ms ease,
+            filter 180ms ease;
+        will-change: scale, filter;
+        isolation: isolate;
+    }
+    /* Sparkle/foil texture overlay scoped to the rotated tape ONLY
+     * (so it doesn't bleed into the wrapper area like the previous
+     * .u-light pseudos did). Fine SVG noise mask + iridescent sweep
+     * for the "this is foil, not paint" texture. */
+    .alpha-ribbon-tape::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(
+            90deg,
+            transparent 0%,
+            color-mix(in oklab, white 25%, transparent) 50%,
+            transparent 100%
+        );
+        mix-blend-mode: screen;
+        -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.3' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.5 -0.4'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+        mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.3' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.5 -0.4'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+        -webkit-mask-size: 240px 240px;
+        mask-size: 240px 240px;
+        opacity: 0.55;
+    }
+    .alpha-ribbon-text {
+        position: relative;
+        z-index: 1;
+        text-shadow: 0 1px 0 color-mix(in oklab, var(--gold-high) 90%, white);
+    }
+    .alpha-ribbon-tape:hover {
+        scale: 1.03;
+        filter: saturate(1.1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .alpha-ribbon-tape,
+        .alpha-ribbon-tape:hover {
+            scale: 1;
+            transition: none;
+        }
+    }
+
+    /* Light-mode override: the ribbon is anchored to the viewport corner,
+     * physically overlapping the (still-dark) landing hero. The light
+     * palette's deeper gold reads as drab brown over the gem canvas; the
+     * brand mark wants the dark-mode vibrant gold to land it as actual
+     * foil. Override the gem tokens consumed by the tape so the gradient
+     * snaps back to dark-mode chroma. Scoped to the landing layout so
+     * docs-page consumers of `--gold` aren't affected (the ribbon is
+     * landing-only anyway, but keeping the scope tight). */
+    @media (prefers-color-scheme: light) {
+        [data-slot='layout'][data-landing] .alpha-ribbon {
+            --gold: oklch(72% 0.16 85);
+            --gold-high: oklch(82% 0.17 88);
+            --gold-low: oklch(34% 0.10 80);
+            --orange: oklch(67% 0.18 60);
+        }
+    }
+
+    /* Landing: header is FULLY transparent (no glass backdrop) so the
+     * canvas reads as a single uninterrupted plane behind the wordmark.
+     * The header content (FL icon + FLATLAND + nav + search) floats
+     * over the canvas, in the SAME horizontal position as on docs pages
+     * — the wordmark stays anchored to the natural header-left so the
+     * brand position doesn't shift between views. The alpha ribbon
+     * floats above the wordmark on z-index instead of pushing it aside. */
+    /* Landing-page header: starts transparent (so the hero canvas
+     * reads through behind it) but otherwise has the SAME box
+     * dimensions as the docs-page header — keeps `border-bottom`
+     * present (transparent, just 1px of unused height) so the header
+     * is byte-identical between landing and docs.
+     *
+     * Two reasons we need pixel parity:
+     *   1. View-transition cross-fade between landing and docs morphs
+     *      between the two headers; any height delta painted a "black
+     *      slab" mid-morph.
+     *   2. The compact-on-scroll fade animation (in Header.astro) now
+     *      runs on landing too. The keyframe animates background-color
+     *      + border-bottom-color; if landing had `border-bottom: none`
+     *      the keyframe's transparent-to-visible border transition
+     *      would add 1px of layout height at the start of the scroll,
+     *      visible as a 4-8px gap above the hero.
+     *
+     * Result: header reads as "no chrome" at scroll=0 on landing, fades
+     * to the same semi-opaque chrome as docs as the user scrolls down,
+     * and the view-transition between landing/docs is layout-stable. */
+    [data-slot='layout'][data-landing] > header {
+        background: transparent;
+        border-bottom-color: transparent;
+    }
+
+    [data-slot='layout'] {
+        /* group/layout relative z-10 flex min-h-svh flex-col bg-background */
+        position: relative;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        min-height: 100svh;
+        background: var(--background);
+
+        /* Direct-child selector — without `>`, this descendant selector catches
+         * any nested <header> in slotted content (e.g., the example detail
+         * page's title/back-link header) and sticks it to the viewport too. */
+        > header {
+            /* sticky top-0 z-50 w-full bg-transparent.
+             *
+             * Header starts TRANSPARENT at scroll=0 on every page —
+             * not just landing. Two reasons:
+             *
+             *   1. View-transition flash fix: when navigating landing
+             *      → docs, the root cross-fade was interpolating the
+             *      header's background from landing's `transparent`
+             *      to docs' opaque `var(--background)`. Mid-fade
+             *      painted a partial-opacity chrome band that the
+             *      user perceived as a flash. With both pages
+             *      starting transparent, there's nothing to
+             *      interpolate; the morph is flash-free.
+             *
+             *   2. Visually neutral: the body behind a transparent
+             *      header has `background: var(--background)` —
+             *      same color the opaque header rule was painting.
+             *      At scroll=0, transparent-header-on-bg-body reads
+             *      identical to opaque-header. The behavior change
+             *      is only on scroll, where content now passes
+             *      under the chrome at 88% opacity (the common
+             *      Linear / Vercel / Apple-docs pattern).
+             *
+             * The compact-on-scroll keyframe (in Header.astro)
+             * still fades both pages from transparent → 88% opaque
+             * chrome as the user scrolls past 96px, so the chrome
+             * still appears when needed. */
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            width: 100%;
+            background: transparent;
+            transition: background-color 200ms ease;
+
+            .container-wrapper {
+                padding-inline: calc(var(--spacing) * 6);
+
+                .container {
+                    /* flex h-(--header-height) items-center **:data-[slot=separator]:h-4! group-has-data-[slot=designer]/layout:fixed:max-w-none 3xl:fixed:container */
+                    display: flex;
+                    height: var(--header-height);
+                    align-items: center;
+                    max-width: none;
+                }
+            }
+        }
+
+        > main {
+            /* flex min-h-0 flex-1 flex-col */
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+
+    }
+</style>

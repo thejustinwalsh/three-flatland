@@ -1,0 +1,868 @@
+---
+import '@pagefind/default-ui/css/ui.css';
+import project from 'virtual:starlight/project-context';
+
+const pagefindTranslations = {
+    placeholder: Astro.locals.t('search.label'),
+    ...Object.fromEntries(
+        Object.entries(Astro.locals.t.all())
+            .filter(([key]) => key.startsWith('pagefind.'))
+            .map(([key, value]) => [key.replace('pagefind.', ''), value])
+    ),
+};
+
+const dataAttributes: DOMStringMap = { 'data-translations': JSON.stringify(pagefindTranslations) };
+if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash'] = '';
+---
+
+<site-search class={Astro.props.class} {...dataAttributes}>
+    {/*
+     * The visible label "Search" + kbd hint "⌘K" sits inside the button.
+     * No explicit aria-label: the accessible name resolves from the
+     * non-aria-hidden child content, which is just the "Search" span
+     * (the <kbd> elements are visual hints that screen-readers can
+     * still announce, but we want the canonical button name to be
+     * "Search"). Removing the redundant aria-label fixes Lighthouse's
+     * label-content-name-mismatch rule (axe `label-content-name-mismatch`)
+     * which fired because the prior `aria-label="Search"` overrode the
+     * visible label including the kbd hint, producing a mismatch.
+     */}
+    <button
+        data-open-modal
+        disabled
+        aria-keyshortcuts="Control+K"
+    >
+        <span>{Astro.locals.t('search.label')}</span>
+        <kbd class="sl-hidden md:sl-flex" style="display: none;" aria-hidden="true">
+            <kbd>{Astro.locals.t('search.ctrlKey')}</kbd><kbd>K</kbd>
+        </kbd>
+    </button>
+
+    <dialog style="padding:0" aria-label={Astro.locals.t('search.label')} data-search-empty>
+        <div class="dialog-frame sl-flex">
+            {
+                /* TODO: Make the layout of this button flexible to accommodate different word lengths. Currently hard-coded for English: “Cancel” */
+            }
+            <button data-close-modal class="sl-flex md:sl-hidden">
+                {Astro.locals.t('search.cancelLabel')}
+            </button>
+            {
+                import.meta.env.DEV ? (
+                    <div style="margin: auto; text-align: center; white-space: pre-line;" dir="ltr">
+                        <p>{Astro.locals.t('search.devWarning')}</p>
+                    </div>
+                ) : (
+                    <>
+                        <div class="search-container">
+                            <div id="starlight__search" />
+                        </div>
+                        {/* Default browse panel — visible when the input is empty so
+                         * the modal never reads as "broken with a giant gap." Hides
+                         * the moment the user types (driven by `data-search-empty`
+                         * on the dialog, toggled by the input listener below). */}
+                        <nav class="search-default" aria-label="Browse the docs">
+                            <p class="search-default-hint">Or jump to a section</p>
+                            <ul class="search-default-list">
+                                <li>
+                                    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/getting-started/introduction/`} data-gem="diamond">
+                                        <span class="search-default-label">Get started</span>
+                                        <span class="search-default-desc">Install + first scene</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/guides/sprites/`} data-gem="emerald">
+                                        <span class="search-default-label">Guides</span>
+                                        <span class="search-default-desc">Sprites, tilemaps, effects</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/api/`} data-gem="amethyst">
+                                        <span class="search-default-label">API reference</span>
+                                        <span class="search-default-desc">Generated TypeScript docs</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/examples/`} data-gem="gold">
+                                        <span class="search-default-label">Examples</span>
+                                        <span class="search-default-desc">Focused single-feature demos</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/showcases/`} data-gem="ruby">
+                                        <span class="search-default-label">Showcases</span>
+                                        <span class="search-default-desc">Full apps, full source</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </>
+                )
+            }
+        </div>
+    </dialog>
+</site-search>
+
+{
+    /**
+     * This is intentionally inlined to avoid briefly showing an invalid shortcut.
+     * Purposely using the deprecated `navigator.platform` property to detect Apple devices, as the
+     * user agent is spoofed by some browsers when opening the devtools.
+     */
+}
+<script is:inline>
+    (() => {
+        const openBtn = document.querySelector('button[data-open-modal]');
+        const shortcut = openBtn?.querySelector('kbd');
+        if (!openBtn || !(shortcut instanceof HTMLElement)) {
+            return;
+        }
+        const updateShortcutDisplay = () => {
+            shortcut.style.setProperty(
+                'display',
+                matchMedia('(min-width: 40rem)').matches ? 'flex' : 'none',
+                'important'
+            );
+        };
+        const platformKey = shortcut.querySelector('kbd');
+        // eslint-disable-next-line regexp/no-unused-capturing-group
+        if (platformKey && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+            platformKey.textContent = '⌘';
+            openBtn.setAttribute('aria-keyshortcuts', 'Meta+K');
+        }
+        updateShortcutDisplay();
+        matchMedia('(min-width: 40rem)').addEventListener('change', updateShortcutDisplay);
+    })();
+</script>
+
+<script>
+    import { pagefindUserConfig } from 'virtual:starlight/pagefind-config';
+
+    /**
+     * SiteSearch — custom element that wires the search button + dialog +
+     * Pagefind UI together.
+     *
+     * View-transition correctness: when astro-vtbot's ClientRouter swaps
+     * the page, the OLD <site-search> is removed and a NEW one is parsed.
+     * `customElements.define` runs once at module load (hence the
+     * `get()` guard), and the constructor runs on each new element
+     * instance. Two things had to be fixed for this to work:
+     *
+     *   1. PagefindUI init used to live behind `window.addEventListener
+     *      ('DOMContentLoaded', …)`. That event fires once per document
+     *      and never refires on view-transition navigations, so post-
+     *      navigation pages had a fresh `#starlight__search` that was
+     *      never mounted — opening search the second time on the same
+     *      session showed an empty modal. Now the init runs directly
+     *      from the constructor (still gated by `requestIdleCallback`).
+     *
+     *   2. Window-level listeners (keydown for ⌘K, click-outside-to-
+     *      close) were attached with `addEventListener` but never
+     *      cleaned up when the element disconnected. Each navigation
+     *      stacked another set of ghost listeners pointing at dead
+     *      dialogs. Now each instance owns an `AbortController` and
+     *      `disconnectedCallback` aborts it — listeners auto-detach.
+     */
+    class SiteSearch extends HTMLElement {
+        private cleanup?: AbortController;
+
+        constructor() {
+            super();
+            const ctrl = new AbortController();
+            this.cleanup = ctrl;
+            const { signal } = ctrl;
+
+            const openBtn = this.querySelector<HTMLButtonElement>('button[data-open-modal]')!;
+            const closeBtn = this.querySelector<HTMLButtonElement>('button[data-close-modal]')!;
+            const dialog = this.querySelector('dialog')!;
+            const dialogFrame = this.querySelector('.dialog-frame')!;
+
+            /** Per-open AbortController for the click-outside listener — created
+             * fresh on each open, aborted on close, so the listener only runs
+             * while the modal is actually visible (not for the entire element
+             * lifetime). */
+            let openCtrl: AbortController | null = null;
+
+            /** Close the modal if a user clicks on a link or outside of the modal. */
+            const onClick = (event: MouseEvent) => {
+                const isLink = 'href' in (event.target || {});
+                if (
+                    isLink ||
+                    (document.body.contains(event.target as Node) &&
+                        !dialogFrame.contains(event.target as Node))
+                ) {
+                    closeModal();
+                }
+            };
+
+            const openModal = (event?: MouseEvent) => {
+                dialog.showModal();
+                document.body.toggleAttribute('data-search-modal-open', true);
+                this.querySelector('input')?.focus();
+                event?.stopPropagation();
+                openCtrl?.abort();
+                openCtrl = new AbortController();
+                window.addEventListener('click', onClick, { signal: openCtrl.signal });
+            };
+
+            const closeModal = () => dialog.close();
+
+            openBtn.addEventListener('click', openModal, { signal });
+            openBtn.disabled = false;
+            closeBtn.addEventListener('click', closeModal, { signal });
+
+            dialog.addEventListener(
+                'close',
+                () => {
+                    document.body.toggleAttribute('data-search-modal-open', false);
+                    openCtrl?.abort();
+                    openCtrl = null;
+                },
+                { signal }
+            );
+
+            // Listen for `ctrl + k` and `cmd + k` keyboard shortcuts.
+            window.addEventListener(
+                'keydown',
+                (e) => {
+                    if ((e.metaKey === true || e.ctrlKey === true) && e.key === 'k') {
+                        dialog.open ? closeModal() : openModal();
+                        e.preventDefault();
+                    }
+                },
+                { signal }
+            );
+
+            let translations = {};
+            try {
+                translations = JSON.parse(this.dataset.translations || '{}');
+            } catch {}
+
+            const shouldStrip = this.dataset.stripTrailingSlash !== undefined;
+            const stripTrailingSlash = (path: string) => path.replace(/(.)\/(#.*)?$/, '$1$2');
+            const formatURL = shouldStrip ? stripTrailingSlash : (path: string) => path;
+
+            /** Toggle `data-search-empty` on the dialog so CSS can show the
+             * default browse panel when the input has no value. Pagefind's
+             * input is async-rendered after `PagefindUI` initializes, so we
+             * watch for it with a MutationObserver and then attach the
+             * `input` listener. */
+            const wireEmptyStateTracking = () => {
+                const input = this.querySelector<HTMLInputElement>('.pagefind-ui__search-input');
+                if (!input) return false;
+                const update = () => {
+                    dialog.toggleAttribute('data-search-empty', input.value.trim() === '');
+                };
+                update();
+                input.addEventListener('input', update, { signal });
+                return true;
+            };
+
+            if (!wireEmptyStateTracking()) {
+                const searchHost = this.querySelector('#starlight__search');
+                if (searchHost) {
+                    const observer = new MutationObserver(() => {
+                        if (wireEmptyStateTracking()) observer.disconnect();
+                    });
+                    observer.observe(searchHost, { childList: true, subtree: true });
+                    signal.addEventListener('abort', () => observer.disconnect());
+                }
+            }
+
+            if (!import.meta.env.DEV) {
+                const onIdle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
+                onIdle(async () => {
+                    if (signal.aborted) return;
+                    // @ts-expect-error — Missing types for @pagefind/default-ui package.
+                    const { PagefindUI } = await import('@pagefind/default-ui');
+                    if (signal.aborted) return;
+                    new PagefindUI({
+                        ...pagefindUserConfig,
+                        element: '#starlight__search',
+                        baseUrl: import.meta.env.BASE_URL,
+                        bundlePath: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/pagefind/`,
+                        showImages: false,
+                        translations,
+                        showSubResults: true,
+                        processResult: (result: {
+                            url: string;
+                            sub_results: Array<{ url: string }>;
+                        }) => {
+                            result.url = formatURL(result.url);
+                            result.sub_results = result.sub_results.map((sub_result) => {
+                                sub_result.url = formatURL(sub_result.url);
+                                return sub_result;
+                            });
+                        },
+                    });
+                });
+            }
+        }
+
+        disconnectedCallback() {
+            this.cleanup?.abort();
+            this.cleanup = undefined;
+        }
+    }
+
+    if (!customElements.get('site-search')) {
+        customElements.define('site-search', SiteSearch);
+    }
+</script>
+
+<style>
+    site-search {
+        flex: 1 1 0%;
+        width: 100%;
+    }
+
+    @media (min-width: 768px) {
+        site-search {
+            flex: none;
+            width: auto;
+        }
+    }
+
+    button[data-open-modal] {
+        transition-property:
+            color, background-color, border-color, text-decoration-color, fill, stroke;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 0.15s;
+        color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
+        font-weight: 400;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        padding-top: calc(var(--spacing) * 2);
+        padding-bottom: calc(var(--spacing) * 2);
+        padding-left: calc(var(--spacing) * 4);
+        padding-right: calc(var(--spacing) * 4);
+        background-color: color-mix(in oklab, var(--background) 92%, var(--card));
+        border-color: color-mix(in oklab, var(--foreground) 15%, transparent);
+        border-width: 1px;
+        border-style: solid;
+        border-radius: var(--radius);
+        white-space: nowrap;
+        gap: calc(var(--spacing) * 2);
+        justify-content: flex-start;
+        align-items: center;
+        width: 100%;
+        height: 2rem;
+        display: inline-flex;
+        position: relative;
+        cursor: pointer;
+
+        background-image: none;
+        -webkit-appearance: button;
+        font-family: inherit;
+        font-feature-settings: inherit;
+        font-variation-settings: inherit;
+        letter-spacing: inherit;
+        margin: 0;
+    }
+
+    button[data-open-modal]:hover {
+        color: var(--foreground);
+        border-color: color-mix(in oklab, var(--foreground) 30%, transparent);
+        background-color: color-mix(in oklab, var(--muted) 45%, var(--background));
+    }
+
+    @media (min-width: 640px) {
+        button[data-open-modal] {
+            padding-right: calc(var(--spacing) * 12);
+        }
+    }
+
+    @media (min-width: 768px) {
+        button[data-open-modal] {
+            width: 12rem;
+        }
+    }
+
+    @media (min-width: 1024px) {
+        button[data-open-modal] {
+            width: 16rem;
+        }
+    }
+
+    button[data-open-modal] > span {
+        display: inline-flex;
+    }
+
+    /* Keyboard shortcut indicator — Cmd/Ctrl+K. The inline script
+     * (above) sets the display via element style based on a viewport
+     * matchMedia query so we avoid both a flash of the wrong shortcut
+     * and the previous mess of duplicate `display: none !important`
+     * + a media query overriding it. The CSS below is purely the
+     * appearance; visibility is fully script-driven. */
+    button[data-open-modal] > kbd {
+        position: absolute;
+        top: 0.3rem;
+        right: 0.3rem;
+        height: 1.25rem;
+        align-items: center;
+        gap: 0.25rem;
+        padding-inline: calc(var(--spacing) * 1.5);
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 10px;
+        color: var(--muted-foreground);
+        background-color: color-mix(in oklab, var(--muted) 78%, var(--background));
+        border: 1px solid transparent;
+        border-radius: 0.25rem;
+        pointer-events: none;
+        transition:
+            color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+            background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+            border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    button[data-open-modal] kbd {
+        font-family: var(--__sl-font-mono);
+    }
+
+    button[data-open-modal]:hover > kbd {
+        color: var(--foreground);
+        background-color: color-mix(in oklab, var(--accent) 92%, var(--background));
+    }
+
+    /* Search dialog — gem-themed surface. Card background, diamond-tinted
+     * border (matches the TOC's compass identity), heavier backdrop blur
+     * + saturate so the page behind reads de-emphasized without going
+     * fully opaque. The diamond accent surfaces consistently in the
+     * input border on focus, the result hover/focus outline, the
+     * mark highlight, and the cancel button — all the "you found it"
+     * affordances inherit one gem. */
+    dialog {
+        margin: 0;
+        background-color: var(--card);
+        border: 1px solid color-mix(in oklab, var(--diamond) 18%, var(--border));
+        width: 100%;
+        max-width: 100%;
+        height: 100%;
+        max-height: 100%;
+        box-shadow:
+            0 20px 50px -10px rgb(0 0 0 / 0.5),
+            0 0 0 1px color-mix(in oklab, var(--diamond) 8%, transparent);
+    }
+    dialog[open] {
+        display: flex;
+    }
+
+    dialog::backdrop {
+        background-color: color-mix(in oklab, var(--background) 65%, transparent);
+        -webkit-backdrop-filter: blur(0.5rem) saturate(120%);
+        backdrop-filter: blur(0.5rem) saturate(120%);
+    }
+
+    .dialog-frame {
+        position: relative;
+        overflow: auto;
+        flex-direction: column;
+        flex-grow: 1;
+        gap: 1rem;
+        padding: 1rem;
+    }
+
+    button[data-close-modal] {
+        position: absolute;
+        z-index: 1;
+        align-items: center;
+        align-self: flex-end;
+        height: calc(64px * var(--pagefind-ui-scale));
+        padding: 0.25rem;
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        color: var(--diamond);
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 0.875rem;
+    }
+
+    /* Pagefind UI variables — bind the third-party UI's color/typography
+     * to our semantic tokens. Diamond is the accent gem (compass role,
+     * matches the TOC's active-state choice). Public Sans for headings
+     * within results, Inter falls through via the dialog frame. */
+    #starlight__search {
+        --pagefind-ui-primary: var(--diamond);
+        --pagefind-ui-text: var(--foreground);
+        --pagefind-ui-font: 'Inter', system-ui, sans-serif;
+        --pagefind-ui-background: var(--card);
+        --pagefind-ui-border: var(--border);
+        --pagefind-ui-border-width: 1px;
+        --sl-search-cancel-space: 5rem;
+    }
+
+    @media (min-width: 50rem) {
+        #starlight__search {
+            --sl-search-cancel-space: 0px;
+        }
+
+        dialog {
+            margin: 4rem auto auto;
+            border-radius: 0.5rem;
+            width: 90%;
+            max-width: 40rem;
+            /* Empty-state shrinks the dialog to its content (search input
+             * + browse panel). Non-empty (user typing) gets the larger
+             * fixed height so results have room to render without the
+             * dialog jumping size as results stream in. */
+            height: max-content;
+            max-height: calc(100% - 8rem);
+        }
+
+        dialog:not([data-search-empty]) {
+            min-height: 15rem;
+        }
+
+        .dialog-frame {
+            padding: 1.5rem;
+        }
+    }
+
+    /* ────────── Default browse panel (empty-state) ──────────
+     * Visible when the search input has no value (driven by
+     * `data-search-empty` on the dialog, toggled by the input listener
+     * in the SiteSearch element). Hidden as soon as the user types.
+     * Hides the empty Pagefind container too so we don't render two
+     * stacked search-result regions. */
+    .search-default {
+        display: none;
+        font-family: 'Inter', system-ui, sans-serif;
+    }
+    dialog[data-search-empty] .search-default {
+        display: block;
+    }
+    dialog[data-search-empty] .search-container {
+        /* Pagefind UI uses the same container for the input AND the
+         * results — we keep the input visible and only suppress the
+         * (empty) results area below it when in the empty state. The
+         * results area is `.pagefind-ui__results-area`; the global rule
+         * for that lives below in the is:global block. */
+    }
+
+    .search-default-hint {
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted-foreground);
+        margin: 0 0 calc(var(--spacing) * 3) 0;
+        padding-inline-start: 0.125rem;
+    }
+
+    .search-default-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    .search-default-list a {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: calc(var(--spacing) * 4);
+        padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+        border-radius: var(--radius);
+        color: var(--foreground);
+        text-decoration: none;
+        position: relative;
+        outline: 1px solid transparent;
+        transition:
+            background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            outline-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    /* Left accent rail — mirrors the result-hover affordance below so
+     * the empty state feels like part of the same surface. */
+    .search-default-list a::after {
+        content: '';
+        position: absolute;
+        inset-block: 0.4rem;
+        inset-inline-start: 0;
+        width: 2px;
+        border-radius: 1px;
+        background-color: var(--gem, var(--diamond));
+        opacity: 0;
+        transform: scaleY(0.5);
+        transition:
+            opacity 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        pointer-events: none;
+    }
+
+    .search-default-list a[data-gem='diamond']  { --gem: var(--diamond); }
+    .search-default-list a[data-gem='emerald']  { --gem: var(--emerald); }
+    .search-default-list a[data-gem='amethyst'] { --gem: var(--amethyst); }
+    .search-default-list a[data-gem='gold']     { --gem: var(--gold); }
+    .search-default-list a[data-gem='ruby']     { --gem: var(--ruby); }
+
+    .search-default-list a:hover,
+    .search-default-list a:focus-visible {
+        background-color: color-mix(in oklab, var(--gem, var(--diamond)) 12%, var(--background));
+        outline-color: color-mix(in oklab, var(--gem, var(--diamond)) 50%, transparent);
+    }
+    .search-default-list a:hover::after,
+    .search-default-list a:focus-visible::after {
+        opacity: 1;
+        transform: scaleY(1);
+    }
+
+    .search-default-label {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--foreground);
+    }
+
+    .search-default-desc {
+        font-size: 0.75rem;
+        font-weight: 400;
+        color: var(--muted-foreground);
+        text-align: end;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .search-default-list a,
+        .search-default-list a::after {
+            transition: none;
+        }
+    }
+</style>
+
+<style is:global>
+    [data-search-modal-open] {
+        overflow: hidden;
+    }
+
+    #starlight__search {
+        --sl-search-result-spacing: calc(1.25rem * var(--pagefind-ui-scale));
+        --sl-search-result-pad-inline-start: calc(3.75rem * var(--pagefind-ui-scale));
+        --sl-search-result-pad-inline-end: calc(1.25rem * var(--pagefind-ui-scale));
+        --sl-search-result-pad-block: calc(0.9375rem * var(--pagefind-ui-scale));
+        --sl-search-result-nested-pad-block: calc(0.625rem * var(--pagefind-ui-scale));
+        --sl-search-corners: calc(0.3125rem * var(--pagefind-ui-scale));
+        --sl-search-page-icon-size: calc(1.875rem * var(--pagefind-ui-scale));
+        --sl-search-page-icon-inline-start: calc(
+            (var(--sl-search-result-pad-inline-start) - var(--sl-search-page-icon-size)) / 2
+        );
+        --sl-search-tree-diagram-size: calc(2.5rem * var(--pagefind-ui-scale));
+        --sl-search-tree-diagram-inline-start: calc(
+            (var(--sl-search-result-pad-inline-start) - var(--sl-search-tree-diagram-size)) / 2
+        );
+    }
+
+    #starlight__search .pagefind-ui__form::before {
+        --pagefind-ui-text: var(--muted-foreground);
+        opacity: 0.7;
+    }
+
+    #starlight__search .pagefind-ui__search-input {
+        color: var(--foreground);
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 400;
+        width: calc(100% - var(--sl-search-cancel-space));
+    }
+
+    #starlight__search input:focus {
+        --pagefind-ui-border: var(--diamond);
+    }
+
+    #starlight__search .pagefind-ui__search-clear {
+        inset-inline-end: var(--sl-search-cancel-space);
+        width: calc(60px * var(--pagefind-ui-scale));
+        padding: 0;
+        background-color: transparent;
+        overflow: hidden;
+    }
+    #starlight__search .pagefind-ui__search-clear:focus {
+        outline: 1px solid var(--diamond);
+    }
+    #starlight__search .pagefind-ui__search-clear::before {
+        content: '';
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m13.41 12 6.3-6.29a1 1 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1 1 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 .33 1.64 1 1 0 0 0 1.09-.22l6.29-6.3 6.29 6.3a1 1 0 0 0 1.64-.33 1 1 0 0 0-.22-1.09L13.41 12Z'/%3E%3C/svg%3E")
+            center / 50% no-repeat;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m13.41 12 6.3-6.29a1 1 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1 1 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 .33 1.64 1 1 0 0 0 1.09-.22l6.29-6.3 6.29 6.3a1 1 0 0 0 1.64-.33 1 1 0 0 0-.22-1.09L13.41 12Z'/%3E%3C/svg%3E")
+            center / 50% no-repeat;
+        background-color: var(--diamond);
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    #starlight__search .pagefind-ui__results > * + * {
+        margin-top: var(--sl-search-result-spacing);
+    }
+    #starlight__search .pagefind-ui__result {
+        border: 0;
+        padding: 0;
+    }
+
+    #starlight__search .pagefind-ui__result-nested {
+        position: relative;
+        padding: var(--sl-search-result-nested-pad-block) var(--sl-search-result-pad-inline-end);
+        padding-inline-start: var(--sl-search-result-pad-inline-start);
+    }
+
+    #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)),
+    #starlight__search .pagefind-ui__result-nested {
+        position: relative;
+        background-color: var(--background);
+        transition:
+            outline-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        outline: 1px solid transparent;
+    }
+
+    /* Left accent rail — appears on hover/focus, gem-tinted, mirrors the
+     * sidebar pip pattern so docs-wide "you've selected this" affordance
+     * is consistent. ::after rather than ::before because Pagefind UI
+     * already uses ::before for the page/tree icons. */
+    #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *))::after,
+    #starlight__search .pagefind-ui__result-nested::after {
+        content: '';
+        position: absolute;
+        inset-block: 0.25rem;
+        inset-inline-start: 0;
+        width: 2px;
+        border-radius: 1px;
+        background-color: var(--diamond);
+        opacity: 0;
+        transform: scaleY(0.5);
+        transform-origin: center;
+        transition:
+            opacity 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        pointer-events: none;
+    }
+
+    #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):hover,
+    #starlight__search
+        .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):focus-within,
+    #starlight__search .pagefind-ui__result-nested:hover,
+    #starlight__search .pagefind-ui__result-nested:focus-within {
+        outline-color: color-mix(in oklab, var(--diamond) 60%, transparent);
+    }
+
+    #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):hover::after,
+    #starlight__search
+        .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):focus-within::after,
+    #starlight__search .pagefind-ui__result-nested:hover::after,
+    #starlight__search .pagefind-ui__result-nested:focus-within::after {
+        opacity: 1;
+        transform: scaleY(1);
+    }
+
+    #starlight__search
+        .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):focus-within,
+    #starlight__search .pagefind-ui__result-nested:focus-within {
+        background-color: color-mix(in oklab, var(--diamond-soft) 60%, var(--background));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)),
+        #starlight__search .pagefind-ui__result-nested,
+        #starlight__search
+            .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *))::after,
+        #starlight__search .pagefind-ui__result-nested::after {
+            transition: none;
+        }
+    }
+
+    #starlight__search .pagefind-ui__result-thumb,
+    #starlight__search .pagefind-ui__result-inner {
+        margin-top: 0;
+    }
+
+    #starlight__search .pagefind-ui__result-inner > :first-child {
+        border-radius: var(--sl-search-corners) var(--sl-search-corners) 0 0;
+    }
+    #starlight__search .pagefind-ui__result-inner > :last-child {
+        border-radius: 0 0 var(--sl-search-corners) var(--sl-search-corners);
+    }
+
+    #starlight__search .pagefind-ui__result-inner > .pagefind-ui__result-title {
+        padding: var(--sl-search-result-pad-block) var(--sl-search-result-pad-inline-end);
+        padding-inline-start: var(--sl-search-result-pad-inline-start);
+    }
+    #starlight__search .pagefind-ui__result-inner > .pagefind-ui__result-title::before {
+        content: '';
+        position: absolute;
+        inset-block: 0;
+        inset-inline-start: var(--sl-search-page-icon-inline-start);
+        width: var(--sl-search-page-icon-size);
+        background: color-mix(in oklab, var(--diamond) 50%, var(--muted-foreground));
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='currentColor' viewBox='0 0 24 24'%3E%3Cpath d='M9 10h1a1 1 0 1 0 0-2H9a1 1 0 0 0 0 2Zm0 2a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2H9Zm11-3V8l-6-6a1 1 0 0 0-1 0H7a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V9Zm-6-4 3 3h-2a1 1 0 0 1-1-1V5Zm4 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5v3a3 3 0 0 0 3 3h3v9Zm-3-3H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2Z'/%3E%3C/svg%3E")
+            center no-repeat;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='currentColor' viewBox='0 0 24 24'%3E%3Cpath d='M9 10h1a1 1 0 1 0 0-2H9a1 1 0 0 0 0 2Zm0 2a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2H9Zm11-3V8l-6-6a1 1 0 0 0-1 0H7a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V9Zm-6-4 3 3h-2a1 1 0 0 1-1-1V5Zm4 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5v3a3 3 0 0 0 3 3h3v9Zm-3-3H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2Z'/%3E%3C/svg%3E")
+            center no-repeat;
+    }
+
+    #starlight__search .pagefind-ui__result-inner {
+        align-items: stretch;
+        gap: 1px;
+    }
+
+    #starlight__search .pagefind-ui__result-link {
+        position: unset;
+        --pagefind-ui-text: var(--foreground);
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 600;
+    }
+
+    #starlight__search .pagefind-ui__result-link:hover {
+        text-decoration: none;
+    }
+
+    #starlight__search .pagefind-ui__result-nested .pagefind-ui__result-link::before {
+        content: unset;
+    }
+
+    #starlight__search .pagefind-ui__result-nested::before {
+        content: '';
+        position: absolute;
+        inset-block: 0;
+        inset-inline-start: var(--sl-search-tree-diagram-inline-start);
+        width: var(--sl-search-tree-diagram-size);
+        background: color-mix(in oklab, var(--diamond) 25%, var(--border));
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' viewBox='0 0 16 1000' preserveAspectRatio='xMinYMin slice'%3E%3Cpath d='M8 0v1000m6-988H8'/%3E%3C/svg%3E")
+            0% 0% / 100% no-repeat;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' viewBox='0 0 16 1000' preserveAspectRatio='xMinYMin slice'%3E%3Cpath d='M8 0v1000m6-988H8'/%3E%3C/svg%3E")
+            0% 0% / 100% no-repeat;
+    }
+    #starlight__search .pagefind-ui__result-nested:last-child::before {
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 16 16'%3E%3Cpath d='M8 0v12m6 0H8'/%3E%3C/svg%3E");
+        mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 16 16'%3E%3Cpath d='M8 0v12m6 0H8'/%3E%3C/svg%3E");
+    }
+
+    /* Flip page and tree icons around the vertical axis when in an RTL layout. */
+    [dir='rtl'] .pagefind-ui__result-title::before,
+    [dir='rtl'] .pagefind-ui__result-nested::before {
+        transform: matrix(-1, 0, 0, 1, 0, 0);
+    }
+
+    #starlight__search .pagefind-ui__result-link::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+    }
+
+    #starlight__search .pagefind-ui__result-excerpt {
+        font-size: calc(1rem * var(--pagefind-ui-scale));
+        overflow-wrap: anywhere;
+    }
+
+    /* Highlighted match in result excerpts — diamond text on a faint
+     * diamond-tinted backplate, so the matched substring reads as a
+     * "found it" marker that ties to the same gem the input border
+     * + result outline use on focus. */
+    #starlight__search mark {
+        color: color-mix(in oklab, var(--diamond) 70%, var(--foreground));
+        background-color: color-mix(in oklab, var(--diamond) 18%, transparent);
+        border-radius: 0.15rem;
+        padding: 0 0.15rem;
+        font-weight: 600;
+    }
+</style>

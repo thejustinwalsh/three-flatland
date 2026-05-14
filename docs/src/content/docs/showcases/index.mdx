@@ -1,0 +1,77 @@
+---
+title: Showcases
+description: Full-scale apps and games built with three-flatland. Source available, runnable in-browser.
+template: splash
+---
+
+import ShowcaseGrid from '../../../components/gallery/ShowcaseGrid.astro'
+import GalleryTile from '../../../components/gallery/GalleryTile.astro'
+
+<div class="showcases-page not-content">
+
+<header class="showcases-header">
+  <p class="showcases-eyebrow">Showcases</p>
+  <h1 class="showcases-title">Full apps, full source.</h1>
+  <p class="showcases-tagline">Each showcase is a complete app built with three-flatland and shipped as a public mini package. Hover any tile for a live preview; click through to play it inline and read the source.</p>
+</header>
+
+<ShowcaseGrid>
+  <GalleryTile
+    surface="showcases"
+    slug="breakout"
+    title="Breakout"
+    description="The classic, rebuilt as a koota-driven ECS using SpriteGroup, batched sprite effects, and a single draw call."
+    color="ruby"
+    aspect="16 / 10"
+  />
+</ShowcaseGrid>
+
+</div>
+
+<style>
+{`
+  .showcases-page {
+    max-width: 75rem;
+    margin: 0 auto;
+    padding-inline: clamp(1rem, 4vw, 2rem);
+    padding-block: clamp(2rem, 4vw, 3rem);
+  }
+
+  .showcases-header {
+    margin-block-end: clamp(2rem, 4vw, 3rem);
+    max-width: 56rem;
+  }
+
+  .showcases-eyebrow {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: color-mix(in oklab, var(--ruby) 60%, var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .showcases-title {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(2rem, 4.5vw, 3.25rem);
+    font-weight: 200;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    color: var(--foreground);
+    margin: 0 0 1rem 0;
+    text-wrap: balance;
+  }
+
+  .showcases-tagline {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(1rem, 1.5vw, 1.0625rem);
+    font-weight: 400;
+    line-height: 1.55;
+    color: var(--muted-foreground);
+    margin: 0;
+    max-width: 48rem;
+    text-wrap: balance;
+  }
+`}
+</style>

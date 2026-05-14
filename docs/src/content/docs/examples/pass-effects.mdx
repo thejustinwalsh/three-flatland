@@ -1,42 +1,21 @@
 ---
 title: Pass Effects
 description: Dynamic post-processing with composable PassEffects.
+template: splash
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
-import ExamplePreview from '../../../components/ExamplePreview';
-import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
-import ExampleTabs from '../../../components/ExampleTabs.astro';
-import { loadExample } from '../../../utils/loadExample';
+import { Tabs, TabItem } from 'starlight-theme/components'
+import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
+import { loadExample } from '../../../utils/loadExample'
 
-export const threeFiles = loadExample('three', 'pass-effects');
-export const reactFiles = loadExample('react', 'pass-effects');
+export const threeFiles = loadExample('three', 'pass-effects')
+export const reactFiles = loadExample('react', 'pass-effects')
 
-<ExampleTabs>
-<Tabs>
-  <TabItem label="Preview" icon="rocket">
-    <ExamplePreview client:load type="three" name="pass-effects" />
-  </TabItem>
-  <TabItem label="Three.js" icon="seti:javascript">
-    <StackBlitzEmbed
-      client:load
-      title="Pass Effects - Three.js"
-      files={threeFiles}
-      openFile="main.ts"
-      height={600}
-    />
-  </TabItem>
-  <TabItem label="React" icon="seti:react">
-    <StackBlitzEmbed
-      client:load
-      title="Pass Effects - React"
-      files={reactFiles}
-      openFile="App.tsx"
-      height={600}
-    />
-  </TabItem>
-</Tabs>
-</ExampleTabs>
+<ExampleDetailLayout
+  slug="pass-effects"
+  threeFiles={threeFiles}
+  reactFiles={reactFiles}
+>
 
 ## What This Example Shows
 
@@ -55,7 +34,7 @@ This example demonstrates the **Pass Effect** system for full-screen post-proces
 Use `createPassEffect` with a schema for parameters and a TSL node builder:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { createPassEffect } from 'three-flatland'
     import { crtComplete } from '@three-flatland/nodes'
@@ -83,7 +62,7 @@ Use `createPassEffect` with a schema for parameters and a TSL node builder:
     })
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { createPassEffect } from 'three-flatland/react'
     import { crtComplete } from '@three-flatland/nodes'
@@ -118,7 +97,7 @@ Use `createPassEffect` with a schema for parameters and a TSL node builder:
 Instantiate a pass and add it to Flatland. Passes chain in order — each receives the previous output:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     const crt = new CRTPass()
     flatland.addPass(crt)
@@ -131,7 +110,7 @@ Instantiate a pass and add it to Flatland. Passes chain in order — each receiv
     flatland.addPass(new PosterizePass()).addPass(new VignettePass())
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { useEffect, useRef } from 'react'
     import { useFrame } from '@react-three/fiber/webgpu'
@@ -160,7 +139,9 @@ Instantiate a pass and add it to Flatland. Passes chain in order — each receiv
   </TabItem>
 </Tabs>
 
-## Next Steps
+## Further Reading
 
 - [Pass Effects Guide](../../guides/pass-effects/) — Full API reference and pass chain architecture
 - [TSL Nodes](../tsl-nodes/) — Per-sprite material effects
+
+</ExampleDetailLayout>

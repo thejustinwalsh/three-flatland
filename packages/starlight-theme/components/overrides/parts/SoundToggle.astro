@@ -1,0 +1,225 @@
+---
+/**
+ * SoundToggle — master audio mute/cycle button. Rightmost slot of the
+ * header audio cluster. Mute is the default; first click cycles to low,
+ * then medium, then high, then back to mute.
+ *
+ * State source of truth is the docs-side audio bridge (window
+ * .__threeFlatlandAudio after first construction). The bridge is
+ * lazy-loaded; this component bootstraps it via a dynamic import from
+ * `docs/src/scripts/sounds.ts` on first interaction OR on idle.
+ *
+ * The lazy-import path is relative because the audio module lives in
+ * the docs site, not the theme package. Acceptable cross-package
+ * coupling for now — a future iteration can extract `packages/
+ * audio-bridge/` as its own workspace package and clean this up.
+ */
+---
+
+<flatland-sound-toggle>
+    <button
+        type="button"
+        class="sound-toggle"
+        aria-label="Toggle audio"
+        aria-pressed="false"
+        title="Audio off — click to enable"
+        data-state="0"
+    >
+        {/* Four state icons stacked in-place; CSS reveals the one
+            matching `data-state` on the parent button. SVGs over icon
+            font means no flash on first paint. */}
+        <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 9a5 5 0 0 1 .95 2.293" />
+            <path d="M11 5l-7 4H1v6h3l7 4z" />
+            <line x1="22" y1="2" x2="2" y2="22" />
+        </svg>
+        <svg class="icon-low" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5l-7 4H1v6h3l7 4z" />
+        </svg>
+        <svg class="icon-med" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5l-7 4H1v6h3l7 4z" />
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+        </svg>
+        <svg class="icon-high" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5l-7 4H1v6h3l7 4z" />
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+        </svg>
+    </button>
+</flatland-sound-toggle>
+
+<script>
+    /**
+     * The audio bridge lives in docs/src/audio (loaded via
+     * docs/src/scripts/sounds.ts). The relative path is verbose but
+     * stable. Vite resolves it at build time + code-splits the
+     * resulting chunk.
+     */
+    type SoundsModule = typeof import('../../../../../docs/src/scripts/sounds')
+    type VolumeLevel = 0 | 1 | 2 | 3
+
+    const STATE_TITLES: Record<VolumeLevel, string> = {
+        0: 'Audio off — click to enable',
+        1: 'Audio: low — click for medium',
+        2: 'Audio: medium — click for high',
+        3: 'Audio: high — click to mute',
+    }
+
+    class FlatlandSoundToggle extends HTMLElement {
+        private cleanup?: AbortController
+        private soundsPromise?: Promise<SoundsModule>
+
+        constructor() {
+            super()
+            const ctrl = new AbortController()
+            this.cleanup = ctrl
+            const { signal } = ctrl
+            const button = this.querySelector<HTMLButtonElement>('button')!
+
+            // Eager-but-lazy: load the sounds module on idle so the first
+            // user click feels instant. `requestIdleCallback` lets the
+            // browser finish first paint + interactive work before we
+            // download the audio chunks. Falls back to a tiny timeout
+            // in browsers without rIC (Safari).
+            const onIdle =
+                window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1))
+            onIdle(() => {
+                if (signal.aborted) return
+                this.loadSounds()
+            })
+
+            button.addEventListener(
+                'click',
+                () => {
+                    void this.handleClick()
+                },
+                { signal }
+            )
+        }
+
+        disconnectedCallback() {
+            this.cleanup?.abort()
+            this.cleanup = undefined
+        }
+
+        private loadSounds(): Promise<SoundsModule> {
+            if (!this.soundsPromise) {
+                this.soundsPromise = import(
+                    /* @vite-ignore */
+                    '../../../../../docs/src/scripts/sounds'
+                ) as Promise<SoundsModule>
+                this.soundsPromise.then(async (sounds) => {
+                    sounds.initVolumeLevel()
+                    this.applyState(sounds.getVolumeLevel())
+                    // Subscribe to bridge state directly — the SoundToggle
+                    // is the global audio authority but its icon also
+                    // needs to react when *other* surfaces mutate the
+                    // master level (notably the MusicPlayer auto-unlock
+                    // path when a default-off user clicks play).
+                    await sounds.initAudio()
+                    const bridge = (window as unknown as {
+                        __threeFlatlandAudio?: { subscribe: (cb: (s: { masterLevel: VolumeLevel }) => void) => () => void }
+                    }).__threeFlatlandAudio
+                    bridge?.subscribe((state) => {
+                        this.applyState(state.masterLevel)
+                    })
+                })
+            }
+            return this.soundsPromise
+        }
+
+        private async handleClick(): Promise<void> {
+            const sounds = await this.loadSounds()
+            const next = sounds.cycleVolumeLevel()
+            this.applyState(next)
+        }
+
+        private applyState(level: VolumeLevel): void {
+            const button = this.querySelector<HTMLButtonElement>('button')
+            if (!button) return
+            button.dataset.state = String(level)
+            button.setAttribute('aria-pressed', level > 0 ? 'true' : 'false')
+            button.setAttribute('title', STATE_TITLES[level])
+        }
+    }
+
+    if (!customElements.get('flatland-sound-toggle')) {
+        customElements.define('flatland-sound-toggle', FlatlandSoundToggle)
+    }
+</script>
+
+<style>
+    /* Host element — inline-flex centered so the button sits on the same
+     * baseline as the sibling MusicPlayer + SocialIcons. */
+    flatland-sound-toggle {
+        display: inline-flex;
+        align-items: center;
+        height: 2rem;
+    }
+
+    /* Button visuals match the previous ThemeSelect dimensions so the
+     * header row keeps its rhythm. Same 2rem × 2rem, gem-tinted hover. */
+    .sound-toggle {
+        all: unset;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: calc(var(--radius) - 2px);
+        cursor: pointer;
+        color: color-mix(in oklab, var(--foreground) 76%, var(--muted-foreground));
+        background-color: transparent;
+        transition:
+            color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .sound-toggle:hover {
+        color: var(--foreground);
+        background-color: color-mix(in oklab, var(--accent) 12%, transparent);
+    }
+
+    .sound-toggle:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--diamond) 80%, transparent);
+        outline-offset: 2px;
+    }
+
+    /* Muted state stays monochrome — a red/ruby tint reads too loud
+     * for a passive "audio off" state and clashes with the rest of the
+     * header chrome. Use the muted-foreground variant so it just reads
+     * as "inactive" alongside the other icons. */
+    .sound-toggle[data-state='0'] {
+        color: var(--muted-foreground);
+    }
+
+    /* Higher volumes also stay monochrome at the toggle — the gem
+     * identity belongs to the MusicPlayer (where --player-gem is the
+     * active song's color); the SoundToggle is just a master gate. */
+    .sound-toggle[data-state='2'],
+    .sound-toggle[data-state='3'] {
+        color: var(--foreground);
+    }
+
+    .sound-toggle svg {
+        flex-shrink: 0;
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        display: none;
+        pointer-events: none;
+    }
+    .sound-toggle[data-state='0'] .icon-off,
+    .sound-toggle[data-state='1'] .icon-low,
+    .sound-toggle[data-state='2'] .icon-med,
+    .sound-toggle[data-state='3'] .icon-high {
+        display: block;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .sound-toggle {
+            transition: none;
+        }
+    }
+</style>

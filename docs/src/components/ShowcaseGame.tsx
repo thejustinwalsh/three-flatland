@@ -1,24 +1,30 @@
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
-import { initAudio } from '../scripts/sounds'
-import type { PlaySoundFn } from '../scripts/sounds'
+import type { PlaySoundFn } from '../audio/types'
+import { useGPUSupport } from '../utils/useGPUSupport'
 
 const MiniBreakout = lazy(() => import('@three-flatland/mini-breakout'))
-
-declare global {
-  interface Window {
-    __gpuSupported?: boolean
-  }
-}
 
 function ShowcaseGameInner() {
   const [zzfxProxy, setProxy] = useState<PlaySoundFn | null>(null)
   const [isVisible, setVisible] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Audio module is dynamically imported so the bridge + zzfx + zzfxm
+  // code-splits out of the main bundle. The static `PlaySoundFn` type
+  // import above is type-only and erases at compile time. The proxy
+  // factory is fetched lazily on mount; the noop fallback covers the
+  // brief window before the import resolves.
   useEffect(() => {
-    import('../scripts/sounds').then((sounds) => {
-      setProxy(() => sounds.createZzfxProxy())
-    }).catch(() => {})
+    let cancelled = false
+    import('../scripts/sounds')
+      .then((sounds) => {
+        if (cancelled) return
+        setProxy(() => sounds.createZzfxProxy())
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -41,7 +47,9 @@ function ShowcaseGameInner() {
   const noopZzfx: PlaySoundFn = () => {}
 
   const handleInteraction = useCallback(() => {
-    initAudio().catch(() => {})
+    import('../scripts/sounds')
+      .then((sounds) => sounds.initAudio())
+      .catch(() => {})
   }, [])
 
   return (
@@ -68,6 +76,23 @@ function ShowcaseGameInner() {
 }
 
 export default function ShowcaseGame() {
-  if (typeof window !== 'undefined' && window.__gpuSupported === false) return null
+  const gpu = useGPUSupport()
+  if (gpu === null) return null
+  if (gpu === false) {
+    return (
+      <div
+        role="note"
+        style={{
+          padding: '2rem',
+          textAlign: 'center',
+          color: 'var(--muted-foreground, currentColor)',
+          fontSize: '0.875rem',
+          lineHeight: 1.5,
+        }}
+      >
+        Showcase requires a browser with WebGPU or WebGL2 support.
+      </div>
+    )
+  }
   return <ShowcaseGameInner />
 }

@@ -1,203 +1,191 @@
 ---
 /**
- * Custom Head component that enables View Transitions for SPA-like navigation.
- * This preserves audio context and sound state across page navigations.
+ * Custom Head component. Composes Starlight's Head with astro-vtbot for SPA
+ * navigation polish.
+ *
+ * Vtbot's `Base` includes the ClientRouter + ReplacementSwap + StarlightConnector
+ * — `ReplacementSwap rootAttributesToPreserve="data-theme"` keeps the active
+ * theme across page swaps, so we no longer need a hand-rolled
+ * `astro:after-swap` listener for theme persistence.
+ *
+ * Removed scripts (per the reinit-glue audit, see git history):
+ * - Theme persistence on `astro:after-swap` — vtbot Base preserves data-theme.
+ * - HMR `astro:page-load` re-dispatch — Astro 6's HMR fires page-load itself.
+ * - Pagefind reinit + search-suggestions injection — the suggestion-list CSS
+ *   was deleted with the retro stylesheets in Phase 2; reinit becomes useful
+ *   again when Search override is redesigned in Phase 3.x.
+ * - Table-scroll wrapper — its CSS was deleted in Phase 2; revisit when
+ *   MarkdownContent override is redesigned in Phase 3.x.
+ * - GPU/WebGL detection global — moved to `useGPUSupport` hook used by
+ *   HeroGame.tsx + ShowcaseGame.tsx with proper "WebGPU/WebGL2 required"
+ *   fallback UI instead of `return null`.
  */
 import StarlightHead from '@astrojs/starlight/components/Head.astro';
-import { ClientRouter } from 'astro:transitions';
-
-const isDev = import.meta.env.DEV;
-const baseUrl = import.meta.env.BASE_URL;
+import VtBotBase from 'astro-vtbot/components/starlight/Base.astro';
+import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
 ---
 
-<StarlightHead {...Astro.props}><slot /></StarlightHead>
-<ClientRouter />
+{/*
+  vtbot configuration:
 
-<!-- Self hosted metrics  -->
+  - VtBotBase WITHOUT `replaceSidebarContent` — the default behavior
+    is to preserve the sidebar across navigation (only the current-
+    page marker updates). Setting `replaceSidebarContent` swaps the
+    full sidebar DOM and resets scroll position; we don't want that.
+    Default = sidebar feels persistent.
+
+  - PageOrder gives directional morphs based on sidebar order
+    (forward/backward feel for SPA navigation).
+
+  - ProgressBar replaces the previous LoadingIndicator — a thin top
+    bar via swup is a cleaner read than an icon spinner with the
+    failure modes the FL favicon exposed (intrinsic SVG size, click-
+    eating). Styled below to track our gem accents.
+
+  - AutoNameSelected was deliberately removed: its default
+    positional naming (`vtbot-hx-0/1/2…`) cross-morphs the first h1
+    of one page into the first h1 of the next page regardless of
+    semantic relationship — this is the "headers fly around
+    changing text" feel. The browser's default page cross-fade is
+    a cleaner read than fake morphs across unrelated content. Use
+    explicit `view-transition-name` on specific elements that
+    legitimately persist across pages (see GalleryTile ↔
+    ExamplePreview pairing for an example).
+*/}
+<StarlightHead {...Astro.props}><slot /></StarlightHead>
+<VtBotBase retainCurrentPageMarker />
+<PageOrder />
+
+{/* Custom top-edge progress bar — replaces vtbot's <ProgressBar/>
+    which depended on an unpkg-hosted swup plugin. Bar gradient is
+    derived from the DESTINATION page's section gem (Examples →
+    diamond, Showcases → ruby, Docs/Guides → amethyst, landing →
+    gold). Picked at nav-start time when we know `event.to`. The
+    gradient runs gem-low → gem-high so the bar reads as the
+    destination color illuminating from dim to bright as it
+    grows. */}
+<div id="tf-progress" aria-hidden="true"></div>
+<style is:global>
+  #tf-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    width: 0;
+    z-index: 9999;
+    background: linear-gradient(
+      90deg,
+      var(--progress-gem-low, var(--diamond-low)),
+      var(--progress-gem-high, var(--diamond-high))
+    );
+    transition: width 200ms ease-out, opacity 250ms ease;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #tf-progress[data-state='loading'] {
+    width: 92%;
+    opacity: 1;
+    transition: width 9s cubic-bezier(0.05, 0.4, 0.4, 0.95), opacity 100ms ease;
+  }
+  #tf-progress[data-state='done'] {
+    width: 100%;
+    opacity: 0;
+    transition: width 200ms ease-out, opacity 350ms ease;
+  }
+</style>
+<script>
+  // Map a path to a section gem — same convention as NavBar.astro.
+  // landing → gold (CTA energy, matches primary button); Examples →
+  // diamond; Showcases → ruby; everything in the docs cluster →
+  // amethyst (primary section identity).
+  function gemForPath(pathname: string): string {
+    const baseEl = document.querySelector('base') as HTMLBaseElement | null;
+    const base = (baseEl ? new URL(baseEl.href).pathname : '') || '/three-flatland/';
+    const rel = pathname.replace(base.replace(/\/$/, ''), '').replace(/^\/+/, '/');
+    if (rel === '/' || rel === '') return 'gold';
+    if (rel.startsWith('/examples')) return 'diamond';
+    if (rel.startsWith('/showcases')) return 'ruby';
+    if (
+      rel.startsWith('/getting-started') ||
+      rel.startsWith('/guides') ||
+      rel.startsWith('/branding') ||
+      rel.startsWith('/llm-prompts') ||
+      rel.startsWith('/api')
+    ) return 'amethyst';
+    return 'diamond';
+  }
+  // Show-delay: don't reveal the bar for navigations that resolve
+  // faster than 150ms — those usually finish from cache before the
+  // bar would be visually meaningful, and a sub-150ms flash reads
+  // as jitter, not progress. Track the pending timeout so after-swap
+  // can cancel it for fast-cached navigations.
+  let showTimer: number | null = null;
+  const bar = () => document.getElementById('tf-progress');
+  document.addEventListener('astro:before-preparation', (e: Event) => {
+    const el = bar();
+    if (!el) return;
+    const ev = e as Event & { to?: URL };
+    const to = ev.to?.pathname ?? location.pathname;
+    const gem = gemForPath(to);
+    el.style.setProperty('--progress-gem-low', `var(--${gem}-low)`);
+    el.style.setProperty('--progress-gem-high', `var(--${gem}-high)`);
+    el.dataset.state = '';
+    if (showTimer !== null) clearTimeout(showTimer);
+    showTimer = window.setTimeout(() => {
+      showTimer = null;
+      if (!el.isConnected) return;
+      void el.offsetWidth; // force reflow so the reset → loading transition takes
+      el.dataset.state = 'loading';
+    }, 150);
+  });
+  document.addEventListener('astro:after-swap', () => {
+    const el = bar();
+    if (!el) return;
+    if (showTimer !== null) {
+      // Cached/fast nav resolved before the show-delay fired — bail
+      // out without ever revealing the bar. Avoids flashing a tiny
+      // sliver that reads as jitter.
+      clearTimeout(showTimer);
+      showTimer = null;
+      el.dataset.state = '';
+      return;
+    }
+    el.dataset.state = 'done';
+    setTimeout(() => { if (el.dataset.state === 'done') el.dataset.state = ''; }, 400);
+  });
+</script>
+
+{/* Motion-as-craft runtime — drives `--mx`/`--my`/`--tilt-x`/`--tilt-y`
+    on `.u-light`/`.u-holo` surfaces via pointer + perlin-noise loop, and
+    handles the `.u-reveal` IntersectionObserver fallback for browsers
+    without scroll-driven CSS animations. See Design Context (CLAUDE.md)
+    and the Phase 3 substrate punch list. */}
+<script>
+  import '../scripts/motion'
+</script>
+
+{/* Inline SVG filter library was here for the gem material model
+    (`#tf-gem-perturb`, `#tf-foil-perturb` — feTurbulence + feDisplacementMap
+    + feComposite chains). Removed because the chains were CPU-rasterized
+    per frame in Safari (~330ms across ~20 active rim layers on landing
+    in Safari's "Other" timeline bucket). The rim's visual identity is
+    now carried by the local per-component primitives — `<div class=
+    "card-edge">` on FeatureCard, `<span class="tile-edge">` on
+    GalleryTile — both pure-GPU mask-composite + conic-gradient +
+    radial-gradient. See packages/starlight-theme/styles/base.css
+    `.u-light::before` rule for the kept scene-light gradient layer. */}
+
+<!-- Self hosted metrics -->
+{/* Plain script tag — Umami at metrics.tjw.dev serves with
+    `Access-Control-Allow-Origin: *`, so no crossorigin attribute is
+    needed. The earlier crossorigin="anonymous" was a workaround for
+    COEP `require-corp` which we previously had set in vite config.
+    Since COEP is gone (see astro.config.mjs comment), the workaround
+    can come off too — keeps the script tag clean and lets the
+    browser use whatever credentials policy is appropriate. */}
 {import.meta.env.PROD && (
   <>
     <link rel="preconnect" href="https://metrics.tjw.dev" />
     <script is:inline defer src="https://metrics.tjw.dev/metrics.js" data-website-id="345cb050-cdc9-4278-8502-70825fdd4c2b"></script>
   </>
 )}
-
-<!-- Theme persistence across view transitions -->
-<script is:inline>
-(function() {
-  function applyTheme() {
-    const stored = localStorage.getItem('starlight-theme');
-    if (stored === 'light' || stored === 'dark') {
-      document.documentElement.dataset.theme = stored;
-    } else {
-      // Auto mode - use system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.dataset.theme = prefersDark ? 'dark' : 'light';
-    }
-  }
-
-  // Apply immediately on script load (handles initial page load)
-  applyTheme();
-
-  // Re-apply after view transitions swap in new content
-  document.addEventListener('astro:after-swap', applyTheme);
-})();
-</script>
-
-<!-- GPU / WebGL feature detection — sets window.__gpuSupported for client components -->
-<script is:inline>
-(function() {
-  try {
-    var c = document.createElement('canvas');
-    window.__gpuSupported = !!(c.getContext('webgpu') || c.getContext('webgl2'));
-  } catch(e) {
-    window.__gpuSupported = false;
-  }
-})();
-</script>
-
-<!-- Reinitialize Pagefind search after view transitions -->
-<script is:inline set:html={`
-(function() {
-  const BASE_URL = ${JSON.stringify(baseUrl)};
-  let pagefindInitialized = false;
-  let pagefindLoading = null;
-
-  function loadPagefindUI() {
-    if (window.PagefindUI) return Promise.resolve();
-    if (pagefindLoading) return pagefindLoading;
-    pagefindLoading = new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = BASE_URL + 'pagefind/pagefind-ui.js';
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load pagefind-ui.js'));
-      document.head.appendChild(script);
-    });
-    return pagefindLoading;
-  }
-
-  function injectSuggestions() {
-    const container = document.getElementById('starlight__search');
-    if (!container || container.querySelector('.search-suggestions')) return;
-    const div = document.createElement('div');
-    div.className = 'search-suggestions';
-    div.innerHTML = \`
-      <div class="search-suggestions__label">Popular pages</div>
-      <ul class="search-suggestions__list">
-        <li><a href="\${BASE_URL}getting-started/quick-start/">Quick Start</a></li>
-        <li><a href="\${BASE_URL}guides/sprites/">Sprites</a></li>
-        <li><a href="\${BASE_URL}guides/animation/">Animation</a></li>
-        <li><a href="\${BASE_URL}guides/batch-rendering/">Batch Rendering</a></li>
-        <li><a href="\${BASE_URL}guides/tsl-nodes/">TSL Nodes</a></li>
-        <li><a href="\${BASE_URL}guides/pass-effects/">Pass Effects</a></li>
-        <li><a href="\${BASE_URL}examples/basic-sprite/">Basic Sprite Example</a></li>
-        <li><a href="\${BASE_URL}llm-prompts/">LLM Prompts</a></li>
-      </ul>
-    \`;
-    container.appendChild(div);
-  }
-
-  async function initSearch() {
-    const searchContainer = document.getElementById('starlight__search');
-    if (!searchContainer) return;
-
-    // Only reinitialize if container is empty (after view transition swap)
-    if (searchContainer.children.length === 0 && pagefindInitialized) {
-      await loadPagefindUI();
-
-      new window.PagefindUI({
-        ranking: { pageLength: 0.1, termFrequency: 0.1, termSaturation: 2, termSimilarity: 9 },
-        element: '#starlight__search',
-        baseUrl: BASE_URL,
-        bundlePath: BASE_URL.replace(/\\/$/, '') + '/pagefind/',
-        showImages: false,
-        showSubResults: true,
-      });
-      injectSuggestions();
-    }
-  }
-
-  // First load: don't reinit search (Starlight does that). Just inject the
-  // suggestions list once Starlight's PagefindUI is mounted.
-  document.addEventListener('DOMContentLoaded', () => {
-    pagefindInitialized = true;
-    // Wait a tick for Starlight's idle-callback PagefindUI init
-    setTimeout(injectSuggestions, 100);
-  });
-
-  // After view transitions, the container is empty — reinit and inject
-  document.addEventListener('astro:after-swap', initSearch);
-})();
-`}></script>
-
-{/* In dev mode, re-dispatch astro:page-load after HMR to fix ClientRouter state */}
-{isDev && (
-  <script>
-    if (import.meta.hot) {
-      import.meta.hot.on('vite:afterUpdate', () => {
-        document.dispatchEvent(new Event('astro:page-load'));
-      });
-    }
-  </script>
-)}
-
-<!-- Table scroll enhancement script -->
-<script is:inline>
-(function() {
-  function enhanceTables() {
-    // Find all tables in markdown content
-    /** @type {NodeListOf<HTMLTableElement>} */
-    const tables = document.querySelectorAll('.sl-markdown-content table');
-
-    tables.forEach(table => {
-      // Skip if already wrapped
-      if (table.parentElement?.classList.contains('table-scroll-wrapper')) return;
-
-      // Create outer container for positioning
-      // 'not-content' exempts from Starlight's adjacent sibling margins
-      const container = document.createElement('div');
-      container.className = 'table-scroll-container not-content';
-
-      // Create scroll wrapper
-      const wrapper = document.createElement('div');
-      wrapper.className = 'table-scroll-wrapper';
-
-      // Create scroll indicator overlay
-      const indicator = document.createElement('div');
-      indicator.className = 'table-scroll-indicator';
-      indicator.setAttribute('aria-hidden', 'true');
-
-      // Build structure: container > (wrapper > table) + indicator
-      if (table.parentNode) table.parentNode.insertBefore(container, table);
-      wrapper.appendChild(table);
-      container.appendChild(wrapper);
-      container.appendChild(indicator);
-
-      // Check if scrollable and update indicator position
-      function updateScrollIndicator() {
-        const isScrollable = wrapper.scrollWidth > wrapper.clientWidth;
-        const isScrolledToEnd = wrapper.scrollLeft + wrapper.clientWidth >= wrapper.scrollWidth - 2;
-        const showIndicator = isScrollable && !isScrolledToEnd;
-        container.classList.toggle('is-scrollable', showIndicator);
-
-        // Calculate scrollbar height (wrapper height - table height)
-        if (showIndicator) {
-          const scrollbarHeight = wrapper.offsetHeight - table.offsetHeight;
-          const borderWidth = 2; // table border
-          indicator.style.top = borderWidth + 'px';
-          indicator.style.bottom = (scrollbarHeight + borderWidth) + 'px';
-        }
-      }
-
-      wrapper.addEventListener('scroll', updateScrollIndicator, { passive: true });
-      window.addEventListener('resize', updateScrollIndicator, { passive: true });
-
-      // Initial check
-      setTimeout(updateScrollIndicator, 100);
-    });
-  }
-
-  // Run on page load and after view transitions
-  document.addEventListener('DOMContentLoaded', enhanceTables);
-  document.addEventListener('astro:page-load', enhanceTables);
-})();
-</script>

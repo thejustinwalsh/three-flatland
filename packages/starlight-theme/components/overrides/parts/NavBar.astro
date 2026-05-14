@@ -1,0 +1,204 @@
+---
+import { AstroError } from 'astro/errors';
+import userConfig from 'virtual:starlight-theme-config';
+import starlightConfig from 'virtual:starlight/user-config';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+
+const currentPath = Astro.url.pathname;
+
+const defaultLang =
+    starlightConfig.defaultLocale?.lang || starlightConfig.defaultLocale?.locale || 'en';
+
+export function getTranslation(
+    translations: Record<string, string>,
+    link: string,
+    description: string
+) {
+    const defaultTranslation = translations[defaultLang];
+
+    if (!defaultTranslation) {
+        throw new AstroError(
+            `The ${description} for "${link}" must have a key for the default language "${defaultLang}".`,
+            'Update the Starlight config to include a topic label for the default language.'
+        );
+    }
+
+    let translation = defaultTranslation;
+
+    if (Astro.currentLocale) {
+        translation = translations[Astro.currentLocale] ?? defaultTranslation;
+    }
+
+    return translation;
+}
+---
+
+<nav class="nav-bar">
+    {
+        userConfig.navLinks?.map((nav) => {
+            const absoluteLinkRegex = /^https?:\/\//;
+            const isExternal = absoluteLinkRegex.test(nav.link);
+
+            // Resolve relative links against the site's base URL so the
+            // generated href works under a non-root deploy (e.g. GitHub
+            // Pages serving from /three-flatland/). External links pass
+            // through unchanged.
+            const baseURL = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+            const link = isExternal
+                ? nav.link
+                : Astro.currentLocale
+                  ? getRelativeLocaleUrl(Astro.currentLocale, nav.link)
+                  : `${baseURL}${nav.link}`;
+
+            // Active = current path is in this nav item's section.
+            // Plain prefix-against-link misses sibling pages of the
+            // landing page (e.g. clicking "Docs" → /getting-started/
+            // introduction/ keeps Docs active, but /getting-started/
+            // installation/ wouldn't match the introduction prefix).
+            //
+            // Resolution: match by FIRST PATH SEGMENT of the link's URL
+            // (e.g. /getting-started, /examples, /showcases). Then one
+            // additional rule: the Docs nav item is the catch-all for
+            // anything in the docs sections (/getting-started, /guides,
+            // /branding, /llm-prompts, /api). Anything not in
+            // Examples/Showcases/Landing lights up Docs.
+            const linkNoTrail = link.replace(/\/$/, '');
+            const currentNoTrail = currentPath.replace(/\/$/, '');
+
+            const linkSegments = linkNoTrail
+                .replace(baseURL, '')
+                .split('/')
+                .filter(Boolean);
+            const linkFirstSegment = linkSegments[0] || '';
+            const currentRel = currentNoTrail.replace(baseURL, '');
+
+            const docsPrefixes = [
+                '/getting-started',
+                '/guides',
+                '/branding',
+                '/llm-prompts',
+                '/api',
+            ];
+            const isExamplesPath = currentRel.startsWith('/examples');
+            const isShowcasesPath = currentRel.startsWith('/showcases');
+            const isLandingPath = currentRel === '' || currentRel === '/';
+            const isDocsPath = docsPrefixes.some((p) => currentRel.startsWith(p));
+
+            let isActive = false;
+            if (!isExternal) {
+                if (linkFirstSegment === 'examples') {
+                    isActive = isExamplesPath;
+                } else if (linkFirstSegment === 'showcases') {
+                    isActive = isShowcasesPath;
+                } else if (linkFirstSegment === 'getting-started') {
+                    // Docs catch-all — any of the docs-section prefixes.
+                    isActive = isDocsPath && !isExamplesPath && !isShowcasesPath && !isLandingPath;
+                } else {
+                    // Fallback to the original prefix match for any
+                    // future nav links.
+                    isActive =
+                        linkNoTrail.length > 0 &&
+                        (currentNoTrail === linkNoTrail ||
+                            currentNoTrail.startsWith(linkNoTrail + '/'));
+                }
+            }
+
+            const label =
+                typeof nav.label === 'string'
+                    ? nav.label
+                    : getTranslation(nav.label, nav.link, 'label');
+
+            // Per-link gem accent — each top-nav section carries its
+            // own gem so hover + active states match the section's
+            // identity (Examples = diamond/blue, Showcases = ruby/red,
+            // Docs claims amethyst as the "primary" section).
+            // Falls back to diamond for any future link.
+            const navGem =
+                linkFirstSegment === 'examples'
+                    ? 'diamond'
+                    : linkFirstSegment === 'showcases'
+                      ? 'ruby'
+                      : linkFirstSegment === 'getting-started'
+                        ? 'amethyst'
+                        : 'diamond';
+            const navStyle = `--nav-gem: var(--${navGem});`;
+
+            return (
+                <a
+                    class:list={[{ active: isActive }]}
+                    href={link}
+                    style={navStyle}
+                    {...nav.attrs}
+                >
+                    {label}
+                    {nav.badge && <span class="badge">{nav.badge}</span>}
+                </a>
+            );
+        })
+    }
+</nav>
+
+<style>
+    .nav-bar {
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        align-items: center;
+        display: flex;
+    }
+
+    @media (min-width: 1280px) {
+        .nav-bar {
+            gap: 0.375rem;
+        }
+    }
+
+    .nav-bar a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 500;
+        min-height: 2rem;
+        padding: 0 0.625rem;
+        border-radius: calc(var(--radius) - 2px);
+        text-decoration: none;
+        transition-property:
+            color, background-color, border-color, text-decoration-color, fill, stroke;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 0.15s;
+        color: var(--foreground);
+    }
+
+    /* Hover + active states pull from --nav-gem (set inline per link
+     * in the JSX above). Each top-nav section carries its own gem so
+     * the chrome reads as section-identity, not generic accent.
+     * Default fallback is diamond for any unknown future link. */
+    .nav-bar a:hover {
+        color: color-mix(in oklab, var(--nav-gem, var(--diamond)) 70%, var(--foreground));
+        background-color: color-mix(in oklab, var(--nav-gem, var(--diamond)) 14%, transparent);
+    }
+
+    .nav-bar a.active {
+        color: color-mix(in oklab, var(--nav-gem, var(--diamond)) 70%, var(--foreground));
+        background-color: color-mix(in oklab, var(--nav-gem, var(--diamond)) 12%, transparent);
+        font-weight: 600;
+    }
+    .nav-bar a.active:hover {
+        background-color: color-mix(in oklab, var(--nav-gem, var(--diamond)) 22%, transparent);
+    }
+
+    .badge {
+        padding-top: calc(var(--spacing) * 0.5);
+        padding-bottom: calc(var(--spacing) * 0.5);
+        padding-left: calc(var(--spacing) * 1.5);
+        padding-right: calc(var(--spacing) * 1.5);
+        margin-left: calc(var(--spacing) * 2);
+        border-radius: 0.375rem;
+        font-size: 0.75rem;
+        line-height: 1rem;
+        font-weight: 400;
+        line-height: 1;
+        text-decoration: none;
+        background: #adfa1d;
+        color: #000000;
+    }
+</style>

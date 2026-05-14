@@ -1,0 +1,59 @@
+---
+import TableOfContentsList from './parts/toc/TableOfContentsList.astro';
+
+const { toc } = Astro.locals.starlightRoute;
+---
+
+{
+    toc && (
+        <starlight-toc data-min-h={toc.minHeadingLevel} data-max-h={toc.maxHeadingLevel}>
+            <nav aria-labelledby="starlight__on-this-page">
+                <p id="starlight__on-this-page">{Astro.locals.t('tableOfContents.onThisPage')}</p>
+                <TableOfContentsList toc={toc.items} />
+            </nav>
+        </starlight-toc>
+    )
+}
+
+<script src="./parts/toc/starlight-toc"></script>
+
+<style>
+    starlight-toc {
+        scrollbar-width: none;
+        padding-bottom: calc(var(--spacing) * 10);
+        padding-inline: calc(var(--spacing) * 1);
+        overflow: auto;
+        height: 100%;
+    }
+    /* "ON THIS PAGE" heading — uppercase tracked label with a thin
+     * diamond-tinted hairline underneath, matching the StatItem
+     * underline + FeatureList row-rule treatment so the right rail
+     * reads as part of the same gem-tagged design system as the
+     * left sidebar / cards / asides.
+     *
+     * Diamond is the right gem here because the TOC's job is to be
+     * the page's compass — high-contrast, neutral, "headlight" tone.
+     * Per-page gem assignment for the TOC would be clever but louder
+     * than the surface needs (the active marker's gem can carry that
+     * if we ever want it). */
+    p {
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 600;
+        font-size: 0.6875rem;
+        line-height: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: calc(var(--spacing) * 3);
+        padding-bottom: calc(var(--spacing) * 1.5);
+        color: color-mix(in oklab, var(--diamond) 35%, var(--muted-foreground));
+        background-image: linear-gradient(
+            90deg,
+            var(--diamond) 0%,
+            color-mix(in oklab, var(--diamond) 50%, transparent) 60%,
+            transparent 100%
+        );
+        background-size: 3rem 1px;
+        background-repeat: no-repeat;
+        background-position: 0 100%;
+    }
+</style>

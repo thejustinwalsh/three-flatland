@@ -1,0 +1,120 @@
+---
+title: Examples
+description: Focused single-feature demos of three-flatland — sprites, animation, batch rendering, TSL nodes, pass effects, tilemaps, and Skia integration.
+template: splash
+---
+
+import GalleryGrid from '../../../components/gallery/GalleryGrid.astro'
+import GalleryTile from '../../../components/gallery/GalleryTile.astro'
+
+<div class="examples-page not-content">
+
+<header class="examples-header">
+  <p class="examples-eyebrow">Examples</p>
+  <h1 class="examples-title">Shortcuts to getting started.</h1>
+  <p class="examples-tagline">Self contained cloneable templates that demonstrate real world use of three-flatland features.</p>
+</header>
+
+<GalleryGrid>
+  <GalleryTile
+    surface="examples"
+    slug="basic-sprite"
+    title="Basic Sprite"
+    description="A 2D sprite on screen with the smallest possible setup. The starting point."
+  />
+  <GalleryTile
+    surface="examples"
+    slug="animation"
+    title="Animation"
+    description="Spritesheet-driven animation with frame-perfect timing on the GPU."
+  />
+  <GalleryTile
+    surface="examples"
+    slug="batch-demo"
+    title="Batch Rendering"
+    description="Thousands of sprites in a single draw call via automatic batching."
+  />
+  <GalleryTile
+    surface="examples"
+    slug="knightmark"
+    title="Knightmark"
+    description="Animated knights, collisions, spatial hashing — the throughput stress test."
+  />
+  <GalleryTile
+    surface="examples"
+    slug="pass-effects"
+    title="Pass Effects"
+    description="Composable post-processing — CRT, LCD, VHS, and friends — applied per scene."
+  />
+  <GalleryTile
+    surface="examples"
+    slug="tsl-nodes"
+    title="TSL Nodes"
+    description="Custom shader effects authored in Three Shader Language. Per-sprite, batched."
+  />
+  <GalleryTile
+    surface="examples"
+    slug="tilemap"
+    title="Tilemap"
+    description="Tiled-editor JSON loaded as efficient tile layers, animated tiles, collision data."
+  />
+  <GalleryTile
+    surface="examples"
+    slug="skia"
+    title="Skia"
+    description="GPU-accelerated 2D vector graphics via Skia WASM with WebGPU and WebGL."
+  />
+</GalleryGrid>
+
+</div>
+
+<style>
+{`
+  /* MDX-safe — CSS wrapped in a template literal because MDX 3
+     treats { and } in raw <style> content as JS expression
+     boundaries. Same pattern the landing page (index.mdx) uses. */
+  .examples-page {
+    max-width: 75rem;
+    margin: 0 auto;
+    padding-inline: clamp(1rem, 4vw, 2rem);
+    padding-block: clamp(2rem, 4vw, 3rem);
+  }
+
+  .examples-header {
+    margin-block-end: clamp(2rem, 4vw, 3rem);
+    max-width: 56rem;
+  }
+
+  .examples-eyebrow {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: color-mix(in oklab, var(--diamond) 60%, var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .examples-title {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(2rem, 4.5vw, 3.25rem);
+    font-weight: 200;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    color: var(--foreground);
+    margin: 0 0 1rem 0;
+    text-wrap: balance;
+  }
+
+  .examples-tagline {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(1rem, 1.5vw, 1.0625rem);
+    font-weight: 400;
+    line-height: 1.55;
+    color: var(--muted-foreground);
+    margin: 0;
+    max-width: 48rem;
+    text-wrap: balance;
+  }
+`}
+</style>

@@ -1,42 +1,21 @@
 ---
 title: Animation
 description: Animate sprites using spritesheets with three-flatland.
+template: splash
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
-import ExamplePreview from '../../../components/ExamplePreview';
-import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
-import ExampleTabs from '../../../components/ExampleTabs.astro';
-import { loadExample } from '../../../utils/loadExample';
+import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
+import { loadExample } from '../../../utils/loadExample'
 
-export const threeFiles = loadExample('three', 'animation');
-export const reactFiles = loadExample('react', 'animation');
+export const threeFiles = loadExample('three', 'animation')
+export const reactFiles = loadExample('react', 'animation')
 
-<ExampleTabs>
-<Tabs>
-  <TabItem label="Preview" icon="rocket">
-    <ExamplePreview client:load type="three" name="animation" />
-  </TabItem>
-  <TabItem label="Three.js" icon="seti:javascript">
-    <StackBlitzEmbed
-      client:load
-      title="Animation - Three.js"
-      files={threeFiles}
-      openFile="main.ts"
-      height={600}
-    />
-  </TabItem>
-  <TabItem label="React" icon="seti:react">
-    <StackBlitzEmbed
-      client:load
-      title="Animation - React"
-      files={reactFiles}
-      openFile="App.tsx"
-      height={600}
-    />
-  </TabItem>
-</Tabs>
-</ExampleTabs>
+<ExampleDetailLayout
+  slug="animation"
+  threeFiles={threeFiles}
+  reactFiles={reactFiles}
+  showCommonFiles={['public/sprites/knight.json', 'public/sprites/coin.json']}
+>
 
 ## AnimatedSprite2D
 
@@ -88,7 +67,9 @@ function animate() {
 }
 ```
 
-## Next Steps
+## Further Reading
 
 - [TSL Nodes](../tsl-nodes/) - Add custom shader effects
 - [Tilemap](../tilemap/) - Create tile-based maps
+
+</ExampleDetailLayout>

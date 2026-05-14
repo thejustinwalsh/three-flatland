@@ -1,0 +1,440 @@
+---
+import config from 'virtual:starlight/user-config';
+import MobileTableOfContents from 'virtual:starlight/components/MobileTableOfContents';
+import Search from './Search.astro';
+import SocialIcons from './SocialIcons.astro';
+
+import SiteTitle from './SiteTitle.astro';
+import NavBar from './parts/NavBar.astro';
+import MobileMenuToggle from './parts/MobileMenuToggle.astro';
+import SoundToggle from './parts/SoundToggle.astro';
+import MusicPlayer from './parts/MusicPlayer.astro';
+
+/** render the `Search` component if Pagefind is enabled or the default search component has been overridden. */
+const shouldRenderSearch =
+    config.pagefind || config.components.Search !== '@astrojs/starlight/components/Search.astro';
+---
+
+<MobileMenuToggle />
+
+<div class="site-title-wrapper">
+    <SiteTitle />
+    <NavBar />
+</div>
+
+<div class="header-right">
+    {/* On-this-page (mobile/tablet) — moved from PageSidebar where it
+        used to render as a position:fixed strip below the header. At
+        narrow viewports (<1280px) where the desktop right-rail TOC is
+        hidden, this provides the in-header trigger users can pop to
+        jump around the article without losing the single-row chrome.
+        Hidden at ≥1280px where the desktop TOC takes over. CSS
+        overrides in the global block below convert the upstream
+        position:fixed nav into an inline-dropdown affordance. */}
+    <div class="header-toc">
+        <MobileTableOfContents />
+    </div>
+
+    {shouldRenderSearch && <Search />}
+
+    <nav class="header-nav">
+        <div>
+            <SocialIcons />
+        </div>
+        <div class="audio-cluster">
+            <MusicPlayer />
+            <SoundToggle />
+        </div>
+    </nav>
+</div>
+
+<style>
+    .site-title-wrapper {
+        display: none;
+        align-items: center;
+        gap: calc(var(--spacing) * 3);
+        margin-right: auto;
+        min-width: 0;
+    }
+
+    @media (min-width: 768px) {
+        .site-title-wrapper {
+            display: flex;
+        }
+    }
+
+    /* Wordmark — Silkscreen pixel font for the "flatland" brand mark.
+     * Sized to balance with the 32px FL icon. Sits at its natural
+     * baseline so it lines up with the rest of the header text (nav
+     * links, search button, etc.); the icon is vertically centered
+     * with the text via `align-items: center` on `.site-title` in
+     * SiteTitle.astro, which is what the user wants (icon centered on
+     * the text height, not baselined to it). Tight to the icon
+     * (controlled by SiteTitle.astro's gap). */
+    .site-title-wrapper :global(.title-text) {
+        font-family: 'Silkscreen', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: 1.125rem;
+        letter-spacing: 0.02em;
+        color: var(--foreground);
+        line-height: 1;
+    }
+
+    .header-right {
+        gap: 0.75rem;
+        justify-content: space-between;
+        align-items: center;
+        flex: 1 1 0%;
+        display: flex;
+    }
+
+    @media (min-width: 768px) {
+        .header-right {
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+    }
+
+    /* Search button: constrain to a compact pill — devs use ⌘K, the wide
+     * input was visual weight without function. The kbd hint stays as the
+     * primary affordance signal. */
+    .header-right :global(site-search button[data-open-modal]) {
+        width: auto;
+        min-width: 0;
+        max-width: 14rem;
+    }
+    @media (min-width: 768px) {
+        .header-right :global(site-search button[data-open-modal]) {
+            max-width: 12rem;
+        }
+    }
+
+    /* In-header TOC trigger — only visible when the desktop right-rail
+     * TOC is hidden (<1280px). At ≥1280px we hide it to avoid a
+     * duplicate affordance with the sticky desktop TOC. The wrapper is
+     * `display: contents`-like (just a flex item) so the inner custom
+     * element flows naturally. */
+    .header-toc {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        /* Cap the trigger width so a long "you are here" heading
+         * doesn't push the search/social cluster off the edge on
+         * narrow tablets. The .display-current inside ellipsises. */
+        max-width: clamp(8rem, 32vw, 18rem);
+    }
+    .header-toc:empty {
+        display: none;
+    }
+    @media (min-width: 1280px) {
+        .header-toc {
+            display: none;
+        }
+    }
+    /* Very narrow phones — drop the in-header TOC entirely. The dropdown
+     * crowds the right cluster on <420px screens; users still have
+     * native scroll + heading anchors. */
+    @media (max-width: 26.25rem) {
+        .header-toc {
+            display: none;
+        }
+    }
+
+    .header-nav {
+        gap: 0.125rem;
+        align-items: center;
+        display: flex;
+    }
+
+    .header-nav > div:has(> :not(script)) {
+        display: flex;
+        align-items: center;
+    }
+
+    .header-nav > div:has(> :not(script)) + div:has(> :not(script)) {
+        position: relative;
+        margin-left: calc(var(--spacing) * 1);
+        padding-left: calc(var(--spacing) * 3);
+    }
+
+    /* Audio cluster — MusicPlayer (left) + SoundToggle (right). Both
+     * are 2rem × 2rem buttons; gap matches the visual rhythm of the
+     * header-nav children. Position: relative so MusicPlayer's popover
+     * can anchor against this container's right edge if needed. */
+    .audio-cluster {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.125rem;
+        position: relative;
+    }
+
+    /* Override SocialIcons' default hover — Starlight ships its anchor-
+     * button (`a.sl-flex.button`) with a flip-to-accent-foreground hover
+     * that lands as cream-on-dark-purple at 80% opacity. Too aggressive
+     * against the paper chrome in light mode and inconsistent with the
+     * audio-cluster icons next to it. Match the subtler 12%-accent-tinted
+     * pill we use on the audio buttons. */
+    .header-nav :global(a.sl-flex.button:hover) {
+        color: var(--foreground);
+        background-color: color-mix(in oklab, var(--accent) 12%, transparent);
+    }
+
+    /* Vertical divider between nav groups — slightly bolder than lucode default
+     * (1.25rem vs 1rem) and steadier opacity so the rhythm reads. */
+    .header-nav > div:has(> :not(script)) + div:has(> :not(script))::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        width: 1px;
+        height: 1.25rem;
+        background-color: color-mix(in oklab, var(--border) 75%, transparent);
+        transform: translateY(-50%);
+    }
+
+    /* Compact-on-scroll — single craft moment for the header.
+     * CSS-only via scroll-driven animation; honors prefers-reduced-motion.
+     * Anchored on the layout slot (not the bare `.header` class — that
+     * collides with expressive-code's `<figcaption class="header">` for
+     * codeblock titles, which would otherwise inherit the scroll-tied
+     * background fade and read as a phantom alpha fade on captions).
+     *
+     * The animation only changes paint-time properties (background-
+     * color, backdrop-filter, border-bottom-color). Layout properties
+     * (padding, height, border-bottom-width) stay constant so the
+     * header's bounding box is byte-identical between landing and
+     * docs pages — that's load-bearing for two things:
+     *   1. View-transition cross-fade between landing and docs morphs
+     *      between identical-sized headers (no "black slab" mid-morph
+     *      from height delta).
+     *   2. Pre-scroll layout is stable — keyframe doesn't add layout
+     *      height at the start of scroll (no 4-8px gap above the hero).
+     *
+     * Runs on EVERY page including landing. Landing's transparent
+     * initial state (set in PageFrame's `[data-landing]` override)
+     * means the header starts see-through; on scroll the keyframe
+     * fades it to the same semi-opaque chrome as docs. The landing
+     * override only changes the AT-REST background — the keyframe's
+     * 0%/100% values still drive the from/to. */
+    /* Backdrop-filter was previously animated here (saturate(140%)) to
+     * boost the canvas color through the header tint, but Safari has
+     * a known bug where scroll-driven animations of `backdrop-filter`
+     * don't reset their progress correctly after `visibilitychange`
+     * (minimize the tab and return → the filter stays applied even at
+     * scroll=0, visible as a phantom desaturation/chrome over the hero
+     * canvas). Removed the filter from the keyframe entirely; the
+     * background-color tint alone carries the chrome signal. The
+     * border-bottom-color animates but the width is 0 so it's
+     * defensive — no visible effect either way. */
+    @supports (animation-timeline: scroll()) {
+        @media (prefers-reduced-motion: no-preference) {
+            :global([data-slot='layout'] > header) {
+                animation: hdr-compact linear both;
+                animation-timeline: scroll(root);
+                animation-range: 0 96px;
+            }
+            @keyframes hdr-compact {
+                to {
+                    background-color: color-mix(in oklab, var(--background) 88%, transparent);
+                    border-bottom-color: color-mix(
+                        in oklab,
+                        var(--border) 70%,
+                        transparent
+                    );
+                }
+            }
+
+            /* Landing + light-mode only: the hero stays dark beneath a
+             * transparent header, so header text needs the dark-mode
+             * white at scroll=0 and must fade to the light-mode dark
+             * foreground as the chrome opacifies past ~96px.
+             *
+             * Selector strategy: scope to `@media (prefers-color-scheme: light)` +
+             * `[data-landing]` so docs pages in light mode are
+             * untouched (their bg is already paper, header text is
+             * already dark). Animate `color` on the wordmark and nav
+             * links — these are bare text drawn directly on the hero
+             * canvas. Skip the Search and theme-select buttons since
+             * they have their own light-pill backgrounds that already
+             * provide local contrast for the dark text. Animating
+             * those would put white text on white pills at scroll=0.
+             * Same scroll timeline as the chrome fade — crossfades in
+             * lockstep. */
+            @media (prefers-color-scheme: light) {
+                :global([data-slot='layout'][data-landing] > header .title-text),
+                :global([data-slot='layout'][data-landing] > header .header-nav a),
+                :global([data-slot='layout'][data-landing] > header nav a),
+                :global([data-slot='layout'][data-landing] > header .audio-cluster button) {
+                    animation: hdr-text-light-fade linear both;
+                    animation-timeline: scroll(root);
+                    animation-range: 0 96px;
+                }
+            }
+            @keyframes hdr-text-light-fade {
+                from {
+                    color: oklch(92% 0.008 250);
+                }
+                to {
+                    color: var(--foreground);
+                }
+            }
+        }
+    }
+
+    /* Reduced-motion / unsupported scroll-driven: pin header text to
+     * the final (light-mode foreground) state on landing in light mode.
+     * Default rendering already does this since the natural CSS color
+     * is var(--foreground); no override needed. */
+</style>
+
+<style is:global>
+    /* ────────── In-header mobile TOC ──────────
+     * Upstream Starlight's <mobile-starlight-toc> renders a position:fixed
+     * nav strip pinned below the header at full viewport width. We need
+     * it inline INSIDE the header at narrow viewports so the page chrome
+     * stays a single row. These rules apply only when the custom element
+     * is mounted inside .header-toc (Header.astro). The strip variant is
+     * dead — PageSidebar no longer renders it. */
+
+    .header-toc mobile-starlight-toc,
+    .header-toc mobile-starlight-toc nav {
+        position: static;
+        inset-inline: auto;
+        top: auto;
+        border-top: none;
+        background: transparent;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        z-index: auto;
+        width: auto;
+    }
+
+    /* `details` is the relative anchor for the absolutely-positioned
+     * dropdown — without this, the dropdown would position against the
+     * nearest non-static ancestor (probably the header itself, which
+     * works but couples the dropdown's edge to header padding rather
+     * than the toggle button's edge). */
+    .header-toc mobile-starlight-toc details {
+        position: relative;
+    }
+
+    .header-toc mobile-starlight-toc summary {
+        gap: 0.5rem;
+        align-items: center;
+        height: auto;
+        border-bottom: none;
+        padding: 0;
+        font-size: 0.8125rem;
+        cursor: pointer;
+        outline-offset: 2px;
+    }
+    .header-toc mobile-starlight-toc summary::marker,
+    .header-toc mobile-starlight-toc summary::-webkit-details-marker {
+        display: none;
+    }
+
+    /* The toggle button — sized to sit alongside the header's search
+     * pill and theme select without dominating the row. Uses the same
+     * diamond accent system as the previously-strip TOC styling. */
+    .header-toc mobile-starlight-toc .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: 2rem;
+        padding: 0 0.625rem 0 0.75rem;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 0.8125rem;
+        line-height: 1;
+        color: var(--muted-foreground);
+        background-color: color-mix(
+            in oklab,
+            var(--background) 80%,
+            var(--card)
+        );
+        border: 1px solid
+            color-mix(in oklab, var(--diamond) 16%, var(--border));
+        border-radius: calc(var(--radius) - 2px);
+        cursor: pointer;
+        user-select: none;
+        transition:
+            color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .header-toc mobile-starlight-toc details[open] .toggle,
+    .header-toc mobile-starlight-toc details .toggle:hover {
+        color: var(--foreground);
+        border-color: color-mix(in oklab, var(--diamond) 50%, var(--border));
+        background-color: color-mix(in oklab, var(--diamond) 8%, var(--card));
+    }
+
+    /* The "you are here" heading inside the summary — truncates with
+     * ellipsis since the toggle button width is capped by .header-toc's
+     * max-width. Hidden on the very narrowest tablet column where it
+     * would crowd out the search button. */
+    .header-toc mobile-starlight-toc .display-current {
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        font-size: 0.75rem;
+        color: color-mix(in oklab, var(--diamond) 60%, var(--foreground));
+        font-weight: 500;
+        max-width: 12rem;
+    }
+    @media (max-width: 56rem) {
+        .header-toc mobile-starlight-toc .display-current {
+            display: none;
+        }
+    }
+
+    /* Open-state dropdown — left-aligned with the toggle button, drops
+     * to the same vertical offset as the MusicPlayer popover (0.5rem
+     * below the header bottom) for visual consistency. Width fixed at
+     * 18rem on roomy viewports; shrinks with the viewport when narrow. */
+    .header-toc mobile-starlight-toc details[open] .dropdown {
+        position: absolute;
+        top: calc(100% + 1rem);
+        left: 0;
+        right: auto;
+        width: min(18rem, calc(100vw - calc(var(--spacing) * 8)));
+        max-height: calc(85vh - var(--header-height, 3.5rem));
+        margin-top: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        background-color: var(--card);
+        border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+        border-top-color: color-mix(in oklab, var(--diamond) 14%, var(--border));
+        border-radius: var(--radius);
+        box-shadow:
+            0 10px 32px -8px color-mix(in oklab, var(--background) 60%, transparent),
+            0 2px 8px -2px color-mix(in oklab, var(--background) 80%, transparent);
+        /* Above article content but below modals/search-modal which use
+         * a higher Starlight z layer. */
+        z-index: var(--sl-z-index-toc, 40);
+    }
+
+    /* Caret rotation — preserved from upstream so the affordance still
+     * reads as "click to open". Adds a transition so the open/close
+     * doesn't snap (upstream omits it). */
+    .header-toc mobile-starlight-toc .caret {
+        transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .header-toc mobile-starlight-toc details[open] .caret {
+        transform: rotateZ(90deg);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .header-toc mobile-starlight-toc .caret {
+            transition: none;
+        }
+    }
+
+    /* Heading badges (starlight-heading-badges) inside the
+     * "you are here" line — keep them small so they don't blow out
+     * the truncating display-current width. */
+    .header-toc mobile-starlight-toc .display-current span[data-shb-badge] {
+        margin-inline-start: 0.4em;
+        font-size: 0.625rem;
+        padding: 0.0625rem 0.3rem;
+    }
+</style>

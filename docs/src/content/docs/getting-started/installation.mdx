@@ -3,7 +3,7 @@ title: Installation
 description: Install three-flatland in your project.
 ---
 
-import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import { Tabs, TabItem, Aside } from 'starlight-theme/components';
 
 <Aside type="caution" title="Alpha Release">
   three-flatland is in alpha. Expect breaking changes between releases. Consider pinning the exact version in your `package.json` until you're ready to migrate.
@@ -12,29 +12,28 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 ## Package Manager
 
 <Tabs syncKey="pkg">
-  <TabItem label="npm">
+  <TabItem label="npm" icon="simple-icons:npm">
     ```bash
     npm install three-flatland@alpha
     ```
   </TabItem>
-  <TabItem label="pnpm">
+  <TabItem label="pnpm" icon="simple-icons:pnpm">
     ```bash
     pnpm add three-flatland@alpha
     ```
   </TabItem>
-  <TabItem label="yarn">
+  <TabItem label="yarn" icon="simple-icons:yarn">
     ```bash
     yarn add three-flatland@alpha three koota
     ```
   </TabItem>
-  <TabItem label="bun">
+  <TabItem label="bun" icon="simple-icons:bun">
     ```bash
     bun add three-flatland@alpha
     ```
   </TabItem>
-  <TabItem label="agents">
-    Paste this into your agent to set up a new project:
-    ~~~
+  <TabItem label="agents" icon="lucide:sparkles">
+    ```text title="Paste this into your agent to set up a new project:"
     Set up a new project with three-flatland, a 2D sprite and effects library
     for Three.js using WebGPU and TSL (Three Shader Language).
 
@@ -48,7 +47,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
     - WebGPU renderer setup with await renderer.init()
     - Orthographic camera
     - A sprite loaded with TextureLoader
-    ~~~
+    ```
   </TabItem>
 </Tabs>
 
@@ -57,29 +56,28 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 React is not required. If you're using React Three Fiber, add the additional dependencies:
 
 <Tabs syncKey="pkg">
-  <TabItem label="npm">
+  <TabItem label="npm" icon="simple-icons:npm">
     ```bash
     npm install three-flatland@alpha @react-three/fiber@alpha
     ```
   </TabItem>
-  <TabItem label="pnpm">
+  <TabItem label="pnpm" icon="simple-icons:pnpm">
     ```bash
     pnpm add three-flatland@alpha @react-three/fiber@alpha
     ```
   </TabItem>
-  <TabItem label="yarn">
+  <TabItem label="yarn" icon="simple-icons:yarn">
     ```bash
     yarn add three-flatland@alpha @react-three/fiber@alpha three koota react react-dom
     ```
   </TabItem>
-  <TabItem label="bun">
+  <TabItem label="bun" icon="simple-icons:bun">
     ```bash
     bun add three-flatland@alpha @react-three/fiber@alpha
     ```
   </TabItem>
-  <TabItem label="agents">
-    Paste this into your agent to set up a new R3F project:
-    ~~~
+  <TabItem label="agents" icon="lucide:sparkles">
+    ```text title="Paste this into your agent to set up a new R3F project:"
     Set up a new React Three Fiber project with three-flatland, a 2D sprite
     and effects library for Three.js using WebGPU and TSL.
 
@@ -97,7 +95,7 @@ React is not required. If you're using React Three Fiber, add the additional dep
     - Suspense boundary around components that load assets
     - useFrame for per-frame animation (refs + imperative updates)
     - useState(() => ...) for WASM objects (SkiaPaint, SkiaPath) — survives strict mode
-    ~~~
+    ```
   </TabItem>
 </Tabs>
 

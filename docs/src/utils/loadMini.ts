@@ -1,20 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   transformPackageJson,
   loadDirectoryFiles,
   loadPublicFiles,
 } from './loadHelpers';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(process.cwd(), '..');
 
 /**
  * Load a mini-game from minis/{name} and transform for StackBlitz.
  * Minis are React-only (no type param needed).
  */
 export function loadMini(name: string): Record<string, string> {
-  const miniDir = path.resolve(__dirname, `../../../minis/${name}`);
+  const miniDir = path.resolve(repoRoot, `minis/${name}`);
   const files: Record<string, string> = {};
 
   // Transform package.json

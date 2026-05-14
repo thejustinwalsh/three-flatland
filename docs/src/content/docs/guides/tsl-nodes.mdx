@@ -3,7 +3,7 @@ title: TSL Nodes
 description: Create custom shader effects using Three Shader Language.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 
 TSL (Three Shader Language) is a node-based shader system in Three.js that enables custom GPU effects without writing raw WGSL/GLSL code.
 
@@ -14,7 +14,7 @@ three-flatland provides two ways to use TSL:
 
 TSL node functions (tint, hueShift, outline, dissolve, etc.) are exported from `@three-flatland/nodes`. The effect system (`createMaterialEffect`, `createPassEffect`) and core classes are exported from `three-flatland`.
 
-## Material Effects
+## Material Effects :badge[Recommended]{variant=success}
 
 The Material Effect system lets you define shader effects as reusable classes with typed, animatable properties. Effects are composed into the sprite's shader pipeline automatically.
 
@@ -53,7 +53,7 @@ The `node` callback receives:
 ### Using Effects
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     // Create instance and add to sprite
     const flash = new DamageFlash();
@@ -66,7 +66,7 @@ The `node` callback receives:
     sprite.removeEffect(flash);
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { useMemo, useEffect } from 'react';
     import { useFrame } from '@react-three/fiber/webgpu';
@@ -105,7 +105,7 @@ const Dissolve = createMaterialEffect({
 
 See the [TSL Nodes example](../../examples/tsl-nodes/) for all 8 effects in action.
 
-## Low-Level TSL Usage
+## Low-Level TSL Usage :badge[Advanced]{variant=note}
 
 For full shader control, you can compose TSL nodes directly on a `MeshBasicNodeMaterial`. This is useful for custom materials outside the sprite pipeline:
 

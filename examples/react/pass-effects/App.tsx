@@ -10,6 +10,8 @@ import {
   createPassEffect,
 } from 'three-flatland/react'
 import type { PassEffect } from 'three-flatland/react'
+import { GemBackground } from './GemBackground'
+import { GEM } from './gem'
 import {
   crtComplete,
   crtVignette,
@@ -310,6 +312,7 @@ export default function App() {
         gl.domElement.style.imageRendering = 'pixelated'
       }}
     >
+      <GemBackground gem={GEM} />
       <StatsTracker stats={stats} />
       <FlatlandScene preset={preset} stats={stats} />
     </Canvas>

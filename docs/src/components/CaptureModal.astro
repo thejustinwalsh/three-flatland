@@ -80,31 +80,63 @@
     position: relative;
   }
 
+  /* Close button — design-system aligned. Was a hardcoded pink-on-
+   * Silkscreen pill that didn't match anything else on the site.
+   * Now uses the same tokens as the rest of the chrome:
+   *   - --card surface, --border at 1px (matches button pattern)
+   *   - --foreground glyph color, Inter for UI parity
+   *   - Ruby gem on hover/focus (the "dismiss" gem in our taxonomy)
+   *   - Soft scene-light shadow that fits the dark-on-near-black
+   *     surface aesthetic
+   * Click target stays at 2.75rem (44px+ tap target). */
   #close-modal {
     position: fixed;
-    top: 2rem;
-    right: 2rem;
-    width: 3.5rem;
-    height: 3.5rem;
+    top: calc(var(--spacing) * 4);
+    right: calc(var(--spacing) * 4);
+    width: 2.75rem;
+    height: 2.75rem;
     border-radius: 50%;
-    background: #d94c87;
-    color: white;
-    border: none;
-    font-size: 2.5rem;
+    background: color-mix(in oklab, var(--card) 92%, var(--background));
+    color: var(--foreground);
+    border: 1px solid var(--border);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 1.5rem;
+    font-weight: 400;
     line-height: 1;
+    letter-spacing: 0;
     cursor: pointer;
     z-index: 10001;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.1s, opacity 0.2s;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.8);
-    font-family: 'Silkscreen', cursive;
+    transition:
+      color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow:
+      0 4px 18px -4px color-mix(in oklab, black 70%, transparent),
+      0 1px 4px -1px color-mix(in oklab, black 85%, transparent);
+    outline-offset: 2px;
   }
 
   #close-modal:hover {
-    transform: scale(1.1);
-    background: #e16da1;
+    color: var(--ruby);
+    border-color: color-mix(in oklab, var(--ruby) 55%, var(--border));
+    background-color: color-mix(in oklab, var(--ruby) 8%, var(--card));
+    box-shadow:
+      0 6px 22px -4px color-mix(in oklab, black 65%, transparent),
+      0 0 0 1px color-mix(in oklab, var(--ruby) 35%, transparent);
+  }
+
+  #close-modal:focus-visible {
+    outline: 2px solid var(--ruby);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #close-modal {
+      transition: none;
+    }
   }
 
   #modal-content {

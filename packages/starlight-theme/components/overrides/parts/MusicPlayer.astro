@@ -1,0 +1,1385 @@
+---
+/**
+ * MusicPlayer — header popover for the docs jukebox. Sits LEFT of
+ * SoundToggle in the header audio cluster so master mute stays
+ * rightmost (per design). Renders a small icon button; click opens
+ * a popover with track metadata, prev/play-pause/restart/next, music
+ * volume slider, and a thin progress line.
+ *
+ * Toast behavior: when the active track changes (auto-start, user
+ * clicks next/prev, restart, or an external — game — source takes
+ * over the music bus), the popover auto-opens for ~3s as a "now
+ * playing" toast then auto-closes. If the user interacts with the
+ * popover during the open window, it stays open until they explicitly
+ * close.
+ *
+ * External takeover: when `state.musicDuckedExternal` is true, all
+ * jukebox transport controls (prev/play-pause/restart/next) disable;
+ * volume slider remains active (controls the docs music bus only,
+ * which is ducked). The popover title swaps to show the external
+ * (game) track. On unduck, controls re-enable.
+ */
+---
+
+<flatland-music-player>
+    {/* Native HTML Popover API — `popover="auto"` gives us light dismiss
+        (click outside) + Escape close + top-layer rendering for free.
+        The trigger uses `popovertarget` to reference the popover by id;
+        the browser also wires implicit aria-expanded on the button so
+        we don't have to manage that attribute manually. */}
+    <button
+        type="button"
+        class="music-trigger"
+        aria-label="Open music player"
+        popovertarget="flatland-music-popover"
+        title="Music — click to open player"
+    >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+        </svg>
+    </button>
+
+    <div
+        id="flatland-music-popover"
+        class="music-popover"
+        role="dialog"
+        aria-label="Music player"
+        popover="auto"
+        data-gem="amethyst"
+    >
+        <div class="music-row music-row-top">
+            {/* Retro 5×5 mirrored avatar — generated client-side from
+                the track id (deterministic, FNV-style hash). Fill color
+                tracks the gem of the active track. */}
+            <svg class="music-avatar" data-music-avatar viewBox="0 0 5 5" aria-hidden="true" focusable="false"></svg>
+            <div class="music-meta">
+                {/* Title is a clipped outer element with an inline-block
+                    inner span. On hover the inner span ping-pongs via
+                    keyframe animation (start → end → start) with pauses
+                    at each extreme. JS measures overflow and sets
+                    `--marquee-end` so the animation only travels the
+                    actual hidden distance. */}
+                <span class="music-title">
+                    <span class="music-title-text" data-music-title>Loading…</span>
+                </span>
+                <span class="music-credit" data-music-credit></span>
+            </div>
+            {/* Right-side action stack: play+next on top, volume slider
+                directly underneath. Total width is constrained by the
+                buttons; slider matches that width. */}
+            <div class="music-actions">
+                <div class="music-controls" data-music-controls>
+                    <button type="button" class="music-btn u-holo" data-music-toggle aria-label="Play" title="Play">
+                        <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                        <svg class="icon-pause" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                            <rect x="6" y="4" width="4" height="16" />
+                            <rect x="14" y="4" width="4" height="16" />
+                        </svg>
+                    </button>
+                    <button type="button" class="music-btn u-holo" data-music-next aria-label="Next track" title="Next track">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="5 4 15 12 5 20 5 4" />
+                            <line x1="19" y1="5" x2="19" y2="19" />
+                        </svg>
+                    </button>
+                </div>
+                <label class="music-volume-label">
+                    <span class="sr-only">Music volume</span>
+                    <input
+                        type="range"
+                        class="music-volume"
+                        data-music-volume
+                        min="0"
+                        max="100"
+                        value="30"
+                        aria-label="Music volume"
+                    />
+                </label>
+            </div>
+        </div>
+
+        {/* FFT visualizer — canvas spans full width. Bars are painted in
+            JS with gem-blended colors across the spectrum. */}
+        <canvas class="music-fft" data-music-fft width="256" height="32" aria-hidden="true"></canvas>
+
+        {/* Progress + time row */}
+        <div class="music-row music-row-bottom">
+            <div class="music-progress" aria-hidden="true">
+                <span class="music-progress-fill" data-music-progress></span>
+            </div>
+            <span class="music-time" data-music-time>0:00</span>
+        </div>
+    </div>
+</flatland-music-player>
+
+<script>
+    type SoundsModule = typeof import('../../../../../docs/src/scripts/sounds')
+
+    type Track = {
+        id: string
+        title: string
+        credit?: string
+        /** Optional URL for the credit — when present, the credit text
+         * renders as a link. Defaults to the zzfx-studio site when
+         * credit === "zzfx-studio" and the field is absent. */
+        creditUrl?: string
+        gem?: string
+        bpm: number
+    }
+
+    const ZZFX_STUDIO_URL = 'https://thejustinwalsh.github.io/zzfx-studio/'
+    const VALID_GEMS = new Set([
+        'gold', 'ruby', 'emerald', 'diamond', 'amethyst', 'pink', 'salmon', 'turquoize'
+    ])
+
+    type AudioState = {
+        masterLevel: 0 | 1 | 2 | 3
+        musicVolume: number
+        musicPlaying: boolean
+        musicTrackIndex: number
+        musicUserStopped: boolean
+        musicDuckedExternal: boolean
+        currentTrack: Track | null
+        library: { tracks: Track[] } | null
+    }
+
+    const TOAST_MS = 3000
+
+    /** Session-level state that survives client-router navigation.
+     * `lastTrackId` lets us distinguish "track id change" (toast-worthy)
+     * from "initial state sync after swap" (skip toast). */
+    type SessionState = {
+        lastTrackId: string | null
+    }
+    const SESSION_KEY = '__flatlandMusicPlayerSession'
+    function readSession(): SessionState {
+        const w = window as unknown as { [SESSION_KEY]?: SessionState }
+        if (!w[SESSION_KEY]) {
+            w[SESSION_KEY] = { lastTrackId: null }
+        }
+        return w[SESSION_KEY]!
+    }
+
+    class FlatlandMusicPlayer extends HTMLElement {
+        private cleanup?: AbortController
+        private toastTimer: number | null = null
+        private soundsPromise?: Promise<SoundsModule>
+        private userInteractedDuringToast = false
+        /** True until the first applyState call fires. Used to detect the
+         * "initial state sync after subscribe" so we can hydrate
+         * `session.lastTrackId` from the bridge without firing a toast. */
+        private firstStateSync = true
+
+        private trigger!: HTMLButtonElement
+        private popoverEl!: HTMLElement
+        private titleEl!: HTMLElement
+        private creditEl!: HTMLElement
+        private avatarEl!: SVGSVGElement
+        private toggleBtn!: HTMLButtonElement
+        private nextBtn!: HTMLButtonElement
+        private volumeInput!: HTMLInputElement
+        private fftCanvas!: HTMLCanvasElement
+        private fftCtx2d: CanvasRenderingContext2D | null = null
+        private controls!: HTMLElement
+        private progressEl!: HTMLElement
+        private timeEl!: HTMLElement
+        /** rAF id for the FFT/progress loop. Only running while the
+         * popover is open (started/stopped in the toggle handler). */
+        private fftRaf = 0
+        private analyserData?: Uint8Array
+        /** Cached gem RGB triplets for the spectrum blend. Re-resolved
+         * when the popover opens (so a light/dark theme flip picks up
+         * the new computed token values). */
+        private spectrumColors: { r: number; g: number; b: number }[] = []
+
+        constructor() {
+            super()
+            const ctrl = new AbortController()
+            this.cleanup = ctrl
+            const { signal } = ctrl
+
+            this.trigger = this.querySelector<HTMLButtonElement>('.music-trigger')!
+            this.popoverEl = this.querySelector<HTMLElement>('.music-popover')!
+            this.titleEl = this.querySelector<HTMLElement>('[data-music-title]')!
+            this.creditEl = this.querySelector<HTMLElement>('[data-music-credit]')!
+            this.avatarEl = this.querySelector<SVGSVGElement>('[data-music-avatar]')!
+            this.toggleBtn = this.querySelector<HTMLButtonElement>('[data-music-toggle]')!
+            this.nextBtn = this.querySelector<HTMLButtonElement>('[data-music-next]')!
+            this.volumeInput = this.querySelector<HTMLInputElement>('[data-music-volume]')!
+            this.fftCanvas = this.querySelector<HTMLCanvasElement>('[data-music-fft]')!
+            this.fftCtx2d = this.fftCanvas.getContext('2d')
+            this.controls = this.querySelector<HTMLElement>('[data-music-controls]')!
+            this.progressEl = this.querySelector<HTMLElement>('[data-music-progress]')!
+            this.timeEl = this.querySelector<HTMLElement>('[data-music-time]')!
+
+            // Transport handlers — the popover open/close itself is owned
+            // by the native `popover` attribute on the panel + the
+            // `popovertarget` attribute on the trigger button. The browser
+            // handles light dismiss + Escape + top-layer rendering.
+            this.toggleBtn.addEventListener('click', () => this.handleToggle(), { signal })
+            this.nextBtn.addEventListener('click', () => this.handleNext(), { signal })
+            this.volumeInput.addEventListener('input', (e) => this.handleVolume(e), { signal })
+
+            // Popover width + anchor live in CSS as a fixed value. No
+            // dynamic measurement — popover stays the same visual
+            // footprint at every viewport.
+
+            // Toast logic + progress loop hook into the popover's state
+            // changes. `toggle` fires after the state has changed.
+            this.popoverEl.addEventListener(
+                'toggle',
+                (e: Event) => {
+                    const ev = e as { newState?: string; oldState?: string } & Event
+                    if (ev.newState === 'open') {
+                        this.startProgressLoop()
+                    } else {
+                        this.stopProgressLoop()
+                        if (this.toastTimer !== null) {
+                            clearTimeout(this.toastTimer)
+                            this.toastTimer = null
+                        }
+                    }
+                },
+                { signal }
+            )
+
+            // Track user interaction with the popover so a toast doesn't
+            // auto-close when the user clicks inside it.
+            this.popoverEl.addEventListener(
+                'click',
+                () => {
+                    this.userInteractedDuringToast = true
+                    if (this.toastTimer !== null) {
+                        clearTimeout(this.toastTimer)
+                        this.toastTimer = null
+                    }
+                },
+                { signal }
+            )
+
+            // Eager-but-lazy: pull the audio module on idle so first user
+            // interaction is hot. The bridge loads tracks.json + zzfxm
+            // here too.
+            const onIdle =
+                window.requestIdleCallback ??
+                ((cb: () => void) => window.setTimeout(cb, 1))
+            onIdle(() => {
+                if (signal.aborted) return
+                this.loadSounds()
+            })
+
+            // Auto-close on scroll — same exit animation as click-outside
+            // and Escape. Re-opening at any scroll position re-anchors
+            // the popover at its CSS `top: --header-height + gap`
+            // (position: fixed via popover UA), so it always floats
+            // right under the header on reopen.
+            //
+            // We defer the hidePopover call to the next animation frame
+            // so the exit transition composites in a clean paint frame
+            // instead of being torn apart by the in-progress scroll
+            // commit. Calling hidePopover() synchronously inside a
+            // high-frequency scroll handler lets the browser drop the
+            // popover's display/opacity/transform transition under
+            // compositor pressure — looks like a snap-closed instead
+            // of the gentle fade you get from click-outside.
+            //
+            // The pending flag dedupes — repeated scroll events while
+            // one dismiss is already queued become no-ops, so the
+            // transition isn't restarted mid-flight.
+            let scrollDismissPending = false
+            window.addEventListener(
+                'scroll',
+                () => {
+                    if (scrollDismissPending) return
+                    const popover = this.popoverEl as HTMLElement & {
+                        matches: (s: string) => boolean
+                        hidePopover: () => void
+                    }
+                    if (!popover.matches(':popover-open')) return
+                    scrollDismissPending = true
+                    requestAnimationFrame(() => {
+                        scrollDismissPending = false
+                        if (popover.matches(':popover-open')) {
+                            try { popover.hidePopover() } catch {}
+                        }
+                    })
+                },
+                { passive: true, signal }
+            )
+
+            // Manual pointer-tracking for the rim-glint. motion.ts'
+            // global registry doesn't reliably pick up the popover —
+            // top-layer rendering (display: none until showPopover())
+            // gives the IntersectionObserver inconsistent layout signals.
+            // We drive the same vars motion.ts would: --mx, --my,
+            // --mouse-active for the radial hotspot + --light-angle for
+            // the conic glint sweep on the rim ::before.
+            this.popoverEl.addEventListener(
+                'pointermove',
+                (e: PointerEvent) => {
+                    const r = this.popoverEl.getBoundingClientRect()
+                    const nx = (e.clientX - r.left) / r.width
+                    const ny = (e.clientY - r.top) / r.height
+                    this.popoverEl.style.setProperty('--mx', `${(nx * 100).toFixed(2)}%`)
+                    this.popoverEl.style.setProperty('--my', `${(ny * 100).toFixed(2)}%`)
+                    this.popoverEl.style.setProperty('--mouse-active', '1')
+                    // Same atan2 mapping motion.ts uses — cursor angle
+                    // around the surface center, offset +90° so the glint
+                    // points TOWARD the cursor rather than orthogonal.
+                    const dx = nx - 0.5
+                    const dy = ny - 0.5
+                    const angle = (Math.atan2(dy, dx) * 180) / Math.PI + 90
+                    this.popoverEl.style.setProperty('--light-angle', `${angle.toFixed(1)}deg`)
+                },
+                { passive: true, signal }
+            )
+            this.popoverEl.addEventListener(
+                'pointerleave',
+                () => {
+                    this.popoverEl.style.setProperty('--mouse-active', '0')
+                },
+                { signal }
+            )
+
+            // Close-on-nav: the popover is part of the Header. With
+            // astro-vtbot's ClientRouter the header may be replaced or
+            // persisted depending on transition: directives. Either way,
+            // dismissing the popover before swap gives a clean exit
+            // animation and ensures `:popover-open` doesn't survive into
+            // the next page.
+            document.addEventListener(
+                'astro:before-preparation',
+                () => {
+                    const popoverEl = this.popoverEl as HTMLElement & {
+                        matches: (s: string) => boolean
+                        hidePopover: () => void
+                    }
+                    if (popoverEl.matches(':popover-open')) {
+                        try { popoverEl.hidePopover() } catch {}
+                    }
+                },
+                { signal }
+            )
+        }
+
+        disconnectedCallback() {
+            this.cleanup?.abort()
+            this.cleanup = undefined
+            if (this.toastTimer !== null) clearTimeout(this.toastTimer)
+            if (this.fftRaf) cancelAnimationFrame(this.fftRaf)
+        }
+
+        private loadSounds(): Promise<SoundsModule> {
+            if (!this.soundsPromise) {
+                this.soundsPromise = import(
+                    /* @vite-ignore */
+                    '../../../../../docs/src/scripts/sounds'
+                ) as Promise<SoundsModule>
+                this.soundsPromise.then(async (sounds) => {
+                    // Force the bridge to materialize so we can subscribe
+                    // to its state. initAudio resolves once the bridge is
+                    // constructed (it needs a user gesture to fully unlock,
+                    // but the singleton + library are ready immediately).
+                    await sounds.initAudio()
+                    const bridge = (window as unknown as { __threeFlatlandAudio?: { subscribe: (cb: (s: AudioState) => void) => () => void } })
+                        .__threeFlatlandAudio
+                    if (!bridge) return
+                    // Bridge exposes subscribe(cb): unsubscribe; cb receives state.
+                    // Don't destructure — destructured methods lose their
+                    // `this` binding and `subscribe` would call into a
+                    // detached function, breaking `this.listeners.add()`.
+                    bridge.subscribe((state) => this.applyState(state))
+                })
+            }
+            return this.soundsPromise
+        }
+
+        private getBridge(): {
+            playTrack: (t: Track, opts?: { fromUserGesture?: boolean }) => void
+            pauseMusic: () => void
+            resumeMusic: () => void
+            nextTrack: () => void
+            setMusicVolume: (v: number) => void
+            getState: () => AudioState
+            musicAnalyser?: AnalyserNode
+        } | undefined {
+            return (window as unknown as { __threeFlatlandAudio?: unknown })
+                .__threeFlatlandAudio as ReturnType<FlatlandMusicPlayer['getBridge']>
+        }
+
+        private async ensureBridge() {
+            await this.loadSounds()
+            return this.getBridge()
+        }
+
+        // ────────── Popover open/close ──────────
+        //
+        // Native popover API handles user-driven open/close via the
+        // `popovertarget` attribute on the trigger button + the
+        // `popover="auto"` attribute on the panel. Light dismiss
+        // (click outside) and Escape close are automatic.
+        //
+        // This component only programmatically opens the popover as a
+        // *toast* on track change — see `openAsToast`. Closing the toast
+        // is also explicit: a timer fires `hidePopover()` after TOAST_MS
+        // unless the user interacted with the panel during the window.
+
+        /** Open as a transient toast on track change. Auto-closes after
+         * TOAST_MS unless the user clicks inside the popover during the
+         * window (in which case it stays open until they dismiss it via
+         * Escape or outside click — both browser-handled). */
+        private openAsToast(): void {
+            // Already open (user clicked through to it) — leave alone.
+            const popoverEl = this.popoverEl as HTMLElement & { matches: (s: string) => boolean }
+            if (popoverEl.matches(':popover-open')) return
+            this.userInteractedDuringToast = false
+            try {
+                ;(this.popoverEl as HTMLElement & { showPopover: () => void }).showPopover()
+            } catch {
+                // showPopover throws if browser doesn't support the API or
+                // the popover is already open from a stale state — silent
+                // fallback is fine.
+                return
+            }
+            this.toastTimer = window.setTimeout(() => {
+                this.toastTimer = null
+                if (this.userInteractedDuringToast) return
+                try {
+                    ;(this.popoverEl as HTMLElement & { hidePopover: () => void }).hidePopover()
+                } catch {}
+            }, TOAST_MS)
+        }
+
+        // ────────── State sync ──────────
+
+        private applyState(state: AudioState): void {
+            const track = state.currentTrack
+            const title = track?.title ?? 'No track loaded'
+            this.titleEl.textContent = title
+            // Measure overflow on the OUTER (clipping) element — its
+            // scrollWidth reflects the full content width including the
+            // hidden tail. The inner span is `display: inline` at rest
+            // (so the outer's text-overflow can paint the ellipsis), and
+            // an inline element's own `scrollWidth` always reports 0 —
+            // reading from there silently disabled the marquee.
+            requestAnimationFrame(() => {
+                const outer = this.titleEl.parentElement as HTMLElement | null
+                if (!outer) return
+                const overflow = outer.scrollWidth - outer.clientWidth
+                outer.style.setProperty('--marquee-end', overflow > 0 ? `${-overflow - 4}px` : '0px')
+            })
+
+            // Credit renders as a link when a URL is known. Defaults to
+            // the ZzFX Studio site when credit === "zzfx-studio" and no
+            // explicit creditUrl was set during ingestion.
+            const credit = track?.credit ?? ''
+            const creditUrl =
+                track?.creditUrl ??
+                (credit === 'zzfx-studio' ? ZZFX_STUDIO_URL : undefined)
+            this.creditEl.textContent = ''
+            if (credit) {
+                if (creditUrl) {
+                    const a = document.createElement('a')
+                    a.href = creditUrl
+                    a.textContent = credit
+                    a.target = '_blank'
+                    a.rel = 'noopener noreferrer'
+                    a.className = 'music-credit-link'
+                    this.creditEl.appendChild(a)
+                } else {
+                    this.creditEl.textContent = credit
+                }
+            }
+
+            // Bind the current track's gem to a CSS custom property so
+            // the popover surface (rim, FFT bars, holofoil) tints to
+            // match. Falls back to amethyst when no gem is declared.
+            const gem = track?.gem && VALID_GEMS.has(track.gem) ? track.gem : 'amethyst'
+            this.popoverEl.style.setProperty('--player-gem', `var(--${gem})`)
+            this.popoverEl.style.setProperty('--player-gem-low', `var(--${gem}-low, var(--${gem}))`)
+            this.popoverEl.dataset.gem = gem
+
+            // Generate (and cache by track id) the retro 5×5 avatar. The
+            // grid pattern is deterministic from the track id via a
+            // FNV-style hash — same track always produces the same icon.
+            if (track && track.id !== this.lastAvatarTrackId) {
+                this.lastAvatarTrackId = track.id
+                this.renderAvatar(track.id, gem)
+            }
+
+            // Toggle button reflects play/pause state.
+            const playing = state.musicPlaying
+            this.toggleBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play')
+            this.toggleBtn.setAttribute('title', playing ? 'Pause' : 'Play')
+            this.toggleBtn.dataset.playing = playing ? 'true' : 'false'
+
+            // External takeover disables transport controls.
+            const ducked = state.musicDuckedExternal
+            this.controls.dataset.ducked = ducked ? 'true' : 'false'
+            this.nextBtn.disabled = ducked || !state.library?.tracks?.length
+            this.toggleBtn.disabled = ducked || !track
+
+            // Volume slider mirrors music bus (0..1 → 0..100).
+            const vol100 = Math.round(state.musicVolume * 100)
+            if (parseInt(this.volumeInput.value, 10) !== vol100) {
+                this.volumeInput.value = String(vol100)
+            }
+
+            // Indicate external state on the trigger button so the user can
+            // see the music dipped without opening the popover.
+            this.trigger.dataset.state = ducked ? 'ducked' : playing ? 'playing' : 'idle'
+
+            // Toast policy (session-aware, survives client-router nav):
+            //   - First applyState after subscribe = "initial state sync".
+            //     Hydrate session.lastTrackId from the bridge — no toast.
+            //     Page load should never pop the player open. Music
+            //     doesn't auto-play across sessions, so there's nothing
+            //     to announce.
+            //   - Subsequent applyState calls fire on bridge mutations
+            //     (next, prev, duckForExternal). Any track-id transition
+            //     opens the toast — explicit song change is always
+            //     toast-worthy, including ducked-for-external (game
+            //     requested a song).
+            const trackId = track?.id ?? null
+            const session = readSession()
+            if (this.firstStateSync) {
+                this.firstStateSync = false
+                session.lastTrackId = trackId
+                return
+            }
+            if (trackId !== session.lastTrackId && trackId !== null) {
+                session.lastTrackId = trackId
+                this.openAsToast()
+            }
+        }
+
+        // ────────── Avatar generation ──────────
+
+        private lastAvatarTrackId: string | null = null
+
+        /** FNV-1a hash → array of unsigned 32-bit ints. Deterministic per
+         * input string; used to seed the avatar's pixel grid bits. */
+        private hashString(str: string): number[] {
+            const out: number[] = []
+            let h = 0x811c9dc5 >>> 0
+            for (let i = 0; i < str.length; i++) {
+                h ^= str.charCodeAt(i)
+                h = Math.imul(h, 0x01000193) >>> 0
+            }
+            for (let i = 0; i < 20; i++) {
+                h ^= i + 1
+                h = Math.imul(h, 0x01000193) >>> 0
+                out.push(h >>> 0)
+            }
+            return out
+        }
+
+        /** Generate a 5×5 mirrored pixel grid + paint into the avatar
+         * SVG. The left 3 columns are derived from the hash, columns 4-5
+         * mirror columns 1-0 for horizontal symmetry (the retro pattern
+         * ZzFX Studio uses on track cards). Fill color tracks --player-gem. */
+        private renderAvatar(seed: string, _gem: string): void {
+            const tiles = 5
+            const mid = Math.ceil(tiles / 2)
+            const hash = this.hashString(seed || 'flatland')
+            const pixels: boolean[][] = []
+            let bitIdx = 1
+            let filled = 0
+            const total = tiles * mid
+            for (let row = 0; row < tiles; row++) {
+                pixels[row] = []
+                for (let col = 0; col < mid; col++) {
+                    const val = hash[bitIdx % hash.length] ?? 0
+                    const bit = ((val >>> ((bitIdx * 3) % 28)) & 1) === 1
+                    pixels[row][col] = bit
+                    if (bit) filled++
+                    bitIdx++
+                }
+            }
+            // Coerce density into a comfortable middle band — too sparse
+            // or too dense reads as random pixels rather than a sigil.
+            const ratio = filled / total
+            if (ratio < 0.3) {
+                outer: for (let row = 0; row < tiles; row++) {
+                    for (let col = 0; col < mid; col++) {
+                        if (!pixels[row]![col]) {
+                            pixels[row]![col] = true
+                            filled++
+                            if (filled / total >= 0.3) break outer
+                        }
+                    }
+                }
+            } else if (ratio > 0.85) {
+                outer: for (let row = tiles - 1; row >= 0; row--) {
+                    for (let col = mid - 1; col >= 0; col--) {
+                        if (pixels[row]![col]) {
+                            pixels[row]![col] = false
+                            filled--
+                            if (filled / total <= 0.85) break outer
+                        }
+                    }
+                }
+            }
+            // Render: 5×5 SVG rects, mirrored.
+            const ns = 'http://www.w3.org/2000/svg'
+            while (this.avatarEl.firstChild) this.avatarEl.removeChild(this.avatarEl.firstChild)
+            for (let row = 0; row < tiles; row++) {
+                for (let col = 0; col < tiles; col++) {
+                    const srcCol = col < mid ? col : tiles - 1 - col
+                    if (!pixels[row]![srcCol]) continue
+                    const r = document.createElementNS(ns, 'rect')
+                    r.setAttribute('x', String(col))
+                    r.setAttribute('y', String(row))
+                    r.setAttribute('width', '1')
+                    r.setAttribute('height', '1')
+                    r.setAttribute('fill', 'currentColor')
+                    this.avatarEl.appendChild(r)
+                }
+            }
+        }
+
+        // ────────── Transport handlers ──────────
+
+        private async handleToggle(): Promise<void> {
+            const sounds = await this.loadSounds()
+            const bridge = await this.ensureBridge()
+            if (!bridge) return
+            const state = bridge.getState()
+            if (state.musicDuckedExternal) return
+            if (state.musicPlaying) {
+                bridge.pauseMusic()
+                return
+            }
+            // Authority model: clicking Play is unambiguous intent to
+            // hear music NOW, regardless of prior mute state.
+            //   - level > 0   → resume music (audio context unlocks on the
+            //                   gesture if it was suspended)
+            //   - level = 0   → unmute to low + resume. Whether the mute
+            //                   was the default-off state or an explicit
+            //                   user mute doesn't matter: clicking play
+            //                   IS the user asking to be unmuted.
+            // setVolumeLevel triggers the bridge's first-unmute autostart
+            // path (0 → 1 + !userStopped → playTrack); we follow with an
+            // idempotent resumeMusic to cover the userStopped branch where
+            // setMasterLevel intentionally does NOT auto-resume.
+            if (state.masterLevel === 0) {
+                sounds.setVolumeLevel(1)
+            }
+            bridge.resumeMusic()
+        }
+
+        private async handleNext(): Promise<void> {
+            const bridge = await this.ensureBridge()
+            if (!bridge) return
+            // Next/prev should let users SCROLL through the library even
+            // when audio isn't started yet — they're previewing what's
+            // available, or queuing up the track that'll start on next
+            // play click. The bridge's nextTrack calls playTrack which
+            // starts a source on a suspended/silent context if master is
+            // muted — that's actually fine (track id updates emit; state
+            // shows new track; gain is 0 so nothing audible). The toast
+            // fires on the track-id transition in applyState.
+            bridge.nextTrack()
+        }
+
+        private async handleVolume(e: Event): Promise<void> {
+            const v = parseInt((e.target as HTMLInputElement).value, 10) / 100
+            const bridge = await this.ensureBridge()
+            bridge?.setMusicVolume(v)
+        }
+
+        // ────────── FFT visualizer ──────────
+
+        /** rAF-driven loop reading byte-frequency data off the bridge's
+         * music analyser. Runs ONLY while the popover is open (started
+         * by the toggle/show event, stopped on close) so we don't burn
+         * CPU on an invisible canvas. */
+        private startProgressLoop(): void {
+            if (this.fftRaf) return
+            this.refreshSpectrumColors()
+            const tick = () => {
+                this.fftRaf = requestAnimationFrame(tick)
+                this.drawFft()
+                this.updateProgress()
+            }
+            this.fftRaf = requestAnimationFrame(tick)
+        }
+
+        private stopProgressLoop(): void {
+            if (this.fftRaf) {
+                cancelAnimationFrame(this.fftRaf)
+                this.fftRaf = 0
+            }
+            // Leave one final flat-line frame so a paused popover doesn't
+            // freeze on the last energetic frame.
+            this.drawFlat()
+        }
+
+        /** Parse a CSS color string returned by `getComputedStyle` into
+         * an RGB triplet. Handles `rgb(r g b)`, `rgb(r, g, b)`, `oklch(...)`
+         * (browsers compute oklch to a final rgb-space at use sites in
+         * most modern engines; falls back to muted gray on parse fail). */
+        private parseRgb(css: string): { r: number; g: number; b: number } {
+            const trimmed = css.trim()
+            const rgbMatch = trimmed.match(/(?:rgb|rgba)\s*\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i)
+            if (rgbMatch) {
+                return { r: +rgbMatch[1]!, g: +rgbMatch[2]!, b: +rgbMatch[3]! }
+            }
+            // Fallback: probe via a hidden element to get a resolved rgb()
+            // form. Only run when the simple regex misses (rare).
+            try {
+                const probe = document.createElement('div')
+                probe.style.color = trimmed
+                probe.style.display = 'none'
+                document.body.appendChild(probe)
+                const resolved = getComputedStyle(probe).color
+                document.body.removeChild(probe)
+                const m = resolved.match(/(\d+)[\s,]+(\d+)[\s,]+(\d+)/)
+                if (m) return { r: +m[1]!, g: +m[2]!, b: +m[3]! }
+            } catch {}
+            return { r: 180, g: 180, b: 180 }
+        }
+
+        /** Resolve the gem palette to live RGB triplets for the FFT
+         * blend. Order goes lows→highs across the spectrum: ruby → salmon
+         * → gold → emerald → diamond → amethyst. Like a heat map but
+         * across our gem palette. Re-resolves each time the popover
+         * opens so theme/token shifts (light↔dark) take effect. */
+        private refreshSpectrumColors(): void {
+            const cs = getComputedStyle(this.popoverEl)
+            const names = ['ruby', 'salmon', 'gold', 'emerald', 'diamond', 'amethyst']
+            this.spectrumColors = names.map((n) =>
+                this.parseRgb(cs.getPropertyValue(`--${n}`).trim() || '#888')
+            )
+        }
+
+        private drawFft(): void {
+            const ctx = this.fftCtx2d
+            if (!ctx) return
+            const bridge = this.getBridge()
+            if (!bridge?.musicAnalyser) {
+                this.drawFlat()
+                return
+            }
+            const analyser = bridge.musicAnalyser
+            if (!this.analyserData || this.analyserData.length !== analyser.frequencyBinCount) {
+                this.analyserData = new Uint8Array(analyser.frequencyBinCount)
+            }
+            analyser.getByteFrequencyData(this.analyserData)
+            const w = this.fftCanvas.width
+            const h = this.fftCanvas.height
+            ctx.clearRect(0, 0, w, h)
+            const bins = this.analyserData.length
+            const barCount = Math.min(28, bins)
+            const binsPerBar = Math.floor(bins / barCount)
+            const gap = 1
+            const barW = (w - gap * (barCount - 1)) / barCount
+            // Single-gem fill — the previous multi-gem spectrum blend
+            // didn't read clearly at this size. Each bar uses the active
+            // track's gem (--player-gem). Quiet bars get lower alpha so
+            // they fade quietly rather than reading as a uniform strip.
+            const gem = getComputedStyle(this.popoverEl).getPropertyValue('--player-gem').trim() || '#bbb'
+            const rgb = this.parseRgb(gem)
+            for (let i = 0; i < barCount; i++) {
+                let sum = 0
+                for (let j = 0; j < binsPerBar; j++) {
+                    sum += this.analyserData[i * binsPerBar + j] ?? 0
+                }
+                const avg = sum / binsPerBar / 255
+                const barH = Math.max(1, Math.round(avg * h))
+                const x = i * (barW + gap)
+                const y = h - barH
+                const alpha = 0.55 + 0.45 * avg
+                ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha.toFixed(3)})`
+                ctx.fillRect(x, y, barW, barH)
+            }
+        }
+
+        /** Draw a 1px gem-tinted baseline so the canvas region stays
+         * visually anchored even when the music is paused or muted. */
+        private drawFlat(): void {
+            const ctx = this.fftCtx2d
+            if (!ctx) return
+            const w = this.fftCanvas.width
+            const h = this.fftCanvas.height
+            ctx.clearRect(0, 0, w, h)
+            const gem = getComputedStyle(this.popoverEl).getPropertyValue('--player-gem').trim() || '#bbb'
+            ctx.fillStyle = gem
+            ctx.globalAlpha = 0.35
+            ctx.fillRect(0, h - 1, w, 1)
+            ctx.globalAlpha = 1
+        }
+
+        private updateProgress(): void {
+            const bridge = this.getBridge() as
+                | (ReturnType<FlatlandMusicPlayer['getBridge']> & {
+                      getMusicProgress?: () => { position: number; duration: number }
+                  })
+                | undefined
+            if (!bridge || !bridge.getMusicProgress) return
+            const { position, duration } = bridge.getMusicProgress()
+            const pct = duration > 0 ? Math.min(1, position / duration) : 0
+            this.progressEl.style.transform = `scaleX(${pct.toFixed(4)})`
+            const m = Math.floor(position / 60)
+            const s = Math.floor(position % 60)
+            this.timeEl.textContent = `${m}:${String(s).padStart(2, '0')}`
+        }
+    }
+
+    if (!customElements.get('flatland-music-player')) {
+        customElements.define('flatland-music-player', FlatlandMusicPlayer)
+    }
+</script>
+
+<style>
+    /* Host element — use inline-flex + align-items: center so the
+     * trigger button sits on the same baseline as the sibling
+     * SoundToggle / SocialIcons buttons. `inline-block` defaults to
+     * baseline alignment, which made the icon float a pixel or two
+     * above the other 2rem icons in the cluster. */
+    flatland-music-player {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        height: 2rem;
+    }
+
+    .music-trigger {
+        all: unset;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: calc(var(--radius) - 2px);
+        cursor: pointer;
+        color: color-mix(in oklab, var(--foreground) 76%, var(--muted-foreground));
+        background-color: transparent;
+        transition:
+            color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .music-trigger:hover,
+    .music-trigger[aria-expanded='true'] {
+        color: var(--foreground);
+        background-color: color-mix(in oklab, var(--accent) 12%, transparent);
+    }
+    .music-trigger:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--amethyst) 80%, transparent);
+        outline-offset: 2px;
+    }
+    /* Trigger state tints — `playing` warms to amethyst, `ducked` fades. */
+    .music-trigger[data-state='playing'] {
+        color: color-mix(in oklab, var(--foreground) 60%, var(--amethyst) 40%);
+    }
+    .music-trigger[data-state='ducked'] {
+        color: color-mix(in oklab, var(--muted-foreground) 80%, var(--amethyst) 20%);
+    }
+    .music-trigger svg {
+        flex-shrink: 0;
+        pointer-events: none;
+    }
+
+    /* Native popover panel — `popover="auto"` puts this in the top
+     * layer when open (above everything, no z-index battles).
+     *
+     * Positioning: the UA stylesheet for `[popover]` defaults to
+     * `inset: 0; margin: auto; width/height: fit-content` which centers
+     * the popover in the viewport. We override the insets to pin it
+     * just below the header on the right side — anchored under the
+     * music trigger icon. Static positioning is fine because the
+     * trigger button doesn't move laterally across routes.
+     *
+     *   top:   --header-height + 0.5rem gap below the chrome
+     *   right: container padding (--spacing × 6) so the popover's
+     *          right edge aligns with the audio cluster's right edge */
+    /* Popover surface — mirrors `.sl-link-button.secondary`'s subtle
+     * grayish/black gradient + gem-tinted rim, scaled up to a panel.
+     * Background is built from --player-gem so when the track changes,
+     * the entire surface re-tints. Rim is a thin gem-colored 1px inner
+     * border (via box-shadow inset) — same affordance as the View on
+     * GitHub button, just rolled up to popover proportions. */
+    .music-popover {
+        --player-gem: var(--amethyst);
+        --player-gem-low: var(--amethyst-low, var(--amethyst));
+        /* Popover UA defaults `position: fixed` which is what we want —
+         * but we set it explicitly because earlier iterations of this
+         * component layered `.u-light` on the panel and that utility
+         * sets `position: relative`. Keeping the explicit declaration
+         * here so a future utility-class addition can't quietly break
+         * the sticky-to-header behavior. */
+        position: fixed;
+        top: calc(var(--header-height, 3.5rem) + 0.5rem);
+        right: calc(var(--spacing) * 6);
+        bottom: auto;
+        left: auto;
+        margin: 0;
+        width: 15.25rem;
+        /* Surface — same diamond-tinted gradient ramp as
+         * `.sl-link-button.secondary`, scaled to a panel, swapping
+         * `--diamond` for the per-track `--player-gem`. The
+         * scene-angle reference keeps the gradient's bright corner
+         * tied to the global day-cycle. */
+        background:
+            linear-gradient(
+                calc(var(--effective-light-angle, var(--scene-angle, 135deg)) + 90deg),
+                color-mix(in oklab, var(--player-gem) 14%, var(--background)) 0%,
+                color-mix(in oklab, var(--background) 92%, var(--player-gem)) 100%
+            );
+        border: 0;
+        border-radius: var(--radius);
+        box-shadow:
+            0 10px 30px -10px rgb(0 0 0 / 0.5),
+            0 0 0 1px color-mix(in oklab, var(--player-gem) 5%, transparent);
+        padding: 0.625rem 0.75rem 0.5rem;
+        flex-direction: column;
+        gap: 0.5rem;
+        font-family: 'Inter', system-ui, sans-serif;
+        isolation: isolate;
+        overflow: hidden;
+        contain: paint;
+    }
+
+    /* Foil rim — conic-gradient ring + cursor glint sweep, mirroring
+     * `.sl-link-button.secondary::before`. The first conic is the
+     * cursor-driven glint (bright 22° wedge at --light-angle); the
+     * second is the scene-light rim (slow drift). `mask-composite:
+     * exclude` carves out the inner content area so only a 1px ring
+     * is painted. The rim retints to the active track's gem via
+     * --player-gem. */
+    .music-popover::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background:
+            conic-gradient(
+                from calc(var(--light-angle, 135deg) - 22deg),
+                transparent 0deg,
+                color-mix(in oklab, white 60%, var(--player-gem)) 22deg,
+                transparent 45deg,
+                transparent 360deg
+            ),
+            conic-gradient(
+                from calc(var(--scene-angle, 135deg) - 90deg),
+                color-mix(in oklab, var(--player-gem) 70%, transparent) 0deg,
+                color-mix(in oklab, var(--player-gem) 28%, var(--border)) 90deg,
+                color-mix(in oklab, var(--border) 90%, transparent) 180deg,
+                color-mix(in oklab, var(--player-gem) 28%, var(--border)) 270deg,
+                color-mix(in oklab, var(--player-gem) 70%, transparent) 360deg
+            );
+        background-blend-mode: screen, normal;
+        -webkit-mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        mask-composite: exclude;
+        pointer-events: none;
+        /* Rim paints ABOVE content (z-index: 2) so the glint always
+         * reads over the FFT canvas and text. The mask cutout means
+         * only the 1px outer ring is painted; the interior stays
+         * transparent so the content beneath shows through. */
+        z-index: 2;
+    }
+
+    /* Cursor hotspot — soft radial gem tint that follows the mouse.
+     * Gated by --mouse-active so the hotspot fades in/out on enter/leave.
+     * Sits BEHIND the content (z-index 0) so the FFT canvas and text
+     * remain crisp; the foil rim still paints on top via ::before. */
+    .music-popover::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background: radial-gradient(
+            circle at var(--mx, 50%) var(--my, 50%),
+            color-mix(in oklab, var(--player-gem) 26%, transparent) 0%,
+            transparent 38%
+        );
+        opacity: calc(var(--mouse-active, 0) * 0.85);
+        mix-blend-mode: screen;
+        z-index: 0;
+    }
+
+    /* Content sits above the cursor hotspot but below the foil rim. */
+    .music-popover > * {
+        position: relative;
+        z-index: 1;
+    }
+    /* Bidirectional entry/exit transition. transition-behavior:
+     * allow-discrete lets `display` and `overlay` animate alongside
+     * opacity + transform, so the popover can fade IN from display:
+     * none and fade OUT before the browser flips back to display:
+     * none. transform-origin: top right anchors the scale to the
+     * trigger corner — popover eases UP toward the button on close. */
+    .music-popover {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.96);
+        transform-origin: top right;
+        transition:
+            opacity 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            transform 220ms cubic-bezier(0.34, 1.2, 0.46, 1),
+            display 220ms allow-discrete,
+            overlay 220ms allow-discrete;
+    }
+    .music-popover:popover-open {
+        display: flex;
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    /* @starting-style provides the entry keyframe — without it, the
+     * transition would have no "from" state to interpolate from when
+     * the element flips display:none → display:flex. The browser starts
+     * at these values on the very first frame after :popover-open
+     * matches, then transitions to the regular :popover-open target. */
+    @starting-style {
+        .music-popover:popover-open {
+            opacity: 0;
+            transform: translateY(-6px) scale(0.96);
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .music-popover {
+            transition: none;
+            transform: none;
+        }
+        .music-popover:popover-open {
+            transform: none;
+        }
+    }
+
+    /* Top row — avatar + title/credit + right-side action stack.
+     *   .music-row-top: flex row; meta fills, actions hug right
+     *   .music-actions: column; controls on top, volume below */
+    .music-row-top {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+    .music-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.3125rem;
+        flex: none;
+        /* Explicit width — without it the column resolves to the
+         * widest child via flex layout cycle (volume slider's 100%
+         * grows back up through the parent), eating the meta column's
+         * room. Width = play (1.625rem) + gap (0.25rem) + next
+         * (1.375rem) = 3.25rem. */
+        width: 3.25rem;
+    }
+    .music-avatar {
+        width: 1.625rem;
+        height: 1.625rem;
+        flex: none;
+        color: var(--player-gem);
+        image-rendering: pixelated;
+        border-radius: 2px;
+        background: color-mix(in oklab, var(--player-gem) 8%, var(--background));
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 28%, transparent);
+        padding: 1px;
+        box-sizing: content-box;
+    }
+    .music-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.0625rem;
+        min-width: 0;
+        flex: 1;
+    }
+    /* Title — ellipsized at rest, marquee on hover. The inner span
+     * (.music-title-text) translates left to reveal the hidden tail,
+     * pauses, returns. JS sets `--marquee-end` on `.music-title` based
+     * on overflow measured at render time. */
+    .music-title {
+        display: block;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--foreground);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.2;
+        cursor: default;
+    }
+    .music-title:hover {
+        /* Ellipsis dropped on hover — text just clips at the right edge
+         * while the marquee scrolls. */
+        text-overflow: clip;
+    }
+    /* At rest the inner element is INLINE so the outer's
+     * text-overflow: ellipsis can draw the "..." indicator. (CSS
+     * text-overflow only paints on text overflow, not inline-block
+     * overflow.) On hover we promote to inline-block so the translate
+     * animation actually shifts the content within the clipping
+     * window. The display flip is paired with the text-overflow flip
+     * to clip — no double-up of indicators. */
+    .music-title-text {
+        display: inline;
+        white-space: nowrap;
+        transform: translateX(0);
+        transition: transform 320ms cubic-bezier(0.4, 0, 0.2, 1);
+        will-change: transform;
+    }
+    /* Marquee animation — only attaches while hovering AND when the
+     * title is wide enough to overflow (JS gates `--marquee-end`; when
+     * 0 the keyframes are flat and nothing visibly happens). Phases:
+     *   0–15%   pause at start
+     *  15–50%   scroll to end
+     *  50–65%   pause at end
+     *  65–100%  scroll back to start  */
+    .music-title:hover .music-title-text {
+        display: inline-block;
+        animation: music-title-marquee 4.6s cubic-bezier(0.4, 0, 0.2, 1) 0s infinite;
+    }
+    /* Animation starts in motion immediately on hover (no leading pause).
+     * Phases:
+     *   0–45%   scroll to end
+     *  45–55%   pause at end (~460ms)
+     *  55–100%  scroll back to start (loops without a trailing pause) */
+    @keyframes music-title-marquee {
+        0%   { transform: translateX(0); }
+        45%, 55% { transform: translateX(var(--marquee-end, 0px)); }
+        100% { transform: translateX(0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .music-title:hover .music-title-text {
+            animation: none;
+        }
+        .music-title-text {
+            transition: none;
+        }
+    }
+    .music-credit {
+        font-size: 0.625rem;
+        color: var(--muted-foreground);
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        line-height: 1.2;
+    }
+    .music-credit-link {
+        color: inherit;
+        text-decoration: none;
+        border-bottom: 1px dotted color-mix(in oklab, var(--player-gem) 50%, transparent);
+        transition: color 140ms ease, border-color 140ms ease;
+    }
+    .music-credit-link:hover {
+        color: var(--player-gem);
+        border-bottom-color: var(--player-gem);
+    }
+
+    /* FFT visualizer canvas — full-width, short. Bars rendered in JS
+     * with --player-gem fill. CSS only sets the box; pixel paint is
+     * canvas. */
+    .music-fft {
+        display: block;
+        width: 100%;
+        height: 28px;
+        border-radius: 2px;
+        background: color-mix(in oklab, var(--background) 88%, var(--player-gem));
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 16%, transparent);
+    }
+
+    .music-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    /* Holofoil buttons — `u-holo` utility (defined in starlight-theme/
+     * styles/base.css) drives the foil sheen via `data-gem`. Each button
+     * inherits the popover's --player-gem so the foil tracks the song. */
+    .music-btn {
+        all: unset;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.375rem;
+        height: 1.375rem;
+        border-radius: calc(var(--radius) - 5px);
+        cursor: pointer;
+        color: var(--foreground);
+        background: color-mix(in oklab, var(--card) 80%, var(--background));
+        /* Gem-themed border keyed to the active song. The ring picks up
+         * --player-gem so the buttons read as part of the same gem
+         * taxonomy as the popover rim, FFT, progress fill, and avatar.
+         * Double-stop box-shadow: an inset 1px ring for the visible
+         * border + an outer 1px halo at low opacity so the gem identity
+         * carries beyond the strict edge into the panel surface. */
+        box-shadow:
+            inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 60%, var(--border)),
+            0 0 0 1px color-mix(in oklab, var(--player-gem) 10%, transparent);
+        transition:
+            background-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        flex: none;
+        isolation: isolate;
+        /* Holo foil stays neutral metallic — same effect stack (perspective
+         * tilt, scene-light drift, mouse-driven highlight, sparkle conic
+         * flecks) but with the gem palette swapped for grayscale tokens
+         * so the FILL reads as polished metal while the gem-themed BORDER
+         * (above) carries the active-song color identity. */
+        --gem-base: color-mix(in oklab, var(--foreground) 25%, var(--background));
+        --gem-spec: color-mix(in oklab, var(--foreground) 65%, var(--background));
+        --gem-low: var(--card);
+    }
+    .music-btn svg {
+        position: relative;
+        /* Above u-holo::after (z-index 1) so the icon paints over the
+         * foil's mix-blend-mode layer regardless of mode. */
+        z-index: 2;
+        pointer-events: none;
+    }
+    /* Light-mode invert: dark surface + light icon, mirroring the dark-
+     * mode aesthetic. In light mode the default light surface + dark icon
+     * combo washed out under the metallic foil overlay. Inverting gives
+     * the icon the same high-contrast "lit metallic recess" reading the
+     * dark-mode buttons have. */
+    @media (prefers-color-scheme: light) {
+        .music-btn {
+            color: var(--background);
+            background: color-mix(in oklab, var(--foreground) 78%, var(--background));
+            --gem-base: color-mix(in oklab, var(--foreground) 60%, var(--background));
+            --gem-spec: color-mix(in oklab, var(--background) 70%, var(--foreground));
+            --gem-low: color-mix(in oklab, var(--foreground) 90%, var(--background));
+        }
+        .music-btn:hover:not(:disabled) {
+            background: color-mix(in oklab, var(--foreground) 60%, var(--player-gem));
+        }
+    }
+    .music-btn:hover:not(:disabled) {
+        background: color-mix(in oklab, var(--card) 60%, var(--player-gem));
+        box-shadow:
+            inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 85%, var(--border)),
+            0 0 0 1px color-mix(in oklab, var(--player-gem) 22%, transparent);
+    }
+    .music-btn:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--player-gem) 70%, transparent);
+        outline-offset: 2px;
+    }
+    .music-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+    /* Play vs pause icon driven by data-playing on toggle. */
+    .music-btn .icon-pause,
+    .music-btn[data-playing='true'] .icon-play {
+        display: none;
+    }
+    .music-btn[data-playing='true'] .icon-pause {
+        display: block;
+    }
+    [data-music-toggle] {
+        width: 1.625rem;
+        height: 1.625rem;
+    }
+
+    /* Volume slider — narrow strip directly under the play/next button
+     * pair. Width matches the buttons; track is a thin 2px gem-tinted
+     * bar. */
+    .music-volume-label {
+        display: flex;
+        align-items: center;
+        width: 100%;
+    }
+    .music-volume {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(
+            90deg,
+            color-mix(in oklab, var(--player-gem) 60%, transparent) 0%,
+            color-mix(in oklab, var(--border) 65%, transparent) 100%
+        );
+        border-radius: 1px;
+        cursor: pointer;
+    }
+    .music-volume::-webkit-slider-thumb {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--player-gem);
+        border: 1px solid color-mix(in oklab, var(--player-gem) 70%, white);
+        cursor: pointer;
+    }
+    .music-volume::-moz-range-thumb {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--player-gem);
+        border: 1px solid color-mix(in oklab, var(--player-gem) 70%, white);
+        cursor: pointer;
+    }
+    .music-volume:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--player-gem) 80%, transparent);
+        outline-offset: 3px;
+    }
+
+    /* Bottom row — thin progress bar fills width; monospace playtime
+     * sits to the right. */
+    .music-row-bottom {
+        display: flex;
+        align-items: center;
+        gap: 0.4375rem;
+    }
+    .music-progress {
+        flex: 1;
+        height: 2px;
+        background: color-mix(in oklab, var(--border) 60%, transparent);
+        border-radius: 1px;
+        overflow: hidden;
+    }
+    .music-progress-fill {
+        display: block;
+        height: 100%;
+        width: 100%;
+        transform-origin: 0% 50%;
+        transform: scaleX(0);
+        background: linear-gradient(
+            90deg,
+            color-mix(in oklab, var(--player-gem) 75%, transparent) 0%,
+            color-mix(in oklab, var(--player-gem) 95%, white) 100%
+        );
+    }
+    .music-time {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: 0.625rem;
+        color: var(--muted-foreground);
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        flex: none;
+    }
+
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .music-trigger,
+        .music-btn,
+        .music-progress-fill {
+            transition: none;
+        }
+    }
+</style>

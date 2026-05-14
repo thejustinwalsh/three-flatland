@@ -1,0 +1,526 @@
+---
+/**
+ * GalleryTile — single masonry cell. Displays a poster still by
+ * default; on hover, lazily loads + autoplays a webm capture of the
+ * running example. Whole tile is the click target into the detail
+ * page; view-transition names on the tile + the detail-page hero
+ * morph the tile geometry into the preview area on navigation.
+ *
+ * Capture conventions:
+ *   - Still : `/captures/<slug>.webp` (or `.png` fallback)
+ *   - Video : `/captures/<slug>.webm` (autoplaying, muted, looped)
+ *   The capture script (`scripts/capture-examples.mjs`, planned)
+ *   produces both from a Playwright headless run of each example.
+ *
+ * Tiles without captures (fresh examples not yet recorded) fall back
+ * to a gem-tinted gradient poster so the grid stays visually whole.
+ */
+type Gem =
+  | 'gold'
+  | 'ruby'
+  | 'emerald'
+  | 'diamond'
+  | 'amethyst'
+  | 'pink'
+  | 'salmon'
+  | 'turquoize'
+
+interface Props {
+  /** URL slug — `/examples/<slug>/` or `/showcases/<slug>/`. */
+  slug: string
+  /** Display title above the tile (or overlaid). */
+  title: string
+  /** Short tag-line shown beneath the title in the tile body. */
+  description: string
+  /** Top-level surface — `examples` or `showcases`. Used for the
+   *  detail-page link and for the view-transition name namespace. */
+  surface: 'examples' | 'showcases'
+  /** Gem accent for fallback poster + hover affordance. Cycles by
+   *  default if the page lays tiles out via index. */
+  color?: Gem
+  /** Aspect ratio for the tile (CSS aspect-ratio value). Variable
+   *  ratios in a masonry grid let landscape vs portrait examples
+   *  size naturally. Default `4 / 3` for compact landscape. */
+  aspect?: string
+}
+
+// Default gem comes from the generated `example-gems.ts` (sync'd from
+// `examples/_shared/gems.config.ts`). Explicit `color` prop overrides
+// the lookup — useful for showcases or one-off tiles whose slug isn't
+// in the examples table.
+import { EXAMPLE_GEMS } from '../../data/example-gems'
+
+const { slug, title, description, surface, color, aspect = '4 / 3' } = Astro.props
+const resolvedColor = color ?? EXAMPLE_GEMS[slug] ?? 'diamond'
+
+const baseURL = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
+const detailHref = `${baseURL}/${surface}/${slug}/`
+const posterHref = `${baseURL}/captures/${slug}.webp`
+const videoHref = `${baseURL}/captures/${slug}.webm`
+
+// Fallback path — `<picture>` with `.webp` first, `.png` fallback.
+const posterPngHref = `${baseURL}/captures/${slug}.png`
+---
+
+<a
+  href={detailHref}
+  class:list={['gallery-tile', 'not-content', 'u-light']}
+  data-gem={resolvedColor}
+  data-slug={slug}
+  style={{
+    '--tile-accent': `var(--${resolvedColor})`,
+    '--tile-aspect': aspect,
+    'view-transition-name': `tile-${surface}-${slug}`,
+  }}
+  aria-label={`Open ${title} example`}
+>
+  <div class="gallery-tile-media" aria-hidden="true">
+    {/* Poster as <picture> so a missing webp falls through to png,
+       which falls through to the gem-gradient backdrop on the
+       wrapper. data-poster attribute lets the JS hover handler
+       restore the still after pointerleave. */}
+    <picture>
+      <source srcset={posterHref} type="image/webp" />
+      <img
+        class="gallery-tile-poster"
+        src={posterPngHref}
+        alt=""
+        loading="lazy"
+        decoding="async"
+      />
+    </picture>
+    {/* Video lazy-loaded on first pointer enter (handled by the JS
+       below). data-src is read into src on hover-in; preload="none"
+       keeps initial bandwidth at zero on first paint. */}
+    <video
+      class="gallery-tile-video"
+      data-src={videoHref}
+      muted
+      loop
+      playsinline
+      preload="none"
+      aria-hidden="true"
+    ></video>
+    <span class="gallery-tile-cta" aria-hidden="true">Click to interact</span>
+  </div>
+  <div class="gallery-tile-body">
+    <h3 class="gallery-tile-title">{title}</h3>
+    <p class="gallery-tile-desc">{description}</p>
+  </div>
+  {/* Foil rim — base scene-angle ring + ::before cursor hotspot +
+      ::after lens flare. Mirrors FeatureCard.card-edge. */}
+  <span class="tile-edge" aria-hidden="true"></span>
+</a>
+
+<style>
+  .gallery-tile {
+    --tile-accent: var(--diamond);
+    /* Bridge into --card-accent so the global `.u-light::before` scene-
+     * light gradient picks up THIS tile's gem rather than falling back
+     * to `var(--primary)` (which is amethyst — the docs-cluster gem).
+     * Bug surfaced when we removed the SVG displacement filter — the
+     * noise warp had been visually obscuring the wrong-gem fallback;
+     * cleanly-rendered gradient now exposes it. */
+    --card-accent: var(--tile-accent);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: var(--foreground);
+    border-radius: calc(var(--radius) + 0.25rem);
+    background: color-mix(in oklab, var(--card) 92%, var(--tile-accent));
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent);
+    overflow: hidden;
+    cursor: pointer;
+    transition:
+      box-shadow 200ms cubic-bezier(0.2, 0, 0.1, 1),
+      transform 200ms cubic-bezier(0.2, 0, 0.1, 1);
+    will-change: transform, box-shadow;
+    /* Safari paint-isolation for the rim layers' mix-blend-mode +
+     * mask-composite stack. Without this, Safari pessimistically
+     * recomposites the FULL stacking context whenever any tile or
+     * the global --scene-angle ticks — sustained 100% stutter on
+     * Webkit. With it, paint stays inside the tile's box. Measured:
+     * examples page Webkit 100% stutter → 5.3% with zero visual change. */
+    contain: paint;
+    isolation: isolate;
+  }
+
+  .gallery-tile:hover {
+    /* Hover lift via translate + tightened gem-tinted ring on the
+     * border. No tinted drop shadow — restraint over generic glow.
+     * Foil/glint reactivity comes from the cursor-tracked rim
+     * (.tile-edge below), not a soft halo. */
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--tile-accent) 60%, transparent);
+    transform: translateY(-2px);
+  }
+
+  /* Light-mode-only neutral drop shadow — layered ALONGSIDE the
+   * existing gem ring (which still carries the brand affordance).
+   * Dark mode keeps the ring-only treatment because the rim glow
+   * reads cleanly on near-black. On paper bg the ring alone is
+   * almost invisible past a foot away — the neutral shadow gives
+   * the tile form to sit on. Multi-stop list keeps the gem ring
+   * (inset 0,0,0,1px equivalent via box-shadow first slot) and
+   * adds y-offset ambient shadow stops below it. */
+  @media (prefers-color-scheme: light) {
+    .gallery-tile {
+      box-shadow:
+        0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent),
+        0 1px 2px rgba(0, 0, 0, 0.08),
+        0 8px 20px rgba(0, 0, 0, 0.10);
+    }
+    .gallery-tile:hover {
+      box-shadow:
+        0 0 0 1px color-mix(in oklab, var(--tile-accent) 60%, transparent),
+        0 2px 4px rgba(0, 0, 0, 0.10),
+        0 14px 32px rgba(0, 0, 0, 0.13);
+    }
+  }
+
+  /* ── Foil rim ──
+   * Three-layer system mirroring FeatureCard:
+   *   1. Base conic — broad scene-angle rim (ambient).
+   *   2. ::before  — narrow cursor hotspot at --light-angle.
+   *   3. ::after   — lens-flare star at (--mx, --my).
+   * No tilt: a grid of tilting tiles would feel jittery. The rim
+   * lights and flare provide enough cursor reactivity. */
+  .tile-edge {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 4;
+    padding: 1.5px;
+    background: conic-gradient(
+      from calc(var(--scene-angle, 135deg) - 90deg),
+      color-mix(in oklab, var(--tile-accent) 75%, transparent) 0deg,
+      color-mix(in oklab, var(--tile-accent) 25%, var(--border)) 90deg,
+      color-mix(in oklab, var(--border) 90%, transparent) 180deg,
+      color-mix(in oklab, var(--tile-accent) 25%, var(--border)) 270deg,
+      color-mix(in oklab, var(--tile-accent) 75%, transparent) 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    mask-composite: exclude;
+    /* Idle: low-key rim. On hover the cursor hotspot + flare layers
+     * brighten things significantly. */
+    opacity: 0.5;
+    transition: opacity 200ms ease;
+  }
+  .gallery-tile:hover .tile-edge {
+    opacity: 1;
+  }
+
+  .tile-edge::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    /* Glint on SAME side as cursor — see FeatureCard.card-edge::before */
+    background: conic-gradient(
+      from calc(var(--light-angle, 135deg) - 22deg),
+      transparent 0deg,
+      color-mix(in oklab, white 70%, var(--tile-accent)) 22deg,
+      transparent 45deg,
+      transparent 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    mask-composite: exclude;
+    opacity: calc(var(--mouse-active, 0) * 0.85);
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  .tile-edge::after {
+    content: '';
+    position: absolute;
+    left: var(--mx, 50%);
+    top: var(--my, 50%);
+    width: 5rem;
+    height: 5rem;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(
+      closest-side,
+      color-mix(in oklab, white 80%, var(--tile-accent)) 0%,
+      color-mix(in oklab, var(--tile-accent) 60%, transparent) 12%,
+      transparent 35%
+    );
+    -webkit-mask:
+      linear-gradient(0deg, transparent 42%, #000 50%, transparent 58%),
+      linear-gradient(90deg, transparent 42%, #000 50%, transparent 58%),
+      radial-gradient(closest-side, #000 0%, #000 30%, transparent 60%);
+    mask:
+      linear-gradient(0deg, transparent 42%, #000 50%, transparent 58%),
+      linear-gradient(90deg, transparent 42%, #000 50%, transparent 58%),
+      radial-gradient(closest-side, #000 0%, #000 30%, transparent 60%);
+    mask-composite: add;
+    opacity: calc(var(--mouse-active, 0) * 0.55);
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tile-edge {
+      background: var(--border);
+      opacity: 0.6;
+    }
+    .tile-edge::before,
+    .tile-edge::after {
+      display: none;
+    }
+  }
+
+  .gallery-tile:focus-visible {
+    outline: 2px solid var(--tile-accent);
+    outline-offset: 2px;
+  }
+
+  /* Media wrapper — fixed aspect ratio. The gem-gradient backdrop
+   * shows through when no poster is captured yet, so the grid reads
+   * as deliberate even before the capture run completes. */
+  .gallery-tile-media {
+    position: relative;
+    width: 100%;
+    aspect-ratio: var(--tile-aspect, 4 / 3);
+    /* Solid base under the placeholder gradient — the radial sits on
+     * a ::before pseudo (below) so we can blur the gradient
+     * independently without softening the loaded poster/video. */
+    background-color: var(--background);
+    overflow: hidden;
+    /* Round only the TOP corners of the media area — matches the
+     * tile's top while leaving a hard bottom edge where the body's
+     * info text starts. clip-path enforces this even under the
+     * parent's transformed 3D context (.u-light), so hover-state
+     * video swaps stay inside the rounded top corners and don't
+     * bleed past during the opacity flip. */
+    border-radius: calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem) 0 0;
+    clip-path: inset(0 round calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem) 0 0);
+  }
+
+  /* Placeholder gem-radial — sits BEHIND the poster/video content via
+   * z-index 0. Blurred independently of the loaded media for two
+   * reasons: (1) anti-banding — radial gradients in low-saturation
+   * gem ranges show visible quantization steps in 8-bit color, and
+   * a small Gaussian blur smooths the steps into continuous tone;
+   * (2) tonal match — the captured TSL canvas backgrounds aren't
+   * sharp gradients either (TSL noise + filtering soften them at
+   * paint time), so a blurred placeholder transitions cleanly into
+   * the loaded canvas without a visible "sharpening" shift. */
+  .gallery-tile-media::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      circle at 30% 30%,
+      color-mix(in oklab, var(--tile-accent) 22%, var(--card)) 0%,
+      color-mix(in oklab, var(--tile-accent) 6%, var(--background)) 50%,
+      var(--background) 90%
+    );
+    /* 1.5px Gaussian — small enough to read as polished surface,
+     * large enough to dither the visible banding in the gem-soft
+     * → background fade. Pure GPU compositor work. */
+    filter: blur(1.5px);
+  }
+
+  .gallery-tile-poster,
+  .gallery-tile-video {
+    z-index: 1;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: opacity 200ms ease-out;
+    /* Round ONLY the top corners — the bottom of the image flows
+     * seamlessly into the info bar below. The global
+     * `.sl-markdown-content img { border-radius: ... }` rule (in
+     * base.css) reaches into here because example/showcase pages
+     * still render through Starlight's markdown wrapper; without this
+     * override the image picks up an 8px all-sides radius and the
+     * bottom curves create dark wedges where the info bar abuts the
+     * curved underside. Match the .gallery-tile-media wrapper's
+     * top-corner radius so the image edge meets the wrapper edge. */
+    border-radius: calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem) 0 0;
+  }
+
+  /* Video sits on top of the poster; opacity flip on hover swaps
+   * the two without a layout shift. */
+  .gallery-tile-video {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .gallery-tile[data-video-active='true'] .gallery-tile-video {
+    opacity: 1;
+  }
+  .gallery-tile[data-video-active='true'] .gallery-tile-poster {
+    opacity: 0;
+  }
+
+  /* "Click to interact" affordance — appears on hover so the user
+   * understands the tile is more than a passive thumbnail. */
+  .gallery-tile-cta {
+    position: absolute;
+    right: 0.625rem;
+    bottom: 0.625rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: calc(var(--radius) - 4px);
+    background: color-mix(in oklab, var(--background) 78%, transparent);
+    backdrop-filter: blur(0.25rem);
+    -webkit-backdrop-filter: blur(0.25rem);
+    color: color-mix(in oklab, var(--tile-accent) 65%, var(--foreground));
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 180ms ease-out;
+    pointer-events: none;
+  }
+
+  .gallery-tile:hover .gallery-tile-cta,
+  .gallery-tile:focus-visible .gallery-tile-cta {
+    opacity: 1;
+  }
+
+  .gallery-tile-body {
+    padding: 0.875rem 1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .gallery-tile-title {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: color-mix(in oklab, var(--tile-accent) 50%, var(--foreground));
+    margin: 0;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+
+  .gallery-tile-desc {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--muted-foreground);
+    margin: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gallery-tile,
+    .gallery-tile-poster,
+    .gallery-tile-video,
+    .gallery-tile-cta {
+      transition: none;
+    }
+    .gallery-tile:hover {
+      transform: none;
+    }
+  }
+</style>
+
+<script>
+  /**
+   * Lazy hover-video loader. Each tile's <video> has its real src
+   * stored in `data-src`; on first pointerenter we copy it onto
+   * `src`, kick the load, and play once `loadeddata` fires. After
+   * the first hover, the video is in the document and subsequent
+   * hovers just toggle play/pause.
+   *
+   * Reduced-motion: skip autoplay entirely, leave the poster.
+   *
+   * Astro view-transitions: re-bind on `astro:page-load` so tiles
+   * rendered after a SPA navigation still wire up.
+   */
+  function bindGalleryTiles() {
+    const reduce =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce) return
+
+    const tiles = document.querySelectorAll<HTMLElement>('.gallery-tile')
+    tiles.forEach((tile) => {
+      if (tile.dataset.bound === '1') return
+      tile.dataset.bound = '1'
+
+      // Hide poster img on load error so the gem-gradient backdrop on
+      // the .gallery-tile-media wrapper shows through cleanly. Tiles
+      // without a captured poster (newly-added examples not yet run
+      // through the capture script) gracefully degrade to the
+      // gradient instead of a broken-image icon.
+      const poster = tile.querySelector<HTMLImageElement>('.gallery-tile-poster')
+      if (poster) {
+        poster.addEventListener('error', () => {
+          poster.style.display = 'none'
+        })
+      }
+
+      const video = tile.querySelector<HTMLVideoElement>('.gallery-tile-video')
+      if (!video) return
+
+      const ensureLoaded = () => {
+        if (video.src) return
+        const src = video.dataset.src
+        if (!src) return
+        video.src = src
+      }
+
+      const onEnter = () => {
+        ensureLoaded()
+        // Show the video frame once it has data, even if play() is
+        // blocked by autoplay policies — at least the first frame
+        // becomes visible vs the poster.
+        const swap = () => tile.setAttribute('data-video-active', 'true')
+        if (video.readyState >= 2) {
+          swap()
+        } else {
+          video.addEventListener('loadeddata', swap, { once: true })
+        }
+        // Best-effort play. If browser blocks (no user gesture
+        // policy), the video still shows its first frame via swap.
+        const p = video.play()
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+      }
+
+      const onLeave = () => {
+        tile.removeAttribute('data-video-active')
+        if (!video.paused) video.pause()
+        // Reset to the start so the next hover plays from frame 0.
+        try { video.currentTime = 0 } catch {}
+      }
+
+      tile.addEventListener('pointerenter', onEnter)
+      tile.addEventListener('focus', onEnter)
+      tile.addEventListener('pointerleave', onLeave)
+      tile.addEventListener('blur', onLeave)
+    })
+  }
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bindGalleryTiles, { once: true })
+    } else {
+      bindGalleryTiles()
+    }
+    document.addEventListener('astro:page-load', bindGalleryTiles)
+  }
+</script>

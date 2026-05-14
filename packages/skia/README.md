@@ -4,7 +4,7 @@
 
 # @three-flatland/skia
 
-GPU-accelerated 2D vector graphics for [three-flatland](https://www.npmjs.com/package/three-flatland) and [Three.js](https://threejs.org/) — Skia compiled to WASM with Zig. Includes a native WebGPU backend (Graphite/Dawn) alongside WebGL — a lightweight CanvasKit alternative at less than half the size.
+GPU 2D vector graphics for [three-flatland](https://www.npmjs.com/package/three-flatland) and [Three.js](https://threejs.org/). Skia compiled to WASM with Zig, with a native WebGPU backend (Graphite/Dawn) that CanvasKit doesn't ship.
 
 > **Alpha Release** — this package is in active development. The API will evolve and breaking changes are expected between releases. Pin your version and check the [changelog](https://github.com/thejustinwalsh/three-flatland/releases) before upgrading.
 
@@ -142,7 +142,3 @@ Full docs, interactive examples, and API reference at **[thejustinwalsh.com/thre
 ## License
 
 [MIT](./LICENSE)
-
----
-
-<sub>This README was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).</sub>

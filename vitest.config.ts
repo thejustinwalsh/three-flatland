@@ -4,8 +4,13 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.test.tsx', 'scripts/**/*.test.ts'],
-    exclude: ['packages/skia/**', 'packages/tweakpane/**'],
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'packages/*/src/**/*.test.tsx',
+      'packages/starlight-theme/**/*.test.ts',
+      'scripts/**/*.test.ts',
+    ],
+    exclude: ['packages/skia/**', 'packages/tweakpane/**', '**/node_modules/**'],
     setupFiles: ['./vitest.setup.ts'],
     coverage: {
       provider: 'v8',

@@ -1,0 +1,17 @@
+---
+/**
+ * ThemeSelect — intentionally empty.
+ *
+ * The user-facing theme switcher was removed (issue #32). Theme tracks
+ * `prefers-color-scheme` exclusively, with a dark fallback. The boot
+ * script in `docs/astro.config.mjs` (Starlight `head` array) sets
+ * `data-theme` before paint and re-syncs on live OS-pref changes.
+ *
+ * This file exists so Starlight's component-override registration
+ * (`COMPONENT_OVERRIDES` in `packages/starlight-theme/core/config/
+ * override.ts`) maps ThemeSelect → an empty component, suppressing
+ * Starlight's default toggle without forcing an exclusion list. Header
+ * no longer imports or renders this; the export stays for the
+ * component-override slot.
+ */
+---

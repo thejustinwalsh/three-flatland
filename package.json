@@ -26,12 +26,17 @@
     "clean": "turbo run clean && rm -rf node_modules/.vite",
     "changeset": "changeset",
     "changeset:generate": "tsx scripts/generate-changesets.ts",
-    "changeset:version": "changeset version",
+    "changeset:version": "changeset version && tsx scripts/sync-versions.ts",
+    "sync:versions": "tsx scripts/sync-versions.ts",
+    "sync:versions:verify": "tsx scripts/sync-versions.ts --verify",
     "release": "turbo run build && changeset publish",
     "sync:pack": "tsx scripts/sync-pack.ts",
     "sync:pack:verify": "tsx scripts/sync-pack.ts --verify",
+    "tracks:add": "tsx scripts/add-track.ts",
     "sync:react": "tsx scripts/sync-react-subpaths.ts",
     "sync:react:verify": "tsx scripts/sync-react-subpaths.ts --verify",
+    "sync:examples": "tsx scripts/sync-examples.ts",
+    "sync:examples:verify": "tsx scripts/sync-examples.ts --verify",
     "validate:skills": "pnpm --filter @three-flatland/skills validate",
     "size": "size-limit",
     "prepare": "lefthook install"
@@ -47,7 +52,8 @@
       "@three-flatland/presets": "workspace:*",
       "@three-flatland/skia": "workspace:*",
       "@three-flatland/skills": "workspace:*",
-      "@three-flatland/tweakpane": "workspace:*"
+      "@three-flatland/tweakpane": "workspace:*",
+      "yaml": "^2.8.4"
     }
   },
   "devDependencies": {

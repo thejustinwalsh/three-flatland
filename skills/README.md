@@ -4,7 +4,7 @@
 
 # @three-flatland/skills
 
-Claude Code skills for the [three-flatland](https://www.npmjs.com/package/three-flatland) ecosystem — TSL shaders, WebGPU, and related domain knowledge packaged for agent use.
+Claude Code skills for the [three-flatland](https://www.npmjs.com/package/three-flatland) ecosystem. TSL shaders, WebGPU, and related domain knowledge packaged for agent use.
 
 > **Alpha Release** — this package is in active development. Skills will evolve alongside the libraries they document. Pin your version and check the [changelog](https://github.com/thejustinwalsh/three-flatland/releases) before upgrading.
 
@@ -67,7 +67,3 @@ Full docs at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/th
 ## License
 
 [MIT](./LICENSE)
-
----
-
-<sub>This README was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).</sub>

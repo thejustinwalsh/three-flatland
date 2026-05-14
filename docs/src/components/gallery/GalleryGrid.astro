@@ -1,0 +1,55 @@
+---
+/**
+ * GalleryGrid — masonry layout host for GalleryTile children.
+ *
+ * Uses CSS `grid-template-rows: masonry` where supported (Firefox
+ * 124+ behind a flag, Safari 17.5+ behind a flag, no Chrome yet as
+ * of mid-2026) with a column-grid fallback for browsers that don't
+ * have masonry support natively. The column-grid fallback isn't a
+ * true masonry — it's a clean uniform-row grid that visually works
+ * well with the variable-aspect-ratio tiles since the GalleryTile
+ * media area sets its own aspect ratio per tile.
+ *
+ * Variable column counts by viewport:
+ *   <  640px : 1 column
+ *   < 1024px : 2 columns
+ *   <       : 3 columns
+ *
+ * Children should be GalleryTile components.
+ */
+---
+
+<div class="gallery-grid not-content">
+  <slot />
+</div>
+
+<style>
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-block: calc(var(--spacing) * 6) calc(var(--spacing) * 8);
+    align-items: start;
+  }
+
+  @media (min-width: 640px) {
+    .gallery-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.25rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .gallery-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  /* Where supported, switch to true masonry so variable-aspect tiles
+   * pack without leaving gaps. The column-grid above is the fallback. */
+  @supports (grid-template-rows: masonry) {
+    .gallery-grid {
+      grid-template-rows: masonry;
+    }
+  }
+</style>

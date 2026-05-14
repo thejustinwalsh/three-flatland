@@ -3,7 +3,7 @@ title: Loaders
 description: Load spritesheets and tilemaps with configurable texture presets.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 
 three-flatland provides loaders for common 2D asset formats. All loaders share a unified texture configuration system with hierarchical presets.
 
@@ -21,7 +21,7 @@ three-flatland provides loaders for common 2D asset formats. All loaders share a
 Load textures with automatic preset application. Works seamlessly with R3F's `useLoader`.
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { TextureLoader, Sprite2D } from 'three-flatland';
 
@@ -31,7 +31,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
     const sprite = new Sprite2D({ texture });
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { useLoader } from '@react-three/fiber/webgpu';
     import { TextureLoader, Sprite2D } from 'three-flatland/react';
@@ -52,7 +52,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
 ### Multiple Textures
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { TextureLoader } from 'three-flatland';
 
@@ -64,7 +64,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
     ]);
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { useLoader } from '@react-three/fiber/webgpu';
     import { TextureLoader } from 'three-flatland/react';
@@ -84,7 +84,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
 ### Override Presets
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     // Override preset for specific texture
     const smoothTexture = await TextureLoader.load('/sprites/hd-ui.png', {
@@ -92,7 +92,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
     });
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     // Override preset via extension callback
     const smoothTexture = useLoader(TextureLoader, '/sprites/hd-ui.png', (loader) => {
@@ -107,7 +107,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
 Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/texturepacker) or compatible tools.
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { SpriteSheetLoader, Sprite2D } from 'three-flatland';
 
@@ -122,7 +122,7 @@ Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/textu
     sprite.setFrame(idleFrame);
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { Suspense } from 'react';
     import { useLoader } from '@react-three/fiber/webgpu';
@@ -150,7 +150,7 @@ Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/textu
 ### Multiple Spritesheets
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     const sheets = await SpriteSheetLoader.preload([
       '/sprites/player.json',
@@ -158,7 +158,7 @@ Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/textu
     ]);
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     // Define URLs at module level for stable references
     const SHEET_URLS = ['/sprites/player.json', '/sprites/enemies.json'];
@@ -181,7 +181,7 @@ Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/textu
 Load maps from [Tiled Map Editor](https://www.mapeditor.org/). See the [Tilemaps guide](../tilemaps/) for detailed usage.
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { TiledLoader, TileMap2D } from 'three-flatland';
 
@@ -189,7 +189,7 @@ Load maps from [Tiled Map Editor](https://www.mapeditor.org/). See the [Tilemaps
     const tilemap = new TileMap2D({ data: mapData });
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { Suspense } from 'react';
     import { useLoader } from '@react-three/fiber/webgpu';
@@ -224,7 +224,7 @@ Load maps from [Tiled Map Editor](https://www.mapeditor.org/). See the [Tilemaps
 Load projects from [LDtk](https://ldtk.io/). See the [Tilemaps guide](../tilemaps/) for detailed usage.
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { LDtkLoader, TileMap2D } from 'three-flatland';
 
@@ -236,7 +236,7 @@ Load projects from [LDtk](https://ldtk.io/). See the [Tilemaps guide](../tilemap
     const levelIds = await LDtkLoader.getLevelIds('/maps/world.ldtk');
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { Suspense } from 'react';
     import { useLoader } from '@react-three/fiber/webgpu';
@@ -352,7 +352,7 @@ const mapData = await TiledLoader.load('/maps/dungeon.json');          // pixel-
 Override for a specific load call:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     // One-off override
     const hdSheet = await SpriteSheetLoader.load('/sprites/hd-ui.json', {
@@ -368,7 +368,7 @@ Override for a specific load call:
     });
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     // Override preset via extension callback
     const hdSheet = useLoader(SpriteSheetLoader, '/sprites/hd-ui.json', (loader) => {

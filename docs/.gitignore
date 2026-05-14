@@ -1,0 +1,5 @@
+# (intentionally empty)
+# `docs/public/captures/` is committed: captures require a GPU + headed
+# browser to generate, so they can't run in CI. Treat them as source
+# assets — regenerate locally with `pnpm --filter=docs capture:examples`
+# / `capture:minis` and commit the result.

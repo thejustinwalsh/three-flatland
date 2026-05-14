@@ -1,0 +1,399 @@
+---
+import userConfig from 'virtual:starlight-theme-config';
+import { getTranslation } from './NavBar.astro';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import DrawerSublist from './DrawerSublist.astro';
+
+const { sidebar } = Astro.locals.starlightRoute;
+const currentPath = Astro.url.pathname;
+const baseURL = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+
+/**
+ * Top-level nav-link gem identity — mirrors NavBar.astro so the
+ * mobile drawer and desktop header agree on color taxonomy.
+ *   Docs (getting-started) → amethyst
+ *   Examples               → diamond
+ *   Showcases              → ruby
+ */
+function navGemFor(link: string): string {
+    const segments = link.replace(baseURL, '').split('/').filter(Boolean);
+    const first = segments[0] || '';
+    if (first === 'examples') return 'diamond';
+    if (first === 'showcases') return 'ruby';
+    if (first === 'getting-started') return 'amethyst';
+    return 'diamond';
+}
+
+/**
+ * Active = current path matches link's section. Mirrors NavBar's
+ * detection so a link reads "active" identically in both places.
+ */
+function isNavActive(link: string): boolean {
+    const linkRel = link.replace(baseURL, '').replace(/\/$/, '');
+    const currentRel = currentPath.replace(baseURL, '').replace(/\/$/, '');
+    if (!linkRel) return false;
+    const linkFirst = linkRel.split('/').filter(Boolean)[0] || '';
+    const docsPrefixes = ['/getting-started', '/guides', '/branding', '/llm-prompts', '/api'];
+    const isExamplesPath = currentRel.startsWith('/examples');
+    const isShowcasesPath = currentRel.startsWith('/showcases');
+    const isLandingPath = currentRel === '' || currentRel === '/';
+    const isDocsPath = docsPrefixes.some((p) => currentRel.startsWith(p));
+    if (linkFirst === 'examples') return isExamplesPath;
+    if (linkFirst === 'showcases') return isShowcasesPath;
+    if (linkFirst === 'getting-started') {
+        return isDocsPath && !isExamplesPath && !isShowcasesPath && !isLandingPath;
+    }
+    return currentRel === linkRel || currentRel.startsWith(linkRel + '/');
+}
+
+/**
+ * Sidebar groups cycle through the 7-gem section palette
+ * (--sidebar-section-1..7). Same convention as SidebarSublist.astro
+ * so a section's gem identity is the same in the drawer, the desktop
+ * sidebar, and (via section badges) the article header.
+ */
+const sectionGems = 7;
+function sectionAccent(idx: number): string {
+    return `--section-accent: var(--sidebar-section-${(idx % sectionGems) + 1});`;
+}
+---
+
+<div popover="auto" id="drawer">
+    <button
+        class="sheet-overlay"
+        popovertarget="drawer"
+        popovertargetaction="hide"
+        aria-label="Close menu"
+    ></button>
+    <div class="content">
+        <div class="header">
+            <button
+                class="drag-icon"
+                popovertarget="drawer"
+                popovertargetaction="hide"
+                aria-label="Close menu"
+            >
+                <span></span>
+            </button>
+        </div>
+        <div class="body">
+            <div class="links-nav">
+                {
+                    userConfig.navLinks?.map((nav) => {
+                        const absoluteLinkRegex = /^https?:\/\//;
+                        const isExternal = absoluteLinkRegex.test(nav.link);
+
+                        const link = isExternal
+                            ? nav.link
+                            : Astro.currentLocale
+                              ? getRelativeLocaleUrl(Astro.currentLocale, nav.link)
+                              : `${baseURL}${nav.link}`;
+
+                        const label =
+                            typeof nav.label === 'string'
+                                ? nav.label
+                                : getTranslation(nav.label, nav.link, 'label');
+
+                        const gem = navGemFor(link);
+                        const navStyle = `--nav-gem: var(--${gem});`;
+                        const isActive = !isExternal && isNavActive(link);
+
+                        return (
+                            <a
+                                href={link}
+                                class:list={['nav-link', { active: isActive }]}
+                                style={navStyle}
+                                {...nav.attrs}
+                            >
+                                <span class="nav-link-label">{label}</span>
+                                {nav.badge && <span class="nav-link-badge">{nav.badge}</span>}
+                            </a>
+                        );
+                    })
+                }
+            </div>
+
+            <div class="links-docs">
+                {
+                    sidebar.map(
+                        (entry, idx) =>
+                            entry.type !== 'link' && (
+                                <section
+                                    class="container-sidebar-entry"
+                                    style={sectionAccent(idx)}
+                                >
+                                    <h4 class="entry-title">{entry.label}</h4>
+                                    {/* Recursive sub-list. Handles both flat
+                                       sections (Getting Started, Guides —
+                                       leaf links only) and nested sections
+                                       (API Reference — groups within groups
+                                       within groups, typedoc-generated).
+                                       The previous inline `.map(link =>
+                                       link.type === 'link')` rendered NOTHING
+                                       for nested sections because API ref's
+                                       direct children are groups, not links. */}
+                                    <DrawerSublist sublist={entry.entries} />
+                                </section>
+                            )
+                    )
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    button {
+        all: unset;
+    }
+
+    [popover] {
+        padding: 0;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        opacity: 0;
+        pointer-events: none;
+        align-items: center;
+        flex-direction: column;
+        justify-content: flex-end;
+        transition: 0.1s linear;
+        z-index: 1000;
+        background: transparent;
+        border: none;
+        overflow: hidden;
+    }
+
+    /* Backdrop — lean on heavy blur + light black tint so the page
+     * stays visible as "context behind frosted glass" rather than a
+     * black void. Previous 84% black + 6px blur was so opaque it
+     * read as a full-screen modal cover. 50% black + 12px blur +
+     * mild saturate keeps the gem accents on the page visible while
+     * clearly dimming for foreground focus. */
+    [popover]::backdrop {
+        background: color-mix(in oklab, black 50%, transparent);
+        backdrop-filter: blur(12px) saturate(115%);
+        -webkit-backdrop-filter: blur(12px) saturate(115%);
+    }
+
+    [popover]:popover-open {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    [popover]:popover-open .content {
+        transform: translateY(0%);
+    }
+
+    .sheet-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: -1;
+        width: 100vw;
+        height: 100vh;
+        opacity: 0.1;
+        background-color: transparent;
+    }
+
+    /* Bottom-sheet surface — gem-tinted top border so the drawer reads
+     * as "lit from the design system" even before the user scrolls.
+     * Box-shadow is sized for dark surfaces (the previous 0.03 alpha
+     * was invisible against the near-black bg). */
+    .content {
+        width: 100%;
+        position: relative;
+        background: var(--card);
+        max-height: 100vh;
+        height: 80vh;
+        max-width: 1150px;
+        transform: translateY(100%);
+        border-radius: var(--radius-lg, 12px) var(--radius-lg, 12px) 0 0;
+        border-top: 1px solid color-mix(in oklab, var(--diamond) 22%, var(--border));
+        box-shadow:
+            0 -16px 48px -12px color-mix(in oklab, black 70%, transparent),
+            0 -2px 12px -4px color-mix(in oklab, var(--diamond) 18%, transparent);
+        transition: 0.3s ease;
+    }
+
+    /* Faint gem-tinted gradient sheen across the top edge — sub-perceptual
+     * "the surface is lit by the design system." Matches the holo / foil
+     * treatment used elsewhere; reduced motion users still see it as a
+     * static gradient. */
+    .content::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 8%;
+        right: 8%;
+        height: 1px;
+        background: linear-gradient(
+            90deg,
+            transparent 0%,
+            color-mix(in oklab, var(--amethyst) 55%, transparent) 25%,
+            color-mix(in oklab, var(--diamond) 70%, transparent) 50%,
+            color-mix(in oklab, var(--emerald) 55%, transparent) 75%,
+            transparent 100%
+        );
+        pointer-events: none;
+    }
+
+    .header {
+        display: flex;
+        justify-content: center;
+        padding-top: calc(var(--spacing) * 2);
+    }
+
+    .header .drag-icon {
+        cursor: pointer;
+        padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
+        margin: 0;
+    }
+    .header .drag-icon span {
+        height: 4px;
+        width: 72px;
+        display: block;
+        background-color: color-mix(in oklab, var(--foreground) 28%, transparent);
+        border-radius: 9999px;
+        transition: background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .header .drag-icon:hover span,
+    .header .drag-icon:focus-visible span {
+        background-color: color-mix(in oklab, var(--diamond) 50%, var(--foreground));
+    }
+
+    .body {
+        height: 100%;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: calc(var(--spacing) * 4) calc(var(--spacing) * 5)
+            calc(var(--spacing) * 10);
+    }
+
+    .body::-webkit-scrollbar {
+        width: 0;
+    }
+
+    /* ────────── Top nav links (Docs / Examples / Showcases) ──────────
+     * Single row, three columns — each link gets equal share of the
+     * width. Same gem accent + hover/active treatment as before; the
+     * pills just go horizontal so the drawer doesn't burn vertical
+     * real estate on the primary nav. */
+    .links-nav {
+        display: flex;
+        flex-direction: row;
+        gap: calc(var(--spacing) * 1.5);
+        margin-bottom: calc(var(--spacing) * 2);
+    }
+
+    .links-nav .nav-link {
+        --nav-gem: var(--diamond);
+        position: relative;
+        flex: 1 1 0;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: calc(var(--spacing) * 1.5);
+        min-height: 2.75rem;
+        padding: 0 calc(var(--spacing) * 2);
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        line-height: 1.25rem;
+        color: var(--foreground);
+        text-decoration: none;
+        text-align: center;
+        background-color: color-mix(in oklab, var(--background) 60%, var(--card));
+        border: 1px solid color-mix(in oklab, var(--nav-gem) 14%, var(--border));
+        border-radius: calc(var(--radius) - 1px);
+        transition:
+            color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .links-nav .nav-link:hover {
+        color: color-mix(in oklab, var(--nav-gem) 65%, var(--foreground));
+        background-color: color-mix(in oklab, var(--nav-gem) 12%, transparent);
+        border-color: color-mix(in oklab, var(--nav-gem) 36%, var(--border));
+    }
+    .links-nav .nav-link.active {
+        color: color-mix(in oklab, var(--nav-gem) 72%, var(--foreground));
+        background-color: color-mix(in oklab, var(--nav-gem) 18%, transparent);
+        border-color: color-mix(in oklab, var(--nav-gem) 55%, var(--border));
+        font-weight: 600;
+    }
+    .nav-link-badge {
+        padding: 0.125rem 0.5rem;
+        border-radius: calc(var(--radius) - 2px);
+        font-size: 0.6875rem;
+        font-weight: 600;
+        line-height: 1;
+        color: var(--background);
+        background-color: var(--nav-gem);
+    }
+
+    /* ────────── Doc sidebar sections ──────────
+     * Each section gets its own gem from --sidebar-section-{1..7}
+     * (cycling), wired through --section-accent on the wrapper. The
+     * title carries the gem color in tracked uppercase; the links use
+     * the gem for hover/active indicators. Mirrors the desktop
+     * SidebarSublist.astro design language. */
+    .links-docs {
+        display: flex;
+        flex-direction: column;
+        gap: calc(var(--spacing) * 6);
+        margin-top: calc(var(--spacing) * 4);
+    }
+
+    .container-sidebar-entry {
+        display: flex;
+        flex-direction: column;
+        gap: calc(var(--spacing) * 2);
+    }
+
+    .entry-title {
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 600;
+        font-size: 0.6875rem;
+        line-height: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: color-mix(
+            in oklab,
+            var(--section-accent, var(--muted-foreground)) 70%,
+            var(--foreground)
+        );
+        margin: 0;
+        padding: 0;
+    }
+
+    /* Note: doc-sidebar entry-link / nested-group styles live in
+     * DrawerSublist.astro since the recursive component owns those
+     * elements and Astro scopes styles per file. The section-gem
+     * accent (`--section-accent`) is set on `.container-sidebar-entry`
+     * above and inherits through every nested level via CSS cascade. */
+
+    @media (prefers-reduced-motion: reduce) {
+        .content,
+        .links-nav .nav-link,
+        .header .drag-icon span {
+            transition: none;
+        }
+    }
+</style>
+
+<script>
+    const drawer = document.getElementById('drawer');
+    if (drawer) {
+        drawer.addEventListener('toggle', (e) => {
+            const event = e as ToggleEvent;
+            const isOpen = event.newState === 'open';
+            document.documentElement.style.overflow = isOpen ? 'hidden' : '';
+            document.body.style.overflow = isOpen ? 'hidden' : '';
+        });
+    }
+</script>

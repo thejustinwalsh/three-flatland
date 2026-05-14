@@ -33,6 +33,8 @@ import {
   tint,
 } from '@three-flatland/nodes'
 import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { GemBackground } from './GemBackground'
+import { GEM } from './gem'
 
 extend({ AnimatedSprite2D })
 
@@ -421,7 +423,7 @@ function Scene() {
 
   return (
     <>
-      <color attach="background" args={['#1a1a2e']} />
+      <GemBackground gem={GEM} />
       <Suspense fallback={null}>
         <EffectSprite effect={effect as EffectType} />
       </Suspense>

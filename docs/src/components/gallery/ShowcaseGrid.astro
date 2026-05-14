@@ -1,0 +1,90 @@
+---
+/**
+ * ShowcaseGrid — 2-col max grid for the Showcases index. Differs from
+ * GalleryGrid (used for Examples):
+ *
+ *   - Examples have many small tiles (3-col) for scannable discovery.
+ *   - Showcases are featured apps; each tile is bigger and more
+ *     cinematic. 2-col max gives them space to read as feature-cards
+ *     without competing for the eye.
+ *
+ * Single-item behavior: when there's only one showcase (current state
+ * — Breakout), `:only-child` spans both columns but caps at a natural
+ * single-tile width (30rem) and centers, so the lone item sits at
+ * "half-grid" size rather than stretching across the full container.
+ *
+ * Children should be GalleryTile components — the existing foil rim
+ * + cursor hotspot + lens-flare treatment carries the per-showcase
+ * branding pop on hover; richer per-tile theming hooks can layer on
+ * later via additional data attributes without touching this grid.
+ */
+---
+
+<div class="showcase-grid not-content">
+  <slot />
+</div>
+
+<style>
+  .showcase-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-block: calc(var(--spacing) * 6) calc(var(--spacing) * 8);
+    max-width: 64rem;
+    margin-inline: auto;
+    align-items: start;
+  }
+
+  @media (min-width: 768px) {
+    .showcase-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 2rem;
+    }
+  }
+</style>
+
+{/* All `:only-of-type` + cross-component selectors are :global
+   because Astro scopes <style> by default — the GalleryTile's <a>
+   only carries GalleryTile's astro-hash class, so a scoped selector
+   from THIS file never matches the tile. */}
+<style is:global>
+  /* Single-showcase featured layout — when only one .gallery-tile is
+   * in the grid (current state with just Breakout, before placeholder
+   * tiles are uncommented), it spans both columns at a natural max
+   * width and centers. `:only-of-type` (not `:only-child`) so the
+   * GalleryTile's inlined hover-video <script> doesn't break the
+   * match — script is a different element type and ignored. */
+  .showcase-grid > a.gallery-tile:only-of-type {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 100%;
+    max-width: 38rem;
+  }
+
+  .showcase-grid > a.gallery-tile:only-of-type .gallery-tile-body {
+    padding: 1.25rem 1.5rem 1.5rem;
+    gap: 0.4rem;
+  }
+  .showcase-grid > a.gallery-tile:only-of-type .gallery-tile-title {
+    font-size: clamp(1.125rem, 2vw, 1.375rem);
+    line-height: 1.2;
+    letter-spacing: -0.018em;
+  }
+  .showcase-grid > a.gallery-tile:only-of-type .gallery-tile-desc {
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+  /* Subtle ambient breathing on the featured tile's border ring —
+   * gem-tinted box-shadow that pulses very slowly so the single
+   * tile reads as a "live" feature without competing with the
+   * cursor-tracked foil rim. Disabled under reduced-motion. */
+  @media (prefers-reduced-motion: no-preference) {
+    .showcase-grid > a.gallery-tile:only-of-type {
+      animation: showcase-feature-breath 6s ease-in-out infinite;
+    }
+    @keyframes showcase-feature-breath {
+      0%, 100% { filter: brightness(1) saturate(1); }
+      50%      { filter: brightness(1.04) saturate(1.06); }
+    }
+  }
+</style>

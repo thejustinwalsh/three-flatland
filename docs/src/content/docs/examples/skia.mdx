@@ -1,42 +1,21 @@
 ---
 title: Skia
 description: GPU-accelerated 2D vector graphics via Skia WASM with WebGPU and WebGL.
+template: splash
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
-import ExamplePreview from '../../../components/ExamplePreview';
-import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
-import ExampleTabs from '../../../components/ExampleTabs.astro';
-import { loadExample } from '../../../utils/loadExample';
+import { Tabs, TabItem } from 'starlight-theme/components'
+import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
+import { loadExample } from '../../../utils/loadExample'
 
-export const threeFiles = loadExample('three', 'skia');
-export const reactFiles = loadExample('react', 'skia');
+export const threeFiles = loadExample('three', 'skia')
+export const reactFiles = loadExample('react', 'skia')
 
-<ExampleTabs>
-<Tabs>
-  <TabItem label="Preview" icon="rocket">
-    <ExamplePreview client:load type="three" name="skia" bg="#191920" />
-  </TabItem>
-  <TabItem label="Three.js" icon="seti:javascript">
-    <StackBlitzEmbed
-      client:load
-      title="Skia - Three.js"
-      files={threeFiles}
-      openFile="main.ts"
-      height={600}
-    />
-  </TabItem>
-  <TabItem label="React" icon="seti:react">
-    <StackBlitzEmbed
-      client:load
-      title="Skia - React"
-      files={reactFiles}
-      openFile="App.tsx"
-      height={600}
-    />
-  </TabItem>
-</Tabs>
-</ExampleTabs>
+<ExampleDetailLayout
+  slug="skia"
+  threeFiles={threeFiles}
+  reactFiles={reactFiles}
+>
 
 ## What It Demonstrates
 
@@ -55,7 +34,7 @@ export const reactFiles = loadExample('react', 'skia');
 Render Skia shapes to a texture and apply it to a 3D mesh:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { Skia, SkiaPaint } from '@three-flatland/skia'
     import { SkiaCanvas, SkiaRect, SkiaGroup } from '@three-flatland/skia/three'
@@ -69,7 +48,7 @@ Render Skia shapes to a texture and apply it to a 3D mesh:
     material.map = canvas.texture
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { SkiaCanvas, SkiaRect, attachSkiaTexture } from '@three-flatland/skia/react'
 
@@ -91,7 +70,7 @@ Render Skia shapes to a texture and apply it to a 3D mesh:
 Draw directly on top of the 3D scene (HUD, debug text):
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     const overlay = new SkiaCanvas({
       renderer,
@@ -105,7 +84,7 @@ Draw directly on top of the 3D scene (HUD, debug text):
     overlay.render()
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     // SkiaCanvas with overlay renders to the screen framebuffer.
     // Use useFrame with { after: 'render' } to draw after the 3D scene.
@@ -129,7 +108,7 @@ Draw directly on top of the 3D scene (HUD, debug text):
 For effects beyond flat fill/stroke, create a `SkiaPaint` and assign it to a node's `paint` prop:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { SkiaPaint } from '@three-flatland/skia'
 
@@ -140,7 +119,7 @@ For effects beyond flat fill/stroke, create a `SkiaPaint` and assign it to a nod
     rect.paint = paint
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { SkiaPaint } from '@three-flatland/skia'
     import { useSkiaContext } from '@three-flatland/skia/react'
@@ -164,8 +143,10 @@ For effects beyond flat fill/stroke, create a `SkiaPaint` and assign it to a nod
 In React, create `SkiaPaint` and `SkiaPath` with `useState(() => ...)` initializers instead of `useMemo`. The `useState` initializer runs exactly once and survives React strict mode double-mounts, while `useMemo` can re-evaluate and cause WASM handles to be disposed unexpectedly.
 :::
 
-## Next Steps
+## Further Reading
 
 - [Skia Guide](../../guides/skia/) — Concepts and API reference
 - [Basic Sprite](../basic-sprite/) — Three-flatland sprites
 - [TSL Nodes](../tsl-nodes/) — Shader nodes
+
+</ExampleDetailLayout>

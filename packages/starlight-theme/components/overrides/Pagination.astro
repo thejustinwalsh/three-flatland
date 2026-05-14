@@ -1,0 +1,347 @@
+---
+const { dir, pagination } = Astro.locals.starlightRoute
+const { prev, next } = pagination
+const isRtl = dir === 'rtl'
+const t = Astro.locals.t
+
+/**
+ * Map a destination href to its section gem so each pagination link
+ * carries the destination's identity. Mirrors `gemForPath` in
+ * `Head.astro` and the per-link mapping in `NavBar.astro` — root → gold,
+ * /examples → diamond, /showcases → ruby, anything in the docs cluster
+ * → amethyst, fallback → diamond.
+ */
+function gemForHref(href: string | undefined): string {
+    if (!href) return 'diamond'
+    const url = href.startsWith('http') ? new URL(href).pathname : href
+    const rel = url.replace(/^.*?\/three-flatland/, '').replace(/^\/+/, '/')
+    if (rel === '/' || rel === '') return 'gold'
+    if (rel.startsWith('/examples')) return 'diamond'
+    if (rel.startsWith('/showcases')) return 'ruby'
+    if (
+        rel.startsWith('/getting-started') ||
+        rel.startsWith('/guides') ||
+        rel.startsWith('/branding') ||
+        rel.startsWith('/llm-prompts') ||
+        rel.startsWith('/api')
+    )
+        return 'amethyst'
+    return 'diamond'
+}
+
+const prevGem = gemForHref(prev?.href)
+const nextGem = gemForHref(next?.href)
+---
+
+<nav
+    class="pagination-links print:hidden u-reveal"
+    dir={dir}
+    aria-label={t('page.previousLink') + ' / ' + t('page.nextLink')}
+>
+    {
+        prev && (
+            <a
+                class="pag-link prev u-light"
+                href={prev.href}
+                rel="prev"
+                style={`--paginate-gem: var(--${prevGem}); --paginate-gem-soft: var(--${prevGem}-soft);`}
+                data-light=""
+                data-gem={prevGem}
+            >
+                <span class="chev" aria-hidden="true">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <path d={isRtl ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6'} />
+                    </svg>
+                </span>
+                <span class="text">
+                    <span class="eyebrow">{t('page.previousLink')}</span>
+                    <span class="title">{prev.label}</span>
+                </span>
+            </a>
+        )
+    }
+    {
+        next && (
+            <a
+                class="pag-link next u-light"
+                href={next.href}
+                rel="next"
+                style={`--paginate-gem: var(--${nextGem}); --paginate-gem-soft: var(--${nextGem}-soft);`}
+                data-light=""
+                data-gem={nextGem}
+            >
+                <span class="text">
+                    <span class="eyebrow">{t('page.nextLink')}</span>
+                    <span class="title">{next.label}</span>
+                </span>
+                <span class="chev" aria-hidden="true">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <path d={isRtl ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'} />
+                    </svg>
+                </span>
+            </a>
+        )
+    }
+</nav>
+
+<style>
+    .pagination-links {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: calc(var(--spacing) * 3);
+        padding-top: calc(var(--spacing) * 6);
+        margin-top: calc(var(--spacing) * 10);
+        border-top: 1px solid
+            color-mix(in oklab, var(--border) 60%, transparent);
+    }
+
+    @media (min-width: 48rem) {
+        .pagination-links {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    .pag-link {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: calc(var(--spacing) * 3);
+
+        font-family: 'Inter', system-ui, sans-serif;
+        color: var(--foreground);
+        text-decoration: none;
+
+        /* Safari paint-isolation — the foil-rim ::before/::after with
+         * mask-composite + radial-gradient on cursor-light vars needs
+         * its stacking context isolated to avoid Safari recompositing
+         * the entire page on hover state changes. */
+        contain: paint;
+        isolation: isolate;
+
+        background-color: transparent;
+        border: 1px solid
+            color-mix(
+                in oklab,
+                var(--paginate-gem, var(--border)) 18%,
+                var(--border)
+            );
+        border-radius: var(--radius);
+        padding: calc(var(--spacing) * 3.5) calc(var(--spacing) * 4);
+
+        transition:
+            color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        overflow: hidden;
+        isolation: isolate;
+    }
+
+    .pag-link.next {
+        flex-direction: row;
+        text-align: right;
+        justify-content: flex-end;
+    }
+    .pag-link.prev {
+        text-align: left;
+        justify-content: flex-start;
+    }
+
+    /* Foil rim — gem-tinted gradient ring driven by the cursor-light
+     * hotspot (--mx/--my updated by the global motion script via
+     * `data-light`). Subtle on rest, lifts on hover. */
+    .pag-link::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background: radial-gradient(
+            120% 140% at calc(var(--mx, 50%) * 1) calc(var(--my, 50%) * 1),
+            color-mix(in oklab, var(--paginate-gem) 75%, white 8%) 0%,
+            color-mix(in oklab, var(--paginate-gem) 30%, transparent) 32%,
+            transparent 70%
+        );
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        opacity: 0;
+        transition: opacity 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    /* Soft gem wash behind text — appears on hover, never on rest. */
+    .pag-link::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: radial-gradient(
+            120% 100% at calc(var(--mx, 50%) * 1) calc(var(--my, 50%) * 1),
+            color-mix(in oklab, var(--paginate-gem) 14%, transparent),
+            transparent 60%
+        );
+        opacity: 0;
+        transition: opacity 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        pointer-events: none;
+        z-index: -1;
+    }
+
+    .pag-link:hover,
+    .pag-link:focus-visible {
+        color: var(--foreground);
+        border-color: color-mix(
+            in oklab,
+            var(--paginate-gem) 55%,
+            var(--border)
+        );
+        transform: translateY(-1px);
+    }
+
+    .pag-link:hover::before,
+    .pag-link:focus-visible::before {
+        opacity: 1;
+    }
+    .pag-link:hover::after,
+    .pag-link:focus-visible::after {
+        opacity: 1;
+    }
+
+    .pag-link:focus-visible {
+        outline: 2px solid
+            color-mix(in oklab, var(--paginate-gem) 80%, transparent);
+        outline-offset: 2px;
+    }
+
+    .text {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .eyebrow {
+        font-size: 0.6875rem;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: color-mix(
+            in oklab,
+            var(--paginate-gem) 65%,
+            var(--muted-foreground)
+        );
+        line-height: 1;
+        transition: color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .title {
+        font-family: 'Public Sans', 'Inter', system-ui, sans-serif;
+        font-size: 1rem;
+        font-weight: 600;
+        line-height: 1.3;
+        color: var(--foreground);
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+    }
+
+    .chev {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: calc(var(--radius) - 4px);
+        color: color-mix(
+            in oklab,
+            var(--paginate-gem) 50%,
+            var(--muted-foreground)
+        );
+        background-color: color-mix(
+            in oklab,
+            var(--paginate-gem) 8%,
+            transparent
+        );
+        transition:
+            color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .chev > svg {
+        display: block;
+    }
+
+    .pag-link:hover .chev,
+    .pag-link:focus-visible .chev {
+        color: var(--paginate-gem);
+        background-color: color-mix(
+            in oklab,
+            var(--paginate-gem) 18%,
+            transparent
+        );
+    }
+
+    .prev:hover .chev,
+    .prev:focus-visible .chev {
+        transform: translateX(-3px);
+    }
+    .next:hover .chev,
+    .next:focus-visible .chev {
+        transform: translateX(3px);
+    }
+
+    .pag-link:hover .eyebrow,
+    .pag-link:focus-visible .eyebrow {
+        color: var(--paginate-gem);
+    }
+
+    /* Reduced motion — kill the bounce + lift, keep color affordances. */
+    @media (prefers-reduced-motion: reduce) {
+        .pag-link,
+        .pag-link::before,
+        .pag-link::after,
+        .chev,
+        .eyebrow {
+            transition: none;
+        }
+        .pag-link:hover,
+        .pag-link:focus-visible {
+            transform: none;
+        }
+        .prev:hover .chev,
+        .prev:focus-visible .chev,
+        .next:hover .chev,
+        .next:focus-visible .chev {
+            transform: none;
+        }
+    }
+</style>

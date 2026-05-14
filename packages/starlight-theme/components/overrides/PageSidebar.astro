@@ -1,0 +1,39 @@
+---
+/**
+ * Renders the on-this-page TOC.
+ *
+ * **Desktop (≥1280px)** — sticky right-rail TOC, our own
+ * `TableOfContents.astro` override. Visible inside the `.container-main`
+ * grid track.
+ *
+ * **Mobile / tablet (<1280px)** — the mobile TOC was previously rendered
+ * here too, as a `position: fixed` strip pinned below the header. It now
+ * lives in the header itself (`overrides/Header.astro`) as an inline
+ * dropdown trigger so the page chrome stays a single row at narrow
+ * viewports. This file is desktop-only now.
+ */
+import TableOfContents from './TableOfContents.astro'
+---
+
+{
+    Astro.locals.starlightRoute.toc && (
+        <div class="page-sidebar-desktop">
+            <TableOfContents />
+        </div>
+    )
+}
+
+<style>
+    .page-sidebar-desktop {
+        display: none;
+    }
+    @media (min-width: 1280px) {
+        .page-sidebar-desktop {
+            display: block;
+            padding-top: calc(var(--spacing) * 4);
+            max-height: calc(100vh - var(--header-height) - 1px);
+            top: calc(var(--header-height) + 1px);
+            position: sticky;
+        }
+    }
+</style>

@@ -1,103 +1,141 @@
 ---
-title: three-flatland
-description: The complete 2D solution for Three.js and React Three Fiber. Built for WebGPU with composable TSL shaders.
+title: 'three-flatland: Composable 2D library for three.js + react-three-fiber'
+description: The composable 2D library for Three.js. Primitives for 2D graphics, TSL composability, react-three-fiber, ECS-driven sprite batching.
 template: splash
-hero:
-  tagline: The complete 2D solution for Three.js and React Three Fiber. Built for WebGPU with composable TSL shaders.
-  actions:
-    - text: Get Started
-      link: /three-flatland/getting-started/introduction/
-      icon: right-arrow
-      variant: primary
-    - text: View on GitHub
-      link: https://github.com/thejustinwalsh/three-flatland
-      icon: external
+head:
+  - tag: script
+    attrs:
+      type: application/ld+json
+    content: |
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareSourceCode",
+        "name": "three-flatland",
+        "alternateName": "flatland",
+        "description": "The composable 2D library for Three.js. Primitives for 2D graphics, TSL composability, react-three-fiber, ECS-driven sprite batching.",
+        "programmingLanguage": ["TypeScript", "JavaScript"],
+        "codeRepository": "https://github.com/thejustinwalsh/three-flatland",
+        "url": "https://thejustinwalsh.com/three-flatland/",
+        "license": "https://github.com/thejustinwalsh/three-flatland/blob/main/LICENSE",
+        "keywords": "Three.js, react-three-fiber, R3F, 2D, WebGPU, WebGL, TSL, sprites, tilemaps, skia, library, composable",
+        "author": {
+          "@type": "Person",
+          "name": "Justin Walsh",
+          "url": "https://github.com/thejustinwalsh"
+        }
+      }
 ---
 
 import FeatureCard from '../../components/FeatureCard.astro';
 import StatsBanner from '../../components/StatsBanner.astro';
 import ValueProp from '../../components/ValueProp.astro';
-import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import HeroShader from '../../components/HeroShader.tsx';
+import { Tabs, TabItem, Aside } from 'starlight-theme/components';
 
-<Aside type="note" title="Early Alpha">
-  three-flatland is in active development. We're exploring performant, maintainable, and extensible patterns for GPU-driven 2D rendering with WebGPU. The API will evolve as we refine these systems. [Follow along on GitHub](https://github.com/thejustinwalsh/three-flatland) — your feedback shapes what we build.
-</Aside>
+<section class="hero-fullscreen not-content">
+  <div class="hero-canvas" aria-hidden="true">
+    <HeroShader client:only="react" />
+  </div>
+  <div class="hero-overlay">
+    {/* MDX auto-wraps any text content that sits on its own line
+        inside a JSX tag with a markdown <p>. Net result: the text
+        ends up in a sibling <p>, leaving the tagged tag empty —
+        my .hero-tagline / .hero-subtagline classes were attached to
+        EMPTY <p> elements while the actual text lived in unclassed
+        siblings (broken CSS, voided SEO of the keyword-dense text).
+        Same issue inside <a> tags — link labels were wrapped in
+        block <p>, producing invalid `<a><p>text</p><svg/></a>`.
+        Fix: keep tag + content on a single line so MDX skips the
+        markdown-paragraph auto-wrap. */}
+    <div class="hero-overlay-inner">
+      <p class="hero-eyebrow">three-flatland</p>
+      <h1 class="hero-title">The composable 2D library for Three.js</h1>
+      <p class="hero-subtagline">2D primitives for three.js and react-three-fiber. ECS-driven sprite batching with TSL effect composition.</p>
+      <div class="hero-actions">
+        <a href="/three-flatland/getting-started/introduction/" class="sl-link-button primary"><span>Get Started</span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7" /></svg></a>
+        <a href="https://github.com/thejustinwalsh/three-flatland" class="sl-link-button secondary"><span>View on GitHub</span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17l9.2-9.2M17 17V7H7" /></svg></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="page-body not-content">
 
 <StatsBanner stats={[
-  { value: "10,000+", label: "Sprites at 60fps", color: "cyan" },
-  { value: "1", label: "Draw Call", color: "pink" },
-  { value: "0", label: "CPU Overhead", color: "yellow" },
-  { value: "100%", label: "TypeScript", color: "blue" },
+  { value: "20K+", label: "Sprites at 60fps", color: "diamond" },
+  { value: "ECS", label: "Batch archetypes", color: "pink" },
+  { value: "TSL", label: "Composable shader nodes", color: "gold" },
+  { value: "WebGPU", label: "and WebGL rendering", color: "amethyst" },
 ]} />
 
-## Power Features
+<h2 class="section-heading">Features</h2>
 
 <div class="feature-grid">
   <FeatureCard
-    icon="rocket"
-    title="WebGPU Native"
-    color="cyan"
-    stat="Next-Gen"
-    statLabel="Graphics API"
+    icon="image"
+    title="Sprites"
+    color="diamond"
+    stat="Instanced"
+    statLabel="Atlas + per-instance animation"
   >
-    Built from the ground up for WebGPU. No WebGL fallbacks, no compromises. Pure TSL shader power for effects that weren't possible before.
+    Sprites should be cheap enough to scatter without counting them. `Sprite2D` and `AnimatedSprite2D` join an instanced batch on scenegraph entry. The spritesheet loader speaks TexturePacker; the animation system drives per-instance playback.
   </FeatureCard>
 
   <FeatureCard
-    icon="list-format"
-    title="Batch Rendering"
-    color="pink"
-    stat="10,000+"
-    statLabel="Sprites per batch"
+    icon="list"
+    title="Effect-aware batching"
+    color="emerald"
+    stat="ECS"
+    statLabel="Dynamic batch archetypes"
   >
-    Automatic batching and GPU instancing. Every sprite shares geometry and materials. Your GPU does the heavy lifting.
+    An ECS packs sprite state into compact GPU buffers, so per-sprite effects share one material without fragmenting the batch. Tint, outline, dissolve, palette swap — written in TSL, branch-pruned at compile time.
   </FeatureCard>
 
   <FeatureCard
-    icon="puzzle"
+    icon="user"
     title="React Three Fiber"
-    color="yellow"
-    stat="R3F v10"
-    statLabel="WebGPU Support"
+    color="amethyst"
+    stat="v10 Alpha"
+    statLabel="Three.js >= 0.183"
   >
-    First-class R3F integration. Declarative JSX components that feel native. Full TypeScript support with accurate types.
+    Every primitive ships a typed JSX wrapper — `<sprite2D>`, `<tileMap2D>`, `<spriteGroup>`, `<flatland>`. Hooks compose with `useFrame` and `useThree`. Compatible with react-three-fiber v10's alpha WebGPU canvas, mounts inside `<Canvas>` like any other element.
   </FeatureCard>
 
   <FeatureCard
-    icon="forward-slash"
-    title="Animation System"
-    color="blue"
-    stat="60fps"
-    statLabel="Frame-perfect timing"
+    icon="palette"
+    title="Pixel-art rendering"
+    color="gold"
+    stat="Retro"
+    statLabel="Pixel-art shader effects"
   >
-    Built-in sprite animation with spritesheet support. Define animations in JSON, play them with one call. Buttery smooth.
+    The retro effect category — CRT scanlines, dithering, pixelation, palette quantization — runs as per-sprite TSL nodes. `TextureLoader` applies pixel-art presets: nearest-neighbor filtering, no mipmaps, no subpixel bleeding.
   </FeatureCard>
 
   <FeatureCard
-    icon="star"
-    title="TSL Shader Nodes"
-    color="orange"
-    stat="Composable"
-    statLabel="Effect pipeline"
+    icon="sparkles"
+    title="Composable TSL effects"
+    color="salmon"
+    stat="50+"
+    statLabel="Composable shader effects"
   >
-    Mix and match shader effects. Palette swaps, outlines, glow, distortion. Build your visual style node by node.
+    Pixelate, dither, CRT scanlines, dissolve, palette swap, chromatic aberration — a TSL effect library composed per-sprite via a typed schema. Override the color node to drop in your own.
   </FeatureCard>
 
   <FeatureCard
     icon="map"
-    title="Tilemap Support"
-    color="purple"
-    stat="Tiled"
-    statLabel="JSON format"
+    title="Chunked tilemaps"
+    color="pink"
+    stat="Chunked"
+    statLabel="Per-chunk visibility"
   >
-    Efficient tilemap rendering with Tiled editor support. Multiple layers, animated tiles, collision data. Build worlds fast.
+    `TileMap2D` batches like sprites, with chunks instead of per-tile draws — only visible chunks render. Loads from Tiled or LDtk JSON, with multiple layers, animated tiles, and collision data.
   </FeatureCard>
 </div>
 
-## Quick Start
+<h2 class="section-heading">Quick start: 2D in three.js</h2>
 
 <Tabs>
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
 ```typescript
 import { Sprite2D, SpriteGroup } from 'three-flatland'
 
@@ -114,7 +152,7 @@ enemy.position.set(2, 0, 0)
 spriteGroup.add(player, enemy)
 ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
 ```tsx
 import { Canvas, extend } from '@react-three/fiber/webgpu'
 import { Sprite2D, SpriteGroup } from 'three-flatland/react'
@@ -135,80 +173,300 @@ function Game() {
   </TabItem>
 </Tabs>
 
-## Why three-flatland?
+<h2 class="section-heading">Built for three.js</h2>
 
-<ValueProp title="Built for the Future" color="cyan">
-  three-flatland is designed **exclusively** for Three.js WebGPU renderer. No legacy code, no WebGL baggage. By targeting WebGPU from day one, we leverage **TSL (Three Shader Language)** for shader composition that simply isn't possible with GLSL strings.
+<ValueProp title="Native to the three.js scenegraph" color="diamond">
+  Composing existing 2D rendering libraries with three.js is hard. Pull one in and you're running a second full renderer that competes for the frame, with GPU resources shared by hand and the integration held together by hacks. Inside react-three-fiber the cost doubles: another reconciler, state marshaled across two React instances.
 
-  This means **real-time shader effects** that would tank performance on WebGL run buttery smooth. Palette cycling, CRT effects, per-sprite distortion — all composable, all fast.
+  three-flatland is built directly on three.js. There's no parallel renderer to coordinate, no bridge between React instances to maintain. three.js is the renderer, react-three-fiber is the reconciler, and every 2D primitive — `Sprite2D`, `TileMap2D`, `SpriteGroup` — is a Three.js object that mounts into the scenegraph the same way a `Mesh` does.
 </ValueProp>
 
-<ValueProp title="Performance Obsessed" color="pink" align="right">
-  Every sprite in your scene shares the same geometry and materials through **automatic batching**. Whether you have 10 sprites or 10,000, three-flatland keeps your draw calls minimal and your frame rate high.
+<ValueProp title="Sprite batches that survive your effects" color="emerald" align="right">
+  Most sprite batchers fall apart the moment a single sprite needs special treatment. Changing a uniform tanks the batch; shifting a z-index forces a scenegraph reorder; attaching an effect reflows the scene around it.
 
-  The GPU does what GPUs do best. Your CPU stays free for game logic. **Zero per-sprite overhead** in your render loop.
+  three-flatland's batcher composes effects on a single shared material — adding a glow to one sprite doesn't fragment the batch or rebuild the shader. The cost stays proportional to what's actually used: the uber-shader prunes unused branches at compile time, and the ECS keeps batch archetypes optimal as effects appear and disappear. To customize beyond the defaults, swap the color node or write a new effect against the same schema.
 </ValueProp>
 
-<ValueProp title="Developer Joy" color="yellow">
-  Full **TypeScript** support with types that actually help. React Three Fiber users get JSX components that integrate seamlessly. Three.js users get a clean, intuitive API.
+<ValueProp title="The ecosystem is three.js" color="amethyst">
+  Flatland doesn't define a secondary ecosystem inside three.js — three.js is the ecosystem. Each `@three-flatland/*` package follows a Unix-style one-job rule, is tree-shakable, and works in any three.js project, with or without Flatland.
 
-  No configuration hell. No boilerplate. Import, create, render. **Ship your game, not your build config.**
+  `@three-flatland/skia` brings Skia to Three.js — with a native WebGPU backend (Graphite/Dawn) that CanvasKit doesn't ship, plus a Zig-built WASM bundle tuned for size and speed. A TSL port of the Slug glyph-rendering algorithm is in flight — fully shader-driven, accurate at any scale, with real dynamic kerning instead of bitmap atlas sampling. A KTX2 Basis transcoder and runtime encoder (WASM + SIMD) and a VS Code plugin for 2D web projects are in development.
 </ValueProp>
 
-<div class="ai-disclaimer">
-  <p>This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections <a href="https://github.com/thejustinwalsh/three-flatland/issues">here</a>.</p>
+<ValueProp title="When not to reach for Flatland" color="ruby" align="right">
+  If your only 2D need is in-canvas app UI (buttons, panels, settings menus, dialogs), uikit is purpose-built for that. Flatland isn't.
+
+  For sprites, tilemaps, particles, shaders, HUDs, data viz, hybrid 2.5D — that's three-flatland's territory. Every `@three-flatland/*` package stands on its own, so adopting Flatland is incremental, not all-or-nothing.
+</ValueProp>
+
 </div>
 
 <style>
 {`
-  .ai-disclaimer {
-    margin: 4rem auto 2rem;
-    padding: 1rem 1.5rem;
-    max-width: 600px;
-    text-align: center;
-    font-size: 0.8rem;
-    color: var(--sl-color-gray-4);
-    border-top: 1px solid var(--sl-color-gray-6);
+  /* Hero stays dark-mode regardless of the site-wide theme.
+     The hero canvas is a near-black gem-flow shader; the H1, eyebrow,
+     subtagline, and CTAs are all tuned to read against that surface.
+     In light mode the surrounding page goes paper-toned, but the hero
+     itself must stay on its own dark stage so the typography halos and
+     gem-tinted highlights still land.
+
+     Token override — mirror the dark-mode :root tokens that the hero
+     subtree consumes (background, foreground, muted-foreground, the
+     gem palette for eyebrow + buttons, plus the link-button surface
+     tokens like --card and --primary-foreground). Only listed tokens
+     are overridden; tokens we do NOT use (sidebar, popover, etc.) are
+     left to inherit from the active site theme. */
+  @media (prefers-color-scheme: light) {
+    .hero-fullscreen {
+      /* Match the shader's light-mode bg paint (HeroShader.tsx bgLight =
+       * oklch(42% 0.006 250)). Previously near-black (18%), which caused
+       * a noticeable black flash before WebGL composited its first frame. */
+      --background: oklch(42% 0.006 250);
+      --foreground: oklch(92% 0.008 250);
+      --muted-foreground: oklch(68% 0.011 250);
+      --card: oklch(20% 0.008 250);
+      --border: oklch(28% 0.008 245);
+      --primary: oklch(63% 0.24 295);
+      --primary-foreground: oklch(99% 0 0);
+      --secondary: oklch(24% 0.010 250);
+      --secondary-foreground: oklch(92% 0.008 250);
+      /* Gems re-tuned to their dark-mode vibrant values (light-mode
+         palette runs darker for paper-bg legibility, which kills the
+         eyebrow + CTA halos against the dark canvas). */
+      --gold: oklch(72% 0.16 85);
+      --gold-high: oklch(82% 0.17 88);
+      --gold-low: oklch(34% 0.10 80);
+      --diamond: oklch(75% 0.15 215);
+      --amethyst: oklch(63% 0.24 295);
+      --link: oklch(75% 0.15 215);
+      --link-hover: oklch(85% 0.13 215);
+      /* Hero-to-page fade: the canvas is dark but the page below is
+         paper. The fade meets the page bg, not the overridden hero bg.
+         Light-mode fade is 12% — about half of the prior 20% (which was
+         already shorter than dark mode's 33%). The dark→paper contrast
+         carries the transition; a smaller fade band reads as a crisp
+         horizon line rather than a long wash. Dark mode unchanged. */
+      --hero-fade-end: oklch(98% 0.008 80);
+      --hero-fade-height: 12%;
+    }
   }
 
-  .ai-disclaimer p {
+  /* Half-viewport hero — canvas extends UP behind the transparent
+     site header so the gem flow reads as one uninterrupted plane
+     from the very top of the viewport down to the hero's end.
+     60vh hero keeps the StatsBanner above the fold. */
+  .hero-fullscreen {
+    position: relative;
+    width: 100%;
+    height: 60vh;
+    min-height: 24rem;
     margin: 0;
-    opacity: 0.8;
+  }
+  .hero-canvas {
+    position: absolute;
+    /* Extend up past the hero's top edge by the header height so the
+       canvas covers the area BEHIND the (transparent) site header. */
+    top: calc(var(--header-height, 3.5rem) * -1);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    background: var(--background);
+    z-index: 0;
+  }
+  .hero-canvas > :global(*) {
+    position: absolute;
+    inset: 0;
   }
 
-  .ai-disclaimer a {
-    color: inherit;
-    text-decoration: underline;
+  /* Overlay sits ON TOP of the canvas, fills the hero area, centers
+     the title/tagline/CTAs vertically. */
+  .hero-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(1.5rem, 4vw, 3rem);
+    padding-top: var(--header-height, 3.5rem);
+    pointer-events: none;
+    z-index: 2;
+  }
+  /* Bottom-fade gradient masks the canvas to the page background so the
+     transition into the .page-body content reads as a soft horizon.
+     Uses --hero-fade-end (NOT --background) because the hero's
+     darkmode-lock override redefines --background to the dark value;
+     the fade needs to meet the actual page below, which is paper in
+     light mode and near-black in dark mode. See the
+     @media (prefers-color-scheme: light) block above for the light-mode override. */
+  .hero-overlay::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--hero-fade-height, 33%);
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      color-mix(in oklab, var(--hero-fade-end, var(--background)) 70%, transparent) 60%,
+      var(--hero-fade-end, var(--background)) 100%
+    );
+    pointer-events: none;
+  }
+  .hero-overlay-inner {
+    position: relative;
+    z-index: 3;
+    pointer-events: auto;
+    text-align: center;
+    /* width:100% + max-width:56rem so this container expands up to its
+     * cap and the children's max-widths and margin-inline:auto resolve
+     * against a stable width. Without width:100%, the flex parent's
+     * align-items:center sized this to its widest child (the tagline
+     * at 42rem ~672px) — buttons and subtagline ended up off-center
+     * relative to the viewport because their auto margins resolved
+     * against the constrained 672px container, not the intended 56rem. */
+    width: 100%;
+    max-width: 56rem;
+    margin-inline: auto;
   }
 
-  .ai-disclaimer a:hover {
-    opacity: 1;
+  /* Package-name eyebrow — small mono, tracked uppercase, reads as
+     'install name' / code reference rather than competing for visual
+     mass with the h1 below. The brand 'flatland' is already in the
+     header wordmark; this eyebrow exists so first-time visitors
+     landing from a search for 'three-flatland' get immediate
+     confirmation they're on the right page, but without sacrificing
+     the SEO-load-bearing h1 below. */
+  .hero-eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: clamp(0.75rem, 1vw, 0.875rem);
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: color-mix(in oklab, var(--gold) 50%, var(--muted-foreground));
+    margin-block: 0 calc(var(--spacing) * 4);
+    margin-inline: auto;
+    /* Layered halo — close shadow carves the character edges out of
+     * the dithered canvas, wider shadow gives breathing room. Tuned
+     * to compete with the (capped) ~75% max brightness of the
+     * pixelated hero behind. */
+    text-shadow:
+      0 1px 3px color-mix(in oklab, var(--background) 90%, transparent),
+      0 2px 16px color-mix(in oklab, var(--background) 70%, transparent);
+  }
+
+  /* Editorial display heading — h1 now carries the value-proposition
+     statement (Tailwind/Vercel/Linear hero pattern). Public Sans 200
+     at editorial display size; sentence case (no uppercase transform)
+     because the longer text reads better in sentence flow. Slightly
+     smaller clamp than the old wordmark-h1 since the longer string
+     would overflow on common viewports — text-wrap: balance gives a
+     clean 2-line wrap on most screens. */
+  .hero-title {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(2rem, 4.5vw, 3.5rem);
+    font-weight: 200;
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    color: var(--foreground);
+    max-width: 28ch;
+    margin-block: 0 calc(var(--spacing) * 5);
+    margin-inline: auto;
+    text-wrap: balance;
+    /* Triple-layer halo against the dithered pixel-art canvas:
+     *   - 1px close: carves a hard edge around character strokes so
+     *     8px big-pixels behind don't bleed visually into glyph forms
+     *   - 24px medium: punchy character separation
+     *   - 56px wide: gentle outer wash so the title sits on its own
+     *     "lit pad" instead of competing with the busy posterized bg
+     * Without these the (capped) 75%-brightness big-pixels still
+     * sit close enough to white-ish to make the thin 200-weight
+     * Public Sans display strokes vibrate. */
+    text-shadow:
+      0 1px 3px color-mix(in oklab, var(--background) 92%, transparent),
+      0 2px 24px color-mix(in oklab, var(--background) 75%, transparent),
+      0 0 56px color-mix(in oklab, var(--background) 55%, transparent);
+  }
+  /* Supporting line below the hero tagline — claim-stack pattern
+     (shadcn-style). Each comma-separated phrase lands one ecosystem
+     perk: primitives (composability), TSL (modern shader stack),
+     react-three-fiber (ecosystem), performance (no opt-in tax).
+     Smaller, lighter weight so it reads as supporting evidence,
+     not the headline. */
+  .hero-subtagline {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: clamp(0.7rem, 1vw, 0.8125rem);
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+    color: color-mix(in oklab, var(--muted-foreground) 80%, var(--foreground));
+    max-width: 48rem;
+    /* Explicit margin-block:0 top so we don't pick up the default
+       1em top margin on paragraphs; bottom pushes CTAs into a clear band. */
+    margin-block: 0 calc(var(--spacing) * 10);
+    margin-inline: auto;
+    /* Two-layer halo — same idea as .hero-title but pulled back since
+     * the subtagline is small mono and reads through faster. */
+    text-shadow:
+      0 1px 3px color-mix(in oklab, var(--background) 90%, transparent),
+      0 2px 18px color-mix(in oklab, var(--background) 70%, transparent);
+  }
+  .hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: calc(var(--spacing) * 3);
+    flex-wrap: wrap;
+    margin: calc(var(--spacing) * 3) auto;
+  }
+  /* Page body — everything below the hero gets reasonable horizontal
+     padding so content isn't edge-to-edge on splash pages. The hero
+     stays edge-to-edge for the fullscreen vibe. */
+  .page-body {
+    padding-inline: clamp(1.5rem, 4vw, 3rem);
+    padding-block: calc(var(--spacing) * 16) calc(var(--spacing) * 12);
+    max-width: 90rem;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+    background: var(--background);
+  }
+
+  /* Section headings inside .page-body — Public Sans display, smaller
+     than h1 and at semi weight for structural clarity, with consistent
+     vertical rhythm between sections. */
+  .section-heading {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(1.625rem, 2.6vw, 2rem);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--foreground);
+    margin: calc(var(--spacing) * 16) 0 calc(var(--spacing) * 6);
+  }
+  .section-heading:first-child {
+    margin-top: 0;
   }
 
   .feature-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    grid-auto-rows: 1fr;
     gap: 1.5rem;
-    margin: 2rem 0;
+    margin: 0 0 calc(var(--spacing) * 4);
     align-items: stretch;
   }
-
   .feature-grid > :global(article) {
     height: 100%;
     display: flex;
     flex-direction: column;
   }
-
-  .feature-grid > :global(article) :global(.card-content) {
-    flex: 1;
-  }
-
   @media (min-width: 900px) {
     .feature-grid {
       grid-template-columns: repeat(3, 1fr);
     }
   }
-
   @media (min-width: 600px) and (max-width: 899px) {
     .feature-grid {
       grid-template-columns: repeat(2, 1fr);

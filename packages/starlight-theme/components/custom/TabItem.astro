@@ -1,0 +1,29 @@
+---
+/**
+ * TabItem — placeholder element consumed by `<Tabs>`'s rehype-tabs
+ * processor. Renders a `<starlight-tab-item>` custom element with the
+ * label/icon as data attributes; the parent `<Tabs>` walks the slot
+ * HTML and turns each placeholder into a real `<div role="tabpanel">`.
+ *
+ * Functionally identical to Starlight's TabItem, except the `icon`
+ * prop type is widened to accept Iconify-prefixed names like
+ * `material-icon-theme:npm` or `lucide:sparkles` (resolved by our
+ * <Tabs> override via UnoCSS preset-icons).
+ */
+import { TabItemTagname } from './rehype-tabs';
+
+interface Props {
+    icon?: string;
+    label: string;
+}
+
+const { icon, label } = Astro.props;
+
+if (!label) {
+    throw new Error('Missing prop `label` on `<TabItem>` component.');
+}
+---
+
+<TabItemTagname data-label={label} data-icon={icon}>
+    <slot />
+</TabItemTagname>

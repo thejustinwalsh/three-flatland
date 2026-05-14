@@ -4,25 +4,27 @@
 
 # three-flatland
 
-High-performance 2D sprites, tilemaps, and effects for [Three.js](https://threejs.org/) — built for WebGPU with composable TSL shaders.
+2D sprites, tilemaps, and TSL-composable effects for [Three.js](https://threejs.org/), built for WebGPU.
 
 > **Alpha Release** — three-flatland is in active development. The API will evolve and breaking changes are expected between releases. Pin your version and check the [changelog](https://github.com/thejustinwalsh/three-flatland/releases) before upgrading.
 
 [![npm](https://img.shields.io/npm/v/three-flatland)](https://www.npmjs.com/package/three-flatland)
 [![license](https://img.shields.io/npm/l/three-flatland)](https://github.com/thejustinwalsh/three-flatland/blob/main/LICENSE)
 
-## Why three-flatland?
+## Built into Three.js, not on top of it
 
-Three.js is a 3D engine. Building 2D games on top of it means fighting the renderer — no batching, no sprite sheets, no layer ordering, no pixel-perfect rendering. three-flatland fixes all of that.
+three-flatland exposes 2D primitives as plain `Object3D` subclasses on the Three.js scene graph. No parallel renderer, no shadow `Scene`, no coordination layer.
 
-- **10,000+ sprites at 60fps** — automatic GPU batching, one draw call
-- **WebGPU native** — TSL shaders, not GLSL strings. Effects that weren't possible before
-- **Proper 2D pipeline** — layers, z-ordering, anchor points, pixel-art texture presets
-- **Composable effects** — tint, outline, dissolve, palette swap, CRT, bloom — mix and match
-- **Animation system** — spritesheet-driven with frame-perfect timing
-- **Tilemap support** — Tiled and LDtk editor formats with animated tiles
-- **React Three Fiber** — first-class R3F integration via `three-flatland/react`
-- **Tree-shakeable** — import only what you use, deep imports for maximum control
+- **2D primitives as `Object3D` subclasses.** `Sprite2D`, `SpriteGroup`, `AnimatedSprite2D`, `TileMap2D`. Live in the same scene as meshes, lights, and cameras.
+- **Independent transform + render order.** `layer` and `zIndex` decouple z-sorting from parent hierarchy, so a child sprite can render below its parent.
+- **10,000+ sprites at 60fps.** ECS-driven batch archetypes, packed GPU buffers, branch-pruned uber-shader.
+- **WebGPU-native shaders via TSL.** Effects are TSL node graphs; the underlying material compiles to WebGPU or WebGL 2 depending on the renderer.
+- **Composable effects.** Tint, outline, dissolve, palette swap, CRT, bloom — combine on a shared material; sprites in a batch stay batched as effects come and go.
+- **Animation system.** `AnimatedSprite2D` + `AnimationController` for spritesheet-driven, frame-precise playback with completion callbacks.
+- **Tilemap support.** Loaders for [Tiled](https://www.mapeditor.org/) and [LDtk](https://ldtk.io/) editor formats; animated tiles included.
+- **2D-on-3D via render targets.** The `Flatland` class wraps a 2D scene with an orthographic camera and an optional `RenderTarget`; the resulting texture mounts on any 3D material for HUDs, dialogue panels, or in-world signage.
+- **React Three Fiber integration.** `three-flatland/react` re-exports the core surface with JSX type augmentation. `extend()`-friendly classes, `attachEffect` lifecycle helper.
+- **Tree-shakeable subpath exports.** Import per-category, deep imports for surgical bundles.
 
 ## Install
 
@@ -143,8 +145,8 @@ Import only what you need:
 import { Sprite2D, SpriteGroup, AnimatedSprite2D } from 'three-flatland'
 
 // By category
-import { Sprite2D } from 'three-flatland/sprites'
-import { AnimatedSprite2D } from 'three-flatland/animation'
+import { Sprite2D, AnimatedSprite2D } from 'three-flatland/sprites'
+import { AnimationController } from 'three-flatland/animation'
 import { Sprite2DMaterial } from 'three-flatland/materials'
 import { SpriteSheetLoader, TextureLoader } from 'three-flatland/loaders'
 import { SpriteGroup, SpriteBatch } from 'three-flatland/pipeline'
@@ -158,17 +160,21 @@ import { Sprite2D, attachEffect, type EffectElement } from 'three-flatland/react
 
 | Package | Description |
 |---------|-------------|
-| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | 50+ TSL shader nodes — tint, outline, dissolve, blur, CRT, palette swap, and more |
-| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Pre-configured effect combinations (coming soon) |
+| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | 50+ TSL shader nodes. Tint, outline, dissolve, blur, CRT, palette swap, and more. |
+| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia) | Skia compiled to WASM. GPU vector graphics, text, paths, image filters. |
+| [`@three-flatland/tweakpane`](https://www.npmjs.com/package/@three-flatland/tweakpane) | Tweakpane v4 theme + React hooks (transitioning to a devtools package). |
+| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Pre-configured effect combinations (in development). |
+
+## When not to reach for three-flatland
+
+- **3D scenes.** Use Three.js directly. The batching system assumes orthographic-style 2D composition and adds nothing for non-2D work.
+- **WebGL-1-only targets.** TSL targets WebGPU and WebGL 2; legacy WebGL 1 is out of scope.
+- **DOM-overlay UI.** Use the DOM. three-flatland is a renderer, not a UI toolkit.
 
 ## Documentation
 
-Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**
+Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**.
 
 ## License
 
 [MIT](./LICENSE)
-
----
-
-<sub>This README was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).</sub>

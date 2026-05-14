@@ -8,6 +8,8 @@ import {
   TextureLoader,
   createPassEffect,
 } from 'three-flatland'
+import { gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 import type { PassEffect } from 'three-flatland'
 import {
   // CRT display nodes
@@ -273,10 +275,14 @@ const SPRITE_LAYOUT = [
 ]
 
 async function main() {
+  // Gem-tinted L2 backdrop matching the masonry tile poster. The
+  // Flatland clearColor matches the docs --card token (#16191e) so
+  // any pre-shader-compile flash matches body bg, no color jump.
   const flatland = new Flatland({
     viewSize: 400,
-    clearColor: 0x1a1a2e,
+    clearColor: 0x16191e,
   })
+  ;(flatland.scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
   const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)

@@ -5,10 +5,12 @@ import {
   AmbientLight, DirectionalLight, Color, DoubleSide,
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float } from 'three/tsl'
+import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float, smoothstep as tslSmoothstep, length as tslLength } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
-import { MeshStandardNodeMaterial } from 'three/webgpu'
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
 import { Skia, SkiaPaint, SkiaPath } from '@three-flatland/skia'
+import { gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 import {
   SkiaCanvas,
   SkiaRect,
@@ -51,13 +53,18 @@ async function main() {
   const renderer = new WebGPURenderer({ antialias: true, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
-  renderer.setClearColor(new Color(0x191920))
   document.body.appendChild(renderer.domElement)
   await renderer.init()
 
+  // Black clear so alpha-faded plane edges reveal the void at the
+  // horizon. Fog is also black, fading foreground 3D meshes (floor,
+  // panel) toward the same void as the bg plane fades to. Result:
+  // smooth atmospheric blend across the whole scene, no hard
+  // backdrop cutoff.
+  renderer.setClearColor(new Color(0x000000))
   const scene = new Scene()
-  scene.background = new Color(0x191920)
-  scene.fog = new Fog(0x191920, 0, 15)
+  scene.background = new Color(0x000000)
+  scene.fog = new Fog(0x000000, 6, 18)
   const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100)
   camera.position.set(0, 0.9, 4.5)
   camera.lookAt(0, 0.9, 0)
@@ -76,6 +83,21 @@ async function main() {
   const dirLight = new DirectionalLight(0xffffff, 0.8)
   dirLight.position.set(2, 4, 3)
   scene.add(dirLight)
+
+  // ── Gem-gradient backdrop (L2 as a real 3D plane, not scene.background) ──
+  // Plane positioned behind the panel/floor at z=-15, sized to fill the
+  // camera frustum from there. Color: gem gradient with a tight radius
+  // (0.4) so the gem identity stays in the upper-left and the visible
+  // top portion of the screen reads mostly as outer-ring BG (dark).
+  // Opaque — atmospheric blend into the floor is handled by the
+  // horizontal FloorEdgeFade mask below, not by alpha on this plane.
+  const bgGeo = new PlaneGeometry(40, 25)
+  const bgMat = new MeshBasicNodeMaterial({ depthWrite: false, fog: false })
+  bgMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
+  const bgPlane = new Mesh(bgGeo, bgMat)
+  bgPlane.position.set(0, 0.9, -15)
+  bgPlane.renderOrder = -100 // before everything else in the scene
+  scene.add(bgPlane)
 
   // ── Initialize Skia ──
   setStatus('Loading Skia WASM...', true)
@@ -248,18 +270,26 @@ async function main() {
   })
   const panelCenter = new Mesh(panelGeo, panelMat)
   panelCenter.position.set(0, 1.2, -0.4)
+  // renderOrder=10 forces the skia panels to draw LAST (after bgPlane,
+  // ground, and floorEdge). When the panel's transparent skia regions
+  // composite, the framebuffer already contains the gem-tinted bg
+  // plane behind them — so transparency reveals the gradient instead
+  // of opaque black.
+  panelCenter.renderOrder = 10
   scene.add(panelCenter)
 
   const panelMatL = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true, premultipliedAlpha: true })
   const panelLeft = new Mesh(panelGeo, panelMatL)
   panelLeft.position.set(-2.6, 1.2, 0.3)
   panelLeft.rotation.y = 0.35
+  panelLeft.renderOrder = 10
   scene.add(panelLeft)
 
   const panelMatR = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true, premultipliedAlpha: true })
   const panelRight = new Mesh(panelGeo, panelMatR)
   panelRight.position.set(2.6, 1.2, 0.3)
   panelRight.rotation.y = -0.35
+  panelRight.renderOrder = 10
   scene.add(panelRight)
 
 
@@ -276,6 +306,12 @@ async function main() {
   const fadeFactor = dist.div(3.0).clamp(0.0, 1.0).oneMinus()
   const fadeSharp = fadeFactor.mul(fadeFactor).mul(fadeFactor) // cubic
 
+  // Floor base color stays dark — the gem identity now lives on the
+  // L2 background plane (scene.backgroundNode above) rather than
+  // composed into the floor surface itself. Reflections of the lit
+  // foreground (sprite panel, etc.) carry the surface character; the
+  // dark base lets those reflections pop without competing with a
+  // gem-tinted floor.
   groundMat.colorNode = tslColor(new Color(0x050505))
     .add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
   // Roughness: sharper under panel, rougher outward
@@ -287,6 +323,33 @@ async function main() {
   ground.position.y = -0.01
   ground.add(groundReflector.target)
   scene.add(ground)
+
+  // ── Floor edge fade ──
+  // Horizontal sibling quad just above the ground plane that paints the
+  // SAME gem gradient as the bg plane over the floor's hard rectangular
+  // silhouette — opaque at the corners, transparent in the center
+  // where reflections show through. Because gemGradientNode is
+  // screen-space, the floor-edge quad and the bg plane sample the same
+  // colors at any given screen pixel — the floor's edges dissolve
+  // seamlessly into the bg plane (no color discontinuity).
+  // Ported from remotion-studio-monorepo's FloorEdgeFade.tsx (GLSL → TSL),
+  // adapted: their version paints scene.background color (a flat color);
+  // ours paints the same screen-space gem gradient as the bg plane so
+  // the match holds against a non-flat backdrop.
+  const edgeGeo = new PlaneGeometry(50, 50)
+  const edgeMat = new MeshBasicNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+  })
+  edgeMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
+  const edgeDist = tslLength(uv().sub(vec2(0.5))).mul(tslFloat(2))
+  edgeMat.opacityNode = tslSmoothstep(tslFloat(0.35), tslFloat(0.7), edgeDist)
+  const floorEdge = new Mesh(edgeGeo, edgeMat)
+  floorEdge.rotation.x = -Math.PI / 2
+  floorEdge.position.y = 0 // just above ground (at -0.01)
+  floorEdge.renderOrder = 1 // after the floor (default 0)
+  scene.add(floorEdge)
 
   // ── TweakPane debug controls ──
   const { pane, stats } = createPane({ scene })

@@ -3,7 +3,7 @@ title: Batch Rendering
 description: How automatic batching works and tips for optimal performance.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 
 SpriteGroup automatically batches sprites that share the same material into single draw calls. You don't need to do anything special—just add sprites and the batching happens behind the scenes.
 
@@ -12,7 +12,7 @@ SpriteGroup automatically batches sprites that share the same material into sing
 When you add sprites to a `SpriteGroup`, they're grouped by material and layer into efficient GPU batches. Systems run automatically during Three.js rendering — no manual `update()` call needed.
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { Sprite2D, SpriteGroup, Sprite2DMaterial } from 'three-flatland';
 
@@ -35,7 +35,7 @@ When you add sprites to a `SpriteGroup`, they're grouped by material and layer i
     }
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { useMemo } from 'react';
     import { extend } from '@react-three/fiber/webgpu';
