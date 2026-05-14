@@ -47,13 +47,11 @@ const examplesHref = `${baseURL}/examples/`
 ---
 
 <div class="example-detail-shell">
-    {/* Header + split view sit inside `.not-content` so Starlight's markdown
-       defaults don't fight our custom typography. The prose slot below
-       lives OUTSIDE that boundary so it picks up the docs site's full
-       markdown spacing rhythm (heading margins, paragraph gap, etc.) —
-       Starlight's rules use `:not(:where(.not-content *))` which means
-       anything inside `.not-content` opts out of those styles entirely. */}
-    <div class="example-detail not-content">
+    {/* `<section>` is the interactive demo region — gives Safari Reader
+       Mode + assistive tech a clear "app surface, not article" signal.
+       Prose below sits in `<article>` so Reader Mode (if ever invoked)
+       targets the right content. */}
+    <section class="example-detail not-content" aria-label={`${title} — interactive example`}>
         <header class="example-detail-header">
             <a class="example-detail-back" href={examplesHref}>
                 <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -74,11 +72,11 @@ const examplesHref = `${baseURL}/examples/`
             showReactFiles={showReactFiles}
             showCommonFiles={showCommonFiles}
         />
-    </div>
+    </section>
 
-    <div class="example-detail-prose sl-markdown-content">
+    <article class="example-detail-prose sl-markdown-content">
         <slot />
-    </div>
+    </article>
 </div>
 
 <style>

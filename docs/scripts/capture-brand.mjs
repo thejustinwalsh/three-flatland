@@ -106,12 +106,17 @@ async function ensureServer() {
     return
   }
   process.stdout.write(`[capture-brand] spawning docs dev server on ${PORT}...\n`)
-  const child = spawn('pnpm', ['--filter=docs', 'dev'], {
-    cwd: resolve(__dirname, '..', '..'),
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: false,
-    env: { ...process.env, TURBO_MFE_PORT: String(PORT) },
-  })
+  // Bypass the `dev` script (hardcodes :5173) and invoke astro
+  // directly with our explicit port. Same pattern as capture-minis.
+  const child = spawn(
+    'pnpm',
+    ['--filter=docs', 'exec', 'astro', 'dev', '--port', String(PORT)],
+    {
+      cwd: resolve(__dirname, '..', '..'),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: false,
+    },
+  )
   spawnedServer = child
   const pipe = (stream, label) => {
     stream.on('data', (chunk) => {

@@ -62,7 +62,10 @@ const accentStyle = `--showcase-accent: var(--${gem});`
 ---
 
 <div class="showcase-detail-shell" style={accentStyle}>
-    <div class="showcase-detail not-content" data-gem={gem}>
+    {/* `<section>` for the live demo, `<article>` for prose — same
+       rationale as ExampleDetailLayout: Safari Reader Mode and a11y
+       both want a clear app-vs-article split. */}
+    <section class="showcase-detail not-content" data-gem={gem} aria-label={`${title} — live showcase`}>
         <header class="showcase-detail-header">
             <a class="showcase-detail-back" href={showcasesHref}>
                 <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -88,11 +91,11 @@ const accentStyle = `--showcase-accent: var(--${gem});`
         <div class="showcase-detail-stage">
             <slot name="preview" />
         </div>
-    </div>
+    </section>
 
-    <div class="showcase-detail-prose sl-markdown-content">
+    <article class="showcase-detail-prose sl-markdown-content">
         <slot />
-    </div>
+    </article>
 </div>
 
 <style>

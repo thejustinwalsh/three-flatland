@@ -35,6 +35,18 @@ function isCollapsableGroup(label: string, collapsed: boolean, forced: boolean):
     if (collapsed === true) return true;
     return /^api\b/i.test(label) || /api reference/i.test(label);
 }
+
+/**
+ * Walk an entry tree and return true if any descendant link is the
+ * current page. Used to auto-open ancestor <details> on direct visits
+ * (e.g. landing on a deep API reference page) so the user sees where
+ * they are without having to expand the tree manually.
+ */
+function containsCurrent(entry: any): boolean {
+    if (entry.type === 'link') return !!entry.isCurrent;
+    if (Array.isArray(entry.entries)) return entry.entries.some(containsCurrent);
+    return false;
+}
 ---
 
 {
@@ -76,7 +88,7 @@ function isCollapsableGroup(label: string, collapsed: boolean, forced: boolean):
                  * the API Reference itself can be folded on non-API
                  * pages.
                  */}
-                open={!!forceCollapsable || !entry.collapsed}
+                open={!!forceCollapsable || !entry.collapsed || containsCurrent(entry)}
             >
                 <summary class="entry-title-row">
                     <svg class="caret" viewBox="0 0 16 16" aria-hidden="true">
@@ -103,7 +115,7 @@ function isCollapsableGroup(label: string, collapsed: boolean, forced: boolean):
                 class="container-sidebar-entry static"
                 style={!nested ? sectionAccent(idx) : undefined}
             >
-                <h4 class="entry-title">{entry.label}</h4>
+                <h2 class="entry-title">{entry.label}</h2>
                 <div class="container-group-link">
                     <Astro.self sublist={entry.entries} nested />
                 </div>
@@ -215,9 +227,9 @@ function isCollapsableGroup(label: string, collapsed: boolean, forced: boolean):
         letter-spacing: 0.06em;
         color: var(--section-accent, color-mix(in oklab, var(--muted-foreground) 78%, var(--foreground)));
     }
-    /* Static group label (h4 outside <summary>) keeps an inset so the
+    /* Static group label (h2 outside <summary>) keeps an inset so the
      * top-level section heading has breathing room above its links. */
-    h4.entry-title {
+    h2.entry-title {
         padding-block: calc(var(--spacing) * 1);
         padding-inline: calc(var(--spacing) * 2);
     }
@@ -320,6 +332,11 @@ function isCollapsableGroup(label: string, collapsed: boolean, forced: boolean):
     }
     .entry-link[aria-current='page']::before {
         background-color: var(--section-accent, var(--primary));
+        /* Consistent VT name across pages — browser morphs the
+         * marker from the old active row to the new one during nav
+         * transitions, replacing what vtbot's retainCurrentPageMarker
+         * used to do. */
+        view-transition-name: sidebar-active-marker;
     }
     .entry-link:hover:not([aria-current='page'])::before {
         background-color: color-mix(in oklab, var(--section-accent, var(--primary)) 35%, transparent);
