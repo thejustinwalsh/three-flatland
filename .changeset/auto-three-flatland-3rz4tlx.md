@@ -8,31 +8,32 @@
 ### Docs site
 
 **Footer**
-- New `SiteFooter.astro`: brand lockup with Docs, Packages, and Community link columns; gem-tinted section headings with per-section hover colors; foil rule top accent; renders on all pages
-- New `lib/packages.ts`: reads `packages/*/package.json` at build time; drives footer Packages column and landing alpha-ribbon from a single source; suppresses badges that match the project-wide baseline
+- New `SiteFooter` component: brand lockup, three link columns (Docs, Packages, Community), version row, gem-tinted section headings, foil rule accent; replaces the previous AI-disclaimer footer text
+- New `lib/packages.ts`: shared build-time workspace-package discovery drives both the footer Packages column and the landing alpha-ribbon from one source; suppresses badges matching the project-level baseline to reduce noise
 
 **API reference routing**
-- New `typedoc-plugins/strip-index-links.mjs` remark plugin: strips trailing `/index/` from TypeDoc-generated URLs so per-module pages are reachable at their directory root
-- `astro.config.mjs`: set `entryFileName=index`, wire `stripIndexLinks` plugin, populate `starlight.description` for meta and footer tagline, clear legacy `footerText`
-- `SidebarSublist.astro`: API ref nested groups always expanded via `forceCollapsable` cascade
+- New `typedoc-plugins/strip-index-links.mjs` remark plugin strips trailing `/index/` from TypeDoc-generated URLs, fixing links to per-module index pages emitted as directory roots by Astro
+- `astro.config.mjs`: set `entryFileName=index`, wire `stripIndexLinks` plugin, populate `starlight.description` (feeds footer tagline + `<meta description>`)
 
-**Landing page**
-- Section heading changed from "Built into three.js, not on top of it" to "Built for three.js" (prior wording implied an upstream fork relationship)
-- VP1 opener rewritten to drop false-universal categorical claim
-- Hero subtagline: removed em-dash, split into two short declaratives
-- StatsBanner sprite count updated to 20K+
+**Landing page copy**
+- Section heading: "Built into three.js, not on top of it" -> "Built for three.js" (removes false implication of an upstream fork)
+- VP1 opener rewritten to avoid a false-universal categorical claim
+- Hero subtagline: em-dash removed; replaced with two short declaratives
+- StatsBanner sprite count updated: 10K+ -> 20K+
 - `HeroShader.tsx`: side vignette removed; gem flow runs edge-to-edge
 
-### StatsBanner color prop
+**Theme polish**
+- `Header.astro`: wordmark +2px offset removed; baseline now aligns with header text
+- `SidebarSublist.astro`: API ref nested groups always-open via `forceCollapsable` cascade; full tree visible on any API page
+- `styles/base.css`: legacy `[data-slot=footer-text]` rules removed
 
-- Re-enabled previously deprecated `color` prop; all four stats now render in their declared gem color instead of `--foreground`
-- Stat value text rendered as 65% gem + 35% foreground mix with a soft gem-tinted glow
-- Thin gem-tinted hairline underline added per stat (gradient fading right), giving the row a colored chord appearance
-- `color` resolves through the same `legacyToGem` table used by `FeatureCard` and `ValueProp`
+### StatsBanner
 
-### Theme cleanup
+- Re-enabled the `color` prop on `<Stat>` (was marked deprecated and silently ignored, causing all stats to render in `--foreground`)
+- `color` resolves through the shared `legacyToGem` table (same mapping used by `FeatureCard` / `ValueProp`), so conventional names like `cyan` map to gem tokens
+- Stat value text now uses a gem-mixed color (65% gem + 35% foreground) with a soft gem-tinted text-shadow glow for legibility
+- Each stat gains a thin gem-tinted hairline underline (linear gradient fading right) so the four stats read as a colored chord across the row
 
-- `Header.astro`: removed +2px wordmark offset; baseline now aligns with header text
-- `styles/base.css`: removed legacy `[data-slot=footer-text]` rules
+---
 
-Adds a site footer, fixes API reference link routing, updates landing copy for accuracy, and restores gem-color accents on the stats banner.
+Adds a full-site footer with gem-accented navigation, fixes API reference URL routing so TypeDoc module links resolve correctly, sharpens landing page copy, and restores per-stat gem coloring in the stats banner.
