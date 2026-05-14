@@ -391,6 +391,17 @@ export function tickSagging(world: World): void {
     if (tick < sag.bracedUntilTick) return
     const elapsed = tick - sag.startTick
 
+    // Codex rule 1 gate: once SHAKING fires, the cells visually
+    // committed to a fall — cancellation at that point would leave
+    // shook-but-didn't-fall cells (shake-contract violators). The
+    // partial-drill re-eval below SKIPS its bottom-edge cancellation
+    // in SHAKING phase; the release-tick path runs normally on
+    // survivors and landAndReattach's zero-displacement detector
+    // (line 651) is the belt-and-suspenders fallback if the path is
+    // fully blocked at release.
+    const isShakingPhase =
+      elapsed >= SAG_PRECARIOUS_TICKS + SAG_SAGGING_TICKS && elapsed < sag.durationTicks
+
     // Partial-drill re-evaluation (codex follow-up). When the driller
     // (or any other mutator) clears one or more cells of an active
     // sag, the chunk shouldn't lose its telegraph wholesale — that
@@ -401,8 +412,10 @@ export function tickSagging(world: World): void {
     //      reserved tile.
     //   2. If none survive: cancel.
     //   3. If the survivors no longer satisfy the codex bottom-edge
-    //      check (the drilled cell was load-bearing for fall, so
-    //      what's left can no longer displace ≥1 cell), cancel.
+    //      check AND we are NOT yet in SHAKING phase: cancel
+    //      (PRECARIOUS / SAGGING haven't promised motion). In SHAKING
+    //      phase the cells already broadcast their commit — skip the
+    //      cancellation and let release run.
     //   4. Otherwise: SHRINK the entity to its surviving cells and
     //      preserve the current phase. Drilled cells already went
     //      AIR via the driller system; clear any leftover flags on
@@ -418,10 +431,10 @@ export function tickSagging(world: World): void {
     }
     if (validCells.length < sag.cells.length) {
       // Some cells got drilled or otherwise removed. Re-validate the
-      // surviving structure: still cantilever-fallable?
-      if (!sagAllBottomEdgesAir(validCells, cols, rows, tiles)) {
-        // Drilled cell was load-bearing for the fall path, OR the
-        // remaining cells can't displace cleanly. Cancel.
+      // surviving structure — but ONLY cancel during PRECARIOUS/SAGGING.
+      // In SHAKING the cells already committed; cancellation here is a
+      // codex rule 1 violation (shook-but-didn't-fall).
+      if (!isShakingPhase && !sagAllBottomEdgesAir(validCells, cols, rows, tiles)) {
         for (const cell of sag.cells) {
           const idx = cell.row * cols + cell.col
           if (idx >= 0 && idx < flags.length) {
