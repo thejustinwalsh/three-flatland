@@ -17,7 +17,10 @@ interface ThreePhaseResult {
   shakingToRelease: PhaseQuantiles
 }
 
-/** Allowed deviation around the design target, per phase (ms). */
+/** Symmetric allowed deviation per phase (ms). Use only for phases
+ * with no deferral mechanism. PRECARIOUS / SHAKING boundaries are
+ * tight; SAGGING→SHAKING has a legitimate one-sided extension when
+ * the commit gate defers (see assertPhaseUpperBound). */
 const TIMING_TOLERANCE_MS = 60
 // Diffusion-model sag timing (see src/constants.ts):
 //   PRECARIOUS = 12t = 200ms (invisible commit beat — gradient leads)
@@ -26,6 +29,14 @@ const TIMING_TOLERANCE_MS = 60
 const TARGET_PRECARIOUS_MS = 200
 const TARGET_SAGGING_MS = 500
 const TARGET_SHAKING_MS = 500
+/**
+ * Upper bound for SAGGING→SHAKING. The SHAKE-entry commit gate in
+ * `tickSagging` defers by 6 ticks (~100ms) when the release area has
+ * an in-flight conflict — and deferrals can stack across cascades.
+ * Wider one-sided tolerance accounts for this without softening the
+ * p50 floor.
+ */
+const SAGGING_UPPER_BOUND_MS = TARGET_SAGGING_MS + 200
 
 function assertPhaseP50(label: string, p50: number, target: number, log: string): void {
   const lo = target - TIMING_TOLERANCE_MS
@@ -40,6 +51,25 @@ function assertPhaseP50(label: string, p50: number, target: number, log: string)
         `    src/constants.ts changed without updating this test's targets\n` +
         `  - tickSagging phase boundaries in src/systems/collapse.ts no longer\n` +
         `    align with the constants\n\n` +
+        `--- vitexec tail ---\n${log}`,
+    )
+  }
+}
+
+function assertPhaseBand(
+  label: string,
+  p50: number,
+  targetLo: number,
+  targetHi: number,
+  log: string,
+): void {
+  if (p50 < targetLo || p50 > targetHi) {
+    throw new Error(
+      `Phase "${label}" p50 = ${p50}ms, expected within [${targetLo}, ${targetHi}].\n` +
+        `One-sided tolerance: the SHAKE-entry commit gate in tickSagging defers\n` +
+        `by 6 ticks (~100ms) when an in-flight conflict converges into the release\n` +
+        `area, and deferrals can stack. The upper bound covers stacked deferrals;\n` +
+        `the lower bound is the design floor (sub-floor = ticks running too fast).\n\n` +
         `--- vitexec tail ---\n${log}`,
     )
   }
@@ -82,10 +112,11 @@ describe('integration: 3-phase sag state machine timing', () => {
       TARGET_PRECARIOUS_MS,
       log,
     )
-    assertPhaseP50(
+    assertPhaseBand(
       'SAGGING → SHAKING',
       data.saggingToShaking.p50,
-      TARGET_SAGGING_MS,
+      TARGET_SAGGING_MS - TIMING_TOLERANCE_MS,
+      SAGGING_UPPER_BOUND_MS,
       log,
     )
     assertPhaseP50(

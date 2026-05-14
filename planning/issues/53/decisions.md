@@ -732,3 +732,43 @@ Six new probes cover every entry in the `ActionKind` union (`pet`, `paint`, `dra
 - Spawning ECS entities directly (`w.spawn(traits.Gem({...}))`, `w.spawn(traits.SaggingChunk({...}))`) is fine for state setup; the simulation continues to honor them.
 
 **Verification.** All six new probes pass. The full integration suite is currently 10/11; the one failure (`shake-contract`) is a pre-existing intermittent — different cell coordinates in each failing run, all with `peakShakeMs < 100ms`, matching the "chunk entities orphaned by death/unload" suspect the test's own header names. Unrelated to this commit (no simulation source touched).
+
+## SOIL sag re-eval respects SHAKING commit (codex rule 1)
+**File:** `minis/driller/src/systems/collapse.ts:411-447`
+**Date:** 2026-05-14
+
+**Bug.** The partial-drill re-evaluation inside `tickSagging` ran a `sagAllBottomEdgesAir` check on the surviving cells and CANCELLED the entire entity (clearing `FLAG_PRECARIOUS | FLAG_SAGGING | FLAG_SHAKING` on every original cell) when the check failed. This fired even when the entity was in SHAKING phase — meaning cells that had been broadcasting "I'm falling" via FLAG_SHAKING reverted to inert SOIL without ever falling. Codex rule 1: anything that visually shakes must fall by ≥1 cell. The intermittent shake-contract violators with `peakShakeMs < 200ms` were this path firing.
+
+**Fix.** Gate the cancellation behind `phase !== 'shaking'`. PRECARIOUS / SAGGING phases haven't promised motion yet — cancellation is fine there. Once SHAKING fires, the cells have committed; shrink to validCells and let the release-tick path run normally. If the path turns out to be fully blocked at release, `landAndReattach`'s zero-displacement detector at collapse.ts:651 is the belt-and-suspenders fallback (still a codex violation but caught by the separate shake-or-stay test, which the suite was already passing).
+
+**Verification.** 188/188 unit tests pass. 3 consecutive integration suite runs green (was 10/11 with intermittent failures).
+
+## Rock-avalanche partial-fall past visible-shake commit threshold
+**File:** `minis/driller/src/systems/hazard.ts:568-577 (replaced)`
+**Date:** 2026-05-14
+
+**Bug.** When `rockAvalancheSystem` detected `canFall = false` on a cluster that had been telegraphing FLAG_SHAKING for >1s, the retract block cleared FLAG_SHAKING and `shakeStartTick` for every cell of the cluster. The player saw 1.5s of shake animation then the cluster silently became inert. Codex rule 1 violation. The intermittent shake-contract violators with `peakShakeMs ≈ 1484ms` were this path firing.
+
+**Fix.** Introduce `SHAKE_VISIBLE_COMMIT_TICKS = 10` (~165ms — past the human change-detection threshold). When `canFall` flips false and the cluster's earliest `shakeStartTick` is past the threshold, run a **column-wise partial fall** instead of retracting:
+1. Group cluster cells by column.
+2. For each column whose bottom-most cell has TILE_AIR directly below, move every cluster cell in that column down by 1 row (atomic snapshot → clear → write). Set FLAG_FALLING on moved cells so the next-tick `inMotion` path takes over.
+3. Cells in fully-blocked columns: clear FLAG_SHAKING (residual codex violators — accepted as the strictly-better-than-retract tail).
+4. Sub-threshold shakes (< 10 ticks): retract normally. These are below human change-detection; no codex breach to undo.
+
+`inMotion` clusters bypass the partial-fall path — they're owned by the FLAG_FALLING gate and codex rule 5 (rocks resolve fully once started).
+
+**Trade-off accepted.** Partial-fall breaks the rigid-cluster invariant (codex rule 3) for the fallen columns. Cluster detection re-groups next tick. The user explicitly approved this trade-off: "If we want true codex compliance even in the never-clears case, force a 1-cell partial fall of the cells that DO still have air-below at deferral time."
+
+**Verification.** 188/188 unit tests pass. 3 consecutive integration suite runs green.
+
+## three-phase-timing probe handles legit cancellations + one-sided SAGGING tolerance
+**File:** `minis/driller/tests/integration/probes/three-phase-timing.probe.js`, `…/three-phase-timing.integration.test.ts`
+**Date:** 2026-05-14
+
+**Two probe / harness fixes.**
+
+1. **Probe** — detect cancellation transitions. The tracker captured `e.precOn` / `e.sagOn` / `e.shakeOn` on first-flag-sighting and flushed only when the cell went AIR. If a PRECARIOUS- or SAGGING-phase entity was cancelled (entity destroyed, flags cleared, tile stays SOLID), the incarnation never flushed. A later, **completely unrelated** sag at the same idx would write its `sagOn` into the stale tracker entry → quantile pollution (the observed `p50=2577ms`, `max=77503ms` data was this). Fix: when all three phase flags clear AND tile is non-AIR AND any phase had been observed, reset the tracker entry (do not flush). After Fix A landed, this path fires only at legitimate PRECARIOUS/SAGGING cancellations.
+
+2. **Harness** — replace symmetric tolerance on SAGGING→SHAKING with a one-sided band `[440ms, 700ms]`. The SHAKE-entry commit gate in `tickSagging` legitimately defers by 6 ticks (~100ms) when the release area has in-flight conflict, and deferrals can stack across cascades. The lower bound stays at the design floor (sub-floor = simulation running too fast); the upper bound covers the worst-case stacked-deferral tail. PRECARIOUS→SAGGING and SHAKING→release keep the tight ±60ms.
+
+**Verification.** 3 consecutive integration runs green; quantiles now stable across runs.

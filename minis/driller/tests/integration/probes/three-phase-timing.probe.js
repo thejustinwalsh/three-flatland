@@ -76,6 +76,24 @@ const interval = setInterval(() => {
       // → flush this incarnation's transitions and reset.
       if (isAir && (e.precOn !== null || e.sagOn !== null || e.shakeOn !== null)) {
         flushIncarnation(e, tNow)
+      } else if (
+        !p &&
+        !s &&
+        !k &&
+        !isAir &&
+        (e.precOn !== null || e.sagOn !== null || e.shakeOn !== null)
+      ) {
+        // All phase flags cleared but the cell is still SOLID — this
+        // is a CANCELLATION (sag entity destroyed via partial-drill
+        // re-eval at PRECARIOUS/SAGGING boundary; codex-legitimate
+        // since SHAKING-phase cancellation is now blocked by Fix A in
+        // collapse.ts). DISCARD this incarnation: it never released,
+        // and the next sag at the same idx is a separate event whose
+        // measurements shouldn't be polluted by stale precOn/sagOn
+        // values from minutes ago.
+        e.precOn = null
+        e.sagOn = null
+        e.shakeOn = null
       }
     }
   }
