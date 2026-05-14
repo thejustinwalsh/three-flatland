@@ -221,7 +221,7 @@ function runSimulationTick(world: World): void {
   if (gsAfterFall && gsAfterFall.worldNumber !== prevWorldNumber) {
     resetStreaming()
     resetHazardSpawn()
-    resetAvalanche()
+    resetAvalanche(world)
     const grid = world.get(Grid)
     if (grid) {
       grid.tiles.fill(0)

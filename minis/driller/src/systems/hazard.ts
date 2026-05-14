@@ -1,4 +1,4 @@
-import type { World } from 'koota'
+import type { Entity, World } from 'koota'
 import {
   Camera,
   Drag,
@@ -9,6 +9,7 @@ import {
   GameState,
   Grid,
   Hazard,
+  RockCluster,
   TILE_AIR,
   TILE_SOIL,
   TILE_STONE,
@@ -421,14 +422,54 @@ const AVALANCHE_SETTLE_TICKS = 30 // ~0.5s steady pause before commit
  */
 const SHAKE_VISIBLE_COMMIT_TICKS = 10
 let lastAvalancheTick = 0
+
 /**
- * For each cluster cell currently in the pre-fall telegraph, this
- * holds the tick the shake started. A cell is "shaking" while
- * elapsed < SHAKE_TICKS, "settled" while < SHAKE_TICKS+SETTLE_TICKS,
- * and commits to falling beyond that. Cleared on commit, on cluster
- * blockage, or on world reset.
+ * Per-cluster shake-start state lives on the `RockCluster` entity
+ * (Phase 2 H). The entity's `shakeStartTick` is:
+ *   - 0   if the cluster isn't currently telegraphing
+ *   - >0  the tick at which shake first began (cluster-wide minimum)
+ *   - -1  "skip telegraph" sentinel set on cells freshly placed by an
+ *         in-motion fall, so newly-landed clusters don't waste 1.5s
+ *         re-telegraphing before falling again.
+ *
+ * Helpers below build a per-tick `cid → Entity` lookup so the
+ * avalanche loop reads / writes cluster state in O(1). Cleanup at the
+ * end of `rockAvalancheSystem` destroys entities whose cluster id
+ * wasn't seen this tick (cells vaporized, broke off as Hazard debris,
+ * etc.).
  */
-const shakeStartTick = new Map<number, number>()
+function buildClusterEntityMap(world: World): Map<number, Entity> {
+  const map = new Map<number, Entity>()
+  world.query(RockCluster).forEach((e) => {
+    const rc = e.get(RockCluster)
+    if (rc) map.set(rc.clusterId, e)
+  })
+  return map
+}
+function getClusterShake(map: Map<number, Entity>, cid: number): number {
+  const e = map.get(cid)
+  return e ? (e.get(RockCluster)?.shakeStartTick ?? 0) : 0
+}
+function setClusterShake(
+  world: World,
+  map: Map<number, Entity>,
+  cid: number,
+  value: number,
+): void {
+  let e = map.get(cid)
+  if (!e) {
+    if (value === 0) return
+    e = world.spawn(RockCluster({ clusterId: cid, shakeStartTick: value }))
+    map.set(cid, e)
+    return
+  }
+  if (value === 0) {
+    e.destroy()
+    map.delete(cid)
+    return
+  }
+  e.set(RockCluster, { shakeStartTick: value })
+}
 /**
  * Phase 0 perf: dirty list of cell indices that received FLAG_SHAKING
  * via the avalanche pipeline. Cleared at the start of the next
@@ -449,6 +490,15 @@ export function rockAvalancheSystem(world: World): void {
   // smoothly. The fall step itself is throttled below so cluster
   // descent reads as a heavy crash, not a single-tick teleport.
   const { cols, rows, tiles, flags, hits, clusterId: clusterIdArr } = grid
+
+  // Build the per-cluster entity lookup once for this tick (Phase 2
+  // H). Cluster-id → RockCluster entity mapping; reads / writes inside
+  // the per-cluster loop go through getClusterShake / setClusterShake
+  // which keep the map in sync as entities are spawned or destroyed.
+  // Track which cluster ids we touched so we can destroy stale
+  // entities (clusters with no remaining cells) at the end.
+  const clusterEntityByCid = buildClusterEntityMap(world)
+  const seenClusterIds = new Set<number>()
 
   // 4-connected flood-fill over TILE_STONE to find each cluster.
   // Bounded to a window around the driller — cleared / un-streamed
@@ -496,8 +546,12 @@ export function rockAvalancheSystem(world: World): void {
       // Player is dragging this cluster — drag system owns it.
       // Mark all cluster cells as seen so the outer loop skips them.
       seen[i] = 1
+      // Held cluster's entity stays alive even though we don't process
+      // it — record so the post-loop cleanup doesn't reap it.
+      seenClusterIds.add(seedClusterId)
       continue
     }
+    seenClusterIds.add(seedClusterId)
     const cells: number[] = []
     stack.length = 0
     stack.push(i)
@@ -594,19 +648,14 @@ export function rockAvalancheSystem(world: World): void {
       // `inMotion` clusters bypass this: their FLAG_FALLING gate at
       // line 514-524 owns motion entirely, and the codex rule 5
       // (rocks resolve fully once started) is enforced elsewhere.
-      let earliestShake = Infinity
-      let anyTelegraphed = false
-      if (!inMotion) {
-        for (const idx of cells) {
-          const t = shakeStartTick.get(idx)
-          if (t !== undefined) {
-            anyTelegraphed = true
-            if (t < earliestShake) earliestShake = t
-          }
-        }
-      }
+      // Per-cluster shake state lives on the RockCluster entity now.
+      // earliestShake > 0 means actively shaking; -1 sentinel means
+      // "skip telegraph" (set on in-motion moves) and must NOT count
+      // as visibly committed — those cells never visually shook.
+      const clusterShake = !inMotion ? getClusterShake(clusterEntityByCid, seedClusterId) : 0
+      const anyTelegraphed = clusterShake > 0
       const visiblyCommitted =
-        anyTelegraphed && gs.tick - earliestShake >= SHAKE_VISIBLE_COMMIT_TICKS
+        anyTelegraphed && gs.tick - clusterShake >= SHAKE_VISIBLE_COMMIT_TICKS
 
       if (visiblyCommitted) {
         // Group cluster cells by column. Move whole columns down by
@@ -651,7 +700,6 @@ export function rockAvalancheSystem(world: World): void {
               ((flags[m.from] ?? 0) & ~FLAG_SHAKING & ~FLAG_FALLING) | FLAG_AUTOTILE_DIRTY
             hits[m.from] = 0
             clusterIdArr[m.from] = 0
-            shakeStartTick.delete(m.from)
           }
           for (const m of moves) {
             tiles[m.to] = TILE_STONE
@@ -672,9 +720,13 @@ export function rockAvalancheSystem(world: World): void {
         // (shake without fall) — accept as the strictly-better-than-
         // retract tail.
         for (const idx of stayedCells) {
-          shakeStartTick.delete(idx)
           flags[idx]! &= ~FLAG_SHAKING
         }
+        // Cluster's per-cluster shake state is cleared — the moved
+        // cells carry FLAG_FALLING (next tick: inMotion=true) and the
+        // stayed cells are inert. The cluster entity will be reaped
+        // at end-of-tick cleanup if no cells remain with its id.
+        setClusterShake(world, clusterEntityByCid, seedClusterId, 0)
         advancedAny = true
         continue
       }
@@ -684,13 +736,13 @@ export function rockAvalancheSystem(world: World): void {
       // below the human change-detection threshold and the renderer's
       // jitter animation hasn't started; no codex breach to undo.
       for (const idx of cells) {
-        shakeStartTick.delete(idx)
         if (inMotion) {
           flags[idx]! &= ~FLAG_SHAKING & ~FLAG_FALLING
         } else {
           flags[idx]! &= ~FLAG_SHAKING
         }
       }
+      setClusterShake(world, clusterEntityByCid, seedClusterId, 0)
       continue
     }
 
@@ -699,22 +751,22 @@ export function rockAvalancheSystem(world: World): void {
     // cluster (`inMotion`) skips the telegraph entirely — once
     // started, rocks resolve their full fall loop without pausing.
     if (!inMotion) {
-      let earliestShake = Infinity
-      let anyNew = false
-      for (const idx of cells) {
-        let t = shakeStartTick.get(idx)
-        if (t === undefined) {
-          t = gs.tick
-          shakeStartTick.set(idx, t)
-          anyNew = true
-        }
-        if (t < earliestShake) earliestShake = t
+      // Phase 2 H: per-cluster shakeStartTick lives on the
+      // RockCluster entity. First-time-seen cluster lazily allocates
+      // the entity at gs.tick; subsequent ticks read the existing
+      // value (preserving the earliest shake). -1 sentinel (set on
+      // in-motion moves) is treated as "already telegraphed" — the
+      // shakeElapsed becomes huge and the cluster skips the visible
+      // shake window, falling immediately when canFall=true.
+      let earliestShake = getClusterShake(clusterEntityByCid, seedClusterId)
+      if (earliestShake === 0) {
+        earliestShake = gs.tick
+        setClusterShake(world, clusterEntityByCid, seedClusterId, earliestShake)
       }
       // First-shake propagation: relaxation handles surrounding
       // soil's stability re-evaluation automatically each tick. The
       // pre-diffusion code stamped FLAG_SAG_RECHECK on the cluster's
       // perimeter here; that's now a no-op the relaxer covers.
-      void anyNew
       const shakeElapsed = gs.tick - earliestShake
       const inShakePhase = shakeElapsed < AVALANCHE_SHAKE_TICKS
       const stillTelegraphing = shakeElapsed < AVALANCHE_SHAKE_TICKS + AVALANCHE_SETTLE_TICKS
@@ -730,11 +782,15 @@ export function rockAvalancheSystem(world: World): void {
     }
     // Throttle subsequent descent steps after the telegraph completes.
     if (gs.tick - lastAvalancheTick < AVALANCHE_FALL_INTERVAL_TICKS) continue
-    // Commit fall — clear the shake bookkeeping for these cells.
+    // Commit fall — clear the cluster's shake state (one entity write
+    // replaces N per-cell Map.delete calls) and the FLAG_SHAKING bits
+    // on every cell. shakeStartTick is reset to -1 below after the
+    // physical translation so the cluster skips the telegraph on its
+    // next descent step.
     for (const idx of cells) {
-      shakeStartTick.delete(idx)
       flags[idx]! &= ~FLAG_SHAKING
     }
+    setClusterShake(world, clusterEntityByCid, seedClusterId, 0)
 
     // Crush soil under the bottom edge (each crush = +1 hit on the
     // rock that did the crushing). Then physically translate the
@@ -786,9 +842,10 @@ export function rockAvalancheSystem(world: World): void {
       // Otherwise translate stone + carry its hit count to new cell.
       // FLAG_FALLING marks the new cell as in-motion: next tick the
       // cluster bypasses the canFall reconsideration (rule: rocks
-      // resolve fully once started). The -1 sentinel on shake-start
-      // means "already telegraphed". Cluster id moves with the cell
-      // so the cluster preserves identity through the fall.
+      // resolve fully once started). Cluster id moves with the cell
+      // so the cluster preserves identity through the fall — and the
+      // per-cluster -1 sentinel is set ONCE outside this loop
+      // (replaces the per-cell Map.set the pre-H code did per move).
       const movingClusterId = clusterIdArr[idx] ?? 0
       tiles[idx] = TILE_AIR
       flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
@@ -798,7 +855,6 @@ export function rockAvalancheSystem(world: World): void {
       clusterIdArr[newIdx] = movingClusterId
       hits[newIdx] = rockHits
       hits[idx] = 0
-      shakeStartTick.set(newIdx, -1)
       // Mark the newly-occupied cell as already-visited so the outer
       // flood-fill loop doesn't re-process it as a "new" cluster in
       // the same tick. Without this, the cascade processes the same
@@ -810,6 +866,12 @@ export function rockAvalancheSystem(world: World): void {
       markCellAndNeighborsDirty(world, c, r)
       markCellAndNeighborsDirty(world, c, r + 1)
     }
+    // Per-cluster -1 sentinel applies cluster-wide post-translation —
+    // means "skip the visible telegraph next time, you already paid
+    // your shake dues this fall". Cleared when the cluster lands and
+    // its FLAG_FALLING bits get retracted (above, in the canFall=
+    // false branch).
+    setClusterShake(world, clusterEntityByCid, seedClusterId, -1)
     advancedAny = true
   }
 
@@ -820,12 +882,24 @@ export function rockAvalancheSystem(world: World): void {
   // shake forever and never commit to falling.
 
   if (advancedAny) lastAvalancheTick = gs.tick
+
+  // Reap RockCluster entities whose cluster id wasn't touched this
+  // tick — those clusters have no remaining cells (vaporized, broke
+  // off as Hazard debris, drilled away). Held-drag clusters are
+  // already in `seenClusterIds`, so this leaves them alone.
+  world.query(RockCluster).forEach((e) => {
+    const rc = e.get(RockCluster)
+    if (!rc) return
+    if (!seenClusterIds.has(rc.clusterId)) e.destroy()
+  })
 }
 
 /** Reset avalanche timer on world rotation / restart. */
-export function resetAvalanche(): void {
+export function resetAvalanche(world?: World): void {
   lastAvalancheTick = 0
-  shakeStartTick.clear()
+  if (world) {
+    world.query(RockCluster).forEach((e) => e.destroy())
+  }
 }
 
 /**
@@ -875,14 +949,27 @@ export function braceShakingCluster(
       }
     }
   }
-  // Push every cluster cell's shake-start tick forward. earliestShake
-  // (the per-tick min over cluster cells) shifts forward by the same
-  // amount, extending the telegraph by `extendTicks` before commit.
-  for (const idx of cells) {
-    const start = shakeStartTick.get(idx)
-    if (start !== undefined && start >= 0) {
-      shakeStartTick.set(idx, start + extendTicks)
-    }
+  // Phase 2 H: shake-start lives on the RockCluster entity, one
+  // value per cluster id (not per cell). Look up the cluster's entity
+  // and push its single shakeStartTick forward by extendTicks —
+  // shifts the shake elapsed metric backward toward zero, buying the
+  // player one fresh telegraph window. The -1 sentinel ("already
+  // telegraphed") is guarded out: brace can't extend a cluster that
+  // doesn't have a real shake to extend.
+  const cid = grid.clusterId[seedIdx] ?? 0
+  if (cid === 0) return false
+  let entity: Entity | null = null
+  world.query(RockCluster).forEach((e) => {
+    if (entity) return
+    const rc = e.get(RockCluster)
+    if (rc && rc.clusterId === cid) entity = e
+  })
+  if (!entity) return false
+  const entityRef = entity as Entity
+  const rc = entityRef.get(RockCluster)
+  if (!rc) return false
+  if (rc.shakeStartTick > 0) {
+    entityRef.set(RockCluster, { shakeStartTick: rc.shakeStartTick + extendTicks })
   }
   return true
 }

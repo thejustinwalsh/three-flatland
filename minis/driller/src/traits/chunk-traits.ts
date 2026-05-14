@@ -47,3 +47,35 @@ export const FallingChunk = trait({
   vy: 0,
   releaseRow: 0,
 })
+
+/**
+ * Per-cluster state for a connected group of TILE_STONE cells sharing
+ * a single `grid.clusterId`. Cell-to-cluster identity remains on the
+ * SoA `grid.clusterId` array (cheap flood-fill / lookup); the entity
+ * holds the **per-cluster** state that was previously scattered across
+ * a module-level Map keyed by cell idx.
+ *
+ * Phase 2 H: migrating away from the cell-keyed `shakeStartTick` Map
+ * inside `hazard.ts` — the cluster's earliest-shake tick now lives on
+ * the entity. Locking semantics (4×4 max bbox) and the partial-fall
+ * visible-commit check both read `shakeStartTick` directly from here.
+ *
+ * Lifecycle:
+ *   - Spawned lazily by `rockAvalancheSystem` when a cluster id is
+ *     first encountered with at least one cell of telegraph activity
+ *     (or any per-cluster state to record).
+ *   - Cleaned up at the end of each avalanche tick: entities whose
+ *     `clusterId` was not touched this tick (= cluster has zero cells
+ *     remaining) are destroyed.
+ *
+ * Sentinel values for `shakeStartTick`:
+ *   - 0   = not currently shaking.
+ *   - -1  = "skip telegraph" — set on cells freshly placed by an
+ *           in-motion fall step so the cluster doesn't waste 1.5s of
+ *           shake before falling again when its FALLING flag clears.
+ *   - >0  = tick at which the cluster first entered the shake window.
+ */
+export const RockCluster = trait({
+  clusterId: 0,
+  shakeStartTick: 0,
+})
