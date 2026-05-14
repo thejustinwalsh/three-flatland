@@ -378,6 +378,7 @@ export default defineConfig({
               { label: 'Pass Effects', slug: 'guides/pass-effects' },
               { label: 'Tilemaps', slug: 'guides/tilemaps' },
               { label: 'Skia', slug: 'guides/skia' },
+              { label: 'Slug Text', slug: 'guides/slug-text' },
               { label: 'Debug Controls', slug: 'guides/debug-controls' },
             ],
           },

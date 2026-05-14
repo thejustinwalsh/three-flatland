@@ -288,8 +288,15 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
 
   const pane = new Pane({ title, expanded, ...rest })
 
-  // Ensure pane floats above canvas elements (R3F creates full-viewport divs)
+  // Ensure pane floats above canvas elements (R3F creates full-viewport divs).
+  // Tweakpane wraps `pane.element` in a `.tp-dfwv` default-wrapper that's the
+  // actual body sibling and stacks against other overlays — z-index on the
+  // inner element would be a no-op. Apply to the wrapper when it exists.
   pane.element.style.zIndex = '1000'
+  const wrapper = pane.element.closest<HTMLElement>('.tp-dfwv')
+  if (wrapper && wrapper !== pane.element) {
+    wrapper.style.zIndex = '1000'
+  }
 
   applyTheme(pane.element, FLATLAND_THEME)
   registerPlugins(pane)
