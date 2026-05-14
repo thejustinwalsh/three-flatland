@@ -717,3 +717,18 @@ Filed as task #91 for follow-up.
 **Useful upstream enhancement** (not in scope for this fix): three-flatland could ship a `SpriteFrame.fromPixelRect(rect, sheetW, sheetH)` convenience that does the y-flip, since top-left pixel coords are the de facto asset-authoring convention (Aseprite, TexturePacker, Spritely). Currently every caller has to know about the flip.
 
 **Verification.** vitexec probe + screenshot at `/tmp/heart-render.png` shows the pink mood bubble with the red heart icon rendering right-side up over the driller's head, post `commitAction('pet', null)`. 188/188 unit tests pass; typecheck clean.
+
+## User-action integration probes — one per action
+**Files:** `minis/driller/tests/integration/{pet,paint,drag-hold,collect-armed-gem,brace-shaking-soil,hover-priority-contention}-action.integration.test.ts` + matching `probes/*.probe.js`
+**Date:** 2026-05-14
+
+Six new probes cover every entry in the `ActionKind` union (`pet`, `paint`, `drag`, `collect`, `brace`) plus the cross-cutting hover-resolution priority. Each probe drives `commitAction(world, ...)` (or `startDrag` / `resolveHoverAction` for the non-`commitAction` paths) in the live browser, advances the simulation, and asserts on world state.
+
+**Coverage gap closed.** Pre-existing integration probes were all collapse-pipeline observations (`shake-contract`, `shake-or-stay`, `single-shake`, `three-phase-timing`, `diffusion`). None drove the user-action commit path. The avalanche-skip-held-cluster bug we shipped last sprint would have been caught by an integration probe at the boundary instead of waiting for a unit-test to be written for it specifically.
+
+**Convention notes for future probes:**
+- Some flags are same-tick consumables (`FLAG_AUTOTILE_DIRTY` is cleared by the autotile pass on its next tick). Sample those IMMEDIATELY after the commit, before any `setTimeout` advances. Durable state (tile values, gem counters) can be sampled after a tick. See `paint-action.probe.js` comment block.
+- Probes that need a cluster of 4+ STONE cells either find one via cluster-id scan (waits up to 5s) or seed synthetically. Either path is acceptable — the assertion is about the avalanche/drag interaction, not generation.
+- Spawning ECS entities directly (`w.spawn(traits.Gem({...}))`, `w.spawn(traits.SaggingChunk({...}))`) is fine for state setup; the simulation continues to honor them.
+
+**Verification.** All six new probes pass. The full integration suite is currently 10/11; the one failure (`shake-contract`) is a pre-existing intermittent — different cell coordinates in each failing run, all with `peakShakeMs < 100ms`, matching the "chunk entities orphaned by death/unload" suspect the test's own header names. Unrelated to this commit (no simulation source touched).
