@@ -4,18 +4,25 @@ import react from '@vitejs/plugin-react'
 /**
  * Vite config for integration probe runs.
  *
- * The default `vite.config.ts` uses `strictPort: true` so the user's
- * daily `pnpm dev:app` notices port collisions instead of silently
- * drifting to a different port. That's the right behavior for dev.
+ * Port discipline. The integration runner picks a fresh free port
+ * per spawn via `net.createServer().listen(0)` and passes it through
+ * `process.env.DRILLER_INTEGRATION_PORT`. When that env var is
+ * present (the normal path), vite binds it.
  *
- * For integration tests we want the OPPOSITE: pick any free port,
- * never collide. The runner (`tests/integration/_runner.ts`) probes a
- * fresh port via `net.createServer().listen(0)` and passes it through
- * `process.env.DRILLER_INTEGRATION_PORT`. With strictPort=false, vite
- * will *also* fall back if the picked port is somehow stolen between
- * runner-pick and vite-bind (rare, but possible). The runner retries
- * on a non-zero exit, so the suite is self-healing.
+ * **Fallback policy.** If the env var is missing — e.g., the user
+ * invokes this config directly outside the runner — we DO NOT fall
+ * back to vite's default 5173. The default port clashes with the
+ * workspace's daily `pnpm dev:app` and any other vite project the
+ * user has open; an orphan integration server holding 5173 silently
+ * blocks unrelated work. Instead the fallback is in the dynamic /
+ * ephemeral range so it never collides with the conventional ports.
+ *
+ * `strictPort: false` keeps the runner's race-retry path working —
+ * if the runner-picked port is somehow stolen between bind and
+ * vite-startup, vite picks the next free one and the runner's
+ * 3-attempt loop handles the diagnosis.
  */
+const INTEGRATION_FALLBACK_PORT = 51730 // 5173 + zero (mnemonic), in IANA dynamic range
 export default defineConfig({
   resolve: {
     conditions: ['source'],
@@ -28,7 +35,7 @@ export default defineConfig({
     }),
   ],
   server: {
-    port: Number(process.env.DRILLER_INTEGRATION_PORT) || 0,
+    port: Number(process.env.DRILLER_INTEGRATION_PORT) || INTEGRATION_FALLBACK_PORT,
     strictPort: false,
   },
 })
