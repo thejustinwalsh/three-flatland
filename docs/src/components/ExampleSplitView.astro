@@ -11,14 +11,16 @@
  *     `data-variant`)
  *   - StackBlitz link's href (points at the GitHub `examples/<variant>/<slug>`
  *     subtree)
- *   - Persisted to localStorage as `flatland-example-type`
+ *   - Persisted to sessionStorage as `flatland-example-type` so the
+ *     state resets between visits — users get defaults on return and
+ *     don't lose track of where the panel went on the previous visit.
  *
  * File tabs — for variants with more than one source file, a tab
  * strip lets the user switch between files. Boilerplate
  * (package.json, tsconfig.json, vite.config.ts) is filtered out;
  * the entry file (main.ts / App.tsx) is the default-active tab.
  *
- * Drag handle clamps to 25%–80%, persisted to localStorage as
+ * Drag handle clamps to 25%–80%, persisted to sessionStorage as
  * `flatland-example-split`. Iframe gets `pointer-events: none`
  * during drag so the parent document keeps receiving pointermove
  * events when the cursor crosses the canvas.
@@ -114,6 +116,15 @@ const baseURL = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
 const examplesPort = (import.meta.env.VITE_EXAMPLES_PORT as string) || ''
 const isDev = import.meta.env.DEV
 
+/* Iframe URL — cross-origin in dev, same-origin in prod.
+ *   - Dev: direct to the examples MPA server (different port).
+ *     Safari throttles rAF in cross-origin iframes until the user
+ *     clicks inside the frame; an attempted same-origin proxy hit
+ *     unworkable Vite-internal-path collisions between the two Vite
+ *     instances (/@vite/client, /@react-refresh, dep cache), so we
+ *     accept the one-time click as the dev-mode trade-off.
+ *   - Prod: static file copied into `docs/dist/examples/...` at
+ *     build time — same-origin, no throttle. */
 const threeSrc = isDev
     ? `http://localhost:${examplesPort}/three/${slug}/`
     : `${baseURL}/examples/three/${slug}/`
@@ -141,11 +152,35 @@ const reactStackblitzHref = `https://stackblitz.com/github/thejustinwalsh/three-
 const transitionName = `tile-examples-${slug}`
 ---
 
+{/* No-flash state restore. The on-load bind script reads sessionStorage
+   only AFTER DOMContentLoaded, which is after first paint — so the
+   panel renders at its inline-styled default (50%) then snaps to the
+   saved value, causing visible layout shift on reload. This inline
+   script runs synchronously at parse-time, BEFORE the .example-split
+   div below is laid out, and applies stored split / expand / code-
+   collapsed state to the document element via CSS variables and
+   attributes. The element inherits the var, picks up the attribute
+   selectors, and paints in the correct state on the very first frame. */}
+<script is:inline>
+  (() => {
+    try {
+      const saved = parseFloat(sessionStorage.getItem('flatland-example-split') || '')
+      if (Number.isFinite(saved) && saved >= 25 && saved <= 80) {
+        document.documentElement.style.setProperty('--split', saved + '%')
+      }
+      if (sessionStorage.getItem('flatland-example-expanded') === '1') {
+        document.documentElement.setAttribute('data-pre-expanded', 'true')
+      }
+      if (sessionStorage.getItem('flatland-example-code-collapsed') === '1') {
+        document.documentElement.setAttribute('data-pre-code-collapsed', 'true')
+      }
+    } catch {}
+  })()
+</script>
 <div
     class="example-split"
     data-slug={slug}
     data-variant="three"
-    style={`--split: 55%;`}
 >
     <div class="example-split-toolbar">
         <div class="variant-toggle" role="tablist" aria-label="Source variant">
@@ -204,6 +239,9 @@ const transitionName = `tile-examples-${slug}`
                     />
                 </svg>
             </button>
+            <button type="button" class="toolbar-btn code-toggle-btn" data-code-toggle aria-label="Hide code panel" title="Hide code panel">
+                <span class="i-lucide:panel-right-close code-toggle-icon" aria-hidden="true"></span>
+            </button>
         </div>
     </div>
 
@@ -223,11 +261,14 @@ const transitionName = `tile-examples-${slug}`
             role="separator"
             aria-orientation="vertical"
             aria-label="Resize preview and code panels"
+            aria-valuenow="50"
+            aria-valuemin="25"
+            aria-valuemax="80"
             tabindex="0"
         ></div>
         <div class="example-split-pane example-split-code">
             <div class="code-pane" data-variant-pane="three">
-                <div class="file-tabs" role="tablist" aria-label="Files">
+                <div class="file-tabs" aria-label="Files">
                     <button
                         type="button"
                         class="expand-btn"
@@ -260,7 +301,7 @@ const transitionName = `tile-examples-${slug}`
                 ))}
             </div>
             <div class="code-pane" data-variant-pane="react">
-                <div class="file-tabs" role="tablist" aria-label="Files">
+                <div class="file-tabs" aria-label="Files">
                     <button
                         type="button"
                         class="expand-btn"
@@ -298,7 +339,13 @@ const transitionName = `tile-examples-${slug}`
 
 <style>
     .example-split {
-        --split: 55%;
+        /* `--split` intentionally NOT declared locally — it inherits
+         * from `:root` where the inline-script in this file sets it
+         * from sessionStorage at parse-time (before first paint), or
+         * stays unset and the `var(--split, 50%)` fallback below
+         * provides the SSR default. Declaring it locally here would
+         * override the inherited value and reintroduce the layout
+         * shift on reload. */
         --handle: 8px;
         display: flex;
         flex-direction: column;
@@ -387,7 +434,17 @@ const transitionName = `tile-examples-${slug}`
 
     .example-split-grid {
         display: grid;
-        grid-template-columns: var(--split) var(--handle) 1fr;
+        /* `minmax(0, 1fr)` on the code track — a plain `1fr` track has
+         * an implicit `auto` minimum and grows to its min-content size.
+         * The code pane hosts expressive-code <pre> blocks with
+         * unwrappable lines, so a plain `1fr` would push the entire
+         * grid past viewport width and produce a document-level
+         * horizontal scrollbar instead of a local one inside the
+         * `.file-content` overflow:auto box. `minmax(0, …)` clamps the
+         * track minimum to 0 so the pane is sized by the available
+         * grid width and wide code lines scroll inside `.file-content`
+         * the way users expect. */
+        grid-template-columns: var(--split, 50%) var(--handle) minmax(0, 1fr);
         gap: 0;
         height: 70vh;
         min-height: 32rem;
@@ -413,6 +470,28 @@ const transitionName = `tile-examples-${slug}`
      * previous split position. */
     .example-split[data-expanded='true'] .example-split-grid {
         grid-template-columns: 0px 0px 1fr;
+    }
+
+    /* Code-pane collapsed mode — code panel completely hidden via
+     * `display: none` on the code-side tracks AFTER the animation
+     * finishes. Two attributes drive the state machine:
+     *   - `data-code-collapsing="true"` (transient) — code pane is
+     *     still rendered but the grid track widths animate to
+     *     `1fr 0 0`. Triggers the existing `is-toggling` transition.
+     *   - `data-code-collapsed="true"` (settled) — code pane +
+     *     handle are `display: none`, full DOM weight gone from the
+     *     paint/layout tree. Grid simplifies to `1fr`.
+     * JS coordinates the handoff in `setCodeCollapsed()` so the
+     * animation plays to completion, THEN the display flip lands. */
+    .example-split[data-code-collapsing='true'] .example-split-grid {
+        grid-template-columns: 1fr 0px 0px;
+    }
+    .example-split[data-code-collapsed='true'] .example-split-grid {
+        grid-template-columns: 1fr;
+    }
+    .example-split[data-code-collapsed='true'] .example-split-handle,
+    .example-split[data-code-collapsed='true'] .example-split-code {
+        display: none;
     }
 
     /* Transition window — the JS adds `is-toggling` to the root for
@@ -441,9 +520,33 @@ const transitionName = `tile-examples-${slug}`
         position: relative;
         overflow: hidden;
         min-width: 0;
+        /* Paint isolation — `.example-split-preview` hosts the example
+         * iframe and `.example-split-code` hosts a potentially-long
+         * expressive-code DOM tree. Without paint containment the two
+         * panes (and the surrounding docs page) share a single paint
+         * region, so any style invalidation in one re-rasterizes the
+         * whole grid. `contain: paint` declares the pane a paint
+         * boundary so invalidations stop at its edges — Safari can
+         * keep the iframe compositor layer hot independent of code-
+         * pane churn. */
+        contain: paint;
     }
 
+    /* Promote the iframe to its OWN compositor layer. `contain: paint`
+     * on the surrounding pane gives Safari a paint boundary, but its
+     * iframe-paint-coupling heuristics in WebKit still drag adjacent
+     * tiles into the same composite cycle (we measured paint at 60%
+     * CPU per tick with parent regions repainting alongside iframe
+     * canvas updates). `will-change: transform` + `transform: translateZ(0)`
+     * forces a dedicated GPU-backed layer so iframe frames blit
+     * independently of parent compositing. `isolation: isolate`
+     * caps stacking-context interactions. */
+    .example-split-preview {
+        isolation: isolate;
+    }
     .example-split-preview iframe {
+        will-change: transform;
+        transform: translateZ(0);
         position: absolute;
         inset: 0;
         width: 100%;
@@ -496,6 +599,17 @@ const transitionName = `tile-examples-${slug}`
         background: var(--code-background);
         display: flex;
         flex-direction: column;
+        /* Same compositor-layer treatment as the iframe pane — but
+         * lighter: this pane is mostly static (~2000 nested syntax-
+         * token spans, no per-frame updates), so we don't need the
+         * full `will-change: transform` "high-mutation" hint. Plain
+         * `translateZ(0)` + `isolation: isolate` is enough to force
+         * Safari to rasterize the code-pane DOM ONCE and blit the
+         * resulting texture on every composite, instead of touching
+         * the 2000-node subtree each time the adjacent iframe canvas
+         * triggers a parent-region paint. */
+        isolation: isolate;
+        transform: translateZ(0);
     }
 
     .code-pane {
@@ -504,6 +618,12 @@ const transitionName = `tile-examples-${slug}`
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        /* Stack a second paint barrier inside the right pane — the file-
+         * content scroll container can hold a few hundred expressive-code
+         * line elements; without contain, paint invalidations from inside
+         * (scroll, hover, syntax highlight rehydration) can bubble up to
+         * the surrounding grid. */
+        contain: paint;
     }
 
     .example-split[data-variant='three'] .code-pane[data-variant-pane='react'],
@@ -603,6 +723,14 @@ const transitionName = `tile-examples-${slug}`
         flex: 1 1 auto;
         overflow: auto;
         background: var(--code-background);
+        /* `min-*: 0` overrides the default `min-content` floor of flex
+         * children. Without these, a wide expressive-code line pushes
+         * the flex item to its content min-width and the overflow:auto
+         * scrollbar never appears — the overflow escapes the flex
+         * column instead. With them, the file-content sizes to the
+         * flex track and wide code lines scroll inside this box. */
+        min-width: 0;
+        min-height: 0;
     }
 
     .file-content[hidden] {
@@ -619,9 +747,20 @@ const transitionName = `tile-examples-${slug}`
     .file-content :global(.expressive-code .frame) {
         box-shadow: none;
         border-radius: 0;
+        /* Let wide code lines extend horizontally so `.file-content`
+         * becomes the horizontal scroll container — its scrollbar then
+         * sits at the bottom of the VISIBLE viewport (always reachable)
+         * instead of at the bottom of the full ~9000px code content
+         * (where the user would have to scroll vertically to the end
+         * first to drag it). */
+        overflow: visible;
     }
     .file-content :global(.expressive-code pre) {
         border-radius: 0;
+        /* See `.frame` rule above — same reasoning. Both this and the
+         * figure must be overflow:visible so wide lines bubble up to
+         * `.file-content`'s scroll calculation. */
+        overflow: visible;
     }
     /* The file tab strip already shows the filename; the
      * expressive-code figcaption duplicates it. Hide the figcaption
@@ -630,6 +769,13 @@ const transitionName = `tile-examples-${slug}`
     .file-content :global(.expressive-code figcaption.header) {
         display: none;
     }
+
+    /* `content-visibility: auto` on `.ec-line` was tried for off-screen
+     * paint skipping. Safari Timeline showed it BACKFIRED: paint events
+     * went from 2 → 34 and main-thread CPU jumped from low single
+     * digits to 33% avg. Safari's near-viewport observer cost outweighs
+     * the saved paint on a 350-line file. Leaving it off — revisit if
+     * we ever have files in the multi-thousand-line range. */
 
     @media (max-width: 768px) {
         .example-split-grid {
@@ -679,7 +825,7 @@ const transitionName = `tile-examples-${slug}`
 
             const restoreVariant = (): 'three' | 'react' => {
                 try {
-                    const v = localStorage.getItem(STORAGE_VARIANT)
+                    const v = sessionStorage.getItem(STORAGE_VARIANT)
                     return v === 'react' || v === 'three' ? v : 'three'
                 } catch {
                     return 'three'
@@ -707,7 +853,7 @@ const transitionName = `tile-examples-${slug}`
                     const href = stackblitzLink.dataset[`${variant}Href`]
                     if (href) stackblitzLink.href = href
                 }
-                try { localStorage.setItem(STORAGE_VARIANT, variant) } catch {}
+                try { sessionStorage.setItem(STORAGE_VARIANT, variant) } catch {}
             }
 
             setVariant(restoreVariant())
@@ -750,7 +896,7 @@ const transitionName = `tile-examples-${slug}`
             const STORAGE_SPLIT = 'flatland-example-split'
 
             try {
-                const saved = parseFloat(localStorage.getItem(STORAGE_SPLIT) || '')
+                const saved = parseFloat(sessionStorage.getItem(STORAGE_SPLIT) || '')
                 if (Number.isFinite(saved) && saved >= 25 && saved <= 80) {
                     root.style.setProperty('--split', `${saved}%`)
                 }
@@ -766,9 +912,28 @@ const transitionName = `tile-examples-${slug}`
                     const isHoriz = isHorizontal()
                     const total = isHoriz ? rect.width : rect.height
                     const offset = isHoriz ? e.clientX - rect.left : e.clientY - rect.top
-                    const pct = Math.max(25, Math.min(80, (offset / total) * 100))
+                    let pct = Math.max(25, Math.min(80, (offset / total) * 100))
+                    /* Subtle 50% snap with resistance. Inside the snap
+                     * zone the cursor's offset from 50% is dampened so
+                     * the handle pulls toward center — easy to land
+                     * "exactly 50%" without precision dragging, and
+                     * inside the dampening band the user feels a soft
+                     * tug. Beyond the zone the snap releases and the
+                     * cursor controls the handle 1:1 again. */
+                    const SNAP_ZONE_PCT = 4       // ±4% around 50% feels the pull
+                    const SNAP_THRESHOLD_PCT = 0.6 // dead-center stickiness
+                    const delta = pct - 50
+                    if (Math.abs(delta) < SNAP_THRESHOLD_PCT) {
+                        pct = 50
+                    } else if (Math.abs(delta) < SNAP_ZONE_PCT) {
+                        // Cubic damping — pull strengthens near center,
+                        // releases as the cursor moves away.
+                        const t = Math.abs(delta) / SNAP_ZONE_PCT
+                        const damped = SNAP_ZONE_PCT * t * t
+                        pct = 50 + Math.sign(delta) * damped
+                    }
                     root.style.setProperty('--split', `${pct}%`)
-                    try { localStorage.setItem(STORAGE_SPLIT, pct.toFixed(1)) } catch {}
+                    try { sessionStorage.setItem(STORAGE_SPLIT, pct.toFixed(1)) } catch {}
                 }
 
                 const onUp = () => {
@@ -791,8 +956,21 @@ const transitionName = `tile-examples-${slug}`
                     window.addEventListener('pointerup', onUp)
                 })
 
+                /* Double-click handle → instant snap to 50% with the
+                 * is-toggling transition so the slide reads as a deliberate
+                 * action, not a jump. `dblclick` fires for mouse only; touch
+                 * devices don't dispatch it (their tap behavior is separate),
+                 * so this is naturally a mouse-only convenience without
+                 * disrupting touch users. */
+                handle.addEventListener('dblclick', () => {
+                    root.classList.add('is-toggling')
+                    root.style.setProperty('--split', '50%')
+                    try { sessionStorage.setItem(STORAGE_SPLIT, '50.0') } catch {}
+                    setTimeout(() => root.classList.remove('is-toggling'), 360)
+                })
+
                 handle.addEventListener('keydown', (e) => {
-                    const cur = parseFloat(getComputedStyle(root).getPropertyValue('--split')) || 55
+                    const cur = parseFloat(getComputedStyle(root).getPropertyValue('--split')) || 50
                     let next = cur
                     if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = cur - 5
                     else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = cur + 5
@@ -802,7 +980,7 @@ const transitionName = `tile-examples-${slug}`
                     e.preventDefault()
                     next = Math.max(25, Math.min(80, next))
                     root.style.setProperty('--split', `${next}%`)
-                    try { localStorage.setItem(STORAGE_SPLIT, next.toFixed(1)) } catch {}
+                    try { sessionStorage.setItem(STORAGE_SPLIT, next.toFixed(1)) } catch {}
                 })
             }
 
@@ -817,7 +995,7 @@ const transitionName = `tile-examples-${slug}`
             const STORAGE_EXPANDED = 'flatland-example-expanded'
 
             try {
-                if (localStorage.getItem(STORAGE_EXPANDED) === '1') {
+                if (sessionStorage.getItem(STORAGE_EXPANDED) === '1') {
                     root.setAttribute('data-expanded', 'true')
                 }
             } catch {}
@@ -838,7 +1016,7 @@ const transitionName = `tile-examples-${slug}`
                     b.setAttribute('aria-label', expanded ? 'Restore split view' : 'Expand code panel')
                     b.setAttribute('title', expanded ? 'Restore split view' : 'Expand code panel')
                 })
-                try { localStorage.setItem(STORAGE_EXPANDED, expanded ? '1' : '0') } catch {}
+                try { sessionStorage.setItem(STORAGE_EXPANDED, expanded ? '1' : '0') } catch {}
             }
 
             // Sync labels with restored state — no animation on mount.
@@ -848,6 +1026,90 @@ const transitionName = `tile-examples-${slug}`
                 btn.addEventListener('click', () => {
                     setExpanded(root.getAttribute('data-expanded') !== 'true', true)
                 })
+            })
+
+            // ─── Code panel collapse / dock-right ────────────────────
+            // Hides the code pane entirely (`display: none` after the
+            // shrink animation completes). Two-phase state machine:
+            //   collapse:   set `data-code-collapsing` → wait 320ms for
+            //               grid-template-columns transition → set
+            //               `data-code-collapsed` (display:none takes
+            //               the code DOM out of layout/paint entirely)
+            //   uncollapse: clear `data-code-collapsed` → next rAF,
+            //               start with `data-code-collapsing` (track
+            //               still 0) → next rAF, clear collapsing so
+            //               the track animates back to its full width.
+            const codeToggleBtn = root.querySelector<HTMLButtonElement>('[data-code-toggle]')
+            const codeToggleIcon = codeToggleBtn?.querySelector('.code-toggle-icon')
+            const STORAGE_CODE_COLLAPSED = 'flatland-example-code-collapsed'
+            const ANIM_MS = 320
+
+            let pendingCollapseTimer: number | null = null
+
+            const updateCodeToggleUi = (collapsed: boolean) => {
+                if (!codeToggleBtn) return
+                codeToggleBtn.setAttribute('aria-label', collapsed ? 'Show code panel' : 'Hide code panel')
+                codeToggleBtn.setAttribute('title', collapsed ? 'Show code panel' : 'Hide code panel')
+                if (codeToggleIcon) {
+                    codeToggleIcon.classList.toggle('i-lucide:panel-right-close', !collapsed)
+                    codeToggleIcon.classList.toggle('i-lucide:panel-right-open', collapsed)
+                }
+            }
+
+            const setCodeCollapsed = (collapsed: boolean, animate: boolean) => {
+                if (pendingCollapseTimer !== null) {
+                    clearTimeout(pendingCollapseTimer)
+                    pendingCollapseTimer = null
+                }
+                const isCurrentlyCollapsed = root.getAttribute('data-code-collapsed') === 'true'
+                if (collapsed === isCurrentlyCollapsed && !root.hasAttribute('data-code-collapsing')) {
+                    return
+                }
+                if (collapsed) {
+                    if (animate) {
+                        root.classList.add('is-toggling')
+                        root.setAttribute('data-code-collapsing', 'true')
+                        pendingCollapseTimer = window.setTimeout(() => {
+                            root.classList.remove('is-toggling')
+                            root.removeAttribute('data-code-collapsing')
+                            root.setAttribute('data-code-collapsed', 'true')
+                            pendingCollapseTimer = null
+                        }, ANIM_MS)
+                    } else {
+                        root.setAttribute('data-code-collapsed', 'true')
+                    }
+                } else {
+                    root.removeAttribute('data-code-collapsed')
+                    if (animate) {
+                        root.setAttribute('data-code-collapsing', 'true')
+                        requestAnimationFrame(() => {
+                            root.classList.add('is-toggling')
+                            requestAnimationFrame(() => {
+                                root.removeAttribute('data-code-collapsing')
+                            })
+                        })
+                        pendingCollapseTimer = window.setTimeout(() => {
+                            root.classList.remove('is-toggling')
+                            pendingCollapseTimer = null
+                        }, ANIM_MS + 16)
+                    }
+                }
+                updateCodeToggleUi(collapsed)
+                try { sessionStorage.setItem(STORAGE_CODE_COLLAPSED, collapsed ? '1' : '0') } catch {}
+            }
+
+            // Restore persisted state — no animation on mount.
+            try {
+                if (sessionStorage.getItem(STORAGE_CODE_COLLAPSED) === '1') {
+                    setCodeCollapsed(true, false)
+                } else {
+                    updateCodeToggleUi(false)
+                }
+            } catch { updateCodeToggleUi(false) }
+
+            codeToggleBtn?.addEventListener('click', () => {
+                const next = root.getAttribute('data-code-collapsed') !== 'true'
+                setCodeCollapsed(next, true)
             })
 
             // ─── Fullscreen ────────────────────────────────────────

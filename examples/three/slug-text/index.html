@@ -15,6 +15,17 @@
       }
       canvas {
         display: block;
+        /* Explicit compositor-layer promotion. Without these, Safari
+           co-paints the canvas with surrounding HTML (Tweakpane,
+           overlays) instead of giving it a dedicated GPU layer —
+           every 60fps canvas frame then forces parent regions to
+           re-composite and the rAF drops to ~30. Toggling any
+           Tweakpane folder used to trigger a layer-recompute and
+           "fix" perf as a side effect; promoting upfront removes
+           that dependency. */
+        transform: translateZ(0);
+        will-change: transform;
+        isolation: isolate;
       }
 
       @font-face {
@@ -86,10 +97,12 @@
         text-align: center;
       }
 
-      /* Labels on each side of the split */
+      /* Labels anchored to bottom-left (SLUG) + bottom-right (compare).
+         The split line pushes them out of the way via translateX when
+         it gets close, otherwise they stay locked to the corner. */
       .split-label {
         position: fixed;
-        top: 8px;
+        bottom: 12px;
         z-index: 3;
         font-family: monospace;
         font-size: 11px;
@@ -98,12 +111,17 @@
         background: rgba(0, 2, 28, 0.7);
         pointer-events: none;
         white-space: nowrap;
+        /* No transform transition — JS updates this every drag frame.
+         * A transition would make the label LAG behind the cursor and
+         * visibly oscillate as new target values arrive mid-easing. */
       }
       #split-label-left {
         color: #fff;
+        left: 12px;
       }
       #split-label-right {
         color: #ff6464;
+        right: 12px;
       }
 
       @keyframes slug-spin {
