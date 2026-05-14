@@ -14,7 +14,7 @@
  *   - Draw calls captured via `scene.onAfterRender` are non-zero (proves
  *     the auto-wiring path works against R3F v10's phase scheduler).
  *   - Pixel-art examples have `image-rendering: pixelated` on their
- *     canvas; `skia` (the only antialiased example) does not.
+ *     canvas; antialiased examples (`skia`, `slug-text`) do not.
  *
  * Run: `pnpm test:smoke` (starts the dev server automatically).
  */
@@ -44,6 +44,7 @@ const EXAMPLES: ExampleSpec[] = [
   { path: 'three/batch-demo', pixelated: true },
   { path: 'three/knightmark', pixelated: true },
   { path: 'three/skia', pixelated: false },
+  { path: 'three/slug-text', pixelated: false },
 
   // React Three Fiber
   { path: 'react/basic-sprite', pixelated: true },
@@ -55,6 +56,7 @@ const EXAMPLES: ExampleSpec[] = [
   { path: 'react/batch-demo', pixelated: true },
   { path: 'react/knightmark', pixelated: true },
   { path: 'react/skia', pixelated: false },
+  { path: 'react/slug-text', pixelated: false },
 ]
 
 const REQUIRED_STATS_TOOLTIPS = [
