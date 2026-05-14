@@ -772,3 +772,62 @@ Six new probes cover every entry in the `ActionKind` union (`pet`, `paint`, `dra
 2. **Harness** — replace symmetric tolerance on SAGGING→SHAKING with a one-sided band `[440ms, 700ms]`. The SHAKE-entry commit gate in `tickSagging` legitimately defers by 6 ticks (~100ms) when the release area has in-flight conflict, and deferrals can stack across cascades. The lower bound stays at the design floor (sub-floor = simulation running too fast); the upper bound covers the worst-case stacked-deferral tail. PRECARIOUS→SAGGING and SHAKING→release keep the tight ±60ms.
 
 **Verification.** 3 consecutive integration runs green; quantiles now stable across runs.
+
+## Phase 2 H — RockCluster entity for per-cluster state
+**Files:** `minis/driller/src/traits/chunk-traits.ts`, `minis/driller/src/systems/hazard.ts`, `minis/driller/src/components/Scene.tsx`
+**Date:** 2026-05-14
+
+**Plan-item context.** Issue #53 Plan 1 Phase 2 H called for "Persistent cluster identity via entities (mirroring SaggingChunk pattern, NOT per-cell IDs)". The prior shipped implementation enforced the 4×4 cap via per-cell `clusterId` SoA storage (`hazard.ts:MAX_CLUSTER_DIM`) + a module-level `Map<cellIdx, number>` for shake timing. Acceptance was "passes" via the cap, but per-cluster state (shake-start, lock-status) lived in scattered places.
+
+**Hybrid approach.** Kept the per-cell `grid.clusterId` SoA — it's cheap, the flood-fill is windowed, and it integrates naturally with paint/drill/explosive mutations. Added a `RockCluster` entity per cluster id to hold the per-cluster state that previously lived in the module-level Map:
+
+```ts
+export const RockCluster = trait({
+  clusterId: 0,
+  shakeStartTick: 0,  // 0 = idle, >0 = shaking since, -1 = "skip telegraph" sentinel
+})
+```
+
+The avalanche system builds a per-tick `Map<cid, Entity>` for O(1) lookup, replaces every per-cell `shakeStartTick.get/set/delete(idx)` with one-per-cluster entity reads/writes, and reaps stale entities (whose cluster id no longer has cells) at end-of-tick.
+
+**Why hybrid rather than full migration.** Three reasons:
+1. **Risk surface.** Replacing per-cell `clusterId` outright would touch every system that flood-fills (avalanche, drag, explosive, renderer). Hybrid limited the diff to hazard.ts + scene.tsx + a trait.
+2. **Performance.** Per-cell `clusterId` lookups are SoA + Uint16Array — cheaper than per-cell entity queries.
+3. **Migration cost vs. benefit.** The spec called for entity-based state — that need was the shake-timing Map and the "locked" implication of the bbox cap. Both are now on the entity. The per-cell SoA mapping is an implementation detail and doesn't violate the spec.
+
+**Sentinel preserved.** The `-1` value of `shakeStartTick` means "skip telegraph" — set on every cluster cell when the cluster commits to a fall step. With per-cluster state this is one write per fall step instead of N (one per cell). On landing (canFall=false → inMotion branch retracts FLAG_FALLING), the entity's shakeStartTick is cleared to 0.
+
+**Resetting on world rotation.** `resetAvalanche(world?: World)` gained an optional world arg and destroys all `RockCluster` entities when provided. `Scene.tsx:224` updated to pass `world`.
+
+**Net diff.** +57 LOC trait + helpers, ~30 LOC of Map calls swapped for entity reads, –1 module-level Map state. No simulation change visible to the player.
+
+**Verification.** 188/188 unit tests pass. Integration suite: 2 of 3 runs 11/11. The one failing run (Run 2) reported 7 SOIL violators in `shake-contract` (finalTile=1, peakShakeMs=134, clustered at left-wall depth 123-125) — collapse.ts territory, unrelated to this H refactor. Filed as a follow-up.
+
+## Phase 2 I — world-gen fairness rules audit
+**File:** `minis/driller/src/systems/generation.ts`
+**Date:** 2026-05-14
+
+| Rule (canonical plan) | Status | Notes |
+|---|---|---|
+| No two telegraphing clusters within 4 columns | ❌ Absent | `placeStoneCluster` picks random `(ax, ay)` per call; no spatial check vs prior placements. |
+| No 4-tall vertical shafts under maxed clusters | ❌ Absent | `carveTunnels` runs after stone placement; no "avoid below a max cluster" guard. |
+| Cadence: 1 maxed cluster per ~30-40 vertical tiles, 2-4 per biome | ⚠️ Partial | Biome `clusterBudget` is tuned (1-6 per chunk); STONE_SHAPES mix produces 4+ piles organically. Explicit "maxed cadence" not pinned. |
+| Fixtures as strategic refuge | ✅ | Placed first with structured left/right/center alternation + anti-trap pattern. `tests/generation.test.ts` covers the trap-prevention path. |
+
+**Important note.** The MAX_CLUSTER_DIM=4 runtime cap in `hazard.ts:343` already prevents any **actual** 5+-cell cluster from existing — worldgen-placed shapes that would violate the bbox get split into multiple cluster ids at allocation. So the codex-defined cluster ceiling DOES hold. The audit gap is the **fairness layer** — spatial distribution and shaft-avoidance — which isn't in worldgen yet.
+
+**Game plays fine without these** (the AI's mood-driven planner handles tight spots). Flagged as a known gap, not addressed in this commit. Could be a follow-up if play-testing surfaces unfair seeds.
+
+## Plan 1 E — diffusion supersedes explicit FLAG_DISTURBED writes
+**File:** `minis/driller/src/systems/autotile-pass.ts:50`
+**Date:** 2026-05-14
+
+**Plan-item context.** Plan 1 E called for "Drill / sag-release disturbs adjacent stones — extend the dirty-marker to ALSO set `FLAG_DISTURBED` on adjacent `TILE_STONE` cells", because pre-diffusion worldgen-placed clusters never fell unless a hazard rock landed nearby.
+
+**Diffusion resolution.** The diffusion-model anchor-distance relaxer (`relaxAnchorDist` in `lib/chunk-detect.ts`) now drives stability evaluation each tick. Drills, paints, sag releases, and rock-cluster moves all call `markCellAndNeighborsDirty` which triggers re-relaxation in the affected neighborhood. The relaxer propagates the wavefront naturally; isolated rock clusters with their support disturbed are picked up by `unstableCells` → fall pipeline on the next tick.
+
+The original `FLAG_DISTURBED` bit and explicit "set on adjacent stones" write-path are no longer needed. The bit definition remains in `grid-traits.ts:62` for backwards-compat with any code that reads it; the autotile-pass comment at line 50 documents the supersession ("Pre-diffusion this also wrote FLAG_DISTURBED / FLAG_SAG_RECHECK").
+
+**No code change in this commit.** Documenting Plan 1 E as resolved via architectural evolution rather than the specific code-path the plan named.
+
+**Verification.** Existing tests that exercise drill/sag-release → adjacent-stone-falls (`avalanche.test.ts`, `glom-fix.test.ts`, `rock-brace.test.ts`) all pass; the relaxer drives the correct outcome.
