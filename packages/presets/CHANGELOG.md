@@ -1,5 +1,12 @@
 # @three-flatland/presets
 
+## 0.1.0-alpha.5
+
+### Patch Changes
+
+- Updated dependencies [fb92ecc]
+  - three-flatland@0.1.0-alpha.5
+
 ## 0.1.0-alpha.4
 
 ### Patch Changes
