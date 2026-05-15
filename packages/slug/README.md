@@ -1,10 +1,15 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/thejustinwalsh/three-flatland/main/assets/repo-banner.png" alt="three-flatland" width="100%" />
+</p>
+
 # @three-flatland/slug
 
-GPU-accelerated, resolution-independent text rendering for [Three.js](https://threejs.org/) using the [Slug algorithm](https://sluglibrary.com/).
+GPU-accelerated, resolution-independent text rendering for [Three.js](https://threejs.org/) using the [Slug algorithm](https://sluglibrary.com/). Quadratic Bezier curves are evaluated directly in the fragment shader — no SDF atlas, no bitmap textures, no resolution ceiling. Text stays sharp at any size, any zoom, any perspective.
 
-Slug evaluates quadratic Bezier curves directly in the fragment shader. No SDF atlas, no bitmap textures, no resolution ceiling. Text stays sharp at any size, any zoom, any perspective.
+> **Alpha Release** — this package is in active development. The API will evolve and breaking changes are expected between releases. Pin your version and check the [changelog](https://github.com/thejustinwalsh/three-flatland/releases) before upgrading. Active feature work tracked in [#37 — Vector Graphics](https://github.com/thejustinwalsh/three-flatland/issues/37) and [#38 — Rich Text](https://github.com/thejustinwalsh/three-flatland/issues/38).
 
-> **Alpha pre-release.** Public APIs may shift before `1.0`. Active feature work tracked in [#37 — Vector Graphics](https://github.com/thejustinwalsh/three-flatland/issues/37) and [#38 — Rich Text](https://github.com/thejustinwalsh/three-flatland/issues/38). Feedback welcome.
+[![npm](https://img.shields.io/npm/v/@three-flatland/slug)](https://www.npmjs.com/package/@three-flatland/slug)
+[![license](https://img.shields.io/npm/l/@three-flatland/slug)](https://github.com/thejustinwalsh/three-flatland/blob/main/LICENSE)
 
 ## Highlights
 
