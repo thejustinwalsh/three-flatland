@@ -248,7 +248,7 @@ export interface CreateBusTransportOptions {
   /**
    * Override for the worker spawn — useful for tests or for hosts
    * that want to provide a pre-built `Worker` instance. When omitted,
-   * we attempt the canonical `new Worker(new URL('./bus-worker.ts',
+   * we attempt the canonical `new Worker(new URL('./bus-worker',
    * import.meta.url), { type: 'module' })` and fall back to the
    * inline transport if that throws.
    */
@@ -283,9 +283,12 @@ export function createBusTransport(opts: CreateBusTransportOptions): BusTranspor
     } else {
       // The canonical Vite/webpack worker URL pattern. Bundlers see
       // the new URL(import.meta.url) call and emit the worker as a
-      // separate chunk. Plain ESM hosts may resolve this too if the
-      // worker file is served at the right path.
-      worker = new Worker(new URL('./bus-worker.ts', import.meta.url), { type: 'module' })
+      // separate chunk. Extension is omitted on purpose: the bundler's
+      // resolver picks the sibling that exists for the resolution mode
+      // — `bus-worker.ts` when consumed from source (examples MPA, which
+      // sets `resolve.conditions: ['source']`), `bus-worker.js` when
+      // consumed from built `dist/` (docs site, published npm).
+      worker = new Worker(new URL('./bus-worker', import.meta.url), { type: 'module' })
     }
   } catch {
     worker = null
