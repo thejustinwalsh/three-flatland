@@ -8,6 +8,8 @@ import {
   type AnimationSetDefinition,
 } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
+import { GemBackground } from './GemBackground'
+import { GEM } from './gem'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
@@ -163,7 +165,7 @@ function Scene() {
 
   return (
     <>
-      <color attach="background" args={['#1a1a2e']} />
+      <GemBackground gem={GEM} />
       <Suspense fallback={null}>
         <Knight
           animation={animation}

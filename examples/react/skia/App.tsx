@@ -16,12 +16,14 @@ import { SkiaPaint, SkiaPath } from '@three-flatland/skia'
 import type { SkiaCanvas as SkiaCanvasInstance } from '@three-flatland/skia/three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import {
-  reflector, color as tslColor, positionWorld, float as tslFloat,
+  reflector, color as tslColor, positionWorld, float as tslFloat, smoothstep as tslSmoothstep, uv, vec2, length as tslLength,
 } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
-import { Color, DoubleSide, Fog, type Mesh, type MeshBasicMaterial } from 'three'
-import { MeshStandardNodeMaterial } from 'three/webgpu'
+import { Color, DoubleSide, Fog, Mesh, PlaneGeometry, type MeshBasicMaterial } from 'three'
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
 import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
+import { gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 
 extend({ SkiaRect, SkiaCircle, SkiaLine, SkiaPathNode, SkiaTextNode, SkiaGroup })
 
@@ -290,7 +292,13 @@ function ReflectiveGround() {
     const dist = positionWorld.xz.length()
     const fadeFactor = dist.div(3.0).clamp(0.0, 1.0).oneMinus()
     const fadeSharp = fadeFactor.mul(fadeFactor).mul(fadeFactor)
-    mat.colorNode = tslColor(new Color(0x050505)).add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
+    // Floor base color stays dark — the gem identity now lives on the
+    // L2 background plane (set in the Canvas onCreated) rather than
+    // composed into the floor surface itself. Reflections of the lit
+    // foreground panel carry the surface character; the dark base
+    // lets those reflections pop without competing with the floor.
+    mat.colorNode = tslColor(new Color(0x050505))
+      .add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
     mat.roughnessNode = tslFloat(0.5).add(dist.div(5.0).clamp(0.0, 0.5))
     mat.metalness = 0.5
     return { mat, groundReflector }
@@ -379,8 +387,13 @@ function Panels() {
     canvasRef.current?.render(true)
   }, { before: 'render' })
 
+  // renderOrder=10 forces the skia panels to draw LAST (after bgPlane,
+  // ground, and floorEdge). When the panel's transparent skia regions
+  // composite, the framebuffer already contains the gem-tinted bg
+  // plane behind them — so transparency reveals the gradient instead
+  // of opaque black.
   return <>
-    <mesh ref={centerRef} position={[0, 1.2, -0.4]}>
+    <mesh ref={centerRef} position={[0, 1.2, -0.4]} renderOrder={10}>
       <planeGeometry args={[panelW, panelH]} />
       <meshBasicMaterial color={0xffffff} side={DoubleSide} transparent premultipliedAlpha>
         <SkiaCanvas ref={canvasRef as any} attach={attachSkiaTexture} renderer={renderer} width={TEX_W} height={TEX_H}>
@@ -398,11 +411,11 @@ function Panels() {
         </SkiaCanvas>
       </meshBasicMaterial>
     </mesh>
-    <mesh ref={leftRef} position={[-2.6, 1.2, 0.3]} rotation-y={0.35}>
+    <mesh ref={leftRef} position={[-2.6, 1.2, 0.3]} rotation-y={0.35} renderOrder={10}>
       <planeGeometry args={[panelW, panelH]} />
       <meshBasicMaterial ref={leftMatRef} color={0xffffff} side={DoubleSide} transparent premultipliedAlpha />
     </mesh>
-    <mesh ref={rightRef} position={[2.6, 1.2, 0.3]} rotation-y={-0.35}>
+    <mesh ref={rightRef} position={[2.6, 1.2, 0.3]} rotation-y={-0.35} renderOrder={10}>
       <planeGeometry args={[panelW, panelH]} />
       <meshBasicMaterial ref={rightMatRef} color={0xffffff} side={DoubleSide} transparent premultipliedAlpha />
     </mesh>
@@ -454,9 +467,52 @@ export default function App() {
     <Canvas
       camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
       renderer={{ antialias: true, trackTimestamp: true }}
-      onCreated={({ scene }) => {
-        scene.background = new Color(0x191920)
-        scene.fog = new Fog(0x191920, 0, 15)
+      onCreated={({ scene, gl }) => {
+        // Pure-black clear + fog so foreground 3D meshes (floor, panels)
+        // fade to the same void the floor's distant edges dissolve into.
+        gl.setClearColor(new Color(0x000000))
+        scene.background = new Color(0x000000)
+        scene.fog = new Fog(0x000000, 6, 18)
+
+        // Gem-gradient backdrop as a real 3D plane (L2). Sits at z=-15
+        // behind the panel/floor; opaque, with a tightened gradient
+        // radius (0.4) so the gem identity stays in the upper-left
+        // and the visible top portion of the screen reads mostly as
+        // outer-ring BG (dark). Atmospheric blend into the floor is
+        // handled by the FloorEdgeFade quad below, not by alpha here.
+        const bgMat = new MeshBasicNodeMaterial({ depthWrite: false, fog: false })
+        bgMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
+        const bgPlane = new Mesh(new PlaneGeometry(40, 25), bgMat)
+        bgPlane.position.set(0, 0.9, -15)
+        bgPlane.renderOrder = -100
+        scene.add(bgPlane)
+
+        // Floor edge fade — horizontal sibling quad just above the
+        // ground plane that paints the SAME gem gradient as the bg
+        // plane over the floor's hard rectangular silhouette via a
+        // radial alpha smoothstep — opaque at the corners, transparent
+        // in the center where reflections show through. Because
+        // gemGradientNode is screen-space, the floor-edge quad and the
+        // bg plane sample the same colors at any given screen pixel —
+        // the floor's edges dissolve seamlessly into the bg plane (no
+        // color discontinuity).
+        // Ported from remotion-studio-monorepo's FloorEdgeFade.tsx,
+        // adapted: their version paints scene.background (flat color);
+        // ours paints the same screen-space gem gradient as the bg
+        // plane so the match holds against a non-flat backdrop.
+        const edgeMat = new MeshBasicNodeMaterial({
+          transparent: true,
+          depthWrite: false,
+          fog: false,
+        })
+        edgeMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
+        const edgeDist = tslLength(uv().sub(vec2(0.5))).mul(tslFloat(2))
+        edgeMat.opacityNode = tslSmoothstep(tslFloat(0.35), tslFloat(0.7), edgeDist)
+        const floorEdge = new Mesh(new PlaneGeometry(50, 50), edgeMat)
+        floorEdge.rotation.x = -Math.PI / 2
+        floorEdge.position.y = 0 // just above ground (at -0.01)
+        floorEdge.renderOrder = 1 // after the floor (default 0)
+        scene.add(floorEdge)
       }}
     >
       <DevtoolsProvider name="skia" />

@@ -1,7 +1,9 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Color, Vector2, Raycaster, Plane, Vector3 } from 'three'
+import { Scene, OrthographicCamera, Vector2, Raycaster, Plane, Vector3 } from 'three'
 import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
+import { gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 
 // Configuration
 const TILE_SIZE = 64
@@ -47,7 +49,7 @@ let activeRenderer: WebGPURenderer | null = null
 async function main() {
   // Scene setup
   const scene = new Scene()
-  scene.background = new Color(0x87ceeb) // Sky blue
+  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
   // Calculate view size based on grid
   const viewWidth = TILE_SIZE * (GRID_WIDTH + 2)

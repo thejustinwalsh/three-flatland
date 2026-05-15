@@ -1,7 +1,9 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Color, NearestFilter } from 'three'
+import { Scene, OrthographicCamera, NearestFilter } from 'three'
 import { AnimatedSprite2D, SpriteSheetLoader, Layers, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
+import { gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
  * a fresh renderer + animate() loop while the previous one keeps
@@ -10,9 +12,8 @@ let rafId = 0
 let activeRenderer: WebGPURenderer | null = null
 
 async function main() {
-  // Scene setup
   const scene = new Scene()
-  scene.background = new Color(0x1a1a2e)
+  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
   // Orthographic camera for 2D rendering
   const frustumSize = 200
