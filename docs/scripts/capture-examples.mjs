@@ -55,6 +55,7 @@ const EXAMPLES = [
   { slug: 'tsl-nodes', surface: 'examples', path: 'three/tsl-nodes' },
   { slug: 'tilemap', surface: 'examples', path: 'three/tilemap' },
   { slug: 'skia', surface: 'examples', path: 'three/skia' },
+  { slug: 'slug-text', surface: 'examples', path: 'three/slug-text' },
 ]
 
 const VIDEO_DURATION_MS = 6_000

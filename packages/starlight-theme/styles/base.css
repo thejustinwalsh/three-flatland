@@ -297,14 +297,21 @@
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         background-color: var(--background);
-        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.04 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
-        background-attachment: fixed;
-        background-blend-mode: screen;
+        /* Pre-baked tileable noise overlay. Replaces the inline
+         * `<feTurbulence>` SVG data-URL we used to ship — Safari was
+         * CPU-rasterizing the SVG filter on every paint and pairing
+         * it badly with `background-attachment: fixed` + blend mode
+         * (every 60fps iframe paint re-blended the noise underneath).
+         * Raster PNGs composite on GPU like any other image; alpha
+         * is baked in so no `background-blend-mode` is needed. Re-
+         * generate with `node docs/scripts/bake-noise.mjs` if the
+         * grain character or alpha needs tuning. */
+        background-image: url('./noise-dark.png');
+        background-repeat: repeat;
     }
     @media (prefers-color-scheme: light) {
         body {
-            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.025 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
-            background-blend-mode: multiply;
+            background-image: url('./noise-light.png');
         }
     }
     /* Honor accessibility preferences — texture vanishes when users prefer

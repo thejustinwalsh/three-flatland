@@ -71,7 +71,7 @@
                 buttons; slider matches that width. */}
             <div class="music-actions">
                 <div class="music-controls" data-music-controls>
-                    <button type="button" class="music-btn u-holo" data-music-toggle aria-label="Play" title="Play">
+                    <button type="button" class="music-btn" data-music-toggle aria-label="Play" title="Play">
                         <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                             <polygon points="5 3 19 12 5 21 5 3" />
                         </svg>
@@ -80,7 +80,7 @@
                             <rect x="14" y="4" width="4" height="16" />
                         </svg>
                     </button>
-                    <button type="button" class="music-btn u-holo" data-music-next aria-label="Next track" title="Next track">
+                    <button type="button" class="music-btn" data-music-next aria-label="Next track" title="Next track">
                         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="5 4 15 12 5 20 5 4" />
                             <line x1="19" y1="5" x2="19" y2="19" />
@@ -117,6 +117,8 @@
 </flatland-music-player>
 
 <script>
+    import { getFrameClock } from '../../../../../docs/src/scripts/frameClock'
+
     type SoundsModule = typeof import('../../../../../docs/src/scripts/sounds')
 
     type Track = {
@@ -187,14 +189,43 @@
         private controls!: HTMLElement
         private progressEl!: HTMLElement
         private timeEl!: HTMLElement
-        /** rAF id for the FFT/progress loop. Only running while the
-         * popover is open (started/stopped in the toggle handler). */
-        private fftRaf = 0
+        /** frameClock unsubscribe handle for the FFT/progress loop.
+         * `null` when not subscribed. Re-armed on popover-open AND
+         * intersection-in; canceled on close, offscreen, or disconnect.
+         * The frameClock is a window-level singleton (so it survives
+         * Astro client-router navigations), shared with motion.ts and
+         * any future per-frame consumers — one rAF total per page. */
+        private fftUnsub: (() => void) | null = null
         private analyserData?: Uint8Array
         /** Cached gem RGB triplets for the spectrum blend. Re-resolved
          * when the popover opens (so a light/dark theme flip picks up
          * the new computed token values). */
         private spectrumColors: { r: number; g: number; b: number }[] = []
+
+        /**
+         * Visibility-driven gating for the FFT/progress loop. The
+         * bridge subscription stays alive for the element's full
+         * lifetime — external code can call `bridge.playTrack()` from
+         * anywhere (e.g. a game scene requesting a song) and the
+         * player must receive that state event to auto-toast itself.
+         * What we DO gate on visibility is the continuous per-frame
+         * work: when the player is offscreen the FFT canvas can't be
+         * seen, so its rAF loop shouldn't tick. `isVisible` tracks the
+         * intersection state; `startProgressLoop` reads it before
+         * arming a new rAF, and the intersection callback cancels
+         * any in-flight loop when the player becomes offscreen mid-
+         * playback.
+         *
+         * `bridgeUnsub` holds the unsubscribe callback returned by
+         * `bridge.subscribe(...)`. It's called from
+         * `disconnectedCallback` only — without that the bridge
+         * accumulates stale listeners across every Astro view-
+         * transition (the singleton survives navigation, the
+         * MusicPlayer DOM doesn't).
+         */
+        private visObs?: IntersectionObserver
+        private isVisible = false
+        private bridgeUnsub?: () => void
 
         constructor() {
             super()
@@ -366,11 +397,67 @@
             )
         }
 
+        connectedCallback() {
+            // Visibility observer — gates the FFT/progress rAF loop so
+            // it never ticks against an offscreen FFT canvas. The
+            // bridge subscription is NOT touched here; external code
+            // can drive `bridge.playTrack(...)` at any time and the
+            // player needs to receive that state change to auto-toast
+            // itself into view.
+            if (typeof IntersectionObserver !== 'undefined' && !this.visObs) {
+                this.visObs = new IntersectionObserver(
+                    (entries) => {
+                        for (const e of entries) {
+                            const nowVisible = e.isIntersecting
+                            if (nowVisible === this.isVisible) continue
+                            this.isVisible = nowVisible
+                            if (!nowVisible && this.fftUnsub) {
+                                // Park the FFT loop the moment the
+                                // player scrolls offscreen, even if
+                                // the popover is technically still
+                                // marked open. Unsubscribing from the
+                                // shared frameClock; if no other
+                                // consumer remains, the rAF stops
+                                // entirely on the next tick.
+                                this.fftUnsub()
+                                this.fftUnsub = null
+                            }
+                            // Becoming visible: the popover's `toggle`
+                            // handler will re-arm startProgressLoop on
+                            // the next user open. No auto-restart here
+                            // — silent idle is the goal.
+                        }
+                    },
+                    { rootMargin: '0px' },
+                )
+                this.visObs.observe(this)
+            } else {
+                // No IO support — fall back to "always visible" so the
+                // existing popover-toggle behavior still works.
+                this.isVisible = true
+            }
+        }
+
         disconnectedCallback() {
             this.cleanup?.abort()
             this.cleanup = undefined
             if (this.toastTimer !== null) clearTimeout(this.toastTimer)
-            if (this.fftRaf) cancelAnimationFrame(this.fftRaf)
+            // Drop our frameClock subscription so the shared rAF chain
+            // can stop entirely when no other consumer is registered.
+            if (this.fftUnsub) {
+                this.fftUnsub()
+                this.fftUnsub = null
+            }
+            // Disconnect IO + bridge listener so the singleton bridge
+            // (which outlives the MusicPlayer DOM across Astro view-
+            // transitions) doesn't accumulate stale callbacks holding
+            // references to the now-detached element.
+            this.visObs?.disconnect()
+            this.visObs = undefined
+            if (this.bridgeUnsub) {
+                this.bridgeUnsub()
+                this.bridgeUnsub = undefined
+            }
         }
 
         private loadSounds(): Promise<SoundsModule> {
@@ -387,12 +474,15 @@
                     await sounds.initAudio()
                     const bridge = (window as unknown as { __threeFlatlandAudio?: { subscribe: (cb: (s: AudioState) => void) => () => void } })
                         .__threeFlatlandAudio
-                    if (!bridge) return
+                    if (!bridge || this.bridgeUnsub) return
                     // Bridge exposes subscribe(cb): unsubscribe; cb receives state.
                     // Don't destructure — destructured methods lose their
                     // `this` binding and `subscribe` would call into a
                     // detached function, breaking `this.listeners.add()`.
-                    bridge.subscribe((state) => this.applyState(state))
+                    // Capture the unsubscribe so disconnectedCallback can
+                    // detach cleanly (singleton bridge survives nav; this
+                    // element doesn't).
+                    this.bridgeUnsub = bridge.subscribe((state) => this.applyState(state))
                 })
             }
             return this.soundsPromise
@@ -694,25 +784,27 @@
 
         // ────────── FFT visualizer ──────────
 
-        /** rAF-driven loop reading byte-frequency data off the bridge's
-         * music analyser. Runs ONLY while the popover is open (started
-         * by the toggle/show event, stopped on close) so we don't burn
-         * CPU on an invisible canvas. */
+        /** Per-frame loop reading byte-frequency data off the bridge's
+         * music analyser. Runs ONLY while the popover is open AND the
+         * player is in-viewport (started by toggle/show, stopped on
+         * close or intersection-out). Subscribes to the shared
+         * `frameClock` instead of registering its own rAF — when no
+         * other consumer is registered the singleton stops the rAF
+         * chain entirely. */
         private startProgressLoop(): void {
-            if (this.fftRaf) return
+            if (this.fftUnsub) return
+            if (!this.isVisible) return
             this.refreshSpectrumColors()
-            const tick = () => {
-                this.fftRaf = requestAnimationFrame(tick)
+            this.fftUnsub = getFrameClock().subscribe(() => {
                 this.drawFft()
                 this.updateProgress()
-            }
-            this.fftRaf = requestAnimationFrame(tick)
+            }, 'MusicPlayer.fft')
         }
 
         private stopProgressLoop(): void {
-            if (this.fftRaf) {
-                cancelAnimationFrame(this.fftRaf)
-                this.fftRaf = 0
+            if (this.fftUnsub) {
+                this.fftUnsub()
+                this.fftUnsub = null
             }
             // Leave one final flat-line frame so a paused popover doesn't
             // freeze on the last energetic frame.
@@ -1195,9 +1287,6 @@
         align-items: center;
         gap: 0.25rem;
     }
-    /* Holofoil buttons — `u-holo` utility (defined in starlight-theme/
-     * styles/base.css) drives the foil sheen via `data-gem`. Each button
-     * inherits the popover's --player-gem so the foil tracks the song. */
     .music-btn {
         all: unset;
         position: relative;
@@ -1209,13 +1298,13 @@
         border-radius: calc(var(--radius) - 5px);
         cursor: pointer;
         color: var(--foreground);
-        background: color-mix(in oklab, var(--card) 80%, var(--background));
-        /* Gem-themed border keyed to the active song. The ring picks up
-         * --player-gem so the buttons read as part of the same gem
-         * taxonomy as the popover rim, FFT, progress fill, and avatar.
-         * Double-stop box-shadow: an inset 1px ring for the visible
-         * border + an outer 1px halo at low opacity so the gem identity
-         * carries beyond the strict edge into the panel surface. */
+        background:
+            linear-gradient(
+                145deg,
+                color-mix(in oklab, var(--foreground) 8%, transparent) 0%,
+                transparent 55%
+            ),
+            color-mix(in oklab, var(--card) 80%, var(--background));
         box-shadow:
             inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 60%, var(--border)),
             0 0 0 1px color-mix(in oklab, var(--player-gem) 10%, transparent);
@@ -1223,35 +1312,15 @@
             background-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
             box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
         flex: none;
-        isolation: isolate;
-        /* Holo foil stays neutral metallic — same effect stack (perspective
-         * tilt, scene-light drift, mouse-driven highlight, sparkle conic
-         * flecks) but with the gem palette swapped for grayscale tokens
-         * so the FILL reads as polished metal while the gem-themed BORDER
-         * (above) carries the active-song color identity. */
-        --gem-base: color-mix(in oklab, var(--foreground) 25%, var(--background));
-        --gem-spec: color-mix(in oklab, var(--foreground) 65%, var(--background));
-        --gem-low: var(--card);
     }
     .music-btn svg {
-        position: relative;
-        /* Above u-holo::after (z-index 1) so the icon paints over the
-         * foil's mix-blend-mode layer regardless of mode. */
-        z-index: 2;
         pointer-events: none;
     }
-    /* Light-mode invert: dark surface + light icon, mirroring the dark-
-     * mode aesthetic. In light mode the default light surface + dark icon
-     * combo washed out under the metallic foil overlay. Inverting gives
-     * the icon the same high-contrast "lit metallic recess" reading the
-     * dark-mode buttons have. */
+    /* Light-mode invert — dark surface, light icon. */
     @media (prefers-color-scheme: light) {
         .music-btn {
             color: var(--background);
             background: color-mix(in oklab, var(--foreground) 78%, var(--background));
-            --gem-base: color-mix(in oklab, var(--foreground) 60%, var(--background));
-            --gem-spec: color-mix(in oklab, var(--background) 70%, var(--foreground));
-            --gem-low: color-mix(in oklab, var(--foreground) 90%, var(--background));
         }
         .music-btn:hover:not(:disabled) {
             background: color-mix(in oklab, var(--foreground) 60%, var(--player-gem));

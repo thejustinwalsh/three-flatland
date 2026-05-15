@@ -7,7 +7,15 @@
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { overflow: hidden; background: #16191e; font-family: monospace; }
-      canvas { display: block; }
+      canvas {
+        display: block;
+        /* Layer-promote so Safari gives the canvas its own GPU layer
+           — without this, 60fps canvas paints co-paint with adjacent
+           DOM (Tweakpane, overlays) and drop the iframe rAF to ~30. */
+        transform: translateZ(0);
+        will-change: transform;
+        isolation: isolate;
+      }
       #controls {
         position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
         display: flex; gap: 10px; z-index: 100;

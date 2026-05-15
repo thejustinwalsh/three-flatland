@@ -1,60 +1,22 @@
 ---
 /**
- * Custom Head component. Composes Starlight's Head with astro-vtbot for SPA
- * navigation polish.
- *
- * Vtbot's `Base` includes the ClientRouter + ReplacementSwap + StarlightConnector
- * — `ReplacementSwap rootAttributesToPreserve="data-theme"` keeps the active
- * theme across page swaps, so we no longer need a hand-rolled
- * `astro:after-swap` listener for theme persistence.
- *
- * Removed scripts (per the reinit-glue audit, see git history):
- * - Theme persistence on `astro:after-swap` — vtbot Base preserves data-theme.
- * - HMR `astro:page-load` re-dispatch — Astro 6's HMR fires page-load itself.
- * - Pagefind reinit + search-suggestions injection — the suggestion-list CSS
- *   was deleted with the retro stylesheets in Phase 2; reinit becomes useful
- *   again when Search override is redesigned in Phase 3.x.
- * - Table-scroll wrapper — its CSS was deleted in Phase 2; revisit when
- *   MarkdownContent override is redesigned in Phase 3.x.
- * - GPU/WebGL detection global — moved to `useGPUSupport` hook used by
- *   HeroGame.tsx + ShowcaseGame.tsx with proper "WebGPU/WebGL2 required"
- *   fallback UI instead of `return null`.
+ * Custom Head component. Composes Starlight's Head with Astro's native
+ * ClientRouter for SPA navigation. The previous astro-vtbot integration
+ * was dropped — its `_vtbot_inspection_chamber.js` runtime + per-page
+ * StarlightConnector overhead wasn't earning its keep (no measured perf
+ * win, audible cost on long-DOM pages). The only vtbot features we
+ * relied on were the ClientRouter wrapper (replaced by native) and the
+ * `retainCurrentPageMarker` cosmetic — sidebar state preservation is
+ * already handled by `motion.ts` via `astro:before-swap` (independent
+ * of vtbot), and the masonry-tile ↔ iframe-preview morph is native
+ * `view-transition-name`-driven.
  */
 import StarlightHead from '@astrojs/starlight/components/Head.astro';
-import VtBotBase from 'astro-vtbot/components/starlight/Base.astro';
-import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
+import { ClientRouter } from 'astro:transitions';
 ---
 
-{/*
-  vtbot configuration:
-
-  - VtBotBase WITHOUT `replaceSidebarContent` — the default behavior
-    is to preserve the sidebar across navigation (only the current-
-    page marker updates). Setting `replaceSidebarContent` swaps the
-    full sidebar DOM and resets scroll position; we don't want that.
-    Default = sidebar feels persistent.
-
-  - PageOrder gives directional morphs based on sidebar order
-    (forward/backward feel for SPA navigation).
-
-  - ProgressBar replaces the previous LoadingIndicator — a thin top
-    bar via swup is a cleaner read than an icon spinner with the
-    failure modes the FL favicon exposed (intrinsic SVG size, click-
-    eating). Styled below to track our gem accents.
-
-  - AutoNameSelected was deliberately removed: its default
-    positional naming (`vtbot-hx-0/1/2…`) cross-morphs the first h1
-    of one page into the first h1 of the next page regardless of
-    semantic relationship — this is the "headers fly around
-    changing text" feel. The browser's default page cross-fade is
-    a cleaner read than fake morphs across unrelated content. Use
-    explicit `view-transition-name` on specific elements that
-    legitimately persist across pages (see GalleryTile ↔
-    ExamplePreview pairing for an example).
-*/}
 <StarlightHead {...Astro.props}><slot /></StarlightHead>
-<VtBotBase retainCurrentPageMarker />
-<PageOrder />
+<ClientRouter />
 
 {/* Custom top-edge progress bar — replaces vtbot's <ProgressBar/>
     which depended on an unpkg-hosted swup plugin. Bar gradient is

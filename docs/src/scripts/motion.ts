@@ -70,6 +70,14 @@ interface MotionTarget {
      */
     lastScene: number
     /**
+     * Timestamp (performance.now ms) of the most recent ambient
+     * `--scene-angle` write to this target. Used to throttle ambient
+     * writes to ~10 Hz (SCENE_ANGLE_THROTTLE_MS) regardless of the
+     * RAF cadence. Cursor-driven writes (mx/my/light-angle/tilt) are
+     * unaffected — they stay at 60 Hz for smooth hover response.
+     */
+    lastSceneTime: number
+    /**
      * Whether this target is currently in the viewport. Set by an
      * IntersectionObserver. When false, the per-target write block
      * skips entirely — offscreen rim-bearing elements pay zero motion
@@ -92,6 +100,15 @@ const EPS_SCALAR = 0.005  // 0..1 scalars (--mouse-active)
  * across all targets is much cheaper than N observers.
  */
 let visObs: IntersectionObserver | null = null
+
+/**
+ * Number of currently-visible (subscribed) targets. The RAF loop
+ * parks itself when this hits zero — no point computing scene-angle
+ * or walking the targets array when nothing on the page is going to
+ * consume it. The observer callback below maintains the count; the
+ * frame loop checks it at the bottom of each tick.
+ */
+let visibleCount = 0
 
 /**
  * Most recent scene-angle computed by the frame loop. Stored once;
@@ -166,19 +183,51 @@ function registerTarget(el: HTMLElement) {
         lastTiltY: NaN,
         lastEffective: NaN,
         lastScene: NaN,
-        // Default to visible so the first paint isn't a stale-pose
-        // initial frame; the IntersectionObserver corrects on first
-        // observation (which fires synchronously after .observe()).
-        visible: true,
+        lastSceneTime: 0,
+        // Start un-subscribed; the IntersectionObserver below adds
+        // us to `visibleCount` on first observation. Brief flash of
+        // a stale-pose initial frame is acceptable trade — counting
+        // un-observed-but-soon-to-be-visible targets toward the
+        // subscription would defeat the park-when-no-subscribers
+        // gate.
+        visible: false,
     }
     targets.push(t)
     if (visObs) visObs.observe(el)
 
     const setTarget = (e: PointerEvent) => {
         const r = el.getBoundingClientRect()
+        /* 0×0 guard. Some opt-in motion targets live inside collapsed
+         * containers (e.g. `.music-btn.u-holo` inside the header
+         * dropdown). A stray pointermove during animate-in / animate-
+         * out can land on the (0, 0) bounding rect of a 0-sized
+         * button. Without this guard, two bad things happen:
+         *
+         *   1. `(clientX - r.left) / r.width` divides by zero,
+         *      producing Infinity / NaN cursor coords that flow into
+         *      --mx / --my writes downstream.
+         *   2. We promote `t.visible = true` and bump `visibleCount`,
+         *      which keeps frameClock subscribed forever — the
+         *      IntersectionObserver only fires on STATE CHANGES, so
+         *      a target that stays 0×0 will never trigger an entry
+         *      to flip visibility back to false, and motion.ts ticks
+         *      the document's paint pipeline indefinitely.
+         *
+         * A 0-sized target can't be hovered meaningfully anyway. Bail
+         * — when it actually has dimensions the IntersectionObserver
+         * callback will pick it up via the normal path. */
+        if (r.width <= 0 || r.height <= 0) return
         t.cx = (e.clientX - r.left) / r.width
         t.cy = (e.clientY - r.top) / r.height
         t.hovering = true
+        // Pointer events imply the target is on-screen even if the
+        // IntersectionObserver hasn't fired its first callback yet.
+        // Promote to "subscribed" so the RAF runs.
+        if (!t.visible) {
+            t.visible = true
+            visibleCount++
+        }
+        ensureRunning()
     }
     el.addEventListener('pointerenter', setTarget)
     el.addEventListener('pointermove', setTarget)
@@ -199,8 +248,29 @@ function registerTarget(el: HTMLElement) {
     }
 }
 
+import { getFrameClock } from './frameClock'
+
 let lastFrame = 0
-let running = false
+/**
+ * Unsubscribe handle for the frameClock subscription. `null` when not
+ * subscribed (idle). Set when at least one motion target is visible;
+ * cleared when the last one scrolls offscreen.
+ */
+let frameUnsub: (() => void) | null = null
+
+/**
+ * Minimum interval (ms) between ambient `--scene-angle` writes per
+ * target. The RAF still fires at 60 Hz so cursor-driven motion stays
+ * smooth, but the ambient drift writes are clamped to ~10 Hz. The
+ * scene cycle is a 60-second ping-pong (~2°/sec), so 100ms cadence
+ * means each write moves the angle by ~0.2° — still imperceptible
+ * as a step, still smooth-looking as a gradient transition. Critical
+ * Safari fix: each `setProperty` on a custom property walks the
+ * cascade for any element that reads it; throttling these writes is
+ * the highest-impact per-frame win without freezing the breathing
+ * effect the design depends on.
+ */
+const SCENE_ANGLE_THROTTLE_MS = 100
 
 /* GLOBAL DAY-CYCLE STATE — the scene light arcs across the page like a
  * sun moving across the sky, ping-ponging. Perlin noise modulates the
@@ -226,7 +296,6 @@ const ARC_MAX_DEG = 150 // sunrise-side: bright upper-left with slight horizon l
 const CYCLE_BASE_RATE = 1 / 30 // 1 unit / 30s → full ping-pong in 60s nominal
 
 function frame(now: number) {
-    if (!running) return
     const dt = lastFrame ? Math.min(50, now - lastFrame) : 16
     lastFrame = now
     const time = now / 1000
@@ -273,19 +342,23 @@ function frame(now: number) {
 
         /* PER-TARGET SCENE-ANGLE — replaces the prior :root broadcast.
          * Each visible rim-bearing surface gets the global scene-angle
-         * written DIRECTLY on it, gated on value-change. Combined with
-         * contain:paint per element, this means a scene-angle tick
-         * invalidates only the on-screen rim layer, not the entire
-         * cascade. */
+         * written DIRECTLY on it, gated on value-change AND a 100ms
+         * minimum interval. Combined with contain:paint per element,
+         * a scene-angle tick invalidates only the on-screen rim layer,
+         * not the entire cascade — and the time-throttle caps ambient
+         * cascade-walks at 10 Hz (cursor-driven motion below still
+         * writes at full 60 Hz when hovering). */
         if (
-            Number.isNaN(t.lastScene) ||
-            Math.abs(currentSceneAngle - t.lastScene) >= EPS_DEG
+            (Number.isNaN(t.lastScene) ||
+                Math.abs(currentSceneAngle - t.lastScene) >= EPS_DEG) &&
+            now - t.lastSceneTime >= SCENE_ANGLE_THROTTLE_MS
         ) {
             t.el.style.setProperty(
                 '--scene-angle',
                 `${currentSceneAngle.toFixed(1)}deg`,
             )
             t.lastScene = currentSceneAngle
+            t.lastSceneTime = now
         }
 
         /* MOUSE LIGHT — cursor-driven with inertia. When cursor is over
@@ -435,7 +508,16 @@ function frame(now: number) {
         }
     }
 
-    requestAnimationFrame(frame)
+    /* PARK-WHEN-NO-SUBSCRIBERS — when the last visible target scrolls
+     * offscreen, drop out of the frameClock. The shared scheduler will
+     * stop firing rAFs entirely when its subs.size hits zero across
+     * every consumer (us + MusicPlayer FFT + any future ones). */
+    if (visibleCount === 0) {
+        if (frameUnsub) {
+            frameUnsub()
+            frameUnsub = null
+        }
+    }
 }
 
 function startLoop() {
@@ -445,9 +527,18 @@ function startLoop() {
         root.setProperty('--scene-angle', '135deg')
         return
     }
-    if (running) return
-    running = true
-    requestAnimationFrame(frame)
+    if (frameUnsub) return
+    frameUnsub = getFrameClock().subscribe(frame, "motion.ts")
+}
+
+/**
+ * Resume the rAF subscription if a motion target just became visible
+ * after we'd unsubscribed. No-op when already subscribed.
+ */
+function ensureRunning() {
+    if (REDUCED_MOTION || frameUnsub || visibleCount === 0) return
+    lastFrame = 0 // force dt = 16 on first frame, no time-jump from park gap
+    frameUnsub = getFrameClock().subscribe(frame, "motion.ts")
 }
 
 function initMotion() {
@@ -463,7 +554,34 @@ function initMotion() {
             entries => {
                 for (const e of entries) {
                     const t = targets.find(t => t.el === e.target)
-                    if (t) t.visible = e.isIntersecting
+                    if (!t) continue
+                    const wasVisible = t.visible
+                    /* `isIntersecting` alone reports TRUE for 0×0 elements
+                     * pinned at the viewport origin (e.g. a header dropdown
+                     * button collapsed via height:0 / scale(0) — still
+                     * `display: flex; visibility: visible` so the IO sees
+                     * it). That false-positive subscribes motion.ts to
+                     * frameClock on pages whose ONLY holo target is a
+                     * always-collapsed nav affordance — and motion.ts
+                     * then writes `--scene-angle` to that 0×0 button
+                     * every frame, ticking the document's paint pipeline
+                     * even though no human can see it.
+                     *
+                     * Real-visible requires both `isIntersecting` AND a
+                     * non-zero intersection rect. `intersectionRect` is
+                     * the actual visible region of the target in the
+                     * root viewport; for a 0-size element it's 0×0
+                     * regardless of position. */
+                    const ir = e.intersectionRect
+                    t.visible = e.isIntersecting && ir.width > 0 && ir.height > 0
+                    if (t.visible && !wasVisible) {
+                        visibleCount++
+                        // Subscription: target just entered view —
+                        // resume RAF if the loop had parked.
+                        ensureRunning()
+                    } else if (!t.visible && wasVisible) {
+                        visibleCount = Math.max(0, visibleCount - 1)
+                    }
                 }
             },
             { rootMargin: '100px' },
@@ -587,6 +705,15 @@ if (typeof document !== 'undefined') {
             visObs = null
         }
         targets.length = 0
+        visibleCount = 0
+        // Drop our frameClock subscription — `initMotion()` will rejoin
+        // only if the new page has visible motion consumers. Without
+        // this, our `frame()` callback would keep ticking across nav
+        // even when the new page has zero motion targets.
+        if (frameUnsub) {
+            frameUnsub()
+            frameUnsub = null
+        }
         initMotion()
     })
     /* HMR cleanup — without this, every dev save re-evaluates this
@@ -598,12 +725,16 @@ if (typeof document !== 'undefined') {
      * observer so the new module instance starts clean. */
     if (import.meta.hot) {
         import.meta.hot.dispose(() => {
-            running = false
+            if (frameUnsub) {
+                frameUnsub()
+                frameUnsub = null
+            }
             if (visObs) {
                 visObs.disconnect()
                 visObs = null
             }
             targets.length = 0
+            visibleCount = 0
         })
     }
     // Pre-empt the sidebar <details> state flash: apply stored state
@@ -611,6 +742,37 @@ if (typeof document !== 'undefined') {
     // swap, so the new DOM paints in the user's preferred state.
     document.addEventListener('astro:before-swap', (e) => {
         const ev = e as Event & { newDocument?: Document }
-        if (ev.newDocument) applyStoredDetailsState(ev.newDocument)
+        if (!ev.newDocument) return
+        applyStoredDetailsState(ev.newDocument)
+    })
+
+    /* Sidebar scroll preservation across navigation. `.container-
+     * sidebar` is the `overflow: auto` element inside Sidebar.astro.
+     * Setting scrollTop on the new document's element BEFORE swap
+     * commits doesn't stick — the element isn't in a layout context
+     * yet, so scrollTop assignments are dropped silently. Defer the
+     * write until `astro:after-swap`, when the new sidebar is live
+     * and has computed dimensions. We capture the old scrollTop in
+     * `astro:before-swap` (where the OLD document is still live) and
+     * apply it in `astro:after-swap` (where the NEW document is
+     * live). Also: if the active sidebar entry would be scrolled out
+     * of view after restoration, scroll it into view instead — covers
+     * the case of navigating to a deep entry from a shallow page. */
+    let pendingSidebarScrollTop = 0
+    document.addEventListener('astro:before-swap', () => {
+        const cur = document.querySelector<HTMLElement>('.container-sidebar')
+        pendingSidebarScrollTop = cur?.scrollTop ?? 0
+    })
+    document.addEventListener('astro:after-swap', () => {
+        const next = document.querySelector<HTMLElement>('.container-sidebar')
+        if (!next) return
+        next.scrollTop = pendingSidebarScrollTop
+        const active = next.querySelector<HTMLElement>('[aria-current="page"]')
+        if (!active) return
+        const containerRect = next.getBoundingClientRect()
+        const activeRect = active.getBoundingClientRect()
+        if (activeRect.top < containerRect.top || activeRect.bottom > containerRect.bottom) {
+            active.scrollIntoView({ block: 'center', behavior: 'auto' })
+        }
     })
 }

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "echo '\\n  ➜  Dev server: http://localhost:5173\\n' && turbo run dev --filter=docs --filter=examples",
+    "dev": "echo '\\n  ➜  Dev server: http://localhost:4321\\n' && turbo run dev --filter=docs --filter=examples",
     "typecheck": "turbo run typecheck --filter='*'",
     "lint": "eslint packages/*/src minis/*/src",
     "lint:fix": "eslint packages/*/src minis/*/src --fix",
@@ -52,6 +52,7 @@
       "@three-flatland/presets": "workspace:*",
       "@three-flatland/skia": "workspace:*",
       "@three-flatland/skills": "workspace:*",
+      "@three-flatland/slug": "workspace:*",
       "@three-flatland/tweakpane": "workspace:*",
       "yaml": "^2.8.4"
     }

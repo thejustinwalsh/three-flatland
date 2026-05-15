@@ -1,5 +1,5 @@
 import { defineConfig } from 'astro/config';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import UnoCSS from 'unocss/astro';
 import Icons from 'starlight-plugin-icons';
@@ -7,16 +7,25 @@ import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
 import starlightHeadingBadges from 'starlight-heading-badges';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import starlightTheme from 'starlight-theme';
-import { viewTransitions as starlightVtbot } from 'astro-vtbot/starlight-view-transitions';
 import react from '@astrojs/react';
 import { watchExamples } from './vite-plugins/watch-examples.js';
 import { copyExamples } from './vite-plugins/copy-examples.js';
 import { rehypeExternalLinks } from './rehype-plugins/external-links.js';
 import stripIndexLinks from './typedoc-plugins/strip-index-links.mjs';
 
-// Read examples server port from microfrontends.json (single source of truth)
-const mfe = JSON.parse(readFileSync('../microfrontends.json', 'utf-8'));
-const examplesPort = mfe.applications.examples.development.local.port;
+// Dev-server topology:
+//   - Docs (this app) is the authoritative host on Vite's default
+//     dev port (:5173, auto-falls-through if taken).
+//   - Examples MPA runs at :5174 (overridable via EXAMPLES_PORT env).
+//   - The iframe in `ExampleSplitView.astro` points DIRECTLY at the
+//     examples server (cross-origin in dev). Safari's cross-origin
+//     iframe rAF throttle requires a one-time user click inside the
+//     iframe to release 60fps — accepted trade-off; an attempted
+//     same-origin proxy hit unworkable Vite-internal-path collisions
+//     between the two Vite instances (/@vite/client, /@react-refresh,
+//     /node_modules/.vite/deps/...) and was abandoned.
+const EXAMPLES_PORT = Number(process.env.EXAMPLES_PORT) || 5174;
+const examplesPort = EXAMPLES_PORT;
 
 // Auto-generate vanilla→three redirects from filesystem so adding/removing
 // examples doesn't require updating this config.
@@ -38,6 +47,11 @@ export default defineConfig({
   base: '/three-flatland/',
   trailingSlash: 'always',
   redirects: vanillaRedirects,
+  // Off by default for everyone; summon for diagnostics with
+  //   ASTRO_DEV_TOOLBAR=1 pnpm dev
+  // The Audit app walks the DOM via getBoundingClientRect on scroll/
+  // resize/interaction — fine occasionally, expensive as a default.
+  devToolbar: { enabled: process.env.ASTRO_DEV_TOOLBAR === '1' },
   integrations: [
     UnoCSS({ injectReset: false }),
     ...Icons({
@@ -66,7 +80,12 @@ export default defineConfig({
         // the SiteFooter's brand tagline (falls back via config.description).
         description: 'Composable 2D library for three.js. Sprites, tilemaps, batching, and TSL effects, for three.js or react-three-fiber.',
         logo: {
-          src: './src/assets/icon.svg',
+          // Pre-baked 64×64 raster (2× retina for the 32×32 header
+          // render). The source SVG (`icon.svg`, 167 KB, 1864 `<rect>`
+          // pixel-art elements) is still authoritative — re-bake with
+          // `node docs/scripts/bake-brand-icon.mjs` after edits.
+          // BrandIcon / BrandAsset / favicon still use the SVG.
+          src: './src/assets/icon.png',
         },
         favicon: '/favicon.svg',
         head: [
@@ -286,11 +305,6 @@ export default defineConfig({
             // small file without the full TypeDoc-generated API reference.
             exclude: ['api/**', 'showcases/**', 'llm-prompts'],
           }),
-          // Vtbot Starlight integration — wires the route middleware + CSS for
-          // sidebar-aware view-transition direction (the bag-of-tricks runtime).
-          // Components composed in Head.astro: VtBotBase, PageOrder,
-          // LoadingIndicator, AutoNameSelected.
-          starlightVtbot(),
           // Theme last so its component overrides win over earlier plugins.
           // Provides Hero, SiteTitle, ThemeSelect, SocialIcons, PageFrame, …
           // and registers starlight-theme/styles/{layers,theme,base}.css.
@@ -325,9 +339,8 @@ export default defineConfig({
         ],
         components: {
           // Docs-side overrides for site-specific concerns the theme can't own:
-          // `Head` carries our vtbot wiring + remaining reinit-glue scripts
-          // (theme persistence, pagefind reinit, table-scroll enhancement).
-          // Site-specific salvage migrates here from the deleted styles/*.css.
+          // `Head` carries the native ClientRouter + the progress-bar
+          // listener + meta/OG tags. Site-specific salvage migrates here.
           Head: './src/components/Head.astro',
         },
         customCss: [
@@ -378,6 +391,7 @@ export default defineConfig({
               { label: 'Pass Effects', slug: 'guides/pass-effects' },
               { label: 'Tilemaps', slug: 'guides/tilemaps' },
               { label: 'Skia', slug: 'guides/skia' },
+              { label: 'Slug Text', slug: 'guides/slug-text' },
               { label: 'Debug Controls', slug: 'guides/debug-controls' },
             ],
           },

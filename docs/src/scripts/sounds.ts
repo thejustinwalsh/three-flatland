@@ -246,7 +246,26 @@ export function setupSoundEvents(): void {
     let lastHoverTime = 0
     const HOVER_DEBOUNCE = 80
 
+    /* Hot-path throttle. `mouseover` fires on every cursor boundary
+     * crossing of every element — on pages with deeply-nested DOM
+     * (e.g. expressive-code's per-syntax-token spans), this hits
+     * thousands of times per second. Each call would otherwise run
+     * three `closest()` walks up the tree (`[data-sound]`, `button`,
+     * `a[href]`), burning CPU per mousemove with nothing audible to
+     * show for it (sound is debounced at 80ms anyway).
+     *
+     * Gate the handler at ~30ms — that's still well below the 80ms
+     * audible debounce, so no sound is ever missed; we just stop
+     * walking the DOM 30x for the same audible result. Mouseout uses
+     * the same gate so hoveredElements doesn't get partially-stale,
+     * and we keep them in lockstep. */
+    const HANDLER_THROTTLE_MS = 30
+    let lastHandlerTime = 0
+
     document.addEventListener('mouseover', (e) => {
+        const now = Date.now()
+        if (now - lastHandlerTime < HANDLER_THROTTLE_MS) return
+        lastHandlerTime = now
         const target = e.target as HTMLElement
         if (!target) return
         const result = findSoundElement(target)
@@ -254,7 +273,6 @@ export function setupSoundEvents(): void {
         const { element, sound } = result
         if (hoveredElements.has(element)) return
         hoveredElements.add(element)
-        const now = Date.now()
         if (now - lastHoverTime < HOVER_DEBOUNCE) return
         lastHoverTime = now
         if (sound === 'card') playCardHover()
@@ -262,6 +280,7 @@ export function setupSoundEvents(): void {
     })
 
     document.addEventListener('mouseout', (e) => {
+        if (Date.now() - lastHandlerTime < HANDLER_THROTTLE_MS) return
         const target = e.target as HTMLElement
         const relatedTarget = e.relatedTarget as HTMLElement | null
         if (!target) return

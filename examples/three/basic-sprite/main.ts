@@ -1,16 +1,18 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Color } from 'three'
+import { Scene, OrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland'
 import { createPane } from '@three-flatland/tweakpane'
+import { Color } from 'three'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
+// HMR cleanup — stop the old animate loop + dispose the old renderer
+// when Vite reloads this module. Without this, every dev save stacks a
+// fresh renderer on top of the previous one's still-running rAF.
+let rafId = 0
+let activeRenderer: WebGPURenderer | null = null
+
 async function main() {
-  // Gem-tinted backdrop matching the masonry tile poster. The TSL
-  // gradient paints the entire viewport via scene.backgroundNode (L2);
-  // no separate L1 clear color so there's no flash of color before
-  // the shader compiles — body bg (#16191e, see index.html) shows
-  // through any uncovered pixels.
   const scene = new Scene()
   ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
@@ -29,18 +31,16 @@ async function main() {
 
   // WebGPU Renderer (required for TSL materials)
   const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  // Wait for renderer to initialize
   await renderer.init()
 
-  // Load the flatland logo (uses 'pixel-art' preset by default with proper colorSpace)
   const texture = await TextureLoader.load('./icon.svg')
 
-  // Create sprite with explicit size (SVGs may not have proper dimensions)
   const sprite = new Sprite2D({
     texture,
     anchor: [0.5, 0.5],
@@ -48,9 +48,6 @@ async function main() {
   sprite.position.set(0, 0, 0)
   scene.add(sprite)
 
-  // Tweakpane UI — pass `scene` so draw/triangle stats are auto-wired via
-  // `scene.onAfterRender`. `stats.begin()` / `stats.end()` still need to be
-  // called manually in the animation loop for the FPS/MS graph.
   const { pane, stats } = createPane({ scene })
 
   const params = {
@@ -76,35 +73,25 @@ async function main() {
 
   sprite.scale.set(params.baseScale, params.baseScale, 1)
 
-  // Interaction state
   let isHovered = false
   let isPressed = false
   let currentScale = params.baseScale
 
-  // Colors for tint (only hover effect)
   const normalTint = new Color(1, 1, 1)
   const hoverTint = new Color(params.hoverTint)
 
-  // Update hoverTint when tweakpane changes it
   colorFolder.on('change', () => {
     hoverTint.set(params.hoverTint)
   })
 
-  // Helper to check if mouse is over sprite
   function isMouseOverSprite(mouseX: number, mouseY: number): boolean {
-    // Convert mouse coords to normalized device coords
     const rect = renderer.domElement.getBoundingClientRect()
     const x = ((mouseX - rect.left) / rect.width) * 2 - 1
     const y = -((mouseY - rect.top) / rect.height) * 2 + 1
-
-    // Convert to world coords (need to recalculate aspect for resize)
     const currentAspect = window.innerWidth / window.innerHeight
     const worldX = (x * frustumSize * currentAspect) / 2
     const worldY = (y * frustumSize) / 2
-
-    // Get sprite bounds (currentScale is the actual size in world units)
     const halfSize = currentScale / 2
-
     return (
       worldX >= sprite.position.x - halfSize &&
       worldX <= sprite.position.x + halfSize &&
@@ -113,7 +100,6 @@ async function main() {
     )
   }
 
-  // Mouse event handlers
   renderer.domElement.addEventListener('mousemove', (event) => {
     isHovered = isMouseOverSprite(event.clientX, event.clientY)
     renderer.domElement.style.cursor = isHovered ? 'pointer' : 'default'
@@ -134,7 +120,6 @@ async function main() {
     isPressed = false
   })
 
-  // Handle resize
   window.addEventListener('resize', () => {
     const aspect = window.innerWidth / window.innerHeight
     camera.left = (-frustumSize * aspect) / 2
@@ -145,22 +130,17 @@ async function main() {
     renderer.setSize(window.innerWidth, window.innerHeight)
   })
 
-  // Current tint (lerped each frame)
   const currentTint = new Color(1, 1, 1)
-
-  // Animation loop
   let lastTime = performance.now()
 
   function animate() {
-    requestAnimationFrame(animate)
+    rafId = requestAnimationFrame(animate)
     stats.begin()
 
     const now = performance.now()
-    const deltaMs = now - lastTime
-    const delta = deltaMs / 1000
+    const delta = (now - lastTime) / 1000
     lastTime = now
 
-    // Determine target scale and tint
     const targetScale = isPressed
       ? params.pressedScale
       : isHovered
@@ -168,18 +148,15 @@ async function main() {
         : params.baseScale
     const targetTint = isHovered ? hoverTint : normalTint
 
-    // Lerp scale
     const lerpFactor = Math.min(params.lerpSpeed * delta, 1)
     currentScale = currentScale + (targetScale - currentScale) * lerpFactor
     sprite.scale.set(currentScale, currentScale, 1)
 
-    // Lerp tint (update our tracked tint, then set it)
     currentTint.r += (targetTint.r - currentTint.r) * lerpFactor
     currentTint.g += (targetTint.g - currentTint.g) * lerpFactor
     currentTint.b += (targetTint.b - currentTint.b) * lerpFactor
     sprite.tint = currentTint
 
-    // Slow rotation
     sprite.rotation.z += params.rotationSpeed * delta
 
     renderer.render(scene, camera)
@@ -190,3 +167,17 @@ async function main() {
 }
 
 main()
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    if (activeRenderer) {
+      activeRenderer.dispose?.()
+      activeRenderer.domElement.remove()
+      activeRenderer = null
+    }
+  })
+}

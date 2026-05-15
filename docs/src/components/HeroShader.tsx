@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { getFrameClock } from '../scripts/frameClock'
 
 /**
  * HeroShader — WebGL2 fragment-shader hero background. Animated
@@ -542,7 +543,10 @@ void main() {
      * from a long-tail accumulated time value). */
     let pressTime = 0
     let last = performance.now()
-    let raf = 0
+    /* frameClock subscription — null when parked. The shared rAF
+     * scheduler coordinates with motion.ts + MusicPlayer FFT so all
+     * parent-page per-frame work rides one rAF chain. */
+    let frameUnsub: (() => void) | null = null
     let alive = true
     let visible = true // toggled by IntersectionObserver below
     const start = performance.now()
@@ -633,12 +637,18 @@ void main() {
     gl.useProgram(prog)
 
     function frame() {
-      // Visibility gate: when the hero scrolls off-screen we stop
-      // rescheduling rAFs. Saves the full WebGL paint + JS work per
-      // frame for the rest of the page scroll. WebKit benefits most —
-      // off-screen canvas paint isn't free there. Restart in the IO
-      // callback below.
-      if (!alive || !visible) { raf = 0; return }
+      // Visibility gate: when the hero scrolls off-screen we drop our
+      // frameClock subscription entirely. Saves the full WebGL paint +
+      // JS work per frame for the rest of the page scroll. WebKit
+      // benefits most — off-screen canvas paint isn't free there.
+      // Restart in the IO callback below.
+      if (!alive || !visible) {
+        if (frameUnsub) {
+          frameUnsub()
+          frameUnsub = null
+        }
+        return
+      }
       const now = performance.now()
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
@@ -672,9 +682,8 @@ void main() {
       gl.uniform1f(uSceneAngle, readSceneAngleRad())
       gl.uniform1f(uPixelSize, pixelSizeDev)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
-      raf = requestAnimationFrame(frame)
     }
-    raf = requestAnimationFrame(frame)
+    frameUnsub = getFrameClock().subscribe(frame, "HeroShader")
 
     // Visibility gate via IntersectionObserver — does TWO things when
     // the hero scrolls off-screen:
@@ -696,9 +705,9 @@ void main() {
         const wasVisible = visible
         visible = e.isIntersecting
         cvs.style.visibility = visible ? '' : 'hidden'
-        if (visible && !wasVisible && alive && raf === 0) {
+        if (visible && !wasVisible && alive && !frameUnsub) {
           last = performance.now()
-          raf = requestAnimationFrame(frame)
+          frameUnsub = getFrameClock().subscribe(frame, "HeroShader")
         }
       }
     }, { rootMargin: '100px' })
@@ -706,7 +715,10 @@ void main() {
 
     return () => {
       alive = false
-      cancelAnimationFrame(raf)
+      if (frameUnsub) {
+        frameUnsub()
+        frameUnsub = null
+      }
       io.disconnect()
       themeUnsubscribe()
       window.removeEventListener('resize', resize)

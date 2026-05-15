@@ -37,7 +37,10 @@ if (image) {
 ---
 
 <ContainerSection>
-    <div class="hero hero-enter" data-layout={heroLayout} data-has-image={hasImage ? '' : undefined}>
+    {/* `<section>` (not <div>) so Safari Reader Mode + a11y read the
+       hero as a page-intro region, not anonymous content. `aria-
+       labelledby` points at the existing h1 inside. */}
+    <section class="hero hero-enter" data-layout={heroLayout} data-has-image={hasImage ? '' : undefined} aria-labelledby={PAGE_TITLE_ID}>
         {
             hasImage && (
                 <div class="hero-image" data-stagger="3">
@@ -102,7 +105,7 @@ if (image) {
                 }
             </div>
         </div>
-    </div>
+    </section>
 </ContainerSection>
 
 <style>

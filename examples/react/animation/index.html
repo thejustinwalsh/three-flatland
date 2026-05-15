@@ -15,6 +15,15 @@
         width: 100vw;
         height: 100vh;
       }
+      canvas {
+        display: block;
+        /* Layer-promote so Safari gives the canvas its own GPU layer
+           — without this, 60fps canvas paints co-paint with adjacent
+           DOM (Tweakpane, overlays) and drop the iframe rAF to ~30. */
+        transform: translateZ(0);
+        will-change: transform;
+        isolation: isolate;
+      }
     </style>
   </head>
   <body>
