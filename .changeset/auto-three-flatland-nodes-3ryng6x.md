@@ -5,28 +5,17 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## Shadow Tracing
+**2D lighting TSL nodes (new package)**
+- `shadowSDF2D(surfacePos, lightPos, sdfTexture, worldSize, worldOffset, opts)` — sphere-traces a signed SDF texture to produce a `[0,1]` shadow value; Inigo-Quilez running-min penumbra for soft edges; 32-tap default, compile-time unrolled for small counts
+- `lit()`, `normalFromHeight()`, `normalFromSprite()` — diffuse lighting, height-map normal derivation, and per-fragment alpha-gradient normal generation helpers
+- `lights.ts` — TSL helpers for sampling the Forward+ `LightStore` DataTexture (point, directional, ambient, spot)
 
-- `shadowSDF2D` TSL helper: sphere-traces from a fragment toward a light through an SDF texture, returning a `[0, 1]` shadow value with Inigo-Quilez-style running-min penumbra for soft edges
-- `shadowStartOffset` tunable uniform (default `1.5`) replaces a hardcoded 40-unit escape constant; signed SDF makes the smaller default safe since `sdf < 0` detects "ray started inside a caster" without guessing at sprite scale
-- Distinct `shadowBias` (IQ hit epsilon) and `shadowStartOffset` (self-shadow escape) — neither masks the other
+**shadowSDF2D improvements**
+- Tunable `shadowStartOffset` uniform (replaces hardcoded `escapeOffset = 40`); splits semantics from `shadowBias` — bias is the IQ hit epsilon, startOffset handles self-shadow escape
+- Default raised back to 40 after signed-SDF landed (cleaner `sdf < 0` self-shadow detection eliminates the need for conservative guessing, but large-sprite demos still need clearance)
+- Penumbra math corrected
 
-## Signed SDF
+**Signed SDF consumption**
+- `shadowSDF2D` uses `sdf < 0` for at-surface self-shadow detection (exact, no epsilon approximation) and catches all grazing hits in the same `< eps` loop check
 
-- `SDFGenerator` runs two JFA chains: one seeded on occluder texels (outside distance) and one on empty texels (inside distance); final pass combines as `signedDist = distOutside - distInside`
-- Fragments inside a caster see negative distance; self-shadow detection uses `sdf < 0` instead of an epsilon approximation
-- JFA packed into a single ping-pong chain (one set of ping/pong textures shared for both chains) after the initial dual-chain implementation
-- Debug buffer names updated: `sdf.jfaPing/PongOutside` and `sdf.jfaPing/PongInside`
-
-## Lighting System
-
-- `shadowSDF2D` consumed in `DefaultLightEffect` / `DirectLightEffect` via build context (SDF texture + world bounds threaded through)
-- `LightEffect` system with trait registry and attach helpers for React integration
-- `lit`, `normalFromSprite`, `normalFromHeight`, `shadows` node modules establishing the core lighting node graph
-
-## Cleanup
-
-- Unused lighting providers (`AutoNormalProvider`, `TileNormalProvider`, `DirectLightEffect`) and stale loaders removed
-- `normalFromSprite` updated for new interleaved attribute layout
-
-Adds `shadowSDF2D` soft-shadow tracing and signed SDF generation as production-ready TSL nodes, replacing the earlier stub `shadow = float(1.0)` in the presets lighting effects.
+2D lighting TSL node library covering shadows, normals, and light sampling for the Flatland lighting pipeline.
