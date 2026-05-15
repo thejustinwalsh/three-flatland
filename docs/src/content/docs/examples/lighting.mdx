@@ -1,42 +1,21 @@
 ---
 title: 2D Lighting
 description: Dynamic sprite lighting with draggable point lights and toggleable presets.
+template: splash
+sort: 10
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
-import ExamplePreview from '../../../components/ExamplePreview';
-import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
-import ExampleTabs from '../../../components/ExampleTabs.astro';
-import { loadExample } from '../../../utils/loadExample';
+import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
+import { loadExample } from '../../../utils/loadExample'
 
-export const threeFiles = loadExample('three', 'lighting');
-export const reactFiles = loadExample('react', 'lighting');
+export const threeFiles = loadExample('three', 'lighting')
+export const reactFiles = loadExample('react', 'lighting')
 
-<ExampleTabs>
-<Tabs>
-  <TabItem label="Preview" icon="rocket">
-    <ExamplePreview client:load type="three" name="lighting" />
-  </TabItem>
-  <TabItem label="Three.js" icon="seti:javascript">
-    <StackBlitzEmbed
-      client:load
-      title="2D Lighting - Three.js"
-      files={threeFiles}
-      openFile="main.ts"
-      height={600}
-    />
-  </TabItem>
-  <TabItem label="React" icon="seti:react">
-    <StackBlitzEmbed
-      client:load
-      title="2D Lighting - React"
-      files={reactFiles}
-      openFile="App.tsx"
-      height={600}
-    />
-  </TabItem>
-</Tabs>
-</ExampleTabs>
+<ExampleDetailLayout
+  slug="lighting"
+  threeFiles={threeFiles}
+  reactFiles={reactFiles}
+>
 
 ## Interactive Lighting Demo
 
@@ -144,8 +123,10 @@ extend({ Flatland, Sprite2D, Light2D, DefaultLightEffect, DirectLightEffect, Sim
 </flatland>
 ```
 
-## Next Steps
+## Further Reading
 
-- [2D Lighting Guide](../guides/lighting) — Full reference with all presets
-- [Pass Effects](../examples/pass-effects) — Post-processing after lighting
-- [TSL Nodes](../examples/tsl-nodes) — Per-sprite shader effects
+- [2D Lighting Guide](../../guides/lighting/) — Full reference with all presets
+- [Pass Effects](../pass-effects/) — Post-processing after lighting
+- [TSL Nodes](../tsl-nodes/) — Per-sprite shader effects
+
+</ExampleDetailLayout>
