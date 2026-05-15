@@ -4,6 +4,7 @@ import { gemClearColor } from './GemBackground'
 import { GEM } from './gem'
 import {
   AnimatedSprite2D,
+  Sprite2DMaterial,
   SpriteGroup,
   SpriteSheetLoader,
   TextureLoader,
@@ -201,7 +202,7 @@ async function main() {
   camera.position.z = 100
 
   // SpriteGroup for batching
-  const spriteGroup = new SpriteGroup()
+  const spriteGroup = new SpriteGroup({ maxBatchSize: 32_768 })
   scene.add(spriteGroup)
 
   // Load assets
@@ -294,12 +295,20 @@ async function main() {
 
   function spawnKnight(sheet: SpriteSheet): Knight {
     const margin = sim.knightScale / 2
+    // Opaque alphaTest material enables the GPU depth-test fast path:
+    // the y-sort (zIndex = -y) is resolved by the depth buffer, so the
+    // CPU batchSortSystem can skip this batch entirely.
+    const material = Sprite2DMaterial.getShared({
+      map: sheet.texture,
+      alphaTest: 0.5,
+    })
     const sprite = new AnimatedSprite2D({
       spriteSheet: sheet,
       animationSet: knightAnimations,
       animation: 'idle',
       layer: Layers.ENTITIES,
       anchor: [0.5, 0.5],
+      material,
     })
     sprite.scale.set(sim.knightScale, sim.knightScale, 1)
     const x = boundsLeft + margin + Math.random() * (boundsRight - boundsLeft - margin * 2)
