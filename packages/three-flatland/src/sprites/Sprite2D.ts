@@ -596,15 +596,29 @@ export class Sprite2D extends Mesh {
   /**
    * Set z-index within layer (secondary sort key).
    *
-   * When enrolled in a world, also fires Koota's Changed(SpriteZIndex)
-   * via entity.set() so that `batchSortSystem` can gate its per-frame
-   * sort on which batches actually had zIndex flips.
+   * When enrolled in a world, normally fires Koota's Changed(SpriteZIndex)
+   * via entity.set() so `batchSortSystem` can pick up zIndex flips and
+   * re-sort the affected batch.
+   *
+   * Skips the Koota write entirely when this sprite's material opts into
+   * GPU depth ordering (`alphaTest > 0 && depthWrite`). For that path
+   * `batchSortSystem` would gate-skip the batch anyway — but the gate
+   * lives inside the sort system, so without this short-circuit Koota's
+   * Changed query still has to enumerate every zIndex flip to discover
+   * "nothing to do." On a 12k-sprite y-sorted demo with alphaTest on,
+   * that enumeration was running ~7ms per frame.
+   *
+   * SoA write still happens — `transformSyncSystem` reads `_zIndexArr`
+   * unconditionally and bakes it into the instance matrix, so the GPU
+   * depth test gets the up-to-date Z without any ECS round trip.
    */
   set zIndex(value: number) {
     const prev = this._zIndexArr[this._idx]!
     if (prev === value) return
     this._zIndexArr[this._idx] = value
     if (this._entity) {
+      const mat = this.material
+      if (mat.alphaTest > 0 && mat.depthWrite) return
       this._entity.set(SpriteZIndex, { zIndex: value })
     }
   }
