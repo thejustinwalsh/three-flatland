@@ -1,6 +1,19 @@
 /**
  * End-to-end smoke test for every example in the monorepo.
  *
+ * Probes each example through the **production preview path**:
+ * `http://localhost:4321/three-flatland/examples/{three,react}/<slug>/`.
+ * That URL serves the static artifact copied into `docs/dist/examples/`
+ * by the `copy-examples` vite plugin during `pnpm build`.
+ *
+ * Testing the prod path (not the Vite examples dev server) catches the
+ * regression class where a new example's package isn't wired into
+ * `turbo.json`'s `docs#build.dependsOn` — turbo silently doesn't build
+ * it, `copy-examples` skips the missing `dist/`, and the deployed iframe
+ * URL 404s. The page-navigation failure shows up as "no canvas
+ * mounted," and Playwright's `screenshot: 'only-on-failure'` config
+ * captures the broken page state for diagnosis.
+ *
  * For each example we verify:
  *
  *   - The page loads without any runtime errors.
@@ -16,7 +29,10 @@
  *   - Pixel-art examples have `image-rendering: pixelated` on their
  *     canvas; antialiased examples (`skia`, `slug-text`) do not.
  *
- * Run: `pnpm test:smoke` (starts the dev server automatically).
+ * Prereq: `pnpm build` has been run so `docs/dist/` exists. CI's `smoke`
+ * job builds before this step (see `.github/workflows/ci.yml`).
+ *
+ * Run: `pnpm test:smoke` (starts the preview server automatically).
  */
 
 import { test, expect, type Page } from '@playwright/test'
@@ -173,7 +189,13 @@ test.describe('examples smoke', () => {
       const pageErrors: string[] = []
       page.on('pageerror', (e) => pageErrors.push(e.message))
 
-      await page.goto(`/${spec.path}/`, { waitUntil: 'networkidle' })
+      // `baseURL` is `http://localhost:4321/three-flatland`; examples live
+      // at `${baseURL}/examples/<type>/<slug>/` after `pnpm build` copies
+      // each example's `dist/` into `docs/dist/examples/`. If the URL 404s
+      // (turbo didn't build the example → `copy-examples` skipped it),
+      // none of the per-example assertions below find their targets and
+      // the failure screenshot captures the Astro 404 page.
+      await page.goto(`/examples/${spec.path}/`, { waitUntil: 'networkidle' })
 
       const snapshot = await waitForStats(page)
 
