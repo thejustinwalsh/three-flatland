@@ -4,7 +4,7 @@
 
 ```mermaid
 graph TD
-    PR["Pull Request"] --> CI["CI"]
+    PR["Pull Request"] --> CI["CI (orchestrator)"]
     PR --> Changeset["Generate Changeset"]
     Changeset -->|"pushes .changeset/ files"| PR
 
@@ -15,12 +15,12 @@ graph TD
     Manual["workflow_dispatch"] --> Release
     Manual --> Docs
 
-    subgraph "CI Workflow"
-        Changes["changes (paths-filter)"]
-        Changes --> Build["build (matrix: lts/*, lts/-1)"]
-        Changes --> Smoke["smoke"]
-        Changes --> Size["size (PRs only)"]
-        Build --> Gate["ci-passed"]
+    subgraph "CI orchestration"
+        Changes["changes.yml"]
+        Changes --> Build["build.yml (matrix: lts/*, lts/-1)"]
+        Changes --> Smoke["smoke.yml"]
+        Changes --> Size["size.yml (PRs only)"]
+        Build --> Gate["ci-passed (gate)"]
         Smoke --> Gate
         Size --> Gate
     end
@@ -34,11 +34,25 @@ graph TD
     end
 ```
 
+## Composable Layout
+
+`ci.yml` is a slim orchestrator. The actual work lives in reusable workflows that the orchestrator calls via `uses: ./.github/workflows/<name>.yml`. Each reusable workflow declares `on: workflow_call:` only — they don't trigger directly.
+
+| File | Role | Trigger |
+|---|---|---|
+| `ci.yml` | Orchestrator: paths-filter → build matrix → smoke/size → gate | `push`, `pull_request` |
+| `changes.yml` | dorny/paths-filter; emits `code` / `examples` / `docs` / `ci` bucket outputs | `workflow_call` |
+| `build.yml` | Build + typecheck + lint + test + skia test (single node version, takes `node-version` + `node-tag` inputs) | `workflow_call` |
+| `smoke.yml` | Playwright smoke tests against built docs site | `workflow_call` |
+| `size.yml` | Bundle size diff via size-limit; comments on PR | `workflow_call` |
+
+The matrix lives at the orchestrator layer (`ci.yml`) — `build.yml` is single-node and reusable. Release could call it directly for a clean publish build if we ever want to dedupe `release.yml`.
+
 ## Repository Ruleset
 
 Branch protection is a **repository ruleset** with a single required status check: **`CI passed`** (the `ci-passed` job in `ci.yml`). That job runs after `changes`, `build`, `smoke`, and `size`, and succeeds when each upstream job is either `success` or `skipped` — only `failure` or `cancelled` makes it fail.
 
-This means doc-only or meta-only PRs (where the build / smoke / size jobs are skipped via paths-filter gating) still produce a passing `CI passed` check and can merge. Code-changing PRs wait for the real jobs to complete before `CI passed` resolves.
+Doc-only or meta-only PRs (where build / smoke / size are skipped via paths-filter gating) still produce a passing `CI passed` check and can merge. Code-changing PRs wait for the real jobs to complete before `CI passed` resolves.
 
 > **Ruleset name:** `Main Branch CI` — manage at Settings > Rules > Rulesets
 
@@ -46,14 +60,14 @@ This means doc-only or meta-only PRs (where the build / smoke / size jobs are sk
 
 | Workflow | File | Triggers | Purpose |
 |---|---|---|---|
-| **CI** | `ci.yml` | push to `main`, pull requests | Build matrix, lint, test, typecheck, smoke (Playwright), bundle size, gated by `ci-passed` |
+| **CI** | `ci.yml` (+ `changes.yml`, `build.yml`, `smoke.yml`, `size.yml`) | push to `main`, pull requests | Build matrix, lint, test, typecheck, smoke (Playwright), bundle size, gated by `ci-passed` |
 | **Release** | `release.yml` | after CI succeeds on `main`, manual | Publish packages to npm via changesets |
 | **Deploy Docs** | `docs.yml` | push to `main`, manual | Build and deploy Starlight docs to GitHub Pages |
 | **Generate Changeset** | `changeset.yml` | pull requests (opened, synchronize) | Auto-generate changeset files with Copilot enhancement |
 
 ## Path Filtering (CI)
 
-The `changes` job uses [`dorny/paths-filter`](https://github.com/dorny/paths-filter) to bucket the PR diff (or the latest push's diff). Each bucket is a boolean output consumed by downstream jobs.
+`changes.yml` uses [`dorny/paths-filter`](https://github.com/dorny/paths-filter) to bucket the PR diff (or the latest push's diff). Each bucket is a boolean output consumed by downstream jobs in `ci.yml`.
 
 | Bucket | Patterns |
 |---|---|
@@ -73,6 +87,15 @@ Job gating:
 
 A change in `ci` triggers everything so a CI change validates itself.
 
+## Node Version Policy
+
+| Slot | Resolves to (May 2026) | Purpose |
+|---|---|---|
+| `lts/*` | Node 22 | Release target. `release.yml` ships from this. |
+| `lts/-1` | Node 20 | Compatibility canary. Catches breakage for users on the older still-supported LTS before it bites them. |
+
+`package.json` declares `engines.node: >=20.0.0`, matching the older end of the matrix.
+
 ## Turbo Cache
 
 | Job | Cache key | Notes |
@@ -81,6 +104,7 @@ A change in `ci` triggers everything so a CI change validates itself.
 | `build (lts/-1, previous)` | `Linux-turbo-previous-${sha}` | `pnpm install` resolves different platform deps per node version |
 | `smoke` | `Linux-turbo-current-${sha}` | Shares with `current` build leg — primary-key hit |
 | `size` | `Linux-turbo-current-${sha}` | Shares with `current` build leg |
+| `release` | `Linux-turbo-current-${sha}` | Shares with `current` build leg |
 
 Restore-keys mirror the primary key prefix so a fresh SHA inherits from the nearest prior commit's cache via prefix fallback; turbo's content-hashing decides per-task hits.
 
@@ -128,25 +152,29 @@ Use this prompt after making changes to any workflow file to keep this README in
 Read all workflow files in .github/workflows/ and the current .github/workflows/README.md.
 
 Audit the README against the actual workflow definitions. For each workflow, verify:
-- Triggers (on: events, branches) match the documented triggers
-- Path-filter bucket patterns and per-job gating match the actual ci.yml `changes` job + downstream `if:` conditions
+- Triggers (on: events, branches, workflow_call) match the documented triggers
+- Composable layout table matches the actual files (orchestrator + reusables)
+- Path-filter bucket patterns and per-job gating match the actual ci.yml `needs` + `if:` against changes.yml outputs
 - Turbo cache key table matches the actual cache key strings used per job
+- Node version policy table reflects the actual matrix in ci.yml and engines.node in root package.json
 - Workflow dependency graph (mermaid) reflects actual workflow_run chains
 - Concurrency groups match actual concurrency config
 - Manual triggers section lists all workflows with workflow_dispatch
-- Repository ruleset section names the actual required check (the ci-passed gate job)
+- Repository ruleset section names the actual required check (the ci-passed gate job in ci.yml)
 
 Update any sections that are out of date. Add new workflows if any exist that aren't documented. Remove documentation for workflows that no longer exist.
 
 Preserve the existing document structure:
 1. Flow Overview (mermaid graph)
-2. Repository Ruleset
-3. Workflows table
-4. Path Filtering (bucket table + per-job gating)
-5. Turbo Cache (key table)
-6. Workflow Dependencies (mermaid graph)
-7. Concurrency Controls
-8. Manual Triggers
+2. Composable Layout
+3. Repository Ruleset
+4. Workflows table
+5. Path Filtering (bucket table + per-job gating)
+6. Node Version Policy
+7. Turbo Cache (key table)
+8. Workflow Dependencies (mermaid graph)
+9. Concurrency Controls
+10. Manual Triggers
 
 Keep tables, mermaid graphs, and descriptions concise. Do not add commentary outside the established format.
 ```
@@ -168,6 +196,13 @@ You are implementing CI/CD changes for a GitHub Actions monorepo. Before making 
 
 Follow these rules when modifying or creating workflows:
 
+COMPOSABLE LAYOUT
+- ci.yml is a slim orchestrator. Real work lives in reusable workflows declared with `on: workflow_call:` only
+- Reusable workflows in this repo: changes.yml, build.yml, smoke.yml, size.yml
+- The orchestrator calls them via `uses: ./.github/workflows/<name>.yml` and passes inputs/secrets
+- New steps that fit an existing reusable workflow go there; otherwise add a new reusable workflow and call it from ci.yml
+- Matrix lives at the orchestrator layer — reusable workflows are single-instance and take parameters as inputs
+
 BRANCH PROTECTION
 - The repository ruleset requires ONE status check: `CI passed` (the ci-passed job in ci.yml)
 - ci-passed runs `if: always()`, needs [changes, build, smoke, size], and succeeds when each upstream job is success or skipped (fails only on failure or cancelled)
@@ -175,19 +210,24 @@ BRANCH PROTECTION
 - Do NOT introduce per-job required checks in the ruleset — ci-passed is the single gate
 
 PATH FILTERING & JOB GATING
-- The changes job in ci.yml uses dorny/paths-filter@v3 to emit per-bucket booleans: code, examples, docs, ci
-- Downstream jobs gate via `if:` expressions on those bucket outputs
+- changes.yml uses dorny/paths-filter@v3 to emit per-bucket booleans: code, examples, docs, ci
+- Downstream jobs in ci.yml gate via `if:` expressions on those bucket outputs
 - A bucket change in `ci` (.github/workflows/**) triggers everything so a CI change validates itself
 - When adding a new job, decide which bucket(s) should trigger it and write the `if:` accordingly
-- When adding a new top-level directory, add it to the appropriate bucket pattern in the changes job
+- When adding a new top-level directory, add it to the appropriate bucket pattern in changes.yml
 
 JOB DEPENDENCIES & SMOKE / SIZE
 - smoke and size both `needs: [changes, build]` and use `if: !cancelled() && needs.build.result != 'failure' && (bucket conditions)` — this lets them run when build is skipped (e.g., docs-only PRs) but skips them when build fails
 - New jobs that depend on built artifacts should follow the same pattern
 
+NODE VERSION & MATRIX
+- lts/* is the release target (release.yml ships from this); lts/-1 is the compatibility canary
+- engines.node in root package.json must match the older end of the matrix (currently >=20.0.0)
+- When the LTS schedule rolls (e.g., Node 24 becomes Active LTS), bump engines accordingly
+
 TURBO CACHE
-- Per-node-version cache namespace: `${{ runner.os }}-turbo-${{ matrix.node-tag }}-${{ github.sha }}` in the build matrix
-- Smoke, size, and any new single-node-version job pin to the `current` leg's namespace: `${{ runner.os }}-turbo-current-${{ github.sha }}`
+- Per-node-version cache namespace: `${{ runner.os }}-turbo-${{ inputs.node-tag }}-${{ github.sha }}` in build.yml
+- Smoke, size, release, and any new single-node-version job pin to the `current` leg's namespace: `${{ runner.os }}-turbo-current-${{ github.sha }}`
 - Restore-keys use the same prefix so prefix-fallback inherits from prior SHAs; turbo content-hashing decides per-task hits
 
 WORKFLOW DEPENDENCIES
@@ -202,12 +242,12 @@ CONCURRENCY
 
 CONVENTIONS
 - actions/checkout@v6, actions/setup-node@v5, actions/cache@v5, actions/upload-artifact@v5, pnpm/action-setup@v5
-- setup-node: `node-version: lts/*` and `cache: pnpm`
+- setup-node: `node-version: lts/*` and `cache: pnpm` (or pass node-version as input for build.yml)
 - pnpm install --frozen-lockfile
 - Name jobs clearly — the job name appears in GitHub UI status checks
 
 AFTER MAKING CHANGES
-- Update .github/workflows/README.md to reflect all changes (path-filter buckets, gating, dependencies, concurrency, cache keys)
+- Update .github/workflows/README.md to reflect all changes (composable layout, path-filter buckets, gating, dependencies, concurrency, cache keys, node policy)
 - Verify both mermaid graphs still accurately represent the workflow topology
 ```
 

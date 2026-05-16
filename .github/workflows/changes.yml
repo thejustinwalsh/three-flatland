@@ -1,0 +1,47 @@
+name: Changes
+
+on:
+  workflow_call:
+    outputs:
+      code:
+        value: ${{ jobs.detect.outputs.code }}
+      examples:
+        value: ${{ jobs.detect.outputs.examples }}
+      docs:
+        value: ${{ jobs.detect.outputs.docs }}
+      ci:
+        value: ${{ jobs.detect.outputs.ci }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      examples: ${{ steps.filter.outputs.examples }}
+      docs: ${{ steps.filter.outputs.docs }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'packages/**'
+              - 'minis/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+              - 'eslint.config.*'
+              - 'vitest.config.*'
+            examples:
+              - 'examples/**'
+              - 'e2e/**'
+              - 'playwright.config.*'
+            docs:
+              - 'docs/**'
+            ci:
+              - '.github/workflows/**'
