@@ -9,23 +9,30 @@ graph TD
     Changeset -->|"pushes .changeset/ files"| PR
 
     Push["Push to main"] --> CI
-    Push --> Docs["Deploy Docs (self-gated on smoke)"]
+    Push --> Docs["Deploy Docs (orchestrator)"]
 
     CI -->|"workflow_run (success)"| Release["Release"]
     Manual["workflow_dispatch"] --> Release
     Manual --> Docs
 
     subgraph "CI orchestration"
-        Changes["changes.yml"]
-        Changes --> Build["build.yml (matrix: lts/*, lts/-1)"]
-        Changes --> Smoke["smoke.yml"]
-        Changes --> Size["size.yml (PRs only)"]
-        Build --> Gate["ci-passed (gate)"]
-        Smoke --> Gate
-        Size --> Gate
+        CIChanges["changes.yml"]
+        CIChanges --> CIBuild["build.yml (matrix: lts/*, lts/-1)"]
+        CIChanges --> CISmoke["smoke.yml"]
+        CIChanges --> CISize["size.yml (PRs only)"]
+        CIBuild --> Gate["ci-passed (gate)"]
+        CISmoke --> Gate
+        CISize --> Gate
     end
 
     Gate -.->|"required by ruleset"| Merge["PR can merge"]
+
+    subgraph "Docs orchestration"
+        DocsChanges["changes.yml"]
+        DocsChanges --> DocsSmoke["smoke.yml"]
+        DocsSmoke -->|"gate: smoke success"| BuildPages["build-pages"]
+        BuildPages --> DocsDeploy["deploy (Pages)"]
+    end
 
     subgraph "Release Workflow"
         Release --> Changesets{"pending changesets?"}
@@ -36,11 +43,12 @@ graph TD
 
 ## Composable Layout
 
-`ci.yml` is a slim orchestrator. The actual work lives in reusable workflows that the orchestrator calls via `uses: ./.github/workflows/<name>.yml`. Each reusable workflow declares `on: workflow_call:` only — they don't trigger directly.
+`ci.yml` and `docs.yml` are slim orchestrators. The actual work lives in reusable workflows that orchestrators call via `uses: ./.github/workflows/<name>.yml`. Each reusable workflow declares `on: workflow_call:` only — they don't trigger directly.
 
 | File | Role | Trigger |
 |---|---|---|
 | `ci.yml` | Orchestrator: paths-filter → build matrix → smoke/size → gate | `push`, `pull_request` |
+| `docs.yml` | Orchestrator: paths-filter → smoke → build-pages → deploy | `push` to `main`, `workflow_dispatch` |
 | `changes.yml` | dorny/paths-filter; emits `code` / `examples` / `docs` / `ci` bucket outputs | `workflow_call` |
 | `build.yml` | Build + typecheck + lint + test + skia test (single node version, takes `node-version` + `node-tag` inputs) | `workflow_call` |
 | `smoke.yml` | Playwright smoke tests against built docs site | `workflow_call` |
@@ -105,6 +113,7 @@ A change in `ci` triggers everything so a CI change validates itself.
 | `smoke` | `Linux-turbo-current-${sha}` | Shares with `current` build leg — primary-key hit |
 | `size` | `Linux-turbo-current-${sha}` | Shares with `current` build leg |
 | `release` | `Linux-turbo-current-${sha}` | Shares with `current` build leg |
+| `docs.build-pages` | `Linux-turbo-current-${sha}` | Shares with `current` build leg; usually a cache hit since `smoke` already built `docs#build` |
 
 Restore-keys mirror the primary key prefix so a fresh SHA inherits from the nearest prior commit's cache via prefix fallback; turbo's content-hashing decides per-task hits.
 
