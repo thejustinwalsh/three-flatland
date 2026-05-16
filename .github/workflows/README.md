@@ -15,7 +15,7 @@ graph TD
     Manual["workflow_dispatch"] --> Release
     Manual --> Docs
 
-    subgraph "CI orchestration"
+    subgraph CIOrch ["CI orchestration"]
         CIChanges["changes.yml"]
         CIChanges --> CIBuild["build.yml (matrix: lts/*, lts/-1)"]
         CIChanges --> CISmoke["smoke.yml"]
@@ -27,18 +27,21 @@ graph TD
 
     Gate -.->|"required by ruleset"| Merge["PR can merge"]
 
-    subgraph "Docs orchestration"
+    subgraph DocsOrch ["Docs orchestration"]
         DocsChanges["changes.yml"]
         DocsChanges --> DocsSmoke["smoke.yml"]
         DocsSmoke -->|"gate: smoke success"| BuildPages["build-pages"]
         BuildPages --> DocsDeploy["deploy (Pages)"]
     end
 
-    subgraph "Release Workflow"
+    subgraph ReleaseFlow ["Release Workflow"]
         Release --> Changesets{"pending changesets?"}
         Changesets -->|yes| Publish["publish to npm"]
         Changesets -->|no| ReleasePR["create/update release PR"]
     end
+
+    CIOrch ~~~ DocsOrch
+    DocsOrch ~~~ ReleaseFlow
 ```
 
 ## Composable Layout
