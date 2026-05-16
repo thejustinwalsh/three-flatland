@@ -3,19 +3,17 @@
 ## Flow Overview
 
 ```mermaid
-graph TD
-    PR["Pull Request"] --> CI["CI (orchestrator)"]
-    PR --> Changeset["Generate Changeset"]
-    Changeset -->|"pushes .changeset/ files"| PR
-
-    Push["Push to main"] --> CI
-    Push --> Docs["Deploy Docs (orchestrator)"]
-
-    CI -->|"workflow_run (success)"| Release["Release"]
-    Manual["workflow_dispatch"] --> Release
-    Manual --> Docs
+graph LR
+    subgraph DocsOrch ["Docs orchestration"]
+        direction TB
+        DocsChanges["changes.yml"]
+        DocsChanges --> DocsSmoke["smoke.yml"]
+        DocsSmoke -->|"gate: smoke success"| BuildPages["build-pages"]
+        BuildPages --> DocsDeploy["deploy (Pages)"]
+    end
 
     subgraph CIOrch ["CI orchestration"]
+        direction TB
         CIChanges["changes.yml"]
         CIChanges --> CIBuild["build.yml (matrix: lts/*, lts/-1)"]
         CIChanges --> CISmoke["smoke.yml"]
@@ -25,23 +23,29 @@ graph TD
         CISize --> Gate
     end
 
-    Gate -.->|"required by ruleset"| Merge["PR can merge"]
+    subgraph TriggersRelease ["Triggers & Release"]
+        direction TB
+        PR["Pull Request"]
+        Push["Push to main"]
+        Manual["workflow_dispatch"]
+        Changeset["Generate Changeset"]
+        Changeset -->|"pushes .changeset/ files"| PR
 
-    subgraph DocsOrch ["Docs orchestration"]
-        DocsChanges["changes.yml"]
-        DocsChanges --> DocsSmoke["smoke.yml"]
-        DocsSmoke -->|"gate: smoke success"| BuildPages["build-pages"]
-        BuildPages --> DocsDeploy["deploy (Pages)"]
-    end
-
-    subgraph ReleaseFlow ["Release Workflow"]
+        Release["Release"]
         Release --> Changesets{"pending changesets?"}
         Changesets -->|yes| Publish["publish to npm"]
         Changesets -->|no| ReleasePR["create/update release PR"]
     end
 
-    CIOrch ~~~ DocsOrch
-    DocsOrch ~~~ ReleaseFlow
+    PR --> CIChanges
+    PR --> Changeset
+    Push --> CIChanges
+    Push --> DocsChanges
+    Manual --> Release
+    Manual --> DocsChanges
+
+    Gate -.->|"workflow_run (success)"| Release
+    Gate -.->|"required by ruleset"| Merge["PR can merge"]
 ```
 
 ## Composable Layout
