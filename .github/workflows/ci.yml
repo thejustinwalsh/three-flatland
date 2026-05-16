@@ -200,3 +200,25 @@ jobs:
           name: playwright-traces
           path: test-results/
           retention-days: 14
+
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [changes, build, smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate
+        run: |
+          fail=0
+          for job_result in \
+              "changes:${{ needs.changes.result }}" \
+              "build:${{ needs.build.result }}" \
+              "smoke:${{ needs.smoke.result }}"; do
+            name="${job_result%%:*}"
+            result="${job_result##*:}"
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::$name job result: $result"; fail=1 ;;
+            esac
+          done
+          exit $fail
