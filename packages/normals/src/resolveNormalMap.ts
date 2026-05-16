@@ -15,13 +15,20 @@ import type { NormalSourceDescriptor } from './descriptor.js'
 
 export interface ResolveNormalMapOptions {
   /**
-   * Skip the baked-sibling probe and go straight to the in-memory bake.
-   * Suppresses both the HEAD round-trip and the "no baked sibling"
-   * devtime warning — for when you know no sidecar is shipped yet and
-   * don't want the 404 noise on every load.
+   * Opt this asset out of the baked-sibling pattern entirely. The
+   * runtime generator is the canonical source — every load fetches the
+   * source image and bakes the normal map in memory. Suppresses the
+   * HEAD probe and the "no baked sibling" devtime warning, because
+   * choosing `forceRuntime: true` is itself the answer to "why isn't
+   * there a sidecar?"
    *
-   * Mirrors the `forceRuntime` flag on `SlugFontLoader` and every other
-   * baked-asset loader in the codebase.
+   * Use when an asset is intentionally never baked — procedurally
+   * varied content, throwaway prototypes, asset bundles where shipping
+   * sidecars isn't worth the extra bytes. Not a dev-iteration knob: the
+   * default path (probe → bake on miss + warn) already handles that.
+   *
+   * Mirrors `SlugFontLoader.forceRuntime` and every other baked-asset
+   * loader in the codebase.
    */
   forceRuntime?: boolean
   /**
@@ -77,7 +84,7 @@ export async function resolveNormalMap(
         'normal',
         sourceURL,
         `No baked sibling at ${bakedURL} — baking in memory. ` +
-          `Run \`npx flatland-bake normal\` for production, or set \`forceRuntime: true\` to skip the probe.`
+          `Run \`npx flatland-bake normal\` for production.`
       )
     }
   }

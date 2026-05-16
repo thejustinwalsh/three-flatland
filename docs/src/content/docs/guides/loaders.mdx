@@ -300,7 +300,7 @@ Both loaders use the same resolution path for the baked atlas:
 2. **Probe a baked sibling** — look for `<source-image>.normal.png` next to the diffuse, with a matching hash stamp. If present, load it directly.
 3. **In-memory bake fallback** — fetch the diffuse, decode pixels, run the bake, and wrap the result in a `DataTexture`.
 
-Run `npx flatland-bake normal <source>` ahead of time to skip the in-memory path in production. Pass `forceRuntime: true` on the loader to skip the sidecar probe and go straight to the in-memory bake during development (useful when iterating on tile metadata — same flag every baked-asset loader in the codebase exposes, including `SlugFontLoader`). For the offline workflow — running `flatland-bake` ahead of time, sidecar staleness warnings, CI integration — see the [Baking guide](../baking/).
+Run `npx flatland-bake normal <source>` ahead of time to skip the in-memory path in production. For the offline workflow — running `flatland-bake` ahead of time, sidecar staleness warnings, CI integration — see the [Baking guide](../baking/).
 
 The `normals` option accepts:
 
@@ -308,7 +308,7 @@ The `normals` option accepts:
 - `NormalSourceDescriptor` — pass a hand-authored descriptor
 - `false` (default) — no normal map is loaded or generated
 
-`forceRuntime: true` is a sibling option (not nested inside `normals`) that skips the sidecar probe and goes straight to the in-memory bake. Useful during development when iterating on tile metadata and you don't care about the 404 noise.
+`forceRuntime: true` is a sibling option (not nested inside `normals`) that opts a specific asset out of the baked-sibling pattern entirely. The runtime bake becomes the canonical source; the probe is skipped and the "no baked sibling" warn is suppressed. Use it for assets you've decided will *always* be runtime-generated — procedurally varied tilesets, throwaway prototypes, asset bundles where shipping a sidecar isn't worth the bytes. Same flag every baked-asset loader exposes (`SlugFontLoader.forceRuntime`). **Not a dev-iteration knob** — the default path (probe → bake on miss + warn) already handles iteration.
 
 The in-memory bake path is lazy-imported, so its bundle cost is not paid unless the fallback fires. A dev-mode warning (`NODE_ENV !== 'production'`) points at `npx flatland-bake normal` when the sidecar is absent. See the [Runtime bake fallback](../lighting/#runtime-bake-fallback) section for the full story.
 
@@ -338,17 +338,17 @@ For sprite sheets, the loader synthesizes one flat region per frame rect (read f
   </TabItem>
 </Tabs>
 
-For sprites whose individual frames want different per-frame tilt/bump (rare — most character sheets stay flat with alpha-derived shading) pass a `NormalSourceDescriptor` instead of `true` and provide your own `regions`. To skip the sidecar probe during iteration:
+For sprites whose individual frames want different per-frame tilt/bump (rare — most character sheets stay flat with alpha-derived shading) pass a `NormalSourceDescriptor` instead of `true` and provide your own `regions`. For an atlas you've decided will *never* be baked (procedural variation, throwaway prototype, lean bundle), opt it out of the sibling pattern with `forceRuntime: true`:
 
 ```typescript
 // Three.js
-const sheet = await SpriteSheetLoader.load('./sprites/knight.json', {
+const sheet = await SpriteSheetLoader.load('./sprites/proc-tiles.json', {
   normals: true,
   forceRuntime: true,
 })
 
 // R3F useLoader
-const sheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
+const sheet = useLoader(SpriteSheetLoader, './sprites/proc-tiles.json', (l) => {
   l.normals = true
   l.forceRuntime = true
 })

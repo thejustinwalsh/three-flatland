@@ -107,7 +107,9 @@ interface BakedAssetLoaderOptions {
 }
 ```
 
-Consumers pass `forceRuntime: true` during asset iteration to silence the devtime "no baked sibling" warning. The flag mirrors `SlugFontLoader.forceRuntime` — one name across every baked-asset loader in the ecosystem.
+Consumers pass `forceRuntime: true` to opt a specific asset out of the baked-sibling pattern entirely — the runtime generator becomes the canonical source. Use it for assets you've decided are *intentionally* never baked (procedurally varied content, throwaway prototypes, asset bundles where shipping a sidecar isn't worth the bytes). Suppresses the "no baked sibling" warn because choosing `forceRuntime` is itself the answer to "why isn't there a sidecar?"
+
+Not a dev-iteration knob — the default path (probe → generate on miss + warn) already handles iteration. Mirrors `SlugFontLoader.forceRuntime`; one name across every baked-asset loader in the ecosystem.
 
 ## Using with plain Three.js
 

@@ -475,10 +475,15 @@ hash is stale, the loader bakes the atlas in memory on first load (lazy-importin
 the baker, so the cost is paid only when needed) and emits a dev-mode warning
 pointing at `npx flatland-bake normal`.
 
-If you're iterating on a tileset's normal descriptor and the 404-then-bake
-round-trip is noise you want to skip, pass `forceRuntime: true` on the loader
-to go straight to the in-memory bake — same single-flag pattern every
-baked-asset loader uses (e.g. `SlugFontLoader.forceRuntime`).
+For assets you've decided are intentionally never baked (procedurally
+varied tilesets, throwaway prototypes, asset bundles where shipping a
+sidecar isn't worth the bytes), pass `forceRuntime: true` on the loader.
+The runtime bake becomes the canonical source and the "no baked sibling"
+warning is suppressed — because choosing `forceRuntime` is itself the
+answer to "why isn't there a sidecar?" Mirrors `SlugFontLoader.forceRuntime`;
+one flag across every baked-asset loader in the codebase. Not a dev-iteration
+knob — the default path already handles iteration (probe → bake on miss + warn
+pointing at `flatland-bake`).
 
 :::note
 The dev-mode warning is suppressed in production (`NODE_ENV === 'production'`),

@@ -235,11 +235,10 @@ export class LDtkLoader extends Loader<TileMapData> {
   normals: LDtkNormalsOption = false
 
   /**
-   * Skip the baked `.normal.png` sibling probe AND the in-memory bake;
-   * resolve to a flat-default normal texture with a devtime warn.
-   * Production opt-out for "I've baked all sidecars; if any is missing,
-   * fail visibly (flat shading) instead of silently CPU-baking on the
-   * first frame." See `ResolveNormalMapOptions.forceRuntime`.
+   * Opt this tilemap's tilesets out of the baked-sibling pattern
+   * entirely — the in-memory bake becomes the canonical source for the
+   * normal map. For tilemaps that are intentionally never baked, not
+   * for dev iteration. See {@link BakedAssetLoaderOptions.forceRuntime}.
    */
   forceRuntime = false
 

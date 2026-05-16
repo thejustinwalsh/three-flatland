@@ -22,7 +22,9 @@ Every baked-asset loader in the codebase now exposes the same single flag — `f
 - `NormalMapLoader.disableRuntimeBake` (instance + static `load()` option)
 - `ResolveNormalMapOptions.disableRuntimeBake`
 
-The previous `disableRuntimeBake` opt-out conflated two intents into a second flag. The unified model is simpler: **opt in to normals (`normals: true | descriptor`), and they're guaranteed to load** — baked sidecar if available, in-memory bake on miss, devtime warn when the runtime path fires. `forceRuntime: true` is the single dev-iteration knob to skip the probe.
+The previous `disableRuntimeBake` opt-out conflated two intents into a second flag. The unified model is simpler: **opt in to normals (`normals: true | descriptor`), and they're guaranteed to load** — baked sidecar if available, in-memory bake on miss, devtime warn when the runtime path fires.
+
+`forceRuntime: true` is the project-level decision to opt a specific asset out of the baked-sibling pattern entirely — the runtime generator becomes the canonical source for that asset (procedural content, throwaway prototypes, lean bundles). It is **not** a dev-iteration knob; the default path (probe → bake on miss + warn) already handles iteration.
 
 ### Migration
 ```diff

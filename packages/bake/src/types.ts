@@ -67,15 +67,20 @@ export interface FlatlandManifest {
  */
 export interface BakedAssetLoaderOptions {
   /**
-   * Skip the baked-sibling probe and go straight to the in-memory bake.
-   * Suppresses the devtime "no baked sibling" warning.
+   * Opt this asset out of the baked-sibling pattern entirely. The
+   * runtime generator is the canonical source — every load runs the
+   * generator fresh, and the loader never probes for a sidecar.
+   * Suppresses the devtime "no baked sibling" warning, because choosing
+   * `forceRuntime: true` is itself the answer to "why isn't there a
+   * sidecar?"
    *
-   * Use during asset iteration when you know no baked output exists yet
-   * and don't want the probe round-trip or console noise. Default `false`
-   * — probe first, run in-memory only on miss.
+   * Use when an asset is intentionally never baked — procedurally
+   * varied content, throwaway prototypes, asset bundles where the
+   * sidecar isn't worth shipping. Not a dev-iteration knob: the default
+   * path (probe → generate on miss + warn) already handles that.
    *
-   * Mirrors `SlugFontLoader.forceRuntime` — the same single-flag pattern
-   * shared by every baked-asset loader in the codebase.
+   * Default `false`. Mirrors `SlugFontLoader.forceRuntime` — one flag
+   * across every baked-asset loader in the codebase.
    */
   forceRuntime?: boolean
 }

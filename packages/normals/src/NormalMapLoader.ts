@@ -43,13 +43,15 @@ export type NormalMapResult = Texture | null
  */
 export class NormalMapLoader extends Loader<NormalMapResult> {
   /**
-   * Skip the baked-sibling probe. With a `descriptor`, the in-memory
-   * bake runs immediately (suppressing the "no baked sibling" warn).
-   * Without a descriptor, the loader resolves directly to `null` —
-   * caller is expected to use the TSL runtime fallback.
+   * Opt this asset out of the baked-sibling pattern entirely. With a
+   * `descriptor`, the in-memory bake runs on every load. Without a
+   * descriptor, the loader resolves directly to `null` — caller is
+   * expected to use the TSL runtime fallback. Suppresses the "no baked
+   * sibling" warn either way.
    *
-   * Mirrors `SlugFontLoader.forceRuntime` — same name, same semantics
-   * across every baked-asset loader in the codebase.
+   * Use when an asset is intentionally never baked. Not a dev-iteration
+   * knob — the default path (probe → bake on miss + warn) already
+   * handles iteration. See {@link BakedAssetLoaderOptions.forceRuntime}.
    */
   forceRuntime = false
   /**

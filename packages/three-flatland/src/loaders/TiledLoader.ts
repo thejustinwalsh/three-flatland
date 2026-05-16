@@ -194,8 +194,10 @@ export class TiledLoader extends Loader<TileMapData> {
   normals: TiledNormalsOption = false
 
   /**
-   * Skip the baked `.normal.png` sibling probe and go straight to the
-   * in-memory bake. See {@link BakedAssetLoaderOptions.forceRuntime}.
+   * Opt this tilemap's tilesets out of the baked-sibling pattern
+   * entirely — the in-memory bake becomes the canonical source for the
+   * normal map. For tilemaps that are intentionally never baked, not
+   * for dev iteration. See {@link BakedAssetLoaderOptions.forceRuntime}.
    */
   forceRuntime = false
 

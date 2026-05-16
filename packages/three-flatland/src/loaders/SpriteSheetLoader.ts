@@ -92,8 +92,10 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   normals: SpriteSheetNormalsOption = false
 
   /**
-   * Skip the baked `.normal.png` sibling probe and go straight to the
-   * in-memory bake. See {@link BakedAssetLoaderOptions.forceRuntime}.
+   * Opt this sheet out of the baked-sibling pattern entirely — the
+   * in-memory bake becomes the canonical source for the normal map.
+   * For sheets that are intentionally never baked, not for dev iteration.
+   * See {@link BakedAssetLoaderOptions.forceRuntime}.
    */
   forceRuntime = false
 

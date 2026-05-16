@@ -94,18 +94,7 @@ Two warning shapes you'll see while iterating:
          Run `npx flatland-bake normal` in production to skip this path.
 ```
 
-Two ways to silence them:
-
-- **Re-bake** — the canonical fix. Run `flatland-bake` with the same descriptor your loader is using, the hash matches, the warning goes away.
-- **`forceRuntime: true`** — passed on the loader. Skips the sibling probe entirely and goes straight to the in-memory bake. Useful while iterating on tile metadata when you know the sidecar is stale and don't care to refresh it on every change. Mirrors `SlugFontLoader.forceRuntime` — the same flag every baked-asset loader in the codebase exposes.
-
-```typescript
-// Skip the probe (and the warning) during iteration
-const sheet = await SpriteSheetLoader.load('./sprites/knight.json', {
-  normals: true,
-  forceRuntime: true,
-})
-```
+The canonical fix is to **re-bake** — run `flatland-bake` with the same descriptor your loader is using, the hash matches, the warning goes away. Don't reach for `forceRuntime` here: that flag is not for silencing dev iteration warns, it's for opting an asset out of the baked pattern entirely (see [Opting an asset out of baking](#opting-an-asset-out-of-baking) below).
 
 ## CI / Build Integration
 
@@ -136,9 +125,29 @@ The choice is about *when* the work happens:
 |------|------|----------|
 | **Offline** (`flatland-bake` in CI) | Zero startup cost, deterministic, ships a slightly larger asset bundle (the sidecar) | Production builds, demos, anything user-facing |
 | **Runtime** (in-memory fallback) | Burns first-load CPU on `fetch` + decode + bake; non-deterministic timing | Development iteration, tweaking descriptors, experimenting with custom data |
-| **Forced runtime** (`forceRuntime: true`) | Same as runtime, plus no probe round-trip and no warning | Tightening the iteration loop when you know the sidecar is stale |
+| **Forced runtime** (`forceRuntime: true`) | Same as runtime, plus no probe round-trip and no warning | Assets you've decided are *never* baked — procedural content, throwaway prototypes, asset bundles where the sidecar isn't worth shipping |
 
 In production, ship baked siblings and the loader becomes a single-image-fetch with no decode overhead. In development, skip the bake step entirely and let the runtime regenerate — much faster than re-running the CLI on every descriptor tweak.
+
+## Opting an Asset Out of Baking
+
+`forceRuntime: true` is a **project-level decision** about a specific asset, not a dev-iteration shortcut. Use it when you've decided the asset will *always* be runtime-generated and you want the loader to skip the probe round-trip + suppress the "no baked sibling" warning for that asset.
+
+Typical reasons to reach for it:
+
+- **Procedurally varied content** — the descriptor changes per session, so a pre-baked sidecar wouldn't match anyway.
+- **Throwaway prototypes** — you don't want to add a build step for something you'll delete next week.
+- **Lean asset bundles** — the runtime CPU cost on first load is cheaper than the bytes the sidecar would add.
+
+```typescript
+// "This sheet is intentionally never baked. Generate on every load."
+const sheet = await SpriteSheetLoader.load('./sprites/proc-tiles.json', {
+  normals: true,
+  forceRuntime: true,
+})
+```
+
+If you just want to silence a stale-sidecar warning while iterating, **re-bake** instead. `forceRuntime` is the wrong tool for that — it'll silence the warn but it'll also tell every future maintainer of the project "this asset is intentionally runtime-generated forever," which is a different statement.
 
 ## Adding a New Bake Type
 

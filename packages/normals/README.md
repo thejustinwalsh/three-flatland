@@ -64,10 +64,11 @@ See the [three-flatland docs](https://thejustinwalsh.com/three-flatland/) for de
 ### Loader options
 
 ```typescript
-// Skip the baked probe and go straight to runtime — useful during asset
-// iteration when you know no sibling exists yet. Mirrors the
-// `forceRuntime` flag every baked-asset loader exposes (e.g.
-// SlugFontLoader).
+// Opt this asset out of the baked-sibling pattern entirely — the runtime
+// generator becomes the canonical source. For assets that are intentionally
+// never baked (procedural content, throwaway prototypes, lean bundles).
+// Not a dev-iteration knob — the default path (probe → bake on miss +
+// warn) already handles iteration. Mirrors `SlugFontLoader.forceRuntime`.
 const tex = await NormalMapLoader.load(url, { forceRuntime: true })
 ```
 
