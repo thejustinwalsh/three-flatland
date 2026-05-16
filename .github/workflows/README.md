@@ -3,17 +3,14 @@
 ## Flow Overview
 
 ```mermaid
-graph LR
-    subgraph DocsOrch ["docs.yml (orchestrator)"]
-        direction TB
-        DocsChanges["changes.yml"]
-        DocsChanges --> DocsSmoke["smoke.yml"]
-        DocsSmoke -->|"gate: smoke success"| BuildPages["build-pages"]
-        BuildPages --> DocsDeploy["deploy (Pages)"]
-    end
+graph TD
+    PR(["Pull Request event"])
+    Push(["Push to main event"])
+    Manual(["workflow_dispatch event"])
+    ChangesetWF["changeset.yml"]
+    ChangesetWF -->|"pushes .changeset/ files"| PR
 
     subgraph CIOrch ["ci.yml (orchestrator)"]
-        direction TB
         CIChanges["changes.yml"]
         CIChanges --> CIBuild["build.yml (matrix: lts/*, lts/-1)"]
         CIChanges --> CISmoke["smoke.yml"]
@@ -23,19 +20,19 @@ graph LR
         CISize --> Gate
     end
 
+    subgraph DocsOrch ["docs.yml (orchestrator)"]
+        DocsChanges["changes.yml"]
+        DocsChanges --> DocsSmoke["smoke.yml"]
+        DocsSmoke -->|"gate: smoke success"| BuildPages["build-pages"]
+        BuildPages --> DocsDeploy["deploy (Pages)"]
+    end
+
     subgraph ReleaseFlow ["release.yml"]
-        direction TB
         Release["release job"]
         Release --> Changesets{"pending changesets?"}
         Changesets -->|yes| Publish["publish to npm"]
         Changesets -->|no| ReleasePR["create/update release PR"]
     end
-
-    PR(["Pull Request event"])
-    Push(["Push to main event"])
-    Manual(["workflow_dispatch event"])
-    ChangesetWF["changeset.yml"]
-    ChangesetWF -->|"pushes .changeset/ files"| PR
 
     PR ==> CIOrch
     PR ==> ChangesetWF
