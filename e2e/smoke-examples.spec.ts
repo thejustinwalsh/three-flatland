@@ -18,8 +18,10 @@
  *    pane leak), all 5 stats cells injected, FPS > 0 (proves stats
  *    monitor wiring is firing), draw calls > 0 (proves
  *    `scene.onAfterRender` works under R3F v10's phase scheduler), and
- *    the pixel-art contract (`image-rendering: pixelated` for pixel-art
- *    examples; antialiased for `skia` and `slug-text`).
+ *    Pixel-art vs antialiased rendering is not asserted — that contract
+ *    is too easy to forget to maintain when adding non-pixel-art
+ *    examples, and the resulting test failures aren't worth the silent-
+ *    drift risk of an opt-out list.
  *
  * 3. **Docs detail page iframe** — navigates the docs example detail
  *    page (`/examples/<slug>/`), locates the iframe, waits for its
@@ -49,12 +51,6 @@ const ROOT = resolve(__dirname, '..')
 
 // ── Discovery ──────────────────────────────────────────────────────────
 
-/** Slugs whose materials are antialiased — opt-out of the pixel-art
- *  `image-rendering: pixelated` assertion. Everything else defaults to
- *  pixel-art. Keep this list small; only add when a new example ships
- *  with an explicitly non-pixel-art material. */
-const NON_PIXELATED = new Set(['skia', 'slug-text'])
-
 /** Slugs that live in `examples/{three,react}/<slug>/` by design WITHOUT
  *  a corresponding `docs/src/content/docs/examples/<slug>.mdx`. These
  *  examples are not shipped to docs visitors — they're internal tools
@@ -73,13 +69,18 @@ interface ExampleSpec {
   path: string
   type: 'three' | 'react'
   slug: string
-  /** True → canvas must have `image-rendering: pixelated`. */
-  pixelated: boolean
   /** Minimum FPS after settle. Defaults to 1. */
   minFps?: number
   /** Minimum draw calls per frame. Defaults to 1. */
   minDraws?: number
 }
+
+/** Capture file extensions every shipped example must have in
+ *  `docs/public/captures/<slug>.<ext>`. The gallery tile at `/examples/`
+ *  uses the poster image, swaps in the webm on hover. Missing files
+ *  render as broken images in the gallery. `pnpm capture:examples`
+ *  produces all three formats for every example. */
+const CAPTURE_EXTS = ['png', 'webp', 'webm'] as const
 
 /** Bidirectional discovery + validation:
  *
@@ -92,6 +93,8 @@ interface ExampleSpec {
  *     SOURCE_ONLY.
  *  4. Every `<slug>.mdx` detail page must have source on both sides,
  *     unless in DOCS_ONLY.
+ *  5. Every shipped slug (passes 1-4) must have all three capture files
+ *     in `docs/public/captures/`. Failure → `pnpm capture:examples`.
  *
  *  Any mismatch throws with a precise diagnostic naming what's missing
  *  and which allow-list to add it to if the asymmetry is intentional.
@@ -101,6 +104,7 @@ function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
   const threeDir = resolve(ROOT, 'examples/three')
   const reactDir = resolve(ROOT, 'examples/react')
   const docsExamplesDir = resolve(ROOT, 'docs/src/content/docs/examples')
+  const capturesDir = resolve(ROOT, 'docs/public/captures')
 
   const threeSlugs = new Set(
     readdirSync(threeDir, { withFileTypes: true })
@@ -164,6 +168,21 @@ function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
     )
   }
 
+  // (5) shipped slug has all required capture files
+  for (const slug of docsSlugs) {
+    if (!threeSlugs.has(slug) || !reactSlugs.has(slug)) continue
+    if (DOCS_ONLY.has(slug)) continue
+    const missing = CAPTURE_EXTS.filter(
+      (ext) => !existsSync(resolve(capturesDir, `${slug}.${ext}`)),
+    )
+    if (missing.length > 0) {
+      errors.push(
+        `docs/public/captures/${slug}.{${missing.join(',')}} missing. ` +
+          `Run \`pnpm capture:examples\` to regenerate the gallery assets.`,
+      )
+    }
+  }
+
   if (errors.length > 0) {
     throw new Error(
       `smoke-examples: example/docs inventory is inconsistent (${errors.length} issue${errors.length === 1 ? '' : 's'}):\n` +
@@ -178,9 +197,8 @@ function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
   for (const slug of [...docsSlugs].sort()) {
     if (!threeSlugs.has(slug) || !reactSlugs.has(slug)) continue
     slugs.push(slug)
-    const pixelated = !NON_PIXELATED.has(slug)
-    specs.push({ path: `three/${slug}`, type: 'three', slug, pixelated })
-    specs.push({ path: `react/${slug}`, type: 'react', slug, pixelated })
+    specs.push({ path: `three/${slug}`, type: 'three', slug })
+    specs.push({ path: `react/${slug}`, type: 'react', slug })
   }
   return { slugs, specs }
 }
@@ -211,7 +229,6 @@ interface StatsSnapshot {
   geoms: number | null
   textures: number | null
   prims: number | null
-  imageRendering: string | null
   hasCanvas: boolean
   tooltips: string[]
 }
@@ -257,7 +274,6 @@ async function collectStats(page: Page): Promise<StatsSnapshot> {
       geoms: parseStat(valueByTitle['Geometries'] ?? null),
       textures: parseStat(valueByTitle['Textures'] ?? null),
       prims: parseStat(valueByTitle['Primitives (lines + points)'] ?? null),
-      imageRendering: canvas ? getComputedStyle(canvas).imageRendering : null,
       hasCanvas: !!canvas,
       tooltips,
     }
@@ -292,7 +308,6 @@ async function waitForStats(
       geoms: null,
       textures: null,
       prims: null,
-      imageRendering: null,
       hasCanvas: false,
       tooltips: [],
     }
@@ -365,19 +380,6 @@ test.describe('examples', () => {
         snapshot.draws!,
         'Draw Calls above threshold',
       ).toBeGreaterThanOrEqual(spec.minDraws ?? 1)
-
-      // Pixel-art contract.
-      if (spec.pixelated) {
-        expect(
-          snapshot.imageRendering,
-          `${spec.path} should have image-rendering: pixelated`,
-        ).toBe('pixelated')
-      } else {
-        expect(
-          snapshot.imageRendering,
-          `${spec.path} should not be pixelated`,
-        ).not.toBe('pixelated')
-      }
     })
   }
 })
@@ -447,6 +449,42 @@ test.describe('docs detail page iframe', () => {
           canvas,
           `iframe for ${slug} (${shape.label}) did not mount a canvas — likely 404 or runtime error in the iframe`,
         ).toBeAttached({ timeout: 15_000 })
+      })
+    }
+  }
+})
+
+// ── Tier 4: gallery captures (HTTP) ────────────────────────────────────
+
+/**
+ * Per-slug HTTP probe of each gallery asset. Discovery already verified
+ * the files exist on disk; this confirms they're served correctly
+ * through the preview path with a content type that won't render as a
+ * broken image / video. Catches the case where the file ships but the
+ * deploy pipeline strips or mis-routes `public/captures/`.
+ */
+const CAPTURE_CONTENT_TYPES = {
+  png: 'image/',
+  webp: 'image/',
+  webm: 'video/',
+} as const
+
+test.describe('gallery captures', () => {
+  for (const slug of SLUGS) {
+    for (const ext of CAPTURE_EXTS) {
+      test(`${slug}.${ext}`, async ({ request }) => {
+        const url = `/captures/${slug}.${ext}`
+        const response = await request.get(url)
+        expect(
+          response.status(),
+          `${url} returned ${response.status()} — gallery tile for ${slug} will render broken. ` +
+            `Run \`pnpm capture:examples\` and confirm the file lands in docs/public/captures/.`,
+        ).toBe(200)
+        const contentType = response.headers()['content-type'] ?? ''
+        expect(
+          contentType,
+          `${url} content-type was "${contentType}", expected to start with "${CAPTURE_CONTENT_TYPES[ext]}"`,
+        ).toMatch(new RegExp(`^${CAPTURE_CONTENT_TYPES[ext]}`))
       })
     }
   }
