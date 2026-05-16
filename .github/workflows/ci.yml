@@ -67,7 +67,11 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [lts/*, lts/-1]
+        include:
+          - node-version: lts/*
+            node-tag: current
+          - node-version: lts/-1
+            node-tag: previous
 
     steps:
       - name: Checkout
@@ -96,9 +100,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-${{ matrix.node-tag }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-turbo-
+            ${{ runner.os }}-turbo-${{ matrix.node-tag }}-
 
       - name: Cache Skia WASM tools
         uses: actions/cache@v4
@@ -124,13 +128,13 @@ jobs:
         run: pnpm typecheck
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm exec turbo run //#lint
 
       - name: Test
-        run: pnpm test
+        run: pnpm exec turbo run //#test
 
       - name: Test Skia
-        run: pnpm --filter @three-flatland/skia run test
+        run: pnpm exec turbo run test --filter=@three-flatland/skia
 
   smoke:
     name: Smoke tests (examples)
@@ -158,9 +162,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-current-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-turbo-
+            ${{ runner.os }}-turbo-current-
 
       - name: Cache Playwright browsers
         id: playwright-cache

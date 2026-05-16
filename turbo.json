@@ -32,6 +32,29 @@
       "dependsOn": ["docs#build"],
       "cache": false
     },
+    "//#lint": {
+      "inputs": [
+        "packages/*/src/**",
+        "minis/*/src/**",
+        "eslint.config.*",
+        "package.json"
+      ],
+      "outputs": []
+    },
+    "//#test": {
+      "dependsOn": ["three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build"],
+      "inputs": [
+        "packages/*/src/**",
+        "packages/*/test/**",
+        "vitest.config.*",
+        "package.json"
+      ],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
     "typecheck": {
       "dependsOn": ["^build"],
       "outputs": []
