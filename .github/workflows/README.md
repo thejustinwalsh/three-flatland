@@ -98,7 +98,7 @@ Job gating:
 
 | Job | Runs when |
 |---|---|
-| `ci.build` (matrix) | `packages` ∨ `minis` ∨ `configs` ∨ `ci` |
+| `ci.build` (matrix) | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — lint/typecheck/test are too valuable to bucket-gate; turbo cache makes the no-ops cheap |
 | `ci.smoke` | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` (and upstream `build` didn't fail) |
 | `ci.size` | `packages` ∨ `configs` ∨ `ci` (PR events only; size-limit only tracks published packages) |
 | `ci-passed` | always — gates the merge |

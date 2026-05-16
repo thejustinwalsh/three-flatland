@@ -64,11 +64,11 @@ jobs:
       - name: Lint
         run: pnpm exec turbo run //#lint
 
-      - name: Build
-        run: pnpm build
-
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
 
       - name: Test
         run: pnpm exec turbo run //#test

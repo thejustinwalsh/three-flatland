@@ -23,6 +23,8 @@ jobs:
     if: |
       needs.changes.outputs.packages == 'true' ||
       needs.changes.outputs.minis == 'true' ||
+      needs.changes.outputs.examples == 'true' ||
+      needs.changes.outputs.docs == 'true' ||
       needs.changes.outputs.configs == 'true' ||
       needs.changes.outputs.ci == 'true'
     strategy:
