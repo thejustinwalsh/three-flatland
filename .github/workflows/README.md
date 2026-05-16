@@ -4,7 +4,7 @@
 
 ```mermaid
 graph LR
-    subgraph DocsOrch ["Docs orchestration"]
+    subgraph DocsOrch ["docs.yml (orchestrator)"]
         direction TB
         DocsChanges["changes.yml"]
         DocsChanges --> DocsSmoke["smoke.yml"]
@@ -12,7 +12,7 @@ graph LR
         BuildPages --> DocsDeploy["deploy (Pages)"]
     end
 
-    subgraph CIOrch ["CI orchestration"]
+    subgraph CIOrch ["ci.yml (orchestrator)"]
         direction TB
         CIChanges["changes.yml"]
         CIChanges --> CIBuild["build.yml (matrix: lts/*, lts/-1)"]
@@ -23,30 +23,32 @@ graph LR
         CISize --> Gate
     end
 
-    subgraph TriggersRelease ["Triggers & Release"]
+    subgraph ReleaseFlow ["release.yml"]
         direction TB
-        PR["Pull Request"]
-        Push["Push to main"]
-        Manual["workflow_dispatch"]
-        Changeset["Generate Changeset"]
-        Changeset -->|"pushes .changeset/ files"| PR
-
-        Release["Release"]
+        Release["release job"]
         Release --> Changesets{"pending changesets?"}
         Changesets -->|yes| Publish["publish to npm"]
         Changesets -->|no| ReleasePR["create/update release PR"]
     end
 
-    PR --> CIChanges
-    PR --> Changeset
-    Push --> CIChanges
-    Push --> DocsChanges
-    Manual --> Release
-    Manual --> DocsChanges
+    PR(["Pull Request event"])
+    Push(["Push to main event"])
+    Manual(["workflow_dispatch event"])
+    ChangesetWF["changeset.yml"]
+    ChangesetWF -->|"pushes .changeset/ files"| PR
 
-    Gate -.->|"workflow_run (success)"| Release
+    PR ==> CIOrch
+    PR ==> ChangesetWF
+    Push ==> CIOrch
+    Push ==> DocsOrch
+    Manual ==> DocsOrch
+    Manual ==> ReleaseFlow
+
+    Gate -.->|"workflow_run (success)"| ReleaseFlow
     Gate -.->|"required by ruleset"| Merge["PR can merge"]
 ```
+
+**Reading the graph:** rounded nodes are events; rectangles are workflows or jobs. Thick arrows (`==>`) are "this event triggers this workflow." Dotted arrows are dependencies between workflows (workflow_run, ruleset gate). Inside each orchestrator subgraph, the solid arrows are the job dependency chain.
 
 ## Composable Layout
 
