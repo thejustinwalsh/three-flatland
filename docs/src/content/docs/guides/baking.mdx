@@ -97,12 +97,13 @@ Two warning shapes you'll see while iterating:
 Two ways to silence them:
 
 - **Re-bake** — the canonical fix. Run `flatland-bake` with the same descriptor your loader is using, the hash matches, the warning goes away.
-- **`skipBakedProbe: true`** — passed on the loader. Skips the sibling probe entirely and goes straight to the in-memory bake. Useful while iterating on tile metadata when you know the sidecar is stale and don't care to refresh it on every change.
+- **`forceRuntime: true`** — passed on the loader. Skips the sibling probe entirely and goes straight to the in-memory bake. Useful while iterating on tile metadata when you know the sidecar is stale and don't care to refresh it on every change. Mirrors `SlugFontLoader.forceRuntime` — the same flag every baked-asset loader in the codebase exposes.
 
 ```typescript
 // Skip the probe (and the warning) during iteration
 const sheet = await SpriteSheetLoader.load('./sprites/knight.json', {
-  normals: { skipBakedProbe: true },
+  normals: true,
+  forceRuntime: true,
 })
 ```
 
@@ -135,7 +136,7 @@ The choice is about *when* the work happens:
 |------|------|----------|
 | **Offline** (`flatland-bake` in CI) | Zero startup cost, deterministic, ships a slightly larger asset bundle (the sidecar) | Production builds, demos, anything user-facing |
 | **Runtime** (in-memory fallback) | Burns first-load CPU on `fetch` + decode + bake; non-deterministic timing | Development iteration, tweaking descriptors, experimenting with custom data |
-| **Forced runtime** (`skipBakedProbe: true`) | Same as runtime, plus no probe round-trip and no warning | Tightening the iteration loop when you know the sidecar is stale |
+| **Forced runtime** (`forceRuntime: true`) | Same as runtime, plus no probe round-trip and no warning | Tightening the iteration loop when you know the sidecar is stale |
 
 In production, ship baked siblings and the loader becomes a single-image-fetch with no decode overhead. In development, skip the bake step entirely and let the runtime regenerate — much faster than re-running the CLI on every descriptor tweak.
 

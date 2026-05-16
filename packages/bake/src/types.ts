@@ -67,14 +67,17 @@ export interface FlatlandManifest {
  */
 export interface BakedAssetLoaderOptions {
   /**
-   * Skip the baked-sibling probe. Loader generates in-memory directly
-   * (or uses an explicit URL the caller provided). Suppresses the
-   * devtime "no baked sibling" warning.
+   * Skip the baked-sibling probe and go straight to the in-memory bake.
+   * Suppresses the devtime "no baked sibling" warning.
    *
    * Use during asset iteration when you know no baked output exists yet
-   * and don't want the probe cost or console noise.
+   * and don't want the probe round-trip or console noise. Default `false`
+   * — probe first, run in-memory only on miss.
+   *
+   * Mirrors `SlugFontLoader.forceRuntime` — the same single-flag pattern
+   * shared by every baked-asset loader in the codebase.
    */
-  skipBakedProbe?: boolean
+  forceRuntime?: boolean
 }
 
 /**

@@ -34,16 +34,24 @@ export type NormalMapResult = Texture | null
  * if (normalTex) material.normalMap = normalTex
  * else material.useRuntimeNormals = true
  *
- * // Skip the baked probe — go straight to "no normal sibling"
- * const tex = await NormalMapLoader.load(url, { skipBakedProbe: true })
+ * // Skip the baked probe — go straight to runtime (or null without descriptor)
+ * const tex = await NormalMapLoader.load(url, { forceRuntime: true })
  *
  * // R3F useLoader
  * const tex = useLoader(NormalMapLoader, '/sprites/knight.png')
  * ```
  */
 export class NormalMapLoader extends Loader<NormalMapResult> {
-  /** Skip the baked probe; resolve directly to `null`. */
-  skipBakedProbe = false
+  /**
+   * Skip the baked-sibling probe. With a `descriptor`, the in-memory
+   * bake runs immediately (suppressing the "no baked sibling" warn).
+   * Without a descriptor, the loader resolves directly to `null` —
+   * caller is expected to use the TSL runtime fallback.
+   *
+   * Mirrors `SlugFontLoader.forceRuntime` — same name, same semantics
+   * across every baked-asset loader in the codebase.
+   */
+  forceRuntime = false
   /**
    * When set, missing sidecars trigger an in-memory bake via
    * `resolveNormalMap`. Without a descriptor, the loader can only probe
@@ -55,11 +63,6 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
    * ```
    */
   descriptor: NormalSourceDescriptor | undefined = undefined
-  /**
-   * Forwarded to `resolveNormalMap` when `descriptor` is set.
-   * Has no effect on the legacy (no-descriptor) path.
-   */
-  disableRuntimeBake = false
 
   constructor(manager?: LoadingManager) {
     super(manager)
@@ -75,7 +78,7 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
   ): NormalMapResult {
     const resolved = this.manager.resolveURL(url)
 
-    NormalMapLoader._loadImpl(resolved, this.skipBakedProbe, this.descriptor, this.disableRuntimeBake)
+    NormalMapLoader._loadImpl(resolved, this.forceRuntime, this.descriptor)
       .then((result) => {
         onLoad?.(result)
       })
@@ -91,9 +94,8 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
   loadAsync(url: string): Promise<NormalMapResult> {
     return NormalMapLoader._loadImpl(
       this.manager.resolveURL(url),
-      this.skipBakedProbe,
-      this.descriptor,
-      this.disableRuntimeBake
+      this.forceRuntime,
+      this.descriptor
     )
   }
 
@@ -104,7 +106,7 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
   static load(
     url: string,
     options?: {
-      skipBakedProbe?: boolean
+      forceRuntime?: boolean
       /**
        * When provided, missing sidecars trigger an in-memory bake via
        * `resolveNormalMap`. Without a descriptor, NormalMapLoader can only
@@ -112,22 +114,15 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
        * preserved for backward compat).
        */
       descriptor?: NormalSourceDescriptor
-      /**
-       * Forwarded to `resolveNormalMap` when a descriptor is provided.
-       * Has no effect on the legacy (no-descriptor) path. See
-       * `ResolveNormalMapOptions.disableRuntimeBake`.
-       */
-      disableRuntimeBake?: boolean
     }
   ): Promise<NormalMapResult> {
-    const skipBakedProbe = options?.skipBakedProbe ?? false
+    const forceRuntime = options?.forceRuntime ?? false
     const descriptor = options?.descriptor
-    const disableRuntimeBake = options?.disableRuntimeBake ?? false
-    const cacheKey = `${url}:${skipBakedProbe ? 'skip' : 'probe'}:${descriptor ? 'desc' : 'nodesc'}:${disableRuntimeBake ? 'noruntime' : 'allowruntime'}`
+    const cacheKey = `${url}:${forceRuntime ? 'runtime' : 'probe'}:${descriptor ? 'desc' : 'nodesc'}`
     const cached = this._cache.get(cacheKey)
     if (cached) return cached
 
-    const promise = this._loadImpl(url, skipBakedProbe, descriptor, disableRuntimeBake)
+    const promise = this._loadImpl(url, forceRuntime, descriptor)
     this._cache.set(cacheKey, promise)
     return promise
   }
@@ -140,18 +135,17 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
 
   private static async _loadImpl(
     url: string,
-    skipBakedProbe: boolean,
-    descriptor: NormalSourceDescriptor | undefined,
-    disableRuntimeBake: boolean
+    forceRuntime: boolean,
+    descriptor: NormalSourceDescriptor | undefined
   ): Promise<NormalMapResult> {
     // With a descriptor we can do the full resolve: try baked → in-memory bake.
     if (descriptor) {
       const { resolveNormalMap } = await import('./resolveNormalMap.js')
-      return resolveNormalMap(url, descriptor, { skipBakedProbe, disableRuntimeBake })
+      return resolveNormalMap(url, descriptor, { forceRuntime })
     }
 
     // No descriptor → legacy URL-only behavior: probe sidecar, return null on miss.
-    if (!skipBakedProbe) {
+    if (!forceRuntime) {
       const baked = await this._tryLoadBaked(url)
       if (baked) return baked
     }

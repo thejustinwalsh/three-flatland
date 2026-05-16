@@ -36,14 +36,6 @@ export interface SpriteSheetLoaderOptions extends BakedAssetLoaderOptions {
    * 1:1 co-registered with the atlas.
    */
   normals?: SpriteSheetNormalsOption
-  /**
-   * If `true`, never bake in memory. When the baked sidecar is missing
-   * (or stale), resolve to a flat-default texture rather than triggering
-   * a runtime CPU bake. Use in production where you've already shipped
-   * all sidecars and want a missing one to fail visibly (flat shading)
-   * instead of silently incurring the bake on first frame. Default: false.
-   */
-  disableRuntimeBake?: boolean
 }
 
 /**
@@ -100,15 +92,10 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   normals: SpriteSheetNormalsOption = false
 
   /**
-   * Skip probing for a baked `.normal.png` sibling. Forces the
-   * in-memory bake path when `normals` is truthy.
+   * Skip the baked `.normal.png` sibling probe and go straight to the
+   * in-memory bake. See {@link BakedAssetLoaderOptions.forceRuntime}.
    */
-  skipBakedProbe = false
-
-  /**
-   * If `true`, never bake in memory. See {@link SpriteSheetLoaderOptions.disableRuntimeBake}.
-   */
-  disableRuntimeBake = false
+  forceRuntime = false
 
   /**
    * Load a spritesheet asynchronously (for R3F useLoader compatibility).
@@ -119,8 +106,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     return SpriteSheetLoader.loadUncached(url, {
       texture: resolved,
       normals: this.normals,
-      skipBakedProbe: this.skipBakedProbe,
-      disableRuntimeBake: this.disableRuntimeBake,
+      forceRuntime: this.forceRuntime,
     })
   }
 
@@ -193,8 +179,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
         parsed.width,
         parsed.height,
         options.normals,
-        options.skipBakedProbe ?? false,
-        options.disableRuntimeBake ?? false,
+        options.forceRuntime ?? false,
         texture.flipY
       )
     }
@@ -214,8 +199,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     atlasWidth: number,
     atlasHeight: number,
     optionDescriptor: true | NormalSourceDescriptor,
-    skipBakedProbe: boolean,
-    disableRuntimeBake: boolean,
+    forceRuntime: boolean,
     diffuseFlipY: boolean
   ): Promise<Texture> {
     // Convert each frame's normalized UV back to pixel coords. Frames
@@ -238,8 +222,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     }
 
     return resolveNormalMap(textureUrl, descriptor, {
-      skipBakedProbe,
-      disableRuntimeBake,
+      forceRuntime,
       flipY: diffuseFlipY,
     })
   }

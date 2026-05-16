@@ -15,11 +15,15 @@ import type { NormalSourceDescriptor } from './descriptor.js'
 
 export interface ResolveNormalMapOptions {
   /**
-   * Skip probing for a baked sibling PNG. Forces the in-memory bake
-   * path, even when an up-to-date `.normal.png` exists next to the
-   * source. Suppresses the devtime "no baked sibling" warning.
+   * Skip the baked-sibling probe and go straight to the in-memory bake.
+   * Suppresses both the HEAD round-trip and the "no baked sibling"
+   * devtime warning — for when you know no sidecar is shipped yet and
+   * don't want the 404 noise on every load.
+   *
+   * Mirrors the `forceRuntime` flag on `SlugFontLoader` and every other
+   * baked-asset loader in the codebase.
    */
-  skipBakedProbe?: boolean
+  forceRuntime?: boolean
   /**
    * Force the returned texture's `flipY` to this value. Pass the
    * diffuse texture's `flipY` so the normal map samples 1:1 with the
@@ -28,26 +32,19 @@ export interface ResolveNormalMapOptions {
    * path (default false).
    */
   flipY?: boolean
-  /**
-   * If `true`, never bake in memory. When the baked sibling is missing
-   * (or stale), resolve to a 1x1 flat-default `DataTexture` (visually
-   * identical to a sprite with no normal map attached) rather than
-   * triggering the runtime bake. Use in production where you've already
-   * shipped all sidecars and want a missing one to fail loudly via the
-   * flat-shaded look, not silently incur a CPU bake on first frame.
-   * Default: `false` (runtime bake allowed).
-   */
-  disableRuntimeBake?: boolean
 }
 
 /**
  * Resolve the normal map for an asset URL + descriptor.
  *
  * 1. Hash the descriptor.
- * 2. Probe the baked sibling `<source>.normal.png`. If present and its
- *    stamped hash matches, load and return that texture directly.
- * 3. Otherwise fetch the source, decode its pixels, run `bakeNormalMap`
- *    in memory, and wrap the result in a `DataTexture`.
+ * 2. Probe the baked sibling `<source>.normal.png` (unless
+ *    `forceRuntime`). If present and its stamped hash matches, load
+ *    and return that texture directly.
+ * 3. On miss (or stale hash), fetch the source, decode its pixels,
+ *    lazy-import + run `bakeNormalMap` in memory, and wrap the result
+ *    in a `DataTexture`. Runtime bake is the always-on fallback when
+ *    normals were requested.
  *
  * Browser-only — uses `fetch`, `createImageBitmap`, `OffscreenCanvas`.
  * Safe to call from any Three.js loader runtime.
@@ -59,7 +56,7 @@ export async function resolveNormalMap(
 ): Promise<Texture> {
   const hash = hashDescriptor(descriptor)
 
-  if (!options.skipBakedProbe) {
+  if (!options.forceRuntime) {
     const bakedURL = bakedSiblingURL(sourceURL, '.normal.png')
     const probe = await probeBakedSibling(bakedURL, { expectedHash: hash })
     if (probe.ok && probe.hashMatches) {
@@ -72,28 +69,19 @@ export async function resolveNormalMap(
       devtimeWarn(
         'normal',
         sourceURL,
-        options.disableRuntimeBake
-          ? `${bakedURL} exists but its descriptor hash is stale — using flat fallback (disableRuntimeBake is true). ` +
-              `Run \`npx flatland-bake normal ${sourceURL} --descriptor <descriptor>.json\` to refresh the sidecar.`
-          : `${bakedURL} exists but its descriptor hash is stale — re-baking in memory. ` +
-              `Run \`npx flatland-bake normal ${sourceURL} --descriptor <descriptor>.json\` to refresh.`
+        `${bakedURL} exists but its descriptor hash is stale — re-baking in memory. ` +
+          `Run \`npx flatland-bake normal ${sourceURL} --descriptor <descriptor>.json\` to refresh.`
       )
     } else {
       devtimeWarn(
         'normal',
         sourceURL,
-        options.disableRuntimeBake
-          ? `No baked sibling at ${bakedURL} — using flat fallback (disableRuntimeBake is true). ` +
-              `Run \`npx flatland-bake normal\` to produce the sidecar.`
-          : `No baked sibling at ${bakedURL} — baking in memory. ` +
-              `Run \`npx flatland-bake normal\` in production to skip this path.`
+        `No baked sibling at ${bakedURL} — baking in memory. ` +
+          `Run \`npx flatland-bake normal\` for production, or set \`forceRuntime: true\` to skip the probe.`
       )
     }
   }
 
-  if (options.disableRuntimeBake) {
-    return flatDefaultTexture(options.flipY)
-  }
   const tex = await bakeInMemory(sourceURL, descriptor)
   if (options.flipY !== undefined) tex.flipY = options.flipY
   tex.needsUpdate = true
@@ -166,17 +154,3 @@ function imageBitmapToRGBA(
   return new Uint8Array(data.data.buffer, data.data.byteOffset, data.data.byteLength)
 }
 
-/**
- * 1x1 "flat" normal-map fallback: nx=0, ny=0 (encoded 128, 128),
- * elevation=0, alpha=255. NormalMapProvider decodes this to vec3(0,0,1) —
- * same visual result as a sprite with no normalMap attached at all.
- *
- * Used when `disableRuntimeBake: true` and no baked sidecar was found.
- */
-function flatDefaultTexture(flipY?: boolean): Texture {
-  const pixels = new Uint8Array([128, 128, 0, 255])
-  const tex = new DataTexture(pixels, 1, 1, RGBAFormat, UnsignedByteType)
-  if (flipY !== undefined) tex.flipY = flipY
-  tex.needsUpdate = true
-  return tex
-}

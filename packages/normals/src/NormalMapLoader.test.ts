@@ -39,7 +39,7 @@ describe('NormalMapLoader', () => {
   it('does not warn when the baked path is used', async () => {
     // HEAD returns 200; TextureLoader is stubbed via module mock below — for
     // this test we skip the actual TextureLoader round-trip by returning
-    // early: set skipBakedProbe=false, HEAD 200, but also stub TextureLoader
+    // early: set forceRuntime=false, HEAD 200, but also stub TextureLoader
     // via the prototype so it immediately onLoads with a stub texture.
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
     const { TextureLoader } = await import('three')
@@ -57,19 +57,19 @@ describe('NormalMapLoader', () => {
     loadSpy.mockRestore()
   })
 
-  it('skips the baked probe when skipBakedProbe is true', async () => {
+  it('skips the baked probe when forceRuntime is true', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock
 
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const result = await NormalMapLoader.load('/sprites/knight.png', {
-      skipBakedProbe: true,
+      forceRuntime: true,
     })
     expect(result).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('caches results per (url, skipBakedProbe) pair', async () => {
+  it('caches results per (url, forceRuntime) pair', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 404 }))
     globalThis.fetch = fetchMock
     vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -78,9 +78,10 @@ describe('NormalMapLoader', () => {
     await NormalMapLoader.load('/sprites/knight.png')
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    await NormalMapLoader.load('/sprites/knight.png', { skipBakedProbe: true })
-    // skipBakedProbe path doesn't fetch at all, but it stores a separate cache
-    // entry — a subsequent non-forced call still hits the baked path only once.
+    await NormalMapLoader.load('/sprites/knight.png', { forceRuntime: true })
+    // forceRuntime path skips the HEAD probe — no descriptor here, so it
+    // returns null without fetching. Distinct cache key from the default
+    // call, so a subsequent default call still only hits HEAD once total.
     await NormalMapLoader.load('/sprites/knight.png')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -178,19 +179,50 @@ describe('NormalMapLoader.load — descriptor route', () => {
     expect(calls).toBeGreaterThan(0)
   })
 
-  it('returns flat fallback when descriptor + disableRuntimeBake combined and no sidecar', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 404 })) as unknown as typeof fetch
+  it('skips the probe and bakes in memory when descriptor + forceRuntime combined', async () => {
+    const fetchCalls: Array<{ method?: string }> = []
+    const originalCIB = (global as any).createImageBitmap
+    const originalOC = (global as any).OffscreenCanvas
+    globalThis.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      fetchCalls.push({ method: init?.method })
+      return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200 })
+    }) as unknown as typeof fetch
+    ;(global as any).createImageBitmap = vi.fn(async () => ({
+      width: 1,
+      height: 1,
+      close: () => {},
+    } as ImageBitmap))
+    ;(global as any).OffscreenCanvas = class {
+      width: number
+      height: number
+      constructor(w: number, h: number) {
+        this.width = w
+        this.height = h
+      }
+      getContext() {
+        return {
+          drawImage: () => {},
+          getImageData: (_x: number, _y: number, w: number, h: number) => ({
+            data: new Uint8ClampedArray(w * h * 4).fill(128),
+          }),
+        }
+      }
+    }
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    const tex = await NormalMapLoader.load('/missing.png', {
-      descriptor,
-      disableRuntimeBake: true,
-    })
-    expect(tex).not.toBeNull()
-    // resolveNormalMap returns a 1x1 flat DataTexture
-    const t = tex as any
-    expect(t.image.width).toBe(1)
-    expect(t.image.height).toBe(1)
+    try {
+      const tex = await NormalMapLoader.load('/missing.png', {
+        descriptor,
+        forceRuntime: true,
+      })
+      expect(tex).not.toBeNull()
+    } finally {
+      ;(global as any).createImageBitmap = originalCIB
+      ;(global as any).OffscreenCanvas = originalOC
+    }
+    // No HEAD probe; the bake fetches the source via GET.
+    expect(fetchCalls.some((c) => c.method === 'HEAD')).toBe(false)
+    expect(fetchCalls.some((c) => c.method === undefined)).toBe(true)
   })
 
   it('preserves legacy null-on-miss + warn when no descriptor passed', async () => {

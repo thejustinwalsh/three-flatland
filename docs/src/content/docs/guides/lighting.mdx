@@ -475,15 +475,15 @@ hash is stale, the loader bakes the atlas in memory on first load (lazy-importin
 the baker, so the cost is paid only when needed) and emits a dev-mode warning
 pointing at `npx flatland-bake normal`.
 
-For production builds where you've shipped all sidecars and want a missing one
-to fail loudly (flat lighting) rather than silently incur a CPU bake on first
-frame, pass `normals: { disableRuntimeBake: true }` to either loader, or set
-`loader.disableRuntimeBake = true` on the instance for R3F `useLoader` consumers.
+If you're iterating on a tileset's normal descriptor and the 404-then-bake
+round-trip is noise you want to skip, pass `forceRuntime: true` on the loader
+to go straight to the in-memory bake — same single-flag pattern every
+baked-asset loader uses (e.g. `SlugFontLoader.forceRuntime`).
 
 :::note
 The dev-mode warning is suppressed in production (`NODE_ENV === 'production'`),
-so leaving the fallback enabled is safe for sites where sidecars are always
-present — the bake path stays dormant.
+so leaving the runtime-bake fallback enabled is safe for sites where sidecars
+are always present — the bake path stays dormant.
 :::
 
 ## Performance Tips

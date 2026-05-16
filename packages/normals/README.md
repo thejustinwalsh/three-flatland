@@ -64,9 +64,11 @@ See the [three-flatland docs](https://thejustinwalsh.com/three-flatland/) for de
 ### Loader options
 
 ```typescript
-// Skip the baked probe and always resolve to null — useful during asset
-// iteration when you know no sibling exists yet.
-const tex = await NormalMapLoader.load(url, { skipBakedProbe: true })
+// Skip the baked probe and go straight to runtime — useful during asset
+// iteration when you know no sibling exists yet. Mirrors the
+// `forceRuntime` flag every baked-asset loader exposes (e.g.
+// SlugFontLoader).
+const tex = await NormalMapLoader.load(url, { forceRuntime: true })
 ```
 
 ## Authoring tiles for LDtk / Tiled

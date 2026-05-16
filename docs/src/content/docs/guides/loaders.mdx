@@ -300,14 +300,15 @@ Both loaders use the same resolution path for the baked atlas:
 2. **Probe a baked sibling** — look for `<source-image>.normal.png` next to the diffuse, with a matching hash stamp. If present, load it directly.
 3. **In-memory bake fallback** — fetch the diffuse, decode pixels, run the bake, and wrap the result in a `DataTexture`.
 
-Run `npx flatland-bake normal <source>` ahead of time to skip the in-memory path in production. Pass `skipBakedProbe: true` on the loader to force the in-memory path during development (useful when iterating on tile metadata). For the offline workflow — running `flatland-bake` ahead of time, sidecar staleness warnings, CI integration — see the [Baking guide](../baking/).
+Run `npx flatland-bake normal <source>` ahead of time to skip the in-memory path in production. Pass `forceRuntime: true` on the loader to skip the sidecar probe and go straight to the in-memory bake during development (useful when iterating on tile metadata — same flag every baked-asset loader in the codebase exposes, including `SlugFontLoader`). For the offline workflow — running `flatland-bake` ahead of time, sidecar staleness warnings, CI integration — see the [Baking guide](../baking/).
 
 The `normals` option accepts:
 
 - `true` — auto-synthesize the descriptor from the asset's frame/tile layout
 - `NormalSourceDescriptor` — pass a hand-authored descriptor
-- `{ disableRuntimeBake: true }` — suppress the in-memory bake; resolves to a flat-default texture when the baked sidecar is missing (useful in production where a missing sidecar should fail visibly rather than silently bake)
-- `{ skipBakedProbe: true }` — skip the sidecar probe and force an in-memory bake (useful during development when iterating on tile metadata)
+- `false` (default) — no normal map is loaded or generated
+
+`forceRuntime: true` is a sibling option (not nested inside `normals`) that skips the sidecar probe and goes straight to the in-memory bake. Useful during development when iterating on tile metadata and you don't care about the 404 noise.
 
 The in-memory bake path is lazy-imported, so its bundle cost is not paid unless the fallback fires. A dev-mode warning (`NODE_ENV !== 'production'`) points at `npx flatland-bake normal` when the sidecar is absent. See the [Runtime bake fallback](../lighting/#runtime-bake-fallback) section for the full story.
 
@@ -337,18 +338,19 @@ For sprite sheets, the loader synthesizes one flat region per frame rect (read f
   </TabItem>
 </Tabs>
 
-For sprites whose individual frames want different per-frame tilt/bump (rare — most character sheets stay flat with alpha-derived shading) pass a `NormalSourceDescriptor` instead of `true` and provide your own `regions`. To disable the in-memory bake fallback for production builds where all sidecars are guaranteed to be present:
+For sprites whose individual frames want different per-frame tilt/bump (rare — most character sheets stay flat with alpha-derived shading) pass a `NormalSourceDescriptor` instead of `true` and provide your own `regions`. To skip the sidecar probe during iteration:
 
 ```typescript
 // Three.js
 const sheet = await SpriteSheetLoader.load('./sprites/knight.json', {
-  normals: { disableRuntimeBake: true },
+  normals: true,
+  forceRuntime: true,
 })
 
 // R3F useLoader
 const sheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
   l.normals = true
-  l.disableRuntimeBake = true
+  l.forceRuntime = true
 })
 ```
 

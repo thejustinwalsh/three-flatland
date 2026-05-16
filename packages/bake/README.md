@@ -103,11 +103,11 @@ Every loader that speaks the baked-sibling pattern extends `BakedAssetLoaderOpti
 ```typescript
 interface BakedAssetLoaderOptions {
   /** Skip the baked-sibling probe; always generate in-memory. */
-  skipBakedProbe?: boolean
+  forceRuntime?: boolean
 }
 ```
 
-Consumers pass `skipBakedProbe: true` during asset iteration to silence the devtime "no baked sibling" warning.
+Consumers pass `forceRuntime: true` during asset iteration to silence the devtime "no baked sibling" warning. The flag mirrors `SlugFontLoader.forceRuntime` — one name across every baked-asset loader in the ecosystem.
 
 ## Using with plain Three.js
 

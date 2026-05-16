@@ -194,10 +194,10 @@ export class TiledLoader extends Loader<TileMapData> {
   normals: TiledNormalsOption = false
 
   /**
-   * Skip probing for a baked `.normal.png` sibling. Forces in-memory
-   * bake when `normals` is truthy.
+   * Skip the baked `.normal.png` sibling probe and go straight to the
+   * in-memory bake. See {@link BakedAssetLoaderOptions.forceRuntime}.
    */
-  skipBakedProbe = false
+  forceRuntime = false
 
   /**
    * Load a Tiled map asynchronously (for R3F useLoader compatibility).
@@ -208,7 +208,7 @@ export class TiledLoader extends Loader<TileMapData> {
     return TiledLoader.loadUncached(url, {
       texture: resolved,
       normals: this.normals,
-      skipBakedProbe: this.skipBakedProbe,
+      forceRuntime: this.forceRuntime,
     })
   }
 
@@ -259,7 +259,7 @@ export class TiledLoader extends Loader<TileMapData> {
 
     return this.parseMap(json, baseUrl, resolved, {
       normals: options?.normals ?? false,
-      skipBakedProbe: options?.skipBakedProbe ?? false,
+      forceRuntime: options?.forceRuntime ?? false,
     })
   }
 
@@ -272,7 +272,7 @@ export class TiledLoader extends Loader<TileMapData> {
     textureOptions: TexturePreset | TextureOptions,
     normalsContext: {
       normals: TiledNormalsOption
-      skipBakedProbe: boolean
+      forceRuntime: boolean
     }
   ): Promise<TileMapData> {
     // Load tilesets (including external ones)
@@ -322,7 +322,7 @@ export class TiledLoader extends Loader<TileMapData> {
     textureOptions: TexturePreset | TextureOptions,
     normalsContext: {
       normals: TiledNormalsOption
-      skipBakedProbe: boolean
+      forceRuntime: boolean
     }
   ): Promise<TilesetData> {
     // Handle external tileset reference
@@ -391,7 +391,7 @@ export class TiledLoader extends Loader<TileMapData> {
         ts,
         tiles,
         normalsContext.normals,
-        normalsContext.skipBakedProbe,
+        normalsContext.forceRuntime,
         texture?.flipY ?? true
       )
     }
@@ -411,7 +411,7 @@ export class TiledLoader extends Loader<TileMapData> {
     ts: TiledTileset,
     tiles: Map<number, TileDefinition>,
     optionDescriptor: true | NormalSourceDescriptor,
-    skipBakedProbe: boolean,
+    forceRuntime: boolean,
     diffuseFlipY: boolean
   ): Promise<import('three').Texture> {
     const margin = ts.margin ?? 0
@@ -438,7 +438,7 @@ export class TiledLoader extends Loader<TileMapData> {
     }
 
     return resolveNormalMap(textureUrl, descriptor, {
-      skipBakedProbe,
+      forceRuntime,
       flipY: diffuseFlipY,
     })
   }
