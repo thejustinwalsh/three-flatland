@@ -319,7 +319,10 @@ async function waitForStats(
 test.describe('build artifacts', () => {
   for (const spec of EXAMPLES) {
     test(spec.path, async ({ request }) => {
-      const url = `/examples/${spec.path}/`
+      // Relative URL (no leading slash) so it composes against
+      // baseURL's `/three-flatland/` path segment. A leading `/`
+      // would resolve to host root and bypass the base, 404'ing.
+      const url = `examples/${spec.path}/`
       const response = await request.get(url)
       expect(
         response.status(),
@@ -327,13 +330,15 @@ test.describe('build artifacts', () => {
           `Check that example-${spec.type}-${spec.slug}#build is in turbo.json's docs#build.dependsOn.`,
       ).toBe(200)
       const html = await response.text()
-      // Three.js examples ship the canvas in the HTML; React examples
-      // mount at runtime into a root div. Either marker means the
-      // artifact was built and copied to docs/dist/.
+      // Vite's prod build emits `<script type="module" crossorigin
+      // src="./assets/index-<hash>.js">` as the entry tag — present in
+      // both Three.js examples (empty body, JS creates the canvas) and
+      // React examples (root div + JS hydrates). Matching this proves
+      // the artifact came out of `vite build`, not the Astro 404 page.
       expect(
         html,
-        `${url} HTML missing expected mount point (no <canvas> or root div)`,
-      ).toMatch(/<canvas|<div[^>]+id=["'](?:root|app)["']/)
+        `${url} HTML missing the bundled entry script (no <script ... src="./assets/...">) — likely served Astro 404 or an unbuilt placeholder`,
+      ).toMatch(/<script[^>]+src=["']\.\/assets\//)
     })
   }
 })
@@ -346,7 +351,7 @@ test.describe('examples', () => {
       const pageErrors: string[] = []
       page.on('pageerror', (e) => pageErrors.push(e.message))
 
-      await page.goto(`/examples/${spec.path}/`, { waitUntil: 'networkidle' })
+      await page.goto(`examples/${spec.path}/`, { waitUntil: 'networkidle' })
 
       const snapshot = await waitForStats(page)
 
@@ -418,7 +423,7 @@ test.describe('docs detail page iframe', () => {
         const pageErrors: string[] = []
         page.on('pageerror', (e) => pageErrors.push(e.message))
 
-        const url = `/examples/${slug}/${shape.query}`
+        const url = `examples/${slug}/${shape.query}`
         await page.goto(url, { waitUntil: 'networkidle' })
 
         expect(
@@ -473,7 +478,7 @@ test.describe('gallery captures', () => {
   for (const slug of SLUGS) {
     for (const ext of CAPTURE_EXTS) {
       test(`${slug}.${ext}`, async ({ request }) => {
-        const url = `/captures/${slug}.${ext}`
+        const url = `captures/${slug}.${ext}`
         const response = await request.get(url)
         expect(
           response.status(),
