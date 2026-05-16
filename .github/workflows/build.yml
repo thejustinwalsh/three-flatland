@@ -1,0 +1,77 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: true
+        type: string
+      node-tag:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'pnpm'
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Turbo
+        uses: actions/cache@v5
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ inputs.node-tag }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ inputs.node-tag }}-
+
+      - name: Cache Skia WASM tools
+        uses: actions/cache@v5
+        with:
+          path: packages/skia/.tools
+          key: ${{ runner.os }}-skia-tools-${{ hashFiles('packages/skia/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-skia-tools-
+
+      - name: Verify package versions
+        run: pnpm sync:pack:verify examples minis
+
+      - name: Verify react subpath wrappers
+        run: pnpm sync:react:verify
+
+      - name: Verify source VERSION constants
+        run: pnpm sync:versions:verify
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm exec turbo run //#lint
+
+      - name: Test
+        run: pnpm exec turbo run //#test
+
+      - name: Test Skia
+        run: pnpm exec turbo run test --filter=@three-flatland/skia
