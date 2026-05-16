@@ -12,8 +12,8 @@ import type { LightEffect } from '../../lights/LightEffect'
  * `needsShadows`, allocates the JFA SDF generator + occluder pre-pass,
  * sizes them to the renderer, runs the pre-pass each frame, and writes
  * the resulting SDFGenerator handle back to `LightingContext.sdfGenerator`
- * so consumer systems (`RadianceLightEffect.update`, future shadow-sampling
- * shaders) pick it up via the existing trait field.
+ * so consumer systems (future shadow-sampling shaders, GI effects, etc.)
+ * pick it up via the existing trait field.
  *
  * Lifecycle is idempotent and self-gating:
  * - No LightingContext → no-op.

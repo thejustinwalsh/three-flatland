@@ -171,9 +171,7 @@ export class Light2D extends Object3D {
    * SDF shadow trace for this light — useful for cosmetic/atmospheric
    * lights (slime glows, ambient fills) that don't need occlusion.
    *
-   * Currently only respected by `DefaultLightEffect`. `DirectLightEffect`
-   * still traces shadows for every non-ambient light regardless of this
-   * flag.
+   * Currently only respected by `DefaultLightEffect`.
    */
   castsShadow: boolean = true
 

@@ -68,7 +68,7 @@ three-flatland's effect system is layered, and the layers are easy to conflate b
 
 | Layer | Factory | Scope | When to Reach For It |
 |-------|---------|-------|----------------------|
-| **MaterialEffect** | `createMaterialEffect` | Per-sprite fragment shader | Damage flash, outline, dissolve, hue shift — anything that transforms one sprite's color. Channel providers (`NormalMapProvider`, `AutoNormalProvider`) are also MaterialEffects — see the [Baked Normal Pipeline](../loaders/#baked-normal-pipeline) for how to get a normal-map texture into `NormalMapProvider`. |
+| **MaterialEffect** | `createMaterialEffect` | Per-sprite fragment shader | Damage flash, outline, dissolve, hue shift — anything that transforms one sprite's color. Channel providers (`NormalMapProvider`) are also MaterialEffects — see the [Baked Normal Pipeline](../loaders/#baked-normal-pipeline) for how to get a normal-map texture into `NormalMapProvider`. |
 | **LightEffect** | `createLightEffect` | Scene singleton — drives every lit sprite | Choose or author the lighting model: tiled Forward+, GI, banded cel, etc. Exactly one is bound to a Flatland instance via `setLighting()`. See the [Lighting guide](../lighting/). |
 | **PassEffect** | `createPassEffect` | Full-screen post-process | CRT, LCD grid, scanlines, VHS, chromatic aberration. Chained on the rendered scene after lighting. |
 

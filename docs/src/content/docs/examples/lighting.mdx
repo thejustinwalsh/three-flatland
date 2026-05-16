@@ -1,6 +1,6 @@
 ---
 title: 2D Lighting
-description: Dynamic sprite lighting with draggable point lights and toggleable presets.
+description: Dynamic sprite lighting with draggable point lights.
 template: splash
 sort: 10
 ---
@@ -19,32 +19,25 @@ export const reactFiles = loadExample('react', 'lighting')
 
 ## Interactive Lighting Demo
 
-This example demonstrates dynamic 2D lighting with toggleable `DefaultLightEffect` / `DirectLightEffect` / `SimpleLightEffect` presets, two flickering point lights with draggable indicators, and animated knight sprites:
+This example demonstrates dynamic 2D lighting using `DefaultLightEffect` (Forward+ tiled culling), two flickering point lights with draggable indicators, and animated knight sprites:
 
 | Control | Action |
 |---------|--------|
-| **Default / Direct / Simple** | Switch lighting preset |
 | **Torch 1 / 2** | Toggle point lights on/off |
 | **Drag** | Move point lights (touch or mouse) |
 
 ## Lighting Setup
 
-The scene starts with `DefaultLightEffect` (Forward+ tiled culling) and can toggle to `DirectLightEffect` (per-fragment loop) or `SimpleLightEffect` (tiled, minimal features) at runtime via the UI:
+The scene uses `DefaultLightEffect` (Forward+ tiled culling) for efficient per-tile light culling:
 
 ```typescript
 import { Flatland, Light2D, Sprite2D } from 'three-flatland'
-import { DefaultLightEffect, DirectLightEffect, SimpleLightEffect } from '@three-flatland/presets'
+import { DefaultLightEffect } from '@three-flatland/presets'
 
 const defaultEffect = new DefaultLightEffect()
-const directEffect = new DirectLightEffect()
-const simpleEffect = new SimpleLightEffect()
 
 const flatland = new Flatland({ viewSize: 300, clearColor: 0x0a0a12 })
 flatland.setLighting(defaultEffect)
-
-// Toggle at runtime
-// flatland.setLighting(directEffect)
-// flatland.setLighting(simpleEffect)
 
 // Two colored torches
 const torch1 = new Light2D({
@@ -100,15 +93,12 @@ import { extend } from '@react-three/fiber/webgpu'
 import {
   Flatland, Light2D, Sprite2D, attachLighting, attachEffect,
 } from 'three-flatland/react'
-import {
-  DefaultLightEffect, DirectLightEffect, SimpleLightEffect, AutoNormalProvider,
-} from '@three-flatland/presets'
+import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 
-extend({ Flatland, Sprite2D, Light2D, DefaultLightEffect, DirectLightEffect, SimpleLightEffect, AutoNormalProvider })
+extend({ Flatland, Sprite2D, Light2D, DefaultLightEffect, NormalMapProvider })
 
 <flatland ref={flatlandRef} viewSize={300} clearColor={0x0a0a12}>
-  {/* Toggle between presets — R3F handles attach/detach lifecycle */}
   <defaultLightEffect attach={attachLighting} />
 
   <light2D lightType="point" position={[-80, 50, 0]}
@@ -118,14 +108,14 @@ extend({ Flatland, Sprite2D, Light2D, DefaultLightEffect, DirectLightEffect, Sim
   <light2D lightType="ambient" color={0x111122} intensity={0.15} />
 
   <sprite2D texture={tex}>
-    <autoNormalProvider attach={attachEffect} />
+    <normalMapProvider attach={attachEffect} />
   </sprite2D>
 </flatland>
 ```
 
 ## Further Reading
 
-- [2D Lighting Guide](../../guides/lighting/) — Full reference with all presets
+- [2D Lighting Guide](../../guides/lighting/) — Full reference for `DefaultLightEffect`, normal providers, and shadow controls
 - [Pass Effects](../pass-effects/) — Post-processing after lighting
 - [TSL Nodes](../tsl-nodes/) — Per-sprite shader effects
 

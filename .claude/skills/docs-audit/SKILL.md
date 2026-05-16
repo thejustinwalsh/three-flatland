@@ -272,7 +272,7 @@ Re-exports everything from `three-flatland` + ThreeElements augmentation for R3F
 TSL effect node functions (tint, hueShift, outline, dissolve, posterize, crtVignette, vhsDistortion, scanlines, palettize, lcdGrid, …). 100+ composable nodes.
 
 ### `@three-flatland/presets`
-Pre-configured effects: `DefaultLightEffect`, `DirectLightEffect`, `SimpleLightEffect`, `RadianceLightEffect`, `NormalMapProvider`, `AutoNormalProvider`. React entrypoint at `@three-flatland/presets/react`.
+Pre-configured effects: `DefaultLightEffect`, `NormalMapProvider`. React entrypoint at `@three-flatland/presets/react`.
 
 ### `@three-flatland/devtools`
 Tweakpane-based panes (`createPane`, `usePane`), browser dashboard, Vite plugin (`@three-flatland/devtools/vite`).

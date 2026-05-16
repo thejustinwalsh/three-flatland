@@ -467,7 +467,7 @@ export class Flatland extends Group implements WorldProvider {
         }
         this.spriteGroup.add(child)
         // Defer validation to `render()` — by the time that runs, R3F has
-        // mounted any MaterialEffect children (AutoNormalProvider, etc.)
+        // mounted any MaterialEffect children (NormalMapProvider, etc.)
         // and imperative callers have finished their `addEffect` chain, so
         // we won't warn about effects that simply haven't landed yet.
         // We don't touch `child.onBeforeRender` — that callback slot
@@ -1115,7 +1115,7 @@ export class Flatland extends Group implements WorldProvider {
       console.warn(
         `[flatland] Lit sprite "${name}" is missing channel provider(s) for: ${missing.join(', ')}. ` +
           `The active LightEffect "${lightName}" declares requires: [${required.join(', ')}]. ` +
-          `Add a MaterialEffect that provides these channels (e.g. AutoNormalProvider for 'normal'). ` +
+          `Add a MaterialEffect that provides these channels (e.g. NormalMapProvider with a baked atlas, or use SpriteSheetLoader/LDtkLoader with \`normals: true\` to auto-bake). ` +
           `Forcing lit = false on this sprite so it renders unlit instead of falling back to ` +
           `zeroed channelDefaults and poisoning the scene's lighting shader.`
       )
@@ -1344,7 +1344,7 @@ export class Flatland extends Group implements WorldProvider {
       this._renderTarget.setSize(width, height)
     }
 
-    // Forward resize to LightEffect (Forward+, RadianceCascades, etc.)
+    // Forward resize to LightEffect (Forward+, etc.)
     if (this._lightEffect?.enabled) {
       this._lightEffect.resize(width, height)
     }

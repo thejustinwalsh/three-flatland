@@ -23,7 +23,7 @@ The lighting pipeline's capabilities, all at once, in a scene that looks good:
 | Ambient | Low base illumination, tunable |
 | Per-point flicker | Torches use the old sin-wave modulation; slimes do a subtle pulse |
 | **Cel-shaded / quantized lighting** | `DefaultLightEffect.bands = 4` on by default, tunable via Tweakpane |
-| Sprite-normal lighting | Knights + slimes get `AutoNormalProvider` so they pop volumetrically |
+| Sprite-normal lighting | Knights + slimes get `NormalMapProvider` fed by `SpriteSheetLoader({ normals: true })`, which auto-bakes via `resolveNormalMap` on first load (cached + dev-warned) |
 | **SDF-traced soft shadows** | Pillars / columns cast shadow on the floor as torches move past. T8's primary verification signal. |
 | Forward+ tiling | 16 lights max per tile — demo can push toward that with slimes |
 | Reservoir overflow | Dense slime cluster should degrade gracefully (strongest lights win in a tile) |
@@ -34,8 +34,8 @@ Torches stay at 2 (draggable). Slimes provide the density — **8-16 glowing sli
 
 - **Dungeon floor**: `TileMap2D` with a 40×24-tile floor pattern from `Dungeon_Tileset.png`, random tile variation for texture. `castsShadow = false` on floor tiles.
 - **Pillars / columns**: 6-8 `Sprite2D`s placed in a grid, `castsShadow = true`, use some existing dungeon-tileset column tile (or a simple rect sprite if no column tile exists — this demo is about lighting, not art polish). Opaque.
-- **Knights**: 3-6 animated knights (idle or roll, animated), `castsShadow = true`, `AutoNormalProvider` attached. They move slowly between wander waypoints.
-- **Slimes**: 8-16 sprites (green-tinted knight sprite re-use works — it's the demo, not a shipped game), `castsShadow = true`, wander like knights but smaller + faster + each one carries a `Light2D` (point, green, flicker). `AutoNormalProvider` attached.
+- **Knights**: 3-6 animated knights (idle or roll, animated), `castsShadow = true`, `NormalMapProvider` attached (loaded via `SpriteSheetLoader({ normals: true })`). They move slowly between wander waypoints.
+- **Slimes**: 8-16 sprites (green-tinted knight sprite re-use works — it's the demo, not a shipped game), `castsShadow = true`, wander like knights but smaller + faster + each one carries a `Light2D` (point, green, flicker). `NormalMapProvider` attached.
 - **Torches**: 2 `Light2D` point lights, draggable, orange/amber with flicker. No sprite attached (just a gizmo overlay indicator).
 - **Ambient**: 1 `Light2D` ambient, dim blue-grey, tunable via UI.
 
@@ -60,7 +60,7 @@ The old demo used an API surface that has evolved substantially:
 | `flatland.render(gl)` in `useFrame` | Unchanged — still the canonical render-hook pattern. |
 | Auto-lighting when material `lit: true` | Now: `flatland.setLighting(new DefaultLightEffect())` attaches the LightEffect, per-sprite `lit` flag gates individual participation. Default on. |
 | Shadow-free rendering (no SDF) | Now: `DefaultLightEffect` declares `needsShadows = true`, and `sprite.castsShadow = true` opts a sprite into the occlusion pre-pass. |
-| Normal-agnostic shading | Now: `DefaultLightEffect.requires = ['normal']`, so lit sprites need either `AutoNormalProvider` (runtime) or `NormalMapProvider` (baked). |
+| Normal-agnostic shading | Now: `DefaultLightEffect.requires = ['normal']`, so lit sprites need `NormalMapProvider` (loaded via `SpriteSheetLoader({ normals: true })`). |
 
 ## Implementation plan
 

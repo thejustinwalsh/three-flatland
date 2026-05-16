@@ -221,6 +221,7 @@ export const NormalMapProvider = createMaterialEffect({
 
 ```typescript
 // ─── Auto-generated normal from alpha gradient ──────────────
+// (deferred — see Hybrid-SDF-Shadow-System.md status note)
 
 export const AutoNormalProvider = createMaterialEffect({
   name: 'autoNormal',
@@ -299,7 +300,7 @@ export const PBRLightEffect = createLightEffect({
 import { WebGPURenderer } from 'three/webgpu'
 import { NearestFilter } from 'three'
 import { Flatland, Light2D, Sprite2D, SpriteSheetLoader } from 'three-flatland'
-import { DefaultLightEffect, NormalMapProvider, AutoNormalProvider } from '@three-flatland/presets'
+import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 
 async function main() {
   const renderer = new WebGPURenderer({ antialias: false })
@@ -337,7 +338,7 @@ async function main() {
     texture: crateTexture,
     lit: true,
   })
-  crate.addEffect(new AutoNormalProvider())  // Generates normals from alpha gradient
+  crate.addEffect(new AutoNormalProvider())  // Generates normals from alpha gradient (deferred — see Hybrid-SDF-Shadow-System.md status note)
   crate.scale.set(48, 48, 1)
   crate.position.set(80, 0, 0)
   flatland.add(crate)
@@ -386,11 +387,10 @@ import {
 import {
   DefaultLightEffect,
   NormalMapProvider,
-  AutoNormalProvider,
 } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 
-extend({ Flatland, Sprite2D, Light2D, DefaultLightEffect, NormalMapProvider, AutoNormalProvider })
+extend({ Flatland, Sprite2D, Light2D, DefaultLightEffect, NormalMapProvider })
 
 function LitKnight() {
   const spriteRef = useRef<Sprite2D>(null)
@@ -825,7 +825,7 @@ if (this._lightingDirty) {
 | File | Change |
 |------|--------|
 | `NormalMapProvider.ts` | **New** — MaterialEffect providing 'normal' from texture |
-| `AutoNormalProvider.ts` | **New** — MaterialEffect providing 'normal' from alpha gradient |
+| `AutoNormalProvider.ts` | **New** — MaterialEffect providing 'normal' from alpha gradient (deferred) |
 | `DefaultLightEffect.ts` | Add `requires: ['normal']`, `lightHeight` uniform, diffuse from `ctx.normal` |
 | `DirectLightEffect.ts` | Same pattern as DefaultLightEffect |
 

@@ -210,8 +210,9 @@ export const LightEffectTrait = trait(() => ({
  * World-level singleton owning the shared shadow pipeline infrastructure.
  *
  * Multiple LightEffects can depend on SDF data (DefaultLightEffect for
- * shadows, RadianceLightEffect for GI). Rather than each effect owning
- * its own SDFGenerator, the pipeline is shared at the world level.
+ * shadows; future GI effects could share the same generators). Rather
+ * than each effect owning its own SDFGenerator, the pipeline is shared
+ * at the world level.
  *
  * Lifecycle: `shadowPipelineSystem` owns this trait end-to-end — it
  * allocates the generators when the active effect declares

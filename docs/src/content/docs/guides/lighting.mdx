@@ -202,16 +202,13 @@ const ambient = new Light2D({
 
 ## LightEffect Presets
 
-`@three-flatland/presets` ships four lighting presets with different cost/feature trade-offs:
+`@three-flatland/presets` ships a lighting preset for the recommended rendering path:
 
 | Preset | Tiled | Shadows | GI | Best For |
 |--------|-------|---------|-----|----------|
 | `DefaultLightEffect` | Yes | SDF (WIP) | No | Recommended — scales well |
-| `DirectLightEffect` | No | SDF (WIP) | No | Few lights, simpler code |
-| `SimpleLightEffect` | Yes | No | No | High-performance, no frills |
-| `RadianceLightEffect` | No | SDF | Yes | Full global illumination |
 
-All presets support normal-based diffuse shading when a normal channel is provided (see [Normal Providers](#normal-providers) below).
+`DefaultLightEffect` supports normal-based diffuse shading when a normal channel is provided (see [Normal Providers](#normal-providers) below).
 
 ### DefaultLightEffect
 
@@ -238,48 +235,6 @@ lighting.shadowMaxDistance = 300
 ```
 
 For the full `DefaultLightEffect` schema (uniforms vs compile-time constants, removed fields, the `categoryQuotas` accessor), see the [Pass Effects guide](../pass-effects/#defaultlighteffect-schema).
-
-### DirectLightEffect
-
-Per-fragment light loop — same feature set as `DefaultLightEffect` but iterates all lights per fragment (no tiling). Simpler code path, fine for scenes with few lights, scales as O(total lights).
-
-```typescript
-import { DirectLightEffect } from '@three-flatland/presets'
-
-const lighting = new DirectLightEffect()
-flatland.setLighting(lighting)
-
-// Same parameters as DefaultLightEffect
-lighting.bands = 4
-lighting.rimIntensity = 0.3
-```
-
-### SimpleLightEffect
-
-Tiled lighting with minimal features — just light attenuation and normal-based diffuse. No banding, pixel-snapping, glow, rim, or shadows. Use when you want fast lighting without extras.
-
-```typescript
-import { SimpleLightEffect } from '@three-flatland/presets'
-
-const lighting = new SimpleLightEffect()
-flatland.setLighting(lighting)
-
-// Only has lightHeight
-lighting.lightHeight = 0.75
-```
-
-### RadianceLightEffect
-
-Radiance Cascades global illumination — SDF-based hierarchical cascade merging for indirect lighting. Light bounces off surfaces and fills the scene with soft ambient color.
-
-```typescript
-import { RadianceLightEffect } from '@three-flatland/presets'
-
-const lighting = new RadianceLightEffect()
-flatland.setLighting(lighting)
-
-lighting.radianceIntensity = 0.5  // GI strength
-```
 
 ## Animating Lights
 
@@ -355,7 +310,7 @@ canvas.addEventListener('mouseup', () => {
 
 ## Shadow Casting, Importance & Categories
 
-`DefaultLightEffect` and `SimpleLightEffect` both use Forward+ tiled lighting: the screen is divided into tiles and each tile holds at most `MAX_LIGHTS_PER_TILE` (default `16`) light slots. In a sparsely lit room that ceiling is invisible — every torch fits in every tile and ranking doesn't matter. Pack the same room with 1000 glowing slimes and the picture changes: the tile budget becomes the bottleneck, and a misallocation will visibly push hero torches out of slots, dropping rooms into darkness despite the physical light still being present (the natural failure mode is a checkerboard of dark tiles where fills won and lit tiles where they didn't).
+`DefaultLightEffect` uses Forward+ tiled lighting: the screen is divided into tiles and each tile holds at most `MAX_LIGHTS_PER_TILE` (default `16`) light slots. In a sparsely lit room that ceiling is invisible — every torch fits in every tile and ranking doesn't matter. Pack the same room with 1000 glowing slimes and the picture changes: the tile budget becomes the bottleneck, and a misallocation will visibly push hero torches out of slots, dropping rooms into darkness despite the physical light still being present (the natural failure mode is a checkerboard of dark tiles where fills won and lit tiles where they didn't).
 
 Three Light2D fields tame this together. **Split** lights into heroes and fills, **bias** the rank score for hero lights, and **bucket** fills by category for independent per-tile quotas. They do nothing in small scenes; they make dense scenes readable.
 
@@ -493,36 +448,7 @@ For the full `DefaultLightEffect` schema (including the `categoryQuotas` accesso
 
 ## Normal Providers
 
-All lighting presets support normal-based directional diffuse shading. To enable it, add a normal provider effect to your sprites. `@three-flatland/presets` ships two providers:
-
-### AutoNormalProvider
-
-Computes normals from the sprite's diffuse alpha channel — zero configuration, works with any sprite:
-
-<Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
-    ```typescript
-    import { AutoNormalProvider } from '@three-flatland/presets'
-
-    const sprite = new Sprite2D({ texture })
-    sprite.addEffect(new AutoNormalProvider())
-    flatland.add(sprite)
-    ```
-  </TabItem>
-  <TabItem label="React" icon="seti:react">
-    ```tsx
-    import { attachEffect } from 'three-flatland/react'
-    import { AutoNormalProvider } from '@three-flatland/presets'
-    import '@three-flatland/presets/react'
-
-    extend({ AutoNormalProvider })
-
-    <sprite2D texture={texture}>
-      <autoNormalProvider attach={attachEffect} />
-    </sprite2D>
-    ```
-  </TabItem>
-</Tabs>
+`DefaultLightEffect` supports normal-based directional diffuse shading. To enable it, add a normal provider effect to your sprites.
 
 ### NormalMapProvider
 
@@ -542,9 +468,7 @@ Without a normal provider, lighting still works — surfaces are treated as flat
 
 ## Performance Tips
 
-- Use `DefaultLightEffect` for most scenes — tiled culling scales well
-- Switch to `SimpleLightEffect` for maximum performance with no stylization
-- Use `DirectLightEffect` only with a small number of lights
+- Use `DefaultLightEffect` — it is the canonical preset; tiled culling scales well across scene sizes. Lighter-weight and global-illumination variants are tracked in a follow-up PR
 - Limit dynamic lights to 2-4 point lights for best performance
 - Use ambient light for base illumination instead of many dim lights
 - Toggle `light.enabled` instead of adding/removing lights

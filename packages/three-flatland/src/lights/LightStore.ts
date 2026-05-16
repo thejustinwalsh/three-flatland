@@ -117,7 +117,7 @@ export class LightStore {
     })
   }
 
-  /** Get the lights DataTexture (for use by GPU systems like RadianceCascades) */
+  /** Get the lights DataTexture (for use by GPU systems that sample lights directly) */
   get lightsTexture(): DataTexture {
     return this._lightsTexture
   }

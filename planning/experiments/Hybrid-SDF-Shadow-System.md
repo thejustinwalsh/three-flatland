@@ -1,5 +1,7 @@
 Hybrid SDF Shadow System — Consolidated Plan
 
+> **Status (2026-05-16):** Phase-1 (DefaultLightEffect + SDF shadows) ships in `lighting-stochastic-adoption`. Phase-2 GI (RadianceLightEffect, Direct/Simple variants) split into a follow-up PR; see tag `pre-lighting-bisect` for the source state of those presets.
+
  Merges the immediate SDF shadow algorithm with the SDF-Tiled Forward+ architecture into a phased plan. Phase 1 (this PR) fixes shadows. Later phases unlock unlimited lights and
  indirect GI.
 

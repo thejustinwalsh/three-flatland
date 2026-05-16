@@ -1,5 +1,7 @@
 # Unified 2D Lighting Architecture for three-flatland
 
+> **Status (2026-05-16):** Phase-1 (DefaultLightEffect + SDF shadows) ships in `lighting-stochastic-adoption`. Phase-2 GI (RadianceLightEffect, Direct/Simple variants) split into a follow-up PR; see tag `pre-lighting-bisect` for the source state of those presets.
+
 **Date**: February 2025  
 **Status**: Research Complete, Ready for Implementation Planning
 

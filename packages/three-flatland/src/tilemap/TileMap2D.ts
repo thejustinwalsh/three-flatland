@@ -425,13 +425,13 @@ export class TileMap2D extends Group {
 
   /**
    * Register a MaterialEffect on all tile layer materials.
-   * Use this to add channel providers (e.g. AutoNormalProvider) so
+   * Use this to add channel providers (e.g. NormalMapProvider) so
    * tilemaps participate in the lighting pipeline's channel system.
    *
    * @example
    * ```tsx
    * <tileMap2D data={mapData}>
-   *   <autoNormalProvider attach={attachEffect} />
+   *   <normalMapProvider attach={attachEffect} />
    * </tileMap2D>
    * ```
    */

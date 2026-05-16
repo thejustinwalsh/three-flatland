@@ -473,7 +473,7 @@ export abstract class LightEffect {
 
   /**
    * Dispose GPU resources owned by this effect.
-   * Override in subclasses that own ForwardPlusLighting, RadianceCascades, etc.
+   * Override in subclasses that own ForwardPlusLighting or other GPU resources.
    */
   dispose(): void {}
 
@@ -614,7 +614,7 @@ export type LightEffectClass<S extends EffectSchema> = {
  *
  * Supports lifecycle hooks (init/update/resize/dispose) for effects that
  * manage GPU resources. Use factory function fields in the schema for
- * per-instance constants (e.g., ForwardPlusLighting, RadianceCascades).
+ * per-instance constants (e.g., ForwardPlusLighting).
  *
  * @example
  * ```typescript
