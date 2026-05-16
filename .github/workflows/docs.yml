@@ -29,9 +29,11 @@ jobs:
     needs: changes
     if: |
       github.event_name == 'workflow_dispatch' ||
-      needs.changes.outputs.code == 'true' ||
+      needs.changes.outputs.packages == 'true' ||
+      needs.changes.outputs.minis == 'true' ||
       needs.changes.outputs.examples == 'true' ||
       needs.changes.outputs.docs == 'true' ||
+      needs.changes.outputs.configs == 'true' ||
       needs.changes.outputs.ci == 'true'
     uses: ./.github/workflows/smoke.yml
 

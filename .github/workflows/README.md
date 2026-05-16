@@ -81,25 +81,29 @@ Doc-only or meta-only PRs (where build / smoke / size are skipped via paths-filt
 
 ## Path Filtering (CI)
 
-`changes.yml` uses [`dorny/paths-filter`](https://github.com/dorny/paths-filter) to bucket the PR diff (or the latest push's diff). Each bucket is a boolean output consumed by downstream jobs in `ci.yml`.
+`changes.yml` uses [`dorny/paths-filter`](https://github.com/dorny/paths-filter) to bucket the PR diff (or the latest push's diff). Each bucket is a boolean output consumed by downstream jobs in `ci.yml` and `docs.yml`.
 
 | Bucket | Patterns |
 |---|---|
-| `code` | `packages/**`, `minis/**`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `eslint.config.*`, `vitest.config.*` |
+| `packages` | `packages/**` |
+| `minis` | `minis/**` |
 | `examples` | `examples/**`, `e2e/**`, `playwright.config.*` |
 | `docs` | `docs/**` |
+| `configs` | `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `eslint.config.*`, `vitest.config.*` |
 | `ci` | `.github/workflows/**` |
 
 Job gating:
 
 | Job | Runs when |
 |---|---|
-| `build` (matrix) | `code` ∨ `ci` |
-| `smoke` | `code` ∨ `examples` ∨ `docs` ∨ `ci` (and upstream `build` didn't fail) |
-| `size` | `code` ∨ `ci` (PR events only; needs base to diff against) |
+| `ci.build` (matrix) | `packages` ∨ `minis` ∨ `configs` ∨ `ci` |
+| `ci.smoke` | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` (and upstream `build` didn't fail) |
+| `ci.size` | `packages` ∨ `configs` ∨ `ci` (PR events only; size-limit only tracks published packages) |
 | `ci-passed` | always — gates the merge |
+| `docs.smoke` | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — docs#build pulls in all of them (API reference from `packages`, showcases from `minis`, embedded demos from `examples`) |
+| `docs.build-pages` / `docs.deploy` | gated on `docs.smoke` success |
 
-A change in `ci` triggers everything so a CI change validates itself.
+A change in `ci` or `configs` triggers everything — CI/config changes need to validate themselves.
 
 ## Node Version Policy
 

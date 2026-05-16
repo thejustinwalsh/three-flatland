@@ -3,12 +3,16 @@ name: Changes
 on:
   workflow_call:
     outputs:
-      code:
-        value: ${{ jobs.detect.outputs.code }}
+      packages:
+        value: ${{ jobs.detect.outputs.packages }}
+      minis:
+        value: ${{ jobs.detect.outputs.minis }}
       examples:
         value: ${{ jobs.detect.outputs.examples }}
       docs:
         value: ${{ jobs.detect.outputs.docs }}
+      configs:
+        value: ${{ jobs.detect.outputs.configs }}
       ci:
         value: ${{ jobs.detect.outputs.ci }}
 
@@ -16,9 +20,11 @@ jobs:
   detect:
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      packages: ${{ steps.filter.outputs.packages }}
+      minis: ${{ steps.filter.outputs.minis }}
       examples: ${{ steps.filter.outputs.examples }}
       docs: ${{ steps.filter.outputs.docs }}
+      configs: ${{ steps.filter.outputs.configs }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
       - uses: actions/checkout@v6
@@ -27,9 +33,17 @@ jobs:
         id: filter
         with:
           filters: |
-            code:
+            packages:
               - 'packages/**'
+            minis:
               - 'minis/**'
+            examples:
+              - 'examples/**'
+              - 'e2e/**'
+              - 'playwright.config.*'
+            docs:
+              - 'docs/**'
+            configs:
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -37,11 +51,5 @@ jobs:
               - 'tsconfig*.json'
               - 'eslint.config.*'
               - 'vitest.config.*'
-            examples:
-              - 'examples/**'
-              - 'e2e/**'
-              - 'playwright.config.*'
-            docs:
-              - 'docs/**'
             ci:
               - '.github/workflows/**'
