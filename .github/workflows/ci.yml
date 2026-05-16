@@ -14,51 +14,36 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      should_build: ${{ steps.decide.outputs.should_build }}
+      code: ${{ steps.filter.outputs.code }}
+      examples: ${{ steps.filter.outputs.examples }}
+      docs: ${{ steps.filter.outputs.docs }}
+      ci: ${{ steps.filter.outputs.ci }}
+      should_build: ${{ steps.filter.outputs.code == 'true' || steps.filter.outputs.examples == 'true' || steps.filter.outputs.docs == 'true' || steps.filter.outputs.ci == 'true' }}
     steps:
       - uses: actions/checkout@v6
+
+      - uses: dorny/paths-filter@v3
+        id: filter
         with:
-          fetch-depth: 2
-
-      - name: Check if latest commit has build-relevant changes
-        id: latest-commit
-        run: |
-          changed=$(git diff --name-only HEAD~1 HEAD)
-          echo "Changed files in latest commit:"
-          echo "$changed"
-          if echo "$changed" | grep -qvE '^(\.changeset/|\.claude/|docs/|scripts/|.*\.md$|LICENSE$)'; then
-            echo "has_code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_code=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Check previous commit CI status
-        id: prev-ci
-        if: github.event_name == 'pull_request' && steps.latest-commit.outputs.has_code == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          prev_sha=$(git rev-parse HEAD~1)
-          conclusions=$(gh api "repos/${{ github.repository }}/commits/$prev_sha/check-runs" \
-            --jq '[.check_runs[] | select(.name | startswith("build (")) | .conclusion] | unique | join(",")' 2>/dev/null || echo "")
-          echo "Previous commit build checks: $conclusions"
-          if [[ "$conclusions" == "success" ]]; then
-            echo "prev_passed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prev_passed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Decide whether to build
-        id: decide
-        run: |
-          if [[ "${{ steps.latest-commit.outputs.has_code }}" == "false" && \
-                "${{ steps.prev-ci.outputs.prev_passed }}" == "true" ]]; then
-            echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping build — latest commit has no code changes and previous CI passed"
-          else
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-            echo "Build required"
-          fi
+          filters: |
+            code:
+              - 'packages/**'
+              - 'minis/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+              - 'eslint.config.*'
+              - 'vitest.config.*'
+            examples:
+              - 'examples/**'
+              - 'e2e/**'
+              - 'playwright.config.*'
+            docs:
+              - 'docs/**'
+            ci:
+              - '.github/workflows/**'
 
   build:
     needs: changes
