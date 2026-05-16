@@ -25,13 +25,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: pnpm
@@ -43,7 +43,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Cache Turbo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .turbo
           key: ${{ runner.os }}-turbo-${{ github.sha }}
@@ -51,7 +51,7 @@ jobs:
             ${{ runner.os }}-turbo-
 
       - name: Cache Skia WASM tools
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: packages/skia/.tools
           key: ${{ runner.os }}-skia-tools-${{ hashFiles('packages/skia/package.json') }}
@@ -61,7 +61,7 @@ jobs:
       - name: Build docs
         run: pnpm build --filter=docs
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: docs/dist
 
@@ -72,5 +72,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
         id: deployment
