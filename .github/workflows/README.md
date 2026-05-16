@@ -9,7 +9,7 @@ graph TD
     Changeset -->|"pushes .changeset/ files"| PR
 
     Push["Push to main"] --> CI
-    Push --> Docs["Deploy Docs"]
+    Push --> Docs["Deploy Docs (self-gated on smoke)"]
 
     CI -->|"workflow_run (success)"| Release["Release"]
     Manual["workflow_dispatch"] --> Release
@@ -62,7 +62,7 @@ Doc-only or meta-only PRs (where build / smoke / size are skipped via paths-filt
 |---|---|---|---|
 | **CI** | `ci.yml` (+ `changes.yml`, `build.yml`, `smoke.yml`, `size.yml`) | push to `main`, pull requests | Build matrix, lint, test, typecheck, smoke (Playwright), bundle size, gated by `ci-passed` |
 | **Release** | `release.yml` | after CI succeeds on `main`, manual | Publish packages to npm via changesets |
-| **Deploy Docs** | `docs.yml` | push to `main`, manual | Build and deploy Starlight docs to GitHub Pages |
+| **Deploy Docs** | `docs.yml` (+ `changes.yml`, `smoke.yml`) | push to `main`, manual | Self-gated docs deploy: runs paths-filter + smoke before building the Pages artifact and deploying |
 | **Generate Changeset** | `changeset.yml` | pull requests (opened, synchronize) | Auto-generate changeset files with Copilot enhancement |
 
 ## Path Filtering (CI)
@@ -114,12 +114,12 @@ Restore-keys mirror the primary key prefix so a fresh SHA inherits from the near
 graph LR
     CI["CI (push to main)"] -->|workflow_run| Release
     Release -.->|"only if CI succeeds"| NPM["npm publish"]
-    CI -.->|"independent"| Docs["Deploy Docs"]
+    Docs["Deploy Docs (push to main / dispatch)"] -.->|"self-gated on smoke"| Pages["GitHub Pages"]
 ```
 
 **Release** waits for CI via `workflow_run` and only runs when CI completes successfully on `main`. Manual `workflow_dispatch` bypasses the CI dependency (useful for version corrections).
 
-**Deploy Docs** runs independently of CI on its own trigger.
+**Deploy Docs** is self-contained: it runs its own paths-filter + smoke (via the same reusable workflows) before building the Pages artifact and deploying. The deploy is gated on smoke success — `workflow_dispatch` runs the same gate, so hot patches and manual redeploys never bypass validation.
 
 ## Concurrency Controls
 
