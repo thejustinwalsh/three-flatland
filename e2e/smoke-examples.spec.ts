@@ -392,21 +392,21 @@ test.describe('examples', () => {
  *   Iframe should resolve to the three side via `restoreVariant()`'s
  *   sessionStorage-or-default branch.
  *
- * - **`?variant=three`** — exercises the URL param branch resolving to
- *   the same three side as the bare link. Confirms the param parser
- *   handles the explicit case (not just `react`).
+ * - **`?pkg=three`** — exercises the URL param branch resolving to the
+ *   same three side as the bare link. Confirms the param parser handles
+ *   the explicit case (not just `react`).
  *
- * - **`?variant=react`** — exercises the URL param branch resolving to
- *   the React side. The only path that confirms React-side iframe
- *   wiring works end-to-end through the detail page.
+ * - **`?pkg=react`** — exercises the URL param branch resolving to the
+ *   React side. The only path that confirms React-side iframe wiring
+ *   works end-to-end through the detail page.
  *
  * Each test asserts the iframe's resolved src matches the expected
  * variant and that a canvas mounts inside its contentFrame.
  */
 const DETAIL_URL_SHAPES = [
   { query: '', expected: 'three' as const, label: 'bare' },
-  { query: '?variant=three', expected: 'three' as const, label: '?variant=three' },
-  { query: '?variant=react', expected: 'react' as const, label: '?variant=react' },
+  { query: '?pkg=three', expected: 'three' as const, label: '?pkg=three' },
+  { query: '?pkg=react', expected: 'react' as const, label: '?pkg=react' },
 ]
 
 test.describe('docs detail page iframe', () => {

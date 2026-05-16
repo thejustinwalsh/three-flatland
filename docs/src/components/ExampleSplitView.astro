@@ -825,13 +825,15 @@ const transitionName = `tile-examples-${slug}`
 
             const restoreVariant = (): 'three' | 'react' => {
                 // URL param takes precedence — supports deep-linking
-                // (`/examples/<slug>/?variant=react`) and lets smoke
-                // tests load either variant without clicking the
-                // toggle. Writes through to sessionStorage via the
-                // setVariant() call site, so the URL-driven choice
-                // persists across same-session navigations.
+                // (`/examples/<slug>/?pkg=react`) and lets smoke tests
+                // load either side without clicking the toggle. Writes
+                // through to sessionStorage via the setVariant() call
+                // site, so the URL-driven choice persists across
+                // same-session navigations. Param is named `pkg` because
+                // each side is its own workspace package
+                // (`example-three-<slug>` / `example-react-<slug>`).
                 try {
-                    const fromUrl = new URLSearchParams(window.location.search).get('variant')
+                    const fromUrl = new URLSearchParams(window.location.search).get('pkg')
                     if (fromUrl === 'three' || fromUrl === 'react') return fromUrl
                 } catch {}
                 try {
