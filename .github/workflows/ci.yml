@@ -67,7 +67,11 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [lts/*, lts/-1]
+        include:
+          - node-version: lts/*
+            node-tag: current
+          - node-version: lts/-1
+            node-tag: previous
 
     steps:
       - name: Checkout
@@ -96,9 +100,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-${{ matrix.node-tag }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-turbo-
+            ${{ runner.os }}-turbo-${{ matrix.node-tag }}-
 
       - name: Cache Skia WASM tools
         uses: actions/cache@v4
@@ -124,13 +128,13 @@ jobs:
         run: pnpm typecheck
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm exec turbo run //#lint
 
       - name: Test
-        run: pnpm test
+        run: pnpm exec turbo run //#test
 
       - name: Test Skia
-        run: pnpm --filter @three-flatland/skia run test
+        run: pnpm exec turbo run test --filter=@three-flatland/skia
 
   smoke:
     name: Smoke tests (examples)
@@ -141,8 +145,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -153,11 +155,6 @@ jobs:
           node-version: lts/*
           cache: 'pnpm'
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.1
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -165,21 +162,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .turbo
-          key: ${{ runner.os }}-turbo-smoke-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-current-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-turbo-smoke-
-            ${{ runner.os }}-turbo-
-
-      - name: Cache Skia WASM tools
-        uses: actions/cache@v4
-        with:
-          path: packages/skia/.tools
-          key: ${{ runner.os }}-skia-tools-${{ hashFiles('packages/skia/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-skia-tools-
-
-      - name: Build
-        run: pnpm build
+            ${{ runner.os }}-turbo-current-
 
       - name: Cache Playwright browsers
         id: playwright-cache
@@ -191,6 +176,7 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm test:smoke:install
 
       - name: Install Playwright system dependencies
