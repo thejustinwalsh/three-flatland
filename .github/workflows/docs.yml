@@ -22,16 +22,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  changes:
+    uses: ./.github/workflows/changes.yml
+
+  smoke:
+    needs: changes
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.packages == 'true' ||
+      needs.changes.outputs.minis == 'true' ||
+      needs.changes.outputs.examples == 'true' ||
+      needs.changes.outputs.docs == 'true' ||
+      needs.changes.outputs.configs == 'true' ||
+      needs.changes.outputs.ci == 'true'
+    uses: ./.github/workflows/smoke.yml
+
+  build-pages:
+    needs: smoke
+    if: needs.smoke.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: pnpm
@@ -43,34 +60,26 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Cache Turbo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-current-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-turbo-
-
-      - name: Cache Skia WASM tools
-        uses: actions/cache@v4
-        with:
-          path: packages/skia/.tools
-          key: ${{ runner.os }}-skia-tools-${{ hashFiles('packages/skia/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-skia-tools-
+            ${{ runner.os }}-turbo-current-
 
       - name: Build docs
         run: pnpm build --filter=docs
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: docs/dist
 
   deploy:
-    needs: build
+    needs: build-pages
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
         id: deployment

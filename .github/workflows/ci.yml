@@ -10,61 +10,23 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   changes:
-    runs-on: ubuntu-latest
-    outputs:
-      should_build: ${{ steps.decide.outputs.should_build }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Check if latest commit has build-relevant changes
-        id: latest-commit
-        run: |
-          changed=$(git diff --name-only HEAD~1 HEAD)
-          echo "Changed files in latest commit:"
-          echo "$changed"
-          if echo "$changed" | grep -qvE '^(\.changeset/|\.claude/|docs/|scripts/|.*\.md$|LICENSE$)'; then
-            echo "has_code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_code=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Check previous commit CI status
-        id: prev-ci
-        if: github.event_name == 'pull_request' && steps.latest-commit.outputs.has_code == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          prev_sha=$(git rev-parse HEAD~1)
-          conclusions=$(gh api "repos/${{ github.repository }}/commits/$prev_sha/check-runs" \
-            --jq '[.check_runs[] | select(.name | startswith("build (")) | .conclusion] | unique | join(",")' 2>/dev/null || echo "")
-          echo "Previous commit build checks: $conclusions"
-          if [[ "$conclusions" == "success" ]]; then
-            echo "prev_passed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prev_passed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Decide whether to build
-        id: decide
-        run: |
-          if [[ "${{ steps.latest-commit.outputs.has_code }}" == "false" && \
-                "${{ steps.prev-ci.outputs.prev_passed }}" == "true" ]]; then
-            echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping build — latest commit has no code changes and previous CI passed"
-          else
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-            echo "Build required"
-          fi
+    uses: ./.github/workflows/changes.yml
 
   build:
     needs: changes
-    if: needs.changes.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
-
+    if: |
+      needs.changes.outputs.packages == 'true' ||
+      needs.changes.outputs.minis == 'true' ||
+      needs.changes.outputs.examples == 'true' ||
+      needs.changes.outputs.docs == 'true' ||
+      needs.changes.outputs.configs == 'true' ||
+      needs.changes.outputs.ci == 'true'
     strategy:
       matrix:
         include:
@@ -72,131 +34,53 @@ jobs:
             node-tag: current
           - node-version: lts/-1
             node-tag: previous
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: true
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'pnpm'
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.1
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Cache Turbo
-        uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ matrix.node-tag }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-${{ matrix.node-tag }}-
-
-      - name: Cache Skia WASM tools
-        uses: actions/cache@v4
-        with:
-          path: packages/skia/.tools
-          key: ${{ runner.os }}-skia-tools-${{ hashFiles('packages/skia/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-skia-tools-
-
-      - name: Verify package versions
-        run: pnpm sync:pack:verify examples minis
-
-      - name: Verify react subpath wrappers
-        run: pnpm sync:react:verify
-
-      - name: Verify source VERSION constants
-        run: pnpm sync:versions:verify
-
-      - name: Build
-        run: pnpm build
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm exec turbo run //#lint
-
-      - name: Test
-        run: pnpm exec turbo run //#test
-
-      - name: Test Skia
-        run: pnpm exec turbo run test --filter=@three-flatland/skia
+    uses: ./.github/workflows/build.yml
+    with:
+      node-version: ${{ matrix.node-version }}
+      node-tag: ${{ matrix.node-tag }}
 
   smoke:
-    name: Smoke tests (examples)
     needs: [changes, build]
-    if: needs.changes.outputs.should_build == 'true'
+    if: |
+      !cancelled() && needs.build.result != 'failure' &&
+      (needs.changes.outputs.packages == 'true' ||
+       needs.changes.outputs.minis == 'true' ||
+       needs.changes.outputs.examples == 'true' ||
+       needs.changes.outputs.docs == 'true' ||
+       needs.changes.outputs.configs == 'true' ||
+       needs.changes.outputs.ci == 'true')
+    uses: ./.github/workflows/smoke.yml
+
+  size:
+    needs: [changes, build]
+    if: |
+      github.event_name == 'pull_request' &&
+      !cancelled() && needs.build.result != 'failure' &&
+      (needs.changes.outputs.packages == 'true' ||
+       needs.changes.outputs.configs == 'true' ||
+       needs.changes.outputs.ci == 'true')
+    uses: ./.github/workflows/size.yml
+    secrets: inherit
+
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [changes, build, smoke, size]
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Cache Turbo
-        uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-current-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-current-
-
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm test:smoke:install
-
-      - name: Install Playwright system dependencies
-        run: pnpm exec playwright install-deps chromium
-
-      - name: Run smoke tests
-        run: pnpm test:smoke
-
-      - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 14
-
-      - name: Upload Playwright traces
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-traces
-          path: test-results/
-          retention-days: 14
+      - name: Gate
+        run: |
+          fail=0
+          for job_result in \
+              "changes:${{ needs.changes.result }}" \
+              "build:${{ needs.build.result }}" \
+              "smoke:${{ needs.smoke.result }}" \
+              "size:${{ needs.size.result }}"; do
+            name="${job_result%%:*}"
+            result="${job_result##*:}"
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::$name job result: $result"; fail=1 ;;
+            esac
+          done
+          exit $fail
