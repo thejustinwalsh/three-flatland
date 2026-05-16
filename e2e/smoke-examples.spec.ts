@@ -55,6 +55,19 @@ const ROOT = resolve(__dirname, '..')
  *  with an explicitly non-pixel-art material. */
 const NON_PIXELATED = new Set(['skia', 'slug-text'])
 
+/** Slugs that live in `examples/{three,react}/<slug>/` by design WITHOUT
+ *  a corresponding `docs/src/content/docs/examples/<slug>.mdx`. These
+ *  examples are not shipped to docs visitors — they're internal tools
+ *  (e.g. `template/` is scaffolding for creating new examples). The
+ *  bidirectional discovery check below would otherwise fail on them. */
+const SOURCE_ONLY = new Set(['template'])
+
+/** Slugs that live in `docs/src/content/docs/examples/<slug>.mdx` by
+ *  design WITHOUT corresponding `examples/{three,react}/<slug>/` source
+ *  (e.g. `test.mdx` is a dev StackBlitz scratch page that embeds an
+ *  existing example by name rather than shipping its own). */
+const DOCS_ONLY = new Set(['test'])
+
 interface ExampleSpec {
   /** "<type>/<slug>" — used as the test name and URL segment. */
   path: string
@@ -68,14 +81,23 @@ interface ExampleSpec {
   minDraws?: number
 }
 
-/** Discover examples by walking `examples/{three,react}/*` and
- *  intersecting with `docs/src/content/docs/examples/<slug>.mdx`. Both
- *  sides have to exist for a slug to ship to docs; the intersection
- *  drops:
- *  - `template/` (source exists, no detail page — scaffolding only)
- *  - `test.mdx` (detail page exists, no source — dev StackBlitz scratch)
- *  - any future slug present on only one side. */
-function discoverExamples(): { slugs: string[]; specs: ExampleSpec[] } {
+/** Bidirectional discovery + validation:
+ *
+ *  1. Every `examples/three/<slug>/` must have a paired
+ *     `examples/react/<slug>/` (CLAUDE.md: "examples always exist in
+ *     pairs"), unless allow-listed in SOURCE_ONLY.
+ *  2. Every `examples/react/<slug>/` must have a paired
+ *     `examples/three/<slug>/`, same exception.
+ *  3. Every source slug must have a `<slug>.mdx` detail page, unless in
+ *     SOURCE_ONLY.
+ *  4. Every `<slug>.mdx` detail page must have source on both sides,
+ *     unless in DOCS_ONLY.
+ *
+ *  Any mismatch throws with a precise diagnostic naming what's missing
+ *  and which allow-list to add it to if the asymmetry is intentional.
+ *  This catches silent-drop bugs where someone adds an example without
+ *  a docs page (or vice versa) and the smoke quietly loses coverage. */
+function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
   const threeDir = resolve(ROOT, 'examples/three')
   const reactDir = resolve(ROOT, 'examples/react')
   const docsExamplesDir = resolve(ROOT, 'docs/src/content/docs/examples')
@@ -90,32 +112,84 @@ function discoverExamples(): { slugs: string[]; specs: ExampleSpec[] } {
       .filter((d) => d.isDirectory())
       .map((d) => d.name),
   )
+  const docsSlugs = new Set(
+    readdirSync(docsExamplesDir, { withFileTypes: true })
+      .filter((d) => d.isFile() && d.name.endsWith('.mdx') && d.name !== 'index.mdx')
+      .map((d) => d.name.slice(0, -'.mdx'.length)),
+  )
 
+  const errors: string[] = []
+
+  // (1) three has react pair
+  for (const slug of threeSlugs) {
+    if (reactSlugs.has(slug)) continue
+    if (SOURCE_ONLY.has(slug)) continue
+    errors.push(
+      `examples/three/${slug}/ has no paired examples/react/${slug}/. ` +
+        `Either create the React pair or add '${slug}' to SOURCE_ONLY.`,
+    )
+  }
+
+  // (2) react has three pair
+  for (const slug of reactSlugs) {
+    if (threeSlugs.has(slug)) continue
+    if (SOURCE_ONLY.has(slug)) continue
+    errors.push(
+      `examples/react/${slug}/ has no paired examples/three/${slug}/. ` +
+        `Either create the Three.js pair or add '${slug}' to SOURCE_ONLY.`,
+    )
+  }
+
+  // (3) source has docs detail page
+  const sourceSlugs = new Set([...threeSlugs, ...reactSlugs])
+  for (const slug of sourceSlugs) {
+    if (docsSlugs.has(slug)) continue
+    if (SOURCE_ONLY.has(slug)) continue
+    errors.push(
+      `examples/{three,react}/${slug}/ has no docs/src/content/docs/examples/${slug}.mdx. ` +
+        `Either create the detail page or add '${slug}' to SOURCE_ONLY.`,
+    )
+  }
+
+  // (4) docs has source pair
+  for (const slug of docsSlugs) {
+    if (threeSlugs.has(slug) && reactSlugs.has(slug)) continue
+    if (DOCS_ONLY.has(slug)) continue
+    const missing: string[] = []
+    if (!threeSlugs.has(slug)) missing.push(`examples/three/${slug}/`)
+    if (!reactSlugs.has(slug)) missing.push(`examples/react/${slug}/`)
+    errors.push(
+      `docs/src/content/docs/examples/${slug}.mdx exists but missing source: ${missing.join(', ')}. ` +
+        `Either create the example pair or add '${slug}' to DOCS_ONLY.`,
+    )
+  }
+
+  if (errors.length > 0) {
+    throw new Error(
+      `smoke-examples: example/docs inventory is inconsistent (${errors.length} issue${errors.length === 1 ? '' : 's'}):\n` +
+        errors.map((e) => `  - ${e}`).join('\n'),
+    )
+  }
+
+  // Build the test inventory from validated slugs — three + react +
+  // docs all present, no allow-list exceptions among them.
   const slugs: string[] = []
   const specs: ExampleSpec[] = []
-  const allSlugs = [...new Set([...threeSlugs, ...reactSlugs])].sort()
-  for (const slug of allSlugs) {
-    const detailPage = resolve(docsExamplesDir, `${slug}.mdx`)
-    if (!existsSync(detailPage)) continue
-    // Both sides ship in the standard examples-in-pairs model, but be
-    // defensive — emit specs for whichever sides exist on disk.
+  for (const slug of [...docsSlugs].sort()) {
+    if (!threeSlugs.has(slug) || !reactSlugs.has(slug)) continue
     slugs.push(slug)
     const pixelated = !NON_PIXELATED.has(slug)
-    if (threeSlugs.has(slug)) {
-      specs.push({ path: `three/${slug}`, type: 'three', slug, pixelated })
-    }
-    if (reactSlugs.has(slug)) {
-      specs.push({ path: `react/${slug}`, type: 'react', slug, pixelated })
-    }
+    specs.push({ path: `three/${slug}`, type: 'three', slug, pixelated })
+    specs.push({ path: `react/${slug}`, type: 'react', slug, pixelated })
   }
   return { slugs, specs }
 }
 
-const { slugs: SLUGS, specs: EXAMPLES } = discoverExamples()
+const { slugs: SLUGS, specs: EXAMPLES } = discoverAndValidate()
 
 if (EXAMPLES.length === 0) {
   throw new Error(
-    'smoke-examples: no examples discovered — filesystem walk found nothing under examples/{three,react} with a matching docs/src/content/docs/examples/<slug>.mdx',
+    'smoke-examples: no examples discovered after bidirectional validation — filesystem walk found no slugs with three + react + docs all present',
   )
 }
 
@@ -310,35 +384,70 @@ test.describe('examples', () => {
 
 // ── Tier 3: docs detail page iframe ────────────────────────────────────
 
+/**
+ * For each slug, probe three URL shapes of the docs detail page:
+ *
+ * - **bare link** (`/examples/<slug>/`) — exercises the default-variant
+ *   path that most users hit when they click through from the gallery.
+ *   Iframe should resolve to the three side via `restoreVariant()`'s
+ *   sessionStorage-or-default branch.
+ *
+ * - **`?variant=three`** — exercises the URL param branch resolving to
+ *   the same three side as the bare link. Confirms the param parser
+ *   handles the explicit case (not just `react`).
+ *
+ * - **`?variant=react`** — exercises the URL param branch resolving to
+ *   the React side. The only path that confirms React-side iframe
+ *   wiring works end-to-end through the detail page.
+ *
+ * Each test asserts the iframe's resolved src matches the expected
+ * variant and that a canvas mounts inside its contentFrame.
+ */
+const DETAIL_URL_SHAPES = [
+  { query: '', expected: 'three' as const, label: 'bare' },
+  { query: '?variant=three', expected: 'three' as const, label: '?variant=three' },
+  { query: '?variant=react', expected: 'react' as const, label: '?variant=react' },
+]
+
 test.describe('docs detail page iframe', () => {
   for (const slug of SLUGS) {
-    test(slug, async ({ page }) => {
-      const pageErrors: string[] = []
-      page.on('pageerror', (e) => pageErrors.push(e.message))
+    for (const shape of DETAIL_URL_SHAPES) {
+      test(`${slug} (${shape.label})`, async ({ page }) => {
+        const pageErrors: string[] = []
+        page.on('pageerror', (e) => pageErrors.push(e.message))
 
-      await page.goto(`/examples/${slug}/`, { waitUntil: 'networkidle' })
+        const url = `/examples/${slug}/${shape.query}`
+        await page.goto(url, { waitUntil: 'networkidle' })
 
-      expect(
-        pageErrors,
-        `docs detail page /examples/${slug}/ had runtime errors:\n  ${pageErrors.join('\n  ')}`,
-      ).toEqual([])
+        expect(
+          pageErrors,
+          `docs detail page ${url} had runtime errors:\n  ${pageErrors.join('\n  ')}`,
+        ).toEqual([])
 
-      // ExampleSplitView component renders an iframe pointing at the
-      // built example artifact at the same URL Tier 1 probes. If the
-      // artifact 404s, the iframe loads Astro's 404 page (no canvas).
-      const iframe = page.locator('iframe').first()
-      await expect(iframe, 'no iframe found on detail page').toBeVisible()
+        const iframe = page.locator('iframe').first()
+        await expect(iframe, 'no iframe found on detail page').toBeVisible()
 
-      const frame = await iframe.contentFrame()
-      expect(frame, 'iframe contentFrame unreachable').not.toBeNull()
+        // The iframe's resolved src tells us which variant the page
+        // actually loaded. Guards against the URL param being ignored
+        // and against the default-variant branch regressing.
+        const src = await iframe.getAttribute('src')
+        expect(
+          src,
+          `iframe src for ${shape.label} did not point at /examples/${shape.expected}/${slug}/`,
+        ).toContain(`/examples/${shape.expected}/${slug}/`)
 
-      // Canvas presence inside the iframe is proof the example loaded
-      // and the docs-side iframe wiring is correct.
-      const canvas = frame!.locator('canvas').first()
-      await expect(
-        canvas,
-        `iframe for ${slug} did not mount a canvas — likely 404 or runtime error in the iframe`,
-      ).toBeAttached({ timeout: 15_000 })
-    })
+        // If the artifact 404s, the iframe loads Astro's 404 page —
+        // no canvas mounts. Same failure mode the user-visible page
+        // hits in production.
+        const frame = await iframe.contentFrame()
+        expect(frame, 'iframe contentFrame unreachable').not.toBeNull()
+
+        const canvas = frame!.locator('canvas').first()
+        await expect(
+          canvas,
+          `iframe for ${slug} (${shape.label}) did not mount a canvas — likely 404 or runtime error in the iframe`,
+        ).toBeAttached({ timeout: 15_000 })
+      })
+    }
   }
 })
