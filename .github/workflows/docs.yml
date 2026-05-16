@@ -41,6 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: true
 
       - uses: pnpm/action-setup@v5
 
@@ -48,6 +50,10 @@ jobs:
         with:
           node-version: lts/*
           cache: pnpm
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
 
       - run: pnpm install --frozen-lockfile
 
