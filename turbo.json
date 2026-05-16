@@ -48,6 +48,7 @@
         "example-three-pass-effects#build",
         "example-three-tilemap#build",
         "example-three-tsl-nodes#build",
+        "example-three-slug-text#build",
         "example-react-animation#build",
         "example-react-basic-sprite#build",
         "example-react-batch-demo#build",
@@ -55,6 +56,7 @@
         "example-react-pass-effects#build",
         "example-react-tilemap#build",
         "example-react-tsl-nodes#build",
+        "example-react-slug-text#build",
         "example-three-skia#build",
         "example-react-skia#build"
       ],
