@@ -61,14 +61,14 @@ jobs:
       - name: Verify source VERSION constants
         run: pnpm sync:versions:verify
 
+      - name: Lint
+        run: pnpm exec turbo run //#lint
+
       - name: Build
         run: pnpm build
 
       - name: Typecheck
         run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm exec turbo run //#lint
 
       - name: Test
         run: pnpm exec turbo run //#test
