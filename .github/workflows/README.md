@@ -85,12 +85,14 @@ Doc-only or meta-only PRs (where build / smoke / size are skipped via paths-filt
 
 | Bucket | Patterns |
 |---|---|
-| `packages` | `packages/**` |
+| `packages` | `packages/**`, `skills/**` |
 | `minis` | `minis/**` |
 | `examples` | `examples/**`, `e2e/**`, `playwright.config.*` |
 | `docs` | `docs/**` |
-| `configs` | `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `eslint.config.*`, `vitest.config.*` |
+| `configs` | `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `eslint.config.*`, `vitest.config.*`, `scripts/**` |
 | `ci` | `.github/workflows/**` |
+
+(`skills/` is `@three-flatland/skills`, a publishable workspace package outside `packages/`. `scripts/` contains CI verification helpers, size-limit, changeset generator, and a vitest-collected test — all affect build behavior, so they live in `configs`.)
 
 Job gating:
 
