@@ -28,6 +28,10 @@
       "cache": false,
       "persistent": true
     },
+    "//#test:e2e": {
+      "dependsOn": ["docs#build"],
+      "cache": false
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },

@@ -445,11 +445,10 @@ test.describe('docs detail page iframe', () => {
 
         // If the artifact 404s, the iframe loads Astro's 404 page —
         // no canvas mounts. Same failure mode the user-visible page
-        // hits in production.
-        const frame = await iframe.contentFrame()
-        expect(frame, 'iframe contentFrame unreachable').not.toBeNull()
-
-        const canvas = frame!.locator('canvas').first()
+        // hits in production. The toBeAttached check below is the
+        // real guard; contentFrame() is sync and never returns null.
+        const frame = iframe.contentFrame()
+        const canvas = frame.locator('canvas').first()
         await expect(
           canvas,
           `iframe for ${slug} (${shape.label}) did not mount a canvas — likely 404 or runtime error in the iframe`,
