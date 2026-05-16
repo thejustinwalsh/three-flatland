@@ -55,7 +55,7 @@ graph TD
 |---|---|---|
 | `ci.yml` | Orchestrator: paths-filter → build matrix → smoke/size → gate | `push`, `pull_request` |
 | `docs.yml` | Orchestrator: paths-filter → smoke → build-pages → deploy | `push` to `main`, `workflow_dispatch` |
-| `changes.yml` | dorny/paths-filter; emits `code` / `examples` / `docs` / `ci` bucket outputs | `workflow_call` |
+| `changes.yml` | dorny/paths-filter; emits `packages` / `minis` / `examples` / `docs` / `configs` / `ci` bucket outputs | `workflow_call` |
 | `build.yml` | Build + typecheck + lint + test + skia test (single node version, takes `node-version` + `node-tag` inputs) | `workflow_call` |
 | `smoke.yml` | Playwright smoke tests against built docs site | `workflow_call` |
 | `size.yml` | Bundle size diff via size-limit; comments on PR | `workflow_call` |
@@ -231,7 +231,7 @@ BRANCH PROTECTION
 - Do NOT introduce per-job required checks in the ruleset — ci-passed is the single gate
 
 PATH FILTERING & JOB GATING
-- changes.yml uses dorny/paths-filter@v3 to emit per-bucket booleans: code, examples, docs, ci
+- changes.yml uses dorny/paths-filter@v3 to emit per-bucket booleans: packages, minis, examples, docs, configs, ci
 - Downstream jobs in ci.yml gate via `if:` expressions on those bucket outputs
 - A bucket change in `ci` (.github/workflows/**) triggers everything so a CI change validates itself
 - When adding a new job, decide which bucket(s) should trigger it and write the `if:` accordingly
