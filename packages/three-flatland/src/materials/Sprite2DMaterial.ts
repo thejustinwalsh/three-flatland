@@ -280,10 +280,19 @@ export class Sprite2DMaterial extends EffectMaterial {
       }
       color = vec4(tintedRGB.mul(finalAlpha), finalAlpha)
     } else {
-      const cutoff = alphaTestValue > 0 ? alphaTestValue : 0.01
-      If(finalAlpha.lessThan(float(cutoff)), () => {
-        Discard()
-      })
+      if (alphaTestValue > 0) {
+        // User opt-in: apply to combined alpha so fades respect the cutoff.
+        If(finalAlpha.lessThan(float(alphaTestValue)), () => {
+          Discard()
+        })
+      } else {
+        // Default near-zero cutoff is a "skip fully-transparent texels" perf
+        // pass — check texel alpha alone so instance fade doesn't push
+        // faintly-visible texels under the threshold and harden sprite edges.
+        If(texColor.a.lessThan(float(0.01)), () => {
+          Discard()
+        })
+      }
       color = vec4(tintedRGB, finalAlpha)
     }
 
