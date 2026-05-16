@@ -1,33 +1,36 @@
 /**
- * End-to-end smoke test for every example in the monorepo.
+ * End-to-end smoke tests for the production docs build.
  *
- * Probes each example through the **production preview path**:
- * `http://localhost:4321/three-flatland/examples/{three,react}/<slug>/`.
- * That URL serves the static artifact copied into `docs/dist/examples/`
- * by the `copy-examples` vite plugin during `pnpm build`.
+ * Probes the built `docs/dist/` via `astro preview` on
+ * `http://localhost:4321/three-flatland`. Three tiers of coverage per
+ * example:
  *
- * Testing the prod path (not the Vite examples dev server) catches the
- * regression class where a new example's package isn't wired into
- * `turbo.json`'s `docs#build.dependsOn` — turbo silently doesn't build
- * it, `copy-examples` skips the missing `dist/`, and the deployed iframe
- * URL 404s. The page-navigation failure shows up as "no canvas
- * mounted," and Playwright's `screenshot: 'only-on-failure'` config
- * captures the broken page state for diagnosis.
+ * 1. **Artifact (HTTP)** — `request.get` on each example's static URL,
+ *    asserts 200 plus a render-surface marker. Catches the case where
+ *    an example is missing from `turbo.json`'s `docs#build.dependsOn`,
+ *    turbo silently skips it, `copy-examples` skips the missing `dist/`,
+ *    and the deployed iframe URL 404s. Failure message names the exact
+ *    `example-{type}-<slug>#build` entry to add.
  *
- * For each example we verify:
+ * 2. **Direct navigation** — Playwright loads the example URL directly
+ *    and verifies the live render surface: `<canvas>` mounted, exactly
+ *    one Tweakpane root (regression check for StrictMode + Suspense
+ *    pane leak), all 5 stats cells injected, FPS > 0 (proves stats
+ *    monitor wiring is firing), draw calls > 0 (proves
+ *    `scene.onAfterRender` works under R3F v10's phase scheduler), and
+ *    the pixel-art contract (`image-rendering: pixelated` for pixel-art
+ *    examples; antialiased for `skia` and `slug-text`).
  *
- *   - The page loads without any runtime errors.
- *   - A `<canvas>` was mounted.
- *   - Exactly ONE Tweakpane root view is attached — regression check for
- *     the StrictMode + Suspense pane-leak we used to see (up to 3 orphan
- *     panes in React).
- *   - The stats row was injected with all expected tooltips.
- *   - The FPS graph shows a non-zero value (proves `useStatsMonitor` /
- *     vanilla `stats.begin/end` wiring is actually firing).
- *   - Draw calls captured via `scene.onAfterRender` are non-zero (proves
- *     the auto-wiring path works against R3F v10's phase scheduler).
- *   - Pixel-art examples have `image-rendering: pixelated` on their
- *     canvas; antialiased examples (`skia`, `slug-text`) do not.
+ * 3. **Docs detail page iframe** — navigates the docs example detail
+ *    page (`/examples/<slug>/`), locates the iframe, waits for its
+ *    contentFrame, asserts a canvas mounts inside. Catches docs-side
+ *    iframe-wiring regressions and confirms the user-visible page
+ *    actually renders the embedded example.
+ *
+ * Discovery is filesystem-driven: walks `examples/{three,react}/*` and
+ * intersects with `docs/src/content/docs/examples/<slug>.mdx`. Adding a
+ * new example wires it into the smoke automatically — no manual
+ * inventory list to keep in sync with `turbo.json`.
  *
  * Prereq: `pnpm build` has been run so `docs/dist/` exists. CI's `smoke`
  * job builds before this step (see `.github/workflows/ci.yml`).
@@ -36,11 +39,27 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
+import { readdirSync, existsSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-// ── Example inventory ──────────────────────────────────────────────────
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const ROOT = resolve(__dirname, '..')
+
+// ── Discovery ──────────────────────────────────────────────────────────
+
+/** Slugs whose materials are antialiased — opt-out of the pixel-art
+ *  `image-rendering: pixelated` assertion. Everything else defaults to
+ *  pixel-art. Keep this list small; only add when a new example ships
+ *  with an explicitly non-pixel-art material. */
+const NON_PIXELATED = new Set(['skia', 'slug-text'])
 
 interface ExampleSpec {
+  /** "<type>/<slug>" — used as the test name and URL segment. */
   path: string
+  type: 'three' | 'react'
+  slug: string
   /** True → canvas must have `image-rendering: pixelated`. */
   pixelated: boolean
   /** Minimum FPS after settle. Defaults to 1. */
@@ -49,31 +68,56 @@ interface ExampleSpec {
   minDraws?: number
 }
 
-const EXAMPLES: ExampleSpec[] = [
-  // Three.js (vanilla)
-  { path: 'three/basic-sprite', pixelated: true },
-  { path: 'three/template', pixelated: true },
-  { path: 'three/animation', pixelated: true },
-  { path: 'three/tsl-nodes', pixelated: true },
-  { path: 'three/pass-effects', pixelated: true },
-  { path: 'three/tilemap', pixelated: true },
-  { path: 'three/batch-demo', pixelated: true },
-  { path: 'three/knightmark', pixelated: true },
-  { path: 'three/skia', pixelated: false },
-  { path: 'three/slug-text', pixelated: false },
+/** Discover examples by walking `examples/{three,react}/*` and
+ *  intersecting with `docs/src/content/docs/examples/<slug>.mdx`. Both
+ *  sides have to exist for a slug to ship to docs; the intersection
+ *  drops:
+ *  - `template/` (source exists, no detail page — scaffolding only)
+ *  - `test.mdx` (detail page exists, no source — dev StackBlitz scratch)
+ *  - any future slug present on only one side. */
+function discoverExamples(): { slugs: string[]; specs: ExampleSpec[] } {
+  const threeDir = resolve(ROOT, 'examples/three')
+  const reactDir = resolve(ROOT, 'examples/react')
+  const docsExamplesDir = resolve(ROOT, 'docs/src/content/docs/examples')
 
-  // React Three Fiber
-  { path: 'react/basic-sprite', pixelated: true },
-  { path: 'react/template', pixelated: true },
-  { path: 'react/animation', pixelated: true },
-  { path: 'react/tsl-nodes', pixelated: true },
-  { path: 'react/pass-effects', pixelated: true },
-  { path: 'react/tilemap', pixelated: true },
-  { path: 'react/batch-demo', pixelated: true },
-  { path: 'react/knightmark', pixelated: true },
-  { path: 'react/skia', pixelated: false },
-  { path: 'react/slug-text', pixelated: false },
-]
+  const threeSlugs = new Set(
+    readdirSync(threeDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name),
+  )
+  const reactSlugs = new Set(
+    readdirSync(reactDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name),
+  )
+
+  const slugs: string[] = []
+  const specs: ExampleSpec[] = []
+  const allSlugs = [...new Set([...threeSlugs, ...reactSlugs])].sort()
+  for (const slug of allSlugs) {
+    const detailPage = resolve(docsExamplesDir, `${slug}.mdx`)
+    if (!existsSync(detailPage)) continue
+    // Both sides ship in the standard examples-in-pairs model, but be
+    // defensive — emit specs for whichever sides exist on disk.
+    slugs.push(slug)
+    const pixelated = !NON_PIXELATED.has(slug)
+    if (threeSlugs.has(slug)) {
+      specs.push({ path: `three/${slug}`, type: 'three', slug, pixelated })
+    }
+    if (reactSlugs.has(slug)) {
+      specs.push({ path: `react/${slug}`, type: 'react', slug, pixelated })
+    }
+  }
+  return { slugs, specs }
+}
+
+const { slugs: SLUGS, specs: EXAMPLES } = discoverExamples()
+
+if (EXAMPLES.length === 0) {
+  throw new Error(
+    'smoke-examples: no examples discovered — filesystem walk found nothing under examples/{three,react} with a matching docs/src/content/docs/examples/<slug>.mdx',
+  )
+}
 
 const REQUIRED_STATS_TOOLTIPS = [
   'Draw Calls',
@@ -108,7 +152,7 @@ async function collectStats(page: Page): Promise<StatsSnapshot> {
     }
     const parseStat = (s: string | null): number | null => {
       if (!s) return null
-      const cleaned = s.replace(/\u00A0/g, '').trim()
+      const cleaned = s.replace(/ /g, '').trim()
       if (!cleaned) return null
       const numeric = cleaned.replace(/[^\d.-]/g, '')
       const base = Number(numeric)
@@ -181,20 +225,38 @@ async function waitForStats(
   )
 }
 
-// ── Suite ───────────────────────────────────────────────────────────────
+// ── Tier 1: build artifacts (HTTP) ─────────────────────────────────────
 
-test.describe('examples smoke', () => {
+test.describe('build artifacts', () => {
+  for (const spec of EXAMPLES) {
+    test(spec.path, async ({ request }) => {
+      const url = `/examples/${spec.path}/`
+      const response = await request.get(url)
+      expect(
+        response.status(),
+        `${url} returned ${response.status()} — likely missing from docs/dist/examples/${spec.path}/. ` +
+          `Check that example-${spec.type}-${spec.slug}#build is in turbo.json's docs#build.dependsOn.`,
+      ).toBe(200)
+      const html = await response.text()
+      // Three.js examples ship the canvas in the HTML; React examples
+      // mount at runtime into a root div. Either marker means the
+      // artifact was built and copied to docs/dist/.
+      expect(
+        html,
+        `${url} HTML missing expected mount point (no <canvas> or root div)`,
+      ).toMatch(/<canvas|<div[^>]+id=["'](?:root|app)["']/)
+    })
+  }
+})
+
+// ── Tier 2: direct navigation per example ──────────────────────────────
+
+test.describe('examples', () => {
   for (const spec of EXAMPLES) {
     test(spec.path, async ({ page }) => {
       const pageErrors: string[] = []
       page.on('pageerror', (e) => pageErrors.push(e.message))
 
-      // `baseURL` is `http://localhost:4321/three-flatland`; examples live
-      // at `${baseURL}/examples/<type>/<slug>/` after `pnpm build` copies
-      // each example's `dist/` into `docs/dist/examples/`. If the URL 404s
-      // (turbo didn't build the example → `copy-examples` skipped it),
-      // none of the per-example assertions below find their targets and
-      // the failure screenshot captures the Astro 404 page.
       await page.goto(`/examples/${spec.path}/`, { waitUntil: 'networkidle' })
 
       const snapshot = await waitForStats(page)
@@ -242,6 +304,41 @@ test.describe('examples smoke', () => {
           `${spec.path} should not be pixelated`,
         ).not.toBe('pixelated')
       }
+    })
+  }
+})
+
+// ── Tier 3: docs detail page iframe ────────────────────────────────────
+
+test.describe('docs detail page iframe', () => {
+  for (const slug of SLUGS) {
+    test(slug, async ({ page }) => {
+      const pageErrors: string[] = []
+      page.on('pageerror', (e) => pageErrors.push(e.message))
+
+      await page.goto(`/examples/${slug}/`, { waitUntil: 'networkidle' })
+
+      expect(
+        pageErrors,
+        `docs detail page /examples/${slug}/ had runtime errors:\n  ${pageErrors.join('\n  ')}`,
+      ).toEqual([])
+
+      // ExampleSplitView component renders an iframe pointing at the
+      // built example artifact at the same URL Tier 1 probes. If the
+      // artifact 404s, the iframe loads Astro's 404 page (no canvas).
+      const iframe = page.locator('iframe').first()
+      await expect(iframe, 'no iframe found on detail page').toBeVisible()
+
+      const frame = await iframe.contentFrame()
+      expect(frame, 'iframe contentFrame unreachable').not.toBeNull()
+
+      // Canvas presence inside the iframe is proof the example loaded
+      // and the docs-side iframe wiring is correct.
+      const canvas = frame!.locator('canvas').first()
+      await expect(
+        canvas,
+        `iframe for ${slug} did not mount a canvas — likely 404 or runtime error in the iframe`,
+      ).toBeAttached({ timeout: 15_000 })
     })
   }
 })
