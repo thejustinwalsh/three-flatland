@@ -194,10 +194,11 @@ export class TiledLoader extends Loader<TileMapData> {
   normals: TiledNormalsOption = false
 
   /**
-   * Opt this tilemap's tilesets out of the baked-sibling pattern
-   * entirely — the in-memory bake becomes the canonical source for the
-   * normal map. For tilemaps that are intentionally never baked, not
-   * for dev iteration. See {@link BakedAssetLoaderOptions.forceRuntime}.
+   * Generate this tilemap's tileset normal maps in the browser on
+   * every load instead of loading pre-baked sidecars. The in-memory
+   * bake runs on every load; sidecar probes and "no baked sibling"
+   * warns are skipped. Not a dev-iteration knob.
+   * See {@link BakedAssetLoaderOptions.forceRuntime}.
    */
   forceRuntime = false
 

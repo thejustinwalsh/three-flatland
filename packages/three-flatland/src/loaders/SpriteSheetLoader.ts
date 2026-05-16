@@ -92,9 +92,10 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   normals: SpriteSheetNormalsOption = false
 
   /**
-   * Opt this sheet out of the baked-sibling pattern entirely — the
-   * in-memory bake becomes the canonical source for the normal map.
-   * For sheets that are intentionally never baked, not for dev iteration.
+   * Generate this sheet's normal map in the browser on every load
+   * instead of loading a pre-baked sidecar. The in-memory bake runs on
+   * every load; the sidecar probe and "no baked sibling" warn are
+   * skipped. Not a dev-iteration knob.
    * See {@link BakedAssetLoaderOptions.forceRuntime}.
    */
   forceRuntime = false

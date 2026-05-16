@@ -15,16 +15,18 @@ import type { NormalSourceDescriptor } from './descriptor.js'
 
 export interface ResolveNormalMapOptions {
   /**
-   * Opt this asset out of the baked-sibling pattern entirely. The
-   * runtime generator is the canonical source — every load fetches the
-   * source image and bakes the normal map in memory. Suppresses the
-   * HEAD probe and the "no baked sibling" devtime warning, because
-   * choosing `forceRuntime: true` is itself the answer to "why isn't
-   * there a sidecar?"
+   * Generate this asset's normal map in the browser on every load
+   * instead of loading a pre-baked `.normal.png` sidecar. Fetches the
+   * source image, decodes its pixels, and runs `bakeNormalMap` in
+   * memory each time — no HEAD probe, no devtime "no baked sibling"
+   * warning.
    *
-   * Use when an asset is intentionally never baked — procedurally
+   * The returned data is always a valid normal map: this flag chooses
+   * *where* the bake happens (browser vs CI), not whether you get one.
+   *
+   * Use when runtime is the right home for the bake — procedurally
    * varied content, throwaway prototypes, asset bundles where shipping
-   * sidecars isn't worth the extra bytes. Not a dev-iteration knob: the
+   * the sidecar isn't worth the bytes. Not a dev-iteration knob: the
    * default path (probe → bake on miss + warn) already handles that.
    *
    * Mirrors `SlugFontLoader.forceRuntime` and every other baked-asset

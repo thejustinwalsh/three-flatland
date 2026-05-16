@@ -4,9 +4,9 @@
 "three-flatland": minor
 ---
 
-## Unify baked-asset loader opt-out as `forceRuntime`
+## Unify baked-asset loader runtime flag as `forceRuntime`
 
-Every baked-asset loader in the codebase now exposes the same single flag — `forceRuntime: true` — to skip the sidecar probe and go straight to runtime generation. Mirrors `SlugFontLoader.forceRuntime`, which is the canonical pattern.
+Every baked-asset loader in the codebase now exposes the same single flag — `forceRuntime: true` — declaring that the browser is where this asset's derived data is produced (instead of a CI bake step). The contract is unchanged: if you ask for the data, you get it. The flag only chooses *where* generation happens. Mirrors `SlugFontLoader.forceRuntime`, which is the canonical pattern.
 
 ### Renames
 - `BakedAssetLoaderOptions.skipBakedProbe` → `forceRuntime`
@@ -22,9 +22,9 @@ Every baked-asset loader in the codebase now exposes the same single flag — `f
 - `NormalMapLoader.disableRuntimeBake` (instance + static `load()` option)
 - `ResolveNormalMapOptions.disableRuntimeBake`
 
-The previous `disableRuntimeBake` opt-out conflated two intents into a second flag. The unified model is simpler: **opt in to normals (`normals: true | descriptor`), and they're guaranteed to load** — baked sidecar if available, in-memory bake on miss, devtime warn when the runtime path fires.
+The previous `disableRuntimeBake` flag conflated two intents into a second option. The unified model is simpler: **opt in to normals (`normals: true | descriptor`), and they're guaranteed to load** — baked sidecar if available, in-memory bake on miss, devtime warn when the runtime path fires. There is no "no normals" fallback; the engine never silently fails on a missing asset.
 
-`forceRuntime: true` is the project-level decision to opt a specific asset out of the baked-sibling pattern entirely — the runtime generator becomes the canonical source for that asset (procedural content, throwaway prototypes, lean bundles). It is **not** a dev-iteration knob; the default path (probe → bake on miss + warn) already handles iteration.
+`forceRuntime: true` is the project-level architectural choice for a specific asset: the browser is where its normal map is produced, on every load, no sidecar exists for it by design. Use for procedurally varied content, throwaway prototypes, or lean bundles. **Not** a dev-iteration knob; the default path (probe → bake on miss + warn) already handles iteration.
 
 ### Migration
 ```diff

@@ -94,7 +94,7 @@ Two warning shapes you'll see while iterating:
          Run `npx flatland-bake normal` in production to skip this path.
 ```
 
-The canonical fix is to **re-bake** — run `flatland-bake` with the same descriptor your loader is using, the hash matches, the warning goes away. Don't reach for `forceRuntime` here: that flag is not for silencing dev iteration warns, it's for opting an asset out of the baked pattern entirely (see [Opting an asset out of baking](#opting-an-asset-out-of-baking) below).
+The canonical fix is to **re-bake** — run `flatland-bake` with the same descriptor your loader is using, the hash matches, the warning goes away. Don't reach for `forceRuntime` here: that flag declares "this asset's normal map is generated in the browser as a matter of architecture" (see [Browser-generated assets](#browser-generated-assets) below), not "shut this warning up while I iterate." Silencing the warn the wrong way buries the signal — the engine still gives you the data, but future maintainers lose the breadcrumb pointing at the missing bake step.
 
 ## CI / Build Integration
 
@@ -125,29 +125,29 @@ The choice is about *when* the work happens:
 |------|------|----------|
 | **Offline** (`flatland-bake` in CI) | Zero startup cost, deterministic, ships a slightly larger asset bundle (the sidecar) | Production builds, demos, anything user-facing |
 | **Runtime** (in-memory fallback) | Burns first-load CPU on `fetch` + decode + bake; non-deterministic timing | Development iteration, tweaking descriptors, experimenting with custom data |
-| **Forced runtime** (`forceRuntime: true`) | Same as runtime, plus no probe round-trip and no warning | Assets you've decided are *never* baked — procedural content, throwaway prototypes, asset bundles where the sidecar isn't worth shipping |
+| **Browser-generated** (`forceRuntime: true`) | Same as runtime, plus no probe round-trip and no warning | Assets whose normal map is produced in the browser by design — procedural content, throwaway prototypes, asset bundles where the sidecar isn't worth shipping |
 
 In production, ship baked siblings and the loader becomes a single-image-fetch with no decode overhead. In development, skip the bake step entirely and let the runtime regenerate — much faster than re-running the CLI on every descriptor tweak.
 
-## Opting an Asset Out of Baking
+## Browser-Generated Assets
 
-`forceRuntime: true` is a **project-level decision** about a specific asset, not a dev-iteration shortcut. Use it when you've decided the asset will *always* be runtime-generated and you want the loader to skip the probe round-trip + suppress the "no baked sibling" warning for that asset.
+`forceRuntime: true` declares **the browser is where this asset's normal map is produced** — not the CI bake step. The contract that "if you ask for normals, you get normals" doesn't change; only *where* the bake runs does.
 
-Typical reasons to reach for it:
+It's a project-level architectural choice about a specific asset, not a dev-iteration shortcut. Typical reasons to make that choice:
 
 - **Procedurally varied content** — the descriptor changes per session, so a pre-baked sidecar wouldn't match anyway.
-- **Throwaway prototypes** — you don't want to add a build step for something you'll delete next week.
+- **Throwaway prototypes** — you don't want to add a CI step for something you'll delete next week.
 - **Lean asset bundles** — the runtime CPU cost on first load is cheaper than the bytes the sidecar would add.
 
 ```typescript
-// "This sheet is intentionally never baked. Generate on every load."
+// "This sheet's normal map is produced in the browser. No sidecar exists."
 const sheet = await SpriteSheetLoader.load('./sprites/proc-tiles.json', {
   normals: true,
   forceRuntime: true,
 })
 ```
 
-If you just want to silence a stale-sidecar warning while iterating, **re-bake** instead. `forceRuntime` is the wrong tool for that — it'll silence the warn but it'll also tell every future maintainer of the project "this asset is intentionally runtime-generated forever," which is a different statement.
+If you just want to silence a stale-sidecar warning while iterating, **re-bake** instead. `forceRuntime` is the wrong tool for that — it silences the warn but it also tells every future maintainer "this asset's normals are produced in the browser, on purpose, forever," which is a different statement about the project's architecture.
 
 ## Adding a New Bake Type
 

@@ -59,7 +59,9 @@ describe('resolveNormalMap — forceRuntime', () => {
     expect(tex).toBeDefined()
     // No HEAD: only the GET to fetch the source image.
     expect(fetchCalls.some((c) => c.method === 'HEAD')).toBe(false)
-    // No "no baked sibling" warn — the dev opted out of the probe knowingly.
+    // No "no baked sibling" warn — forceRuntime declares the browser is
+    // where this asset's normal map is produced, so the missing sidecar
+    // is the architecture, not a mistake.
     expect(warn).not.toHaveBeenCalled()
   })
 

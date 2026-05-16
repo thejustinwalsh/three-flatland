@@ -98,18 +98,19 @@ flatland-bake --help              Show usage
 
 ### Shared loader option
 
-Every loader that speaks the baked-sibling pattern extends `BakedAssetLoaderOptions`, which adds a single opt-out:
+Every loader that speaks the baked-sibling pattern extends `BakedAssetLoaderOptions`, which adds a single flag:
 
 ```typescript
 interface BakedAssetLoaderOptions {
-  /** Skip the baked-sibling probe; always generate in-memory. */
+  /** Generate this asset's derived data in the browser on every load
+   *  instead of loading a pre-baked sidecar. */
   forceRuntime?: boolean
 }
 ```
 
-Consumers pass `forceRuntime: true` to opt a specific asset out of the baked-sibling pattern entirely — the runtime generator becomes the canonical source. Use it for assets you've decided are *intentionally* never baked (procedurally varied content, throwaway prototypes, asset bundles where shipping a sidecar isn't worth the bytes). Suppresses the "no baked sibling" warn because choosing `forceRuntime` is itself the answer to "why isn't there a sidecar?"
+`forceRuntime: true` declares **the browser is where this asset's derived data is produced** — not the CI bake step. You always get the data either way (if you ask for it, you get it); this flag just chooses where the generation runs. Use it for assets that are procedurally varied, throwaway prototypes, or asset bundles where shipping the sidecar isn't worth the bytes. Suppresses the "no baked sibling" warn because the missing sidecar is the architecture, not a mistake.
 
-Not a dev-iteration knob — the default path (probe → generate on miss + warn) already handles iteration. Mirrors `SlugFontLoader.forceRuntime`; one name across every baked-asset loader in the ecosystem.
+Not a dev-iteration knob — the default path (probe → generate on miss + warn pointing at `flatland-bake`) already handles iteration. Mirrors `SlugFontLoader.forceRuntime`; one name across every baked-asset loader in the ecosystem.
 
 ## Using with plain Three.js
 

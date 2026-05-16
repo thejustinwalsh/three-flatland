@@ -43,13 +43,14 @@ export type NormalMapResult = Texture | null
  */
 export class NormalMapLoader extends Loader<NormalMapResult> {
   /**
-   * Opt this asset out of the baked-sibling pattern entirely. With a
+   * Generate this asset's normal map in the browser on every load
+   * instead of loading a pre-baked `.normal.png` sidecar. With a
    * `descriptor`, the in-memory bake runs on every load. Without a
-   * descriptor, the loader resolves directly to `null` — caller is
-   * expected to use the TSL runtime fallback. Suppresses the "no baked
-   * sibling" warn either way.
+   * descriptor, the loader resolves directly to `null` and the caller
+   * uses the TSL runtime fallback. Suppresses the "no baked sibling"
+   * warn either way.
    *
-   * Use when an asset is intentionally never baked. Not a dev-iteration
+   * Use when runtime is the right home for the bake. Not a dev-iteration
    * knob — the default path (probe → bake on miss + warn) already
    * handles iteration. See {@link BakedAssetLoaderOptions.forceRuntime}.
    */

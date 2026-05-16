@@ -308,7 +308,7 @@ The `normals` option accepts:
 - `NormalSourceDescriptor` — pass a hand-authored descriptor
 - `false` (default) — no normal map is loaded or generated
 
-`forceRuntime: true` is a sibling option (not nested inside `normals`) that opts a specific asset out of the baked-sibling pattern entirely. The runtime bake becomes the canonical source; the probe is skipped and the "no baked sibling" warn is suppressed. Use it for assets you've decided will *always* be runtime-generated — procedurally varied tilesets, throwaway prototypes, asset bundles where shipping a sidecar isn't worth the bytes. Same flag every baked-asset loader exposes (`SlugFontLoader.forceRuntime`). **Not a dev-iteration knob** — the default path (probe → bake on miss + warn) already handles iteration.
+`forceRuntime: true` is a sibling option (not nested inside `normals`) that declares **the browser is where this asset's normal map is produced** — not the CI bake step. The in-memory bake runs on every load; the sidecar probe and "no baked sibling" warn are skipped. The data is always there, the same as the default path; this flag just commits to "the browser is where it's produced for this asset, on purpose." Use it for procedurally varied tilesets, throwaway prototypes, or asset bundles where shipping the sidecar isn't worth the bytes. Same flag every baked-asset loader exposes (`SlugFontLoader.forceRuntime`). **Not a dev-iteration knob** — the default path (probe → bake on miss + warn) already handles iteration.
 
 The in-memory bake path is lazy-imported, so its bundle cost is not paid unless the fallback fires. A dev-mode warning (`NODE_ENV !== 'production'`) points at `npx flatland-bake normal` when the sidecar is absent. See the [Runtime bake fallback](../lighting/#runtime-bake-fallback) section for the full story.
 
@@ -338,7 +338,7 @@ For sprite sheets, the loader synthesizes one flat region per frame rect (read f
   </TabItem>
 </Tabs>
 
-For sprites whose individual frames want different per-frame tilt/bump (rare — most character sheets stay flat with alpha-derived shading) pass a `NormalSourceDescriptor` instead of `true` and provide your own `regions`. For an atlas you've decided will *never* be baked (procedural variation, throwaway prototype, lean bundle), opt it out of the sibling pattern with `forceRuntime: true`:
+For sprites whose individual frames want different per-frame tilt/bump (rare — most character sheets stay flat with alpha-derived shading) pass a `NormalSourceDescriptor` instead of `true` and provide your own `regions`. For an atlas whose normal map is generated in the browser by design (procedural variation, throwaway prototype, lean bundle), set `forceRuntime: true`:
 
 ```typescript
 // Three.js

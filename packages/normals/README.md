@@ -64,9 +64,10 @@ See the [three-flatland docs](https://thejustinwalsh.com/three-flatland/) for de
 ### Loader options
 
 ```typescript
-// Opt this asset out of the baked-sibling pattern entirely — the runtime
-// generator becomes the canonical source. For assets that are intentionally
-// never baked (procedural content, throwaway prototypes, lean bundles).
+// Generate this asset's normal map in the browser on every load instead
+// of loading a pre-baked sidecar. You still get the same normal-map data;
+// this flag just commits to "the browser is where it's produced." For
+// procedurally varied content, throwaway prototypes, lean bundles.
 // Not a dev-iteration knob — the default path (probe → bake on miss +
 // warn) already handles iteration. Mirrors `SlugFontLoader.forceRuntime`.
 const tex = await NormalMapLoader.load(url, { forceRuntime: true })
