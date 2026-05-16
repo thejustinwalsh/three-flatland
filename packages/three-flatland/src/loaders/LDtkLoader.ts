@@ -165,6 +165,14 @@ export interface LDtkLoaderOptions extends BakedAssetLoaderOptions {
    * 1:1 co-registered with the tileset image.
    */
   normals?: LDtkNormalsOption
+  /**
+   * If `true`, never bake in memory. When the baked sidecar is missing
+   * (or stale), resolve to a flat-default texture rather than triggering
+   * a runtime CPU bake. Use in production where you've already shipped
+   * all sidecars and want a missing one to fail visibly (flat shading)
+   * instead of silently incurring the bake on first frame. Default: false.
+   */
+  disableRuntimeBake?: boolean
 }
 
 /**
@@ -241,6 +249,11 @@ export class LDtkLoader extends Loader<TileMapData> {
   skipBakedProbe = false
 
   /**
+   * If `true`, never bake in memory. See {@link LDtkLoaderOptions.disableRuntimeBake}.
+   */
+  disableRuntimeBake = false
+
+  /**
    * Load an LDtk level asynchronously (for R3F useLoader compatibility).
    * Presets and levelId are automatically applied from instance properties.
    */
@@ -250,6 +263,7 @@ export class LDtkLoader extends Loader<TileMapData> {
       texture: resolved,
       normals: this.normals,
       skipBakedProbe: this.skipBakedProbe,
+      disableRuntimeBake: this.disableRuntimeBake,
     })
   }
 
@@ -286,6 +300,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     return this.parseLevel(level, project, baseUrl, resolved, {
       normals: options?.normals ?? false,
       skipBakedProbe: options?.skipBakedProbe ?? false,
+      disableRuntimeBake: options?.disableRuntimeBake ?? false,
     })
   }
 
@@ -324,6 +339,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     normalsContext: {
       normals: LDtkNormalsOption
       skipBakedProbe: boolean
+      disableRuntimeBake: boolean
     }
   ): Promise<TileMapData> {
     // Calculate map size in tiles (use first tile layer's grid)
@@ -408,6 +424,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     normalsContext: {
       normals: LDtkNormalsOption
       skipBakedProbe: boolean
+      disableRuntimeBake: boolean
     }
   ): Promise<TilesetData> {
     const columns = Math.floor(def.pxWid / def.tileGridSize)
@@ -470,6 +487,7 @@ export class LDtkLoader extends Loader<TileMapData> {
         rows,
         normalsContext.normals,
         normalsContext.skipBakedProbe,
+        normalsContext.disableRuntimeBake,
         // The tilemap's instance UV layout is written assuming the
         // diffuse texture's flipY. Force the normal map to match so
         // both textures sample consistently at the same atlasUV.
@@ -494,6 +512,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     rows: number,
     optionDescriptor: true | NormalSourceDescriptor,
     skipBakedProbe: boolean,
+    disableRuntimeBake: boolean,
     diffuseFlipY: boolean
   ): Promise<import('three').Texture> {
     // Walk the tile grid, pairing each cell with its custom data
@@ -522,6 +541,7 @@ export class LDtkLoader extends Loader<TileMapData> {
 
     return resolveNormalMap(textureUrl, descriptor, {
       skipBakedProbe,
+      disableRuntimeBake,
       flipY: diffuseFlipY,
     })
   }

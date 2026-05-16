@@ -28,6 +28,11 @@
       "source": "./src/cli.ts",
       "types": "./dist/cli.d.ts",
       "import": "./dist/cli.js"
+    },
+    "./bake": {
+      "source": "./src/bake.ts",
+      "types": "./dist/bake.d.ts",
+      "import": "./dist/bake.js"
     }
   },
   "module": "./dist/index.js",

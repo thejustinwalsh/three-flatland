@@ -466,6 +466,26 @@ To produce a normal-map texture from a sprite sheet or LDtk tileset, see the [Ba
 
 Without a normal provider, lighting still works — surfaces are treated as flat (facing the camera).
 
+### Runtime bake fallback
+
+`NormalMapProvider` is fed by a baked `.normal.png` atlas. The high-level
+loaders (`SpriteSheetLoader({ normals: true })`, `LDtkLoader` with `normals: true`)
+handle the fallback for you: if the baked sibling is missing or its descriptor
+hash is stale, the loader bakes the atlas in memory on first load (lazy-importing
+the baker, so the cost is paid only when needed) and emits a dev-mode warning
+pointing at `npx flatland-bake normal`.
+
+For production builds where you've shipped all sidecars and want a missing one
+to fail loudly (flat lighting) rather than silently incur a CPU bake on first
+frame, pass `normals: { disableRuntimeBake: true }` to either loader, or set
+`loader.disableRuntimeBake = true` on the instance for R3F `useLoader` consumers.
+
+:::note
+The dev-mode warning is suppressed in production (`NODE_ENV === 'production'`),
+so leaving the fallback enabled is safe for sites where sidecars are always
+present — the bake path stays dormant.
+:::
+
 ## Performance Tips
 
 - Use `DefaultLightEffect` — it is the canonical preset; tiled culling scales well across scene sizes. Lighter-weight and global-illumination variants are tracked in a follow-up PR

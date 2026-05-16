@@ -302,6 +302,15 @@ Both loaders use the same resolution path for the baked atlas:
 
 Run `npx flatland-bake normal <source>` ahead of time to skip the in-memory path in production. Pass `skipBakedProbe: true` on the loader to force the in-memory path during development (useful when iterating on tile metadata). For the offline workflow — running `flatland-bake` ahead of time, sidecar staleness warnings, CI integration — see the [Baking guide](../baking/).
 
+The `normals` option accepts:
+
+- `true` — auto-synthesize the descriptor from the asset's frame/tile layout
+- `NormalSourceDescriptor` — pass a hand-authored descriptor
+- `{ disableRuntimeBake: true }` — suppress the in-memory bake; resolves to a flat-default texture when the baked sidecar is missing (useful in production where a missing sidecar should fail visibly rather than silently bake)
+- `{ skipBakedProbe: true }` — skip the sidecar probe and force an in-memory bake (useful during development when iterating on tile metadata)
+
+The in-memory bake path is lazy-imported, so its bundle cost is not paid unless the fallback fires. A dev-mode warning (`NODE_ENV !== 'production'`) points at `npx flatland-bake normal` when the sidecar is absent. See the [Runtime bake fallback](../lighting/#runtime-bake-fallback) section for the full story.
+
 ### `SpriteSheetLoader.normals: true`
 
 For sprite sheets, the loader synthesizes one flat region per frame rect (read from the sheet JSON) and hands the descriptor to the baker. Region-local alpha clamping in the baker keeps adjacent frames from bleeding gradients into each other. The resulting atlas is exposed as `sheet.normalMap` (a `THREE.Texture`), 1:1 co-registered with `sheet.texture`.
@@ -328,7 +337,20 @@ For sprite sheets, the loader synthesizes one flat region per frame rect (read f
   </TabItem>
 </Tabs>
 
-For sprites whose individual frames want different per-frame tilt/bump (rare — most character sheets stay flat with alpha-derived shading) pass a `NormalSourceDescriptor` instead of `true` and provide your own `regions`.
+For sprites whose individual frames want different per-frame tilt/bump (rare — most character sheets stay flat with alpha-derived shading) pass a `NormalSourceDescriptor` instead of `true` and provide your own `regions`. To disable the in-memory bake fallback for production builds where all sidecars are guaranteed to be present:
+
+```typescript
+// Three.js
+const sheet = await SpriteSheetLoader.load('./sprites/knight.json', {
+  normals: { disableRuntimeBake: true },
+})
+
+// R3F useLoader
+const sheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
+  l.normals = true
+  l.disableRuntimeBake = true
+})
+```
 
 ### `LDtkLoader.normals: true`
 

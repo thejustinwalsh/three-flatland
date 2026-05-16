@@ -36,6 +36,14 @@ export interface SpriteSheetLoaderOptions extends BakedAssetLoaderOptions {
    * 1:1 co-registered with the atlas.
    */
   normals?: SpriteSheetNormalsOption
+  /**
+   * If `true`, never bake in memory. When the baked sidecar is missing
+   * (or stale), resolve to a flat-default texture rather than triggering
+   * a runtime CPU bake. Use in production where you've already shipped
+   * all sidecars and want a missing one to fail visibly (flat shading)
+   * instead of silently incurring the bake on first frame. Default: false.
+   */
+  disableRuntimeBake?: boolean
 }
 
 /**
@@ -98,6 +106,11 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   skipBakedProbe = false
 
   /**
+   * If `true`, never bake in memory. See {@link SpriteSheetLoaderOptions.disableRuntimeBake}.
+   */
+  disableRuntimeBake = false
+
+  /**
    * Load a spritesheet asynchronously (for R3F useLoader compatibility).
    * Presets are automatically applied.
    */
@@ -107,6 +120,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       texture: resolved,
       normals: this.normals,
       skipBakedProbe: this.skipBakedProbe,
+      disableRuntimeBake: this.disableRuntimeBake,
     })
   }
 
@@ -180,6 +194,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
         parsed.height,
         options.normals,
         options.skipBakedProbe ?? false,
+        options.disableRuntimeBake ?? false,
         texture.flipY
       )
     }
@@ -200,6 +215,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     atlasHeight: number,
     optionDescriptor: true | NormalSourceDescriptor,
     skipBakedProbe: boolean,
+    disableRuntimeBake: boolean,
     diffuseFlipY: boolean
   ): Promise<Texture> {
     // Convert each frame's normalized UV back to pixel coords. Frames
@@ -223,6 +239,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
 
     return resolveNormalMap(textureUrl, descriptor, {
       skipBakedProbe,
+      disableRuntimeBake,
       flipY: diffuseFlipY,
     })
   }
