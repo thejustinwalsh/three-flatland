@@ -158,6 +158,13 @@ export function batchSortSystem(world: World): void {
     for (let i = 0; i < n; i++) {
       slotToScratchIdx[slotArr[scratchEids[i]!]!] = i
     }
+    // Pull the sprite SoA cache so we can keep each swapped sprite's
+    // cached `_batchSlot` in sync with the Koota store. Without this,
+    // any direct-write setter (color, zIndex, addEffect → writeColor /
+    // writeEnableBits / etc.) would target the stale pre-sort slot
+    // and clobber a different sprite's data.
+    const spriteArr = registry.spriteArr
+
     for (let i = 0; i < n; i++) {
       const targetSlot = scratchSlots[i]!
       const targetEid = scratchEids[i]!
@@ -173,6 +180,13 @@ export function batchSortSystem(world: World): void {
       slotArr[otherEid] = currentSlot
       slotToScratchIdx[targetSlot] = i
       slotToScratchIdx[currentSlot] = otherIdx
+
+      // Update per-sprite cache so direct-write setters land at the
+      // correct slot on subsequent calls.
+      const targetSprite = spriteArr[targetEid & ENTITY_ID_MASK]
+      const otherSprite = spriteArr[otherEid & ENTITY_ID_MASK]
+      if (targetSprite) targetSprite._batchSlot = targetSlot
+      if (otherSprite) otherSprite._batchSlot = currentSlot
     }
   }
 }
