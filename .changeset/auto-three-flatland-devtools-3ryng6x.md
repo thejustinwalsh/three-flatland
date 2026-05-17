@@ -5,47 +5,40 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**Dashboard**
-- Preact-based devtools dashboard with panels for stats, environment, batch inspector, buffer viewer, registry, and protocol log
-- Vite plugin bundles dashboard as a separate entry; `build:bundle` Turbo task for CI integration
-- Dashboard auto-mounts when `debug: true` via `createPane`/`usePane` — no separate `mountDevtoolsPanel` call needed
-- `DevtoolsClient` + `mountDevtoolsPanel` / `useDevtoolsPanel` for framework-agnostic and React panel mounting
+**Dashboard (Vite plugin)**
+- New `vite-plugin.ts` — serves the devtools dashboard as a Vite dev-server middleware; auto-injects the client script into the host page
+- Dashboard built with Preact (vendored, no peer dep); panels: stats sparkline, batch list, buffer inspector, registry viewer, protocol log, environment info, producer selector
+- `build:bundle` Turbo task produces a self-contained dashboard bundle
 
-**Debug protocol**
-- Two `BroadcastChannel` split: shared discovery channel (`flatland-debug`) + per-provider data channel (`flatland-debug:<id>`)
-- Multi-provider discovery — `provider:announce`, `provider:query`, `provider:gone`; client auto-switches when selected provider disconnects; `client.selectProvider(id)` for manual override
-- Per-feature subscribe with `features`, `registry`, and `buffers` selection keys; idle panes set `features: []` to zero bandwidth
-- `FlatlandOptions.name` distinguishes multiple Flatland instances in the UI
-- `createDevtoolsProvider()` helper for vanilla Three.js apps that don't construct a `Flatland`
-- Frame-boundary stats via explicit `beginFrame`/`endFrame` — FPS and draw stats aggregate across internal multi-pass renders (SDF, occlusion, main, post)
+**Buffer inspector**
+- Fullscreen buffer modal: collapsible sidebar listing all registered GPU buffers by name prefix; click to switch active; Esc to close; selection drives `setBuffers([active])` so only the viewed buffer streams
+- Modal pan/zoom: mouse-wheel zoom (0.25×–64×) centered on cursor, drag to pan, double-click to reset; zoom info overlay; reset button
+- WebCodecs VP9 encoding for fullscreen streaming — provider encodes readback pixels on the bus worker, consumer decodes via `VideoDecoder` and draws `VideoFrame` directly; falls back to raw-pixel path when WebCodecs unavailable
+- `DebugTextureRegistry` with per-entry `maxDim` cap (default 256 for render targets) and lazy GPU downsampler — 1920×1080 SDF reads back at 256×144 (~150 KB) instead of 8 MB
+- Pixel format support: `rgba8`, `r8`, `rgba16f`, `rgba32f`; display modes: `colors`, `normalize`, `mono`, `signed`; GPU row-padding correctly handled for WebGPU's 256-byte `bytesPerRow` alignment
+- `occlusion.mask` and `sdf.distanceField` debug textures registered automatically
 
-**Stats graph**
-- Canvas-based sparkline replaces SVG `polyline` (eliminates per-rAF DOM string + selector invalidation)
-- GPU timing detection; stats visibility gated on `EXT_disjoint_timer_query_webgl2` availability
-- `StatsCollector` GPU drain throttled to 10 Hz; `toFixed` string results cached per mode
-- Axis hysteresis with trimmed-max for stable Y scale; bucketed axis range for sparkline stability
-
-**GPU buffer viewer**
-- `DebugTextureRegistry` with configurable `maxDim` cap (default 256px for render targets) and lazy `Downsampler` — large RTs read back at reduced resolution
-- Live buffer thumbnail blade: `◀ name ▶` arrow navigation, `colors`/`normalize`/`mono`/`signed` display modes with format-driven defaults
-- Fullscreen modal (⤢ button): collapsible sidebar tree, aspect-correct canvas with `image-rendering: pixelated`, Esc to close
-- WebCodecs VP9 encoding for fullscreen stream; VideoDecoder on consumer; graceful fallback to raw pixels on Firefox/older Safari
-- Modal pan/zoom: wheel zoom centered on cursor, drag to pan, double-click or reset button to restore, extents clamped 0.25×–64×
-- Pixel format conversion unified on worker thread; GPU row-padding (WebGPU 256-byte alignment) detected and stripped; `'alpha'` display mode for single-channel occlusion mask
-- SDF distance field, occlusion mask, Forward+ tile texture, LightStore DataTexture, Radiance/cascade/JFA intermediates all registered as debug textures
-- Texture readback moved to end-of-frame so captures are coherent with complete render pipeline output
-- Thumbnail selection and fullscreen modal selection stay synchronized via `setModalOpen`/`setActiveFromModal` callbacks
+**Stats panel**
+- GPU timing detection — `detectGpuTiming` probes `timestamp-query` support and hides unavailable stats columns
+- Canvas-based sparkline replaces SVG polyline — eliminates per-rAF DOM mutations and ~5k string allocations/sec
+- Bucketed axis range with trimmed max and hysteresis for stable Y-axis scaling
+- `StatsCollector.maybeResolveGpu` throttled from 60 Hz to 10 Hz (6× fewer Promise closures); `toFixed` results cached per display-precision bucket
 
 **React hooks**
-- `DevtoolsProvider` React component: pure constructor (no BroadcastChannel/Worker side-effects); explicit `start()`/`dispose()` lifecycle; safe for R3F reconciler StrictMode remounts
-- `usePane`: `driver:'raf'` self-ticks stats graph; no `useFrame` dependency, works outside `<Canvas>`
-- `usePaneFolder`/`usePaneInput`: `useLayoutEffect` with `[parent, key]` deps replaces `setTimeout` disposal hack; `change` listener gated on `mountedRef` to drop late events
-- Controls pane minimal mode for compact single-line display
+- `DevtoolsProvider` constructor is now side-effect-free; explicit `start()` / `dispose()` lifecycle (both idempotent); `Flatland.render()` lazy-starts on first call
+- New `<DevtoolsProvider />` React component using default-phase `useFrame`; safe in production builds via `DEVTOOLS_BUNDLED` + `isDevtoolsActive()` gate
+- `usePaneFolder` / `usePaneInput` switched from deferred-disposal `setTimeout` to `useLayoutEffect` with `[parent, key]` deps — correct StrictMode remount behavior
+- `usePane` dropped `useFrame` dependency; stats graph self-ticks via own `requestAnimationFrame`; `useFrame` priority passed as options object to match R3F v10 API
+- `usePaneInput` change handler gated on `mountedRef.current` — prevents state updates on unmounted components
 
-**Fixes**
-- Float textures (`rgba16f`/`rgba32f`) skip VP9 encode path — encoder requires 8-bit RGBA
-- `paint()` skipped when `VideoDecoder` is active to avoid overwriting decoded frames
-- Stream subscription refreshed on buffer switch; keyframe forced on new subscriber and buffer switch
-- Pool buffer pixel byte-length passed separately from pool size (2 MB pool, ~900 KB payload)
+**Controls**
+- Tweakpane pane minimal mode toggle
+- Buffer thumbnail blade: `◀ name ▶` cycle arrows, 240×120 thumbnail with dimension/format chip, expand `⤢` button to open fullscreen modal
+- Modal and thumbnail buffer selection synchronized — thumbnail defers to modal when open, resumes on close
 
-Major update to `@three-flatland/devtools`: Preact dashboard, GPU buffer streaming with WebCodecs VP9, multi-provider discovery, and a full GPU texture inspection pipeline including signed SDF and occlusion mask visualizations.
+**Perf**
+- `perf-track.ts`: `perfMeasure` / `perfStart` emit User Timing spans on Chrome's custom-track extension (`three-flatland` track group); bus-receive latency and per-flush CPU spans automatically instrumented
+- Snapshots mutated in place on `_applyRegistry` / `_applyBuffers` — eliminates per-batch object literal allocations
+- `ImageData` cached across thumbnail paints when source dimensions match — was allocating ~100 KB `Uint8ClampedArray` at 4 Hz
+
+The devtools dashboard now provides a fully featured GPU buffer inspector with streaming, modal pan/zoom, and stable stats; the React integration is StrictMode-safe with a clean start/dispose lifecycle.

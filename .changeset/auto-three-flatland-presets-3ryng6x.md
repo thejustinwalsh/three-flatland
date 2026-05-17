@@ -5,33 +5,44 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**DefaultLightEffect — shadow pipeline**
-- `shadowSDF2D` wired into the per-tile light loop; replaces `shadow = float(1.0)` stub for both `DefaultLightEffect` and `DirectLightEffect`
-- Per-light `castsShadow` gate: shadow trace skipped for lights with `castsShadow: false` — O(casting lights) instead of O(total lights) for dense cosmetic-fill scenes
-- Attenuation sub-visible gate: SDF trace skipped when `atten <= 0.01`, below 8-bit quantization threshold
-- `shadowStartOffset` tunable uniform (default 40) — self-shadow escape distance, split from `shadowBias` (IQ hit epsilon)
-- `shadowStartOffsetScale` per-effect multiplier on per-sprite `shadowRadius` replaces the old scene-wide uniform
-- `shadowPixelSize` — world-unit snap on trace origin for retro blocky shadow look
-- `bands` quantization now applied to unshadowed direct accumulation; shadow scalar recovered as ratio and applied after quantize, keeping shadow edges smooth at non-zero band counts
-- `shadowBands`/`shadowBandCurve` uniforms removed (obsoleted by post-quantize shadow application)
-- `rimIntensity` rim lighting now correctly inherits the same per-pixel shadow ratio as direct
-- Redundant `lightDir.normalize()` in spot cone math removed (direction normalized at set-site)
+**DefaultLightEffect**
+- `shadowSDF2D` wired in — replaces the `shadow = float(1.0)` stub; controlled by `shadowStrength`, `shadowSoftness`, `shadowBias`, and `shadowStartOffset` uniforms
+- `shadowStartOffset` replaces `shadowBias` for the self-shadow escape distance; `shadowBias` is now exclusively the IQ hit epsilon — semantics no longer overlap
+- Per-light `castsShadow` gate on the shadow trace — shadow cost scales with casting lights only, not total light count
+- Shadow trace skipped when attenuation is below 8-bit visibility threshold (sub-0.01 atten)
+- Shadow applied after cel-band quantization so stair-steps affect the direct gradient, not the shadow edge
+- Removed `shadowBands` / `shadowBandCurve` uniforms — superseded by post-quantization shadow handling
+- `shadowStartOffset` default set to 40 world units (covers 64u knight silhouette out-of-the-box)
+- `shadowStartOffsetScale` effect-level multiplier replaces the old scene-wide offset uniform
+- Dropped per-tile `fillScale` shader multiply — eliminates tile-boundary brightness banding in dense fill-light scenes
+- Redundant `lightDir.normalize()` removed from spot cone inner loop (rsqrt + 2 muls per fragment per spot, no behavior change)
 
-**Forward+ lighting — fill-light management**
-- `Light2D.category?: string` — hashed via djb2 to one of 4 buckets; each category gets its own fill-light quota (2 per tile) and compensation scale, fixing mixed-fill scenes where distinct fill types competed for the same slots
-- `Light2D.importance?: number` — multiplicative bias on tile-ranking score; hero lights can be set high to resist eviction by dense fill clusters
-- `Light2D.castsShadow` field and `clone()` preservation; packed into `LightStore` row3.b for shader consumption
-- Per-tile fillScale compensation dropped from shader (caused visible tile-boundary banding); CPU-side tracking preserved for future temporal compensation path
-- TILE_SIZE bumped 16 → 32 for ~4× CPU tile-assignment speedup at 1920×1080; max tiles 65,536 → 32,768 (covers 8K canvas at TILE_SIZE=32)
-- CPU tile bounds now align with shader's screen-pixel tile math, fixing checkerboard gaps in fill coverage at non-multiple-of-TILE_SIZE viewport heights
+**Light categorization**
+- `Light2D.category?: string` — fill lights hash to one of 4 independent buckets via djb2; each bucket has its own 2-slot quota and per-tile `fillScale` compensation
+- `Light2D.importance` (default `1.0`) — multiplicative ranking bias; hero lights resist eviction by dense cosmetic clusters
+- `Light2D.castsShadow` flag packed into `LightStore` row 3, column B; `clone()` preserves it
+
+**Forward+ lighting**
+- Per-category fill-light quotas: 2 slots per bucket per tile; fills only evict fills within the same bucket
+- CPU tile-bounds math aligned with the shader's `floor(screenPos / TILE_SIZE)` stride — eliminates tile-boundary gaps in fill coverage at non-multiple-of-32 viewport heights
+- `TILE_SIZE` bumped from 16 → 32 (4× fewer CPU tiles, same per-fragment shader cost)
+- Tile storage layout expanded from stride=4 to stride=8; meta texel carries 4 per-bucket `fillScale` values
 
 **Per-sprite shadow radius**
-- `Sprite2D.shadowRadius?: number` — `undefined` (default) auto-derives from `max(|scale.x|, |scale.y|)` each frame; explicit value overrides; preserved across `clone()`
-- `DefaultLightEffect.shadowStartOffsetScale` (0–3 slider) replaces old per-scene `shadowStartOffset` slider
+- `Sprite2D.shadowRadius?: number` — auto-derived from `max(|scale.x|, |scale.y|)` when unset; explicit override for sprites with transparent padding; preserved across `clone()`
+- `readShadowRadius()` TSL helper for shader consumption
 
-**Lighting effect system**
-- `DefaultLightEffect`, `DirectLightEffect`, `SimpleLightEffect` — three preset strategies for tiled Forward+ lighting with SDF shadows
-- `sdfTexture`, `worldSizeNode`, `worldOffsetNode` threaded through `LightEffectBuildContext` for all effects
-- `@three-flatland/presets/react` subpath export for R3F `ThreeElements` augmentation; `@react-three/fiber` declared as optional peer dep
+**Instance buffer**
+- Core instance data interleaved into a single `InstancedInterleavedBuffer` (64 bytes / 16 floats per instance): `instanceUV`, `instanceColor`, `instanceSystem`, `instanceExtras`; frees 3 of WebGPU's 8 vertex-buffer slots for `effectBuf` growth
+- `EffectMaterial.MAX_EFFECT_FLOATS = 12` cap with a clear error at registration time instead of a silent GPU pipeline rejection
+- TSL instance-attribute helpers (`readFlip`, `readSystemFlags`, `readEnableBits`, `readLitFlag`, `readShadowRadius`, `readReceiveShadowsFlag`, `readCastShadowFlag`) moved to `materials/instanceAttributes.ts`
 
-Initial minor release of `@three-flatland/presets`: production-ready lighting effects including SDF shadow tracing, fill-light quota management, and per-sprite shadow radii.
+**Preset cleanup**
+- `RadianceLightEffect`, `DirectLightEffect`, `SimpleLightEffect`, and `AutoNormalProvider` removed from the barrel; `DefaultLightEffect` + `NormalMapProvider` remain
+- `@three-flatland/presets` gains `./react` subpath export and declares `@react-three/fiber` as an optional peer dep
+
+**Normal map**
+- `NormalMapProvider` replaces `AutoNormalProvider` in docs and error messages; SpriteSheetLoader / LDtkLoader auto-bake normals via `resolveNormalMap` when sidecars are missing
+
+Lighting is production-ready for scenes using `DefaultLightEffect` with `NormalMapProvider`; the SDF shadow pipeline is end-to-end for point/spot lights with correct penumbra and per-sprite self-shadow escape.
+
