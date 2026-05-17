@@ -5,11 +5,24 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-- New `@three-flatland/bake` package — `flatland-bake` CLI that discovers and dispatches subcommands contributed by packages via `"flatland": { "bakers": [...] }` in their `package.json`
-- Baker discovery walks `node_modules` upward from CWD; first-wins on name conflicts; CWD-self-discovery lets package authors iterate without symlinking
-- `BakedAssetLoaderOptions.forceRuntime` replaces `skipBakedProbe` across all loaders (`NormalMapLoader`, `SpriteSheetLoader`, `LDtkLoader`, `TiledLoader`, `SlugFontLoader`) — one flag, one pattern
-- Dropped `disableRuntimeBake`; runtime bake is always the fallback when normals are requested
-- Sidecar helpers: `writeSidecar`, `probeBakedSibling`, `devtimeWarn` for the canonical try-baked → fallback pattern
-- Normal descriptor loader and baking script support added
+## Changes
 
-`@three-flatland/bake` ships the extensible `flatland-bake` CLI infrastructure; install `@three-flatland/normals` to gain the `normal` subcommand.
+**New package: `@three-flatland/bake`**
+- Unified `flatland-bake` CLI binary — discovers and dispatches bakers contributed by workspace or npm packages via a `flatland.bake` manifest in `package.json`
+- Baker discovery walks `node_modules` upward from CWD, tolerating scoped packages, missing dirs, and malformed manifests; first-wins conflict policy on duplicate names
+- CWD self-discovery: when the CLI runs inside a package that declares its own bakers, those are registered before `node_modules` scans (useful during package authoring)
+- `flatland-bake --list` shows all available subcommands from installed packages
+
+**API changes**
+- `BakedAssetLoaderOptions.skipBakedProbe` renamed to `forceRuntime` — aligns with `SlugFontLoader.forceRuntime`; all baked-asset loaders now share one opt-out flag name
+- `flatland.bakers` manifest key renamed to `flatland.bake`; legacy `bakers` key still accepted with a deprecation warning
+
+**Bug fixes**
+- CLI `--help` text corrected to reference `flatland.bake` instead of legacy `flatland.bakers`
+- Sidecar HTTP probe: removed dead `&& header.status !== 206` branch that could never fire (already short-circuited by `!header.ok`)
+
+## BREAKING CHANGES
+
+- `BakedAssetLoaderOptions.skipBakedProbe` → `forceRuntime`: rename any `{ skipBakedProbe: true }` call sites to `{ forceRuntime: true }`
+
+Introduces the `@three-flatland/bake` CLI package with a plugin-driven baker system; installing any package that declares a `flatland.bake` manifest entry automatically registers its `flatland-bake` subcommand.

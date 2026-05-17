@@ -5,40 +5,52 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**Dashboard (Vite plugin)**
-- New `vite-plugin.ts` — serves the devtools dashboard as a Vite dev-server middleware; auto-injects the client script into the host page
-- Dashboard built with Preact (vendored, no peer dep); panels: stats sparkline, batch list, buffer inspector, registry viewer, protocol log, environment info, producer selector
-- `build:bundle` Turbo task produces a self-contained dashboard bundle
+## Changes
 
-**Buffer inspector**
-- Fullscreen buffer modal: collapsible sidebar listing all registered GPU buffers by name prefix; click to switch active; Esc to close; selection drives `setBuffers([active])` so only the viewed buffer streams
-- Modal pan/zoom: mouse-wheel zoom (0.25×–64×) centered on cursor, drag to pan, double-click to reset; zoom info overlay; reset button
-- WebCodecs VP9 encoding for fullscreen streaming — provider encodes readback pixels on the bus worker, consumer decodes via `VideoDecoder` and draws `VideoFrame` directly; falls back to raw-pixel path when WebCodecs unavailable
-- `DebugTextureRegistry` with per-entry `maxDim` cap (default 256 for render targets) and lazy GPU downsampler — 1920×1080 SDF reads back at 256×144 (~150 KB) instead of 8 MB
-- Pixel format support: `rgba8`, `r8`, `rgba16f`, `rgba32f`; display modes: `colors`, `normalize`, `mono`, `signed`; GPU row-padding correctly handled for WebGPU's 256-byte `bytesPerRow` alignment
-- `occlusion.mask` and `sdf.distanceField` debug textures registered automatically
+**Devtools dashboard**
+- New in-browser dashboard built with Preact (vendored, zero peer-dep): batch inspector, env panel, stats sparklines, registry viewer, protocol log
+- Vite plugin (`@three-flatland/devtools/vite-plugin`) — injects and serves the dashboard via a `?devtools` route; no manual wiring required
+- Separate tsconfig + tsup build target for the dashboard bundle
 
-**Stats panel**
-- GPU timing detection — `detectGpuTiming` probes `timestamp-query` support and hides unavailable stats columns
-- Canvas-based sparkline replaces SVG polyline — eliminates per-rAF DOM mutations and ~5k string allocations/sec
-- Bucketed axis range with trimmed max and hysteresis for stable Y-axis scaling
-- `StatsCollector.maybeResolveGpu` throttled from 60 Hz to 10 Hz (6× fewer Promise closures); `toFixed` results cached per display-precision bucket
+**Buffer viewer**
+- In-pane buffer thumbnails with live streaming from GPU readbacks
+- Fullscreen modal: click ⤢ on any thumbnail to open; collapsible sidebar lists all registered buffers grouped by name prefix; main area renders aspect-correct canvas with `pixelated` image rendering
+- Modal pan/zoom: mouse-wheel zoom centered on cursor, drag to pan, double-click to reset; zoom level and pan offset shown in info overlay
+- Zoom controls repositioned to top-left to avoid docs-page overlap; zoom info hidden at 1× identity
+- Buffer selection sync between thumbnail and modal: modal takes exclusive selection while open, thumbnail resumes on close
+- VP9 WebCodecs streaming for fullscreen modal (Chrome/Edge): `VideoEncoder` on bus worker encodes readback frames; `VideoDecoder` draws `VideoFrame` directly to canvas; automatic fallback to raw-pixel path when WebCodecs unavailable (Firefox, older Safari)
+
+**Pixel conversion (worker-side)**
+- All format conversion moved to the bus worker thread: provider ships raw bytes, worker converts to RGBA8, broadcasts as `buffer:raw` or VP9-encoded `buffer:chunk`
+- GPU row-padding detection: WebGPU aligns `bytesPerRow` to 256; converter now reads the correct stride from the data byte length
+- Supports `rgba8`, `r8`, `rgba16f` (manual half-float decode), `rgba32f` with display modes: `colors`, `normalize`, `mono`, `signed`, `alpha` (new — reads alpha channel as greyscale for occlusion masks)
+- Registered debug textures: `sdf.distanceField` (signed distance field, `signed` display) and `occlusion.mask` (binary occlusion mask, `mono` display)
+
+**Stats graph**
+- Bucketed axis range for sparkline stability (prevents axis thrash from transient spikes)
+- Axis hysteresis with trimmed-max: large outliers expand the range but don't hold it
+- `toFixed` result cached per display-precision rounded integer — eliminates per-rAF string allocation when the displayed value hasn't changed
 
 **React hooks**
-- `DevtoolsProvider` constructor is now side-effect-free; explicit `start()` / `dispose()` lifecycle (both idempotent); `Flatland.render()` lazy-starts on first call
-- New `<DevtoolsProvider />` React component using default-phase `useFrame`; safe in production builds via `DEVTOOLS_BUNDLED` + `isDevtoolsActive()` gate
-- `usePaneFolder` / `usePaneInput` switched from deferred-disposal `setTimeout` to `useLayoutEffect` with `[parent, key]` deps — correct StrictMode remount behavior
-- `usePane` dropped `useFrame` dependency; stats graph self-ticks via own `requestAnimationFrame`; `useFrame` priority passed as options object to match R3F v10 API
-- `usePaneInput` change handler gated on `mountedRef.current` — prevents state updates on unmounted components
+- `DevtoolsProvider` constructor is now side-effect-free; explicit `start()` / `dispose()` lifecycle; `Flatland.render()` lazy-starts on first call
+- `usePane`: dropped `useFrame` dependency; stats graph self-ticks via its own `rAF` driver — works outside `<Canvas>` context
+- `usePaneFolder` / `usePaneInput`: switched from deferred-disposal (`setTimeout`) to `useLayoutEffect` with stable deps; fixes StrictMode remount issues
+- New `<DevtoolsProvider />` React component for non-Flatland R3F scenes; gated by `DEVTOOLS_BUNDLED + isDevtoolsActive()`, safe in production builds
+- Fixed `useFrame` priority collision in `usePane` that produced `"Job already exists"` warnings under StrictMode
+- `usePaneInput` change handler gated on `mountedRef` to prevent state updates on unmounted components
 
-**Controls**
-- Tweakpane pane minimal mode toggle
-- Buffer thumbnail blade: `◀ name ▶` cycle arrows, 240×120 thumbnail with dimension/format chip, expand `⤢` button to open fullscreen modal
-- Modal and thumbnail buffer selection synchronized — thumbnail defers to modal when open, resumes on close
+**GPU timing**
+- `detectGpuTiming` helper probes `EXT_disjoint_timer_query_webgl2` availability; stats panel adapts visibility based on capabilities
 
-**Perf**
-- `perf-track.ts`: `perfMeasure` / `perfStart` emit User Timing spans on Chrome's custom-track extension (`three-flatland` track group); bus-receive latency and per-flush CPU spans automatically instrumented
-- Snapshots mutated in place on `_applyRegistry` / `_applyBuffers` — eliminates per-batch object literal allocations
-- `ImageData` cached across thumbnail paints when source dimensions match — was allocating ~100 KB `Uint8ClampedArray` at 4 Hz
+**Performance**
+- `_applyRegistry` / `_applyBuffers` mutate existing snapshot objects in-place on subsequent frames; only first sight allocates a new snapshot
+- Deduplicated rAF allocations; gated registry/buffer payloads; added timing tracks
 
-The devtools dashboard now provides a fully featured GPU buffer inspector with streaming, modal pan/zoom, and stable stats; the React integration is StrictMode-safe with a clean start/dispose lifecycle.
+**Bug fixes**
+- `createDevtoolsProvider()` helper exported from `three-flatland` for non-Flatland vanilla apps; returns a no-op stub in production builds
+- Fixed `useFrame` priority API: switched from deprecated positional form to `{ priority }` options object
+- Corrected `typecheck` script to specify the right `tsconfig`
+- Worker bounces pool buffer after conversion (was bouncing before, detaching the buffer mid-read)
+- Float textures (`rgba16f`/`rgba32f`) skip VP9 encoding; `VideoEncoder` expects 8-bit RGBA input
+
+Delivers the full devtools dashboard with live GPU-buffer streaming, a fullscreen pan/zoom viewer, WebCodecs VP9 encoding, and a hardened React hook lifecycle.
