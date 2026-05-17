@@ -99,4 +99,34 @@ describe('resolveNormalMap — default probe → bake-on-miss', () => {
     expect(warn).toHaveBeenCalledTimes(1)
     expect(String(warn.mock.calls[0]![0])).toContain('No baked sibling')
   })
+
+  it('warns "stale" and re-bakes when baked sibling exists but hash mismatches', async () => {
+    // HEAD 200 + Range GET returns a bare PNG signature (no tEXt chunk).
+    // `probeBakedSibling` reads no `flatland` metadata and returns
+    // `hashMatches: false`, which routes resolveNormalMap into the stale
+    // branch — different warn text from the "no baked sibling" path.
+    const pngSig = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    const fetchCalls: Array<{ method?: string; range?: boolean }> = []
+    global.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      const range = !!(init?.headers as Record<string, string> | undefined)?.['Range']
+      fetchCalls.push({ method: init?.method, range })
+      if (init?.method === 'HEAD') return new Response(null, { status: 200 })
+      if (range) return new Response(pngSig, { status: 206 })
+      // Source image GET for the in-memory bake.
+      return new Response(pngSig, { status: 200 })
+    }) as unknown as typeof fetch
+    stubBakeEnv()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const tex = await resolveNormalMap('/sprite.png', descriptor)
+    expect(tex).toBeDefined()
+    // All three fetches fired: HEAD probe, Range metadata read, source GET.
+    expect(fetchCalls.some((c) => c.method === 'HEAD')).toBe(true)
+    expect(fetchCalls.some((c) => c.range)).toBe(true)
+    // Stale-branch warn text — distinct from the "no baked sibling" wording.
+    expect(warn).toHaveBeenCalledTimes(1)
+    const msg = String(warn.mock.calls[0]![0])
+    expect(msg).toContain('descriptor hash is stale')
+    expect(msg).toContain('re-baking in memory')
+  })
 })

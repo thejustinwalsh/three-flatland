@@ -2,9 +2,26 @@ import { Loader, type LoadingManager, TextureLoader, type Texture } from 'three'
 import {
   devtimeWarn as sharedDevtimeWarn,
   _resetDevtimeWarnings as sharedResetDevtimeWarnings,
+  hashDescriptor,
+  type BakedAssetLoaderOptions,
 } from '@three-flatland/bake'
 import { bakedNormalURL } from './bake.js'
 import type { NormalSourceDescriptor } from './descriptor.js'
+
+/**
+ * Options accepted by `NormalMapLoader.load()`. Inherits `forceRuntime`
+ * from the shared {@link BakedAssetLoaderOptions} so every baked-asset
+ * loader in the codebase advertises the same option shape.
+ */
+export interface NormalMapLoaderStaticOptions extends BakedAssetLoaderOptions {
+  /**
+   * When provided, missing sidecars trigger an in-memory bake via
+   * `resolveNormalMap`. Without a descriptor, `NormalMapLoader.load()` can
+   * only probe the baked sibling and returns `null` on miss (legacy
+   * behavior, preserved for backward compat).
+   */
+  descriptor?: NormalSourceDescriptor
+}
 
 /**
  * Result of loading a sprite's normal data.
@@ -104,24 +121,27 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
 
   // ─── Static API (vanilla usage) ───
 
+  /**
+   * Vanilla cache: keyed by `(url, forceRuntime, descriptor hash)` so
+   * two callers passing *different* descriptors for the same URL get
+   * distinct results instead of colliding on the first one's bake.
+   *
+   * Instance API (R3F `useLoader`) bypasses this map — R3F has its own
+   * suspense cache and we don't want double-caching to fight the lifecycle.
+   */
   private static _cache = new Map<string, Promise<NormalMapResult>>()
 
   static load(
     url: string,
-    options?: {
-      forceRuntime?: boolean
-      /**
-       * When provided, missing sidecars trigger an in-memory bake via
-       * `resolveNormalMap`. Without a descriptor, NormalMapLoader can only
-       * probe the baked sibling and returns null on miss (legacy behavior,
-       * preserved for backward compat).
-       */
-      descriptor?: NormalSourceDescriptor
-    }
+    options?: NormalMapLoaderStaticOptions
   ): Promise<NormalMapResult> {
     const forceRuntime = options?.forceRuntime ?? false
     const descriptor = options?.descriptor
-    const cacheKey = `${url}:${forceRuntime ? 'runtime' : 'probe'}:${descriptor ? 'desc' : 'nodesc'}`
+    // Hash the descriptor so distinct descriptors for the same URL get
+    // distinct cache entries. `descriptor ? 'desc' : 'nodesc'` would have
+    // collapsed every (URL, *) pair into one slot — first-bake-wins.
+    const descriptorKey = descriptor ? hashDescriptor(descriptor) : 'nodesc'
+    const cacheKey = `${url}:${forceRuntime ? 'runtime' : 'probe'}:${descriptorKey}`
     const cached = this._cache.get(cacheKey)
     if (cached) return cached
 
