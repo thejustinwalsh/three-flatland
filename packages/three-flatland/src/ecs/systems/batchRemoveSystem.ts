@@ -10,6 +10,7 @@ import {
 } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { computeRunKey, recycleBatchIfEmpty } from '../batchUtils'
+import { ENTITY_ID_MASK } from '../snapshot'
 
 const Removed = createRemoved()
 
@@ -47,6 +48,17 @@ export function batchRemoveSystem(world: World, pendingDestroy: Entity[]): void 
       // Free the slot (sets alpha=0, adds to free list)
       batchMesh.mesh.freeSlot(relationData.slot)
       batchMesh.mesh.syncCount()
+    }
+
+    // Clear the sprite's cached batch references — once we free the
+    // slot, setter direct-write paths must fall back to standalone-mode
+    // until the next batchAssignSystem pass.
+    const eid = (entity as unknown as number) & ENTITY_ID_MASK
+    const sprite = registry.spriteArr[eid]
+    if (sprite) {
+      sprite._batchMesh = null
+      sprite._batchSlot = -1
+      sprite._batchIdx = -1
     }
 
     // Remove relation and reset BatchSlot

@@ -114,7 +114,14 @@ export function batchReassignSystem(
 
     // Update BatchSlot SoA cache (no Changed observers)
     const newMeta = newBatchEntity.get(BatchMeta)
-    entity.set(BatchSlot, { batchIdx: newMeta?.batchIdx ?? -1, slot: newSlot }, false)
+    const newBatchIdx = newMeta?.batchIdx ?? -1
+    entity.set(BatchSlot, { batchIdx: newBatchIdx, slot: newSlot }, false)
+
+    // Update the sprite's cached batch references — the invariant is
+    // that these match BatchSlot for the lifetime of the assignment.
+    sprite._batchMesh = newBatchMesh.mesh
+    sprite._batchSlot = newSlot
+    sprite._batchIdx = newBatchIdx
 
     // Full sync to new batch
     syncAllBuffers(entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)

@@ -6,7 +6,6 @@ import {
   SpriteUV,
   SpriteFlip,
   SpriteLayer,
-  SpriteZIndex,
   SpriteMaterialRef,
   InBatch,
   BatchSlot,
@@ -87,12 +86,21 @@ export function batchAssignSystem(
     const batchIdx = meta?.batchIdx ?? -1
     entity.set(BatchSlot, { batchIdx, slot }, false)
 
-    // Fire Changed(SpriteZIndex) so batchSortSystem re-sorts this batch
-    // at least once with the new member present. zIndex writes via
-    // Sprite2D.zIndex setter use raw SoA writes for perf, so Koota's
-    // Changed tracker wouldn't pick up the initial value otherwise.
-    const zIdx = entity.get(SpriteZIndex)
-    if (zIdx) entity.set(SpriteZIndex, { zIndex: zIdx.zIndex })
+    // Cache batch references on the sprite for O(1) direct-write
+    // dispatch from setters. While the sprite is in a batch, this
+    // triplet is the invariant: _batchMesh === mesh, _batchSlot === slot,
+    // _batchIdx === batchIdx. Setters check `_batchMesh !== null` as the
+    // "am I batched?" test.
+    sprite._batchMesh = mesh
+    sprite._batchSlot = slot
+    sprite._batchIdx = batchIdx
+
+    // Signal that this batch needs sorting on the next pass — the new
+    // sprite was just inserted at an arbitrary slot (allocateSlot's
+    // free-list / nextIndex), not its sorted position. For gated
+    // materials this is a no-op since batchSortSystem skips them
+    // anyway; the marker is harmless.
+    mesh.markSortDirty()
 
     // One-time full buffer sync from current trait state (no needsUpdate — deferred)
     syncSlotBuffers(entity, slot, mesh, sprite, effectTraits)

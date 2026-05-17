@@ -88,10 +88,24 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
   /**
    * Maps `effectName_fieldName` to its packed buffer offset and size.
-   * Offsets are absolute (slot 0 = flags, slot 1+ = data).
+   * Offsets are absolute within `effectBuf*` (pure effect data — system
+   * flags and enable bits moved to `instanceSystem` in the interleaved
+   * core, so effect buffers start at offset 0).
    * @internal
    */
   _effectSlots: Map<string, { offset: number; size: number }> = new Map()
+
+  /**
+   * Maximum total effect-data floats allowed across all registered
+   * effects on this material. WebGPU allows 8 vertex-buffer bindings
+   * per pipeline; SpriteBatch uses 5 fixed bindings (3 geometry +
+   * instanceMatrix + interleaved core), leaving 3 for `effectBuf0/1/2`
+   * × 4 floats = 12 floats. Exceeding this would force a 4th effectBuf
+   * binding which WebGPU rejects at pipeline creation with a cryptic
+   * "vertex buffer count exceeds maximum" error. `registerEffect`
+   * throws clearly when the cap would be exceeded.
+   */
+  static readonly MAX_EFFECT_FLOATS = 12
 
   /**
    * Maps effect name to its bit position in the enable flags bitmask.
@@ -163,8 +177,12 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
     const bitIndex = this._effects.length - 1
     this._effectBitIndex.set(effectClass.effectName, bitIndex)
 
-    // 2. Assign sequential float offsets for each field (after flags at slot 0)
-    let nextOffset = 1 // Start after the flags float
+    // 2. Assign sequential float offsets for each field starting at
+    //    slot 0 (effectBuf0.x). Flags and enable bits used to live here,
+    //    but they moved to `instanceSystem.w` in the interleaved core
+    //    buffer (see SpriteBatch.writeEnableBits), so effect buffers are
+    //    now pure effect data with no reservations.
+    let nextOffset = 0
     for (const existingEffect of this._effects) {
       for (const field of existingEffect._fields) {
         const key = `${existingEffect.effectName}_${field.name}`
@@ -177,12 +195,27 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       }
     }
 
-    // 3. Compute new total: 1 (flags) + sum of all effect data floats
+    // 3. Compute new total — sum of all effect data floats only. No
+    //    longer includes the +1 for the flags slot.
     let dataFloats = 0
     for (const eff of this._effects) {
       dataFloats += eff._totalFloats
     }
-    this._effectTotalFloats = 1 + dataFloats
+    this._effectTotalFloats = dataFloats
+
+    // Hard cap before tier-bump — see MAX_EFFECT_FLOATS comment for
+    // the WebGPU 8-buffer reasoning. Reject clearly here instead of
+    // letting WebGPU fail at pipeline creation time.
+    if (dataFloats > EffectMaterial.MAX_EFFECT_FLOATS) {
+      const names = this._effects.map((e) => e.effectName).join(', ')
+      throw new Error(
+        `[EffectMaterial] Cannot register '${effectClass.effectName}': ` +
+          `effects would use ${dataFloats} floats of per-instance data, ` +
+          `exceeding the cap of ${EffectMaterial.MAX_EFFECT_FLOATS} ` +
+          `(WebGPU 8-buffer limit). Registered so far: [${names}]. ` +
+          `Reduce a schema or consolidate effects.`,
+      )
+    }
 
     // 4. Compute new tier
     const oldTier = this._effectTier
@@ -333,14 +366,18 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       let color: Node<'vec4'> = baseResult.color
       const atlasUV = baseResult.uv
 
-      // Chain effects with branchless enable/disable via packed bitmask
+      // Chain effects with branchless enable/disable via the per-instance
+      // enable-bits bitmask. After the interleaved-buffer refactor this
+      // lives in `instanceSystem.w` (written by SpriteBatch.writeEnableBits
+      // and Sprite2D._writeEffectStateToBatch), NOT in effectBuf0 — effect
+      // buffers are now pure effect data starting at offset 0.
       if (effectData.length > 0) {
-        const flags = getPackedComponent(bufNodes, 0)
+        const enableFlags = attribute<'vec4'>('instanceSystem', 'vec4').w
 
         for (const { effectClass, bitIndex, attrs } of effectData) {
-          // Extract enable bit: floor(mod(flags / 2^bitIndex, 2))
+          // Extract enable bit: floor(mod(enableFlags / 2^bitIndex, 2))
           const divisor = float(1 << bitIndex)
-          const shifted = floor(flags.div(divisor))
+          const shifted = floor(enableFlags.div(divisor))
           const enabled = mod(shifted, float(2.0))
 
           const effectResult = effectClass._node({

@@ -2,7 +2,6 @@ import { getStore as kootaGetStore, type World, type Trait } from 'koota'
 import {
   IsRenderable,
   IsBatched,
-  SpriteUV,
   SpriteLayer,
   SpriteZIndex,
   BatchSlot,
@@ -18,14 +17,16 @@ function getNumericStore(world: World, trait: Trait): Record<string, number[]> {
 }
 
 /**
- * Sync transforms and UVs to GPU instance buffers.
+ * Sync transforms to GPU instance matrices.
  *
  * Position, rotation, and scale are read directly from the Object3D via
  * spriteArr (flat array indexed by entity SoA index). Same O(1) array
  * access pattern as all other SoA stores — zero hash overhead.
  *
- * UV, layer, zIndex, and batch slot are read from SoA stores (flat arrays
- * indexed by entity ID) — zero allocation, zero object dereference.
+ * UV writes used to live here too (under the comment "UV sync is folded
+ * into transformSyncSystem"). Phase 3 of the perf roadmap moved UV to
+ * setter-side direct writes via `Sprite2D.setFrame` → `mesh.writeUV`,
+ * so this system is now matrix-only.
  */
 export function transformSyncSystem(world: World): void {
   const entities = world.query(IsRenderable, IsBatched, BatchSlot)
@@ -47,12 +48,6 @@ export function transformSyncSystem(world: World): void {
 
   const layerArr = getNumericStore(world, SpriteLayer)['layer']!
   const zIndexArr = getNumericStore(world, SpriteZIndex)['zIndex']!
-
-  const uvStore = getNumericStore(world, SpriteUV)
-  const uvXArr = uvStore['x']!
-  const uvYArr = uvStore['y']!
-  const uvWArr = uvStore['w']!
-  const uvHArr = uvStore['h']!
 
   for (const entity of entities) {
     const eid = (entity as unknown as number) & ENTITY_ID_MASK
@@ -92,6 +87,5 @@ export function transformSyncSystem(world: World): void {
     buf[o + 3]  = 0; buf[o + 7] = 0; buf[o + 11] = 0; buf[o + 15] = 1
 
     mesh.markMatrixDirty(slot)
-    mesh.writeUV(slot, uvXArr[eid]!, uvYArr[eid]!, uvWArr[eid]!, uvHArr[eid]!)
   }
 }

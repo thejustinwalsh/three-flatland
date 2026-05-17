@@ -22,9 +22,6 @@ import {
   batchReassignSystem,
   batchRemoveSystem,
   deferredDestroySystem,
-  bufferSyncColorSystem,
-  bufferSyncFlipSystem,
-  bufferSyncEffectSystem,
   transformSyncSystem,
   batchSortSystem,
   sceneGraphSyncSystem,
@@ -268,13 +265,16 @@ export class SpriteGroup extends Group implements WorldProvider {
    * Per-frame flow:
    * 1. batchAssignSystem — assign new sprites to batches via InBatch relation
    * 2. batchReassignSystem — handle layer/material changes (cross-run movement)
-   * 3. bufferSyncColorSystem — Changed(SpriteColor) + IsBatched -> batch buffer write
-   * 4. bufferSyncFlipSystem — Changed(SpriteFlip) + IsBatched -> batch buffer write
-   * 5. bufferSyncEffectSystem — Changed(effectTrait) + IsBatched -> packed buffer write
-   * 6. transformSyncSystem — sync all transforms to batch instance matrices
-   * 7. sceneGraphSyncSystem — rebuild SpriteGroup children from sorted batch entities
-   * 8. batchRemoveSystem — free slots, recycle empty batches, destroy entities (LAST)
-   * 9. super.updateMatrixWorld() — continue Three.js traversal
+   * 3. transformSyncSystem — sync all transforms to batch instance matrices
+   * 4. sceneGraphSyncSystem — rebuild SpriteGroup children from sorted batch entities
+   * 5. batchRemoveSystem — free slots, recycle empty batches, destroy entities (LAST)
+   * 6. super.updateMatrixWorld() — continue Three.js traversal
+   *
+   * Color / UV / flip / effect writes are NOT in the per-frame system list —
+   * they happen at the setter site via cached `_batchMesh`/`_batchSlot` on
+   * the sprite, so there's no Changed-gated sync pass. The
+   * BucketedDirtyTracker on each instance attribute handles upload-time
+   * coalescing.
    */
   override updateMatrixWorld(force?: boolean): void {
     if (!this._systemsRanThisFrame) {
@@ -329,22 +329,10 @@ export class SpriteGroup extends Group implements WorldProvider {
     batchReassignSystem(this._world, this._effectTraits)
     end()
 
-    // Buffer sync systems (Changed-driven — color and flip change rarely)
-    end = measure(bufferSyncColorSystem)
-    bufferSyncColorSystem(this._world)
-    end()
-
-    // UV sync is folded into transformSyncSystem (unconditional, no change detection)
-
-    end = measure(bufferSyncFlipSystem)
-    bufferSyncFlipSystem(this._world)
-    end()
-
-    if (this._effectTraits.size > 0) {
-      end = measure(bufferSyncEffectSystem)
-      bufferSyncEffectSystem(this._world, this._effectTraits)
-      end()
-    }
+    // All buffer sync systems are gone — color, UV, flip, AND effect
+    // writes now happen at the setter site (Sprite2D color/zIndex/setFrame
+    // setters + addEffect/removeEffect) via cached `_batchMesh`/`_batchSlot`.
+    // The BucketedDirtyTracker on each attribute handles upload coalescing.
 
     // Transform sync (every frame when autoInvalidateTransforms is on)
     if (this.autoInvalidateTransforms) {

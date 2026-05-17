@@ -243,7 +243,12 @@ export class Sprite2DMaterial extends EffectMaterial {
     // Explicit type params needed for @types/three ≥0.183 generic AttributeNode
     const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
     const instanceColor = attribute<'vec4'>('instanceColor', 'vec4')
-    const instanceFlip = attribute<'vec2'>('instanceFlip', 'vec2')
+    // Flip lives in instanceSystem.xy after the interleaved-buffer refactor —
+    // SpriteBatch writes it via writeFlip → instanceSystem offset 0/1; the
+    // standalone Sprite2D writes via _updateOwnFlip to the same logical
+    // slot in its per-sprite instanceSystem buffer. The old `instanceFlip`
+    // vec2 attribute no longer exists.
+    const instanceFlip = attribute<'vec4'>('instanceSystem', 'vec4').xy
 
     // Apply flip
     const baseUV = uv()

@@ -164,10 +164,13 @@ describe('Sprite2D standalone vs enrolled', () => {
 
     sprite.flipX = true
 
-    const flipAttr = sprite.geometry.getAttribute('instanceFlip') as BufferAttribute
-    const array = flipAttr.array as Float32Array
-    expect(array[0]).toBe(-1) // x flipped
-    expect(array[1]).toBe(1)  // y normal
+    // Flip lives in instanceSystem.xy after the interleaved-buffer
+    // refactor — standalone uses a vec4 per vertex: [flipX, flipY,
+    // sysFlags, enableBits].
+    const systemAttr = sprite.geometry.getAttribute('instanceSystem') as BufferAttribute
+    const array = systemAttr.array as Float32Array
+    expect(array[0]).toBe(-1) // vertex 0, x = flipX flipped
+    expect(array[1]).toBe(1)  // vertex 0, y = flipY normal
   })
 
   it('standalone: setFrame writes to own UV buffer immediately', () => {

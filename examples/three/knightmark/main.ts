@@ -10,12 +10,15 @@ import {
   TextureLoader,
   TileMap2D,
   Layers,
+  createMaterialEffect,
   type AnimationSetDefinition,
   type SpriteSheet,
   type TileMapData,
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland'
+import { flash, pulseRainbow } from '@three-flatland/nodes'
+import { float, time } from 'three/tsl'
 import { createPane, wireSceneStats } from '@three-flatland/tweakpane'
 
 // ============================================
@@ -25,6 +28,8 @@ import { createPane, wireSceneStats } from '@three-flatland/tweakpane'
 const SPEED_THRESHOLD = 80
 const TRIP_LERP_RATE = 5
 const IDLE_AFTER_TRIP_MS = 400
+const RIPPLE_DURATION_MS = 600
+const TINT_CYCLE_DURATION_MS = 1500
 
 const VIEW_SIZE = 640
 
@@ -51,6 +56,46 @@ simFolder.addBinding(sim, 'speedMin', { min: 10, max: 100, step: 5, label: 'spee
 simFolder.addBinding(sim, 'speedMax', { min: 100, max: 300, step: 10, label: 'speed max' })
 simFolder.addBinding(sim, 'hitRadius', { min: 2, max: 20, step: 1, label: 'hit radius' })
 simFolder.addBinding(sim, 'knightScale', { min: 32, max: 128, step: 8, label: 'scale' })
+
+// Stress-test toggles — rebuild knights on change.
+const stress = { alphaTest: true, effects: false, randomTint: false }
+const stressFolder = pane.addFolder({ title: 'Stress', expanded: true })
+const stressBindings = [
+  stressFolder.addBinding(stress, 'alphaTest', { label: 'alphaTest' }),
+  stressFolder.addBinding(stress, 'effects', { label: 'effects' }),
+  stressFolder.addBinding(stress, 'randomTint', { label: 'random tint' }),
+]
+
+// ============================================
+// EFFECTS — registered on material when `stress.effects` is on.
+// ============================================
+
+// Ripple — single white flash that fades to invisible. Triggered on dodge.
+// `startTime` is set per-sprite at addEffect, so progress = (time - startTime)
+// / duration drives the flash's built-in fade.
+const RippleEffect = createMaterialEffect({
+  name: 'ripple',
+  schema: { startTime: 0, duration: 0.6 } as const,
+  node: ({ inputColor, attrs }) => {
+    const progress = time.sub(attrs.startTime).div(attrs.duration).clamp(0, 1)
+    return flash(inputColor, progress, [1, 1, 1], 0.8)
+  },
+})
+
+// Tint cycle — rainbow hue cycle whose saturation decays to 0 over its
+// lifetime so the color wears off instead of cutting abruptly.
+const TintCycleEffect = createMaterialEffect({
+  name: 'tintCycle',
+  schema: { startTime: 0, duration: 1.5, speed: 1.0, peakSaturation: 0.7 } as const,
+  node: ({ inputColor, attrs }) => {
+    const progress = time.sub(attrs.startTime).div(attrs.duration).clamp(0, 1)
+    const saturation = attrs.peakSaturation.mul(float(1).sub(progress))
+    return pulseRainbow(inputColor, time, attrs.speed, saturation)
+  },
+})
+
+const sharedRippleEffect = new RippleEffect()
+const sharedTintCycleEffect = new TintCycleEffect()
 
 // ============================================
 // TYPES
@@ -202,7 +247,7 @@ async function main() {
   camera.position.z = 100
 
   // SpriteGroup for batching
-  const spriteGroup = new SpriteGroup({ maxBatchSize: 32_768 })
+  const spriteGroup = new SpriteGroup()
   scene.add(spriteGroup)
 
   // Load assets
@@ -293,27 +338,29 @@ async function main() {
   const knights: Knight[] = []
   const spatialHash = new SpatialHash(sim.hitRadius * 4)
 
+  // Shared material for the current rebuild. Constructed fresh in
+  // rebuildKnights so toggling `stress.effects` cleanly compares the
+  // "no-effects shader" vs "with-effects shader" paths without getShared's
+  // cache holding onto a material with effects already registered.
+  let currentMaterial: Sprite2DMaterial
+
   function spawnKnight(sheet: SpriteSheet): Knight {
     const margin = sim.knightScale / 2
-    // Opaque alphaTest material enables the GPU depth-test fast path:
-    // the y-sort (zIndex = -y) is resolved by the depth buffer, so the
-    // CPU batchSortSystem can skip this batch entirely.
-    const material = Sprite2DMaterial.getShared({
-      map: sheet.texture,
-      alphaTest: 0.5,
-    })
     const sprite = new AnimatedSprite2D({
       spriteSheet: sheet,
       animationSet: knightAnimations,
       animation: 'idle',
       layer: Layers.ENTITIES,
       anchor: [0.5, 0.5],
-      material,
+      material: currentMaterial,
     })
     sprite.scale.set(sim.knightScale, sim.knightScale, 1)
     const x = boundsLeft + margin + Math.random() * (boundsRight - boundsLeft - margin * 2)
     const y = boundsBottom + margin + Math.random() * (boundsTop - boundsBottom - margin * 2)
     sprite.position.set(x, y, 0)
+    if (stress.randomTint) {
+      sprite.tint = [Math.random(), Math.random(), Math.random()]
+    }
     const speed = sim.speedMin + Math.random() * (sim.speedMax - sim.speedMin)
     const angle = Math.random() * Math.PI * 2
     const baseVx = Math.cos(angle) * speed
@@ -332,8 +379,45 @@ async function main() {
     for (let i = 0; i < count; i++) knights.push(spawnKnight(knightSheet))
   }
 
+  function rebuildKnights() {
+    const count = knights.length || 10
+    for (const k of knights) spriteGroup.remove(k.sprite)
+    knights.length = 0
+
+    // Fresh material per rebuild — alphaTest is constructor-time so it
+    // requires a new material instance, and pre-registering the effects
+    // here avoids the addEffect-time shader-recompile warning.
+    currentMaterial = new Sprite2DMaterial(
+      stress.alphaTest
+        ? { map: knightSheet.texture, alphaTest: 0.5 }
+        : { map: knightSheet.texture },
+    )
+    if (stress.effects) {
+      currentMaterial.registerEffect(RippleEffect)
+      currentMaterial.registerEffect(TintCycleEffect)
+    }
+
+    spawnBatch(count)
+  }
+  // Initial material before the first spawnBatch below.
+  currentMaterial = new Sprite2DMaterial({ map: knightSheet.texture, alphaTest: 0.5 })
+
+  for (const binding of stressBindings) {
+    binding.on('change', (e) => {
+      if (e.last) rebuildKnights()
+    })
+  }
+
   function triggerTrip(knight: Knight) {
     knight.state = 'TRIP'
+    if (stress.effects) {
+      // Snapshot trigger time into the shared instance — addEffect's
+      // _buildTraitData reads schema values at this moment and writes them
+      // into THIS sprite's slot, so per-sprite trigger times stay distinct.
+      sharedTintCycleEffect.startTime = performance.now() / 1000
+      knight.sprite.addEffect(sharedTintCycleEffect)
+      setTimeout(() => knight.sprite.removeEffect(sharedTintCycleEffect), TINT_CYCLE_DURATION_MS)
+    }
     knight.sprite.play('death', {
       onComplete: () => {
         knight.state = 'TRIP_IDLE'
@@ -345,6 +429,11 @@ async function main() {
 
   function triggerRoll(knight: Knight) {
     knight.state = 'ROLL'
+    if (stress.effects) {
+      sharedRippleEffect.startTime = performance.now() / 1000
+      knight.sprite.addEffect(sharedRippleEffect)
+      setTimeout(() => knight.sprite.removeEffect(sharedRippleEffect), RIPPLE_DURATION_MS)
+    }
     knight.sprite.play('roll', {
       onComplete: () => {
         knight.state = 'WALK'
