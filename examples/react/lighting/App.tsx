@@ -654,13 +654,19 @@ function FlatlandScene(props: SceneProps) {
       const dist = Math.hypot(dx, dy)
       if (dist <= HERO_ARRIVE_RADIUS) {
         // Arrived. If the target carried a torch toggle, flip it now.
+        // Defer the setState off the frame — examples/react/CLAUDE.md
+        // forbids setState in useFrame because it triggers a synchronous
+        // mid-frame re-render. The microtask runs after useFrame returns,
+        // letting React's automatic batching schedule a normal render.
         if (heroTargetTorchIdx.current !== null) {
           const idx = heroTargetTorchIdx.current
           const switchStart = fixedLightPositions.length
-          setTorchEnabled((prev) => {
-            const next = [...prev]
-            next[switchStart + idx] = !next[switchStart + idx]
-            return next
+          queueMicrotask(() => {
+            setTorchEnabled((prev) => {
+              const next = [...prev]
+              next[switchStart + idx] = !next[switchStart + idx]
+              return next
+            })
           })
         }
         heroMoveTarget.current = null

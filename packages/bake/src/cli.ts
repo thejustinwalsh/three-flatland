@@ -11,7 +11,7 @@ Usage:
   flatland-bake --list              List registered bakers
   flatland-bake --help              Show this usage
 
-Bakers are contributed by packages via a \`flatland.bakers\` field in
+Bakers are contributed by packages via a \`flatland.bake\` field in
 package.json. Install a package that provides one (e.g. @three-flatland/slug)
 and its subcommand will appear in --list.`
 
