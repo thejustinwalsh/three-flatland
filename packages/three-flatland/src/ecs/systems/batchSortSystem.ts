@@ -14,45 +14,15 @@ function getNumericStore(world: World, trait: Trait): Record<string, number[]> {
   return kootaGetStore(world, trait) as Record<string, number[]>
 }
 
-// ============================================
-// Reusable scratch arrays (module-scope, zero-alloc per frame)
-// ============================================
-
-/** Per-batch dirty flag (consumed from each mesh's sort-dirty boolean). */
-let dirtyBatches: Uint8Array = new Uint8Array(16)
-
-/** Per-batch entity list — populated only for dirty batches. */
-const batchEntityBuckets: number[][] = []
-
-/** Scratch array of entity IDs belonging to one batch, populated per batch. */
-const scratchEids: number[] = []
-/** Scratch array of current physical slots parallel to scratchEids. */
-const scratchSlots: number[] = []
-
-/** Inverse slot map for the swap pass — `slotToScratchIdx[physicalSlot]`
- *  gives the scratch index whose entity currently occupies that slot.
- *  Sized lazily to the largest mesh.maxSize seen so far. */
-let slotToScratchIdx: Int32Array = new Int32Array(0)
-
-function ensureDirtyCapacity(n: number): void {
-  if (dirtyBatches.length < n) {
-    dirtyBatches = new Uint8Array(Math.max(n, dirtyBatches.length * 2))
-  }
-  for (let i = 0; i < n; i++) dirtyBatches[i] = 0
-}
-
-function ensureBucketCapacity(n: number): void {
-  while (batchEntityBuckets.length < n) batchEntityBuckets.push([])
-}
-
-function ensureSlotMapCapacity(n: number): void {
-  if (slotToScratchIdx.length < n) {
-    slotToScratchIdx = new Int32Array(Math.max(n, slotToScratchIdx.length * 2))
-  }
-}
-
 /**
- * Re-sort batch instance rows by zIndex.
+ * Create a batch-sort system bound to its own scratch buffers.
+ *
+ * Each SpriteGroup constructs one; the returned function is called per
+ * frame with the world to sort. Scratch state lives in this closure
+ * so multiple SpriteGroups don't share buffers (each world gets clean
+ * state and resizes its own arrays independently).
+ *
+ * Re-sorts batch instance rows by zIndex.
  *
  * Sort-dirty signal comes from each `SpriteBatch._sortDirty` boolean,
  * flipped by `Sprite2D.zIndex` setter (non-gated batches only) and by
@@ -67,9 +37,44 @@ function ensureSlotMapCapacity(n: number): void {
  * test (with the layer/zIndex-derived Z baked into the instance matrix
  * by transformSyncSystem) and don't need CPU-side sorting.
  *
- * Zero-alloc: scratch arrays are module-scoped and reused frame to frame.
+ * Zero-alloc per frame: scratch arrays in closure are reused frame to
+ * frame, growing to the high-water mark of the largest mesh seen.
  */
-export function batchSortSystem(world: World): void {
+export function createBatchSortSystem(): (world: World) => void {
+  /** Per-batch dirty flag (consumed from each mesh's sort-dirty boolean). */
+  let dirtyBatches: Uint8Array = new Uint8Array(16)
+
+  /** Per-batch entity list — populated only for dirty batches. */
+  const batchEntityBuckets: number[][] = []
+
+  /** Scratch array of entity IDs belonging to one batch, populated per batch. */
+  const scratchEids: number[] = []
+  /** Scratch array of current physical slots parallel to scratchEids. */
+  const scratchSlots: number[] = []
+
+  /** Inverse slot map for the swap pass — `slotToScratchIdx[physicalSlot]`
+   *  gives the scratch index whose entity currently occupies that slot.
+   *  Sized lazily to the largest mesh.maxSize seen so far. */
+  let slotToScratchIdx: Int32Array = new Int32Array(0)
+
+  function ensureDirtyCapacity(n: number): void {
+    if (dirtyBatches.length < n) {
+      dirtyBatches = new Uint8Array(Math.max(n, dirtyBatches.length * 2))
+    }
+    for (let i = 0; i < n; i++) dirtyBatches[i] = 0
+  }
+
+  function ensureBucketCapacity(n: number): void {
+    while (batchEntityBuckets.length < n) batchEntityBuckets.push([])
+  }
+
+  function ensureSlotMapCapacity(n: number): void {
+    if (slotToScratchIdx.length < n) {
+      slotToScratchIdx = new Int32Array(Math.max(n, slotToScratchIdx.length * 2))
+    }
+  }
+
+  return function batchSortSystem(world: World): void {
   const registryEntities = world.query(BatchRegistry)
   if (registryEntities.length === 0) return
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
@@ -188,5 +193,6 @@ export function batchSortSystem(world: World): void {
       if (targetSprite) targetSprite._batchSlot = targetSlot
       if (otherSprite) otherSprite._batchSlot = currentSlot
     }
+  }
   }
 }

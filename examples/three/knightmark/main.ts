@@ -43,11 +43,17 @@ const TILE_SCALE = 2
 
 const { pane, stats: globalStats } = createPane()
 
-// Stats monitors — updated each frame
+// Stats monitors — explicitly refreshed each frame via knightStatsBindings
+// below. The default readonly-binding MonitorBinding ticker (200ms) can
+// starve when the main thread is busy (heavy allocs, GC pauses), making
+// the display look frozen while underlying values are updating. Holding
+// the binding refs lets the animate loop force-refresh them per frame.
 const knightStats = { knights: 0, batches: 0 }
 const statsFolder = pane.addFolder({ title: 'Knights', expanded: false })
-statsFolder.addBinding(knightStats, 'knights', { readonly: true, format: (v: number) => v.toFixed(0) })
-statsFolder.addBinding(knightStats, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) })
+const knightStatsBindings = [
+  statsFolder.addBinding(knightStats, 'knights', { readonly: true, format: (v: number) => v.toFixed(0) }),
+  statsFolder.addBinding(knightStats, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) }),
+]
 
 // Simulation params — tweakable at runtime (at bottom, collapsed)
 const sim = { speedMin: 30, speedMax: 200, hitRadius: 8, knightScale: 64 }
@@ -57,14 +63,17 @@ simFolder.addBinding(sim, 'speedMax', { min: 100, max: 300, step: 10, label: 'sp
 simFolder.addBinding(sim, 'hitRadius', { min: 2, max: 20, step: 1, label: 'hit radius' })
 simFolder.addBinding(sim, 'knightScale', { min: 32, max: 128, step: 8, label: 'scale' })
 
-// Stress-test toggles — rebuild knights on change.
+// Stress-test toggles — alphaTest / effects are material-level config
+// (require a new material → shader recompile + knight rebuild).
+// randomTint is purely a per-instance buffer write (instanceColor is
+// already in the shader chain), so it just re-tints existing knights.
 const stress = { alphaTest: true, effects: false, randomTint: false }
 const stressFolder = pane.addFolder({ title: 'Stress', expanded: true })
-const stressBindings = [
+const materialRebuildBindings = [
   stressFolder.addBinding(stress, 'alphaTest', { label: 'alphaTest' }),
   stressFolder.addBinding(stress, 'effects', { label: 'effects' }),
-  stressFolder.addBinding(stress, 'randomTint', { label: 'random tint' }),
 ]
+const randomTintBinding = stressFolder.addBinding(stress, 'randomTint', { label: 'random tint' })
 
 // ============================================
 // EFFECTS — registered on material when `stress.effects` is on.
@@ -402,11 +411,24 @@ async function main() {
   // Initial material before the first spawnBatch below.
   currentMaterial = new Sprite2DMaterial({ map: knightSheet.texture, alphaTest: 0.5 })
 
-  for (const binding of stressBindings) {
+  // alphaTest / effects → full rebuild (new material, recompile shader).
+  for (const binding of materialRebuildBindings) {
     binding.on('change', (e) => {
       if (e.last) rebuildKnights()
     })
   }
+
+  // randomTint → just re-tint existing knights in place. No material
+  // change, no rebuild, no shader recompile — the shader already reads
+  // per-instance tint from instanceColor, this is a buffer write only.
+  randomTintBinding.on('change', (e) => {
+    if (!e.last) return
+    for (const k of knights) {
+      k.sprite.tint = stress.randomTint
+        ? [Math.random(), Math.random(), Math.random()]
+        : [1, 1, 1]
+    }
+  })
 
   function triggerTrip(knight: Knight) {
     knight.state = 'TRIP'
@@ -564,6 +586,7 @@ async function main() {
     const s = spriteGroup.stats
     knightStats.knights = knights.length
     knightStats.batches = s.batchCount
+    for (const b of knightStatsBindings) b.refresh()
     globalStats.end()
   }
   animate()

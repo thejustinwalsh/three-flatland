@@ -26,10 +26,12 @@ import {
 } from '../batchUtils'
 import { ENTITY_ID_MASK } from '../snapshot'
 
-const Changed = createChanged()
-
 /**
- * Reassign sprites to different batches when their sort key changes.
+ * Create a batch-reassign system bound to its own scratch state.
+ *
+ * Each SpriteGroup constructs one. The returned function takes a world
+ * + effect-trait map and moves sprites between batches when their sort
+ * key (layer or material) changes.
  *
  * Triggered by Changed(SpriteLayer) or Changed(SpriteMaterialRef) on
  * batched sprites. If the new (layer, materialId) differs from the
@@ -37,94 +39,109 @@ const Changed = createChanged()
  *
  * zIndex changes within the same (layer, material) do NOT require
  * batch movement — Z-offset handles depth sorting.
+ *
+ * Closes over its own `Changed` subscription + reused dedup Set so each
+ * group has clean change-tracking state and the Set is cleared-and-
+ * filled instead of allocated per frame.
  */
-export function batchReassignSystem(
+export function createBatchReassignSystem(): (
   world: World,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-): void {
-  const layerChanged = world.query(Changed(SpriteLayer), IsBatched)
-  const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched)
+  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>,
+) => void {
+  const Changed = createChanged()
+  const toReassign = new Set<Entity>()
 
-  // Deduplicate entities that appear in both queries
-  const toReassign = new Set([...layerChanged, ...matChanged])
-  if (toReassign.size === 0) return
+  return function batchReassignSystem(
+    world: World,
+    effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>,
+  ): void {
+    const layerChanged = world.query(Changed(SpriteLayer), IsBatched)
+    const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched)
 
-  const registryEntities = world.query(BatchRegistry)
-  if (registryEntities.length === 0) return
-  const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-  if (!registry) return
+    // Dedup entities that appear in both queries — reuse the closure
+    // Set, clear-and-fill instead of allocating a new one + array spreads.
+    toReassign.clear()
+    for (const e of layerChanged) toReassign.add(e)
+    for (const e of matChanged) toReassign.add(e)
+    if (toReassign.size === 0) return
 
-  for (const entity of toReassign) {
-    const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
-    if (!sprite) continue
+    const registryEntities = world.query(BatchRegistry)
+    if (registryEntities.length === 0) return
+    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    if (!registry) return
 
-    const newLayer = entity.get(SpriteLayer)
-    const newMatRef = entity.get(SpriteMaterialRef)
-    if (!newLayer || !newMatRef) continue
+    for (const entity of toReassign) {
+      const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+      if (!sprite) continue
 
-    // Check if the batch entity still exists
-    const oldBatchEntity = entity.targetFor(InBatch)
-    if (!oldBatchEntity) continue
+      const newLayer = entity.get(SpriteLayer)
+      const newMatRef = entity.get(SpriteMaterialRef)
+      if (!newLayer || !newMatRef) continue
 
-    const oldMeta = oldBatchEntity.get(BatchMeta)
-    if (!oldMeta) continue
+      // Check if the batch entity still exists
+      const oldBatchEntity = entity.targetFor(InBatch)
+      if (!oldBatchEntity) continue
 
-    // Compare run keys — only reassign if (layer, materialId) actually changed
-    const oldRunKey = computeRunKey(oldMeta.layer, oldMeta.materialId)
-    const newRunKey = computeRunKey(newLayer.layer, newMatRef.materialId)
+      const oldMeta = oldBatchEntity.get(BatchMeta)
+      if (!oldMeta) continue
 
-    if (oldRunKey === newRunKey) continue // Same run — no batch movement needed
+      // Compare run keys — only reassign if (layer, materialId) actually changed
+      const oldRunKey = computeRunKey(oldMeta.layer, oldMeta.materialId)
+      const newRunKey = computeRunKey(newLayer.layer, newMatRef.materialId)
 
-    // --- Remove from old batch ---
-    const oldRelation = entity.get(InBatch(oldBatchEntity)) as { slot: number } | undefined
-    const oldBatchMesh = oldBatchEntity.get(BatchMesh)
+      if (oldRunKey === newRunKey) continue // Same run — no batch movement needed
 
-    if (oldRelation && oldBatchMesh?.mesh) {
-      oldBatchMesh.mesh.freeSlot(oldRelation.slot)
-      oldBatchMesh.mesh.syncCount()
-    }
+      // --- Remove from old batch ---
+      const oldRelation = entity.get(InBatch(oldBatchEntity)) as { slot: number } | undefined
+      const oldBatchMesh = oldBatchEntity.get(BatchMesh)
 
-    entity.remove(InBatch(oldBatchEntity))
-
-    // Recycle old batch if empty
-    if (oldBatchMesh?.mesh?.isEmpty) {
-      const oldRun = registry.runs.get(oldRunKey)
-      if (oldRun) {
-        recycleBatchIfEmpty(registry, oldBatchEntity, oldRun)
+      if (oldRelation && oldBatchMesh?.mesh) {
+        oldBatchMesh.mesh.freeSlot(oldRelation.slot)
+        oldBatchMesh.mesh.syncCount()
       }
+
+      entity.remove(InBatch(oldBatchEntity))
+
+      // Recycle old batch if empty
+      if (oldBatchMesh?.mesh?.isEmpty) {
+        const oldRun = registry.runs.get(oldRunKey)
+        if (oldRun) {
+          recycleBatchIfEmpty(registry, oldBatchEntity, oldRun)
+        }
+      }
+
+      // --- Insert into new batch ---
+      const material = sprite.material
+      registry.materialRefs.set(newMatRef.materialId, {
+        material,
+        version: material._effectSchemaVersion,
+      })
+
+      const { run } = getOrCreateRun(registry, newLayer.layer, newMatRef.materialId, material)
+      const newBatchEntity = findOrCreateBatch(world, registry, run)
+      const newBatchMesh = newBatchEntity.get(BatchMesh)
+      if (!newBatchMesh?.mesh) continue
+
+      const newSlot = newBatchMesh.mesh.allocateSlot()
+      if (newSlot < 0) continue
+
+      entity.add(InBatch(newBatchEntity))
+      entity.set(InBatch(newBatchEntity), { slot: newSlot }, false)
+
+      // Update BatchSlot SoA cache (no Changed observers)
+      const newMeta = newBatchEntity.get(BatchMeta)
+      const newBatchIdx = newMeta?.batchIdx ?? -1
+      entity.set(BatchSlot, { batchIdx: newBatchIdx, slot: newSlot }, false)
+
+      // Update the sprite's cached batch references — the invariant is
+      // that these match BatchSlot for the lifetime of the assignment.
+      sprite._batchMesh = newBatchMesh.mesh
+      sprite._batchSlot = newSlot
+      sprite._batchIdx = newBatchIdx
+
+      // Full sync to new batch
+      syncAllBuffers(entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)
     }
-
-    // --- Insert into new batch ---
-    const material = sprite.material
-    registry.materialRefs.set(newMatRef.materialId, {
-      material,
-      version: material._effectSchemaVersion,
-    })
-
-    const { run } = getOrCreateRun(registry, newLayer.layer, newMatRef.materialId, material)
-    const newBatchEntity = findOrCreateBatch(world, registry, run)
-    const newBatchMesh = newBatchEntity.get(BatchMesh)
-    if (!newBatchMesh?.mesh) continue
-
-    const newSlot = newBatchMesh.mesh.allocateSlot()
-    if (newSlot < 0) continue
-
-    entity.add(InBatch(newBatchEntity))
-    entity.set(InBatch(newBatchEntity), { slot: newSlot }, false)
-
-    // Update BatchSlot SoA cache (no Changed observers)
-    const newMeta = newBatchEntity.get(BatchMeta)
-    const newBatchIdx = newMeta?.batchIdx ?? -1
-    entity.set(BatchSlot, { batchIdx: newBatchIdx, slot: newSlot }, false)
-
-    // Update the sprite's cached batch references — the invariant is
-    // that these match BatchSlot for the lifetime of the assignment.
-    sprite._batchMesh = newBatchMesh.mesh
-    sprite._batchSlot = newSlot
-    sprite._batchIdx = newBatchIdx
-
-    // Full sync to new batch
-    syncAllBuffers(entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)
   }
 }
 
@@ -167,7 +184,10 @@ function syncAllBuffers(
 function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): void {
   const material = sprite.material
 
-  mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
+  // Enable bits live in instanceSystem.w after the interleaved-buffer
+  // refactor — NOT in effectBuf0. See SpriteBatch.writeEnableBits and
+  // the EffectMaterial shader composition (reads instanceSystem.w).
+  mesh.writeEnableBits(slot, sprite._effectFlags)
 
   for (const effect of sprite._effects) {
     const EffectClass = effect.constructor as typeof MaterialEffect
