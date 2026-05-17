@@ -126,7 +126,15 @@ export class SpriteBatch extends InstancedMesh {
   /**
    * Custom attribute buffers (from material schema — effect data).
    */
-  private _customAttributes: Map<string, { buffer: Float32Array; size: number; attribute: InstancedBufferAttribute; tracker: BucketedDirtyTracker }> = new Map()
+  private _customAttributes: Map<
+    string,
+    {
+      buffer: Float32Array
+      size: number
+      attribute: InstancedBufferAttribute
+      tracker: BucketedDirtyTracker
+    }
+  > = new Map()
 
   /**
    * Whether transforms need to be re-read from sprites during upload.
@@ -197,7 +205,15 @@ export class SpriteBatch extends InstancedMesh {
 
     // Create custom attributes from material schema BEFORE super().
     // Effect buffers are pure MaterialEffect data — no system reservations.
-    const customAttributes = new Map<string, { buffer: Float32Array; size: number; attribute: InstancedBufferAttribute; tracker: BucketedDirtyTracker }>()
+    const customAttributes = new Map<
+      string,
+      {
+        buffer: Float32Array
+        size: number
+        attribute: InstancedBufferAttribute
+        tracker: BucketedDirtyTracker
+      }
+    >()
     const schema = material.getInstanceAttributeSchema()
     for (const [name, config] of schema) {
       const size = getTypeSize(config.type)
@@ -217,7 +233,13 @@ export class SpriteBatch extends InstancedMesh {
       const attr = new InstancedBufferAttribute(buffer, size)
       attr.setUsage(DynamicDrawUsage)
       geometry.setAttribute(name, attr)
-      const tracker = new BucketedDirtyTracker(attr, maxSize, BUCKET_SIZE, size, CUSTOM_FULL_THRESHOLD)
+      const tracker = new BucketedDirtyTracker(
+        attr,
+        maxSize,
+        BUCKET_SIZE,
+        size,
+        CUSTOM_FULL_THRESHOLD
+      )
       customAttributes.set(name, { buffer, size, attribute: attr, tracker })
     }
 
@@ -239,8 +261,20 @@ export class SpriteBatch extends InstancedMesh {
     // Initialize dirty trackers — matrix tracks the auto-created
     // instanceMatrix attribute, interleaved tracks the single shared
     // core buffer (one entry per logical 4-vec4 instance row).
-    this._matrixTracker = new BucketedDirtyTracker(this.instanceMatrix, maxSize, BUCKET_SIZE, 16, MATRIX_FULL_THRESHOLD)
-    this._interleavedTracker = new BucketedDirtyTracker(interleavedBuffer, maxSize, BUCKET_SIZE, INSTANCE_STRIDE, INTERLEAVED_FULL_THRESHOLD)
+    this._matrixTracker = new BucketedDirtyTracker(
+      this.instanceMatrix,
+      maxSize,
+      BUCKET_SIZE,
+      16,
+      MATRIX_FULL_THRESHOLD
+    )
+    this._interleavedTracker = new BucketedDirtyTracker(
+      interleavedBuffer,
+      maxSize,
+      BUCKET_SIZE,
+      INSTANCE_STRIDE,
+      INTERLEAVED_FULL_THRESHOLD
+    )
 
     // Set initial count to 0 (no sprites yet)
     this.count = 0
@@ -526,11 +560,7 @@ export class SpriteBatch extends InstancedMesh {
    * Clone for devtools/serialization compatibility.
    */
   override clone(_recursive?: boolean): this {
-    const cloned = new InstancedMesh(
-      this.geometry.clone(),
-      this.material,
-      this.count
-    )
+    const cloned = new InstancedMesh(this.geometry.clone(), this.material, this.count)
     cloned.instanceMatrix.copy(this.instanceMatrix)
     cloned.count = this.count
     cloned.frustumCulled = this.frustumCulled

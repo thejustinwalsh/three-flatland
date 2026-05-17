@@ -1,4 +1,15 @@
-import { attribute, texture, uv, vec2, vec4, float, If, Discard, select, positionWorld } from 'three/tsl'
+import {
+  attribute,
+  texture,
+  uv,
+  vec2,
+  vec4,
+  float,
+  If,
+  Discard,
+  select,
+  positionWorld,
+} from 'three/tsl'
 import {
   type Texture,
   FrontSide,
@@ -123,7 +134,6 @@ export class Sprite2DMaterial extends EffectMaterial {
    * Unique batch ID for this material instance (used for batching).
    */
   readonly batchId: number
-
 
   private _spriteTexture: Texture | null = null
   private _premultipliedAlpha: boolean = false

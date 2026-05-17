@@ -5,13 +5,7 @@ import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
-import {
-  IsRenderable,
-  IsBatched,
-  BatchSlot,
-  BatchRegistry,
-  SpriteColor,
-} from '../traits'
+import { IsRenderable, IsBatched, BatchSlot, BatchRegistry, SpriteColor } from '../traits'
 import type { RegistryData } from '../batchUtils'
 
 // ============================================

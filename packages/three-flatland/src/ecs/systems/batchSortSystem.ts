@@ -1,10 +1,5 @@
 import { getStore as kootaGetStore, type World, type Trait } from 'koota'
-import {
-  IsBatched,
-  BatchSlot,
-  BatchRegistry,
-  SpriteZIndex,
-} from '../traits'
+import { IsBatched, BatchSlot, BatchRegistry, SpriteZIndex } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import { ENTITY_ID_MASK } from '../snapshot'
@@ -75,124 +70,124 @@ export function createBatchSortSystem(): (world: World) => void {
   }
 
   return function batchSortSystem(world: World): void {
-  const registryEntities = world.query(BatchRegistry)
-  if (registryEntities.length === 0) return
-  const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-  if (!registry) return
+    const registryEntities = world.query(BatchRegistry)
+    if (registryEntities.length === 0) return
+    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    if (!registry) return
 
-  const batchSlots = registry.batchSlots
-  const batchCount = batchSlots.length
-  if (batchCount === 0) return
+    const batchSlots = registry.batchSlots
+    const batchCount = batchSlots.length
+    if (batchCount === 0) return
 
-  // --- Pass 0: consume per-batch sort-dirty flags and apply the gate ---
-  //
-  // Read-and-clear `_sortDirty` on every batch. If no non-gated batch
-  // has unsorted changes, return immediately — typical knightmark frame.
-  ensureDirtyCapacity(batchCount)
-  let anyDirty = false
-  for (let bi = 0; bi < batchCount; bi++) {
-    const mesh = batchSlots[bi] as SpriteBatch | null
-    if (!mesh) continue
-    if (!mesh.consumeSortDirty()) continue
-    const mat = mesh.spriteMaterial
-    if (mat.alphaTest > 0 && mat.depthWrite) continue
-    dirtyBatches[bi] = 1
-    anyDirty = true
-  }
-  if (!anyDirty) return
+    // --- Pass 0: consume per-batch sort-dirty flags and apply the gate ---
+    //
+    // Read-and-clear `_sortDirty` on every batch. If no non-gated batch
+    // has unsorted changes, return immediately — typical knightmark frame.
+    ensureDirtyCapacity(batchCount)
+    let anyDirty = false
+    for (let bi = 0; bi < batchCount; bi++) {
+      const mesh = batchSlots[bi] as SpriteBatch | null
+      if (!mesh) continue
+      if (!mesh.consumeSortDirty()) continue
+      const mat = mesh.spriteMaterial
+      if (mat.alphaTest > 0 && mat.depthWrite) continue
+      dirtyBatches[bi] = 1
+      anyDirty = true
+    }
+    if (!anyDirty) return
 
-  // --- Pass 1: bucket batched entities into the dirty batches ---
-  const bsStore = getNumericStore(world, BatchSlot)
-  const batchIdxArr = bsStore['batchIdx']!
-  const slotArr = bsStore['slot']!
+    // --- Pass 1: bucket batched entities into the dirty batches ---
+    const bsStore = getNumericStore(world, BatchSlot)
+    const batchIdxArr = bsStore['batchIdx']!
+    const slotArr = bsStore['slot']!
 
-  const zIndexArr = getNumericStore(world, SpriteZIndex)['zIndex']!
+    const zIndexArr = getNumericStore(world, SpriteZIndex)['zIndex']!
 
-  ensureBucketCapacity(batchCount)
-  for (let i = 0; i < batchCount; i++) {
-    if (dirtyBatches[i] === 1) batchEntityBuckets[i]!.length = 0
-  }
-
-  const allBatched = world.query(IsBatched, BatchSlot)
-  for (const ent of allBatched) {
-    const eid = (ent as unknown as number) & ENTITY_ID_MASK
-    const bi = batchIdxArr[eid]
-    if (bi === undefined || bi < 0 || bi >= batchCount) continue
-    if (dirtyBatches[bi] !== 1) continue
-    batchEntityBuckets[bi]!.push(eid)
-  }
-
-  // --- Pass 2: sort each dirty batch ---
-  for (let bi = 0; bi < batchCount; bi++) {
-    if (dirtyBatches[bi] !== 1) continue
-    dirtyBatches[bi] = 0
-
-    const mesh = batchSlots[bi] as SpriteBatch | null
-    if (!mesh) continue
-
-    const eids = batchEntityBuckets[bi]!
-    const n = eids.length
-    if (n < 2) continue
-
-    // Populate scratch arrays (zero-alloc: truncate + push).
-    scratchEids.length = 0
-    scratchSlots.length = 0
-    for (let i = 0; i < n; i++) {
-      const eid = eids[i]!
-      scratchEids.push(eid)
-      scratchSlots.push(slotArr[eid]!)
+    ensureBucketCapacity(batchCount)
+    for (let i = 0; i < batchCount; i++) {
+      if (dirtyBatches[i] === 1) batchEntityBuckets[i]!.length = 0
     }
 
-    // Sort scratchEids by zIndex ascending via V8's TimSort. O(n) on
-    // near-sorted (steady state) and O(n log n) worst case (cold start
-    // when allocation order is unrelated to zIndex).
-    scratchEids.sort((a, b) => zIndexArr[a]! - zIndexArr[b]!)
-
-    // scratchSlots holds the original physical slots in unsorted
-    // enumeration order. Sort ascending to produce a stable target
-    // mapping that preserves the set of physical indices (leaves
-    // _freeList holes untouched) while ordering occupied slots by
-    // zIndex.
-    scratchSlots.sort((a, b) => a - b)
-
-    // Apply permutation: entity scratchEids[i] (in sorted-zIndex order)
-    // should occupy physical slot scratchSlots[i] (in ascending order).
-    // Build slot → scratchIdx inverse map for O(1) swap-partner lookup;
-    // maintain it as we permute.
-    ensureSlotMapCapacity(mesh.maxSize)
-    for (let i = 0; i < n; i++) {
-      slotToScratchIdx[slotArr[scratchEids[i]!]!] = i
+    const allBatched = world.query(IsBatched, BatchSlot)
+    for (const ent of allBatched) {
+      const eid = (ent as unknown as number) & ENTITY_ID_MASK
+      const bi = batchIdxArr[eid]
+      if (bi === undefined || bi < 0 || bi >= batchCount) continue
+      if (dirtyBatches[bi] !== 1) continue
+      batchEntityBuckets[bi]!.push(eid)
     }
-    // Pull the sprite SoA cache so we can keep each swapped sprite's
-    // cached `_batchSlot` in sync with the Koota store. Without this,
-    // any direct-write setter (color, zIndex, addEffect → writeColor /
-    // writeEnableBits / etc.) would target the stale pre-sort slot
-    // and clobber a different sprite's data.
-    const spriteArr = registry.spriteArr
 
-    for (let i = 0; i < n; i++) {
-      const targetSlot = scratchSlots[i]!
-      const targetEid = scratchEids[i]!
-      const currentSlot = slotArr[targetEid]!
-      if (currentSlot === targetSlot) continue
+    // --- Pass 2: sort each dirty batch ---
+    for (let bi = 0; bi < batchCount; bi++) {
+      if (dirtyBatches[bi] !== 1) continue
+      dirtyBatches[bi] = 0
 
-      const otherIdx = slotToScratchIdx[targetSlot]!
-      if (otherIdx <= i) continue // Set invariant broken — shouldn't happen.
-      const otherEid = scratchEids[otherIdx]!
+      const mesh = batchSlots[bi] as SpriteBatch | null
+      if (!mesh) continue
 
-      mesh.swapSlots(currentSlot, targetSlot)
-      slotArr[targetEid] = targetSlot
-      slotArr[otherEid] = currentSlot
-      slotToScratchIdx[targetSlot] = i
-      slotToScratchIdx[currentSlot] = otherIdx
+      const eids = batchEntityBuckets[bi]!
+      const n = eids.length
+      if (n < 2) continue
 
-      // Update per-sprite cache so direct-write setters land at the
-      // correct slot on subsequent calls.
-      const targetSprite = spriteArr[targetEid & ENTITY_ID_MASK]
-      const otherSprite = spriteArr[otherEid & ENTITY_ID_MASK]
-      if (targetSprite) targetSprite._batchSlot = targetSlot
-      if (otherSprite) otherSprite._batchSlot = currentSlot
+      // Populate scratch arrays (zero-alloc: truncate + push).
+      scratchEids.length = 0
+      scratchSlots.length = 0
+      for (let i = 0; i < n; i++) {
+        const eid = eids[i]!
+        scratchEids.push(eid)
+        scratchSlots.push(slotArr[eid]!)
+      }
+
+      // Sort scratchEids by zIndex ascending via V8's TimSort. O(n) on
+      // near-sorted (steady state) and O(n log n) worst case (cold start
+      // when allocation order is unrelated to zIndex).
+      scratchEids.sort((a, b) => zIndexArr[a]! - zIndexArr[b]!)
+
+      // scratchSlots holds the original physical slots in unsorted
+      // enumeration order. Sort ascending to produce a stable target
+      // mapping that preserves the set of physical indices (leaves
+      // _freeList holes untouched) while ordering occupied slots by
+      // zIndex.
+      scratchSlots.sort((a, b) => a - b)
+
+      // Apply permutation: entity scratchEids[i] (in sorted-zIndex order)
+      // should occupy physical slot scratchSlots[i] (in ascending order).
+      // Build slot → scratchIdx inverse map for O(1) swap-partner lookup;
+      // maintain it as we permute.
+      ensureSlotMapCapacity(mesh.maxSize)
+      for (let i = 0; i < n; i++) {
+        slotToScratchIdx[slotArr[scratchEids[i]!]!] = i
+      }
+      // Pull the sprite SoA cache so we can keep each swapped sprite's
+      // cached `_batchSlot` in sync with the Koota store. Without this,
+      // any direct-write setter (color, zIndex, addEffect → writeColor /
+      // writeEnableBits / etc.) would target the stale pre-sort slot
+      // and clobber a different sprite's data.
+      const spriteArr = registry.spriteArr
+
+      for (let i = 0; i < n; i++) {
+        const targetSlot = scratchSlots[i]!
+        const targetEid = scratchEids[i]!
+        const currentSlot = slotArr[targetEid]!
+        if (currentSlot === targetSlot) continue
+
+        const otherIdx = slotToScratchIdx[targetSlot]!
+        if (otherIdx <= i) continue // Set invariant broken — shouldn't happen.
+        const otherEid = scratchEids[otherIdx]!
+
+        mesh.swapSlots(currentSlot, targetSlot)
+        slotArr[targetEid] = targetSlot
+        slotArr[otherEid] = currentSlot
+        slotToScratchIdx[targetSlot] = i
+        slotToScratchIdx[currentSlot] = otherIdx
+
+        // Update per-sprite cache so direct-write setters land at the
+        // correct slot on subsequent calls.
+        const targetSprite = spriteArr[targetEid & ENTITY_ID_MASK]
+        const otherSprite = spriteArr[otherEid & ENTITY_ID_MASK]
+        if (targetSprite) targetSprite._batchSlot = targetSlot
+        if (otherSprite) otherSprite._batchSlot = currentSlot
+      }
     }
-  }
   }
 }

@@ -402,10 +402,14 @@ export class SpriteGroup extends Group implements WorldProvider {
   }
 
   /** Named function target for measure() labeling of the late assignment pass. */
-  private _lateAssignPass(): void { /* measured wrapper only */ }
+  private _lateAssignPass(): void {
+    /* measured wrapper only */
+  }
 
   /** Named function target for measure() labeling of the dirty range flush. */
-  private _flushDirtyRanges(): void { /* measured wrapper only */ }
+  private _flushDirtyRanges(): void {
+    /* measured wrapper only */
+  }
 
   /**
    * Track a material for schema version detection.
@@ -587,13 +591,13 @@ export class SpriteGroup extends Group implements WorldProvider {
       // Dispose all active batch meshes
       for (const batchEntity of registry.activeBatches) {
         const batchMeshData = batchEntity.get(BatchMesh)
-      const mesh = batchMeshData?.mesh ?? null
+        const mesh = batchMeshData?.mesh ?? null
         if (mesh) mesh.dispose()
       }
       // Dispose pooled batch meshes
       for (const batchEntity of registry.batchPool) {
         const batchMeshData = batchEntity.get(BatchMesh)
-      const mesh = batchMeshData?.mesh ?? null
+        const mesh = batchMeshData?.mesh ?? null
         if (mesh) mesh.dispose()
       }
       registry.activeBatches.length = 0
@@ -623,7 +627,7 @@ export class SpriteGroup extends Group implements WorldProvider {
     if (!this._world) return null
     const registryEntities = this._world.query(BatchRegistry)
     if (registryEntities.length === 0) return null
-    return registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined ?? null
+    return (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined) ?? null
   }
 
   /**

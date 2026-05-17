@@ -77,14 +77,32 @@ export function transformSyncSystem(world: World): void {
     if (rz !== 0) {
       const c = Math.cos(rz)
       const s = Math.sin(rz)
-      buf[o]     = c * sx; buf[o + 4] = -s * sy; buf[o + 8]  = 0; buf[o + 12] = px
-      buf[o + 1] = s * sx; buf[o + 5] =  c * sy; buf[o + 9]  = 0; buf[o + 13] = py
+      buf[o] = c * sx
+      buf[o + 4] = -s * sy
+      buf[o + 8] = 0
+      buf[o + 12] = px
+      buf[o + 1] = s * sx
+      buf[o + 5] = c * sy
+      buf[o + 9] = 0
+      buf[o + 13] = py
     } else {
-      buf[o]     = sx; buf[o + 4] = 0;  buf[o + 8]  = 0; buf[o + 12] = px
-      buf[o + 1] = 0;  buf[o + 5] = sy; buf[o + 9]  = 0; buf[o + 13] = py
+      buf[o] = sx
+      buf[o + 4] = 0
+      buf[o + 8] = 0
+      buf[o + 12] = px
+      buf[o + 1] = 0
+      buf[o + 5] = sy
+      buf[o + 9] = 0
+      buf[o + 13] = py
     }
-    buf[o + 2]  = 0; buf[o + 6] = 0; buf[o + 10] = 1; buf[o + 14] = pz
-    buf[o + 3]  = 0; buf[o + 7] = 0; buf[o + 11] = 0; buf[o + 15] = 1
+    buf[o + 2] = 0
+    buf[o + 6] = 0
+    buf[o + 10] = 1
+    buf[o + 14] = pz
+    buf[o + 3] = 0
+    buf[o + 7] = 0
+    buf[o + 11] = 0
+    buf[o + 15] = 1
 
     mesh.markMatrixDirty(slot)
   }

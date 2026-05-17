@@ -51,8 +51,14 @@ const { pane, stats: globalStats } = createPane()
 const knightStats = { knights: 0, batches: 0 }
 const statsFolder = pane.addFolder({ title: 'Knights', expanded: false })
 const knightStatsBindings = [
-  statsFolder.addBinding(knightStats, 'knights', { readonly: true, format: (v: number) => v.toFixed(0) }),
-  statsFolder.addBinding(knightStats, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) }),
+  statsFolder.addBinding(knightStats, 'knights', {
+    readonly: true,
+    format: (v: number) => v.toFixed(0),
+  }),
+  statsFolder.addBinding(knightStats, 'batches', {
+    readonly: true,
+    format: (v: number) => v.toFixed(0),
+  }),
 ]
 
 // Simulation params — tweakable at runtime (at bottom, collapsed)
@@ -137,8 +143,22 @@ const knightAnimations: AnimationSetDefinition = {
     },
     run: {
       frames: [
-        'run_0', 'run_1', 'run_2', 'run_3', 'run_4', 'run_5', 'run_6', 'run_7',
-        'run_8', 'run_9', 'run_10', 'run_11', 'run_12', 'run_13', 'run_14', 'run_15',
+        'run_0',
+        'run_1',
+        'run_2',
+        'run_3',
+        'run_4',
+        'run_5',
+        'run_6',
+        'run_7',
+        'run_8',
+        'run_9',
+        'run_10',
+        'run_11',
+        'run_12',
+        'run_13',
+        'run_14',
+        'run_15',
       ],
       fps: 16,
       loop: true,
@@ -284,9 +304,18 @@ async function main() {
   // The upper-left room tiles have wall shading baked in; these upper-right
   // tiles are the standalone floor meant to be tiled freely.
   const FLOOR_PATTERN = [
-     7,  8,  9, 10, // row 0, cols 6-9
-    17, 18, 19, 20, // row 1, cols 6-9
-    27, 28, 29, 30, // row 2, cols 6-9
+    7,
+    8,
+    9,
+    10, // row 0, cols 6-9
+    17,
+    18,
+    19,
+    20, // row 1, cols 6-9
+    27,
+    28,
+    29,
+    30, // row 2, cols 6-9
   ]
 
   const floorData = new Uint32Array(mapCols * mapRows)
@@ -379,8 +408,14 @@ async function main() {
     sprite.flipX = baseVx < 0
     spriteGroup.add(sprite)
     return {
-      sprite, state: 'WALK', baseVx, baseVy, speed,
-      vx: baseVx, vy: baseVy, idleTimer: 0,
+      sprite,
+      state: 'WALK',
+      baseVx,
+      baseVy,
+      speed,
+      vx: baseVx,
+      vy: baseVy,
+      idleTimer: 0,
     }
   }
 
@@ -397,9 +432,7 @@ async function main() {
     // requires a new material instance, and pre-registering the effects
     // here avoids the addEffect-time shader-recompile warning.
     currentMaterial = new Sprite2DMaterial(
-      stress.alphaTest
-        ? { map: knightSheet.texture, alphaTest: 0.5 }
-        : { map: knightSheet.texture },
+      stress.alphaTest ? { map: knightSheet.texture, alphaTest: 0.5 } : { map: knightSheet.texture }
     )
     if (stress.effects) {
       currentMaterial.registerEffect(RippleEffect)
@@ -424,9 +457,7 @@ async function main() {
   randomTintBinding.on('change', (e) => {
     if (!e.last) return
     for (const k of knights) {
-      k.sprite.tint = stress.randomTint
-        ? [Math.random(), Math.random(), Math.random()]
-        : [1, 1, 1]
+      k.sprite.tint = stress.randomTint ? [Math.random(), Math.random(), Math.random()] : [1, 1, 1]
     }
   })
 
@@ -472,7 +503,10 @@ async function main() {
   const addBtn = document.getElementById('btn-add')!
   addBtn.addEventListener('click', () => spawnBatch(100))
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') { e.preventDefault(); spawnBatch(100) }
+    if (e.code === 'Space') {
+      e.preventDefault()
+      spawnBatch(100)
+    }
   })
 
   // --- Resize ---
@@ -512,17 +546,23 @@ async function main() {
     const margin = sim.knightScale / 2
     for (const k of knights) {
       switch (k.state) {
-        case 'WALK': case 'ROLL':
-          k.vx = k.baseVx; k.vy = k.baseVy; break
+        case 'WALK':
+        case 'ROLL':
+          k.vx = k.baseVx
+          k.vy = k.baseVy
+          break
         case 'TRIP':
           k.vx += (0 - k.vx) * Math.min(1, TRIP_LERP_RATE * dt)
           k.vy += (0 - k.vy) * Math.min(1, TRIP_LERP_RATE * dt)
           break
         case 'TRIP_IDLE':
-          k.vx = 0; k.vy = 0
+          k.vx = 0
+          k.vy = 0
           k.idleTimer -= deltaMs
           if (k.idleTimer <= 0) {
-            k.state = 'WALK'; k.vx = k.baseVx; k.vy = k.baseVy
+            k.state = 'WALK'
+            k.vx = k.baseVx
+            k.vy = k.baseVy
             const animName = k.speed < SPEED_THRESHOLD ? 'idle' : 'run'
             k.sprite.play(animName)
           }
@@ -534,17 +574,21 @@ async function main() {
       // Bounce off screen edges
       if (k.sprite.position.x < boundsLeft + margin) {
         k.sprite.position.x = boundsLeft + margin
-        k.baseVx = Math.abs(k.baseVx); k.vx = Math.abs(k.vx)
+        k.baseVx = Math.abs(k.baseVx)
+        k.vx = Math.abs(k.vx)
       } else if (k.sprite.position.x > boundsRight - margin) {
         k.sprite.position.x = boundsRight - margin
-        k.baseVx = -Math.abs(k.baseVx); k.vx = -Math.abs(k.vx)
+        k.baseVx = -Math.abs(k.baseVx)
+        k.vx = -Math.abs(k.vx)
       }
       if (k.sprite.position.y < boundsBottom + margin) {
         k.sprite.position.y = boundsBottom + margin
-        k.baseVy = Math.abs(k.baseVy); k.vy = Math.abs(k.vy)
+        k.baseVy = Math.abs(k.baseVy)
+        k.vy = Math.abs(k.vy)
       } else if (k.sprite.position.y > boundsTop - margin) {
         k.sprite.position.y = boundsTop - margin
-        k.baseVy = -Math.abs(k.baseVy); k.vy = -Math.abs(k.vy)
+        k.baseVy = -Math.abs(k.baseVy)
+        k.vy = -Math.abs(k.vy)
       }
       k.sprite.flipX = k.baseVx < 0
       k.sprite.zIndex = -Math.floor(k.sprite.position.y)
@@ -568,9 +612,11 @@ async function main() {
         if (distSq < collisionDistSq) {
           const tripChanceA = k.speed / (k.speed + other.speed)
           if (Math.random() < tripChanceA) {
-            triggerTrip(k); triggerRoll(other)
+            triggerTrip(k)
+            triggerRoll(other)
           } else {
-            triggerTrip(other); triggerRoll(k)
+            triggerTrip(other)
+            triggerRoll(k)
           }
           return true
         }

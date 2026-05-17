@@ -37,14 +37,14 @@ import { ENTITY_ID_MASK } from '../snapshot'
  */
 export function createBatchAssignSystem(): (
   world: World,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>,
+  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
 ) => boolean {
   const Added = createAdded()
   const dirtyMeshes = new Set<SpriteBatch>()
 
   return function batchAssignSystem(
     world: World,
-    effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>,
+    effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
   ): boolean {
     const added = world.query(Added(IsRenderable))
     if (added.length === 0) return false
@@ -219,5 +219,4 @@ function syncEffectBuffers(
       }
     }
   }
-
 }

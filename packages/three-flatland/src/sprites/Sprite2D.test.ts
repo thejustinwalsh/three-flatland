@@ -170,7 +170,7 @@ describe('Sprite2D standalone vs enrolled', () => {
     const systemAttr = sprite.geometry.getAttribute('instanceSystem') as BufferAttribute
     const array = systemAttr.array as Float32Array
     expect(array[0]).toBe(-1) // vertex 0, x = flipX flipped
-    expect(array[1]).toBe(1)  // vertex 0, y = flipY normal
+    expect(array[1]).toBe(1) // vertex 0, y = flipY normal
   })
 
   it('standalone: setFrame writes to own UV buffer immediately', () => {
@@ -188,7 +188,7 @@ describe('Sprite2D standalone vs enrolled', () => {
     const uvAttr = sprite.geometry.getAttribute('instanceUV') as BufferAttribute
     const array = uvAttr.array as Float32Array
     expect(array[0]).toBeCloseTo(0.25) // x
-    expect(array[1]).toBeCloseTo(0.5)  // y
+    expect(array[1]).toBeCloseTo(0.5) // y
     expect(array[2]).toBeCloseTo(0.25) // w
     expect(array[3]).toBeCloseTo(0.25) // h
   })

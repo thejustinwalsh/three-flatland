@@ -1,13 +1,6 @@
 import { createRemoved } from 'koota'
 import type { World, Entity } from 'koota'
-import {
-  IsRenderable,
-  InBatch,
-  BatchSlot,
-  BatchMesh,
-  BatchMeta,
-  BatchRegistry,
-} from '../traits'
+import { IsRenderable, InBatch, BatchSlot, BatchMesh, BatchMeta, BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { computeRunKey, recycleBatchIfEmpty } from '../batchUtils'
 import { ENTITY_ID_MASK } from '../snapshot'
@@ -28,10 +21,7 @@ import { ENTITY_ID_MASK } from '../snapshot'
  * `deferredDestroySystem`. This pushes koota's cascading trait removal
  * cost out of the hot render frame.
  */
-export function createBatchRemoveSystem(): (
-  world: World,
-  pendingDestroy: Entity[],
-) => void {
+export function createBatchRemoveSystem(): (world: World, pendingDestroy: Entity[]) => void {
   const Removed = createRemoved()
 
   return function batchRemoveSystem(world: World, pendingDestroy: Entity[]): void {

@@ -20,7 +20,10 @@ export function computeTier(neededFloats: number): number {
  * Get a TSL component accessor from a packed vec4 buffer array.
  * Maps an absolute float offset to the correct bufNode[n].xyzw component.
  */
-export function getPackedComponent(bufNodes: Node<'vec4'>[], absoluteOffset: number): Node<'float'> {
+export function getPackedComponent(
+  bufNodes: Node<'vec4'>[],
+  absoluteOffset: number
+): Node<'float'> {
   const bufIdx = Math.floor(absoluteOffset / 4)
   const comp = absoluteOffset % 4
   const node = bufNodes[bufIdx]!
@@ -213,7 +216,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
           `effects would use ${dataFloats} floats of per-instance data, ` +
           `exceeding the cap of ${EffectMaterial.MAX_EFFECT_FLOATS} ` +
           `(WebGPU 8-buffer limit). Registered so far: [${names}]. ` +
-          `Reduce a schema or consolidate effects.`,
+          `Reduce a schema or consolidate effects.`
       )
     }
 

@@ -110,7 +110,11 @@ export class TileLayer extends Group {
    * With flipY=false: UV y=0 is first pixel row (image top). We offset y by +height and negate
    * height so the shader traverses UV space in the correct direction.
    */
-  private writeUV(buffer: Float32Array, offset: number, uv: { x: number; y: number; width: number; height: number }): void {
+  private writeUV(
+    buffer: Float32Array,
+    offset: number,
+    uv: { x: number; y: number; width: number; height: number }
+  ): void {
     buffer[offset] = uv.x
     buffer[offset + 2] = uv.width
     if (this.texFlipY) {
@@ -436,7 +440,9 @@ export class TileLayer extends Group {
 
       const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InstancedBufferAttribute
       uvAttr.needsUpdate = true
-      const systemAttr = chunk.mesh.geometry.getAttribute('instanceSystem') as InstancedBufferAttribute
+      const systemAttr = chunk.mesh.geometry.getAttribute(
+        'instanceSystem'
+      ) as InstancedBufferAttribute
       systemAttr.needsUpdate = true
     } else {
       // Tile added or removed — rebuild the entire layer

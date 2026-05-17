@@ -20,7 +20,7 @@ export function createSceneGraphSyncSystem(): (
   world: World,
   parent: Group,
   parentAdd: (...objects: Object3D[]) => Group,
-  parentRemove: (...objects: Object3D[]) => Group,
+  parentRemove: (...objects: Object3D[]) => Group
 ) => void {
   const activeMeshes = new Set<Object3D>()
 
@@ -28,7 +28,7 @@ export function createSceneGraphSyncSystem(): (
     world: World,
     parent: Group,
     parentAdd: (...objects: Object3D[]) => Group,
-    parentRemove: (...objects: Object3D[]) => Group,
+    parentRemove: (...objects: Object3D[]) => Group
   ): void {
     const registryEntities = world.query(BatchRegistry)
     if (registryEntities.length === 0) return

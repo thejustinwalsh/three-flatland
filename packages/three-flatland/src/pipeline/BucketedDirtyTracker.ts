@@ -45,7 +45,7 @@ export class BucketedDirtyTracker {
     maxSize: number,
     bucketSize: number,
     private readonly stride: number,
-    private readonly fullThreshold: number,
+    private readonly fullThreshold: number
   ) {
     if ((bucketSize & (bucketSize - 1)) !== 0 || bucketSize <= 0) {
       throw new Error(`BucketedDirtyTracker: bucketSize must be a power of 2 (got ${bucketSize})`)

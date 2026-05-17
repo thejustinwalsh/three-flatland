@@ -516,9 +516,9 @@ describe('Sprite2D.addEffect', () => {
     const buf0 = sprite.geometry.getAttribute('effectBuf0')
     const array0 = (buf0 as unknown as { array: Float32Array }).array
     expect(array0[0]).toBeCloseTo(0.8) // intensity (Float32 precision)
-    expect(array0[1]).toBe(0)          // color_r
-    expect(array0[2]).toBe(1)          // color_g
-    expect(array0[3]).toBe(0)          // color_b
+    expect(array0[1]).toBe(0) // color_r
+    expect(array0[2]).toBe(1) // color_g
+    expect(array0[3]).toBe(0) // color_b
   })
 
   it('should support multiple effects on same sprite', () => {
@@ -599,8 +599,12 @@ describe('Sprite2D.addEffect', () => {
     sprite2.addEffect(d2)
 
     // Both sprites write to same slot layout
-    const array1 = (sprite1.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
-    const array2 = (sprite2.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
+    const array1 = (
+      sprite1.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }
+    ).array
+    const array2 = (
+      sprite2.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }
+    ).array
 
     expect(array1[0]).toBeCloseTo(0.3) // sprite1 progress at slot 0
     expect(array2[0]).toBeCloseTo(0.7) // sprite2 progress at slot 0
@@ -654,9 +658,12 @@ describe('Sprite2D.removeEffect', () => {
 
     // Effect data slot 0 = progress, reset to default; enable bits in
     // instanceSystem.w = 0.
-    const array = (sprite.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
+    const array = (sprite.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array })
+      .array
     expect(array[0]).toBe(0) // progress = 0 (default)
-    const sysArr = (sprite.geometry.getAttribute('instanceSystem') as unknown as { array: Float32Array }).array
+    const sysArr = (
+      sprite.geometry.getAttribute('instanceSystem') as unknown as { array: Float32Array }
+    ).array
     expect(sysArr[3]).toBe(0) // enableBits = 0
   })
 
@@ -688,11 +695,14 @@ describe('Sprite2D.removeEffect', () => {
     // Flash should still be enabled (bit 1)
     expect(sprite._effectFlags).toBe(2) // only bit 1
 
-    const array = (sprite.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
-    expect(array[0]).toBe(0)   // dissolve progress at slot 0: reset to default
+    const array = (sprite.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array })
+      .array
+    expect(array[0]).toBe(0) // dissolve progress at slot 0: reset to default
     expect(array[1]).toBeCloseTo(0.8) // flash intensity at slot 1: unchanged
-    const sysArr = (sprite.geometry.getAttribute('instanceSystem') as unknown as { array: Float32Array }).array
-    expect(sysArr[3]).toBe(2)  // enableBits: only flash bit set
+    const sysArr = (
+      sprite.geometry.getAttribute('instanceSystem') as unknown as { array: Float32Array }
+    ).array
+    expect(sysArr[3]).toBe(2) // enableBits: only flash bit set
   })
 
   it('should be no-op for unregistered effect', () => {
@@ -748,14 +758,28 @@ describe('Enable flags bitmask', () => {
     expect(sprite._effectFlags).toBe(31)
 
     // Enable bits live in instanceSystem.w — all 5 bits packed in one float.
-    const sysArr = (sprite.geometry.getAttribute('instanceSystem') as unknown as { array: Float32Array }).array
+    const sysArr = (
+      sprite.geometry.getAttribute('instanceSystem') as unknown as { array: Float32Array }
+    ).array
     expect(sysArr[3]).toBe(31)
   })
 
   it('should support selective enable/disable', () => {
-    const A = createMaterialEffect({ name: 'a', schema: { v: 0 }, node: ({ inputColor }) => inputColor })
-    const B = createMaterialEffect({ name: 'b', schema: { v: 0 }, node: ({ inputColor }) => inputColor })
-    const C = createMaterialEffect({ name: 'c', schema: { v: 0 }, node: ({ inputColor }) => inputColor })
+    const A = createMaterialEffect({
+      name: 'a',
+      schema: { v: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const B = createMaterialEffect({
+      name: 'b',
+      schema: { v: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const C = createMaterialEffect({
+      name: 'c',
+      schema: { v: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
 
     const material = new Sprite2DMaterial({ map: texture })
     const sprite = new Sprite2D({ texture, material })
@@ -1063,7 +1087,7 @@ describe('Effect remove + add cycle', () => {
     expect(traitData['progress']).toBeCloseTo(0.85)
 
     // And does _effects contain the new instance?
-    expect(sprite._effects.find(e => e.name === 'dissolve_ra')).toBe(d2)
+    expect(sprite._effects.find((e) => e.name === 'dissolve_ra')).toBe(d2)
 
     world.destroy()
   })
@@ -1080,16 +1104,16 @@ describe('Effect remove + add cycle', () => {
     const d1 = new DissolveRA()
     d1.progress = 0.1
     sprite.addEffect(d1)
-    expect(sprite._effects.find(e => e.name === 'dissolve_ra')).toBe(d1)
+    expect(sprite._effects.find((e) => e.name === 'dissolve_ra')).toBe(d1)
 
     sprite.removeEffect(d1)
-    expect(sprite._effects.find(e => e.name === 'dissolve_ra')).toBeUndefined()
+    expect(sprite._effects.find((e) => e.name === 'dissolve_ra')).toBeUndefined()
 
     // Cycle 2
     const d2 = new DissolveRA()
     d2.progress = 0.5
     sprite.addEffect(d2)
-    expect(sprite._effects.find(e => e.name === 'dissolve_ra')).toBe(d2)
+    expect(sprite._effects.find((e) => e.name === 'dissolve_ra')).toBe(d2)
 
     // Update directly on effect ref — the actual game pattern
     d2.progress = 0.75

@@ -46,14 +46,14 @@ import { ENTITY_ID_MASK } from '../snapshot'
  */
 export function createBatchReassignSystem(): (
   world: World,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>,
+  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
 ) => void {
   const Changed = createChanged()
   const toReassign = new Set<Entity>()
 
   return function batchReassignSystem(
     world: World,
-    effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>,
+    effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
   ): void {
     const layerChanged = world.query(Changed(SpriteLayer), IsBatched)
     const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched)
@@ -208,5 +208,4 @@ function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): 
       }
     }
   }
-
 }
