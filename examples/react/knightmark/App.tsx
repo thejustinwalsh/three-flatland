@@ -278,6 +278,7 @@ interface KnightmarkSceneProps {
   hitRadius: number
   knightScale: number
   knightStatsRef: React.RefObject<{ knights: number; batches: number }>
+  refreshStatsRef: React.RefObject<() => void>
   stats: StatsHandle
 }
 
@@ -288,6 +289,7 @@ function KnightmarkScene({
   hitRadius,
   knightScale,
   knightStatsRef,
+  refreshStatsRef,
   stats,
 }: KnightmarkSceneProps) {
   const { size } = useThree()
@@ -490,12 +492,16 @@ function KnightmarkScene({
       })
     }
 
-    // Update knight-batch monitors
+    // Update knight-batch monitors. Refresh bindings every frame — the
+    // default readonly-binding MonitorBinding ticker (200ms) can starve
+    // under heavy main-thread load (allocs, GC pauses), making the
+    // display freeze even while the underlying values keep updating.
     if (spriteGroupRef.current) {
       const s = spriteGroupRef.current.stats
       knightStatsRef.current.knights = knights.length
       knightStatsRef.current.batches = s.batchCount
     }
+    refreshStatsRef.current()
   })
 
   return (
@@ -551,6 +557,12 @@ export default function App() {
     step: 8,
     label: 'scale',
   })
+  // Refresh callback driven from KnightmarkScene's useFrame — see
+  // `refreshStatsRef.current()` call in the per-frame block. Per-frame
+  // refresh keeps the readout current under heavy load (GC pauses can
+  // starve tweakpane's 200ms internal ticker, leaving the display
+  // frozen while underlying values keep updating).
+  const refreshStatsRef = useRef<() => void>(() => {})
   useEffect(() => {
     if (!statsFolder) return
     const bKnights = statsFolder.addBinding(knightStatsRef.current, 'knights', {
@@ -561,12 +573,12 @@ export default function App() {
       readonly: true,
       format: (v: number) => v.toFixed(0),
     })
-    const interval = setInterval(() => {
+    refreshStatsRef.current = () => {
       bKnights.refresh()
       bBatches.refresh()
-    }, 500)
+    }
     return () => {
-      clearInterval(interval)
+      refreshStatsRef.current = () => {}
       bKnights.dispose()
       bBatches.dispose()
     }
@@ -605,6 +617,7 @@ export default function App() {
             hitRadius={hitRadius}
             knightScale={knightScale}
             knightStatsRef={knightStatsRef}
+            refreshStatsRef={refreshStatsRef}
             stats={stats}
           />
         </Suspense>
