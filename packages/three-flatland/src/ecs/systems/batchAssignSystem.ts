@@ -20,85 +20,113 @@ import type { RegistryData } from '../batchUtils'
 import { getOrCreateRun, findOrCreateBatch } from '../batchUtils'
 import { ENTITY_ID_MASK } from '../snapshot'
 
-const Added = createAdded()
-
 /**
- * Assign newly renderable sprites to the correct batch.
+ * Create a batch-assign system bound to its own scratch state.
+ *
+ * Each SpriteGroup constructs one. The returned function takes a world
+ * + effect-trait map and assigns newly renderable sprites to batches.
  *
  * Triggered by Added(IsRenderable). Computes the run key from
- * (layer, materialId), finds or creates a batch in that run,
- * allocates a slot, and sets the InBatch relation with slot data.
- * Also performs a one-time full buffer sync from trait state.
+ * (layer, materialId), finds or creates a batch in that run, allocates
+ * a slot, and sets the InBatch relation with slot data. Also performs
+ * a one-time full buffer sync from trait state.
+ *
+ * Closes over its own `Added` subscription + `dirtyMeshes` scratch Set
+ * so multiple SpriteGroups don't share Koota change-tracking state and
+ * the Set is cleared-and-reused instead of allocated per frame.
  */
-export function batchAssignSystem(
+export function createBatchAssignSystem(): (
   world: World,
   effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-): boolean {
-  const added = world.query(Added(IsRenderable))
-  if (added.length === 0) return false
-
-  const registryEntities = world.query(BatchRegistry)
-  if (registryEntities.length === 0) return false
-  const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-  if (!registry) return false
-
-  // Track meshes that received new sprites — set needsUpdate once after the loop
+) => boolean {
+  const Added = createAdded()
   const dirtyMeshes = new Set<SpriteBatch>()
 
-  for (const entity of added) {
-    const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
-    if (!sprite) continue
+  return function batchAssignSystem(
+    world: World,
+    effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
+  ): boolean {
+    const added = world.query(Added(IsRenderable))
+    if (added.length === 0) return false
 
-    const layerData = entity.get(SpriteLayer)
-    const matRef = entity.get(SpriteMaterialRef)
-    if (!layerData || !matRef) continue
+    const registryEntities = world.query(BatchRegistry)
+    if (registryEntities.length === 0) return false
+    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    if (!registry) return false
 
-    // Track material for schema version detection
-    const material = sprite.material
-    if (!registry.materialRefs.has(matRef.materialId)) {
-      registry.materialRefs.set(matRef.materialId, {
-        material,
-        version: material._effectSchemaVersion,
-      })
+    dirtyMeshes.clear()
+
+    for (const entity of added) {
+      const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+      if (!sprite) continue
+
+      const layerData = entity.get(SpriteLayer)
+      const matRef = entity.get(SpriteMaterialRef)
+      if (!layerData || !matRef) continue
+
+      // Track material for schema version detection
+      const material = sprite.material
+      if (!registry.materialRefs.has(matRef.materialId)) {
+        registry.materialRefs.set(matRef.materialId, {
+          material,
+          version: material._effectSchemaVersion,
+        })
+      }
+
+      // Find or create the run for this (layer, materialId)
+      const { run } = getOrCreateRun(registry, layerData.layer, matRef.materialId, material)
+
+      // Find or create a batch with free slots
+      const batchEntity = findOrCreateBatch(world, registry, run)
+      const batchMesh = batchEntity.get(BatchMesh)
+      if (!batchMesh?.mesh) continue
+      const mesh = batchMesh.mesh
+
+      // Allocate a slot
+      const slot = mesh.allocateSlot()
+      if (slot < 0) continue
+
+      // Set InBatch relation with slot data — cache the relation pair
+      const relation = InBatch(batchEntity)
+      entity.add(relation)
+      entity.set(relation, { slot }, false)
+
+      // Set BatchSlot SoA cache for O(1) hot-path reads.
+      // BatchSlot is pre-added at spawn time — always use set, no archetype transition.
+      const meta = batchEntity.get(BatchMeta)
+      const batchIdx = meta?.batchIdx ?? -1
+      entity.set(BatchSlot, { batchIdx, slot }, false)
+
+      // Cache batch references on the sprite for O(1) direct-write
+      // dispatch from setters. While the sprite is in a batch, this
+      // triplet is the invariant: _batchMesh === mesh, _batchSlot === slot,
+      // _batchIdx === batchIdx. Setters check `_batchMesh !== null` as the
+      // "am I batched?" test.
+      sprite._batchMesh = mesh
+      sprite._batchSlot = slot
+      sprite._batchIdx = batchIdx
+
+      // Signal that this batch needs sorting on the next pass — the new
+      // sprite was just inserted at an arbitrary slot (allocateSlot's
+      // free-list / nextIndex), not its sorted position. For gated
+      // materials this is a no-op since batchSortSystem skips them
+      // anyway; the marker is harmless.
+      mesh.markSortDirty()
+
+      // One-time full buffer sync from current trait state (no needsUpdate — deferred)
+      syncSlotBuffers(entity, slot, mesh, sprite, effectTraits)
+      dirtyMeshes.add(mesh)
     }
 
-    // Find or create the run for this (layer, materialId)
-    const { run } = getOrCreateRun(registry, layerData.layer, matRef.materialId, material)
+    // Flush syncCount once per mesh, not per entity.
+    // needsUpdate and dirty ranges are tracked by SpriteBatch write methods;
+    // flushDirtyRanges() is called once at end of frame by SpriteGroup.
+    for (const mesh of dirtyMeshes) {
+      mesh.syncCount()
+    }
 
-    // Find or create a batch with free slots
-    const batchEntity = findOrCreateBatch(world, registry, run)
-    const batchMesh = batchEntity.get(BatchMesh)
-    if (!batchMesh?.mesh) continue
-    const mesh = batchMesh.mesh
-
-    // Allocate a slot
-    const slot = mesh.allocateSlot()
-    if (slot < 0) continue
-
-    // Set InBatch relation with slot data — cache the relation pair
-    const relation = InBatch(batchEntity)
-    entity.add(relation)
-    entity.set(relation, { slot }, false)
-
-    // Set BatchSlot SoA cache for O(1) hot-path reads.
-    // BatchSlot is pre-added at spawn time — always use set, no archetype transition.
-    const meta = batchEntity.get(BatchMeta)
-    const batchIdx = meta?.batchIdx ?? -1
-    entity.set(BatchSlot, { batchIdx, slot }, false)
-
-    // One-time full buffer sync from current trait state (no needsUpdate — deferred)
-    syncSlotBuffers(entity, slot, mesh, sprite, effectTraits)
-    dirtyMeshes.add(mesh)
+    return true
   }
-
-  // Flush syncCount once per mesh, not per entity.
-  // needsUpdate and dirty ranges are tracked by SpriteBatch write methods;
-  // flushDirtyRanges() is called once at end of frame by SpriteGroup.
-  for (const mesh of dirtyMeshes) {
-    mesh.syncCount()
-  }
-
-  return true
 }
 
 /**
@@ -191,5 +219,4 @@ function syncEffectBuffers(
       }
     }
   }
-
 }

@@ -18,15 +18,13 @@ import type { RegistryData } from '../ecs/batchUtils'
 import { computeRunKey, recycleBatchIfEmpty } from '../ecs/batchUtils'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import {
-  batchAssignSystem,
-  batchReassignSystem,
-  batchRemoveSystem,
+  createBatchAssignSystem,
+  createBatchReassignSystem,
+  createBatchRemoveSystem,
+  createBatchSortSystem,
+  createSceneGraphSyncSystem,
   deferredDestroySystem,
-  bufferSyncColorSystem,
-  bufferSyncFlipSystem,
-  bufferSyncEffectSystem,
   transformSyncSystem,
-  sceneGraphSyncSystem,
 } from '../ecs/systems'
 import { measure } from '../util/measure'
 
@@ -122,6 +120,18 @@ export class SpriteGroup extends Group implements WorldProvider {
    * Sprite count for stats.
    */
   private _spriteCount: number = 0
+
+  /**
+   * Per-instance ECS system functions. Each holds its own scratch state
+   * (Koota change-tracking subscriptions, scratch arrays, Sets) so two
+   * SpriteGroups don't share buffers or interfere with each other's
+   * change-tracking.
+   */
+  private readonly _batchAssignSystem = createBatchAssignSystem()
+  private readonly _batchReassignSystem = createBatchReassignSystem()
+  private readonly _batchRemoveSystem = createBatchRemoveSystem()
+  private readonly _batchSortSystem = createBatchSortSystem()
+  private readonly _sceneGraphSyncSystem = createSceneGraphSyncSystem()
 
   constructor(options: SpriteGroupOptions = {}) {
     super()
@@ -267,13 +277,16 @@ export class SpriteGroup extends Group implements WorldProvider {
    * Per-frame flow:
    * 1. batchAssignSystem — assign new sprites to batches via InBatch relation
    * 2. batchReassignSystem — handle layer/material changes (cross-run movement)
-   * 3. bufferSyncColorSystem — Changed(SpriteColor) + IsBatched -> batch buffer write
-   * 4. bufferSyncFlipSystem — Changed(SpriteFlip) + IsBatched -> batch buffer write
-   * 5. bufferSyncEffectSystem — Changed(effectTrait) + IsBatched -> packed buffer write
-   * 6. transformSyncSystem — sync all transforms to batch instance matrices
-   * 7. sceneGraphSyncSystem — rebuild SpriteGroup children from sorted batch entities
-   * 8. batchRemoveSystem — free slots, recycle empty batches, destroy entities (LAST)
-   * 9. super.updateMatrixWorld() — continue Three.js traversal
+   * 3. transformSyncSystem — sync all transforms to batch instance matrices
+   * 4. sceneGraphSyncSystem — rebuild SpriteGroup children from sorted batch entities
+   * 5. batchRemoveSystem — free slots, recycle empty batches, destroy entities (LAST)
+   * 6. super.updateMatrixWorld() — continue Three.js traversal
+   *
+   * Color / UV / flip / effect writes are NOT in the per-frame system list —
+   * they happen at the setter site via cached `_batchMesh`/`_batchSlot` on
+   * the sprite, so there's no Changed-gated sync pass. The
+   * BucketedDirtyTracker on each instance attribute handles upload-time
+   * coalescing.
    */
   override updateMatrixWorld(force?: boolean): void {
     if (!this._systemsRanThisFrame) {
@@ -320,30 +333,18 @@ export class SpriteGroup extends Group implements WorldProvider {
     end()
 
     // Batch lifecycle systems
-    end = measure(batchAssignSystem)
-    batchAssignSystem(this._world, this._effectTraits)
+    end = measure(this._batchAssignSystem)
+    this._batchAssignSystem(this._world, this._effectTraits)
     end()
 
-    end = measure(batchReassignSystem)
-    batchReassignSystem(this._world, this._effectTraits)
+    end = measure(this._batchReassignSystem)
+    this._batchReassignSystem(this._world, this._effectTraits)
     end()
 
-    // Buffer sync systems (Changed-driven — color and flip change rarely)
-    end = measure(bufferSyncColorSystem)
-    bufferSyncColorSystem(this._world)
-    end()
-
-    // UV sync is folded into transformSyncSystem (unconditional, no change detection)
-
-    end = measure(bufferSyncFlipSystem)
-    bufferSyncFlipSystem(this._world)
-    end()
-
-    if (this._effectTraits.size > 0) {
-      end = measure(bufferSyncEffectSystem)
-      bufferSyncEffectSystem(this._world, this._effectTraits)
-      end()
-    }
+    // All buffer sync systems are gone — color, UV, flip, AND effect
+    // writes now happen at the setter site (Sprite2D color/zIndex/setFrame
+    // setters + addEffect/removeEffect) via cached `_batchMesh`/`_batchSlot`.
+    // The BucketedDirtyTracker on each attribute handles upload coalescing.
 
     // Transform sync (every frame when autoInvalidateTransforms is on)
     if (this.autoInvalidateTransforms) {
@@ -352,27 +353,33 @@ export class SpriteGroup extends Group implements WorldProvider {
       end()
     }
 
+    // Sort instance slots by zIndex within each batch that had zIndex
+    // changes this frame. Opt-out for materials with alphaTest+depthWrite.
+    end = measure(this._batchSortSystem)
+    this._batchSortSystem(this._world)
+    end()
+
     // Scene graph sync
-    end = measure(sceneGraphSyncSystem)
-    sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
+    end = measure(this._sceneGraphSyncSystem)
+    this._sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
     end()
 
     // Batch removal — frees slots, strips batch traits, defers entity.destroy()
     // to top of next frame via _pendingDestroy.
-    end = measure(batchRemoveSystem)
-    batchRemoveSystem(this._world, this._pendingDestroy)
+    end = measure(this._batchRemoveSystem)
+    this._batchRemoveSystem(this._world, this._pendingDestroy)
     end()
 
     // Late assignment pass: catches entities enrolled after the primary
     // batchAssignSystem pass (e.g., enrolled between render calls in
     // R3F reconciliation). A no-op in the common case.
     end = measure(this._lateAssignPass.name)
-    const lateAssigned = batchAssignSystem(this._world, this._effectTraits)
+    const lateAssigned = this._batchAssignSystem(this._world, this._effectTraits)
     if (lateAssigned) {
       if (this.autoInvalidateTransforms) {
         transformSyncSystem(this._world)
       }
-      sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
+      this._sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
     }
     end()
 
@@ -395,10 +402,14 @@ export class SpriteGroup extends Group implements WorldProvider {
   }
 
   /** Named function target for measure() labeling of the late assignment pass. */
-  private _lateAssignPass(): void { /* measured wrapper only */ }
+  private _lateAssignPass(): void {
+    /* measured wrapper only */
+  }
 
   /** Named function target for measure() labeling of the dirty range flush. */
-  private _flushDirtyRanges(): void { /* measured wrapper only */ }
+  private _flushDirtyRanges(): void {
+    /* measured wrapper only */
+  }
 
   /**
    * Track a material for schema version detection.
@@ -580,13 +591,13 @@ export class SpriteGroup extends Group implements WorldProvider {
       // Dispose all active batch meshes
       for (const batchEntity of registry.activeBatches) {
         const batchMeshData = batchEntity.get(BatchMesh)
-      const mesh = batchMeshData?.mesh ?? null
+        const mesh = batchMeshData?.mesh ?? null
         if (mesh) mesh.dispose()
       }
       // Dispose pooled batch meshes
       for (const batchEntity of registry.batchPool) {
         const batchMeshData = batchEntity.get(BatchMesh)
-      const mesh = batchMeshData?.mesh ?? null
+        const mesh = batchMeshData?.mesh ?? null
         if (mesh) mesh.dispose()
       }
       registry.activeBatches.length = 0
@@ -616,7 +627,7 @@ export class SpriteGroup extends Group implements WorldProvider {
     if (!this._world) return null
     const registryEntities = this._world.query(BatchRegistry)
     if (registryEntities.length === 0) return null
-    return registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined ?? null
+    return (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined) ?? null
   }
 
   /**

@@ -1,15 +1,8 @@
-import {
-  Mesh,
-  PlaneGeometry,
-  Vector2,
-  Vector3,
-  Color,
-  BufferAttribute,
-  type Texture,
-} from 'three'
+import { Mesh, PlaneGeometry, Vector2, Vector3, Color, BufferAttribute, type Texture } from 'three'
 import type { Entity, World } from 'koota'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import type { Sprite2DOptions, SpriteFrame } from './types'
 import {
   SpriteUV,
@@ -40,50 +33,87 @@ import { getGlobalWorld } from '../ecs/world'
 // `this.x = ...` etc., so the accessor setters catch every mutation path.
 
 /** @internal */
-interface Observable { _cb: () => void }
+interface Observable {
+  _cb: () => void
+}
 
 const _vec2Desc: PropertyDescriptorMap = {
   x: {
-    get(this: Observable & { _ox: number }) { return this._ox },
-    set(this: Observable & { _ox: number }, v: number) { this._ox = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: Observable & { _ox: number }) {
+      return this._ox
+    },
+    set(this: Observable & { _ox: number }, v: number) {
+      this._ox = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
   y: {
-    get(this: Observable & { _oy: number }) { return this._oy },
-    set(this: Observable & { _oy: number }, v: number) { this._oy = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: Observable & { _oy: number }) {
+      return this._oy
+    },
+    set(this: Observable & { _oy: number }, v: number) {
+      this._oy = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
 }
 
 const _colorDesc: PropertyDescriptorMap = {
   r: {
-    get(this: Observable & { _or: number }) { return this._or },
-    set(this: Observable & { _or: number }, v: number) { this._or = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: Observable & { _or: number }) {
+      return this._or
+    },
+    set(this: Observable & { _or: number }, v: number) {
+      this._or = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
   g: {
-    get(this: Observable & { _og: number }) { return this._og },
-    set(this: Observable & { _og: number }, v: number) { this._og = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: Observable & { _og: number }) {
+      return this._og
+    },
+    set(this: Observable & { _og: number }, v: number) {
+      this._og = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
   b: {
-    get(this: Observable & { _ob: number }) { return this._ob },
-    set(this: Observable & { _ob: number }, v: number) { this._ob = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: Observable & { _ob: number }) {
+      return this._ob
+    },
+    set(this: Observable & { _ob: number }, v: number) {
+      this._ob = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
 }
 
 /** Convert a Vector2's x/y data properties to callback-firing accessors in place. */
 function observeVector2(v: Vector2, cb: () => void): void {
   const a = v as unknown as Record<string, unknown>
-  a._ox = v.x; a._oy = v.y; a._cb = cb
+  a._ox = v.x
+  a._oy = v.y
+  a._cb = cb
   Object.defineProperties(v, _vec2Desc)
 }
 
 /** Convert a Color's r/g/b data properties to callback-firing accessors in place. */
 function observeColor(c: Color, cb: () => void): void {
   const a = c as unknown as Record<string, unknown>
-  a._or = c.r; a._og = c.g; a._ob = c.b; a._cb = cb
+  a._or = c.r
+  a._og = c.g
+  a._ob = c.b
+  a._cb = cb
   Object.defineProperties(c, _colorDesc)
 }
 
@@ -210,6 +240,24 @@ export class Sprite2D extends Mesh {
    */
   _flatlandWorld: World | null = null
 
+  /**
+   * Cached batch references for O(1) direct-write dispatch from setters.
+   *
+   * Populated by `batchAssignSystem` once a slot is allocated; updated by
+   * `batchReassignSystem` on cross-batch moves; cleared by
+   * `batchRemoveSystem` on slot free. While `_entity !== null`,
+   * `_batchMesh !== null` and `_batchSlot >= 0` is the invariant.
+   *
+   * Setters that need to write to GPU buffers (UV via setFrame, color
+   * via tint/alpha, flip via flipX/flipY) read these directly instead
+   * of routing through Koota's Changed channel and a per-frame
+   * bufferSync system pass.
+   * @internal
+   */
+  _batchMesh: SpriteBatch | null = null
+  /** @internal */ _batchSlot: number = -1
+  /** @internal */ _batchIdx: number = -1
+
   /** Custom geometry for anchor offset */
   private _geometry: PlaneGeometry | null = null
 
@@ -219,25 +267,68 @@ export class Sprite2D extends Mesh {
    */
   // instanceUV: 4 vertices x vec4 = 16 floats
   private _instanceUVBuffer: Float32Array = new Float32Array([
-    0, 0, 1, 1, // vertex 0
-    0, 0, 1, 1, // vertex 1
-    0, 0, 1, 1, // vertex 2
-    0, 0, 1, 1, // vertex 3
+    0,
+    0,
+    1,
+    1, // vertex 0
+    0,
+    0,
+    1,
+    1, // vertex 1
+    0,
+    0,
+    1,
+    1, // vertex 2
+    0,
+    0,
+    1,
+    1, // vertex 3
   ])
   // instanceColor: 4 vertices x vec4 = 16 floats
   private _instanceColorBuffer: Float32Array = new Float32Array([
-    1, 1, 1, 1, // vertex 0
-    1, 1, 1, 1, // vertex 1
-    1, 1, 1, 1, // vertex 2
-    1, 1, 1, 1, // vertex 3
+    1,
+    1,
+    1,
+    1, // vertex 0
+    1,
+    1,
+    1,
+    1, // vertex 1
+    1,
+    1,
+    1,
+    1, // vertex 2
+    1,
+    1,
+    1,
+    1, // vertex 3
   ])
-  // instanceFlip: 4 vertices x vec2 = 8 floats
-  private _instanceFlipBuffer: Float32Array = new Float32Array([
-    1, 1, // vertex 0
-    1, 1, // vertex 1
-    1, 1, // vertex 2
-    1, 1, // vertex 3
+  // instanceSystem: 4 vertices x vec4 = 16 floats
+  //   .x = flipX, .y = flipY, .z = sysFlags, .w = enableBits
+  // Matches the batched interleaved layout so the shader can read
+  // flip + system flags + effect enable bits from the same attribute
+  // regardless of standalone vs batched.
+  private _instanceSystemBuffer: Float32Array = new Float32Array([
+    1,
+    1,
+    0,
+    0, // vertex 0
+    1,
+    1,
+    0,
+    0, // vertex 1
+    1,
+    1,
+    0,
+    0, // vertex 2
+    1,
+    1,
+    0,
+    0, // vertex 3
   ])
+  // instanceExtras: 4 vertices x vec4 = 16 floats. All zeros — reserved
+  // for lighting (shadowRadius). Sprite-sort PR doesn't write to it.
+  private _instanceExtrasBuffer: Float32Array = new Float32Array(16)
 
   /**
    * Create a new Sprite2D.
@@ -276,13 +367,21 @@ export class Sprite2D extends Mesh {
       this._colorR[i] = this._tintColor.r
       this._colorG[i] = this._tintColor.g
       this._colorB[i] = this._tintColor.b
-      if (this._entity) {
-        this._entity.set(SpriteColor, {
-          r: this._tintColor.r,
-          g: this._tintColor.g,
-          b: this._tintColor.b,
-        })
-      } else {
+      // Three states:
+      //   batched (_batchMesh set) → direct mesh write
+      //   enrolled but not yet batched (_entity set, _batchMesh null) →
+      //     no-op; SoA write above is enough, batchAssignSystem will sync
+      //     to the mesh when the slot is allocated
+      //   standalone (no _entity) → own geometry buffer
+      if (this._batchMesh) {
+        this._batchMesh.writeColor(
+          this._batchSlot,
+          this._tintColor.r,
+          this._tintColor.g,
+          this._tintColor.b,
+          this._colorA[i]!
+        )
+      } else if (!this._entity) {
         this._updateOwnColor()
       }
     })
@@ -423,14 +522,22 @@ export class Sprite2D extends Mesh {
   setFrame(frame: SpriteFrame): this {
     const isFirstFrame = this._frame === null
     this._frame = frame
-    // Raw array writes — zero function calls, zero getStore, zero branching.
-    // UV is synced unconditionally in transformSyncSystem, no Changed() needed.
+    // Raw array writes to the SoA store (no Koota Changed roundtrip).
     const i = this._idx
     this._uvX[i] = frame.x
     this._uvY[i] = frame.y
     this._uvW[i] = frame.width
     this._uvH[i] = frame.height
-    if (!this._entity) this._updateOwnUV()
+    // Direct-write to the batch buffer when batched — transformSyncSystem
+    // no longer rewrites UV every frame (only AnimatedSprite2D and explicit
+    // setFrame calls change it, and they all route through here). Enrolled-
+    // but-not-yet-batched falls through with no own-buffer write — the SoA
+    // write above is what batchAssignSystem reads when it syncs the slot.
+    if (this._batchMesh) {
+      this._batchMesh.writeUV(this._batchSlot, frame.x, frame.y, frame.width, frame.height)
+    } else if (!this._entity) {
+      this._updateOwnUV()
+    }
     // Only auto-size on first frame set (not during animation)
     if (isFirstFrame) {
       this.updateSize()
@@ -501,10 +608,17 @@ export class Sprite2D extends Mesh {
    * Set alpha/opacity (0-1).
    */
   set alpha(value: number) {
-    this._colorA[this._idx] = value
-    if (this._entity) {
-      this._entity.set(SpriteColor, { a: value })
-    } else {
+    const i = this._idx
+    this._colorA[i] = value
+    if (this._batchMesh) {
+      this._batchMesh.writeColor(
+        this._batchSlot,
+        this._colorR[i]!,
+        this._colorG[i]!,
+        this._colorB[i]!,
+        value
+      )
+    } else if (!this._entity) {
       this._updateOwnColor()
     }
   }
@@ -520,12 +634,13 @@ export class Sprite2D extends Mesh {
    * Set flipX state.
    */
   set flipX(value: boolean) {
+    const i = this._idx
     const numVal = value ? -1 : 1
-    if (this._flipXArr[this._idx]! === numVal) return
-    this._flipXArr[this._idx] = numVal
-    if (this._entity) {
-      this._entity.set(SpriteFlip, { x: numVal })
-    } else {
+    if (this._flipXArr[i]! === numVal) return
+    this._flipXArr[i] = numVal
+    if (this._batchMesh) {
+      this._batchMesh.writeFlip(this._batchSlot, numVal, this._flipYArr[i]!)
+    } else if (!this._entity) {
       this._updateOwnFlip()
     }
   }
@@ -541,12 +656,13 @@ export class Sprite2D extends Mesh {
    * Set flipY state.
    */
   set flipY(value: boolean) {
+    const i = this._idx
     const numVal = value ? -1 : 1
-    if (this._flipYArr[this._idx]! === numVal) return
-    this._flipYArr[this._idx] = numVal
-    if (this._entity) {
-      this._entity.set(SpriteFlip, { y: numVal })
-    } else {
+    if (this._flipYArr[i]! === numVal) return
+    this._flipYArr[i] = numVal
+    if (this._batchMesh) {
+      this._batchMesh.writeFlip(this._batchSlot, this._flipXArr[i]!, numVal)
+    } else if (!this._entity) {
       this._updateOwnFlip()
     }
   }
@@ -556,14 +672,13 @@ export class Sprite2D extends Mesh {
    */
   flip(horizontal: boolean, vertical: boolean): this {
     const i = this._idx
-    this._flipXArr[i] = horizontal ? -1 : 1
-    this._flipYArr[i] = vertical ? -1 : 1
-    if (this._entity) {
-      this._entity.set(SpriteFlip, {
-        x: horizontal ? -1 : 1,
-        y: vertical ? -1 : 1,
-      })
-    } else {
+    const fx = horizontal ? -1 : 1
+    const fy = vertical ? -1 : 1
+    this._flipXArr[i] = fx
+    this._flipYArr[i] = fy
+    if (this._batchMesh) {
+      this._batchMesh.writeFlip(this._batchSlot, fx, fy)
+    } else if (!this._entity) {
       this._updateOwnFlip()
     }
     return this
@@ -595,9 +710,31 @@ export class Sprite2D extends Mesh {
 
   /**
    * Set z-index within layer (secondary sort key).
+   *
+   * Hot path. Every moving sprite in a y-sorted scene calls this every
+   * frame, so the cost has to stay near-zero per call.
+   *
+   * The raw SoA write is unconditional — `transformSyncSystem` reads
+   * `_zIndexArr` directly and bakes the value into the instance matrix
+   * for the GPU depth test. That alone is enough for alphaTest+depthWrite
+   * materials (GPU resolves order via the baked-in Z, no CPU sort needed).
+   *
+   * For non-gated materials, we flip the batch's `_sortDirty` flag so
+   * `batchSortSystem` knows to re-sort this batch on its next pass. This
+   * replaced the prior `Changed(SpriteZIndex)` channel — Koota's change
+   * tracker enumerated every flip every frame even when the gate trivially
+   * skipped the sort, costing ~7ms/frame in a 12k-sprite demo. The
+   * per-batch boolean costs one ref read + one write.
    */
   set zIndex(value: number) {
+    const prev = this._zIndexArr[this._idx]!
+    if (prev === value) return
     this._zIndexArr[this._idx] = value
+    if (this._batchMesh) {
+      const mat = this.material
+      if (mat.alphaTest > 0 && mat.depthWrite) return
+      this._batchMesh.markSortDirty()
+    }
   }
 
   /**
@@ -647,18 +784,34 @@ export class Sprite2D extends Mesh {
 
   /**
    * Update flip flags in own geometry buffer (standalone mode).
+   * Writes to instanceSystem.xy — the same slot the batched path uses.
    */
   private _updateOwnFlip() {
     const idx = this._idx
     const fx = this._flipXArr[idx]!
     const fy = this._flipYArr[idx]!
     for (let i = 0; i < 4; i++) {
-      this._instanceFlipBuffer[i * 2 + 0] = fx
-      this._instanceFlipBuffer[i * 2 + 1] = fy
+      this._instanceSystemBuffer[i * 4 + 0] = fx
+      this._instanceSystemBuffer[i * 4 + 1] = fy
     }
-    const flipAttr = this.geometry.getAttribute('instanceFlip') as BufferAttribute
-    if (flipAttr) {
-      flipAttr.needsUpdate = true
+    const systemAttr = this.geometry.getAttribute('instanceSystem') as BufferAttribute
+    if (systemAttr) {
+      systemAttr.needsUpdate = true
+    }
+  }
+
+  /**
+   * Update the effect enable-bits slot (instanceSystem.w) in own
+   * geometry buffer (standalone mode). Mirrors SpriteBatch.writeEnableBits
+   * for the batched path.
+   */
+  private _updateOwnEnableBits() {
+    for (let i = 0; i < 4; i++) {
+      this._instanceSystemBuffer[i * 4 + 3] = this._effectFlags
+    }
+    const systemAttr = this.geometry.getAttribute('instanceSystem') as BufferAttribute
+    if (systemAttr) {
+      systemAttr.needsUpdate = true
     }
   }
 
@@ -671,10 +824,14 @@ export class Sprite2D extends Mesh {
   _setupInstanceAttributes() {
     const geo = this.geometry
 
-    // Core instance attributes (persistent buffers)
+    // Core instance attributes (persistent buffers). instanceSystem and
+    // instanceExtras carry the same logical slots the batched path packs
+    // into its InstancedInterleavedBuffer (flip + sysFlags + enableBits
+    // for system; shadowRadius + reserved for extras).
     geo.setAttribute('instanceUV', new BufferAttribute(this._instanceUVBuffer, 4))
     geo.setAttribute('instanceColor', new BufferAttribute(this._instanceColorBuffer, 4))
-    geo.setAttribute('instanceFlip', new BufferAttribute(this._instanceFlipBuffer, 2))
+    geo.setAttribute('instanceSystem', new BufferAttribute(this._instanceSystemBuffer, 4))
+    geo.setAttribute('instanceExtras', new BufferAttribute(this._instanceExtrasBuffer, 4))
 
     // Custom attributes from material schema (effects add these)
     this._customBuffers.clear()
@@ -684,7 +841,9 @@ export class Sprite2D extends Mesh {
       const buffer = new Float32Array(4 * size)
 
       // Fill with defaults from schema
-      const values = Array.isArray(config.defaultValue) ? config.defaultValue : [config.defaultValue]
+      const values = Array.isArray(config.defaultValue)
+        ? config.defaultValue
+        : [config.defaultValue]
       for (let v = 0; v < 4; v++) {
         for (let c = 0; c < size; c++) {
           buffer[v * size + c] = values[c] ?? 0
@@ -753,7 +912,6 @@ export class Sprite2D extends Mesh {
   // INSTANCE-BASED EFFECT SYSTEM
   // ============================================
 
-
   /**
    * Add an effect instance to this sprite.
    * Auto-registers the effect type on the material if not already registered.
@@ -775,6 +933,11 @@ export class Sprite2D extends Mesh {
 
     // 1. Auto-register on material if not already registered
     if (!material.hasEffect(EffectClass)) {
+      console.warn(
+        `Sprite2D.addEffect: effect "${EffectClass.effectName}" was not pre-registered on the material — ` +
+          `auto-registering now triggers a shader recompile and can cause a runtime stall. ` +
+          `Call material.registerEffect(${EffectClass.name || 'EffectClass'}) ahead of time (e.g., right after material creation) to avoid this.`
+      )
       const tierChanged = material.registerEffect(EffectClass)
       if (tierChanged) {
         // Tier changed — recreate own geometry buffers for new attributes
@@ -787,24 +950,23 @@ export class Sprite2D extends Mesh {
 
     // 3. Set enable bit in flags bitmask
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
-    this._effectFlags |= (1 << bitIndex)
+    this._effectFlags |= 1 << bitIndex
 
-    // 4. Add trait to entity (if enrolled)
+    // 4. Add trait to entity (if enrolled) — ECS state only. No .set()
+    //    follow-up needed; the direct-write below pushes the data to the
+    //    GPU buffer immediately, no Changed event consumer.
     if (this._entity) {
       const traitData = this._buildTraitData(effect)
-      // Koota's .add() does NOT trigger Changed(), but bufferSyncEffectSystem
-      // only queries Changed(effectTrait). Follow .add() with .set() so that
-      // already-batched sprites get their effect data synced to GPU buffers.
       this._entity.add(EffectClass._trait(traitData))
-      this._entity.set(EffectClass._trait, traitData)
     }
 
     // 5. Store effect
     this._effects.push(effect)
 
-    // 6. Write packed data to own geometry buffers (standalone mode only).
-    //    For batched sprites, batchAssignSystem/bufferSyncEffectSystem handles sync.
-    if (!this._entity) {
+    // 6. Write packed data directly to wherever this sprite lives.
+    if (this._batchMesh) {
+      this._writeEffectStateToBatch()
+    } else if (!this._entity) {
       this._writeEffectDataOwn()
     }
 
@@ -829,7 +991,7 @@ export class Sprite2D extends Mesh {
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
     this._effectFlags &= ~(1 << bitIndex)
 
-    // 2. Remove trait from entity (if enrolled)
+    // 2. Remove trait from entity (if enrolled) — ECS state only.
     if (this._entity && this._entity.has(EffectClass._trait)) {
       this._entity.remove(EffectClass._trait)
     }
@@ -838,13 +1000,57 @@ export class Sprite2D extends Mesh {
     effect._detach()
     this._effects.splice(effectIndex, 1)
 
-    // 4. Write updated packed data to own geometry buffers (standalone only).
-    //    For batched sprites, bufferSyncEffectSystem handles sync.
-    if (!this._entity) {
+    // 4. Write updated packed data directly to wherever this sprite lives.
+    //    Effect data slots become don't-care (bit-off, shader ignores), so
+    //    only the flags float actually needs to change — but we write the
+    //    full state for symmetry with addEffect.
+    if (this._batchMesh) {
+      this._writeEffectStateToBatch()
+    } else if (!this._entity) {
       this._writeEffectDataOwn()
     }
 
     return this
+  }
+
+  /**
+   * Direct-write the sprite's current effect state (flags + active field
+   * values) into its batch's packed effect buffers. Same pattern as the
+   * color / zIndex setters — uses the cached `_batchMesh` + `_batchSlot`
+   * refs instead of routing through Koota Changed events.
+   * @internal
+   */
+  private _writeEffectStateToBatch(): void {
+    const mesh = this._batchMesh
+    if (!mesh) return
+    const material = this.material
+    if (material._effectTier === 0) return
+
+    const slot = this._batchSlot
+    // Enable bits live in the interleaved core (instanceSystem.w), NOT
+    // in effectBuf0 — see SpriteBatch.writeEnableBits and the
+    // EffectMaterial shader composition (reads `instanceSystem.w`).
+    mesh.writeEnableBits(slot, this._effectFlags)
+
+    for (const effect of this._effects) {
+      const EffectClass = effect.constructor as typeof MaterialEffect
+      for (const field of EffectClass._fields) {
+        const slotKey = `${EffectClass.effectName}_${field.name}`
+        const slotInfo = material._effectSlots.get(slotKey)
+        if (!slotInfo) continue
+
+        const value = effect._getField(field.name)
+        if (typeof value === 'number') {
+          const off = slotInfo.offset
+          mesh.writeEffectSlot(slot, Math.floor(off / 4), off % 4, value)
+        } else {
+          for (let i = 0; i < value.length; i++) {
+            const off = slotInfo.offset + i
+            mesh.writeEffectSlot(slot, Math.floor(off / 4), off % 4, value[i]!)
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -877,8 +1083,10 @@ export class Sprite2D extends Mesh {
     const tier = material._effectTier
     if (tier === 0) return
 
-    // Write flags to slot 0
-    this._writePackedSlotOwn(0, this._effectFlags)
+    // Enable bits live in instanceSystem.w (same as the batched path's
+    // writeEnableBits). Effect buffers are now pure effect data starting
+    // at offset 0 — no flags slot.
+    this._updateOwnEnableBits()
 
     // Write effect field values to their packed positions
     for (const effect of this._effects) {
@@ -901,7 +1109,9 @@ export class Sprite2D extends Mesh {
 
     // Zero out slots for effects registered on material but not active on this sprite
     for (const effectClass of material._effects) {
-      const isActive = this._effects.some(e => (e.constructor as typeof MaterialEffect).effectName === effectClass.effectName)
+      const isActive = this._effects.some(
+        (e) => (e.constructor as typeof MaterialEffect).effectName === effectClass.effectName
+      )
       if (!isActive) {
         for (const field of effectClass._fields) {
           const slotKey = `${effectClass.effectName}_${field.name}`
@@ -914,7 +1124,6 @@ export class Sprite2D extends Mesh {
       }
     }
   }
-
 
   /**
    * Write a single float to a packed effect buffer slot in own geometry buffer.
@@ -934,7 +1143,6 @@ export class Sprite2D extends Mesh {
       if (bufferAttr) bufferAttr.needsUpdate = true
     }
   }
-
 
   /**
    * Fast 2D matrix update — bypasses Three.js quaternion-based compose().
@@ -959,15 +1167,33 @@ export class Sprite2D extends Mesh {
       // 2D rotation around Z axis
       const c = Math.cos(rz)
       const s = Math.sin(rz)
-      te[0] = c * sx;  te[4] = -s * sy; te[8]  = 0; te[12] = px
-      te[1] = s * sx;  te[5] =  c * sy; te[9]  = 0; te[13] = py
+      te[0] = c * sx
+      te[4] = -s * sy
+      te[8] = 0
+      te[12] = px
+      te[1] = s * sx
+      te[5] = c * sy
+      te[9] = 0
+      te[13] = py
     } else {
       // No rotation — most common path
-      te[0] = sx; te[4] = 0;  te[8]  = 0; te[12] = px
-      te[1] = 0;  te[5] = sy; te[9]  = 0; te[13] = py
+      te[0] = sx
+      te[4] = 0
+      te[8] = 0
+      te[12] = px
+      te[1] = 0
+      te[5] = sy
+      te[9] = 0
+      te[13] = py
     }
-    te[2] = 0; te[6] = 0; te[10] = 1; te[14] = pz
-    te[3] = 0; te[7] = 0; te[11] = 0; te[15] = 1
+    te[2] = 0
+    te[6] = 0
+    te[10] = 1
+    te[14] = pz
+    te[3] = 0
+    te[7] = 0
+    te[11] = 0
+    te[15] = 1
 
     this.matrixWorldNeedsUpdate = true
   }
@@ -991,9 +1217,16 @@ export class Sprite2D extends Mesh {
     this._flatlandWorld = w
 
     // Read current values from local arrays before swapping refs
-    const uvX = this._uvX[0]!, uvY = this._uvY[0]!, uvW = this._uvW[0]!, uvH = this._uvH[0]!
-    const cR = this._colorR[0]!, cG = this._colorG[0]!, cB = this._colorB[0]!, cA = this._colorA[0]!
-    const fX = this._flipXArr[0]!, fY = this._flipYArr[0]!
+    const uvX = this._uvX[0]!,
+      uvY = this._uvY[0]!,
+      uvW = this._uvW[0]!,
+      uvH = this._uvH[0]!
+    const cR = this._colorR[0]!,
+      cG = this._colorG[0]!,
+      cB = this._colorB[0]!,
+      cA = this._colorA[0]!
+    const fX = this._flipXArr[0]!,
+      fY = this._flipYArr[0]!
     const lay = this._layerArr[0]!
     const zIdx = this._zIndexArr[0]!
 
@@ -1008,7 +1241,7 @@ export class Sprite2D extends Mesh {
       }),
       IsRenderable,
       IsBatched,
-      BatchSlot({ batchIdx: -1, slot: -1 }),
+      BatchSlot({ batchIdx: -1, slot: -1 })
     )
 
     const eid = (this._entity as unknown as number) & ENTITY_ID_MASK
@@ -1063,16 +1296,30 @@ export class Sprite2D extends Mesh {
 
     // Read current values from SoA arrays before swapping refs back
     const eid = this._idx
-    const uvX = this._uvX[eid]!, uvY = this._uvY[eid]!, uvW = this._uvW[eid]!, uvH = this._uvH[eid]!
-    const cR = this._colorR[eid]!, cG = this._colorG[eid]!, cB = this._colorB[eid]!, cA = this._colorA[eid]!
-    const fX = this._flipXArr[eid]!, fY = this._flipYArr[eid]!
+    const uvX = this._uvX[eid]!,
+      uvY = this._uvY[eid]!,
+      uvW = this._uvW[eid]!,
+      uvH = this._uvH[eid]!
+    const cR = this._colorR[eid]!,
+      cG = this._colorG[eid]!,
+      cB = this._colorB[eid]!,
+      cA = this._colorA[eid]!
+    const fX = this._flipXArr[eid]!,
+      fY = this._flipYArr[eid]!
     const lay = this._layerArr[eid]!
     const zIdx = this._zIndexArr[eid]!
 
     // Swap refs back to local arrays and store values
-    this._uvX = [uvX]; this._uvY = [uvY]; this._uvW = [uvW]; this._uvH = [uvH]
-    this._colorR = [cR]; this._colorG = [cG]; this._colorB = [cB]; this._colorA = [cA]
-    this._flipXArr = [fX]; this._flipYArr = [fY]
+    this._uvX = [uvX]
+    this._uvY = [uvY]
+    this._uvW = [uvW]
+    this._uvH = [uvH]
+    this._colorR = [cR]
+    this._colorG = [cG]
+    this._colorB = [cB]
+    this._colorA = [cA]
+    this._flipXArr = [fX]
+    this._flipYArr = [fY]
     this._layerArr = [lay]
     this._zIndexArr = [zIdx]
     this._idx = 0
@@ -1124,7 +1371,6 @@ export class Sprite2D extends Mesh {
     return this._entity
   }
 
-
   /**
    * Dispose of resources.
    */
@@ -1171,7 +1417,10 @@ export class Sprite2D extends Mesh {
 
     // Clone effect instances
     for (const effect of this._effects) {
-      const EffectClass = effect.constructor as { new (): MaterialEffect; _fields: typeof MaterialEffect._fields }
+      const EffectClass = effect.constructor as {
+        new (): MaterialEffect
+        _fields: typeof MaterialEffect._fields
+      }
       const clonedEffect = new EffectClass()
       // Copy snapshot defaults
       for (const field of EffectClass._fields) {
