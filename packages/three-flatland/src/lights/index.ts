@@ -26,6 +26,8 @@ export type {
 export { OcclusionPass } from './OcclusionPass'
 export type { OcclusionPassOptions } from './OcclusionPass'
 export { SDFGenerator } from './SDFGenerator'
+export { RadianceCascades } from './RadianceCascades'
+export type { RadianceCascadesConfig } from './RadianceCascades'
 export { ForwardPlusLighting, TILE_SIZE, MAX_LIGHTS_PER_TILE } from './ForwardPlusLighting'
 
 // Shared coordinate utilities
