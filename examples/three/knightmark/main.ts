@@ -14,8 +14,9 @@ import {
   type TileMapData,
   type TilesetData,
   type TileLayerData,
+  createDevtoolsProvider,
 } from 'three-flatland'
-import { createPane, wireSceneStats } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 // ============================================
 // CONSTANTS
@@ -35,7 +36,8 @@ const TILE_SCALE = 2
 // TWEAKPANE
 // ============================================
 
-const { pane, stats: globalStats } = createPane()
+const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+const devtools = createDevtoolsProvider({ name: 'knightmark' })
 
 // Stats monitors — updated each frame
 const knightStats = { knights: 0, batches: 0 }
@@ -188,10 +190,6 @@ async function main() {
   // remains as a safety backstop and tints any margins.
   const scene = new Scene()
   scene.background = gemClearColor(GEM)
-
-  // Wire the pane's stats hooks to this scene — captures draws/tris/etc
-  // on each render and drains the GPU timestamp query pool.
-  wireSceneStats(scene, globalStats)
 
   // Orthographic camera
   const aspect = window.innerWidth / window.innerHeight
@@ -382,9 +380,6 @@ async function main() {
     lastTime = now
     const dt = deltaMs / 1000
 
-    // FPS graph
-    globalStats.begin()
-
     // Derive cell size from current hitRadius
     const cellSize = sim.hitRadius * 4
 
@@ -459,14 +454,15 @@ async function main() {
     }
 
     // Render — systems run automatically in updateMatrixWorld
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
+    devtools.endFrame(renderer)
+    updateDevtools()
 
-    // Knight batch monitors — draws/tris/etc are captured automatically
-    // by the `wireSceneStats(scene, globalStats)` call in main().
+    // Knight batch monitors
     const s = spriteGroup.stats
     knightStats.knights = knights.length
     knightStats.batches = s.batchCount
-    globalStats.end()
   }
   animate()
 }

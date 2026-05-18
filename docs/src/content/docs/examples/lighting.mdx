@@ -1,0 +1,122 @@
+---
+title: 2D Lighting
+description: Dynamic sprite lighting with draggable point lights.
+template: splash
+sort: 10
+---
+
+import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
+import { loadExample } from '../../../utils/loadExample'
+
+export const threeFiles = loadExample('three', 'lighting')
+export const reactFiles = loadExample('react', 'lighting')
+
+<ExampleDetailLayout
+  slug="lighting"
+  threeFiles={threeFiles}
+  reactFiles={reactFiles}
+>
+
+## Interactive Lighting Demo
+
+This example demonstrates dynamic 2D lighting using `DefaultLightEffect` (Forward+ tiled culling), two flickering point lights with draggable indicators, and animated knight sprites:
+
+| Control | Action |
+|---------|--------|
+| **Torch 1 / 2** | Toggle point lights on/off |
+| **Drag** | Move point lights (touch or mouse) |
+
+## Lighting Setup
+
+The scene uses `DefaultLightEffect` (Forward+ tiled culling) for efficient per-tile light culling:
+
+```typescript
+import { Flatland, Light2D, Sprite2D } from 'three-flatland'
+import { DefaultLightEffect } from '@three-flatland/presets'
+
+const defaultEffect = new DefaultLightEffect()
+
+const flatland = new Flatland({ viewSize: 300, clearColor: 0x0a0a12 })
+flatland.setLighting(defaultEffect)
+
+// Two colored torches
+const torch1 = new Light2D({
+  type: 'point',
+  position: [-80, 50],
+  color: 0xff6600,
+  intensity: 1.2,
+  distance: 150,
+  decay: 2,
+})
+
+const torch2 = new Light2D({
+  type: 'point',
+  position: [80, 50],
+  color: 0xffaa00,
+  intensity: 1.0,
+  distance: 150,
+  decay: 2,
+})
+
+flatland.add(torch1)
+flatland.add(torch2)
+
+// Dim ambient so unlighted areas aren't pure black
+flatland.add(new Light2D({
+  type: 'ambient',
+  color: 0x111122,
+  intensity: 0.15,
+}))
+```
+
+## Sprites
+
+All sprites receive lighting by default when a LightEffect is active. Set `lit: false` to opt out (e.g., for UI elements):
+
+```typescript
+const knight = new Sprite2D({
+  texture: knightSheet.texture,
+  frame: knightSheet.getFrame('idle_0'),
+})
+flatland.add(knight)
+
+// UI indicator — always full brightness
+const indicator = new Sprite2D({ texture: circleTexture, lit: false })
+```
+
+## React: Declarative Lighting
+
+In React, use `attachLighting` to wire the LightEffect to Flatland, `attachEffect` for normal providers, and `light2D` JSX elements for lights:
+
+```tsx
+import { extend } from '@react-three/fiber/webgpu'
+import {
+  Flatland, Light2D, Sprite2D, attachLighting, attachEffect,
+} from 'three-flatland/react'
+import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
+import '@three-flatland/presets/react'
+
+extend({ Flatland, Sprite2D, Light2D, DefaultLightEffect, NormalMapProvider })
+
+<flatland ref={flatlandRef} viewSize={300} clearColor={0x0a0a12}>
+  <defaultLightEffect attach={attachLighting} />
+
+  <light2D lightType="point" position={[-80, 50, 0]}
+    color={0xff6600} intensity={1.2} distance={150} decay={2} />
+  <light2D lightType="point" position={[80, 50, 0]}
+    color={0xffaa00} intensity={1.0} distance={150} decay={2} />
+  <light2D lightType="ambient" color={0x111122} intensity={0.15} />
+
+  <sprite2D texture={tex}>
+    <normalMapProvider attach={attachEffect} />
+  </sprite2D>
+</flatland>
+```
+
+## Further Reading
+
+- [2D Lighting Guide](../../guides/lighting/) — Full reference for `DefaultLightEffect`, normal providers, and shadow controls
+- [Pass Effects](../pass-effects/) — Post-processing after lighting
+- [TSL Nodes](../tsl-nodes/) — Per-sprite shader effects
+
+</ExampleDetailLayout>

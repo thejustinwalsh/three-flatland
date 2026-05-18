@@ -10,6 +10,7 @@ import starlightTheme from 'starlight-theme';
 import react from '@astrojs/react';
 import { watchExamples } from './vite-plugins/watch-examples.js';
 import { copyExamples } from './vite-plugins/copy-examples.js';
+import { copyDevtools } from './vite-plugins/copy-devtools.js';
 import { rehypeExternalLinks } from './rehype-plugins/external-links.js';
 import stripIndexLinks from './typedoc-plugins/strip-index-links.mjs';
 
@@ -379,20 +380,34 @@ export default defineConfig({
               { label: 'Quick Start', slug: 'getting-started/quick-start', icon: 'i-lucide:play' },
             ],
           },
+          // Concepts — pages whose primary purpose is to build the reader's
+          // mental model. Less "do X," more "understand why X works the way it
+          // does." Slugs stay under /guides/ to preserve URL stability; the
+          // IA split is sidebar-level only.
+          {
+            label: 'Concepts',
+            items: [
+              { label: 'The Flatland Pipeline', slug: 'guides/flatland' },
+              { label: 'Batch Rendering', slug: 'guides/batch-rendering' },
+              { label: '2D Lighting', slug: 'guides/lighting' },
+              { label: 'Shadows & Occlusion', slug: 'guides/shadows' },
+            ],
+          },
+          // Guides — task-oriented how-tos. "I want to do X." Each page should
+          // get the reader from zero to a working result with their own asset.
           {
             label: 'Guides',
             items: [
               { label: 'Sprites', slug: 'guides/sprites' },
               { label: 'Animation', slug: 'guides/animation' },
-              { label: 'Batch Rendering', slug: 'guides/batch-rendering' },
-              { label: 'Flatland', slug: 'guides/flatland' },
               { label: 'Loaders', slug: 'guides/loaders' },
+              { label: 'Tilemaps', slug: 'guides/tilemaps' },
+              { label: 'Baking', slug: 'guides/baking' },
               { label: 'TSL Nodes', slug: 'guides/tsl-nodes' },
               { label: 'Pass Effects', slug: 'guides/pass-effects' },
-              { label: 'Tilemaps', slug: 'guides/tilemaps' },
               { label: 'Skia', slug: 'guides/skia' },
               { label: 'Slug Text', slug: 'guides/slug-text' },
-              { label: 'Debug Controls', slug: 'guides/debug-controls' },
+              { label: 'Devtools', slug: 'guides/devtools' },
             ],
           },
           // Examples + Showcases are now top-level surfaces with their
@@ -401,7 +416,7 @@ export default defineConfig({
           // routed under `/examples/<slug>/` and `/showcases/<slug>/`
           // — they're just no longer rendered in the docs sidebar.
           {
-            label: 'Project',
+            label: 'Resources',
             items: [
               { label: 'Branding', slug: 'branding' },
               { label: 'LLMs', slug: 'llm-prompts' },
@@ -434,6 +449,7 @@ export default defineConfig({
     plugins: [
       watchExamples(),
       copyExamples(),
+      copyDevtools(),
       /**
        * Disable bfcache on HTML responses in dev — Chrome's in-memory
        * back/forward cache restores a frozen DOM + JS state when you

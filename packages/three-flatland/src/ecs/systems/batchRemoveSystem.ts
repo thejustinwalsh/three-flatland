@@ -1,5 +1,5 @@
 import { createRemoved } from 'koota'
-import type { World, Entity } from 'koota'
+import type { World } from 'koota'
 import {
   IsRenderable,
   InBatch,
@@ -20,12 +20,14 @@ const Removed = createRemoved()
  * the batch entity and slot, frees the slot, removes the relation,
  * and recycles the batch if empty.
  *
- * Entity destruction is deferred — zombie entities are returned to the
- * caller and destroyed at the top of the next frame by
- * `deferredDestroySystem`. This pushes koota's cascading trait removal
+ * Entity destruction is deferred — zombie entities are pushed to
+ * `registry.pendingDestroy` and destroyed at the top of the next frame
+ * by `deferredDestroySystem`. This pushes koota's cascading trait removal
  * cost out of the hot render frame.
+ *
+ * Reads pendingDestroy from BatchRegistry. Takes only (world).
  */
-export function batchRemoveSystem(world: World, pendingDestroy: Entity[]): void {
+export function batchRemoveSystem(world: World): void {
   const removed = world.query(Removed(IsRenderable))
   if (removed.length === 0) return
 
@@ -66,7 +68,7 @@ export function batchRemoveSystem(world: World, pendingDestroy: Entity[]): void 
     }
 
     // Defer entity destruction to top of next frame
-    pendingDestroy.push(entity)
+    registry.pendingDestroy.push(entity)
   }
 }
 
@@ -77,8 +79,16 @@ export function batchRemoveSystem(world: World, pendingDestroy: Entity[]): void 
  * cascading trait removal cost is paid outside the hot render path.
  * The zombie entities are invisible to all systems (no IsRenderable,
  * no IsBatched) so the one-frame delay is safe.
+ *
+ * Reads pendingDestroy from BatchRegistry. Takes only (world).
  */
-export function deferredDestroySystem(pendingDestroy: Entity[]): void {
+export function deferredDestroySystem(world: World): void {
+  const registryEntities = world.query(BatchRegistry)
+  if (registryEntities.length === 0) return
+  const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+  if (!registry) return
+
+  const pendingDestroy = registry.pendingDestroy
   if (pendingDestroy.length === 0) return
   for (const entity of pendingDestroy) {
     entity.destroy()

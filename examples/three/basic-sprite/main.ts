@@ -1,8 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera } from 'three'
-import { Sprite2D, TextureLoader } from 'three-flatland'
-import { createPane } from '@three-flatland/tweakpane'
-import { Color } from 'three'
+import { Scene, OrthographicCamera, Color } from 'three'
+import { Sprite2D, TextureLoader, createDevtoolsProvider } from 'three-flatland'
+import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
@@ -13,6 +12,11 @@ let rafId = 0
 let activeRenderer: WebGPURenderer | null = null
 
 async function main() {
+  // Gem-tinted backdrop matching the masonry tile poster. The TSL
+  // gradient paints the entire viewport via scene.backgroundNode (L2);
+  // no separate L1 clear color so there's no flash of color before
+  // the shader compiles — body bg (#16191e, see index.html) shows
+  // through any uncovered pixels.
   const scene = new Scene()
   ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
@@ -48,7 +52,15 @@ async function main() {
   sprite.position.set(0, 0, 0)
   scene.add(sprite)
 
-  const { pane, stats } = createPane({ scene })
+  // Tweakpane UI
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+
+  // Vanilla three.js apps don't get a devtools provider for free —
+  // Flatland constructs one inside `Flatland.render()`. For non-
+  // Flatland examples we spawn one ourselves and bracket the render
+  // call below. No-op (zero cost) when the devtools build flag is
+  // off in production.
+  const devtools = createDevtoolsProvider({ name: 'basic-sprite' })
 
   const params = {
     baseScale: 150,
@@ -135,7 +147,6 @@ async function main() {
 
   function animate() {
     rafId = requestAnimationFrame(animate)
-    stats.begin()
 
     const now = performance.now()
     const delta = (now - lastTime) / 1000
@@ -159,8 +170,10 @@ async function main() {
 
     sprite.rotation.z += params.rotationSpeed * delta
 
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
-    stats.end()
+    devtools.endFrame(renderer)
+    updateDevtools()
   }
 
   animate()

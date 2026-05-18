@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { Texture, BufferAttribute } from 'three'
+import { Texture, BufferAttribute, InterleavedBufferAttribute } from 'three'
 import { createWorld, universe } from 'koota'
 import { Sprite2D } from './Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
@@ -113,6 +113,48 @@ describe('Sprite2D', () => {
     expect(pos2D.x).toBe(100)
     expect(pos2D.y).toBe(200)
   })
+
+  it('should default shadowRadius to undefined (auto-resolve from scale)', () => {
+    const sprite = new Sprite2D({ texture })
+    sprite.scale.set(64, 64, 1)
+    expect(sprite.shadowRadius).toBeUndefined()
+    // _resolveShadowRadius reflects the auto-derived value.
+    expect(sprite._resolveShadowRadius()).toBe(64)
+  })
+
+  it('should accept explicit shadowRadius in options', () => {
+    const sprite = new Sprite2D({ texture, shadowRadius: 25 })
+    expect(sprite.shadowRadius).toBe(25)
+    expect(sprite._resolveShadowRadius()).toBe(25)
+  })
+
+  it('should auto-resolve to max(|scale.x|, |scale.y|) with negative flips', () => {
+    const sprite = new Sprite2D({ texture })
+    sprite.scale.set(-64, 32, 1)
+    expect(sprite._resolveShadowRadius()).toBe(64)
+  })
+
+  it('should pick up shadowRadius override through the setter', () => {
+    const sprite = new Sprite2D({ texture })
+    sprite.scale.set(64, 64, 1)
+    expect(sprite._resolveShadowRadius()).toBe(64)
+    sprite.shadowRadius = 12
+    expect(sprite._resolveShadowRadius()).toBe(12)
+    sprite.shadowRadius = undefined
+    expect(sprite._resolveShadowRadius()).toBe(64)
+  })
+
+  it('should preserve shadowRadius override across clone', () => {
+    const sprite = new Sprite2D({ texture, shadowRadius: 18 })
+    const cloned = sprite.clone()
+    expect(cloned.shadowRadius).toBe(18)
+  })
+
+  it('should leave auto shadowRadius undefined on clone', () => {
+    const sprite = new Sprite2D({ texture })
+    const cloned = sprite.clone()
+    expect(cloned.shadowRadius).toBeUndefined()
+  })
 })
 
 // ============================================
@@ -139,12 +181,15 @@ describe('Sprite2D standalone vs enrolled', () => {
 
     sprite.tint = [1, 0, 0]
 
-    const colorAttr = sprite.geometry.getAttribute('instanceColor') as BufferAttribute
-    const array = colorAttr.array as Float32Array
-    expect(array[0]).toBeCloseTo(1) // r
-    expect(array[1]).toBeCloseTo(0) // g
-    expect(array[2]).toBeCloseTo(0) // b
-    expect(array[3]).toBeCloseTo(1) // a
+    // Standalone sprites use the interleaved instance-data layout
+    // (stride 16 per vertex); color lives at offsets 4..7 within each
+    // vertex's slice of the shared underlying array.
+    const colorAttr = sprite.geometry.getAttribute('instanceColor') as InterleavedBufferAttribute
+    const array = (colorAttr.data as { array: Float32Array }).array
+    expect(array[4]).toBeCloseTo(1) // r
+    expect(array[5]).toBeCloseTo(0) // g
+    expect(array[6]).toBeCloseTo(0) // b
+    expect(array[7]).toBeCloseTo(1) // a
   })
 
   it('standalone: alpha writes to own geometry buffer immediately', () => {
@@ -152,11 +197,12 @@ describe('Sprite2D standalone vs enrolled', () => {
 
     sprite.alpha = 0.5
 
-    const colorAttr = sprite.geometry.getAttribute('instanceColor') as BufferAttribute
-    const array = colorAttr.array as Float32Array
-    // All 4 vertices should have alpha = 0.5
-    expect(array[3]).toBeCloseTo(0.5)
-    expect(array[7]).toBeCloseTo(0.5)
+    const colorAttr = sprite.geometry.getAttribute('instanceColor') as InterleavedBufferAttribute
+    const array = (colorAttr.data as { array: Float32Array }).array
+    // All 4 vertices should have alpha = 0.5 — color.a = offset 4+3 = 7
+    // within each vertex's 16-float slice.
+    expect(array[0 * 16 + 7]).toBeCloseTo(0.5)
+    expect(array[1 * 16 + 7]).toBeCloseTo(0.5)
   })
 
   it('standalone: flip writes to own geometry buffer immediately', () => {
@@ -164,10 +210,12 @@ describe('Sprite2D standalone vs enrolled', () => {
 
     sprite.flipX = true
 
-    const flipAttr = sprite.geometry.getAttribute('instanceFlip') as BufferAttribute
-    const array = flipAttr.array as Float32Array
-    expect(array[0]).toBe(-1) // x flipped
-    expect(array[1]).toBe(1)  // y normal
+    // Flip lives on `instanceSystem.xy` — offsets 8/9 within each
+    // vertex's 16-float slice.
+    const sysAttr = sprite.geometry.getAttribute('instanceSystem') as InterleavedBufferAttribute
+    const array = (sysAttr.data as { array: Float32Array }).array
+    expect(array[8]).toBe(-1) // vertex 0, system.x = flipX (flipped)
+    expect(array[9]).toBe(1) // vertex 0, system.y = flipY (normal)
   })
 
   it('standalone: setFrame writes to own UV buffer immediately', () => {
@@ -182,8 +230,8 @@ describe('Sprite2D standalone vs enrolled', () => {
       sourceHeight: 25,
     })
 
-    const uvAttr = sprite.geometry.getAttribute('instanceUV') as BufferAttribute
-    const array = uvAttr.array as Float32Array
+    const uvAttr = sprite.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute
+    const array = (uvAttr.data as { array: Float32Array }).array
     expect(array[0]).toBeCloseTo(0.25) // x
     expect(array[1]).toBeCloseTo(0.5)  // y
     expect(array[2]).toBeCloseTo(0.25) // w
@@ -195,16 +243,18 @@ describe('Sprite2D standalone vs enrolled', () => {
     const world = createWorld()
     sprite._enrollInWorld(world)
 
-    // Read initial own buffer color (should be white from construction)
-    const colorAttr = sprite.geometry.getAttribute('instanceColor') as BufferAttribute
-    const array = colorAttr.array as Float32Array
-    const initialG = array[1] // green component
+    // Read initial own buffer color. The interleaved layout puts
+    // color at offset 4..7 within each vertex's 16-float slice; green
+    // is offset 5.
+    const colorAttr = sprite.geometry.getAttribute('instanceColor') as InterleavedBufferAttribute
+    const array = (colorAttr.data as { array: Float32Array }).array
+    const initialG = array[5]
 
     // Change tint — writes to entity trait, NOT to own buffer
     sprite.tint = [1, 0, 0]
 
     // Own buffer should NOT have changed
-    expect(array[1]).toBe(initialG)
+    expect(array[5]).toBe(initialG)
 
     // But the trait should have the new value
     expect(sprite._entity).not.toBeNull()

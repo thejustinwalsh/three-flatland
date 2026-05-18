@@ -147,6 +147,28 @@
         "default": "./dist/distortion/*.cjs"
       }
     },
+    "./lighting": {
+      "source": "./src/lighting/index.ts",
+      "import": {
+        "types": "./dist/lighting/index.d.ts",
+        "default": "./dist/lighting/index.js"
+      },
+      "require": {
+        "types": "./dist/lighting/index.d.cts",
+        "default": "./dist/lighting/index.cjs"
+      }
+    },
+    "./lighting/*": {
+      "source": "./src/lighting/*.ts",
+      "import": {
+        "types": "./dist/lighting/*.d.ts",
+        "default": "./dist/lighting/*.js"
+      },
+      "require": {
+        "types": "./dist/lighting/*.d.cts",
+        "default": "./dist/lighting/*.cjs"
+      }
+    },
     "./retro": {
       "source": "./src/retro/index.ts",
       "import": {

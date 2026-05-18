@@ -95,7 +95,12 @@ const resolveSkia = {
 
 const corePeerDeps = ['three', 'react', '@react-three/fiber', 'koota']
 
-module.exports = [
+// SIZE_FILTER (substring match on check.name) scopes down which checks run.
+// Used by `pnpm size:why`, which writes one esbuild-visualizer HTML per check
+// and auto-opens each — running it across all ~20 checks is unusable.
+const filter = process.env.SIZE_FILTER
+
+const allChecks = [
   // ── three-flatland (core) ──
   {
     name: 'three-flatland (full)',
@@ -124,10 +129,10 @@ module.exports = [
     import: '*',
   },
 
-  // ── @three-flatland/tweakpane ──
+  // ── @three-flatland/devtools ──
   {
-    name: '@three-flatland/tweakpane (full)',
-    path: 'packages/tweakpane/dist/index.js',
+    name: '@three-flatland/devtools (full)',
+    path: 'packages/devtools/dist/index.js',
     import: '*',
     ignore: [
       'tweakpane',
@@ -137,8 +142,8 @@ module.exports = [
     ],
   },
   {
-    name: '@three-flatland/tweakpane/react (full)',
-    path: 'packages/tweakpane/dist/react.js',
+    name: '@three-flatland/devtools/react (full)',
+    path: 'packages/devtools/dist/react.js',
     import: '*',
     ignore: [
       'tweakpane',
@@ -189,3 +194,5 @@ module.exports = [
     return entries
   })(),
 ]
+
+module.exports = filter ? allChecks.filter((c) => c.name.includes(filter)) : allChecks

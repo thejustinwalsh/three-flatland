@@ -1,7 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Vector2, Raycaster, Plane, Vector3 } from 'three'
-import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader } from 'three-flatland'
-import { createPane } from '@three-flatland/tweakpane'
+import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader, createDevtoolsProvider } from 'three-flatland'
+import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
@@ -326,9 +326,9 @@ async function main() {
   selectedBuilding = 0 // Back to house
   updateHoverSprite()
 
-  // Tweakpane debug UI — pass `scene` so draws/triangles and GPU timestamps
-  // are auto-wired via scene.onAfterRender.
-  const { pane, stats: globalStats } = createPane({ scene })
+  // Tweakpane debug UI
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'batch-demo' })
   const exampleStats = { sprites: 0, batches: 0 }
   const statsFolder = pane.addFolder({ title: 'Batching', expanded: false })
   statsFolder.addBinding(exampleStats, 'sprites', { readonly: true, format: (v: number) => v.toFixed(0) })
@@ -363,9 +363,10 @@ async function main() {
   function animate() {
     rafId = requestAnimationFrame(animate)
 
-    globalStats.begin()
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
-    globalStats.end()
+    devtools.endFrame(renderer)
+    updateDevtools()
 
     // Update stats monitors
     const groupStats = spriteGroup.stats

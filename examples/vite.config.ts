@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { readdirSync, existsSync, createReadStream, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { threeFlatlandDevtools } from '@three-flatland/devtools/vite'
 
 import type { Plugin } from 'vite'
 
@@ -101,7 +102,7 @@ export default defineConfig({
       '@react-three/fiber',
     ],
   },
-  plugins: [react(), mpaRoutingPlugin()],
+  plugins: [react(), mpaRoutingPlugin(), threeFlatlandDevtools()],
   // Pre-bundle all deps in a single pass at startup by pointing entries
   // at every example HTML. This avoids on-demand re-optimization (which
   // changes hashes mid-session and causes 504/404 errors).

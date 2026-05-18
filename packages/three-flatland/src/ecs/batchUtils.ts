@@ -1,8 +1,11 @@
-import type { Entity, World } from 'koota'
+import type { Entity, World, Trait } from 'koota'
+import type { Group, Object3D } from 'three'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import { SpriteBatch } from '../pipeline/SpriteBatch'
 import { BatchMesh, BatchMeta, type BatchRun } from './traits'
+import type { SystemSchedule } from './SystemSchedule'
 
 /** Shape of the BatchRegistry trait data, used for parameter typing. */
 export interface RegistryData {
@@ -18,6 +21,22 @@ export interface RegistryData {
   /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
    *  Pure array indexing — same O(1) pattern as other SoA stores. */
   spriteArr: (Sprite2D | null)[]
+  /** Cached effect traits across all materials. */
+  effectTraits: Map<Trait, typeof MaterialEffect>
+  /** Entities whose destruction is deferred to the top of the next frame. */
+  pendingDestroy: Entity[]
+  /** The SpriteGroup (parent Group) for scene graph sync. */
+  parentGroup: Group | null
+  /** Bound Group.prototype.add bypassing SpriteGroup override. */
+  parentAdd: ((...objects: Object3D[]) => Group) | null
+  /** Bound Group.prototype.remove bypassing SpriteGroup override. */
+  parentRemove: ((...objects: Object3D[]) => Group) | null
+  /** Whether auto-invalidate transforms is enabled. */
+  autoInvalidateTransforms: boolean
+  /** The SystemSchedule for this world. */
+  schedule: SystemSchedule | null
+  /** Monotonic counter of completed `schedule.run` invocations — see trait doc. */
+  scheduleRuns: number
 }
 
 /**

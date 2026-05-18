@@ -1,0 +1,126 @@
+---
+/**
+ * <DevtoolsDemo> — bare iframe of an example + a "Pop devtools" button.
+ *
+ * Renders the example without the StackBlitz / file-tree chrome of
+ * `<ExamplePreview>` so the page reads as: scene + button + caption.
+ * The pop-out link opens the standalone dashboard in a new tab; the
+ * dashboard is same-origin with the example iframe (both load from the
+ * examples MFE in dev, both load from the docs site in prod), so the
+ * `BroadcastChannel` bus connects automatically.
+ *
+ * MDX usage:
+ *   import DevtoolsDemo from '../../../components/DevtoolsDemo.astro'
+ *   <DevtoolsDemo type="three" name="lighting" />
+ */
+
+interface Props {
+  type: 'three' | 'react'
+  name: string
+  /** iframe height in pixels. Default 540. */
+  height?: number
+  /** override the default explanatory caption */
+  caption?: string
+}
+
+const { type, name, height = 540, caption } = Astro.props
+
+const isDev = import.meta.env.DEV
+const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/')
+const examplesPort = import.meta.env.VITE_EXAMPLES_PORT
+
+// Dev: examples MFE on `localhost:${examplesPort}` (default 5174). The
+// `threeFlatlandDevtools` Vite plugin is registered there, so the
+// dashboard is served at `/.devtools` on the same origin as every
+// example. BroadcastChannel scope = origin = both windows hear each
+// other with no extra wiring.
+//
+// Prod: docs site serves the example bundle under `${base}examples/...`
+// and the standalone dashboard under `${base}devtools/`. Same origin,
+// same bus.
+const exampleSrc = isDev
+  ? `http://localhost:${examplesPort}/${type}/${name}/`
+  : `${base}examples/${type}/${name}/`
+
+const devtoolsHref = isDev
+  ? `http://localhost:${examplesPort}/.devtools`
+  : `${base}devtools/`
+
+const defaultCaption =
+  'Click "Open devtools" — the dashboard opens in a new tab on the same origin and connects to the example automatically. Drag the tab into a side window for the full split-screen experience; every panel streams live as the scene runs.'
+---
+
+<figure class="tf-devdemo not-content">
+  <iframe
+    src={exampleSrc}
+    style={`height:${height}px`}
+    title={`${type}/${name} preview`}
+    loading="lazy"
+  ></iframe>
+  <div class="tf-devdemo__bar">
+    <a
+      href={devtoolsHref}
+      target="_blank"
+      rel="noopener noreferrer"
+      class="tf-devdemo__btn"
+    >
+      Open devtools <span aria-hidden="true">↗</span>
+    </a>
+  </div>
+  <figcaption class="tf-devdemo__caption">{caption ?? defaultCaption}</figcaption>
+</figure>
+
+<style>
+  .tf-devdemo {
+    margin: 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .tf-devdemo iframe {
+    width: 100%;
+    border: 2px solid var(--retro-purple, #732866);
+    border-radius: 0.5rem;
+    background: #1a1a2e;
+    color-scheme: dark;
+    display: block;
+  }
+  .tf-devdemo__bar {
+    display: flex;
+    justify-content: flex-end;
+  }
+  /* Anchor (not a <button>) so it sidesteps the global retro-theme
+     button rules. We give it a self-contained look that matches the
+     site's neon accents without inheriting the theme's pixel-shadow
+     hover transform. */
+  .tf-devdemo__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    background: var(--retro-cyan, #47cca9);
+    color: var(--retro-black, #00021c) !important;
+    border: 2px solid var(--retro-dark-cyan, #17735f);
+    border-radius: 0.25rem;
+    text-decoration: none;
+    font-family: var(--font-pixel, ui-monospace, monospace);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    box-shadow: 2px 2px 0 var(--retro-dark-cyan, #17735f);
+    transition:
+      transform 0.1s ease,
+      box-shadow 0.1s ease;
+  }
+  .tf-devdemo__btn:hover,
+  .tf-devdemo__btn:focus-visible {
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0 var(--retro-dark-cyan, #17735f);
+    outline: none;
+  }
+  .tf-devdemo__caption {
+    font-size: 0.875rem;
+    color: var(--sl-color-gray-3);
+    line-height: 1.5;
+  }
+</style>

@@ -7,6 +7,7 @@ import {
   RGBAFormat,
   RGFormat,
 } from 'three'
+import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
 import { SlugFont } from './SlugFont'
 import { bakedURLs, unpackBaked } from './baked'
 import { shapeTextBaked } from './pipeline/textShaperBaked'
@@ -43,7 +44,12 @@ import type { BakedJSON } from './baked'
  * Pre-bake fonts with: `npx slug-bake fonts/Inter-Regular.ttf`
  */
 export class SlugFontLoader extends Loader<SlugFont> {
-  /** Skip baked data and always parse the font file at runtime. */
+  /**
+   * Generate this font's glyph data in the browser on every load
+   * instead of loading a pre-baked sidecar (`opentype.js` runs in-process).
+   * The font is always shaped either way; this flag chooses *where* the
+   * shaping happens. See {@link BakedAssetLoaderOptions.forceRuntime}.
+   */
   forceRuntime = false
 
   // ─── Instance API (R3F useLoader compatibility) ───
@@ -89,7 +95,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
    * Load a font from a URL (static method for vanilla usage).
    * Results are cached by URL. Tries baked data first.
    */
-  static load(url: string, options?: { forceRuntime?: boolean }): Promise<SlugFont> {
+  static load(url: string, options?: BakedAssetLoaderOptions): Promise<SlugFont> {
     const forceRuntime = options?.forceRuntime ?? false
     const cacheKey = forceRuntime ? `${url}:runtime` : url
     const cached = this._cache.get(cacheKey)

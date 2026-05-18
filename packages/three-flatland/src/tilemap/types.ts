@@ -63,6 +63,13 @@ export interface TilesetData {
   tiles: Map<number, TileDefinition>
   /** Texture atlas */
   texture?: Texture
+  /**
+   * Tangent-space normal map, 1:1 co-registered with `texture`.
+   *
+   * Populated when the loader is given `normals: true` (or a descriptor).
+   * Binds to `NormalMapProvider.normalMap` on a lit tilemap.
+   */
+  normalMap?: Texture
 }
 
 /**

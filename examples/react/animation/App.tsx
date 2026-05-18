@@ -7,7 +7,7 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -110,7 +110,7 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
 }
 
 function Scene() {
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
   const animFolder = usePaneFolder(pane, 'Animation', { expanded: true })
 
   // Use state so changes trigger re-render → Knight gets new props
@@ -162,8 +162,6 @@ function Scene() {
       animGridRef.current.value.rawValue = 'idle'
     }
   }, [])
-
-  useStatsMonitor(stats)
 
   return (
     <>
@@ -222,6 +220,7 @@ export default function App() {
         }}
       >
         <OrthoCamera viewSize={200} />
+        <DevtoolsProvider name="animation" />
         <Scene />
       </Canvas>
     </>

@@ -29,11 +29,10 @@ const Added = createAdded()
  * (layer, materialId), finds or creates a batch in that run,
  * allocates a slot, and sets the InBatch relation with slot data.
  * Also performs a one-time full buffer sync from trait state.
+ *
+ * Reads effectTraits from BatchRegistry. Takes only (world).
  */
-export function batchAssignSystem(
-  world: World,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-): boolean {
+export function batchAssignSystem(world: World): boolean {
   const added = world.query(Added(IsRenderable))
   if (added.length === 0) return false
 
@@ -41,6 +40,8 @@ export function batchAssignSystem(
   if (registryEntities.length === 0) return false
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
   if (!registry) return false
+
+  const effectTraits = registry.effectTraits
 
   // Track meshes that received new sprites — set needsUpdate once after the loop
   const dirtyMeshes = new Set<SpriteBatch>()
@@ -146,11 +147,14 @@ function syncEffectBuffers(
   _effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
 ): void {
   const material = sprite.material
+
+  // System flags + enable bits live on `instanceSystem` now; write
+  // unconditionally so lit non-effect sprites still get their flags.
+  mesh.writeSystemFlags(slot, sprite._effectFlags)
+  mesh.writeEnableBits(slot, sprite._effectEnableBits)
+
   const tier = material._effectTier
   if (tier === 0) return
-
-  // Write flags to slot 0
-  mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
 
   // Write effect field values
   for (const effect of sprite._effects) {
