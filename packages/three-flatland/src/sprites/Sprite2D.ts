@@ -2,6 +2,7 @@ import { Mesh, PlaneGeometry, Vector2, Vector3, Color, BufferAttribute, type Tex
 import type { Entity, World } from 'koota'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import type { Sprite2DOptions, SpriteFrame } from './types'
 import {
   SpriteUV,
@@ -253,7 +254,7 @@ export class Sprite2D extends Mesh {
    * bufferSync system pass.
    * @internal
    */
-  _batchMesh: import('../pipeline/SpriteBatch').SpriteBatch | null = null
+  _batchMesh: SpriteBatch | null = null
   /** @internal */ _batchSlot: number = -1
   /** @internal */ _batchIdx: number = -1
 
