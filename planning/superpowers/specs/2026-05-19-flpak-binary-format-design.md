@@ -404,10 +404,12 @@ Domain loaders (e.g. `SlugFontLoader`) remain `three.Loader<T>` subclasses per t
 | glyph table (10×f32) | buffer + `record` (the §4 example) |
 | cmap `[u16,u16]` | buffer + `record` (stride 4) |
 | kern `[u16,u16,i16]` | buffer + `record` (all 2-byte elems → stride 6; buffer slot null-padded to /4) |
-| **band section (per-glyph variable)** | flat `Uint16` buffer, **no record** — slug reader walks it (opaque escape hatch) |
+| **band section (per-glyph variable)** | opaque `Uint16` buffer (no record) **+ a `bandOffsets` index buffer** (`record`, `Uint32`, count = glyphs+1) giving each glyph's byte range — see below |
 | metrics, strokeSets, textureWidth | top-level domain metadata; `kind: 'flatland.slug.font'`, `version` |
 
-`SlugFontLoader` reads one file instead of two; `unpackBaked` is rewritten against the cursor API. The band data staying opaque is the concrete evidence reflection is unnecessary.
+`SlugFontLoader` reads one file instead of two; `unpackBaked` is rewritten against the cursor API.
+
+**Why the `bandOffsets` index** (added after the cross-language review, §10): the per-glyph band data is genuinely ragged, so its *inner* layout stays an opaque domain-walked buffer — that part is correct and is the evidence reflection is unnecessary. But shipping it *purely* opaque forces any reader to walk every prior glyph and to parse a prose encoding string to find glyph `i`'s data. A parallel `bandOffsets` record buffer (`prefix` byte offsets into `bands`) makes the outer structure **machine-readable random-access data** instead of English: glyph `i`'s bands are `bands[bandOffsets[i] .. bandOffsets[i+1]]`. The inner `[numH, numV, …]` walk remains documented domain knowledge, but the high-risk "walk-all-prior / parse-the-sentence" hurdle is gone. This is the cheap mitigation that keeps cross-language reuse tractable without building reflection.
 
 ---
 
@@ -432,3 +434,20 @@ Domain loaders (e.g. `SlugFontLoader`) remain `three.Loader<T>` subclasses per t
 - **CRC / integrity chunk** — if assets are served over untrusted transport.
 
 Each is reachable through the unknown-chunk skip seam or an additive field, so none forces a `formatVersion` break for existing readers.
+
+---
+
+## 10. Why not FlatBuffers / Protobuf — and the cross-language tradeoff
+
+This was pressure-tested by handing an outside engineer *only* the README, the JSON Schema, and a decoded example `.flpak`, then asking why not just use FlatBuffers/Protobuf. The honest conclusion:
+
+- **vs Protobuf — flpak wins decisively.** Protobuf decodes varints into allocated objects; you would never push a 512 KB texture or 1280 GPU-ready glyph records through it. Disqualified for raw, GPU-bound data.
+- **vs FlatBuffers — a tie on the payload that matters.** flpak's assets are texture blobs + flat array-of-structs tables. That is exactly the case where FlatBuffers' nested-table machinery buys nothing and zero-copy is the whole point; both are zero-copy and alignment-correct there. FlatBuffers only pulls ahead on (a) cross-language reader *codegen* (`flatc` emits typed readers in ~12 languages from one `.fbs`) and (b) ragged/variable-length data (a real `[Band]` vector vs our opaque buffer).
+- **What flpak buys that FB/PB cost:** no `flatc`/`protoc` build step, no `.fbs`/`.proto` as a competing source of truth, no generated-code bloat, no runtime dependency, and human-readable / diffable / hand-editable JSON metadata. For a one-asset-per-file container consumed primarily by our own TS/WebGPU runtime, that trade is sound.
+
+**The honest cost:** a third party reimplementing in another language hand-writes the reader (header parse, chunk walk, JSON parse, buffer slicing, record walking). The framing is a half-day and the AoS records are mechanical; the JSON Schema validates metadata but generates nothing. This is acceptable *because* cross-language reuse is an occasional interest, not the primary axis — but two conventions keep it tractable and are **required of domain packages** (e.g. slug) that care about cross-language reuse:
+
+1. **No purely-opaque ragged buffers when reuse matters — ship an index.** Pair an opaque variable-length buffer with a `record` offset/index buffer (see slug `bandOffsets`, §7) so the outer structure is random-access data, not a prose encoding string. The inner per-record walk may stay documented domain knowledge.
+2. **Publish a `kind`-specific domain JSON Schema + an explicit domain encoding-version.** The container schema covers `kind`/`version`/`buffers`; each domain (`flatland.slug.font`, …) publishes a schema for *its* metadata (`metrics`, `textures`, `bandLayout`, …) and gates readers on a domain encoding-version field, rather than overloading the single monotonic `version`. Ship golden conformance files (§8) so a non-JS implementation validates against known-good bytes.
+
+If full machine-readable ragged data ever becomes a hard cross-language requirement, that is the deferred level-3 path (`StringRef` / `BufferRef` + nested record support, §4/§9) — built only if the index-buffer convention proves insufficient.
