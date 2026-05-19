@@ -168,14 +168,19 @@ record: {
 
 **Reserved (not built in v1): strings & buffer refs.** A future `StringRef` / `BufferRef` field type + a designated strings buffer convention covers labels and sub-arrays (e.g. atlas frame names). It is additive — a new field type plus a chunk-compatible reader — so adding it later is not a format break. Slug needs zero strings, so v1 ships AoS + opaque-walk only.
 
-### JSON Schema (Draft 2020-12)
+### Validation contract — zero-dep checks, published JSON Schema, no trapping
 
-`PAK_JSON_SCHEMA` validates the metadata. Highlights:
+The contract is **TS types + zero-dependency structural checks in code**, with JSON Schema shipped as a *published artifact*, not a runtime dependency. The distinction matters:
 
-- `required: ['kind', 'version', 'buffers']`
-- `version`: `{ type: 'integer', minimum: 1 }`
-- each buffer: `required: ['off', 'len', 'type']`; `len.minimum: 0`; `off.minimum: 0`
-- `record` and `mime` optional; `additionalProperties: true` on the root for domain metadata.
+- **Internal validation is plain code, zero-dep.** `unpack()` checks its own invariants directly (magic, `formatVersion`, `totalLength`, `kind`/`version`/`buffers` present and well-typed, 4-byte alignment, descriptor bounds). `@three-flatland/pak` imports **no** validator library and **no** JSON Schema engine. Because the payload is binary-packed, a runtime JSON-Schema validation pass buys nothing the structural checks don't already cover.
+- **`PAK_JSON_SCHEMA` (Draft 2020-12) is published as the language-agnostic reader contract.** Its value is *interop*, not internal validation: any language can generate metadata-reading code from it, and editors validate hand-authored JSON against it (VS Code `$schema`). This is why we still ship it even though we don't validate against it internally. Highlights:
+  - `required: ['kind', 'version', 'buffers']`
+  - `version`: `{ type: 'integer', minimum: 1 }`
+  - each buffer: `required: ['off', 'len', 'type']`; `len.minimum: 0`; `off.minimum: 0`
+  - `record` and `mime` optional; `additionalProperties: true` on the root for domain metadata.
+- **No schema system is forced on users.** `record` is optional and root metadata is open-ended, so a user can store opaque buffers + their own domain metadata and validate that slice with their own **Standard Schema** validator (Zod / Valibot / ArkType — the `~standard` interface). pak never sees or requires it. The bring-your-own-validator path is first-class, not an afterthought.
+
+> **Interop boundary (be honest about it):** JSON Schema / Standard Schema describe *decoded value shapes* (objects, optionals, unions, strings); the `record` schema describes *byte layout* (stride, offsets, element type). They are **not isomorphic** — you cannot soundly auto-derive a byte layout from an arbitrary value schema (the byte-level facts aren't in it). Supported bridges: (a) **decode-side** — validate a decoded record (a plain object) with your own Standard Schema validator; (b) **layout single-source-of-truth** — see §5 `defineRecord`; (c) **one-way codegen** — emit TS types / a decoded-shape JSON Schema *from* a `record` schema. The reverse ("any validator → byte layout, losslessly") is intentionally not promised.
 
 ---
 
@@ -187,6 +192,13 @@ record: {
 // Node / CLI side (slug-bake, flatland-bake, …)
 function pack(metadata: Omit<PakMetadata, 'buffers'>, namedBuffers: NamedBuffers): ArrayBuffer
 
+type NamedBuffers = Record<string,
+  | ArrayBuffer | ArrayBufferView                              // bare → flat typed buffer
+  | { data: ArrayBuffer | ArrayBufferView; record?: PakRecordSchema; mime?: string }
+>
+// `pack` derives each descriptor's `off`/`len`/`type` and the 4-byte padding; the caller
+// supplies only the bytes plus optional `record` (e.g. Glyph.schema) or `mime`.
+
 // Runtime (browser + node)
 function unpack(buf: ArrayBuffer): UnpackedPak
 
@@ -194,7 +206,8 @@ interface UnpackedPak {
   metadata: PakMetadata
   view(name: string): ArrayBufferView   // typed by `type`, zero-copy view into the source buffer
   bytes(name: string): Uint8Array        // raw bytes (mime blobs, writeBuffer source)
-  records(name: string): RecordCursor    // cursor over an AoS buffer
+  records(name: string): RecordCursor                       // untyped cursor (reads schema from the file)
+  records<L extends RecordLayout>(name: string, layout: L): TypedRecordCursor<L>  // typed via defineRecord
   has(name: string): boolean
 }
 
@@ -205,6 +218,42 @@ interface RecordCursor {
   getArray(index: number, field: string, out?: ArrayBufferView): ArrayBufferView  // vector field
 }
 ```
+
+### Layout single-source-of-truth: `defineRecord`
+
+One declaration derives **both** the byte layout (for `pack()`) **and** the decoded TS type (for the reader), so the two cannot drift. Pure TypeScript inference — no codegen step, still zero-dep.
+
+```ts
+import { f32, i32, u32, u16, i16, u8, i8, vec, defineRecord, type LayoutType } from '@three-flatland/pak'
+
+const Glyph = defineRecord({
+  glyphId:      f32,
+  bounds:       vec(f32, 4),
+  bandLoc:      vec(f32, 2),
+  advanceWidth: f32,
+  lsb:          f32,
+  hasOutline:   f32,
+})
+
+Glyph.schema            // → PakRecordSchema: stride + per-field offsets computed automatically
+type Glyph = LayoutType<typeof Glyph>
+//           → { glyphId: number; bounds: [number,number,number,number];
+//               bandLoc: [number,number]; advanceWidth: number; lsb: number; hasOutline: number }
+
+// writer: pack the buffer with the derived layout
+pack({ kind: 'flatland.slug.font', version: 1 }, {
+  glyphs: { data: glyphBytes, record: Glyph.schema },
+})
+
+// reader: typed cursor — field names autocomplete, typos are compile errors
+const cur = unpacked.records('glyphs', Glyph)
+const w = cur.get(i, 'advanceWidth')           // number, checked
+const b = cur.getArray(i, 'bounds')            // length-4 view, checked
+```
+
+- **Field constructors** (`f32`/`i32`/`u32`/`u16`/`i16`/`u8`/`i8`, `vec(type, n)`) map to `PakDataType` + count; `defineRecord` computes `stride` and each `offset` in declaration order (with natural padding to the field's element size).
+- **`LayoutType<typeof X>`** infers the decoded object shape — this is the type the reader returns, identical to what a hand-written reader would produce.
+- **Interop:** `Glyph.schema` is an ordinary `PakRecordSchema`, so the data-authored path (hand-written schema, codegen) and the builder path produce the same on-disk bytes — `defineRecord` is sugar over the same descriptor, not a separate format.
 
 ### Robustness (closes gaps in the first-pass draft)
 
@@ -222,8 +271,9 @@ Mirrors `@three-flatland/image`:
 @three-flatland/pak/
   src/pack.ts        # Node-safe, no three
   src/unpack.ts      # browser + node, no three
-  src/records.ts     # RecordCursor
-  src/schema.ts      # PAK_JSON_SCHEMA + types
+  src/records.ts     # RecordCursor / TypedRecordCursor
+  src/layout.ts      # defineRecord, field constructors (f32…), LayoutType
+  src/schema.ts      # PakMetadata / descriptor TS types + published PAK_JSON_SCHEMA
   package.json exports:
     "."  →  pack / unpack / records / schema / types   (zero deps)
 ```
