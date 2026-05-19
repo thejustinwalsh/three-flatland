@@ -385,7 +385,15 @@ export class Sprite2D extends Mesh {
         this._updateOwnColor()
       }
     })
-    observeVector2(this._anchor, () => this.updateAnchor())
+    // Anchor mutation triggers a matrix recompose — `updateMatrix`
+    // bakes the anchor offset into the translation component, so the
+    // GPU sees the new offset on the next frame without any geometry
+    // rebuild. The empty callback exists to keep the observer wired
+    // (in case future code wants to react), but no work is needed
+    // since `updateMatrix` reads the current `_anchor` every frame.
+    observeVector2(this._anchor, () => {
+      this.matrixWorldNeedsUpdate = true
+    })
 
     // Set up instance attributes on the geometry
     this._setupInstanceAttributes()
@@ -568,10 +576,14 @@ export class Sprite2D extends Mesh {
   /**
    * Set the anchor point (0-1).
    * (0, 0) = top-left, (0.5, 0.5) = center, (0.5, 1) = bottom-center
+   *
+   * The anchor offset is baked into the matrix transform — no
+   * geometry rebuild. Writing `_anchor.set(...)` triggers the
+   * observeVector2 callback which marks the matrix dirty; the next
+   * `updateMatrix` picks up the new value.
    */
   setAnchor(x: number, y: number): this {
     this._anchor.set(x, y)
-    this.updateAnchor()
     return this
   }
 
@@ -758,28 +770,6 @@ export class Sprite2D extends Mesh {
     if (this._frame) {
       this.scale.set(this._frame.sourceWidth, this._frame.sourceHeight, 1)
     }
-  }
-
-  /**
-   * Update geometry offset based on anchor.
-   */
-  private updateAnchor() {
-    // Offset position to account for anchor
-    const offsetX = 0.5 - this._anchor.x
-    const offsetY = 0.5 - this._anchor.y
-
-    // Dispose old geometry
-    if (this._geometry) {
-      this._geometry.dispose()
-    }
-
-    // Create new geometry with offset
-    this._geometry = new PlaneGeometry(1, 1)
-    this._geometry.translate(offsetX, offsetY, 0)
-    this.geometry = this._geometry
-
-    // Re-setup instance attributes on the new geometry
-    this._setupInstanceAttributes()
   }
 
   /**
@@ -1156,11 +1146,18 @@ export class Sprite2D extends Mesh {
    */
   override updateMatrix(): void {
     const te = this.matrix.elements
-    const px = this.position.x
-    const py = this.position.y
-    const pz = this.position.z + this.layer * 10 + this.zIndex * 0.001
     const sx = this.scale.x
     const sy = this.scale.y
+
+    // Anchor offset baked into translation. Anchor (0.5, 0.5) ⇒
+    // center ⇒ zero offset. Anchor (0, 1) ⇒ top-left ⇒ shifts the
+    // quad +0.5*sx, -0.5*sy. Removes the per-anchor-change geometry
+    // rebuild entirely; the unit PlaneGeometry never changes.
+    const ax = (0.5 - this._anchor.x) * sx
+    const ay = (0.5 - this._anchor.y) * sy
+    const px = this.position.x + ax
+    const py = this.position.y + ay
+    const pz = this.position.z + this.layer * 10 + this.zIndex * 0.001
 
     const rz = this.rotation.z
     if (rz !== 0) {
