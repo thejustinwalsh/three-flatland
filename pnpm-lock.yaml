@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@gltf-transform/core':
+      specifier: ^4.3.0
+      version: 4.3.0
     '@react-three/fiber':
       specifier: 10.0.0-alpha.2
       version: 10.0.0-alpha.2
@@ -1098,6 +1101,12 @@ importers:
         specifier: ^6.4.1
         version: 6.4.1(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
 
+  packages/asset:
+    devDependencies:
+      '@gltf-transform/core':
+        specifier: 'catalog:'
+        version: 4.3.0
+
   packages/nodes:
     devDependencies:
       '@types/three':
@@ -1106,8 +1115,6 @@ importers:
       three:
         specifier: 'catalog:'
         version: 0.183.1
-
-  packages/pak: {}
 
   packages/presets:
     dependencies:
@@ -2302,6 +2309,9 @@ packages:
 
   '@gerrit0/mini-shiki@3.23.0':
     resolution: {integrity: sha512-bEMORlG0cqdjVyCEuU0cDQbORWX+kYCeo0kV1lbxF5bt4r7SID2l9bqsxJEM0zndaxpOUT7riCyIVEuqq/Ynxg==}
+
+  '@gltf-transform/core@4.3.0':
+    resolution: {integrity: sha512-ZeaQfszGJ9LYwELszu45CuDQCsE26lJNNe36FVmN8xclaT6WDdCj7fwGpQXo0/l/YgAVAHX+uO7YNBW75/SRYw==}
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -5242,6 +5252,9 @@ packages:
     resolution: {integrity: sha512-DEvV2ZF2r2/63V+tK8hQvrR2ZGn10srHbXviTlcv7Kpzw8jWiNTqbVgjO3IY8RxrrOUF8VPMQQFysYYYv0YZxw==}
     engines: {node: '>=6'}
 
+  property-graph@4.1.0:
+    resolution: {integrity: sha512-AvPcP7XECNWy4LGmFQ77k7un4lSKM4eS29PTvW4ck95uYeLxXPWJM7hLuBqK91FaHqCcgJvIUCuNJjjxKE7VKQ==}
+
   property-information@7.1.0:
     resolution: {integrity: sha512-TwEZ+X+yCJmYfL7TPUOcvBZ4QfoT5YenQiJuX//0th53DE6w0xxLEtfK3iyryQFddXuvkIk51EEgrJQ0WJkOmQ==}
 
@@ -7394,6 +7407,10 @@ snapshots:
       '@shikijs/themes': 3.23.0
       '@shikijs/types': 3.23.0
       '@shikijs/vscode-textmate': 10.0.2
+
+  '@gltf-transform/core@4.3.0':
+    dependencies:
+      property-graph: 4.1.0
 
   '@humanfs/core@0.19.1': {}
 
@@ -10825,6 +10842,8 @@ snapshots:
       react-is: 17.0.2
 
   prismjs@1.30.0: {}
+
+  property-graph@4.1.0: {}
 
   property-information@7.1.0: {}
 

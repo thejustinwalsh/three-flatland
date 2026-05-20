@@ -1,0 +1,59 @@
+{
+  "name": "@three-flatland/asset",
+  "version": "0.1.0-alpha.0",
+  "description": "Read and bake Flatland assets as standard glTF/GLB.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./bake": {
+      "source": "./src/bake/index.ts",
+      "import": {
+        "types": "./dist/bake/index.d.ts",
+        "default": "./dist/bake/index.js"
+      },
+      "require": {
+        "types": "./dist/bake/index.d.cts",
+        "default": "./dist/bake/index.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "LICENSE", "README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["gltf", "glb", "webgpu", "assets", "three-flatland"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/asset"
+  },
+  "peerDependencies": {
+    "@gltf-transform/core": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "@gltf-transform/core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "catalog:"
+  }
+}
