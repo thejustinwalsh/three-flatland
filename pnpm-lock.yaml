@@ -1107,6 +1107,8 @@ importers:
         specifier: 'catalog:'
         version: 0.183.1
 
+  packages/pak: {}
+
   packages/presets:
     dependencies:
       '@three-flatland/nodes':

@@ -1,0 +1,38 @@
+{
+  "name": "@three-flatland/pak",
+  "version": "0.1.0-alpha.0",
+  "description": "Zero-copy, 4-byte-aligned binary container for baked GPU-ready assets (.flpak)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./flpak-metadata.schema.json": "./flpak-metadata.schema.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "flpak-metadata.schema.json", "LICENSE", "README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["binary", "container", "glb", "webgpu", "zero-copy", "assets", "flpak"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/pak"
+  }
+}
