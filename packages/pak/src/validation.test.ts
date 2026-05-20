@@ -63,15 +63,18 @@ describe('§5 validation matrix', () => {
     const bin = new Uint8Array(4)
     const meta = baseMetadata({
       buffers: {
-        // stride=4, one Float32 field at offset 2 → 2+4=6 > 4 → escapes
+        // Isolate the stride-escape check: a Uint8 field (elemSize 1) so every
+        // offset is naturally aligned (offset % 1 === 0 always passes), and
+        // count*stride (1*4) === len (4) passes — only offset + count*elemSize
+        // (1 + 4 = 5 > stride 4) trips the escapes-stride check.
         data: {
           off: 0,
           len: 4,
-          type: 'Float32',
+          type: 'Uint8',
           record: {
             stride: 4,
             count: 1,
-            fields: [{ name: 'x', type: 'Float32', offset: 2, count: 1 }],
+            fields: [{ name: 'x', type: 'Uint8', offset: 1, count: 4 }],
           },
         },
       },
