@@ -16,10 +16,8 @@ import {
   type Document,
   Extension,
   ExtensionProperty,
-  type Graph,
   type IProperty,
   type Nullable,
-  type Property,
   PropertyType,
   type ReaderContext,
   RefMap,
@@ -53,7 +51,7 @@ export function addColumn(
   buffer: Buffer,
   name: string,
   typedArray: SupportedTypedArray,
-  type: string,
+  type: string
 ): Accessor {
   return doc
     .createAccessor(name)
@@ -82,9 +80,9 @@ interface IFLProperty extends IProperty {
  */
 export class FLProperty extends ExtensionProperty<IFLProperty> {
   // These are set dynamically by createFLExtension's subclass.
-  public declare extensionName: string
-  public declare propertyType: string
-  public declare parentTypes: string[]
+  declare public extensionName: string
+  declare public propertyType: string
+  declare public parentTypes: string[]
 
   protected init(): void {
     // Concrete values assigned by the subclass created in createFLExtension.
@@ -193,9 +191,7 @@ export function createFLExtension(extensionName: string): FLExtensionBundle {
      * Create a new `FLProperty` attached to this extension's document.
      */
     public createProperty(metadata: Record<string, unknown>): FLProperty {
-      const prop = new ConcreteProperty(
-        this.document.getGraph() as Graph<Property>,
-      )
+      const prop = new ConcreteProperty(this.document.getGraph())
       prop.setMetadata(metadata)
       return prop
     }
@@ -208,13 +204,8 @@ export function createFLExtension(extensionName: string): FLExtensionBundle {
       const jsonDoc = context.jsonDoc
       if (!jsonDoc.json.extensions?.[extensionName]) return this
 
-      const extJson = jsonDoc.json.extensions[extensionName] as Record<
-        string,
-        unknown
-      >
-      const columns = extJson['columns'] as
-        | Record<string, { accessor: number }>
-        | undefined
+      const extJson = jsonDoc.json.extensions[extensionName] as Record<string, unknown>
+      const columns = extJson['columns'] as Record<string, { accessor: number }> | undefined
 
       const metadata: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(extJson)) {
@@ -224,8 +215,9 @@ export function createFLExtension(extensionName: string): FLExtensionBundle {
       const prop = this.createProperty(metadata)
       if (columns) {
         for (const [semantic, { accessor: idx }] of Object.entries(columns)) {
-          if (context.accessors[idx]) {
-            prop.setAccessorRef(semantic, context.accessors[idx]!)
+          const acc = context.accessors[idx]
+          if (acc) {
+            prop.setAccessorRef(semantic, acc)
           }
         }
       }

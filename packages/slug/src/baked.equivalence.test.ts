@@ -14,12 +14,7 @@ import opentype from 'opentype.js'
 import { readAsset } from '@three-flatland/asset'
 import { parseFont } from './pipeline/fontParser'
 import { packTextures } from './pipeline/texturePacker'
-import {
-  packBaked,
-  unpackBaked,
-  cmapLookup,
-  kernLookup,
-} from './baked'
+import { packBaked, unpackBaked, cmapLookup, kernLookup } from './baked'
 import type { BakeInput, BakedFontData } from './baked'
 import type { SlugGlyphData } from './types'
 
@@ -27,10 +22,7 @@ import type { SlugGlyphData } from './types'
 // Font fixture — same file used by all other slug tests
 // ---------------------------------------------------------------------------
 
-const FONT_PATH = resolve(
-  __dirname,
-  '../../../examples/three/slug-text/public/Inter-Regular.ttf',
-)
+const FONT_PATH = resolve(__dirname, '../../../examples/three/slug-text/public/Inter-Regular.ttf')
 
 // ---------------------------------------------------------------------------
 // Shared state built once for the whole suite
@@ -173,12 +165,7 @@ describe('real-font equivalence — glyph metrics for spot-checked chars', () =>
   // places (float32 has ~7 decimal digits of precision).
   // Use toBeCloseTo(v, 5) for fields that went through float64→float32.
 
-  function checkGlyph(
-    label: string,
-    src: SlugGlyphData,
-    dstId: number,
-    expectOutline: boolean,
-  ) {
+  function checkGlyph(label: string, src: SlugGlyphData, dstId: number, expectOutline: boolean) {
     const dst = data.glyphs.get(dstId)!
     expect(dst, `${label}: glyph missing`).toBeDefined()
     expect(dst.glyphId).toBe(src.glyphId)
@@ -240,17 +227,15 @@ describe('real-font equivalence — hBands/vBands for spot-checked glyphs', () =
     expect(dstV.length, `${label}: vBands count`).toBe(srcV.length)
 
     for (let i = 0; i < srcH.length; i++) {
-      expect(
-        dstH[i]!.curveIndices,
-        `${label}: hBands[${i}].curveIndices`,
-      ).toEqual(srcH[i]!.curveIndices)
+      expect(dstH[i]!.curveIndices, `${label}: hBands[${i}].curveIndices`).toEqual(
+        srcH[i]!.curveIndices
+      )
     }
 
     for (let i = 0; i < srcV.length; i++) {
-      expect(
-        dstV[i]!.curveIndices,
-        `${label}: vBands[${i}].curveIndices`,
-      ).toEqual(srcV[i]!.curveIndices)
+      expect(dstV[i]!.curveIndices, `${label}: vBands[${i}].curveIndices`).toEqual(
+        srcV[i]!.curveIndices
+      )
     }
   }
 
@@ -336,7 +321,7 @@ describe('real-font equivalence — texture byte-exact round-trip', () => {
       if (curveAcc[i] !== input.curveData[i]) {
         throw new Error(
           `curve texture mismatch at index ${i}: ` +
-          `expected ${input.curveData[i]}, got ${curveAcc[i]}`,
+            `expected ${input.curveData[i]}, got ${curveAcc[i]}`
         )
       }
     }
@@ -358,7 +343,7 @@ describe('real-font equivalence — texture byte-exact round-trip', () => {
       if (bandAcc[i] !== input.bandData[i]) {
         throw new Error(
           `band texture mismatch at index ${i}: ` +
-          `expected ${input.bandData[i]}, got ${bandAcc[i]}`,
+            `expected ${input.bandData[i]}, got ${bandAcc[i]}`
         )
       }
     }

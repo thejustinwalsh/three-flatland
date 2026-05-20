@@ -2,6 +2,29 @@ import { readGLB } from './glb'
 import { AssetError } from './errors'
 
 // ---------------------------------------------------------------------------
+// Minimal glTF 2.0 JSON types used by the reader
+// ---------------------------------------------------------------------------
+
+interface GltfAccessor {
+  bufferView?: number
+  byteOffset?: number
+  componentType: number
+  count: number
+  type: string
+}
+
+interface GltfBufferView {
+  byteOffset?: number
+  byteLength: number
+}
+
+interface GltfJson {
+  accessors?: GltfAccessor[]
+  bufferViews?: GltfBufferView[]
+  extensions?: Record<string, unknown>
+}
+
+// ---------------------------------------------------------------------------
 // glTF component-type → typed-array constructor map
 // ---------------------------------------------------------------------------
 
@@ -42,7 +65,7 @@ const TYPE_COMPONENTS: Record<string, number> = {
  */
 export interface FlatlandAsset {
   /** The raw parsed glTF JSON document. */
-  json: any
+  json: GltfJson
   /**
    * Return a typed-array view over accessor `index`.
    *
@@ -75,10 +98,12 @@ export interface FlatlandAsset {
  * accessor/bufferView indices or unrecognised glTF component types.
  */
 export function readAsset(buf: ArrayBuffer): FlatlandAsset {
-  const { json, binByteOffset } = readGLB(buf)
+  const glb = readGLB(buf)
+  const { binByteOffset } = glb
+  const json = glb.json as GltfJson
 
   function accessor(index: number): ArrayBufferView {
-    const accessors: any[] | undefined = json.accessors
+    const accessors = json.accessors
     if (!accessors || index < 0 || index >= accessors.length) {
       throw new AssetError('BAD_ACCESS', `accessor index ${index} out of range`)
     }
@@ -89,36 +114,33 @@ export function readAsset(buf: ArrayBuffer): FlatlandAsset {
     if (!Ctor) {
       throw new AssetError(
         'BAD_ACCESS',
-        `accessor ${index}: unknown componentType ${acc.componentType}`,
+        `accessor ${index}: unknown componentType ${acc.componentType}`
       )
     }
 
-    const components = TYPE_COMPONENTS[acc.type as string]
+    const components = TYPE_COMPONENTS[acc.type]
     if (components === undefined) {
-      throw new AssetError(
-        'BAD_ACCESS',
-        `accessor ${index}: unknown type '${acc.type}'`,
-      )
+      throw new AssetError('BAD_ACCESS', `accessor ${index}: unknown type '${acc.type}'`)
     }
 
-    const bufferViews: any[] | undefined = json.bufferViews
-    const bv = bufferViews?.[acc.bufferView]
+    const bufferViews = json.bufferViews
+    const bvIndex = acc.bufferView
+    const bv = bvIndex !== undefined ? bufferViews?.[bvIndex] : undefined
     if (!bv) {
       throw new AssetError(
         'BAD_ACCESS',
-        `accessor ${index}: bufferView index ${acc.bufferView} out of range`,
+        `accessor ${index}: bufferView index ${bvIndex} out of range`
       )
     }
 
-    const absOffset =
-      binByteOffset + (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0)
+    const absOffset = binByteOffset + (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0)
     const length = acc.count * components
 
     return new Ctor(buf, absOffset, length)
   }
 
   function bufferView(index: number): Uint8Array {
-    const bufferViews: any[] | undefined = json.bufferViews
+    const bufferViews = json.bufferViews
     if (!bufferViews || index < 0 || index >= bufferViews.length) {
       throw new AssetError('BAD_ACCESS', `bufferView index ${index} out of range`)
     }

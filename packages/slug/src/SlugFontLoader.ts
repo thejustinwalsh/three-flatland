@@ -165,7 +165,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
       curveTexMeta.width,
       curveTexMeta.height,
       RGBAFormat,
-      HalfFloatType,
+      HalfFloatType
     )
     curveTexture.magFilter = NearestFilter
     curveTexture.minFilter = NearestFilter
@@ -178,7 +178,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
       bandTexMeta.width,
       bandTexMeta.height,
       RGFormat,
-      FloatType,
+      FloatType
     )
     bandTexture.magFilter = NearestFilter
     bandTexture.minFilter = NearestFilter
@@ -204,7 +204,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
       bakedData,
       shapeTextBaked,
       wrapLinesBaked,
-      measureTextBaked,
+      measureTextBaked
     )
 
     if (ext['strokeSets']) {

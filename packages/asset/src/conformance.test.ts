@@ -48,10 +48,7 @@ let expected: {
     version: number
     metrics: { vertexCount: number; tileSize: number }
   }
-  accessors: Record<
-    string,
-    { index: number; values: number[]; type: string }
-  >
+  accessors: Record<string, { index: number; values: number[]; type: string }>
 }
 
 // gltf-validator is loaded lazily inside beforeAll so that it is required AFTER
@@ -61,17 +58,14 @@ let expected: {
 // the validator crashes. Deferring to beforeAll guarantees setup has completed.
 let gltfValidateBytes: (
   data: Uint8Array,
-  options?: Record<string, unknown>,
+  options?: Record<string, unknown>
 ) => Promise<ValidationReport>
 
 beforeAll(async () => {
   // Load GLB bytes from disk — slice to a standalone ArrayBuffer so that
   // readAsset (and the validator) receive an ArrayBuffer whose byteOffset is 0.
   const glbBuf = readFileSync(resolve(FIXTURES, 'sample.glb'))
-  glbBytes = glbBuf.buffer.slice(
-    glbBuf.byteOffset,
-    glbBuf.byteOffset + glbBuf.byteLength,
-  )
+  glbBytes = glbBuf.buffer.slice(glbBuf.byteOffset, glbBuf.byteOffset + glbBuf.byteLength)
 
   const expectedRaw = readFileSync(resolve(FIXTURES, 'sample.expected.json'), 'utf8')
   expected = JSON.parse(expectedRaw)
@@ -83,7 +77,7 @@ beforeAll(async () => {
   const mod = _require('gltf-validator') as {
     validateBytes: (
       data: Uint8Array,
-      options?: Record<string, unknown>,
+      options?: Record<string, unknown>
     ) => Promise<ValidationReport>
   }
   gltfValidateBytes = mod.validateBytes.bind(mod)

@@ -41,9 +41,7 @@ function makeSyntheticInput(): BakeInput {
 
   const glyph3: SlugGlyphData = {
     glyphId: 3,
-    curves: [
-      { p0x: 0, p0y: 0, p1x: 0.5, p1y: 1, p2x: 1, p2y: 0 } satisfies QuadCurve,
-    ],
+    curves: [{ p0x: 0, p0y: 0, p1x: 0.5, p1y: 1, p2x: 1, p2y: 0 } satisfies QuadCurve],
     contourStarts: [0],
     bounds: { xMin: 0.0, yMin: 0.0, xMax: 1.0, yMax: 1.0 },
     bandLocation: { x: 0.25, y: 0.0 },
@@ -81,7 +79,7 @@ function makeSyntheticInput(): BakeInput {
     bandTextureHeight,
     bandData,
     glyphs,
-    cmap: [[65, 3]],     // 'A' → glyphId 3
+    cmap: [[65, 3]], // 'A' → glyphId 3
     kern: [[3, 3, -10]],
   }
 }
@@ -169,8 +167,18 @@ describe('packBaked — returns .glb', () => {
   it('columns has all expected accessor refs', async () => {
     const { columns } = await bakeAndRead(makeSyntheticInput())
     for (const key of [
-      'glyphId', 'bounds', 'bandLoc', 'advanceWidth', 'lsb', 'hasOutline',
-      'cmap', 'kern', 'bandOffsets', 'bandData', 'curveTexture', 'bandTexture',
+      'glyphId',
+      'bounds',
+      'bandLoc',
+      'advanceWidth',
+      'lsb',
+      'hasOutline',
+      'cmap',
+      'kern',
+      'bandOffsets',
+      'bandData',
+      'curveTexture',
+      'bandTexture',
     ]) {
       expect(typeof columns[key]!.accessor, `columns.${key}.accessor`).toBe('number')
     }
@@ -189,7 +197,7 @@ describe('packBaked — returns .glb', () => {
     const { asset, columns } = await bakeAndRead(makeSyntheticInput())
     const view = asset.accessor(columns['bounds']!.accessor) as Float32Array
     expect(view).toBeInstanceOf(Float32Array)
-    expect(view.length).toBe(8)  // 2 glyphs × 4 components
+    expect(view.length).toBe(8) // 2 glyphs × 4 components
     // Glyph 0: xMin=0.1 yMin=0.2 xMax=0.8 yMax=0.9
     expect(view[0]).toBeCloseTo(0.1, 5)
     expect(view[1]).toBeCloseTo(0.2, 5)
@@ -205,34 +213,34 @@ describe('packBaked — returns .glb', () => {
   it('hasOutline: 0 for curves-less glyph, 1 for outlined glyph', async () => {
     const { asset, columns } = await bakeAndRead(makeSyntheticInput())
     const view = asset.accessor(columns['hasOutline']!.accessor) as Float32Array
-    expect(view[0]).toBe(0)  // glyph 0 has no curves
-    expect(view[1]).toBe(1)  // glyph 3 has 1 curve
+    expect(view[0]).toBe(0) // glyph 0 has no curves
+    expect(view[1]).toBe(1) // glyph 3 has 1 curve
   })
 
   it('cmap accessor: VEC2 [charCode, glyphId]', async () => {
     const { asset, columns } = await bakeAndRead(makeSyntheticInput())
     const view = asset.accessor(columns['cmap']!.accessor) as Uint16Array
     expect(view).toBeInstanceOf(Uint16Array)
-    expect(view.length).toBe(2)  // 1 entry × 2 u16
-    expect(view[0]).toBe(65)  // charCode 'A'
-    expect(view[1]).toBe(3)   // glyphId
+    expect(view.length).toBe(2) // 1 entry × 2 u16
+    expect(view[0]).toBe(65) // charCode 'A'
+    expect(view[1]).toBe(3) // glyphId
   })
 
   it('kern accessor: SHORT SCALAR, stride 3, [g1, g2, value]', async () => {
     const { asset, columns } = await bakeAndRead(makeSyntheticInput())
     const view = asset.accessor(columns['kern']!.accessor) as Int16Array
     expect(view).toBeInstanceOf(Int16Array)
-    expect(view.length).toBe(3)  // 1 triple × 3
-    expect(view[0]).toBe(3)    // g1
-    expect(view[1]).toBe(3)    // g2
-    expect(view[2]).toBe(-10)  // value
+    expect(view.length).toBe(3) // 1 triple × 3
+    expect(view[0]).toBe(3) // g1
+    expect(view[1]).toBe(3) // g2
+    expect(view[2]).toBe(-10) // value
   })
 
   it('bandOffsets: FLOAT SCALAR N+1, prefix-sum word offsets', async () => {
     const { asset, columns } = await bakeAndRead(makeSyntheticInput())
     const offsets = asset.accessor(columns['bandOffsets']!.accessor) as Float32Array
     expect(offsets).toBeInstanceOf(Float32Array)
-    expect(offsets.length).toBe(3)  // glyphCount + 1
+    expect(offsets.length).toBe(3) // glyphCount + 1
     expect(offsets[0]).toBe(0)
     // Glyph 0: [numH=1, numV=0, hCount0=2, hIdx0=0, hIdx1=1] = 5 words
     expect(offsets[1]).toBe(5)
@@ -244,19 +252,19 @@ describe('packBaked — returns .glb', () => {
     const { asset, columns } = await bakeAndRead(makeSyntheticInput())
     const data = asset.accessor(columns['bandData']!.accessor) as Uint16Array
     expect(data).toBeInstanceOf(Uint16Array)
-    expect(data.length).toBe(11)  // 5 + 6
+    expect(data.length).toBe(11) // 5 + 6
     // Glyph 0 words: [1, 0, 2, 0, 1]
-    expect(data[0]).toBe(1)  // numH
-    expect(data[1]).toBe(0)  // numV
-    expect(data[2]).toBe(2)  // hBand0 count
-    expect(data[3]).toBe(0)  // hBand0 idx 0
-    expect(data[4]).toBe(1)  // hBand0 idx 1
+    expect(data[0]).toBe(1) // numH
+    expect(data[1]).toBe(0) // numV
+    expect(data[2]).toBe(2) // hBand0 count
+    expect(data[3]).toBe(0) // hBand0 idx 0
+    expect(data[4]).toBe(1) // hBand0 idx 1
     // Glyph 3 words: [1, 1, 1, 2, 1, 3]
-    expect(data[5]).toBe(1)  // numH
-    expect(data[6]).toBe(1)  // numV
-    expect(data[7]).toBe(1)  // hBand0 count
-    expect(data[8]).toBe(2)  // hBand0 idx 0
-    expect(data[9]).toBe(1)  // vBand0 count
+    expect(data[5]).toBe(1) // numH
+    expect(data[6]).toBe(1) // numV
+    expect(data[7]).toBe(1) // hBand0 count
+    expect(data[8]).toBe(2) // hBand0 idx 0
+    expect(data[9]).toBe(1) // vBand0 count
     expect(data[10]).toBe(3) // vBand0 idx 0
   })
 
@@ -265,7 +273,7 @@ describe('packBaked — returns .glb', () => {
     const { asset, columns } = await bakeAndRead(input)
     const view = asset.accessor(columns['curveTexture']!.accessor) as Uint16Array
     expect(view).toBeInstanceOf(Uint16Array)
-    expect(view.length).toBe(4 * 2 * 4)  // width × height × 4 channels
+    expect(view.length).toBe(4 * 2 * 4) // width × height × 4 channels
     for (let i = 0; i < view.length; i++) {
       expect(view[i]).toBe(i + 1)
     }
@@ -276,7 +284,7 @@ describe('packBaked — returns .glb', () => {
     const { asset, columns } = await bakeAndRead(input)
     const view = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
     expect(view).toBeInstanceOf(Float32Array)
-    expect(view.length).toBe(4 * 1 * 2)  // width × height × 2 channels
+    expect(view.length).toBe(4 * 1 * 2) // width × height × 2 channels
     for (let i = 0; i < view.length; i++) {
       expect(view[i]).toBeCloseTo((i + 1) * 0.5, 5)
     }

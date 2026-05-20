@@ -148,11 +148,7 @@ function bandWordCount(g: SlugGlyphData): number {
  * Write per-glyph band words into `dst` starting at `wordOffset`.
  * Returns the number of words written.
  */
-function writeBandWords(
-  g: SlugGlyphData,
-  dst: Uint16Array,
-  wordOffset: number,
-): number {
+function writeBandWords(g: SlugGlyphData, dst: Uint16Array, wordOffset: number): number {
   const { hBands, vBands } = g.bands
   let w = wordOffset
   dst[w++] = hBands.length
@@ -184,15 +180,13 @@ export async function packBaked(input: BakeInput): Promise<Uint8Array> {
   } = input
 
   // ── Sort glyphs ascending by glyphId ──
-  const sortedGlyphs = Array.from(glyphs.values()).sort(
-    (a, b) => a.glyphId - b.glyphId,
-  )
+  const sortedGlyphs = Array.from(glyphs.values()).sort((a, b) => a.glyphId - b.glyphId)
   const glyphCount = sortedGlyphs.length
 
   // ── SoA column arrays ──
   const glyphIdArr = new Float32Array(glyphCount)
-  const boundsArr = new Float32Array(glyphCount * 4)   // VEC4: xMin yMin xMax yMax
-  const bandLocArr = new Float32Array(glyphCount * 2)  // VEC2: x y
+  const boundsArr = new Float32Array(glyphCount * 4) // VEC4: xMin yMin xMax yMax
+  const bandLocArr = new Float32Array(glyphCount * 2) // VEC2: x y
   const advanceWidthArr = new Float32Array(glyphCount)
   const lsbArr = new Float32Array(glyphCount)
   const hasOutlineArr = new Float32Array(glyphCount)
@@ -259,14 +253,18 @@ export async function packBaked(input: BakeInput): Promise<Uint8Array> {
   // Cast ArrayBufferLike → ArrayBuffer to match addColumn's typed-array constraint;
   // these arrays are always backed by a plain ArrayBuffer in practice.
   const accCurveTexture = addColumn(
-    doc, buf, 'curveTexture',
+    doc,
+    buf,
+    'curveTexture',
     new Uint16Array(curveData.buffer as ArrayBuffer, curveData.byteOffset, curveData.length),
-    'SCALAR',
+    'SCALAR'
   )
   const accBandTexture = addColumn(
-    doc, buf, 'bandTexture',
+    doc,
+    buf,
+    'bandTexture',
     new Float32Array(bandData.buffer as ArrayBuffer, bandData.byteOffset, bandData.length),
-    'SCALAR',
+    'SCALAR'
   )
 
   // ── FL_slug_font extension ──
@@ -349,8 +347,8 @@ export function unpackBaked(asset: FlatlandAsset): BakedFontData {
 
   // ── Glyph SoA column accessors ──
   const glyphIdArr = asset.accessor(columns['glyphId']!.accessor) as Float32Array
-  const boundsArr = asset.accessor(columns['bounds']!.accessor) as Float32Array    // VEC4, length N*4
-  const bandLocArr = asset.accessor(columns['bandLoc']!.accessor) as Float32Array  // VEC2, length N*2
+  const boundsArr = asset.accessor(columns['bounds']!.accessor) as Float32Array // VEC4, length N*4
+  const bandLocArr = asset.accessor(columns['bandLoc']!.accessor) as Float32Array // VEC2, length N*2
   const advanceWidthArr = asset.accessor(columns['advanceWidth']!.accessor) as Float32Array
   const lsbArr = asset.accessor(columns['lsb']!.accessor) as Float32Array
   const hasOutlineArr = asset.accessor(columns['hasOutline']!.accessor) as Float32Array
@@ -394,13 +392,13 @@ export function unpackBaked(asset: FlatlandAsset): BakedFontData {
     // Sanity: w should equal wordEnd
     if (w !== wordEnd) {
       throw new Error(
-        `unpackBaked: band word count mismatch for glyph ${glyphId}: expected ${wordEnd - wordStart}, consumed ${w - wordStart}`,
+        `unpackBaked: band word count mismatch for glyph ${glyphId}: expected ${wordEnd - wordStart}, consumed ${w - wordStart}`
       )
     }
 
     glyphs.set(glyphId, {
       glyphId,
-      curves: [],       // curve data lives in GPU texture, not rehydrated at runtime
+      curves: [], // curve data lives in GPU texture, not rehydrated at runtime
       contourStarts: [],
       bounds: {
         xMin: boundsArr[i * 4]!,
@@ -421,7 +419,7 @@ export function unpackBaked(asset: FlatlandAsset): BakedFontData {
 
   // ── Cmap: USHORT VEC2 [charCode, glyphId] ──
   const cmapView = asset.accessor(columns['cmap']!.accessor) as Uint16Array
-  const cmapCount = cmapView.length / 2  // VEC2 accessor: length = N*2 elements
+  const cmapCount = cmapView.length / 2 // VEC2 accessor: length = N*2 elements
   const cmapCodes = new Uint16Array(cmapCount)
   const cmapGlyphs = new Uint16Array(cmapCount)
   for (let i = 0; i < cmapCount; i++) {
