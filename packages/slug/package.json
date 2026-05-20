@@ -37,6 +37,17 @@
         "default": "./dist/react/*.cjs"
       }
     },
+    "./bake": {
+      "source": "./src/bake.ts",
+      "import": {
+        "types": "./dist/bake.d.ts",
+        "default": "./dist/bake.js"
+      },
+      "require": {
+        "types": "./dist/bake.d.cts",
+        "default": "./dist/bake.cjs"
+      }
+    },
     "./pipeline": {
       "source": "./src/pipeline/index.ts",
       "import": {
@@ -114,11 +125,11 @@
     }
   },
   "dependencies": {
+    "@gltf-transform/core": "catalog:",
     "@three-flatland/asset": "workspace:*",
     "opentype.js": "^1.3.4"
   },
   "devDependencies": {
-    "@gltf-transform/core": "catalog:",
     "@react-three/fiber": "catalog:",
     "@types/opentype.js": "^1.3.9",
     "@types/react": "catalog:",

@@ -215,6 +215,13 @@ export class SlugFontLoader extends Loader<SlugFont> {
   }
 
   private static async _loadRuntime(url: string): Promise<SlugFont> {
+    // Runtime build path: builds the SlugFont directly from the fetched font
+    // file via already-lazy pipeline imports. It does NOT bake a `.slug.glb`,
+    // so `@gltf-transform/core` (reachable only through `./bake`) stays out of
+    // the browser static graph. If runtime GLB baking is ever added here, it
+    // MUST `await import('./bake.js')` to pull `packBaked` lazily — gated by
+    // `forceRuntime`, per the `@three-flatland/normals` `resolveNormalMap`
+    // precedent — so the heavy dep never enters the `.` entry's static graph.
     const [
       response,
       opentype,

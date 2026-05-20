@@ -1173,6 +1173,9 @@ importers:
 
   packages/slug:
     dependencies:
+      '@gltf-transform/core':
+        specifier: 'catalog:'
+        version: 4.3.0
       '@three-flatland/asset':
         specifier: workspace:*
         version: link:../asset
@@ -1180,9 +1183,6 @@ importers:
         specifier: ^1.3.4
         version: 1.3.4
     devDependencies:
-      '@gltf-transform/core':
-        specifier: 'catalog:'
-        version: 4.3.0
       '@react-three/fiber':
         specifier: 'catalog:'
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)

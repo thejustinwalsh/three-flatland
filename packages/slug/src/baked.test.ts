@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { readAsset, type FlatlandAsset } from '@three-flatland/asset'
-import { packBaked, unpackBaked, bakedURLs, cmapLookup, kernLookup, SLUG_FONT_VERSION } from './baked'
+import { unpackBaked, bakedURLs, cmapLookup, kernLookup, SLUG_FONT_VERSION } from './baked'
 import type { BakeInput } from './baked'
+import { packBaked } from './bake'
 import type { SlugGlyphData, QuadCurve } from './types'
 
 describe('unpackBaked version gate', () => {

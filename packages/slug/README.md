@@ -112,6 +112,20 @@ npx slug-bake Inter-Regular.ttf -r latin -r 0x2000-0x206F  # Multiple ranges
 
 Place the baked files alongside the font. `SlugFontLoader.load()` detects them automatically — no code changes needed. The original `.ttf` is not fetched when baked data is present, and opentype.js never enters the bundle.
 
+### glTF-Transform interop (`@three-flatland/slug/bake`)
+
+The packer and the registerable `FL_slug_font` extension class live behind the Node-only `./bake` subpath, so `@gltf-transform/core` never enters the browser runtime graph. Register the extension to read/round-trip `.slug.glb` with gltf-transform tooling:
+
+```ts
+import { NodeIO } from '@gltf-transform/core'
+import { FlSlugFontExtension } from '@three-flatland/slug/bake'
+
+const io = new NodeIO().registerExtensions([FlSlugFontExtension])
+const doc = await io.read('Inter-Regular.slug.glb') // font-data accessors intact
+```
+
+Without the extension registered, a tool treats the accessors as unused (and refuses the `extensionsRequired` file). See the `@three-flatland/asset` README "ecosystem integration" section.
+
 ### Predefined ranges
 
 | Name     | Unicode Range   | Description                              |

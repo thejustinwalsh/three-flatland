@@ -14,8 +14,9 @@ import opentype from 'opentype.js'
 import { readAsset } from '@three-flatland/asset'
 import { parseFont } from './pipeline/fontParser'
 import { packTextures } from './pipeline/texturePacker'
-import { packBaked, unpackBaked, cmapLookup, kernLookup } from './baked'
+import { unpackBaked, cmapLookup, kernLookup } from './baked'
 import type { BakeInput, BakedFontData } from './baked'
+import { packBaked } from './bake'
 import type { SlugGlyphData } from './types'
 
 // ---------------------------------------------------------------------------

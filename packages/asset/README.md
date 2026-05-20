@@ -206,6 +206,36 @@ Small JSON fields (`metrics`, `strokeSets`, texture dimensions) live in the exte
 
 ---
 
+## Ecosystem integration — registerable extension classes
+
+A `FL_*` baker SHOULD also ship a **registerable glTF-Transform extension
+class** from its `./bake` subpath. That single class lets generic gltf-transform
+tools (`optimize`, `inspect`, `validate`, the Document API) read and round-trip
+the baked `.glb` without dropping the `FL_*` accessors.
+
+```ts
+import { NodeIO } from '@gltf-transform/core'
+import { FlSlugFontExtension } from '@three-flatland/slug/bake'
+
+const io = new NodeIO().registerExtensions([FlSlugFontExtension])
+const doc = await io.read('Inter-Regular.slug.glb') // accessor refs intact
+// …optimize / inspect / re-write — the FL_slug_font property graph survives.
+```
+
+Without registration, an unregistered tool treats the `FL_*` accessors as
+unused (so an `optimize` pass may prune them), or — for a file that marks the
+extension in `extensionsRequired` — refuses to load it at all (`Missing required
+extension`). Exporting the class from `./bake` is what makes a baked Flatland
+asset a first-class citizen in the wider glTF tooling ecosystem.
+
+`createFLExtension` returns the class you re-export; bind it once and reuse it
+for both the writer (inside `packBaked`) and the public export:
+
+```ts
+const _slug = createFLExtension('FL_slug_font')
+export const FlSlugFontExtension = _slug.ExtClass
+```
+
 ## Composition (designed, not yet built)
 
 The shape is designed so multi-asset scene packs compose without a rewrite:
@@ -226,7 +256,12 @@ Baked output passes the [official Khronos glTF-Validator](https://github.com/Khr
 
 ## Writing a new baker
 
-Use `packages/slug/src/baked.ts` (`packBaked`/`unpackBaked`) as the reference implementation.
+Use `packages/slug/src/bake.ts` (`packBaked`, `FlSlugFontExtension`) for the
+Node/tooling side and `packages/slug/src/baked.ts` (`unpackBaked`, runtime
+reader) for the browser side as the reference implementation. The packer and the
+runtime reader live in separate modules so `@gltf-transform/core` stays out of
+the runtime static graph — it is reachable only through the package's `./bake`
+subpath.
 
 Checklist for a new format (e.g. `FL_sprite_atlas`, `FL_tilemap`):
 
@@ -234,6 +269,6 @@ Checklist for a new format (e.g. `FL_sprite_atlas`, `FL_tilemap`):
 2. Name the extension `FL_<feature>` (e.g. `FL_sprite_atlas`). Add it to `extensionsUsed` and `extensionsRequired` as appropriate.
 3. Use `addColumn` for each typed column. Use a `USHORT` + `FLOAT` CSR pair for ragged arrays. Use a `USHORT` accessor for half-float data textures.
 4. Use `createFLExtension('FL_<feature>')` to produce the glTF-Transform `ExtClass`. Call `ext.createProperty(metadata)` and `prop.setAccessorRef(semantic, acc)` for each column.
-5. Register the `ExtClass` with `NodeIO` and call `io.writeBinary(doc)`.
+5. Register the `ExtClass` with `NodeIO` and call `io.writeBinary(doc)`. Bind the class once (`const { ExtClass } = createFLExtension('FL_<feature>')`) and **re-export it from your package's `./bake` subpath** (e.g. `FlSlugFontExtension`) so downstream gltf-transform tooling can register it — see "Ecosystem integration" above.
 6. On the runtime side, import from `@three-flatland/asset` (`.`). Call `readAsset(buf)`, then `asset.ext('FL_<feature>')` to read the extension JSON and `asset.accessor(index)` to get zero-copy typed views.
 7. Run the emitted GLB through `gltf-validator` — 0 errors is the bar.
