@@ -393,7 +393,7 @@ Options:
                         Named: ascii, latin, latin+
                         Custom: 0x20-0x7E or 32-126
                         Default: all glyphs
-  --output, -o <path>   Output base path (writes <path>.slug.json + .bin).
+  --output, -o <path>   Output base path (writes <path>.slug.glb).
                         Default: derive from font filename.
   --stroke-widths <list>  Comma-separated em-space stroke half-widths
                         to pre-bake. For each entry, every outlined

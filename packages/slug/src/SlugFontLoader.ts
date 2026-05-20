@@ -18,9 +18,10 @@ import { measureTextBaked } from './pipeline/textMeasureBaked'
 /**
  * The single entry point for loading SlugFont data.
  *
- * Automatically tries pre-baked data first ({name}.slug.json + .slug.bin).
- * When baked data is present, opentype.js is never loaded and the original
- * font file is never fetched. Falls back to full runtime parsing otherwise.
+ * Tries pre-baked data first (a single {name}.slug.glb). When baked data is
+ * present, opentype.js is never loaded and the original font file is never
+ * fetched. Falls back to full runtime parsing otherwise. The baked .slug.glb
+ * fast-path is wired in G4.2; until then this falls through to runtime.
  *
  * @example
  * ```typescript
