@@ -31,8 +31,11 @@ describe('pack', () => {
 
   it('bare ArrayBuffer / DataView default to Uint8', () => {
     const ab = new ArrayBuffer(4)
-    const buf = pack({ kind: 't', version: 1 }, { raw: ab })
-    expect(readJson(buf).buffers.raw.type).toBe('Uint8')
+    const dv = new DataView(new ArrayBuffer(4))
+    const buf = pack({ kind: 't', version: 1 }, { raw: ab, view: dv })
+    const json = readJson(buf)
+    expect(json.buffers.raw.type).toBe('Uint8')
+    expect(json.buffers.view.type).toBe('Uint8')
   })
 
   it('byte-identical across runs for the same input', () => {
@@ -54,6 +57,21 @@ describe('pack', () => {
   it('throws when required metadata is missing', () => {
     // @ts-expect-error missing version
     expect(() => pack({ kind: 't' }, { a: new Uint8Array(4) })).toThrow()
+  })
+
+  it('throws for invalid metadata.kind and metadata.version', () => {
+    // @ts-expect-error missing kind
+    expect(() => pack({ version: 1 }, { a: new Uint8Array(4) })).toThrow()
+    expect(() => pack({ kind: '', version: 1 }, { a: new Uint8Array(4) })).toThrow()
+    expect(() => pack({ kind: 't', version: 0 }, { a: new Uint8Array(4) })).toThrow()
+    expect(() => pack({ kind: 't', version: 1.5 }, { a: new Uint8Array(4) })).toThrow()
+  })
+
+  it('handles zero-length buffers: 0 len, next buffer shares the same off', () => {
+    const buf = pack({ kind: 't', version: 1 }, { e: new Uint16Array([]), b: new Uint8Array([1]) })
+    const json = readJson(buf)
+    expect(json.buffers.e).toMatchObject({ off: 0, len: 0 })
+    expect(json.buffers.b.off).toBe(0)
   })
 
   it('non-ASCII metadata name round-trips and BIN header stays 4-aligned', () => {
