@@ -44,15 +44,15 @@ The extension is always a **thin semantic overlay + references** — it never re
 
 ### Bake side — Node, glTF-Transform (dev/CLI only)
 
-Build a glTF `Document`, emit one `.glb`:
-- **Tabular data** (glyph columns, cmap, kern) → native **accessors** (SoA — one accessor per column).
-- **Ragged data** (slug bands) → a flat data **bufferView** + a **FLOAT offset accessor** (count = N+1, CSR/prefix-sum; FLOAT because `UNSIGNED_INT` accessors are spec-restricted to mesh indices, and FLOAT holds exact integers to 2²⁴).
-- **Half-float / non-glTF data textures** (curve RGBA16F, band RG-F32) → **raw bufferViews referenced from the extension** (NOT glTF images — a custom-MIME image is non-conformant and the validator rejects it). The extension records `width`/`height`/`format`.
+Build a glTF `Document`, emit one `.glb`. **All baked numeric data is native glTF accessors** — no raw bufferViews, no glTF-Transform internal APIs:
+- **Tabular data** (glyph columns, cmap, kern) → **accessors** (SoA — one accessor per column).
+- **Ragged data** (slug bands) → a flat **`USHORT` accessor** (the concatenated band words) + a **FLOAT offset accessor** (count = N+1, CSR/prefix-sum; FLOAT because `UNSIGNED_INT` accessors are spec-restricted to mesh indices, and FLOAT holds exact integers to 2²⁴).
+- **Data textures** (curve RGBA16F, band RG-F32) → **accessors carrying the raw bytes**: the half-float curve texture is a `USHORT` accessor (the 16-bit half-float *bits*, stored losslessly; the extension records `format: "rgba16f"` + dims), the band texture a `FLOAT` accessor. This is fully native and validator-clean — a `USHORT` accessor is a standard glTF accessor; storing half-float bits in it is a normal data-packing use, with the true format declared in the extension. (NOT glTF images: a custom-MIME image is non-conformant. NOT raw bufferViews: that would require glTF-Transform's semi-internal `otherBufferViews` path — accessors avoid it.)
 - **Standard images / sampleable textures** (sprite atlases) → native glTF `image`/`texture` (PNG; KTX2-Basis via `KHR_texture_basisu`).
 - **Geometry** (sprite hull meshes, scene meshes) → native `mesh`/`primitive`/accessors (read by `GLTFLoader` for free).
-- **Semantic layer** (kind/version, name→accessor map, metrics, strokeSets) → the `FL_*` extension JSON, nested in the glTF JSON document.
+- **Semantic layer** (kind/version, name→accessor map, metrics, strokeSets) → the `FL_*` extension JSON, nested in the glTF JSON document, referencing the accessors **by index**.
 
-glTF-Transform (`@gltf-transform/core`) is a bake-time-only dependency — never shipped to the browser.
+glTF-Transform (`@gltf-transform/core`) is a bake-time-only dependency — never shipped to the browser. The extension is authored as a glTF-Transform `Extension`/`ExtensionProperty` that emits accessor-index references via the public `WriterContext.accessorIndexMap` (`.addRef()`) — no `otherBufferViews`, no internal coupling.
 
 ### Runtime side — zero-dependency GLB reader
 
@@ -104,9 +104,9 @@ The extension is a JSON object nested in the glTF JSON chunk under `extensions`.
       "glyphs": { "count": 512, "fields": { "advanceWidth": { "accessor": 0 }, "...": "..." } },
       "cmap": { "accessor": 10 },
       "kern": { "accessor": 11, "stride": 3 },
-      "bands": { "offsetAccessor": 12, "dataBufferView": 2 },
-      "curveTexture": { "bufferView": 0, "width": 2048, "height": 128, "format": "rgba16f" },
-      "bandTexture":  { "bufferView": 1, "width": 2048, "height": 32,  "format": "rg32f" }
+      "bands": { "offsetAccessor": 12, "dataAccessor": 13 },
+      "curveTexture": { "accessor": 14, "width": 2048, "height": 128, "format": "rgba16f" },  // USHORT accessor, half-float bits
+      "bandTexture":  { "accessor": 15, "width": 2048, "height": 32,  "format": "rg32f" }     // FLOAT accessor
     }
   }
 }
@@ -152,12 +152,12 @@ A level pack `.glb` is then: native meshes/materials (the scene, viewable in any
 
 | Today (`baked.ts`) | In the GLB |
 |---|---|
-| curve texture (Uint16 RGBA16F) | raw bufferView, referenced by `FL_slug_font.curveTexture` (+ dims/format) |
-| band texture (Float32 RG) | raw bufferView, referenced by `FL_slug_font.bandTexture` |
+| curve texture (Uint16 RGBA16F) | `USHORT` accessor (half-float bits), referenced by `FL_slug_font.curveTexture` (+ dims/format) |
+| band texture (Float32 RG) | `FLOAT` accessor, referenced by `FL_slug_font.bandTexture` (+ dims) |
 | glyph table (10×f32) | 10 SoA FLOAT SCALAR accessors, named columns under `glyphs.fields` |
 | cmap [u16,u16] | USHORT VEC2 accessor |
 | kern [u16,u16,i16] | SHORT SCALAR accessor, stride 3 |
-| band section (ragged) | flat USHORT bufferView + FLOAT offset accessor (N+1, CSR) |
+| band section (ragged) | flat USHORT accessor + FLOAT offset accessor (N+1, CSR) |
 | metrics, strokeSets, textureWidth | `FL_slug_font` JSON (metrics, strokeSets, texture dims/formats); `kind`/`version` |
 
 `slug-bake` uses `@three-flatland/asset/bake` + `@gltf-transform/core`. `SlugFontLoader` fetches one `.slug.glb`, `readAsset()`, follows `FL_slug_font`, builds curve/band `DataTexture`s from the bufferView bytes (zero-copy). opentype.js stays unloaded.

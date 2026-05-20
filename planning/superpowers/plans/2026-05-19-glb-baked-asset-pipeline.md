@@ -71,11 +71,11 @@ packages/asset/                    (renamed from packages/pak; flpak src removed
 
 - [ ] **Step 1: Failing test** `src/bake/gltf.test.ts` — using `@gltf-transform/core` (`Document`, `NodeIO`): create a doc with a FLOAT accessor (a column), a raw bufferView (texture bytes), and a root extension object; `writeBinary()`; then `readAsset()` the bytes and assert the accessor values, the raw bytes, and `ext('FL_demo')` round-trip. (Proves bake↔read interop.)
 - [ ] **Step 2:** Run → fail.
-- [ ] **Step 3: Implement `bake/gltf.ts`.** Thin helpers over glTF-Transform:
-  - `addColumn(doc, buffer, name, typedArray, type)` → `Accessor` (componentType inferred from the typed array, `type` SCALAR/VECn) ; returns it so the caller can capture its index at write time.
-  - `addRawBufferView(doc, name, bytes)` → emit a raw bufferView (no accessor) for half-float/opaque data, via glTF-Transform's extension write hook (`WriterContext.otherBufferViews`) — **isolate this one semi-internal call here** with a comment + a pinned `@gltf-transform/core` version + the round-trip test as the guard.
-  - `setRootExtension(doc, name, obj)` → set the extension object on the document root (and add to `extensionsUsed`; `extensionsRequired` per a flag).
-  - Note: glTF-Transform assigns accessor/bufferView **indices at write time**. Either capture indices via the write context, or — simpler and more robust — author the extension JSON in a post-write pass that maps the named resources to their final indices. Pick the approach the round-trip test proves stable; document it.
+- [ ] **Step 3: Implement `bake/gltf.ts`.** Helpers over glTF-Transform — **all data is accessors; no raw bufferViews, no `otherBufferViews`**:
+  - `addColumn(doc, buffer, name, typedArray, type)` → `Accessor` (componentType inferred from the typed array — `Uint16Array`→USHORT carries half-float bits, `Float32Array`→FLOAT, etc.; `type` SCALAR/VECn). Returns the `Accessor` so it can be referenced.
+  - The `FL_*` extension is authored as a glTF-Transform **`Extension` + `ExtensionProperty`** that holds `.addRef()` references to the `Accessor` objects and, in `write(context)`, emits the extension JSON using `context.accessorIndexMap.get(accessor)` to resolve final indices — the **public** index-map API (no internal `otherBufferViews`). `read(context)` resolves indices back via `context.accessors[i]` (only needed if a Node-side reader is wanted; the browser runtime uses our own `readAsset`).
+  - For G2.1's generic round-trip test, a minimal demo extension (`FL_demo`) exercising one accessor ref + a metadata object is sufficient; the slug-specific `FL_slug_font` shape is authored in Task 4.1 using the same machinery.
+  - Pin `@gltf-transform/core` to the catalog version; the round-trip test (bake → `readAsset`) is the guard.
 - [ ] **Step 4:** Run → pass; build emits both entries; typecheck 0.
 - [ ] **Step 5:** Commit: `feat(asset): glTF-Transform bake helpers (accessors, raw bufferViews, extension)`.
 
@@ -105,7 +105,7 @@ packages/asset/                    (renamed from packages/pak; flpak src removed
 
 - [ ] **Step 1:** `packages/slug/package.json`: add `@three-flatland/asset` (`workspace:*`) + devdep `@gltf-transform/core`. `pnpm install`.
 - [ ] **Step 2: Failing test** in `baked.test.ts`: `packBaked(input)` returns a `.glb` `Uint8Array`; `readAsset(out.buffer)` exposes `ext('FL_slug_font')` with `version`, `metrics`, `glyphs.fields` accessor refs, `cmap`/`kern` accessors, `bands.offsetAccessor` + `dataBufferView`, and `curveTexture`/`bandTexture` bufferView refs.
-- [ ] **Step 3:** Rewrite `packBaked` over `@three-flatland/asset/bake`: glyph table → 10 SoA FLOAT accessors; cmap → USHORT VEC2; kern → SHORT SCALAR stride-3; band data → flat USHORT bufferView; band offsets → FLOAT accessor (N+1 prefix sum); curve/band textures → raw bufferViews; metrics/strokeSets/dims/`kind`/`version` → `FL_slug_font` extension JSON (`extensionsRequired` for the standalone font file). Update `bakedURLs` → single `{base}.slug.glb`; update `cli.ts` to write one file.
+- [ ] **Step 3:** Rewrite `packBaked` over `@three-flatland/asset/bake`: glyph table → 10 SoA FLOAT accessors; cmap → USHORT VEC2; kern → SHORT SCALAR stride-3; band data → flat USHORT accessor; band offsets → FLOAT accessor (N+1 prefix sum); curve texture → USHORT accessor (half-float bits); band texture → FLOAT accessor; metrics/strokeSets/dims/`kind`/`version` → `FL_slug_font` extension JSON referencing those accessors by index (`extensionsRequired` for the standalone font file). Update `bakedURLs` → single `{base}.slug.glb`; update `cli.ts` to write one file.
 - [ ] **Step 4:** Run → pass; typecheck 0.
 - [ ] **Step 5:** Commit: `feat(slug): bake to single .slug.glb via @three-flatland/asset`.
 
