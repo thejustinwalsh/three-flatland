@@ -75,7 +75,11 @@ vi.stubGlobal(
 )
 
 // Mock GPU (WebGPU)
+// Preserve navigator.userAgent explicitly — the spread of globalThis.navigator
+// does not copy prototype getters, and third-party Dart-compiled modules (e.g.
+// gltf-validator) call navigator.userAgent at module evaluation time.
 vi.stubGlobal('navigator', {
+  userAgent: globalThis.navigator?.userAgent ?? 'Node.js',
   ...globalThis.navigator,
   gpu: {
     requestAdapter: vi.fn().mockResolvedValue({

@@ -54,6 +54,7 @@
     }
   },
   "devDependencies": {
-    "@gltf-transform/core": "catalog:"
+    "@gltf-transform/core": "catalog:",
+    "gltf-validator": "^2.0.0-dev.3.10"
   }
 }

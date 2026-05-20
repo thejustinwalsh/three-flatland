@@ -4,6 +4,15 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    server: {
+      deps: {
+        // gltf-validator ships Dart-compiled JS that must not be transformed
+        // by Vite's SSR pipeline — it relies on CJS globals and inspects
+        // navigator.userAgent at evaluation time in a way that breaks under
+        // Vite's module transform. Mark it external so Node loads it natively.
+        external: ['gltf-validator'],
+      },
+    },
     include: [
       'packages/*/src/**/*.test.ts',
       'packages/*/src/**/*.test.tsx',

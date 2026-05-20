@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "kind": "flatland.demo",
+    "version": 1,
+    "metrics": {
+      "vertexCount": 3,
+      "tileSize": 16
+    }
+  },
+  "accessors": {
+    "floatCol": {
+      "index": 0,
+      "values": [
+        1.5,
+        2.5,
+        3.5
+      ],
+      "type": "Float32Array"
+    },
+    "ushortCol": {
+      "index": 1,
+      "values": [
+        10,
+        20,
+        30,
+        40
+      ],
+      "type": "Uint16Array"
+    },
+    "shortCol": {
+      "index": 2,
+      "values": [
+        -1,
+        0,
+        1
+      ],
+      "type": "Int16Array"
+    }
+  }
+}
