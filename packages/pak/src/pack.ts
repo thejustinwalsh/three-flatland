@@ -69,13 +69,42 @@ export function pack(metadata: Omit<PakMetadata, 'buffers'>, namedBuffers: Named
     cursor += padded
   }
 
-  const binBytes = cursor
-  const jsonRaw = new TextEncoder().encode(JSON.stringify({ ...metadata, buffers }))
-  const jsonPadded = pad4(jsonRaw.byteLength)
-  const jsonBytes = new Uint8Array(jsonPadded)
-  jsonBytes.set(jsonRaw, 0)
-  jsonBytes.fill(0x20, jsonRaw.byteLength) // trailing spaces after the complete JSON value
+  const binPayload = new Uint8Array(cursor)
+  let bo = 0
+  for (const s of slices) {
+    binPayload.set(s, bo)
+    bo += s.byteLength
+  }
 
+  return frame({ ...metadata, buffers } as PakMetadata, binPayload)
+}
+
+/**
+ * Frames a fully-formed PakMetadata + a BIN payload into the .flpak binary
+ * layout WITHOUT any validation. Shared by pack() and __writeRaw().
+ */
+function frame(
+  metadata: PakMetadata,
+  binPayload: Uint8Array,
+  rawJsonBytes?: Uint8Array,
+): ArrayBuffer {
+  let jsonBytes: Uint8Array
+  if (rawJsonBytes) {
+    // Caller-supplied raw JSON bytes (e.g. intentionally invalid JSON for tests).
+    // Still pad to 4-byte boundary with spaces.
+    const padded = pad4(rawJsonBytes.byteLength)
+    jsonBytes = new Uint8Array(padded)
+    jsonBytes.set(rawJsonBytes, 0)
+    jsonBytes.fill(0x20, rawJsonBytes.byteLength)
+  } else {
+    const jsonRaw = new TextEncoder().encode(JSON.stringify(metadata))
+    const padded = pad4(jsonRaw.byteLength)
+    jsonBytes = new Uint8Array(padded)
+    jsonBytes.set(jsonRaw, 0)
+    jsonBytes.fill(0x20, jsonRaw.byteLength) // trailing spaces after the complete JSON value
+  }
+
+  const binBytes = binPayload.byteLength
   const total = 12 + 8 + jsonBytes.byteLength + 8 + binBytes
   const out = new ArrayBuffer(total)
   const dv = new DataView(out)
@@ -93,10 +122,25 @@ export function pack(metadata: Omit<PakMetadata, 'buffers'>, namedBuffers: Named
   dv.setUint32(o, binBytes, true)
   dv.setUint32(o + 4, TYPE_BIN_LE, true)
   o += 8
-  for (const s of slices) {
-    u8.set(s, o)
-    o += s.byteLength
-  }
+  u8.set(binPayload, o)
 
   return out
+}
+
+/**
+ * Test-only low-level writer: frames arbitrary metadata + bin WITHOUT validation.
+ * Used to construct malformed files for reader-validation tests.
+ * NOT exported from index.ts — import directly from './pack' in tests only.
+ *
+ * @param metadata - A PakMetadata with buffers already populated (offsets/lengths set).
+ * @param binBytes - The raw BIN payload bytes.
+ * @param rawJsonBytes - Optional: if supplied, these raw bytes are used as the JSON
+ *   chunk payload verbatim (allows injecting invalid JSON for BAD_JSON tests).
+ */
+export function __writeRaw(
+  metadata: PakMetadata,
+  binBytes: Uint8Array,
+  rawJsonBytes?: Uint8Array,
+): ArrayBuffer {
+  return rawJsonBytes ? frame(metadata, binBytes, rawJsonBytes) : frame(metadata, binBytes)
 }
