@@ -5,7 +5,8 @@ import {
   type PakDataType,
   type PakMetadata,
 } from './schema'
-import { makeCursor, type RecordCursor } from './records'
+import { makeCursor, type RecordCursor, type TypedRecordCursor } from './records'
+import type { RecordLayout } from './layout'
 
 const MAGIC_LE = 0x4b504c46
 const TYPE_JSON_LE = 0x4e4f534a
@@ -28,6 +29,7 @@ export interface UnpackedPak {
   view(name: string): ArrayBufferView
   bytes(name: string): Uint8Array
   records(name: string): RecordCursor
+  records<L extends RecordLayout>(name: string, layout: L): TypedRecordCursor<L>
 }
 
 export function unpack(buf: ArrayBuffer): UnpackedPak {
@@ -79,6 +81,14 @@ export function unpack(buf: ArrayBuffer): UnpackedPak {
     return d
   }
 
+  function records(name: string): RecordCursor
+  function records<L extends RecordLayout>(name: string, layout: L): TypedRecordCursor<L>
+  function records<L extends RecordLayout>(name: string, layout?: L): RecordCursor | TypedRecordCursor<L> {
+    return layout
+      ? makeCursor(buf, binStart, desc(name), name, layout)
+      : makeCursor(buf, binStart, desc(name), name)
+  }
+
   return {
     metadata,
     has: (name) => name in metadata.buffers,
@@ -91,7 +101,7 @@ export function unpack(buf: ArrayBuffer): UnpackedPak {
       const Ctor = VIEW_CTORS[d.type]
       return new Ctor(buf, binStart + d.off, d.len / ELEMENT_SIZE[d.type])
     },
-    records: (name) => makeCursor(buf, binStart, desc(name), name),
+    records,
   }
 }
 

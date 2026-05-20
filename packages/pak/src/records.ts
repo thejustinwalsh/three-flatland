@@ -1,4 +1,5 @@
 import { ELEMENT_SIZE, PakError, type PakBufferDescriptor, type PakDataType, type PakRecordField } from './schema'
+import type { RecordLayout, LayoutType } from './layout'
 
 const READERS: Record<PakDataType, (dv: DataView, o: number) => number> = {
   Float32: (dv, o) => dv.getFloat32(o, true),
@@ -20,14 +21,43 @@ export interface RecordCursor {
   getArray(index: number, field: string, out?: ArrayBufferView): ArrayBufferView
 }
 
-export function makeCursor(
-  buf: ArrayBuffer, binStart: number, d: PakBufferDescriptor, name: string,
-): RecordCursor {
+export interface TypedRecordCursor<L extends RecordLayout> {
+  readonly count: number
+  get(index: number, field: keyof L['spec'] & string): number
+  getArray(index: number, field: keyof L['spec'] & string, out?: ArrayBufferView): ArrayBufferView
+  decode(index: number): LayoutType<L>
+}
+
+export function makeCursor(buf: ArrayBuffer, binStart: number, d: PakBufferDescriptor, name: string): RecordCursor
+export function makeCursor<L extends RecordLayout>(buf: ArrayBuffer, binStart: number, d: PakBufferDescriptor, name: string, layout: L): TypedRecordCursor<L>
+export function makeCursor<L extends RecordLayout>(
+  buf: ArrayBuffer, binStart: number, d: PakBufferDescriptor, name: string, layout?: L,
+): RecordCursor | TypedRecordCursor<L> {
   const r = d.record
   if (!r) throw new PakError('BAD_ACCESS', `buffer "${name}" has no record schema`)
   const base = binStart + d.off
   const dv = new DataView(buf)
+  // byName resolves to file's fields — offsets/stride/type come from the file, not the layout
   const byName = new Map<string, PakRecordField>(r.fields.map((f) => [f.name, f]))
+
+  // Validate layout against file if provided; all byte math still uses file fields
+  if (layout) {
+    for (const [fname, fs] of Object.entries(layout.spec)) {
+      const ff = byName.get(fname)
+      if (!ff)
+        throw new PakError('BAD_ACCESS', `"${name}": layout field "${fname}" not found in file record`)
+      if (ff.type !== fs.type)
+        throw new PakError(
+          'BAD_ACCESS',
+          `"${name}.${fname}": file type "${ff.type}" != layout type "${fs.type}"`,
+        )
+      if (ff.count !== fs.count)
+        throw new PakError(
+          'BAD_ACCESS',
+          `"${name}.${fname}": file count ${ff.count} != layout count ${fs.count}`,
+        )
+    }
+  }
 
   const field = (fname: string): PakRecordField => {
     const f = byName.get(fname)
@@ -39,15 +69,15 @@ export function makeCursor(
       throw new PakError('BAD_ACCESS', `"${name}": index ${i} out of range [0,${r.count})`)
   }
 
-  return {
+  const cursor = {
     count: r.count,
-    get(index, fname) {
+    get(index: number, fname: string): number {
       checkIndex(index)
       const f = field(fname)
       if (f.count !== 1) throw new PakError('BAD_ACCESS', `"${name}.${fname}": use getArray (count ${f.count})`)
       return READERS[f.type](dv, base + index * r.stride + f.offset)
     },
-    getArray(index, fname, out) {
+    getArray(index: number, fname: string, out?: ArrayBufferView): ArrayBufferView {
       checkIndex(index)
       const f = field(fname)
       if (f.count === 1) throw new PakError('BAD_ACCESS', `"${name}.${fname}": use get (scalar)`)
@@ -61,5 +91,24 @@ export function makeCursor(
       }
       return new VIEW_CTORS[f.type](buf, off, f.count)
     },
+    decode(index: number): LayoutType<L> {
+      checkIndex(index)
+      const result: Record<string, number | number[]> = {}
+      for (const f of r.fields) {
+        if (f.count === 1) {
+          result[f.name] = READERS[f.type](dv, base + index * r.stride + f.offset)
+        } else {
+          const arr: number[] = []
+          const off = base + index * r.stride + f.offset
+          const reader = READERS[f.type]
+          const elemSize = ELEMENT_SIZE[f.type]
+          for (let k = 0; k < f.count; k++) arr.push(reader(dv, off + k * elemSize))
+          result[f.name] = arr
+        }
+      }
+      return result as LayoutType<L>
+    },
   }
+
+  return cursor
 }
