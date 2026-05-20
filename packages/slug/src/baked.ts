@@ -1,17 +1,70 @@
 /**
  * Baked binary format for pre-processed SlugFont data.
  *
- * Produced by `slug-bake`, consumed by `SlugFont.fromURL` at runtime.
- * Two files alongside the original font:
- *   - {name}.slug.json — tiny header with byte offsets into the binary
- *   - {name}.slug.bin  — all data: textures, glyph table, cmap, kerning
+ * Produced by `slug-bake` as a single `.slug.glb` file.
+ * `SlugFont.fromURL` fetches this one file; no opentype.js loaded at runtime.
  *
- * When baked data is present, opentype.js is never loaded at runtime.
+ * ## GLB layout — FL_slug_font extension
+ *
+ * All numeric data lives in standard glTF accessors in the BIN chunk.
+ * The `FL_slug_font` extension in the JSON chunk references them by index.
+ *
+ * The extension JSON emitted by the bake helper has shape:
+ * ```json
+ * {
+ *   "version": 1,
+ *   "metrics": { ... },
+ *   "strokeSets": [...],
+ *   "glyphs": { "count": N },
+ *   "kern": { "stride": 3 },
+ *   "curveTexture": { "width": W, "height": H, "format": "rgba16f" },
+ *   "bandTexture":  { "width": W, "height": H, "format": "rg32f" },
+ *   "bands": { "glyphCount": N },
+ *   "columns": {
+ *     "glyphId":      { "accessor": <idx> },
+ *     "bounds":       { "accessor": <idx> },
+ *     "bandLoc":      { "accessor": <idx> },
+ *     "advanceWidth": { "accessor": <idx> },
+ *     "lsb":          { "accessor": <idx> },
+ *     "hasOutline":   { "accessor": <idx> },
+ *     "cmap":         { "accessor": <idx> },
+ *     "kern":         { "accessor": <idx> },
+ *     "bandOffsets":  { "accessor": <idx> },
+ *     "bandData":     { "accessor": <idx> },
+ *     "curveTexture": { "accessor": <idx> },
+ *     "bandTexture":  { "accessor": <idx> }
+ *   }
+ * }
+ * ```
+ *
+ * ### Glyph ordering convention
+ * Glyphs are stored **sorted ascending by glyphId** (the numeric glyph index
+ * from the source font). This gives a stable, predictable order: glyph at
+ * position `i` in every SoA column corresponds to the `i`-th element of the
+ * sorted `glyphId` accessor. G4.2 reads in the same order.
+ *
+ * ### Band-offset convention
+ * The `columns.bandOffsets` accessor is a FLOAT SCALAR of length
+ * `glyphCount + 1` (CSR / prefix-sum). Each entry is a **word offset** into
+ * the flat `columns.bandData` accessor (USHORT SCALAR):
+ *   - `offsets[i]` = index of the first u16 word for glyph `i` (sorted order above)
+ *   - `offsets[glyphCount]` = total word count in the data accessor (sentinel)
+ *
+ * Per-glyph band words layout (same as old binary format):
+ * ```
+ * [numH: u16, numV: u16,
+ *  hBandCount0: u16, ..., hBandCountN-1: u16,
+ *  hBand0_idx0: u16, ..., (all h-band indices, band by band),
+ *  vBandCount0: u16, ..., vBandCountM-1: u16,
+ *  vBand0_idx0: u16, ...]
+ * ```
  */
 
+import { Document, NodeIO } from '@gltf-transform/core'
+import { addColumn, createFLExtension } from '@three-flatland/asset/bake'
 import type { SlugGlyphData } from './types'
 
-/** JSON header stored in the .slug.json file. */
+/** JSON header shape — kept for backward compat; consumed by unpackBaked (G4.2). */
 export interface BakedJSON {
   metrics: {
     unitsPerEm: number
@@ -39,47 +92,24 @@ export interface BakedJSON {
   /** Kerning: [glyphId1(u16), glyphId2(u16), value(i16)] triples. */
   kern: { byteOffset: number; count: number }
   /**
-   * Optional stroke sets produced at bake time by running each source
-   * glyph's contours through the quadratic-Bezier offsetter. When
-   * present, each entry describes a single (width, join, cap,
-   * miterLimit) tuple; the baked stroke glyph for source glyph `sid`
-   * lives at `strokeGlyphId = sid + glyphIdOffset`.
-   *
-   * Stroke-glyph curve + band data live in the same curve/band
-   * textures as the source glyphs — just with fresh IDs in the main
-   * glyph table. Lookups at runtime happen via
-   * `SlugFont.getStrokeGlyph(sourceGlyphId, width, join, cap)`.
-   *
-   * Absent when no stroke sets were configured at bake time. Files
-   * written before this field was introduced load cleanly with
-   * `strokeSets === undefined`.
+   * Optional stroke sets produced at bake time. Absent when none configured.
    */
   strokeSets?: Array<{
     width: number
     joinStyle: 'miter' | 'round' | 'bevel'
     capStyle: 'flat' | 'square' | 'round' | 'triangle'
     miterLimit: number
-    /**
-     * strokeGlyphId = sourceGlyphId + glyphIdOffset. Offsets are
-     * allocated so all stroke sets live in disjoint ID ranges.
-     */
     glyphIdOffset: number
   }>
 }
 
-/** Glyph table layout: 10 Float32 values per glyph. */
-const GLYPH_FLOATS = 10
-
 /**
- * Derive baked file URLs from a font URL.
- * `/fonts/Inter-Regular.ttf` → `/fonts/Inter-Regular.slug.json` + `.slug.bin`
+ * Derive baked GLB URL from a font URL.
+ * `/fonts/Inter-Regular.ttf` → `/fonts/Inter-Regular.slug.glb`
  */
-export function bakedURLs(fontURL: string): { json: string; bin: string } {
+export function bakedURLs(fontURL: string): string {
   const base = fontURL.replace(/\.[^.]+$/, '')
-  return {
-    json: `${base}.slug.json`,
-    bin: `${base}.slug.bin`,
-  }
+  return `${base}.slug.glb`
 }
 
 // ─── Serialization (used by CLI) ───
@@ -102,13 +132,44 @@ export interface BakeInput {
   strokeSets?: BakedJSON['strokeSets']
 }
 
-export interface BakeOutput {
-  json: BakedJSON
-  bin: Uint8Array
+/**
+ * Count the number of u16 words in the band data for a single glyph.
+ * Layout: [numH(1), numV(1), hCounts(N), hIndices(sum), vCounts(M), vIndices(sum)]
+ */
+function bandWordCount(g: SlugGlyphData): number {
+  const { hBands, vBands } = g.bands
+  const hTotal = hBands.reduce((s, b) => s + b.curveIndices.length, 0)
+  const vTotal = vBands.reduce((s, b) => s + b.curveIndices.length, 0)
+  return 2 + hBands.length + hTotal + vBands.length + vTotal
 }
 
-/** Pack all data into baked format. */
-export function packBaked(input: BakeInput): BakeOutput {
+/**
+ * Write per-glyph band words into `dst` starting at `wordOffset`.
+ * Returns the number of words written.
+ */
+function writeBandWords(
+  g: SlugGlyphData,
+  dst: Uint16Array,
+  wordOffset: number,
+): number {
+  const { hBands, vBands } = g.bands
+  let w = wordOffset
+  dst[w++] = hBands.length
+  dst[w++] = vBands.length
+  for (const band of hBands) dst[w++] = band.curveIndices.length
+  for (const band of hBands) for (const idx of band.curveIndices) dst[w++] = idx
+  for (const band of vBands) dst[w++] = band.curveIndices.length
+  for (const band of vBands) for (const idx of band.curveIndices) dst[w++] = idx
+  return w - wordOffset
+}
+
+/**
+ * Pack all data into a single `.slug.glb` `Uint8Array`.
+ *
+ * **Glyph ordering:** sorted ascending by glyphId (see module-level doc).
+ * **Band offsets:** word offsets (u16 element indices), CSR prefix-sum, N+1 entries.
+ */
+export async function packBaked(input: BakeInput): Promise<Uint8Array> {
   const {
     metrics,
     textureWidth,
@@ -121,141 +182,133 @@ export function packBaked(input: BakeInput): BakeOutput {
     kern,
   } = input
 
-  // --- Calculate sizes ---
-  const curveByteLength = curveData.byteLength
-  const bandByteLength = bandData.byteLength
-  const glyphCount = glyphs.size
-  const glyphByteLength = glyphCount * GLYPH_FLOATS * 4
+  // ── Sort glyphs ascending by glyphId ──
+  const sortedGlyphs = Array.from(glyphs.values()).sort(
+    (a, b) => a.glyphId - b.glyphId,
+  )
+  const glyphCount = sortedGlyphs.length
 
-  // Pre-calculate band section size
-  let bandSectionSize = 0
-  for (const g of glyphs.values()) {
-    // 2 uint16 for band counts + all curveIndices
-    const hTotal = g.bands.hBands.reduce((s, b) => s + b.curveIndices.length, 0)
-    const vTotal = g.bands.vBands.reduce((s, b) => s + b.curveIndices.length, 0)
-    bandSectionSize += (2 + g.bands.hBands.length + hTotal + g.bands.vBands.length + vTotal) * 2
-  }
-  // Align to 4 bytes
-  bandSectionSize = Math.ceil(bandSectionSize / 4) * 4
+  // ── SoA column arrays ──
+  const glyphIdArr = new Float32Array(glyphCount)
+  const boundsArr = new Float32Array(glyphCount * 4)   // VEC4: xMin yMin xMax yMax
+  const bandLocArr = new Float32Array(glyphCount * 2)  // VEC2: x y
+  const advanceWidthArr = new Float32Array(glyphCount)
+  const lsbArr = new Float32Array(glyphCount)
+  const hasOutlineArr = new Float32Array(glyphCount)
 
-  const cmapByteLength = cmap.length * 4 // 2x uint16
-  const kernByteLength = kern.length * 6 // 2x uint16 + 1x int16
-  // Align kern to 4 bytes
-  const kernByteLengthAligned = Math.ceil(kernByteLength / 4) * 4
-
-  // --- Calculate offsets ---
-  let offset = 0
-  const curveOffset = offset
-  offset += curveByteLength
-  const bandTexOffset = offset
-  offset += bandByteLength
-  const glyphOffset = offset
-  offset += glyphByteLength
-  const bandsOffset = offset
-  offset += bandSectionSize
-  const cmapOffset = offset
-  offset += cmapByteLength
-  const kernOffset = offset
-  offset += kernByteLengthAligned
-
-  // --- Build binary ---
-  const totalSize = offset
-  const buffer = new ArrayBuffer(totalSize)
-
-  // Curve texture (half-float — 2 bytes per element)
-  new Uint16Array(buffer, curveOffset, curveData.length).set(curveData)
-
-  // Band texture (float32 RG — 2 channels)
-  new Float32Array(buffer, bandTexOffset, bandData.length).set(bandData)
-
-  // Glyph table: [glyphId, xMin, yMin, xMax, yMax, bandLocX, bandLocY, advanceWidth, lsb, hasOutline]
-  const glyphTable = new Float32Array(buffer, glyphOffset, glyphCount * GLYPH_FLOATS)
-  let gi = 0
-  for (const g of glyphs.values()) {
-    const base = gi * GLYPH_FLOATS
-    glyphTable[base] = g.glyphId
-    glyphTable[base + 1] = g.bounds.xMin
-    glyphTable[base + 2] = g.bounds.yMin
-    glyphTable[base + 3] = g.bounds.xMax
-    glyphTable[base + 4] = g.bounds.yMax
-    glyphTable[base + 5] = g.bandLocation.x
-    glyphTable[base + 6] = g.bandLocation.y
-    glyphTable[base + 7] = g.advanceWidth
-    glyphTable[base + 8] = g.lsb
-    glyphTable[base + 9] = g.curves.length > 0 ? 1 : 0
-    gi++
+  for (let i = 0; i < glyphCount; i++) {
+    const g = sortedGlyphs[i]!
+    glyphIdArr[i] = g.glyphId
+    boundsArr[i * 4] = g.bounds.xMin
+    boundsArr[i * 4 + 1] = g.bounds.yMin
+    boundsArr[i * 4 + 2] = g.bounds.xMax
+    boundsArr[i * 4 + 3] = g.bounds.yMax
+    bandLocArr[i * 2] = g.bandLocation.x
+    bandLocArr[i * 2 + 1] = g.bandLocation.y
+    advanceWidthArr[i] = g.advanceWidth
+    lsbArr[i] = g.lsb
+    hasOutlineArr[i] = g.curves.length > 0 ? 1 : 0
   }
 
-  // Band data: per glyph [numH(u16), numV(u16), hBandCount0, hBandCount1, ..., hIndices..., vBandCount0, ..., vIndices...]
-  const bandView = new DataView(buffer, bandsOffset, bandSectionSize)
-  let bOff = 0
-  for (const g of glyphs.values()) {
-    const { hBands, vBands } = g.bands
-    bandView.setUint16(bOff, hBands.length, true)
-    bOff += 2
-    bandView.setUint16(bOff, vBands.length, true)
-    bOff += 2
-    // H band counts + indices
-    for (const band of hBands) {
-      bandView.setUint16(bOff, band.curveIndices.length, true)
-      bOff += 2
-    }
-    for (const band of hBands) {
-      for (const idx of band.curveIndices) {
-        bandView.setUint16(bOff, idx, true)
-        bOff += 2
-      }
-    }
-    // V band counts + indices
-    for (const band of vBands) {
-      bandView.setUint16(bOff, band.curveIndices.length, true)
-      bOff += 2
-    }
-    for (const band of vBands) {
-      for (const idx of band.curveIndices) {
-        bandView.setUint16(bOff, idx, true)
-        bOff += 2
-      }
-    }
-  }
+  // ── Band data: flat USHORT words + FLOAT prefix-sum offsets (N+1) ──
+  const totalBandWords = sortedGlyphs.reduce((s, g) => s + bandWordCount(g), 0)
+  const bandDataArr = new Uint16Array(totalBandWords)
+  const bandOffsets = new Float32Array(glyphCount + 1)
 
-  // Cmap: [charCode(u16), glyphId(u16)]
-  const cmapView = new DataView(buffer, cmapOffset, cmapByteLength)
+  let wordOff = 0
+  for (let i = 0; i < glyphCount; i++) {
+    bandOffsets[i] = wordOff
+    wordOff += writeBandWords(sortedGlyphs[i]!, bandDataArr, wordOff)
+  }
+  bandOffsets[glyphCount] = wordOff
+
+  // ── Cmap: USHORT VEC2 [charCode, glyphId] ──
+  const cmapArr = new Uint16Array(cmap.length * 2)
   for (let i = 0; i < cmap.length; i++) {
-    cmapView.setUint16(i * 4, cmap[i]![0], true)
-    cmapView.setUint16(i * 4 + 2, cmap[i]![1], true)
+    cmapArr[i * 2] = cmap[i]![0]
+    cmapArr[i * 2 + 1] = cmap[i]![1]
   }
 
-  // Kern: [glyphId1(u16), glyphId2(u16), value(i16)]
-  const kernView = new DataView(buffer, kernOffset, kernByteLengthAligned)
+  // ── Kern: SHORT SCALAR, stride 3: [g1, g2, value, ...] ──
+  const kernArr = new Int16Array(kern.length * 3)
   for (let i = 0; i < kern.length; i++) {
-    kernView.setUint16(i * 6, kern[i]![0], true)
-    kernView.setUint16(i * 6 + 2, kern[i]![1], true)
-    kernView.setInt16(i * 6 + 4, kern[i]![2], true)
+    kernArr[i * 3] = kern[i]![0]
+    kernArr[i * 3 + 1] = kern[i]![1]
+    kernArr[i * 3 + 2] = kern[i]![2]
   }
 
-  // --- Build JSON header ---
-  const json: BakedJSON = {
+  // ── Build glTF-Transform Document ──
+  const doc = new Document()
+  const buf = doc.createBuffer()
+
+  // Glyph SoA columns
+  const accGlyphId = addColumn(doc, buf, 'glyphId', glyphIdArr, 'SCALAR')
+  const accBounds = addColumn(doc, buf, 'bounds', boundsArr, 'VEC4')
+  const accBandLoc = addColumn(doc, buf, 'bandLoc', bandLocArr, 'VEC2')
+  const accAdvanceWidth = addColumn(doc, buf, 'advanceWidth', advanceWidthArr, 'SCALAR')
+  const accLsb = addColumn(doc, buf, 'lsb', lsbArr, 'SCALAR')
+  const accHasOutline = addColumn(doc, buf, 'hasOutline', hasOutlineArr, 'SCALAR')
+  // Cmap + kern
+  const accCmap = addColumn(doc, buf, 'cmap', cmapArr, 'VEC2')
+  const accKern = addColumn(doc, buf, 'kern', kernArr, 'SCALAR')
+  // Bands
+  const accBandOffsets = addColumn(doc, buf, 'bandOffsets', bandOffsets, 'SCALAR')
+  const accBandData = addColumn(doc, buf, 'bandData', bandDataArr, 'SCALAR')
+  // Textures (raw bytes stored in typed accessors; format declared in extension).
+  // Cast ArrayBufferLike → ArrayBuffer to match addColumn's typed-array constraint;
+  // these arrays are always backed by a plain ArrayBuffer in practice.
+  const accCurveTexture = addColumn(
+    doc, buf, 'curveTexture',
+    new Uint16Array(curveData.buffer as ArrayBuffer, curveData.byteOffset, curveData.length),
+    'SCALAR',
+  )
+  const accBandTexture = addColumn(
+    doc, buf, 'bandTexture',
+    new Float32Array(bandData.buffer as ArrayBuffer, bandData.byteOffset, bandData.length),
+    'SCALAR',
+  )
+
+  // ── FL_slug_font extension ──
+  const { ExtClass } = createFLExtension('FL_slug_font')
+  const ext = doc.createExtension(ExtClass).setRequired(true)
+
+  // Metadata fields (accessor refs are emitted via the 'columns' mechanism).
+  // The extension JSON shape (after write) is:
+  //   { version, metrics, glyphs:{count}, kern:{stride}, curveTexture:{w,h,format},
+  //     bandTexture:{w,h,format}, bands:{glyphCount},
+  //     columns: { glyphId:{accessor}, bounds:{accessor}, ... } }
+  const metadata: Record<string, unknown> = {
+    version: 1,
     metrics,
-    textureWidth,
-    curveTexture: {
-      height: curveTextureHeight,
-      byteOffset: curveOffset,
-      byteLength: curveByteLength,
-    },
-    bandTexture: {
-      height: bandTextureHeight,
-      byteOffset: bandTexOffset,
-      byteLength: bandByteLength,
-    },
-    glyphs: { byteOffset: glyphOffset, count: glyphCount },
-    bands: { byteOffset: bandsOffset, byteLength: bandSectionSize },
-    cmap: { byteOffset: cmapOffset, count: cmap.length },
-    kern: { byteOffset: kernOffset, count: kern.length },
+    glyphs: { count: glyphCount },
+    kern: { stride: 3 },
+    curveTexture: { width: textureWidth, height: curveTextureHeight, format: 'rgba16f' },
+    bandTexture: { width: textureWidth, height: bandTextureHeight, format: 'rg32f' },
+    bands: { glyphCount },
     ...(input.strokeSets ? { strokeSets: input.strokeSets } : {}),
   }
 
-  return { json, bin: new Uint8Array(buffer) }
+  const prop = ext.createProperty(metadata)
+
+  // Register accessor refs — these appear in extension JSON under 'columns'
+  prop.setAccessorRef('glyphId', accGlyphId)
+  prop.setAccessorRef('bounds', accBounds)
+  prop.setAccessorRef('bandLoc', accBandLoc)
+  prop.setAccessorRef('advanceWidth', accAdvanceWidth)
+  prop.setAccessorRef('lsb', accLsb)
+  prop.setAccessorRef('hasOutline', accHasOutline)
+  prop.setAccessorRef('cmap', accCmap)
+  prop.setAccessorRef('kern', accKern)
+  prop.setAccessorRef('bandOffsets', accBandOffsets)
+  prop.setAccessorRef('bandData', accBandData)
+  prop.setAccessorRef('curveTexture', accCurveTexture)
+  prop.setAccessorRef('bandTexture', accBandTexture)
+
+  doc.getRoot().setExtension('FL_slug_font', prop)
+
+  // ── Write GLB ──
+  const io = new NodeIO().registerExtensions([ExtClass])
+  return io.writeBinary(doc)
 }
 
 // ─── Deserialization (used at runtime) ───
@@ -271,13 +324,18 @@ export interface BakedFontData {
   kernCount: number
 }
 
-/** Unpack glyph map + shaping data from the binary. */
+/**
+ * Unpack glyph map + shaping data from the binary.
+ *
+ * TODO(G4.2): This reads the old json+bin format. G4.2 will replace this with
+ * a GLB-based reader using `readAsset`. Left here as a stub so typecheck and
+ * existing call sites continue to compile.
+ */
 export function unpackBaked(bin: ArrayBuffer, json: BakedJSON): BakedFontData {
-  // Glyph table
+  const GLYPH_FLOATS = 10
   const glyphTable = new Float32Array(bin, json.glyphs.byteOffset, json.glyphs.count * GLYPH_FLOATS)
   const glyphs = new Map<number, SlugGlyphData>()
 
-  // Band data
   const bandView = new DataView(bin, json.bands.byteOffset, json.bands.byteLength)
   let bOff = 0
 
@@ -285,19 +343,16 @@ export function unpackBaked(bin: ArrayBuffer, json: BakedJSON): BakedFontData {
     const base = gi * GLYPH_FLOATS
     const glyphId = glyphTable[base]!
 
-    // Read bands
     const numH = bandView.getUint16(bOff, true)
     bOff += 2
     const numV = bandView.getUint16(bOff, true)
     bOff += 2
 
-    // H band counts
     const hCounts: number[] = []
     for (let b = 0; b < numH; b++) {
       hCounts.push(bandView.getUint16(bOff, true))
       bOff += 2
     }
-    // H band indices
     const hBands = hCounts.map((count) => {
       const curveIndices: number[] = []
       for (let j = 0; j < count; j++) {
@@ -307,13 +362,11 @@ export function unpackBaked(bin: ArrayBuffer, json: BakedJSON): BakedFontData {
       return { curveIndices }
     })
 
-    // V band counts
     const vCounts: number[] = []
     for (let b = 0; b < numV; b++) {
       vCounts.push(bandView.getUint16(bOff, true))
       bOff += 2
     }
-    // V band indices
     const vBands = vCounts.map((count) => {
       const curveIndices: number[] = []
       for (let j = 0; j < count; j++) {
@@ -337,11 +390,10 @@ export function unpackBaked(bin: ArrayBuffer, json: BakedJSON): BakedFontData {
       bands: { hBands, vBands },
       advanceWidth: glyphTable[base + 7]!,
       lsb: glyphTable[base + 8]!,
-      curveLocation: { x: 0, y: 0 }, // Not needed at runtime
+      curveLocation: { x: 0, y: 0 },
     })
   }
 
-  // Cmap
   const cmapCodes = new Uint16Array(json.cmap.count)
   const cmapGlyphs = new Uint16Array(json.cmap.count)
   const cmapView = new DataView(bin, json.cmap.byteOffset, json.cmap.count * 4)
@@ -350,7 +402,6 @@ export function unpackBaked(bin: ArrayBuffer, json: BakedJSON): BakedFontData {
     cmapGlyphs[i] = cmapView.getUint16(i * 4 + 2, true)
   }
 
-  // Kern
   const kernData = new DataView(bin, json.kern.byteOffset, json.kern.count * 6)
 
   return { glyphs, cmapCodes, cmapGlyphs, kernData, kernCount: json.kern.count }
@@ -372,7 +423,6 @@ export function cmapLookup(charCode: number, codes: Uint16Array, glyphIds: Uint1
 
 /** Look up kerning value for a glyph pair. Returns value in font units or 0. */
 export function kernLookup(g1: number, g2: number, data: DataView, count: number): number {
-  // Linear scan — kern tables are typically small. Could upgrade to hash if needed.
   for (let i = 0; i < count; i++) {
     const off = i * 6
     if (data.getUint16(off, true) === g1 && data.getUint16(off + 2, true) === g2) {

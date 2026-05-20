@@ -114,9 +114,11 @@
     }
   },
   "dependencies": {
+    "@three-flatland/asset": "workspace:*",
     "opentype.js": "^1.3.4"
   },
   "devDependencies": {
+    "@gltf-transform/core": "catalog:",
     "@react-three/fiber": "catalog:",
     "@types/opentype.js": "^1.3.9",
     "@types/react": "catalog:",

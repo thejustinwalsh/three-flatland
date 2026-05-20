@@ -1,85 +1,293 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { parseFont } from './pipeline/fontParser'
-import { packTextures } from './pipeline/texturePacker'
-import { packBaked, unpackBaked, bakedURLs, cmapLookup, kernLookup } from './baked'
-import type { BakeInput, BakedJSON } from './baked'
+import { readAsset } from '@three-flatland/asset'
+import { packBaked, bakedURLs } from './baked'
+import type { BakeInput } from './baked'
+import type { SlugGlyphData, QuadCurve } from './types'
 
-// Load Inter for tests
-const fontPath = resolve(__dirname, '../../../examples/three/slug-text/public/Inter-Regular.ttf')
-const fontBuffer = readFileSync(fontPath)
-const arrayBuffer = fontBuffer.buffer.slice(
-  fontBuffer.byteOffset,
-  fontBuffer.byteOffset + fontBuffer.byteLength
-)
+// ---------------------------------------------------------------------------
+// Synthetic BakeInput — two glyphs, tiny textures, one cmap/kern entry,
+// non-trivial band data per glyph.
+//
+// Glyph 0 (notdef-like): 1 hBand with 2 curve indices, 0 vBands.
+// Glyph 3 (A-like):      1 hBand with 1 curve index, 1 vBand with 1 index.
+// ---------------------------------------------------------------------------
 
-const parsed = parseFont(arrayBuffer)
-const textures = packTextures(parsed.glyphs)
+function makeSyntheticInput(): BakeInput {
+  // Tiny 4×2 RGBA16F curve texture (4 × 2 × 4ch × 2 bytes = 64 bytes)
+  const textureWidth = 4
+  const curveTextureHeight = 2
+  const curveData = new Uint16Array(textureWidth * curveTextureHeight * 4)
+  for (let i = 0; i < curveData.length; i++) curveData[i] = i + 1
 
-// Extract a minimal cmap + kern for testing
-import opentype from 'opentype.js'
-const otFont = opentype.parse(arrayBuffer)
+  // Tiny 4×1 RG-F32 band texture (4 × 1 × 2ch × 4 bytes = 32 bytes)
+  const bandTextureHeight = 1
+  const bandData = new Float32Array(textureWidth * bandTextureHeight * 2)
+  for (let i = 0; i < bandData.length; i++) bandData[i] = (i + 1) * 0.5
 
-function extractTestCmap(): [number, number][] {
-  const cmap: [number, number][] = []
-  // Just ASCII for test speed
-  for (let c = 0x20; c <= 0x7e; c++) {
-    const g = otFont.charToGlyph(String.fromCharCode(c))
-    if (g && g.index !== 0) cmap.push([c, g.index])
+  const glyph0: SlugGlyphData = {
+    glyphId: 0,
+    curves: [],
+    contourStarts: [],
+    bounds: { xMin: 0.1, yMin: 0.2, xMax: 0.8, yMax: 0.9 },
+    bandLocation: { x: 0.0, y: 0.0 },
+    curveLocation: { x: 0.0, y: 0.0 },
+    advanceWidth: 0.5,
+    lsb: 0.05,
+    bands: {
+      hBands: [{ curveIndices: [0, 1] }],
+      vBands: [],
+    },
   }
-  cmap.sort((a, b) => a[0]! - b[0]!)
-  return cmap
-}
 
-function extractTestKern(glyphIds: Set<number>): [number, number, number][] {
-  const kern: [number, number, number][] = []
-  const ids = [...glyphIds].slice(0, 20) // limit for speed
-  for (const g1 of ids) {
-    for (const g2 of ids) {
-      const glyph1 = otFont.glyphs.get(g1)
-      const glyph2 = otFont.glyphs.get(g2)
-      if (!glyph1 || !glyph2) continue
-      const value = otFont.getKerningValue(glyph1, glyph2)
-      if (value !== 0) kern.push([g1, g2, value])
-    }
+  const glyph3: SlugGlyphData = {
+    glyphId: 3,
+    curves: [
+      { p0x: 0, p0y: 0, p1x: 0.5, p1y: 1, p2x: 1, p2y: 0 } satisfies QuadCurve,
+    ],
+    contourStarts: [0],
+    bounds: { xMin: 0.0, yMin: 0.0, xMax: 1.0, yMax: 1.0 },
+    bandLocation: { x: 0.25, y: 0.0 },
+    curveLocation: { x: 0.0, y: 0.0 },
+    advanceWidth: 1.0,
+    lsb: 0.0,
+    bands: {
+      hBands: [{ curveIndices: [2] }],
+      vBands: [{ curveIndices: [3] }],
+    },
   }
-  return kern
+
+  const glyphs = new Map<number, SlugGlyphData>()
+  glyphs.set(glyph0.glyphId, glyph0)
+  glyphs.set(glyph3.glyphId, glyph3)
+
+  return {
+    metrics: {
+      unitsPerEm: 2048,
+      ascender: 1984,
+      descender: -494,
+      capHeight: 1456,
+      underlinePosition: -150,
+      underlineThickness: 50,
+      strikethroughPosition: 530,
+      strikethroughThickness: 50,
+      subscriptScale: { x: 0.65, y: 0.65 },
+      subscriptOffset: { x: 0, y: -200 },
+      superscriptScale: { x: 0.65, y: 0.65 },
+      superscriptOffset: { x: 0, y: 500 },
+    },
+    textureWidth,
+    curveTextureHeight,
+    curveData,
+    bandTextureHeight,
+    bandData,
+    glyphs,
+    cmap: [[65, 3]],     // 'A' → glyphId 3
+    kern: [[3, 3, -10]],
+  }
 }
 
-const cmap = extractTestCmap()
-const kern = extractTestKern(new Set(parsed.glyphs.keys()))
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-const curveData = (textures.curveTexture as any).image.data as Uint16Array
-const bandData = (textures.bandTexture as any).image.data as Float32Array
-const curveWidth = (textures.curveTexture as any).image.width as number
-const curveHeight = (textures.curveTexture as any).image.height as number
-const bandHeight = (textures.bandTexture as any).image.height as number
-
-const input: BakeInput = {
-  metrics: {
-    unitsPerEm: parsed.unitsPerEm,
-    ascender: parsed.ascender,
-    descender: parsed.descender,
-    capHeight: parsed.capHeight,
-  },
-  textureWidth: curveWidth,
-  curveTextureHeight: curveHeight,
-  curveData,
-  bandTextureHeight: bandHeight,
-  bandData,
-  glyphs: parsed.glyphs,
-  cmap,
-  kern,
+async function bakeAndRead(input: BakeInput) {
+  const glb = await packBaked(input)
+  // readAsset needs a standalone ArrayBuffer (no offset)
+  const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+  const asset = readAsset(buf)
+  const ext = asset.ext<Record<string, unknown>>('FL_slug_font')!
+  const columns = ext['columns'] as Record<string, { accessor: number }>
+  return { glb, asset, ext, columns }
 }
 
-describe('packBaked — strokeSets', () => {
-  it('omits strokeSets from JSON when none configured', () => {
-    const { json } = packBaked(input)
-    expect(json.strokeSets).toBeUndefined()
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('packBaked — returns .glb', () => {
+  it('returns a Uint8Array beginning with GLB magic bytes', async () => {
+    const glb = await packBaked(makeSyntheticInput())
+    expect(glb).toBeInstanceOf(Uint8Array)
+    // GLB magic 0x46546C67 LE = "glTF"
+    const view = new DataView(glb.buffer, glb.byteOffset)
+    expect(view.getUint32(0, true)).toBe(0x46546c67)
   })
 
-  it('round-trips strokeSets metadata through the JSON header', () => {
+  it('readAsset exposes FL_slug_font extension', async () => {
+    const { ext } = await bakeAndRead(makeSyntheticInput())
+    expect(ext).toBeDefined()
+  })
+
+  it('extension carries version 1', async () => {
+    const { ext } = await bakeAndRead(makeSyntheticInput())
+    expect(ext['version']).toBe(1)
+  })
+
+  it('extension carries metrics', async () => {
+    const { ext } = await bakeAndRead(makeSyntheticInput())
+    const metrics = ext['metrics'] as Record<string, unknown>
+    expect(metrics['unitsPerEm']).toBe(2048)
+    expect(metrics['ascender']).toBe(1984)
+    expect(metrics['descender']).toBe(-494)
+    expect(metrics['capHeight']).toBe(1456)
+  })
+
+  it('extension carries glyphs.count', async () => {
+    const { ext } = await bakeAndRead(makeSyntheticInput())
+    const glyphsMeta = ext['glyphs'] as Record<string, unknown>
+    expect(glyphsMeta['count']).toBe(2)
+  })
+
+  it('extension carries kern.stride = 3', async () => {
+    const { ext } = await bakeAndRead(makeSyntheticInput())
+    const kernMeta = ext['kern'] as Record<string, unknown>
+    expect(kernMeta['stride']).toBe(3)
+  })
+
+  it('extension carries curveTexture dims and format', async () => {
+    const { ext } = await bakeAndRead(makeSyntheticInput())
+    const ct = ext['curveTexture'] as Record<string, unknown>
+    expect(ct['width']).toBe(4)
+    expect(ct['height']).toBe(2)
+    expect(ct['format']).toBe('rgba16f')
+  })
+
+  it('extension carries bandTexture dims and format', async () => {
+    const { ext } = await bakeAndRead(makeSyntheticInput())
+    const bt = ext['bandTexture'] as Record<string, unknown>
+    expect(bt['width']).toBe(4)
+    expect(bt['height']).toBe(1)
+    expect(bt['format']).toBe('rg32f')
+  })
+
+  it('extension carries bands.glyphCount', async () => {
+    const { ext } = await bakeAndRead(makeSyntheticInput())
+    const bands = ext['bands'] as Record<string, unknown>
+    expect(bands['glyphCount']).toBe(2)
+  })
+
+  it('columns has all expected accessor refs', async () => {
+    const { columns } = await bakeAndRead(makeSyntheticInput())
+    for (const key of [
+      'glyphId', 'bounds', 'bandLoc', 'advanceWidth', 'lsb', 'hasOutline',
+      'cmap', 'kern', 'bandOffsets', 'bandData', 'curveTexture', 'bandTexture',
+    ]) {
+      expect(typeof columns[key]!.accessor, `columns.${key}.accessor`).toBe('number')
+    }
+  })
+
+  it('glyphId accessor: sorted ascending by glyphId', async () => {
+    const { asset, columns } = await bakeAndRead(makeSyntheticInput())
+    const view = asset.accessor(columns['glyphId']!.accessor) as Float32Array
+    expect(view).toBeInstanceOf(Float32Array)
+    expect(view.length).toBe(2)
+    expect(view[0]).toBe(0)
+    expect(view[1]).toBe(3)
+  })
+
+  it('bounds accessor: VEC4 per glyph in sorted order', async () => {
+    const { asset, columns } = await bakeAndRead(makeSyntheticInput())
+    const view = asset.accessor(columns['bounds']!.accessor) as Float32Array
+    expect(view).toBeInstanceOf(Float32Array)
+    expect(view.length).toBe(8)  // 2 glyphs × 4 components
+    // Glyph 0: xMin=0.1 yMin=0.2 xMax=0.8 yMax=0.9
+    expect(view[0]).toBeCloseTo(0.1, 5)
+    expect(view[1]).toBeCloseTo(0.2, 5)
+    expect(view[2]).toBeCloseTo(0.8, 5)
+    expect(view[3]).toBeCloseTo(0.9, 5)
+    // Glyph 3: xMin=0.0 yMin=0.0 xMax=1.0 yMax=1.0
+    expect(view[4]).toBeCloseTo(0.0, 5)
+    expect(view[5]).toBeCloseTo(0.0, 5)
+    expect(view[6]).toBeCloseTo(1.0, 5)
+    expect(view[7]).toBeCloseTo(1.0, 5)
+  })
+
+  it('hasOutline: 0 for curves-less glyph, 1 for outlined glyph', async () => {
+    const { asset, columns } = await bakeAndRead(makeSyntheticInput())
+    const view = asset.accessor(columns['hasOutline']!.accessor) as Float32Array
+    expect(view[0]).toBe(0)  // glyph 0 has no curves
+    expect(view[1]).toBe(1)  // glyph 3 has 1 curve
+  })
+
+  it('cmap accessor: VEC2 [charCode, glyphId]', async () => {
+    const { asset, columns } = await bakeAndRead(makeSyntheticInput())
+    const view = asset.accessor(columns['cmap']!.accessor) as Uint16Array
+    expect(view).toBeInstanceOf(Uint16Array)
+    expect(view.length).toBe(2)  // 1 entry × 2 u16
+    expect(view[0]).toBe(65)  // charCode 'A'
+    expect(view[1]).toBe(3)   // glyphId
+  })
+
+  it('kern accessor: SHORT SCALAR, stride 3, [g1, g2, value]', async () => {
+    const { asset, columns } = await bakeAndRead(makeSyntheticInput())
+    const view = asset.accessor(columns['kern']!.accessor) as Int16Array
+    expect(view).toBeInstanceOf(Int16Array)
+    expect(view.length).toBe(3)  // 1 triple × 3
+    expect(view[0]).toBe(3)    // g1
+    expect(view[1]).toBe(3)    // g2
+    expect(view[2]).toBe(-10)  // value
+  })
+
+  it('bandOffsets: FLOAT SCALAR N+1, prefix-sum word offsets', async () => {
+    const { asset, columns } = await bakeAndRead(makeSyntheticInput())
+    const offsets = asset.accessor(columns['bandOffsets']!.accessor) as Float32Array
+    expect(offsets).toBeInstanceOf(Float32Array)
+    expect(offsets.length).toBe(3)  // glyphCount + 1
+    expect(offsets[0]).toBe(0)
+    // Glyph 0: [numH=1, numV=0, hCount0=2, hIdx0=0, hIdx1=1] = 5 words
+    expect(offsets[1]).toBe(5)
+    // Glyph 3: [numH=1, numV=1, hCount0=1, hIdx0=2, vCount0=1, vIdx0=3] = 6 words
+    expect(offsets[2]).toBe(11)
+  })
+
+  it('bandData: USHORT SCALAR, correct flat word stream', async () => {
+    const { asset, columns } = await bakeAndRead(makeSyntheticInput())
+    const data = asset.accessor(columns['bandData']!.accessor) as Uint16Array
+    expect(data).toBeInstanceOf(Uint16Array)
+    expect(data.length).toBe(11)  // 5 + 6
+    // Glyph 0 words: [1, 0, 2, 0, 1]
+    expect(data[0]).toBe(1)  // numH
+    expect(data[1]).toBe(0)  // numV
+    expect(data[2]).toBe(2)  // hBand0 count
+    expect(data[3]).toBe(0)  // hBand0 idx 0
+    expect(data[4]).toBe(1)  // hBand0 idx 1
+    // Glyph 3 words: [1, 1, 1, 2, 1, 3]
+    expect(data[5]).toBe(1)  // numH
+    expect(data[6]).toBe(1)  // numV
+    expect(data[7]).toBe(1)  // hBand0 count
+    expect(data[8]).toBe(2)  // hBand0 idx 0
+    expect(data[9]).toBe(1)  // vBand0 count
+    expect(data[10]).toBe(3) // vBand0 idx 0
+  })
+
+  it('curveTexture accessor: USHORT SCALAR, correct half-float bits', async () => {
+    const input = makeSyntheticInput()
+    const { asset, columns } = await bakeAndRead(input)
+    const view = asset.accessor(columns['curveTexture']!.accessor) as Uint16Array
+    expect(view).toBeInstanceOf(Uint16Array)
+    expect(view.length).toBe(4 * 2 * 4)  // width × height × 4 channels
+    for (let i = 0; i < view.length; i++) {
+      expect(view[i]).toBe(i + 1)
+    }
+  })
+
+  it('bandTexture accessor: FLOAT SCALAR, correct values', async () => {
+    const input = makeSyntheticInput()
+    const { asset, columns } = await bakeAndRead(input)
+    const view = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
+    expect(view).toBeInstanceOf(Float32Array)
+    expect(view.length).toBe(4 * 1 * 2)  // width × height × 2 channels
+    for (let i = 0; i < view.length; i++) {
+      expect(view[i]).toBeCloseTo((i + 1) * 0.5, 5)
+    }
+  })
+
+  it('strokeSets absent when none configured', async () => {
+    const { ext } = await bakeAndRead(makeSyntheticInput())
+    expect(ext['strokeSets']).toBeUndefined()
+  })
+
+  it('strokeSets present and round-trips when configured', async () => {
     const strokeSets = [
       {
         width: 0.025,
@@ -88,186 +296,18 @@ describe('packBaked — strokeSets', () => {
         miterLimit: 4,
         glyphIdOffset: 3000,
       },
-      {
-        width: 0.05,
-        joinStyle: 'round' as const,
-        capStyle: 'round' as const,
-        miterLimit: 4,
-        glyphIdOffset: 6000,
-      },
     ]
-    const { json } = packBaked({ ...input, strokeSets })
-    expect(json.strokeSets).toEqual(strokeSets)
+    const { ext } = await bakeAndRead({ ...makeSyntheticInput(), strokeSets })
+    expect(ext['strokeSets']).toEqual(strokeSets)
   })
 })
 
 describe('bakedURLs', () => {
-  it('derives .slug.json and .slug.bin from font URL', () => {
-    const urls = bakedURLs('/fonts/Inter-Regular.ttf')
-    expect(urls.json).toBe('/fonts/Inter-Regular.slug.json')
-    expect(urls.bin).toBe('/fonts/Inter-Regular.slug.bin')
+  it('derives .slug.glb from font URL', () => {
+    expect(bakedURLs('/fonts/Inter-Regular.ttf')).toBe('/fonts/Inter-Regular.slug.glb')
   })
 
   it('handles paths without extension', () => {
-    const urls = bakedURLs('/fonts/MyFont')
-    expect(urls.json).toBe('/fonts/MyFont.slug.json')
-    expect(urls.bin).toBe('/fonts/MyFont.slug.bin')
-  })
-})
-
-describe('packBaked', () => {
-  const { json, bin } = packBaked(input)
-
-  it('preserves font metrics', () => {
-    expect(json.metrics.unitsPerEm).toBe(parsed.unitsPerEm)
-    expect(json.metrics.ascender).toBe(parsed.ascender)
-    expect(json.metrics.descender).toBe(parsed.descender)
-    expect(json.metrics.capHeight).toBe(parsed.capHeight)
-  })
-
-  it('preserves glyph count', () => {
-    expect(json.glyphs.count).toBe(parsed.glyphs.size)
-  })
-
-  it('preserves cmap count', () => {
-    expect(json.cmap.count).toBe(cmap.length)
-  })
-
-  it('preserves kern count', () => {
-    expect(json.kern.count).toBe(kern.length)
-  })
-
-  it('produces binary with correct total size', () => {
-    const lastSection = json.kern
-    expect(bin.byteLength).toBeGreaterThanOrEqual(lastSection.byteOffset)
-  })
-
-  it('curve texture data round-trips correctly', () => {
-    // Half-float data — 2 bytes per element.
-    const restored = new Uint16Array(
-      bin.buffer,
-      bin.byteOffset + json.curveTexture.byteOffset,
-      json.curveTexture.byteLength / 2
-    )
-    for (let i = 0; i < Math.min(100, restored.length); i++) {
-      expect(restored[i]).toBe(curveData[i])
-    }
-  })
-
-  it('band texture data round-trips correctly', () => {
-    const restored = new Float32Array(
-      bin.buffer,
-      bin.byteOffset + json.bandTexture.byteOffset,
-      json.bandTexture.byteLength / 4
-    )
-    for (let i = 0; i < Math.min(100, restored.length); i++) {
-      expect(restored[i]).toBe(bandData[i])
-    }
-  })
-})
-
-describe('unpackBaked', () => {
-  const { json, bin } = packBaked(input)
-  const unpacked = unpackBaked(
-    bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength),
-    json
-  )
-
-  it('restores correct number of glyphs', () => {
-    expect(unpacked.glyphs.size).toBe(parsed.glyphs.size)
-  })
-
-  it('restores glyph bounds correctly', () => {
-    for (const [id, original] of parsed.glyphs) {
-      const restored = unpacked.glyphs.get(id)
-      expect(restored).toBeDefined()
-      expect(restored!.bounds.xMin).toBeCloseTo(original.bounds.xMin, 5)
-      expect(restored!.bounds.yMin).toBeCloseTo(original.bounds.yMin, 5)
-      expect(restored!.bounds.xMax).toBeCloseTo(original.bounds.xMax, 5)
-      expect(restored!.bounds.yMax).toBeCloseTo(original.bounds.yMax, 5)
-    }
-  })
-
-  it('restores glyph advance widths correctly', () => {
-    for (const [id, original] of parsed.glyphs) {
-      const restored = unpacked.glyphs.get(id)
-      expect(restored!.advanceWidth).toBeCloseTo(original.advanceWidth, 5)
-    }
-  })
-
-  it('restores band counts correctly', () => {
-    for (const [id, original] of parsed.glyphs) {
-      const restored = unpacked.glyphs.get(id)
-      expect(restored!.bands.hBands.length).toBe(original.bands.hBands.length)
-      expect(restored!.bands.vBands.length).toBe(original.bands.vBands.length)
-    }
-  })
-
-  it('restores band curve indices correctly', () => {
-    // Spot check a few glyphs
-    let checked = 0
-    for (const [id, original] of parsed.glyphs) {
-      if (checked > 10) break
-      const restored = unpacked.glyphs.get(id)!
-      for (let b = 0; b < original.bands.hBands.length; b++) {
-        expect(restored.bands.hBands[b]!.curveIndices).toEqual(
-          original.bands.hBands[b]!.curveIndices
-        )
-      }
-      for (let b = 0; b < original.bands.vBands.length; b++) {
-        expect(restored.bands.vBands[b]!.curveIndices).toEqual(
-          original.bands.vBands[b]!.curveIndices
-        )
-      }
-      checked++
-    }
-  })
-
-  it('restores cmap data', () => {
-    expect(unpacked.cmapCodes.length).toBe(cmap.length)
-    expect(unpacked.cmapGlyphs.length).toBe(cmap.length)
-  })
-
-  it('restores kern data', () => {
-    expect(unpacked.kernCount).toBe(kern.length)
-  })
-})
-
-describe('cmapLookup', () => {
-  const { json, bin } = packBaked(input)
-  const unpacked = unpackBaked(
-    bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength),
-    json
-  )
-
-  it('finds known character mappings', () => {
-    // 'A' = 0x41 should map to a valid glyph
-    const glyphId = cmapLookup(0x41, unpacked.cmapCodes, unpacked.cmapGlyphs)
-    expect(glyphId).toBeGreaterThan(0)
-  })
-
-  it('returns 0 for unmapped characters', () => {
-    const glyphId = cmapLookup(0xffff, unpacked.cmapCodes, unpacked.cmapGlyphs)
-    expect(glyphId).toBe(0)
-  })
-})
-
-describe('kernLookup', () => {
-  const { json, bin } = packBaked(input)
-  const unpacked = unpackBaked(
-    bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength),
-    json
-  )
-
-  it('finds known kerning pairs', () => {
-    if (kern.length === 0) return // skip if no kerning
-    const [g1, g2, value] = kern[0]!
-    const found = kernLookup(g1, g2, unpacked.kernData, unpacked.kernCount)
-    expect(found).toBe(value)
-  })
-
-  it('returns 0 for unknown pairs', () => {
-    const found = kernLookup(99999, 99999, unpacked.kernData, unpacked.kernCount)
-    expect(found).toBe(0)
+    expect(bakedURLs('/fonts/MyFont')).toBe('/fonts/MyFont.slug.glb')
   })
 })

@@ -8,11 +8,12 @@ import {
   RGFormat,
 } from 'three'
 import { SlugFont } from './SlugFont'
-import { bakedURLs, unpackBaked } from './baked'
+// TODO(G4.2): bakedURLs now returns a single .slug.glb URL; _tryLoadBaked is
+// stubbed until G4.2 implements the GLB read path via readAsset.
+import { bakedURLs as _bakedURLs } from './baked'
 import { shapeTextBaked } from './pipeline/textShaperBaked'
 import { wrapLinesBaked } from './pipeline/wrapLinesBaked'
 import { measureTextBaked } from './pipeline/textMeasureBaked'
-import type { BakedJSON } from './baked'
 
 /**
  * The single entry point for loading SlugFont data.
@@ -121,59 +122,12 @@ export class SlugFontLoader extends Loader<SlugFont> {
     return this._loadRuntime(url)
   }
 
-  private static async _tryLoadBaked(fontURL: string): Promise<SlugFont | null> {
-    const urls = bakedURLs(fontURL)
-
-    try {
-      const [jsonResp, binResp] = await Promise.all([fetch(urls.json), fetch(urls.bin)])
-
-      if (!jsonResp.ok || !binResp.ok) return null
-
-      const meta = (await jsonResp.json()) as BakedJSON
-      const binBuffer = await binResp.arrayBuffer()
-
-      // Curve texture: RGBA16F — 2 bytes per channel × 4 channels = 8 bytes/texel
-      const curveTexture = new DataTexture(
-        new Uint16Array(binBuffer, meta.curveTexture.byteOffset, meta.curveTexture.byteLength / 2),
-        meta.textureWidth,
-        meta.curveTexture.height,
-        RGBAFormat,
-        HalfFloatType
-      )
-      curveTexture.minFilter = NearestFilter
-      curveTexture.magFilter = NearestFilter
-      curveTexture.needsUpdate = true
-
-      // Band texture: RG32F — 4 bytes per channel × 2 channels = 8 bytes/texel
-      const bandTexture = new DataTexture(
-        new Float32Array(binBuffer, meta.bandTexture.byteOffset, meta.bandTexture.byteLength / 4),
-        meta.textureWidth,
-        meta.bandTexture.height,
-        RGFormat,
-        FloatType
-      )
-      bandTexture.minFilter = NearestFilter
-      bandTexture.magFilter = NearestFilter
-      bandTexture.needsUpdate = true
-
-      const bakedData = unpackBaked(binBuffer, meta)
-
-      const font = SlugFont._createBaked(
-        bakedData.glyphs,
-        { curveTexture, bandTexture, textureWidth: meta.textureWidth },
-        meta.metrics,
-        bakedData,
-        shapeTextBaked,
-        wrapLinesBaked,
-        measureTextBaked
-      )
-      if (meta.strokeSets && meta.strokeSets.length > 0) {
-        font.strokeSets = meta.strokeSets
-      }
-      return font
-    } catch {
-      return null
-    }
+  // TODO(G4.2): Rewrite to fetch a single .slug.glb via readAsset and reconstruct
+  // the font from FL_slug_font accessor refs. The bakedURLs() function now returns
+  // a single .slug.glb URL; the old json+bin two-fetch path is superseded.
+  private static async _tryLoadBaked(_fontURL: string): Promise<SlugFont | null> {
+    // G4.2 implements the GLB read path. Until then, always fall through to runtime.
+    return null
   }
 
   private static async _loadRuntime(url: string): Promise<SlugFont> {
