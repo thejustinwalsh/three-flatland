@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://three-flatland.dev/schema/flpak-metadata.json",
+  "title": "FlatlandPackageMetadata",
+  "type": "object",
+  "required": ["kind", "version", "buffers"],
+  "additionalProperties": true,
+  "properties": {
+    "kind": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string" },
+    "buffers": { "type": "object", "additionalProperties": { "$ref": "#/$defs/buffer" } }
+  },
+  "$defs": {
+    "dataType": { "enum": ["Float32", "Int32", "Uint32", "Uint16", "Int16", "Uint8", "Int8"] },
+    "buffer": {
+      "type": "object",
+      "required": ["off", "len", "type"],
+      "not": { "required": ["record", "mime"] },
+      "properties": {
+        "off": { "type": "integer", "minimum": 0, "multipleOf": 4 },
+        "len": { "type": "integer", "minimum": 0 },
+        "type": { "$ref": "#/$defs/dataType" },
+        "normalized": { "type": "boolean" },
+        "mime": { "type": "string" },
+        "record": { "$ref": "#/$defs/record" }
+      }
+    },
+    "record": {
+      "type": "object",
+      "required": ["stride", "count", "fields"],
+      "properties": {
+        "stride": { "type": "integer", "minimum": 1 },
+        "count": { "type": "integer", "minimum": 0 },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" }, "minItems": 1 }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["name", "type", "offset", "count"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "$ref": "#/$defs/dataType" },
+        "offset": { "type": "integer", "minimum": 0 },
+        "count": { "type": "integer", "minimum": 1 },
+        "normalized": { "type": "boolean" }
+      }
+    }
+  }
+}
