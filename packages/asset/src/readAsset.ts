@@ -107,8 +107,8 @@ export function readAsset(buf: ArrayBuffer): FlatlandAsset {
     if (!accessors || index < 0 || index >= accessors.length) {
       throw new AssetError('BAD_ACCESS', `accessor index ${index} out of range`)
     }
-
-    const acc = accessors[index]
+    // noUncheckedIndexedAccess: bounds checked above, safe to assert
+    const acc = accessors[index] as GltfAccessor
 
     const Ctor = COMPONENT_CTORS[acc.componentType as ComponentType]
     if (!Ctor) {
@@ -144,8 +144,8 @@ export function readAsset(buf: ArrayBuffer): FlatlandAsset {
     if (!bufferViews || index < 0 || index >= bufferViews.length) {
       throw new AssetError('BAD_ACCESS', `bufferView index ${index} out of range`)
     }
-
-    const bv = bufferViews[index]
+    // noUncheckedIndexedAccess: bounds checked above, safe to assert
+    const bv = bufferViews[index] as GltfBufferView
     const absOffset = binByteOffset + (bv.byteOffset ?? 0)
 
     return new Uint8Array(buf, absOffset, bv.byteLength)
