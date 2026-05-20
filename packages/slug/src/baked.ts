@@ -65,6 +65,16 @@ import { addColumn, createFLExtension } from '@three-flatland/asset/bake'
 import type { FlatlandAsset } from '@three-flatland/asset'
 import type { SlugGlyphData } from './types'
 
+/**
+ * Current `FL_slug_font` extension schema version, written by `packBaked` and
+ * gated by `unpackBaked`. Bump ONLY on layout-incompatible changes. Additive
+ * changes (new optional accessors/fields) keep this version: old readers ignore
+ * unknown keys, new readers read them when present (the glTF additive-extension
+ * convention). The reader refuses a file whose version exceeds what it supports,
+ * so a future bump fails loudly with a clear message instead of misreading.
+ */
+export const SLUG_FONT_VERSION = 1
+
 /** JSON header shape — kept for backward compat; consumed by unpackBaked (G4.2). */
 export interface BakedJSON {
   metrics: {
@@ -277,7 +287,7 @@ export async function packBaked(input: BakeInput): Promise<Uint8Array> {
   //     bandTexture:{w,h,format}, bands:{glyphCount},
   //     columns: { glyphId:{accessor}, bounds:{accessor}, ... } }
   const metadata: Record<string, unknown> = {
-    version: 1,
+    version: SLUG_FONT_VERSION,
     metrics,
     glyphs: { count: glyphCount },
     kern: { stride: 3 },
@@ -338,6 +348,15 @@ export interface BakedFontData {
 export function unpackBaked(asset: FlatlandAsset): BakedFontData {
   const ext = asset.ext<Record<string, unknown>>('FL_slug_font')
   if (!ext) throw new Error('unpackBaked: FL_slug_font extension not found in GLB')
+
+  const version = ext['version']
+  if (typeof version !== 'number' || version > SLUG_FONT_VERSION) {
+    throw new Error(
+      `unpackBaked: unsupported FL_slug_font version ${String(version)} ` +
+        `(this build supports up to ${SLUG_FONT_VERSION}). Re-bake with a matching ` +
+        `slug-bake, or upgrade @three-flatland/slug.`,
+    )
+  }
 
   const columns = ext['columns'] as Record<string, { accessor: number }>
   const glyphsMeta = ext['glyphs'] as { count: number }

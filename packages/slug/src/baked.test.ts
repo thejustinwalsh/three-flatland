@@ -1,8 +1,36 @@
 import { describe, it, expect } from 'vitest'
-import { readAsset } from '@three-flatland/asset'
-import { packBaked, unpackBaked, bakedURLs, cmapLookup, kernLookup } from './baked'
+import { readAsset, type FlatlandAsset } from '@three-flatland/asset'
+import { packBaked, unpackBaked, bakedURLs, cmapLookup, kernLookup, SLUG_FONT_VERSION } from './baked'
 import type { BakeInput } from './baked'
 import type { SlugGlyphData, QuadCurve } from './types'
+
+describe('unpackBaked version gate', () => {
+  const stub = (extObj: unknown): FlatlandAsset =>
+    ({
+      json: {},
+      accessor: () => {
+        throw new Error('version gate must throw before reading accessors')
+      },
+      bufferView: () => {
+        throw new Error('version gate must throw before reading bufferViews')
+      },
+      ext: (name: string) => (name === 'FL_slug_font' ? extObj : undefined),
+    }) as unknown as FlatlandAsset
+
+  it('rejects a FL_slug_font version newer than supported', () => {
+    expect(() => unpackBaked(stub({ version: SLUG_FONT_VERSION + 1 }))).toThrow(
+      /unsupported FL_slug_font version/,
+    )
+  })
+
+  it('rejects a missing/invalid version', () => {
+    expect(() => unpackBaked(stub({}))).toThrow(/unsupported FL_slug_font version/)
+  })
+
+  it('throws a clear error when the extension is absent', () => {
+    expect(() => unpackBaked(stub(undefined))).toThrow(/FL_slug_font extension not found/)
+  })
+})
 
 // ---------------------------------------------------------------------------
 // Synthetic BakeInput — two glyphs, tiny textures, one cmap/kern entry,
