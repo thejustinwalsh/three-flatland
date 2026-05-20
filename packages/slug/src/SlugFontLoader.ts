@@ -7,10 +7,9 @@ import {
   RGBAFormat,
   RGFormat,
 } from 'three'
+import { readAsset } from '@three-flatland/asset'
 import { SlugFont } from './SlugFont'
-// TODO(G4.2): bakedURLs now returns a single .slug.glb URL; _tryLoadBaked is
-// stubbed until G4.2 implements the GLB read path via readAsset.
-import { bakedURLs as _bakedURLs } from './baked'
+import { bakedURLs, unpackBaked } from './baked'
 import { shapeTextBaked } from './pipeline/textShaperBaked'
 import { wrapLinesBaked } from './pipeline/wrapLinesBaked'
 import { measureTextBaked } from './pipeline/textMeasureBaked'
@@ -123,12 +122,96 @@ export class SlugFontLoader extends Loader<SlugFont> {
     return this._loadRuntime(url)
   }
 
-  // TODO(G4.2): Rewrite to fetch a single .slug.glb via readAsset and reconstruct
-  // the font from FL_slug_font accessor refs. The bakedURLs() function now returns
-  // a single .slug.glb URL; the old json+bin two-fetch path is superseded.
-  private static async _tryLoadBaked(_fontURL: string): Promise<SlugFont | null> {
-    // G4.2 implements the GLB read path. Until then, always fall through to runtime.
-    return null
+  private static async _tryLoadBaked(fontURL: string): Promise<SlugFont | null> {
+    const glbURL = bakedURLs(fontURL)
+
+    let response: Response
+    try {
+      response = await fetch(glbURL)
+    } catch {
+      return null
+    }
+    if (!response.ok) return null
+
+    const buf = await response.arrayBuffer()
+    const asset = readAsset(buf)
+    const ext = asset.ext<Record<string, unknown>>('FL_slug_font')
+    if (!ext) return null
+
+    const bakedData = unpackBaked(asset)
+    const columns = ext['columns'] as Record<string, { accessor: number }>
+    const metrics = ext['metrics'] as {
+      unitsPerEm: number
+      ascender: number
+      descender: number
+      capHeight: number
+      underlinePosition: number
+      underlineThickness: number
+      strikethroughPosition: number
+      strikethroughThickness: number
+      subscriptScale: { x: number; y: number }
+      subscriptOffset: { x: number; y: number }
+      superscriptScale: { x: number; y: number }
+      superscriptOffset: { x: number; y: number }
+    }
+    const curveTexMeta = ext['curveTexture'] as { width: number; height: number; format: string }
+    const bandTexMeta = ext['bandTexture'] as { width: number; height: number; format: string }
+
+    // ── Curve texture: RGBA16F → HalfFloatType ──
+    // The accessor is USHORT SCALAR holding the raw half-float bits.
+    const curveData = asset.accessor(columns['curveTexture']!.accessor) as Uint16Array
+    const curveTexture = new DataTexture(
+      curveData,
+      curveTexMeta.width,
+      curveTexMeta.height,
+      RGBAFormat,
+      HalfFloatType,
+    )
+    curveTexture.magFilter = NearestFilter
+    curveTexture.minFilter = NearestFilter
+    curveTexture.needsUpdate = true
+
+    // ── Band texture: RG32F → FloatType ──
+    const bandData = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
+    const bandTexture = new DataTexture(
+      bandData,
+      bandTexMeta.width,
+      bandTexMeta.height,
+      RGFormat,
+      FloatType,
+    )
+    bandTexture.magFilter = NearestFilter
+    bandTexture.minFilter = NearestFilter
+    bandTexture.needsUpdate = true
+
+    const font = SlugFont._createBaked(
+      bakedData.glyphs,
+      { curveTexture, bandTexture, textureWidth: curveTexMeta.width },
+      {
+        unitsPerEm: metrics.unitsPerEm,
+        ascender: metrics.ascender,
+        descender: metrics.descender,
+        capHeight: metrics.capHeight,
+        underlinePosition: metrics.underlinePosition,
+        underlineThickness: metrics.underlineThickness,
+        strikethroughPosition: metrics.strikethroughPosition,
+        strikethroughThickness: metrics.strikethroughThickness,
+        subscriptScale: metrics.subscriptScale,
+        subscriptOffset: metrics.subscriptOffset,
+        superscriptScale: metrics.superscriptScale,
+        superscriptOffset: metrics.superscriptOffset,
+      },
+      bakedData,
+      shapeTextBaked,
+      wrapLinesBaked,
+      measureTextBaked,
+    )
+
+    if (ext['strokeSets']) {
+      font.strokeSets = ext['strokeSets'] as typeof font.strokeSets
+    }
+
+    return font
   }
 
   private static async _loadRuntime(url: string): Promise<SlugFont> {

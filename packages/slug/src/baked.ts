@@ -62,6 +62,7 @@
 
 import { Document, NodeIO } from '@gltf-transform/core'
 import { addColumn, createFLExtension } from '@three-flatland/asset/bake'
+import type { FlatlandAsset } from '@three-flatland/asset'
 import type { SlugGlyphData } from './types'
 
 /** JSON header shape — kept for backward compat; consumed by unpackBaked (G4.2). */
@@ -325,86 +326,117 @@ export interface BakedFontData {
 }
 
 /**
- * Unpack glyph map + shaping data from the binary.
+ * Unpack glyph map + shaping data from a `.slug.glb` `FlatlandAsset`.
  *
- * TODO(G4.2): This reads the old json+bin format. G4.2 will replace this with
- * a GLB-based reader using `readAsset`. Left here as a stub so typecheck and
- * existing call sites continue to compile.
+ * Reads the `FL_slug_font` extension written by `packBaked`:
+ * - Glyph SoA columns (glyphId, bounds, bandLoc, advanceWidth, lsb, hasOutline)
+ *   are read in sorted-ascending-glyphId order (see module-level doc).
+ * - Per-glyph `hBands`/`vBands` are reconstructed by slicing the flat
+ *   `bandData` (USHORT) accessor using the `bandOffsets` (FLOAT, word indices)
+ *   CSR prefix-sum.
+ * - `cmap` is a USHORT VEC2 accessor `[charCode, glyphId]` pairs.
+ * - `kern` is a SHORT SCALAR accessor with stride 3: `[g1, g2, value, ...]`.
  */
-export function unpackBaked(bin: ArrayBuffer, json: BakedJSON): BakedFontData {
-  const GLYPH_FLOATS = 10
-  const glyphTable = new Float32Array(bin, json.glyphs.byteOffset, json.glyphs.count * GLYPH_FLOATS)
+export function unpackBaked(asset: FlatlandAsset): BakedFontData {
+  const ext = asset.ext<Record<string, unknown>>('FL_slug_font')
+  if (!ext) throw new Error('unpackBaked: FL_slug_font extension not found in GLB')
+
+  const columns = ext['columns'] as Record<string, { accessor: number }>
+  const glyphsMeta = ext['glyphs'] as { count: number }
+  const glyphCount = glyphsMeta.count
+  const kernMeta = ext['kern'] as { stride: number }
+  const kernStride = kernMeta.stride // always 3
+
+  // ── Glyph SoA column accessors ──
+  const glyphIdArr = asset.accessor(columns['glyphId']!.accessor) as Float32Array
+  const boundsArr = asset.accessor(columns['bounds']!.accessor) as Float32Array    // VEC4, length N*4
+  const bandLocArr = asset.accessor(columns['bandLoc']!.accessor) as Float32Array  // VEC2, length N*2
+  const advanceWidthArr = asset.accessor(columns['advanceWidth']!.accessor) as Float32Array
+  const lsbArr = asset.accessor(columns['lsb']!.accessor) as Float32Array
+  const hasOutlineArr = asset.accessor(columns['hasOutline']!.accessor) as Float32Array
+
+  // ── Band data: FLOAT prefix-sum offsets (N+1) + USHORT flat words ──
+  const bandOffsets = asset.accessor(columns['bandOffsets']!.accessor) as Float32Array
+  const bandData = asset.accessor(columns['bandData']!.accessor) as Uint16Array
+
   const glyphs = new Map<number, SlugGlyphData>()
 
-  const bandView = new DataView(bin, json.bands.byteOffset, json.bands.byteLength)
-  let bOff = 0
+  for (let i = 0; i < glyphCount; i++) {
+    const glyphId = glyphIdArr[i]!
 
-  for (let gi = 0; gi < json.glyphs.count; gi++) {
-    const base = gi * GLYPH_FLOATS
-    const glyphId = glyphTable[base]!
+    // ── Reconstruct hBands / vBands from the flat bandData slice ──
+    const wordStart = bandOffsets[i]!
+    const wordEnd = bandOffsets[i + 1]!
+    let w = wordStart
 
-    const numH = bandView.getUint16(bOff, true)
-    bOff += 2
-    const numV = bandView.getUint16(bOff, true)
-    bOff += 2
+    const numH = bandData[w++]!
+    const numV = bandData[w++]!
 
+    // Read all hBand counts first, then all hBand indices (same layout as packBaked)
     const hCounts: number[] = []
-    for (let b = 0; b < numH; b++) {
-      hCounts.push(bandView.getUint16(bOff, true))
-      bOff += 2
-    }
+    for (let b = 0; b < numH; b++) hCounts.push(bandData[w++]!)
+
     const hBands = hCounts.map((count) => {
       const curveIndices: number[] = []
-      for (let j = 0; j < count; j++) {
-        curveIndices.push(bandView.getUint16(bOff, true))
-        bOff += 2
-      }
+      for (let j = 0; j < count; j++) curveIndices.push(bandData[w++]!)
       return { curveIndices }
     })
 
     const vCounts: number[] = []
-    for (let b = 0; b < numV; b++) {
-      vCounts.push(bandView.getUint16(bOff, true))
-      bOff += 2
-    }
+    for (let b = 0; b < numV; b++) vCounts.push(bandData[w++]!)
+
     const vBands = vCounts.map((count) => {
       const curveIndices: number[] = []
-      for (let j = 0; j < count; j++) {
-        curveIndices.push(bandView.getUint16(bOff, true))
-        bOff += 2
-      }
+      for (let j = 0; j < count; j++) curveIndices.push(bandData[w++]!)
       return { curveIndices }
     })
 
+    // Sanity: w should equal wordEnd
+    if (w !== wordEnd) {
+      throw new Error(
+        `unpackBaked: band word count mismatch for glyph ${glyphId}: expected ${wordEnd - wordStart}, consumed ${w - wordStart}`,
+      )
+    }
+
     glyphs.set(glyphId, {
       glyphId,
-      curves: [],
+      curves: [],       // curve data lives in GPU texture, not rehydrated at runtime
       contourStarts: [],
       bounds: {
-        xMin: glyphTable[base + 1]!,
-        yMin: glyphTable[base + 2]!,
-        xMax: glyphTable[base + 3]!,
-        yMax: glyphTable[base + 4]!,
+        xMin: boundsArr[i * 4]!,
+        yMin: boundsArr[i * 4 + 1]!,
+        xMax: boundsArr[i * 4 + 2]!,
+        yMax: boundsArr[i * 4 + 3]!,
       },
-      bandLocation: { x: glyphTable[base + 5]!, y: glyphTable[base + 6]! },
+      bandLocation: { x: bandLocArr[i * 2]!, y: bandLocArr[i * 2 + 1]! },
       bands: { hBands, vBands },
-      advanceWidth: glyphTable[base + 7]!,
-      lsb: glyphTable[base + 8]!,
+      advanceWidth: advanceWidthArr[i]!,
+      lsb: lsbArr[i]!,
       curveLocation: { x: 0, y: 0 },
     })
+    // hasOutlineArr[i] is available if callers ever need it, but SlugGlyphData
+    // infers outline presence from bounds-area (xMax > xMin) per textMeasureBaked.
+    void hasOutlineArr
   }
 
-  const cmapCodes = new Uint16Array(json.cmap.count)
-  const cmapGlyphs = new Uint16Array(json.cmap.count)
-  const cmapView = new DataView(bin, json.cmap.byteOffset, json.cmap.count * 4)
-  for (let i = 0; i < json.cmap.count; i++) {
-    cmapCodes[i] = cmapView.getUint16(i * 4, true)
-    cmapGlyphs[i] = cmapView.getUint16(i * 4 + 2, true)
+  // ── Cmap: USHORT VEC2 [charCode, glyphId] ──
+  const cmapView = asset.accessor(columns['cmap']!.accessor) as Uint16Array
+  const cmapCount = cmapView.length / 2  // VEC2 accessor: length = N*2 elements
+  const cmapCodes = new Uint16Array(cmapCount)
+  const cmapGlyphs = new Uint16Array(cmapCount)
+  for (let i = 0; i < cmapCount; i++) {
+    cmapCodes[i] = cmapView[i * 2]!
+    cmapGlyphs[i] = cmapView[i * 2 + 1]!
   }
 
-  const kernData = new DataView(bin, json.kern.byteOffset, json.kern.count * 6)
+  // ── Kern: SHORT SCALAR stride 3 → DataView for kernLookup ──
+  // kernLookup reads byte offsets i*6 (getUint16 at 0, 2; getInt16 at 4).
+  // The Int16Array view is stride-3 triples; wrap it in a DataView.
+  const kernArr = asset.accessor(columns['kern']!.accessor) as Int16Array
+  const kernCount = kernArr.length / kernStride
+  const kernData = new DataView(kernArr.buffer, kernArr.byteOffset, kernArr.byteLength)
 
-  return { glyphs, cmapCodes, cmapGlyphs, kernData, kernCount: json.kern.count }
+  return { glyphs, cmapCodes, cmapGlyphs, kernData, kernCount }
 }
 
 /** Binary search cmap for a char code. Returns glyphId or 0 (notdef). */

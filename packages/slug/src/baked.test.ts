@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readAsset } from '@three-flatland/asset'
-import { packBaked, bakedURLs } from './baked'
+import { packBaked, unpackBaked, bakedURLs, cmapLookup, kernLookup } from './baked'
 import type { BakeInput } from './baked'
 import type { SlugGlyphData, QuadCurve } from './types'
 
@@ -309,5 +309,86 @@ describe('bakedURLs', () => {
 
   it('handles paths without extension', () => {
     expect(bakedURLs('/fonts/MyFont')).toBe('/fonts/MyFont.slug.glb')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Round-trip: packBaked → readAsset → unpackBaked
+// ---------------------------------------------------------------------------
+
+describe('unpackBaked round-trip', () => {
+  it('reconstructs glyph map with correct fields', async () => {
+    const input = makeSyntheticInput()
+    const glb = await packBaked(input)
+    const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const asset = readAsset(buf)
+    const result = unpackBaked(asset)
+
+    expect(result.glyphs.size).toBe(2)
+
+    const g0 = result.glyphs.get(0)!
+    expect(g0).toBeDefined()
+    expect(g0.glyphId).toBe(0)
+    expect(g0.bounds.xMin).toBeCloseTo(0.1, 5)
+    expect(g0.bounds.yMin).toBeCloseTo(0.2, 5)
+    expect(g0.bounds.xMax).toBeCloseTo(0.8, 5)
+    expect(g0.bounds.yMax).toBeCloseTo(0.9, 5)
+    expect(g0.advanceWidth).toBeCloseTo(0.5, 5)
+    expect(g0.lsb).toBeCloseTo(0.05, 5)
+    expect(g0.bandLocation.x).toBeCloseTo(0.0, 5)
+    expect(g0.bandLocation.y).toBeCloseTo(0.0, 5)
+
+    const g3 = result.glyphs.get(3)!
+    expect(g3).toBeDefined()
+    expect(g3.glyphId).toBe(3)
+    expect(g3.bounds.xMin).toBeCloseTo(0.0, 5)
+    expect(g3.bounds.xMax).toBeCloseTo(1.0, 5)
+    expect(g3.advanceWidth).toBeCloseTo(1.0, 5)
+    expect(g3.lsb).toBeCloseTo(0.0, 5)
+    expect(g3.bandLocation.x).toBeCloseTo(0.25, 5)
+  })
+
+  it('reconstructs hBands/vBands for each glyph', async () => {
+    const input = makeSyntheticInput()
+    const glb = await packBaked(input)
+    const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const result = unpackBaked(readAsset(buf))
+
+    // Glyph 0: 1 hBand with indices [0, 1], 0 vBands
+    const g0 = result.glyphs.get(0)!
+    expect(g0.bands.hBands.length).toBe(1)
+    expect(g0.bands.hBands[0]!.curveIndices).toEqual([0, 1])
+    expect(g0.bands.vBands.length).toBe(0)
+
+    // Glyph 3: 1 hBand with index [2], 1 vBand with index [3]
+    const g3 = result.glyphs.get(3)!
+    expect(g3.bands.hBands.length).toBe(1)
+    expect(g3.bands.hBands[0]!.curveIndices).toEqual([2])
+    expect(g3.bands.vBands.length).toBe(1)
+    expect(g3.bands.vBands[0]!.curveIndices).toEqual([3])
+  })
+
+  it('reconstructs cmap (cmapCodes/cmapGlyphs)', async () => {
+    const input = makeSyntheticInput()
+    const glb = await packBaked(input)
+    const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const result = unpackBaked(readAsset(buf))
+
+    expect(result.cmapCodes.length).toBe(1)
+    expect(result.cmapGlyphs.length).toBe(1)
+    expect(cmapLookup(65, result.cmapCodes, result.cmapGlyphs)).toBe(3)
+    // Unknown char → 0
+    expect(cmapLookup(66, result.cmapCodes, result.cmapGlyphs)).toBe(0)
+  })
+
+  it('reconstructs kern lookups', async () => {
+    const input = makeSyntheticInput()
+    const glb = await packBaked(input)
+    const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const result = unpackBaked(readAsset(buf))
+
+    expect(result.kernCount).toBe(1)
+    expect(kernLookup(3, 3, result.kernData, result.kernCount)).toBe(-10)
+    expect(kernLookup(0, 3, result.kernData, result.kernCount)).toBe(0)
   })
 })
