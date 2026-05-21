@@ -27,3 +27,6 @@ export * from './GlobalUniforms'
 // Flatland
 export * from './Flatland'
 
+// Observable mutation strategies for three.js value types
+export * from './observable'
+

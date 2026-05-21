@@ -1,20 +1,16 @@
 import { createRemoved } from 'koota'
 import type { World, Entity } from 'koota'
-import {
-  IsRenderable,
-  InBatch,
-  BatchSlot,
-  BatchMesh,
-  BatchMeta,
-  BatchRegistry,
-} from '../traits'
+import { IsRenderable, InBatch, BatchSlot, BatchMesh, BatchMeta, BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { computeRunKey, recycleBatchIfEmpty } from '../batchUtils'
-
-const Removed = createRemoved()
+import { ENTITY_ID_MASK } from '../snapshot'
 
 /**
- * Remove sprites from batches when they lose IsRenderable.
+ * Create a batch-remove system bound to its own change-tracking
+ * subscription.
+ *
+ * Each SpriteGroup constructs one. Removes sprites from batches when
+ * they lose IsRenderable.
  *
  * Triggered by Removed(IsRenderable). Reads the InBatch relation to find
  * the batch entity and slot, frees the slot, removes the relation,
@@ -25,48 +21,67 @@ const Removed = createRemoved()
  * `deferredDestroySystem`. This pushes koota's cascading trait removal
  * cost out of the hot render frame.
  */
-export function batchRemoveSystem(world: World, pendingDestroy: Entity[]): void {
-  const removed = world.query(Removed(IsRenderable))
-  if (removed.length === 0) return
+export function createBatchRemoveSystem(): (world: World, pendingDestroy: Entity[]) => void {
+  const Removed = createRemoved()
 
-  const registryEntities = world.query(BatchRegistry)
-  if (registryEntities.length === 0) return
-  const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-  if (!registry) return
+  return function batchRemoveSystem(world: World, pendingDestroy: Entity[]): void {
+    const removed = world.query(Removed(IsRenderable))
+    if (removed.length === 0) return
 
-  for (const entity of removed) {
-    // Find batch entity via InBatch relation
-    const batchEntity = entity.targetFor(InBatch)
-    if (!batchEntity) continue
+    const registryEntities = world.query(BatchRegistry)
+    if (registryEntities.length === 0) return
+    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    if (!registry) return
 
-    // Get slot and mesh
-    const relationData = entity.get(InBatch(batchEntity)) as { slot: number } | undefined
-    const batchMesh = batchEntity.get(BatchMesh)
+    for (const entity of removed) {
+      // Find batch entity via InBatch relation
+      const batchEntity = entity.targetFor(InBatch)
+      if (!batchEntity) continue
 
-    if (relationData && batchMesh?.mesh) {
-      // Free the slot (sets alpha=0, adds to free list)
-      batchMesh.mesh.freeSlot(relationData.slot)
-      batchMesh.mesh.syncCount()
-    }
+      const batchMesh = batchEntity.get(BatchMesh)
 
-    // Remove relation and reset BatchSlot
-    entity.remove(InBatch(batchEntity))
-    entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
+      // BatchSlot.slot is the authoritative live slot: batchSortSystem keeps it
+      // in sync on swaps, whereas InBatch.slot is never rewritten and can be a
+      // stale pre-swap index that points at another sprite's row. Read it from
+      // the SoA, not sprite._batchSlot — _unenrollFromWorld has already nulled
+      // the spriteArr entry by the time this deferred system runs.
+      const slot = entity.get(BatchSlot)?.slot ?? -1
 
-    // Recycle batch if empty
-    if (batchMesh?.mesh?.isEmpty) {
-      const meta = batchEntity.get(BatchMeta)
-      if (meta) {
-        const key = computeRunKey(meta.layer, meta.materialId)
-        const run = registry.runs.get(key)
-        if (run) {
-          recycleBatchIfEmpty(registry, batchEntity, run)
+      if (slot >= 0 && batchMesh?.mesh) {
+        batchMesh.mesh.freeSlot(slot)
+        batchMesh.mesh.syncCount()
+      }
+
+      // Clear the sprite's cached batch references — once we free the
+      // slot, setter direct-write paths must fall back to standalone-mode
+      // until the next batchAssignSystem pass.
+      const eid = (entity as unknown as number) & ENTITY_ID_MASK
+      const sprite = registry.spriteArr[eid]
+      if (sprite) {
+        sprite._batchMesh = null
+        sprite._batchSlot = -1
+        sprite._batchIdx = -1
+      }
+
+      // Remove relation and reset BatchSlot
+      entity.remove(InBatch(batchEntity))
+      entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
+
+      // Recycle batch if empty
+      if (batchMesh?.mesh?.isEmpty) {
+        const meta = batchEntity.get(BatchMeta)
+        if (meta) {
+          const key = computeRunKey(meta.layer, meta.materialId)
+          const run = registry.runs.get(key)
+          if (run) {
+            recycleBatchIfEmpty(registry, batchEntity, run)
+          }
         }
       }
-    }
 
-    // Defer entity destruction to top of next frame
-    pendingDestroy.push(entity)
+      // Defer entity destruction to top of next frame
+      pendingDestroy.push(entity)
+    }
   }
 }
 

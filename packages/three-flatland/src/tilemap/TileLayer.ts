@@ -16,7 +16,9 @@ interface ChunkData {
   mesh: InstancedMesh
   instanceUV: Float32Array
   instanceColor: Float32Array
-  instanceFlip: Float32Array
+  // Per-tile vec4: .x = flipX, .y = flipY, .z = sysFlags (unused), .w = enableBits (unused).
+  // Layout matches Sprite2DMaterial's `instanceSystem` shader read.
+  instanceSystem: Float32Array
   instanceCount: number
 }
 
@@ -108,7 +110,11 @@ export class TileLayer extends Group {
    * With flipY=false: UV y=0 is first pixel row (image top). We offset y by +height and negate
    * height so the shader traverses UV space in the correct direction.
    */
-  private writeUV(buffer: Float32Array, offset: number, uv: { x: number; y: number; width: number; height: number }): void {
+  private writeUV(
+    buffer: Float32Array,
+    offset: number,
+    uv: { x: number; y: number; width: number; height: number }
+  ): void {
     buffer[offset] = uv.x
     buffer[offset + 2] = uv.width
     if (this.texFlipY) {
@@ -227,7 +233,8 @@ export class TileLayer extends Group {
       // Allocate buffers
       const instanceUV = new Float32Array(count * 4)
       const instanceColor = new Float32Array(count * 4)
-      const instanceFlip = new Float32Array(count * 2)
+      // instanceSystem vec4 per tile: .x/.y = flip, .z/.w = unused (zero).
+      const instanceSystem = new Float32Array(count * 4)
 
       // Create geometry with instance attributes
       const geometry = new PlaneGeometry(1, 1)
@@ -240,9 +247,9 @@ export class TileLayer extends Group {
       colorAttr.setUsage(DynamicDrawUsage)
       geometry.setAttribute('instanceColor', colorAttr)
 
-      const flipAttr = new InstancedBufferAttribute(instanceFlip, 2)
-      flipAttr.setUsage(DynamicDrawUsage)
-      geometry.setAttribute('instanceFlip', flipAttr)
+      const systemAttr = new InstancedBufferAttribute(instanceSystem, 4)
+      systemAttr.setUsage(DynamicDrawUsage)
+      geometry.setAttribute('instanceSystem', systemAttr)
 
       // Track bounds for frustum culling
       let minX = Infinity
@@ -267,9 +274,9 @@ export class TileLayer extends Group {
         instanceColor[i * 4 + 2] = 1
         instanceColor[i * 4 + 3] = 1
 
-        // Flip via instanceFlip attribute
-        instanceFlip[i * 2 + 0] = tile.flipH ? -1 : 1
-        instanceFlip[i * 2 + 1] = tile.flipV ? -1 : 1
+        // Flip lives in instanceSystem.xy (.z/.w stay zero — unused here).
+        instanceSystem[i * 4 + 0] = tile.flipH ? -1 : 1
+        instanceSystem[i * 4 + 1] = tile.flipV ? -1 : 1
 
         // Expand bounds
         minX = Math.min(minX, tile.x)
@@ -322,7 +329,7 @@ export class TileLayer extends Group {
         mesh,
         instanceUV,
         instanceColor,
-        instanceFlip,
+        instanceSystem,
         instanceCount: count,
       })
       this.add(mesh)
@@ -426,14 +433,17 @@ export class TileLayer extends Group {
       const uv = this.tileset.getUV(gid)
       this.writeUV(chunk.instanceUV, i * 4, uv)
 
-      // Reset flip for newly set tiles
-      chunk.instanceFlip[i * 2 + 0] = 1
-      chunk.instanceFlip[i * 2 + 1] = 1
+      // Reset flip for newly set tiles. instanceSystem is vec4 per tile;
+      // flip lives in .x/.y, .z/.w stay zero.
+      chunk.instanceSystem[i * 4 + 0] = 1
+      chunk.instanceSystem[i * 4 + 1] = 1
 
       const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InstancedBufferAttribute
       uvAttr.needsUpdate = true
-      const flipAttr = chunk.mesh.geometry.getAttribute('instanceFlip') as InstancedBufferAttribute
-      flipAttr.needsUpdate = true
+      const systemAttr = chunk.mesh.geometry.getAttribute(
+        'instanceSystem'
+      ) as InstancedBufferAttribute
+      systemAttr.needsUpdate = true
     } else {
       // Tile added or removed — rebuild the entire layer
       this.buildInstances()

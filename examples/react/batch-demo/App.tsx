@@ -1,23 +1,22 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { Canvas, useFrame, useLoader, useThree, extend } from '@react-three/fiber/webgpu'
-import { Vector2, Raycaster, Plane, Vector3, type Texture, type OrthographicCamera } from 'three'
+import { Vector2, Raycaster, Plane, Vector3, type OrthographicCamera } from 'three'
 import {
   Sprite2D,
   Sprite2DMaterial,
   SpriteGroup,
   Layers,
   TextureLoader,
+  SpriteSheetLoader,
   type SpriteFrame,
+  type SpriteSheet,
   type RenderStats,
 } from 'three-flatland/react'
 import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
 import type { Pane } from 'tweakpane'
 import type { StatsHandle } from '@three-flatland/tweakpane/react'
-// Helper + gem live at the example root since the sync script writes
-// to the example's top-level dir; this App.tsx is in src/, so import
-// up one level.
-import { GemBackground } from '../GemBackground'
-import { GEM } from '../gem'
+import { GemBackground } from './GemBackground'
+import { GEM } from './gem'
 // Extend R3F with our custom classes
 extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
 
@@ -79,14 +78,27 @@ function getGrassTileUV(x: number, y: number) {
   }
 }
 
-// Building definitions
+// Building definitions — frame names refer to the shared sprites atlas
+// (sprites.png + sprites.atlas.json). All buildings load from one
+// texture → one material → one SpriteBatch, so per-sprite zIndex
+// Y-sort works across building types.
+// Two paths for the same content, by design:
+//   `frame`   → atlas frame in sprites.png — used by the GAME RENDER so
+//               all buildings share one material and batch together
+//   `texture` → individual PNG — used by the PICKER UI `<img>` element
+//               (atlas frames packed without padding bleed when scaled
+//               via CSS background-size; HTML img tags don't benefit
+//               from atlasing anyway since there's nothing to batch)
+// Render dimensions = atlas sourceSize so manual scale and Sprite2D's
+// auto-sizing (setFrame → updateSize on first frame) agree. Without
+// this, hover sprite (reuses one Sprite2D across building switches, so
+// updateSize fires only the first time) diverges from placed sprites
+// (one Sprite2D per placement, updateSize always fires on init).
 const BUILDINGS = [
-  { name: 'house', texture: 'buildings/House_Blue.png', width: 128, height: 192, shadowScale: 1.2 },
-  { name: 'tower', texture: 'buildings/Tower_Blue.png', width: 128, height: 224, shadowScale: 1.0 },
-  { name: 'tree', texture: 'deco/Tree.png', width: 192, height: 192, shadowScale: 1.5 },
+  { name: 'house', frame: 'house',   texture: 'buildings/House_Blue.png', width: 108, height: 148, shadowScale: 1.2 },
+  { name: 'tower', frame: 'tower_0', texture: 'buildings/Tower_Blue.png', width: 114, height: 183, shadowScale: 1.0 },
+  { name: 'tree',  frame: 'tree_0',  texture: 'deco/Tree.png',            width: 111, height: 174, shadowScale: 1.5 },
 ] as const
-
-const BUILDING_TEXTURE_URLS = BUILDINGS.map((b) => ASSET_BASE + b.texture)
 
 // Entity state
 interface PlacedEntity {
@@ -140,36 +152,18 @@ function GroundTile({ gridX, gridY, material, gridOffsetX, gridOffsetY }: Ground
 
 interface EntitySpritesProps {
   entity: PlacedEntity
-  buildingMaterials: Sprite2DMaterial[]
+  spritesMaterial: Sprite2DMaterial
+  spritesSheet: SpriteSheet
   shadowMaterial: Sprite2DMaterial
   gridOffsetX: number
   gridOffsetY: number
 }
 
-function EntitySprites({ entity, buildingMaterials, shadowMaterial, gridOffsetX, gridOffsetY }: EntitySpritesProps) {
+function EntitySprites({ entity, spritesMaterial, spritesSheet, shadowMaterial, gridOffsetX, gridOffsetY }: EntitySpritesProps) {
   const building = BUILDINGS[entity.buildingIndex]!
-  const material = buildingMaterials[entity.buildingIndex]!
   const posX = gridOffsetX + entity.gridX * TILE_SIZE
   const posY = gridOffsetY + entity.gridY * TILE_SIZE
-
-  // Always provide a frame - use full texture for non-spritesheet items
-  const frame: SpriteFrame = building.name === 'tree' ? {
-    name: 'tree',
-    x: 0,
-    y: (576 - 192) / 576,
-    width: 192 / 768,
-    height: 192 / 576,
-    sourceWidth: building.width,
-    sourceHeight: building.height,
-  } : {
-    name: 'full',
-    x: 0,
-    y: 0,
-    width: 1,
-    height: 1,
-    sourceWidth: building.width,
-    sourceHeight: building.height,
-  }
+  const frame = spritesSheet.getFrame(building.frame)
 
   return (
     <>
@@ -182,9 +176,10 @@ function EntitySprites({ entity, buildingMaterials, shadowMaterial, gridOffsetX,
         zIndex={0}
         alpha={0.5}
       />
-      {/* Building */}
+      {/* Building — shared spritesMaterial so all building types batch
+         together → cross-entity zIndex Y-sort works */}
       <sprite2D
-        material={material}
+        material={spritesMaterial}
         position={[posX, posY + building.height / 2 - TILE_SIZE / 2, 0]}
         scale={[building.width, building.height, 1]}
         layer={Layers.ENTITIES}
@@ -199,28 +194,12 @@ interface HoverPreviewProps {
   visible: boolean
   position: [number, number, number]
   material: Sprite2DMaterial
+  spritesSheet: SpriteSheet
   building: typeof BUILDINGS[number]
 }
 
-function HoverPreview({ visible, position, material, building }: HoverPreviewProps) {
-  // Always provide a frame - use full texture for non-spritesheet items
-  const frame: SpriteFrame = building.name === 'tree' ? {
-    name: 'tree',
-    x: 0,
-    y: (576 - 192) / 576,
-    width: 192 / 768,
-    height: 192 / 576,
-    sourceWidth: building.width,
-    sourceHeight: building.height,
-  } : {
-    name: 'full',
-    x: 0,
-    y: 0,
-    width: 1,
-    height: 1,
-    sourceWidth: building.width,
-    sourceHeight: building.height,
-  }
+function HoverPreview({ visible, position, material, spritesSheet, building }: HoverPreviewProps) {
+  const frame: SpriteFrame = spritesSheet.getFrame(building.frame)
 
   return (
     <sprite2D
@@ -278,15 +257,17 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats, st
   // Load textures (presets are automatically applied - NearestFilter + SRGBColorSpace)
   const grassTex = useLoader(TextureLoader, ASSET_BASE + 'terrain/Tilemap_Flat.png')
   const shadowTex = useLoader(TextureLoader, ASSET_BASE + 'terrain/Shadows.png')
-  const [houseTex, towerTex, treeTex] = useLoader(TextureLoader, BUILDING_TEXTURE_URLS) as Texture[]
+  const spritesSheet = useLoader(SpriteSheetLoader, ASSET_BASE + 'buildings/sprites.atlas.json')
 
   // Create materials (stable - each texture is a stable reference)
   const grassMaterial = useMemo(() => new Sprite2DMaterial({ map: grassTex }), [grassTex])
   const shadowMaterial = useMemo(() => new Sprite2DMaterial({ map: shadowTex }), [shadowTex])
-  const houseMaterial = useMemo(() => new Sprite2DMaterial({ map: houseTex }), [houseTex])
-  const towerMaterial = useMemo(() => new Sprite2DMaterial({ map: towerTex }), [towerTex])
-  const treeMaterial = useMemo(() => new Sprite2DMaterial({ map: treeTex }), [treeTex])
-  const buildingMaterials = [houseMaterial, towerMaterial, treeMaterial]
+  // ONE material for ALL buildings + trees → ONE batch → cross-entity
+  // zIndex Y-sort works correctly.
+  const spritesMaterial = useMemo(
+    () => new Sprite2DMaterial({ map: spritesSheet.texture }),
+    [spritesSheet]
+  )
 
   // Grid calculations
   const gridOffsetX = (-GRID_WIDTH * TILE_SIZE) / 2 + TILE_SIZE / 2
@@ -397,7 +378,8 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats, st
           <EntitySprites
             key={entity.id}
             entity={entity}
-            buildingMaterials={buildingMaterials}
+            spritesMaterial={spritesMaterial}
+            spritesSheet={spritesSheet}
             shadowMaterial={shadowMaterial}
             gridOffsetX={gridOffsetX}
             gridOffsetY={gridOffsetY}
@@ -409,7 +391,8 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats, st
       <HoverPreview
         visible={hoverVisible}
         position={hoverPosition}
-        material={buildingMaterials[selectedBuilding]!}
+        material={spritesMaterial}
+        spritesSheet={spritesSheet}
         building={BUILDINGS[selectedBuilding]!}
       />
     </>

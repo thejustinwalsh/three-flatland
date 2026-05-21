@@ -5,13 +5,7 @@ import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
-import {
-  IsRenderable,
-  IsBatched,
-  BatchSlot,
-  BatchRegistry,
-  SpriteColor,
-} from '../traits'
+import { IsRenderable, IsBatched, BatchSlot, BatchRegistry, SpriteColor } from '../traits'
 import type { RegistryData } from '../batchUtils'
 
 // ============================================
@@ -542,10 +536,15 @@ describe('Entity Lifecycle: Material Tier Change', () => {
       schema: {
         a: [0, 0, 0, 0],
         b: [0, 0, 0, 0],
+        c: [0, 0, 0, 0],
       },
       node: ({ inputColor }) => inputColor,
     })
     material.registerEffect(BigEffect)
+    // 12 floats > default tier 8 → upgrades to tier 16. (Effect buffers
+    // are now pure data with no flags slot, so 8 floats would fit tier 8
+    // and not trigger an upgrade — pick a 12-float effect to actually
+    // exercise the tier-upgrade path.)
     expect(material._effectTier).toBe(16)
 
     // Run systems — should detect version change and rebuild batches

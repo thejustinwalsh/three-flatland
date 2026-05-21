@@ -20,7 +20,7 @@
     "README.md"
   ],
   "scripts": {
-    "validate": "uvx --from skills-ref agentskills validate */ && tsx ../scripts/validate-skills.ts .",
+    "validate": "for d in */; do uvx --from skills-ref agentskills validate \"$d\" || exit 1; done && tsx ../scripts/validate-skills.ts .",
     "test": "pnpm validate"
   },
   "publishConfig": {

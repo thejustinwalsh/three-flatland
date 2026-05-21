@@ -89,8 +89,23 @@ function orderFiles(entries: [string, string][], primary: string): [string, stri
     return visible
 }
 
-const threePrimary = 'main.ts' in threeFiles ? 'main.ts' : 'main.tsx' in threeFiles ? 'main.tsx' : Object.keys(threeFiles)[0] ?? ''
-const reactPrimary = 'App.tsx' in reactFiles ? 'App.tsx' : 'main.tsx' in reactFiles ? 'main.tsx' : Object.keys(reactFiles)[0] ?? ''
+/** Pick the entry file for the code-panel default tab. Top-level
+ *  wins (the common case), then `src/` fallback so examples that
+ *  follow the Vite-default `index.html → ./src/main.tsx` layout
+ *  (e.g. batch-demo) still surface their entry instead of falling
+ *  through to `Object.keys()[0]` — which is `package.json` and gets
+ *  stripped by HIDDEN_FILES → blank code panel. */
+function pickPrimary(files: Record<string, string>, candidates: string[]): string {
+    for (const name of candidates) {
+        if (name in files) return name
+        const nested = `src/${name}`
+        if (nested in files) return nested
+    }
+    return Object.keys(files)[0] ?? ''
+}
+
+const threePrimary = pickPrimary(threeFiles, ['main.ts', 'main.tsx'])
+const reactPrimary = pickPrimary(reactFiles, ['App.tsx', 'main.tsx'])
 
 // Default to entry-file-only when the host MDX hasn't opted into
 // multi-file browsing. Examples are usually single-file; minis and

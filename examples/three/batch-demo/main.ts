@@ -1,6 +1,13 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Vector2, Raycaster, Plane, Vector3 } from 'three'
-import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader } from 'three-flatland'
+import {
+  Sprite2D,
+  Sprite2DMaterial,
+  SpriteGroup,
+  Layers,
+  TextureLoader,
+  SpriteSheetLoader,
+} from 'three-flatland'
 import { createPane } from '@three-flatland/tweakpane'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
@@ -17,19 +24,29 @@ const SLICE_TILES = 6; // 6x6 region for 9-slice
 const SLICE_START_X = 0; // in tiles
 const SLICE_START_Y = 0; // in tiles
 
-// Building definitions
+// Building definitions — frame names refer to the shared sprites atlas
+// (sprites.png + sprites.atlas.json). All buildings load from one
+// texture → one material → one SpriteBatch, so per-sprite zIndex
+// Y-sort works across building types (tree-in-front-of-house etc.).
 interface BuildingDef {
   name: string
-  texture: string
+  frame: string
   width: number
   height: number
   shadowScale: number
 }
 
+// Render dimensions = atlas sourceSize so manual scale and Sprite2D's
+// auto-sizing (setFrame → updateSize on first frame) agree. Without
+// this, hover sprite (reuses one Sprite2D across buildings, so
+// updateSize fires only the first time) diverges from placed sprites
+// (one Sprite2D per placement, updateSize always fires on init). The
+// bottom-anchor position math `+ height/2 - TILE_SIZE/2` is invariant
+// under height changes so sprite ground-anchoring stays correct.
 const BUILDINGS: BuildingDef[] = [
-  { name: 'house', texture: 'buildings/House_Blue.png', width: 128, height: 192, shadowScale: 1.2 },
-  { name: 'tower', texture: 'buildings/Tower_Blue.png', width: 128, height: 224, shadowScale: 1.0 },
-  { name: 'tree', texture: 'deco/Tree.png', width: 192, height: 192, shadowScale: 1.5 },
+  { name: 'house', frame: 'house',   width: 108, height: 148, shadowScale: 1.2 },
+  { name: 'tower', frame: 'tower_0', width: 114, height: 183, shadowScale: 1.0 },
+  { name: 'tree',  frame: 'tree_0',  width: 111, height: 174, shadowScale: 1.5 },
 ]
 
 // Placed entity
@@ -77,16 +94,18 @@ async function main() {
   await renderer.init()
 
   // Load textures (uses 'pixel-art' preset by default with NearestFilter + SRGBColorSpace)
-  const [grassTex, shadowTex, ...buildingTextures] = await Promise.all([
+  const [grassTex, shadowTex, spritesSheet] = await Promise.all([
     TextureLoader.load(ASSET_BASE + 'terrain/Tilemap_Flat.png'),
     TextureLoader.load(ASSET_BASE + 'terrain/Shadows.png'),
-    ...BUILDINGS.map((b) => TextureLoader.load(ASSET_BASE + b.texture)),
+    SpriteSheetLoader.load(ASSET_BASE + 'buildings/sprites.atlas.json'),
   ])
 
   // Create materials
   const grassMaterial = new Sprite2DMaterial({ map: grassTex })
   const shadowMaterial = new Sprite2DMaterial({ map: shadowTex })
-  const buildingMaterials = buildingTextures.map((tex) => new Sprite2DMaterial({ map: tex }))
+  // ONE material for ALL buildings + trees → ONE batch → per-sprite
+  // zIndex Y-sort works across building types.
+  const spritesMaterial = new Sprite2DMaterial({ map: spritesSheet.texture })
 
   // Create the 2D renderer
   const spriteGroup = new SpriteGroup()
@@ -157,13 +176,18 @@ async function main() {
   // Hover indicator (preview sprite for placing buildings)
   // Added directly to scene (not SpriteGroup) so it's not batched with other sprites
   // renderOrder set high to ensure it renders above all batched sprites
-  const hoverSprite = new Sprite2D({ material: buildingMaterials[selectedBuilding]! })
+  const hoverSprite = new Sprite2D({ material: spritesMaterial })
   hoverSprite.alpha = 0.5
   hoverSprite.layer = Layers.FOREGROUND
   hoverSprite.visible = false
   hoverSprite.renderOrder = 1000 // Render above all batched sprites
   const building = BUILDINGS[selectedBuilding]!
+  // Same order as placeBuilding (scale.set BEFORE setFrame) so that
+  // setFrame's first-frame updateSize() wins → render dimensions match
+  // the atlas frame's sourceSize, matching what R3F does for the React
+  // version's <sprite2D> in declaration order.
   hoverSprite.scale.set(building.width, building.height, 1)
+  hoverSprite.setFrame(spritesSheet.getFrame(building.frame))
   scene.add(hoverSprite)
 
   // Helper to convert screen to world position
@@ -201,7 +225,6 @@ async function main() {
     if (occupiedCells.has(key)) return
 
     const buildingDef = BUILDINGS[selectedBuilding]!
-    const material = buildingMaterials[selectedBuilding]!
     const pos = gridToWorld(gridX, gridY)
 
     // Create shadow
@@ -213,24 +236,19 @@ async function main() {
     shadow.alpha = 0.5
     spriteGroup.add(shadow)
 
-    // Create building sprite
-    const sprite = new Sprite2D({ material })
-
-    // For tree, use first tree frame from spritesheet
-    // UV y=0 is at BOTTOM of texture, so we need y=(576-192)/576 to get top row
-    if (buildingDef.name === 'tree') {
-      sprite.setFrame({
-        name: 'tree',
-        x: 0,
-        y: (576 - 192) / 576, // Top row of trees (UV y=0 is bottom of texture)
-        width: 192 / 768,
-        height: 192 / 576,
-        sourceWidth: buildingDef.width,
-        sourceHeight: buildingDef.height,
-      })
-    }
-
+    // Create building sprite — all buildings share spritesMaterial, so
+    // they batch together and zIndex Y-sort works across types.
+    //
+    // scale.set BEFORE setFrame: Sprite2D.setFrame runs updateSize() on
+    // the first frame and overwrites .scale with the atlas frame's
+    // sourceSize. Setting scale first lets updateSize win — render size
+    // matches the atlas source dimensions (the natural pixel-art size).
+    // This matches what R3F does automatically because its declaration-
+    // order prop application puts scale before frame.
+    const sprite = new Sprite2D({ material: spritesMaterial })
     sprite.scale.set(buildingDef.width, buildingDef.height, 1)
+    sprite.setFrame(spritesSheet.getFrame(buildingDef.frame))
+
     // Position with anchor at bottom center
     sprite.position.set(pos.x, pos.y + buildingDef.height / 2 - TILE_SIZE / 2, 0)
     sprite.layer = Layers.ENTITIES
@@ -276,32 +294,8 @@ async function main() {
   // Building selector buttons
   function updateHoverSprite() {
     const buildingDef = BUILDINGS[selectedBuilding]!
-    const material = buildingMaterials[selectedBuilding]!
-    hoverSprite.material = material
     hoverSprite.scale.set(buildingDef.width, buildingDef.height, 1)
-
-    if (buildingDef.name === 'tree') {
-      hoverSprite.setFrame({
-        name: 'tree',
-        x: 0,
-        y: (576 - 192) / 576, // Top row of trees (UV y=0 is bottom of texture)
-        width: 192 / 768,
-        height: 192 / 576,
-        sourceWidth: buildingDef.width,
-        sourceHeight: buildingDef.height,
-      })
-    } else {
-      // Reset to full texture for non-spritesheet items
-      hoverSprite.setFrame({
-        name: 'full',
-        x: 0,
-        y: 0,
-        width: 1,
-        height: 1,
-        sourceWidth: buildingDef.width,
-        sourceHeight: buildingDef.height,
-      })
-    }
+    hoverSprite.setFrame(spritesSheet.getFrame(buildingDef.frame))
   }
 
   document.querySelectorAll('.building-btn').forEach((btn, index) => {
