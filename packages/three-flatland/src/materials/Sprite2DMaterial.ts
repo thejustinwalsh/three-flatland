@@ -119,8 +119,9 @@ export class Sprite2DMaterial extends EffectMaterial {
     const transparent = options.transparent ?? (alphaTest > 0 ? false : true)
     const lit = options.lit ?? false
     const ctId = getColorTransformId(options.colorTransform)
+    const premultiplied = options.premultipliedAlpha ?? false
 
-    const key = `${textureId}:${transparent}:${lit}:${ctId}:${alphaTest}`
+    const key = `${textureId}:${transparent}:${lit}:${ctId}:${alphaTest}:${premultiplied}`
 
     let material = Sprite2DMaterial._cache.get(key)
     if (!material) {
