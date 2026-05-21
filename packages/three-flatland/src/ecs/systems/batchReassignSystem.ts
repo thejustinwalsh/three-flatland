@@ -92,11 +92,14 @@ export function createBatchReassignSystem(): (
       if (oldRunKey === newRunKey) continue // Same run — no batch movement needed
 
       // --- Remove from old batch ---
-      const oldRelation = entity.get(InBatch(oldBatchEntity)) as { slot: number } | undefined
+      // BatchSlot.slot is the authoritative live slot: batchSortSystem keeps it
+      // in sync on swaps, whereas InBatch.slot is never rewritten and can be a
+      // stale pre-swap index that points at another sprite's row.
+      const oldSlot = entity.get(BatchSlot)?.slot ?? -1
       const oldBatchMesh = oldBatchEntity.get(BatchMesh)
 
-      if (oldRelation && oldBatchMesh?.mesh) {
-        oldBatchMesh.mesh.freeSlot(oldRelation.slot)
+      if (oldSlot >= 0 && oldBatchMesh?.mesh) {
+        oldBatchMesh.mesh.freeSlot(oldSlot)
         oldBatchMesh.mesh.syncCount()
       }
 
@@ -126,9 +129,9 @@ export function createBatchReassignSystem(): (
       if (newSlot < 0) continue
 
       entity.add(InBatch(newBatchEntity))
-      entity.set(InBatch(newBatchEntity), { slot: newSlot }, false)
 
-      // Update BatchSlot SoA cache (no Changed observers)
+      // Update BatchSlot SoA cache (no Changed observers) — the slot's
+      // single source of truth, kept in sync by batchSortSystem.
       const newMeta = newBatchEntity.get(BatchMeta)
       const newBatchIdx = newMeta?.batchIdx ?? -1
       entity.set(BatchSlot, { batchIdx: newBatchIdx, slot: newSlot }, false)

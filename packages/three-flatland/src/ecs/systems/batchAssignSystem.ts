@@ -86,10 +86,9 @@ export function createBatchAssignSystem(): (
       const slot = mesh.allocateSlot()
       if (slot < 0) continue
 
-      // Set InBatch relation with slot data — cache the relation pair
-      const relation = InBatch(batchEntity)
-      entity.add(relation)
-      entity.set(relation, { slot }, false)
+      // Add the InBatch membership relation. The slot lives in BatchSlot
+      // (set below) — the single source of truth kept in sync by the sort.
+      entity.add(InBatch(batchEntity))
 
       // Set BatchSlot SoA cache for O(1) hot-path reads.
       // BatchSlot is pre-added at spawn time — always use set, no archetype transition.

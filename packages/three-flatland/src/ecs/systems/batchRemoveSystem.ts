@@ -38,13 +38,17 @@ export function createBatchRemoveSystem(): (world: World, pendingDestroy: Entity
       const batchEntity = entity.targetFor(InBatch)
       if (!batchEntity) continue
 
-      // Get slot and mesh
-      const relationData = entity.get(InBatch(batchEntity)) as { slot: number } | undefined
       const batchMesh = batchEntity.get(BatchMesh)
 
-      if (relationData && batchMesh?.mesh) {
-        // Free the slot (sets alpha=0, adds to free list)
-        batchMesh.mesh.freeSlot(relationData.slot)
+      // BatchSlot.slot is the authoritative live slot: batchSortSystem keeps it
+      // in sync on swaps, whereas InBatch.slot is never rewritten and can be a
+      // stale pre-swap index that points at another sprite's row. Read it from
+      // the SoA, not sprite._batchSlot — _unenrollFromWorld has already nulled
+      // the spriteArr entry by the time this deferred system runs.
+      const slot = entity.get(BatchSlot)?.slot ?? -1
+
+      if (slot >= 0 && batchMesh?.mesh) {
+        batchMesh.mesh.freeSlot(slot)
         batchMesh.mesh.syncCount()
       }
 

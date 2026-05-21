@@ -62,11 +62,10 @@ export const BatchSlot = trait({ batchIdx: -1, slot: -1 })
 
 /**
  * Relation: sprite entity → batch entity (exclusive: sprite can only be in one batch).
- * Store data holds the slot index within the batch's GPU buffers.
- * Used by lifecycle systems (assign, reassign, remove) for batch entity lookups.
- * Hot-path systems use BatchSlot instead for O(1) reads.
+ * Pure membership marker — the slot index lives in BatchSlot, which batchSortSystem
+ * keeps in sync on every swap (a slot on the relation would go stale after a sort).
  */
-export const InBatch = relation({ exclusive: true, store: { slot: 0 } })
+export const InBatch = relation({ exclusive: true })
 
 // ============================================
 // Batch entity traits

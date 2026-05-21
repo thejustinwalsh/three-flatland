@@ -466,10 +466,12 @@ export class SpriteGroup extends Group implements WorldProvider {
       // Find and free the batch slot
       const batchEntity = entity.targetFor(InBatch)
       if (batchEntity) {
-        const relationData = entity.get(InBatch(batchEntity)) as { slot: number } | undefined
+        // BatchSlot.slot is the authoritative live slot (kept in sync by
+        // batchSortSystem); InBatch.slot can be a stale pre-swap index.
+        const slot = entity.get(BatchSlot)?.slot ?? -1
         const batchMesh = batchEntity.get(BatchMesh)
-        if (relationData && batchMesh?.mesh) {
-          batchMesh.mesh.freeSlot(relationData.slot)
+        if (slot >= 0 && batchMesh?.mesh) {
+          batchMesh.mesh.freeSlot(slot)
           batchMesh.mesh.syncCount()
         }
 

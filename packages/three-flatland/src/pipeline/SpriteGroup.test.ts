@@ -6,7 +6,7 @@ import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createMaterialEffect } from '../materials/MaterialEffect'
 import { Layers } from './layers'
-import { SpriteColor, InBatch, BatchMesh } from '../ecs/traits'
+import { SpriteColor, InBatch, BatchMesh, BatchSlot } from '../ecs/traits'
 
 // Create effect class at module level so the Koota trait survives universe.reset()
 const DissolveRenderer = createMaterialEffect({
@@ -205,9 +205,9 @@ describe('SpriteGroup', () => {
     const mesh = batchMeshData?.mesh
     expect(mesh).not.toBeNull()
 
-    const relationData = entity.get(InBatch(batchEntity!)) as { slot: number } | undefined
-    expect(relationData).toBeDefined()
-    const slot = relationData!.slot
+    const batchSlot = entity.get(BatchSlot)
+    expect(batchSlot).toBeDefined()
+    const slot = batchSlot!.slot
 
     // Change tint — writes to trait only (no immediate batch write)
     sprite.tint = [1, 0, 0]
