@@ -28,7 +28,14 @@ For each piece of baked data, ask: **does core glTF (or a KHR/EXT extension) alr
 - **Yes** → store it natively (mesh, texture, accessor) and **reference it by index** from the extension. Native content is readable by every glTF tool for free.
 - **No** (novel data: SDF tables, sprite-frame rects, tilemap grids, half-float data textures) → store the bytes in accessors/bufferViews and describe them in a focused `FL_*` extension.
 
-The extension is always a **thin semantic overlay + references** — it never re-hosts native-modelable data. Its weight is inversely proportional to how much glTF already models: a sprite atlas (native texture + native hull meshes) needs a thin extension; a slug font (novel SDF data) needs a thicker one; a pure mesh needs none.
+When an `FL_*` extension is used, it is always a **thin semantic overlay + references** — it never re-hosts native-modelable data. A slug font (novel SDF data) needs one; a pure mesh needs none.
+
+**Classification — extension vs. native + `extras`.** The rule above splits baked outputs into two kinds, and the kind decides how the data lives in glTF:
+
+- **Opaque baked data** (slug SDF tables, half-float data textures — nothing standard renders it) → a `FL_*` root extension, `extensionsRequired`, consumed only by our runtime/pak. Off-the-shelf glTF optimizers refuse it — acceptable, because such a file has no native content for them to optimize anyway. The extension is the GC root that keeps the accessors reachable; `extensionsRequired` makes compliant tools refuse-rather-than-strip.
+- **Renderable content** (a sprite + its atlas: real geometry + a real texture) → **native glTF + `extras`, no extension**. It stays portable, opens in any viewer, and *benefits* from off-the-shelf optimization (e.g. KTX2 on the atlas). The runtime reads the `extras` markers and swaps in its optimized representation at load; not running the swap still renders valid static content. (Sprite/atlas authoring is designed but not yet built — see Open/future.)
+
+The discriminator: *does the runtime depend on this surviving a round-trip through tools that don't understand it?* Opaque-yes → extension. Renderable, carried-along → native + `extras`.
 
 ---
 
@@ -133,18 +140,24 @@ A level pack `.glb` is then: native meshes/materials (the scene, viewable in any
 
 ## Package shape
 
-`@three-flatland/asset` (Layer 0; renamed from the prior `pak` work):
+There is **no separate runtime package.** Slug owns its baked-asset plumbing inline — it's thin loader/baker code, and a separate published package for ~150 lines (justified only by a hypothetical second consumer) is a premature abstraction *and* a published-package dependency we don't want.
 
 ```
-@three-flatland/asset
-  .              runtime reader (zero-dep, browser+node): readAsset + GLB-chunk parse + accessor/bufferView views
-  ./bake         Node bake helpers + per-format glTF-Transform extension authoring
-                 (peerDependency: @gltf-transform/core)
+packages/slug/src
+  glb.ts      internal zero-dep GLB loader: chunk parse + accessor typed-array views
+              (used by SlugFontLoader + unpackBaked)
+  bake.ts     ./bake export — packBaked + the FL_slug_font glTF-Transform extension
+              class, authored directly against @gltf-transform/core
+  format.ts   the FL_slug_font contract (version, extension name, ordered columns)
+              both read and write derive from
 ```
 
-- `.` ships zero dependencies (no three, no glTF-Transform). Slug and other sibling bakers/loaders depend on it.
-- `./bake` peer-deps `@gltf-transform/core`; imported only by Node-side bakers/CLIs.
-- The prior flpak `pack.ts`/`unpack.ts`/bespoke schema are deleted. `defineRecord`/`RecordCursor` are **not needed for slug** (SoA columns are plain typed arrays); keep them only if a future *interleaved GPU vertex/instance* buffer case appears (where glTF `byteStride` interleaving is idiomatic). Per YAGNI, don't ship them unused.
+- The runtime (`.`) graph stays glTF-Transform-free; `@gltf-transform/core` is reachable only via the `./bake` subpath. The `glb.ts` loader is zero-dep.
+- The prior flpak/asset/gltf package experiments are gone. `defineRecord`/`RecordCursor` were never needed for slug (SoA columns are plain typed arrays).
+
+**Per-format contract.** Each baker owns a single-source-of-truth contract module — `packages/slug/src/format.ts`: `SLUG_FONT_VERSION`, `SLUG_EXTENSION_NAME`, and the ordered `SLUG_COLUMNS` (name → glTF accessor type) list. The baker emits exactly `SLUG_COLUMNS` (its column loop is driven by it) and the reader resolves each by name, so read and write cannot drift.
+
+**When to factor a shared package.** Only when a real second consumer (e.g. an atlas baker) exists *and* the shared surface is proven — then extract the common GLB loader + extension-authoring into a shared `@three-flatland/bake`-style package. Until then, a little copying beats a speculative dependency.
 
 ---
 
@@ -160,7 +173,7 @@ A level pack `.glb` is then: native meshes/materials (the scene, viewable in any
 | band section (ragged) | flat USHORT accessor + FLOAT offset accessor (N+1, CSR) |
 | metrics, strokeSets, textureWidth | `FL_slug_font` JSON (metrics, strokeSets, texture dims/formats); `kind`/`version` |
 
-`slug-bake` uses `@three-flatland/asset/bake` + `@gltf-transform/core`. `SlugFontLoader` fetches one `.slug.glb`, `readAsset()`, follows `FL_slug_font`, builds curve/band `DataTexture`s from the bufferView bytes (zero-copy). opentype.js stays unloaded.
+`slug-bake` and the `./bake` export author the GLB directly against `@gltf-transform/core`. `SlugFontLoader` fetches one `.slug.glb`, parses it with slug's internal GLB loader (`glb.ts`), follows `FL_slug_font`, builds curve/band `DataTexture`s from the accessor bytes (zero-copy). opentype.js stays unloaded.
 
 ---
 

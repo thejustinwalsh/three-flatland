@@ -2,21 +2,23 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** Ship `@three-flatland/asset` — a zero-dependency runtime GLB reader (`.`) + a Node glTF-Transform bake helper (`./bake`) — and migrate `slug` to emit/read a single `.slug.glb` using native glTF accessors + a thin `FL_slug_font` extension.
+> **SUPERSEDED (2026-05-21):** The standalone `@three-flatland/gltf` package described below was built, then torn down. Its thin GLB loader + `FL_slug_font` extension authoring now live **inline in `@three-flatland/slug`** (`src/glb.ts`, `src/bake.ts`, `src/format.ts`) — no separate package. See the design spec's "Package shape" section. The slug-migration outcome (single `.slug.glb`, native accessors, `FL_slug_font` extension, passes glTF-Validator) stands; only the package factoring changed.
+
+**Goal:** Ship `@three-flatland/gltf` — a zero-dependency runtime GLB reader (`.`) + a Node glTF-Transform bake helper (`./bake`) — and migrate `slug` to emit/read a single `.slug.glb` using native glTF accessors + a thin `FL_slug_font` extension.
 
 **Architecture:** Native-first. Tabular data → glTF accessors (SoA); ragged data → flat bufferView + FLOAT offset accessor; half-float data textures → raw bufferViews referenced by the extension; the semantic layer (kind/version/metrics + accessor map) → an `FL_slug_font` extension nested in the glTF JSON. Bake with glTF-Transform; read with a tiny GLB-chunk parser. No bespoke format, no EXT_structural_metadata.
 
 **Spec:** `planning/superpowers/specs/2026-05-19-glb-baked-asset-pipeline-design.md` — read it first (esp. the native-first rule, the `FL_slug_font` worked example, and the composition section).
 
-**Starting point:** `packages/pak` exists from the superseded flpak effort. It is reset to `packages/asset` and its flpak source (pack/unpack/record-schema/cursor/layout + tests + fixtures) is deleted — none of it carries over (SoA accessor columns are plain typed arrays; the record cursor was only for AoS, which slug doesn't need).
+**Starting point:** `packages/pak` exists from the superseded flpak effort. It is reset to `packages/gltf` and its flpak source (pack/unpack/record-schema/cursor/layout + tests + fixtures) is deleted — none of it carries over (SoA accessor columns are plain typed arrays; the record cursor was only for AoS, which slug doesn't need).
 
 ---
 
 ## File structure (target)
 
 ```
-packages/asset/                    (renamed from packages/pak; flpak src removed)
-  package.json                     # @three-flatland/asset; exports "." + "./bake"
+packages/gltf/                    (renamed from packages/pak; flpak src removed)
+  package.json                     # @three-flatland/gltf; exports "." + "./bake"
   tsup.config.ts ; tsconfig.json ; README.md
   src/
     glb.ts          # readGLB(buf) -> { json, binByteOffset } : GLB container chunk parser
@@ -34,9 +36,9 @@ packages/asset/                    (renamed from packages/pak; flpak src removed
 
 ## Task 0.1: Rename + clear flpak source
 
-- [ ] **Step 1:** `git mv packages/pak packages/asset`. In `package.json`: `"name": "@three-flatland/asset"`; set `exports` to `.` (runtime) + `./bake`; add `"peerDependencies": { "@gltf-transform/core": "catalog:" }` + `peerDependenciesMeta` optional; add `@gltf-transform/core` to `pnpm-workspace.yaml` catalog (`^4.3.0`) and as a devDependency of `packages/asset`. Drop `flpak-metadata.schema.json` from `files`.
+- [ ] **Step 1:** `git mv packages/pak packages/gltf`. In `package.json`: `"name": "@three-flatland/gltf"`; set `exports` to `.` (runtime) + `./bake`; add `"peerDependencies": { "@gltf-transform/core": "catalog:" }` + `peerDependenciesMeta` optional; add `@gltf-transform/core` to `pnpm-workspace.yaml` catalog (`^4.3.0`) and as a devDependency of `packages/gltf`. Drop `flpak-metadata.schema.json` from `files`.
 - [ ] **Step 2:** Delete all flpak src: `src/pack.ts`, `src/unpack.ts`, `src/records.ts`, `src/layout.ts`, `src/schema.ts`, every `src/*.test.ts`, `src/__fixtures__/`, `flpak-metadata.schema.json`. Replace `src/index.ts` with `export {}` (stub; filled in Phase 1).
-- [ ] **Step 3:** `pnpm install`; `pnpm --filter @three-flatland/asset typecheck` (exit 0; empty package builds).
+- [ ] **Step 3:** `pnpm install`; `pnpm --filter @three-flatland/gltf typecheck` (exit 0; empty package builds).
 - [ ] **Step 4:** Commit: `refactor(asset): reset pak→asset for the GLB pipeline (drop flpak source)`.
 
 ---
@@ -92,7 +94,7 @@ packages/asset/                    (renamed from packages/pak; flpak src removed
 
 ## Task 3.2: README
 
-- [ ] **Step 1:** `packages/asset/README.md`: what the package is (read/bake Flatland assets in standard GLB), the native-first rule, the `FL_*` extension shape + the worked example, the runtime reader API, the bake API, and the composition model (`FL_pak` manifest + `FL_asset_ref` name refs, deferred). Factual, no emojis.
+- [ ] **Step 1:** `packages/gltf/README.md`: what the package is (read/bake Flatland assets in standard GLB), the native-first rule, the `FL_*` extension shape + the worked example, the runtime reader API, the bake API, and the composition model (`FL_pak` manifest + `FL_asset_ref` name refs, deferred). Factual, no emojis.
 - [ ] **Step 2:** Commit: `docs(asset): README`.
 
 ---
@@ -103,11 +105,11 @@ packages/asset/                    (renamed from packages/pak; flpak src removed
 
 ## Task 4.1: `slug-bake` emits `.slug.glb`
 
-- [ ] **Step 1:** `packages/slug/package.json`: add `@three-flatland/asset` (`workspace:*`) + devdep `@gltf-transform/core`. `pnpm install`.
+- [ ] **Step 1:** `packages/slug/package.json`: add `@three-flatland/gltf` (`workspace:*`) + devdep `@gltf-transform/core`. `pnpm install`.
 - [ ] **Step 2: Failing test** in `baked.test.ts`: `packBaked(input)` returns a `.glb` `Uint8Array`; `readAsset(out.buffer)` exposes `ext('FL_slug_font')` with `version`, `metrics`, `glyphs.fields` accessor refs, `cmap`/`kern` accessors, `bands.offsetAccessor` + `dataBufferView`, and `curveTexture`/`bandTexture` bufferView refs.
-- [ ] **Step 3:** Rewrite `packBaked` over `@three-flatland/asset/bake`: glyph table → 10 SoA FLOAT accessors; cmap → USHORT VEC2; kern → SHORT SCALAR stride-3; band data → flat USHORT accessor; band offsets → FLOAT accessor (N+1 prefix sum); curve texture → USHORT accessor (half-float bits); band texture → FLOAT accessor; metrics/strokeSets/dims/`kind`/`version` → `FL_slug_font` extension JSON referencing those accessors by index (`extensionsRequired` for the standalone font file). Update `bakedURLs` → single `{base}.slug.glb`; update `cli.ts` to write one file.
+- [ ] **Step 3:** Rewrite `packBaked` over `@three-flatland/gltf/bake`: glyph table → 10 SoA FLOAT accessors; cmap → USHORT VEC2; kern → SHORT SCALAR stride-3; band data → flat USHORT accessor; band offsets → FLOAT accessor (N+1 prefix sum); curve texture → USHORT accessor (half-float bits); band texture → FLOAT accessor; metrics/strokeSets/dims/`kind`/`version` → `FL_slug_font` extension JSON referencing those accessors by index (`extensionsRequired` for the standalone font file). Update `bakedURLs` → single `{base}.slug.glb`; update `cli.ts` to write one file.
 - [ ] **Step 4:** Run → pass; typecheck 0.
-- [ ] **Step 5:** Commit: `feat(slug): bake to single .slug.glb via @three-flatland/asset`.
+- [ ] **Step 5:** Commit: `feat(slug): bake to single .slug.glb via @three-flatland/gltf`.
 
 ## Task 4.2: `SlugFontLoader` + `unpackBaked` read the `.glb`
 
@@ -128,9 +130,9 @@ packages/asset/                    (renamed from packages/pak; flpak src removed
 
 ## Task 5.1: Repo-wide green + housekeeping
 
-- [ ] **Step 1:** `pnpm typecheck && pnpm test && pnpm --filter @three-flatland/asset build && pnpm --filter @three-flatland/slug build` — all green.
+- [ ] **Step 1:** `pnpm typecheck && pnpm test && pnpm --filter @three-flatland/gltf build && pnpm --filter @three-flatland/slug build` — all green.
 - [ ] **Step 2:** `pnpm lint && pnpm format:check` — fix any.
-- [ ] **Step 3:** Update `.library/three-flatland/loader-architecture.md` if present: add `@three-flatland/asset` (Layer 0; runtime reader `.` + Node bake `./bake`) + the GLB-as-baked-asset-container decision. Changeset if releasing.
+- [ ] **Step 3:** Update `.library/three-flatland/loader-architecture.md` if present: add `@three-flatland/gltf` (Layer 0; runtime reader `.` + Node bake `./bake`) + the GLB-as-baked-asset-container decision. Changeset if releasing.
 - [ ] **Step 4:** Commit: `chore(asset): workspace integration + loader-architecture note`.
 
 ---
