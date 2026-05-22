@@ -59,7 +59,9 @@ jobs:
             echo "changeset_only=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          base_conclusion="$(gh api "repos/${{ github.repository }}/commits/$before/check-runs" --jq '[.check_runs[] | select(.name == "CI passed") | .conclusion] | last // ""' 2>/dev/null || echo '')"
+          # Sort by completed_at, not API return order (undocumented), so a
+          # re-run can't surface a stale earlier conclusion as the "last" one.
+          base_conclusion="$(gh api "repos/${{ github.repository }}/commits/$before/check-runs" --jq '[.check_runs[] | select(.name == "CI passed")] | sort_by(.completed_at) | last // {} | .conclusion // ""' 2>/dev/null || echo '')"
           echo "Base 'CI passed' conclusion: '$base_conclusion'"
           if [ "$base_conclusion" = 'success' ]; then
             echo "changeset_only=true" >> "$GITHUB_OUTPUT"
