@@ -89,11 +89,15 @@ function addColumn(
 // root that keeps them linked.
 // ---------------------------------------------------------------------------
 
+/** Backing data for {@link SlugFontProperty}: a free-form JSON metadata object
+ *  plus a named map of accessor references. */
 interface ISlugFontProperty extends IProperty {
   metadata: Record<string, unknown>
   accessorRefs: RefMap<Accessor>
 }
 
+/** Root `ExtensionProperty` for `FL_slug_font` — holds the metadata object and
+ *  the named accessor refs the writer serializes under `columns`. */
 class SlugFontProperty extends ExtensionProperty<ISlugFontProperty> {
   public static readonly EXTENSION_NAME = SLUG_EXTENSION_NAME
   public readonly extensionName = SLUG_EXTENSION_NAME
@@ -111,18 +115,23 @@ class SlugFontProperty extends ExtensionProperty<ISlugFontProperty> {
     })
   }
 
+  /** Replace the metadata object (copied defensively). */
   public setMetadata(meta: Record<string, unknown>): this {
     return this.set('metadata', { ...meta })
   }
+  /** The metadata object emitted alongside `columns`. */
   public getMetadata(): Record<string, unknown> {
     return this.get('metadata')
   }
+  /** Bind `accessor` under a semantic column name (e.g. `'glyphId'`). */
   public setAccessorRef(semantic: string, accessor: Accessor | null): this {
     return this.setRefMap('accessorRefs', semantic, accessor, { usage: 'OTHER' })
   }
+  /** The accessor bound to `semantic`, or `null`. */
   public getAccessorRef(semantic: string): Accessor | null {
     return this.getRefMap('accessorRefs', semantic)
   }
+  /** All bound semantic column names. */
   public listAccessorSemantics(): string[] {
     return this.listRefMapKeys('accessorRefs')
   }
@@ -150,6 +159,7 @@ export class FlSlugFontExtension extends Extension {
   public static readonly EXTENSION_NAME = SLUG_EXTENSION_NAME
   public readonly extensionName = SLUG_EXTENSION_NAME
 
+  /** Create a detached {@link SlugFontProperty} seeded with `metadata`. */
   public createProperty(metadata: Record<string, unknown>): SlugFontProperty {
     const prop = new SlugFontProperty(this.document.getGraph())
     prop.setMetadata(metadata)
@@ -201,6 +211,23 @@ export class FlSlugFontExtension extends Extension {
   }
 }
 
+/** Assert `value` fits losslessly in a Uint16 (0..65535) and return it —
+ *  guards every 16-bit write against silent TypedArray wraparound. */
+function assertUint16(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
+    throw new RangeError(`packBaked: ${label} ${value} exceeds Uint16 range (0..65535)`)
+  }
+  return value
+}
+
+/** Assert `value` fits losslessly in an Int16 (-32768..32767) and return it. */
+function assertInt16(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < -0x8000 || value > 0x7fff) {
+    throw new RangeError(`packBaked: ${label} ${value} exceeds Int16 range (-32768..32767)`)
+  }
+  return value
+}
+
 /**
  * Count the number of u16 words in the band data for a single glyph.
  * Layout: [numH(1), numV(1), hCounts(N), hIndices(sum), vCounts(M), vIndices(sum)]
@@ -219,12 +246,14 @@ function bandWordCount(g: SlugGlyphData): number {
 function writeBandWords(g: SlugGlyphData, dst: Uint16Array, wordOffset: number): number {
   const { hBands, vBands } = g.bands
   let w = wordOffset
-  dst[w++] = hBands.length
-  dst[w++] = vBands.length
-  for (const band of hBands) dst[w++] = band.curveIndices.length
-  for (const band of hBands) for (const idx of band.curveIndices) dst[w++] = idx
-  for (const band of vBands) dst[w++] = band.curveIndices.length
-  for (const band of vBands) for (const idx of band.curveIndices) dst[w++] = idx
+  dst[w++] = assertUint16(hBands.length, 'hBand count')
+  dst[w++] = assertUint16(vBands.length, 'vBand count')
+  for (const band of hBands) dst[w++] = assertUint16(band.curveIndices.length, 'hBand curve count')
+  for (const band of hBands)
+    for (const idx of band.curveIndices) dst[w++] = assertUint16(idx, 'curve index')
+  for (const band of vBands) dst[w++] = assertUint16(band.curveIndices.length, 'vBand curve count')
+  for (const band of vBands)
+    for (const idx of band.curveIndices) dst[w++] = assertUint16(idx, 'curve index')
   return w - wordOffset
 }
 
@@ -288,16 +317,18 @@ export async function packBaked(input: BakeInput): Promise<Uint8Array> {
   // ── Cmap: USHORT VEC2 [charCode, glyphId] ──
   const cmapArr = new Uint16Array(cmap.length * 2)
   for (let i = 0; i < cmap.length; i++) {
-    cmapArr[i * 2] = cmap[i]![0]
-    cmapArr[i * 2 + 1] = cmap[i]![1]
+    cmapArr[i * 2] = assertUint16(cmap[i]![0], 'cmap charCode')
+    cmapArr[i * 2 + 1] = assertUint16(cmap[i]![1], 'cmap glyphId')
   }
 
   // ── Kern: SHORT SCALAR, stride 3: [g1, g2, value, ...] ──
+  // g1/g2 are glyph IDs read back via getUint16 (0..65535); the value is read
+  // via getInt16 (-32768..32767). Validate against those read semantics.
   const kernArr = new Int16Array(kern.length * 3)
   for (let i = 0; i < kern.length; i++) {
-    kernArr[i * 3] = kern[i]![0]
-    kernArr[i * 3 + 1] = kern[i]![1]
-    kernArr[i * 3 + 2] = kern[i]![2]
+    kernArr[i * 3] = assertUint16(kern[i]![0], 'kern glyph id')
+    kernArr[i * 3 + 1] = assertUint16(kern[i]![1], 'kern glyph id')
+    kernArr[i * 3 + 2] = assertInt16(kern[i]![2], 'kern value')
   }
 
   // ── Build glTF-Transform Document ──

@@ -113,8 +113,15 @@ export interface BakedJSON {
  * `/fonts/Inter-Regular.ttf` → `/fonts/Inter-Regular.slug.glb`
  */
 export function bakedURLs(fontURL: string): string {
-  const base = fontURL.replace(/\.[^.]+$/, '')
-  return `${base}.slug.glb`
+  // Preserve any query/fragment; strip only the extension off the path segment.
+  const hashIdx = fontURL.indexOf('#')
+  const hash = hashIdx >= 0 ? fontURL.slice(hashIdx) : ''
+  const beforeHash = hashIdx >= 0 ? fontURL.slice(0, hashIdx) : fontURL
+  const queryIdx = beforeHash.indexOf('?')
+  const query = queryIdx >= 0 ? beforeHash.slice(queryIdx) : ''
+  const path = queryIdx >= 0 ? beforeHash.slice(0, queryIdx) : beforeHash
+  const base = path.replace(/\.[^./]+$/, '')
+  return `${base}.slug.glb${query}${hash}`
 }
 
 // ─── Shared bake input (consumed by `./bake` packBaked + the CLI) ───
@@ -171,15 +178,21 @@ export function unpackBaked(asset: GlbView): BakedFontData {
     throw new Error(
       `unpackBaked: unsupported FL_slug_font version ${String(version)} ` +
         `(this build supports up to ${SLUG_FONT_VERSION}). Re-bake with a matching ` +
-        `slug-bake, or upgrade @three-flatland/slug.`,
+        `slug-bake, or upgrade @three-flatland/slug.`
     )
   }
 
   const columns = ext['columns'] as Record<string, { accessor: number }>
-  const glyphsMeta = ext['glyphs'] as { count: number }
-  const glyphCount = glyphsMeta.count
-  const kernMeta = ext['kern'] as { stride: number }
-  const kernStride = kernMeta.stride // always 3
+  const glyphsMeta = ext['glyphs'] as { count?: number } | undefined
+  const glyphCount = glyphsMeta?.count
+  if (typeof glyphCount !== 'number' || !Number.isInteger(glyphCount) || glyphCount < 0) {
+    throw new Error(`unpackBaked: invalid FL_slug_font glyphs.count ${String(glyphCount)}`)
+  }
+  const kernMeta = ext['kern'] as { stride?: number } | undefined
+  const kernStride = kernMeta?.stride // always 3
+  if (typeof kernStride !== 'number' || !Number.isInteger(kernStride) || kernStride <= 0) {
+    throw new Error(`unpackBaked: invalid FL_slug_font kern.stride ${String(kernStride)}`)
+  }
 
   // ── Glyph SoA column accessors ──
   const glyphIdArr = asset.accessor(columns['glyphId']!.accessor) as Float32Array
@@ -267,7 +280,7 @@ export function unpackBaked(asset: GlbView): BakedFontData {
   // kernLookup reads byte offsets i*6 (getUint16 at 0, 2; getInt16 at 4).
   // The Int16Array view is stride-3 triples; wrap it in a DataView.
   const kernArr = asset.accessor(columns['kern']!.accessor) as Int16Array
-  const kernCount = kernArr.length / kernStride
+  const kernCount = Math.floor(kernArr.length / kernStride)
   const kernData = new DataView(kernArr.buffer, kernArr.byteOffset, kernArr.byteLength)
 
   return { glyphs, cmapCodes, cmapGlyphs, kernData, kernCount }

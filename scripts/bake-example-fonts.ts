@@ -12,7 +12,7 @@
  *   fa-solid-900.ttf   --range 0xf000-0xf200 → fa-solid.slug.glb (~1.7 MB)
  */
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { existsSync, copyFileSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
@@ -44,9 +44,10 @@ const FONTS: BakeConfig[] = [
   },
 ]
 
-function run(cmd: string): void {
-  console.log(`  $ ${cmd}`)
-  execSync(cmd, { stdio: 'inherit', cwd: ROOT })
+/** Run `cmd` with an explicit args array (no shell), inheriting stdio, in ROOT. */
+function run(cmd: string, args: string[]): void {
+  console.log(`  $ ${cmd} ${args.join(' ')}`)
+  execFileSync(cmd, args, { stdio: 'inherit', cwd: ROOT })
 }
 
 function ensureDir(dir: string): void {
@@ -68,9 +69,7 @@ function main(): void {
 
     const outputBase = join(primaryDir, font.output)
     console.log(`Baking ${font.ttf} (--range ${font.range})...`)
-    run(
-      `tsx ${CLI} ${ttfPath} --range ${font.range} --output ${outputBase}`
-    )
+    run('tsx', [CLI, ttfPath, '--range', font.range, '--output', outputBase])
 
     const glbFile = `${font.output}.slug.glb`
     const srcGlb = join(primaryDir, glbFile)

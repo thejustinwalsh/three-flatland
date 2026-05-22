@@ -314,7 +314,7 @@ async function bakeFont(
   // Write single .slug.glb. `--output` overrides the derived-from-font-path base.
   const dir = outputBase ? dirname(outputBase) : dirname(fontPath)
   const name = outputBase
-    ? basename(outputBase).replace(/\.slug\.(glb|json|bin)?$/, '')
+    ? basename(outputBase).replace(/\.slug(?:\.(?:glb|json|bin))?$/, '')
     : basename(fontPath, extname(fontPath))
   const glbPath = join(dir, `${name}.slug.glb`)
 

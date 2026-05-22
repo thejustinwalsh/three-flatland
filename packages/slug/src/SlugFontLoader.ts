@@ -134,84 +134,91 @@ export class SlugFontLoader extends Loader<SlugFont> {
     if (!response.ok) return null
 
     const buf = await response.arrayBuffer()
-    const asset = readGlb(buf)
-    const ext = asset.ext<Record<string, unknown>>('FL_slug_font')
-    if (!ext) return null
+    try {
+      const asset = readGlb(buf)
+      const ext = asset.ext<Record<string, unknown>>('FL_slug_font')
+      if (!ext) return null
 
-    const bakedData = unpackBaked(asset)
-    const columns = ext['columns'] as Record<string, { accessor: number }>
-    const metrics = ext['metrics'] as {
-      unitsPerEm: number
-      ascender: number
-      descender: number
-      capHeight: number
-      underlinePosition: number
-      underlineThickness: number
-      strikethroughPosition: number
-      strikethroughThickness: number
-      subscriptScale: { x: number; y: number }
-      subscriptOffset: { x: number; y: number }
-      superscriptScale: { x: number; y: number }
-      superscriptOffset: { x: number; y: number }
+      const bakedData = unpackBaked(asset)
+      const columns = ext['columns'] as Record<string, { accessor: number }>
+      const metrics = ext['metrics'] as {
+        unitsPerEm: number
+        ascender: number
+        descender: number
+        capHeight: number
+        underlinePosition: number
+        underlineThickness: number
+        strikethroughPosition: number
+        strikethroughThickness: number
+        subscriptScale: { x: number; y: number }
+        subscriptOffset: { x: number; y: number }
+        superscriptScale: { x: number; y: number }
+        superscriptOffset: { x: number; y: number }
+      }
+      const curveTexMeta = ext['curveTexture'] as { width: number; height: number; format: string }
+      const bandTexMeta = ext['bandTexture'] as { width: number; height: number; format: string }
+
+      // ── Curve texture: RGBA16F → HalfFloatType ──
+      // The accessor is USHORT SCALAR holding the raw half-float bits.
+      const curveData = asset.accessor(columns['curveTexture']!.accessor) as Uint16Array
+      const curveTexture = new DataTexture(
+        curveData,
+        curveTexMeta.width,
+        curveTexMeta.height,
+        RGBAFormat,
+        HalfFloatType
+      )
+      curveTexture.magFilter = NearestFilter
+      curveTexture.minFilter = NearestFilter
+      curveTexture.needsUpdate = true
+
+      // ── Band texture: RG32F → FloatType ──
+      const bandData = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
+      const bandTexture = new DataTexture(
+        bandData,
+        bandTexMeta.width,
+        bandTexMeta.height,
+        RGFormat,
+        FloatType
+      )
+      bandTexture.magFilter = NearestFilter
+      bandTexture.minFilter = NearestFilter
+      bandTexture.needsUpdate = true
+
+      const font = SlugFont._createBaked(
+        bakedData.glyphs,
+        { curveTexture, bandTexture, textureWidth: curveTexMeta.width },
+        {
+          unitsPerEm: metrics.unitsPerEm,
+          ascender: metrics.ascender,
+          descender: metrics.descender,
+          capHeight: metrics.capHeight,
+          underlinePosition: metrics.underlinePosition,
+          underlineThickness: metrics.underlineThickness,
+          strikethroughPosition: metrics.strikethroughPosition,
+          strikethroughThickness: metrics.strikethroughThickness,
+          subscriptScale: metrics.subscriptScale,
+          subscriptOffset: metrics.subscriptOffset,
+          superscriptScale: metrics.superscriptScale,
+          superscriptOffset: metrics.superscriptOffset,
+        },
+        bakedData,
+        shapeTextBaked,
+        wrapLinesBaked,
+        measureTextBaked
+      )
+
+      if (ext['strokeSets']) {
+        font.strokeSets = ext['strokeSets'] as typeof font.strokeSets
+      }
+
+      return font
+    } catch (err) {
+      // A present-but-corrupt/incompatible .slug.glb degrades to the runtime
+      // path rather than failing the whole load.
+      console.warn('[slug] baked .slug.glb failed to parse; falling back to runtime', err)
+      return null
     }
-    const curveTexMeta = ext['curveTexture'] as { width: number; height: number; format: string }
-    const bandTexMeta = ext['bandTexture'] as { width: number; height: number; format: string }
-
-    // ── Curve texture: RGBA16F → HalfFloatType ──
-    // The accessor is USHORT SCALAR holding the raw half-float bits.
-    const curveData = asset.accessor(columns['curveTexture']!.accessor) as Uint16Array
-    const curveTexture = new DataTexture(
-      curveData,
-      curveTexMeta.width,
-      curveTexMeta.height,
-      RGBAFormat,
-      HalfFloatType
-    )
-    curveTexture.magFilter = NearestFilter
-    curveTexture.minFilter = NearestFilter
-    curveTexture.needsUpdate = true
-
-    // ── Band texture: RG32F → FloatType ──
-    const bandData = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
-    const bandTexture = new DataTexture(
-      bandData,
-      bandTexMeta.width,
-      bandTexMeta.height,
-      RGFormat,
-      FloatType
-    )
-    bandTexture.magFilter = NearestFilter
-    bandTexture.minFilter = NearestFilter
-    bandTexture.needsUpdate = true
-
-    const font = SlugFont._createBaked(
-      bakedData.glyphs,
-      { curveTexture, bandTexture, textureWidth: curveTexMeta.width },
-      {
-        unitsPerEm: metrics.unitsPerEm,
-        ascender: metrics.ascender,
-        descender: metrics.descender,
-        capHeight: metrics.capHeight,
-        underlinePosition: metrics.underlinePosition,
-        underlineThickness: metrics.underlineThickness,
-        strikethroughPosition: metrics.strikethroughPosition,
-        strikethroughThickness: metrics.strikethroughThickness,
-        subscriptScale: metrics.subscriptScale,
-        subscriptOffset: metrics.subscriptOffset,
-        superscriptScale: metrics.superscriptScale,
-        superscriptOffset: metrics.superscriptOffset,
-      },
-      bakedData,
-      shapeTextBaked,
-      wrapLinesBaked,
-      measureTextBaked
-    )
-
-    if (ext['strokeSets']) {
-      font.strokeSets = ext['strokeSets'] as typeof font.strokeSets
-    }
-
-    return font
   }
 
   private static async _loadRuntime(url: string): Promise<SlugFont> {
