@@ -5,37 +5,46 @@
 > Branch: worktree-flpak-binary-format
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/91
 
-## Baked font format: single `.slug.glb` (glTF)
+## New baked-font format: single `.slug.glb`
 
-### New format
+Baked fonts are now stored as a single standard glTF binary (`.slug.glb`) instead of the previous two-file `.slug.json` + `.slug.bin` pair. All font data (glyphs, cmap, kern, band offsets) lives in standard glTF accessors tagged with the `FL_slug_font` extension.
 
-- `packBaked` now emits a single `.slug.glb` (standard glTF binary) instead of the old two-file `.slug.json` + `.slug.bin` pair
-- All font data stored as native glTF accessors under the `FL_slug_font` extension; glyphs sorted by glyphId ascending, band offsets as CSR word-index prefix-sum
-- `bakedURLs` returns a single `.slug.glb` URL; CLI writes one file per font
-- `FlSlugFontExtension` published from `@three-flatland/slug/bake` — register on a `NodeIO`/`WebIO` to let glTF-Transform tooling round-trip `.slug.glb` without losing font-data accessors
-- `unpackBaked` reconstructs `SlugGlyphData`, cmap, and kern from the glTF accessors; builds curve (`HalfFloatType`) and band (`FloatType`) `DataTexture` objects
-- Schema version gate: `unpackBaked` rejects any `.slug.glb` whose `FL_slug_font` version exceeds the build's `SLUG_FONT_VERSION`; writer and reader share the constant
+### Loader
 
-### Architecture
+- `SlugFontLoader` fetches and decodes `.slug.glb` at runtime; reconstructs `SlugGlyphData`, cmap, and kern from glTF accessor columns
+- Band data sliced from flat `USHORT bandData` accessor via `FLOAT bandOffsets` CSR prefix-sum (word indices)
+- Corrupt or truncated `.slug.glb` degrades gracefully to the opentype.js runtime path; `response.arrayBuffer()` failure also falls back
+- Schema version gating: `unpackBaked` rejects any `.slug.glb` whose `FL_slug_font` version exceeds the build constant (fail-loud instead of silent misread)
 
-- Bake side (`packBaked`, `FlSlugFontExtension`) moved behind the `@three-flatland/slug/bake` subpath — `@gltf-transform/core` stays out of the browser runtime bundle
-- Dropped the `@three-flatland/asset` package (premature shared abstraction, no second consumer); GLB loader (`glb.ts`) and format constants (`format.ts`) inlined directly into slug
-- `bundle: false` restored so all granular subpath exports are preserved
-- glTF-Validator conformance check added to the bake test suite
-- `slug-bake` CLI bundled for Node ESM so it runs without a `tsx` shim
+### Baker (`@three-flatland/slug/bake` subpath)
 
-### Robustness fixes
+- `packBaked` returns a `Uint8Array` GLB; glyphs sorted by `glyphId` ascending; band offsets use CSR word-index prefix-sum
+- `FlSlugFontExtension` exported from `@three-flatland/slug/bake` — register on `NodeIO`/`WebIO` to let glTF-Transform tooling round-trip `.slug.glb` without dropping font data
+- All 16-bit writes (band/cmap/kern) validated via `assertUint16`/`assertInt16`; out-of-range values throw instead of silently wrapping
+- `@gltf-transform/core` scoped to `./bake` only — browser runtime bundle (`baked.js`, `SlugFontLoader.js`, `index.js`) remains glTF-Transform-free
 
-- GLB parser validates BIN chunk type, length, and bounds-checks every accessor view — malformed or truncated `.slug.glb` throws instead of returning views over wrong bytes
-- `unpackBaked` rejects a kern accessor whose byte length is not evenly divisible by the stride (kern stride is required to be exactly 3 for fixed 6-byte `kernLookup` records)
-- `bake.ts` validates every 16-bit write (`band`/`cmap`/`kern`) via `assertUint16`/`assertInt16` — out-of-range values fail fast instead of silently wrapping
-- `bakedURLs` preserves query/fragment and strips only the path extension; double-suffix (`MyFont.slug.slug.glb`) no longer possible from CLI
-- `SlugFontLoader`: corrupt or truncated `.slug.glb` is caught and degrades gracefully to the runtime opentype.js path; `response.arrayBuffer()` moved inside `try` so aborted fetches also fall back
-- `bake-example-fonts.ts` uses `execFileSync` with an args array (no shell); Windows-only shell flag for `tsx.cmd` shim resolution
+### CLI (`slug-bake`)
+
+- Bundled for Node ESM so it runs without a tsx shim
+- Writes one `.slug.glb` per font; `--output` suffix stripping fixed (no more `MyFont.slug.slug.glb`)
+- Windows uses shell to resolve the `tsx.cmd` shim; Unix uses `execFileSync` with an args array
+
+### Validation hardening
+
+- `readGlb`: accessor byte range checked against its declared `bufferView.byteLength` before the BIN-chunk bounds check — catches cross-bufferView spills
+- `readGlb`: BIN chunk type and length validated; all accessor views bounds-checked against the BIN chunk; malformed/truncated files throw instead of serving wrong bytes
+- `unpackBaked`: kern stride must be exactly 3 (fixed 6-byte records); non-divisible kern accessor length rejected; `glyphs.count` and `kern.stride` guarded against malformed metadata
+- `bakedURLs`: preserves query/fragment, strips only the path extension
+
+### Package changes
+
+- `@three-flatland/asset` package removed — GLB loader (`glb.ts`) and `FL_slug_font` extension (`bake.ts`) inlined directly into `@three-flatland/slug`; on-disk layout constants consolidated in `format.ts`
+- `@three-flatland/slug` reverted to `bundle:false` to preserve granular subpath exports
+- glTF-Validator conformance check added to the bake pipeline
 
 ## BREAKING CHANGES
 
-**Re-bake required.** Baked fonts are now a single `.slug.glb` file. The old `.slug.json` + `.slug.bin` pair is no longer produced or read. Run `slug-bake` to regenerate any pre-built fonts. The `SlugFont` and `SlugFontLoader` public API is unchanged; a missing `.slug.glb` falls back automatically to the runtime opentype.js path.
+- **Baked font format changed.** `.slug.glb` (single standard glTF binary) replaces the `.slug.json` + `.slug.bin` two-file pair. Re-bake all fonts with `slug-bake`. The `SlugFont` and `SlugFontLoader` public API is unchanged; a missing `.slug.glb` falls back to opentype.js automatically.
+- **`@three-flatland/asset` removed.** Any direct imports from `@three-flatland/asset` must be migrated — the GLB reader is now internal to `@three-flatland/slug`.
 
-The baked font pipeline migrates from a proprietary two-file format to a standard glTF binary container, with glTF-Transform integration for tooling and a schema version gate to catch stale assets at load time.
-
+Reworks `@three-flatland/slug`'s baked-font pipeline around a single standard glTF binary (`.slug.glb`), with robust validation throughout the load and bake paths and `@gltf-transform/core` kept strictly out of the browser runtime bundle.
