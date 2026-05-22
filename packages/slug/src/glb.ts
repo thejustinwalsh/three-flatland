@@ -106,8 +106,15 @@ export function readGlb(buf: ArrayBuffer): GlbView {
       throw new Error(`readGlb: accessor ${index} unknown type '${acc.type}'`)
     const bv = acc.bufferView !== undefined ? json.bufferViews?.[acc.bufferView] : undefined
     if (!bv) throw new Error(`readGlb: accessor ${index} bad bufferView`)
-    const absOffset = binByteOffset + (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0)
+    const bvOffset = bv.byteOffset ?? 0
+    const accOffset = acc.byteOffset ?? 0
+    const absOffset = binByteOffset + bvOffset + accOffset
     const byteLen = acc.count * components * Ctor.BYTES_PER_ELEMENT
+    // Accessor must fit within its declared bufferView (catches reads that stay
+    // inside BIN but spill into an adjacent bufferView), then within the BIN chunk.
+    if (accOffset < 0 || accOffset + byteLen > bv.byteLength) {
+      throw new Error(`readGlb: accessor ${index} exceeds bufferView`)
+    }
     if (absOffset < binByteOffset || absOffset + byteLen > binByteOffset + binByteLength) {
       throw new Error(`readGlb: accessor ${index} exceeds BIN chunk`)
     }
