@@ -78,10 +78,19 @@ export function readGlb(buf: ArrayBuffer): GlbView {
     throw new Error(`readGlb: bad JSON chunk: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  // Second chunk (optional) is BIN; otherwise binByteOffset stays past the JSON.
+  // Second chunk, when present, must be a well-formed BIN chunk.
   let binByteOffset = 20 + jsonLen
-  if (binByteOffset + 8 <= fileEnd && view.getUint32(binByteOffset + 4, true) === CHUNK_BIN) {
+  let binByteLength = 0
+  if (binByteOffset + 8 <= fileEnd) {
+    const chunkLen = view.getUint32(binByteOffset, true)
+    if (view.getUint32(binByteOffset + 4, true) !== CHUNK_BIN) {
+      throw new Error('readGlb: second GLB chunk is not BIN')
+    }
+    if (binByteOffset + 8 + chunkLen > fileEnd) {
+      throw new Error('readGlb: BIN chunk length exceeds file')
+    }
     binByteOffset += 8
+    binByteLength = chunkLen
   }
 
   function accessor(index: number): ArrayBufferView {
@@ -90,12 +99,18 @@ export function readGlb(buf: ArrayBuffer): GlbView {
       throw new Error(`readGlb: accessor ${index} out of range`)
     const acc = accessors[index] as GltfAccessor
     const Ctor = COMPONENT_CTORS[acc.componentType as ComponentType]
-    if (!Ctor) throw new Error(`readGlb: accessor ${index} unknown componentType ${acc.componentType}`)
+    if (!Ctor)
+      throw new Error(`readGlb: accessor ${index} unknown componentType ${acc.componentType}`)
     const components = TYPE_COMPONENTS[acc.type]
-    if (components === undefined) throw new Error(`readGlb: accessor ${index} unknown type '${acc.type}'`)
+    if (components === undefined)
+      throw new Error(`readGlb: accessor ${index} unknown type '${acc.type}'`)
     const bv = acc.bufferView !== undefined ? json.bufferViews?.[acc.bufferView] : undefined
     if (!bv) throw new Error(`readGlb: accessor ${index} bad bufferView`)
     const absOffset = binByteOffset + (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0)
+    const byteLen = acc.count * components * Ctor.BYTES_PER_ELEMENT
+    if (absOffset < binByteOffset || absOffset + byteLen > binByteOffset + binByteLength) {
+      throw new Error(`readGlb: accessor ${index} exceeds BIN chunk`)
+    }
     return new Ctor(buf, absOffset, acc.count * components)
   }
 
