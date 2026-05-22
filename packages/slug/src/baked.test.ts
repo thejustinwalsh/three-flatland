@@ -1,12 +1,14 @@
+import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
-import { readAsset, type FlatlandAsset } from '@three-flatland/asset'
-import { unpackBaked, bakedURLs, cmapLookup, kernLookup, SLUG_FONT_VERSION } from './baked'
+import { readGlb, type GlbView } from './glb'
+import { unpackBaked, bakedURLs, cmapLookup, kernLookup } from './baked'
 import type { BakeInput } from './baked'
+import { SLUG_FONT_VERSION } from './format'
 import { packBaked } from './bake'
 import type { SlugGlyphData, QuadCurve } from './types'
 
 describe('unpackBaked version gate', () => {
-  const stub = (extObj: unknown): FlatlandAsset =>
+  const stub = (extObj: unknown): GlbView =>
     ({
       json: {},
       accessor: () => {
@@ -16,7 +18,7 @@ describe('unpackBaked version gate', () => {
         throw new Error('version gate must throw before reading bufferViews')
       },
       ext: (name: string) => (name === 'FL_slug_font' ? extObj : undefined),
-    }) as unknown as FlatlandAsset
+    }) as unknown as GlbView
 
   it('rejects a FL_slug_font version newer than supported', () => {
     expect(() => unpackBaked(stub({ version: SLUG_FONT_VERSION + 1 }))).toThrow(
@@ -119,9 +121,9 @@ function makeSyntheticInput(): BakeInput {
 
 async function bakeAndRead(input: BakeInput) {
   const glb = await packBaked(input)
-  // readAsset needs a standalone ArrayBuffer (no offset)
+  // readGlb needs a standalone ArrayBuffer (no offset)
   const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
-  const asset = readAsset(buf)
+  const asset = readGlb(buf)
   const ext = asset.ext<Record<string, unknown>>('FL_slug_font')!
   const columns = ext['columns'] as Record<string, { accessor: number }>
   return { glb, asset, ext, columns }
@@ -140,7 +142,7 @@ describe('packBaked — returns .glb', () => {
     expect(view.getUint32(0, true)).toBe(0x46546c67)
   })
 
-  it('readAsset exposes FL_slug_font extension', async () => {
+  it('readGlb exposes FL_slug_font extension', async () => {
     const { ext } = await bakeAndRead(makeSyntheticInput())
     expect(ext).toBeDefined()
   })
@@ -350,7 +352,7 @@ describe('bakedURLs', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Round-trip: packBaked → readAsset → unpackBaked
+// Round-trip: packBaked → readGlb → unpackBaked
 // ---------------------------------------------------------------------------
 
 describe('unpackBaked round-trip', () => {
@@ -358,7 +360,7 @@ describe('unpackBaked round-trip', () => {
     const input = makeSyntheticInput()
     const glb = await packBaked(input)
     const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
-    const asset = readAsset(buf)
+    const asset = readGlb(buf)
     const result = unpackBaked(asset)
 
     expect(result.glyphs.size).toBe(2)
@@ -389,7 +391,7 @@ describe('unpackBaked round-trip', () => {
     const input = makeSyntheticInput()
     const glb = await packBaked(input)
     const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
-    const result = unpackBaked(readAsset(buf))
+    const result = unpackBaked(readGlb(buf))
 
     // Glyph 0: 1 hBand with indices [0, 1], 0 vBands
     const g0 = result.glyphs.get(0)!
@@ -409,7 +411,7 @@ describe('unpackBaked round-trip', () => {
     const input = makeSyntheticInput()
     const glb = await packBaked(input)
     const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
-    const result = unpackBaked(readAsset(buf))
+    const result = unpackBaked(readGlb(buf))
 
     expect(result.cmapCodes.length).toBe(1)
     expect(result.cmapGlyphs.length).toBe(1)
@@ -422,10 +424,31 @@ describe('unpackBaked round-trip', () => {
     const input = makeSyntheticInput()
     const glb = await packBaked(input)
     const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
-    const result = unpackBaked(readAsset(buf))
+    const result = unpackBaked(readGlb(buf))
 
     expect(result.kernCount).toBe(1)
     expect(kernLookup(3, 3, result.kernData, result.kernCount)).toBe(-10)
     expect(kernLookup(0, 3, result.kernData, result.kernCount)).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// glTF-Validator conformance — baked output is structurally valid glTF
+// ---------------------------------------------------------------------------
+
+interface ValidationReport {
+  issues: { numErrors: number; numWarnings: number; numInfos: number; numHints: number }
+}
+
+describe('glTF-Validator conformance', () => {
+  it('baked .slug.glb passes the Khronos glTF-Validator with 0 errors', async () => {
+    const glb = await packBaked(makeSyntheticInput())
+    // Loaded lazily (after vitest.setup patches navigator); no bundled .d.ts.
+    const require = createRequire(import.meta.url)
+    const validator = require('gltf-validator') as {
+      validateBytes(data: Uint8Array): Promise<ValidationReport>
+    }
+    const report = await validator.validateBytes(glb)
+    expect(report.issues.numErrors).toBe(0)
   })
 })

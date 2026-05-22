@@ -7,7 +7,7 @@ import {
   RGBAFormat,
   RGFormat,
 } from 'three'
-import { readAsset } from '@three-flatland/asset'
+import { readGlb } from './glb'
 import { SlugFont } from './SlugFont'
 import { bakedURLs, unpackBaked } from './baked'
 import { shapeTextBaked } from './pipeline/textShaperBaked'
@@ -134,7 +134,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
     if (!response.ok) return null
 
     const buf = await response.arrayBuffer()
-    const asset = readAsset(buf)
+    const asset = readGlb(buf)
     const ext = asset.ext<Record<string, unknown>>('FL_slug_font')
     if (!ext) return null
 

@@ -4,10 +4,7 @@
  * Lives behind the `@three-flatland/slug/bake` subpath so the heavy
  * `@gltf-transform/core` machinery is reachable ONLY here — it never enters
  * the browser `.` static graph. The runtime side (`baked.ts`, `SlugFontLoader`)
- * reads `.slug.glb` through the zero-static-dep `@three-flatland/asset` reader.
- *
- * Mirrors the codified per-format baker convention (precedent:
- * `@three-flatland/normals` `./bake` exports `bakeNormalMap`).
+ * reads `.slug.glb` through slug's own zero-dep GLB loader (`glb.ts`).
  *
  * ## GLB layout — FL_slug_font extension
  *
@@ -26,18 +23,7 @@
  *   "bandTexture":  { "width": W, "height": H, "format": "rg32f" },
  *   "bands": { "glyphCount": N },
  *   "columns": {
- *     "glyphId":      { "accessor": <idx> },
- *     "bounds":       { "accessor": <idx> },
- *     "bandLoc":      { "accessor": <idx> },
- *     "advanceWidth": { "accessor": <idx> },
- *     "lsb":          { "accessor": <idx> },
- *     "hasOutline":   { "accessor": <idx> },
- *     "cmap":         { "accessor": <idx> },
- *     "kern":         { "accessor": <idx> },
- *     "bandOffsets":  { "accessor": <idx> },
- *     "bandData":     { "accessor": <idx> },
- *     "curveTexture": { "accessor": <idx> },
- *     "bandTexture":  { "accessor": <idx> }
+ *     "glyphId": { "accessor": <idx> }, "bounds": { "accessor": <idx> }, …
  *   }
  * }
  * ```
@@ -53,14 +39,97 @@
  * the flat `columns.bandData` accessor (USHORT SCALAR).
  */
 
-import { Document, NodeIO } from '@gltf-transform/core'
-import { addColumn, createFLExtension } from '@three-flatland/asset/bake'
-import { SLUG_FONT_VERSION } from './baked'
+import {
+  type Accessor,
+  type Buffer,
+  Document,
+  Extension,
+  ExtensionProperty,
+  type IProperty,
+  NodeIO,
+  type Nullable,
+  PropertyType,
+  type ReaderContext,
+  RefMap,
+  type WriterContext,
+} from '@gltf-transform/core'
 import type { BakeInput } from './baked'
+import { SLUG_COLUMNS, SLUG_EXTENSION_NAME, SLUG_FONT_VERSION, type SlugColumnName } from './format'
 import type { SlugGlyphData } from './types'
 
+type SupportedTypedArray =
+  | Float32Array<ArrayBuffer>
+  | Uint16Array<ArrayBuffer>
+  | Int16Array<ArrayBuffer>
+  | Uint32Array<ArrayBuffer>
+  | Uint8Array<ArrayBuffer>
+  | Int8Array<ArrayBuffer>
+
+/** Create a named glTF `Accessor` from a TypedArray (componentType inferred). */
+function addColumn(
+  doc: Document,
+  buffer: Buffer,
+  name: string,
+  typedArray: SupportedTypedArray,
+  type: string
+): Accessor {
+  return doc
+    .createAccessor(name)
+    .setBuffer(buffer)
+    .setType(type as Parameters<Accessor['setType']>[0])
+    .setArray(typedArray)
+}
+
+// ---------------------------------------------------------------------------
+// FL_slug_font glTF-Transform extension
+//
+// Root extension holding plain JSON metadata + named accessor references.
+// Emitted JSON shape: { ...metadata, columns: { "<name>": { accessor: <idx> } } }.
+// All baked data lives in native accessors; this extension is the reachability
+// root that keeps them linked.
+// ---------------------------------------------------------------------------
+
+interface ISlugFontProperty extends IProperty {
+  metadata: Record<string, unknown>
+  accessorRefs: RefMap<Accessor>
+}
+
+class SlugFontProperty extends ExtensionProperty<ISlugFontProperty> {
+  public static readonly EXTENSION_NAME = SLUG_EXTENSION_NAME
+  public readonly extensionName = SLUG_EXTENSION_NAME
+  public readonly propertyType = 'FlSlugFontProperty'
+  public readonly parentTypes = [PropertyType.ROOT]
+
+  protected init(): void {
+    // Concrete values are class fields above.
+  }
+
+  protected getDefaults(): Nullable<ISlugFontProperty> {
+    return Object.assign(super.getDefaults() as IProperty, {
+      metadata: {},
+      accessorRefs: new RefMap<Accessor>(),
+    })
+  }
+
+  public setMetadata(meta: Record<string, unknown>): this {
+    return this.set('metadata', { ...meta })
+  }
+  public getMetadata(): Record<string, unknown> {
+    return this.get('metadata')
+  }
+  public setAccessorRef(semantic: string, accessor: Accessor | null): this {
+    return this.setRefMap('accessorRefs', semantic, accessor, { usage: 'OTHER' })
+  }
+  public getAccessorRef(semantic: string): Accessor | null {
+    return this.getRefMap('accessorRefs', semantic)
+  }
+  public listAccessorSemantics(): string[] {
+    return this.listRefMapKeys('accessorRefs')
+  }
+}
+
 /**
- * Registerable glTF-Transform extension class for the `FL_slug_font` format.
+ * Registerable glTF-Transform extension for the `FL_slug_font` format.
  *
  * Register it on a `NodeIO`/`WebIO` so gltf-transform tools (optimize, inspect,
  * validate) can read and round-trip `.slug.glb` without dropping the font-data
@@ -75,12 +144,62 @@ import type { SlugGlyphData } from './types'
  * ```
  *
  * Without registration, an unregistered tool treats the accessors as unused
- * (and refuses an `extensionsRequired` file). Every `FL_*` format SHOULD export
- * a registerable extension class from its `./bake` subpath — see the
- * `@three-flatland/asset` README "ecosystem integration" guidance.
+ * (and refuses an `extensionsRequired` file).
  */
-const _slug = createFLExtension('FL_slug_font')
-export const FlSlugFontExtension = _slug.ExtClass
+export class FlSlugFontExtension extends Extension {
+  public static readonly EXTENSION_NAME = SLUG_EXTENSION_NAME
+  public readonly extensionName = SLUG_EXTENSION_NAME
+
+  public createProperty(metadata: Record<string, unknown>): SlugFontProperty {
+    const prop = new SlugFontProperty(this.document.getGraph())
+    prop.setMetadata(metadata)
+    return prop
+  }
+
+  /** @hidden */
+  public read(context: ReaderContext): this {
+    const extJson = context.jsonDoc.json.extensions?.[SLUG_EXTENSION_NAME] as
+      | Record<string, unknown>
+      | undefined
+    if (!extJson) return this
+
+    const columns = extJson['columns'] as Record<string, { accessor: number }> | undefined
+    const metadata: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(extJson)) if (k !== 'columns') metadata[k] = v
+
+    const prop = this.createProperty(metadata)
+    if (columns) {
+      for (const [semantic, { accessor: idx }] of Object.entries(columns)) {
+        const acc = context.accessors[idx]
+        if (acc) prop.setAccessorRef(semantic, acc)
+      }
+    }
+    this.document.getRoot().setExtension(SLUG_EXTENSION_NAME, prop)
+    return this
+  }
+
+  /** @hidden */
+  public write(context: WriterContext): this {
+    const prop = this.document.getRoot().getExtension<SlugFontProperty>(SLUG_EXTENSION_NAME)
+    if (!prop) return this
+
+    const columns: Record<string, { accessor: number }> = {}
+    for (const semantic of prop.listAccessorSemantics()) {
+      const acc = prop.getAccessorRef(semantic)
+      if (acc) {
+        const idx = context.accessorIndexMap.get(acc)
+        if (idx !== undefined) columns[semantic] = { accessor: idx }
+      }
+    }
+
+    const extJson: Record<string, unknown> = { ...prop.getMetadata() }
+    if (Object.keys(columns).length > 0) extJson['columns'] = columns
+
+    context.jsonDoc.json.extensions ??= {}
+    context.jsonDoc.json.extensions[SLUG_EXTENSION_NAME] = extJson
+    return this
+  }
+}
 
 /**
  * Count the number of u16 words in the band data for a single glyph.
@@ -185,45 +304,35 @@ export async function packBaked(input: BakeInput): Promise<Uint8Array> {
   const doc = new Document()
   const buf = doc.createBuffer()
 
-  // Glyph SoA columns
-  const accGlyphId = addColumn(doc, buf, 'glyphId', glyphIdArr, 'SCALAR')
-  const accBounds = addColumn(doc, buf, 'bounds', boundsArr, 'VEC4')
-  const accBandLoc = addColumn(doc, buf, 'bandLoc', bandLocArr, 'VEC2')
-  const accAdvanceWidth = addColumn(doc, buf, 'advanceWidth', advanceWidthArr, 'SCALAR')
-  const accLsb = addColumn(doc, buf, 'lsb', lsbArr, 'SCALAR')
-  const accHasOutline = addColumn(doc, buf, 'hasOutline', hasOutlineArr, 'SCALAR')
-  // Cmap + kern
-  const accCmap = addColumn(doc, buf, 'cmap', cmapArr, 'VEC2')
-  const accKern = addColumn(doc, buf, 'kern', kernArr, 'SCALAR')
-  // Bands
-  const accBandOffsets = addColumn(doc, buf, 'bandOffsets', bandOffsets, 'SCALAR')
-  const accBandData = addColumn(doc, buf, 'bandData', bandDataArr, 'SCALAR')
-  // Textures (raw bytes stored in typed accessors; format declared in extension).
-  // Cast ArrayBufferLike → ArrayBuffer to match addColumn's typed-array constraint;
-  // these arrays are always backed by a plain ArrayBuffer in practice.
-  const accCurveTexture = addColumn(
-    doc,
-    buf,
-    'curveTexture',
-    new Uint16Array(curveData.buffer as ArrayBuffer, curveData.byteOffset, curveData.length),
-    'SCALAR'
-  )
-  const accBandTexture = addColumn(
-    doc,
-    buf,
-    'bandTexture',
-    new Float32Array(bandData.buffer as ArrayBuffer, bandData.byteOffset, bandData.length),
-    'SCALAR'
-  )
+  // Column arrays keyed by the shared contract's column names. Texture columns
+  // re-base their source view onto a plain ArrayBuffer to satisfy addColumn's
+  // typed-array constraint (these are always ArrayBuffer-backed in practice).
+  const columnArrays: Record<SlugColumnName, SupportedTypedArray> = {
+    glyphId: glyphIdArr,
+    bounds: boundsArr,
+    bandLoc: bandLocArr,
+    advanceWidth: advanceWidthArr,
+    lsb: lsbArr,
+    hasOutline: hasOutlineArr,
+    cmap: cmapArr,
+    kern: kernArr,
+    bandOffsets,
+    bandData: bandDataArr,
+    curveTexture: new Uint16Array(
+      curveData.buffer as ArrayBuffer,
+      curveData.byteOffset,
+      curveData.length
+    ),
+    bandTexture: new Float32Array(
+      bandData.buffer as ArrayBuffer,
+      bandData.byteOffset,
+      bandData.length
+    ),
+  }
 
   // ── FL_slug_font extension ──
   const ext = doc.createExtension(FlSlugFontExtension).setRequired(true)
 
-  // Metadata fields (accessor refs are emitted via the 'columns' mechanism).
-  // The extension JSON shape (after write) is:
-  //   { version, metrics, glyphs:{count}, kern:{stride}, curveTexture:{w,h,format},
-  //     bandTexture:{w,h,format}, bands:{glyphCount},
-  //     columns: { glyphId:{accessor}, bounds:{accessor}, ... } }
   const metadata: Record<string, unknown> = {
     version: SLUG_FONT_VERSION,
     metrics,
@@ -237,21 +346,14 @@ export async function packBaked(input: BakeInput): Promise<Uint8Array> {
 
   const prop = ext.createProperty(metadata)
 
-  // Register accessor refs — these appear in extension JSON under 'columns'
-  prop.setAccessorRef('glyphId', accGlyphId)
-  prop.setAccessorRef('bounds', accBounds)
-  prop.setAccessorRef('bandLoc', accBandLoc)
-  prop.setAccessorRef('advanceWidth', accAdvanceWidth)
-  prop.setAccessorRef('lsb', accLsb)
-  prop.setAccessorRef('hasOutline', accHasOutline)
-  prop.setAccessorRef('cmap', accCmap)
-  prop.setAccessorRef('kern', accKern)
-  prop.setAccessorRef('bandOffsets', accBandOffsets)
-  prop.setAccessorRef('bandData', accBandData)
-  prop.setAccessorRef('curveTexture', accCurveTexture)
-  prop.setAccessorRef('bandTexture', accBandTexture)
+  // Emit one glTF accessor per column from the shared SLUG_COLUMNS contract and
+  // register its ref under the same name; the reader resolves these by name.
+  for (const { name, type } of SLUG_COLUMNS) {
+    const acc = addColumn(doc, buf, name, columnArrays[name], type)
+    prop.setAccessorRef(name, acc)
+  }
 
-  doc.getRoot().setExtension('FL_slug_font', prop)
+  doc.getRoot().setExtension(SLUG_EXTENSION_NAME, prop)
 
   // ── Write GLB ──
   const io = new NodeIO().registerExtensions([FlSlugFontExtension])

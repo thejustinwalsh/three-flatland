@@ -1,6 +1,0 @@
-export { readGLB } from './glb'
-export type { GlbResult } from './glb'
-export { readAsset } from './readAsset'
-export type { FlatlandAsset } from './readAsset'
-export { AssetError } from './errors'
-export type { AssetErrorCode } from './errors'

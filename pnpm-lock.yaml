@@ -1101,15 +1101,6 @@ importers:
         specifier: ^6.4.1
         version: 6.4.1(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
 
-  packages/asset:
-    devDependencies:
-      '@gltf-transform/core':
-        specifier: 'catalog:'
-        version: 4.3.0
-      gltf-validator:
-        specifier: ^2.0.0-dev.3.10
-        version: 2.0.0-dev.3.10
-
   packages/nodes:
     devDependencies:
       '@types/three':
@@ -1176,9 +1167,6 @@ importers:
       '@gltf-transform/core':
         specifier: 'catalog:'
         version: 4.3.0
-      '@three-flatland/asset':
-        specifier: workspace:*
-        version: link:../asset
       opentype.js:
         specifier: ^1.3.4
         version: 1.3.4
@@ -1195,6 +1183,9 @@ importers:
       '@types/three':
         specifier: 'catalog:'
         version: 0.183.1
+      gltf-validator:
+        specifier: ^2.0.0-dev.3.10
+        version: 2.0.0-dev.3.10
       react:
         specifier: 'catalog:'
         version: 19.2.3

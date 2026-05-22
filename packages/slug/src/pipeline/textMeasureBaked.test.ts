@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import opentype from 'opentype.js'
-import { readAsset } from '@three-flatland/asset'
+import { readGlb } from '../glb'
 import { parseFont } from './fontParser'
 import { packTextures } from './texturePacker'
 import { measureText } from './textMeasure'
@@ -135,7 +135,7 @@ describe('measureTextBaked', () => {
       kern: [],
     })
     const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
-    const roundtripped = unpackBaked(readAsset(buf))
+    const roundtripped = unpackBaked(readGlb(buf))
 
     const m = measureTextBaked(
       roundtripped,

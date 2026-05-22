@@ -4,10 +4,10 @@
  * Produced by `slug-bake` as a single `.slug.glb` file.
  * `SlugFont.fromURL` fetches this one file; no opentype.js loaded at runtime.
  *
- * This module is **glTF-Transform-free**: it imports only the zero-static-dep
- * `@three-flatland/asset` runtime reader (`.`). The packer (`packBaked`) and
- * the registerable extension class live in the Node-only `./bake` module so
- * `@gltf-transform/core` never enters the browser `.` static graph.
+ * This module is **glTF-Transform-free**: it uses only slug's own zero-dep GLB
+ * loader (`./glb`). The packer (`packBaked`) and the registerable extension
+ * class live in the Node-only `./bake` module so `@gltf-transform/core` never
+ * enters the browser `.` static graph.
  *
  * ## GLB layout — FL_slug_font extension
  *
@@ -65,18 +65,9 @@
  * ```
  */
 
-import type { FlatlandAsset } from '@three-flatland/asset'
+import type { GlbView } from './glb'
 import type { SlugGlyphData } from './types'
-
-/**
- * Current `FL_slug_font` extension schema version, written by `packBaked` and
- * gated by `unpackBaked`. Bump ONLY on layout-incompatible changes. Additive
- * changes (new optional accessors/fields) keep this version: old readers ignore
- * unknown keys, new readers read them when present (the glTF additive-extension
- * convention). The reader refuses a file whose version exceeds what it supports,
- * so a future bump fails loudly with a clear message instead of misreading.
- */
-export const SLUG_FONT_VERSION = 1
+import { SLUG_EXTENSION_NAME, SLUG_FONT_VERSION } from './format'
 
 /** JSON header shape — kept for backward compat; consumed by unpackBaked (G4.2). */
 export interface BakedJSON {
@@ -160,7 +151,7 @@ export interface BakedFontData {
 }
 
 /**
- * Unpack glyph map + shaping data from a `.slug.glb` `FlatlandAsset`.
+ * Unpack glyph map + shaping data from a parsed `.slug.glb` (`GlbView`).
  *
  * Reads the `FL_slug_font` extension written by `packBaked`:
  * - Glyph SoA columns (glyphId, bounds, bandLoc, advanceWidth, lsb, hasOutline)
@@ -171,8 +162,8 @@ export interface BakedFontData {
  * - `cmap` is a USHORT VEC2 accessor `[charCode, glyphId]` pairs.
  * - `kern` is a SHORT SCALAR accessor with stride 3: `[g1, g2, value, ...]`.
  */
-export function unpackBaked(asset: FlatlandAsset): BakedFontData {
-  const ext = asset.ext<Record<string, unknown>>('FL_slug_font')
+export function unpackBaked(asset: GlbView): BakedFontData {
+  const ext = asset.ext<Record<string, unknown>>(SLUG_EXTENSION_NAME)
   if (!ext) throw new Error('unpackBaked: FL_slug_font extension not found in GLB')
 
   const version = ext['version']
