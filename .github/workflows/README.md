@@ -7,8 +7,6 @@ graph TD
     PR(["Pull Request event"])
     Push(["Push to main event"])
     Manual(["workflow_dispatch event"])
-    ChangesetWF["changeset.yml"]
-    ChangesetWF -->|"pushes .changeset/ files"| PR
 
     subgraph CIOrch ["ci.yml (orchestrator)"]
         CIChanges["changes.yml"]
@@ -18,7 +16,11 @@ graph TD
         CIBuild --> Gate["ci-passed (gate)"]
         CISmoke --> Gate
         CISize --> Gate
+        CIBuild --> ChangesetJob["changeset (PRs only)"]
+        CISmoke --> ChangesetJob
+        CISize --> ChangesetJob
     end
+    ChangesetJob -->|"pushes .changeset/ files (PAT) → re-runs CI, instapasses"| PR
 
     subgraph DocsOrch ["docs.yml (orchestrator)"]
         DocsChanges["changes.yml"]
@@ -35,7 +37,6 @@ graph TD
     end
 
     PR ==> CIOrch
-    PR ==> ChangesetWF
     Push ==> CIOrch
     Push ==> DocsOrch
     Manual ==> DocsOrch
@@ -53,12 +54,13 @@ graph TD
 
 | File | Role | Trigger |
 |---|---|---|
-| `ci.yml` | Orchestrator: paths-filter → build matrix → smoke/size → gate | `push`, `pull_request` |
+| `ci.yml` | Orchestrator: paths-filter → build matrix → smoke/size → changeset → gate | `push`, `pull_request` |
 | `docs.yml` | Orchestrator: paths-filter → smoke → build-pages → deploy | `push` to `main`, `workflow_dispatch` |
 | `changes.yml` | dorny/paths-filter; emits `packages` / `minis` / `examples` / `docs` / `configs` / `ci` bucket outputs | `workflow_call` |
 | `build.yml` | Build + typecheck + lint + test + skia test (single node version, takes `node-version` + `node-tag` inputs) | `workflow_call` |
 | `smoke.yml` | Playwright smoke tests against built docs site | `workflow_call` |
 | `size.yml` | Bundle size diff via size-limit; comments on PR | `workflow_call` |
+| `changeset.yml` | Generate + Copilot-enhance + push the release changeset (via `CHANGESET_PAT`) | `workflow_call` |
 
 The matrix lives at the orchestrator layer (`ci.yml`) — `build.yml` is single-node and reusable. Release could call it directly for a clean publish build if we ever want to dedupe `release.yml`.
 
@@ -68,16 +70,17 @@ Branch protection is a **repository ruleset** with a single required status chec
 
 Doc-only or meta-only PRs (where build / smoke / size are skipped via paths-filter gating) still produce a passing `CI passed` check and can merge. Code-changing PRs wait for the real jobs to complete before `CI passed` resolves.
 
+The `changeset` job is **not** required and is **not** in `ci-passed`'s `needs` — changeset generation is best-effort and never gates merge. The changeset bot's own `ci: generate changesets` commit instapasses: `changes.yml` flags it `changeset_only`, build / smoke / size skip, and `CI passed` resolves green in seconds. See [Changeset-only skip](#changeset-only-skip).
+
 > **Ruleset name:** `Main Branch CI` — manage at Settings > Rules > Rulesets
 
 ## Workflows
 
 | Workflow | File | Triggers | Purpose |
 |---|---|---|---|
-| **CI** | `ci.yml` (+ `changes.yml`, `build.yml`, `smoke.yml`, `size.yml`) | push to `main`, pull requests | Build matrix, lint, test, typecheck, smoke (Playwright), bundle size, gated by `ci-passed` |
+| **CI** | `ci.yml` (+ `changes.yml`, `build.yml`, `smoke.yml`, `size.yml`) | push to `main`, pull requests | Build matrix, lint, test, typecheck, smoke (Playwright), bundle size, gated by `ci-passed`; on PRs, generates the release changeset (Copilot-enhanced) as the final `changeset` job after the gate jobs pass |
 | **Release** | `release.yml` | after CI succeeds on `main`, manual | Publish packages to npm via changesets |
 | **Deploy Docs** | `docs.yml` (+ `changes.yml`, `smoke.yml`) | push to `main`, manual | Self-gated docs deploy: runs paths-filter + smoke before building the Pages artifact and deploying |
-| **Generate Changeset** | `changeset.yml` | pull requests (opened, synchronize) | Auto-generate changeset files with Copilot enhancement |
 
 ## Path Filtering (CI)
 
@@ -101,11 +104,21 @@ Job gating:
 | `ci.build` (matrix) | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — lint/typecheck/test are too valuable to bucket-gate; turbo cache makes the no-ops cheap |
 | `ci.smoke` | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` (and upstream `build` didn't fail) |
 | `ci.size` | `packages` ∨ `configs` ∨ `ci` (PR events only; size-limit only tracks published packages) |
+| `ci.changeset` | PR events only, when `build` succeeded and `smoke` / `size` didn't fail, and not `changeset_only` — generates + pushes the release changeset after the gate jobs pass |
 | `ci-passed` | always — gates the merge |
 | `docs.smoke` | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — docs#build pulls in all of them (API reference from `packages`, showcases from `minis`, embedded demos from `examples`) |
 | `docs.build-pages` / `docs.deploy` | gated on `docs.smoke` success |
 
 A change in `ci` or `configs` triggers everything — CI/config changes need to validate themselves.
+
+### Changeset-only skip
+
+The `changeset` job pushes a `.changeset/`-only commit on top of each code commit (via `CHANGESET_PAT`, so the push triggers a fresh CI run — `GITHUB_TOKEN` pushes don't). That follow-up run has nothing to build, so `changes.yml` emits `changeset_only`:
+
+- On a `pull_request` synchronize, it compares the pushed delta (`before...after` via the compare API). If **every** changed file is under `.changeset/` **and** the base commit's `CI passed` was green, `changeset_only = true`.
+- `build` / `smoke` / `size` gate on `changeset_only != 'true'`, so they skip; `ci-passed` (skipped = success) resolves green in seconds — the bot commit instapasses instead of re-running the full pipeline.
+
+The flag keys on the **file delta**, not the commit message, so it can't be spoofed, and the base-passed guard means a changeset stacked on a red commit never gets green-lit. Because the `changeset` job runs only *after* the gate jobs pass, the bot commit always lands on an already-green base, so its run cancels nothing — `cancel-in-progress` stays on.
 
 ## Node Version Policy
 
@@ -146,10 +159,9 @@ graph LR
 
 | Workflow | Concurrency Group | Behavior |
 |---|---|---|
-| CI | `ci-{PR number or ref}` | Latest push cancels in-progress run for same PR |
+| CI | `ci-{PR number or ref}` | Latest push cancels in-progress run for same PR. Safe with the `changeset` job: it pushes its commit only after the gate jobs finish, so the bot commit's run cancels nothing. |
 | Release | `Release-refs/heads/main` | Only one release at a time per branch |
 | Deploy Docs | `pages` | Latest deploy cancels in-progress deploys |
-| Generate Changeset | none | Self-skips via commit message check |
 
 ## Manual Triggers
 
@@ -219,7 +231,7 @@ Follow these rules when modifying or creating workflows:
 
 COMPOSABLE LAYOUT
 - ci.yml is a slim orchestrator. Real work lives in reusable workflows declared with `on: workflow_call:` only
-- Reusable workflows in this repo: changes.yml, build.yml, smoke.yml, size.yml
+- Reusable workflows in this repo: changes.yml, build.yml, smoke.yml, size.yml, changeset.yml
 - The orchestrator calls them via `uses: ./.github/workflows/<name>.yml` and passes inputs/secrets
 - New steps that fit an existing reusable workflow go there; otherwise add a new reusable workflow and call it from ci.yml
 - Matrix lives at the orchestrator layer — reusable workflows are single-instance and take parameters as inputs

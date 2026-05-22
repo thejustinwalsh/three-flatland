@@ -15,6 +15,8 @@ on:
         value: ${{ jobs.detect.outputs.configs }}
       ci:
         value: ${{ jobs.detect.outputs.ci }}
+      changeset_only:
+        value: ${{ jobs.detect.outputs.changeset_only }}
 
 jobs:
   detect:
@@ -26,8 +28,46 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       configs: ${{ steps.filter.outputs.configs }}
       ci: ${{ steps.filter.outputs.ci }}
+      changeset_only: ${{ steps.skip.outputs.changeset_only }}
     steps:
       - uses: actions/checkout@v6
+
+      # The changeset bot pushes a `.changeset/`-only commit on top of each
+      # code commit. Such a push has nothing to build, so skip the heavy jobs
+      # and let the `CI passed` gate go green on the skips — but only when the
+      # base commit it sits on already passed CI, so a changeset stacked on a
+      # red commit can never be green-lit. Keys on the pushed file delta, not
+      # the commit message, so it can't be spoofed.
+      - name: Detect changeset-only push on a passing base
+        id: skip
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          before='${{ github.event.before }}'
+          after='${{ github.event.after }}'
+          # No usable base (PR opened/reopened, or null SHA) → run full CI.
+          if [ -z "$before" ] || [[ "$before" =~ ^0+$ ]]; then
+            echo "changeset_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed="$(gh api "repos/${{ github.repository }}/compare/$before...$after" --jq '.files[].filename' 2>/dev/null)" || changed='__err__'
+          echo "Pushed delta $before...$after:"
+          printf '%s\n' "$changed"
+          # Any file outside .changeset/ (or a compare error / empty delta) → run full CI.
+          if [ "$changed" = '__err__' ] || [ -z "$changed" ] || printf '%s\n' "$changed" | grep -qvE '^\.changeset/'; then
+            echo "changeset_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Sort by completed_at, not API return order (undocumented), so a
+          # re-run can't surface a stale earlier conclusion as the "last" one.
+          base_conclusion="$(gh api "repos/${{ github.repository }}/commits/$before/check-runs" --jq '[.check_runs[] | select(.name == "CI passed")] | sort_by(.completed_at) | last // {} | .conclusion // ""' 2>/dev/null || echo '')"
+          echo "Base 'CI passed' conclusion: '$base_conclusion'"
+          if [ "$base_conclusion" = 'success' ]; then
+            echo "changeset_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changeset_only=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: dorny/paths-filter@v3
         id: filter

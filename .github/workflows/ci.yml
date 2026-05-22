@@ -13,6 +13,7 @@ concurrency:
 permissions:
   contents: read
   pull-requests: write
+  checks: read
 
 jobs:
   changes:
@@ -21,12 +22,14 @@ jobs:
   build:
     needs: changes
     if: |
-      needs.changes.outputs.packages == 'true' ||
-      needs.changes.outputs.minis == 'true' ||
-      needs.changes.outputs.examples == 'true' ||
-      needs.changes.outputs.docs == 'true' ||
-      needs.changes.outputs.configs == 'true' ||
-      needs.changes.outputs.ci == 'true'
+      needs.changes.outputs.changeset_only != 'true' && (
+        needs.changes.outputs.packages == 'true' ||
+        needs.changes.outputs.minis == 'true' ||
+        needs.changes.outputs.examples == 'true' ||
+        needs.changes.outputs.docs == 'true' ||
+        needs.changes.outputs.configs == 'true' ||
+        needs.changes.outputs.ci == 'true'
+      )
     strategy:
       matrix:
         include:
@@ -43,6 +46,7 @@ jobs:
     needs: [changes, build]
     if: |
       !cancelled() && needs.build.result != 'failure' &&
+      needs.changes.outputs.changeset_only != 'true' &&
       (needs.changes.outputs.packages == 'true' ||
        needs.changes.outputs.minis == 'true' ||
        needs.changes.outputs.examples == 'true' ||
@@ -56,10 +60,29 @@ jobs:
     if: |
       github.event_name == 'pull_request' &&
       !cancelled() && needs.build.result != 'failure' &&
+      needs.changes.outputs.changeset_only != 'true' &&
       (needs.changes.outputs.packages == 'true' ||
        needs.changes.outputs.configs == 'true' ||
        needs.changes.outputs.ci == 'true')
     uses: ./.github/workflows/size.yml
+    secrets: inherit
+
+  # Generate the release changeset only AFTER the gate jobs pass, as the final
+  # step of CI rather than a parallel workflow. Sequencing it here means the
+  # bot's `ci: generate changesets` commit is created on an already-green base —
+  # so its own CI run instapasses via the changeset-only skip, and because this
+  # PR's CI is finished by then, that run cancels nothing (cancel-in-progress
+  # stays safe). Not a dependency of `ci-passed`: changeset generation is
+  # best-effort and never gates merge.
+  changeset:
+    needs: [changes, build, smoke, size]
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.changeset_only != 'true' &&
+      needs.build.result == 'success' &&
+      needs.smoke.result != 'failure' &&
+      needs.size.result != 'failure'
+    uses: ./.github/workflows/changeset.yml
     secrets: inherit
 
   ci-passed:
