@@ -79,7 +79,7 @@ Slug text works with both the WebGPU renderer and its WebGL2 fallback. The TSL s
 
 ## Loading Fonts
 
-`SlugFontLoader` is the single entry point for loading fonts. It automatically tries pre-baked data first (`.slug.json` + `.slug.bin`), and falls back to runtime parsing from the `.ttf` if baked data isn't available.
+`SlugFontLoader` is the single entry point for loading fonts. It automatically tries pre-baked data first (a single `.slug.glb`), and falls back to runtime parsing from the `.ttf` if baked data isn't available.
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
@@ -368,7 +368,7 @@ npx slug-bake Inter-Regular.ttf --range latin
 npx slug-bake Inter-Regular.ttf -r latin -r 0x2000-0x206F
 ```
 
-Place the `.slug.json` + `.slug.bin` files alongside the font. `SlugFontLoader.load()` detects them automatically — no code changes needed. The `.ttf` is never fetched when baked data is present, and opentype.js never enters the bundle.
+Place the `.slug.glb` file alongside the font. `SlugFontLoader.load()` detects it automatically — no code changes needed. The `.ttf` is never fetched when baked data is present, and opentype.js never enters the bundle.
 
 | Range   | Glyphs | Raw      | Brotli |
 | ------- | ------ | -------- | ------ |

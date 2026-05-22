@@ -4,7 +4,7 @@
 
 ## SlugFontLoader
 
-Single entry point for loading fonts. Tries baked data (`.slug.json` + `.slug.bin`) first, falls back to runtime parsing of `.ttf` / `.otf` / `.woff` via opentype.js. Extends three.js's `Loader<SlugFont>` so it composes with `useLoader` in R3F.
+Single entry point for loading fonts. Tries baked data (a single `.slug.glb`) first, falls back to runtime parsing of `.ttf` / `.otf` / `.woff` via opentype.js. Extends three.js's `Loader<SlugFont>` so it composes with `useLoader` in R3F.
 
 ### Static Methods
 

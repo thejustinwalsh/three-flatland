@@ -2,12 +2,14 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import opentype from 'opentype.js'
+import { readGlb } from '../glb'
 import { parseFont } from './fontParser'
 import { packTextures } from './texturePacker'
 import { measureText } from './textMeasure'
 import { measureTextBaked } from './textMeasureBaked'
-import { packBaked, unpackBaked } from '../baked'
-import type { BakedFontData, BakedJSON } from '../baked'
+import { unpackBaked } from '../baked'
+import { packBaked } from '../bake'
+import type { BakedFontData } from '../baked'
 import type { SlugGlyphData } from '../types'
 
 const FONT_PATH = resolve(
@@ -94,7 +96,7 @@ describe('measureTextBaked', () => {
    * accumulator silently skips every glyph — returning a zero-size
    * actualBoundingBox. The measure code must use bounds-area instead.
    */
-  it('roundtrip via pack/unpack still produces non-zero ink bounds', () => {
+  it('roundtrip via pack/unpack still produces non-zero ink bounds', async () => {
     const textures = packTextures(glyphs)
     const curveData = (textures.curveTexture.image as { data: Uint16Array }).data
     const bandData = (textures.bandTexture.image as { data: Float32Array }).data
@@ -108,8 +110,21 @@ describe('measureTextBaked', () => {
       if (g && g.index !== 0) cmap.push([c, g.index])
     }
 
-    const { json, bin } = packBaked({
-      metrics: { unitsPerEm, ascender, descender, capHeight: ascender },
+    const glb = await packBaked({
+      metrics: {
+        unitsPerEm,
+        ascender,
+        descender,
+        capHeight: ascender,
+        underlinePosition: 0,
+        underlineThickness: 0,
+        strikethroughPosition: 0,
+        strikethroughThickness: 0,
+        subscriptScale: { x: 1, y: 1 },
+        subscriptOffset: { x: 0, y: 0 },
+        superscriptScale: { x: 1, y: 1 },
+        superscriptOffset: { x: 0, y: 0 },
+      },
       textureWidth: textures.textureWidth,
       curveTextureHeight: curveHeight,
       curveData,
@@ -119,10 +134,8 @@ describe('measureTextBaked', () => {
       cmap,
       kern: [],
     })
-    const roundtripped = unpackBaked(
-      bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer,
-      json as BakedJSON
-    )
+    const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const roundtripped = unpackBaked(readGlb(buf))
 
     const m = measureTextBaked(
       roundtripped,

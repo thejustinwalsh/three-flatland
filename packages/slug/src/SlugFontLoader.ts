@@ -7,19 +7,20 @@ import {
   RGBAFormat,
   RGFormat,
 } from 'three'
+import { readGlb } from './glb'
 import { SlugFont } from './SlugFont'
 import { bakedURLs, unpackBaked } from './baked'
 import { shapeTextBaked } from './pipeline/textShaperBaked'
 import { wrapLinesBaked } from './pipeline/wrapLinesBaked'
 import { measureTextBaked } from './pipeline/textMeasureBaked'
-import type { BakedJSON } from './baked'
 
 /**
  * The single entry point for loading SlugFont data.
  *
- * Automatically tries pre-baked data first ({name}.slug.json + .slug.bin).
- * When baked data is present, opentype.js is never loaded and the original
- * font file is never fetched. Falls back to full runtime parsing otherwise.
+ * Tries pre-baked data first (a single {name}.slug.glb). When baked data is
+ * present, opentype.js is never loaded and the original font file is never
+ * fetched. Falls back to full runtime parsing otherwise. The baked .slug.glb
+ * fast-path is wired in G4.2; until then this falls through to runtime.
  *
  * @example
  * ```typescript
@@ -122,61 +123,112 @@ export class SlugFontLoader extends Loader<SlugFont> {
   }
 
   private static async _tryLoadBaked(fontURL: string): Promise<SlugFont | null> {
-    const urls = bakedURLs(fontURL)
+    const glbURL = bakedURLs(fontURL)
+
+    let response: Response
+    try {
+      response = await fetch(glbURL)
+    } catch {
+      return null
+    }
+    if (!response.ok) return null
 
     try {
-      const [jsonResp, binResp] = await Promise.all([fetch(urls.json), fetch(urls.bin)])
+      const buf = await response.arrayBuffer()
+      const asset = readGlb(buf)
+      const ext = asset.ext<Record<string, unknown>>('FL_slug_font')
+      if (!ext) return null
 
-      if (!jsonResp.ok || !binResp.ok) return null
+      const bakedData = unpackBaked(asset)
+      const columns = ext['columns'] as Record<string, { accessor: number }>
+      const metrics = ext['metrics'] as {
+        unitsPerEm: number
+        ascender: number
+        descender: number
+        capHeight: number
+        underlinePosition: number
+        underlineThickness: number
+        strikethroughPosition: number
+        strikethroughThickness: number
+        subscriptScale: { x: number; y: number }
+        subscriptOffset: { x: number; y: number }
+        superscriptScale: { x: number; y: number }
+        superscriptOffset: { x: number; y: number }
+      }
+      const curveTexMeta = ext['curveTexture'] as { width: number; height: number; format: string }
+      const bandTexMeta = ext['bandTexture'] as { width: number; height: number; format: string }
 
-      const meta = (await jsonResp.json()) as BakedJSON
-      const binBuffer = await binResp.arrayBuffer()
-
-      // Curve texture: RGBA16F — 2 bytes per channel × 4 channels = 8 bytes/texel
+      // ── Curve texture: RGBA16F → HalfFloatType ──
+      // The accessor is USHORT SCALAR holding the raw half-float bits.
+      const curveData = asset.accessor(columns['curveTexture']!.accessor) as Uint16Array
       const curveTexture = new DataTexture(
-        new Uint16Array(binBuffer, meta.curveTexture.byteOffset, meta.curveTexture.byteLength / 2),
-        meta.textureWidth,
-        meta.curveTexture.height,
+        curveData,
+        curveTexMeta.width,
+        curveTexMeta.height,
         RGBAFormat,
         HalfFloatType
       )
-      curveTexture.minFilter = NearestFilter
       curveTexture.magFilter = NearestFilter
+      curveTexture.minFilter = NearestFilter
       curveTexture.needsUpdate = true
 
-      // Band texture: RG32F — 4 bytes per channel × 2 channels = 8 bytes/texel
+      // ── Band texture: RG32F → FloatType ──
+      const bandData = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
       const bandTexture = new DataTexture(
-        new Float32Array(binBuffer, meta.bandTexture.byteOffset, meta.bandTexture.byteLength / 4),
-        meta.textureWidth,
-        meta.bandTexture.height,
+        bandData,
+        bandTexMeta.width,
+        bandTexMeta.height,
         RGFormat,
         FloatType
       )
-      bandTexture.minFilter = NearestFilter
       bandTexture.magFilter = NearestFilter
+      bandTexture.minFilter = NearestFilter
       bandTexture.needsUpdate = true
-
-      const bakedData = unpackBaked(binBuffer, meta)
 
       const font = SlugFont._createBaked(
         bakedData.glyphs,
-        { curveTexture, bandTexture, textureWidth: meta.textureWidth },
-        meta.metrics,
+        { curveTexture, bandTexture, textureWidth: curveTexMeta.width },
+        {
+          unitsPerEm: metrics.unitsPerEm,
+          ascender: metrics.ascender,
+          descender: metrics.descender,
+          capHeight: metrics.capHeight,
+          underlinePosition: metrics.underlinePosition,
+          underlineThickness: metrics.underlineThickness,
+          strikethroughPosition: metrics.strikethroughPosition,
+          strikethroughThickness: metrics.strikethroughThickness,
+          subscriptScale: metrics.subscriptScale,
+          subscriptOffset: metrics.subscriptOffset,
+          superscriptScale: metrics.superscriptScale,
+          superscriptOffset: metrics.superscriptOffset,
+        },
         bakedData,
         shapeTextBaked,
         wrapLinesBaked,
         measureTextBaked
       )
-      if (meta.strokeSets && meta.strokeSets.length > 0) {
-        font.strokeSets = meta.strokeSets
+
+      if (ext['strokeSets']) {
+        font.strokeSets = ext['strokeSets'] as typeof font.strokeSets
       }
+
       return font
-    } catch {
+    } catch (err) {
+      // A present-but-corrupt/incompatible .slug.glb degrades to the runtime
+      // path rather than failing the whole load.
+      console.warn('[slug] baked .slug.glb failed to parse; falling back to runtime', err)
       return null
     }
   }
 
   private static async _loadRuntime(url: string): Promise<SlugFont> {
+    // Runtime build path: builds the SlugFont directly from the fetched font
+    // file via already-lazy pipeline imports. It does NOT bake a `.slug.glb`,
+    // so `@gltf-transform/core` (reachable only through `./bake`) stays out of
+    // the browser static graph. If runtime GLB baking is ever added here, it
+    // MUST `await import('./bake.js')` to pull `packBaked` lazily — gated by
+    // `forceRuntime`, per the `@three-flatland/normals` `resolveNormalMap`
+    // precedent — so the heavy dep never enters the `.` entry's static graph.
     const [
       response,
       opentype,
