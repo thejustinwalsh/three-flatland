@@ -189,9 +189,10 @@ export function unpackBaked(asset: GlbView): BakedFontData {
     throw new Error(`unpackBaked: invalid FL_slug_font glyphs.count ${String(glyphCount)}`)
   }
   const kernMeta = ext['kern'] as { stride?: number } | undefined
-  const kernStride = kernMeta?.stride // always 3
-  if (typeof kernStride !== 'number' || !Number.isInteger(kernStride) || kernStride <= 0) {
-    throw new Error(`unpackBaked: invalid FL_slug_font kern.stride ${String(kernStride)}`)
+  const kernStride = kernMeta?.stride
+  // kernLookup reads fixed 6-byte (stride-3) records; reject anything else.
+  if (kernStride !== 3) {
+    throw new Error(`unpackBaked: FL_slug_font kern.stride must be 3, got ${String(kernStride)}`)
   }
 
   // ── Glyph SoA column accessors ──

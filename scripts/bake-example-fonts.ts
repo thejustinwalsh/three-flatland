@@ -44,10 +44,12 @@ const FONTS: BakeConfig[] = [
   },
 ]
 
-/** Run `cmd` with an explicit args array (no shell), inheriting stdio, in ROOT. */
+/** Run `cmd` with an explicit args array, inheriting stdio, in ROOT. Uses a
+ *  shell only on Windows so the `tsx.cmd` shim resolves; Unix stays shell-free
+ *  (paths with spaces are handled by the args array). */
 function run(cmd: string, args: string[]): void {
   console.log(`  $ ${cmd} ${args.join(' ')}`)
-  execFileSync(cmd, args, { stdio: 'inherit', cwd: ROOT })
+  execFileSync(cmd, args, { stdio: 'inherit', cwd: ROOT, shell: process.platform === 'win32' })
 }
 
 function ensureDir(dir: string): void {

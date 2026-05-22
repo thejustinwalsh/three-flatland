@@ -133,8 +133,8 @@ export class SlugFontLoader extends Loader<SlugFont> {
     }
     if (!response.ok) return null
 
-    const buf = await response.arrayBuffer()
     try {
+      const buf = await response.arrayBuffer()
       const asset = readGlb(buf)
       const ext = asset.ext<Record<string, unknown>>('FL_slug_font')
       if (!ext) return null
