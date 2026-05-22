@@ -124,6 +124,22 @@ module.exports = [
     import: '*',
   },
 
+  // ── @three-flatland/slug ──
+  // opentype.js is dynamically imported only on the runtime-parse fallback, so
+  // it's excluded from the eager import cost (it ships as a separate chunk).
+  {
+    name: '@three-flatland/slug (full)',
+    path: 'packages/slug/dist/index.js',
+    import: '*',
+    ignore: ['three', 'opentype.js'],
+  },
+  {
+    name: '@three-flatland/slug/react (full)',
+    path: 'packages/slug/dist/react.js',
+    import: '*',
+    ignore: [...corePeerDeps, 'opentype.js'],
+  },
+
   // ── @three-flatland/tweakpane ──
   {
     name: '@three-flatland/tweakpane (full)',
