@@ -88,7 +88,7 @@ For the full algorithm walkthrough, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 
 | Export               | Description                                                                                                                        |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `SlugFontLoader`     | Loads `.slug.json` + `.slug.bin` (baked) or `.ttf`/`.otf`/`.woff` (runtime). Single entry point for fonts.                         |
+| `SlugFontLoader`     | Loads a baked `.slug.glb` or `.ttf`/`.otf`/`.woff` (runtime). Single entry point for fonts.                                        |
 | `SlugFont`           | Font data container. Glyphs, GPU textures, text shaping, `measureText`, `measureParagraph`, `wrapText`.                            |
 | `SlugText`           | High-level `InstancedMesh` subclass. `.text`, `.fontSize`, `.align`, `.styles`, `.outline`.                                        |
 | `SlugFontStack`      | Ordered fallback chain across multiple `SlugFont`s. Per-codepoint resolution.                                                      |
@@ -101,7 +101,7 @@ For full API docs with all options and types, see [docs/REFERENCE.md](docs/REFER
 
 ## Pre-baking Fonts
 
-`slug-bake` pre-processes font files offline, producing `.slug.json` + `.slug.bin` files that eliminate runtime font parsing and the opentype.js dependency:
+`slug-bake` pre-processes font files offline, producing a single `.slug.glb` file that eliminates runtime font parsing and the opentype.js dependency:
 
 ```bash
 npx slug-bake Inter-Regular.ttf                    # All glyphs
@@ -124,7 +124,7 @@ const io = new NodeIO().registerExtensions([FlSlugFontExtension])
 const doc = await io.read('Inter-Regular.slug.glb') // font-data accessors intact
 ```
 
-Without the extension registered, a tool treats the accessors as unused (and refuses the `extensionsRequired` file). See the `@three-flatland/asset` README "ecosystem integration" section.
+Without the extension registered, a tool treats the accessors as unused (and refuses the `extensionsRequired` file).
 
 ### Predefined ranges
 

@@ -29,7 +29,7 @@ This example demonstrates [`@three-flatland/slug`](../../guides/slug-text/) — 
 
 ## Loading a Font
 
-`SlugFontLoader.load()` is the single entry point. It tries baked data (`.slug.json` + `.slug.bin`) first and falls back to runtime parsing of TTF/OTF/WOFF — opentype.js is dynamic-imported only on the runtime path, so baked-only bundles ship without it.
+`SlugFontLoader.load()` is the single entry point. It tries baked data (a single `.slug.glb`) first and falls back to runtime parsing of TTF/OTF/WOFF — opentype.js is dynamic-imported only on the runtime path, so baked-only bundles ship without it.
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
