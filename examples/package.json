@@ -14,9 +14,9 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.183.1",
-    "three-flatland": "^0.1.0-alpha.5",
+    "three-flatland": "^0.1.0-alpha.6",
     "@three-flatland/nodes": "^0.1.0-alpha.3",
-    "@three-flatland/presets": "^0.1.0-alpha.5",
+    "@three-flatland/presets": "^0.1.0-alpha.6",
     "@three-flatland/skia": "^0.1.0-alpha.3",
     "tweakpane": "^4.0.5"
   },

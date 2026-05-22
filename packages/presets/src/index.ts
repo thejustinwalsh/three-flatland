@@ -11,4 +11,4 @@
  * Placeholder export for package validation
  * TODO: Remove when actual presets are implemented
  */
-export const VERSION = '0.1.0-alpha.5'
+export const VERSION = '0.1.0-alpha.6'

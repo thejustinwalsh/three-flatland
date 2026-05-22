@@ -1,5 +1,14 @@
 # @three-flatland/presets
 
+## 0.1.0-alpha.6
+
+### Patch Changes
+
+- Updated dependencies [ed33b1a]
+- Updated dependencies [1719d16]
+- Updated dependencies [e0562c3]
+  - three-flatland@0.1.0-alpha.6
+
 ## 0.1.0-alpha.5
 
 ### Patch Changes
