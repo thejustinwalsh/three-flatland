@@ -446,9 +446,45 @@ See `references/element-templates.md` for copy-paste JSON templates for each ele
 
 ---
 
+## Author for correctness: bind text, don't float it
+
+The single biggest cause of broken diagrams — labels overrunning their box, text clipping at the diagram edge, labels sitting on top of shapes — is **free-floating text**. When a piece of text belongs *inside* a shape (a node, a cell, a titled box), make it **bound text** on that shape. Do not position a separate label on top of the shape.
+
+**Why this is the difference between first-try success and an endless overflow-fix loop:**
+
+- Bound text **auto-wraps** to the container's width, and Excalidraw **grows the container's height** to fit. You never guess a pixel width and you never hand-insert line breaks.
+- Free text forces you to do both by hand. Font metrics are not intuitive — you *will* mis-guess the rendered width (this is why labels keep overflowing and why text lands a few pixels past its box), and a too-small declared `width` makes the text spill past the diagram's own viewBox and clip on the page.
+- The render-time overflow linter can only verify text that is *bound* to a container, plus each text's own declared box. **A free label laid over a shape is invisible to the linter.** The more you bind, the more the mechanical safety net actually covers — so binding is what makes the checks trustworthy.
+
+**How to bind text to a shape:**
+
+1. Give the text element `containerId: "<shape-id>"`.
+2. Add the text id to the shape's `boundElements`: `"boundElements": [{ "id": "<text-id>", "type": "text" }]`.
+3. Set `textAlign` (`left`/`center`) and `verticalAlign` (`top`/`middle`) on the text.
+
+Excalidraw then wraps the text to `container.width − 10` and reflows the container height. **Size the container to the content you want; let wrapping do the rest** — never reverse-engineer the text width.
+
+```json
+// container — sized to taste; height will grow to fit the wrapped text
+{ "id": "cellSys", "type": "rectangle", "x": 100, "y": 100, "width": 220, "height": 70,
+  "boundElements": [{ "id": "cellSys-label", "type": "text" }] }
+// bound label — wraps inside cellSys automatically, no manual newlines
+{ "id": "cellSys-label", "type": "text", "containerId": "cellSys",
+  "text": "instanceSystem vec4 — floats 8..11 — flipX, flipY, sysFlags, enableBits",
+  "fontSize": 14, "textAlign": "center", "verticalAlign": "middle" }
+```
+
+**When free-floating text is acceptable:** true open-space annotations — the diagram title, a section header, a caption in genuinely empty space. Even then, keep them short and single-purpose, and **over-declare their `width` by ~15–20%** so a metric mis-guess never clips them. A finished diagram is *mostly bound text* with a handful of free labels — not the inverse. If you find yourself authoring dozens of positioned labels, stop and bind them to the shapes they belong to.
+
+**Heuristic:** if a label's center sits inside a box, it should almost certainly be *bound* to that box.
+
+---
+
 ## Render & Validate (MANDATORY)
 
 You cannot judge a diagram from JSON alone. After generating or editing the Excalidraw JSON, you MUST render it to PNG, view the image, and fix what you see — in a loop until it's right. This is a core part of the workflow, not a final check.
+
+**Validate as you go, not just at the end.** After you finish each major section or cluster, render and lint it. Catching a sizing/overflow problem in one section is cheap; discovering ten of them after the whole diagram is laid out is not.
 
 ### How to Render
 
@@ -494,10 +530,12 @@ After generating the initial JSON, run this cycle:
 
 **3. Check for visual defects:**
 - Text clipped by or overflowing its container
+- **Text overlapping a shape it is not bound to** — a free label sitting on a circle, arrow, or another box. The linter cannot see this; you must. Zoom into every dense cluster.
+- **Text clipped at the diagram's outer edge** — if a label's declared width was too small it renders past the viewBox and gets cut off on the page even though the standalone PNG looks fine. Bind it, or widen its declared box.
 - Text or shapes overlapping other elements
 - Arrows crossing through elements instead of routing around them
-- Arrows landing on the wrong element or pointing into empty space
-- Labels floating ambiguously (not clearly anchored to what they describe)
+- Arrows landing on the wrong element, pointing into empty space, or terminating in the *middle* of a box instead of on its entry edge
+- Labels floating ambiguously (not clearly anchored to what they describe) — usually a sign the label should be *bound* to the shape it describes
 - Uneven spacing between elements that should be evenly spaced
 - Sections with too much whitespace next to sections that are too cramped
 - Text too small to read at the rendered size
@@ -514,12 +552,22 @@ After generating the initial JSON, run this cycle:
 
 **6. Repeat** — Keep cycling until the diagram passes both the vision check (Step 2) and the defect check (Step 3). Typically takes 2-4 iterations. Don't stop after one pass just because there are no critical bugs — if the composition could be better, improve it.
 
+### Self-validation gate — run this before you call it done
+
+Do not report a diagram as finished until **every** item passes. This is a hard gate, not a suggestion:
+
+1. **Lint is green.** `uv run python render_excalidraw.py <file> --strict` exits 0. If it prints any `⚠ TEXT OVERFLOW`, you are not done — fix and re-run.
+2. **You looked at the full render.** Read the full-resolution PNG (not just trust the exit code).
+3. **You looked at the dense areas up close.** Read zoomed crops of every region where shapes or labels cluster — circle marches, columns of cells, anywhere a label sits near a stroke. The linter is blind to text-on-shape collisions; this is how you catch them.
+4. **No text touches a shape it isn't bound to**, nothing clips at the diagram's outer edge, and every free label sits in clear space.
+5. **Arrows connect to entry edges**, not box middles or empty space.
+
+Only when all five pass do you export the SVG and report done. If you cannot honestly check item 3 or 4, say so rather than claiming success.
+
 ### When to Stop
 
-The loop is done when:
+The loop is done when the self-validation gate above passes AND:
 - The rendered diagram matches the conceptual design from your planning steps
-- No text is clipped, overlapping, or unreadable
-- Arrows route cleanly and connect to the right elements
 - Spacing is consistent and the composition is balanced
 - You'd be comfortable showing it to someone without caveats
 
