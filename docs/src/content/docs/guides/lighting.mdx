@@ -6,6 +6,7 @@ description: How Flatland's Forward+ tiled lighting works — Light2D sources, t
 import Compare from '../../../components/Compare.astro';
 import Diagram from '../../../components/Diagram.astro';
 import tileSlotBudget from '../../../assets/diagrams/tile-slot-budget.svg?raw';
+import lightingDataflow from '../../../assets/diagrams/lighting-dataflow.svg?raw';
 
 <Compare
   beforeSrc="/three-flatland/diagrams/lighting-off.webm"
@@ -30,6 +31,8 @@ You don't need to understand Forward+, SDF tracing, or per-tile slot allocation 
 3. **Sprites** — all sprites receive lighting by default when a LightEffect is active (set `lit: false` to opt out)
 
 Flatland manages the lifecycle: it collects lights, syncs them to a GPU texture each frame, and applies the active LightEffect to all lit sprites.
+
+<Diagram caption="The per-frame light data path — Light2D instances are collected and synced to a GPU light store, which the LightEffect shader reads to light every sprite." src={lightingDataflow} />
 
 `DefaultLightEffect`, the recommended preset, runs Forward+ tiled lighting: the screen is divided into tiles, each tile culls the lights that can't reach it, and the fragment shader iterates only the survivors. The per-fragment cost scales with lights *per tile*, not lights in the scene — a room with 200 lights costs the same per fragment as a room with 16, as long as no single tile is oversubscribed.
 

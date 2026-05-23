@@ -4,6 +4,8 @@ description: Offline asset-baking pipeline — flatland-bake CLI, sidecar files,
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import bakedNormalPipeline from '../../../assets/diagrams/baked-normal-pipeline.svg?raw';
 
 **What you'll learn**
 - How `flatland-bake` produces sidecar PNGs (`<asset>.normal.png`) with stamped content hashes
@@ -19,6 +21,8 @@ You only need this page when you're ready to *ship*. During development, the run
 For the runtime side of the same pipeline — how `SpriteSheetLoader` and `LDtkLoader` consume baked siblings via `normals: true` — see the [Baked Normal Pipeline](../loaders/#baked-normal-pipeline) section of the Loaders guide. This page is the *workflow* counterpart: how to run the baker offline, integrate it into CI, and reason about staleness.
 
 ## The Bake Pipeline at a Glance
+
+<Diagram caption="The baked-normal pipeline — probe for a hash-stamped sidecar, load it on a match, or fall back to an in-memory bake; forceRuntime skips the probe." src={bakedNormalPipeline} />
 
 - **Source asset** — a sprite sheet PNG (plus its TexturePacker JSON), an LDtk tileset, or any other texture the runtime wants enriched. Lives in your project's `public/` (or equivalent) directory.
 - **Bake step** — `flatland-bake <type> <source>` runs the registered baker (currently `normal`) and writes a sidecar file (`<source>.normal.png`) next to the source. The sidecar carries the descriptor's content hash stamped into a PNG `tEXt` chunk under the `flatland` keyword.

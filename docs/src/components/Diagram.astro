@@ -25,6 +25,18 @@ const { src, caption } = Astro.props
 </figure>
 
 <style>
+  /* The diagram SVGs are laid out by the render pipeline using this exact
+     font file (references/diagram-font.woff2 == this woff2). Serving it to the
+     page under the same unique name the SVGs reference guarantees the page
+     renders text with identical glyph metrics — so labels can't overflow due
+     to the page's own JetBrains Mono having different glyph widths. */
+  @font-face {
+    font-family: 'Flatland Diagram';
+    src: url('/three-flatland/fonts/flatland-diagram.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: block;
+  }
   figure.tf-diagram {
     margin: 1.5rem 0;
     padding: 0;

@@ -31,6 +31,7 @@ Pass Effects are full-screen post-processing effects applied after sprite render
 
 import Diagram from '../../../components/Diagram.astro';
 import effectLayers from '../../../assets/diagrams/effect-layers.svg?raw';
+import passChainFusion from '../../../assets/diagrams/passeffect-chain-fusion.svg?raw';
 
 <Diagram caption="Three effect layers in the render pipeline" src={effectLayers} />
 
@@ -163,6 +164,8 @@ Schema fields become typed properties on instances with zero-cost uniform update
 ## Pass Chaining :badge[Advanced]{variant=note}
 
 Multiple passes compose into a single pipeline. Each pass receives the previous pass's output:
+
+<Diagram caption="Pass-chain cost — color-math passes fuse into one GPU program; a UV-sampling pass forces a convertToTexture boundary (render to texture, then sample)." src={passChainFusion} />
 
 ```typescript
 flatland.addPass(posterize)   // 1. Reduce color bands

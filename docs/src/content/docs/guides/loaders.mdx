@@ -4,6 +4,8 @@ description: Load spritesheets and tilemaps with configurable texture presets.
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import bakedNormalPipeline from '../../../assets/diagrams/baked-normal-pipeline.svg?raw';
 
 **What you'll learn**
 - How to load textures, spritesheets, Tiled `.tmj`, and LDtk `.ldtk` files with the right filtering preset
@@ -287,6 +289,8 @@ Load projects from [LDtk](https://ldtk.io/). See the [Tilemaps guide](../tilemap
 ## Baked Normal Pipeline
 
 three-flatland's lighting wants per-fragment **normal vectors** (for N·L diffuse) and an **elevation** scalar (for elevation-aware wall caps in `DefaultLightEffect`). Authoring a normal-map atlas alongside the diffuse atlas covers the easy case; for tilemaps, where per-tile orientation is decided in the level editor, `LDtkLoader` goes a step further and *bakes* a per-tileset normal atlas at load time from per-tile custom data.
+
+<Diagram caption="The baked-normal pipeline — a hash-stamped .normal.png sidecar is probed and loaded on a match, with an in-memory bake fallback feeding NormalMapProvider." src={bakedNormalPipeline} />
 
 Both `SpriteSheetLoader` and `LDtkLoader` accept a `normals: true` option. The resulting texture lands on the loaded asset (`sheet.normalMap`, `tileset.normalMap`) and is consumed by [`NormalMapProvider`](../lighting-setup/#normalmapprovider) — a `MaterialEffect` from `@three-flatland/presets` — which feeds the `normal` and `elevation` channels into [`DefaultLightEffect`](../lighting-setup/#defaultlighteffect)'s lighting math.
 

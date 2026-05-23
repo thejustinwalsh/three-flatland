@@ -5,6 +5,7 @@ description: How Flatland's per-light SDF-traced soft shadows work — the occlu
 
 import Diagram from '../../../components/Diagram.astro';
 import shadowTrace from '../../../assets/diagrams/shadow-sdf-trace.svg?raw';
+import shadowElevation from '../../../assets/diagrams/shadow-elevation.svg?raw';
 
 three-flatland renders per-light, SDF-traced soft shadows. Casters silhouette themselves into a screen-space mask each frame; a Jump Flood Algorithm (JFA) converts that mask into a signed distance field; lit fragments sphere-trace toward each light through the SDF and darken if a caster gets in the way. Shadows are soft, elevation-aware, and runtime-toggleable per light and per sprite — there are no shadow maps, no light-space cameras, and no per-light passes.
 
@@ -37,6 +38,8 @@ shadowRadius = max(Math.abs(scale.x), Math.abs(scale.y))
 This tracks scale changes automatically and covers animated sprites whose source frame size differs (e.g. `AnimatedSprite2D` updates `scale` from `frame.sourceWidth/Height`). For most scenes you set `castsShadow = true` and never think about `shadowRadius` again. When you do need to override it — transparent art padding, non-uniform scale, a tighter escape — the [Shadows guide](../shadows-setup/#self-shadow-and-shadowradius) covers the manual knobs.
 
 ## Elevation-Aware Shadows
+
+<Diagram caption="Why elevated wall caps go dark — a light's +Z component is lightHeight − elevation, so caps above the torch get a negative L.z and N·L clamps to zero." src={shadowElevation} />
 
 `DefaultLightEffect` treats every light as a 3D direction with a `+Z` component (`lightHeight`, default `0.75`). When a sprite provides a per-fragment `elevation` channel — typically through `NormalMapProvider` reading the normal-map's blue channel — the elevation is subtracted from `lightHeight` before the diffuse `N·L` calculation:
 

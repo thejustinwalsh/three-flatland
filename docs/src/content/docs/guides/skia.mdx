@@ -4,6 +4,8 @@ description: GPU-accelerated 2D vector graphics with Skia WASM — shapes, text,
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import skiaRenderModes from '../../../assets/diagrams/skia-render-modes.svg?raw';
 
 **What you'll learn**
 - How to initialize Skia, mount a `SkiaCanvas` in texture or overlay mode, and render shapes
@@ -155,6 +157,8 @@ React: import from `@three-flatland/skia/react` which re-exports everything plus
 ## SkiaCanvas :badge[Alpha]{variant=caution}
 
 The root node that owns the render target and walks children to draw. Two modes:
+
+<Diagram caption="SkiaCanvas render modes — texture mode draws before the scene and feeds a mesh map; overlay mode composites onto the framebuffer after the scene." src={skiaRenderModes} />
 
 | Mode | Description | Use Case |
 |------|-------------|----------|

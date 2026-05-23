@@ -19,7 +19,12 @@ import sys
 from pathlib import Path
 
 
-DOCS_FONT_STACK = "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace"
+# 'Flatland Diagram' is the EXACT font file the render pipeline lays out with
+# (references/diagram-font.woff2), served to the docs page under this unique
+# name via Diagram.astro. Referencing it first guarantees the page renders in
+# the same font + glyph metrics the layout was computed against — so nothing
+# overflows due to the page's own JetBrains Mono having different glyph widths.
+DOCS_FONT_STACK = "'Flatland Diagram', 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace"
 _EXCALIDRAW_FONT_RE = r"(?:Excalifont|Nunito|Comic Shanns|Cascadia|Virgil|Assistant|Helvetica)"
 
 
@@ -43,6 +48,24 @@ def rewrite_fonts(svg: str) -> str:
         "font-family: 'JetBrains Mono'",
         svg,
     )
+
+    # Pin each text element's font-size as an inline style with !important.
+    # Excalidraw emits font-size as a presentation ATTRIBUTE (specificity 0),
+    # so the docs prose CSS (a plain `font-size: 15px` rule) overrides it and
+    # scales every label up ~25% on the page — overflowing layouts that were
+    # computed at the real size. An inline !important style beats that rule, so
+    # the SVG renders on the page at exactly the size it was laid out for.
+    def _pin_size(m: "re.Match[str]") -> str:
+        tag = m.group(0)
+        fs = re.search(r'font-size="([^"]+)"', tag)
+        if not fs:
+            return tag
+        decl = f"font-size:{fs.group(1)} !important;"
+        if 'style="' in tag:
+            return tag.replace('style="', f'style="{decl}', 1)
+        return tag[:-1] + f' style="{decl}">'
+
+    svg = re.sub(r"<text\b[^>]*>", _pin_size, svg)
     return svg
 
 
