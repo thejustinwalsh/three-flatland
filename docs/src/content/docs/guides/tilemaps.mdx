@@ -220,7 +220,7 @@ Tilemaps participate in the lighting pipeline as shadow occluders. Rather than t
 Call `tilemap.markOccluders(typeNames, layerIndex?)` after the map data is loaded. It walks every object layer, finds objects whose `type` is in `typeNames`, and flips the per-tile cast-shadow bit for the matching tile in the target layer (default: layer `0`).
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { TileMap2D, LDtkLoader } from 'three-flatland'
 
@@ -232,7 +232,7 @@ Call `tilemap.markOccluders(typeNames, layerIndex?)` after the map data is loade
     tilemap.markOccluders(['collision'])
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { useEffect, useRef } from 'react'
     import { useLoader } from '@react-three/fiber/webgpu'

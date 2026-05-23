@@ -84,7 +84,7 @@ The dashboard's own assets are served by Vite via `/@fs/`, `/@vite/client`, and 
 Flatland users have nothing to wire up. When `DEVTOOLS_BUNDLED` is true (Vite sets `import.meta.env.DEV` in dev) and `isDevtoolsActive()` returns true at runtime, Flatland constructs its own `DevtoolsProvider` in its constructor and pumps stats into the bus on every `flatland.render(renderer)` call:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```ts
     import { Flatland } from 'three-flatland'
     import { WebGPURenderer } from 'three/webgpu'
@@ -102,7 +102,7 @@ Flatland users have nothing to wire up. When `DEVTOOLS_BUNDLED` is true (Vite se
     animate()
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { Canvas, useFrame, useThree, extend } from '@react-three/fiber/webgpu'
     import { Flatland } from 'three-flatland/react'
