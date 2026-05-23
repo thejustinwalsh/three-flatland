@@ -2,6 +2,15 @@
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
   "concurrency": "20",
+  // Strict env mode (turbo 2.x default) filters the environment before
+  // spawning tasks. EXAMPLES_PORT is the single knob that sets the
+  // examples Vite dev port (`examples/package.json`: `--port ${EXAMPLES_PORT:-5174}`)
+  // AND the port the docs site bakes into `import.meta.env.VITE_EXAMPLES_PORT`
+  // (`docs/astro.config.mjs`) so `DevtoolsDemo.astro` builds same-origin
+  // iframe + `/.devtools` URLs. Without passing it through, both tasks
+  // silently fall back to 5174 and the override is a no-op — pass it
+  // through so docs + examples stay on the same origin when it's set.
+  "globalPassThroughEnv": ["EXAMPLES_PORT"],
   "tasks": {
     "build": {
       "dependsOn": ["^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build", "@three-flatland/skia#build"],

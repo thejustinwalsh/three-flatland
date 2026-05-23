@@ -15,9 +15,11 @@ import { rehypeExternalLinks } from './rehype-plugins/external-links.js';
 import stripIndexLinks from './typedoc-plugins/strip-index-links.mjs';
 
 // Dev-server topology:
-//   - Docs (this app) is the authoritative host on Vite's default
-//     dev port (:5173, auto-falls-through if taken).
-//   - Examples MPA runs at :5174 (overridable via EXAMPLES_PORT env).
+//   - Docs (this app) is the authoritative host on Astro's default
+//     dev port (:4321).
+//   - Examples MPA runs at :5174 (overridable via EXAMPLES_PORT env;
+//     passed through turbo's strict env filter via globalPassThroughEnv
+//     so docs + examples stay on the same origin when overridden).
 //   - The iframe in `ExampleSplitView.astro` points DIRECTLY at the
 //     examples server (cross-origin in dev). Safari's cross-origin
 //     iframe rAF throttle requires a one-time user click inside the
