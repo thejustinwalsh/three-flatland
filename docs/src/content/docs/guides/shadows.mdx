@@ -3,6 +3,9 @@ title: Shadows & Occlusion
 description: How Flatland's per-light SDF-traced soft shadows work — the occlusion mask, the JFA-generated distance field, and elevation-aware light shaping.
 ---
 
+import Diagram from '../../../components/Diagram.astro';
+import shadowTrace from '../../../assets/diagrams/shadow-sdf-trace.svg?raw';
+
 three-flatland renders per-light, SDF-traced soft shadows. Casters silhouette themselves into a screen-space mask each frame; a Jump Flood Algorithm (JFA) converts that mask into a signed distance field; lit fragments sphere-trace toward each light through the SDF and darken if a caster gets in the way. Shadows are soft, elevation-aware, and runtime-toggleable per light and per sprite — there are no shadow maps, no light-space cameras, and no per-light passes.
 
 If your scene doesn't have shadows yet, you don't need this page. Come back when your hero is on screen and you want a proper torch-on-wall moment. This page is the mental model: how the pipeline turns casters into a distance field and how the trace reads it. For opting sprites and tiles in or out, the `shadowRadius` knobs, and the tuning uniforms, see the [Shadows guide](../shadows-setup/).
@@ -19,14 +22,16 @@ The SDF is recomputed every frame at half-resolution by default (the silhouette 
 
 A single distance field serves every hero light, so occlusion cost is shared across lights rather than paid per-light-per-occluder. Fill lights (`castsShadow: false`) skip the trace entirely and contribute pure attenuated diffuse.
 
+<Diagram caption="The shadow pipeline — casters become an occlusion mask, JFA builds a signed distance field, and each lit fragment sphere-traces toward the light through it" src={shadowTrace} />
+
 ## Self-Shadowing
 
 The first time you mark a sprite as a caster, a question arises: the sprite *is* an occluder, so the shadow trace starts inside its own silhouette. Without an escape, every fragment of every caster would self-shadow against itself.
 
 three-flatland handles this with a per-instance `shadowRadius` — the world-units distance the trace skips before sampling the SDF. A 64-unit knight needs ~64 units of escape; a 32-unit slime needs ~32. Manually tuning this per-sprite would be tedious, so the value is auto-derived every frame from the sprite's scale at batch-write time:
 
-```
-shadowRadius = max(|scale.x|, |scale.y|)
+```ts
+shadowRadius = max(Math.abs(scale.x), Math.abs(scale.y))
 ```
 
 This tracks scale changes automatically and covers animated sprites whose source frame size differs (e.g. `AnimatedSprite2D` updates `scale` from `frame.sourceWidth/Height`). For most scenes you set `castsShadow = true` and never think about `shadowRadius` again. When you do need to override it — transparent art padding, non-uniform scale, a tighter escape — the [Shadows guide](../shadows-setup/#self-shadow-and-shadowradius) covers the manual knobs.
@@ -35,7 +40,7 @@ This tracks scale changes automatically and covers animated sprites whose source
 
 `DefaultLightEffect` treats every light as a 3D direction with a `+Z` component (`lightHeight`, default `0.75`). When a sprite provides a per-fragment `elevation` channel — typically through `NormalMapProvider` reading the normal-map's blue channel — the elevation is subtracted from `lightHeight` before the diffuse `N·L` calculation:
 
-```
+```ts
 L = normalize(vec3(toLight2D, lightHeight - elevation))
 ```
 
@@ -47,8 +52,8 @@ This replaces the older `capShadowStrength` / `capShadowThreshold` post-hoc dark
 
 The per-light shadow trace is gated on the GPU by four runtime conditions, all of which must be true for the trace to run:
 
-```
-isAmbient == false
+```ts
+isAmbient === false
 NdotL > 0
 atten > 0.01
 lightCastsShadow > 0.5

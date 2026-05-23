@@ -3,7 +3,9 @@ title: Lighting
 description: Add Light2D sources, pick a LightEffect preset, animate lights, and tune per-tile slot allocation for dense scenes.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import light2dTypes from '../../../assets/diagrams/light2d-types.svg?raw';
 
 This guide covers the practical side of 2D lighting: adding `Light2D` sources, picking a `LightEffect` preset, animating and dragging lights, and tuning per-tile slot allocation for dense scenes. For the mental model behind Forward+ tiling, the slot budget, and the SDF shadow pass, see [2D Lighting](../lighting/).
 
@@ -119,6 +121,8 @@ All sprites receive lighting by default when a `LightEffect` is active. Set `lit
 :::
 
 ## Light2D Types
+
+<Diagram caption="The four Light2D types and their emission shapes — point (radial falloff), directional (parallel rays), spot (soft-edged cone), and ambient (uniform fill)" src={light2dTypes} />
 
 ### Point Light
 

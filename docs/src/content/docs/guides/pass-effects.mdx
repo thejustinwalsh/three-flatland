@@ -29,40 +29,10 @@ Pass Effects are full-screen post-processing effects applied after sprite render
 
 ## The Three Effect Layers
 
-import Mermaid from '../../../components/Mermaid.astro';
+import Diagram from '../../../components/Diagram.astro';
+import effectLayers from '../../../assets/diagrams/effect-layers.svg?raw';
 
-<Mermaid caption="Three effect layers in the render pipeline">{`
-flowchart LR
-  Atlas[Sprite atlas] --> Sample[sampleSprite<br/>diffuse rgba]
-  Sample --> MatChain
-  subgraph MatChain [MaterialEffect chain]
-    direction TB
-    M1[Effect 1<br/>tint • outline<br/>dissolve]
-    M2[Effect 2]
-    M3[Effect N<br/>NormalMapProvider<br/>→ normal + elevation]
-    M1 --> M2 --> M3
-  end
-  MatChain --> LightFn
-  subgraph LightFn [LightEffect — singleton]
-    direction TB
-    Lights[LightStore<br/>tile bins + SDF]
-    Shade[N·L + attenuation<br/>+ shadow trace]
-    Lights --> Shade
-  end
-  LightFn --> SceneRT[Scene RT<br/>composited lit color]
-  SceneRT --> PassChain
-  subgraph PassChain [PassEffect chain]
-    direction TB
-    P1[posterize]
-    P2[lcdGrid]
-    P3[vignette / vhs<br/>/ crt]
-    P1 --> P2 --> P3
-  end
-  PassChain --> Canvas([canvas])
-
-  classDef group fill:#1a1a22,stroke:#444,color:#aaa
-  class MatChain,LightFn,PassChain group
-`}</Mermaid>
+<Diagram caption="Three effect layers in the render pipeline" src={effectLayers} />
 
 three-flatland's effect system is layered, and the layers are easy to conflate because they share a factory shape (`createXEffect`) and a schema-driven API. Pick the right one for the job:
 

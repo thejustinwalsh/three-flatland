@@ -4,6 +4,8 @@ description: How Flatland's Forward+ tiled lighting works — Light2D sources, t
 ---
 
 import Compare from '../../../components/Compare.astro';
+import Diagram from '../../../components/Diagram.astro';
+import tileSlotBudget from '../../../assets/diagrams/tile-slot-budget.svg?raw';
 
 <Compare
   beforeSrc="/three-flatland/diagrams/lighting-off.webm"
@@ -34,6 +36,8 @@ Flatland manages the lifecycle: it collects lights, syncs them to a GPU texture 
 ## Tiled Lighting and the Slot Budget
 
 Forward+ gives each tile at most `MAX_LIGHTS_PER_TILE` (default `16`) light slots. In a sparsely lit room that ceiling is invisible — every torch fits in every tile and ranking doesn't matter. Pack the same room with 1000 glowing slimes and the picture changes: the tile budget becomes the bottleneck, and a misallocation will visibly push hero torches out of slots, dropping rooms into darkness despite the physical light still being present. The natural failure mode is a checkerboard of dark tiles where cosmetic fills won the slots and lit tiles where they didn't.
+
+<Diagram caption="Each tile's 16-slot budget — heroes (castsShadow: true) reserve slots first and can't be evicted; fills then compete within per-category quotas, and over-quota fills are dropped. The three levers keep dense scenes readable." src={tileSlotBudget} />
 
 Three `Light2D` fields tame this together. They do nothing in small scenes; they make dense scenes readable:
 

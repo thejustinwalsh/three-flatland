@@ -158,53 +158,10 @@ See the [2D Lighting guide](../lighting/) for preset comparisons, Light2D types,
 
 ## Render Loop
 
-import Mermaid from '../../../components/Mermaid.astro';
+import Diagram from '../../../components/Diagram.astro';
+import framePipeline from '../../../assets/diagrams/frame-pipeline.svg?raw';
 
-<Mermaid caption="Per-frame render pipeline">{`
-flowchart LR
-  Start([flatland.render]) --> ECS
-
-  subgraph ECS [ECS systems]
-    direction TB
-    Transform[transformSyncSystem<br/>transforms → batch]
-    Anim[animationSystem<br/>frame cursors]
-    Batch[batchSystem<br/>group by material]
-    Light[lightSystem<br/>Light2D → LightStore]
-    Transform --> Anim --> Batch --> Light
-  end
-
-  ECS --> Pre
-
-  subgraph Pre [Pre-passes — LightEffect only]
-    direction TB
-    Occlusion[OcclusionPass<br/>caster silhouettes]
-    SDF[SDFGenerator<br/>JFA → SDF]
-    Tile[ForwardPlusLighting<br/>tile-bin lights]
-    Occlusion --> SDF --> Tile
-  end
-
-  Pre --> Main
-
-  subgraph Main [Main scene]
-    direction TB
-    Sprites[Sprite2DMaterial<br/>draw call / batch]
-    MatEff[MaterialEffect chain<br/>per-instance:<br/>tint, outline, dissolve<br/>NormalMapProvider]
-    LightEff[LightEffect<br/>Default / Simple /<br/>Direct / Radiance<br/>reads tiles + SDF]
-    Sprites --> MatEff --> LightEff
-  end
-
-  Main --> Post
-
-  subgraph Post [Post-process]
-    direction TB
-    PassN[PassEffect chain<br/>posterize → lcdGrid<br/>→ vignette → …<br/>insertion order]
-  end
-
-  Post --> Canvas([canvas])
-
-  classDef group fill:#1a1a22,stroke:#444,color:#aaa
-  class ECS,Pre,Main,Post group
-`}</Mermaid>
+<Diagram caption="Per-frame render pipeline" src={framePipeline} />
 
 Each frame, call `resize()` to sync the aspect ratio, then `render()` to draw:
 

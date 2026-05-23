@@ -162,45 +162,10 @@ If you're authoring a custom `Sprite2DMaterial` subclass — or a stand-alone TS
 
 ### Interleaved instance buffer layout
 
-import Mermaid from '../../../components/Mermaid.astro';
+import Diagram from '../../../components/Diagram.astro';
+import bufferDataflow from '../../../assets/diagrams/instance-buffer-dataflow.svg?raw';
 
-<Mermaid caption="Per-instance data flow: CPU → GPU → TSL accessors">{`
-flowchart LR
-  subgraph cpu [CPU — Sprite2D]
-    direction TB
-    Setter[sprite.tint = #5544ff<br/>sprite.lit = false<br/>sprite.frame = idle_3]
-    Trait[ECS traits — Color, Frame, EffectFlags]
-    Setter --> Trait
-  end
-  Trait --> Sync[batchSystem<br/>writes 16 floats per instance]
-  subgraph gpu [GPU — InstancedInterleavedBuffer, stride 16]
-    direction TB
-    UV[instanceUV vec4<br/>floats 0..3<br/>atlas x, y, w, h]
-    Color[instanceColor vec4<br/>floats 4..7<br/>r, g, b, a]
-    System[instanceSystem vec4<br/>floats 8..11<br/>flipX, flipY, sysFlags, enableBits]
-    Extras[instanceExtras vec4<br/>floats 12..15<br/>shadowRadius, reserved...]
-  end
-  Sync --> UV
-  Sync --> Color
-  Sync --> System
-  Sync --> Extras
-  subgraph tsl [TSL accessors in Sprite2DMaterial]
-    direction TB
-    ReadFlip[readFlip → vec2]
-    ReadFlags[readSystemFlags → int]
-    ReadEnable[readEnableBits → int]
-    ReadShadow[readShadowRadius → float]
-    ReadLit[readLitFlag → bool]
-  end
-  System --> ReadFlip
-  System --> ReadFlags
-  System --> ReadEnable
-  System --> ReadLit
-  Extras --> ReadShadow
-
-  classDef group fill:#1a1a22,stroke:#444,color:#aaa
-  class cpu,gpu,tsl group
-`}</Mermaid>
+<Diagram caption="Per-instance data flow: CPU → GPU → TSL accessors" src={bufferDataflow} />
 
 Each `SpriteBatch` allocates a single `InstancedInterleavedBuffer` with **stride = 16 floats per instance**. Four named attribute views look into that buffer:
 

@@ -1,0 +1,53 @@
+---
+/**
+ * <Diagram> — static, version-controlled SVG figure for MDX.
+ *
+ * Renders a committed Excalidraw-exported SVG (imported with ?raw) inside a
+ * captioned figure. The SVG is self-contained — baked #111418 background and
+ * embedded fonts — and scales fluidly to the content width via its viewBox.
+ *
+ * MDX usage:
+ *   import Diagram from '../../../components/Diagram.astro'
+ *   import src from '../../../assets/diagrams/<name>.svg?raw'
+ *   <Diagram caption="…" src={src} />
+ */
+interface Props {
+  /** Raw SVG markup — import the .svg with the `?raw` suffix. */
+  src: string
+  caption?: string
+}
+const { src, caption } = Astro.props
+---
+
+<figure class="tf-diagram not-content">
+  <div class="tf-diagram__frame" set:html={src} />
+  {caption && <figcaption class="tf-diagram__caption">{caption}</figcaption>}
+</figure>
+
+<style>
+  figure.tf-diagram {
+    margin: 1.5rem 0;
+    padding: 0;
+    background: #111418;
+    border: 1px solid var(--sl-color-gray-6, #2b333d);
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+  figure.tf-diagram .tf-diagram__frame {
+    display: flex;
+    justify-content: center;
+  }
+  figure.tf-diagram .tf-diagram__frame :global(svg) {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+  }
+  figure.tf-diagram .tf-diagram__caption {
+    margin: 0;
+    padding: 0.5rem 0.75rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--sl-color-gray-3, #9aa7b0);
+    text-align: center;
+  }
+</style>
