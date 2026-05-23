@@ -14,8 +14,36 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
+
+
+DOCS_FONT_STACK = "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace"
+_EXCALIDRAW_FONT_RE = r"(?:Excalifont|Nunito|Comic Shanns|Cascadia|Virgil|Assistant|Helvetica)"
+
+
+def rewrite_fonts(svg: str) -> str:
+    """Repoint the exported SVG's text to the docs font (JetBrains Mono).
+
+    Excalidraw lays text out in its own fonts and embeds them as @font-face
+    data URLs, but those embedded fonts do NOT reliably load when the SVG is
+    inlined into an HTML page — text then falls back to a wider system font and
+    overflows the baked positions. The render template lays out in JetBrains
+    Mono; this rewrites the SVG to also *reference* 'JetBrains Mono' (which docs
+    pages already load via Fontsource), so display matches layout everywhere.
+    """
+    svg = re.sub(
+        rf'font-family="{_EXCALIDRAW_FONT_RE}[^"]*"',
+        f'font-family="{DOCS_FONT_STACK}"',
+        svg,
+    )
+    svg = re.sub(
+        rf"font-family:\s*{_EXCALIDRAW_FONT_RE}\b",
+        "font-family: 'JetBrains Mono'",
+        svg,
+    )
+    return svg
 
 
 def validate_excalidraw(data: dict) -> list[str]:
@@ -135,6 +163,7 @@ def render(
         5: 'Excalifont', 6: 'Nunito', 7: '"Comic Shanns", monospace', 8: 'Nunito',
       };
       const byId = new Map(elements.map((e) => [e.id, e]));
+      const rects = elements.filter((e) => e.type === 'rectangle' && !e.isDeleted);
       const ctx = document.createElement('canvas').getContext('2d');
       // Comfort margin: Excalidraw's own bound-text padding is only 5px, which
       // lets text sit flush against the edge and read as cramped (and leaves no
@@ -168,6 +197,33 @@ def render(
             const cy = Math.round(footH - (c.height - 2 * PAD));
             if (cx > 0) reasons.push(`+${cx}px into the ${PAD}px container margin (horizontal)`);
             if (cy > 0) reasons.push(`+${cy}px into the ${PAD}px container margin (vertical)`);
+          }
+        } else {
+          // (C) a FREE-floating label sitting inside a rectangle it is not
+          // bound to: if its footprint spills past that box, it overflows the
+          // box on the page (the box was sized for the label — bind it instead
+          // of positioning it). Pick the tightest rectangle containing the
+          // label's center that is larger than the label itself.
+          const lcx = (t.x || 0) + footW / 2;
+          const lcy = (t.y || 0) + footH / 2;
+          let box = null;
+          for (const r of rects) {
+            if (lcx >= r.x && lcx <= r.x + r.width && lcy >= r.y && lcy <= r.y + r.height) {
+              const area = r.width * r.height;
+              if (area > footW * footH * 1.3 && (!box || area < box.area)) {
+                box = { x: r.x, y: r.y, width: r.width, height: r.height, area };
+              }
+            }
+          }
+          if (box) {
+            const overR = ((t.x || 0) + footW) - (box.x + box.width - PAD);
+            const overL = (box.x + PAD) - (t.x || 0);
+            const overB = ((t.y || 0) + footH) - (box.y + box.height - PAD);
+            const overT = (box.y + PAD) - (t.y || 0);
+            const ox = Math.round(Math.max(overR, overL));
+            const oy = Math.round(Math.max(overB, overT));
+            if (ox > 4) reasons.push(`free label +${ox}px outside the box it sits in (bind it)`);
+            if (oy > 4) reasons.push(`free label +${oy}px outside the box it sits in vertically (bind it)`);
           }
         }
         if (reasons.length) {
@@ -234,6 +290,7 @@ def render(
         if output_path.suffix.lower() == ".svg":
             # Write the vector markup directly (embeddable in docs via ?raw)
             svg_markup = svg_el.evaluate("el => el.outerHTML")
+            svg_markup = rewrite_fonts(svg_markup)
             output_path.write_text(svg_markup, encoding="utf-8")
         else:
             # Raster screenshot for visual validation

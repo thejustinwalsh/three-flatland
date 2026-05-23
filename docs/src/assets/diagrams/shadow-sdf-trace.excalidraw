@@ -105,9 +105,9 @@
     {
       "type": "text",
       "id": "casters_caption",
-      "x": 40, "y": 296, "width": 220, "height": 32,
-      "text": "sprites & tiles with castsShadow",
-      "originalText": "sprites & tiles with castsShadow",
+      "x": 40, "y": 340, "width": 220, "height": 30,
+      "text": "sprites & tiles\nwith castsShadow",
+      "originalText": "sprites & tiles\nwith castsShadow",
       "fontSize": 11, "fontFamily": 3,
       "textAlign": "center", "verticalAlign": "top",
       "strokeColor": "#9aa7b0", "backgroundColor": "transparent",
@@ -181,9 +181,9 @@
     {
       "type": "text",
       "id": "mask_caption",
-      "x": 305, "y": 294, "width": 290, "height": 32,
-      "text": "binary alpha silhouette (screen-space mask)",
-      "originalText": "binary alpha silhouette (screen-space mask)",
+      "x": 340, "y": 340, "width": 220, "height": 30,
+      "text": "binary alpha silhouette\n(screen-space mask)",
+      "originalText": "binary alpha silhouette\n(screen-space mask)",
       "fontSize": 11, "fontFamily": 3,
       "textAlign": "center", "verticalAlign": "top",
       "strokeColor": "#9aa7b0", "backgroundColor": "transparent",
@@ -268,7 +268,7 @@
     {
       "type": "text",
       "id": "sdf_sign_label",
-      "x": 700, "y": 222, "width": 48, "height": 36,
+      "x": 710, "y": 222, "width": 40, "height": 36,
       "text": "+ out\n− in",
       "originalText": "+ out\n− in",
       "fontSize": 10, "fontFamily": 3,
@@ -283,9 +283,9 @@
     {
       "type": "text",
       "id": "sdf_caption",
-      "x": 620, "y": 294, "width": 340, "height": 32,
-      "text": "signed distance field — distance to nearest caster",
-      "originalText": "signed distance field — distance to nearest caster",
+      "x": 660, "y": 340, "width": 260, "height": 30,
+      "text": "signed distance field —\ndistance to nearest caster",
+      "originalText": "signed distance field —\ndistance to nearest caster",
       "fontSize": 11, "fontFamily": 3,
       "textAlign": "center", "verticalAlign": "top",
       "strokeColor": "#9aa7b0", "backgroundColor": "transparent",
@@ -404,24 +404,24 @@
     {
       "type": "arrow",
       "id": "arrow_sdf_hero",
-      "x": 790, "y": 332, "width": 0, "height": 96,
+      "x": 922, "y": 250, "width": 96, "height": 200,
       "strokeColor": "#11b7d4", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "dotted",
       "roughness": 0, "opacity": 100, "angle": 0,
       "seed": 150007, "version": 1, "versionNonce": 150008,
       "isDeleted": false, "groupIds": [], "boundElements": null,
       "link": null, "locked": false,
-      "points": [[0, 0], [0, 96]],
-      "startBinding": {"elementId": "sdf_box", "focus": 0, "gap": 4},
+      "points": [[0, 0], [96, 200]],
+      "startBinding": {"elementId": "sdf_box", "focus": 0.6, "gap": 4},
       "endBinding": null,
       "startArrowhead": null, "endArrowhead": "arrow"
     },
     {
       "type": "text",
       "id": "arrow_sdf_hero_label",
-      "x": 808, "y": 360, "width": 240, "height": 18,
-      "text": "one SDF, sampled by the shader",
-      "originalText": "one SDF, sampled by the shader",
+      "x": 952, "y": 332, "width": 190, "height": 36,
+      "text": "one SDF, sampled\nby the shader",
+      "originalText": "one SDF, sampled\nby the shader",
       "fontSize": 11, "fontFamily": 3,
       "textAlign": "left", "verticalAlign": "top",
       "strokeColor": "#9aa7b0", "backgroundColor": "transparent",
@@ -482,13 +482,14 @@
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
       "seed": 160007, "version": 1, "versionNonce": 160008,
-      "isDeleted": false, "groupIds": [], "boundElements": null,
+      "isDeleted": false, "groupIds": [],
+      "boundElements": [{"id": "occluder_label", "type": "text"}],
       "link": null, "locked": false, "roundness": {"type": 3}
     },
     {
       "type": "text",
       "id": "occluder_label",
-      "x": 560, "y": 663, "width": 130, "height": 24,
+      "x": 585, "y": 663, "width": 80, "height": 24,
       "text": "occluder",
       "originalText": "occluder",
       "fontSize": 14, "fontFamily": 3,
@@ -498,7 +499,7 @@
       "roughness": 0, "opacity": 100, "angle": 0,
       "seed": 160009, "version": 1, "versionNonce": 160010,
       "isDeleted": false, "groupIds": [], "boundElements": null,
-      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+      "link": null, "locked": false, "containerId": "occluder", "lineHeight": 1.25
     },
 
     {
@@ -744,7 +745,7 @@
     {
       "type": "rectangle",
       "id": "note_box",
-      "x": 60, "y": 968, "width": 640, "height": 76,
+      "x": 60, "y": 968, "width": 660, "height": 76,
       "strokeColor": "#39434f", "backgroundColor": "#0d1117",
       "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -755,7 +756,7 @@
     {
       "type": "text",
       "id": "note_line1",
-      "x": 76, "y": 980, "width": 608, "height": 18,
+      "x": 76, "y": 980, "width": 600, "height": 18,
       "text": "hero lights share one SDF — the trace cost is paid once per fragment, not per light",
       "originalText": "hero lights share one SDF — the trace cost is paid once per fragment, not per light",
       "fontSize": 12, "fontFamily": 3,
@@ -770,7 +771,7 @@
     {
       "type": "text",
       "id": "note_line2",
-      "x": 76, "y": 1004, "width": 608, "height": 18,
+      "x": 76, "y": 1004, "width": 600, "height": 18,
       "text": "fill lights (castsShadow: false) skip the trace entirely — no shadow term",
       "originalText": "fill lights (castsShadow: false) skip the trace entirely — no shadow term",
       "fontSize": 12, "fontFamily": 3,

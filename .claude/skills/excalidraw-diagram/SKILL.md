@@ -478,6 +478,10 @@ Excalidraw then wraps the text to `container.width − 10` and reflows the conta
 
 **Heuristic:** if a label's center sits inside a box, it should almost certainly be *bound* to that box.
 
+### Fonts: diagrams render in the docs font
+
+The render pipeline forces ALL text to **JetBrains Mono** (`references/diagram-font.woff2`) for layout, and rewrites the exported SVG to reference `JetBrains Mono` — because the docs page renders inlined-SVG text in JetBrains Mono regardless of Excalidraw's own font. If the diagram were laid out in Excalidraw's default (narrower) font, the wider docs font would overflow every baked label position on the page. You don't configure this per diagram — it's automatic — but **know that all text is monospace JetBrains Mono**, so size boxes and estimate widths accordingly (mono ≈ 0.6em per character). To retarget another project's font, replace `references/diagram-font.woff2` and the family name in `render_excalidraw.py`'s `rewrite_fonts` + `render_template.html`'s `swapInDocsFont`.
+
 ---
 
 ## Render & Validate (MANDATORY)
