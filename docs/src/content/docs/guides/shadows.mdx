@@ -47,7 +47,7 @@ The 32-tap SDF trace is the dominant per-light cost in dense scenes — turning 
 Default: `false`. Set to `true` to contribute the sprite's silhouette to the occlusion mask. Most sprites should *not* cast (UI, particles, indicators); opt in for hero, enemies, props that need to throw shadows.
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     const knight = new AnimatedSprite2D({
       spriteSheet: knightSheet,
@@ -58,7 +58,7 @@ Default: `false`. Set to `true` to contribute the sprite's silhouette to the occ
     flatland.add(knight)
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     <animatedSprite2D
       texture={knightSheet.texture}
@@ -85,7 +85,7 @@ uiPanel.receiveShadows = false
 Tilemap walls are the bulk of static occluders in most scenes. Rather than tagging tiles one-by-one, mark whole categories of tiles by their LDtk `obj.type`:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     const mapData = await LDtkLoader.load('/maps/dungeon.ldtk', 'Level_0')
     const tilemap = new TileMap2D({ data: mapData })
@@ -95,7 +95,7 @@ Tilemap walls are the bulk of static occluders in most scenes. Rather than taggi
     tilemap.markOccluders(['collision'])
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     function Level() {
       const mapData = useLoader(LDtkLoader, '/maps/dungeon.ldtk')
