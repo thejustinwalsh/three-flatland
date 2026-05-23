@@ -504,19 +504,19 @@
     {
       "type": "line",
       "id": "shadow_ray_guide",
-      "x": 250, "y": 880, "width": 308, "height": 140,
+      "x": 230, "y": 870, "width": 318, "height": 122,
       "strokeColor": "#5b3a82", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "dashed",
       "roughness": 0, "opacity": 100, "angle": 0,
       "seed": 170001, "version": 1, "versionNonce": 170002,
       "isDeleted": false, "groupIds": [], "boundElements": null,
       "link": null, "locked": false,
-      "points": [[0, 0], [308, -140]]
+      "points": [[0, 0], [318, -122]]
     },
     {
       "type": "ellipse",
       "id": "shadow_c0",
-      "x": 150, "y": 780, "width": 200, "height": 200,
+      "x": 162, "y": 802, "width": 136, "height": 136,
       "strokeColor": "#a85ff1", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -527,7 +527,7 @@
     {
       "type": "ellipse",
       "id": "shadow_c1",
-      "x": 263, "y": 761, "width": 156, "height": 156,
+      "x": 242, "y": 785, "width": 116, "height": 116,
       "strokeColor": "#a85ff1", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -538,7 +538,7 @@
     {
       "type": "ellipse",
       "id": "shadow_c2",
-      "x": 356, "y": 751, "width": 112, "height": 112,
+      "x": 322, "y": 770, "width": 92, "height": 92,
       "strokeColor": "#a85ff1", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -549,7 +549,7 @@
     {
       "type": "ellipse",
       "id": "shadow_c3",
-      "x": 427, "y": 748, "width": 72, "height": 72,
+      "x": 390, "y": 761, "width": 68, "height": 68,
       "strokeColor": "#a85ff1", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -560,7 +560,7 @@
     {
       "type": "ellipse",
       "id": "shadow_c4",
-      "x": 476, "y": 749, "width": 40, "height": 40,
+      "x": 446, "y": 756, "width": 44, "height": 44,
       "strokeColor": "#a85ff1", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -571,7 +571,7 @@
     {
       "type": "ellipse",
       "id": "shadow_P",
-      "x": 240, "y": 870, "width": 20, "height": 20,
+      "x": 220, "y": 860, "width": 20, "height": 20,
       "strokeColor": "#a85ff1", "backgroundColor": "#a85ff1",
       "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -582,7 +582,7 @@
     {
       "type": "text",
       "id": "shadow_P_label",
-      "x": 196, "y": 894, "width": 130, "height": 20,
+      "x": 44, "y": 918, "width": 130, "height": 20,
       "text": "fragment P₁",
       "originalText": "fragment P₁",
       "fontSize": 14, "fontFamily": 3,
@@ -635,19 +635,19 @@
     {
       "type": "line",
       "id": "lit_ray_guide",
-      "x": 780, "y": 900, "width": 235, "height": 365,
+      "x": 780, "y": 910, "width": 235, "height": 375,
       "strokeColor": "#1f5e4a", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "dashed",
       "roughness": 0, "opacity": 100, "angle": 0,
       "seed": 180001, "version": 1, "versionNonce": 180002,
       "isDeleted": false, "groupIds": [], "boundElements": null,
       "link": null, "locked": false,
-      "points": [[0, 0], [235, -365]]
+      "points": [[0, 0], [235, -375]]
     },
     {
       "type": "ellipse",
       "id": "lit_c0",
-      "x": 690, "y": 810, "width": 180, "height": 180,
+      "x": 720, "y": 825, "width": 140, "height": 140,
       "strokeColor": "#00a884", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -658,7 +658,7 @@
     {
       "type": "ellipse",
       "id": "lit_c1",
-      "x": 734, "y": 649, "width": 190, "height": 190,
+      "x": 794, "y": 744, "width": 112, "height": 112,
       "strokeColor": "#00a884", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -669,7 +669,7 @@
     {
       "type": "ellipse",
       "id": "lit_c2",
-      "x": 839, "y": 588, "width": 160, "height": 160,
+      "x": 858, "y": 674, "width": 88, "height": 88,
       "strokeColor": "#00a884", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -680,7 +680,7 @@
     {
       "type": "ellipse",
       "id": "lit_c3",
-      "x": 938, "y": 558, "width": 90, "height": 90,
+      "x": 916, "y": 614, "width": 64, "height": 64,
       "strokeColor": "#00a884", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -690,8 +690,19 @@
     },
     {
       "type": "ellipse",
+      "id": "lit_c4",
+      "x": 958, "y": 575, "width": 44, "height": 44,
+      "strokeColor": "#00a884", "backgroundColor": "transparent",
+      "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0,
+      "seed": 180017, "version": 1, "versionNonce": 180018,
+      "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "ellipse",
       "id": "lit_P",
-      "x": 770, "y": 890, "width": 20, "height": 20,
+      "x": 770, "y": 900, "width": 20, "height": 20,
       "strokeColor": "#00a884", "backgroundColor": "#00a884",
       "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -702,7 +713,7 @@
     {
       "type": "text",
       "id": "lit_P_label",
-      "x": 726, "y": 914, "width": 130, "height": 20,
+      "x": 714, "y": 974, "width": 132, "height": 20,
       "text": "fragment P₂",
       "originalText": "fragment P₂",
       "fontSize": 14, "fontFamily": 3,
@@ -717,11 +728,11 @@
     {
       "type": "text",
       "id": "lit_result",
-      "x": 935, "y": 700, "width": 200, "height": 24,
+      "x": 990, "y": 778, "width": 180, "height": 24,
       "text": "reaches L → LIT",
       "originalText": "reaches L → LIT",
       "fontSize": 15, "fontFamily": 3,
-      "textAlign": "center", "verticalAlign": "top",
+      "textAlign": "left", "verticalAlign": "top",
       "strokeColor": "#00a884", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
