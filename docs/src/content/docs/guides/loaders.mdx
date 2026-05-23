@@ -288,7 +288,7 @@ Load projects from [LDtk](https://ldtk.io/). See the [Tilemaps guide](../tilemap
 
 three-flatland's lighting wants per-fragment **normal vectors** (for N·L diffuse) and an **elevation** scalar (for elevation-aware wall caps in `DefaultLightEffect`). Authoring a normal-map atlas alongside the diffuse atlas covers the easy case; for tilemaps, where per-tile orientation is decided in the level editor, `LDtkLoader` goes a step further and *bakes* a per-tileset normal atlas at load time from per-tile custom data.
 
-Both `SpriteSheetLoader` and `LDtkLoader` accept a `normals: true` option. The resulting texture lands on the loaded asset (`sheet.normalMap`, `tileset.normalMap`) and is consumed by [`NormalMapProvider`](../lighting/#normalmapprovider) — a `MaterialEffect` from `@three-flatland/presets` — which feeds the `normal` and `elevation` channels into [`DefaultLightEffect`](../lighting/#defaultlighteffect)'s lighting math.
+Both `SpriteSheetLoader` and `LDtkLoader` accept a `normals: true` option. The resulting texture lands on the loaded asset (`sheet.normalMap`, `tileset.normalMap`) and is consumed by [`NormalMapProvider`](../lighting-setup/#normalmapprovider) — a `MaterialEffect` from `@three-flatland/presets` — which feeds the `normal` and `elevation` channels into [`DefaultLightEffect`](../lighting-setup/#defaultlighteffect)'s lighting math.
 
 The atlas encoding is RGB+A: R/G hold the tangent-space normal XY in `[0, 1]` (decoded to `[-1, 1]` at sample time, with Z reconstructed as `sqrt(1 − x² − y²)`), B holds elevation in `[0, 1]`, and A passes through the source alpha.
 
@@ -310,7 +310,7 @@ The `normals` option accepts:
 
 `forceRuntime: true` is a sibling option (not nested inside `normals`) that declares **the browser is where this asset's normal map is produced** — not the CI bake step. The in-memory bake runs on every load; the sidecar probe and "no baked sibling" warn are skipped. The data is always there, the same as the default path; this flag just commits to "the browser is where it's produced for this asset, on purpose." Use it for procedurally varied tilesets, throwaway prototypes, or asset bundles where shipping the sidecar isn't worth the bytes. Same flag every baked-asset loader exposes (`SlugFontLoader.forceRuntime`). **Not a dev-iteration knob** — the default path (probe → bake on miss + warn) already handles iteration.
 
-The in-memory bake path is lazy-imported, so its bundle cost is not paid unless the fallback fires. A dev-mode warning (`NODE_ENV !== 'production'`) points at `npx flatland-bake normal` when the sidecar is absent. See the [Runtime bake fallback](../lighting/#runtime-bake-fallback) section for the full story.
+The in-memory bake path is lazy-imported, so its bundle cost is not paid unless the fallback fires. A dev-mode warning (`NODE_ENV !== 'production'`) points at `npx flatland-bake normal` when the sidecar is absent. See the [Runtime bake fallback](../lighting-setup/#runtime-bake-fallback) section for the full story.
 
 ### `SpriteSheetLoader.normals: true`
 

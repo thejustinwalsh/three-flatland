@@ -402,6 +402,8 @@ export default defineConfig({
               { label: 'Animation', slug: 'guides/animation' },
               { label: 'Loaders', slug: 'guides/loaders' },
               { label: 'Tilemaps', slug: 'guides/tilemaps' },
+              { label: 'Lighting', slug: 'guides/lighting-setup' },
+              { label: 'Shadows', slug: 'guides/shadows-setup' },
               { label: 'Baking', slug: 'guides/baking' },
               { label: 'TSL Nodes', slug: 'guides/tsl-nodes' },
               { label: 'Pass Effects', slug: 'guides/pass-effects' },

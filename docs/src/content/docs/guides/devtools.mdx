@@ -456,7 +456,7 @@ Pixel types: `'rgba8'` (default) | `'rgba16f'` | `'rgba32f'` | `'r32f'` | `'r32u
 The lighting and tile pipelines lean on the same APIs. Treat them as canonical examples:
 
 - **`LightStore`** registers `'lightStore.data'` (the row-packed Float32 backing array) and `'lightStore.lights'` (the DataTexture itself), then calls `touchDebugArray` / `touchDebugTexture` after every write.
-- **`ForwardPlusLighting`** registers per-tile light counts, scoring buffers, and fill-in-range arrays — handy when tuning the [per-category fill quotas](../lighting/#per-category-quota-tuning), because the dashboard surfaces exactly which buckets are saturated.
+- **`ForwardPlusLighting`** registers per-tile light counts, scoring buffers, and fill-in-range arrays — handy when tuning the [per-category fill quotas](../lighting-setup/#per-category-quota-tuning), because the dashboard surfaces exactly which buckets are saturated.
 
 Both unregister on dispose to keep the registry tidy across hot-reloads.
 

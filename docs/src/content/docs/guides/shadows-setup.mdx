@@ -1,0 +1,184 @@
+---
+title: Shadows
+description: Opt sprites and tiles into the shadow pipeline, set shadowRadius, enable elevation-aware shaping, and tune DefaultLightEffect's shadow uniforms.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+This guide covers the practical side of shadows: opting sprites and tilemap tiles in or out, the self-shadow `shadowRadius` knobs, enabling elevation-aware shaping for top-down maps, and the shadow uniforms on `DefaultLightEffect`. For the pipeline itself — how the occlusion mask, the JFA-generated SDF, and the per-light sphere-trace fit together — see [Shadows & Occlusion](../shadows/).
+
+## Opting In and Out
+
+Three flags control who participates in the shadow pipeline. All three are zero-cost runtime toggles — flipping them takes effect on the next frame with no shader rebuild.
+
+### Per-light: `Light2D.castsShadow`
+
+Default: `true`. When set to `false`, the per-light SDF sphere-trace is skipped entirely on the GPU — that light contributes pure attenuated diffuse only. This is the recommended setting for cosmetic fill lights (slime auras, particle glows, magic VFX) where the shadow would be invisible against the surrounding fill anyway.
+
+```typescript
+const slimeGlow = new Light2D({
+  type: 'point',
+  color: 0x33ff66,
+  intensity: 0.25,
+  distance: 40,
+  decay: 2,
+  castsShadow: false,  // skip the 32-tap SDF trace for this light
+})
+```
+
+The 32-tap SDF trace is the dominant per-light cost in dense scenes — turning it off for fills can be the difference between 60 fps and 30 fps when slime counts run high. See the [Lighting guide](../lighting-setup/#castsshadow--the-hero--fill-split) for the broader context on light categorization.
+
+### Per-sprite caster: `Sprite2D.castsShadow`
+
+Default: `false`. Set to `true` to contribute the sprite's silhouette to the occlusion mask. Most sprites should *not* cast (UI, particles, indicators); opt in for hero, enemies, props that need to throw shadows.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    const knight = new AnimatedSprite2D({
+      spriteSheet: knightSheet,
+      animationSet: knightAnimations,
+      animation: 'idle',
+    })
+    knight.castsShadow = true
+    flatland.add(knight)
+    ```
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    <animatedSprite2D
+      texture={knightSheet.texture}
+      spriteSheet={knightSheet}
+      animationSet={knightAnimations}
+      animation="idle"
+      castsShadow
+    />
+    ```
+  </TabItem>
+</Tabs>
+
+### Per-sprite receiver: `Sprite2D.receiveShadows`
+
+Default: `true`. Set to `false` to opt the sprite out of shadow darkening — the sprite still renders lit, but the per-light shadow trace is bypassed for its fragments. Useful for foreground UI, particle effects, or any sprite that should never look dimmed by the world geometry.
+
+```typescript
+const uiPanel = new Sprite2D({ texture: uiTex })
+uiPanel.receiveShadows = false
+```
+
+## Tilemap Occluders
+
+Tilemap walls are the bulk of static occluders in most scenes. Rather than tagging tiles one-by-one, mark whole categories of tiles by their LDtk `obj.type`:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    const mapData = await LDtkLoader.load('/maps/dungeon.ldtk', 'Level_0')
+    const tilemap = new TileMap2D({ data: mapData })
+    flatland.add(tilemap)
+
+    // Mark every 'collision' IntGrid tile as a shadow caster.
+    tilemap.markOccluders(['collision'])
+    ```
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    function Level() {
+      const mapData = useLoader(LDtkLoader, '/maps/dungeon.ldtk')
+      const tilemapRef = useRef<TileMap2D>(null)
+
+      useEffect(() => {
+        tilemapRef.current?.markOccluders(['collision'])
+      }, [mapData])
+
+      return <tileMap2D ref={tilemapRef} data={mapData} />
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+`markOccluders(typeNames, layerIndex?)` walks every object layer, finds objects whose `type` matches, and flips the per-tile cast-shadow bit on the matching tile in the target layer (default: layer `0`). See the [Tilemaps guide](../tilemaps/#shadow-casting) for the deeper story on per-tile flag bits and how they interact with layer-level toggles.
+
+## Self-Shadow and `shadowRadius`
+
+A caster *is* an occluder, so the shadow trace starts inside its own silhouette. Each caster carries a per-instance `shadowRadius` — the world-units distance the trace skips before sampling the SDF — to escape self-shadowing. By default it auto-derives from the sprite's scale every frame (`max(|scale.x|, |scale.y|)`), so for most scenes you set `castsShadow = true` and never touch it. For why the escape is needed and how auto-derivation works, see [Self-Shadowing](../shadows/#self-shadowing).
+
+### Manual override
+
+Set `shadowRadius` explicitly when:
+
+- The sprite art has transparent padding (auto-derive picks up the quad bounds, not the visible body)
+- The sprite is non-uniformly scaled and the worst-case diagonal exit exceeds `max(scale.x, scale.y)`
+- You want a tighter or looser self-shadow escape for a specific instance
+
+```typescript
+const sprite = new Sprite2D({ texture, castsShadow: true })
+sprite.shadowRadius = 28  // tighter than auto-derived ~64
+```
+
+### Effect-level multiplier
+
+`DefaultLightEffect` exposes `shadowStartOffsetScale` (default `1`) — a scene-wide multiplier on every sprite's resolved `shadowRadius`. Leave it alone unless you see residual self-shadow on elongated sprites (nudge above `1`) or the default over-pushes past nearby occluders (nudge below `1`).
+
+```typescript
+lighting.shadowStartOffsetScale = 1.2
+```
+
+## Enabling Elevation-Aware Shadows
+
+`DefaultLightEffect` shapes light by elevation automatically once a sprite provides a per-fragment `elevation` channel — wall caps stop receiving direct light because they sit above the torch in the lighting math. The mechanism and the `L = normalize(vec3(toLight2D, lightHeight - elevation))` math live in [Elevation-Aware Shadows](../shadows/#elevation-aware-shadows). To turn it on:
+
+1. Attach a `NormalMapProvider` with a baked normal map whose blue channel encodes elevation (see [Lighting → NormalMapProvider](../lighting-setup/#normalmapprovider)).
+2. Use `DefaultLightEffect`, which declares `requires: ['normal', 'elevation']`.
+
+The fastest way to get a normal map with a populated elevation channel is `LDtkLoader`'s [Baked Normal Pipeline](../loaders/#baked-normal-pipeline) — tagging tiles with `tileDir` / `tileCap*` / `tileElevation` custom data produces a per-tileset atlas where wall caps bake at elevation 1 and faces at the configured face elevation. The elevation channel is populated via the same offline pipeline `flatland-bake` ships — see the [Baking guide](../baking/) for running it ahead of time.
+
+Tune `lightHeight` to taste — `0.75` reads as "torches sit above the floor, below the wall caps." Raising it to `1.5` lights everything (sun-like); lowering toward `0` makes torches barely scrape the floor and dramatically extends shadows.
+
+```typescript
+lighting.lightHeight = 0.75
+```
+
+## Tuning
+
+`DefaultLightEffect` exposes the full set of shadow uniforms. All are zero-cost to update — they're TSL uniform nodes, not compile-time constants. For the full schema (which fields are uniforms vs constants, the `categoryQuotas` accessor, etc.), see the [Pass Effects guide](../pass-effects/).
+
+| Uniform | Default | Description |
+|---------|---------|-------------|
+| `shadowStrength` | `0.6` | Lerp from lit to traced. `0` = no shadow, `1` = pure trace. |
+| `shadowBias` | `0.5` | Hit epsilon (world units). Below this SDF value counts as a strike. |
+| `shadowMaxDistance` | `0` | World-space max reach. `0` = no falloff (binary at any distance); `>0` fades shadows beyond this distance. |
+| `shadowStartOffsetScale` | `1` | Multiplier on per-instance `shadowRadius`. |
+| `shadowPixelSize` | `0` | Snap the trace origin to a world-unit block grid. `0` = per-fragment trace; `>0` = chunky shadow silhouettes (aesthetic only — does *not* reduce GPU cost). |
+| `lightHeight` | `0.75` | `+Z` component of every light direction (used in elevation math). |
+
+```typescript
+const lighting = new DefaultLightEffect()
+flatland.setLighting(lighting)
+
+lighting.shadowStrength = 0.8
+lighting.shadowBias = 0.5
+lighting.shadowMaxDistance = 300  // fade shadows beyond 300 world units
+```
+
+`shadowMaxDistance` is the cheapest way to hide point-light cone-fan artifacts far from a caster: close shadows stay solid, distant shadows fade to lit. Typical values are `100`–`300` world units depending on viewport size.
+
+`shadowPixelSize` is purely cosmetic — it produces blocky pixel-art shadow silhouettes by snapping the trace origin to a coarse grid. It does not reduce GPU cost; every fragment still traces. Use it for retro aesthetics, not for performance.
+
+## Performance Knobs
+
+The per-light trace is gated on the GPU so most fragments skip it cheaply (see [the gating conditions](../shadows/#performance) in the concept page for the full mechanism). The two knobs you control directly:
+
+:::tip[The biggest win]
+Setting `castsShadow: false` on cosmetic fill lights (slime auras, particle glows, magic VFX) is the single biggest perf win available — the 32-tap SDF trace is the dominant per-light cost in dense scenes. Save it for the lights whose *shadow shape* matters.
+:::
+
+- Per-sprite `castsShadow` controls the silhouette mask, which is rendered once per frame regardless of light count. Adding more caster sprites grows the mask render cost; adding more lights grows the trace cost.
+- The OcclusionPass defaults to `resolutionScale: 0.5` (half-res silhouette mask). Drop to `0.25` on low-end mobile if shadow cost dominates and a blockier silhouette is acceptable.
+
+## Next Steps
+
+- [Shadows & Occlusion](../shadows/) — The mental model: occlusion mask, JFA-generated SDF, and the per-light trace
+- [Lighting guide](../lighting-setup/) — `Light2D` types, presets, and the hero/fill split
+- [Sprites](../sprites/) — per-sprite flags including `castsShadow`, `receiveShadows`, and `shadowRadius`
+- [Tilemaps](../tilemaps/) — `markOccluders` and per-tile cast-shadow bits
