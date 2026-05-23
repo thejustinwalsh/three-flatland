@@ -33,7 +33,6 @@
     "@three-flatland/mini-breakout": "workspace:*",
     "@zzfx-studio/zzfxm": "catalog:",
     "astro": "^6.2.1",
-    "mermaid": "^11.4.1",
     "koota": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
