@@ -11,38 +11,38 @@ describe('Sprite2D castsShadow flag', () => {
   it('defaults to false (opt-in)', () => {
     const sprite = new Sprite2D()
     expect(sprite.castsShadow).toBe(false)
-    expect(sprite._effectFlags & CAST_SHADOW_MASK).toBe(0)
+    expect(sprite._systemFlags & CAST_SHADOW_MASK).toBe(0)
   })
 
   it('constructor option enables the bit', () => {
     const sprite = new Sprite2D({ castsShadow: true })
     expect(sprite.castsShadow).toBe(true)
-    expect(sprite._effectFlags & CAST_SHADOW_MASK).toBe(CAST_SHADOW_MASK)
+    expect(sprite._systemFlags & CAST_SHADOW_MASK).toBe(CAST_SHADOW_MASK)
   })
 
   it('setter flips the bit without touching other system flags', () => {
     const sprite = new Sprite2D()
-    const before = sprite._effectFlags
+    const before = sprite._systemFlags
     expect(before & LIT_FLAG_MASK).toBe(LIT_FLAG_MASK)
     expect(before & RECEIVE_SHADOWS_MASK).toBe(RECEIVE_SHADOWS_MASK)
 
     sprite.castsShadow = true
     expect(sprite.castsShadow).toBe(true)
     // lit + receiveShadows still set
-    expect(sprite._effectFlags & LIT_FLAG_MASK).toBe(LIT_FLAG_MASK)
-    expect(sprite._effectFlags & RECEIVE_SHADOWS_MASK).toBe(RECEIVE_SHADOWS_MASK)
+    expect(sprite._systemFlags & LIT_FLAG_MASK).toBe(LIT_FLAG_MASK)
+    expect(sprite._systemFlags & RECEIVE_SHADOWS_MASK).toBe(RECEIVE_SHADOWS_MASK)
 
     sprite.castsShadow = false
     expect(sprite.castsShadow).toBe(false)
-    expect(sprite._effectFlags & LIT_FLAG_MASK).toBe(LIT_FLAG_MASK)
-    expect(sprite._effectFlags & RECEIVE_SHADOWS_MASK).toBe(RECEIVE_SHADOWS_MASK)
+    expect(sprite._systemFlags & LIT_FLAG_MASK).toBe(LIT_FLAG_MASK)
+    expect(sprite._systemFlags & RECEIVE_SHADOWS_MASK).toBe(RECEIVE_SHADOWS_MASK)
   })
 
   it('setting to current value is a no-op', () => {
     const sprite = new Sprite2D()
-    const before = sprite._effectFlags
+    const before = sprite._systemFlags
     sprite.castsShadow = false // already false
-    expect(sprite._effectFlags).toBe(before)
+    expect(sprite._systemFlags).toBe(before)
   })
 
   it('system flag bits occupy their own component so MaterialEffect bits are unaffected', () => {
@@ -65,6 +65,6 @@ describe('Sprite2D castsShadow flag', () => {
     expect(sprite.receiveShadows).toBe(false)
     expect(sprite.castsShadow).toBe(true)
     // Raw flags: only CAST_SHADOW_MASK
-    expect(sprite._effectFlags).toBe(CAST_SHADOW_MASK)
+    expect(sprite._systemFlags).toBe(CAST_SHADOW_MASK)
   })
 })

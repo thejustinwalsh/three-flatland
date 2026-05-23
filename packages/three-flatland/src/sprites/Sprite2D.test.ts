@@ -211,7 +211,7 @@ describe('Sprite2D standalone vs enrolled', () => {
     sprite.flipX = true
 
     // Flip lives on `instanceSystem.xy` — offsets 8/9 within each
-    // vertex's 16-float slice.
+    // vertex's 16-float slice (interleaved standalone buffer).
     const sysAttr = sprite.geometry.getAttribute('instanceSystem') as InterleavedBufferAttribute
     const array = (sysAttr.data as { array: Float32Array }).array
     expect(array[8]).toBe(-1) // vertex 0, system.x = flipX (flipped)
@@ -233,7 +233,7 @@ describe('Sprite2D standalone vs enrolled', () => {
     const uvAttr = sprite.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute
     const array = (uvAttr.data as { array: Float32Array }).array
     expect(array[0]).toBeCloseTo(0.25) // x
-    expect(array[1]).toBeCloseTo(0.5)  // y
+    expect(array[1]).toBeCloseTo(0.5) // y
     expect(array[2]).toBeCloseTo(0.25) // w
     expect(array[3]).toBeCloseTo(0.25) // h
   })

@@ -114,8 +114,8 @@ export class TileLayer extends Group {
   /** Animation state (keyed by base GID) */
   private animationTimers: Map<number, { elapsed: number; frameIndex: number }> = new Map()
 
-  /** System flags bitmask — same semantics as Sprite2D._effectFlags */
-  private _effectFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
+  /** System flags bitmask (lit/receiveShadows/castsShadow) — same semantics as Sprite2D._systemFlags */
+  private _systemFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
 
   /** Whether the tileset texture uses flipY (loaded images vs DataTextures) */
   private readonly texFlipY: boolean
@@ -125,31 +125,31 @@ export class TileLayer extends Group {
   private static tempScale = new Vector3()
 
   get lit(): boolean {
-    return (this._effectFlags & LIT_FLAG_MASK) !== 0
+    return (this._systemFlags & LIT_FLAG_MASK) !== 0
   }
 
   set lit(value: boolean) {
-    const was = (this._effectFlags & LIT_FLAG_MASK) !== 0
+    const was = (this._systemFlags & LIT_FLAG_MASK) !== 0
     if (was === value) return
     if (value) {
-      this._effectFlags |= LIT_FLAG_MASK
+      this._systemFlags |= LIT_FLAG_MASK
     } else {
-      this._effectFlags &= ~LIT_FLAG_MASK
+      this._systemFlags &= ~LIT_FLAG_MASK
     }
     this._syncEffectFlagsToChunks()
   }
 
   get receiveShadows(): boolean {
-    return (this._effectFlags & RECEIVE_SHADOWS_MASK) !== 0
+    return (this._systemFlags & RECEIVE_SHADOWS_MASK) !== 0
   }
 
   set receiveShadows(value: boolean) {
-    const was = (this._effectFlags & RECEIVE_SHADOWS_MASK) !== 0
+    const was = (this._systemFlags & RECEIVE_SHADOWS_MASK) !== 0
     if (was === value) return
     if (value) {
-      this._effectFlags |= RECEIVE_SHADOWS_MASK
+      this._systemFlags |= RECEIVE_SHADOWS_MASK
     } else {
-      this._effectFlags &= ~RECEIVE_SHADOWS_MASK
+      this._systemFlags &= ~RECEIVE_SHADOWS_MASK
     }
     this._syncEffectFlagsToChunks()
   }
@@ -192,7 +192,7 @@ export class TileLayer extends Group {
     // bits and merges them into each tile's existing flag word so
     // per-tile state survives layer-level toggles.
     const layerMask = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
-    const layerBits = this._effectFlags & layerMask
+    const layerBits = this._systemFlags & layerMask
     const preserveMask = ~layerMask
     for (const chunk of this.chunks.values()) {
       const data = chunk.instanceData
@@ -216,7 +216,11 @@ export class TileLayer extends Group {
    * With flipY=false: UV y=0 is first pixel row (image top). We offset y by +height and negate
    * height so the shader traverses UV space in the correct direction.
    */
-  private writeUV(buffer: Float32Array, offset: number, uv: { x: number; y: number; width: number; height: number }): void {
+  private writeUV(
+    buffer: Float32Array,
+    offset: number,
+    uv: { x: number; y: number; width: number; height: number }
+  ): void {
     buffer[offset] = uv.x
     buffer[offset + 2] = uv.width
     if (this.texFlipY) {
@@ -414,7 +418,7 @@ export class TileLayer extends Group {
       //                      don't currently use MaterialEffect uniforms)
       //   instanceExtras.x = per-tile shadow radius (all tiles in a
       //                      layer share tile dimensions → same radius)
-      const flags = this._effectFlags
+      const flags = this._systemFlags
       const tileRadius = Math.max(this.tileWidth, this.tileHeight)
       for (let i = 0; i < count; i++) {
         const base = i * 16

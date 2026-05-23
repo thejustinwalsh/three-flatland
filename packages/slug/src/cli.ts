@@ -19,15 +19,16 @@
  * Missing glyphs at runtime render as a rectangle fallback.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { basename, dirname, join, extname } from 'node:path'
 import opentype from 'opentype.js'
 import { parseFont } from './pipeline/fontParser'
 import { packTextures } from './pipeline/texturePacker'
 import { bakeStrokeForGlyph } from './pipeline/strokeOffsetter'
 import type { CapStyle, JoinStyle } from './pipeline/strokeOffsetter'
-import { packBaked } from './baked'
+import { packBaked } from './bake'
 import type { BakedJSON } from './baked'
+import { writeFile } from 'node:fs/promises'
 import type { SlugGlyphData } from './types'
 
 // --- Predefined Unicode ranges ---
@@ -119,12 +120,12 @@ interface StrokeSetConfig {
   miterLimit: number
 }
 
-function bakeFont(
+async function bakeFont(
   fontPath: string,
   ranges: [number, number][] | null,
   outputBase?: string,
   strokeConfigs: StrokeSetConfig[] = []
-): void {
+): Promise<void> {
   const fileBuffer = readFileSync(fontPath)
   const arrayBuffer = fileBuffer.buffer.slice(
     fileBuffer.byteOffset,
@@ -284,7 +285,7 @@ function bakeFont(
   console.log(`  ${kern.length} kerning pairs`)
 
   console.log('  Packing binary...')
-  const { json, bin } = packBaked({
+  const glb = await packBaked({
     metrics: {
       unitsPerEm,
       ascender: parsed.ascender,
@@ -310,22 +311,17 @@ function bakeFont(
     ...(strokeSets.length > 0 ? { strokeSets } : {}),
   })
 
-  // Write files. `--output` overrides the derived-from-font-path base.
+  // Write single .slug.glb. `--output` overrides the derived-from-font-path base.
   const dir = outputBase ? dirname(outputBase) : dirname(fontPath)
   const name = outputBase
-    ? basename(outputBase).replace(/\.slug\.(json|bin)?$/, '')
+    ? basename(outputBase).replace(/\.slug(?:\.(?:glb|json|bin))?$/, '')
     : basename(fontPath, extname(fontPath))
-  const jsonPath = join(dir, `${name}.slug.json`)
-  const binPath = join(dir, `${name}.slug.bin`)
+  const glbPath = join(dir, `${name}.slug.glb`)
 
-  const jsonStr = JSON.stringify(json)
-  writeFileSync(jsonPath, jsonStr)
-  writeFileSync(binPath, bin)
+  await writeFile(glbPath, glb)
 
-  const jsonKB = (jsonStr.length / 1024).toFixed(1)
-  const binMB = (bin.byteLength / (1024 * 1024)).toFixed(2)
-  console.log(`  ${jsonPath} (${jsonKB} KB)`)
-  console.log(`  ${binPath} (${binMB} MB)`)
+  const glbMB = (glb.byteLength / (1024 * 1024)).toFixed(2)
+  console.log(`  ${glbPath} (${glbMB} MB)`)
 }
 
 const args = process.argv.slice(2)
@@ -397,7 +393,7 @@ Options:
                         Named: ascii, latin, latin+
                         Custom: 0x20-0x7E or 32-126
                         Default: all glyphs
-  --output, -o <path>   Output base path (writes <path>.slug.json + .bin).
+  --output, -o <path>   Output base path (writes <path>.slug.glb).
                         Default: derive from font filename.
   --stroke-widths <list>  Comma-separated em-space stroke half-widths
                         to pre-bake. For each entry, every outlined
@@ -449,7 +445,7 @@ if (ranges) {
 
 for (const fontFile of fontFiles) {
   try {
-    bakeFont(fontFile, ranges, outputBase, strokeConfigs)
+    await bakeFont(fontFile, ranges, outputBase, strokeConfigs)
   } catch (err) {
     console.error(`Error processing ${fontFile}:`, err)
     process.exit(1)

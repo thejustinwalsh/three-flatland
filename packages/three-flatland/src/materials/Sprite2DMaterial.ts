@@ -21,6 +21,12 @@ export interface Sprite2DMaterialOptions {
   transparent?: boolean
   alphaTest?: number
   /**
+   * Whether sprites using this material receive lighting. Part of the
+   * material identity (batching) key — lit and unlit sprites can't share
+   * a batch. Default `false`.
+   */
+  lit?: boolean
+  /**
    * Use premultiplied alpha blending.
    * When true, the shader outputs `vec4(rgb * alpha, alpha)` and uses
    * `CustomBlending` with `OneFactor` / `OneMinusSrcAlphaFactor`.
@@ -100,11 +106,17 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   static getShared(options: Sprite2DMaterialOptions = {}): Sprite2DMaterial {
     const textureId = options.map?.id ?? -1
-    const transparent = options.transparent ?? true
+    const alphaTest = options.alphaTest ?? 0
+    // alphaTest > 0 implies the depth-test fast path: opaque + depthWrite=true.
+    const transparent = options.transparent ?? (alphaTest > 0 ? false : true)
+    const lit = options.lit ?? false
     const ctId = getColorTransformId(options.colorTransform)
+    const premultiplied = options.premultipliedAlpha ?? false
     const effectsKey = options.effectsKey ?? ''
 
-    const key = `${textureId}:${transparent}:${ctId}:${effectsKey}`
+    // Every option that changes the shader or blend state must be in the
+    // key so distinct materials don't collide in the shared cache.
+    const key = `${textureId}:${transparent}:${lit}:${ctId}:${alphaTest}:${premultiplied}:${effectsKey}`
 
     let material = Sprite2DMaterial._cache.get(key)
     if (!material) {
@@ -119,7 +131,6 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   readonly batchId: number
 
-
   private _spriteTexture: Texture | null = null
   private _premultipliedAlpha: boolean = false
   private _globalUniforms: GlobalUniforms | null = null
@@ -132,7 +143,15 @@ export class Sprite2DMaterial extends EffectMaterial {
     this._premultipliedAlpha = options.premultipliedAlpha ?? false
     this._globalUniforms = options.globalUniforms ?? null
     this._colorTransform = options.colorTransform ?? null
-    this.transparent = options.transparent ?? true
+
+    // alphaTest > 0 opts the material into an opaque + depth-test fast
+    // path. Transparent defaults flip to false and depthWrite flips to
+    // true, so the GPU's depth buffer resolves draw order regardless of
+    // instance slot order (the batchSortSystem's CPU sort is then
+    // unnecessary and is skipped for this material).
+    const alphaTest = options.alphaTest ?? 0
+    this.alphaTest = alphaTest
+    this.transparent = options.transparent ?? (alphaTest > 0 ? false : true)
     this.depthTest = true
     this.side = FrontSide
 
@@ -143,7 +162,9 @@ export class Sprite2DMaterial extends EffectMaterial {
       this.depthWrite = false
     } else {
       this.blending = NormalBlending
-      this.depthWrite = false
+      // Opaque (transparent=false) materials write depth so the depth
+      // test can resolve ordering — enables the alphaTest fast path.
+      this.depthWrite = !this.transparent
     }
 
     if (options.map) {
@@ -194,6 +215,9 @@ export class Sprite2DMaterial extends EffectMaterial {
     // `materials/instanceAttributes.ts` for the full accessor set.
     const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
     const instanceColor = attribute<'vec4'>('instanceColor', 'vec4')
+    // Flip lives in instanceSystem.xy after the interleaved-buffer refactor.
+    // `readFlip()` hides the packed layout (instanceSystem offset 0/1),
+    // shared by the batched (writeFlip) and standalone (_updateOwnFlip) paths.
     const flip = readFlip()
 
     // Apply flip
@@ -222,12 +246,28 @@ export class Sprite2DMaterial extends EffectMaterial {
     const finalAlpha = texColor.a.mul(instanceColor.a)
 
     let color: Node<'vec4'>
+    const alphaTestValue = this.alphaTest
     if (this._premultipliedAlpha) {
+      if (alphaTestValue > 0) {
+        If(finalAlpha.lessThan(float(alphaTestValue)), () => {
+          Discard()
+        })
+      }
       color = vec4(tintedRGB.mul(finalAlpha), finalAlpha)
     } else {
-      If(texColor.a.lessThan(float(0.01)), () => {
-        Discard()
-      })
+      if (alphaTestValue > 0) {
+        // User opt-in: apply to combined alpha so fades respect the cutoff.
+        If(finalAlpha.lessThan(float(alphaTestValue)), () => {
+          Discard()
+        })
+      } else {
+        // Default near-zero cutoff is a "skip fully-transparent texels" perf
+        // pass — check texel alpha alone so instance fade doesn't push
+        // faintly-visible texels under the threshold and harden sprite edges.
+        If(texColor.a.lessThan(float(0.01)), () => {
+          Discard()
+        })
+      }
       color = vec4(tintedRGB, finalAlpha)
     }
 

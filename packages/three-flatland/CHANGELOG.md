@@ -1,5 +1,93 @@
 # three-flatland
 
+## 0.1.0-alpha.6
+
+### Minor Changes
+
+- ed33b1a: > Branch: fix-sprite-sort-regression
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/28
+
+  ## Bug Fixes
+  - **Sprite slot corruption after sort** — `BatchSlot` is now the single source of truth for a sprite's physical slot; `InBatch` relation no longer stores a slot field that could go stale after a sort swap, preventing slot zeroing on reassign/remove/material-rebuild
+  - **Wrong blending when `premultipliedAlpha` differs** — `Sprite2DMaterial.getShared()` now includes `premultipliedAlpha` in its cache key; previously two materials differing only in this flag shared the same cached instance, silently applying the wrong blend mode and `depthWrite` value
+  - **One-frame zero-matrix flash on new sprites** — patched Three.js `InstanceNode` to propagate `instanceMatrix` upload ranges in `updateBefore` instead of the FRAME phase, eliminating the blank-sprite flicker when a `SpriteBatch` grows its draw count (upstream: mrdoob/three.js#33615)
+  - **Alpha fade artifacts** — the default 0.01 discard cutoff in `Sprite2DMaterial` now applies to `texColor.a` only, not `finalAlpha`; sprites faded via `instanceColor.a` no longer have their edges hardened during fade-out
+  - **z-sort correctness** — `batchSortSystem` now re-sorts batch instance slots by `zIndex` each frame; slot permutations are applied via `SpriteBatch.swapSlots()` which keeps `instanceMatrix`, UV, color, flip, and all effect buffers in sync
+
+  ## Features
+  - **`alphaTest` option surfaced end-to-end** — `Sprite2DMaterialOptions.alphaTest > 0` sets `transparent=false` + `depthWrite=true` and discards fragments below the threshold; `batchSortSystem` short-circuits entirely for these batches since the GPU depth test handles ordering, included in `getShared()` cache key
+  - **Anchor baked into matrix** — `Sprite2D` anchor changes no longer trigger a geometry rebuild; `(0.5 - anchor) * scale` is folded into the matrix translation in `updateMatrix`, correct under non-uniform scale and rotation
+  - **Observable mutation hooks** — new `ObservableStrategy<T>` with `attach` / `snapshot` for `Color`, `Vector2`, `Vector3`, and `Euler`; consumers can react to in-place mutations of mutable Three.js types without prop reassignment
+
+  ## Performance
+  - **`batchSortSystem` O(n) swap + TimSort** — swap permutation now uses an inverse `slotToScratchIdx` Int32Array (O(n)) instead of a linear search (O(n²)); sorting replaced hand-rolled insertion sort with `Array.prototype.sort` (V8 TimSort: O(n) near-sorted, O(n log n) worst case vs O(n²) for 20k+ sprites); Knightmark 10k: 30 fps → 60+ fps
+  - **`zIndex` setter fast path** — setter skips the ECS `Changed` write when the `alphaTest+depthWrite` gate applies, eliminating Koota change-tracker overhead on gated batches
+  - **Interleaved core buffer** — `SpriteBatch` replaces three separate `instanceUV` / `instanceColor` / `instanceFlip` attributes with a single `InstancedInterleavedBuffer` (stride 16), dropping vertex buffer count from `3+1+3+N` to `3+1+1+N` and freeing two slots under WebGPU's `maxVertexBuffers=8` cap
+  - **`EffectMaterial` slot cap** — `registerEffect` now enforces `MAX_EFFECT_FLOATS = 12` with a clear error instead of letting WebGPU reject the pipeline at draw time
+
+  ## Internal
+  - ECS systems with per-frame state (`batchAssignSystem`, `batchReassignSystem`, `batchRemoveSystem`, `batchSortSystem`, `sceneGraphSyncSystem`) converted to `createXxxSystem()` factories; each `SpriteGroup` holds its own scratch and change-tracking state, eliminating cross-group interference and high-water-mark overhead
+  - `bufferSyncSystem` deleted — all buffer writes go direct through `_batchMesh` / `_batchSlot`; per-frame system loop loses one pass
+
+  This release fixes the sprite sort regression that caused visual corruption and poor performance in y-sorted scenes, adds the `alphaTest` fast path for pixel-art sprites, and consolidates the per-instance GPU buffer layout to stay within WebGPU's vertex buffer limit as effect counts grow.
+
+- 1719d16: > Branch: fix-sprite-sort-regression
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/28
+
+  ## New Features
+  - `Sprite2DMaterialOptions.alphaTest` is now fully wired end-to-end. Setting it to a value > 0 switches the material to `transparent=false` / `depthWrite=true` and discards fragments where `finalAlpha < alphaTest`. Distinct cutoff values produce distinct shared material instances.
+  - Pixel-art and hard-edge sprites can opt in to GPU depth-test ordering by setting `alphaTest`, skipping CPU sort entirely — no per-frame `batchSortSystem` work for those batches.
+
+  ## Performance
+  - `batchSortSystem` now gates on material properties at frame start: batches with `alphaTest > 0 && depthWrite` are skipped entirely, so scenes like Knightmark pay near-zero sort cost.
+  - Slot swap permutation rewritten from O(n²) linear search to O(n) using an inverse `slotToScratchIdx` lookup maintained in lockstep during swaps.
+  - Per-batch sort upgraded from hand-rolled insertion sort (O(n²) cold-start) to `Array.prototype.sort` (V8 TimSort, O(n) near-sorted, O(n log n) worst case) — eliminates a ~400M-comparison cliff at 20k sprites.
+  - `Sprite2D.zIndex` setter short-circuits the Koota `entity.set(SpriteZIndex, …)` call for gated materials, preventing the ECS Changed tracker from accumulating entries that `batchSortSystem` would only skip anyway.
+  - Combined effect: Knightmark at 10k sprites went from 30 fps (22 ms in sort) to 60+ fps; sort cost drops to near-zero after the setter gate.
+  - Consolidated three separate per-instance GPU attributes (`instanceUV`, `instanceColor`, `instanceFlip`) into one `InstancedInterleavedBuffer` (stride 16), reducing vertex-buffer slot usage from `3+1+3+N` to `3+1+1+N` — frees two slots under WebGPU's `maxVertexBuffers=8` cap and allows more effect data buffers.
+  - Removed `bufferSyncSystem` pass entirely; color, UV, flip, and effect data are now written directly at mutation sites, saving one full-world pass per frame.
+  - All ECS systems with non-trivial state converted to `createXxxSystem()` factories, giving each `SpriteGroup` independent scratch arrays and change-tracking state — no shared high-water-mark growth, no GC from per-call `new Set()`.
+
+  ## Bug Fixes
+  - Fixed sprite fade-out edge hardening: the default 0.01 discard cutoff now tests `texColor.a` only (pure transparency skip), not `texColor.a * instanceColor.a`. Sprites faded via `instanceColor.a` no longer lose texels in the `[0.01, 0.02)` range. The `alphaTest` opt-in continues to test combined alpha, as intended.
+  - Fixed `batchSortSystem` not re-sorting batched sprites by `zIndex` each frame; GPU instance rows are now permuted in-place via `SpriteBatch.swapSlots`, preserving the free-list and all effect buffer rows.
+  - Fixed latent flags-write in `batchReassignSystem`: was writing enable-bits to `effectBuf0[0]` (old layout) instead of `instanceSystem.w`.
+
+  ## Internals
+  - `BucketedDirtyTracker` constructor accepts both `InstancedBufferAttribute` and `InstancedInterleavedBuffer` via a shared `UploadTarget` structural type.
+  - `EffectMaterial` effect-slot allocator now starts at offset 0 (flags moved to `instanceSystem.w`); `effectBuf*` is pure user data. A `MAX_EFFECT_FLOATS = 12` hard cap replaces the previous silent WebGPU pipeline rejection.
+  - `Sprite2DMaterial` shader reads flip from `instanceSystem.xy` (was `instanceFlip`); `TileLayer` updated to match with a `vec4` attribute.
+  - `Sprite2D` standalone path now mirrors the batched attribute layout (`_instanceSystemBuffer` vec4 + `_instanceExtrasBuffer` vec4).
+
+  Resolves the sprite sort regression on PR #28; Knightmark with effects enabled sustains ~27k sprites at 60 fps on M2 Mac, matching the pre-effects baseline.
+
+- e0562c3: > Branch: fix-sprite-sort-regression
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/28
+
+  ### Sprite z-sorting — correctness fix and performance opt-in
+
+  **Core fix (re-sort batch instance slots by zIndex each frame)**
+  - Adds `batchSortSystem` running after `transformSyncSystem` and before `sceneGraphSyncSystem` — sprites now render in correct zIndex order within a batch
+  - Gated on `Changed(SpriteZIndex)`: only batches with a zIndex change this frame are re-sorted; unchanged batches pay zero CPU cost
+  - `SpriteBatch.swapSlots(a, b)` swaps instanceMatrix, UV, color, flip, and all custom effect buffer rows in lockstep; free-list and entity IDs are unaffected
+  - `Sprite2D.zIndex` setter now triggers Koota's `Changed` tracker; `batchAssignSystem` fires it once on first slot assignment so newly-added sprites sort immediately
+  - All sort scratch arrays are module-scope and reused frame-to-frame for zero-alloc hot paths
+  - 234-line test suite added (`batchSort.test.ts`) covering sort correctness, no-op frames, and the alphaTest gate
+
+  **`alphaTest` opt-in for pixel-art / opaque sprites**
+  - `Sprite2DMaterialOptions.alphaTest` is now fully supported: when `> 0`, the material defaults to `transparent=false`, `depthWrite=true`, and the TSL shader discards fragments where `finalAlpha < alphaTest`
+  - `Sprite2DMaterial.getShared()` dedup key now includes `alphaTest`, so different cutoff values produce distinct cached instances
+  - `batchSortSystem` short-circuits any batch whose material has `alphaTest > 0 && depthWrite` — GPU depth test resolves draw order without CPU sorting
+  - Knightmark demo updated to use `alphaTest: 0.5` (hard-edge pixel-art atlas), opting into the depth-test fast path
+
+  **Internal / CI**
+  - Fixed `prefer-const` lint error on `batchEntityBuckets` in `batchSortSystem` that was blocking CI on PR #28
+
+  Fixes sprite z-ordering within batches for transparent sprites (CPU sort) and adds a GPU depth-test fast path for opaque/pixel-art sprites via `alphaTest`.
+
 ## 0.1.0-alpha.5
 
 ### Minor Changes

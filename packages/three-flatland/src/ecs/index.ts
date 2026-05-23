@@ -24,12 +24,7 @@ export {
 } from './traits'
 
 // World management
-export {
-  getGlobalWorld,
-  resetGlobalWorld,
-  assignWorld,
-  type WorldProvider,
-} from './world'
+export { getGlobalWorld, resetGlobalWorld, assignWorld, type WorldProvider } from './world'
 
 // Snapshot utilities
 export { resolveStore } from './snapshot'
@@ -51,18 +46,16 @@ export {
 // SystemSchedule
 export { SystemSchedule, type SystemFn } from './SystemSchedule'
 
-// Systems
+// Systems — factory exports return instances with their own scratch
+// state. Each SpriteGroup constructs one of each in its constructor.
 export {
-  batchAssignSystem,
-  batchReassignSystem,
-  batchRemoveSystem,
+  createBatchAssignSystem,
+  createBatchReassignSystem,
+  createBatchRemoveSystem,
+  createBatchSortSystem,
+  createSceneGraphSyncSystem,
   deferredDestroySystem,
-  bufferSyncColorSystem,
-  bufferSyncUVSystem,
-  bufferSyncFlipSystem,
-  bufferSyncEffectSystem,
   transformSyncSystem,
-  sceneGraphSyncSystem,
   postPassSystem,
   lightSyncSystem,
   lightEffectSystem,
@@ -70,6 +63,5 @@ export {
   materialVersionSystem,
   effectTraitsSystem,
   conditionalTransformSyncSystem,
-  lateAssignSystem,
   flushDirtyRangesSystem,
 } from './systems'

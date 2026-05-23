@@ -72,7 +72,7 @@ describe('attachEffect', () => {
 
     cleanup()
     expect(sprite._effects).toHaveLength(0)
-    expect(sprite._effectFlags).toBe(DEFAULT_FLAGS)
+    expect(sprite._systemFlags).toBe(DEFAULT_FLAGS)
   })
 
   it('does not interfere with different effect types', () => {

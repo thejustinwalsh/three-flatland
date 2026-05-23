@@ -46,7 +46,10 @@ export function computeTier(neededFloats: number): number {
  * Get a TSL component accessor from a packed vec4 buffer array.
  * Maps an absolute float offset to the correct bufNode[n].xyzw component.
  */
-export function getPackedComponent(bufNodes: Node<'vec4'>[], absoluteOffset: number): Node<'float'> {
+export function getPackedComponent(
+  bufNodes: Node<'vec4'>[],
+  absoluteOffset: number
+): Node<'float'> {
   const bufIdx = Math.floor(absoluteOffset / 4)
   const comp = absoluteOffset % 4
   const node = bufNodes[bufIdx]!
@@ -121,10 +124,24 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
   /**
    * Maps `effectName_fieldName` to its packed buffer offset and size.
-   * Offsets are absolute (slot 0 = flags, slot 1+ = data).
+   * Offsets are absolute within `effectBuf*` (pure effect data — system
+   * flags and enable bits moved to `instanceSystem` in the interleaved
+   * core, so effect buffers start at offset 0).
    * @internal
    */
   _effectSlots: Map<string, { offset: number; size: number }> = new Map()
+
+  /**
+   * Maximum total effect-data floats allowed across all registered
+   * effects on this material. WebGPU allows 8 vertex-buffer bindings
+   * per pipeline; SpriteBatch uses 5 fixed bindings (3 geometry +
+   * instanceMatrix + interleaved core), leaving 3 for `effectBuf0/1/2`
+   * × 4 floats = 12 floats. Exceeding this would force a 4th effectBuf
+   * binding which WebGPU rejects at pipeline creation with a cryptic
+   * "vertex buffer count exceeds maximum" error. `registerEffect`
+   * throws clearly when the cap would be exceeded.
+   */
+  static readonly MAX_EFFECT_FLOATS = 12
 
   /**
    * Maps effect name to its bit position in the enable flags bitmask.
@@ -160,17 +177,6 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    * @internal
    */
   _effectSchemaVersion: number = 0
-
-  /**
-   * Maximum number of per-instance effect floats a single material can
-   * consume before hitting WebGPU's 8-vertex-buffer cap. Exposed for
-   * diagnostics. Effects that push past this at `registerEffect` time
-   * throw a clear error.
-   *
-   * Budget: 8 buffers total − 3 geometry (position/normal/uv) − 1
-   * instanceMatrix − 1 interleaved core = 3 buffers × 4 floats = 12.
-   */
-  static readonly MAX_EFFECT_FLOATS = 12
 
   /**
    * Return the maximum number of per-instance effect floats this
@@ -282,10 +288,11 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
     this._effectBitIndex.set(effectClass.effectName, bitIndex)
 
     // 2. Assign sequential float offsets for each field starting at
-    //    slot 0 (effectBuf0.x). System flags and MaterialEffect enable
-    //    bits used to live here, but they moved to the interleaved
-    //    `instanceSystem` attribute (see SpriteBatch), so `effectBuf*`
-    //    is now pure effect data with no reservations.
+    //    slot 0 (effectBuf0.x). System flags (instanceSystem.z) and
+    //    MaterialEffect enable bits (instanceSystem.w) used to live here,
+    //    but they moved to the interleaved `instanceSystem` attribute
+    //    (see SpriteBatch), so `effectBuf*` is now pure effect data with
+    //    no reservations.
     let nextOffset = 0
     for (const existingEffect of this._effects) {
       for (const field of existingEffect._fields) {
@@ -299,8 +306,9 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       }
     }
 
-    // 3. Compute new total — sum of all effect data floats. No longer
-    //    includes the old `+2` for system/enable reservations.
+    // 3. Compute new total — sum of all effect data floats only. No
+    //    longer includes any reservation for the system/enable slots
+    //    (those live in instanceSystem now).
     let dataFloats = 0
     for (const eff of this._effects) {
       dataFloats += eff._totalFloats

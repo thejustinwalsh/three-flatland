@@ -1,53 +1,44 @@
-name: Generate Changeset
+name: Changeset
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize]
+  workflow_call:
+
+# The push authenticates with CHANGESET_PAT (a secret), not the GITHUB_TOKEN,
+# so the token only needs read access — the checkout fetch is all it covers.
+permissions:
+  contents: read
 
 jobs:
-  generate-changeset:
+  changeset:
+    name: Generate changeset
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-
     steps:
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 2
-
-      - name: Skip if last commit was from this workflow
-        id: check
-        run: |
-          msg=$(git log -1 --format="%s")
-          if [ "$msg" = "ci: generate changesets" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Fetch full history
-        if: steps.check.outputs.skip != 'true'
-        run: git fetch --unshallow || true
+          # Full history so `origin/main..HEAD` and `--base origin/main` resolve.
+          fetch-depth: 0
+          # PAT (not the default GITHUB_TOKEN) so the changeset commit this job
+          # pushes triggers CI — GitHub suppresses workflow runs for pushes made
+          # with GITHUB_TOKEN, which would leave the bot commit without the
+          # required "CI passed" check. That triggered run instapasses via the
+          # changeset-only skip in changes.yml.
+          token: ${{ secrets.CHANGESET_PAT }}
 
       - name: Install pnpm
-        if: steps.check.outputs.skip != 'true'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
 
       - name: Setup Node.js
-        if: steps.check.outputs.skip != 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: 'pnpm'
 
       - name: Install dependencies
-        if: steps.check.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Generate template changesets
-        if: steps.check.outputs.skip != 'true'
         run: >-
           pnpm changeset:generate
           --branch ${{ github.event.pull_request.head.ref }}
@@ -57,7 +48,6 @@ jobs:
           --cap-major
 
       - name: Compute branch id
-        if: steps.check.outputs.skip != 'true'
         id: bid
         run: |
           ts=$(git log --format="%ct" --reverse origin/main..HEAD | head -1)
@@ -65,11 +55,9 @@ jobs:
           echo "value=$value" >> "$GITHUB_OUTPUT"
 
       - name: Install Copilot CLI
-        if: steps.check.outputs.skip != 'true'
         run: npm install -g @github/copilot
 
       - name: Enhance changesets with Copilot
-        if: steps.check.outputs.skip != 'true'
         continue-on-error: true
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
@@ -111,7 +99,6 @@ jobs:
           IMPORTANT: Preserve each file's frontmatter block exactly as-is. Only write to the files listed above."
 
       - name: Commit and push changesets
-        if: steps.check.outputs.skip != 'true'
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"

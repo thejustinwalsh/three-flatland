@@ -1,33 +1,42 @@
 import {
   InstancedMesh,
   PlaneGeometry,
+  InstancedBufferAttribute,
   InstancedInterleavedBuffer,
   InterleavedBufferAttribute,
-  InstancedBufferAttribute,
   DynamicDrawUsage,
   type Matrix4,
 } from 'three'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
+import { BucketedDirtyTracker } from './BucketedDirtyTracker'
 
 /**
  * Default maximum sprites per batch.
+ *
+ * 16k is the sweet spot across mobile and desktop:
+ *   - ~2MB per batch (matrix + interleaved core + effects). Fits in
+ *     mobile VRAM even with 3–5 materials per scene.
+ *   - Covers indie-scale workloads in a single batch (no draw-call
+ *     overhead from batch splits).
+ *   - Scenes that want 30k+ sprites per material pass an explicit
+ *     `maxBatchSize: 32_768` on `SpriteGroup` — knightmark-style.
  */
-export const DEFAULT_BATCH_SIZE = 8192
+export const DEFAULT_BATCH_SIZE = 16384
 
 /**
- * Stride (in floats) of the interleaved per-instance core buffer. The
- * layout mirrors four vec4 slots:
+ * Stride (in floats) of the interleaved per-instance core buffer. Layout
+ * matches four vec4 logical slots backed by one underlying buffer:
  *
- *   offset  0..3   instanceUV      (uv.x, uv.y, uv.w, uv.h)
- *   offset  4..7   instanceColor   (r, g, b, a)
- *   offset  8..11  instanceSystem  (flipX, flipY, sysFlags, enableBits)
- *   offset 12..15  instanceExtras  (shadowRadius, reserved, reserved, reserved)
+ *   offset  0..3   instanceUV       (uv.x, uv.y, uv.w, uv.h)
+ *   offset  4..7   instanceColor    (r, g, b, a)
+ *   offset  8..11  instanceSystem   (flipX, flipY, sysFlags, enableBits)
+ *   offset 12..15  instanceExtras   (shadowRadius, reserved×3)
  *
- * Packing all four into one `InstancedInterleavedBuffer` keeps SpriteBatch
- * under the WebGPU `maxVertexBuffers = 8` cap even when multiple
- * `effectBuf*` bindings are active. See
- * `planning/superpowers/specs/2026-04-23-interleaved-instance-buffer-design.md`.
+ * Packing all four into one `InstancedInterleavedBuffer` collapses what
+ * was previously 3 vertex-buffer bindings (instanceUV / instanceColor /
+ * instanceFlip) into 1, freeing 2 slots under WebGPU's
+ * `maxVertexBuffers = 8` cap for `effectBuf*` growth.
  */
 export const INSTANCE_STRIDE = 16
 
@@ -37,14 +46,40 @@ const OFFSET_SYSTEM = 8
 const OFFSET_EXTRAS = 12
 
 /**
+ * Dirty-tracker bucket size. Must be a power of 2. At the default
+ * batch size of 16384 this produces 64 buckets per attribute — enough
+ * spatial resolution to localize sparse uploads, few enough that the
+ * flush walk stays sub-microsecond.
+ */
+const BUCKET_SIZE = 256
+
+/**
+ * Per-attribute thresholds for the "ranged vs full upload" decision in
+ * `BucketedDirtyTracker.flush`. When `bucketDirtyCount >= threshold`,
+ * the tracker emits a single full-buffer upload (three's `bufferData`
+ * fast path) instead of N per-bucket `bufferSubData` calls.
+ *
+ * Tuned for mobile WebGPU first.
+ */
+const MATRIX_FULL_THRESHOLD = 5
+const INTERLEAVED_FULL_THRESHOLD = 3
+const CUSTOM_FULL_THRESHOLD = 3
+
+/**
  * A batch of sprites rendered with a single draw call.
  *
- * Uses InstancedMesh with an interleaved per-instance attribute buffer
- * carrying UV, color, flip + system flags, and reserved extras. Plus
- * `effectBuf*` custom attributes from the material schema for pure
- * MaterialEffect data (no system reservations).
+ * Uses InstancedMesh with:
+ * - `instanceMatrix` — auto-managed by InstancedMesh (1 buffer slot)
+ * - Interleaved core buffer carrying UV / color / system / extras
+ *   (1 buffer slot, 4 logical attribute views)
+ * - `effectBuf*` custom attributes from the material's effect schema
  *
- * Systems write to batch buffers directly via write methods.
+ * Total vertex-buffer bindings: 3 (PlaneGeometry) + 1 (instanceMatrix)
+ * + 1 (interleaved) + N (effect buffers). N is capped by
+ * `EffectMaterial.MAX_EFFECT_FLOATS / 4 = 3` so the total never
+ * exceeds the WebGPU 8-binding limit.
+ *
+ * Systems write to batch buffers directly via the write methods.
  */
 export class SpriteBatch extends InstancedMesh {
   /**
@@ -73,43 +108,62 @@ export class SpriteBatch extends InstancedMesh {
   private _nextIndex: number = 0
 
   /**
-   * Interleaved core-data storage (16 floats per instance — see
-   * {@link INSTANCE_STRIDE} header comment for layout).
+   * Interleaved core buffer (UV + color + system + extras).
    */
   private _interleavedData: Float32Array
   private _interleavedBuffer: InstancedInterleavedBuffer
+
+  /**
+   * Attribute views into the interleaved buffer. Each is a separate
+   * vertex-attribute binding from the shader's perspective, but they
+   * all share the same underlying GPU buffer.
+   */
   private _uvAttribute: InterleavedBufferAttribute
   private _colorAttribute: InterleavedBufferAttribute
   private _systemAttribute: InterleavedBufferAttribute
   private _extrasAttribute: InterleavedBufferAttribute
 
   /**
-   * Custom attribute buffers (from material schema — pure effect data).
+   * Custom attribute buffers (from material schema — effect data).
    */
-  private _customAttributes: Map<string, { buffer: Float32Array; size: number; attribute: InstancedBufferAttribute; dirtyMin: number; dirtyMax: number }> = new Map()
+  private _customAttributes: Map<
+    string,
+    {
+      buffer: Float32Array
+      size: number
+      attribute: InstancedBufferAttribute
+      tracker: BucketedDirtyTracker
+    }
+  > = new Map()
 
   /**
    * Whether transforms need to be re-read from sprites during upload.
    */
   private _transformsDirty: boolean = false
 
-  // Per-attribute dirty slot ranges (min/max slot index).
-  // Infinity/−1 sentinel means "clean". Write methods expand the range;
-  // flushDirtyRanges() converts to addUpdateRange + needsUpdate once per frame.
-  private _matrixDirtyMin = Infinity
-  private _matrixDirtyMax = -1
-  // Single dirty range for the whole interleaved buffer — any of the
-  // four attributes sharing it flush together.
-  private _interleavedDirtyMin = Infinity
-  private _interleavedDirtyMax = -1
+  /**
+   * Per-batch sort-dirty flag. Set by `Sprite2D.zIndex` setter when a
+   * member sprite's zIndex changes (non-gated materials only) and by
+   * `batchAssignSystem` when a new sprite is added. Consumed by
+   * `batchSortSystem` which re-sorts the batch and clears the flag.
+   */
+  private _sortDirty: boolean = false
+
+  /**
+   * Per-buffer dirty trackers. One for the matrix buffer, one for the
+   * interleaved core (covers all 4 logical attributes since they share
+   * the underlying buffer), and one per custom effect buffer.
+   */
+  private _matrixTracker!: BucketedDirtyTracker
+  private _interleavedTracker!: BucketedDirtyTracker
 
   constructor(material: Sprite2DMaterial, maxSize: number = DEFAULT_BATCH_SIZE) {
     // Allocate interleaved core storage BEFORE creating InstancedMesh
     // so the attribute bindings exist during shader compilation.
     const interleavedData = new Float32Array(maxSize * INSTANCE_STRIDE)
 
-    // Initialize with default values: full texture UV, white fully-opaque
-    // color, no flip, zero flags / enable bits / shadowRadius.
+    // Initialize defaults: full texture UV, white opaque color,
+    // no flip, zero system flags / enable bits / shadow radius.
     for (let i = 0; i < maxSize; i++) {
       const base = i * INSTANCE_STRIDE
       // UV: full texture (0, 0, 1, 1)
@@ -122,27 +176,22 @@ export class SpriteBatch extends InstancedMesh {
       interleavedData[base + OFFSET_COLOR + 1] = 1
       interleavedData[base + OFFSET_COLOR + 2] = 1
       interleavedData[base + OFFSET_COLOR + 3] = 1
-      // System: flipX=1, flipY=1, flags=0, enableBits=0
+      // System: flipX=1, flipY=1, sysFlags=0, enableBits=0
       interleavedData[base + OFFSET_SYSTEM + 0] = 1
       interleavedData[base + OFFSET_SYSTEM + 1] = 1
       interleavedData[base + OFFSET_SYSTEM + 2] = 0
       interleavedData[base + OFFSET_SYSTEM + 3] = 0
-      // Extras: shadowRadius=0 + reserved=0
+      // Extras: shadowRadius=0, reserved×3 = 0
       interleavedData[base + OFFSET_EXTRAS + 0] = 0
       interleavedData[base + OFFSET_EXTRAS + 1] = 0
       interleavedData[base + OFFSET_EXTRAS + 2] = 0
       interleavedData[base + OFFSET_EXTRAS + 3] = 0
     }
 
-    // Create geometry and add ALL instance attributes BEFORE super()
-    // so they exist when the shader compiles.
+    // Create geometry and add ALL instance attributes BEFORE super().
     const geometry = new PlaneGeometry(1, 1)
 
-    const interleavedBuffer = new InstancedInterleavedBuffer(
-      interleavedData,
-      INSTANCE_STRIDE,
-      1
-    )
+    const interleavedBuffer = new InstancedInterleavedBuffer(interleavedData, INSTANCE_STRIDE, 1)
     interleavedBuffer.setUsage(DynamicDrawUsage)
 
     const uvAttr = new InterleavedBufferAttribute(interleavedBuffer, 4, OFFSET_UV)
@@ -155,14 +204,21 @@ export class SpriteBatch extends InstancedMesh {
     geometry.setAttribute('instanceExtras', extrasAttr)
 
     // Create custom attributes from material schema BEFORE super().
-    // These are pure MaterialEffect data — no system reservations.
-    const customAttributes = new Map<string, { buffer: Float32Array; size: number; attribute: InstancedBufferAttribute; dirtyMin: number; dirtyMax: number }>()
+    // Effect buffers are pure MaterialEffect data — no system reservations.
+    const customAttributes = new Map<
+      string,
+      {
+        buffer: Float32Array
+        size: number
+        attribute: InstancedBufferAttribute
+        tracker: BucketedDirtyTracker
+      }
+    >()
     const schema = material.getInstanceAttributeSchema()
     for (const [name, config] of schema) {
       const size = getTypeSize(config.type)
       const buffer = new Float32Array(maxSize * size)
 
-      // Fill with default values
       const defaultValue = config.defaultValue
       for (let i = 0; i < maxSize; i++) {
         if (typeof defaultValue === 'number') {
@@ -177,13 +233,15 @@ export class SpriteBatch extends InstancedMesh {
       const attr = new InstancedBufferAttribute(buffer, size)
       attr.setUsage(DynamicDrawUsage)
       geometry.setAttribute(name, attr)
-      customAttributes.set(name, { buffer, size, attribute: attr, dirtyMin: Infinity, dirtyMax: -1 })
+      const tracker = new BucketedDirtyTracker(
+        attr,
+        maxSize,
+        BUCKET_SIZE,
+        size,
+        CUSTOM_FULL_THRESHOLD
+      )
+      customAttributes.set(name, { buffer, size, attribute: attr, tracker })
     }
-
-    // Use the material directly - it's already set up for instanced rendering
-    // (cloning was causing issues with custom colorNodes that have captured closures)
-    // Note: multiple batches with the same material will share shader compilation,
-    // which is actually more efficient
 
     // Create InstancedMesh - geometry now has all required attributes
     super(geometry, material, maxSize)
@@ -196,9 +254,27 @@ export class SpriteBatch extends InstancedMesh {
     this._systemAttribute = systemAttr
     this._extrasAttribute = extrasAttr
     this._customAttributes = customAttributes
-    this.spriteMaterial = material // Keep reference to original for batchId matching
+    this.spriteMaterial = material
     this.maxSize = maxSize
-    this.frustumCulled = false // Batches manage their own culling
+    this.frustumCulled = false
+
+    // Initialize dirty trackers — matrix tracks the auto-created
+    // instanceMatrix attribute, interleaved tracks the single shared
+    // core buffer (one entry per logical 4-vec4 instance row).
+    this._matrixTracker = new BucketedDirtyTracker(
+      this.instanceMatrix,
+      maxSize,
+      BUCKET_SIZE,
+      16,
+      MATRIX_FULL_THRESHOLD
+    )
+    this._interleavedTracker = new BucketedDirtyTracker(
+      interleavedBuffer,
+      maxSize,
+      BUCKET_SIZE,
+      INSTANCE_STRIDE,
+      INTERLEAVED_FULL_THRESHOLD
+    )
 
     // Set initial count to 0 (no sprites yet)
     this.count = 0
@@ -209,18 +285,13 @@ export class SpriteBatch extends InstancedMesh {
   // Buffer write methods (called by ECS systems)
   // ============================================
 
-  private _markInterleavedDirty(index: number) {
-    if (index < this._interleavedDirtyMin) this._interleavedDirtyMin = index
-    if (index > this._interleavedDirtyMax) this._interleavedDirtyMax = index
-  }
-
   writeColor(index: number, r: number, g: number, b: number, a: number): void {
     const o = index * INSTANCE_STRIDE + OFFSET_COLOR
     this._interleavedData[o + 0] = r
     this._interleavedData[o + 1] = g
     this._interleavedData[o + 2] = b
     this._interleavedData[o + 3] = a
-    this._markInterleavedDirty(index)
+    this._interleavedTracker.markDirty(index)
   }
 
   writeUV(index: number, x: number, y: number, w: number, h: number): void {
@@ -229,46 +300,48 @@ export class SpriteBatch extends InstancedMesh {
     this._interleavedData[o + 1] = y
     this._interleavedData[o + 2] = w
     this._interleavedData[o + 3] = h
-    this._markInterleavedDirty(index)
+    this._interleavedTracker.markDirty(index)
   }
 
   writeFlip(index: number, flipX: number, flipY: number): void {
     const o = index * INSTANCE_STRIDE + OFFSET_SYSTEM
     this._interleavedData[o + 0] = flipX
     this._interleavedData[o + 1] = flipY
-    this._markInterleavedDirty(index)
+    this._interleavedTracker.markDirty(index)
   }
 
   /**
-   * Write the system-flags bitfield (lit, receiveShadows, castsShadow bits).
-   * Stored in `instanceSystem.z`.
+   * Write system-level flag bits (e.g., castsShadow, isLit). Stored in
+   * `instanceSystem.z`. Reserved here for lighting integration; sprite-
+   * sort PR leaves it at zero.
    */
   writeSystemFlags(index: number, flags: number): void {
     this._interleavedData[index * INSTANCE_STRIDE + OFFSET_SYSTEM + 2] = flags
-    this._markInterleavedDirty(index)
+    this._interleavedTracker.markDirty(index)
   }
 
   /**
-   * Write the MaterialEffect enable bits. Stored in `instanceSystem.w`.
+   * Write the MaterialEffect enable-bits bitmask. Stored in
+   * `instanceSystem.w`. The shader reads this to gate per-effect color
+   * contribution in the effect chain.
    */
   writeEnableBits(index: number, bits: number): void {
     this._interleavedData[index * INSTANCE_STRIDE + OFFSET_SYSTEM + 3] = bits
-    this._markInterleavedDirty(index)
+    this._interleavedTracker.markDirty(index)
   }
 
   /**
    * Write the per-instance shadow-occluder radius (world units).
-   * Stored in `instanceExtras.x`.
+   * Stored in `instanceExtras.x`. Lighting-only; zero for sprite-sort PR.
    */
   writeShadowRadius(index: number, radius: number): void {
     this._interleavedData[index * INSTANCE_STRIDE + OFFSET_EXTRAS + 0] = radius
-    this._markInterleavedDirty(index)
+    this._interleavedTracker.markDirty(index)
   }
 
   writeMatrix(index: number, matrix: Matrix4): void {
     this.setMatrixAt(index, matrix)
-    if (index < this._matrixDirtyMin) this._matrixDirtyMin = index
-    if (index > this._matrixDirtyMax) this._matrixDirtyMax = index
+    this._matrixTracker.markDirty(index)
   }
 
   /**
@@ -276,8 +349,7 @@ export class SpriteBatch extends InstancedMesh {
    * Used by transformSyncSystem which writes the instanceMatrix buffer directly.
    */
   markMatrixDirty(slot: number): void {
-    if (slot < this._matrixDirtyMin) this._matrixDirtyMin = slot
-    if (slot > this._matrixDirtyMax) this._matrixDirtyMax = slot
+    this._matrixTracker.markDirty(slot)
   }
 
   writeCustom(index: number, name: string, value: number | number[]): void {
@@ -292,8 +364,7 @@ export class SpriteBatch extends InstancedMesh {
         buffer[index * size + i] = value[i] ?? 0
       }
     }
-    if (index < custom.dirtyMin) custom.dirtyMin = index
-    if (index > custom.dirtyMax) custom.dirtyMax = index
+    custom.tracker.markDirty(index)
   }
 
   getCustomBuffer(name: string): { buffer: Float32Array; size: number } | undefined {
@@ -326,41 +397,76 @@ export class SpriteBatch extends InstancedMesh {
     const custom = this._customAttributes.get(attrName)
     if (!custom) return
     custom.buffer[index * 4 + component] = value
-    if (index < custom.dirtyMin) custom.dirtyMin = index
-    if (index > custom.dirtyMax) custom.dirtyMax = index
+    custom.tracker.markDirty(index)
+  }
+
+  /**
+   * Swap all per-instance attribute rows between physical slots `a` and `b`.
+   * Used by batchSortSystem to re-order instances by zIndex without
+   * rewriting ECS state — all buffers (matrix, interleaved core, custom
+   * effect buffers) are permuted in lockstep.
+   *
+   * Zero-alloc: uses element-wise writes on typed arrays in place.
+   */
+  swapSlots(a: number, b: number): void {
+    if (a === b) return
+
+    // instanceMatrix (16 floats)
+    const m = this.instanceMatrix.array as Float32Array
+    const ao = a * 16
+    const bo = b * 16
+    for (let i = 0; i < 16; i++) {
+      const tmp = m[ao + i]!
+      m[ao + i] = m[bo + i]!
+      m[bo + i] = tmp
+    }
+    this._matrixTracker.markDirty(a)
+    this._matrixTracker.markDirty(b)
+
+    // Interleaved core (16 floats = UV+color+system+extras row)
+    const il = this._interleavedData
+    const ail = a * INSTANCE_STRIDE
+    const bil = b * INSTANCE_STRIDE
+    for (let i = 0; i < INSTANCE_STRIDE; i++) {
+      const tmp = il[ail + i]!
+      il[ail + i] = il[bil + i]!
+      il[bil + i] = tmp
+    }
+    this._interleavedTracker.markDirty(a)
+    this._interleavedTracker.markDirty(b)
+
+    // Custom attributes (effect buffers + user-defined)
+    for (const [, custom] of this._customAttributes) {
+      const size = custom.size
+      const buf = custom.buffer
+      const ax = a * size
+      const bx = b * size
+      for (let i = 0; i < size; i++) {
+        const tmp = buf[ax + i]!
+        buf[ax + i] = buf[bx + i]!
+        buf[bx + i] = tmp
+      }
+      custom.tracker.markDirty(a)
+      custom.tracker.markDirty(b)
+    }
   }
 
   // ============================================
   // Slot management (used by ECS systems)
   // ============================================
 
-  /**
-   * Get current active slot count.
-   */
   get activeCount(): number {
     return this._activeCount
   }
 
-  /**
-   * Check if batch is full.
-   */
   get isFull(): boolean {
     return this._freeList.length === 0 && this._nextIndex >= this.maxSize
   }
 
-  /**
-   * Check if batch is empty.
-   */
   get isEmpty(): boolean {
     return this._activeCount === 0
   }
 
-  /**
-   * Allocate a slot in this batch.
-   * Reuses a free slot if available, otherwise allocates the next sequential one.
-   *
-   * @returns The slot index, or -1 if batch is full
-   */
   allocateSlot(): number {
     let index: number
 
@@ -368,7 +474,7 @@ export class SpriteBatch extends InstancedMesh {
       index = this._freeList.pop()!
     } else {
       if (this._nextIndex >= this.maxSize) {
-        return -1 // Batch is full
+        return -1
       }
       index = this._nextIndex++
     }
@@ -378,17 +484,14 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Free a slot in this batch.
-   * Sets alpha to 0 (invisible) and adds the slot to the free list.
-   *
-   * @param index - Slot index to free
+   * Free a slot. Writes alpha=0 to the color row so the slot doesn't
+   * render, and pushes it onto the free list for reuse.
    */
   freeSlot(index: number): void {
     if (index < 0 || index >= this._nextIndex) return
 
-    // Make slot invisible (alpha = 0) so it doesn't render
     this._interleavedData[index * INSTANCE_STRIDE + OFFSET_COLOR + 3] = 0
-    this._markInterleavedDirty(index)
+    this._interleavedTracker.markDirty(index)
 
     this._freeList.push(index)
     this._activeCount--
@@ -407,10 +510,25 @@ export class SpriteBatch extends InstancedMesh {
 
   /**
    * Mark transforms as needing update.
-   * Call when sprite positions/rotations/scales have changed.
    */
   invalidateTransforms(): void {
     this._transformsDirty = true
+  }
+
+  /**
+   * Mark this batch as needing a zIndex re-sort.
+   */
+  markSortDirty(): void {
+    this._sortDirty = true
+  }
+
+  /**
+   * Read-and-clear the sort-dirty flag.
+   */
+  consumeSortDirty(): boolean {
+    const wasDirty = this._sortDirty
+    this._sortDirty = false
+    return wasDirty
   }
 
   /**
@@ -419,67 +537,30 @@ export class SpriteBatch extends InstancedMesh {
    */
   syncCount(): void {
     this.count = this._nextIndex
-    // Update bounding sphere for devtools highlight and frustum visualization
     if (this.count > 0) {
       this.computeBoundingSphere()
     }
   }
 
   /**
-   * Flush per-attribute dirty ranges to GPU upload ranges.
+   * Flush per-buffer dirty state to GPU upload ranges.
    *
-   * Each write method (writeColor, writeUV, etc.) tracks the min/max slot
-   * that was touched. This method converts those slot ranges into
-   * `addUpdateRange` calls so the renderer uploads only the changed portion
-   * of each buffer via `bufferSubData`.
-   *
-   * Call once per frame after all systems have run — replaces the old
-   * `applyUpdateRanges()` which always uploaded [0, _nextIndex] for every
-   * attribute regardless of what actually changed.
+   * Each tracker decides per-buffer whether to emit a single full-
+   * buffer upload (three's `bufferData` fast path) or one
+   * `addUpdateRange` per dirty bucket, based on how many buckets
+   * accumulated changes during the frame.
    */
   flushDirtyRanges(): void {
-    if (this._matrixDirtyMax >= 0) {
-      this.instanceMatrix.clearUpdateRanges()
-      this.instanceMatrix.addUpdateRange(this._matrixDirtyMin * 16, (this._matrixDirtyMax - this._matrixDirtyMin + 1) * 16)
-      this.instanceMatrix.needsUpdate = true
-      this._matrixDirtyMin = Infinity
-      this._matrixDirtyMax = -1
-    }
-
-    if (this._interleavedDirtyMax >= 0) {
-      this._interleavedBuffer.clearUpdateRanges()
-      this._interleavedBuffer.addUpdateRange(
-        this._interleavedDirtyMin * INSTANCE_STRIDE,
-        (this._interleavedDirtyMax - this._interleavedDirtyMin + 1) * INSTANCE_STRIDE
-      )
-      this._interleavedBuffer.needsUpdate = true
-      this._interleavedDirtyMin = Infinity
-      this._interleavedDirtyMax = -1
-    }
-
-    for (const [, custom] of this._customAttributes) {
-      if (custom.dirtyMax >= 0) {
-        custom.attribute.clearUpdateRanges()
-        custom.attribute.addUpdateRange(custom.dirtyMin * custom.size, (custom.dirtyMax - custom.dirtyMin + 1) * custom.size)
-        custom.attribute.needsUpdate = true
-        custom.dirtyMin = Infinity
-        custom.dirtyMax = -1
-      }
-    }
+    this._matrixTracker.flush()
+    this._interleavedTracker.flush()
+    for (const [, custom] of this._customAttributes) custom.tracker.flush()
   }
 
   /**
    * Clone for devtools/serialization compatibility.
-   * SpriteBatch requires material in its constructor, so the default
-   * Object3D.clone() (`new this.constructor()`) would crash.
-   * Returns a plain InstancedMesh with matching geometry and transforms.
    */
   override clone(_recursive?: boolean): this {
-    const cloned = new InstancedMesh(
-      this.geometry.clone(),
-      this.material,
-      this.count
-    )
+    const cloned = new InstancedMesh(this.geometry.clone(), this.material, this.count)
     cloned.instanceMatrix.copy(this.instanceMatrix)
     cloned.count = this.count
     cloned.frustumCulled = this.frustumCulled
@@ -500,7 +581,6 @@ export class SpriteBatch extends InstancedMesh {
     this.resetSlots()
     this.geometry.dispose()
     // Don't dispose the material - it may be shared between batches
-    // The material owner (user code) is responsible for disposing it
     this._customAttributes.clear()
     return this
   }
