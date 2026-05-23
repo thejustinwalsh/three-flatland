@@ -14,6 +14,10 @@ import skiaRenderModes from '../../../assets/diagrams/skia-render-modes.svg?raw'
 
 ---
 
+:::caution[Experimental — API not stable]
+`@three-flatland/skia` is **more experimental than the rest of the alpha library**: its public API is not yet stable and can change or be removed without notice between releases. Pin an exact version and expect breakage on upgrade.
+:::
+
 `@three-flatland/skia` brings Skia's GPU-accelerated vector rendering to Three.js via WASM, built with Zig. It auto-detects WebGPU or WebGL from your renderer and supports both Three.js and React Three Fiber.
 
 You probably don't need this page yet. Skia earns its WASM weight when you need real vector graphics in 3D — UI overlays, dynamic text, path operations, gradients. For static images and animated sprites, plain `Sprite2D` is the right answer.
