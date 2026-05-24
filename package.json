@@ -25,6 +25,7 @@
     "test:smoke:install": "playwright install chromium",
     "test:e2e": "playwright test",
     "clean": "turbo run clean && rm -rf node_modules/.vite",
+    "turbo:compact": "tsx scripts/turbo-cache-compact.ts",
     "changeset": "changeset",
     "changeset:generate": "tsx scripts/generate-changesets.ts",
     "changeset:version": "changeset version && tsx scripts/sync-versions.ts",
