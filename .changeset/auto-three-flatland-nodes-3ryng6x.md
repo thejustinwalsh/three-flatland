@@ -5,24 +5,25 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## Changes
+**2D lighting TSL nodes** — new lighting sub-module in `@three-flatland/nodes/lighting`.
 
-**New TSL helpers**
-- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, opts)` — sphere-trace soft shadow through an SDF texture; returns `[0, 1]` shadow value with Inigo-Quilez running-min penumbra; configurable `steps` (default 32), `softness`, `startOffset`, `eps`
-- `normalFromSprite` updated to support elevation-aware occlusion
+**shadowSDF2D**
+- Sphere-trace soft shadow through an SDF texture; returns a `[0, 1]` shadow factor with Inigo-Quilez-style running-min penumbra
+- Signature: `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, { steps?, softness?, startOffset?, eps? })`
+- `startOffset` skips self-shadow artifacts on the caster sprite; now tunable via a `FloatInput` uniform (previously hardcoded to 40 world units)
+- Signed SDF support: self-shadow detection uses `sdf < 0` (strictly inside) instead of an epsilon approximation
+- Penumbra math fix applied
 
-**Shadow system**
-- `shadowSDF2D` wired into the lighting pipeline via build-context `sdfTexture` / `worldSizeNode` / `worldOffsetNode`; replaces the previous `shadow = float(1.0)` stub
-- Tunable `shadowStartOffset` uniform: replaces the hardcoded `escapeOffset = 40`; `DefaultLightEffect` exposes it as a schema uniform (default 1.5 world units, raised to 40 as the demo default)
-- Penumbra math corrected for accurate soft-shadow edges
-- Shadow pipeline moved to post-process pass; SDF generation bugs fixed
+**normalFromSprite / normalFromHeight**
+- TSL helpers for runtime per-sprite normal generation from alpha-gradient and heightmap inputs
 
-**Signed SDF**
-- `SDFGenerator` upgraded from unsigned to signed distance field: two JFA chains seeded on occluder vs. empty texels, combined as `distOutside − distInside`; later optimised to a single packed RGBA chain at the same VRAM cost as the original unsigned generator
-- Signed SDF enables `sdf < 0` self-shadow detection, eliminating the `escapeOffset` approximation
+**lights / lit**
+- `Light2D` data accessors and lit-surface TSL nodes for forward+ shading
+
+**LightEffect system**
+- Traits, registry, and React attach helpers for wiring light effects into the R3F scene graph
 
 **Bug fixes**
-- Raised `shadowStartOffset` default to 40 to match demo knight scale (64 world units); 1.5 caused self-shadow artifacts on the hero sprite
-- Penumbra term corrected
+- `shadowStartOffset` default raised to 40 (from 1.5) to clear typical caster radii out-of-the-box; still user-tunable via slider
 
-Adds `shadowSDF2D` for GPU sphere-trace soft shadows and upgrades the SDF generator to a signed field, eliminating sprite-scale calibration guesswork.
+This release ships the core TSL lighting node library that `@three-flatland/presets` builds its `DefaultLightEffect` on.
