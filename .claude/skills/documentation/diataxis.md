@@ -26,11 +26,11 @@ The repo's existing buckets already line up with Diátaxis — hold each page to
 | **API Reference** (TypeDoc) | **Reference** | Generated from JSDoc. The home for every option, signature, and field. |
 | **Getting Started → Quick Start** | **Tutorial** | The canonical first lesson — pixels on screen, guaranteed success. |
 | **Examples** | **Tutorial** (single feature) | One per *prime feature*. The page is two things: a "get it on your machine" command (a `degit`-style first-party CLI pull that drops the isolated example into a freshly-`git init`'d repo in one command) **and** a how-it's-built walkthrough with **Three.js + React code-sample tabs**. Focused on the one feature even if the example carries supporting machinery to show it off. Not reference, not explanation. |
-| **Showcases** | **Tutorial** (uber) | Full games — far more in-depth than examples, and free to pull in third-party packages *outside* the three-flatland ecosystem. In-depth architecture/strategy/build narrative is *correct* here; depth is the point. Do **not** mistake a showcase's depth for mis-typed Explanation. |
+| **Showcases** | **Explanation** | How a complete, shipped game is architected — its systems, trade-offs, and the role of third-party packages *outside* the three-flatland ecosystem. Read for understanding; the playable build + source is the artifact the page illuminates. Depth and discussion are correct here (that is what Explanation is *for*) — but it is **not** a step-by-step lesson. A genuine "build this game with me" follow-along would be a Tutorial instead, a different artifact. |
 
 The lighting/shadows split already in the repo — `lighting` (Concept/Explanation) paired with `lighting-setup` (Guide/How-to) — is the pattern. Most other features should reach the same shape.
 
-**Examples vs Showcases:** an example isolates **one** prime feature and teaches how that feature is built (dual-framework); a showcase is an uber-tutorial — a full, shippable game with third-party deps and real architecture. Both are Tutorials; the difference is scope and depth, not type.
+**Examples vs Showcases — different TYPES, not just different sizes.** An example is a **Tutorial**: a guided build of *one* prime feature (dual-framework). A showcase is **Explanation**: it illuminates how a full, shippable game fits together. Type is set by *form*, not by depth or subject — guided doing (Tutorial) vs illumination (Explanation). "It's a big, deep page about a game" does **not** make it a tutorial; a deep architecture walkthrough is Explanation. (This corrects the instinct to call any in-depth build content an "uber-tutorial" — there is no such Diátaxis type.)
 
 ## Tutorial vs How-to (the pair agents conflate)
 
