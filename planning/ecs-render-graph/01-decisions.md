@@ -1,5 +1,11 @@
 # ECS Render Graph - Design Decisions
 
+> **Status:** Active ECS-foundation doc (not superseded). See
+> [`00-research.md`](00-research.md) for the 2026-05-24 reconciliation note —
+> naming (`Renderer2D` → `SpriteGroup`), world-ownership moving to the
+> per-`(renderer, scene)` Registry (epic #85/#75), and the `Changed()` dirty-tracking
+> decision feeding #112.
+
 ## Resolved Decisions
 
 | Decision | Choice | Rationale |
