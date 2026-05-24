@@ -231,6 +231,30 @@ describe('SpriteGroup', () => {
     expect(array[base + 2]).toBeCloseTo(0) // b
   })
 
+  it('batched: in-place tint.set() mutation writes to batch buffer immediately (R3F compat)', () => {
+    renderer = new SpriteGroup()
+    const sprite = new Sprite2D({ material })
+
+    renderer.add(sprite)
+    renderer.updateMatrixWorld()
+
+    const entity = sprite._entity!
+    const batchEntity = entity.targetFor(InBatch)!
+    const mesh = batchEntity.get(BatchMesh)!.mesh!
+    const slot = entity.get(BatchSlot)!.slot
+
+    // R3F sets nested props by mutating the returned Color in place
+    // (`sprite.tint.set(...)`), NOT by reassigning `sprite.tint`. The
+    // observable.color.attach wrapper must fire the notify so the batch
+    // color buffer updates without a systems pass.
+    sprite.tint.set(0, 1, 0)
+
+    const array = mesh.getColorAttribute().array as Float32Array
+    expect(array[slot * 16 + 4 + 0]).toBeCloseTo(0) // r
+    expect(array[slot * 16 + 4 + 1]).toBeCloseTo(1) // g
+    expect(array[slot * 16 + 4 + 2]).toBeCloseTo(0) // b
+  })
+
   it('update() and updateMatrixWorld() should not run systems twice', () => {
     renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
