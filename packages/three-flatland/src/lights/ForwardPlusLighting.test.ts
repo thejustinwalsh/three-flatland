@@ -111,7 +111,7 @@ describe('ForwardPlusLighting', () => {
     fp.update([light])
 
     // Same scan pattern as the ambient-light test — inspect only
-    // light-index blocks; meta texels carry fillScale=1.0 fallbacks.
+    // light-index blocks; the trailing meta texels are reserved/unused.
     const data = fp.tileTexture!.image.data as Float32Array
     const TILE_STRIDE = 8
     const BLOCKS_PER_TILE = 4
@@ -322,11 +322,10 @@ describe('ForwardPlusLighting', () => {
     expect(ids.has(MAX_LIGHTS_PER_TILE + 1)).toBe(true) // importance-boosted light won a slot
   })
 
-  it('should cap fill lights per tile and write per-category fillScale for compensation', () => {
+  it('should cap fill lights per tile', () => {
     // Scene: one tile, 10 non-shadow-casting fill lights all sharing
     // the default category (bucket 0). Quota = MAX_FILL_LIGHTS_PER_TILE
-    // (2). Expect 2 slots claimed + fillScale 10/2 = 5 in the meta
-    // texel's bucket-0 channel. Other buckets fall back to 1.0.
+    // (2). Expect only 2 slots claimed; the rest are dropped.
     const fp = new ForwardPlusLighting()
     fp.init(16, 16)
     fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
@@ -341,10 +340,6 @@ describe('ForwardPlusLighting', () => {
     fp.update(lights)
 
     const data = fp.tileTexture!.image.data as Float32Array
-    const TILE_STRIDE = 8
-    const BLOCKS_PER_TILE = 4
-    const META_BLOCK_INDEX = BLOCKS_PER_TILE
-    const metaBase = (0 * TILE_STRIDE + META_BLOCK_INDEX) * 4
 
     // Only 2 slots should be filled (the others stay zero).
     let fillSlotsUsed = 0
@@ -352,20 +347,13 @@ describe('ForwardPlusLighting', () => {
       if (data[i] !== 0) fillSlotsUsed++
     }
     expect(fillSlotsUsed).toBe(2)
-
-    // Default category is bucket 0. fillScale[0] = 10/2 = 5.
-    expect(data[metaBase + 0]).toBeCloseTo(5)
-    // Unused categories fall back to 1.0 (no-op multiplier).
-    expect(data[metaBase + 1]).toBeCloseTo(1)
-    expect(data[metaBase + 2]).toBeCloseTo(1)
-    expect(data[metaBase + 3]).toBeCloseTo(1)
   })
 
   it('should scope fill quotas per category bucket so green and blue fills do not starve each other', () => {
     // Two distinct fill categories ("slime" and "water") hashing to
     // different buckets, 5 of each in the same tile. Each category
     // should claim its own 2-slot quota independently. Total fills
-    // in slots = 4; each category's fillScale = 5/2 = 2.5.
+    // in slots = 4 (2 per category × 2 categories).
     const fp = new ForwardPlusLighting()
     fp.init(16, 16)
     fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
@@ -405,10 +393,6 @@ describe('ForwardPlusLighting', () => {
     }
 
     const data = fp.tileTexture!.image.data as Float32Array
-    const metaBase = (0 * 8 + 4) * 4
-    // Each category kept 2 of its 5, so both fillScale channels = 2.5.
-    expect(data[metaBase + slimeBucket]).toBeCloseTo(2.5)
-    expect(data[metaBase + waterBucket]).toBeCloseTo(2.5)
 
     // Total occupied slots should be 4 (2 per category × 2 categories).
     let slotsUsed = 0
@@ -419,7 +403,7 @@ describe('ForwardPlusLighting', () => {
   it('should not let fill lights evict hero lights', () => {
     // Scene: one tile. First, fill with MAX hero lights. Then add a
     // super-bright fill light. Hero lights should stay (fills never
-    // displace heroes); the fill bumps fillInRange but gets no slot.
+    // displace heroes); the fill competes for a quota slot but gets none.
     const fp = new ForwardPlusLighting()
     fp.init(16, 16)
     fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
@@ -549,23 +533,4 @@ describe('ForwardPlusLighting', () => {
     }
   })
 
-  it('should leave all per-category fillScales at 1.0 when no fills reach a tile', () => {
-    const fp = new ForwardPlusLighting()
-    fp.init(16, 16)
-    fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
-
-    // Only hero lights — no fills in range for any category.
-    const lights: Light2D[] = [
-      new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: true }),
-    ]
-    fp.update(lights)
-
-    const data = fp.tileTexture!.image.data as Float32Array
-    const metaBase = 4 * 4 // META_BLOCK_INDEX=4, 4 floats per texel
-    // With no fills in any bucket, all 4 fillScales fall back to 1.0.
-    expect(data[metaBase + 0]).toBeCloseTo(1)
-    expect(data[metaBase + 1]).toBeCloseTo(1)
-    expect(data[metaBase + 2]).toBeCloseTo(1)
-    expect(data[metaBase + 3]).toBeCloseTo(1)
-  })
 })

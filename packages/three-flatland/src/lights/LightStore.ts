@@ -46,8 +46,8 @@ export type TileLookupFn = (tileIndex: Node<'int'>, slotIndex: Node<'int'>) => N
  * | 3   | type   | enabled   | castsShadow   | categoryBucket |
  *
  * `categoryBucket` is 0..3 — the hashed bucket index derived from
- * `Light2D.category`. Consumed by `DefaultLightEffect` to select the
- * correct `fillScale[bucket]` from the tile meta texel.
+ * `Light2D.category`. Used by the Forward+ tile pass to scope each
+ * category's fill-light quota independently (per-bucket group max).
  *
  * The shader reads via `textureLoad(lightsTexture, ivec2(lightIndex, row))`.
  *

@@ -56,11 +56,9 @@ export const MAX_LIGHTS_PER_TILE = 16
 export const MAX_FILL_LIGHTS_PER_TILE = 2
 
 /**
- * Number of fill-light categories with independent per-tile quotas
- * and compensation scales. Matches the meta texel channel count
- * (`.x/.y/.z/.w`) — 4 scalars of luminance compensation per tile,
- * one per category. Category 0 is the default for lights without a
- * `category` string set.
+ * Number of fill-light categories with independent per-tile quotas.
+ * Category 0 is the default for lights without a `category` string
+ * set.
  */
 export const FILL_CATEGORY_COUNT = 4
 
@@ -71,21 +69,11 @@ export const FILL_CATEGORY_COUNT = 4
 export const BLOCKS_PER_TILE = MAX_LIGHTS_PER_TILE / 4
 
 /**
- * Index of the first meta block within a tile's stride. Meta block
- * carries per-tile scalars consumed by the light shader:
- *
- *   meta.x = fillScale   (compensation for fill-light dedup; 1.0 if no fills skipped)
- *   meta.y = reserved
- *   meta.z = reserved
- *   meta.w = reserved
- */
-export const META_BLOCK_INDEX = BLOCKS_PER_TILE
-
-/**
  * Total RGBA texels consumed per tile. Sized to align each tile to a
  * 128-byte cache line on every target GPU class (mobile, desktop,
- * console) — stride 8 × 16 bytes/RGBA32F = 128 bytes. Reserves 3
- * meta slots beyond `fillScale` for future per-tile scalars without
+ * console) — stride 8 × 16 bytes/RGBA32F = 128 bytes. The light-index
+ * blocks occupy the first {@link BLOCKS_PER_TILE} texels; the
+ * remaining texels are reserved for future per-tile scalars without
  * needing another stride refactor.
  */
 export const TILE_STRIDE = 8
@@ -172,15 +160,6 @@ export class ForwardPlusLighting {
    */
   private _tileFillCount: Uint8Array = new Uint8Array(0)
   /**
-   * Per-tile per-category count of fill lights in range this frame —
-   * how many fills in each bucket actually tried to claim a slot,
-   * including those skipped by the quota. Divided by
-   * `_tileFillCount[tileIdx * FILL_CATEGORY_COUNT + cat]` to derive
-   * the per-tile per-category `fillScale` compensation factor.
-   * Length = `_tileCount * FILL_CATEGORY_COUNT`.
-   */
-  private _tileFillInRange: Uint32Array = new Uint32Array(0)
-  /**
    * Per-bucket quota for fill lights — each category's max
    * concurrent slots in any single tile. Initialized to
    * `MAX_FILL_LIGHTS_PER_TILE` (2) for all four buckets. Tunable at
@@ -262,10 +241,6 @@ export class ForwardPlusLighting {
       this._tileScores = new Float32Array(this._tileCount * MAX_LIGHTS_PER_TILE)
       this._tileSlotCategory = new Int8Array(this._tileCount * MAX_LIGHTS_PER_TILE)
       this._tileFillCount = new Uint8Array(this._tileCount * FILL_CATEGORY_COUNT)
-      // Uint32 (not Uint16) because the debug-sink API only accepts
-      // Float32/Uint32/Int32. The tile counter rarely exceeds a few
-      // thousand fills in range per category, so the width upgrade is free.
-      this._tileFillInRange = new Uint32Array(this._tileCount * FILL_CATEGORY_COUNT)
     }
 
     // (Re-)publish debug views. `registerDebugArray` is a no-op when
@@ -276,9 +251,6 @@ export class ForwardPlusLighting {
     })
     registerDebugArray('forwardPlus.tileScores', this._tileScores, 'float', {
       label: 'Reservoir scores',
-    })
-    registerDebugArray('forwardPlus.fillInRange', this._tileFillInRange, 'uint', {
-      label: 'Fill lights in range (per tile)',
     })
     registerDebugTexture('forwardPlus.tiles', this._tileTexture, 'rgba32f', {
       label: 'Tile index DataTexture',
@@ -376,14 +348,12 @@ export class ForwardPlusLighting {
     const tileScores = this._tileScores
     const tileSlotCategory = this._tileSlotCategory
     const tileFillCount = this._tileFillCount
-    const tileFillInRange = this._tileFillInRange
     lightCounts.fill(0, 0, this._tileCount)
     tileScores.fill(0, 0, this._tileCount * MAX_LIGHTS_PER_TILE)
     // Zero out slot categories — -1 means "empty". Using fill() with
     // -1 on Int8Array writes 0xFF which reads back as -1.
     tileSlotCategory.fill(-1, 0, this._tileCount * MAX_LIGHTS_PER_TILE)
     tileFillCount.fill(0, 0, this._tileCount * FILL_CATEGORY_COUNT)
-    tileFillInRange.fill(0, 0, this._tileCount * FILL_CATEGORY_COUNT)
 
     // Accumulate ambient lights into a single uniform — they affect every
     // pixel equally so they don't need Forward+ tile slots.
@@ -541,11 +511,9 @@ export class ForwardPlusLighting {
           const texelBase = tileIdx * TILE_STRIDE * 4
 
           if (isFill) {
-            // Per-tile per-category counters drive both the quota and
-            // the compensation-scaling math downstream. Quota is a
-            // per-bucket runtime value (see `setFillQuota`); default 2.
+            // Per-tile per-category counter drives the quota. Quota is
+            // a per-bucket runtime value (see `setFillQuota`); default 2.
             const fillKey = tileIdx * FILL_CATEGORY_COUNT + categoryBucket
-            tileFillInRange[fillKey] = tileFillInRange[fillKey]! + 1
             const fillCountOfCat = tileFillCount[fillKey]!
             const categoryQuota = this._fillQuotas[categoryBucket]!
 
@@ -563,8 +531,7 @@ export class ForwardPlusLighting {
                 tileFillCount[fillKey] = fillCountOfCat + 1
               }
               // Tile full (other categories / heroes claimed all
-              // slots). Skip — the in-range bump above still counts
-              // toward this category's compensation scale.
+              // slots). Skip.
               continue
             }
 
@@ -607,9 +574,8 @@ export class ForwardPlusLighting {
           }
 
           // Tile full — heroes compete only with other heroes.
-          // Evicting a fill with a hero would violate the quota
-          // invariants the compensation math depends on; skip and
-          // let the reservoir converge.
+          // Evicting a fill with a hero would violate the per-category
+          // quota invariants; skip and let the reservoir converge.
           let minHeroSlot = -1
           let minHeroScore = Infinity
           for (let s = 0; s < MAX_LIGHTS_PER_TILE; s++) {
@@ -630,28 +596,11 @@ export class ForwardPlusLighting {
       }
     }
 
-    // Compensation pass — per-category `fillScale = inRange / kept`.
-    // Each tile's meta texel packs 4 scales into .x/.y/.z/.w, one
-    // per fill-light category bucket. Categories with zero kept
-    // lights fall back to 1.0 (no-op multiplier), so the shader can
-    // always multiply blindly without branching on "is this tile
-    // empty for my bucket".
-    for (let tileIdx = 0; tileIdx < this._tileCount; tileIdx++) {
-      const metaBase = (tileIdx * TILE_STRIDE + META_BLOCK_INDEX) * 4
-      const fillBase = tileIdx * FILL_CATEGORY_COUNT
-      for (let cat = 0; cat < FILL_CATEGORY_COUNT; cat++) {
-        const kept = tileFillCount[fillBase + cat]!
-        const inRange = tileFillInRange[fillBase + cat]!
-        this._tileData[metaBase + cat] = kept > 0 ? inRange / kept : 1
-      }
-    }
-
     this._tileTexture.needsUpdate = true
 
     // Notify devtools the arrays changed this frame (no-op in prod).
     touchDebugArray('forwardPlus.lightCounts')
     touchDebugArray('forwardPlus.tileScores')
-    touchDebugArray('forwardPlus.fillInRange')
     touchDebugTexture('forwardPlus.tiles')
   }
 
@@ -661,7 +610,7 @@ export class ForwardPlusLighting {
     const texWidth = int(TILE_TEXTURE_DIM)
     // Each tile occupies TILE_STRIDE consecutive RGBA texels in a flat
     // linear order — BLOCKS_PER_TILE light-index texels followed by
-    // meta texels. Convert `(tileIndex, slotIndex)` → linear texel
+    // reserved texels. Convert `(tileIndex, slotIndex)` → linear texel
     // index → 2D `(x, y)` in the fixed TILE_TEXTURE_DIM² texture.
     return (tileIndex: ReturnType<typeof int>, slotIndex: ReturnType<typeof int>) => {
       const blockOffset = slotIndex.div(int(4))
@@ -673,33 +622,10 @@ export class ForwardPlusLighting {
     }
   }
 
-  /**
-   * Shader-side accessor for the per-tile meta texel. Returns the
-   * full vec4 — `.x` is `fillScale`, `.y`/`.z`/`.w` reserved for
-   * future per-tile scalars.
-   *
-   * Consumers read `fillScale` once at the start of their per-fragment
-   * work and multiply it into non-shadow-casting light contributions
-   * to preserve luminance when the fill-light quota culls some fills.
-   */
-  createTileMetaLookup() {
-    const tileTexture = this._tileTexture
-    const tileStride = int(TILE_STRIDE)
-    const metaIndex = int(META_BLOCK_INDEX)
-    const texWidth = int(TILE_TEXTURE_DIM)
-    return (tileIndex: ReturnType<typeof int>) => {
-      const linearTexel = tileIndex.mul(tileStride).add(metaIndex)
-      const x = linearTexel.mod(texWidth)
-      const y = linearTexel.div(texWidth)
-      return textureLoad(tileTexture, ivec2(x, y))
-    }
-  }
-
   dispose(): void {
     this._tileTexture.dispose()
     unregisterDebugArray('forwardPlus.lightCounts')
     unregisterDebugArray('forwardPlus.tileScores')
-    unregisterDebugArray('forwardPlus.fillInRange')
     unregisterDebugTexture('forwardPlus.tiles')
   }
 }

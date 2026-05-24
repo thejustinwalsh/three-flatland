@@ -155,14 +155,6 @@ const _DefaultLightEffect = createLightEffect({
 
     const fp = constants.forwardPlus
     const tileLookup = fp.createTileLookup()
-    // The shader currently ignores `tileMetaLookup` (per-tile fill
-    // compensation). Per-tile fillScale produced visible tile-aligned
-    // brightness steps at fill-quota saturation boundaries — fixing
-    // it cleanly needs temporal accumulation (history RT) we don't
-    // have yet. ForwardPlusLighting still computes the values CPU-
-    // side and writes them into the tile meta texel for devtools
-    // inspection + future hookup of a smooth (e.g., bilinear or
-    // temporally-filtered) compensation path.
 
     return (ctx) => {
       return Fn(() => {
@@ -344,17 +336,6 @@ const _DefaultLightEffect = createLightEffect({
           }
 
           const baseContribution = contribution.mul(atten).mul(diffuse)
-          // Fill-quota dedup may cull some `castsShadow: false` lights
-          // when a tile saturates its per-category bucket; the CPU
-          // tracks per-tile/per-category in-range vs kept counts and
-          // writes a `fillScale` to the tile meta texel for future
-          // temporal compensation. Not consumed here — applying a
-          // per-tile scale produces visible tile-aligned brightness
-          // steps at quota boundaries without history-buffer
-          // accumulation to smooth them. Kept lights contribute their
-          // natural amount; culled lights are absent. Net effect: a
-          // small, smooth dimming in dense fill clusters rather than a
-          // checkerboard.
           totalLightLit.addAssign(baseContribution)
           totalLightShaded.addAssign(baseContribution.mul(shadow))
 
