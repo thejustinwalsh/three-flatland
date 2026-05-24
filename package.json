@@ -9,7 +9,7 @@
     "pnpm": ">=8.0.0"
   },
   "scripts": {
-    "build": "turbo run build",
+    "build": "NODE_OPTIONS=--max-old-space-size=8192 turbo run build",
     "dev": "echo '\\n  ➜  Dev server: http://localhost:4321\\n' && turbo run dev --filter=docs --filter=examples",
     "typecheck": "turbo run typecheck --filter='*'",
     "lint": "eslint packages/*/src minis/*/src",

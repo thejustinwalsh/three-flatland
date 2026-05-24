@@ -10,7 +10,11 @@
   // iframe + `/.devtools` URLs. Without passing it through, both tasks
   // silently fall back to 5174 and the override is a no-op — pass it
   // through so docs + examples stay on the same origin when it's set.
-  "globalPassThroughEnv": ["EXAMPLES_PORT"],
+  // EXAMPLES_PORT: see note above. NODE_OPTIONS: forwarded so the heap bump
+  // set by the root `build` script reaches each package's tsup build — the
+  // three-flatland DTS pass (bundle:false over all of src/**) otherwise OOMs
+  // the rollup-plugin-dts worker on the default Node heap.
+  "globalPassThroughEnv": ["EXAMPLES_PORT", "NODE_OPTIONS"],
   "tasks": {
     "build": {
       "dependsOn": ["^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build", "@three-flatland/skia#build"],
