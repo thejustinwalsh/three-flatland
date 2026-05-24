@@ -248,6 +248,33 @@ def render(
             if (ox > 4) reasons.push(`free label +${ox}px outside the box it sits in (bind it)`);
             if (oy > 4) reasons.push(`free label +${oy}px outside the box it sits in vertically (bind it)`);
           }
+          // (D) a FREE label that sits ON a filled box but pokes past its
+          // TOP or BOTTOM edge — part on the box, part spilling below/above
+          // it. Text lying half on top of a box reads as a collision even
+          // when it's technically inside a larger container, which is exactly
+          // what (C)'s single center-box test misses (the label's center can
+          // fall just outside the small box it overlaps). Vertical only:
+          // horizontal text spill is already caught by (A)/(C); a wide label
+          // legitimately crossing a narrow cell is not a defect, so we only
+          // flag a label that genuinely rests on the box (≥50% horizontal
+          // overlap) yet breaks its top/bottom edge.
+          {
+            const tx = t.x || 0, ty = t.y || 0, tR2 = tx + footW, tB2 = ty + footH;
+            let worst = 0;
+            for (const r of rects) {
+              if (r.id === t.id) continue;
+              const bg = r.backgroundColor;
+              if (!bg || bg === 'transparent') continue;    // only filled boxes collide visually
+              if (r.width < 16 || r.height < 16) continue;   // skip dividers / thin markers
+              const ix = Math.min(tR2, r.x + r.width) - Math.max(tx, r.x);
+              const iy = Math.min(tB2, r.y + r.height) - Math.max(ty, r.y);
+              if (iy <= 2) continue;                         // not vertically overlapping the box
+              if (ix < 0.5 * Math.min(footW, r.width)) continue; // not really resting on the box
+              const vpoke = Math.max(tB2 - (r.y + r.height), r.y - ty); // spill past bottom / top
+              if (vpoke > worst) worst = vpoke;
+            }
+            if (worst > 4) reasons.push(`free label overlaps a sibling box edge by ${Math.round(worst)}px vertically (move it clear or into the box)`);
+          }
         }
         if (reasons.length) {
           out.push({ text: String(t.text || '').replace(/\n/g, ' ').slice(0, 50), reasons });

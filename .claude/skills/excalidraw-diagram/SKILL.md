@@ -512,10 +512,11 @@ Every render runs a geometric overflow check and prints to stderr any **bound** 
   Fix: widen/raise the container box, lower fontSize, or split the label across lines.
 ```
 
-This catches the most common defects and is genuinely easy to miss by eye, so **do not rely on visual inspection alone for it**. The check has two parts:
+This catches the most common defects and is genuinely easy to miss by eye, so **do not rely on visual inspection alone for it**. The check has several parts:
 
 - **Crowding** — bound text must keep ~8px of breathing room inside its container. Text that sits flush against the box edge reads as cramped and is flagged even though it technically "fits." Never run text right up to the line.
 - **Own-box overflow** — any text (bound *or* free-floating) whose rendered glyphs exceed its own declared `width`/`height`. A free label with a too-small declared width renders past its box and can clip at the export bound, so these are checked too.
+- **Free label over a sibling box** — a free (unbound) label that rests on a filled box (≥50% horizontal overlap) but pokes past that box's **top or bottom edge**. Catches text spilling out of a code block / inner box even while it still sits inside a *larger* container — the collision the container-margin check alone misses (the label's center can fall just outside the small box it overlaps). Vertical only: horizontal spill is already covered by own-box overflow, and a wide label legitimately crossing a narrow cell is not a defect.
 
 Treat any `⚠ TEXT OVERFLOW` line as a must-fix. **Fix order matters:** first try splitting the label across more lines, then shortening/truncating it (an ellipsis is fine). **Widening the box is a last resort** — it bloats the diagram's overall footprint, and a diagram that keeps growing wider to fit text is a design smell. Keep an eye on total width: prefer wrapping tall over sprawling wide. Re-render until the warning is gone (or `--strict` exits 0).
 
@@ -534,7 +535,7 @@ After generating the initial JSON, run this cycle:
 
 **3. Check for visual defects:**
 - Text clipped by or overflowing its container
-- **Text overlapping a shape it is not bound to** — a free label sitting on a circle, arrow, or another box. The linter cannot see this; you must. Zoom into every dense cluster.
+- **Text overlapping a shape it is not bound to** — a free label sitting on a circle, arrow, or another box. The linter now flags free text that breaks a filled box's top/bottom edge, but it still can't see overlaps on circles, arrows, or purely horizontal collisions — zoom into every dense cluster.
 - **Text clipped at the diagram's outer edge** — if a label's declared width was too small it renders past the viewBox and gets cut off on the page even though the standalone PNG looks fine. Bind it, or widen its declared box.
 - Text or shapes overlapping other elements
 - Arrows crossing through elements instead of routing around them
