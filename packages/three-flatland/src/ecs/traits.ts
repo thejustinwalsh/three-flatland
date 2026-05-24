@@ -1,6 +1,7 @@
 import { trait, relation } from 'koota'
+import { Vector2 } from 'three'
 import type { Entity, Trait } from 'koota'
-import type { Group, Object3D, OrthographicCamera, Scene, Vector2 } from 'three'
+import type { Group, Object3D, OrthographicCamera, Scene } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
@@ -203,7 +204,11 @@ export const PostPassRegistry = trait(() => ({
 /** AoS — holds a lighting ColorTransformFn and enabled state. */
 export const LightEffectTrait = trait(() => ({
   fn: null as
-    | ((ctx: { color: Node<'vec4'>; atlasUV: Node<'vec2'>; worldPosition: Node<'vec2'> }) => Node<'vec4'>)
+    | ((ctx: {
+        color: Node<'vec4'>
+        atlasUV: Node<'vec2'>
+        worldPosition: Node<'vec2'>
+      }) => Node<'vec4'>)
     | null,
   enabled: true,
 }))
@@ -278,7 +283,7 @@ export const LightingContext = trait(() => ({
   /** Scene containing the sprites being lit — needed by the shadow pre-pass. */
   scene: null as Scene | null,
   /** World size in units (computed from camera frustum). */
-  worldSize: null as Vector2 | null,
+  worldSize: new Vector2(),
   /** World offset (camera left/bottom). */
-  worldOffset: null as Vector2 | null,
+  worldOffset: new Vector2(),
 }))

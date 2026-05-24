@@ -11,12 +11,7 @@ import {
 } from 'three'
 import { RenderPipeline } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
-import {
-  pass,
-  uv as uvNode,
-  convertToTexture,
-  uniform,
-} from 'three/tsl'
+import { pass, uv as uvNode, convertToTexture, uniform } from 'three/tsl'
 import type { World, Entity } from 'koota'
 import { SpriteGroup } from './pipeline/SpriteGroup'
 import { GlobalUniforms } from './GlobalUniforms'
@@ -27,7 +22,14 @@ import type { MaterialEffect } from './materials/MaterialEffect'
 import type Node from 'three/src/nodes/core/Node.js'
 import type PassNode from 'three/src/nodes/display/PassNode.js'
 import type { WorldProvider } from './ecs/world'
-import { PostPassTrait, PostPassRegistry, LightEffectTrait, LightingContext, ShadowPipeline, BatchRegistry } from './ecs/traits'
+import {
+  PostPassTrait,
+  PostPassRegistry,
+  LightEffectTrait,
+  LightingContext,
+  ShadowPipeline,
+  BatchRegistry,
+} from './ecs/traits'
 import { SDFGenerator } from './lights/SDFGenerator'
 import { OcclusionPass } from './lights/OcclusionPass'
 import { postPassSystem } from './ecs/systems/postPassSystem'
@@ -59,8 +61,8 @@ interface LightingContextData {
   renderer: WebGPURenderer | null
   camera: OrthographicCamera | null
   scene: Scene | null
-  worldSize: Vector2 | null
-  worldOffset: Vector2 | null
+  worldSize: Vector2
+  worldOffset: Vector2
 }
 
 /**
@@ -207,7 +209,6 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Whether the render pipeline was auto-initialized (vs. manual setRenderPipeline) */
   private _autoRenderPipeline = false
-
 
   /** Reusable Vector2 to avoid per-frame allocations */
   private _tempVec2 = new Vector2()
@@ -828,9 +829,7 @@ export class Flatland extends Group implements WorldProvider {
       const requiredChannels: ReadonlySet<ChannelName> = new Set(ctor.requires ?? [])
 
       // Spawn ECS entity for the effect
-      const entity = this.world.spawn(
-        LightEffectTrait({ fn, enabled: lightEffect.enabled })
-      )
+      const entity = this.world.spawn(LightEffectTrait({ fn, enabled: lightEffect.enabled }))
 
       // Add class-specific trait if schema has fields
       if (ctor._fields.length > 0) {
@@ -867,8 +866,8 @@ export class Flatland extends Group implements WorldProvider {
         renderer: existingCtx?.renderer ?? null,
         camera: existingCtx?.camera ?? null,
         scene: existingCtx?.scene ?? null,
-        worldSize: existingCtx?.worldSize ?? null,
-        worldOffset: existingCtx?.worldOffset ?? null,
+        worldSize: existingCtx?.worldSize ?? new Vector2(),
+        worldOffset: existingCtx?.worldOffset ?? new Vector2(),
       })
 
       // Register lighting systems on the schedule (before sprite systems)
@@ -882,7 +881,9 @@ export class Flatland extends Group implements WorldProvider {
     } else {
       // Clearing lighting
       if (this._lightingContextEntity) {
-        const existingCtx = this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined
+        const existingCtx = this._lightingContextEntity.get(LightingContext) as
+          | LightingContextData
+          | undefined
         this._lightingContextEntity.set(LightingContext, {
           effect: null,
           lightStore: existingCtx?.lightStore ?? null,
@@ -895,8 +896,8 @@ export class Flatland extends Group implements WorldProvider {
           renderer: existingCtx?.renderer ?? null,
           camera: existingCtx?.camera ?? null,
           scene: existingCtx?.scene ?? null,
-          worldSize: existingCtx?.worldSize ?? null,
-          worldOffset: existingCtx?.worldOffset ?? null,
+          worldSize: existingCtx?.worldSize ?? new Vector2(),
+          worldOffset: existingCtx?.worldOffset ?? new Vector2(),
         })
       }
     }
@@ -964,7 +965,7 @@ export class Flatland extends Group implements WorldProvider {
       this._lightStore,
       this._worldSizeUniform,
       this._worldOffsetUniform,
-      sdfTexture,
+      sdfTexture
     )
     const wrappedLightFn = wrapWithLightFlags(fn)
     lctx.wrappedLightFn = wrappedLightFn
@@ -994,8 +995,8 @@ export class Flatland extends Group implements WorldProvider {
           renderer: null,
           camera: null,
           scene: null,
-          worldSize: null,
-          worldOffset: null,
+          worldSize: new Vector2(),
+          worldOffset: new Vector2(),
         })
       )
     }
@@ -1145,7 +1146,9 @@ export class Flatland extends Group implements WorldProvider {
    */
   private _getLightingContext() {
     if (!this._lightingContextEntity) return null
-    return this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined ?? null
+    return (
+      (this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined) ?? null
+    )
   }
 
   /**
@@ -1154,7 +1157,7 @@ export class Flatland extends Group implements WorldProvider {
   private _getRegistry(): RegistryData | null {
     const registryEntities = this.world.query(BatchRegistry)
     if (registryEntities.length === 0) return null
-    return registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined ?? null
+    return (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined) ?? null
   }
 
   /**
@@ -1190,9 +1193,9 @@ export class Flatland extends Group implements WorldProvider {
       lctx.renderer = renderer
       lctx.camera = this._camera
       lctx.scene = this.scene
-      // Reuse or create Vector2s for world bounds
-      if (!lctx.worldSize) lctx.worldSize = new Vector2()
-      if (!lctx.worldOffset) lctx.worldOffset = new Vector2()
+      // worldSize/worldOffset are always live Vector2s (trait default +
+      // preserved across setLighting); lightEffectSystem mutates them in
+      // place each frame. No lazy allocation needed here.
     }
 
     // Sync the Flatland-owned world uniform nodes from the current camera
