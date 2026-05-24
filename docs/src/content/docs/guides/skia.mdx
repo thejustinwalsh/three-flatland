@@ -14,8 +14,8 @@ import skiaRenderModes from '../../../assets/diagrams/skia-render-modes.svg?raw'
 
 ---
 
-:::caution[Experimental — API not stable]
-`@three-flatland/skia` is **more experimental than the rest of the alpha library**: its public API is not yet stable and can change or be removed without notice between releases. Pin an exact version and expect breakage on upgrade.
+:::caution[Experimental]
+The `@three-flatland/skia` API isn't settled yet. We're dogfooding it across the examples and folding in [community feedback](https://github.com/thejustinwalsh/three-flatland/issues?q=is%3Aissue+label%3Askia) to stabilize it, so it can shift between releases. Pin an exact version for now.
 :::
 
 `@three-flatland/skia` brings Skia's GPU-accelerated vector rendering to Three.js via WASM, built with Zig. It auto-detects WebGPU or WebGL from your renderer and supports both Three.js and React Three Fiber.
