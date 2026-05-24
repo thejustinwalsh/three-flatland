@@ -19,103 +19,7 @@ import {
 import type { RegistryData } from '../ecs/batchUtils'
 import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
-
-// ============================================
-// Observable property helpers
-// ============================================
-//
-// Convert data properties (x/y/z, r/g/b) on Three.js objects to accessor
-// properties that fire a callback on write. Replaces the generic Proxy approach
-// with zero per-instance function allocations — descriptors are shared at
-// module level and reuse `this._cb` on the instance.
-//
-// Works because ALL Three.js Vector3/Color/Vector2 methods mutate via
-// `this.x = ...` etc., so the accessor setters catch every mutation path.
-
-/** @internal */
-interface Observable {
-  _cb: () => void
-}
-
-const _vec2Desc: PropertyDescriptorMap = {
-  x: {
-    get(this: Observable & { _ox: number }) {
-      return this._ox
-    },
-    set(this: Observable & { _ox: number }, v: number) {
-      this._ox = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-  y: {
-    get(this: Observable & { _oy: number }) {
-      return this._oy
-    },
-    set(this: Observable & { _oy: number }, v: number) {
-      this._oy = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-}
-
-const _colorDesc: PropertyDescriptorMap = {
-  r: {
-    get(this: Observable & { _or: number }) {
-      return this._or
-    },
-    set(this: Observable & { _or: number }, v: number) {
-      this._or = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-  g: {
-    get(this: Observable & { _og: number }) {
-      return this._og
-    },
-    set(this: Observable & { _og: number }, v: number) {
-      this._og = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-  b: {
-    get(this: Observable & { _ob: number }) {
-      return this._ob
-    },
-    set(this: Observable & { _ob: number }, v: number) {
-      this._ob = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-}
-
-/** Convert a Vector2's x/y data properties to callback-firing accessors in place. */
-function observeVector2(v: Vector2, cb: () => void): void {
-  const a = v as unknown as Record<string, unknown>
-  a._ox = v.x
-  a._oy = v.y
-  a._cb = cb
-  Object.defineProperties(v, _vec2Desc)
-}
-
-/** Convert a Color's r/g/b data properties to callback-firing accessors in place. */
-function observeColor(c: Color, cb: () => void): void {
-  const a = c as unknown as Record<string, unknown>
-  a._or = c.r
-  a._og = c.g
-  a._ob = c.b
-  a._cb = cb
-  Object.defineProperties(c, _colorDesc)
-}
+import { observable } from '../observable'
 
 /** Size in floats for each attribute type. */
 const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
@@ -362,7 +266,7 @@ export class Sprite2D extends Mesh {
     // Position/rotation/scale are NOT observed — accessor overhead on these
     // hot properties (read/written millions of times per frame in game loops)
     // costs more than it saves. transformSyncSystem reads directly from Object3D.
-    observeColor(this._tintColor, () => {
+    observable.color.attach(this._tintColor, () => {
       const i = this._idx
       this._colorR[i] = this._tintColor.r
       this._colorG[i] = this._tintColor.g
@@ -391,7 +295,7 @@ export class Sprite2D extends Mesh {
     // rebuild. The empty callback exists to keep the observer wired
     // (in case future code wants to react), but no work is needed
     // since `updateMatrix` reads the current `_anchor` every frame.
-    observeVector2(this._anchor, () => {
+    observable.vector2.attach(this._anchor, () => {
       this.matrixWorldNeedsUpdate = true
     })
 
@@ -579,7 +483,7 @@ export class Sprite2D extends Mesh {
    *
    * The anchor offset is baked into the matrix transform — no
    * geometry rebuild. Writing `_anchor.set(...)` triggers the
-   * observeVector2 callback which marks the matrix dirty; the next
+   * observable.vector2 callback which marks the matrix dirty; the next
    * `updateMatrix` picks up the new value.
    */
   setAnchor(x: number, y: number): this {

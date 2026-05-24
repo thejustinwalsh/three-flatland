@@ -14,31 +14,37 @@
  * notify-firing getters/setters.
  *
  * Each strategy provides:
- *   - `attach(value, notify)` — wire the value's mutation surface
+ *   - `attach(value, notify)` — wire the value's mutation surface so
+ *     any in-place write fires `notify`
  *   - `snapshot(value)` — capture a flat record of its fields for
  *     shallow memoization (reference-`===` doesn't work for in-place
  *     mutation)
  *
- * A strategy is paired with a schema entry via the `WithPropsSync`
- * tuple form: `[coerce, observable.color]`. The registry installs
- * the strategy on each coerced value and supplies a stale-safe
- * `notify` closure.
+ * Callers invoke a strategy's `attach` directly on a value they own.
+ * Internal classes like `Sprite2D` attach in their constructor so a
+ * setter such as `sprite.tint.set(...)` or `sprite.anchor.set(...)`
+ * pushes the new value to the GPU; external three.js extenders use
+ * the same exports to make their own Color/Vector2/Vector3/Euler
+ * props reactive. `attach` is idempotent — re-attaching just swaps
+ * the `notify` closure (handy when a value outlives the object that
+ * first wired it).
  *
  * @example
  * ```ts
  * import { observable } from 'three-flatland'
+ * import { Color } from 'three'
  *
- * WithPropsSync(Mesh, {
- *   tint: [
- *     (v?: Color | string | number | [number, number, number]): Color => {
- *       if (v === undefined) return new Color(0xffffff)
- *       if (Array.isArray(v)) return new Color().setRGB(v[0], v[1], v[2])
- *       if (v instanceof Color) return v.clone()
- *       return new Color().set(v)
- *     },
- *     observable.color,
- *   ],
- * })
+ * class Foo {
+ *   tint = new Color(0xffffff)
+ *   constructor() {
+ *     // R3F sets `material.tint.set(...)` by mutating in place;
+ *     // wrap it so each write fires our sync.
+ *     observable.color.attach(this.tint, () => this.syncToGpu())
+ *   }
+ *   syncToGpu() {
+ *     // read this.tint.r/.g/.b and upload
+ *   }
+ * }
  * ```
  */
 
@@ -49,8 +55,9 @@ export type Snapshot = Record<string, unknown>
 
 /**
  * Strategy that wires an observable value's mutation surface and
- * captures field snapshots for memoization. Paired with a schema
- * entry in the `WithPropsSync` tuple form.
+ * captures field snapshots for memoization. The public contract for
+ * teaching the observable system about a custom value type — call
+ * `attach` to make a value reactive, `snapshot` to memoize it.
  */
 export type ObservableStrategy<T> = {
   readonly attach: (value: T, notify: () => void) => void
@@ -111,50 +118,98 @@ interface ObservableEuler extends Euler {
 
 const colorDesc: PropertyDescriptorMap = {
   r: {
-    get(this: ObservableColor) { return this._or },
-    set(this: ObservableColor, v: number) { this._or = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: ObservableColor) {
+      return this._or
+    },
+    set(this: ObservableColor, v: number) {
+      this._or = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
   g: {
-    get(this: ObservableColor) { return this._og },
-    set(this: ObservableColor, v: number) { this._og = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: ObservableColor) {
+      return this._og
+    },
+    set(this: ObservableColor, v: number) {
+      this._og = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
   b: {
-    get(this: ObservableColor) { return this._ob },
-    set(this: ObservableColor, v: number) { this._ob = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: ObservableColor) {
+      return this._ob
+    },
+    set(this: ObservableColor, v: number) {
+      this._ob = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
 }
 
 const vector2Desc: PropertyDescriptorMap = {
   x: {
-    get(this: ObservableVector2) { return this._ox },
-    set(this: ObservableVector2, v: number) { this._ox = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: ObservableVector2) {
+      return this._ox
+    },
+    set(this: ObservableVector2, v: number) {
+      this._ox = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
   y: {
-    get(this: ObservableVector2) { return this._oy },
-    set(this: ObservableVector2, v: number) { this._oy = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: ObservableVector2) {
+      return this._oy
+    },
+    set(this: ObservableVector2, v: number) {
+      this._oy = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
 }
 
 const vector3Desc: PropertyDescriptorMap = {
   x: {
-    get(this: ObservableVector3) { return this._ox },
-    set(this: ObservableVector3, v: number) { this._ox = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: ObservableVector3) {
+      return this._ox
+    },
+    set(this: ObservableVector3, v: number) {
+      this._ox = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
   y: {
-    get(this: ObservableVector3) { return this._oy },
-    set(this: ObservableVector3, v: number) { this._oy = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: ObservableVector3) {
+      return this._oy
+    },
+    set(this: ObservableVector3, v: number) {
+      this._oy = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
   z: {
-    get(this: ObservableVector3) { return this._oz },
-    set(this: ObservableVector3, v: number) { this._oz = v; this._cb() },
-    configurable: true, enumerable: true,
+    get(this: ObservableVector3) {
+      return this._oz
+    },
+    set(this: ObservableVector3, v: number) {
+      this._oz = v
+      this._cb()
+    },
+    configurable: true,
+    enumerable: true,
   },
 }
 
@@ -239,8 +294,9 @@ function snapshotEuler(e: Euler): Snapshot {
 // ============================================
 
 /**
- * Observable strategies for three.js value types. Each strategy is
- * the second element of a `WithPropsSync` tuple-form schema entry.
+ * Observable strategies for three.js value types. Call a strategy's
+ * `attach(value, notify)` directly to make a value fire `notify` on
+ * in-place mutation (R3F compat).
  *
  * - `observable.color` — Color (r, g, b)
  * - `observable.vector2` — Vector2 (x, y)
@@ -250,7 +306,13 @@ function snapshotEuler(e: Euler): Snapshot {
  */
 export const observable = {
   color: { attach: attachColor, snapshot: snapshotColor } satisfies ObservableStrategy<Color>,
-  vector2: { attach: attachVector2, snapshot: snapshotVector2 } satisfies ObservableStrategy<Vector2>,
-  vector3: { attach: attachVector3, snapshot: snapshotVector3 } satisfies ObservableStrategy<Vector3>,
+  vector2: {
+    attach: attachVector2,
+    snapshot: snapshotVector2,
+  } satisfies ObservableStrategy<Vector2>,
+  vector3: {
+    attach: attachVector3,
+    snapshot: snapshotVector3,
+  } satisfies ObservableStrategy<Vector3>,
   euler: { attach: attachEuler, snapshot: snapshotEuler } satisfies ObservableStrategy<Euler>,
 } as const
