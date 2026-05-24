@@ -221,18 +221,17 @@ Each global has a corresponding TSL node: `timeNode`, `globalTintNode`, `viewpor
 
 ## Statistics
 
-Monitor rendering performance with `flatland.stats`:
+Monitor batching with `flatland.spriteGroup.stats`:
 
 ```typescript
-const stats = flatland.stats
+const stats = flatland.spriteGroup.stats
 
 console.log(`Sprites: ${stats.spriteCount}`)
 console.log(`Batches: ${stats.batchCount}`)
-console.log(`Draw calls: ${stats.drawCalls}`)
 console.log(`Visible: ${stats.visibleSprites}`)
 ```
 
-Draw calls are derived from `renderer.info` — they reflect actual GPU work, not estimates.
+Draw calls aren't part of `stats` — read them from the renderer after a frame: `renderer.info.render.calls` reflects actual GPU work.
 
 ## Post-Processing
 

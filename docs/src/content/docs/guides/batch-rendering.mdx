@@ -106,8 +106,10 @@ const stats = spriteGroup.stats;
 
 console.log(`Sprites: ${stats.spriteCount}`);
 console.log(`Batches: ${stats.batchCount}`);
-console.log(`Draw calls: ${stats.drawCalls}`);
 console.log(`Visible: ${stats.visibleSprites}`);
+
+// Draw calls aren't part of stats — read them from the renderer:
+console.log(`Draw calls: ${renderer.info.render.calls}`);
 ```
 
 **Goal:** Keep `batchCount` low relative to `spriteCount`. If you have 1000 sprites but 100 batches, you're not batching efficiently.
@@ -213,17 +215,17 @@ Don't call `attribute('instanceSystem', 'vec4')` directly unless you specificall
 A custom `colorTransform` that crossfades between two tints based on each sprite's `lit` flag, applied per-instance from the same batch:
 
 ```typescript
-import { Fn, vec4 } from 'three/tsl'
+import { vec4 } from 'three/tsl'
 import { Sprite2DMaterial, readLitFlag } from 'three-flatland'
 
 const material = new Sprite2DMaterial({
   map: atlas,
-  colorTransform: Fn(([base]) => {
-    const litColor = base.rgb
-    const dimColor = base.rgb.mul(0.4)
+  colorTransform: (ctx) => {
+    const litColor = ctx.color.rgb
+    const dimColor = ctx.color.rgb.mul(0.4)
     const isLit = readLitFlag()
-    return vec4(isLit.select(litColor, dimColor), base.a)
-  }),
+    return vec4(isLit.select(litColor, dimColor), ctx.color.a)
+  },
 })
 ```
 

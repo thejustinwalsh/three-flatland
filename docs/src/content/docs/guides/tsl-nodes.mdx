@@ -341,12 +341,12 @@ With Material Effects, multiple effects can be active simultaneously. Each effec
 
 ```typescript
 const flash = new DamageFlash();
-const outline = new SelectOutline();
+const select = new Select();
 
 sprite.addEffect(flash);
-sprite.addEffect(outline);
+sprite.addEffect(select);
 
-// Both effects are active — outline runs after flash in the shader
+// Both effects are active — select runs after flash in the shader
 ```
 
 For low-level TSL, chain node functions directly:
