@@ -24,9 +24,13 @@ The repo's existing buckets already line up with Diátaxis — hold each page to
 | **Concepts** (`guides/flatland`, `batch-rendering`, `lighting`, `shadows`) | **Explanation** | The "why" and the mental model. No setup steps, no option tables. |
 | **Guides** (`guides/sprites`, `animation`, `loaders`, `lighting-setup`, …) | **How-to** | One task each. Show the *one* call the task needs; link the Reference for the rest. |
 | **API Reference** (TypeDoc) | **Reference** | Generated from JSDoc. The home for every option, signature, and field. |
-| **Getting Started → Quick Start** + **Examples** | **Tutorial** | The learning path. Quick Start is the canonical tutorial; examples are runnable lessons. |
+| **Getting Started → Quick Start** | **Tutorial** | The canonical first lesson — pixels on screen, guaranteed success. |
+| **Examples** | **Tutorial** (single feature) | One per *prime feature*. The page is two things: a "get it on your machine" command (a `degit`-style first-party CLI pull that drops the isolated example into a freshly-`git init`'d repo in one command) **and** a how-it's-built walkthrough with **Three.js + React code-sample tabs**. Focused on the one feature even if the example carries supporting machinery to show it off. Not reference, not explanation. |
+| **Showcases** | **Tutorial** (uber) | Full games — far more in-depth than examples, and free to pull in third-party packages *outside* the three-flatland ecosystem. In-depth architecture/strategy/build narrative is *correct* here; depth is the point. Do **not** mistake a showcase's depth for mis-typed Explanation. |
 
 The lighting/shadows split already in the repo — `lighting` (Concept/Explanation) paired with `lighting-setup` (Guide/How-to) — is the pattern. Most other features should reach the same shape.
+
+**Examples vs Showcases:** an example isolates **one** prime feature and teaches how that feature is built (dual-framework); a showcase is an uber-tutorial — a full, shippable game with third-party deps and real architecture. Both are Tutorials; the difference is scope and depth, not type.
 
 ## Tutorial vs How-to (the pair agents conflate)
 

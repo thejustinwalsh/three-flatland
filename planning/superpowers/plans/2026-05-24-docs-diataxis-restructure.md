@@ -225,21 +225,31 @@ The "Baked Normal Pipeline" section (atlas RGBA encoding, resolution-strategy in
 
 ---
 
-## Task 7: Reframe the example pages' prose as guided narrative
+## Task 7: Make example pages single-feature tutorials (get-it command + dual-framework build walkthrough)
 
 **Files:**
 - Modify: each `docs/src/content/docs/examples/*.mdx` prose slot
+- Modify: `docs/src/components/ExampleDetailLayout.astro` / `ExampleSplitView.astro` (surface the "get it" command)
 - Modify: `docs/src/content/docs/showcases/breakout.mdx`
 
-The live demo carries the lesson; the prose slot currently reads as mini-reference (option tables, API inventories). Per Diátaxis, a Tutorial says "do this, see X."
+**Intent (corrected per stakeholder):** Examples ARE tutorials, each focused on **one prime feature** (even if it carries supporting machinery to show it off). An example page is two things: **(1) a "get it on your machine" command** and **(2) a how-it's-built walkthrough** using the existing Three.js / React code-sample tabs. The current prose slot drifts into mini-reference (option tables, API inventories) — that is the defect. Replace it with the build tutorial; option tables go to the API page.
 
-- [ ] **Step 1 (per example page):** Replace API-inventory/option-table prose with 2-4 sentences of guided narrative ("the demo above does X; the key call is Y; try changing Z"). Move any option tables to the matching API page; add the missing example→guide/API cross-links on `basic-sprite`, `animation`, `knightmark`, `tilemap`. Align `examples/lighting` snippet `viewSize` to the runnable `640`.
-  Commit per page or in one `docs: reframe example pages as guided lessons`.
+- [ ] **Step 1 — the "get it" command.** Add a one-command pull to each example page (and/or the layout toolbar). **The first-party CLI does not exist yet** (only `bake`/`slug`/`skia` build bins) — so:
+  - **Interim (ship now):** show a `degit`-style command against the repo subtree, plus a fresh git init, e.g.:
+    ```bash
+    npx degit thejustinwalsh/three-flatland/examples/react/basic-sprite my-app
+    cd my-app && git init && pnpm install
+    ```
+    (variant-aware: `examples/three/<slug>` vs `examples/react/<slug>` — the slug + framework are already known to `ExampleSplitView`.)
+  - **Target (separate subsystem — spec its own plan):** a first-party `three-flatland` / `create-three-flatland` CLI that pulls the isolated example into a freshly-`git init`'d, bootstrapped repo in one command (`npx three-flatland new basic-sprite --react`). This is NOT part of the docs restructure — note it as a companion feature; once it ships, swap the interim command for the first-party one.
 
-- [ ] **Step 2: `breakout.mdx`** is an Explanation (architecture, collision math, ECS taxonomy, AI) in a showcase costume. Decide: (a) relabel/accept it as an architecture explainer, or (b) split the deep-dive into a linked explanation page and keep the showcase a short "what it is + play it." Recommended: (b). Execute the chosen option.
-  Commit `docs: right-type the breakout showcase`.
+- [ ] **Step 2 — the build walkthrough (per example page).** Replace the API-inventory/option-table prose with a **guided "how it's built" tutorial**: ordered steps that walk the reader through the example's construction, focused on the **one prime feature**, with the Three.js and React variants behind the existing `syncKey="framework"` code-sample tabs (the runnable source + live demo already carry the result). Move any full option tables to the matching API page; add the missing example→guide/API cross-links on `basic-sprite`, `animation`, `knightmark`, `tilemap`. Align the `examples/lighting` snippet `viewSize` to the runnable `640`.
+  Commit per page or in one `docs: rebuild example pages as single-feature tutorials`.
 
-- [ ] **Step 3: Build + verify** (exit 0).
+- [ ] **Step 3 — showcases are uber-tutorials, NOT explanations.** **Reverse the audit's "split breakout" recommendation.** `breakout.mdx` is a full game with third-party deps and deep architecture — that depth is *correct* for a showcase (an uber-tutorial). Do **not** strip the architecture/collision/ECS/AI content. Work: ensure it reads as a build/tutorial narrative (ordered "how this game is built" arc) rather than a dry architecture dump, carry the same "get it" command, and keep the third-party-dependency usage. Showcases are simply deeper, broader tutorials than examples.
+  Commit `docs: shape breakout as an uber-tutorial (keep the depth)`.
+
+- [ ] **Step 4: Build + verify** (exit 0).
 
 ---
 
@@ -272,8 +282,10 @@ The live demo carries the lesson; the prose slot currently reads as mini-referen
 
 ## Self-Review
 
-**Spec coverage (audit P1 items → task):** flatland split → T2; pass-effects quadruple-mix + misfiled DefaultLightEffect → T3; batch-rendering trim → T4; sprites/animation/loaders/tilemaps/lighting-setup/shadows-setup/tsl-nodes/skia/slug-text table lifts → T5; loaders baked-normal Explanation → T6; example prose reframe + breakout → T7; visuals/cross-link gaps → T8; nodes/devtools API targets → T1. All P1 + P2 findings mapped.
+**Spec coverage (audit P1 items → task):** flatland split → T2; pass-effects quadruple-mix + misfiled DefaultLightEffect → T3; batch-rendering trim → T4; sprites/animation/loaders/tilemaps/lighting-setup/shadows-setup/tsl-nodes/skia/slug-text table lifts → T5; loaders baked-normal Explanation → T6; example pages → single-feature tutorials (get-it command + dual-framework walkthrough) → T7; visuals/cross-link gaps → T8; nodes/devtools API targets → T1. All P1 + P2 findings mapped.
 
-**Known decisions deferred to execution (not placeholders — explicit forks):** T1 Step 1 (devtools in TypeDoc; skia/slug stay trimmed); T3 Step 3 (new `effects.mdx` vs fold into flatland); T4 Step 2 (tips home); T7 Step 2 (breakout relabel vs split). Each fork has a recommended option stated.
+**Audit correction:** the audit flagged `breakout` as "Explanation in showcase costume" and proposed splitting it. Per stakeholder, that is wrong — examples and showcases are BOTH Tutorials (examples = one prime feature; showcases = uber-tutorials: full games, third-party deps, deeper). T7 Step 3 keeps breakout's depth and shapes it as a build narrative; it does not split it.
+
+**Known decisions deferred to execution (not placeholders — explicit forks):** T1 Step 1 (devtools in TypeDoc; skia/slug stay trimmed); T3 Step 3 (new `effects.mdx` vs fold into flatland); T4 Step 2 (tips home); T7 Step 1 (interim `degit` command now, first-party `three-flatland new` CLI as a separate companion subsystem). Each fork has a recommended option stated.
 
 **Out of scope:** P0 accuracy fixes (already committed `9ee4710f`); the `SpriteGroup.stats` JSDoc stale "See Flatland.stats" comment (source-side, file separately).
