@@ -170,6 +170,14 @@ export const BatchRegistry = trait(() => ({
    * 3× the cost.
    */
   scheduleRuns: 0,
+  /**
+   * Whether any occluder changed since the last shadow generation.
+   * Set false at the top of `flushDirtyRangesSystem`, then set true if any
+   * batch mesh reports `isDirty` before its trackers are flushed.
+   * `shadowPipelineSystem` reads this to skip the occluder render + SDF
+   * regen when nothing moved. Defaults true so the first frame regenerates.
+   */
+  occludersDirty: true as boolean,
 }))
 
 // ============================================
@@ -235,6 +243,14 @@ export const ShadowPipeline = trait(() => ({
   height: 0,
   /** True once the first-frame init() has allocated GPU resources. */
   initialized: false,
+  /** Camera frustum/position at last generation — NaN sentinels force the
+   *  first compare to read "changed" so a camera pan/zoom regenerates. */
+  lastLeft: NaN,
+  lastRight: NaN,
+  lastTop: NaN,
+  lastBottom: NaN,
+  lastPosX: NaN,
+  lastPosY: NaN,
 }))
 
 export const LightingContext = trait(() => ({

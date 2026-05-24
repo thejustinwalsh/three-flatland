@@ -1,6 +1,6 @@
 import { Vector2 } from 'three'
 import type { World } from 'koota'
-import { LightingContext, ShadowPipeline } from '../traits'
+import { BatchRegistry, LightingContext, ShadowPipeline } from '../traits'
 import { SDFGenerator } from '../../lights/SDFGenerator'
 import { OcclusionPass } from '../../lights/OcclusionPass'
 import type { LightEffect } from '../../lights/LightEffect'
@@ -84,6 +84,10 @@ export function shadowPipelineSystem(world: World): void {
   const camera = ctx.camera
   if (!camera) return
 
+  // Tracks whether init/resize forces a regen this run regardless of the
+  // occluder/camera dirty signals (the SDF RT contents are stale/unsized).
+  let mustRegen = false
+
   // Lazy allocate on first entry. Construction here is cheap (no GPU
   // resources until init() below). Consumers (lightEffectSystem builds
   // the effect runtime context) pull the handle straight from this trait
@@ -109,11 +113,13 @@ export function shadowPipelineSystem(world: World): void {
     pipeline.width = sdfW
     pipeline.height = sdfH
     pipeline.initialized = true
+    mustRegen = true
   } else if (sdfW !== pipeline.width || sdfH !== pipeline.height) {
     pipeline.sdfGenerator.resize(sdfW, sdfH)
     pipeline.occlusionPass.resize(_sizeScratch.x, _sizeScratch.y)
     pipeline.width = sdfW
     pipeline.height = sdfH
+    mustRegen = true
   }
 
   const scene = ctx.scene
@@ -127,12 +133,55 @@ export function shadowPipelineSystem(world: World): void {
   // ortho camera is required by the shadow pipeline; cast guards against
   // callers that plug in a perspective camera by mistake.
   const ortho = camera as { left?: number; right?: number; top?: number; bottom?: number }
+  let left = NaN
+  let right = NaN
+  let top = NaN
+  let bottom = NaN
   if (typeof ortho.left === 'number' && typeof ortho.right === 'number' &&
       typeof ortho.top === 'number' && typeof ortho.bottom === 'number') {
-    _worldSizeScratch.set(ortho.right - ortho.left, ortho.top - ortho.bottom)
+    left = ortho.left
+    right = ortho.right
+    top = ortho.top
+    bottom = ortho.bottom
+    _worldSizeScratch.set(right - left, top - bottom)
     pipeline.sdfGenerator.setWorldBounds(_worldSizeScratch)
   }
 
+  // Occluder-dirty gate. Skip the occluder render + SDF regen when no
+  // occluder changed since the last generation and the camera frustum/
+  // position is unchanged — the SDF render-target retains the previous
+  // generation, which is correct when nothing moved. The size-sync / init /
+  // resize / setWorldBounds logic above still runs every frame; only the two
+  // GPU passes below are gated.
+  const registryEntities = world.query(BatchRegistry)
+  // Treat a missing registry as dirty so shadows never silently freeze.
+  const occludersDirty =
+    registryEntities.length === 0
+      ? true
+      : (registryEntities[0]!.get(BatchRegistry)?.occludersDirty ?? true)
+
+  const posX = camera.position.x
+  const posY = camera.position.y
+  const cameraChanged =
+    !Object.is(left, pipeline.lastLeft) ||
+    !Object.is(right, pipeline.lastRight) ||
+    !Object.is(top, pipeline.lastTop) ||
+    !Object.is(bottom, pipeline.lastBottom) ||
+    !Object.is(posX, pipeline.lastPosX) ||
+    !Object.is(posY, pipeline.lastPosY)
+
+  const dirty = mustRegen || occludersDirty || cameraChanged
+  if (!dirty) return
+
   pipeline.occlusionPass.render(renderer, scene, camera)
   pipeline.sdfGenerator.generate(renderer, pipeline.occlusionPass.renderTarget)
+
+  // Record the frustum/position this generation was rendered against so the
+  // next frame can detect a camera change.
+  pipeline.lastLeft = left
+  pipeline.lastRight = right
+  pipeline.lastTop = top
+  pipeline.lastBottom = bottom
+  pipeline.lastPosX = posX
+  pipeline.lastPosY = posY
 }

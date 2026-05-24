@@ -1013,13 +1013,15 @@ export class Flatland extends Group implements WorldProvider {
     const registry = this._getRegistry()
     if (!registry?.schedule) return
 
-    // Prepend lighting systems before sprite systems. shadowPipelineSystem
-    // runs after lightEffectSystem (so the effect's `update` — which may
-    // stage per-frame data the shadow pass consumes — has already run) but
-    // before sprite systems render, so the SDF texture is fresh when the
-    // main render kicks off.
+    // Prepend the light setup systems before sprite systems. shadowPipelineSystem
+    // is APPENDED instead so it runs LAST — after conditionalTransformSyncSystem
+    // has written current-frame instance matrices and flushDirtyRangesSystem has
+    // uploaded them. This way the occluder pre-pass sees freshly-uploaded matrices
+    // (fixes the 1-frame shadow lag on moving casters). The schedule's per-frame
+    // idempotency + OcclusionPass._rendering guard handle the reentrant
+    // renderer.render → updateMatrixWorld → schedule.run, so appending is safe.
     registry.schedule
-      .prepend(shadowPipelineSystem)
+      .add(shadowPipelineSystem)
       .prepend(lightMaterialAssignSystem)
       .prepend(lightEffectSystem)
       .prepend(lightSyncSystem)

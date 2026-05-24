@@ -17,9 +17,15 @@ export function flushDirtyRangesSystem(world: World): void {
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
   if (!registry) return
 
+  // Reset the occluder-dirty flag, then capture per-batch dirtiness BEFORE
+  // flushing (flush clears the trackers). shadowPipelineSystem reads this to
+  // decide whether the occluder render + SDF regen can be skipped.
+  registry.occludersDirty = false
+
   for (const batchEntity of registry.activeBatches) {
     const batchMesh = batchEntity.get(BatchMesh)
     if (batchMesh?.mesh) {
+      if (batchMesh.mesh.isDirty) registry.occludersDirty = true
       batchMesh.mesh.flushDirtyRanges()
     }
   }

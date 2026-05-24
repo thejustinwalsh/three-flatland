@@ -37,6 +37,8 @@ export interface RegistryData {
   schedule: SystemSchedule | null
   /** Monotonic counter of completed `schedule.run` invocations — see trait doc. */
   scheduleRuns: number
+  /** Whether any occluder changed since the last shadow generation. */
+  occludersDirty: boolean
 }
 
 /**

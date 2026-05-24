@@ -229,6 +229,7 @@ export class SpriteGroup extends Group implements WorldProvider {
           autoInvalidateTransforms: this.autoInvalidateTransforms,
           schedule,
           scheduleRuns: 0,
+          occludersDirty: true,
         })
       )
     }

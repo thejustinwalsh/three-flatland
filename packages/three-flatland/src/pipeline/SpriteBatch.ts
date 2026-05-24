@@ -552,6 +552,17 @@ export class SpriteBatch extends InstancedMesh {
    * `addUpdateRange` per dirty bucket, based on how many buckets
    * accumulated changes during the frame.
    */
+  /**
+   * Whether any occluder-relevant attribute changed since the last flush.
+   * Reads the matrix tracker (transforms) and interleaved tracker
+   * (frame/castsShadow/alpha/add-remove) — together these capture every
+   * change that alters an occluder silhouette. Must be read BEFORE
+   * `flushDirtyRanges`, which clears the trackers.
+   */
+  get isDirty(): boolean {
+    return this._matrixTracker.isDirty || this._interleavedTracker.isDirty
+  }
+
   flushDirtyRanges(): void {
     this._matrixTracker.flush()
     this._interleavedTracker.flush()
