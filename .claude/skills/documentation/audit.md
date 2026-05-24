@@ -1,4 +1,6 @@
-# Documentation Audit Skill
+# Documentation audit (the four layers)
+
+Loaded by the `documentation` skill when auditing existing docs. Run **all four layers** — and note that accuracy drift (Layer 1) is necessary but **not sufficient**: the most-missed defect is type-mixing (Layer 2, criterion #5), which a clean layout hides. An audit that only finds accuracy bugs has done half the job. See `diataxis.md` for the type rules.
 
 > **Purpose:** Keep docs accurate, engaging, and visually clear — not just complete.
 > **Core Principle:** Docs are part of the product. Loved docs *render the product on every page* and respect the reader's attention.
@@ -61,7 +63,7 @@ Every prose page (not auto-generated API pages) is graded against eight criteria
 | 2 | **One visual** | At minimum a static rendered output. Ideally a `<Compare>`, `<Example>`, mermaid diagram, or annotated image. Pure-prose pages fail this criterion. |
 | 3 | **Framework parity** | Three.js + R3F tabs with `syncKey="framework"`; shared explanatory prose pulled out of tabs |
 | 4 | **Signature callout** | At least one `:::tip[Performance note]` (the three-flatland signature) where applicable. Not every page needs one — but a perf-relevant page that has none is suspect. |
-| 5 | **Concepts vs Reference clarity** | Page is unambiguously one of: tutorial (Learn), conceptual explainer (Concepts), how-to recipe (Guides), or API surface (Reference). Mixed-mode pages should be split. |
+| 5 | **Type purity (Diátaxis)** | Page is unambiguously ONE type — tutorial, how-to, reference, or explanation (`diataxis.md`). **Name the type, then flag any content that violates that type's must-not list**: a Concept/explanation carrying setup steps or a constructor-options table, a how-to carrying a full properties table, a tutorial stopping to explain theory. A clean layout / "progressive disclosure" does **not** excuse mixing — a page serving multiple types is a split candidate regardless of polish, and "comprehensive" is the tell, not the defense. This is a hard fail, not a soft criterion: when violated, the page fix is a split (per the `diataxis.md` split recipe), not a rewrite-in-place. |
 | 6 | **One human sentence** | A "you don't need to remember this" / "this is the part that bites you" / "leave it alone unless..." moment. Disarms the reader. Permission to be a person. |
 | 7 | **Cross-links** | Links to (a) the matching `examples/` entry, (b) the relevant API reference page, (c) prerequisite concept page. Missing any of the three is a finding. |
 | 8 | **Public API is JSDoc'd** | Every public class / function / option referenced on the page has a `/** ... */` block in source with `@param` / `@returns` / `@example` where useful. The auto-generated API page is only as good as the JSDoc. |
