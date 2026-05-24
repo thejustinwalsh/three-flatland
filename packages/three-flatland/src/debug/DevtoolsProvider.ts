@@ -309,7 +309,7 @@ export class DevtoolsProvider {
       if (subscription.size > 0) {
         this._textures.readbackAll(
           subscription,
-          renderer as unknown as import('three/webgpu').WebGPURenderer,
+          renderer as unknown as WebGPURenderer,
         )
       }
     }

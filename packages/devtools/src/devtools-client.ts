@@ -2,9 +2,7 @@ import type {
   BatchesPayload,
   BatchInfo,
   BufferChunkPayload,
-  BufferDelta,
   BufferDisplayMode,
-  BufferRawPayload,
   BufferSubscriptionEntry,
   BuffersPayload,
   DebugFeature,
@@ -12,7 +10,6 @@ import type {
   EnvPayload,
   PassEvent,
   ProviderIdentity,
-  RegistryEntryDelta,
   RegistryEntryKind,
   RegistryPayload,
   StatsPayload,
@@ -608,7 +605,7 @@ export class DevtoolsClient {
       }
       case 'buffer:chunk': {
         this._markServerAlive()
-        const payload = msg.payload as BufferChunkPayload
+        const payload = msg.payload
         for (const cb of this._chunkListeners) {
           try { cb(payload) } catch { /* listener errors shouldn't break the bus */ }
         }
@@ -616,7 +613,7 @@ export class DevtoolsClient {
       }
       case 'buffer:raw': {
         this._markServerAlive()
-        const payload = msg.payload as BufferRawPayload
+        const payload = msg.payload
         let snap = this.state.buffers.get(payload.name)
         if (snap !== undefined) {
           // buffer:raw only carries the converted RGBA8 pixels and the

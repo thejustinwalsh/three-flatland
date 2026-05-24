@@ -1,4 +1,4 @@
-import { Loader } from 'three'
+import { Loader, type Texture } from 'three'
 import type {
   TileMapData,
   TilesetData,
@@ -416,7 +416,7 @@ export class TiledLoader extends Loader<TileMapData> {
     optionDescriptor: true | NormalSourceDescriptor,
     forceRuntime: boolean,
     diffuseFlipY: boolean
-  ): Promise<import('three').Texture> {
+  ): Promise<Texture> {
     const margin = ts.margin ?? 0
     const spacing = ts.spacing ?? 0
     const rows = Math.floor(ts.tilecount / ts.columns)

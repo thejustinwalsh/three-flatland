@@ -24,9 +24,6 @@ interface StatDef {
   color: string
 }
 
-function fmt1(v: number | undefined): string {
-  return v === undefined ? '—' : v.toFixed(1)
-}
 function fmt0(v: number | undefined): string {
   return v === undefined ? '—' : Math.round(v).toString()
 }

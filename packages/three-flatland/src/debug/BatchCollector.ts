@@ -4,7 +4,7 @@ import type { BatchesPayload, BatchInfo, PassEvent } from '../debug-protocol'
 import type { RegistryData } from '../ecs/batchUtils'
 import { BatchMesh, BatchMeta } from '../ecs/traits'
 import type { BatchSourceFn, MeshBatchSourceFn } from './debug-sink'
-import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 
 /**
  * Fixed stack depth — nested passes (main → shadow → occluder) rarely

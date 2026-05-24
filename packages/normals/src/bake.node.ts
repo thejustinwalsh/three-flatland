@@ -54,7 +54,7 @@ function resolveDescriptorInput(
   // `regions`, `direction`, etc. Treat as descriptor when any non-
   // `strength` field is present.
   if ('regions' in input || 'direction' in input || 'bump' in input || 'pitch' in input) {
-    return input as NormalSourceDescriptor
+    return input
   }
   const legacy = input as BakeOptions
   return { strength: legacy.strength }

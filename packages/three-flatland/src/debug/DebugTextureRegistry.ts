@@ -1,5 +1,5 @@
 import type { WebGPURenderer } from 'three/webgpu'
-import type { DataTexture, Texture } from 'three'
+import type { DataTexture, PixelFormat, Texture } from 'three'
 import {
   Mesh,
   NearestFilter,
@@ -120,8 +120,8 @@ export class DebugTextureRegistry {
       label: opts.label,
       lastEmittedVersion: existing?.lastEmittedVersion ?? 0,
       lastEmittedShape: existing?.lastEmittedShape ?? 'none',
-      dataTexture: isDataTexture ? (source as DataTexture) : undefined,
-      renderTarget: isDataTexture ? undefined : (source as ReadableRenderTarget),
+      dataTexture: isDataTexture ? (source) : undefined,
+      renderTarget: isDataTexture ? undefined : (source),
       pendingReadback: null,
       sample: existing?.sample ?? null,
       width: existing?.width ?? 0,
@@ -296,7 +296,7 @@ export class DebugTextureRegistry {
       if (src !== undefined) {
         const copy = src instanceof Float32Array
           ? new Float32Array(src)
-          : new Uint8Array(src as Uint8Array)
+          : new Uint8Array(src)
         e.sample = copy
         const w = e.dataTexture.image.width
         const h = e.dataTexture.image.height
@@ -340,7 +340,7 @@ export class DebugTextureRegistry {
             // `AnyPixelFormat` union; `RenderTarget` wants plain
             // `PixelFormat`. In practice debug-registered textures are
             // always rgba / r / rg — all valid.
-            format: rt.texture.format as import('three').PixelFormat,
+            format: rt.texture.format as PixelFormat,
             type: rt.texture.type,
             depthBuffer: false,
             stencilBuffer: false,

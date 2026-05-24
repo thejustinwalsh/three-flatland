@@ -81,7 +81,7 @@ export class ProtocolStore {
       const tx = db.transaction(STORE, 'readwrite')
       tx.objectStore(STORE).clear()
       tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error)
+      tx.onerror = () => reject(tx.error ?? new Error('IndexedDB transaction failed'))
     })
     return db
   }
@@ -96,7 +96,7 @@ export class ProtocolStore {
         store.createIndex(INDEX, 'providerId', { unique: false })
       }
       req.onsuccess = () => resolve(req.result)
-      req.onerror = () => reject(req.error)
+      req.onerror = () => reject(req.error ?? new Error('IndexedDB request failed'))
     })
   }
 
@@ -235,7 +235,7 @@ export class ProtocolStore {
         }
         cursor.continue()
       }
-      req.onerror = () => reject(req.error)
+      req.onerror = () => reject(req.error ?? new Error('IndexedDB request failed'))
     })
     // Cursor yields in key order (ascending id) which matches our
     // expected rendering direction (newest-first = reverse).
@@ -257,7 +257,7 @@ export class ProtocolStore {
         }
         resolve()
       }
-      req.onerror = () => reject(req.error)
+      req.onerror = () => reject(req.error ?? new Error('IndexedDB request failed'))
     })
     this._fire()
   }

@@ -104,23 +104,25 @@ export function threeFlatlandDevtools(
     },
 
     configureServer(server: ViteDevServer) {
-      server.middlewares.use(async (req, res, next) => {
-        if (req.url === undefined) return next()
-        const url = req.url.split('?')[0] ?? ''
-        if (url !== mountPath && url !== `${mountPath}/`) return next()
+      server.middlewares.use((req, res, next) => {
+        void (async () => {
+          if (req.url === undefined) return next()
+          const url = req.url.split('?')[0] ?? ''
+          if (url !== mountPath && url !== `${mountPath}/`) return next()
 
-        try {
-          const indexPath = resolve(dashboardRoot, 'index.html')
-          let html = await readFile(indexPath, 'utf-8')
-          const entryAbs = resolve(dashboardRoot, 'index.tsx')
-          html = html.replace('./index.tsx', `/@fs${entryAbs}`)
-          html = await server.transformIndexHtml(req.url, html, req.originalUrl)
-          res.statusCode = 200
-          res.setHeader('Content-Type', 'text/html; charset=utf-8')
-          res.end(html)
-        } catch (err) {
-          next(err)
-        }
+          try {
+            const indexPath = resolve(dashboardRoot, 'index.html')
+            let html = await readFile(indexPath, 'utf-8')
+            const entryAbs = resolve(dashboardRoot, 'index.tsx')
+            html = html.replace('./index.tsx', `/@fs${entryAbs}`)
+            html = await server.transformIndexHtml(req.url, html, req.originalUrl)
+            res.statusCode = 200
+            res.setHeader('Content-Type', 'text/html; charset=utf-8')
+            res.end(html)
+          } catch (err) {
+            next(err)
+          }
+        })()
       })
 
       const logger = server.config.logger

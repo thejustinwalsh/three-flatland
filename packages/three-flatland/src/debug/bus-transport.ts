@@ -30,7 +30,7 @@
  */
 
 import type { DebugMessage } from '../debug-protocol'
-import { BufferPool, POOL, allocateTier } from './bus-pool'
+import { BufferPool, POOL } from './bus-pool'
 import { convertToRGBA8 } from './pixel-convert'
 
 export interface ConvertRequest {

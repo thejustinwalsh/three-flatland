@@ -136,7 +136,7 @@ export class BufferPool {
 /** Allocate one tier's worth of fresh buffers — called by the worker at boot. */
 export function allocateTier(tier: PoolTier): ArrayBuffer[] {
   const spec = POOL[tier]
-  const out: ArrayBuffer[] = new Array(spec.count)
+  const out: ArrayBuffer[] = new Array<ArrayBuffer>(spec.count)
   for (let i = 0; i < spec.count; i++) out[i] = new ArrayBuffer(spec.size)
   return out
 }

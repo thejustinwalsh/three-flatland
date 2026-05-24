@@ -710,7 +710,7 @@ export interface AckPayload {
 }
 
 /** Provider → consumers: idle liveness signal. Presence is the info. */
-export interface PingPayload {}
+export type PingPayload = Record<string, never>
 
 // ─── Provider discovery ─────────────────────────────────────────────────────
 

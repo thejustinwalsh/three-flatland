@@ -84,7 +84,6 @@ const ctx = self as unknown as WorkerScope
 
 const VP9_CODEC = 'vp09.00.10.08'
 const KEYFRAME_INTERVAL_MS = 2000
-const DEFAULT_QUANTIZER = 30
 
 class StreamEncoder {
   private _encoder: VideoEncoder | null = null

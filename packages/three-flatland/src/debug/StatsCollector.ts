@@ -1,5 +1,5 @@
 import type { StatsPayload } from '../debug-protocol'
-import { FEATURE_STALE_MS, STATS_RING_SIZE } from '../debug-protocol'
+import { STATS_RING_SIZE } from '../debug-protocol'
 import type { BufferCursor } from './bus-pool'
 import { copyTypedTo } from './bus-pool'
 import { detectGpuTimingActive } from './detectGpuTiming'

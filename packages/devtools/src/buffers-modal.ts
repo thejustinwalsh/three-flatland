@@ -399,7 +399,7 @@ export function createBuffersModal(
 
     // If active was removed, fall back to first available.
     if (activeName !== null && !state.buffers.has(activeName)) {
-      const first = state.buffers.keys().next().value as string | undefined
+      const first = state.buffers.keys().next().value
       activeName = first ?? null
       // setActive resyncs server filter, but we may be in mid-refresh
       // so call the underlying setter directly.

@@ -28,13 +28,13 @@ async function readAll(): Promise<RawEntry[]> {
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB_NAME)
     req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'))
   })
   const entries = await new Promise<RawEntry[]>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readonly')
     const req = tx.objectStore(STORE).getAll()
     req.onsuccess = () => resolve(req.result as RawEntry[])
-    req.onerror = () => reject(req.error)
+    req.onerror = () => reject(req.error ?? new Error('IndexedDB read failed'))
   })
   db.close()
   return entries

@@ -334,7 +334,7 @@ export abstract class LightEffect {
             // One warn per actual change — synchronous batches
             // coalesce into a single rebuild via Flatland but each
             // setter still logs so the source is traceable.
-            // eslint-disable-next-line no-console
+             
             console.warn(
               `[three-flatland] ${ctor.lightName}.${name} changed at runtime — triggers shader rebuild`
             )

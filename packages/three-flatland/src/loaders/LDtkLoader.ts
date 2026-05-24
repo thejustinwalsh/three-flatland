@@ -1,4 +1,4 @@
-import { Loader } from 'three'
+import { Loader, type Texture } from 'three'
 import type {
   TileMapData,
   TilesetData,
@@ -438,7 +438,7 @@ export class LDtkLoader extends Loader<TileMapData> {
         customData: custom.data,
       }
       try {
-        const parsed = JSON.parse(custom.data)
+        const parsed: unknown = JSON.parse(custom.data)
         if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
           Object.assign(merged, parsed)
         }
@@ -498,7 +498,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     optionDescriptor: true | NormalSourceDescriptor,
     forceRuntime: boolean,
     diffuseFlipY: boolean
-  ): Promise<import('three').Texture> {
+  ): Promise<Texture> {
     // Walk the tile grid, pairing each cell with its custom data
     // (if any). `tilesetToRegions` carves cap/face regions for
     // tiles that declare `tileDir`; untagged cells become flat.

@@ -445,7 +445,7 @@ export class TileMap2D extends Group {
     return this
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   removeEffect(_effect: MaterialEffect): this {
     return this
   }
