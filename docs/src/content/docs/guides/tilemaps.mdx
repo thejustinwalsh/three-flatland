@@ -4,6 +4,8 @@ description: Render tile-based maps efficiently with three-flatland.
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import tilemapStructure from '../../../assets/diagrams/tilemap-structure.svg?raw';
 
 **What you'll learn**
 - How to load a Tiled or LDtk map and render it via `TileMap2D` with chunked rendering
@@ -15,6 +17,8 @@ import { Tabs, TabItem } from 'starlight-theme/components';
 Tilemaps allow you to render large tile-based environments efficiently using chunked rendering. The `TileMap2D` class handles maps with multiple layers and automatic chunking for performance.
 
 For your first map, you don't need to think about chunks, layers, or culling. Drop a Tiled or LDtk file in, point the loader at it, you have a level.
+
+<Diagram caption="How TileMap2D builds a map — a tile atlas plus per-layer grid data become chunked geometry, stacked by layer for depth, with markOccluders flagging wall tiles as shadow casters." src={tilemapStructure} />
 
 ## Creating a Tilemap
 

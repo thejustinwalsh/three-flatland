@@ -4,6 +4,8 @@ description: Animate sprites using spritesheets and frame-based animation.
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import animationPipeline from '../../../assets/diagrams/animation-pipeline.svg?raw';
 
 **What you'll learn**
 - How to load a spritesheet (TexturePacker / Aseprite JSON) and define an `animationSet`
@@ -15,6 +17,8 @@ import { Tabs, TabItem } from 'starlight-theme/components';
 three-flatland supports frame-based animation using spritesheets. The `AnimatedSprite2D` class works with `SpriteSheetLoader` to load and play animations.
 
 If you've ever wired up sprite animation by hand — frame timers, wraparound math, swap textures on each tick — this is the part you don't have to write anymore.
+
+<Diagram caption="The animation data path — atlas frames are grouped into named clips, then play() picks the active clip and update(deltaMs) advances its frames over time." src={animationPipeline} />
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -213,3 +217,9 @@ function animate() {
   requestAnimationFrame(animate);
 }
 ```
+
+## Next steps
+
+- [Animation example](../../examples/animation/) — a spritesheet-driven `AnimatedSprite2D` in a runnable scene.
+- [`AnimatedSprite2D` API reference](/three-flatland/api/three-flatland/src/classes/animatedsprite2d/) — the full animation-set and playback surface.
+- [Sprites](../sprites/) for the underlying `Sprite2D`, and [Loaders](../loaders/) for loading spritesheets.

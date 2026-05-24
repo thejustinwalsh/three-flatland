@@ -4,6 +4,8 @@ description: Learn how to create and customize 2D sprites.
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import spriteAnatomy from '../../../assets/diagrams/sprite-anatomy.svg?raw';
 
 **What you'll learn**
 - How to create, position, anchor, and scale a `Sprite2D`
@@ -13,6 +15,8 @@ import { Tabs, TabItem } from 'starlight-theme/components';
 ---
 
 The `Sprite2D` class is the foundation for 2D rendering in three-flatland. If your scene only ever needs static images on screen, this is the only class you need to learn.
+
+<Diagram caption="Anatomy of a Sprite2D — anchor sets the pivot the quad hangs from, scale gives it pixel size, tint multiplies the sampled texture, and layer plus zIndex decide draw order." src={spriteAnatomy} />
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -155,13 +159,11 @@ hero.receiveShadows = false  // opt out of being darkened by shadow zones
 In React:
 
 ```tsx
-<animatedSprite2D
-  texture={knightSheet.texture}
-  spriteSheet={knightSheet}
-  animationSet={knightAnimations}
-  scale={[KNIGHT_SCALE, KNIGHT_SCALE, 1]}
+<sprite2D
+  texture={myTexture}
   castsShadow
   lit
+  receiveShadows={false}
 />
 ```
 
@@ -209,3 +211,9 @@ Available layers (in render order):
 - `Layers.ENTITIES` - Game entities (default)
 - `Layers.FOREGROUND` - Foreground elements
 - `Layers.UI` - User interface
+
+## Next steps
+
+- [Basic Sprite example](../../examples/basic-sprite/) — texture loading, anchor, and interaction in a runnable scene.
+- [`Sprite2D` API reference](/three-flatland/api/three-flatland/src/classes/sprite2d/) — every constructor option and property.
+- [Animation](../animation/) for spritesheet playback, and [Batch Rendering](../batch-rendering/) for thousands of sprites in a few draw calls.

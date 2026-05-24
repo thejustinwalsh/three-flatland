@@ -4,6 +4,8 @@ description: Create custom shader effects using Three Shader Language.
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import tslNodeChain from '../../../assets/diagrams/tsl-node-chain.svg?raw';
 
 **What you'll learn**
 - How to author a `MaterialEffect` with typed per-instance parameters (`createMaterialEffect`)
@@ -22,6 +24,8 @@ three-flatland provides two ways to use TSL:
 2. **Raw TSL nodes** — compose low-level node functions directly for full shader control
 
 TSL node functions (tint, hueShift, outline, dissolve, etc.) are exported from `@three-flatland/nodes`. The effect system (`createMaterialEffect`, `createPassEffect`) and core classes are exported from `three-flatland`.
+
+<Diagram caption="Composing a sprite's effect chain — the base texture color flows through each effect node as inputColor and out as a vec4, chaining in addEffect order into one node material." src={tslNodeChain} />
 
 ## Material Effects :badge[Recommended]{variant=success}
 
