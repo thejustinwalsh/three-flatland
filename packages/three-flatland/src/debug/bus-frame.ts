@@ -26,6 +26,11 @@
  *
  * Keep this file dependency-free — it's imported by both the worker
  * bundle and the main thread, and should hold no DOM / three.js refs.
+ *
+ * NOTE: not yet wired to a live transport. The in-process bus moves data
+ * via `bus-pool` typed-array transfer over the worker port; this framing
+ * is the wire format for the planned WebSocket / remote-debug transport
+ * (mobile debugging) — see #114. Kept as that foundation, not dead code.
  */
 
 /** Four-byte header tag for every message type. Stable on the wire. */
@@ -80,7 +85,7 @@ export class FrameWriter {
   /** Finalise: stamp header (type, ts, usedBytes). Call after all sections are written. */
   finalise(type: BusType, ts: number): void {
     // Split `Date.now()` (up to 2^53) into two uint32s.
-    const tsLow = (ts >>> 0)
+    const tsLow = ts >>> 0
     const tsHigh = Math.floor(ts / 0x100000000) >>> 0
     this._view.setUint32(0, this._cursor, true)
     this._view.setUint32(4, type, true)
@@ -99,19 +104,22 @@ export class FrameWriter {
   }
 
   writeUint32(v: number): void {
-    if (this._cursor + 4 > this.buffer.byteLength) throw new RangeError('FrameWriter: buffer overflow (uint32)')
+    if (this._cursor + 4 > this.buffer.byteLength)
+      throw new RangeError('FrameWriter: buffer overflow (uint32)')
     this._view.setUint32(this._cursor, v >>> 0, true)
     this._cursor += 4
   }
 
   writeInt32(v: number): void {
-    if (this._cursor + 4 > this.buffer.byteLength) throw new RangeError('FrameWriter: buffer overflow (int32)')
+    if (this._cursor + 4 > this.buffer.byteLength)
+      throw new RangeError('FrameWriter: buffer overflow (int32)')
     this._view.setInt32(this._cursor, v | 0, true)
     this._cursor += 4
   }
 
   writeFloat64(v: number): void {
-    if (this._cursor + 8 > this.buffer.byteLength) throw new RangeError('FrameWriter: buffer overflow (float64)')
+    if (this._cursor + 8 > this.buffer.byteLength)
+      throw new RangeError('FrameWriter: buffer overflow (float64)')
     this._view.setFloat64(this._cursor, v, true)
     this._cursor += 8
   }
@@ -119,7 +127,7 @@ export class FrameWriter {
   /** Write a short UTF-8 string preceded by a uint16 byte length. Max 65535 bytes. */
   writeString(s: string): void {
     const bytes = FRAME_TEXT_ENCODER.encode(s)
-    if (bytes.byteLength > 0xFFFF) throw new RangeError('FrameWriter: string too long')
+    if (bytes.byteLength > 0xffff) throw new RangeError('FrameWriter: string too long')
     if (this._cursor + 2 + bytes.byteLength > this.buffer.byteLength) {
       throw new RangeError('FrameWriter: buffer overflow (string)')
     }
@@ -158,8 +166,12 @@ export class FrameReader {
     this._cursor = HEADER_BYTES
   }
 
-  get type(): BusType { return this._view.getUint32(4, true) as BusType }
-  get usedBytes(): number { return this._view.getUint32(0, true) }
+  get type(): BusType {
+    return this._view.getUint32(4, true) as BusType
+  }
+  get usedBytes(): number {
+    return this._view.getUint32(0, true)
+  }
   get ts(): number {
     const lo = this._view.getUint32(8, true)
     const hi = this._view.getUint32(12, true)
@@ -205,7 +217,9 @@ export class FrameReader {
     this._cursor = offset
   }
 
-  get cursor(): number { return this._cursor }
+  get cursor(): number {
+    return this._cursor
+  }
 }
 
 const FRAME_TEXT_ENCODER = new TextEncoder()

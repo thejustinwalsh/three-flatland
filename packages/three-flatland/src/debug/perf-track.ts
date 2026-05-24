@@ -36,10 +36,17 @@ export type PerfTrackName = (typeof PERF_TRACK)[keyof typeof PERF_TRACK]
  * a console warning in DevTools.
  */
 export type PerfColor =
-  | 'primary' | 'primary-light' | 'primary-dark'
-  | 'secondary' | 'secondary-light' | 'secondary-dark'
-  | 'tertiary' | 'tertiary-light' | 'tertiary-dark'
-  | 'warning' | 'error'
+  | 'primary'
+  | 'primary-light'
+  | 'primary-dark'
+  | 'secondary'
+  | 'secondary-light'
+  | 'secondary-dark'
+  | 'tertiary'
+  | 'tertiary-light'
+  | 'tertiary-dark'
+  | 'warning'
+  | 'error'
 
 /**
  * Emit a span on `track`. Pass either a `start`/`end` pair (use
@@ -52,7 +59,7 @@ export function perfMeasure(
   name: string,
   start: number,
   end: number,
-  color: PerfColor = 'primary',
+  color: PerfColor = 'primary'
 ): void {
   if (!DEVTOOLS_BUNDLED) return
   if (typeof performance === 'undefined' || typeof performance.measure !== 'function') return
@@ -88,11 +95,15 @@ export function perfMeasure(
  * Allocates the closure once per call — fine for occasional use; for
  * tight per-frame paths, prefer `perfMeasure` with manual timestamps
  * to avoid the closure cost.
+ *
+ * Part of the colored-perf-tracks instrumentation (#115): `perfMeasure`
+ * is wired into `DevtoolsProvider`; broader pipeline coverage (and most
+ * `perfStart` call sites) is tracked there.
  */
 export function perfStart(
   track: PerfTrackName,
   name: string,
-  color: PerfColor = 'primary',
+  color: PerfColor = 'primary'
 ): () => void {
   const start = performance.now()
   return () => perfMeasure(track, name, start, performance.now(), color)
