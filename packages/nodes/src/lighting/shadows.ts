@@ -1,14 +1,4 @@
-import {
-  vec2,
-  vec3,
-  vec4,
-  float,
-  Fn,
-  Loop,
-  If,
-  Break,
-  texture as sampleTexture,
-} from 'three/tsl'
+import { vec2, vec3, vec4, float, Fn, Loop, If, Break, texture as sampleTexture } from 'three/tsl'
 import type { Texture } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Vec2Input, Vec3Input, FloatInput } from '../types'
@@ -217,9 +207,11 @@ export function shadowSoft2D(
  * sampling the SDF at each step to advance by the guaranteed-clear
  * distance. Binary result: `0` if the ray hits an occluder along the
  * way, `1` if it reaches the light cleanly. Soft shadow edges come
- * from (a) LinearFilter sampling of the SDF texture and (b) the
- * separable gaussian blur applied in `SDFGenerator` — not from a
- * per-ray penumbra integration.
+ * from (a) the separable gaussian blur pass applied in `SDFGenerator`
+ * and (b) the IQ soft-shadow accumulation along the trace — NOT from
+ * texture filtering. The SDF is sampled with NearestFilter, so the
+ * softness is entirely a product of the blurred distance field plus
+ * the per-step penumbra math, not bilinear interpolation.
  *
  * The classic IQ penumbra term `min(k · h / t)` was removed because
  * it accumulates at every step of the walk, which in closed 2D scenes
@@ -301,8 +293,7 @@ export function shadowSDF2D(
   // `options.softness` is accepted for API stability but currently unused —
   // binary hit/miss shadow, see function docstring.
   void options.softness
-  const epsNode =
-    typeof options.eps === 'number' ? float(options.eps) : (options.eps ?? float(0.5))
+  const epsNode = typeof options.eps === 'number' ? float(options.eps) : (options.eps ?? float(0.5))
   const startOffsetNode =
     typeof options.startOffset === 'number'
       ? float(options.startOffset)
@@ -327,8 +318,13 @@ export function shadowSDF2D(
     // the SDF sample row is mirrored across the viewport center and
     // shadows show up on the wrong side of their caster whenever a
     // caster isn't at Y=0.
+    // NOTE: do NOT clamp here. Clamping samples toward an off-screen
+    // light repeatedly reads the screen-edge texel, which can register a
+    // false occluder hit before the `t >= lightDist` break. The in-loop
+    // hit test is instead gated on a UV-in-[0,1] check (out-of-field
+    // samples are treated as UNOCCLUDED so the ray advances freely).
     const worldToSDFUV = (wpos: Node<'vec2'>): Node<'vec2'> => {
-      const u = wpos.sub(worldOffset).div(worldSize).clamp(0, 1)
+      const u = wpos.sub(worldOffset).div(worldSize)
       return vec2(u.x, float(1).sub(u.y))
     }
 
@@ -357,9 +353,7 @@ export function shadowSDF2D(
     const surfaceUV = worldToSDFUV(surfaceWorldPos)
     const sdfAtSurface = sampleTexture(sdfTexture, surfaceUV).r
     const onCaster = sdfAtSurface.lessThan(float(0))
-    const nearCaster = fragmentCastsShadow
-      ? onCaster.and(fragmentCastsShadow)
-      : onCaster
+    const nearCaster = fragmentCastsShadow ? onCaster.and(fragmentCastsShadow) : onCaster
     const effectiveStart = nearCaster.select(startOffsetNode, float(0))
 
     // `.toVar()` without an explicit name — TSL auto-generates unique
@@ -385,11 +379,26 @@ export function shadowSDF2D(
       const uv = worldToSDFUV(pos)
       const sdfWorld = sampleTexture(sdfTexture, uv).r
 
+      // Off-screen guard: a sample whose UV falls outside [0, 1] is
+      // outside the SDF's field of view. We have no occluder information
+      // there, so treat it as UNOCCLUDED — never run the hit test, just
+      // let the ray keep advancing toward a (presumably off-screen)
+      // light. Clamping here would instead read the screen-edge texel
+      // repeatedly and could register a false occluder hit before the
+      // `t >= lightDist` break fires. In-field samples are unaffected,
+      // so in-field shadow output is byte-identical to before.
+      const inField = uv.x
+        .greaterThanEqual(float(0))
+        .and(uv.x.lessThanEqual(float(1)))
+        .and(uv.y.greaterThanEqual(float(0)))
+        .and(uv.y.lessThanEqual(float(1)))
+
       // Hit: the ray either entered an occluder (signed SDF < 0, which
       // can happen if the sphere-trace step size was rounded up to
       // `eps`) or grazed one within the epsilon tolerance. Either way,
-      // the path to the light is blocked.
-      If(sdfWorld.lessThan(epsNode), () => {
+      // the path to the light is blocked. Only honored for in-field
+      // samples — out-of-field samples carry no occluder data.
+      If(inField.and(sdfWorld.lessThan(epsNode)), () => {
         shadow.assign(float(0))
         hitT.assign(t)
         Break()
@@ -398,8 +407,11 @@ export function shadowSDF2D(
       // Advance by the clear distance, guarded against zero / negative
       // steps so the loop can't stall. The `max(eps)` floor is also the
       // safety net that keeps the trace from walking into an occluder
-      // on the step following a near-miss grazing sample.
-      t.assign(t.add(sdfWorld.max(epsNode)))
+      // on the step following a near-miss grazing sample. Out of field
+      // the SDF read is meaningless, so advance by the `eps` floor — the
+      // ray keeps marching toward the light without trusting the sample.
+      const advance = inField.select(sdfWorld.max(epsNode), epsNode)
+      t.assign(t.add(advance))
     })
 
     // Distance falloff — when maxShadowDistance > 0, scale the hit-shadow
@@ -408,7 +420,9 @@ export function shadowSDF2D(
     // touching close-to-caster shadows. When maxShadowDistance == 0 this
     // term reduces to 1.0 and has no effect (binary shadow).
     const useFalloff = maxShadowDist.greaterThan(float(0))
-    const falloff = float(1).sub(hitT.div(maxShadowDist.max(float(0.0001)))).clamp(0, 1)
+    const falloff = float(1)
+      .sub(hitT.div(maxShadowDist.max(float(0.0001))))
+      .clamp(0, 1)
     const falloffShadow = float(1).sub(float(1).sub(shadow).mul(falloff))
     const finalShadow = useFalloff.select(falloffShadow, shadow)
 
