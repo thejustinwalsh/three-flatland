@@ -29,7 +29,7 @@ For your first map, you don't need to think about chunks, layers, or culling. Dr
     // Create tilemap
     const tilemap = new TileMap2D({
       data: mapData,
-      chunkSize: 16,  // Tiles per chunk (default: 16)
+      chunkSize: 512,  // Tiles per chunk (default: 512)
     });
 
     scene.add(tilemap);
@@ -58,7 +58,7 @@ For your first map, you don't need to think about chunks, layers, or culling. Dr
         tilemapRef.current?.update(delta * 1000);
       });
 
-      return <tileMap2D ref={tilemapRef} data={mapData} chunkSize={16} />;
+      return <tileMap2D ref={tilemapRef} data={mapData} chunkSize={512} />;
     }
 
     // Wrap with Suspense in parent
@@ -298,11 +298,11 @@ Tilemaps use chunked rendering for performance. Configure the chunk size based o
 ```typescript
 const tilemap = new TileMap2D({
   data: mapData,
-  chunkSize: 16,  // 16x16 tiles per chunk (default)
+  chunkSize: 512,  // tiles per chunk (default)
 });
 ```
 
-Smaller chunks = more draw calls but finer culling. Larger chunks = fewer draw calls but coarser culling. The default of 16 works well for most cases.
+Smaller chunks = more draw calls but finer culling. Larger chunks = fewer draw calls but coarser culling. The default of 512 keeps most maps in a single chunk; lower it only for very large maps where finer culling pays off.
 
 ## Animated Tiles
 
