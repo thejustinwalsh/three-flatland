@@ -43,6 +43,7 @@ export default tseslint.config(
     ignores: [
       '**/dist/**',
       '**/node_modules/**',
+      '**/vendor/**',
       '**/*.config.ts',
       '**/*.config.js',
       '**/*.setup.ts',
