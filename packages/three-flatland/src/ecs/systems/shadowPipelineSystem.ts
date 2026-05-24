@@ -1,4 +1,4 @@
-import { Vector2 } from 'three'
+import { Vector2, NearestFilter, LinearFilter } from 'three'
 import type { World } from 'koota'
 import { BatchRegistry, LightingContext, ShadowPipeline } from '../traits'
 import { SDFGenerator } from '../../lights/SDFGenerator'
@@ -122,6 +122,23 @@ export function shadowPipelineSystem(world: World): void {
     mustRegen = true
   }
 
+  // Resolve + apply the SDF-output sampling filter every frame (before the
+  // dirty gate's early-return, so a filter change lands even on an
+  // otherwise-static frame). Read defensively: the active effect is a
+  // generic LightEffect, but these constants are DefaultLightEffect-specific.
+  const c = (effect as { constants?: Record<string, unknown> }).constants
+  const mode = (c?.shadowFilter as string) ?? 'auto'
+  const snap = (c?.shadowPixelSnapEnabled as boolean) ?? false
+  const desired =
+    mode === 'nearest'
+      ? NearestFilter
+      : mode === 'linear'
+        ? LinearFilter
+        : snap
+          ? NearestFilter
+          : LinearFilter
+  pipeline.sdfGenerator.setFilter(desired)
+
   const scene = ctx.scene
   if (!scene) return
 
@@ -137,8 +154,12 @@ export function shadowPipelineSystem(world: World): void {
   let right = NaN
   let top = NaN
   let bottom = NaN
-  if (typeof ortho.left === 'number' && typeof ortho.right === 'number' &&
-      typeof ortho.top === 'number' && typeof ortho.bottom === 'number') {
+  if (
+    typeof ortho.left === 'number' &&
+    typeof ortho.right === 'number' &&
+    typeof ortho.top === 'number' &&
+    typeof ortho.bottom === 'number'
+  ) {
     left = ortho.left
     right = ortho.right
     top = ortho.top

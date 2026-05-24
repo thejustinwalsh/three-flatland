@@ -2,6 +2,7 @@ import {
   RenderTarget,
   HalfFloatType,
   NearestFilter,
+  LinearFilter,
   ClampToEdgeWrapping,
   Vector2,
   type Texture,
@@ -99,6 +100,10 @@ export class SDFGenerator {
   // when the caller swaps it out.
   private _occlusionTex: Texture | null = null
 
+  // Current SDF-output sampling filter. Defaults to nearest; `setFilter`
+  // flips it (and only the SDF / blur RTs, never the JFA ping-pong).
+  private _sdfFilter: typeof NearestFilter | typeof LinearFilter = NearestFilter
+
   constructor() {
     // Eagerly allocate 1×1 placeholder RTs so `sdfTexture` hands out a stable
     // reference to downstream consumers (sprite materials captured it at
@@ -118,6 +123,12 @@ export class SDFGenerator {
     // `eps` wide around every caster. Nearest snaps sub-texel samples to
     // the closest texel's value, so the hit/no-hit transition is a clean
     // step at the silhouette boundary.
+    //
+    // The filter is now selectable via {@link setFilter}: nearest avoids
+    // the eps-threshold halo for crisp / pixel-snapped shadows, while
+    // linear is safe once the blur pass has smoothed the field — its
+    // interpolation gives softer edges for non-snapped shadows. Default
+    // stays nearest.
     const sdfOptions = {
       type: HalfFloatType,
       minFilter: NearestFilter,
@@ -167,6 +178,25 @@ export class SDFGenerator {
 
   init(width: number, height: number): void {
     this.resize(width, height)
+  }
+
+  /**
+   * Select the sampling filter for the SDF-output texture (and its blur
+   * scratch). Nearest avoids the eps-threshold halo for crisp / pixel-
+   * snapped shadows; linear is safe once the blur pass has smoothed the
+   * field, giving softer edges for non-snapped shadows. No-op when the
+   * filter is unchanged — safe to call every frame. Never touches the JFA
+   * ping-pong RTs, which must stay nearest for correct seed propagation.
+   */
+  setFilter(filter: typeof NearestFilter | typeof LinearFilter): void {
+    if (filter === this._sdfFilter) return
+    this._sdfRT.texture.minFilter = filter
+    this._sdfRT.texture.magFilter = filter
+    this._sdfRT.texture.needsUpdate = true
+    this._sdfBlurRT.texture.minFilter = filter
+    this._sdfBlurRT.texture.magFilter = filter
+    this._sdfBlurRT.texture.needsUpdate = true
+    this._sdfFilter = filter
   }
 
   resize(width: number, height: number): void {

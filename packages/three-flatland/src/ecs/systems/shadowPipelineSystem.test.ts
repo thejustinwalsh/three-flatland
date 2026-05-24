@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { OrthographicCamera, Scene } from 'three'
+import { OrthographicCamera, Scene, NearestFilter, LinearFilter } from 'three'
 import { createWorld, universe } from 'koota'
 import type { World } from 'koota'
 import { shadowPipelineSystem } from './shadowPipelineSystem'
@@ -24,12 +24,13 @@ function makeRenderer(width = 800, height = 600) {
   }
 }
 
-/** Spy SDFGenerator — tracks generate/init/resize/setWorldBounds/dispose. */
+/** Spy SDFGenerator — tracks generate/init/resize/setWorldBounds/setFilter/dispose. */
 function makeSdfGenerator() {
   return {
     init: vi.fn(),
     resize: vi.fn(),
     setWorldBounds: vi.fn(),
+    setFilter: vi.fn(),
     generate: vi.fn(),
     dispose: vi.fn(),
   }
@@ -62,12 +63,19 @@ function ShadowEffectClass() {
 
 interface SetupOpts {
   occludersDirty?: boolean
+  /** Overrides merged onto the effect's `constants` (DefaultLightEffect-style). */
+  constants?: Record<string, unknown>
 }
 
 function setup(world: World, opts: SetupOpts = {}) {
   const Effect = ShadowEffectClass()
   Effect._initialize()
   const effect = new Effect()
+
+  if (opts.constants) {
+    const e = effect as unknown as { constants: Record<string, unknown> }
+    e.constants = { ...e.constants, ...opts.constants }
+  }
 
   const renderer = makeRenderer()
   const scene = new Scene()
@@ -98,9 +106,7 @@ function setup(world: World, opts: SetupOpts = {}) {
 
   // Registry drives the occluder-dirty gate; control it manually so the
   // gate is isolated from transformSync's blanket dirtying.
-  const registryEntity = world.spawn(
-    BatchRegistry({ occludersDirty: opts.occludersDirty ?? true })
-  )
+  const registryEntity = world.spawn(BatchRegistry({ occludersDirty: opts.occludersDirty ?? true }))
 
   function setOccludersDirty(value: boolean) {
     const reg = registryEntity.get(BatchRegistry)!
@@ -180,5 +186,49 @@ describe('shadowPipelineSystem — occluder-dirty gate', () => {
     camera.position.x = 5
     shadowPipelineSystem(world)
     expect(sdfGenerator.generate).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('shadowPipelineSystem — shadowFilter resolution', () => {
+  let world: World
+
+  beforeEach(() => {
+    world = createWorld()
+  })
+
+  afterEach(() => {
+    universe.reset()
+  })
+
+  it("applies LinearFilter for 'auto' + shadowPixelSnapEnabled=false", () => {
+    const { sdfGenerator } = setup(world, {
+      constants: { shadowFilter: 'auto', shadowPixelSnapEnabled: false },
+    })
+    shadowPipelineSystem(world)
+    expect(sdfGenerator.setFilter).toHaveBeenLastCalledWith(LinearFilter)
+  })
+
+  it("applies NearestFilter for 'auto' + shadowPixelSnapEnabled=true", () => {
+    const { sdfGenerator } = setup(world, {
+      constants: { shadowFilter: 'auto', shadowPixelSnapEnabled: true },
+    })
+    shadowPipelineSystem(world)
+    expect(sdfGenerator.setFilter).toHaveBeenLastCalledWith(NearestFilter)
+  })
+
+  it("forces NearestFilter when shadowFilter='nearest' regardless of snap", () => {
+    const { sdfGenerator } = setup(world, {
+      constants: { shadowFilter: 'nearest', shadowPixelSnapEnabled: false },
+    })
+    shadowPipelineSystem(world)
+    expect(sdfGenerator.setFilter).toHaveBeenLastCalledWith(NearestFilter)
+  })
+
+  it("forces LinearFilter when shadowFilter='linear' regardless of snap", () => {
+    const { sdfGenerator } = setup(world, {
+      constants: { shadowFilter: 'linear', shadowPixelSnapEnabled: true },
+    })
+    shadowPipelineSystem(world)
+    expect(sdfGenerator.setFilter).toHaveBeenLastCalledWith(LinearFilter)
   })
 })

@@ -107,6 +107,16 @@ const _DefaultLightEffect = createLightEffect({
      */
     shadowPixelSnapEnabled: () => false,
     /**
+     * Selects the SDF texture sampling filter for the shadow trace.
+     * `'auto'` (default) → nearest when `shadowPixelSnapEnabled` is on
+     * (crisp pixel-art shadows), linear when off (smooth edges, safe via
+     * the blur pass). `'nearest'` / `'linear'` force the respective filter.
+     *
+     * It's a scene-tier setting — the SDF is one shared field, so this
+     * resolves once per active lighting effect, not per light / sprite.
+     */
+    shadowFilter: () => 'auto' as 'auto' | 'nearest' | 'linear',
+    /**
      * Enable cel-band quantization of the direct-light contribution.
      * On by default (matches typical Flatland aesthetic). Saves ~5
      * ops per fragment when off. When on, the `bands` uniform sets
@@ -174,7 +184,10 @@ const _DefaultLightEffect = createLightEffect({
         // `glowRadius` — all divisors that the slider can drive to
         // zero exactly when the gate flips.
         const surfacePos = pixelSnapEnabled
-          ? vec2(rawPos).div(pixelSize.max(float(1))).floor().mul(pixelSize)
+          ? vec2(rawPos)
+              .div(pixelSize.max(float(1)))
+              .floor()
+              .mul(pixelSize)
           : vec2(rawPos)
         // Two direct-light accumulators. `totalLightLit` ignores shadow
         // (so `bands` quantization below can stair-step the direct
@@ -221,7 +234,9 @@ const _DefaultLightEffect = createLightEffect({
           const contribution = lightColor.mul(lightIntensityVal).mul(lightEnabled)
 
           // Point light attenuation
-          const effectiveDistance = lightDistance.greaterThan(float(0)).select(lightDistance, float(1e6))
+          const effectiveDistance = lightDistance
+            .greaterThan(float(0))
+            .select(lightDistance, float(1e6))
           const toLight = lightPos.sub(vec2(surfacePos))
           const dist = toLight.length()
           const normalizedDist = dist.div(effectiveDistance).clamp(0, 1)
@@ -259,7 +274,10 @@ const _DefaultLightEffect = createLightEffect({
           // Select attenuation by type
           const isPoint = lightType.lessThan(float(0.5))
           const isSpot = lightType.greaterThan(float(0.5)).and(lightType.lessThan(float(1.5)))
-          const atten = isPoint.select(pointAtten, isSpot.select(pointAtten.mul(coneAtten), float(1)))
+          const atten = isPoint.select(
+            pointAtten,
+            isSpot.select(pointAtten.mul(coneAtten), float(1))
+          )
 
           // Normal-based directional diffuse shading. Ambient lights skip
           // the N·L gate entirely.
@@ -275,10 +293,7 @@ const _DefaultLightEffect = createLightEffect({
           // otherwise do before building the 3D direction.
           const safeDist = dist.max(float(0.0001))
           const toLightN = toLight.div(safeDist)
-          const lightDir3D = vec3(
-            toLightN,
-            lightHeight.sub(ctx.elevation)
-          ).normalize()
+          const lightDir3D = vec3(toLightN, lightHeight.sub(ctx.elevation)).normalize()
           const isAmbient = lightType.greaterThan(float(2.5))
           const NdotL = ctx.normal.dot(lightDir3D).clamp(0, 1)
           const diffuse = isAmbient.select(float(1), NdotL)
@@ -297,7 +312,8 @@ const _DefaultLightEffect = createLightEffect({
           // flag packed by LightStore.
           const shadow = float(1).toVar('shadow')
           if (sdfTexture) {
-            const shouldTrace = isAmbient.not()
+            const shouldTrace = isAmbient
+              .not()
               .and(NdotL.greaterThan(float(0)))
               .and(atten.greaterThan(float(0.01)))
               .and(lightCastsShadow.greaterThan(float(0.5)))
@@ -347,10 +363,7 @@ const _DefaultLightEffect = createLightEffect({
           // different curve, fork the effect.
           if (rimEnabled && totalRim) {
             const oneMinusNdotL = float(1).sub(NdotL)
-            const rimFactor = isAmbient.select(
-              float(0),
-              oneMinusNdotL.mul(oneMinusNdotL),
-            )
+            const rimFactor = isAmbient.select(float(0), oneMinusNdotL.mul(oneMinusNdotL))
             totalRim.addAssign(contribution.mul(atten).mul(rimFactor))
           }
         })
@@ -368,9 +381,10 @@ const _DefaultLightEffect = createLightEffect({
         // scenes that explicitly enable it.
         // JS-time gate on rim — when disabled, no rim accumulator
         // exists so the mix collapses to a passthrough.
-        const directLit = rimEnabled && totalRim
-          ? vec3(totalLightLit).add(vec3(totalRim).mul(rimIntensity))
-          : vec3(totalLightLit)
+        const directLit =
+          rimEnabled && totalRim
+            ? vec3(totalLightLit).add(vec3(totalRim).mul(rimIntensity))
+            : vec3(totalLightLit)
 
         // Quantize the unshadowed direct to discrete bands. Ambient
         // is added AFTER quantization so it acts as a continuous
@@ -380,7 +394,11 @@ const _DefaultLightEffect = createLightEffect({
         // `bands.max(1)` divisor guard, same NaN-window rationale
         // as `pixelSnapEnabled` above.
         const shapedDirect = bandsEnabled
-          ? directLit.mul(bands).add(float(0.5)).floor().div(bands.max(float(1)))
+          ? directLit
+              .mul(bands)
+              .add(float(0.5))
+              .floor()
+              .div(bands.max(float(1)))
           : directLit
 
         // Per-pixel shadow scalar, recovered as the ratio of shadowed
@@ -444,10 +462,7 @@ Object.defineProperty(_DefaultLightEffect.prototype, 'categoryQuotas', {
   get(this: object): Record<string, number> {
     return _categoryQuotas.get(this) ?? {}
   },
-  set(
-    this: { forwardPlus: ForwardPlusLighting },
-    value: Record<string, number> | undefined,
-  ): void {
+  set(this: { forwardPlus: ForwardPlusLighting }, value: Record<string, number> | undefined): void {
     const next = value ?? {}
     _categoryQuotas.set(this as unknown as object, next)
     this.forwardPlus.resetFillQuotas()
