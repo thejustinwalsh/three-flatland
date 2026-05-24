@@ -299,6 +299,10 @@
         {
           "id": "s1_a_group_run",
           "type": "arrow"
+        },
+        {
+          "id": "s1_a_group_batch",
+          "type": "arrow"
         }
       ],
       "link": null,
@@ -437,15 +441,19 @@
           "type": "text"
         },
         {
+          "id": "flow_s1_s2",
+          "type": "arrow"
+        },
+        {
           "id": "s1_a_sprite_batch",
           "type": "arrow"
         },
         {
-          "id": "s1_a_run_batch",
+          "id": "s1_a_group_batch",
           "type": "arrow"
         },
         {
-          "id": "flow_s1_s2",
+          "id": "s1_a_run_batch",
           "type": "arrow"
         }
       ],
@@ -486,190 +494,6 @@
       "locked": false,
       "containerId": "s1_batch",
       "lineHeight": 1.35
-    },
-    {
-      "type": "arrow",
-      "id": "s1_a_sprite_group",
-      "x": 206,
-      "y": 324,
-      "width": 0,
-      "height": 18,
-      "strokeColor": "#c7910c",
-      "backgroundColor": "transparent",
-      "fillStyle": "solid",
-      "strokeWidth": 1.5,
-      "strokeStyle": "solid",
-      "roughness": 0,
-      "opacity": 100,
-      "angle": 0,
-      "seed": 110201,
-      "version": 1,
-      "versionNonce": 110202,
-      "isDeleted": false,
-      "groupIds": [],
-      "boundElements": null,
-      "link": null,
-      "locked": false,
-      "points": [
-        [
-          0,
-          0
-        ],
-        [
-          0,
-          18
-        ]
-      ],
-      "startBinding": {
-        "elementId": "s1_sprite2",
-        "focus": 0,
-        "gap": 4
-      },
-      "endBinding": {
-        "elementId": "s1_group_node",
-        "focus": 0,
-        "gap": 4
-      },
-      "startArrowhead": null,
-      "endArrowhead": "arrow"
-    },
-    {
-      "type": "arrow",
-      "id": "s1_a_group_run",
-      "x": 206,
-      "y": 426,
-      "width": 0,
-      "height": 28,
-      "strokeColor": "#c7910c",
-      "backgroundColor": "transparent",
-      "fillStyle": "solid",
-      "strokeWidth": 1.5,
-      "strokeStyle": "solid",
-      "roughness": 0,
-      "opacity": 100,
-      "angle": 0,
-      "seed": 110203,
-      "version": 1,
-      "versionNonce": 110204,
-      "isDeleted": false,
-      "groupIds": [],
-      "boundElements": null,
-      "link": null,
-      "locked": false,
-      "points": [
-        [
-          0,
-          0
-        ],
-        [
-          0,
-          28
-        ]
-      ],
-      "startBinding": {
-        "elementId": "s1_group_node",
-        "focus": 0,
-        "gap": 4
-      },
-      "endBinding": {
-        "elementId": "s1_run",
-        "focus": 0,
-        "gap": 4
-      },
-      "startArrowhead": null,
-      "endArrowhead": "arrow"
-    },
-    {
-      "type": "arrow",
-      "id": "s1_a_run_batch",
-      "x": 320,
-      "y": 478,
-      "width": 56,
-      "height": -70,
-      "strokeColor": "#c7910c",
-      "backgroundColor": "transparent",
-      "fillStyle": "solid",
-      "strokeWidth": 1.5,
-      "strokeStyle": "solid",
-      "roughness": 0,
-      "opacity": 100,
-      "angle": 0,
-      "seed": 110205,
-      "version": 1,
-      "versionNonce": 110206,
-      "isDeleted": false,
-      "groupIds": [],
-      "boundElements": null,
-      "link": null,
-      "locked": false,
-      "points": [
-        [
-          0,
-          0
-        ],
-        [
-          56,
-          -70
-        ]
-      ],
-      "startBinding": {
-        "elementId": "s1_run",
-        "focus": 0,
-        "gap": 4
-      },
-      "endBinding": {
-        "elementId": "s1_batch",
-        "focus": 0,
-        "gap": 4
-      },
-      "startArrowhead": null,
-      "endArrowhead": "arrow"
-    },
-    {
-      "type": "arrow",
-      "id": "s1_a_sprite_batch",
-      "x": 320,
-      "y": 246,
-      "width": 56,
-      "height": 130,
-      "strokeColor": "#c7910c",
-      "backgroundColor": "transparent",
-      "fillStyle": "solid",
-      "strokeWidth": 1,
-      "strokeStyle": "solid",
-      "roughness": 0,
-      "opacity": 100,
-      "angle": 0,
-      "seed": 110207,
-      "version": 1,
-      "versionNonce": 110208,
-      "isDeleted": false,
-      "groupIds": [],
-      "boundElements": null,
-      "link": null,
-      "locked": false,
-      "points": [
-        [
-          0,
-          0
-        ],
-        [
-          56,
-          130
-        ]
-      ],
-      "startBinding": {
-        "elementId": "s1_sprite",
-        "focus": 0,
-        "gap": 4
-      },
-      "endBinding": {
-        "elementId": "s1_batch",
-        "focus": 0,
-        "gap": 4
-      },
-      "startArrowhead": null,
-      "endArrowhead": "arrow"
     },
     {
       "type": "text",
@@ -1156,9 +980,9 @@
     {
       "type": "arrow",
       "id": "flow_s1_s2",
-      "x": 584,
+      "x": 580,
       "y": 386,
-      "width": 72,
+      "width": 80,
       "height": 0,
       "strokeColor": "#9aa7b0",
       "backgroundColor": "transparent",
@@ -1182,7 +1006,7 @@
           0
         ],
         [
-          72,
+          80,
           0
         ]
       ],
@@ -2036,10 +1860,10 @@
     {
       "type": "arrow",
       "id": "flow_s2_s3",
-      "x": 700,
+      "x": 860,
       "y": 684,
-      "width": 340,
-      "height": 32,
+      "width": 500,
+      "height": 36,
       "strokeColor": "#9aa7b0",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
@@ -2062,18 +1886,26 @@
           0
         ],
         [
-          -340,
-          32
+          0,
+          16
+        ],
+        [
+          -500,
+          16
+        ],
+        [
+          -500,
+          36
         ]
       ],
       "startBinding": {
         "elementId": "s2_group",
-        "focus": 0.4,
+        "focus": 0.3,
         "gap": 4
       },
       "endBinding": {
         "elementId": "s3_group",
-        "focus": -0.2,
+        "focus": 0,
         "gap": 4
       },
       "startArrowhead": null,
@@ -2147,7 +1979,7 @@
       "type": "text",
       "id": "s4_sub",
       "x": 744,
-      "y": 770,
+      "y": 768,
       "width": 560,
       "height": 20,
       "text": "instanceSystem.w  =  one float per slot, read as a bitmask",
@@ -2179,7 +2011,7 @@
       "type": "rectangle",
       "id": "s4_bit0",
       "x": 744,
-      "y": 800,
+      "y": 794,
       "width": 84,
       "height": 44,
       "strokeColor": "#a85ff1",
@@ -2211,7 +2043,7 @@
       "type": "text",
       "id": "s4_bit0_t",
       "x": 756,
-      "y": 812,
+      "y": 806,
       "width": 60,
       "height": 18,
       "text": "1",
@@ -2243,7 +2075,7 @@
       "type": "text",
       "id": "s4_bl0",
       "x": 740,
-      "y": 848,
+      "y": 840,
       "width": 92,
       "height": 30,
       "text": "tint\nbit 2",
@@ -2275,7 +2107,7 @@
       "type": "rectangle",
       "id": "s4_bit1",
       "x": 836,
-      "y": 800,
+      "y": 794,
       "width": 84,
       "height": 44,
       "strokeColor": "#39434f",
@@ -2307,7 +2139,7 @@
       "type": "text",
       "id": "s4_bit1_t",
       "x": 848,
-      "y": 812,
+      "y": 806,
       "width": 60,
       "height": 18,
       "text": "0",
@@ -2339,7 +2171,7 @@
       "type": "text",
       "id": "s4_bl1",
       "x": 832,
-      "y": 848,
+      "y": 840,
       "width": 92,
       "height": 30,
       "text": "outline\nbit 1",
@@ -2371,7 +2203,7 @@
       "type": "rectangle",
       "id": "s4_bit2",
       "x": 928,
-      "y": 800,
+      "y": 794,
       "width": 84,
       "height": 44,
       "strokeColor": "#a85ff1",
@@ -2403,7 +2235,7 @@
       "type": "text",
       "id": "s4_bit2_t",
       "x": 940,
-      "y": 812,
+      "y": 806,
       "width": 60,
       "height": 18,
       "text": "1",
@@ -2435,7 +2267,7 @@
       "type": "text",
       "id": "s4_bl2",
       "x": 924,
-      "y": 848,
+      "y": 840,
       "width": 92,
       "height": 30,
       "text": "dissolve\nbit 0",
@@ -2467,7 +2299,7 @@
       "type": "text",
       "id": "s4_eq",
       "x": 1028,
-      "y": 808,
+      "y": 802,
       "width": 160,
       "height": 28,
       "text": "= 0b101 = 5.0",
@@ -2499,9 +2331,9 @@
       "type": "rectangle",
       "id": "s4_toggle",
       "x": 744,
-      "y": 898,
+      "y": 878,
       "width": 552,
-      "height": 86,
+      "height": 78,
       "strokeColor": "#39434f",
       "backgroundColor": "#0d1117",
       "fillStyle": "solid",
@@ -2531,9 +2363,9 @@
       "type": "text",
       "id": "s4_toggle_t",
       "x": 758,
-      "y": 910,
+      "y": 890,
       "width": 524,
-      "height": 62,
+      "height": 54,
       "text": "addEffect(Dissolve)    → flags |=  (1 << bitIdx)\nremoveEffect(Dissolve) → flags &= ~(1 << bitIdx)\n→ mesh.writeEnableBits(slot, flags)   // 1 float write",
       "originalText": "addEffect(Dissolve)    → flags |=  (1 << bitIdx)\nremoveEffect(Dissolve) → flags &= ~(1 << bitIdx)\n→ mesh.writeEnableBits(slot, flags)   // 1 float write",
       "fontSize": 13,
@@ -2563,7 +2395,7 @@
       "type": "rectangle",
       "id": "s4_node",
       "x": 744,
-      "y": 1006,
+      "y": 970,
       "width": 552,
       "height": 150,
       "strokeColor": "#d46ec0",
@@ -2599,7 +2431,7 @@
       "type": "text",
       "id": "s4_node_h",
       "x": 758,
-      "y": 1016,
+      "y": 980,
       "width": 524,
       "height": 18,
       "text": "EffectMaterial.colorNode  (TSL — once per fragment)",
@@ -2631,7 +2463,7 @@
       "type": "text",
       "id": "s4_node_t",
       "x": 758,
-      "y": 1040,
+      "y": 1004,
       "width": 524,
       "height": 108,
       "text": "let color = baseColor\nfor (const { effect, bitIndex } of effects) {\n  const enabled = mod(floor(enableBits / (1<<bitIndex)), 2)\n  const result  = effect.node({ color, uv })\n  color = mix(color, result, enabled)   // branchless gate\n}",
@@ -2663,11 +2495,11 @@
       "type": "text",
       "id": "s4_foot",
       "x": 744,
-      "y": 1144,
+      "y": 1134,
       "width": 560,
       "height": 36,
-      "text": "enabled 0 → base · enabled 1 → effect\nsame compiled shader runs for the whole batch",
-      "originalText": "enabled 0 → base · enabled 1 → effect\nsame compiled shader runs for the whole batch",
+      "text": "enabled 0 → base color · enabled 1 → effect\nsame compiled shader runs for the whole batch",
+      "originalText": "enabled 0 → base color · enabled 1 → effect\nsame compiled shader runs for the whole batch",
       "fontSize": 12,
       "fontFamily": 3,
       "textAlign": "left",
@@ -2694,9 +2526,9 @@
     {
       "type": "arrow",
       "id": "flow_s2_s4",
-      "x": 1240,
+      "x": 1236,
       "y": 353,
-      "width": 0,
+      "width": 49,
       "height": 367,
       "strokeColor": "#9aa7b0",
       "backgroundColor": "transparent",
@@ -2720,7 +2552,11 @@
           0
         ],
         [
-          0,
+          49,
+          0
+        ],
+        [
+          49,
           367
         ]
       ],
@@ -2733,9 +2569,255 @@
       },
       "endBinding": {
         "elementId": "s4_group",
-        "focus": 0,
+        "focus": 0.6,
         "gap": 4
       }
+    },
+    {
+      "type": "arrow",
+      "id": "s1_a_sprite_group",
+      "x": 130,
+      "y": 278,
+      "width": 0,
+      "height": 66,
+      "strokeColor": "#c7910c",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "angle": 0,
+      "seed": 110201,
+      "version": 1,
+      "versionNonce": 110202,
+      "isDeleted": false,
+      "groupIds": [],
+      "boundElements": null,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          66
+        ]
+      ],
+      "startBinding": {
+        "elementId": "s1_sprite",
+        "focus": 0,
+        "gap": 4
+      },
+      "endBinding": {
+        "elementId": "s1_group_node",
+        "focus": 0,
+        "gap": 4
+      },
+      "startArrowhead": null,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow",
+      "id": "s1_a_group_run",
+      "x": 130,
+      "y": 426,
+      "width": 0,
+      "height": 32,
+      "strokeColor": "#c7910c",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "angle": 0,
+      "seed": 110203,
+      "version": 1,
+      "versionNonce": 110204,
+      "isDeleted": false,
+      "groupIds": [],
+      "boundElements": null,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          32
+        ]
+      ],
+      "startBinding": {
+        "elementId": "s1_group_node",
+        "focus": 0,
+        "gap": 4
+      },
+      "endBinding": {
+        "elementId": "s1_run",
+        "focus": 0,
+        "gap": 4
+      },
+      "startArrowhead": null,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow",
+      "id": "s1_a_sprite_batch",
+      "x": 316,
+      "y": 238,
+      "width": 64,
+      "height": 108,
+      "strokeColor": "#c7910c",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "angle": 0,
+      "seed": 110207,
+      "version": 1,
+      "versionNonce": 110208,
+      "isDeleted": false,
+      "groupIds": [],
+      "boundElements": null,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          40,
+          0
+        ],
+        [
+          40,
+          108
+        ],
+        [
+          64,
+          108
+        ]
+      ],
+      "startBinding": {
+        "elementId": "s1_sprite",
+        "focus": 0,
+        "gap": 4
+      },
+      "endBinding": {
+        "elementId": "s1_batch",
+        "focus": 0,
+        "gap": 4
+      },
+      "startArrowhead": null,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow",
+      "id": "s1_a_group_batch",
+      "x": 316,
+      "y": 385,
+      "width": 64,
+      "height": 1,
+      "strokeColor": "#c7910c",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "angle": 0,
+      "seed": 110209,
+      "version": 1,
+      "versionNonce": 110210,
+      "isDeleted": false,
+      "groupIds": [],
+      "boundElements": null,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          64,
+          1
+        ]
+      ],
+      "startBinding": {
+        "elementId": "s1_group_node",
+        "focus": 0,
+        "gap": 4
+      },
+      "endBinding": {
+        "elementId": "s1_batch",
+        "focus": 0,
+        "gap": 4
+      },
+      "startArrowhead": null,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow",
+      "id": "s1_a_run_batch",
+      "x": 316,
+      "y": 493,
+      "width": 64,
+      "height": 67,
+      "strokeColor": "#c7910c",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "angle": 0,
+      "seed": 110205,
+      "version": 1,
+      "versionNonce": 110206,
+      "isDeleted": false,
+      "groupIds": [],
+      "boundElements": null,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          40,
+          0
+        ],
+        [
+          40,
+          -67
+        ],
+        [
+          64,
+          -67
+        ]
+      ],
+      "startBinding": {
+        "elementId": "s1_run",
+        "focus": 0,
+        "gap": 4
+      },
+      "endBinding": {
+        "elementId": "s1_batch",
+        "focus": 0,
+        "gap": 4
+      },
+      "startArrowhead": null,
+      "endArrowhead": "arrow"
     }
   ],
   "appState": {
