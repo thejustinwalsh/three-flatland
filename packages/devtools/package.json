@@ -68,7 +68,7 @@
   "peerDependencies": {
     "@react-three/fiber": "^10.0.0-alpha.2",
     "@tweakpane/plugin-essentials": "^0.2.1",
-    "react": "^19.0.0",
+    "react": "^19.2.0",
     "three": "^0.183.0",
     "three-flatland": "^0.1.0-alpha.4",
     "tweakpane": "^4.0.5",

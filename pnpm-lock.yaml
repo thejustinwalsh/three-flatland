@@ -34,10 +34,10 @@ catalogs:
       specifier: ^0.6.5
       version: 0.6.5
     react:
-      specifier: ^19.0.0
+      specifier: ^19.2.0
       version: 19.2.3
     react-dom:
-      specifier: ^19.0.0
+      specifier: ^19.2.0
       version: 19.2.3
     three:
       specifier: ^0.183.1
@@ -305,10 +305,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -351,10 +351,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -397,10 +397,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -443,10 +443,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -489,10 +489,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -538,10 +538,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -587,10 +587,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -636,10 +636,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -679,10 +679,10 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/slug
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -719,10 +719,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -765,10 +765,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -814,10 +814,10 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
@@ -1193,10 +1193,10 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0
       react:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1

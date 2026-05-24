@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { claimPane, createPane } from '../create-pane.js'
 import type { CreatePaneOptions, PaneBundle } from '../create-pane.js'
 
@@ -37,22 +37,17 @@ import type { CreatePaneOptions, PaneBundle } from '../create-pane.js'
  * ```
  */
 export function usePane(options: CreatePaneOptions = {}): PaneBundle {
-  const optsRef = useRef(options)
-  optsRef.current = options
+  // Lazy initializer creates the bundle once, synchronously on first
+  // render, so it's available for first paint. StrictMode's double-invoke
+  // is absorbed by createPane's unclaimed-slot orphan disposal.
+  const [bundle, setBundle] = useState(() => createPane(options))
 
-  const bundleRef = useRef<PaneBundle | null>(null)
-  const [, force] = useReducer((x: number) => x + 1, 0)
-
-  if (bundleRef.current === null || bundleRef.current.disposed) {
-    bundleRef.current = createPane(optsRef.current)
-  }
-
-  const bundle = bundleRef.current
+  // Latest options read non-reactively when a disposed bundle is rebuilt.
+  const getOptions = useEffectEvent(() => options)
 
   useEffect(() => {
     if (bundle.disposed) {
-      bundleRef.current = createPane(optsRef.current)
-      force()
+      setBundle(createPane(getOptions()))
       return
     }
     claimPane(bundle)

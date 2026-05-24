@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import type { FolderApi, Pane } from 'tweakpane'
 
 export type PaneParent = Pane | FolderApi
@@ -49,13 +49,14 @@ export function usePaneInput<T>(
   const [value, setValueState] = useState<T>(initialValue)
   const paramsRef = useRef<Record<string, unknown>>({ [key]: initialValue })
   const bindingRef = useRef<{ refresh(): void; dispose(): void } | null>(null)
-  const optsRef = useRef(options)
-  optsRef.current = options
 
-  // Keep paramsRef in sync with React state — covers external setValue
-  // calls between effect runs and ensures a recreated binding shows the
-  // latest value (not the initial).
-  paramsRef.current[key] = value
+  // Capture the latest options + value non-reactively, read only when the
+  // binding is (re)created. useEffectEvent avoids touching refs during
+  // render while keeping options/value out of the effect's dep list (so
+  // they don't retrigger setup). tweakpane writes the bound object back on
+  // its own change events; setValue keeps it synced for external updates.
+  const getOptions = useEffectEvent(() => options)
+  const getValue = useEffectEvent(() => value)
 
   useLayoutEffect(() => {
     if (!parent) {
@@ -63,7 +64,10 @@ export function usePaneInput<T>(
       return
     }
 
-    const { label, ...bindingOpts } = optsRef.current
+    // Seed the bound object with the latest value so a recreated binding
+    // shows current state, not the initial.
+    paramsRef.current[key] = getValue()
+    const { label, ...bindingOpts } = getOptions()
     const binding = parent.addBinding(paramsRef.current, key, {
       label: label ?? key,
       ...bindingOpts,
@@ -87,9 +91,8 @@ export function usePaneInput<T>(
         bindingRef.current = null
       }
     }
-    // optsRef captures the latest options without retriggering setup;
-    // value isn't a dep because we sync paramsRef above.
-     
+    // options/value are read via useEffectEvent, so they stay out of the
+    // dep list and don't retrigger setup — only parent/key rebind.
   }, [parent, key])
 
   const setValue = useCallback(

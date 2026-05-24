@@ -35,7 +35,7 @@
   },
   "peerDependencies": {
     "@react-three/fiber": "10.0.0-alpha.2",
-    "react": "^19.0.0",
+    "react": "^19.2.0",
     "three": "^0.183.1"
   },
   "devDependencies": {
@@ -45,8 +45,8 @@
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^4.3.4",
     "babel-plugin-react-compiler": "^1.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "three": "^0.183.1",
     "tsup": "^8.0.0",
     "typescript": "^5.7.3",
