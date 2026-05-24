@@ -5,20 +5,22 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## New TSL Helpers
+### New TSL helpers
 
-- `shadowSDF2D`: sphere-trace soft shadow through an SDF texture; produces a `[0, 1]` shadow value with an Inigo-Quilez-style running-min penumbra term; configurable step count and start offset
-- Signed SDF support: `SDFGenerator` runs JFA twice (occluder seeds + empty-space seeds), combining inside and outside distances in the final pass; repacked into a single RGBA ping-pong chain at the same VRAM and sample cost as the previous unsigned generator
-- Debug protocol buffer subscription and effect field location helpers
+- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, opts)` — sphere-trace soft shadow through a JFA SDF texture; returns `[0, 1]` shadow factor with IQ-style running-min penumbra for soft edges
+- `normalFromSprite` TSL node — computes tangent-space normals from sprite alpha at runtime (4-neighbor gradient)
+- `normalFromHeight` TSL node — tangent-space normals from a heightmap channel
+- Full lighting shader module: `lit`, `lights`, `shadows`, and `normalFromSprite`/`normalFromHeight` exported from `@three-flatland/nodes/lighting`
 
-## Changes
+### Shadow fixes
 
-- `shadowStartOffset` exposed as a tunable `FloatInput` option; hardcoded 40-unit escape distance removed
-- `shadowStartOffset` default corrected to `40` world units (previous `1.5` default caused self-shadowing on sprites larger than ~1.5 world units)
+- `worldToSDFUV` no longer clamps sample UVs to `[0,1]`; out-of-field samples advance by the epsilon floor (treated as unoccluded) — fixes off-screen lights casting false edge shadows
+- `shadowSDF2D` self-shadow detection uses `sdf < 0` (signed field) instead of `sdf < eps`, eliminating the eps approximation
+- `shadowStartOffset` raised to 40 as the correct default for typical sprite scales; fully tunable via uniform
+- Penumbra math corrected
 
-## Fixes
+### Signed SDF consumption
 
-- Shadows moved to post-process pipeline; JFA seed / propagation pass bugs corrected
-- Penumbra math corrected for IQ running-minimum formulation
+- `shadowSDF2D` takes advantage of the signed SDF produced by `SDFGenerator`: fragments inside casters see negative distance, improving both self-shadow detection and grazing-hit accuracy
 
-The package adds the `shadowSDF2D` TSL node that sphere-traces soft shadows through the signed SDF produced by the Forward+ lighting pipeline.
+Delivers the core `shadowSDF2D` TSL primitive and the full lighting shader module consumed by `@three-flatland/presets`.

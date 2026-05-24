@@ -5,36 +5,59 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## Dashboard
+### Devtools dashboard
 
-- Stats pipeline: per-frame samples collected into preallocated typed-array rings; flushed in 250ms batches via `subarray` views (zero copy); client decodes into Float32 series rings with scalar batch means for text labels
-- Sparkline graph: canvas replaces SVG polyline, eliminating per-frame DOM string allocations; bucketed axis range prevents jitter; axis hysteresis with trimmed max for stable rendering
-- `DebugRegistry` and debug buffer thumbnail blade (Phase C MVP): live GPU buffer thumbnails in the pane with group-prefix collapsible tree
-- Fullscreen buffer modal: pan/zoom (wheel centered on cursor, drag to pan, 0.25×–64× range), sidebar with collapsible group tree, buffer switch resets transform
-- WebCodecs VP9 encoding for fullscreen modal streaming: worker-side `VideoEncoder`, consumer `VideoDecoder` + `VideoFrame` rendering; falls back to raw pixel paint
-- GPU timing detection; stats panel items hidden when the capability is absent
-- Preact module type definitions and implementation for the dashboard
+- New Vite plugin (`@three-flatland/devtools/vite`) bundles and serves a Preact-based dashboard at `/__devtools__`; panels: batches, GPU buffers, environment, stats, debug registry, protocol log
+- Dashboard build task added to Turbo pipeline; produced bundle copied into docs at build time
+- Standalone bundle usable outside the examples MPA via `vite.config.bundle.ts`
 
-## Protocol
+### Buffer viewer (GPU texture inspection)
 
-- `Producer` renamed to `Provider` throughout; multi-provider discovery protocol: consumers find providers via BroadcastChannel, pick by preference, auto-switch on appear/disappear
-- BusTransport + offload-worker pool: pixel format conversion happens on the worker thread; provider ships raw bytes, worker converts to display-ready RGBA8 before broadcast
-- All lighting pipeline debug textures registered (SDF ping/pong, occlusion, light atlas)
-- Texture readback moved to end-of-frame; live render-target dimensions read at drain time
-- Keyframe forced on buffer switch in stream mode; registrations queued if they arrive before provider start
+- Live GPU buffer thumbnails in the pane (240×120, 4 Hz refresh) with `◀ name ▶` cycle controls; display modes: `colors`, `normalize`, `mono`, `signed` (red↔green diverging for SDFs)
+- Fullscreen modal (Phase C): click `⤢` to open a collapsible sidebar tree + aspect-correct canvas; pan/zoom (wheel + drag), zoom clamped 0.25×–64×, double-click to reset
+- WebCodecs VP9 encoding for stream mode: worker VP9-encodes readback pixels, consumer `VideoDecoder` draws `VideoFrame` directly to modal canvas; falls back to raw pixels when WebCodecs unavailable (Firefox, older Safari)
+- All pixel-format conversion runs on the worker thread: `rgba8`, `r8`, `rgba16f` (manual half-float decode), `rgba32f`; GPU row-padding (WebGPU 256-byte alignment) handled correctly
+- `DebugTextureRegistry` gains a `maxDim` cap per entry (default 256 for render targets) with a lazy GPU downsampler; a 1920×1080 SDF reads back at 256×144 instead of 8 MB per flush
+- Texture readback moved to `endFrame()` (after all render passes complete) to prevent capturing partially rendered content
+- SDF distance field and occlusion mask registered as debug textures
 
-## Fixes
+### Stats panel
 
-- `DevtoolsProvider` constructor is now side-effect-free — no `BroadcastChannel`, no `Worker`, no timers on construction; safe for R3F speculative/discarded renders
-- `usePane`, `usePaneFolder`, `usePaneInput` rewritten for React 19.2: `useState` lazy initializer for bundle; `useEffectEvent` replaces lazy-ref/latest-ref patterns flagged by `react-hooks@7` React Compiler diagnostics
-- Fixed modal `paint()` wiping `VideoDecoder` output in stream mode
-- Fixed thumbnail `syncSelection()` overwriting the modal's buffer subscription on every state change
-- Fixed pan/zoom overflow: `overflow:hidden` clips transformed canvas; wheel listener on container prevents page scroll
-- `useFrame` priority switched to options-object form `{ priority: 1000 }` (positional form deprecated in R3F v10)
-- `createDevtoolsProvider` helper exported for non-Flatland (plain Three.js) apps
+- Stats collected into preallocated typed-array rings on the provider; flushed in 250 ms batches via `subarray` views (zero data copy)
+- Canvas replaces SVG polyline in sparkline: eliminates per-rAF DOM mutations and `~5 k` selector-string allocations per second
+- Snapshots mutated in place on the consumer (no per-batch object literals); `toFixed` strings cached per rounded value
+- Bucketed axis range with hysteresis + trimmed max for stable Y-axis during load spikes
+- GPU timing detection: `DevtoolsProvider` probes WebGPU timestamp query support and shows GPU ms only when available
 
-## BREAKING CHANGES
+### Pane hooks (React)
 
-- `usePane`, `usePaneFolder`, and `usePaneInput` now require React ≥ 19.2 (`useEffectEvent`)
+- `usePane`, `usePaneFolder`, `usePaneInput` rewritten for React 19.2: `useEffectEvent` replaces manual latest-ref patterns; `useState` lazy initializer for bundle construction
+- Peer dependency bumped to React `^19.2.0`; workspace catalog and example `package.json` files updated
+- `useFrame` priority argument switched to options-object form (positional form was deprecated in R3F)
+- `usePaneInput` change handler gated on `mountedRef` to prevent post-unmount state updates under StrictMode
 
-This release ships the full Phase C devtools dashboard: live GPU buffer inspection with pan/zoom modal, VP9 streaming, multi-provider discovery, and zero-alloc batched stats.
+### DevtoolsProvider lifecycle
+
+- Constructor is now side-effect-free; `start()` / `dispose()` manage channels, announce, and flush timer (both idempotent and multi-cycle)
+- `Flatland.render()` lazy-starts the provider on first call
+- `<DevtoolsProvider />` R3F component: passive sampler via default-phase `useFrame`, safe in production builds (no-ops when `DEVTOOLS_BUNDLED` is false)
+- `createDevtoolsProvider(opts?)` helper exported from `three-flatland` for vanilla Three.js apps that don't construct a `Flatland`
+- `Flatland._debug` renamed to `_devtools` throughout
+
+### Protocol
+
+- Bus split into two `BroadcastChannel`s: shared discovery channel + per-provider data channel; `providerId` dropped from hot-path messages
+- `DevtoolsClient` switches from single `onChange` to `addListener` / `removeListener`; listener errors caught individually
+- `SubscriberRegistry` tracks per-consumer buffer selection; only the selected buffer's pixels hit the wire
+- `perf-trace.ts` emits User Timing spans (`three-flatland` track group) on Chrome's custom-track extension for bus latency and per-flush CPU cost
+- Controls minimal mode added to `create-pane`
+
+### Fixes
+
+- Modal thumbnail/selection sync: thumbnail defers to modal when open; modal notifies thumbnail of active buffer changes and open/close state
+- Float textures (rgba16f/rgba32f) skip VP9 encoding (VideoEncoder expects 8-bit RGBA); raw pixels flow correctly
+- `bus-worker.ts` URL uses extensionless import so both source and built-dist consumers resolve correctly
+- Zoom info overlay always visible; reset button hidden at identity (not zoom display)
+- `requestAnimationFrame` allocations eliminated: no per-rAF array/object literals on the consumer path
+
+Delivers a fully-featured devtools dashboard with live GPU buffer inspection, VP9-streamed fullscreen texture viewer, React 19.2-compatible pane hooks, and a zero-allocation stats pipeline.
