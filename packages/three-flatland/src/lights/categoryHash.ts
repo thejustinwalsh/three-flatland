@@ -27,7 +27,7 @@
 const _bucketCache = new Map<string, number>()
 
 function djb2(s: string): number {
-  // Classic djb2: start at 5381, multiply by 33 (via `<< 5 + self`),
+  // djb2a (XOR variant): start at 5381, multiply by 33 (via `<< 5 + self`),
   // XOR in each char code. Produces a fast, well-distributed 32-bit
   // hash for short strings.
   let h = 5381

@@ -19,16 +19,7 @@ import {
   registerDebugTexture,
   unregisterDebugTexture,
 } from '../debug/debug-sink'
-import {
-  Fn,
-  uv,
-  vec2,
-  vec4,
-  float,
-  select,
-  attribute,
-  texture as sampleTexture,
-} from 'three/tsl'
+import { Fn, uv, vec2, vec4, float, select, attribute, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { readCastShadowFlag, readFlip } from '../materials/instanceAttributes'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
@@ -40,11 +31,13 @@ export interface OcclusionPassOptions {
   /**
    * Resolution multiplier relative to the main viewport (0 < x <= 1).
    * The SDF is derived from this RT, so lower values trade shadow fidelity
-   * for shadow cost. Default: 1.0 (full resolution). Half-res produced
-   * visible JFA seam artifacts and multi-texel caster edges at small
-   * canvas sizes — the texel-to-world ratio was too coarse for thin
-   * sprites. Drop to 0.5 (or 0.25) on low-end mobile where the shadow
-   * cost dominates and a blockier silhouette is acceptable.
+   * for shadow cost. Default: 0.5 (half resolution) — quarters fill cost
+   * across every RT-sized pass while staying visually indistinguishable
+   * from full-res on typical viewports (the separable blur masks the
+   * coarser seed; NearestFilter keeps edges crisp). Set `1` for very
+   * small / pixel-art viewports where the half-pixel silhouette
+   * quantization reads as blocky, or drop to `0.25` on low-end mobile
+   * where the shadow cost dominates and a blockier silhouette is acceptable.
    */
   resolutionScale?: number
   /** Clear color for the RT. Default: transparent black. */
@@ -362,11 +355,7 @@ function buildOcclusionMaterial(texture: Texture): MeshBasicNodeMaterial {
     // blending on the transparent RT means `alpha = 0` fragments
     // contribute nothing to the destination, giving us the same
     // "no overwrite" semantics as Discard without the stall.
-    const casterAlpha = select(
-      effectiveAlpha.greaterThan(float(0.01)),
-      float(1),
-      float(0)
-    )
+    const casterAlpha = select(effectiveAlpha.greaterThan(float(0.01)), float(1), float(0))
     return vec4(float(0), float(0), float(0), casterAlpha)
   })() as Node<'vec4'>
 

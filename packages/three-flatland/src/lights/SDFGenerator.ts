@@ -6,12 +6,7 @@ import {
   Vector2,
   type Texture,
 } from 'three'
-import {
-  NodeMaterial,
-  QuadMesh,
-  RendererUtils,
-  type WebGPURenderer,
-} from 'three/webgpu'
+import { NodeMaterial, QuadMesh, RendererUtils, type WebGPURenderer } from 'three/webgpu'
 import { uniform, uv, vec2, vec4, float, Fn, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import {
@@ -424,14 +419,12 @@ export class SDFGenerator {
   }
 
   /**
-   * 5-tap binomial separable blur [1,4,6,4,1]/16. Disabled in the hot path
-   * until a zero-output bug is fixed, but kept built so the shader graph
-   * stays consistent and `sdfBlurRT` is a valid debug target.
+   * 5-tap binomial separable blur [1,4,6,4,1]/16. Runs every frame in the
+   * hot path: the H pass writes sdfRT → sdfBlurRT and the V pass writes
+   * sdfBlurRT → sdfRT (see `generate()`), so the final SDF in `sdfRT` is
+   * always the blurred field. `sdfBlurRT` doubles as a valid debug target.
    */
-  private _buildBlurMaterial(
-    sourceTex: Texture,
-    axis: 'horizontal' | 'vertical'
-  ): NodeMaterial {
+  private _buildBlurMaterial(sourceTex: Texture, axis: 'horizontal' | 'vertical'): NodeMaterial {
     const ts = this._texelSize
     const mat = new NodeMaterial()
     mat.fragmentNode = Fn(() => {

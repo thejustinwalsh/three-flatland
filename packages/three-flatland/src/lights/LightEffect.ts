@@ -22,7 +22,14 @@ import type { SDFGenerator } from './SDFGenerator'
 import type { Light2D } from './Light2D'
 
 // Re-export schema types for LightEffect consumers
-export type { EffectSchema, EffectSchemaValue, EffectField, EffectValues, EffectConstants, UniformKeys }
+export type {
+  EffectSchema,
+  EffectSchemaValue,
+  EffectField,
+  EffectValues,
+  EffectConstants,
+  UniformKeys,
+}
 // Re-export channel types for LightEffect consumers
 export type { ChannelName, WithRequiredChannels }
 
@@ -89,6 +96,12 @@ interface FlatlandLike {
    */
   _rebuildLightFn?: () => void
 }
+
+// Tracks which writable-constant `${lightName}.${name}` keys have already
+// logged the runtime-rebuild warning. Dev UIs (Tweakpane) drive these
+// setters continuously while dragging a slider/toggle, which would otherwise
+// flood the console with identical warnings. We warn once per key.
+const _warnedConstantSetters = new Set<string>()
 
 // Uniform node storage type — union of all possible uniform node types
 type UniformNodeValue =
@@ -331,13 +344,17 @@ export abstract class LightEffect {
             // shader graph and trigger a WebGPU pipeline recompile
             // (~50-500ms on first frame after the change). For
             // runtime-tuned values, prefer uniform schema fields.
-            // One warn per actual change — synchronous batches
-            // coalesce into a single rebuild via Flatland but each
-            // setter still logs so the source is traceable.
-             
-            console.warn(
-              `[three-flatland] ${ctor.lightName}.${name} changed at runtime — triggers shader rebuild`
-            )
+            // Deduped to one warn per `${lightName}.${name}` key so a
+            // Tweakpane-bound toggle/slider dragged continuously doesn't
+            // flood the console — the source is still traceable from the
+            // first occurrence.
+            const warnKey = `${ctor.lightName}.${name}`
+            if (!_warnedConstantSetters.has(warnKey)) {
+              _warnedConstantSetters.add(warnKey)
+              console.warn(
+                `[three-flatland] ${warnKey} changed at runtime — triggers shader rebuild`
+              )
+            }
             this._onDirty?.()
             this._flatland?._rebuildLightFn?.()
           },
@@ -555,7 +572,9 @@ export abstract class LightEffect {
 // ============================================
 
 /** Instance type for lifecycle hook `this` binding. */
-type LightEffectInstance<S extends EffectSchema> = LightEffect & EffectValues<S> & EffectConstants<S>
+type LightEffectInstance<S extends EffectSchema> = LightEffect &
+  EffectValues<S> &
+  EffectConstants<S>
 
 /** Configuration passed to createLightEffect(). */
 interface LightEffectConfig<
@@ -575,9 +594,9 @@ interface LightEffectConfig<
    * The returned callback's context is narrowed based on `requires` —
    * e.g., `requires: ['normal']` guarantees `ctx.normal` is `Node<'vec3'>`.
    */
-  light: (context: LightEffectBuildContext<S>) =>
-    (ctx: ColorTransformContext & WithRequiredChannels<C>) =>
-      Node<'vec4'>
+  light: (
+    context: LightEffectBuildContext<S>
+  ) => (ctx: ColorTransformContext & WithRequiredChannels<C>) => Node<'vec4'>
 
   // Lifecycle hooks (optional) — `this` is the effect instance
   /** Initialize GPU resources. Called lazily on first render. */
@@ -634,9 +653,7 @@ export type LightEffectClass<S extends EffectSchema> = {
 export function createLightEffect<
   const S extends EffectSchema,
   const C extends readonly ChannelName[] = readonly [],
->(
-  config: LightEffectConfig<S, C>
-): LightEffectClass<S> {
+>(config: LightEffectConfig<S, C>): LightEffectClass<S> {
   const {
     name,
     schema,
