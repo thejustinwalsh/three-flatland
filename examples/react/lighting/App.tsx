@@ -1,4 +1,4 @@
-import { Suspense, useRef, useEffect, useMemo, useState } from 'react'
+import { Suspense, useRef, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import {
@@ -43,6 +43,22 @@ extend({
 
 const VIEW_SIZE = 640
 const TILE_PX = 16
+
+/**
+ * Vertical ortho view size that frames the whole map in the current
+ * canvas. `scale` is screen-px per world-unit on the binding axis: when
+ * the viewport can show the map at ≥ 1× we snap to a whole number so the
+ * pixel art stays crisp; when it's smaller than the map (scale < 1) we
+ * keep the fractional value so the scene shrinks to fit instead of
+ * clamping to 1× and cropping. Scale is uniform, so `canvasH / scale`
+ * also fits the width.
+ */
+function fitViewSize(canvasW: number, canvasH: number, mapW: number, mapH: number): number {
+  if (canvasW <= 0 || canvasH <= 0 || mapW <= 0 || mapH <= 0) return VIEW_SIZE
+  let scale = Math.min(canvasW / mapW, canvasH / mapH)
+  if (scale >= 1) scale = Math.floor(scale)
+  return canvasH / scale
+}
 const TILE_SCALE = 2
 const KNIGHT_SCALE = TILE_PX * TILE_SCALE * 2
 const SLIME_SCALE = TILE_PX * TILE_SCALE
@@ -131,18 +147,24 @@ const slimeAnimations: AnimationSetDefinition = {
 function OrthoCamera({ viewSize }: { viewSize: number }) {
   const set = useThree((s) => s.set)
   const size = useThree((s) => s.size)
+  const camRef = useRef<ThreeOrthographicCamera | null>(null)
   const aspect = size.width / size.height
+  // Re-derive the frustum whenever the fit view size or aspect changes —
+  // a ref callback fires only on mount, so resize/zoom updates would be
+  // missed without this effect.
+  useLayoutEffect(() => {
+    const cam = camRef.current
+    if (!cam) return
+    cam.left = (-viewSize * aspect) / 2
+    cam.right = (viewSize * aspect) / 2
+    cam.top = viewSize / 2
+    cam.bottom = -viewSize / 2
+    cam.updateProjectionMatrix()
+    set({ camera: cam })
+  }, [viewSize, aspect, set])
   return (
     <orthographicCamera
-      ref={(cam: ThreeOrthographicCamera | null) => {
-        if (!cam) return
-        cam.left = (-viewSize * aspect) / 2
-        cam.right = (viewSize * aspect) / 2
-        cam.top = viewSize / 2
-        cam.bottom = -viewSize / 2
-        cam.updateProjectionMatrix()
-        set({ camera: cam })
-      }}
+      ref={camRef}
       position={[0, 0, 100]}
       near={0.1}
       far={1000}
@@ -299,6 +321,17 @@ function FlatlandScene(props: SceneProps) {
 
   const mapHalfW = (mapData.width * mapData.tileWidth * TILE_SCALE) / 2
   const mapHalfH = (mapData.height * mapData.tileHeight * TILE_SCALE) / 2
+
+  // Frame the whole map for the current canvas (integer scale when
+  // upscaling, fractional when the viewport is smaller than the map).
+  const viewSize = useMemo(
+    () => fitViewSize(size.width, size.height, mapHalfW * 2, mapHalfH * 2),
+    [size.width, size.height, mapHalfW, mapHalfH]
+  )
+  // Click-to-walk reads this inside a listener that doesn't re-bind on
+  // every resize — keep a live ref so world mapping uses the current view.
+  const viewSizeRef = useRef(viewSize)
+  viewSizeRef.current = viewSize
 
   const fixedLightPositions = useMemo(() =>
     extractObjectsByType(mapData, 'light').map(obj => mapToWorld(obj, mapData, TILE_SCALE)),
@@ -485,8 +518,11 @@ function FlatlandScene(props: SceneProps) {
   }, [mapData])
 
   useEffect(() => {
-    flatlandRef.current?.resize(size.width, size.height)
-  }, [size.width, size.height])
+    const fl = flatlandRef.current
+    if (!fl) return
+    fl.viewSize = viewSize
+    fl.resize(size.width, size.height)
+  }, [size.width, size.height, viewSize])
 
   // Hero input
   useEffect(() => {
@@ -562,8 +598,9 @@ function FlatlandScene(props: SceneProps) {
       const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
       const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
       const aspect = rect.width / rect.height
-      const worldX = ndcX * (VIEW_SIZE * aspect) / 2
-      const worldY = ndcY * VIEW_SIZE / 2
+      const vs = viewSizeRef.current
+      const worldX = ndcX * (vs * aspect) / 2
+      const worldY = ndcY * vs / 2
 
       // Diablo-style click-to-walk. If the click landed near a torch
       // switch, queue that switch's index so the hero toggles it on
@@ -869,8 +906,8 @@ function FlatlandScene(props: SceneProps) {
 
   return (
     <>
-      <OrthoCamera viewSize={VIEW_SIZE} />
-      <flatland ref={flatlandRef} viewSize={VIEW_SIZE} clearColor={0x06060c}>
+      <OrthoCamera viewSize={viewSize} />
+      <flatland ref={flatlandRef} viewSize={viewSize} clearColor={0x06060c}>
         {props.lightingEnabled && (
           <defaultLightEffect
             ref={defaultLightRef}

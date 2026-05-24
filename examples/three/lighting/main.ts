@@ -24,6 +24,22 @@ import { createPane } from '@three-flatland/devtools'
 
 const VIEW_SIZE = 640
 const TILE_PX = 16
+
+/**
+ * Vertical ortho view size that frames the whole map in the current
+ * canvas. `scale` is screen-px per world-unit on the binding axis: when
+ * the viewport can show the map at ≥ 1× we snap to a whole number so the
+ * pixel art stays crisp; when it's smaller than the map (scale < 1) we
+ * keep the fractional value so the scene shrinks to fit instead of
+ * clamping to 1× and cropping. Scale is uniform, so `canvasH / scale`
+ * also fits the width.
+ */
+function fitViewSize(canvasW: number, canvasH: number, mapW: number, mapH: number): number {
+  if (canvasW <= 0 || canvasH <= 0 || mapW <= 0 || mapH <= 0) return VIEW_SIZE
+  let scale = Math.min(canvasW / mapW, canvasH / mapH)
+  if (scale >= 1) scale = Math.floor(scale)
+  return canvasH / scale
+}
 const TILE_SCALE = 2
 const KNIGHT_SCALE = TILE_PX * TILE_SCALE * 2
 const SLIME_SCALE = TILE_PX * TILE_SCALE
@@ -189,6 +205,18 @@ async function main() {
 
   const mapHalfW = (mapData.width * mapData.tileWidth * TILE_SCALE) / 2
   const mapHalfH = (mapData.height * mapData.tileHeight * TILE_SCALE) / 2
+
+  // Now that the map's world size is known, frame it to the canvas.
+  const refitView = () => {
+    flatland.viewSize = fitViewSize(
+      window.innerWidth,
+      window.innerHeight,
+      mapHalfW * 2,
+      mapHalfH * 2
+    )
+    flatland.resize(window.innerWidth, window.innerHeight)
+  }
+  refitView()
 
   // ─── Tilemap ────────────────────────────────────────────────────
   const tilemap = new TileMap2D({ data: mapData })
@@ -564,8 +592,9 @@ async function main() {
     const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
     const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
     const aspect = rect.width / rect.height
-    const worldX = (ndcX * VIEW_SIZE * aspect) / 2
-    const worldY = (ndcY * VIEW_SIZE) / 2
+    const vs = flatland.viewSize
+    const worldX = (ndcX * vs * aspect) / 2
+    const worldY = (ndcY * vs) / 2
 
     let snapX = worldX
     let snapY = worldY
@@ -596,7 +625,7 @@ async function main() {
   // ─── Resize ─────────────────────────────────────────────────────
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight)
-    flatland.resize(window.innerWidth, window.innerHeight)
+    refitView()
   })
 
   // ─── Render loop ────────────────────────────────────────────────
