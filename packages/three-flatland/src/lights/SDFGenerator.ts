@@ -2,7 +2,7 @@ import {
   RenderTarget,
   HalfFloatType,
   NearestFilter,
-  LinearFilter,
+  type LinearFilter,
   ClampToEdgeWrapping,
   Vector2,
   type Texture,
