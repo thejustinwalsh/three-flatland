@@ -5,25 +5,20 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**2D lighting TSL nodes** — new lighting sub-module in `@three-flatland/nodes/lighting`.
+## New TSL Helpers
 
-**shadowSDF2D**
-- Sphere-trace soft shadow through an SDF texture; returns a `[0, 1]` shadow factor with Inigo-Quilez-style running-min penumbra
-- Signature: `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, { steps?, softness?, startOffset?, eps? })`
-- `startOffset` skips self-shadow artifacts on the caster sprite; now tunable via a `FloatInput` uniform (previously hardcoded to 40 world units)
-- Signed SDF support: self-shadow detection uses `sdf < 0` (strictly inside) instead of an epsilon approximation
-- Penumbra math fix applied
+- `shadowSDF2D`: sphere-trace soft shadow through an SDF texture; produces a `[0, 1]` shadow value with an Inigo-Quilez-style running-min penumbra term; configurable step count and start offset
+- Signed SDF support: `SDFGenerator` runs JFA twice (occluder seeds + empty-space seeds), combining inside and outside distances in the final pass; repacked into a single RGBA ping-pong chain at the same VRAM and sample cost as the previous unsigned generator
+- Debug protocol buffer subscription and effect field location helpers
 
-**normalFromSprite / normalFromHeight**
-- TSL helpers for runtime per-sprite normal generation from alpha-gradient and heightmap inputs
+## Changes
 
-**lights / lit**
-- `Light2D` data accessors and lit-surface TSL nodes for forward+ shading
+- `shadowStartOffset` exposed as a tunable `FloatInput` option; hardcoded 40-unit escape distance removed
+- `shadowStartOffset` default corrected to `40` world units (previous `1.5` default caused self-shadowing on sprites larger than ~1.5 world units)
 
-**LightEffect system**
-- Traits, registry, and React attach helpers for wiring light effects into the R3F scene graph
+## Fixes
 
-**Bug fixes**
-- `shadowStartOffset` default raised to 40 (from 1.5) to clear typical caster radii out-of-the-box; still user-tunable via slider
+- Shadows moved to post-process pipeline; JFA seed / propagation pass bugs corrected
+- Penumbra math corrected for IQ running-minimum formulation
 
-This release ships the core TSL lighting node library that `@three-flatland/presets` builds its `DefaultLightEffect` on.
+The package adds the `shadowSDF2D` TSL node that sphere-traces soft shadows through the signed SDF produced by the Forward+ lighting pipeline.

@@ -5,8 +5,7 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**`SlugFontLoader.load()` now accepts `BakedAssetLoaderOptions`**
-- Unified with the shared option type used by `NormalMapLoader`, `SpriteSheetLoader`, `LDtkLoader`, and `TiledLoader`
-- `@three-flatland/bake` added as a workspace dependency (type-only import, no runtime cost)
+- `SlugFontLoader.load()` now accepts `BakedAssetLoaderOptions` directly, unifying the opt-out flag pattern across all baked-asset loaders; `@three-flatland/bake` added as a workspace dependency (type-only import, no runtime cost)
+- `NormalMapLoader` cache key now uses `hashDescriptor(descriptor)` rather than descriptor presence — two calls with different descriptors for the same URL resolve to distinct cache entries
 
-This patch aligns `SlugFontLoader` with the ecosystem-wide `forceRuntime` opt-out pattern.
+Aligns `SlugFontLoader` with the `BakedAssetLoaderOptions` structural type shared by all Flatland baked-asset loaders.

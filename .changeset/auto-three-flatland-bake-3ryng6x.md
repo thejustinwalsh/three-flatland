@@ -5,21 +5,18 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New `@three-flatland/bake` package** — unified `flatland-bake` CLI and extensible baker framework for offline asset processing.
+## flatland-bake CLI
 
-**CLI & baker discovery**
-- `flatland-bake` binary discovers and dispatches to bakers contributed via a `flatland.bake` manifest field in any workspace or npm package
-- Discovery walks `node_modules` upward from CWD; tolerates scoped packages, missing dirs, and malformed manifests; first-wins on duplicate names
-- CWD-self-discovery: CLI running inside a package that declares its own bakers registers them first, letting authors iterate without symlinking
-- `flatland-bake --list` shows all discovered bakers; bakers export `{ name, description, run(args), usage? }`
+- New `@three-flatland/bake` package providing the `flatland-bake` binary
+- Plugin-based baker discovery: packages contribute bakers via `"flatland": { "bakers": [...] }` in `package.json`; installing a package makes its subcommands appear in `flatland-bake --list` with no additional wiring
+- Discovery walks `node_modules` upward from CWD, tolerating scoped packages, missing directories, and malformed `package.json`; duplicate baker names reported as first-wins conflicts
+- CWD self-discovery: a package's own `package.json` bakers are registered ahead of `node_modules` scans, enabling iteration without self-symlinking
+- `flatland.bakers` is the legacy field name; `flatland.bake` is canonical — installing either is accepted, the legacy name emits a deprecation warning
 
-**Shared loader option type**
-- `BakedAssetLoaderOptions` introduces `forceRuntime?: boolean` — the single opt-out flag adopted by all baked-asset loaders (`NormalMapLoader`, `SlugFontLoader`, `SpriteSheetLoader`, `LDtkLoader`, `TiledLoader`)
-- `skipBakedProbe` renamed to `forceRuntime`; `disableRuntimeBake` dropped (runtime bake is always-on when normals are requested)
+## Fixes
 
-**Bug fixes**
-- CLI USAGE text updated to reference `flatland.bake` (was incorrectly referencing legacy `flatland.bakers`)
-- Dead `&& header.status !== 206` guard removed from sidecar probe
-- React lighting example: `setTorchEnabled` deferred off the `useFrame` loop via `queueMicrotask` to prevent synchronous mid-frame re-renders
+- CLI help text updated to reference the canonical `flatland.bake` field (was `flatland.bakers`)
+- Removed dead `&& header.status !== 206` guard in `sidecar.ts` (`Response.ok` already covers 200–299)
+- `setTorchEnabled` in the lighting example deferred off the `useFrame` loop via `queueMicrotask` to prevent mid-frame React state updates
 
-This release introduces the `flatland-bake` CLI and the shared `BakedAssetLoaderOptions` type that unifies opt-out semantics across every baked-asset loader.
+The package introduces the `flatland-bake` CLI that any flatland package can extend by declaring bakers in its `package.json`.
