@@ -80,6 +80,8 @@ const CUSTOM_FULL_THRESHOLD = 3
  * exceeds the WebGPU 8-binding limit.
  *
  * Systems write to batch buffers directly via the write methods.
+ *
+ * @internal
  */
 export class SpriteBatch extends InstancedMesh {
   /**

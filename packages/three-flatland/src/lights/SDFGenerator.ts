@@ -66,6 +66,7 @@ import {
 const _quadMesh = new QuadMesh()
 let _rendererState: ReturnType<typeof RendererUtils.resetRendererState>
 
+/** @internal */
 export class SDFGenerator {
   /** Final SDF output texture. Reference is stable across resizes. */
   get sdfTexture(): Texture {

@@ -144,6 +144,8 @@ export class Layer {
  * // Toggle layer visibility
  * layers.setLayerVisible('effects', false)
  * ```
+ *
+ * @internal
  */
 export class LayerManager {
   /**

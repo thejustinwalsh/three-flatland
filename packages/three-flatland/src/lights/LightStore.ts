@@ -56,6 +56,8 @@ export type TileLookupFn = (tileIndex: Node<'int'>, slotIndex: Node<'int'>) => N
  * const store = new LightStore({ maxLights: 64 })
  * store.sync(flatland.lights)  // CPU → DataTexture each frame
  * ```
+ *
+ * @internal
  */
 export class LightStore {
   /** Maximum number of lights this store can handle */

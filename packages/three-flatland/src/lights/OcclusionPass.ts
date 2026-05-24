@@ -81,6 +81,8 @@ export interface OcclusionPassOptions {
  * `castShadow` flag through the batched sprite attribute buffers so
  * non-casters write alpha = 0 from inside the sprite material. Tracked in
  * `planning/experiments/SDF-Shadow-Plumbing.md` as the T2 follow-up.
+ *
+ * @internal
  */
 export class OcclusionPass {
   private _resolutionScale: number
