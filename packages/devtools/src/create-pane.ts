@@ -79,6 +79,19 @@ export function claimPane(bundle: PaneBundle): void {
  *   ├─ Stats (folder) ───┤ ← collapsible: draws, tris
  *   ├─ ...user controls...┤
  *   └────────────────────┘
+ *
+ * @param options - Title, expansion state, and stats-graph `driver` (see
+ *   {@link CreatePaneOptions}). Defaults to a self-ticking `'raf'` pane
+ *   titled "Controls".
+ * @returns A {@link PaneBundle} — the Tweakpane `pane` plus an `update()`
+ *   tick and a `disposed` flag.
+ *
+ * @example
+ * ```typescript
+ * const { pane } = createPane({ title: 'Debug' })
+ * const folder = pane.addFolder({ title: 'Sprite' })
+ * folder.addBinding(state, 'scale', { min: 0.1, max: 4 })
+ * ```
  */
 export function createPane(options: CreatePaneOptions = {}): PaneBundle {
   const {

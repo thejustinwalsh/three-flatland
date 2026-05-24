@@ -258,6 +258,10 @@ post.bands = 10
 
 The render pipeline auto-initializes on the first `addPass()` call. Passes chain in insertion order — each receives the previous pass's output.
 
+:::tip[Performance note]
+Adding the first pass switches Flatland onto the render-pipeline path: the scene renders to an offscreen target, then each pass runs as a full-screen draw. One or two passes are cheap; a long chain costs a full-screen sample per pass per frame, so fuse effects into a single pass where you can.
+:::
+
 | Method | Description |
 |--------|-------------|
 | `addPass(pass, order?)` | Add a pass effect |

@@ -273,6 +273,10 @@ canvas.addEventListener('mouseup', () => {
 
 ## Light2D Properties
 
+:::note[`type` vs `lightType`]
+The constructor option is `type` (`new Light2D({ type: 'point' })`); the instance property and the R3F prop are `lightType` (`<light2D lightType="point" />`). Both set the same thing — the constructor just uses the shorter key.
+:::
+
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `lightType` | `'point' \| 'directional' \| 'spot' \| 'ambient'` | `'point'` | Light type |

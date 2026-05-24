@@ -24,6 +24,17 @@ import type { CreatePaneOptions, PaneBundle } from '../create-pane.js'
  * Uses `driver: 'raf'` so the stats graph self-ticks via its own
  * `requestAnimationFrame` loop. This makes `usePane` work regardless
  * of whether it's called inside or outside R3F's `<Canvas>` context.
+ *
+ * @param options - Same {@link CreatePaneOptions} as `createPane`.
+ * @returns A {@link PaneBundle}; its identity changes across teardown and
+ *   rebuild so dependent hooks (`usePaneFolder`, `usePaneInput`) re-bind.
+ *
+ * @example
+ * ```tsx
+ * const { pane } = usePane()
+ * const folder = usePaneFolder(pane, 'Settings')
+ * const [speed] = usePaneInput(folder, 'speed', 1, { min: 0, max: 10 })
+ * ```
  */
 export function usePane(options: CreatePaneOptions = {}): PaneBundle {
   const optsRef = useRef(options)
