@@ -16,9 +16,16 @@
 //     ships even with all four features enabled, comparable to the
 //     hand-rolled shim it replaced.
 
-import { WASI, useClock, useEnviron, useRandom, useProc, type WASIFeatureProvider } from 'uwasi'
+import { WASI, useClock, useEnviron, useRandom, useProc } from 'uwasi'
 
 export { WASIProcExit } from 'uwasi'
+
+// uwasi@1.4.1's barrel doesn't re-export `WASIFeatureProvider` (it lives in
+// the internal `./options` module). Derive it from the public `WASI`
+// constructor's `features` option instead of reaching into an internal path.
+type WASIFeatureProvider = NonNullable<
+  NonNullable<ConstructorParameters<typeof WASI>[0]>['features']
+>[number]
 
 // WASI errno values used in the no-FS feature below. wasi-libc's stdio
 // initializer scans preopens via fd_prestat_get and STOPS when it gets
