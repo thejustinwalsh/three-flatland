@@ -50,7 +50,9 @@ export interface ConvertRequest {
 export interface BusTransport {
   /** Pop a small (4 KB) pool buffer. */
   acquireSmall(): ArrayBuffer
-  /** Pop a large (256 KB) pool buffer. */
+  /** Pop a medium (256 KB) pool buffer — for the per-flush data packet. */
+  acquireMedium(): ArrayBuffer
+  /** Pop a large (16 MB) pool buffer — for texture pixel readback. */
   acquireLarge(): ArrayBuffer
   /**
    * Broadcast a message. Pass any pool buffers referenced by typed
@@ -82,7 +84,7 @@ export interface BusTransport {
    */
   releaseUnused(buf: ArrayBuffer): void
   /** Approximate count of buffers currently held in each pool tier. */
-  poolStats(): { smallFree: number; largeFree: number }
+  poolStats(): { smallFree: number; mediumFree: number; largeFree: number }
   dispose(): void
 }
 
@@ -90,7 +92,7 @@ export interface BusTransport {
 
 interface PoolInitMessage {
   type: '__pool_init__'
-  tier: 'small' | 'large'
+  tier: 'small' | 'medium' | 'large'
   bufs: ArrayBuffer[]
 }
 
@@ -129,6 +131,7 @@ class WorkerBusTransport implements BusTransport {
   get codecSupported(): boolean | null { return this._codecSupported }
 
   acquireSmall(): ArrayBuffer { return this._pool.acquireSmall() }
+  acquireMedium(): ArrayBuffer { return this._pool.acquireMedium() }
   acquireLarge(): ArrayBuffer { return this._pool.acquireLarge() }
 
   post(msg: DebugMessage, bufs?: ArrayBuffer[]): void {
@@ -169,9 +172,9 @@ class WorkerBusTransport implements BusTransport {
     this._pool.release(buf)
   }
 
-  poolStats(): { smallFree: number; largeFree: number } {
+  poolStats(): { smallFree: number; mediumFree: number; largeFree: number } {
     const s = this._pool.stats()
-    return { smallFree: s.smallFree, largeFree: s.largeFree }
+    return { smallFree: s.smallFree, mediumFree: s.mediumFree, largeFree: s.largeFree }
   }
 
   dispose(): void {
@@ -202,6 +205,7 @@ class InlineBusTransport implements BusTransport {
   get codecSupported(): boolean | null { return false }
 
   acquireSmall(): ArrayBuffer { return new ArrayBuffer(POOL.small.size) }
+  acquireMedium(): ArrayBuffer { return new ArrayBuffer(POOL.medium.size) }
   acquireLarge(): ArrayBuffer { return new ArrayBuffer(POOL.large.size) }
 
   post(msg: DebugMessage, _bufs?: ArrayBuffer[]): void {
@@ -230,8 +234,8 @@ class InlineBusTransport implements BusTransport {
 
   releaseUnused(_buf: ArrayBuffer): void { /* no pool to return to */ }
 
-  poolStats(): { smallFree: number; largeFree: number } {
-    return { smallFree: 0, largeFree: 0 }
+  poolStats(): { smallFree: number; mediumFree: number; largeFree: number } {
+    return { smallFree: 0, mediumFree: 0, largeFree: 0 }
   }
 
   dispose(): void {

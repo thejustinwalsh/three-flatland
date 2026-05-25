@@ -348,7 +348,12 @@ export class DevtoolsProvider {
     // cursor. Large tier covers the worst case (a buffer payload up to
     // 256×256×4 = 256 KB). If nothing actually gets encoded, we
     // release the buffer back to the pool unused.
-    const poolBuf = transport.acquireLarge()
+    // Medium tier (256 KB): the data packet (stats/batch/env/registry deltas)
+    // is small, so it must NOT ride the 16 MB texture tier — sitting there made
+    // the worker's BroadcastChannel re-broadcast clone the full 16 MB backing
+    // buffer on every same-page receiver. The large tier stays for texture
+    // pixel readback only.
+    const poolBuf = transport.acquireMedium()
     const cursor: BufferCursor = { buffer: poolBuf, byteOffset: 0 }
 
     let anyFeature = false

@@ -28,6 +28,12 @@
 /** Tier sizes / counts. Hard-coded; bump here if we ever see exhaustion. */
 export const POOL = {
   small: { size: 4 * 1024, count: 8 },         // 32 KB
+  // The per-flush data packet (stats deltas + batch/registry/env samples).
+  // It never belonged in the 16 MB texture tier: sitting there meant the
+  // worker's BroadcastChannel re-broadcast cloned the full 16 MB backing
+  // buffer per same-page receiver. 256 KB holds the payload with headroom;
+  // bump the count if exhaustion warns.
+  medium: { size: 256 * 1024, count: 4 },      // 1 MB, dev-only
   // Sized to fit the largest debug buffer we routinely drain. With the
   // consumer-driven subscription model only one texture is usually in
   // flight at a time (the currently-viewed thumbnail or the modal's
@@ -37,13 +43,15 @@ export const POOL = {
   large: { size: 16 * 1024 * 1024, count: 4 }, // 64 MB, dev-only
 } as const
 
-export type PoolTier = 'small' | 'large'
+export type PoolTier = 'small' | 'medium' | 'large'
 
 export interface PoolStats {
   smallFree: number
+  mediumFree: number
   largeFree: number
   /** Pool-exhaustion events since construction (one-off `new ArrayBuffer` happened). */
   smallExhausted: number
+  mediumExhausted: number
   largeExhausted: number
   /** Release-with-unknown-size events (buffer was a one-off; GC'd instead of pooled). */
   orphaned: number
@@ -51,8 +59,10 @@ export interface PoolStats {
 
 export class BufferPool {
   private _smallFree: ArrayBuffer[] = []
+  private _mediumFree: ArrayBuffer[] = []
   private _largeFree: ArrayBuffer[] = []
   private _smallExhausted = 0
+  private _mediumExhausted = 0
   private _largeExhausted = 0
   private _orphaned = 0
   /**
@@ -73,6 +83,7 @@ export class BufferPool {
   seed(tier: PoolTier, bufs: ArrayBuffer[]): void {
     for (const b of bufs) {
       if (tier === 'small') this._smallFree.push(b)
+      else if (tier === 'medium') this._mediumFree.push(b)
       else this._largeFree.push(b)
     }
     this._seeded = true
@@ -86,6 +97,16 @@ export class BufferPool {
       console.warn(`[devtools] small pool exhausted; allocating one-off. ${this._smallExhausted} events total`)
     }
     return new ArrayBuffer(POOL.small.size)
+  }
+
+  acquireMedium(): ArrayBuffer {
+    const b = this._mediumFree.pop()
+    if (b !== undefined) return b
+    this._mediumExhausted++
+    if (this._seeded && (this._mediumExhausted & 15) === 1) {
+      console.warn(`[devtools] medium pool exhausted; allocating one-off. ${this._mediumExhausted} events total`)
+    }
+    return new ArrayBuffer(POOL.medium.size)
   }
 
   acquireLarge(): ArrayBuffer {
@@ -110,6 +131,10 @@ export class BufferPool {
       this._smallFree.push(buf)
       return
     }
+    if (n === POOL.medium.size) {
+      this._mediumFree.push(buf)
+      return
+    }
     if (n === POOL.large.size) {
       this._largeFree.push(buf)
       return
@@ -120,8 +145,10 @@ export class BufferPool {
   stats(): PoolStats {
     return {
       smallFree: this._smallFree.length,
+      mediumFree: this._mediumFree.length,
       largeFree: this._largeFree.length,
       smallExhausted: this._smallExhausted,
+      mediumExhausted: this._mediumExhausted,
       largeExhausted: this._largeExhausted,
       orphaned: this._orphaned,
     }
@@ -129,6 +156,7 @@ export class BufferPool {
 
   dispose(): void {
     this._smallFree.length = 0
+    this._mediumFree.length = 0
     this._largeFree.length = 0
   }
 }

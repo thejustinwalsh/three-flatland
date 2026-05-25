@@ -256,6 +256,9 @@ ctx.onmessage = (ev: MessageEvent<unknown>) => {
     const small = allocateTier('small')
     ctx.postMessage({ type: '__pool_init__', tier: 'small', bufs: small }, small)
 
+    const medium = allocateTier('medium')
+    ctx.postMessage({ type: '__pool_init__', tier: 'medium', bufs: medium }, medium)
+
     const large = allocateTier('large')
     ctx.postMessage({ type: '__pool_init__', tier: 'large', bufs: large }, large)
 
