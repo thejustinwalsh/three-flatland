@@ -9,32 +9,45 @@
 
 ### New features
 
-- **Vite plugin for devtools dashboard**: standalone dashboard SPA served by the Vite dev server; build bundle task added to turbo pipeline
-- **Fullscreen buffer viewer modal**: click the expand button on any buffer thumbnail to open a fullscreen modal with a collapsible group sidebar, pixel-perfect canvas display, pan/zoom (mouse wheel + drag), Esc to close
-- **WebCodecs VP9 encoding**: fullscreen buffer modal streams GPU readback pixels via VP9 on the bus worker; `VideoDecoder` on the consumer side; falls back to raw-pixel path when WebCodecs unavailable (Firefox, older Safari)
-- **GPU timing detection**: auto-detects GPU timestamp query support and conditionally shows GPU time in the stats panel
-- **Debug buffer pipeline** (`DebugTextureRegistry`): live GPU buffer readback with per-consumer selection, metadata-only fast path, and pixel payloads gated by selection
-- **Buffer display modes**: `colors`, `normalize`, `mono`, `signed` (red/green diverging), `alpha` — format-driven defaults; all conversion runs on the worker thread
-- **GPU row padding**: worker correctly detects WebGPU's 256-byte `bytesPerRow` alignment and strips padding on readback
-- **SDF + occlusion debug textures**: `sdf.distanceField` (rgba16f, signed) and `occlusion.mask` (rgba8, mono) registered in the buffer panel
-- **`createDevtoolsProvider` helper**: exported from `three-flatland` for vanilla Three.js apps that don't construct a `Flatland`; returns a no-op stub in production
-- **`<DevtoolsProvider />` React component**: passive sampler using `useFrame`; added to all non-Flatland React examples
-- **React lifecycle overhaul**: `DevtoolsProvider` constructor is now side-effect-free with explicit `start()`/`dispose()` lifecycle; `useEffectEvent` in pane hooks replaces ref-during-render patterns; requires React ≥ 19.2
-- **Tweakpane controls minimal mode**: `createPane` gains a compact minimal style variant
-- **Bucketed axis range**: sparkline y-axis uses hysteresis + trimmed max for stable display under bursty data
-- **Canvas-based stats graph**: replaces SVG `<polyline>` eliminating per-frame DOM mutations and selector invalidation; `toFixed` output cached to reduce string allocations
+- **Devtools dashboard** — Vite plugin (`@three-flatland/devtools/vite`) serves a live dashboard at `/__devtools__` with panels for stats, registry arrays, GPU buffers, environment, and a protocol log
+- **Debug buffer viewer** — live GPU buffer thumbnails in the Tweakpane pane with `◀ name ▶` cycling; click `⤢` to open a fullscreen modal with pan/zoom, aspect-correct canvas, and sidebar group tree
+- **Fullscreen modal** — WebCodecs VP9 streaming for live buffer inspection; falls back to raw-pixel path on browsers without `VideoEncoder`; four display modes: `colors`, `normalize`, `mono`, `signed`
+- `createDevtoolsProvider(opts?)` helper for vanilla three.js apps that don't construct a `Flatland` instance — returns a live provider or a no-op stub in production
+- `<DevtoolsProvider name="...">` React component — passive sampler using `useFrame` default phase, safe inside and outside `<Canvas>`
+- Multi-provider discovery protocol — `provider:announce`/`query`/`gone` messages; consumer picks the best provider (`user` over `system`), auto-switches on disconnect
+- `FlatlandOptions.name?: string` — label for the system provider (useful when running multiple Flatland instances)
+- `DevtoolsClient.addListener()` / `removeListener()` multi-listener API (was single `onChange` callback)
+- GPU timing detection — `detectGpuTiming()` probes backend capability; stats panel shows GPU time row only when supported
+- Axis hysteresis with trimmed max and bucketed range for sparkline stability
+- Controls minimal mode on the Tweakpane pane
+
+### Performance
+
+- Devtools subsystem fully dead-stripped from production bundles via inlined `process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true'` gate — eager bundle: 45.4 KB → 36.3 KB
+- `DevtoolsProvider` constructor is now side-effect-free; explicit `start()`/`dispose()` lifecycle prevents cost in discarded R3F reconciler renders
+- Stats canvas replaces SVG polyline — eliminates per-frame DOM mutations and selector-string allocations
+- `StatsCollector.maybeResolveGpu` throttled from 60 Hz to 10 Hz — 6× reduction in GPU query Promise churn
+- Snapshots mutated in place on state updates (no per-batch object allocation); `toFixed` results cached per display-precision integer
+- `DebugTextureRegistry` caps readback via `maxDim` per entry (default 256 for render targets) — 1920×1080 SDF reads back at 256×144 instead of 8 MB
+- Pixel conversion moved to the bus worker thread; GPU row-padding (WebGPU 256-byte alignment) detected and stripped on the worker
 
 ### Bug fixes
 
-- Dead-strip entire devtools subsystem from production bundles: `DevtoolsProvider` lazy-loaded via dynamic `import()` behind a bundler-replaceable `process.env` guard; production bundle drops from 45.4 KB → 36.3 KB
-- Fixed `process.env` type errors in consumers using `types: ["vite/client"]`: module-local `declare const process` added to each gating file, no `@types/node` required
-- Perf-track instrumentation now gated on dev mode only (not `FL_DEVTOOLS`); production examples no longer pay the per-frame `performance.now()` cost
-- Fixed buffer modal overwriting decoder output on every state change when `VideoDecoder` was active; stream mode now skips the raw-pixel `paint()` path
-- Fixed float texture VP9 encoding: only `rgba8`/`r8` textures are VP9-encoded; float buffers flow raw to the consumer's decoder
-- Fixed modal/thumbnail selection sync: thumbnail defers to modal when open; modal notifies thumbnail on active buffer change and open/close
-- Fixed `useFrame` priority API: switched from positional to options-object form; removed unused priority from pane update hook to avoid StrictMode remount collisions
-- Fixed `usePaneInput` change handler firing on unmounted component: gated on `mountedRef.current`
-- Snapshot mutation in place (no per-batch object literal allocations); `DebugTextureRegistry` adds `maxDim` cap with lazy GPU downsampler to keep readback sizes bounded
-- Resolved type-aware lint errors: `IndexedDB` rejection wrapping, `PingPayload` → `Record<string, never>`, `JSON.parse` typed as `unknown`, unused imports removed
+- Pane hooks rewritten with `useEffectEvent` (React 19.2 stable) — eliminates "refs during render" React Compiler diagnostics; peer requirement bumped to `react@^19.2.0`
+- `usePane` drops `useFrame` dependency; stats self-tick via `driver: 'raf'` — works outside `<Canvas>`
+- `usePaneInput` change handler gated on `mountedRef.current` — prevents state update on unmounted component after deferred disposal
+- `useFrame` priority passed as options object (was positional) — removes R3F deprecation warning
+- Modal thumbnail selection and stream subscription properly synchronized — thumbnail no longer overwrites modal's buffer subscription
+- Float textures (`rgba16f`/`rgba32f`) skip VP9 encoding path; `Float32Array` preserved from readback (not wrapped as `Uint8Array`)
+- Modal `paint()` skipped when `VideoDecoder` is active — prevents canvas reset overwriting decoder output
+- Bus worker resolved via extensionless URL — works from both source (`bus-worker.ts`) and dist (`bus-worker.js`)
+- Frame-boundary stats fixed — FPS and draw-call counts now bracket the full logical frame, not individual internal render passes
+- Type-aware lint errors resolved across `buffers-modal`, `dashboard/export`, `dashboard/panels/stats`, `devtools-client`, `use-pane-input`, `vite-plugin`
+- Typecheck script corrected to specify tsconfig
 
-This release ships a full devtools dashboard with live GPU buffer inspection, VP9 streaming, production dead-stripping (saving ~9 KB), and a React 19.2-compatible hook API.
+### Removed
+
+- `DEVTOOLS_BUNDLED` public re-export removed (use the inlined gate directly)
+- Positional `useFrame(cb, priority)` API dropped in favour of `useFrame(cb, { priority })`
+
+Delivers a production-safe devtools subsystem with zero bundle cost in production builds, a live GPU buffer inspector, and a multi-provider dashboard.

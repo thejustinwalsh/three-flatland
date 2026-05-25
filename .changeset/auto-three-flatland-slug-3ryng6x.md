@@ -9,7 +9,7 @@
 
 ### Changes
 
-- `SlugFontLoader.load()` now takes `BakedAssetLoaderOptions` directly, aligning with the shared baked-asset loader option type used across the ecosystem
-- Adds `@three-flatland/bake` as a workspace dependency (type-only import; no runtime cost)
+- `SlugFontLoader.load()` now accepts `BakedAssetLoaderOptions` directly — type-only import of `@three-flatland/bake`, no runtime cost
+- Completes end-to-end structural unification: every baked-asset loader in the ecosystem references the same option type, not just the same field name
 
-This patch completes the `BakedAssetLoaderOptions` unification so `SlugFontLoader` participates in the same structural option contract as `NormalMapLoader`, `SpriteSheetLoader`, and the tilemap loaders.
+Aligns `SlugFontLoader` with the shared `BakedAssetLoaderOptions` type used by `NormalMapLoader`, `SpriteSheetLoader`, and the LDtk/Tiled loaders.

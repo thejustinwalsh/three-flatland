@@ -9,56 +9,59 @@
 
 ### New features
 
-**2D lighting pipeline**
+**2D Lighting system**
+- `Light2D` — point, directional, ambient, and spot lights with `position`, `color`, `intensity`, `radius`, `castsShadow`, `importance`, and `category` fields
+- `Light2D.castsShadow` (default `true`) — set `false` on cosmetic fill lights to skip the SDF trace for those lights; packed into the lights DataTexture for shader-side gating
+- `Light2D.importance` (default `1.0`) — multiplicative tile-ranking bias; hero lights set higher resist eviction by dense fill clusters
+- `Light2D.category?: string` — fill lights with the same category share an independent 2-slot tile quota (djb2-hashed bucket), preventing cross-type luminance interference
+- `LightEffect` system — attach lighting effects to `Flatland` via `flatland.setLighting(effect)`; `LightEffectBuildContext` carries `sdfTexture`, `worldSizeNode`, `worldOffsetNode` for TSL shader construction
+- `SDFGenerator` — JFA-based signed distance field (packed RGBA single-chain, same VRAM cost as unsigned); signed field (`sdf < 0`) enables clean self-shadow detection without magic escape offsets
+- `OcclusionPass` — renders sprite/tile occluder silhouettes for SDF seeding; half-res default for performance; separable 5-tap binomial blur pass for smoother SDF transitions
+- `ForwardPlusLighting` — tiled Forward+ light culling with hero/fill separation, per-category fill quotas, and tile-level compensation; CPU tile bounds aligned to shader's screen-pixel stride formula
+- `shadowPipelineSystem` — ECS system that runs after `flushDirtyRangesSystem`; occluder-dirty gate skips the ~15-pass JFA/blur regen when occluders and camera are unchanged
+- `Sprite2D.shadowRadius?: number` — per-sprite shadow escape radius; `undefined` = auto-derive from `max(|scale.x|, |scale.y|)`, updated every frame with `AnimatedSprite2D` frame swaps at no extra cost
+- Per-sprite `castsShadow` bit and `readCastShadowFlag()` / `readShadowRadius()` TSL helpers
 
-- **JFA-based signed SDF generator** (`SDFGenerator`): packed dual-channel ping-pong layout computes signed distance (`distOutside - distInside`) at the same VRAM and pass cost as the prior unsigned generator; supports `setFilter(nearest|linear)` for the SDF and blur render targets
-- **Forward+ tiled light culling** (`ForwardPlusLighting`): screen-space tile grid with TILE_SIZE 32px (4× CPU speedup vs. 16px); corrected CPU tile bounds to match the shader's `floor(screenPos / TILE_SIZE)` stride, eliminating checkerboard gaps at non-multiple-of-32 viewport heights
-- **Occluder-dirty gate**: shadow pipeline skips the occluder render + 15-pass JFA/blur regen when occluders and camera are unchanged; now tracks `OrthographicCamera.zoom` in addition to frustum bounds and position
-- **`shadowPipelineSystem`**: moved to `append` phase so it runs after transform sync; shadow pipeline now sees freshly-uploaded matrices, fixing one-frame shadow lag on moving casters
-- **`Light2D`**: `castsShadow` per-light flag (packed into LightStore row 3 column B); `importance` multiplicative priority bias; `category?: string` hashed via djb2 to a 2-bit fill bucket; all preserved across `clone()`
-- **Per-sprite `shadowRadius`**: `Sprite2D.shadowRadius?: number` — `undefined` auto-derives from `max(|scale.x|, |scale.y|)` per frame; eliminates the scene-wide start-offset guess
-- **`normalDescriptor.ts`**: runtime normal-source descriptor loader; `SpriteSheetLoader`, `LDtkLoader`, `TiledLoader` all resolve normals from a `NormalSourceDescriptor` via `resolveNormalMap`
-- **`forceRuntime` option**: unified baked-asset probe opt-out across `SpriteSheetLoader`, `LDtkLoader`, `TiledLoader`; replaces `skipBakedProbe`
-- **`createDevtoolsProvider` helper**: exported from the main entry for vanilla Three.js apps; returns a no-op stub in production
+**Normal map loaders**
+- `NormalMapLoader` — runtime "try baked → fall back to runtime TSL" loader; instance API (`extends Loader`) and static API with URL+options cache
+- `normalDescriptor` — `NormalSourceDescriptor` type and loader for `.normal.json` sprite-region descriptor files
+- `SpriteSheetLoader`, `LDtkLoader`, `TiledLoader` updated with `normals: true | descriptor` option and `forceRuntime` probe bypass
 
-**Instance buffer**
+**TSL instance attribute helpers**
+- `readFlip()`, `readSystemFlags()`, `readEnableBits()`, `readLitFlag()` — typed TSL accessors for all named fields in the interleaved core instance buffer, re-exported from `three-flatland/lights`
 
-- **Interleaved core instance buffer**: UV, color, flip/system flags, enable bits, and shadow radius packed into a single `InstancedInterleavedBuffer` (4 attribute views: `instanceUV`, `instanceColor`, `instanceSystem`, `instanceExtras`); frees 3 WebGPU vertex buffer slots previously consumed by split attributes
-- **`instanceAttributes.ts`**: typed TSL helpers for every named field — `readFlip()`, `readSystemFlags()`, `readEnableBits()`, `readLitFlag()`, `readShadowRadius()`, `readCastShadowFlag()`, `readReceiveShadowsFlag()`; re-exported via the `lights` barrel
-- **`EffectMaterial.MAX_EFFECT_FLOATS`**: static cap (12 floats / 3 effectBufs); clear error at `registerEffect` if cumulative effect data would exceed this instead of failing at draw time
+**Devtools**
+- `DebugTextureRegistry` — GPU buffer readback registry with `maxDim` cap per entry, lazy-allocated `Downsampler`, and end-of-frame readback timing
+- `pixel-convert.ts` — worker-side RGBA8 conversion for `rgba8`, `r8`, `rgba16f`, `rgba32f` with display modes `colors`, `normalize`, `mono`, `signed`, `alpha`; GPU row-padding (WebGPU 256-byte alignment) detected and stripped
+- `createDevtoolsProvider(opts?)` — helper for vanilla three.js apps; returns a live `DevtoolsProvider` or a no-op stub in production
+- Debug registrations queued when they arrive before `DevtoolsProvider.start()` — fixes SDFGenerator/OcclusionPass constructors registering before first `render()`
+- Lighting pipeline textures registered: `sdf.distanceField`, `occlusion.mask`, JFA intermediates, radiance cascade levels
 
-**Sprite2D**
-
-- **Observable strategies**: `Sprite2D.tint` and `anchor` now delegate to shared `observable.color.attach` / `observable.vector2.attach`; deleted ~100 lines of inline duplicate
-
-**Devtools / debug**
-
-- **Dead-strip production bundles**: `DevtoolsProvider` lazy-loaded via dynamic `import()` behind a bundler-replaceable `process.env` guard (45.4 KB → 36.3 KB)
-- **Perf-track gated on dev only**: per-system ECS instrumentation (`performance.now()` + `perfMeasure`) stripped from production builds even when `FL_DEVTOOLS=true`
-- **Per-system ECS perf tracks**: `add()`/`prepend()` require `{track, name}` labels; `run()` emits colored per-system spans on Chrome's custom track extension
-- **Pixel format conversion** (`pixel-convert.ts`): `rgba8`, `r8`, `rgba16f`, `rgba32f` with display modes `colors`, `normalize`, `mono`, `signed`, `alpha`; GPU row-padding detection and correction; 11 unit tests
-- **Texture readback moved to end-of-frame**: `endFrame()` enqueues readbacks after all render passes complete, preventing partial-frame captures
-- **Buffer stream keyframe on switch**: `forceKeyFrame` plumbed through `ConvertRequest` → worker → `StreamEncoder` so buffer switches don't stall the VP9 decoder
-- **Debug texture registrations**: `sdf.distanceField`, `occlusion.mask`, `sdf.jfaPing/Pong`, `lightStore.lights`, `forwardPlus.tiles`
+**Observable refactor**
+- `Sprite2D` tint/anchor now use `observable.color.attach` / `observable.vector2.attach` shared strategies (was ~100 lines of inline duplicate)
 
 ### Performance
 
-- **TILE_SIZE 16 → 32**: quarters the CPU tile-assignment loop at 1920×1080; no behavior change for scenes within the 32,768-tile max
-- **Zero-alloc light-effect runtime context**: `lightEffectSystem` reuses a module-level scratch object; `LightingContext.worldSize`/`worldOffset` use mutated `Vector2`s
-- **Shadow trace gates**: skips the 32-tap SDF trace per light when `castsShadow: false` or attenuation ≤ 0.01
-- **SDF default resolution**: OcclusionPass defaults to 0.5× screen resolution
+- Devtools subsystem dead-stripped from production bundles via inlined `process.env.NODE_ENV` gate — eager bundle: 45.4 KB → 36.3 KB; `DevtoolsProvider` lazy-loaded via dynamic `import()`
+- ECS perf-track instrumentation gated on dev-only (not `FL_DEVTOOLS`) — production demo builds no longer pay instrumentation overhead
+- `writeShadowRadius` idempotent — skips buffer write and dirty-mark when scale is unchanged (static-scale scenes stop re-uploading the interleaved buffer every frame)
+- `AnimatedSprite2D` `onFrame`/`onEvent` callbacks hoisted to bound instance fields — eliminates per-sprite per-frame arrow allocation in dense animated scenes
+- Zero-alloc light-effect runtime context — `runtimeCtx` reuses a module-level scratch object; `LightingContext` defaults to live `Vector2`s mutated in place
+- Chrome Performance-panel per-system ECS tracks with color coding and tooltip properties, gated behind the devtools fold
 
-### Bug fixes
+### Internal / architecture
 
-- Fixed `bus-worker` URL resolution: extensionless `new URL('./bus-worker', import.meta.url)` lets bundlers resolve `.ts` (source) or `.js` (dist) correctly
-- Fixed `process.env` type errors in consumers using `types: ["vite/client"]`: module-local `declare const process` added to each gating file
-- Fixed CPU tile bounds drift vs. shader tile math: CPU now uses `TILE_SIZE / screenSize * worldSize` stride to match the shader's implicit stride exactly
-- Resolved type-aware lint errors across debug, loaders, and lighting modules
+- **Interleaved instance buffer**: core per-sprite data (UV, color, flip, system flags, enable bits, shadow radius) consolidated into a single `InstancedInterleavedBuffer` with four attribute views (`instanceUV`, `instanceColor`, `instanceSystem`, `instanceExtras`) — collapses 3 vertex buffer bindings into 1, freeing 3 slots under WebGPU's `maxVertexBuffers=8` cap; `effectBuf0+` is now pure `MaterialEffect` data
+- Per-instance TSL accessors moved to `materials/instanceAttributes.ts` (were `lights/wrapWithLightFlags.ts`)
+- `EffectMaterial` throws a clear error when cumulative effect data would exceed `MAX_EFFECT_FLOATS = 12`
+- `bus-worker` resolved via extensionless URL — works from source (`bus-worker.ts`) and dist (`bus-worker.js`) without bundler config
 
-### BREAKING CHANGES
+### Breaking changes
 
-- **Interleaved instance buffer**: internal attribute names and offsets changed (`instanceUV`, `instanceColor`, `instanceSystem`, `instanceExtras` replace the prior split attributes). Public APIs (`Sprite2D`, `addEffect()`, `readCastShadowFlag()`, etc.) are unchanged.
-- **`skipBakedProbe` removed** from `SpriteSheetLoader`, `LDtkLoader`, and `TiledLoader`; use `forceRuntime: true`
-- **`DEVTOOLS_BUNDLED` re-export removed** (was unreleased on this branch)
+- `skipBakedProbe` renamed to `forceRuntime` on `SpriteSheetLoader`, `LDtkLoader`, and `TiledLoader` normal options — update call sites
+- `disableRuntimeBake` removed from loader options; runtime bake is always the fallback — use `forceRuntime: true` to skip the probe
+- `DEVTOOLS_BUNDLED` public re-export removed; use the inlined `process.env` gate
+- `DirectLightEffect`, `SimpleLightEffect`, `RadianceLightEffect`, `AutoNormalProvider` removed (moved to follow-up PR)
+- `LightEffectBuildContext` now includes `sdfTexture`, `worldSizeNode`, `worldOffsetNode` — custom effect implementations must accept the extended context
 
-This release ships the complete 2D lighting pipeline — JFA signed SDF, Forward+ light culling with per-category fill quotas, per-sprite shadow radius, SDF sphere-trace shadows, and a production-dead-stripped devtools subsystem.
+Delivers a complete 2D lighting pipeline — SDF shadows, Forward+ culling, normal maps, per-sprite shadow radii — alongside a production-safe devtools system and a slimmer instance buffer layout.

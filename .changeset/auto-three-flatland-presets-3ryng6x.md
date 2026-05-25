@@ -9,32 +9,41 @@
 
 ### New features
 
-- **`DefaultLightEffect`** — comprehensive 2D lighting shader preset:
-  - `shadowFilter: 'auto' | 'nearest' | 'linear'`: selects SDF sample filter automatically (nearest when `shadowPixelSnapEnabled`, linear otherwise) or via explicit override
-  - `shadowPixelSize`: world-unit snap on the trace origin for retro blocky shadows
-  - `bands` / `band curve`: cel-band quantization of direct light; shadow is now applied after quantization so the shadow edge stays smooth while direct light stair-steps
-  - `rimIntensity`: rim lighting that inherits the per-pixel shadow ratio
-  - `shadowStartOffsetScale`: per-sprite multiplier on `Sprite2D.shadowRadius`; replaces the old scene-wide `shadowStartOffset` uniform
-  - `shadowBias` / `shadowStartOffset` split: `shadowBias` is the IQ hit epsilon, `shadowStartOffset` is the self-shadow escape — neither can mask the other
-  - Shadow trace gated on `castsShadow` per-light flag: O(casting lights) cost in scenes with cosmetic fill lights
-  - Shadow trace gated on attenuation threshold (≤ 0.01): sub-visible contributions skip the 32-tap trace for free
+- `DefaultLightEffect` — production-ready Forward+ 2D lighting preset with:
+  - SDF sphere-trace soft shadows (`shadowStrength`, `shadowSoftness`, `shadowBias`, `shadowStartOffset`)
+  - `shadowFilter` option (`auto|nearest|linear`) — crisp pixel-art or smooth edges, auto-selects based on `shadowPixelSnapEnabled`
+  - `shadowPixelSize` world-unit origin snap for retro block-shadow look
+  - `bands` cel-shading quantization applied before shadow scalar (smooth shadow edges, stepped direct light)
+  - `rimIntensity` — rim lighting, inherits same per-pixel shadow ratio as direct
+  - Ambient light contribution pipeline
+- `NormalMapProvider` — channel provider that wires a normal map texture into the lighting pipeline; works with `SpriteSheetLoader`/`LDtkLoader` auto-bake
+- `Light2D.importance` (default `1.0`) — multiplicative ranking bias; set higher on torches/hero lights to resist eviction by dense fill clusters
+- `Light2D.category?: string` — fill lights with the same category share an independent slot quota (djb2-hashed to a 2-bit bucket), preventing cross-type eviction artifacts
+- Fill-light quota: max 2 fill lights (`castsShadow: false`) per tile, with per-tile luminance compensation scaling to preserve overall brightness when fills are culled
+- Per-category compensation: 4 independent fillScale channels per tile meta texel (one per category bucket), selected per-light in the shader
+- `./react` subpath export added to `@three-flatland/presets`
+- `@react-three/fiber` declared as optional peer dependency so `ThreeElements` augmentation resolves without requiring R3F in server contexts
 
-- **Fill-light quotas** (Forward+ lighting):
-  - `Light2D.importance` (default 1.0): multiplicative priority bias; hero lights set high to resist eviction by dense fill clusters
-  - `Light2D.category?: string`: hashed via djb2 to a 2-bit bucket; each category has an independent per-tile fill quota so mixed fill types don't starve each other
-  - Fill lights (`castsShadow: false`) capped at 2 per tile per category; hero lights bypass the dedup path entirely
-  - Removed: dead `fillScale` meta-texel compensation pass (superseded by per-bucket group-max quota)
+### Performance
 
-- **`NormalMapProvider`**: updated to use `readFlip()` TSL helper from `instanceAttributes`
+- Forward+ tile size bumped from 16px to 32px — 4x fewer tiles, proportionally cheaper CPU light assignment at high light counts
+- Shadow trace gated on per-light `castsShadow` flag — fill lights pay zero SDF trace cost
+- Shadow trace skipped when attenuation ≤ 0.01 (sub-8-bit threshold)
+- Redundant `lightDir.normalize()` removed from spot-cone math (direction is normalized at set-site)
+- Dead `fillScale` tile-meta compensation pass removed (replaced by per-bucket quota path)
+- CPU tile bounds now use same stride formula as the shader (`TILE_SIZE / screenSize * worldSize`) — eliminates tile-boundary mismatch checkerboard in dense fill scenes
 
-### Breaking changes
+### Bug fixes
 
-- `RadianceLightEffect`, `DirectLightEffect`, and `SimpleLightEffect` removed from the public export (moved to a follow-up PR); `DefaultLightEffect` + `NormalMapProvider` are the supported presets
-- `shadowBands` and `shadowBandCurve` uniforms removed — shadow post-quantization replaces the per-light shadow bit-crush pass; use `bands` on the main lighting effect
-- `ThreeElements` augmentations for `directLightEffect`, `simpleLightEffect`, `radianceLightEffect` removed from the `react` subpath
+- Shadows routed through post-process pipeline; SDF generation bugs fixed
+- Ambient pipeline fixed
+- `shadowStartOffset` default raised to 40 to clear knight-scale sprites before signed SDF made the smaller default safe
 
-### BREAKING CHANGES
+### Removed
 
-`RadianceLightEffect`, `DirectLightEffect`, `SimpleLightEffect`, `shadowBands`, and `shadowBandCurve` have been removed. Migrate to `DefaultLightEffect` with the `bands` uniform and the `castsShadow` per-light flag.
+- `DirectLightEffect`, `SimpleLightEffect`, `RadianceLightEffect` removed (moved to follow-up PR)
+- `AutoNormalProvider` removed (was never implemented; references cleaned from error messages, docs, and planning)
+- Dead `shadowBands`/`shadowBandCurve` uniforms removed (superseded by post-quantization shadow application)
+- Per-tile fillScale shader multiply removed (was causing tile-boundary banding)
 
-This release brings `DefaultLightEffect` to production quality with per-sprite shadow radii, per-category fill-light quotas, configurable cel-banding, and a `shadowFilter` option for pixel-art vs. smooth shadow edges.
+Delivers a complete, production-ready `DefaultLightEffect` with SDF shadows, Forward+ culling with hero/fill separation, and per-category light quotas for dense scenes.

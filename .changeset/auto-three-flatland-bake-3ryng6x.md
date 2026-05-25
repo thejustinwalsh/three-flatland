@@ -9,16 +9,20 @@
 
 ### New features
 
-- **`flatland-bake` CLI**: unified binary that discovers and dispatches to bakers contributed by workspace or npm packages via `package.json` `flatland.bake` manifest — installing a package that provides a baker makes its subcommand appear in `flatland-bake --list` automatically
-- **CWD self-discovery**: when the CLI runs inside a package whose own `package.json` declares bakers, those are registered ahead of `node_modules` scans — lets package authors iterate without symlinking
-- **`BakedAssetLoaderOptions` type**: shared option type across all baked-asset loaders in the ecosystem
-- **`forceRuntime` option**: replaces `skipBakedProbe` across `BakedAssetLoaderOptions` and all loaders — one name, one pattern (`normals: true | descriptor` to opt in; `forceRuntime: true` to skip the probe)
-- **Sidecar utilities**: `writeSidecar`, `sidecar` HEAD-probe, and `devtimeWarn` modules for the canonical try-baked-fallback pattern
+- New `flatland-bake` CLI with automatic baker discovery — packages declare bakers via `"flatland": { "bake": [...] }` in `package.json`; installing a package makes its subcommands appear in `flatland-bake --list` automatically
+- CWD-self-discovery: when the CLI runs inside a package that declares its own bakers, those are registered first (supports iterating without symlinking)
+- `NormalSourceDescriptor` loader: `flatland-bake normal <sprite.png>` bakes a sibling `.normal.png` from RGBA alpha gradient; accepts `--strength` multiplier
+
+### Breaking changes
+
+- `skipBakedProbe` renamed to `forceRuntime` across `BakedAssetLoaderOptions` and all loaders — update any call sites passing `skipBakedProbe: true` to `forceRuntime: true`
+- `disableRuntimeBake` removed; runtime bake is now always the fallback when normals are requested — use `forceRuntime: true` to skip the baked probe entirely
+- CLI help text references `flatland.bake` (was `flatland.bakers`); `bakers` is now a legacy alias with a deprecation warning
 
 ### Bug fixes
 
-- Fixed USAGE help text referencing legacy `flatland.bakers` field; now points to canonical `flatland.bake`
-- Removed dead `&& header.status !== 206` guard in sidecar probe (redundant with `!response.ok`)
-- Fixed `setTorchEnabled` being called inside `useFrame` in lighting example; deferred via `queueMicrotask` to avoid mid-frame React re-render
+- React `setTorchEnabled` deferred off the `useFrame` loop via `queueMicrotask` — prevents synchronous mid-frame re-renders
+- Dead `&& header.status !== 206` guard removed from `sidecar.ts` (was short-circuited by `!header.ok`, no behavior change)
 
-This release introduces the `@three-flatland/bake` package with a plugin-driven CLI and the shared `BakedAssetLoaderOptions` contract used by all baked-asset loaders.
+Introduces the `flatland-bake` CLI and unifies all baked-asset loaders under a single `forceRuntime` opt-out flag.
+
