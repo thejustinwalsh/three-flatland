@@ -5,25 +5,31 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## @three-flatland/nodes
+## Changelog
 
-### New features
+### Shadow shader nodes
 
-- `shadowSDF2D(surfacePos, lightPos, sdfTexture, worldSize, worldOffset, opts)` — TSL sphere-trace helper producing a [0,1] shadow value with Inigo-Quilez-style penumbra for soft edges; configurable `steps`, `softness`, `startOffset`, `eps`
-- `shadowFilter` option on SDF sampling: `'auto'` (nearest when pixel-snap enabled, linear otherwise), `'nearest'`, or `'linear'` — reduces halo artifacts with the blur pass
-- `shadowStartOffset` uniform replaces the hardcoded `escapeOffset = 40` — tunable world-unit self-shadow escape, default 1.5 (safe with signed SDF)
-- Signed SDF via dual JFA chains: SDFGenerator runs two JFA passes (outside + inside distance) and combines into a signed field; `sdf < 0` cleanly detects ray-inside-caster without guessing at sprite scale
-- `normalFromSprite` and lighting shader nodes exported from `@three-flatland/nodes/lighting`
+- New `shadowSDF2D` TSL helper: sphere-traces a signed SDF texture from a surface fragment toward a light, returning a `[0, 1]` shadow value with IQ-style running-min penumbra for soft edges
+- Options: `steps`, `softness`, `startOffset`, `eps` — all can be compile-time constants or uniform nodes
+- Ships alongside existing `shadow2D` / `shadowSoft2D` raymarch helpers (different algorithm, both supported)
+
+### Signed SDF
+
+- `SDFGenerator` now packs both JFA seed UVs (nearest-occluder + nearest-empty) into a single RGBA ping-pong chain, cutting texture reads versus the earlier dual-chain approach
+- Signed distance field: fragments outside occluders see positive distance, fragments inside see negative — eliminates the hardcoded `escapeOffset = 40` calibration
+- Self-shadow detection changed from `sdf < eps` to `sdf < 0` (strictly inside), removing the approximation error
+
+### Shadow controls
+
+- `shadowStartOffset` uniform: replaces the hardcoded 40-unit escape offset; default 1.5 world units (safe with signed SDF), tunable per scene
+- `shadowFilter` option (`auto | nearest | linear`): `auto` picks nearest when `shadowPixelSnapEnabled`, linear otherwise
+- Fixed `shadowBias` semantics: stays as IQ hit epsilon; `shadowStartOffset` now exclusively handles self-shadow escape — neither masks the other
+- Corrected `shadowSDF2D` docstring: filter mode is selectable via `shadowFilter`, not always nearest
 
 ### Bug fixes
 
-- SDF regenerates on `OrthographicCamera.zoom` change — previously zoom scaled occluder silhouettes while the dirty gate skipped regen, freezing shadows
-- Off-screen lights no longer cast false edge shadows — `worldToSDFUV` no longer clamps sample UVs; out-of-field samples advance by the `eps` floor (treated as unoccluded)
-- Penumbra math corrected
-- Corrected `shadowSDF2D` docstring: SDF sample filter is selectable via `shadowFilter`, not always nearest
+- SDF no longer freezes on `OrthographicCamera.zoom` changes: `shadowPipelineSystem` now tracks `lastZoom` in the occluder-dirty gate
+- Off-screen lights no longer cast false edge shadows: `worldToSDFUV` no longer clamps sample UVs; out-of-field samples advance by `eps` floor (treated as unoccluded)
+- Raised `shadowStartOffset` default to 40 temporarily to match knight-scale casters, then superseded by per-sprite `shadowRadius`
 
-### Removed
-
-- `RadianceCascades`, `DirectLightEffect`, `SimpleLightEffect`, `AutoNormalProvider` moved out to a follow-up PR — only `DefaultLightEffect` + `NormalMapProvider` ship in this release
-
-Delivers a complete SDF-based 2D shadow system with tunable soft edges, signed distance fields, and per-light shadow control.
+`@three-flatland/nodes` delivers a complete signed-SDF shadow pipeline with tunable soft edges, per-sprite escape offsets, and correct behavior for off-screen lights and camera zoom.
