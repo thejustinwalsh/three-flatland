@@ -20,7 +20,7 @@ const mockJSONHash = {
     },
   },
   meta: {
-    image: 'player.png',
+    sources: [{ format: 'png' as const, uri: 'player.png' }],
     size: { w: 128, h: 128 },
     scale: '1',
   },
@@ -46,7 +46,7 @@ const mockJSONArray = {
     },
   ],
   meta: {
-    image: 'enemy.png',
+    sources: [{ format: 'png' as const, uri: 'enemy.png' }],
     size: { w: 256, h: 256 },
     scale: '1',
   },
@@ -127,7 +127,7 @@ describe('SpriteSheetLoader', () => {
       ])
 
       // @ts-expect-error - accessing private method for testing
-      const sheet = SpriteSheetLoader.createSpriteSheet(null, frames, 64, 64)
+      const sheet = SpriteSheetLoader.createSpriteSheet(null, frames, new Map(), 64, 64)
 
       expect(sheet.width).toBe(64)
       expect(sheet.height).toBe(64)
@@ -139,7 +139,7 @@ describe('SpriteSheetLoader', () => {
       const frames = new Map()
 
       // @ts-expect-error - accessing private method for testing
-      const sheet = SpriteSheetLoader.createSpriteSheet(null, frames, 64, 64)
+      const sheet = SpriteSheetLoader.createSpriteSheet(null, frames, new Map(), 64, 64)
 
       expect(() => sheet.getFrame('nonexistent')).toThrow('Frame not found: nonexistent')
     })
