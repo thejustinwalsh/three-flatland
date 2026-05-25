@@ -45,6 +45,7 @@ import { wrapWithLightFlags } from './lights/wrapWithLightFlags'
 import type { ChannelName } from './materials/channels'
 import type { RegistryData } from './ecs/batchUtils'
 import { DEVTOOLS_BUNDLED, isDevtoolsActive } from './debug-protocol'
+import { PERF_TRACK } from './debug/perf-track'
 import { DevtoolsProvider } from './debug/DevtoolsProvider'
 import { beginDebugPass, endDebugPass } from './debug/debug-sink'
 
@@ -1022,10 +1023,13 @@ export class Flatland extends Group implements WorldProvider {
     // idempotency + OcclusionPass._rendering guard handle the reentrant
     // renderer.render → updateMatrixWorld → schedule.run, so appending is safe.
     registry.schedule
-      .add(shadowPipelineSystem)
-      .prepend(lightMaterialAssignSystem)
-      .prepend(lightEffectSystem)
-      .prepend(lightSyncSystem)
+      .add(shadowPipelineSystem, { track: PERF_TRACK.Lighting, name: 'shadowPipeline' })
+      .prepend(lightMaterialAssignSystem, {
+        track: PERF_TRACK.Lighting,
+        name: 'lightMaterialAssign',
+      })
+      .prepend(lightEffectSystem, { track: PERF_TRACK.Lighting, name: 'lightEffect' })
+      .prepend(lightSyncSystem, { track: PERF_TRACK.Lighting, name: 'lightSync' })
   }
 
   /**

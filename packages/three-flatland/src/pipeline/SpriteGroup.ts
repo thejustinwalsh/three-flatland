@@ -24,6 +24,7 @@ import {
   type BatchSourceFn,
 } from '../debug/debug-sink'
 import { SystemSchedule } from '../ecs/SystemSchedule'
+import { PERF_TRACK } from '../debug/perf-track'
 import {
   createBatchAssignSystem,
   createBatchReassignSystem,
@@ -170,31 +171,64 @@ export class SpriteGroup extends Group implements WorldProvider {
       // `Flatland.setLighting` via `schedule.prepend(...)`.
       const schedule = new SystemSchedule()
       schedule
-        .add(() => deferredDestroySystem(this._pendingDestroy))
+        .add(() => deferredDestroySystem(this._pendingDestroy), {
+          track: PERF_TRACK.Batch,
+          name: 'deferredDestroy',
+        })
         // Sort-aware tier-rebuild + effect-trait collection. Uses the
         // BatchSlot-authoritative slot (kept in sync by batchSortSystem),
         // NOT the stale InBatch relation slot.
-        .add(() => this._checkMaterialVersions())
-        .add(() => this._rebuildEffectTraits())
-        .add((w) => this._batchAssignSystem(w, this._effectTraits))
-        .add((w) => this._batchReassignSystem(w, this._effectTraits))
-        .add(conditionalTransformSyncSystem)
+        .add(() => this._checkMaterialVersions(), {
+          track: PERF_TRACK.Batch,
+          name: 'checkMaterialVersions',
+        })
+        .add(() => this._rebuildEffectTraits(), {
+          track: PERF_TRACK.Batch,
+          name: 'rebuildEffectTraits',
+        })
+        .add((w) => this._batchAssignSystem(w, this._effectTraits), {
+          track: PERF_TRACK.Batch,
+          name: 'batchAssign',
+        })
+        .add((w) => this._batchReassignSystem(w, this._effectTraits), {
+          track: PERF_TRACK.Batch,
+          name: 'batchReassign',
+        })
+        .add(conditionalTransformSyncSystem, {
+          track: PERF_TRACK.Sprites,
+          name: 'transformSync',
+        })
         // Re-sort instance slots by zIndex within dirty batches.
-        .add((w) => this._batchSortSystem(w))
-        .add((w) => this._sceneGraphSyncSystem(w, this, this._parentAdd, this._parentRemove))
-        .add((w) => this._batchRemoveSystem(w, this._pendingDestroy))
+        .add((w) => this._batchSortSystem(w), {
+          track: PERF_TRACK.Batch,
+          name: 'batchSort',
+        })
+        .add((w) => this._sceneGraphSyncSystem(w, this, this._parentAdd, this._parentRemove), {
+          track: PERF_TRACK.Batch,
+          name: 'sceneGraphSync',
+        })
+        .add((w) => this._batchRemoveSystem(w, this._pendingDestroy), {
+          track: PERF_TRACK.Batch,
+          name: 'batchRemove',
+        })
         // Late assignment: catch entities enrolled mid-frame (e.g. R3F
         // reconciliation between render calls). Uses the same factory
         // instances so the late pass shares their scratch state.
-        .add((w) => {
-          const lateAssigned = this._batchAssignSystem(w, this._effectTraits)
-          if (lateAssigned) {
-            if (this.autoInvalidateTransforms) transformSyncSystem(w)
-            this._batchSortSystem(w)
-            this._sceneGraphSyncSystem(w, this, this._parentAdd, this._parentRemove)
-          }
+        .add(
+          (w) => {
+            const lateAssigned = this._batchAssignSystem(w, this._effectTraits)
+            if (lateAssigned) {
+              if (this.autoInvalidateTransforms) transformSyncSystem(w)
+              this._batchSortSystem(w)
+              this._sceneGraphSyncSystem(w, this, this._parentAdd, this._parentRemove)
+            }
+          },
+          { track: PERF_TRACK.Batch, name: 'batchAssignLate' }
+        )
+        .add(flushDirtyRangesSystem, {
+          track: PERF_TRACK.Batch,
+          name: 'flushDirtyRanges',
         })
-        .add(flushDirtyRangesSystem)
 
       // Register with the devtools batch-source sink so the batches
       // feature can snapshot our active batches each frame. No-op in

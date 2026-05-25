@@ -26,6 +26,9 @@ export const PERF_TRACK = {
   Lighting: 'lighting',
   Sprites: 'sprites',
   SDF: 'sdf',
+  Schedule: 'schedule',
+  Animation: 'animation',
+  Batch: 'batch',
 } as const
 
 export type PerfTrackName = (typeof PERF_TRACK)[keyof typeof PERF_TRACK]
@@ -49,8 +52,36 @@ export type PerfColor =
   | 'error'
 
 /**
- * Emit a span on `track`. Pass either a `start`/`end` pair (use
- * `performance.now()` at both ends) or a `start` and `duration`. Safe
+ * Default color per track so the Performance panel is colour-coded and
+ * scannable at a glance — each logical pipeline reads as its own hue.
+ */
+export const TRACK_COLOR: Record<PerfTrackName, PerfColor> = {
+  [PERF_TRACK.Devtools]: 'warning',
+  [PERF_TRACK.Lighting]: 'tertiary',
+  [PERF_TRACK.SDF]: 'tertiary-dark',
+  [PERF_TRACK.Sprites]: 'primary',
+  [PERF_TRACK.Batch]: 'secondary',
+  [PERF_TRACK.Animation]: 'primary-light',
+  [PERF_TRACK.Schedule]: 'primary-dark',
+}
+
+/**
+ * Optional track-entry annotations. `tooltipText` shows on hover;
+ * `properties` render as a key/value table in the entry's details
+ * drawer. See Chrome's "Extensibility API for the Performance panel".
+ */
+export interface PerfDetailOptions {
+  /** Palette token; defaults to the track's {@link TRACK_COLOR}. */
+  color?: PerfColor
+  /** Hover text for the entry. */
+  tooltipText?: string
+  /** Key/value rows shown in the entry's details drawer. */
+  properties?: [string, string][]
+}
+
+/**
+ * Emit a span on `track`. Color defaults to the track's hue; pass
+ * `opts` for a custom color, hover tooltip, or a properties table. Safe
  * to call from hot paths — capability check + try/catch keeps it from
  * ever throwing.
  */
@@ -59,24 +90,21 @@ export function perfMeasure(
   name: string,
   start: number,
   end: number,
-  color: PerfColor = 'primary'
+  opts?: PerfDetailOptions
 ): void {
   if (!DEVTOOLS_BUNDLED) return
   if (typeof performance === 'undefined' || typeof performance.measure !== 'function') return
   if (end < start) return
   try {
-    performance.measure(name, {
-      start,
-      end,
-      detail: {
-        devtools: {
-          dataType: 'track-entry',
-          track,
-          trackGroup: TRACK_GROUP,
-          color,
-        },
-      },
-    })
+    const devtools: Record<string, unknown> = {
+      dataType: 'track-entry',
+      track,
+      trackGroup: TRACK_GROUP,
+      color: opts?.color ?? TRACK_COLOR[track],
+    }
+    if (opts?.tooltipText !== undefined) devtools['tooltipText'] = opts.tooltipText
+    if (opts?.properties !== undefined) devtools['properties'] = opts.properties
+    performance.measure(name, { start, end, detail: { devtools } })
   } catch {
     // Older Chromes reject the `detail.devtools` payload; ignore.
   }
@@ -103,8 +131,8 @@ export function perfMeasure(
 export function perfStart(
   track: PerfTrackName,
   name: string,
-  color: PerfColor = 'primary'
+  opts?: PerfDetailOptions
 ): () => void {
   const start = performance.now()
-  return () => perfMeasure(track, name, start, performance.now(), color)
+  return () => perfMeasure(track, name, start, performance.now(), opts)
 }

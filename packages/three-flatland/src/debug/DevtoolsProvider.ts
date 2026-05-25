@@ -11,7 +11,13 @@ import type {
   RegistryPayload,
   StatsPayload,
 } from '../debug-protocol'
-import { DISCOVERY_CHANNEL, IDLE_PING_MS, STATS_BATCH_MS, providerChannelName, stampMessage } from '../debug-protocol'
+import {
+  DISCOVERY_CHANNEL,
+  IDLE_PING_MS,
+  STATS_BATCH_MS,
+  providerChannelName,
+  stampMessage,
+} from '../debug-protocol'
 import type { RegistryData } from '../ecs/batchUtils'
 import { SubscriberRegistry } from './SubscriberRegistry'
 import { StatsCollector } from './StatsCollector'
@@ -307,10 +313,7 @@ export class DevtoolsProvider {
     if (this._subs.isActive('buffers')) {
       const subscription = this._subs.buffersSelection()
       if (subscription.size > 0) {
-        this._textures.readbackAll(
-          subscription,
-          renderer as unknown as WebGPURenderer,
-        )
+        this._textures.readbackAll(subscription, renderer as unknown as WebGPURenderer)
       }
     }
   }
@@ -411,27 +414,31 @@ export class DevtoolsProvider {
             const entry = bufOut.entries[name]
             if (!entry || !entry.pixels) continue
             const sub = subscription.get(name)
-            const useStream =
-              sub?.mode === 'stream' && transport.codecSupported === true
+            const useStream = sub?.mode === 'stream' && transport.codecSupported === true
             const pixels = entry.pixels
             const convBuf = transport.acquireLarge()
             if (pixels instanceof Uint8Array) {
               new Uint8Array(convBuf).set(pixels)
             } else {
-              new Uint8Array(convBuf).set(new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength))
+              new Uint8Array(convBuf).set(
+                new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength)
+              )
             }
-            transport.convert({
-              name,
-              width: entry.width,
-              height: entry.height,
-              pixelType: entry.pixelType,
-              display: entry.display ?? 'colors',
-              frame: this._stats.frame,
-              stream: useStream,
-              forceKeyFrame: forceKey,
-              pixels: convBuf,
-              pixelsByteLength: pixels.byteLength,
-            }, convBuf)
+            transport.convert(
+              {
+                name,
+                width: entry.width,
+                height: entry.height,
+                pixelType: entry.pixelType,
+                display: entry.display ?? 'colors',
+                frame: this._stats.frame,
+                stream: useStream,
+                forceKeyFrame: forceKey,
+                pixels: convBuf,
+                pixelsByteLength: pixels.byteLength,
+              },
+              convBuf
+            )
             delete entry.pixels
           }
         }
@@ -459,7 +466,7 @@ export class DevtoolsProvider {
     // consumer-side `bus:*` spans on the same track so a flush and
     // its delivery show up next to each other under the
     // `three-flatland` group.
-    perfMeasure(PERF_TRACK.Devtools, 'flush', flushStart, performance.now(), 'warning')
+    perfMeasure(PERF_TRACK.Devtools, 'flush', flushStart, performance.now(), { color: 'warning' })
   }
 
   /**
@@ -492,9 +499,11 @@ export class DevtoolsProvider {
         stampMessage({
           type: 'provider:gone',
           payload: { id: this.identity.id },
-        }),
+        })
       )
-    } catch { /* bus may already be closing */ }
+    } catch {
+      /* bus may already be closing */
+    }
     if (this._discoveryBus !== null && this._onDiscovery !== null) {
       this._discoveryBus.removeEventListener('message', this._onDiscovery)
     }
@@ -513,8 +522,16 @@ export class DevtoolsProvider {
     this._subs.dispose()
     this._dataTransport?.dispose()
     this._dataTransport = null
-    try { this._dataBus?.close() } catch { /* noop */ }
-    try { this._discoveryBus?.close() } catch { /* noop */ }
+    try {
+      this._dataBus?.close()
+    } catch {
+      /* noop */
+    }
+    try {
+      this._discoveryBus?.close()
+    } catch {
+      /* noop */
+    }
     this._dataBus = null
     this._discoveryBus = null
     this._latestRenderer = undefined
@@ -526,18 +543,26 @@ export class DevtoolsProvider {
    * The per-provider data channel. Exposed for test harnesses. `null`
    * before `start()` or after `dispose()`.
    */
-  get bus(): BroadcastChannel | null { return this._dataBus }
+  get bus(): BroadcastChannel | null {
+    return this._dataBus
+  }
   /** The current subscriber registry. Read-only view. */
-  get subscribers(): SubscriberRegistry { return this._subs }
+  get subscribers(): SubscriberRegistry {
+    return this._subs
+  }
   /** Current engine frame counter. */
-  get frame(): number { return this._stats.frame }
+  get frame(): number {
+    return this._stats.frame
+  }
   /**
    * Debug registry — register CPU arrays here to expose them to the
    * pane. Entries only cost wire bytes when subscribers include
    * `registry` in their feature set, so it's safe to leave permanently
    * registered from engine code.
    */
-  get registry(): DebugRegistry { return this._registry }
+  get registry(): DebugRegistry {
+    return this._registry
+  }
 
   // ── Bus message routing ─────────────────────────────────────────────────
 
@@ -553,7 +578,7 @@ export class DevtoolsProvider {
           msg.payload.id,
           msg.payload.features,
           msg.payload.registry,
-          msg.payload.buffers,
+          msg.payload.buffers
         )
         // Force a keyframe on the next stream frame if any entry in the
         // new subscription asks for stream mode — otherwise the consumer
@@ -599,7 +624,7 @@ export class DevtoolsProvider {
         stampMessage({
           type: 'provider:announce',
           payload: { identity: this.identity },
-        }),
+        })
       )
     } catch {
       // Bus may be closing.
@@ -614,10 +639,12 @@ export class DevtoolsProvider {
     this._env.recordSnapshotAsPrev(r, gpuVerified)
 
     const echoed = this._subs.featuresFor(id) ?? []
-    this._dataTransport.post(stampMessage({
-      type: 'subscribe:ack',
-      payload: { id, features: Array.from(echoed), env },
-    }))
+    this._dataTransport.post(
+      stampMessage({
+        type: 'subscribe:ack',
+        payload: { id, features: Array.from(echoed), env },
+      })
+    )
   }
 
   /**
