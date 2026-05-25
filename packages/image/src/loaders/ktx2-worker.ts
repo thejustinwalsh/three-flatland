@@ -66,7 +66,7 @@ scope.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
     try {
       if (!exportsPromise) throw new Error('ktx2-worker: received transcode before init')
       const exports = await exportsPromise
-      const result = await transcodeKtx2WithExports(msg.buffer, msg.caps, exports)
+      const result = transcodeKtx2WithExports(msg.buffer, msg.caps, exports)
       scope.postMessage(
         { type: 'transcode-done', id: msg.id, result },
         transferablesOf(result),
