@@ -5,16 +5,21 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-- `shadowSDF2D`: new TSL helper — sphere-traces a signed SDF toward a light, returns `[0,1]` shadow value with Inigo-Quilez-style running-min penumbra; options: `steps`, `softness`, `startOffset`, `eps`, `shadowFilter`
-- Signed SDF via dual JFA chains: `SDFGenerator` now runs JFA twice (outside + inside seed passes) and combines as `signedDist = distOutside - distInside`; fragments inside casters see negative distance, enabling cleaner self-shadow detection (`sdf < 0` instead of `sdf < eps`)
-- `shadowFilter` option (`auto|nearest|linear`) on `shadowSDF2D` — `auto` picks nearest when pixel-snap is enabled, linear otherwise
-- Fixed: SDF not regenerated on `OrthographicCamera.zoom` change — zoom now included in the occluder-dirty gate
-- Fixed: off-screen lights no longer cast false edge shadows — `worldToSDFUV` no longer clamps UVs; out-of-field samples advance by the eps floor (treated as unoccluded)
-- `shadowStartOffset` option added to `shadowSDF2D`; default raised to 40 world units to match typical sprite casters, then superseded by per-sprite `shadowRadius`
-- Corrected `shadowSDF2D` docstring to reflect selectable `shadowFilter` (was documented as always nearest)
-- Penumbra math corrected
-- Debug buffer names changed: `sdf.jfaPing/Pong` split into `sdf.jfaPing/PongOutside` and `sdf.jfaPing/PongInside`
-- `LightEffect` system, trait registry, and React attach helpers added for wiring light effects to the ECS pipeline
-- Initial 2D lighting system: JFA-based SDF, Forward+ tiled culling, `shadowDrop`/`shadowDropSoft`/`shadow2D`/`shadowSoft2D` TSL nodes
+## @three-flatland/nodes
 
-The `@three-flatland/nodes` lighting module now ships a production-ready sphere-traced soft-shadow helper backed by a signed dual-JFA SDF.
+### New features
+
+- **2D lighting TSL helpers**: `lit`, `lights`, `normalFromHeight`, `normalFromSprite` — TSL node helpers for the 2D lighting pipeline
+- **`shadowSDF2D`**: sphere-trace soft shadow helper that walks a line from fragment to light through an SDF texture; produces `[0, 1]` shadow value with Inigo-Quilez running-min penumbra for soft edges; configurable `steps`, `softness`, `startOffset`, `eps`
+- **Signed SDF consumption**: self-shadow detection now uses `sdf < 0` (strictly inside) replacing the eps approximation; signed field produced by SDFGenerator's packed dual-JFA chain
+- **Tunable `shadowStartOffset`**: replaces the hardcoded `escapeOffset = 40` magic; exposed as `startOffset: FloatInput` option in `shadowSDF2D`
+- **`shadowFilter` option**: `auto | nearest | linear` for SDF shadow sampling — auto selects nearest when `shadowPixelSnapEnabled`, linear otherwise
+
+### Bug fixes
+
+- Off-screen lights no longer cast false edge shadows: `worldToSDFUV` no longer clamps sample UVs to `[0, 1]`; out-of-field samples advance by the eps floor (treated as unoccluded)
+- SDF is now regenerated on `OrthographicCamera.zoom` changes — previously zoom scaled occluder silhouettes without triggering regen, freezing shadows
+- `shadowStartOffset` default raised to 40 to match typical caster scale (knight body ~64 world units); self-shadow artifacts and edge ringing at 1.5 default are fixed
+- Fixed penumbra math in the sphere-trace loop
+
+This release ships the full suite of 2D lighting TSL node helpers including the `shadowSDF2D` sphere-trace shadow function and correctness fixes for off-screen lights, camera zoom, and self-shadow detection.
