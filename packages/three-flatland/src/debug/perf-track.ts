@@ -16,6 +16,9 @@
  * payload and the spans show up on the default Timings track.
  */
 
+// Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
+declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+
 const TRACK_GROUP = 'three-flatland'
 
 /** Track names used across the codebase. Add new ones here as you go. */

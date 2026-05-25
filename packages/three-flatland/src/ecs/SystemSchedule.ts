@@ -1,6 +1,9 @@
 import type { World } from 'koota'
 import { perfMeasure, PERF_TRACK, type PerfTrackName } from '../debug/perf-track'
 
+// Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
+declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+
 /**
  * A system function takes only a world — all context comes from world resource traits.
  */

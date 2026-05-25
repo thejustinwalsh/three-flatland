@@ -36,6 +36,9 @@ import {
 import { conditionalTransformSyncSystem } from '../ecs/systems/conditionalTransformSyncSystem'
 import { flushDirtyRangesSystem } from '../ecs/systems/flushDirtyRangesSystem'
 
+// Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
+declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+
 /**
  * 2D render pipeline with automatic batching and sorting.
  *

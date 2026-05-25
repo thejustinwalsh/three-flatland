@@ -24,6 +24,9 @@ import {
 import type { Tileset } from './Tileset'
 import type { TileLayerData } from './types'
 
+// Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
+declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+
 /** Internal per-chunk data. `instanceData` is the interleaved core
  *  buffer (stride 16 floats): UV at offset 0, color at 4, system
  *  (flip/flags/enable) at 8, extras (shadowRadius/reserved) at 12. */

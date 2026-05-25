@@ -18,6 +18,9 @@ import type { DebugRegistry } from './DebugRegistry'
 import type { DebugTextureRegistry } from './DebugTextureRegistry'
 import type { BatchCollector } from './BatchCollector'
 
+// Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
+declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+
 let _active: DebugRegistry | null = null
 let _activeTextures: DebugTextureRegistry | null = null
 let _activeBatches: BatchCollector | null = null

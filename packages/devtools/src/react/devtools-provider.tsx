@@ -6,6 +6,9 @@ import {
   type DevtoolsProviderHandle,
 } from 'three-flatland'
 
+// Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
+declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+
 export interface DevtoolsProviderProps {
   /** Display name shown in the consumer's provider switcher. */
   name?: string

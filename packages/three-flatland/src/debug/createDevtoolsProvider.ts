@@ -32,6 +32,13 @@ import type { WebGPURenderer } from 'three/webgpu'
 import { isDevtoolsActive } from '../debug-protocol'
 import type { DevtoolsProviderOptions } from './DevtoolsProvider'
 
+// Module-local typing for the build-time `process.env` reads in the devtools
+// gate. Lets consumers that compile this package's source (via the `source`
+// export condition) typecheck without pulling in @types/node; shadows the
+// global where node types are present. Erases at compile — the bundler still
+// statically replaces the `process.env.*` reads.
+declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+
 /**
  * Minimal interface — what host code calls per frame. The real
  * `DevtoolsProvider` and the no-op stub both implement it.

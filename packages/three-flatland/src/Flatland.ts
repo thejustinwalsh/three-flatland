@@ -49,6 +49,9 @@ import { PERF_TRACK } from './debug/perf-track'
 import type { DevtoolsProvider } from './debug/DevtoolsProvider'
 import { beginDebugPass, endDebugPass } from './debug/debug-sink'
 
+// Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
+declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+
 /** Shape of the LightingContext trait data. */
 interface LightingContextData {
   effect: LightEffect | null
