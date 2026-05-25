@@ -1,6 +1,5 @@
 import type { World } from 'koota'
 import { perfMeasure, PERF_TRACK, type PerfTrackName } from '../debug/perf-track'
-import { DEVTOOLS_BUNDLED } from '../debug-protocol'
 
 /**
  * A system function takes only a world — all context comes from world resource traits.
@@ -33,8 +32,8 @@ interface SystemEntry {
  * Every registration carries a perf label (`{ track, name }`). When
  * devtools is bundled, `run()` emits a `performance.measure` span per
  * system plus an outer `ecs:run` span on the Schedule track. In prod
- * the instrumented branch is dead code (terser folds `DEVTOOLS_BUNDLED`)
- * and `run()` is the plain loop.
+ * the instrumented branch is dead code (terser folds the devtools build
+ * gate) and `run()` is the plain loop.
  *
  * @example
  * ```typescript
@@ -81,7 +80,7 @@ export class SystemSchedule {
     if (this._lastRunFrame === this._frameId) return
     this._lastRunFrame = this._frameId
 
-    if (DEVTOOLS_BUNDLED) {
+    if (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') {
       const schedStart = performance.now()
       for (const entry of this._systems) {
         const t0 = performance.now()

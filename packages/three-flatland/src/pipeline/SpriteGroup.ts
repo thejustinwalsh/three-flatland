@@ -17,7 +17,6 @@ import {
 } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
 import { computeRunKey, recycleBatchIfEmpty } from '../ecs/batchUtils'
-import { DEVTOOLS_BUNDLED } from '../debug-protocol'
 import {
   _registerBatchSource,
   _unregisterBatchSource,
@@ -232,9 +231,9 @@ export class SpriteGroup extends Group implements WorldProvider {
 
       // Register with the devtools batch-source sink so the batches
       // feature can snapshot our active batches each frame. No-op in
-      // prod (tree-shaken via DEVTOOLS_BUNDLED). The getter closure
+      // prod (tree-shaken via the devtools build gate). The getter closure
       // stays allocation-free past construction.
-      if (DEVTOOLS_BUNDLED) {
+      if (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') {
         this._batchSource = () => this._getRegistry()
         _registerBatchSource(this._batchSource)
       }
@@ -691,7 +690,7 @@ export class SpriteGroup extends Group implements WorldProvider {
    */
   dispose(): void {
     this.clear()
-    if (DEVTOOLS_BUNDLED && this._batchSource !== null) {
+    if ((process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') && this._batchSource !== null) {
       _unregisterBatchSource(this._batchSource)
       this._batchSource = null
     }

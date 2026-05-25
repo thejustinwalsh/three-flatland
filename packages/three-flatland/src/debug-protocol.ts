@@ -8,7 +8,7 @@
  * at compile time, and the few runtime exports are dead code unless a
  * subscriber actually constructs a `BroadcastChannel`.
  *
- * Both `three-flatland` (gated by `DEVTOOLS_BUNDLED`) and
+ * Both `three-flatland` (gated by the devtools build gate) and
  * `@three-flatland/devtools` import from this module. Third-party
  * adapters (websocket bridges, chrome extensions, etc.) do the same.
  *
@@ -187,35 +187,45 @@ export const DISCOVERY_WINDOW_MS = 150
 // ─── Devtools build gate ────────────────────────────────────────────────────
 
 /**
- * **Layer 1 (build-time): `DEVTOOLS_BUNDLED`.** A module-scoped `const`
- * evaluated from `import.meta.env.DEV` and
- * `import.meta.env.VITE_FLATLAND_DEVTOOLS`, both of which Vite / esbuild
- * / rollup (with appropriate `define`) inline at build time. When both
- * resolve to falsy, the constant folds to `false`, every
- * `if (DEVTOOLS_BUNDLED)` branch becomes dead code, terser removes it,
- * and no devtools code ends up in the output. Zero bytes, zero runtime
- * cost. Tree-shake guarantee, not tree-shake hope.
+ * **Layer 1 (build-time): the devtools build gate.** Every devtools call
+ * site is guarded by one consistent, hard-coded expression written
+ * directly at the gate — never a named const, never an import:
  *
- * **Layer 2 (runtime): `isDevtoolsActive()`.** Only reachable when
- * `DEVTOOLS_BUNDLED` is true. Reads `window.__FLATLAND_DEVTOOLS__` as
- * an opt-out (false disables an otherwise-bundled build). Cannot
- * enable what isn't bundled — rogue clients can't "hack devtools on"
- * in prod.
+ * ```ts
+ * if (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') {
+ *   // devtools-only work
+ * }
+ * ```
  *
- * | Build flag | `window.__FLATLAND_DEVTOOLS__` | Enabled? |
+ * Two switches:
+ * - `process.env.NODE_ENV !== 'production'` — every bundler (webpack, Vite,
+ *   esbuild, Rollup) and Node statically replaces `NODE_ENV`, so a production
+ *   build folds this to `false`.
+ * - `process.env.FL_DEVTOOLS === 'true'` — the repo's own escape hatch: a
+ *   production-mode build that `define`s `process.env.FL_DEVTOOLS = 'true'`
+ *   (the examples do) keeps devtools; everything else folds it away.
+ *
+ * The expression is **inlined per gate site — never hoisted into a named
+ * const, never imported from a shared exported const.** A local or
+ * cross-module const is NOT inlined by every bundler (esbuild in particular
+ * keeps it as a live binding), which defeats the dead-strip and ships the
+ * whole devtools subsystem. Writing the literal `process.env.*` reads at each
+ * gate lets every bundler replace-then-dead-strip locally. The negated form
+ * (for early-return guards) is the De Morgan inverse:
+ * `process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true'`.
+ *
+ * **Layer 2 (runtime): `isDevtoolsActive()`.** Only reachable when the gate is
+ * true. Reads `window.__FLATLAND_DEVTOOLS__` as an opt-out (false disables an
+ * otherwise-bundled build). Cannot enable what isn't bundled — rogue clients
+ * can't "hack devtools on" in prod.
+ *
+ * | Build state | `window.__FLATLAND_DEVTOOLS__` | Enabled? |
  * |---|---|---|
- * | `DEV=true` or `VITE_FLATLAND_DEVTOOLS=true` | undefined | yes (default on) |
- * | `DEV=true` or `VITE_FLATLAND_DEVTOOLS=true` | false     | no (user disabled) |
- * | `DEV=true` or `VITE_FLATLAND_DEVTOOLS=true` | true      | yes (explicit) |
- * | neither                                    | anything  | no (code not in bundle) |
+ * | dev (`NODE_ENV !== 'production'`) or `FL_DEVTOOLS='true'` | undefined | yes (default on) |
+ * | dev or `FL_DEVTOOLS='true'` | false     | no (user disabled) |
+ * | dev or `FL_DEVTOOLS='true'` | true      | yes (explicit) |
+ * | production, no opt-in       | anything  | no (code not in bundle) |
  */
-export const DEVTOOLS_BUNDLED: boolean = (() => {
-  const env = (import.meta as { env?: Record<string, unknown> }).env
-  if (env?.['DEV'] === true) return true
-  if (env?.['VITE_FLATLAND_DEVTOOLS'] === 'true') return true
-  return false
-})()
-
 export function isDevtoolsActive(): boolean {
   if (typeof window === 'undefined') return true
   const flag = (window as { __FLATLAND_DEVTOOLS__?: boolean }).__FLATLAND_DEVTOOLS__

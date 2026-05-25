@@ -10,7 +10,6 @@ import {
   Vector3,
 } from 'three'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
-import { DEVTOOLS_BUNDLED } from '../debug-protocol'
 import {
   _registerMeshBatchSource,
   _unregisterMeshBatchSource,
@@ -271,8 +270,8 @@ export class TileLayer extends Group {
 
     // Register chunk meshes with the devtools sink so the batch
     // inspector sees tile-chunk draws alongside ECS sprite batches.
-    // No-op in prod (tree-shaken by DEVTOOLS_BUNDLED).
-    if (DEVTOOLS_BUNDLED) {
+    // No-op in prod (tree-shaken by the devtools build gate).
+    if (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') {
       this._batchMeshSource = () => this._iterChunkMeshes()
       _registerMeshBatchSource(this._batchMeshSource)
     }
@@ -724,7 +723,7 @@ export class TileLayer extends Group {
    * Dispose of all resources.
    */
   dispose(): void {
-    if (DEVTOOLS_BUNDLED && this._batchMeshSource !== null) {
+    if ((process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') && this._batchMeshSource !== null) {
       _unregisterMeshBatchSource(this._batchMeshSource)
       this._batchMeshSource = null
     }

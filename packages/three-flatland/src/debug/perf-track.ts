@@ -11,12 +11,10 @@
  *   - **Entry name**: a `category:detail` slug used to group like-spans
  *     within a track (`bus:data`, `flush`, `pass:occlusion`).
  *
- * No-op when devtools isn't bundled (build-time gated via
- * `DEVTOOLS_BUNDLED`). Older Chromes silently ignore the `detail`
+ * No-op when devtools isn't bundled (gated via the devtools build
+ * gate). Older Chromes silently ignore the `detail`
  * payload and the spans show up on the default Timings track.
  */
-
-import { DEVTOOLS_BUNDLED } from '../debug-protocol'
 
 const TRACK_GROUP = 'three-flatland'
 
@@ -92,7 +90,7 @@ export function perfMeasure(
   end: number,
   opts?: PerfDetailOptions
 ): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   if (typeof performance === 'undefined' || typeof performance.measure !== 'function') return
   if (end < start) return
   try {

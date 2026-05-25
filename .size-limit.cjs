@@ -95,6 +95,38 @@ const resolveSkia = {
 
 const corePeerDeps = ['three', 'react', '@react-three/fiber', 'koota']
 
+// three-flatland gates its dev-only devtools subsystem behind `DEVTOOLS_BUNDLED`
+// (`process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true'`).
+// Measure the bundle the way a real production consumer ships it —
+// devtools folded out — by statically resolving the gate to `false`. Without
+// this, the report counts ~34 KB of dev tooling no consumer's prod build keeps.
+function foldDevtoolsOut(config) {
+  config.define = {
+    ...config.define,
+    'process.env.NODE_ENV': '"production"',
+    'process.env.FL_DEVTOOLS': '""',
+  }
+  // The devtools subsystem is lazy-loaded behind a dynamic `import()` that the
+  // gate (folded to false by the defines above) dead-strips in a prod build.
+  // A real consumer bundler (Rollup/Vite) splits it into a chunk that's never
+  // loaded — but size-limit's esbuild has no code-splitting, so it would inline
+  // that chunk into the single measured bundle. Mark the lazy entry external so
+  // the report measures the eager bytes a prod consumer actually ships.
+  config.plugins = [
+    ...(config.plugins || []),
+    {
+      name: 'externalize-lazy-devtools',
+      setup(build) {
+        build.onResolve({ filter: /\/DevtoolsProvider$/ }, () => ({
+          path: 'lazy-devtools-external',
+          external: true,
+        }))
+      },
+    },
+  ]
+  return config
+}
+
 // SIZE_FILTER (substring match on check.name) scopes down which checks run.
 // Used by `pnpm size:why`, which writes one esbuild-visualizer HTML per check
 // and auto-opens each — running it across all ~20 checks is unusable.
@@ -107,12 +139,14 @@ const allChecks = [
     path: 'packages/three-flatland/dist/index.js',
     import: '*',
     ignore: corePeerDeps,
+    modifyEsbuildConfig: foldDevtoolsOut,
   },
   {
     name: 'three-flatland/react (full)',
     path: 'packages/three-flatland/dist/react.js',
     import: '*',
     ignore: corePeerDeps,
+    modifyEsbuildConfig: foldDevtoolsOut,
   },
   // ── @three-flatland/nodes ──
   {
@@ -201,6 +235,7 @@ const allChecks = [
             path: `packages/three-flatland/dist/${dist}`,
             import: imports,
             ignore: corePeerDeps,
+            modifyEsbuildConfig: foldDevtoolsOut,
           })
           break
         }

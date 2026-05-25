@@ -2,7 +2,6 @@ import { useEffect, useRef, type ReactElement } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
   createDevtoolsProvider,
-  DEVTOOLS_BUNDLED,
   isDevtoolsActive,
   type DevtoolsProviderHandle,
 } from 'three-flatland'
@@ -37,15 +36,15 @@ export interface DevtoolsProviderProps {
  * just its `render()` work; ours covers the whole rAF interval).
  *
  * **Safe to leave in production.** The outer component short-circuits
- * when `DEVTOOLS_BUNDLED` is false (build-time, terser folds the branch
- * away) or when `isDevtoolsActive()` is false (runtime toggle). In
+ * when the devtools build gate is false (build-time, terser folds the
+ * branch away) or when `isDevtoolsActive()` is false (runtime toggle). In
  * those cases the inner component never mounts, no `useFrame` is
  * registered, and R3F's normal auto-render path is untouched.
  */
 export function DevtoolsProvider(
   props: DevtoolsProviderProps,
 ): ReactElement | null {
-  if (!DEVTOOLS_BUNDLED) return null
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return null
   if (!isDevtoolsActive()) return null
   return <DevtoolsProviderActive {...props} />
 }

@@ -60,7 +60,7 @@ export interface DevtoolsProviderOptions {
  * Intended to be used two ways:
  *
  * 1. **Composed inside `Flatland`** — Flatland constructs one when the
- *    `DEVTOOLS_BUNDLED` build-gate + `isDevtoolsActive()` runtime-gate
+ *    devtools build gate + `isDevtoolsActive()` runtime-gate
  *    are both true, and calls `beginFrame()` / `endFrame()` around
  *    its `render()` body. Host consumers don't have to know devtools
  *    exist.

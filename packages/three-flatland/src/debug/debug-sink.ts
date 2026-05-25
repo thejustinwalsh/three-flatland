@@ -1,7 +1,7 @@
 /**
  * Module-level "debug sink" — engine modules call these helpers to
  * expose CPU arrays to the devtools pane without linking directly to
- * `DevtoolsProvider`. When `DEVTOOLS_BUNDLED` is false (prod build
+ * `DevtoolsProvider`. When the devtools build gate is false (prod build
  * with no devtools flag), every function compiles down to a no-op
  * that terser strips — zero runtime cost in production.
  *
@@ -13,7 +13,6 @@
 import type { DataTexture, InstancedMesh, Texture } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { BufferDisplayMode, RegistryEntryKind, TexturePixelType } from '../debug-protocol'
-import { DEVTOOLS_BUNDLED } from '../debug-protocol'
 import type { RegistryData } from '../ecs/batchUtils'
 import type { DebugRegistry } from './DebugRegistry'
 import type { DebugTextureRegistry } from './DebugTextureRegistry'
@@ -71,7 +70,7 @@ let _pendingTextures: QueuedTexture[] | null = null
 
 /** @internal Called by `DevtoolsProvider` — not for app code. */
 export function _setActiveRegistry(registry: DebugRegistry | null): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _active = registry
   if (registry !== null && _pendingArrays !== null) {
     for (const q of _pendingArrays) registry.register(q.name, q.ref, q.kind, q.opts)
@@ -81,7 +80,7 @@ export function _setActiveRegistry(registry: DebugRegistry | null): void {
 
 /** @internal Called by `DevtoolsProvider` — not for app code. */
 export function _setActiveTextureRegistry(registry: DebugTextureRegistry | null): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _activeTextures = registry
   if (registry !== null && _pendingTextures !== null) {
     for (const q of _pendingTextures) registry.register(q.name, q.source, q.pixelType, q.opts)
@@ -104,7 +103,7 @@ export function registerDebugArray(
   kind: RegistryEntryKind,
   opts?: { label?: string; length?: number },
 ): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   if (_active !== null) { _active.register(name, ref, kind, opts); return }
   if (_pendingArrays === null) _pendingArrays = []
   _pendingArrays.push({ name, ref, kind, opts })
@@ -115,13 +114,13 @@ export function registerDebugArray(
  * and should be re-sampled on the next batch flush.
  */
 export function touchDebugArray(name: string, length?: number): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _active?.touch(name, length)
 }
 
 /** Remove a named array. Consumers will see it disappear on the next batch. */
 export function unregisterDebugArray(name: string): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _active?.unregister(name)
 }
 
@@ -140,7 +139,7 @@ export function registerDebugTexture(
   pixelType: TexturePixelType = 'rgba8',
   opts?: { label?: string; display?: BufferDisplayMode },
 ): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   if (_activeTextures !== null) { _activeTextures.register(name, source, pixelType, opts); return }
   if (_pendingTextures === null) _pendingTextures = []
   _pendingTextures.push({ name, source, pixelType, opts })
@@ -148,13 +147,13 @@ export function registerDebugTexture(
 
 /** Signal that a registered texture's content has changed. */
 export function touchDebugTexture(name: string): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _activeTextures?.touch(name)
 }
 
 /** Remove a named texture. */
 export function unregisterDebugTexture(name: string): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _activeTextures?.unregister(name)
 }
 
@@ -162,7 +161,7 @@ export function unregisterDebugTexture(name: string): void {
 
 /** @internal Called by `DevtoolsProvider` — not for app code. */
 export function _setActiveBatchCollector(bc: BatchCollector | null): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _activeBatches = bc
 }
 
@@ -174,7 +173,7 @@ export function _setActiveBatchCollector(bc: BatchCollector | null): void {
  * slot in the callsite's scope.
  */
 export function isBatchCapturing(): boolean {
-  if (!DEVTOOLS_BUNDLED) return false
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return false
   return _activeBatches !== null && _activeBatches.isCapturing()
 }
 
@@ -184,12 +183,12 @@ export function isBatchCapturing(): boolean {
  * No-op when devtools isn't bundled or no consumer is subscribed.
  */
 export function beginDebugPass(label: string, renderer: WebGPURenderer): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _activeBatches?.beginPass(label, renderer)
 }
 
 export function endDebugPass(renderer: WebGPURenderer): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _activeBatches?.endPass(renderer)
 }
 
@@ -202,12 +201,12 @@ export function endDebugPass(renderer: WebGPURenderer): void {
  * pass the same function to `_unregisterBatchSource` on dispose.
  */
 export function _registerBatchSource(source: BatchSourceFn): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _batchSources.add(source)
 }
 
 export function _unregisterBatchSource(source: BatchSourceFn): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _batchSources.delete(source)
 }
 
@@ -222,12 +221,12 @@ export function _getBatchSources(): ReadonlySet<BatchSourceFn> {
  * with an unregister on the same function reference at dispose.
  */
 export function _registerMeshBatchSource(source: MeshBatchSourceFn): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _meshBatchSources.add(source)
 }
 
 export function _unregisterMeshBatchSource(source: MeshBatchSourceFn): void {
-  if (!DEVTOOLS_BUNDLED) return
+  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
   _meshBatchSources.delete(source)
 }
 

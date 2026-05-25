@@ -44,9 +44,9 @@ import type { LightEffect } from './lights/LightEffect'
 import { wrapWithLightFlags } from './lights/wrapWithLightFlags'
 import type { ChannelName } from './materials/channels'
 import type { RegistryData } from './ecs/batchUtils'
-import { DEVTOOLS_BUNDLED, isDevtoolsActive } from './debug-protocol'
+import { isDevtoolsActive } from './debug-protocol'
 import { PERF_TRACK } from './debug/perf-track'
-import { DevtoolsProvider } from './debug/DevtoolsProvider'
+import type { DevtoolsProvider } from './debug/DevtoolsProvider'
 import { beginDebugPass, endDebugPass } from './debug/debug-sink'
 
 /** Shape of the LightingContext trait data. */
@@ -303,9 +303,9 @@ export class Flatland extends Group implements WorldProvider {
     this._renderPipelineEnabled = options.postProcessing ?? false
 
     // Devtools producer — two-layer gate:
-    //   1. `DEVTOOLS_BUNDLED` (build-time const) — folded to `false` in
-    //      prod builds with no flags set, so the entire branch is dead
-    //      code and tree-shakes out.
+    //   1. The devtools build gate (build-time `process.env` expression) —
+    //      folded to `false` in prod builds with no flags set, so the
+    //      entire branch is dead code and tree-shakes out.
     //   2. `isDevtoolsActive()` (runtime, only read when bundled) — lets
     //      a user disable devtools on specific pages by setting
     //      `window.__FLATLAND_DEVTOOLS__ = false` before Flatland loads.
@@ -316,10 +316,16 @@ export class Flatland extends Group implements WorldProvider {
     // never added to a parent) and React/R3F (discarded renders never
     // reach `render()`, so orphan Flatland instances stay inert and GC).
     // Cleanup happens in `dispose()` below.
-    if (DEVTOOLS_BUNDLED && isDevtoolsActive()) {
-      this._devtools = new DevtoolsProvider({
-        name: options.name ?? 'flatland',
-        kind: 'system',
+    if ((process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') && isDevtoolsActive()) {
+      // Lazy-load the producer via dynamic import so a production build (gate
+      // folded to `false`) dead-strips this `import()` and never bundles
+      // DevtoolsProvider or its dependencies (BatchCollector, registries, the
+      // bus worker). Construction stays pure; the provider lazy-starts on the
+      // first render() once the chunk resolves (a microtask, before any frame).
+      const name = options.name ?? 'flatland'
+      void import('./debug/DevtoolsProvider').then(({ DevtoolsProvider }) => {
+        if (this._disposed) return
+        this._devtools = new DevtoolsProvider({ name, kind: 'system' })
       })
     }
   }
@@ -1055,12 +1061,14 @@ export class Flatland extends Group implements WorldProvider {
    * Flatland coordinates timing (begin/end around render) but doesn't
    * hold the data.
    *
-   * `null` outside of `DEVTOOLS_BUNDLED && isDevtoolsActive()`. Prod
-   * builds with no flags have this as a single `null` field and the
+   * `null` outside of the devtools build gate && `isDevtoolsActive()`.
+   * Prod builds with no flags have this as a single `null` field and the
    * entire subsystem tree-shakes out. See `debug-protocol.ts` for the
    * gate contract.
    */
   private _devtools: DevtoolsProvider | null = null
+  /** Set in dispose() so a still-resolving lazy devtools import() bails. */
+  private _disposed = false
 
   /**
    * Dev-only check: for the currently attached lighting effect's declared
@@ -1385,6 +1393,7 @@ export class Flatland extends Group implements WorldProvider {
   dispose(): void {
     // Tear down debug producers first — releases the scene.onAfterRender
     // hook so subsequent renders during dispose don't try to dispatch.
+    this._disposed = true
     this._devtools?.dispose()
     this._devtools = null
 

@@ -50,7 +50,7 @@ export {
 // React `<DevtoolsProvider>`) can early-return in production / when
 // devtools is disabled at runtime, allowing bundlers to drop the dev-only
 // branch entirely.
-export { DEVTOOLS_BUNDLED, isDevtoolsActive } from './debug-protocol'
+export { isDevtoolsActive } from './debug-protocol'
 
 // Observable mutation strategies for three.js value types
 export * from './observable'
