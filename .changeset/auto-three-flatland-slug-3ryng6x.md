@@ -5,8 +5,9 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**Baked-asset loader option unification for the lighting-stochastic-adoption branch.**
+## Changes
 
-- `SlugFontLoader.load()` options now extend `BakedAssetLoaderOptions` from `@three-flatland/bake` (type-only import, zero runtime cost), unifying the option shape across all baked-asset loaders in the ecosystem
+- `SlugFontLoader.load()` now accepts `BakedAssetLoaderOptions` directly, structurally unifying it with all other baked-asset loaders (`NormalMapLoader`, `SpriteSheetLoader`, `LDtkLoader`, `TiledLoader`)
+- `@three-flatland/bake` added as a workspace dev dependency (type-only import, no runtime cost)
 
-Aligns `SlugFontLoader` with the ecosystem-wide `BakedAssetLoaderOptions` contract introduced by `@three-flatland/bake`.
+`SlugFontLoader` now shares the `BakedAssetLoaderOptions` type end-to-end with the rest of the baked-asset loader ecosystem.

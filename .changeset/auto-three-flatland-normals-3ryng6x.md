@@ -5,26 +5,19 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New `@three-flatland/normals` package — offline normal-map baker and runtime loader for the lighting-stochastic-adoption branch.**
+## New Features
 
-### New package — `@three-flatland/normals`
+- New `@three-flatland/normals` package: offline Node-runnable baker (`flatland-bake normal <sprite.png>`) that computes tangent-space normals from the alpha 4-neighbor gradient and writes a sibling `.normal.png`
+- `NormalMapLoader`: runtime loader implementing the canonical "try baked → runtime TSL fallback" pattern; supports instance API (R3F `useLoader`) and static API with a shared URL-keyed cache
+- `resolveNormalMap()`: full fallback chain — silent 404 probe, lazy-imported `bakeInMemory` (~3 kB, only bundled when the fallback fires), devtime warn once per URL
+- `NormalSourceDescriptor` support: per-region baking via `bakeRegions` and descriptor JSON
+- `NormalMapLoader.load()` options typed as `NormalMapLoaderStaticOptions extends BakedAssetLoaderOptions` — structurally unified with all other baked-asset loaders
+- Cache key uses `hashDescriptor(descriptor)` — distinct descriptors for the same URL get separate cache entries (previously the second caller silently received the first caller's result)
+- Stale-hash detection: warns when a sidecar is present but its `flatland` tEXt chunk hash doesn't match, distinguishing stale from missing
 
-- `NormalMapLoader` — runtime "try baked `.normal.png` → fall back to TSL `normalFromSprite`" loader; exposes both instance API (R3F `useLoader`-compatible) and static API with a shared URL+descriptor-keyed cache
-- `resolveNormalMap()` with lazy-loaded in-memory baker fallback (~3 kB, split via `./bake` subpath export, only loaded when fallback fires)
-- `NormalSourceDescriptor` for per-region / per-sprite normal configuration
-- Stale-hash detection: HEAD 200 + PNG signature range-fetch with no `flatland` tEXt chunk triggers a distinct "stale sidecar" warning
-- Dev-time warnings fire at most once per URL, suppressed in `NODE_ENV=production`
-- `flatland-bake normal <input.png>` baker contributed via `flatland.bakers` manifest — reads RGBA PNG, computes 4-neighbor alpha gradient, writes sibling `.normal.png`
+## Breaking Changes
 
-### API
+- `skipBakedProbe` renamed to `forceRuntime` on `ResolveNormalMapOptions` and `NormalMapLoader`
+- `disableRuntimeBake` removed — runtime bake is always the fallback when normals are requested; use `forceRuntime: true` to skip the probe and fall back without baking
 
-- `forceRuntime` flag replaces both `skipBakedProbe` and `disableRuntimeBake` (unified with `SlugFontLoader` and all baked-asset loaders)
-- `NormalMapLoaderStaticOptions` extends `BakedAssetLoaderOptions` — ecosystem-wide type unification
-- `NormalMapLoader._cache` key uses `hashDescriptor(descriptor)` — distinct descriptors for the same URL get separate cache entries (previously the second caller silently won the first caller's bake)
-- Instance API bypasses `_cache` intentionally: R3F `useLoader` owns its own suspense cache; double-caching would fight the lifecycle
-
-### BREAKING CHANGES
-
-- `skipBakedProbe` renamed to `forceRuntime`; `disableRuntimeBake` removed — if you asked for normals you get normals (runtime bake is the always-on fallback)
-
-Introduces `@three-flatland/normals` as a complete normal-map pipeline — offline baker, runtime loader, and descriptor-driven resolution with automatic fallback and stale-sidecar detection.
+`@three-flatland/normals` provides offline CLI baking and a runtime loader that falls back to on-the-fly TSL baking for sprite normal maps.

@@ -5,32 +5,38 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**`DefaultLightEffect` lighting feature set and cleanup for the lighting-stochastic-adoption branch.**
+## New Features
 
-### New API — DefaultLightEffect
+- `shadowFilter` constant on `DefaultLightEffect` (`auto|nearest|linear`): `auto` picks nearest when `shadowPixelSnapEnabled` for crisp pixel-art shadows, linear when not
+- `shadowStartOffset` tunable uniform in `DefaultLightEffect`; `shadowBias` now exclusively serves as the IQ hit epsilon (no longer overloaded)
+- `shadowStartOffsetScale` effect-level multiplier on per-sprite `shadowRadius`, replacing the old scene-wide `shadowStartOffset` uniform
+- `Light2D.castsShadow` (default `true`): per-light opt-out for the 32-tap SDF shadow trace, packed into `LightStore` row3.b; `DefaultLightEffect` skips traces for non-casting lights
+- `Light2D.importance` (default `1.0`): multiplicative bias on tile-ranking score so hero lights (torches) resist eviction by dense cosmetic fill clusters
+- `Light2D.category?: string`: per-fill-light bucket key (djb2-hashed to 0–3); each category gets independent quota and compensation in `ForwardPlusLighting`
+- `NormalMapProvider` channel provider: connects normal maps to the `DefaultLightEffect` lighting pipeline
+- `./react` subpath export added to `@three-flatland/presets`
+- Shadow now applied post-quantization: `bands` cel-quantizes the unshadowed direct light; per-pixel shadow scalar is applied after, keeping shadow edges smooth while the direct gradient is banded
+- Rim lighting inherits per-pixel shadow ratio when `rimIntensity > 0` (physically: rim from an occluded light should be occluded)
 
-- `shadowFilter` option (`auto|nearest|linear`): `auto` selects nearest when `shadowPixelSnapEnabled` (crisp pixel-art shadows) or linear otherwise; explicit override available
-- Per-sprite `shadowRadius` consumed by `DefaultLightEffect.shadowStartOffsetScale` — replaces the scene-wide `shadowStartOffset` uniform; multiplier (default 1.0) scales each sprite's auto-derived radius
-- `Light2D.castsShadow` gate on shadow trace: fill lights skip the 32-tap SDF trace entirely — shadow cost becomes O(casting lights) instead of O(all lights)
-- Per-category fill-light quotas via hashed `Light2D.category` string (djb2, cached per unique value): up to 4 independent fill buckets, 2 fills per bucket per tile, no cross-bucket eviction
-- Per-tile fill compensation scales (4 channels, one per bucket) preserve scene luminance when culled fills are absent
-- `Light2D.importance` multiplicative score bias — hero lights resist eviction by dense fill clusters
-- Cel-band shadow fix: `bands` quantization applied before shadow scalar recovery — shadow edge stays smooth at any `bands` value
-- Rim lighting now inherits per-pixel shadow ratio (physically correct: occluded rim = no rim)
+## Performance
 
-### BREAKING CHANGES
+- Forward+ tile size bumped 16 → 32 px (4× CPU tile-assignment speedup at high light counts)
+- Shadow trace skipped for `castsShadow: false` lights (cost scales with shadow-casting count only)
+- Shadow trace skipped when attenuation is below 8-bit visibility threshold (≤ 0.01)
+- Dropped redundant `lightDir.normalize()` in per-tile per-light spot-cone shader loop
+- Removed dead `fillScale`/tile-meta compensation pass (per-bucket eviction quota replaced it)
+- Interleaved core instance buffer: UV/color/system/extras collapsed to one binding, freeing 3 WebGPU vertex buffer slots
 
-- `DirectLightEffect`, `RadianceLightEffect`, `SimpleLightEffect` removed from barrel — moved to a follow-up PR; only `DefaultLightEffect` and `NormalMapProvider` remain exported
-- `AutoNormalProvider` and `TileNormalProvider` removed (dead code)
-- `shadowBands` and `shadowBandCurve` uniforms removed (obsoleted by post-quantization shadow path)
-- `shadowStartOffset` scene-wide uniform replaced by per-sprite `shadowRadius` + effect-level `shadowStartOffsetScale`
+## Bug Fixes
 
-### Performance
+- Fixed CPU tile-bounds drift vs. shader screen-pixel tile math (`tileWorldStride = TILE_SIZE / screenSize * worldSize`)
+- Fixed per-tile fill-scale tile-boundary brightness banding: dropped shader-side `fillScale` multiply; quota-based eviction prevents fill-light domination without the banding artifact
+- Fixed ambient pipeline
 
-- Shadow trace gated on `Light2D.castsShadow` (fill lights opt out by default)
-- Redundant `lightDir.normalize()` in spot cone shader removed (direction normalized at set-site)
-- Shadow trace skipped when `atten <= 0.01` (below 8-bit quantization threshold)
-- Dead `fillScale` shader multiply removed (was producing tile-boundary banding)
-- Dead `fillScale` meta-texel compensation pass removed (was running every frame writing nothing consumed)
+## Removals
 
-Upgrades `DefaultLightEffect` with per-sprite shadow radii, per-category fill quotas, SDF filter control, and removes several obsolete lighting presets and uniforms.
+- `DirectLightEffect`, `SimpleLightEffect`, `RadianceLightEffect` moved to a follow-up PR (not in this release)
+- `shadowBands`/`shadowBandCurve` uniforms removed (obsoleted by post-quantization shadow application)
+- `AutoNormalProvider` (never implemented) fully cleaned from error messages, docs, and planning files
+
+`@three-flatland/presets` ships a production-ready `DefaultLightEffect` with per-light shadow gating, per-category fill quotas, and pixel-art-friendly shadow filtering.
