@@ -5,28 +5,26 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-- Vite plugin for a self-contained devtools dashboard (Preact-based)
-- Dashboard panels: stats sparklines, registry (CPU typed arrays), buffer thumbnails, batch inspector, environment info, protocol log
-- Live GPU buffer inspection: `DebugTextureRegistry` publishes render targets and data textures; per-consumer buffer selection over the debug bus
-- Buffer thumbnail blade: `◀ name ▶` cycle arrows, 240×120 preview, display modes (`colors`/`normalize`/`mono`/`signed`), format-driven defaults
-- Fullscreen buffer modal: pan/zoom (wheel + drag), sidebar buffer tree, aspect-correct canvas, Esc to close
-- VP9 WebCodecs streaming for fullscreen modal: worker-side `VideoEncoder`, consumer `VideoDecoder`; graceful fallback to raw pixels on unsupported browsers
-- GPU timing detection: stats panel adapts visible metrics to renderer capabilities
-- `maxDim` cap per buffer entry with lazy GPU downsampler (256px cap prevents 8MB readbacks for large render targets)
-- WebGPU row-padding detection in pixel-convert worker (correct stride for non-power-of-two readbacks)
-- All pixel-format conversion moved to the worker thread (RGBA8 only reaches main thread)
-- `DevtoolsProvider` constructor now side-effect-free; explicit `start()`/`dispose()` lifecycle, both idempotent and multi-cycle
-- `<DevtoolsProvider />` React component for non-Flatland scenes; `createDevtoolsProvider()` helper for vanilla use
-- Pane hooks rewritten with `useEffectEvent` for React Compiler compatibility; React peer requirement bumped to `^19.2.0`
-- Bucketed axis range for sparkline stability; stats canvas replaces SVG polyline (zero DOM mutation per frame)
-- Performance: snapshot mutation in place, `toFixed` string caching, `ImageData` reuse across thumbnail paints, `StatsCollector.maybeResolveGpu` throttled to 10 Hz
-- `perf-track.ts`: `perfMeasure`/`perfStart` API emitting Chrome User Timing spans with color-coded per-pipeline tracks
-- Minimal mode for Tweakpane pane controls
-- Two-channel BroadcastChannel bus: shared discovery channel + per-provider data channel
-- Fixed: thumbnail/modal buffer selection de-sync on state change
-- Fixed: `VideoDecoder` output overwritten by raw-pixel `paint()` in stream mode
-- Fixed: force keyframe on buffer switch in VP9 stream mode
-- Fixed: R3F `useFrame` priority API updated to options-object form (deprecation warning removed)
-- Fixed: late Tweakpane `change` events gated on `mountedRef` to prevent state updates on unmounted components
+- Devtools subsystem dead-stripped from production bundles: all call sites gated on `process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true'` (bundler-replaceable inline); `DevtoolsProvider` lazy-loaded via dynamic `import()` — three-flatland full bundle: 45.4 KB → 36.3 KB
+- `process.env` gate typed without `@types/node`: module-local `declare const process` in each gating file; erases at compile, does not pull node types into browser apps
+- Pane hooks rewritten for React 19.2: `usePane` uses `useState` lazy initializer; `usePane`/`usePaneFolder`/`usePaneInput` read latest values via `useEffectEvent`; bumps devtools react peer to `^19.2.0`
+- `DevtoolsProvider` pure constructor: no side effects at construction; explicit `start()`/`dispose()` lifecycle; safe for R3F reconciler speculative construction
+- `createDevtoolsProvider(opts?)` helper exported from `three-flatland` for vanilla apps that don't use `Flatland`
+- `<DevtoolsProvider />` React component: passive sampler using default-phase `useFrame`; gated by `DEVTOOLS_BUNDLED + isDevtoolsActive()`
+- Buffer debug pipeline (Phase C): `DebugTextureRegistry` for GPU `RenderTarget` + `DataTexture` readback; live thumbnail blade in Tweakpane pane with `◀ name ▶` cycle arrows, 240×120 preview, expand `⤢` button
+- Fullscreen buffer viewer modal: collapsible buffer group tree sidebar, aspect-correct canvas, `Esc` to close; drives `client.setBuffers([active])` for single-buffer streaming
+- Pan/zoom in modal: mouse wheel zoom centered on cursor, drag to pan, double-click reset; SDF/occlusion debug textures registered (`sdf.distanceField`, `occlusion.mask`)
+- WebCodecs VP9 streaming for fullscreen modal: `StreamEncoder` on bus worker thread encodes to `EncodedVideoChunk`, consumer `VideoDecoder` draws `VideoFrame` direct to canvas; falls back to raw-pixel path when WebCodecs unavailable
+- Worker-side pixel format conversion: `pixel-convert.ts` handles rgba8, r8, rgba16f (manual f16→f32), rgba32f; display modes: colors, normalize, mono, signed, alpha; GPU row-padding (WebGPU bytesPerRow 256-align) detected and stripped automatically
+- Texture readback moved to end-of-frame (after all render passes complete); eliminates blocky strips in SDF visualization
+- `DebugTextureRegistry` `maxDim` cap per entry (default 256 for render targets): downsamples via TSL blit before readback, reducing SDF readback from 8 MB to ~150 KB
+- Stats panel: bucketed sparkline axis ranges for stable display; axis hysteresis with trimmed max; GPU timing detection; canvas-based sparkline replaces SVG polyline (no per-rAF string allocations)
+- Perf instrumentation: `perfMeasure`/`perfStart` emit User Timing spans on Chrome's custom-track extension; ECS systems and provider flush/receive latency land on named tracks
+- Buffer subscription sync fixed: modal no longer overwrites thumbnail's subscription on state-change; thumbnail defers to modal when open, resumes on close
+- Vite plugin for devtools dashboard; build bundle task for dashboard added to turbo pipeline
+- Dashboard: Preact vendor bundle added; protocol log, registry, and batches panels; env panel
 
-Major devtools release: full Preact dashboard with live GPU buffer inspection, VP9 streaming, React 19.2 pane hooks, and comprehensive rendering and allocation performance improvements.
+**BREAKING CHANGES**
+- `DEVTOOLS_BUNDLED` re-export removed; gate on `process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true'` directly or via the `isDevtoolsActive()` helper
+
+`@three-flatland/devtools` ships a production-safe, zero-overhead devtools pipeline with GPU buffer streaming, live lighting debug textures, and full perf instrumentation.
