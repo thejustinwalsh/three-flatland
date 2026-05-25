@@ -176,7 +176,7 @@ describe('shadowPipelineSystem — occluder-dirty gate', () => {
     shadowPipelineSystem(world)
     expect(sdfGenerator.generate).toHaveBeenCalledTimes(1)
 
-    // Change a frustum bound (camera zoom/resize). Still occludersDirty=false.
+    // Change a frustum bound (resize). Still occludersDirty=false.
     camera.right = 20
     shadowPipelineSystem(world)
     expect(sdfGenerator.generate).toHaveBeenCalledTimes(2)
@@ -186,6 +186,13 @@ describe('shadowPipelineSystem — occluder-dirty gate', () => {
     camera.position.x = 5
     shadowPipelineSystem(world)
     expect(sdfGenerator.generate).toHaveBeenCalledTimes(3)
+
+    // Zoom changes the projection without touching the raw frustum bounds —
+    // it must still trigger a regen (else shadows freeze on zoom).
+    setOccludersDirty(false)
+    camera.zoom = 2
+    shadowPipelineSystem(world)
+    expect(sdfGenerator.generate).toHaveBeenCalledTimes(4)
   })
 })
 

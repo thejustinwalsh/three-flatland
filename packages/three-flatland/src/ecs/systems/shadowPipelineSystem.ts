@@ -183,13 +183,19 @@ export function shadowPipelineSystem(world: World): void {
 
   const posX = camera.position.x
   const posY = camera.position.y
+  // OrthographicCamera.zoom scales the projection without touching the raw
+  // frustum bounds, so a zoom change moves/scales the occluder silhouettes
+  // the pass renders. Include it or the gate would skip regen and freeze
+  // shadows at the pre-zoom state.
+  const zoom = (camera as { zoom?: number }).zoom ?? 1
   const cameraChanged =
     !Object.is(left, pipeline.lastLeft) ||
     !Object.is(right, pipeline.lastRight) ||
     !Object.is(top, pipeline.lastTop) ||
     !Object.is(bottom, pipeline.lastBottom) ||
     !Object.is(posX, pipeline.lastPosX) ||
-    !Object.is(posY, pipeline.lastPosY)
+    !Object.is(posY, pipeline.lastPosY) ||
+    !Object.is(zoom, pipeline.lastZoom)
 
   const dirty = mustRegen || occludersDirty || cameraChanged
   if (!dirty) return
@@ -205,4 +211,5 @@ export function shadowPipelineSystem(world: World): void {
   pipeline.lastBottom = bottom
   pipeline.lastPosX = posX
   pipeline.lastPosY = posY
+  pipeline.lastZoom = zoom
 }

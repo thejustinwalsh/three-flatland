@@ -208,10 +208,13 @@ export function shadowSoft2D(
  * distance. Binary result: `0` if the ray hits an occluder along the
  * way, `1` if it reaches the light cleanly. Soft shadow edges come
  * from (a) the separable gaussian blur pass applied in `SDFGenerator`
- * and (b) the IQ soft-shadow accumulation along the trace — NOT from
- * texture filtering. The SDF is sampled with NearestFilter, so the
- * softness is entirely a product of the blurred distance field plus
- * the per-step penumbra math, not bilinear interpolation.
+ * and (b) the IQ soft-shadow accumulation along the trace — primarily,
+ * not from texture filtering. The SDF sample filter is selectable via
+ * `shadowFilter` (`auto|nearest|linear`): nearest for crisp / pixel-
+ * snapped shadows (avoids the eps-threshold halo), linear for smoother
+ * non-snapped edges. `auto` picks nearest when shadow pixel-snap is on,
+ * linear otherwise. Either way the blur + penumbra math carry the bulk
+ * of the softness.
  *
  * The classic IQ penumbra term `min(k · h / t)` was removed because
  * it accumulates at every step of the walk, which in closed 2D scenes

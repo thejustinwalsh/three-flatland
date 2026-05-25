@@ -256,6 +256,7 @@ export const ShadowPipeline = trait(() => ({
   lastBottom: NaN,
   lastPosX: NaN,
   lastPosY: NaN,
+  lastZoom: NaN,
 }))
 
 export const LightingContext = trait(() => ({
