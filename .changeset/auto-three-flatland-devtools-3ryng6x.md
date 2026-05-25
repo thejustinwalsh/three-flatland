@@ -5,29 +5,28 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## New Features
+- Vite plugin for a self-contained devtools dashboard (Preact-based)
+- Dashboard panels: stats sparklines, registry (CPU typed arrays), buffer thumbnails, batch inspector, environment info, protocol log
+- Live GPU buffer inspection: `DebugTextureRegistry` publishes render targets and data textures; per-consumer buffer selection over the debug bus
+- Buffer thumbnail blade: `◀ name ▶` cycle arrows, 240×120 preview, display modes (`colors`/`normalize`/`mono`/`signed`), format-driven defaults
+- Fullscreen buffer modal: pan/zoom (wheel + drag), sidebar buffer tree, aspect-correct canvas, Esc to close
+- VP9 WebCodecs streaming for fullscreen modal: worker-side `VideoEncoder`, consumer `VideoDecoder`; graceful fallback to raw pixels on unsupported browsers
+- GPU timing detection: stats panel adapts visible metrics to renderer capabilities
+- `maxDim` cap per buffer entry with lazy GPU downsampler (256px cap prevents 8MB readbacks for large render targets)
+- WebGPU row-padding detection in pixel-convert worker (correct stride for non-power-of-two readbacks)
+- All pixel-format conversion moved to the worker thread (RGBA8 only reaches main thread)
+- `DevtoolsProvider` constructor now side-effect-free; explicit `start()`/`dispose()` lifecycle, both idempotent and multi-cycle
+- `<DevtoolsProvider />` React component for non-Flatland scenes; `createDevtoolsProvider()` helper for vanilla use
+- Pane hooks rewritten with `useEffectEvent` for React Compiler compatibility; React peer requirement bumped to `^19.2.0`
+- Bucketed axis range for sparkline stability; stats canvas replaces SVG polyline (zero DOM mutation per frame)
+- Performance: snapshot mutation in place, `toFixed` string caching, `ImageData` reuse across thumbnail paints, `StatsCollector.maybeResolveGpu` throttled to 10 Hz
+- `perf-track.ts`: `perfMeasure`/`perfStart` API emitting Chrome User Timing spans with color-coded per-pipeline tracks
+- Minimal mode for Tweakpane pane controls
+- Two-channel BroadcastChannel bus: shared discovery channel + per-provider data channel
+- Fixed: thumbnail/modal buffer selection de-sync on state change
+- Fixed: `VideoDecoder` output overwritten by raw-pixel `paint()` in stream mode
+- Fixed: force keyframe on buffer switch in VP9 stream mode
+- Fixed: R3F `useFrame` priority API updated to options-object form (deprecation warning removed)
+- Fixed: late Tweakpane `change` events gated on `mountedRef` to prevent state updates on unmounted components
 
-- Fullscreen buffer viewer modal: click ⤢ on any buffer thumbnail to open a zoomable (0.25×–64×), pannable inspector with a collapsible buffer tree sidebar; Esc to close
-- WebCodecs VP9 streaming for the modal: frames encoded on the worker thread via `VideoEncoder`, decoded via `VideoDecoder`; falls back to raw-pixel path on Firefox/older Safari
-- Devtools dashboard Vite plugin: opens an inspector UI with batches, buffers, stats, registry, and protocol-log panels (built on vendored Preact — zero consumer runtime dep)
-- Stats sparklines with bucketed axis range and trimmed-max hysteresis for visual stability; GPU timestamp timings shown when `timestamp-query` is available
-- `<DevtoolsProvider name="..." />` React component: passive sampler using `useFrame` default phase; constructor is now side-effect-free with explicit `start()`/`dispose()` lifecycle
-- `createDevtoolsProvider(opts?)` helper exported from `three-flatland` for vanilla Three.js apps that don't construct a `Flatland`
-- Tweakpane controls minimal mode
-- Per-buffer stream selection: switching buffers in the modal now forces a keyframe so the decoder starts immediately
-- SDF distance field and occlusion mask registered as named debug textures; all lighting pipeline buffers (JFA ping/pong, radiance cascades) registered
-- Worker-side pixel format converter (`pixel-convert.ts`): rgba8, r8, rgba16f (manual half-float decode), rgba32f; display modes: colors, normalize, mono, signed, alpha; handles WebGPU 256-byte row padding
-- Per-system colored Performance panel tracks for the full ECS schedule (behind `DEVTOOLS_BUNDLED` build guard)
-
-## Bug Fixes
-
-- Fixed modal thumbnail overwriting the buffer subscription on every state change (thumbnail defers to modal when open)
-- Fixed VP9 stream decoder missing keyframe after buffer switch
-- Fixed `paint()` overwriting VideoDecoder output in stream mode (raw-pixel path skipped when decoder is active)
-- Fixed float textures bypassing VP9 encoding (only rgba8/r8 go through VP9; float textures use raw pixel path)
-- Fixed `useFrame` positional priority API deprecation; `usePaneInput` change handler gated on `mountedRef` to prevent post-unmount state updates
-- Fixed pane hooks for React 19.2 (`useEffectEvent` replaces latest-ref pattern); React peer requirement bumped to `^19.2.0`
-- Fixed bus-worker URL resolution for built `dist/` vs. source (dropped extension from `new URL(...)`)
-- Fixed typecheck script path in devtools `package.json`
-
-The devtools package now ships a full GPU-texture inspector dashboard with streaming buffer visualization and ECS performance tracing.
+Major devtools release: full Preact dashboard with live GPU buffer inspection, VP9 streaming, React 19.2 pane hooks, and comprehensive rendering and allocation performance improvements.

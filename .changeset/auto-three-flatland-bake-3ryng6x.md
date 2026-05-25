@@ -5,24 +5,19 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## New Features
+- New `@three-flatland/bake` CLI (`flatland-bake`) with extensible baker discovery via `package.json` manifests
+- Baker discovery walks `node_modules` upward from CWD; packages declare bakers under `flatland.bake` (array of `{ name, description, entry }`)
+- CWD-self-discovery: bakers in the running package's own `package.json` register first, enabling local iteration without symlinking
+- First-wins conflict policy for duplicate baker names with console warning
+- `devtimeWarn` helper: one-shot development warnings keyed by URL (silent in `NODE_ENV=production`)
+- Sidecar utilities: read/write version-tagged PNG sidecar files (hash embedded in tEXt chunk for staleness detection)
+- `flatland-bake --list` enumerates all discovered bakers
+- Fixed: USAGE help text updated from legacy `flatland.bakers` to canonical `flatland.bake`
+- Fixed: dead `&& header.status !== 206` guard removed from sidecar.ts (unreachable after `!ok` check)
+- Fixed: `setTorchEnabled` in lighting example deferred off the `useFrame` loop via `queueMicrotask`
 
-- New `@three-flatland/bake` package ships the `flatland-bake` CLI entry point
-- Bakers are auto-discovered from `node_modules` and the CWD's own `package.json` (`flatland.bake` field), so package authors can iterate without symlinking
-- Baker packages declare contributions via `{ "flatland": { "bake": [{ "name", "description", "entry" }] } }` in `package.json`; installing a package makes its subcommand appear in `flatland-bake --list` with no extra wiring
-- Duplicate-name registrations reported as conflicts with first-wins policy
-- Sidecar read/write utilities (`sidecar.ts`, `writeSidecar.ts`) with PNG tEXt chunk metadata for baked-asset hash tracking
-- `devtimeWarn` helper for once-per-URL dev-time warnings used by loaders
-- Baked-asset descriptor format and bake-script support for per-region normal baking
+**BREAKING CHANGES**
 
-## Breaking Changes
+- `skipBakedProbe` renamed to `forceRuntime` in `BakedAssetLoaderOptions`; update any loader call sites that passed `skipBakedProbe: true`
 
-- `BakedAssetLoaderOptions.skipBakedProbe` renamed to `forceRuntime`; `disableRuntimeBake` option removed — runtime bake is always the fallback when normals are requested
-
-## Bug Fixes
-
-- Fixed CLI help text that referenced legacy `flatland.bakers` field (canonical field is `flatland.bake`)
-- Removed dead `&& header.status !== 206` guard in `sidecar.ts` (`Response.ok` already covers 200–299)
-- Fixed React example calling `setTorchEnabled` inside `useFrame`; now deferred via `queueMicrotask` to avoid mid-frame re-renders
-
-The `@three-flatland/bake` package ships the `flatland-bake` CLI and a plugin-discovery system. Install `@three-flatland/normals` to enable `flatland-bake normal` for offline sprite normal-map baking.
+Adds the `@three-flatland/bake` CLI entry point for extensible offline asset baking, with sidecar read/write utilities and devtime warning infrastructure shared across all baked-asset loaders.

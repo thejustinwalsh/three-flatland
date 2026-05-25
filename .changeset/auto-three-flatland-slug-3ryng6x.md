@@ -5,9 +5,7 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## Changes
+- `SlugFontLoader.load()` now accepts `BakedAssetLoaderOptions` directly, completing structural type unification across all baked-asset loaders
+- Adds `@three-flatland/bake` as a workspace dependency (type-only import — no runtime bundle cost)
 
-- `SlugFontLoader.load()` now accepts `BakedAssetLoaderOptions` directly, structurally unifying it with all other baked-asset loaders (`NormalMapLoader`, `SpriteSheetLoader`, `LDtkLoader`, `TiledLoader`)
-- `@three-flatland/bake` added as a workspace dev dependency (type-only import, no runtime cost)
-
-`SlugFontLoader` now shares the `BakedAssetLoaderOptions` type end-to-end with the rest of the baked-asset loader ecosystem.
+Aligns `SlugFontLoader` with the shared `BakedAssetLoaderOptions` type introduced for the normal-map pipeline.
