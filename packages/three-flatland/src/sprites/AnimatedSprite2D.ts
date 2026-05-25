@@ -3,7 +3,7 @@ import { Sprite2D } from './Sprite2D'
 import { AnimationController } from '../animation/AnimationController'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { MaterialEffect } from '../materials/MaterialEffect'
-import type { SpriteSheet } from './types'
+import type { SpriteSheet, SpriteFrame } from './types'
 import type { Animation, AnimationSetDefinition, PlayOptions } from '../animation/types'
 
 /**
@@ -300,11 +300,17 @@ export class AnimatedSprite2D extends Sprite2D {
    * @param deltaMs Time since last frame in milliseconds
    */
   update(deltaMs: number): void {
-    this.controller.update(
-      deltaMs,
-      (frame) => this.setFrame(frame),
-      (event, frameIndex) => this.onAnimationEvent(event, frameIndex)
-    )
+    this.controller.update(deltaMs, this._onAnimFrame, this._onAnimEvent)
+  }
+
+  // Bound once per instance so the per-frame update() doesn't allocate a fresh
+  // closure per sprite per frame — that per-frame allocation is GC pressure
+  // that shows up as frame-time wobble in dense animated scenes (10k+ sprites).
+  private readonly _onAnimFrame = (frame: SpriteFrame): void => {
+    this.setFrame(frame)
+  }
+  private readonly _onAnimEvent = (event: string, frameIndex: number): void => {
+    this.onAnimationEvent(event, frameIndex)
   }
 
   /**

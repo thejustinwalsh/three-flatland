@@ -337,7 +337,13 @@ export class SpriteBatch extends InstancedMesh {
    * Stored in `instanceExtras.x`. Lighting-only; zero for sprite-sort PR.
    */
   writeShadowRadius(index: number, radius: number): void {
-    this._interleavedData[index * INSTANCE_STRIDE + OFFSET_EXTRAS + 0] = radius
+    // Idempotent: transformSyncSystem re-derives this from scale every frame
+    // for every sprite, but scale is static in the common case. Skip the write
+    // and the dirty mark when the value is unchanged, so a static-scale scene
+    // doesn't re-upload the whole interleaved buffer every frame.
+    const o = index * INSTANCE_STRIDE + OFFSET_EXTRAS + 0
+    if (this._interleavedData[o] === radius) return
+    this._interleavedData[o] = radius
     this._interleavedTracker.markDirty(index)
   }
 
