@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type ComponentRef, type ReactNode } from 'react'
 import { Collapsible } from '@three-flatland/design-system'
 import { useEncodeStore, type InfoSectionKey } from './encodeStore'
 
@@ -18,7 +18,7 @@ export interface InfoSectionProps {
 export function InfoSection({ id, heading, children }: InfoSectionProps) {
   const open = useEncodeStore((s) => s.infoSections[id])
   const setInfoSection = useEncodeStore((s) => s.setInfoSection)
-  const ref = useRef<HTMLElement>(null)
+  const ref = useRef<ComponentRef<typeof Collapsible>>(null)
 
   useEffect(() => {
     const el = ref.current

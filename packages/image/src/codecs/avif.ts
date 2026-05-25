@@ -14,14 +14,14 @@ function isNode(): boolean {
 
 async function loadWasmFromDisk(relPath: string): Promise<WebAssembly.Module> {
   // Node-only path. The dynamic imports keep `node:*` out of browser bundles.
-  const [{ readFileSync }, { join, dirname }, { fileURLToPath }] = await Promise.all([
+  const [fs, path, url] = await Promise.all([
     import('node:fs'),
     import('node:path'),
     import('node:url'),
   ])
-  const here = dirname(fileURLToPath(import.meta.url))
-  const wasmPath = join(here, relPath)
-  const bytes = readFileSync(wasmPath)
+  const here = path.dirname(url.fileURLToPath(import.meta.url))
+  const wasmPath = path.join(here, relPath)
+  const bytes = fs.readFileSync(wasmPath)
   return new WebAssembly.Module(bytes)
 }
 

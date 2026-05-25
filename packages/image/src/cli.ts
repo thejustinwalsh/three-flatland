@@ -95,7 +95,7 @@ const baker: Baker = {
       }
       const files: string[] = []
       try {
-        for await (const f of glob(args.positional[0])) files.push(f as string)
+        for await (const f of glob(args.positional[0])) files.push(f)
       } catch {
         // Glob error: treat the pattern as a single literal path so missing-file batch tests work.
         files.push(args.positional[0])

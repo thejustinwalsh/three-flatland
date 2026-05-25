@@ -10,7 +10,7 @@ export interface SourceShape {
 const LOADERS = ['three-default', 'three-ktx', 'spark'] as const
 type Loader = (typeof LOADERS)[number] | 'all'
 
-export async function estimateGpuMemory(source: SourceShape, loader: Loader): Promise<GpuMemoryEstimate[]> {
+export function estimateGpuMemory(source: SourceShape, loader: Loader): GpuMemoryEstimate[] {
   if (loader === 'all') {
     return LOADERS.flatMap((l) => analytic(source, l))
   }

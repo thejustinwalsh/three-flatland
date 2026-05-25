@@ -26,17 +26,17 @@ function isNode(): boolean {
  */
 export async function fetchBasisBytes(): Promise<ArrayBuffer> {
   if (isNode()) {
-    const [{ readFileSync }, { dirname, join }, { fileURLToPath }] = await Promise.all([
+    const [fs, path, url] = await Promise.all([
       import('node:fs'),
       import('node:path'),
       import('node:url'),
     ])
-    const here = dirname(fileURLToPath(import.meta.url))
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
     // dist/runtime/basis-loader.js -> ../../libs/basis/basis_encoder.wasm
     // src/runtime/basis-loader.ts (vitest) -> ../../libs/basis/basis_encoder.wasm
-    const wasmPath = join(here, '../../libs/basis/basis_encoder.wasm')
-    const buf = readFileSync(wasmPath)
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+    const wasmPath = path.join(here, '../../libs/basis/basis_encoder.wasm')
+    const buf = fs.readFileSync(wasmPath)
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
   }
   // Browser: bundler (Vite/esbuild/webpack/rollup) resolves the asset URL.
   const url = new URL('../../libs/basis/basis_encoder.wasm', import.meta.url).href

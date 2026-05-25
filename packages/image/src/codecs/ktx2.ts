@@ -1,4 +1,4 @@
-import { type BasisExports } from '../runtime/basis-runtime.js'
+import type { BasisExports } from '../runtime/basis-runtime.js'
 
 export interface Ktx2Options {
   mode?: 'etc1s' | 'uastc'
@@ -61,7 +61,7 @@ export async function encodeKtx2(image: ImageData, opts: Ktx2Options = {}): Prom
  * instance. Worker-friendly: the worker holds its own BasisExports
  * (instantiated once at init time) and reuses it across many encodes.
  */
-export async function encodeKtx2WithExports(
+export function encodeKtx2WithExports(
   image: ImageData,
   opts: Ktx2Options,
   exports: BasisExports,
@@ -91,7 +91,7 @@ export async function encodeKtx2WithExports(
     if (outLen === 0) throw new Error('basis encoder returned 0 bytes')
     // .slice() copies out of wasm linear memory — required because
     // fl_basis_encoder_destroy releases the underlying storage.
-    return new Uint8Array(exports.memory.buffer, outPtr, outLen).slice()
+    return Promise.resolve(new Uint8Array(exports.memory.buffer, outPtr, outLen).slice())
   } finally {
     exports.fl_basis_encoder_destroy(enc)
     exports.fl_basis_free(inPtr)

@@ -58,5 +58,9 @@ export async function decodeKtx2ToImageData(bytes: Uint8Array): Promise<ImageDat
   // top-down) and then through `CanvasTexture` (default `flipY = true`
   // at GPU upload) lands the right way up — matching the existing
   // PNG→ImageData→CanvasTexture path used for non-KTX2 sources.
-  return new ImageData(new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), width, height)
+  // Copy into a fresh ArrayBuffer-backed array: `data.buffer` is typed
+  // `ArrayBufferLike` (may be a SharedArrayBuffer), which the ImageData ctor
+  // rejects. The copy yields a `Uint8ClampedArray<ArrayBuffer>`. `data` is
+  // exactly width*height*4 bytes (validated above), so this is a tight copy.
+  return new ImageData(new Uint8ClampedArray(data), width, height)
 }

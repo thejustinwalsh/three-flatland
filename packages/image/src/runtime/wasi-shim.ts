@@ -16,7 +16,7 @@
 //     ships even with all four features enabled, comparable to the
 //     hand-rolled shim it replaced.
 
-import { WASI, useClock, useEnviron, useRandom, useProc } from 'uwasi'
+import { WASI, useClock, useEnviron, useRandom as createRandomFeature, useProc } from 'uwasi'
 
 export { WASIProcExit } from 'uwasi'
 
@@ -58,7 +58,7 @@ const useNoFs: WASIFeatureProvider = () => ({
   // and pretending we wrote everything keeps libc's buffered I/O
   // happy without actually emitting any bytes — there's no console
   // in the WASI sandbox to receive them anyway.
-  fd_write: (_fd: number, _iovs: number, _iovsLen: number, nwrittenPtr: number) => {
+  fd_write: (_fd: number, _iovs: number, _iovsLen: number, _nwrittenPtr: number) => {
     // We can't easily compute total bytes without a memory view;
     // claiming 0 written is fine — basisu doesn't act on the count,
     // only on the success/error code.
@@ -82,7 +82,7 @@ function makeWasi(): WASI {
   return new WASI({
     // env / args default to empty; useEnviron / useArgs (if added)
     // will read 0/0 sizes which is what basisu sees.
-    features: [useClock, useEnviron, useRandom(), useProc, useNoFs],
+    features: [useClock, useEnviron, createRandomFeature(), useProc, useNoFs],
   })
 }
 

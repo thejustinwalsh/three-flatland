@@ -39,7 +39,7 @@ import {
   RGBAFormat,
   SRGBColorSpace,
 } from 'three'
-import type { LoadingManager } from 'three'
+import type { CompressedTextureImageData, LoadingManager } from 'three'
 
 import {
   transcodeKtx2,
@@ -80,6 +80,20 @@ type AnyCompressedTexture =
   | InstanceType<typeof CompressedArrayTexture>
   | DataTexture
 
+/**
+ * Minimal duck-typed renderer shape `detectSupport` reads. A WebGPURenderer
+ * exposes `isWebGPURenderer` + `hasFeature`; a WebGLRenderer exposes
+ * `extensions`. Both members are optional so either renderer satisfies it.
+ */
+interface Ktx2DetectRenderer {
+  isWebGPURenderer?: boolean
+  hasFeature?(feature: string): boolean
+  extensions?: {
+    has(name: string): boolean
+    get(name: string): { getSupportedProfiles(): string[] } | null
+  }
+}
+
 class Ktx2Loader extends Loader<AnyCompressedTexture> {
   private workerConfig: Ktx2Capabilities | null = null
   private workerPromise: Promise<Worker> | null = null
@@ -102,26 +116,30 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
    * `isWebGPURenderer`). For renderer-less use (e.g., Node tests), call
    * `setSupportedFormats(...)` instead.
    */
-  detectSupport(renderer: { isWebGPURenderer?: boolean } & Record<string, any>): this {
+  detectSupport(renderer: Ktx2DetectRenderer): this {
     if (renderer.isWebGPURenderer === true) {
+      const has = (feature: string) => renderer.hasFeature?.(feature) ?? false
       this.workerConfig = {
-        astcSupported: renderer.hasFeature('texture-compression-astc'),
+        astcSupported: has('texture-compression-astc'),
         astcHDRSupported: false, // gpuweb/gpuweb#3856
-        etc1Supported: renderer.hasFeature('texture-compression-etc1'),
-        etc2Supported: renderer.hasFeature('texture-compression-etc2'),
-        dxtSupported: renderer.hasFeature('texture-compression-s3tc'),
-        bptcSupported: renderer.hasFeature('texture-compression-bc'),
-        pvrtcSupported: renderer.hasFeature('texture-compression-pvrtc'),
+        etc1Supported: has('texture-compression-etc1'),
+        etc2Supported: has('texture-compression-etc2'),
+        dxtSupported: has('texture-compression-s3tc'),
+        bptcSupported: has('texture-compression-bc'),
+        pvrtcSupported: has('texture-compression-pvrtc'),
       }
       return this
     }
 
-    const exts = renderer.extensions as { has(n: string): boolean; get(n: string): any }
+    const exts = renderer.extensions
+    if (!exts) {
+      throw new Error('Ktx2Loader.detectSupport: renderer exposes neither isWebGPURenderer nor extensions')
+    }
     const caps: Ktx2Capabilities = {
       astcSupported: exts.has('WEBGL_compressed_texture_astc'),
       astcHDRSupported:
         exts.has('WEBGL_compressed_texture_astc') &&
-        exts.get('WEBGL_compressed_texture_astc').getSupportedProfiles().includes('hdr'),
+        (exts.get('WEBGL_compressed_texture_astc')?.getSupportedProfiles().includes('hdr') ?? false),
       etc1Supported: exts.has('WEBGL_compressed_texture_etc1'),
       etc2Supported: exts.has('WEBGL_compressed_texture_etc'),
       dxtSupported: exts.has('WEBGL_compressed_texture_s3tc'),
@@ -368,13 +386,17 @@ function buildTexture(result: Ktx2TranscodeResult): AnyCompressedTexture {
       typ,
     )
   } else {
-    texture = new CompressedTexture(
+    // Pin the generic: `texture` is the `AnyCompressedTexture` union, whose
+    // contextual type otherwise widens TImageData to a union three's narrow
+    // `CompressedTexture` member won't accept. Pinning to the default keeps
+    // it assignable without an output assertion.
+    texture = new CompressedTexture<CompressedTextureImageData>(
       result.faces[0]!.mipmaps as never,
       result.width,
       result.height,
       fmt,
       typ,
-    ) as CompressedTexture
+    )
   }
 
   texture.minFilter = minFilter

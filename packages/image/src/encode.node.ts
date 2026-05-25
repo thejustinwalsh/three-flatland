@@ -80,17 +80,17 @@ export async function* encodeImageBatch(
       .then<BatchResult>((out) => ({ input: item.input, status: 'ok', output: out, ms: Date.now() - t0 }))
       .catch<BatchResult>((err: Error) => ({ input: item.input, status: 'err', error: err.message, ms: Date.now() - t0 }))
     inflight.add(p)
-    p.then((r) => {
+    void p.then((r) => {
       inflight.delete(p)
       yieldQueue.push(r)
     })
     return p
   }
 
-  while (inflight.size < concurrency && queue.length > 0) start(queue.shift()!)
+  while (inflight.size < concurrency && queue.length > 0) void start(queue.shift()!)
   while (inflight.size > 0 || queue.length > 0) {
     if (yieldQueue.length === 0) await Promise.race(inflight)
     while (yieldQueue.length > 0) yield yieldQueue.shift()!
-    while (inflight.size < concurrency && queue.length > 0) start(queue.shift()!)
+    while (inflight.size < concurrency && queue.length > 0) void start(queue.shift()!)
   }
 }
