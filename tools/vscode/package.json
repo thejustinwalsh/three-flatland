@@ -1,0 +1,151 @@
+{
+  "name": "@three-flatland/vscode",
+  "displayName": "three-flatland Tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Official three-flatland tools for editor hosts (VSCode, Cursor, Antigravity)",
+  "publisher": "three-flatland",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "threeFlatland.atlas.openEditor",
+        "title": "Open in FL Sprite Atlas",
+        "category": "FL"
+      },
+      {
+        "command": "threeFlatland.merge.openMergeTool",
+        "title": "Merge atlases…",
+        "category": "FL"
+      },
+      {
+        "command": "threeFlatland.wasmTest.open",
+        "title": "WASM Contract Test",
+        "category": "FL"
+      },
+      {
+        "command": "threeFlatland.encode.open",
+        "title": "Open Image Encoder",
+        "category": "FL"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "threeFlatland.atlas",
+        "displayName": "FL Sprite Atlas",
+        "selector": [
+          { "filenamePattern": "*.png" }
+        ],
+        "priority": "option"
+      },
+      {
+        "viewType": "threeFlatland.encode",
+        "displayName": "FL KTX2 Viewer",
+        "selector": [
+          { "filenamePattern": "*.ktx2" }
+        ],
+        "priority": "default"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "threeFlatland.atlas.openEditor",
+          "when": "resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/",
+          "group": "navigation@10"
+        },
+        {
+          "command": "threeFlatland.merge.openMergeTool",
+          "when": "resourceFilename =~ /\\.atlas\\.json$/",
+          "group": "navigation@11"
+        },
+        {
+          "command": "threeFlatland.encode.open",
+          "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2",
+          "group": "navigation@13"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "threeFlatland.atlas.openEditor",
+          "when": "resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/"
+        },
+        {
+          "command": "threeFlatland.merge.openMergeTool",
+          "when": "resourceFilename =~ /\\.atlas\\.json$/"
+        },
+        {
+          "command": "threeFlatland.encode.open",
+          "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "fl-atlas",
+        "aliases": ["FL Atlas"],
+        "filenamePatterns": ["*.atlas.json"],
+        "icon": {
+          "light": "./icons/atlas-light.svg",
+          "dark": "./icons/atlas-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "fl-atlas",
+        "scopeName": "source.fl-atlas",
+        "path": "./grammars/fl-atlas.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "pnpm run build:webview && pnpm run build:host",
+    "build:host": "node esbuild.config.mjs",
+    "build:webview": "vite build",
+    "dev": "concurrently -n host,webview -c blue,magenta --prefix \"[{name}]\" \"pnpm run dev:host\" \"pnpm run dev:webview\"",
+    "dev:host": "node esbuild.config.mjs --watch",
+    "dev:webview": "vite build --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@jsquash/webp": "catalog:",
+    "@stylexjs/stylex": "catalog:",
+    "@three-flatland/bridge": "workspace:*",
+    "@three-flatland/image": "workspace:*",
+    "@three-flatland/design-system": "workspace:*",
+    "@three-flatland/io": "workspace:*",
+    "@three-flatland/preview": "workspace:*",
+    "@three-flatland/schemas": "workspace:*",
+    "@react-three/fiber": "catalog:",
+    "@vscode-elements/elements": "^2.5.1",
+    "@vscode-elements/react-elements": "^2.4.0",
+    "@vscode/codicons": "^0.0.44",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "three": "catalog:",
+    "three-flatland": "workspace:*",
+    "zundo": "catalog:",
+    "zustand": "catalog:"
+  },
+  "devDependencies": {
+    "@stylexjs/unplugin": "catalog:",
+    "@types/node": "^22.10.0",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/three": "catalog:",
+    "@types/vscode": "^1.94.0",
+    "@vitejs/plugin-react": "catalog:",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.25.0",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}
