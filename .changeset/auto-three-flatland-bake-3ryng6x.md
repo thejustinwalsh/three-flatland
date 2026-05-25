@@ -5,18 +5,25 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-### New `flatland-bake` CLI
+**2D lighting pipeline — normal-map baking & loader infrastructure for the lighting-stochastic-adoption branch.**
 
-- `flatland-bake` binary discovers and dispatches to bakers contributed by workspace or npm packages via a `flatland.bake` manifest field in `package.json`
-- Baker packages default-export a `Baker` (`{ name, description, run(args), usage? }`) — installing a package that provides one makes its subcommand appear in `flatland-bake --list` with no further wiring
-- Discovery walks `node_modules` upward from CWD, tolerating scoped packages, missing dirs, and malformed manifests; first-wins policy on duplicate names
-- CWD self-discovery: when the CLI runs inside a package that declares its own bakers, those register ahead of `node_modules` scans (lets package authors iterate without symlinking)
-- Sidecar writer (`writeSidecar`) and probe added for managing baked-asset metadata
+### @three-flatland/bake — new CLI package
 
-### API changes
+- `flatland-bake` binary: discovers and dispatches to package-contributed bakers
+- Baker registration via `flatland.bake` field in `package.json`; `flatland.bakers` still accepted with a deprecation warning
+- CWD self-discovery so package authors iterate without symlinking their own package into `node_modules`
+- Sidecar probe utilities (HEAD + PNG tEXt hash check) and sidecar write helpers
+- Dev-time warning helper fires at most once per URL, suppressed in `NODE_ENV=production`
+- `BakedAssetLoaderOptions` base type with `forceRuntime` flag shared across all baked-asset loaders
 
-- `BakedAssetLoaderOptions.forceRuntime` — unified opt-out flag shared across all baked-asset loaders; replaces the previous inconsistent per-loader names (`skipBakedProbe`, `disableRuntimeBake`)
-- `flatland.bake` is the canonical manifest field; legacy `flatland.bakers` is still accepted with a deprecation warning
-- `BakedAssetLoaderOptions` type exported from `@three-flatland/bake` so all loader packages can reference the same structural type
+### Bug fixes
 
-Adds the `flatland-bake` CLI and the `BakedAssetLoaderOptions` contract used across `@three-flatland/normals`, `@three-flatland/slug`, and the core loaders.
+- Fixed dead `&& header.status !== 206` guard in `sidecar.ts` (unreachable branch after `!header.ok`)
+- Fixed USAGE help text to reference canonical `flatland.bake` field (was `flatland.bakers`)
+- Moved `setTorchEnabled` off the `useFrame` render loop via `queueMicrotask` in the lighting example to avoid mid-frame React re-renders
+
+### Breaking changes
+
+- `skipBakedProbe` option renamed to `forceRuntime` across `BakedAssetLoaderOptions` and all loaders that consume it; `disableRuntimeBake` removed entirely (runtime bake is the always-on fallback)
+
+Introduces the `@three-flatland/bake` CLI and unifies the baked-asset loader opt-out flag as `forceRuntime` across the entire loader ecosystem.

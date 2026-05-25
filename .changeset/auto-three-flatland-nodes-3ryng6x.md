@@ -5,22 +5,18 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-### New TSL helpers
+**Shadow-trace TSL helpers and SDF correctness fixes for the lighting-stochastic-adoption branch.**
 
-- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, opts)` — sphere-trace soft shadow through a JFA SDF texture; returns `[0, 1]` shadow factor with IQ-style running-min penumbra for soft edges
-- `normalFromSprite` TSL node — computes tangent-space normals from sprite alpha at runtime (4-neighbor gradient)
-- `normalFromHeight` TSL node — tangent-space normals from a heightmap channel
-- Full lighting shader module: `lit`, `lights`, `shadows`, and `normalFromSprite`/`normalFromHeight` exported from `@three-flatland/nodes/lighting`
+### New API
 
-### Shadow fixes
+- `shadowSDF2D()` — sphere-trace soft shadow through an SDF texture; produces `[0, 1]` shadow value with an IQ-style running-min penumbra term
+- `shadowStartOffset` tunable `FloatInput` option on `shadowSDF2D` (replaces hardcoded 40-unit constant); `shadowBias` and `shadowStartOffset` semantics split (bias = hit epsilon, offset = self-shadow escape)
 
-- `worldToSDFUV` no longer clamps sample UVs to `[0,1]`; out-of-field samples advance by the epsilon floor (treated as unoccluded) — fixes off-screen lights casting false edge shadows
-- `shadowSDF2D` self-shadow detection uses `sdf < 0` (signed field) instead of `sdf < eps`, eliminating the eps approximation
-- `shadowStartOffset` raised to 40 as the correct default for typical sprite scales; fully tunable via uniform
+### Bug fixes
+
+- Off-screen lights no longer cast false edge shadows: `worldToSDFUV` no longer clamps sample UVs to `[0, 1]`; out-of-field samples advance by the eps floor and are treated as unoccluded
 - Penumbra math corrected
+- Signed SDF consumed by `shadowSDF2D`: `sdf < 0` detects self-shadow directly (replaces the `sdf < eps` unsigned approximation)
+- `shadowStartOffset` default raised back to 40 after the signed-SDF self-shadow gate made the smaller default artifact-prone with large casters
 
-### Signed SDF consumption
-
-- `shadowSDF2D` takes advantage of the signed SDF produced by `SDFGenerator`: fragments inside casters see negative distance, improving both self-shadow detection and grazing-hit accuracy
-
-Delivers the core `shadowSDF2D` TSL primitive and the full lighting shader module consumed by `@three-flatland/presets`.
+Delivers the complete `shadowSDF2D` sphere-trace helper and fixes off-screen light false-shadow and penumbra bugs.

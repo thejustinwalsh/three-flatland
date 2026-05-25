@@ -5,10 +5,8 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-### API alignment
+**Baked-asset loader option unification for the lighting-stochastic-adoption branch.**
 
-- `SlugFontLoader.load()` now accepts `BakedAssetLoaderOptions` directly, aligning it with `NormalMapLoader` and future baked-asset loaders
-- Added `@three-flatland/bake` as a workspace dependency (type-only import — no runtime cost)
-- Cache key for `NormalMapLoader` now uses `hashDescriptor(descriptor)` instead of presence-only, so two callers passing different descriptors for the same URL get distinct cache entries
+- `SlugFontLoader.load()` options now extend `BakedAssetLoaderOptions` from `@three-flatland/bake` (type-only import, zero runtime cost), unifying the option shape across all baked-asset loaders in the ecosystem
 
-No behavior change for existing consumers. Part of the cross-package `BakedAssetLoaderOptions` unification.
+Aligns `SlugFontLoader` with the ecosystem-wide `BakedAssetLoaderOptions` contract introduced by `@three-flatland/bake`.

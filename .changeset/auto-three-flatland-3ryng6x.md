@@ -5,76 +5,70 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-### 2D lighting system
+**Full 2D lighting pipeline, interleaved instance buffer, normal-map loaders, and devtools for the lighting-stochastic-adoption branch.**
 
-- Full JFA-based 2D lighting pipeline: `SDFGenerator` (signed distance field), `OcclusionPass`, `ForwardPlusLighting`, `LightEffect` system, and `shadowPipelineSystem` wired into the ECS schedule
-- `Light2D` — point, directional, ambient, and spot light types; `castsShadow`, `category`, `importance` fields
-- `LightStore` packs light data into a RGBA32F DataTexture; `castsShadow` packed into row3.b, category bucket into row3.a
-- `LightEffect` / `LightEffectBuildContext` — plugin system for custom lighting shaders; effects declare `needsShadows` to opt into the SDF pipeline
-- `shadowPipelineSystem` moved to append phase (after `conditionalTransformSyncSystem` + `flushDirtyRangesSystem`) — occluder pre-pass now sees freshly-uploaded matrices, fixing a one-frame shadow lag on moving casters
-- SDF dirty gate: `shadowPipelineSystem` skips the `~15`-pass JFA/blur regen when occluders and camera are unchanged (automatic in manual-invalidate scenes)
-- `Flatland.setLighting` eagerly allocates `SDFGenerator` + `OcclusionPass` before `buildLightFn` so the `sdfTexture` reference is stable at shader build time
+### 2D Lighting pipeline
 
-### SDFGenerator
+- JFA-based signed SDF generation (packed dual-chain RGBA layout: outside seed in RG, inside seed in BA) — signed SDF at the same VRAM and pass cost as the previous unsigned generator
+- Separable 5-tap binomial blur pass on the SDF for smoother shadow transitions
+- `shadowFilter` option resolved per frame by `shadowPipelineSystem` and pushed to `SDFGenerator.setFilter` (`auto|nearest|linear`)
+- Shadow pipeline moved to `append` phase so it runs after `conditionalTransformSyncSystem` + `flushDirtyRangesSystem` — occluder pre-pass sees freshly-uploaded matrices, fixing one-frame shadow lag on moving casters
+- Occluder-dirty gate: `flushDirtyRangesSystem` tracks per-batch matrix/interleaved dirty state into `BatchRegistry.occludersDirty`; `shadowPipelineSystem` skips the occluder render and full JFA/blur chain when occluders and camera are unchanged
+- `LightEffect` system with ECS traits, registry, and React attach helpers
+- `LightEffectBuildContext` carries `sdfTexture`, `worldSizeNode`, `worldOffsetNode` so effect shaders bind stable TSL texture/uniform nodes at build time
+- `SDFGenerator` eagerly allocates 1×1 placeholder RTs on construction — stable `sdfTexture` reference across resize
 
-- Produces a signed distance field via a packed RGBA JFA chain: RG = nearest-occluder seed UV, BA = nearest-empty-space seed UV; one seed pass, one JFA chain, one final pass — same VRAM and pass count as the previous unsigned generator
-- 5-tap separable binomial blur post-process for smoother SDF transitions
-- `setFilter` method: retargets SDF + blur RT sampling (nearest or linear); JFA ping-pong stays nearest
-- SDF and JFA debug textures registered for devtools inspection
-- Texture readback moved to `endFrame()` for consistent frame capture
+### Light2D
 
-### Per-sprite shadow radius
+- `Light2D.castsShadow` (default `true`) — packs into `LightStore` row3.b for per-light shader gate
+- `Light2D.importance` (default `1.0`) — multiplicative score bias; hero lights resist eviction by fill clusters
+- `Light2D.category` (optional string) — djb2-hashed to a 2-bit fill bucket (0–3) at set-time; `LightStore` row3.a carries the bucket index; `ForwardPlusLighting` tracks per-tile per-category counters with independent 2-slot quota and compensation per bucket
 
-- `Sprite2D.shadowRadius?: number` — `undefined` (default) auto-derives from `max(|scale.x|, |scale.y|)` each frame; explicit value overrides (useful for sprites with transparent padding)
-- `transformSyncSystem` resolves per-frame; tracks `AnimatedSprite2D` frame-source-size changes at no extra sync cost
+### Per-sprite shadowRadius
+
+- `Sprite2D.shadowRadius?: number` — `undefined` (default) auto-derives from `max(|scale.x|, |scale.y|)` each frame via `transformSyncSystem`; explicit override bypasses auto-resolve
+- Radius preserved across `clone()`
 - `readShadowRadius()` TSL helper reads the per-instance attribute in shaders
-- Preserved across `clone()`
 
-### Instance buffer layout
+### Interleaved instance buffer
 
-- Core per-instance data consolidated into a single `InstancedInterleavedBuffer` with four attribute views: `instanceUV` (offset 0), `instanceColor` (4), `instanceSystem` (8), `instanceExtras` (12); frees 3 vertex buffer slots previously consumed by separate UV/color/flip buffers
-- Effect-slot allocator starts at offset 0 (was colliding with system-reserved slots); `EffectMaterial.MAX_EFFECT_FLOATS = 12` enforced at `registerEffect` time with a clear error
-- Public API unchanged: `Sprite2D.shadowRadius`, `castsShadow`, `readCastShadowFlag()`, `readShadowRadius()`, `addEffect()` all work identically
+- Core per-instance data consolidated into a single `InstancedInterleavedBuffer` with four views: `instanceUV`, `instanceColor`, `instanceSystem`, `instanceExtras` — collapses 3 vertex buffer bindings into 1, freeing 3 slots under WebGPU's `maxVertexBuffers=8` cap
+- `effectBuf0+` is now pure `MaterialEffect` data with no reserved system slots; effect-slot allocator starts at offset 0
+- `EffectMaterial.MAX_EFFECT_FLOATS = 12` enforced at `registerEffect` time with a clear error instead of a WebGPU pipeline rejection at draw time
+- TSL helpers moved to `materials/instanceAttributes.ts`: `readFlip()`, `readSystemFlags()`, `readEnableBits()`, `readLitFlag()`, `readShadowRadius()`, `readCastShadowFlag()`; public re-exports unchanged
 
-### TSL instance attribute helpers
+### Forward+ tiled culling
 
-- `readFlip()`, `readSystemFlags()`, `readEnableBits()`, `readLitFlag()` added alongside existing `readShadowRadius()`, `readCastShadowFlag()`, `readReceiveShadowsFlag()`, `wrapWithLightFlags()`
-- All helpers moved to `materials/instanceAttributes.ts`; re-exported from the `three-flatland/lights` barrel (public API unchanged)
-- `NormalSourceDescriptor` loader, `normalDescriptor.ts` — parses `.normal.json` sidecar files linking sprite sheets to baked normal maps
+- TILE_SIZE bumped 16→32: ~4× fewer tiles at 1080p, proportional CPU tile-assignment speedup
+- CPU tile-bounds now computed using the shader's screen-pixel stride (`tileWorldStride = TILE_SIZE / screenSize * worldSize`) — fixes fill-light checkerboard gaps caused by CPU/GPU tile-boundary mismatch
+- Default SDF resolution scale set to 0.5 for performance
+- Per-category fill quotas: 2 fills per bucket per tile, fills compete only within their own bucket
 
-### Loaders
+### Normal-map loader integration
 
-- `SpriteSheetLoader`, `LDtkLoader`, `TiledLoader` gain a `normals` option accepting `true | NormalSourceDescriptor`; internally routes through `resolveNormalMap` for baked-probe → runtime fallback
-- `forceRuntime: boolean` on all three loaders (replaces `skipBakedProbe` / `disableRuntimeBake`)
-- Tilemap types updated; dead `TiledLoader`/`LDtkLoader` at `src/tilemap/` path replaced by canonical `src/loaders/` exports
+- `normalDescriptor` loader: resolves `NormalSourceDescriptor` to URL/texture
+- `SpriteSheetLoader`, `LDtkLoader`, `TiledLoader` gain `normals: true | descriptor` option with the canonical baked-asset loader pattern (try baked probe → runtime `normalFromSprite` fallback + dev-time warning)
+- `forceRuntime` flag unified across all loaders (was `skipBakedProbe` / `disableRuntimeBake`)
+- `MaterialEffect` gains elevation channel support
 
-### DevtoolsProvider
+### Devtools
 
-- Constructor is now side-effect-free; `start()` / `dispose()` manage `BroadcastChannel`, worker, and flush timer (both idempotent, multi-cycle)
-- `Flatland.render()` lazy-starts on first call
-- `createDevtoolsProvider(opts?)` helper for vanilla Three.js apps that don't construct a `Flatland` (`beginFrame`/`endFrame` are no-ops when devtools is inactive; terser strips the calls in prod)
-- `<DevtoolsProvider />` R3F component exported from `three-flatland`
-- `_debug` renamed to `_devtools` throughout
+- `createDevtoolsProvider(opts?)` — returns a live `DevtoolsProvider` or a no-op stub; enables devtools in vanilla apps without a `Flatland` instance
+- `DevtoolsProvider` constructor is side-effect-free; explicit `start()` / `dispose()` lifecycle; `Flatland.render()` lazy-starts on first call
+- Debug texture readback moved to `endFrame()` (consistent, fully-rendered frame content)
+- Worker-side pixel format conversion (rgba8, r8, rgba16f, rgba32f), GPU row padding detection (256-byte `bytesPerRow` alignment)
+- `bus-worker` URL resolved without extension — fixes production builds consuming dist/
+- Per-system ECS perf tracks via `Performance.measure` with colored Chrome DevTools entries; all `add()`/`prepend()` sites require a `{track, name}` label
 
 ### Performance
 
-- ForwardPlusLighting tile stride bumped 16 → 32 px: 4× fewer tiles at 1920×1080, O(lights × tiles/light) CPU cost drops proportionally
-- Zero-alloc light-effect runtime context: `runtimeCtx` object hoisted to module scope; `LightingContext.worldSize`/`worldOffset` default to live `Vector2`s mutated in place
-- Dead `fillScale`/tile-meta compensation pass removed from `ForwardPlusLighting` (was writing meta texels nothing consumed)
-- OcclusionPass default resolution scale set to 0.5; lights culled before rasterization
+- Zero-alloc frame context in `lightEffectSystem` — `runtimeCtx` hoisted to module scratch; `LightingContext.worldSize`/`worldOffset` default to live `Vector2` nodes mutated in place
 
-### Bisect / removed
+### BREAKING CHANGES
 
-- `RadianceCascades` moved to a follow-up PR
-- `AutoNormalProvider` removed (was never implemented)
-- Unused `src/tilemap/LDtkLoader.ts` and `src/tilemap/TiledLoader.ts` paths removed; canonical paths are `src/loaders/`
+- `skipBakedProbe` and `disableRuntimeBake` options removed from all loaders — use `forceRuntime: true`
+- Interleaved instance buffer internal attribute names and offsets changed; public `Sprite2D` and `MaterialEffect` API unchanged
+- `RadianceCascades` no longer exported from `three-flatland/lights` (moved to follow-up PR)
+- `Flatland._debug` renamed to `_devtools` throughout
 
-### Fixes
-
-- `bus-worker.ts` URL uses extensionless import to resolve correctly from both source and built-dist
-- CPU tile-bounds use the same stride as the shader (`TILE_SIZE / screenSize * worldSize`) — fixes checkerboard fill gaps at non-multiple viewport sizes
-- `Flatland._validateLightingChannels` uses `globalThis.process` for packages without `@types/node`
-- Type-only lint fixes throughout (unused vars/imports, `import type`, correct `Array<T>` annotations)
-- `LinearFilter` in `SDFGenerator` switched to type-only import
-
-Introduces a complete 2D SDF-based lighting pipeline — signed distance field generation, Forward+ tiled culling, per-sprite shadow radii, per-category fill-light quotas — integrated into the ECS with zero per-frame allocation on the hot path.
+Delivers the complete 2D lighting pipeline including SDF soft shadows, signed SDF, per-sprite occluder radii, Forward+ fill quotas, normal-map loader integration, and a fully instrumented devtools foundation.
