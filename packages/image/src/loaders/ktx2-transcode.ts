@@ -276,7 +276,7 @@ export function transcodeKtx2WithExports(
   buffer: ArrayBuffer,
   caps: Ktx2Capabilities,
   t: TranscoderExports,
-): Promise<Ktx2TranscodeResult> {
+): Ktx2TranscodeResult {
   const memory = t.memory
 
   // Allocate input buffer in wasm memory and copy bytes in.
