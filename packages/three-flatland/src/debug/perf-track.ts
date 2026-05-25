@@ -93,7 +93,11 @@ export function perfMeasure(
   end: number,
   opts?: PerfDetailOptions
 ): void {
-  if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
+  // Dev-only: perf-track measurement is never emitted in a production build,
+  // even when the devtools dashboard is force-enabled via FL_DEVTOOLS. The
+  // Chrome Performance-panel instrumentation is a development aid; in prod it
+  // would only add per-call overhead with no consumer.
+  if (process.env.NODE_ENV === 'production') return
   if (typeof performance === 'undefined' || typeof performance.measure !== 'function') return
   if (end < start) return
   try {

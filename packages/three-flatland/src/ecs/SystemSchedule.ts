@@ -83,7 +83,13 @@ export class SystemSchedule {
     if (this._lastRunFrame === this._frameId) return
     this._lastRunFrame = this._frameId
 
-    if (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') {
+    // Dev-only: the per-system perf-track instrumentation (two `performance.now()`
+    // reads + a `perfMeasure` with an allocated detail payload per system, every
+    // frame) is a development profiling aid. It is gated on dev mode alone — NOT
+    // on FL_DEVTOOLS — so a production build (even one that force-enables the
+    // devtools dashboard via FL_DEVTOOLS) dead-strips it to the plain loop below
+    // and pays zero per-frame overhead.
+    if (process.env.NODE_ENV !== 'production') {
       const schedStart = performance.now()
       for (const entry of this._systems) {
         const t0 = performance.now()
