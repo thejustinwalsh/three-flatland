@@ -173,7 +173,7 @@ function newSlime(mapHalfW: number, mapHalfH: number): SlimeState {
 
 async function main() {
   // ─── Renderer ───────────────────────────────────────────────────
-  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  const renderer = new WebGPURenderer({ antialias: false })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1)
   renderer.domElement.style.imageRendering = 'pixelated'

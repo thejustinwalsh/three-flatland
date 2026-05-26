@@ -1080,7 +1080,7 @@ export default function App() {
         // Slug provides its own analytic anti-aliasing via per-fragment
         // coverage — MSAA adds 4× sample cost + a canvas-area resolve pass
         // for zero visual gain. Keep it off.
-        renderer={{ antialias: false, trackTimestamp: true }}
+        renderer={{ antialias: false }}
       >
         <GemBackground gem={GEM} />
         <PixelCamera />

@@ -453,7 +453,7 @@ async function main() {
   camera.position.z = 100
 
   // WebGPU Renderer
-  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  const renderer = new WebGPURenderer({ antialias: false })
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art

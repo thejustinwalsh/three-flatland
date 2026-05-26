@@ -203,7 +203,7 @@ let activeRenderer: WebGPURenderer | null = null
 
 async function main() {
   // WebGPU renderer
-  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  const renderer = new WebGPURenderer({ antialias: false })
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art

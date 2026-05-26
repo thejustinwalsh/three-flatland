@@ -21,6 +21,7 @@ import {
 import type { RegistryData } from '../ecs/batchUtils'
 import { SubscriberRegistry } from './SubscriberRegistry'
 import { StatsCollector } from './StatsCollector'
+import { resolveTrackTimestamp, type GpuTimingProbeBackend } from './detectGpuTiming'
 import { EnvCollector } from './EnvCollector'
 import { DebugRegistry } from './DebugRegistry'
 import { DebugTextureRegistry } from './DebugTextureRegistry'
@@ -257,6 +258,7 @@ export class DevtoolsProvider {
   beginFrame(now: number, renderer: WebGPURenderer): void {
     if (!this._active) return
     this._latestRenderer = renderer
+    this._syncGpuTiming(renderer)
     this._stats.beginFrame(now, renderer as unknown as Parameters<StatsCollector['beginFrame']>[1])
     // Reset the per-frame pass / batch pools. Cheap — just resets
     // counters. When no consumer is subscribed `beginPass`/`endPass`
@@ -267,6 +269,35 @@ export class DevtoolsProvider {
     // `beginDebugPass` still get one totals row with the full frame's
     // renderer.info delta.
     this._batches.frameStart(renderer)
+  }
+
+  /**
+   * Toggle the renderer's GPU timestamp tracking to match demand. Devtools
+   * owns this — hosts no longer pass `trackTimestamp: true` themselves, so
+   * when devtools is off no queries are issued and there's no pool to drain.
+   *
+   * Driven live by the `stats` subscription: on while a consumer wants stats
+   * (panel expanded), off when none do (collapsed). Turning it off stops
+   * three from issuing timestamp queries, so the pool never accumulates
+   * undrained entries; turning it back on resumes sampling. three.js
+   * negotiates every adapter feature at device creation, so `timestamp-query`
+   * is already available and the per-frame flag is the only lever needed.
+   *
+   * Decision logic (incl. the pre-init/Safari edge cases) lives in
+   * `resolveTrackTimestamp`; this just applies the result when it changes.
+   * On the on→off transition we drain three's query pool first (while
+   * tracking is still enabled) so we don't strand unresolved queries.
+   */
+  private _syncGpuTiming(renderer: WebGPURenderer): void {
+    const backend = (renderer as unknown as { backend?: GpuTimingProbeBackend }).backend
+    const next = resolveTrackTimestamp(this._subs.isActive('stats'), backend)
+    if (next === null || backend === undefined || backend.trackTimestamp === next) return
+    if (!next) {
+      // Turning off: flush whatever three has queued but not yet resolved,
+      // then stop. The drain must happen before we clear the flag.
+      this._stats.flushGpu(renderer as unknown as Parameters<StatsCollector['flushGpu']>[0])
+    }
+    backend.trackTimestamp = next
   }
 
   /**

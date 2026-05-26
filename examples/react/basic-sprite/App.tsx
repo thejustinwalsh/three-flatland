@@ -160,7 +160,7 @@ export default function App() {
   return (
     <Canvas
       dpr={1}
-      renderer={{ antialias: false, trackTimestamp: true }}
+      renderer={{ antialias: false }}
       onCreated={({ gl }) => {
         gl.domElement.style.imageRendering = 'pixelated'
       }}

@@ -216,7 +216,7 @@ async function main() {
 
   // Slug's shader is analytically antialiased per-fragment; MSAA would add
   // 4× sample cost + a canvas-area resolve for zero visual gain.
-  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  const renderer = new WebGPURenderer({ antialias: false })
   activeRenderer = renderer
   renderer.setSize(w, h)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))

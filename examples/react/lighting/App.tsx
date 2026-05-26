@@ -1095,7 +1095,7 @@ export default function App() {
   const rimEnabled = rimIntensity > 0
 
   return (
-    <Canvas renderer={{ antialias: false, trackTimestamp: true }}>
+    <Canvas renderer={{ antialias: false }}>
       <color attach="background" args={['#06060c']} />
       <Suspense fallback={null}>
         <FlatlandScene

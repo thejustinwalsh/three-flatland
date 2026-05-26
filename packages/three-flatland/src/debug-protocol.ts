@@ -356,7 +356,7 @@ export interface EnvPayload {
 export interface EnvBackendDelta {
   /** Renderer backend class name, e.g. `'WebGPUBackend'` / `'WebGLBackend'`. */
   name?: string | null
-  /** Whether the renderer was constructed with `trackTimestamp: true`. */
+  /** Whether the backend has GPU timestamp tracking enabled (devtools turns it on when active). */
   trackTimestamp?: boolean | null
   /**
    * WebGL-only: `true` if `EXT_disjoint_timer_query_webgl2` is available.

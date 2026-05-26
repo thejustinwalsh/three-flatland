@@ -480,7 +480,7 @@ export default function App() {
       <Canvas
         dpr={1}
         style={{ background: "#16191e" }}
-        renderer={{ antialias: false, trackTimestamp: true }}
+        renderer={{ antialias: false }}
         onCreated={({ gl }) => {
           gl.domElement.style.imageRendering = 'pixelated'
         }}

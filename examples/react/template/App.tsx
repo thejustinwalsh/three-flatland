@@ -58,7 +58,7 @@ export default function App() {
         far: 1000,
         left: -1, right: 1, top: 1, bottom: -1,
       }}
-      renderer={{ antialias: false, trackTimestamp: true }}
+      renderer={{ antialias: false }}
       onCreated={({ gl }) => {
         gl.domElement.style.imageRendering = 'pixelated'
       }}

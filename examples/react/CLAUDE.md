@@ -7,7 +7,7 @@ Every example has: `App.tsx`, `main.tsx`, `index.html`, `package.json`, `tsconfi
 
 ## Canvas Setup
 ```tsx
-<Canvas orthographic camera={{ zoom: 5, position: [0, 0, 100] }} renderer={{ antialias: true, trackTimestamp: true }}>
+<Canvas orthographic camera={{ zoom: 5, position: [0, 0, 100] }} renderer={{ antialias: true }}>
   <color attach="background" args={['#00021c']} />
   <Scene />
 </Canvas>
@@ -39,12 +39,8 @@ usePaneButton(folder, 'Reset', () => { /* ... */ })
 
 The stats graph and scene stats row are auto-mounted by `usePane()` and driven internally by the devtools bus — callers do no wiring.
 
-### GPU time mode (optional)
-The stats graph cycles `fps → ms → gpu → mem` on click. The `gpu` mode shows three.js's GPU timestamp query result (in ms) — useful for GPU stall detection and CPU-bound vs GPU-bound diagnosis. It's **silently skipped** unless the renderer is constructed with `trackTimestamp: true`:
-```tsx
-<Canvas renderer={{ trackTimestamp: true }}>
-```
-The adapter must also support `GPUFeatureName.TimestampQuery` (most desktop browsers do; WebGL2 fallback doesn't). Values trail by 1–2 frames because the readback is async.
+### GPU time mode
+The stats graph cycles `fps → ms → gpu → mem` on click. The `gpu` mode shows three.js's GPU timestamp query result (in ms) — useful for GPU stall detection and CPU-bound vs GPU-bound diagnosis. Do **not** pass `trackTimestamp: true` on the renderer — devtools enables it itself when active, so production builds (devtools off) issue no timestamp queries and leave none to drain. The adapter must support `GPUFeatureName.TimestampQuery` (most desktop browsers do; WebGL2 fallback doesn't); on backends without it the `gpu` mode stays blank. Values trail by 1–2 frames because the readback is async.
 
 ## useFrame Rules
 - Mutate refs directly — never `setState` in the render loop

@@ -58,3 +58,33 @@ export function detectGpuTimingActive(
   // as init() lands and the next probe fires.
   return true
 }
+
+/**
+ * Decide what to write to `backend.trackTimestamp` this frame.
+ *
+ * Devtools owns GPU-timestamp sampling and toggles it *live*: on while a
+ * consumer is subscribed to stats (the dashboard / pane is expanded), off
+ * otherwise (collapsed). Turning it off makes three stop issuing timestamp
+ * queries, so the query pool never fills with entries nobody drains.
+ *
+ *   - `null`  → backend not attached yet; leave the flag alone, retry next frame.
+ *   - `false` → timing not wanted, OR wanted but the device can't do it
+ *               (post-init WebGPU without the `timestamp-query` feature, e.g.
+ *               Safari). Either way three should not emit queries.
+ *   - `true`  → wanted and either the feature is present, or the device isn't
+ *               ready yet (optimistic — three's `init()` AND-gates the flag
+ *               against feature support, so an unsupported backend
+ *               self-corrects to `false` on the next frame). WebGL backends
+ *               (no `GPUDevice`) take this path; the resolve side is still
+ *               gated by `detectGpuTimingActive`'s `disjoint` check.
+ */
+export function resolveTrackTimestamp(
+  want: boolean,
+  backend: GpuTimingProbeBackend | undefined,
+): boolean | null {
+  if (!backend) return null
+  if (!want) return false
+  const device = backend.device as { features?: { has(name: string): boolean } } | undefined
+  if (device === undefined) return true
+  return device.features?.has('timestamp-query') === true
+}

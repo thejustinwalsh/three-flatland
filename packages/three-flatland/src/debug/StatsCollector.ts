@@ -296,6 +296,23 @@ export class StatsCollector {
       })
   }
 
+  /**
+   * One-shot drain of three's timestamp query pool, used when GPU sampling
+   * is about to be turned off (panel collapsed). Resolving flushes the
+   * queries three has already written but not yet resolved — three's resolve
+   * resets the pool's query cursor synchronously — so we don't strand entries
+   * in the pool when we stop. MUST be called while `trackTimestamp` is still
+   * true: the backend's resolve path no-ops (and warns) once tracking is off.
+   * No-op on backends that can't do timestamps. The resolved value is
+   * discarded — we're tearing the sampler down, not recording a sample.
+   */
+  flushGpu(renderer: RendererLike): void {
+    if (!detectGpuTimingActive(renderer.backend)) return
+    const fn = renderer.resolveTimestampsAsync?.bind(renderer)
+    if (!fn) return
+    void Promise.resolve(fn('render')).catch(() => { /* tearing down sampling */ })
+  }
+
   get gpuCapable(): boolean { return this._gpuCapable }
 
   /**

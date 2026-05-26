@@ -274,7 +274,7 @@ export default function App() {
       orthographic
       dpr={1}
       camera={{ zoom: 5, position: [0, 0, 100] }}
-      renderer={{ antialias: false, trackTimestamp: true }}
+      renderer={{ antialias: false }}
       onCreated={({ gl }) => {
         gl.domElement.style.imageRendering = 'pixelated'
       }}

@@ -464,7 +464,7 @@ export default function App() {
       {/* Three.js Canvas */}
       <Canvas
         dpr={1}
-        renderer={{ antialias: false, trackTimestamp: true }}
+        renderer={{ antialias: false }}
         onCreated={({ gl }) => {
           gl.domElement.style.imageRendering = 'pixelated'
         }}

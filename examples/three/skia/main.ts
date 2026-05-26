@@ -57,7 +57,7 @@ async function main() {
   const dpr = Math.min(devicePixelRatio, 2)
 
   // ── Three.js setup (3D perspective) ──
-  const renderer = new WebGPURenderer({ antialias: true, trackTimestamp: true })
+  const renderer = new WebGPURenderer({ antialias: true })
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)

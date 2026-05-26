@@ -89,7 +89,7 @@ Flatland users have nothing to wire up. When `DEVTOOLS_BUNDLED` is true (Vite se
     import { Flatland } from 'three-flatland'
     import { WebGPURenderer } from 'three/webgpu'
 
-    const renderer = new WebGPURenderer({ trackTimestamp: true })
+    const renderer = new WebGPURenderer()
     await renderer.init()
 
     const flatland = new Flatland({ viewSize: 400 })
@@ -122,7 +122,7 @@ Flatland users have nothing to wire up. When `DEVTOOLS_BUNDLED` is true (Vite se
 
     export default function App() {
       return (
-        <Canvas orthographic camera={{ zoom: 5, position: [0, 0, 100] }} renderer={{ trackTimestamp: true }}>
+        <Canvas orthographic camera={{ zoom: 5, position: [0, 0, 100] }}>
           <Scene />
         </Canvas>
       )
@@ -147,7 +147,7 @@ If you're driving three.js directly — no Flatland — call `createDevtoolsProv
 import { createDevtoolsProvider } from 'three-flatland'
 import { WebGPURenderer } from 'three/webgpu'
 
-const renderer = new WebGPURenderer({ trackTimestamp: true })
+const renderer = new WebGPURenderer()
 await renderer.init()
 
 const devtools = createDevtoolsProvider({ name: 'my-app' })
@@ -235,7 +235,7 @@ There are no extra wiring calls. The pane has zero knowledge of your scene, your
 import { WebGPURenderer } from 'three/webgpu'
 import { createPane } from '@three-flatland/devtools'
 
-const renderer = new WebGPURenderer({ trackTimestamp: true })
+const renderer = new WebGPURenderer()
 await renderer.init()
 
 const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
@@ -256,9 +256,7 @@ animate()
 
 #### GPU timing
 
-```typescript
-const renderer = new WebGPURenderer({ trackTimestamp: true })
-```
+You don't enable GPU timing yourself. When devtools is active the provider opts the renderer into timestamp queries on its own; when devtools is off no queries are issued, so production builds never accumulate an undrained query pool. Don't pass `trackTimestamp: true` on the renderer.
 
 On WebGPU, the adapter must expose `GPUFeatureName.TimestampQuery` (most desktop browsers). On WebGL2, `EXT_disjoint_timer_query_webgl2` must be present. Values trail by ~1 frame because the readback is async. The pane silently hides `gpu` from the mode cycle when unsupported.
 
@@ -292,7 +290,7 @@ function Scene() {
 
 export default function App() {
   return (
-    <Canvas renderer={{ trackTimestamp: true }}>
+    <Canvas>
       <Scene />
     </Canvas>
   )
@@ -361,7 +359,7 @@ A grid of cards, one per counter. Each card shows the current value and a sparkl
 |---------|------------------|
 | `fps` | End-to-end frame rate from `endFrame` intervals. |
 | `cpu` | `endFrame - beginFrame` (full frame CPU cost). |
-| `gpu` | GPU timestamp delta — `—` unless the renderer was constructed with `trackTimestamp: true`. |
+| `gpu` | GPU timestamp delta — `—` unless the adapter supports timestamp queries (devtools enables tracking itself when active). |
 | `draws` | `renderer.info.render.calls` delta over the frame. |
 | `tris` | Triangle count. |
 | `prims` | Primitive count. |

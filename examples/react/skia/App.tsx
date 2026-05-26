@@ -466,7 +466,7 @@ export default function App() {
   return (
     <Canvas
       camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
-      renderer={{ antialias: true, trackTimestamp: true }}
+      renderer={{ antialias: true }}
       onCreated={({ scene, gl }) => {
         // Pure-black clear + fog so foreground 3D meshes (floor, panels)
         // fade to the same void the floor's distant edges dissolve into.

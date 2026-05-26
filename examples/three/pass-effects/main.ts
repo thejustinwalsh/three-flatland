@@ -290,7 +290,7 @@ async function main() {
   })
   ;(flatland.scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
-  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  const renderer = new WebGPURenderer({ antialias: false })
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
