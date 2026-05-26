@@ -28,8 +28,31 @@
 - Save superpowers specs to planning/superpowers/specs.
 - Save superpowers plans to planning/superpowers/plans.
 
+## Architectural references (`.library/`)
+- `.library/threejs/` — three.js + TSL reference patterns
+- `.library/react-three-fiber/` — R3F idioms and helpers
+- `.library/three-flatland/loader-architecture.md` — **must-read** before designing or refactoring any loader (texture, atlas, tilemap, font, normal map, image format). Defines package layering, the no-registry rule, three-tier surface (everyday/direct/preload), and cross-package dependency policy. Companion: `planning/bake/loader-pattern.md` (baked → runtime fallback shape).
+
 ## Workflow
 - Use Conventional Commits — releases are cut from changesets generated from the commit history
+- **Stage by exact path** — `git add tools/io/src/foo.ts`, never `git add -A` / `git add .` / `git commit -a`. This branch routinely has WIP modifications across many files; bundling them is a recoverable but disruptive mistake.
+
+## Editor tools (`tools/`)
+The VSCode extension and its supporting packages live under `tools/`. Each has its own agent-facing reference:
+
+| Package | Doc | Read this when |
+|---|---|---|
+| `tools/vscode` | [`tools/vscode/CLAUDE.md`](tools/vscode/CLAUDE.md) | adding/modifying a VSCode tool (host + webview) |
+| `tools/design-system` | [`tools/design-system/CLAUDE.md`](tools/design-system/CLAUDE.md) | building any tool UI — primitive inventory, StyleX token rules, Lit gotchas |
+| `tools/preview` | [`tools/preview/CLAUDE.md`](tools/preview/CLAUDE.md) | reusing canvas / animation / drag primitives |
+| `tools/bridge` | [`tools/bridge/CLAUDE.md`](tools/bridge/CLAUDE.md) | host ↔ webview messaging — `ClientBridge` vs `HostBridge` semantics |
+| `tools/io` | [`tools/io/CLAUDE.md`](tools/io/CLAUDE.md) | adding pure data helpers (image decode, atlas types/builders/packing/merge) |
+
+When dispatching a sub-agent for tool work, include the relevant `tools/<pkg>/CLAUDE.md` paths in the prompt — they encode hard-won API contracts (e.g. `ClientBridge.on()` returns an unsubscribe function, NOT a `dispose()` method) that aren't obvious from the source.
+
+### Skills
+
+When authoring styles with `@stylexjs/stylex` — creating styles with `stylex.create`, applying with `stylex.props`, defining tokens with `defineVars`/`defineConsts`, building themes, or migrating CSS — invoke the **`stylex`** skill. It captures the Do/Don't rules and the authoring + installation references. The per-package CLAUDE.md files only call out the project-specific gotchas (subpath token imports, tools' design-system primitive inventory) and lean on the skill for everything else.
 
 ## Constraints
 - Performance is critical — minimize draw calls, batch sprites via SpriteGroup, watch frame budgets

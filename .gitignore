@@ -13,8 +13,11 @@ docs/src/content/docs/api/
 
 # IDE
 .idea/
-.vscode/
+.vscode/*
 !.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
 *.swp
 *.swo
 
@@ -57,11 +60,19 @@ settings.local.json
 
 # Vendor Library for examples to pull from
 vendor/
+!packages/image/vendor/
+!packages/image/vendor/**
 
 # Profile traces
 traces/
+
+# Local-only emitted artifacts: madge graph viewer HTML, size-limit --why
+# bundle reports (per-branch). Single hidden dir keeps the repo root clean.
+.reports/
+tsconfig.madge.json
 
 # Restruct
 .restruct/
 !.restruct/verify.yaml
 !.restruct/permissions.yaml
+.superpowers/
