@@ -166,7 +166,10 @@ export interface SpriteSheetJSONHash {
     }
   }
   meta: {
-    sources: { format: 'png' | 'webp' | 'avif' | 'ktx2'; uri: string }[]
+    /** Multi-encoding source list (atlas-tool output) — preferred on read. */
+    sources?: { format: 'png' | 'webp' | 'avif' | 'ktx2'; uri: string }[]
+    /** Legacy single-image filename (TexturePacker/Aseprite) — fallback when `sources` is absent. */
+    image?: string
     size: { w: number; h: number }
     scale: string
     /** Our richer animation map — preferred source on read. */
@@ -192,7 +195,10 @@ export interface SpriteSheetJSONArray {
     duration?: number
   }>
   meta: {
-    sources: { format: 'png' | 'webp' | 'avif' | 'ktx2'; uri: string }[]
+    /** Multi-encoding source list (atlas-tool output) — preferred on read. */
+    sources?: { format: 'png' | 'webp' | 'avif' | 'ktx2'; uri: string }[]
+    /** Legacy single-image filename (TexturePacker/Aseprite) — fallback when `sources` is absent. */
+    image?: string
     size: { w: number; h: number }
     scale: string
     animations?: Record<string, AtlasAnimation>

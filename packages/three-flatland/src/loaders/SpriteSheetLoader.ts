@@ -195,7 +195,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       frames,
       orderedFrameNames,
       frameDurations,
-      imagePath: json.meta.sources[0]?.uri ?? '',
+      imagePath: json.meta.sources?.[0]?.uri ?? json.meta.image ?? '',
       width: atlasWidth,
       height: atlasHeight,
     }
@@ -247,7 +247,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       frames,
       orderedFrameNames,
       frameDurations,
-      imagePath: json.meta.sources[0]?.uri ?? '',
+      imagePath: json.meta.sources?.[0]?.uri ?? json.meta.image ?? '',
       width: atlasWidth,
       height: atlasHeight,
     }

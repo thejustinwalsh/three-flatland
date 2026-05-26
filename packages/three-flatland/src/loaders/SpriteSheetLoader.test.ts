@@ -84,6 +84,20 @@ describe('SpriteSheetLoader', () => {
       expect(frame?.sourceWidth).toBe(32)
       expect(frame?.sourceHeight).toBe(32)
     })
+
+    it('resolves the legacy meta.image field when meta.sources is absent', () => {
+      // TexturePacker/Aseprite (and all current examples) emit a single
+      // `meta.image` string rather than the newer `meta.sources` array.
+      // The loader must read it without crashing on `sources[0]`.
+      const legacy = {
+        frames: mockJSONHash.frames,
+        meta: { image: 'player.png', size: { w: 128, h: 128 }, scale: '1' },
+      }
+      // @ts-expect-error - accessing private method for testing
+      const result = SpriteSheetLoader.parseJSONHash(legacy)
+      expect(result.imagePath).toBe('player.png')
+      expect(result.frames.size).toBe(2)
+    })
   })
 
   describe('parseJSONArray', () => {
