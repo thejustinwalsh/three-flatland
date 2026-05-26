@@ -87,7 +87,10 @@ describe('UASTC + zstd supercompression round-trip', () => {
     // silently and we got an uninitialized buffer.
     const hasNonZero = rgba.some((b) => b !== 0)
     expect(hasNonZero).toBe(true)
-  }, 30_000)
+    // Two UASTC encodes of a 2048² atlas (UASTC is far slower than ETC1S — the
+    // ETC1S bench alone is ~12s on CI's shared runners). 30s is too tight
+    // there; match the benchmark's budget so slow runners don't time out.
+  }, 180_000)
 
   it('ETC1S ignores supercompression="zstd" (basisu refuses to combine zstd with VAQ)', async () => {
     const png = readFileSync(join(__dirname, '../__fixtures__/tiny.png'))
