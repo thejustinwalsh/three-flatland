@@ -8,9 +8,14 @@ import { fileURLToPath } from 'node:url'
 
 const exec = promisify(execFile)
 const __dirname = dirname(fileURLToPath(import.meta.url))
-// src/ is one level inside the package root — `pnpm exec` must run from the
-// package so it resolves the local node_modules/.bin/flatland-bake link.
 const pkgRoot = join(__dirname, '..')
+// Invoke the built CLI directly rather than the `flatland-bake` bin symlink.
+// In a fresh install the symlink isn't created — its target
+// (packages/bake/dist/cli.js) doesn't exist at `pnpm install` time and pnpm
+// doesn't relink after the build step. Resolving the built file is robust in
+// CI; it requires `@three-flatland/bake` to be built first (CI builds before
+// testing, and `pnpm test` depends on `build`).
+const bakeCli = join(__dirname, '../../bake/dist/cli.js')
 const fixture = join(__dirname, '__fixtures__/tiny.png')
 
 describe('flatland-bake encode integration', () => {
@@ -18,8 +23,8 @@ describe('flatland-bake encode integration', () => {
     const dir = mkdtempSync(join(tmpdir(), 'fl-image-int-'))
     const out = join(dir, 'tiny.webp')
     const { stdout } = await exec(
-      'pnpm',
-      ['exec', 'flatland-bake', 'encode', fixture, out, '--format', 'webp', '--quality', '80'],
+      process.execPath,
+      [bakeCli, 'encode', fixture, out, '--format', 'webp', '--quality', '80'],
       { cwd: pkgRoot },
     )
     expect(stdout).toMatch(/encode\] ok/)
@@ -27,11 +32,7 @@ describe('flatland-bake encode integration', () => {
   }, 60_000)
 
   it('--list shows the encode baker', async () => {
-    const { stdout } = await exec(
-      'pnpm',
-      ['exec', 'flatland-bake', '--list'],
-      { cwd: pkgRoot },
-    )
+    const { stdout } = await exec(process.execPath, [bakeCli, '--list'], { cwd: pkgRoot })
     expect(stdout).toMatch(/encode/)
     expect(stdout).toMatch(/@three-flatland\/image/)
   })
