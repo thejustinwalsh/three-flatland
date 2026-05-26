@@ -5,33 +5,57 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## Changelog
 
-### DefaultLightEffect
+## @three-flatland/presets
 
-- Full 2D lighting pipeline wired end-to-end: `DefaultLightEffect` integrates Forward+ tiled culling, SDF sphere-trace shadows, normal-map shading, ambient, rim, and cel-banding in one TSL material effect
-- `shadowFilter` option (`auto | nearest | linear`): `auto` picks nearest when `shadowPixelSnapEnabled` for crisp pixel-art shadows, linear otherwise
-- `shadowStartOffsetScale` (multiplier on per-sprite `shadowRadius`) replaces the old fixed `shadowStartOffset` uniform — scales automatically with each sprite's size
-- Shadow post-quantization fix: `bands` cel-banding now quantizes unshadowed direct light; shadow scalar is recovered as a ratio and applied after — shadow edges stay smooth when bands > 0
-- Rim lighting now inherits the per-pixel shadow ratio (physically correct: rim from an occluded light is itself occluded)
-- `shadowBias` retains IQ-hit-epsilon semantics; `shadowStartOffset`/`shadowStartOffsetScale` handle self-shadow escape exclusively
-- Dropped `shadowBands` / `shadowBandCurve` uniforms (obsoleted by post-quantization approach)
-- Shadow trace gated on per-light `castsShadow` flag: O(shadow-casting lights) instead of O(all lights)
-- Shadow trace skipped when attenuation ≤ 0.01 (sub-visible, below 8-bit quantization threshold)
-- Spot cone math: dropped redundant `lightDir.normalize()` (direction is normalized at set-site; saves a `rsqrt` + 2 muls per spot light per fragment)
+### DefaultLightEffect — new features
+- `shadowFilter` option (`auto|nearest|linear`): auto picks nearest when `shadowPixelSnapEnabled` (pixel-art crisp shadows), linear otherwise
+- `shadowStartOffset` tunable uniform replaces the hardcoded 40-unit `escapeOffset`; default 1.5 world units (signed SDF makes this safe)
+- `shadowStartOffsetScale` effect-level multiplier (0–3, default 1.0) on per-sprite shadow radius, replacing the single scene-wide slider
+- `shadowPixelSize` world-unit snap on trace origin for retro blocky shadow look
+- `bands` quantizes direct-light gradient (cel-shading); applied BEFORE shadow scalar so shadow edges stay smooth
+- Shadow is now applied AFTER cel-band quantization; rim lighting inherits the per-pixel shadow ratio
+- `rimIntensity` exposed; rim is now shadowed when a light is occluded (physically correct)
+- `shadowBias` is the IQ hit epsilon; `shadowStartOffset` handles self-shadow escape (semantics no longer overloaded)
+- `shadowBands`/`shadowBandCurve` uniforms removed (superseded by post-quantization shadow path)
 
-### Forward+ lighting
+### DefaultLightEffect — performance
+- Shadow trace gated on `castsShadow` flag per light — cosmetic fill lights (slimes, particles) never pay 32-tap SDF cost
+- Shadow trace skipped when attenuation is sub-visible (`atten <= 0.01`)
+- Redundant `lightDir.normalize()` in spot cone math removed (direction is normalized at set-site)
+- Dead `fillScale` shader multiply removed; per-tile compensation pass eliminated (meta texels were never consumed)
+- Zero-alloc per-frame `runtimeCtx` — module-level scratch object, mutated in place
 
-- `Light2D.importance` (default 1.0): multiplicative ranking bias; hero/torch lights resist eviction by dense cosmetic clusters
-- `Light2D.category?: string`: djb2-hashed at set-time to a 4-bucket index; each category gets independent per-tile quota and compensation — slime glows and water ripples no longer compete for the same 2 slots
-- Fill lights (`castsShadow: false`) capped at `MAX_FILL_LIGHTS_PER_TILE` (2) per category per tile; culled fills accumulate a compensation scale written to the tile meta texel so total luminance is preserved
-- Removed dead `fillScale` tile-meta compensation shader multiply (produced tile-boundary banding); fill intensity compensation retained in CPU tracking for future temporal path
-- Fixed CPU tile bounds: tile stride now computed as `TILE_SIZE / screenSize * worldSize` to match the shader's screen-pixel tile math — eliminates tile-wide checkerboard gaps at non-multiple-of-32 viewport heights
-- `TILE_SIZE` bumped 16 → 32: 4× fewer tiles at 1920×1080, proportional CPU cull speedup; per-fragment shader cost unchanged
+### Forward+ light culling
+- Hero lights (`castsShadow: true`) bypass fill-slot competition; fills (`castsShadow: false`) capped at 2 per tile
+- Per-category fill quotas via `Light2D.category?: string` — djb2-hashed to bucket 0–3, each bucket has independent quota/compensation
+- `Light2D.importance` (default 1.0) — multiplicative bias on tile-ranking score for hero lights
+- CPU tile-world-bound computation now matches shader's `floor(screenPos / TILE_SIZE)` math (fixes tile-boundary checkerboard gaps at non-multiple-of-TILE_SIZE viewports)
+- Tile storage layout: `TILE_STRIDE=8` for cache-line alignment, 4 light index slots + 4 meta slots
+- `EffectMaterial.MAX_EFFECT_FLOATS = 12` cap with a clear error on overflow (prevents silent WebGPU pipeline rejection)
 
-### Presets package structure
+### Instance buffer refactor
+- Core per-instance data (UV, color, flip, system flags, enable bits, shadow radius) interleaved into a single `InstancedInterleavedBuffer` with 4 attribute views — frees 3 WebGPU vertex buffer slots (was at the `maxVertexBuffers=8` cap)
+- New typed TSL helpers: `readFlip()`, `readSystemFlags()`, `readEnableBits()`, `readLitFlag()` — internal layout refactorable in one file
+- `effectBuf0+` is now pure `MaterialEffect` data with no reserved core slots; effect-slot allocator starts at offset 0
+- Per-sprite `shadowRadius` attribute: auto-derives from `max(|scale.x|, |scale.y|)` each frame; `Sprite2D.shadowRadius?: number` overrides
 
-- `DirectLightEffect`, `RadianceLightEffect`, `SimpleLightEffect` moved out to a follow-up PR; barrels trimmed to `DefaultLightEffect` + `NormalMapProvider` only
-- `@three-flatland/presets` gains `./react` subpath export and declares `@react-three/fiber` as optional peer dep
+### NormalMapProvider
+- Reads `readFlip()` helper instead of raw attribute access (removed `as unknown as` cast)
 
-`@three-flatland/presets` now ships a production-ready `DefaultLightEffect` with signed-SDF shadows, per-category fill-light quotas, and automatic per-sprite shadow escape — no magic constants required.
+### Shadow pipeline
+- `shadowPipelineSystem` moved to `append` position — runs after `conditionalTransformSyncSystem + flushDirtyRangesSystem` so the occluder pre-pass sees current-frame matrices (fixes one-frame shadow lag on moving casters)
+- Occluder-dirty gate: SDF regen skipped when occluders and camera frustum/position/zoom are unchanged — free in manual-invalidate scenes
+- `SDFGenerator` now runs dual JFA chains (signed SDF: outside + inside distance)
+- Debug buffer names: `sdf.jfaPing/PongOutside` and `sdf.jfaPing/PongInside`
+- SDF + blur RT sample filter controlled by `shadowFilter`; JFA ping-pong stays nearest
+
+### Removed presets (bisected to follow-up PR)
+- `DirectLightEffect`, `RadianceLightEffect`, `SimpleLightEffect` moved out; `DefaultLightEffect` + `NormalMapProvider` remain
+- `AutoNormalProvider` refs cleaned from error messages, docs, comments, and planning docs
+- `presets` package now declares `@react-three/fiber` as optional peer dep and exports `./react` subpath
+
+### Loaders
+- `forceRuntime` replaces `skipBakedProbe` / `disableRuntimeBake` across `SpriteSheetLoader`, `LDtkLoader`, `TiledLoader`
+
+This release ships the full 2D lighting pipeline: Forward+ culling with per-category fill quotas, signed-SDF sphere-trace shadows, per-sprite shadow radii, and cel-shading with clean shadow edges.
