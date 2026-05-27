@@ -14,7 +14,7 @@ Tweakpane v4 integration for [three-flatland](https://www.npmjs.com/package/thre
 ## Install
 
 ```bash
-npm install @three-flatland/devtools@alpha
+npm install @three-flatland/devtools
 ```
 
 ### Requirements

@@ -24,13 +24,13 @@
 
 ```bash
 # Core library (Three.js)
-npm install three-flatland@alpha three koota
+npm install three-flatland three koota
 
 # For React Three Fiber
-npm install three-flatland@alpha @react-three/fiber@alpha react react-dom
+npm install three-flatland @react-three/fiber@alpha react react-dom
 
 # TSL shader nodes
-npm install @three-flatland/nodes@alpha
+npm install @three-flatland/nodes
 ```
 
 ## Quick Start

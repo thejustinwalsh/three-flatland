@@ -14,7 +14,7 @@ Offline + runtime normal map generation for sprites and tilesets. Contributes a 
 ## Install
 
 ```bash
-npm install @three-flatland/normals@alpha @three-flatland/bake@alpha
+npm install @three-flatland/normals @three-flatland/bake
 ```
 
 ### Requirements

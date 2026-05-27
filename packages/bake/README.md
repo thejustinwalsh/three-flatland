@@ -14,7 +14,7 @@ Shared bake pipeline infrastructure for [three-flatland](https://www.npmjs.com/p
 ## Install
 
 ```bash
-npm install @three-flatland/bake@alpha
+npm install @three-flatland/bake
 ```
 
 Install alongside any package that contributes a baker — e.g. [`@three-flatland/normals`](https://www.npmjs.com/package/@three-flatland/normals) for sprite normal maps.
