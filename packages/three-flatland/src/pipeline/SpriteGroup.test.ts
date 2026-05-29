@@ -145,8 +145,9 @@ describe('SpriteGroup', () => {
 
     expect(stats.spriteCount).toBe(2)
     expect(stats.batchCount).toBe(1)
-    expect(stats.drawCalls).toBe(0) // drawCalls comes from renderer.info, not SpriteGroup
     expect(stats.visibleSprites).toBe(2)
+    // drawCalls is no longer on RenderStats — renderer-level metrics
+    // live on the devtools bus's `stats` feature.
   })
 
   it('should clear all sprites', () => {
@@ -220,12 +221,37 @@ describe('SpriteGroup', () => {
     // Run systems via updateMatrixWorld — should sync trait to batch buffer
     renderer.updateMatrixWorld()
 
-    // Verify batch buffer was updated. Interleaved layout: stride 16,
-    // color at offset 4.
+    // Verify batch buffer was updated. Interleaved layout — color
+    // at offsets 4..7 within each instance's 16-float slice.
     const colorAttr = mesh!.getColorAttribute()
     const array = colorAttr.array as Float32Array
-    expect(array[slot * 16 + 4 + 0]).toBeCloseTo(1) // r
-    expect(array[slot * 16 + 4 + 1]).toBeCloseTo(0) // g
+    const base = slot * 16 + 4
+    expect(array[base + 0]).toBeCloseTo(1) // r
+    expect(array[base + 1]).toBeCloseTo(0) // g
+    expect(array[base + 2]).toBeCloseTo(0) // b
+  })
+
+  it('batched: in-place tint.set() mutation writes to batch buffer immediately (R3F compat)', () => {
+    renderer = new SpriteGroup()
+    const sprite = new Sprite2D({ material })
+
+    renderer.add(sprite)
+    renderer.updateMatrixWorld()
+
+    const entity = sprite._entity!
+    const batchEntity = entity.targetFor(InBatch)!
+    const mesh = batchEntity.get(BatchMesh)!.mesh!
+    const slot = entity.get(BatchSlot)!.slot
+
+    // R3F sets nested props by mutating the returned Color in place
+    // (`sprite.tint.set(...)`), NOT by reassigning `sprite.tint`. The
+    // observable.color.attach wrapper must fire the notify so the batch
+    // color buffer updates without a systems pass.
+    sprite.tint.set(0, 1, 0)
+
+    const array = mesh.getColorAttribute().array as Float32Array
+    expect(array[slot * 16 + 4 + 0]).toBeCloseTo(0) // r
+    expect(array[slot * 16 + 4 + 1]).toBeCloseTo(1) // g
     expect(array[slot * 16 + 4 + 2]).toBeCloseTo(0) // b
   })
 

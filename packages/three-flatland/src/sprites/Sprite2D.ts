@@ -1,4 +1,14 @@
-import { Mesh, PlaneGeometry, Vector2, Vector3, Color, BufferAttribute, type Texture } from 'three'
+import {
+  Mesh,
+  PlaneGeometry,
+  Vector2,
+  Vector3,
+  Color,
+  BufferAttribute,
+  InterleavedBuffer,
+  InterleavedBufferAttribute,
+  type Texture,
+} from 'three'
 import type { Entity, World } from 'koota'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
@@ -19,103 +29,26 @@ import {
 import type { RegistryData } from '../ecs/batchUtils'
 import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
+import { observable } from '../observable'
 
-// ============================================
-// Observable property helpers
-// ============================================
-//
-// Convert data properties (x/y/z, r/g/b) on Three.js objects to accessor
-// properties that fire a callback on write. Replaces the generic Proxy approach
-// with zero per-instance function allocations — descriptors are shared at
-// module level and reuse `this._cb` on the instance.
-//
-// Works because ALL Three.js Vector3/Color/Vector2 methods mutate via
-// `this.x = ...` etc., so the accessor setters catch every mutation path.
-
-/** @internal */
-interface Observable {
-  _cb: () => void
-}
-
-const _vec2Desc: PropertyDescriptorMap = {
-  x: {
-    get(this: Observable & { _ox: number }) {
-      return this._ox
-    },
-    set(this: Observable & { _ox: number }, v: number) {
-      this._ox = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-  y: {
-    get(this: Observable & { _oy: number }) {
-      return this._oy
-    },
-    set(this: Observable & { _oy: number }, v: number) {
-      this._oy = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-}
-
-const _colorDesc: PropertyDescriptorMap = {
-  r: {
-    get(this: Observable & { _or: number }) {
-      return this._or
-    },
-    set(this: Observable & { _or: number }, v: number) {
-      this._or = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-  g: {
-    get(this: Observable & { _og: number }) {
-      return this._og
-    },
-    set(this: Observable & { _og: number }, v: number) {
-      this._og = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-  b: {
-    get(this: Observable & { _ob: number }) {
-      return this._ob
-    },
-    set(this: Observable & { _ob: number }, v: number) {
-      this._ob = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-}
-
-/** Convert a Vector2's x/y data properties to callback-firing accessors in place. */
-function observeVector2(v: Vector2, cb: () => void): void {
-  const a = v as unknown as Record<string, unknown>
-  a._ox = v.x
-  a._oy = v.y
-  a._cb = cb
-  Object.defineProperties(v, _vec2Desc)
-}
-
-/** Convert a Color's r/g/b data properties to callback-firing accessors in place. */
-function observeColor(c: Color, cb: () => void): void {
-  const a = c as unknown as Record<string, unknown>
-  a._or = c.r
-  a._og = c.g
-  a._ob = c.b
-  a._cb = cb
-  Object.defineProperties(c, _colorDesc)
-}
+/**
+ * System flag layout for `_systemFlags` now lives in a neutral module
+ * so `EffectMaterial` can consume the same constants without creating a
+ * Sprite2D → Sprite2DMaterial → EffectMaterial → Sprite2D cycle.
+ * Re-exported here so existing `import { LIT_FLAG_MASK } from '.../Sprite2D'`
+ * call sites keep working.
+ */
+export {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+  EFFECT_BIT_OFFSET,
+} from '../materials/effectFlagBits'
+import {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+} from '../materials/effectFlagBits'
 
 /** Size in floats for each attribute type. */
 const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
@@ -148,12 +81,6 @@ export class Sprite2D extends Mesh {
   declare geometry: PlaneGeometry
   declare material: Sprite2DMaterial
 
-  /**
-   * Shared material cache keyed by texture. Sprites created with just a texture
-   * (no explicit material) reuse the same Sprite2DMaterial, which means they share
-   * the same batchId and are automatically batched together by SpriteGroup.
-   */
-  private static _sharedMaterials = new WeakMap<Texture, Sprite2DMaterial>()
 
   /**
    * Own-geometry buffers for custom attributes (unbatched rendering).
@@ -174,16 +101,169 @@ export class Sprite2D extends Mesh {
   /** Source texture */
   private _texture: Texture | null = null
 
+
   /** Pixel-perfect mode */
   pixelPerfect: boolean = false
+
+  /**
+   * Whether this sprite receives lighting from Flatland's LightEffect.
+   * Stored as bit 0 of `_systemFlags` so lit/unlit sprites with the same
+   * texture share the same material and batch together.
+   * Default: `true` — set `lit = false` to opt out.
+   */
+  get lit(): boolean {
+    return (this._systemFlags & LIT_FLAG_MASK) !== 0
+  }
+
+  set lit(value: boolean) {
+    const was = (this._systemFlags & LIT_FLAG_MASK) !== 0
+    if (was === value) return
+
+    if (value) {
+      this._systemFlags |= LIT_FLAG_MASK
+    } else {
+      this._systemFlags &= ~LIT_FLAG_MASK
+    }
+
+    // Sync to GPU buffers
+    if (this._entity) {
+      this._syncEffectFlagsToBatch()
+    } else {
+      this._writeEffectDataOwn()
+    }
+  }
+
+  /**
+   * Whether this sprite receives shadows from the SDF shadow pipeline.
+   * Stored as bit 1 of `_systemFlags`.
+   * Default: `true` — set `receiveShadows = false` to opt out.
+   */
+  get receiveShadows(): boolean {
+    return (this._systemFlags & RECEIVE_SHADOWS_MASK) !== 0
+  }
+
+  set receiveShadows(value: boolean) {
+    const was = (this._systemFlags & RECEIVE_SHADOWS_MASK) !== 0
+    if (was === value) return
+
+    if (value) {
+      this._systemFlags |= RECEIVE_SHADOWS_MASK
+    } else {
+      this._systemFlags &= ~RECEIVE_SHADOWS_MASK
+    }
+
+    // Sync to GPU buffers
+    if (this._entity) {
+      this._syncEffectFlagsToBatch()
+    } else {
+      this._writeEffectDataOwn()
+    }
+  }
+
+  /**
+   * Per-sprite occluder radius used by shadow-casting effects (world
+   * units). Consumed by any LightEffect that needs to know "how big is
+   * this sprite as an occluder" — the SDF sphere-tracer uses it as the
+   * self-silhouette escape distance; a future shadow-map effect would
+   * use it for depth bias; an AO pass could use it as sample radius.
+   *
+   * `undefined` (default) means auto-resolve from `max(scale.x, scale.y)`
+   * at batch-write time — tracks scale changes automatically, covers
+   * sprite animation frames whose source size differs (AnimatedSprite2D
+   * updates `scale` from `frame.sourceWidth/Height`). Assign a number
+   * to override — useful when the visible body is tighter than the
+   * quad's bounds or when the anchor pushes the silhouette off-center.
+   */
+  private _shadowRadius: number | undefined = undefined
+
+  /**
+   * Per-sprite occluder radius (world units) consumed by shadow-casting
+   * LightEffects — e.g. {@link DefaultLightEffect}'s SDF sphere-tracer
+   * uses it as the self-silhouette escape distance so a tracer launched
+   * from inside the caster steps out cleanly.
+   *
+   * Returns `undefined` while in auto-resolve mode (default), in which
+   * case `transformSyncSystem` writes `max(|scale.x|, |scale.y|)` into
+   * the per-instance attribute each frame — covering animation frames
+   * and runtime scale changes without manual updates. Assign a number
+   * to override (useful when the visible body is tighter than the
+   * quad's bounds, or when an off-center anchor pushes the silhouette).
+   * Assign `undefined` to return to auto-resolve.
+   */
+  get shadowRadius(): number | undefined {
+    return this._shadowRadius
+  }
+
+  set shadowRadius(value: number | undefined) {
+    if (this._shadowRadius === value) return
+    this._shadowRadius = value
+    // Push to GPU: standalone writes the own-geometry buffer; batched
+    // lets transformSyncSystem pick it up on the next frame (it reads
+    // scale + override together when resolving the per-slot value).
+    if (this._entity) {
+      this._syncShadowRadiusToBatch()
+    } else {
+      this._updateOwnShadowRadius()
+    }
+  }
+
+  /**
+   * Whether this sprite contributes its silhouette to the shadow-caster
+   * occlusion pre-pass. Stored as bit 2 of `_systemFlags`. Default: `false`
+   * — most sprites don't cast; opt in by setting to `true`.
+   *
+   * Consumed by the occlusion pre-pass shader, which masks the sprite's
+   * alpha by this bit before the SDF seed. Flipping it takes effect on
+   * the next frame with zero CPU rebuild (same model as `receiveShadows`).
+   */
+  get castsShadow(): boolean {
+    return (this._systemFlags & CAST_SHADOW_MASK) !== 0
+  }
+
+  set castsShadow(value: boolean) {
+    const was = (this._systemFlags & CAST_SHADOW_MASK) !== 0
+    if (was === value) return
+
+    if (value) {
+      this._systemFlags |= CAST_SHADOW_MASK
+    } else {
+      this._systemFlags &= ~CAST_SHADOW_MASK
+    }
+
+    // Sync to GPU buffers
+    if (this._entity) {
+      this._syncEffectFlagsToBatch()
+    } else {
+      this._writeEffectDataOwn()
+    }
+  }
 
   // ============================================
   // EFFECT STATE
   // ============================================
 
   /**
-   * Enable flags bitmask for packed effects.
-   * Bit N = 1 means effect at index N is enabled for this sprite.
+   * System-flag bitmask written to `instanceSystem.z`.
+   *
+   * Bits:
+   *   0 — lit             (default on)
+   *   1 — receiveShadows  (default on)
+   *   2 — castsShadow     (default off, opt in)
+   *   3..23 — reserved for future system flags
+   *
+   * MaterialEffect enable bits live in a separate field
+   * ({@link _effectFlags}) written to `instanceSystem.w`.
+   * @internal
+   */
+  _systemFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
+
+  /**
+   * MaterialEffect enable-bit bitmask written to `instanceSystem.w`.
+   *
+   * Bit N is set while the Nth registered MaterialEffect on this sprite's
+   * material is currently active. 24 slots, bits 0..23. Separate from
+   * {@link _systemFlags} so system flags don't compete with user-defined
+   * effect capacity.
    * @internal
    */
   _effectFlags: number = 0
@@ -265,70 +345,47 @@ export class Sprite2D extends Mesh {
    * Instance attribute buffers for single-sprite rendering.
    * PlaneGeometry has 4 vertices, so we need 4 copies of each value.
    */
-  // instanceUV: 4 vertices x vec4 = 16 floats
-  private _instanceUVBuffer: Float32Array = new Float32Array([
-    0,
-    0,
-    1,
-    1, // vertex 0
-    0,
-    0,
-    1,
-    1, // vertex 1
-    0,
-    0,
-    1,
-    1, // vertex 2
-    0,
-    0,
-    1,
-    1, // vertex 3
-  ])
-  // instanceColor: 4 vertices x vec4 = 16 floats
-  private _instanceColorBuffer: Float32Array = new Float32Array([
-    1,
-    1,
-    1,
-    1, // vertex 0
-    1,
-    1,
-    1,
-    1, // vertex 1
-    1,
-    1,
-    1,
-    1, // vertex 2
-    1,
-    1,
-    1,
-    1, // vertex 3
-  ])
-  // instanceSystem: 4 vertices x vec4 = 16 floats
-  //   .x = flipX, .y = flipY, .z = sysFlags, .w = enableBits
-  // Matches the batched interleaved layout so the shader can read
-  // flip + system flags + effect enable bits from the same attribute
-  // regardless of standalone vs batched.
-  private _instanceSystemBuffer: Float32Array = new Float32Array([
-    1,
-    1,
-    0,
-    0, // vertex 0
-    1,
-    1,
-    0,
-    0, // vertex 1
-    1,
-    1,
-    0,
-    0, // vertex 2
-    1,
-    1,
-    0,
-    0, // vertex 3
-  ])
-  // instanceExtras: 4 vertices x vec4 = 16 floats. All zeros — reserved
-  // for lighting (shadowRadius). Sprite-sort PR doesn't write to it.
-  private _instanceExtrasBuffer: Float32Array = new Float32Array(16)
+  /**
+   * Interleaved per-vertex storage mirroring SpriteBatch's instance
+   * layout. 4 vertices × 16 floats per vertex = 64 floats. Each
+   * vertex carries the same instance data (no per-vertex variation on
+   * standalone sprites). One buffer keeps the standalone draw under the
+   * WebGPU vertex-buffer cap even with effectBuf* attributes present
+   * (geo + 1 interleaved + effectBuf* vs geo + 4 + effectBuf*).
+   *
+   * Layout per vertex (offset in floats from vertex base):
+   *   0..3   instanceUV      (x, y, w, h)
+   *   4..7   instanceColor   (r, g, b, a)
+   *   8..11  instanceSystem  (flipX, flipY, sysFlags, enableBits)
+   *  12..15  instanceExtras  (shadowRadius, reserved, reserved, reserved)
+   */
+  private _instanceDataBuffer: Float32Array = (() => {
+    const data = new Float32Array(4 * 16)
+    for (let v = 0; v < 4; v++) {
+      const base = v * 16
+      // UV: full texture
+      data[base + 0] = 0
+      data[base + 1] = 0
+      data[base + 2] = 1
+      data[base + 3] = 1
+      // Color: white, fully opaque
+      data[base + 4] = 1
+      data[base + 5] = 1
+      data[base + 6] = 1
+      data[base + 7] = 1
+      // System: flipX=1, flipY=1, sysFlags=0, enableBits=0
+      data[base + 8] = 1
+      data[base + 9] = 1
+      data[base + 10] = 0
+      data[base + 11] = 0
+      // Extras: shadowRadius=0, reserved=0
+      data[base + 12] = 0
+      data[base + 13] = 0
+      data[base + 14] = 0
+      data[base + 15] = 0
+    }
+    return data
+  })()
 
   /**
    * Create a new Sprite2D.
@@ -340,12 +397,10 @@ export class Sprite2D extends Mesh {
     if (options?.material) {
       material = options.material
     } else if (options?.texture) {
-      let shared = Sprite2D._sharedMaterials.get(options.texture)
-      if (!shared) {
-        shared = new Sprite2DMaterial({ map: options.texture, transparent: true })
-        Sprite2D._sharedMaterials.set(options.texture, shared)
-      }
-      material = shared
+      material = Sprite2DMaterial.getShared({
+        map: options.texture,
+        transparent: true,
+      })
     } else {
       material = new Sprite2DMaterial({ transparent: true })
     }
@@ -362,7 +417,7 @@ export class Sprite2D extends Mesh {
     // Position/rotation/scale are NOT observed — accessor overhead on these
     // hot properties (read/written millions of times per frame in game loops)
     // costs more than it saves. transformSyncSystem reads directly from Object3D.
-    observeColor(this._tintColor, () => {
+    observable.color.attach(this._tintColor, () => {
       const i = this._idx
       this._colorR[i] = this._tintColor.r
       this._colorG[i] = this._tintColor.g
@@ -391,7 +446,7 @@ export class Sprite2D extends Mesh {
     // rebuild. The empty callback exists to keep the observer wired
     // (in case future code wants to react), but no work is needed
     // since `updateMatrix` reads the current `_anchor` every frame.
-    observeVector2(this._anchor, () => {
+    observable.vector2.attach(this._anchor, () => {
       this.matrixWorldNeedsUpdate = true
     })
 
@@ -471,7 +526,77 @@ export class Sprite2D extends Mesh {
       this.pixelPerfect = options.pixelPerfect
     }
 
+    if (options.lit === false) {
+      this._systemFlags &= ~LIT_FLAG_MASK
+    }
+
+    if (options.receiveShadows === false) {
+      this._systemFlags &= ~RECEIVE_SHADOWS_MASK
+    }
+
+    if (options.castsShadow === true) {
+      this._systemFlags |= CAST_SHADOW_MASK
+    }
+
+    if (options.shadowRadius !== undefined) {
+      this._shadowRadius = options.shadowRadius
+    }
+
     this._updateOwnFlip()
+    this._updateOwnShadowRadius()
+  }
+
+  /**
+   * Resolve the effective shadow radius for this sprite — either the
+   * explicit user override or the auto-derived `max(scale.x, scale.y)`.
+   * Called by both the standalone path (_updateOwnShadowRadius) and
+   * `transformSyncSystem` when populating the batch's per-instance
+   * `instanceShadowRadius` attribute.
+   * @internal
+   */
+  _resolveShadowRadius(): number {
+    if (this._shadowRadius !== undefined) return this._shadowRadius
+    const sx = Math.abs(this.scale.x)
+    const sy = Math.abs(this.scale.y)
+    return sx > sy ? sx : sy
+  }
+
+  /**
+   * Write the resolved shadow radius into `instanceExtras.x`
+   * (interleaved core buffer, float offset 12 within each vertex's
+   * stride of 16).
+   * @internal
+   */
+  private _updateOwnShadowRadius() {
+    const r = this._resolveShadowRadius()
+    for (let v = 0; v < 4; v++) {
+      this._instanceDataBuffer[v * 16 + 12] = r
+    }
+    this._markInstanceDataDirty()
+  }
+
+  /**
+   * Push the resolved shadow radius to the enrolled SpriteBatch's
+   * `instanceExtras.x`. Used when `shadowRadius` is imperatively set
+   * by user code; the per-frame `transformSyncSystem` also writes this
+   * value as part of the transform sync so scale-driven auto values
+   * stay in lockstep with `instanceMatrix`.
+   * @internal
+   */
+  private _syncShadowRadiusToBatch() {
+    if (!this._entity || !this._flatlandWorld) return
+    const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
+    if (!bs || bs.batchIdx < 0) return
+    const registryEntities = this._flatlandWorld.query(BatchRegistry)
+    if (registryEntities.length === 0) return
+    const registry = registryEntities[0]!.get(BatchRegistry) as
+      | { batchSlots: readonly unknown[] }
+      | undefined
+    if (!registry) return
+    const mesh = registry.batchSlots[bs.batchIdx] as
+      | { writeShadowRadius(i: number, r: number): void }
+      | undefined
+    mesh?.writeShadowRadius(bs.slot, this._resolveShadowRadius())
   }
 
   /**
@@ -504,6 +629,59 @@ export class Sprite2D extends Mesh {
       }
       // Show sprite once texture is set
       this.visible = true
+    }
+  }
+
+  /**
+   * Build a stable cache key fragment from effect constants.
+   * Uses texture ID for Textures, String() for primitives.
+   * @internal
+   */
+  private _constantsKey(constants: Record<string, unknown>): string {
+    const parts: string[] = []
+    for (const [key, value] of Object.entries(constants)) {
+      if (value && typeof value === 'object' && 'id' in value) {
+        parts.push(`${key}=${(value as { id: number }).id}`)
+      } else if (value == null) {
+        parts.push(`${key}=null`)
+      } else {
+        parts.push(`${key}=${typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : 'ref'}`)
+      }
+    }
+    return parts.join(',')
+  }
+
+  /**
+   * Switch to a different shared material, carrying over all state.
+   * @internal
+   */
+  private _switchToMaterial(newMaterial: Sprite2DMaterial): void {
+    const current = this.material
+    this.material = newMaterial
+
+    // Carry over global uniforms
+    if (current.globalUniforms) {
+      newMaterial.globalUniforms = current.globalUniforms
+    }
+    // Carry over required channels and color transform
+    newMaterial.requiredChannels = current.requiredChannels
+    newMaterial.colorTransform = current.colorTransform
+
+    // Re-register all effects on the new material
+    for (const effect of this._effects) {
+      const EffectClass = effect.constructor as typeof MaterialEffect
+      if (!newMaterial.hasEffect(EffectClass)) {
+        newMaterial.registerEffect(EffectClass, effect._constants)
+      }
+    }
+
+    // Update SpriteMaterialRef for batch reassignment
+    if (this._entity) {
+      this._entity.set(SpriteMaterialRef, { materialId: newMaterial.batchId })
+    }
+    this._setupInstanceAttributes()
+    if (!this._entity) {
+      this._writeEffectDataOwn()
     }
   }
 
@@ -579,7 +757,7 @@ export class Sprite2D extends Mesh {
    *
    * The anchor offset is baked into the matrix transform — no
    * geometry rebuild. Writing `_anchor.set(...)` triggers the
-   * observeVector2 callback which marks the matrix dirty; the next
+   * observable.vector2 callback which marks the matrix dirty; the next
    * `updateMatrix` picks up the new value.
    */
   setAnchor(x: number, y: number): this {
@@ -773,57 +951,71 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Update flip flags in own geometry buffer (standalone mode).
-   * Writes to instanceSystem.xy — the same slot the batched path uses.
+   * Mark the shared instance-data buffer dirty so three.js re-uploads
+   * it on the next render. The four `InterleavedBufferAttribute`
+   * views all point at the same underlying `InterleavedBuffer`, so
+   * flipping `needsUpdate` on any one of them re-uploads the full
+   * per-vertex stride.
+   */
+  private _markInstanceDataDirty() {
+    const attr = this.geometry.getAttribute('instanceUV') as
+      | InterleavedBufferAttribute
+      | undefined
+    if (attr && (attr.data as { needsUpdate?: boolean })) {
+      ;(attr.data as { needsUpdate: boolean }).needsUpdate = true
+    }
+  }
+
+  /**
+   * Update flip flags in own geometry buffer (standalone mode). Flip
+   * lives in `instanceSystem.xy` per the interleaved layout.
    */
   private _updateOwnFlip() {
     const idx = this._idx
     const fx = this._flipXArr[idx]!
     const fy = this._flipYArr[idx]!
-    for (let i = 0; i < 4; i++) {
-      this._instanceSystemBuffer[i * 4 + 0] = fx
-      this._instanceSystemBuffer[i * 4 + 1] = fy
+    for (let v = 0; v < 4; v++) {
+      this._instanceDataBuffer[v * 16 + 8] = fx
+      this._instanceDataBuffer[v * 16 + 9] = fy
     }
-    const systemAttr = this.geometry.getAttribute('instanceSystem') as BufferAttribute
-    if (systemAttr) {
-      systemAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
-   * Update the effect enable-bits slot (instanceSystem.w) in own
-   * geometry buffer (standalone mode). Mirrors SpriteBatch.writeEnableBits
-   * for the batched path.
+   * Update the effect enable-bits slot (instanceSystem.w = interleaved
+   * offset 11) in own geometry buffer (standalone mode). Mirrors
+   * SpriteBatch.writeEnableBits for the batched path.
    */
   private _updateOwnEnableBits() {
-    for (let i = 0; i < 4; i++) {
-      this._instanceSystemBuffer[i * 4 + 3] = this._effectFlags
+    for (let v = 0; v < 4; v++) {
+      this._instanceDataBuffer[v * 16 + 11] = this._effectFlags
     }
-    const systemAttr = this.geometry.getAttribute('instanceSystem') as BufferAttribute
-    if (systemAttr) {
-      systemAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
    * Set up instance attributes on the geometry for single-sprite rendering.
-   * These are the same attributes used by SpriteBatch for batched rendering.
-   * Also allocates buffers for custom attributes from the material's schema
-   * (including effectBuf0, effectBuf1, ... for packed effect data).
+   * Uses one interleaved buffer (mirroring SpriteBatch) so batched and
+   * standalone paths share the same shader attribute shape. Also
+   * allocates buffers for custom attributes from the material's schema
+   * (pure effect data — `effectBuf0`, `effectBuf1`, ...).
    */
   _setupInstanceAttributes() {
     const geo = this.geometry
 
-    // Core instance attributes (persistent buffers). instanceSystem and
-    // instanceExtras carry the same logical slots the batched path packs
-    // into its InstancedInterleavedBuffer (flip + sysFlags + enableBits
-    // for system; shadowRadius + reserved for extras).
-    geo.setAttribute('instanceUV', new BufferAttribute(this._instanceUVBuffer, 4))
-    geo.setAttribute('instanceColor', new BufferAttribute(this._instanceColorBuffer, 4))
-    geo.setAttribute('instanceSystem', new BufferAttribute(this._instanceSystemBuffer, 4))
-    geo.setAttribute('instanceExtras', new BufferAttribute(this._instanceExtrasBuffer, 4))
+    // Core instance data — single interleaved buffer, four attribute
+    // views. InterleavedBuffer (not InstancedInterleavedBuffer) because
+    // standalone Sprite2D is a regular Mesh, not an InstancedMesh. One
+    // buffer keeps standalone-with-effects under the WebGPU vertex-buffer
+    // cap (geo + 1 interleaved + effectBuf* vs geo + 4 + effectBuf*).
+    const interleaved = new InterleavedBuffer(this._instanceDataBuffer, 16)
+    geo.setAttribute('instanceUV', new InterleavedBufferAttribute(interleaved, 4, 0))
+    geo.setAttribute('instanceColor', new InterleavedBufferAttribute(interleaved, 4, 4))
+    geo.setAttribute('instanceSystem', new InterleavedBufferAttribute(interleaved, 4, 8))
+    geo.setAttribute('instanceExtras', new InterleavedBufferAttribute(interleaved, 4, 12))
 
-    // Custom attributes from material schema (effects add these)
+    // Custom attributes from material schema (pure effect data — no
+    // system reservations)
     this._customBuffers.clear()
     const schema = this.material.getInstanceAttributeSchema()
     for (const [name, config] of schema) {
@@ -855,16 +1047,14 @@ export class Sprite2D extends Mesh {
     const y = this._uvY[idx]!
     const w = this._uvW[idx]!
     const h = this._uvH[idx]!
-    for (let i = 0; i < 4; i++) {
-      this._instanceUVBuffer[i * 4 + 0] = x
-      this._instanceUVBuffer[i * 4 + 1] = y
-      this._instanceUVBuffer[i * 4 + 2] = w
-      this._instanceUVBuffer[i * 4 + 3] = h
+    for (let v = 0; v < 4; v++) {
+      const base = v * 16
+      this._instanceDataBuffer[base + 0] = x
+      this._instanceDataBuffer[base + 1] = y
+      this._instanceDataBuffer[base + 2] = w
+      this._instanceDataBuffer[base + 3] = h
     }
-    const uvAttr = this.geometry.getAttribute('instanceUV') as BufferAttribute
-    if (uvAttr) {
-      uvAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
@@ -877,16 +1067,14 @@ export class Sprite2D extends Mesh {
     const g = this._colorG[idx]!
     const b = this._colorB[idx]!
     const a = this._colorA[idx]!
-    for (let i = 0; i < 4; i++) {
-      this._instanceColorBuffer[i * 4 + 0] = r
-      this._instanceColorBuffer[i * 4 + 1] = g
-      this._instanceColorBuffer[i * 4 + 2] = b
-      this._instanceColorBuffer[i * 4 + 3] = a
+    for (let v = 0; v < 4; v++) {
+      const base = v * 16 + 4
+      this._instanceDataBuffer[base + 0] = r
+      this._instanceDataBuffer[base + 1] = g
+      this._instanceDataBuffer[base + 2] = b
+      this._instanceDataBuffer[base + 3] = a
     }
-    const colorAttr = this.geometry.getAttribute('instanceColor') as BufferAttribute
-    if (colorAttr) {
-      colorAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
@@ -918,8 +1106,63 @@ export class Sprite2D extends Mesh {
     // Same instance already attached — no-op (R3F stable children)
     if (this._effects.includes(effect)) return this
 
-    const material = this.material
     const EffectClass = effect.constructor as typeof MaterialEffect
+    const hasConstants = Object.keys(EffectClass._constantFactories).length > 0
+
+    // Provider effects with constants may need a different material
+    if (hasConstants) {
+      // Link and store the effect first (needed for _switchToMaterial)
+      effect._attach(this)
+      this._effects.push(effect)
+
+      // Build effects key for all effects with constants
+      const effectsKey = this._effects
+        .filter(e => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0)
+        .map(e => {
+          const EC = e.constructor as typeof MaterialEffect
+          return `${EC.effectName}:${this._constantsKey(e._constants)}`
+        })
+        .join(';')
+
+      const newMaterial = Sprite2DMaterial.getShared({
+        map: this._texture ?? undefined,
+        transparent: this.material.transparent,
+        colorTransform: this.material.colorTransform ?? undefined,
+        effectsKey,
+      })
+
+      if (newMaterial !== this.material) {
+        this._switchToMaterial(newMaterial)
+      } else {
+        // Same material — just register the effect
+        if (!this.material.hasEffect(EffectClass)) {
+          const tierChanged = this.material.registerEffect(EffectClass, effect._constants)
+          if (tierChanged) {
+            this._setupInstanceAttributes()
+          }
+        }
+      }
+
+      // Set enable bit (lives in instanceSystem.w, indexed from bit 0)
+      const bitIndex = this.material._effectBitIndex.get(EffectClass.effectName)!
+      this._effectFlags |= (1 << bitIndex)
+
+      // Add trait to entity (if enrolled)
+      if (this._entity) {
+        const traitData = this._buildTraitData(effect)
+        this._entity.add(EffectClass._trait(traitData))
+        this._entity.set(EffectClass._trait, traitData)
+      }
+
+      if (!this._entity) {
+        this._writeEffectDataOwn()
+      }
+
+      return this
+    }
+
+    // Standard (non-provider) effect flow
+    const material = this.material
 
     // 1. Auto-register on material if not already registered
     if (!material.hasEffect(EffectClass)) {
@@ -938,7 +1181,7 @@ export class Sprite2D extends Mesh {
     // 2. Link effect to this sprite's entity
     effect._attach(this)
 
-    // 3. Set enable bit in flags bitmask
+    // 3. Set enable bit (instanceSystem.w)
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
     this._effectFlags |= 1 << bitIndex
 
@@ -977,7 +1220,7 @@ export class Sprite2D extends Mesh {
     const effectIndex = this._effects.indexOf(effect)
     if (effectIndex === -1) return this
 
-    // 1. Clear enable bit in flags bitmask
+    // 1. Clear enable bit (instanceSystem.w)
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
     this._effectFlags &= ~(1 << bitIndex)
 
@@ -1070,13 +1313,18 @@ export class Sprite2D extends Mesh {
    */
   _writeEffectDataOwn(): void {
     const material = this.material
+
+    // System flags + enable bits live on `instanceSystem.z/.w` (offsets
+    // 10, 11 within each vertex's stride of 16). Write unconditionally
+    // — lit non-effect sprites still need their flags.
+    for (let v = 0; v < 4; v++) {
+      this._instanceDataBuffer[v * 16 + 10] = this._systemFlags
+      this._instanceDataBuffer[v * 16 + 11] = this._effectFlags
+    }
+    this._markInstanceDataDirty()
+
     const tier = material._effectTier
     if (tier === 0) return
-
-    // Enable bits live in instanceSystem.w (same as the batched path's
-    // writeEnableBits). Effect buffers are now pure effect data starting
-    // at offset 0 — no flags slot.
-    this._updateOwnEnableBits()
 
     // Write effect field values to their packed positions
     for (const effect of this._effects) {
@@ -1131,6 +1379,32 @@ export class Sprite2D extends Mesh {
       }
       const bufferAttr = this.geometry.getAttribute(attrName) as BufferAttribute
       if (bufferAttr) bufferAttr.needsUpdate = true
+    }
+  }
+
+  /**
+   * Sync both per-sprite flag words to the batch buffer for already-
+   * batched sprites. Writes system flags + enable bits into
+   * `instanceSystem.z/.w`, bypassing ECS change detection.
+   * @internal
+   */
+  _syncEffectFlagsToBatch(): void {
+    if (!this._entity || !this._flatlandWorld) return
+    const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
+    if (!bs || bs.batchIdx < 0) return
+    const registryEntities = this._flatlandWorld.query(BatchRegistry)
+    if (registryEntities.length === 0) return
+    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    if (!registry) return
+    const batch = registry.batchSlots[bs.batchIdx] as
+      | {
+          writeSystemFlags(i: number, v: number): void
+          writeEnableBits(i: number, v: number): void
+        }
+      | undefined
+    if (batch) {
+      batch.writeSystemFlags(bs.slot, this._systemFlags)
+      batch.writeEnableBits(bs.slot, this._effectFlags)
     }
   }
 
@@ -1408,6 +1682,10 @@ export class Sprite2D extends Mesh {
             layer: this.layer,
             zIndex: this.zIndex,
             pixelPerfect: this.pixelPerfect,
+            lit: this.lit,
+            receiveShadows: this.receiveShadows,
+            castsShadow: this.castsShadow,
+            shadowRadius: this._shadowRadius,
           }
         : undefined
     )

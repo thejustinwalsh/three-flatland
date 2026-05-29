@@ -162,6 +162,15 @@ function syncSlotBuffers(
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
 
+  // Lighting system flags (lit/receiveShadows/castsShadow → instanceSystem.z)
+  // and per-instance shadow radius (instanceExtras.x). Written for every
+  // sprite, not just effect-bearing ones — a flat sprite can still be lit.
+  mesh.writeSystemFlags(slot, sprite._systemFlags)
+  mesh.writeShadowRadius(
+    slot,
+    sprite.shadowRadius ?? Math.max(Math.abs(sprite.scale.x), Math.abs(sprite.scale.y))
+  )
+
   // Effect data
   syncEffectBuffers(slot, mesh, sprite, effectTraits)
 }
@@ -176,8 +185,14 @@ function syncEffectBuffers(
   const tier = material._effectTier
   if (tier === 0) return
 
-  // Write flags to slot 0
-  mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
+  // Effect-enable bitmask → instanceSystem.w (the slot the shader reads;
+  // see EffectMaterial + SpriteBatch.writeEnableBits). On first assign
+  // this is the ONLY writer of .w — _writeEffectStateToBatch only fires
+  // on add/removeEffect and reassign is a later event, so without this a
+  // sprite that had effects added before enrollment would land with
+  // .w = 0 and render its effects disabled. (Was a stale write to the
+  // now-pure-data effectBuf0.x.)
+  mesh.writeEnableBits(slot, sprite._effectFlags)
 
   // Write effect field values
   for (const effect of sprite._effects) {

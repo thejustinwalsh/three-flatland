@@ -1,8 +1,9 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera } from 'three'
+import { createDevtoolsProvider } from 'three-flatland'
 import { SlugFontLoader, SlugFontStack, SlugStackText, SlugText } from '@three-flatland/slug'
 import type { SlugFont, StyleSpan } from '@three-flatland/slug'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
 
@@ -215,7 +216,7 @@ async function main() {
 
   // Slug's shader is analytically antialiased per-fragment; MSAA would add
   // 4× sample cost + a canvas-area resolve for zero visual gain.
-  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  const renderer = new WebGPURenderer({ antialias: false })
   activeRenderer = renderer
   renderer.setSize(w, h)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -669,7 +670,8 @@ async function main() {
   }
 
   // --- Tweakpane UI ---
-  const { pane, stats } = createPane({ scene })
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'slug-text' })
 
   // Top-of-pane scene toggle — inline radiogrid (essentials). Mirrors
   // React's `usePaneRadioGrid`. 'lorem' → SlugText + wrap-aware compare;
@@ -899,29 +901,15 @@ async function main() {
   // --- Render loop ---
   function animate() {
     rafId = requestAnimationFrame(animate)
-    stats.begin()
     // Only update whichever mesh is currently in the scene. The
     // other one is detached (`applyIconsMode` swapped it out) so
     // calling its update would do work for nothing.
     if (params.icons) stackText.update(camera)
     else slugText.update(camera)
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
-    const render = renderer.info.render as unknown as {
-      drawCalls: number
-      triangles: number
-      lines: number
-      points: number
-    }
-    const memory = renderer.info.memory as unknown as { geometries: number; textures: number }
-    stats.update({
-      drawCalls: render.drawCalls,
-      triangles: render.triangles,
-      lines: render.lines,
-      points: render.points,
-      geometries: memory.geometries,
-      textures: memory.textures,
-    })
-    stats.end()
+    devtools.endFrame(renderer)
+    updateDevtools()
   }
   animate()
 }

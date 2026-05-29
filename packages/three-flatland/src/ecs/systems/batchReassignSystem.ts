@@ -174,6 +174,16 @@ function syncAllBuffers(
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
 
+  // Lighting system flags (instanceSystem.z) + shadow radius
+  // (instanceExtras.x) — re-written on reassign so a slot move carries
+  // the sprite's lit/shadow state. (Sort swaps preserve them via
+  // swapSlots; this covers cross-batch reassignment.)
+  mesh.writeSystemFlags(slot, sprite._systemFlags)
+  mesh.writeShadowRadius(
+    slot,
+    sprite.shadowRadius ?? Math.max(Math.abs(sprite.scale.x), Math.abs(sprite.scale.y))
+  )
+
   // Sync effects
   const material = sprite.material
   const tier = material._effectTier

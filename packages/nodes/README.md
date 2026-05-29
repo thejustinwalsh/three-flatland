@@ -14,7 +14,7 @@ TSL shader nodes for [three-flatland](https://www.npmjs.com/package/three-flatla
 ## Install
 
 ```bash
-npm install @three-flatland/nodes@alpha
+npm install @three-flatland/nodes
 ```
 
 ### Requirements

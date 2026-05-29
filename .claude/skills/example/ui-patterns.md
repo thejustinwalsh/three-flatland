@@ -1,12 +1,12 @@
 # Tweakpane UI Patterns
 
-Component-level patterns for `@three-flatland/tweakpane`. Three.js examples use the helper API; React examples use the hooks. Both apply the project's `FLATLAND_THEME` automatically — no per-pane styling needed.
+Component-level patterns for `@three-flatland/devtools`. Three.js examples use the helper API; React examples use the hooks. Both apply the project's `FLATLAND_THEME` automatically — no per-pane styling needed.
 
 ## Setup
 
 **Three.js — `createPane()`**
 ```ts
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 const { pane, stats } = createPane()
 // pane: tweakpane Pane instance
@@ -15,7 +15,7 @@ const { pane, stats } = createPane()
 
 **React — `usePane()` (call inside `<Canvas>`)**
 ```tsx
-import { usePane } from '@three-flatland/tweakpane/react'
+import { usePane } from '@three-flatland/devtools/react'
 
 function Scene() {
   const { pane, stats } = usePane()
@@ -34,7 +34,7 @@ const folder = pane.addFolder({ title: 'Animation', expanded: false })
 
 ```tsx
 // React
-import { usePaneFolder } from '@three-flatland/tweakpane/react'
+import { usePaneFolder } from '@three-flatland/devtools/react'
 const folder = usePaneFolder(pane, 'Animation')  // expanded by default
 ```
 
@@ -49,7 +49,7 @@ folder.addBinding(params, 'speed', { min: 0, max: 10, step: 0.1 })
 
 ```tsx
 // React — returns [value, setValue]
-import { usePaneInput } from '@three-flatland/tweakpane/react'
+import { usePaneInput } from '@three-flatland/devtools/react'
 const [speed] = usePaneInput(folder, 'speed', 1.0, { min: 0, max: 10, step: 0.1 })
 ```
 
@@ -99,7 +99,7 @@ folder.addButton({ title: 'Reset' }).on('click', () => {
 ```
 
 ```tsx
-import { usePaneButton } from '@three-flatland/tweakpane/react'
+import { usePaneButton } from '@three-flatland/devtools/react'
 usePaneButton(folder, 'Reset', () => {
   // ...
 })

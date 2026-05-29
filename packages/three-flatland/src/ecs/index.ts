@@ -19,6 +19,8 @@ export {
   type BatchRun,
   PostPassTrait,
   PostPassRegistry,
+  LightEffectTrait,
+  LightingContext,
 } from './traits'
 
 // World management
@@ -41,6 +43,9 @@ export {
   freeBatchIdx,
 } from './batchUtils'
 
+// SystemSchedule
+export { SystemSchedule, type SystemFn } from './SystemSchedule'
+
 // Systems — factory exports return instances with their own scratch
 // state. Each SpriteGroup constructs one of each in its constructor.
 export {
@@ -49,6 +54,14 @@ export {
   createBatchRemoveSystem,
   createBatchSortSystem,
   createSceneGraphSyncSystem,
+  deferredDestroySystem,
   transformSyncSystem,
   postPassSystem,
+  lightSyncSystem,
+  lightEffectSystem,
+  lightMaterialAssignSystem,
+  materialVersionSystem,
+  effectTraitsSystem,
+  conditionalTransformSyncSystem,
+  flushDirtyRangesSystem,
 } from './systems'

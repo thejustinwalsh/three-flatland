@@ -14,7 +14,7 @@ Pre-configured effect setups for [three-flatland](https://www.npmjs.com/package/
 ## Install
 
 ```bash
-npm install @three-flatland/presets@alpha
+npm install @three-flatland/presets
 ```
 
 ### Requirements

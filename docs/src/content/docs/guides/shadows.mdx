@@ -1,0 +1,79 @@
+---
+title: Shadows & Occlusion
+description: How Flatland's per-light SDF-traced soft shadows work — the occlusion mask, the JFA-generated distance field, and elevation-aware light shaping.
+---
+
+import Diagram from '../../../components/Diagram.astro';
+import shadowTrace from '../../../assets/diagrams/shadow-sdf-trace.svg?raw';
+import shadowElevation from '../../../assets/diagrams/shadow-elevation.svg?raw';
+
+three-flatland renders per-light, SDF-traced soft shadows. Casters silhouette themselves into a screen-space mask each frame; a Jump Flood Algorithm (JFA) converts that mask into a signed distance field; lit fragments sphere-trace toward each light through the SDF and darken if a caster gets in the way. Shadows are soft, elevation-aware, and runtime-toggleable per light and per sprite — there are no shadow maps, no light-space cameras, and no per-light passes.
+
+If your scene doesn't have shadows yet, you don't need this page. Come back when your hero is on screen and you want a proper torch-on-wall moment. This page is the mental model: how the pipeline turns casters into a distance field and how the trace reads it. For opting sprites and tiles in or out, the `shadowRadius` knobs, and the tuning uniforms, see the [Shadows guide](../shadows-setup/).
+
+## How Shadows Work
+
+The shadow pipeline runs as a pre-pass before the main scene render:
+
+1. **OcclusionPass** renders every shadow-casting sprite and tile into an offscreen render target, masked by each instance's `castsShadow` bit. The output is a binary alpha silhouette of all casters in screen space.
+2. **SDFGenerator** runs JFA over that alpha mask and produces a *signed* distance field — each texel stores world-space distance to the nearest caster (positive outside, negative inside).
+3. **Lit fragment shader** (e.g. `DefaultLightEffect`) sphere-traces from each fragment toward each light through the SDF. If the trace hits an occluder before reaching the light, the fragment is shadowed for that light.
+
+The SDF is recomputed every frame at half-resolution by default (the silhouette is binary, so quarter-area is plenty), and the trace runs at full resolution per-fragment per-light — but only when the fragment actually needs it (see [Performance](#performance)).
+
+A single distance field serves every hero light, so occlusion cost is shared across lights rather than paid per-light-per-occluder. Fill lights (`castsShadow: false`) skip the trace entirely and contribute pure attenuated diffuse.
+
+<Diagram caption="The shadow pipeline — casters become an occlusion mask, JFA builds a signed distance field, and each lit fragment sphere-traces toward the light through it" src={shadowTrace} />
+
+## Self-Shadowing
+
+The first time you mark a sprite as a caster, a question arises: the sprite *is* an occluder, so the shadow trace starts inside its own silhouette. Without an escape, every fragment of every caster would self-shadow against itself.
+
+three-flatland handles this with a per-instance `shadowRadius` — the world-units distance the trace skips before sampling the SDF. A 64-unit knight needs ~64 units of escape; a 32-unit slime needs ~32. Manually tuning this per-sprite would be tedious, so the value is auto-derived every frame from the sprite's scale at batch-write time:
+
+```ts
+shadowRadius = max(Math.abs(scale.x), Math.abs(scale.y))
+```
+
+This tracks scale changes automatically and covers animated sprites whose source frame size differs (e.g. `AnimatedSprite2D` updates `scale` from `frame.sourceWidth/Height`). For most scenes you set `castsShadow = true` and never think about `shadowRadius` again. When you do need to override it — transparent art padding, non-uniform scale, a tighter escape — the [Shadows guide](../shadows-setup/#self-shadow-and-shadowradius) covers the manual knobs.
+
+## Elevation-Aware Shadows
+
+<Diagram caption="Why elevated wall caps go dark — a light's +Z component is lightHeight − elevation, so caps above the torch get a negative L.z and N·L clamps to zero." src={shadowElevation} />
+
+`DefaultLightEffect` treats every light as a 3D direction with a `+Z` component (`lightHeight`, default `0.75`). When a sprite provides a per-fragment `elevation` channel — typically through `NormalMapProvider` reading the normal-map's blue channel — the elevation is subtracted from `lightHeight` before the diffuse `N·L` calculation:
+
+```ts
+L = normalize(vec3(toLight2D, lightHeight - elevation))
+```
+
+When `elevation > lightHeight`, `L.z` goes negative, `N·L` clamps to zero, and the fragment receives no direct light from that source. In practice this means **wall caps physically don't receive direct light** — they're elevated above the torch height, so the torch's contribution geometrically misses them. Floor fragments at `elevation = 0` see the full `lightHeight`, get strong diffuse, and behave like normal lit ground.
+
+This replaces the older `capShadowStrength` / `capShadowThreshold` post-hoc darkening hack (now removed): instead of darkening caps after the fact, the geometry of the light direction does it for free. Elevation-aware shaping is automatic once your sprites carry a baked elevation channel and you're using `DefaultLightEffect` (which declares `requires: ['normal', 'elevation']`). For how to produce that channel and turn the feature on, see [Enabling Elevation-Aware Shadows](../shadows-setup/#enabling-elevation-aware-shadows).
+
+## Performance
+
+The per-light shadow trace is gated on the GPU by four runtime conditions, all of which must be true for the trace to run:
+
+```ts
+isAmbient === false
+NdotL > 0
+atten > 0.01
+lightCastsShadow > 0.5
+```
+
+In practice this means most fragments skip the trace cheaply:
+
+- **Ambient lights** never trace (they don't have a direction).
+- **Back-faces** (`N·L ≤ 0`, including elevated wall caps under low torches) skip the trace — they're already dark.
+- **Distant fragments** (`atten < 0.01`, sub-visible attenuation) skip the trace — the light couldn't make a visible delta anyway.
+- **`castsShadow: false` lights** unconditionally skip the trace.
+
+This is why flipping cosmetic fills to `castsShadow: false` is the dominant shadow-perf lever: the 32-tap SDF trace is the per-light cost, and a fill that skips it is nearly free. The [Shadows guide](../shadows-setup/#performance-knobs) covers the practical knobs (occlusion-mask resolution, caster counts).
+
+## Next Steps
+
+- [Shadows guide](../shadows-setup/) — Opt-in flags, `shadowRadius`, elevation setup, and tuning uniforms
+- [2D Lighting](../lighting/) — The Forward+ pipeline shadows plug into
+- [Sprites](../sprites/) — per-sprite flags including `castsShadow`, `receiveShadows`, and `shadowRadius`
+- [Pass Effects](../pass-effects/) — the `DefaultLightEffect` schema and the shadow uniforms in context

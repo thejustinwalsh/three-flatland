@@ -1,5 +1,11 @@
 # ECS Render Graph - Effect System
 
+> **Status:** Active ECS-foundation doc (not superseded). See
+> [`00-research.md`](00-research.md) for the 2026-05-24 reconciliation note —
+> naming (`@three-flatland/core` → `three-flatland`), world-ownership moving to the
+> per-`(renderer, scene)` Registry (epic #85/#75), and the `Changed()` dirty-tracking
+> decision feeding #112.
+
 ## Overview
 
 The effect system bridges the ECS (per-sprite data) with TSL (GPU shader programs). `defineEffect()` is the single registration point that declares:

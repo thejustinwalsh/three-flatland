@@ -424,12 +424,15 @@ test.describe('docs detail page iframe', () => {
         page.on('pageerror', (e) => pageErrors.push(e.message))
 
         const url = `examples/${slug}/${shape.query}`
-        await page.goto(url, { waitUntil: 'networkidle' })
-
-        expect(
-          pageErrors,
-          `docs detail page ${url} had runtime errors:\n  ${pageErrors.join('\n  ')}`,
-        ).toEqual([])
+        // `domcontentloaded`, NOT `networkidle`: the detail page hosts a
+        // live-rendering example iframe (continuous rAF) plus the docs
+        // chrome (syntax-highlight, fonts, capture preloads), so the
+        // network never goes quiet for 500 ms and `networkidle` times
+        // out even though the page is fully functional. Playwright
+        // discourages `networkidle` for exactly this reason. The
+        // deterministic web-assertions below (iframe visible, resolved
+        // src, canvas attached) are the real readiness gates.
+        await page.goto(url, { waitUntil: 'domcontentloaded' })
 
         const iframe = page.locator('iframe').first()
         await expect(iframe, 'no iframe found on detail page').toBeVisible()
@@ -453,6 +456,14 @@ test.describe('docs detail page iframe', () => {
           canvas,
           `iframe for ${slug} (${shape.label}) did not mount a canvas — likely 404 or runtime error in the iframe`,
         ).toBeAttached({ timeout: 15_000 })
+
+        // Error check runs last: the canvas-attached wait above gives
+        // the iframe + parent page time to surface any runtime errors
+        // through the `pageerror` listener before we assert on them.
+        expect(
+          pageErrors,
+          `docs detail page ${url} had runtime errors:\n  ${pageErrors.join('\n  ')}`,
+        ).toEqual([])
       })
     }
   }

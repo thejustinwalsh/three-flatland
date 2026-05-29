@@ -2,7 +2,7 @@ import { Canvas, extend, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { useLayoutEffect } from 'react'
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
-import { usePane, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { DevtoolsProvider, usePane, usePaneInput } from '@three-flatland/devtools/react'
 
 extend({ Sprite2D })
 
@@ -34,12 +34,10 @@ function SpriteScene({ tint }: { tint: string }) {
 }
 
 function Scene() {
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
   const [tint] = usePaneInput(pane, 'tint', '#ffffff', {
     options: { White: '#ffffff', Cyan: '#47cca9', Pink: '#ff6b9d' },
   })
-
-  useStatsMonitor(stats)
 
   return (
     <>
@@ -60,12 +58,13 @@ export default function App() {
         far: 1000,
         left: -1, right: 1, top: 1, bottom: -1,
       }}
-      renderer={{ antialias: false, trackTimestamp: true }}
+      renderer={{ antialias: false }}
       onCreated={({ gl }) => {
         gl.domElement.style.imageRendering = 'pixelated'
       }}
     >
       <OrthoCamera viewSize={400} />
+      <DevtoolsProvider name="template" />
       <Scene />
     </Canvas>
   )

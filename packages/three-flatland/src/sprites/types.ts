@@ -53,6 +53,22 @@ export interface Sprite2DOptions {
   zIndex?: number
   /** Pixel-perfect rendering (snap to pixels) */
   pixelPerfect?: boolean
+  /** Whether this sprite receives lighting from Flatland's LightEffect (default: true) */
+  lit?: boolean
+  /** Whether this sprite receives shadows from the SDF shadow pipeline (default: true) */
+  receiveShadows?: boolean
+  /** Whether this sprite contributes to the shadow-caster occlusion pre-pass (default: false — opt in) */
+  castsShadow?: boolean
+  /**
+   * Per-sprite occluder radius in world units. Consumed by shadow-
+   * casting LightEffects (e.g., the SDF sphere-tracer uses it as the
+   * self-silhouette escape distance). When omitted (default), the
+   * batch layer auto-resolves to `max(scale.x, scale.y)` each frame,
+   * which tracks scale changes and animation frame size swaps. Set
+   * explicitly to override — useful when the visible body is tighter
+   * than the quad bounds.
+   */
+  shadowRadius?: number
   /** Custom material (sprites with same material instance batch together) */
   material?: Sprite2DMaterial
 }
@@ -69,6 +85,14 @@ export interface SpriteSheet {
   width: number
   /** Atlas height in pixels */
   height: number
+  /**
+   * Tangent-space normal map, 1:1 co-registered with `texture`.
+   *
+   * Populated when the loader is given `normals: true` (or a
+   * descriptor). Binds to `NormalMapProvider.normalMap` on a lit
+   * sprite.
+   */
+  normalMap?: Texture
   /** Get a frame by name */
   getFrame(name: string): SpriteFrame
   /** Get all frame names */

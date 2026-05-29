@@ -14,7 +14,7 @@ GPU 2D vector graphics for [three-flatland](https://www.npmjs.com/package/three-
 ## Install
 
 ```bash
-npm install @three-flatland/skia@alpha
+npm install @three-flatland/skia
 ```
 
 ### Requirements

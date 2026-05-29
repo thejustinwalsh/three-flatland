@@ -4,13 +4,12 @@ import { OrthographicCamera } from 'three'
 import { SlugText, SlugStackText, SlugFontLoader, SlugFontStack } from '@three-flatland/slug/react'
 import type { SlugFont, StyleSpan, TextMetrics } from '@three-flatland/slug/react'
 import {
+  DevtoolsProvider,
   usePane,
   usePaneFolder,
   usePaneInput,
   usePaneRadioGrid,
-  useStatsMonitor,
-} from '@three-flatland/tweakpane/react'
-import type { StatsHandle } from '@three-flatland/tweakpane/react'
+} from '@three-flatland/devtools/react'
 import { GemBackground, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
 
@@ -403,11 +402,6 @@ function SlugStackTextScene({
       styles={styles}
     />
   )
-}
-
-function StatsTracker({ stats }: { stats: StatsHandle }) {
-  useStatsMonitor(stats)
-  return null
 }
 
 // --- Compare UI components ---
@@ -855,7 +849,7 @@ function ComputingIndicator() {
 // --- App ---
 
 export default function App() {
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
 
   // Top-of-pane toggle bar — scene selector. Inline radiogrid (essentials)
   // gives an active-state button affordance that reads better than a
@@ -1086,12 +1080,12 @@ export default function App() {
         // Slug provides its own analytic anti-aliasing via per-fragment
         // coverage — MSAA adds 4× sample cost + a canvas-area resolve pass
         // for zero visual gain. Keep it off.
-        renderer={{ antialias: false, trackTimestamp: true }}
+        renderer={{ antialias: false }}
       >
         <GemBackground gem={GEM} />
         <PixelCamera />
         <DprSync dpr={windowSize.dpr} />
-        <StatsTracker stats={stats} />
+        <DevtoolsProvider name="slug-text" />
         <CanvasGrabber onReady={setGpuCanvas} />
         {iconsMode && stack && (
           <SlugStackTextScene

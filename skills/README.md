@@ -28,7 +28,7 @@ npx skills add thejustinwalsh/three-flatland/skills/tsl
 ### Via npm
 
 ```bash
-npm install --save-dev @three-flatland/skills@alpha
+npm install --save-dev @three-flatland/skills
 cp -r node_modules/@three-flatland/skills/* .claude/skills/
 ```
 

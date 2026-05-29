@@ -21,7 +21,7 @@ import {
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { Color, DoubleSide, Fog, Mesh, PlaneGeometry, type MeshBasicMaterial } from 'three'
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
-import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
@@ -436,8 +436,7 @@ function SkiaDemo() {
   const overlayRef = useRef<SkiaCanvasInstance>(null)
 
   // ── TweakPane debug controls ──
-  const { pane, stats } = usePane()
-  useStatsMonitor(stats)
+  usePane()
 
   // Render overlay after Three.js render
   useFrame(() => {
@@ -467,7 +466,7 @@ export default function App() {
   return (
     <Canvas
       camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
-      renderer={{ antialias: true, trackTimestamp: true }}
+      renderer={{ antialias: true }}
       onCreated={({ scene, gl }) => {
         // Pure-black clear + fog so foreground 3D meshes (floor, panels)
         // fade to the same void the floor's distant edges dissolve into.
@@ -516,6 +515,7 @@ export default function App() {
         scene.add(floorEdge)
       }}
     >
+      <DevtoolsProvider name="skia" />
       <Suspense fallback={null}>
         <SkiaDemo />
       </Suspense>

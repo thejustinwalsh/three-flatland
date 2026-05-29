@@ -11,6 +11,7 @@ export const EXAMPLE_GEMS: Record<string, Gem | null> = {
   "basic-sprite": 'diamond',
   "batch-demo": 'gold',
   "knightmark": 'amethyst',
+  "lighting": 'emerald',
   "pass-effects": 'ruby',
   "skia": 'turquoize',
   "slug-text": 'diamond',

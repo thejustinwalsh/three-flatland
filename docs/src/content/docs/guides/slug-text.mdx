@@ -3,16 +3,18 @@ title: Slug Text
 description: GPU-accelerated, resolution-independent text rendering using the Slug algorithm.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components'
+import { Tabs, TabItem } from 'starlight-theme/components'
+import Diagram from '../../../components/Diagram.astro'
+import slugFontLoading from '../../../assets/diagrams/slug-font-loading.svg?raw'
 
 The `@three-flatland/slug` package renders crisp, resolution-independent text on the GPU using the [Slug algorithm](https://jcgt.org/published/0006/02/02/). Font outlines are rasterized per-pixel from quadratic Bezier curves — no texture atlases, no SDF approximations, no blurry edges at any zoom level.
 
-:::note[Alpha pre-release]
-`@three-flatland/slug` is in alpha. Public APIs may shift before `1.0`. Active feature work is tracked in [#37 — Vector Graphics](https://github.com/thejustinwalsh/three-flatland/issues/37) and [#38 — Rich Text](https://github.com/thejustinwalsh/three-flatland/issues/38).
+:::caution[Experimental]
+The `@three-flatland/slug` API isn't settled yet. We're dogfooding it and folding in [community feedback](https://github.com/thejustinwalsh/three-flatland/issues?q=is%3Aissue+label%3Aslug) to stabilize it, so it can shift between releases. Pin an exact version for now.
 :::
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { WebGPURenderer } from 'three/webgpu';
     import { SlugFontLoader, SlugText } from '@three-flatland/slug';
@@ -37,7 +39,7 @@ The `@three-flatland/slug` package renders crisp, resolution-independent text on
     ```
 
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu';
     import { SlugText, SlugFontLoader } from '@three-flatland/slug/react';
@@ -81,8 +83,10 @@ Slug text works with both the WebGPU renderer and its WebGL2 fallback. The TSL s
 
 `SlugFontLoader` is the single entry point for loading fonts. It automatically tries pre-baked data first (a single `.slug.glb`), and falls back to runtime parsing from the `.ttf` if baked data isn't available.
 
+<Diagram caption="SlugFontLoader resolution — a baked .slug.glb loads directly and skips opentype.js; a miss falls back to fetching and parsing the .ttf at runtime." src={slugFontLoading} />
+
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { SlugFontLoader } from '@three-flatland/slug';
 
@@ -90,7 +94,7 @@ Slug text works with both the WebGPU renderer and its WebGL2 fallback. The TSL s
     ```
 
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { useLoader } from '@react-three/fiber/webgpu';
     import { SlugFontLoader } from '@three-flatland/slug/react';
@@ -137,7 +141,7 @@ All properties can be set after construction. Changes are applied on the next `u
 2. **Updates the MVP matrix** for vertex dilation — this must happen every frame since the camera or object may move
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     function animate() {
       requestAnimationFrame(animate);
@@ -146,7 +150,7 @@ All properties can be set after construction. Changes are applied on the next `u
     }
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     useFrame(() => {
       ref.current?.update(camera);
@@ -160,7 +164,7 @@ All properties can be set after construction. Changes are applied on the next `u
 For correct edge dilation (half-pixel anti-aliasing at quad boundaries), call `setViewportSize` when the viewport changes:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     text.setViewportSize(window.innerWidth, window.innerHeight);
 
@@ -170,7 +174,7 @@ For correct edge dilation (half-pixel anti-aliasing at quad boundaries), call `s
     ```
 
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     const { size } = useThree();
 
@@ -263,7 +267,7 @@ Decoration rects render through the same instance pipeline as glyphs (no second 
 Render strings whose codepoints span multiple loaded fonts. The first font in the stack with a non-zero glyphId for a given codepoint wins (per-character, automatic — authors don't tag runs).
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { SlugFontLoader, SlugFontStack, SlugStackText } from '@three-flatland/slug';
 
@@ -283,7 +287,7 @@ Render strings whose codepoints span multiple loaded fonts. The first font in th
     ```
 
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { extend } from '@react-three/fiber/webgpu';
     import { SlugStackText, SlugFontStack } from '@three-flatland/slug/react';

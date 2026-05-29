@@ -12,9 +12,8 @@ import {
   type SpriteSheet,
   type RenderStats,
 } from 'three-flatland/react'
-import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import type { Pane } from 'tweakpane'
-import type { StatsHandle } from '@three-flatland/tweakpane/react'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 // Extend R3F with our custom classes
@@ -248,10 +247,9 @@ interface VillageSceneProps {
   selectedBuilding: number
   onPlaceBuilding: (gridX: number, gridY: number) => void
   onStats: (stats: RenderStats) => void
-  stats: StatsHandle
 }
 
-function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats, stats }: VillageSceneProps) {
+function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: VillageSceneProps) {
   const { camera, gl } = useThree()
 
   // Load textures (presets are automatically applied - NearestFilter + SRGBColorSpace)
@@ -338,8 +336,6 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats, st
 
   // SpriteGroup ref for stats
   const spriteGroupRef = useRef<SpriteGroup>(null)
-
-  useStatsMonitor(stats)
 
   // Surface SpriteGroup batching stats to the parent each frame
   useFrame(() => {
@@ -460,9 +456,9 @@ const INITIAL_ENTITIES: PlacedEntity[] = [
 export default function App() {
   const [entities, setEntities] = useState<PlacedEntity[]>(INITIAL_ENTITIES)
   const [selectedBuilding, setSelectedBuilding] = useState(0)
-  const [spriteStats, setSpriteStats] = useState<RenderStats>({ spriteCount: 0, batchCount: 0, drawCalls: 0, visibleSprites: 0 })
+  const [spriteStats, setSpriteStats] = useState<RenderStats>({ spriteCount: 0, batchCount: 0, visibleSprites: 0 })
 
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
 
   const viewWidth = TILE_SIZE * (GRID_WIDTH + 2)
   const viewHeight = TILE_SIZE * (GRID_HEIGHT + 4)
@@ -484,7 +480,7 @@ export default function App() {
       <Canvas
         dpr={1}
         style={{ background: "#16191e" }}
-        renderer={{ antialias: false, trackTimestamp: true }}
+        renderer={{ antialias: false }}
         onCreated={({ gl }) => {
           gl.domElement.style.imageRendering = 'pixelated'
         }}
@@ -492,12 +488,12 @@ export default function App() {
         {/* L1 + L2 — gem-tinted clear color + lit radial gradient. */}
         <GemBackground gem={GEM} />
         <FitOrthoCamera viewWidth={viewWidth} viewHeight={viewHeight} />
+        <DevtoolsProvider name="batch-demo" />
         <VillageScene
           entities={entities}
           selectedBuilding={selectedBuilding}
           onPlaceBuilding={handlePlaceBuilding}
           onStats={setSpriteStats}
-          stats={stats}
         />
       </Canvas>
 

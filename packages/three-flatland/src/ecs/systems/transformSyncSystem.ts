@@ -105,5 +105,13 @@ export function transformSyncSystem(world: World): void {
     buf[o + 15] = 1
 
     mesh.markMatrixDirty(slot)
+
+    // Auto-derived shadow radius tracks animated scale (e.g.
+    // AnimatedSprite2D frame source-size swaps) each frame. Explicit
+    // overrides are static and written once at assign/reassign time, so
+    // skip them here to avoid needless interleaved-buffer re-uploads.
+    if (sprite.shadowRadius === undefined) {
+      mesh.writeShadowRadius(slot, Math.max(Math.abs(sx), Math.abs(sy)))
+    }
   }
 }

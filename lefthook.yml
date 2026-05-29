@@ -36,3 +36,17 @@ pre-commit:
     check-skia-pin:
       glob: "packages/skia/third_party/skia"
       run: pnpm exec tsx scripts/check-skia-pin.ts
+
+# Keep turbo's local cache (.turbo/cache) bounded — turbo never evicts it, so
+# it grows unbounded across branches and eats the disk. Branch switches and
+# merges/pulls are when stale cross-branch cache piles up, so prune then.
+# The compactor is a fast no-op when under the size cap and never blocks the
+# git operation. Cap defaults to 2048 MB; override with TURBO_CACHE_MAX_MB.
+post-checkout:
+  commands:
+    turbo-cache-compact:
+      run: pnpm exec tsx scripts/turbo-cache-compact.ts
+post-merge:
+  commands:
+    turbo-cache-compact:
+      run: pnpm exec tsx scripts/turbo-cache-compact.ts

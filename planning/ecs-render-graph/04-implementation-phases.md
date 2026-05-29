@@ -1,5 +1,11 @@
 # ECS Render Graph - Implementation Phases
 
+> **Status:** Active ECS-foundation doc (not superseded). See
+> [`00-research.md`](00-research.md) for the 2026-05-24 reconciliation note. The
+> orchestration/world-ownership phases here are now driven by the per-`(renderer, scene)`
+> Registry epic #85 (foundation #75, lazy materialization #76, registry-scoped materials
+> #77, auto-batch #78); read them alongside these phases.
+
 ## Phase 1: ECS Foundation ✅ COMPLETE
 
 **Goal**: Wire Koota into the core pipeline. Traits become the source of truth. Sprite2D and Renderer2D work exactly as before from the user's perspective.
