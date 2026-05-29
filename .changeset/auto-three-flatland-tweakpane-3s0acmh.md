@@ -1,5 +1,5 @@
 ---
-"@three-flatland/tweakpane": minor
+"@three-flatland/devtools": minor
 ---
 
 > Branch: feat-slug
