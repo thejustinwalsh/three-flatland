@@ -1,6 +1,6 @@
 {
   "name": "example-three-lighting",
-  "version": "0.0.1-alpha.0",
+  "version": "0.0.1-alpha.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,10 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@three-flatland/presets": "^0.1.0-alpha.6",
-    "@three-flatland/devtools": "^0.1.0-alpha.3",
+    "@three-flatland/presets": "^0.1.0-alpha.7",
+    "@three-flatland/devtools": "^1.0.0-alpha.4",
     "@tweakpane/plugin-essentials": "^0.2.1",
-    "three-flatland": "^0.1.0-alpha.6",
+    "three-flatland": "^0.1.0-alpha.7",
     "three": "^0.183.1",
     "tweakpane": "^4.0.5"
   },
