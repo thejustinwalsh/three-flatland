@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/slug",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "GPU-accelerated resolution-independent font rendering for Three.js via the Slug algorithm",
   "type": "module",
   "exports": {
