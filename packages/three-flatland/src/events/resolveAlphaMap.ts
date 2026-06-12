@@ -45,20 +45,31 @@ export async function resolveAlphaMap(
       expectedHash: hashDescriptor(ALPHA_SIDECAR_DESCRIPTOR),
     })
     if (probe.ok && probe.hashMatches) {
-      const bitmap = await createImageBitmap(await (await fetch(bakedURL)).blob())
-      let ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null
-      if (typeof OffscreenCanvas !== 'undefined') {
-        ctx = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')
-      } else {
-        const canvas = document.createElement('canvas')
-        canvas.width = bitmap.width
-        canvas.height = bitmap.height
-        ctx = canvas.getContext('2d')
+      try {
+        const response = await fetch(bakedURL)
+        if (!response.ok) throw new Error(`resolveAlphaMap: fetch ${bakedURL} → ${response.status}`)
+        const bitmap = await createImageBitmap(await response.blob())
+        let ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null
+        if (typeof OffscreenCanvas !== 'undefined') {
+          ctx = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')
+        } else {
+          const canvas = document.createElement('canvas')
+          canvas.width = bitmap.width
+          canvas.height = bitmap.height
+          ctx = canvas.getContext('2d')
+        }
+        if (!ctx) throw new Error('resolveAlphaMap: 2D canvas context unavailable')
+        ctx.drawImage(bitmap as CanvasImageSource, 0, 0)
+        const { data, width, height } = ctx.getImageData(0, 0, bitmap.width, bitmap.height)
+        return decodeAlphaPng(data, width, height)
+      } catch {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `three-flatland: failed to decode baked alpha sidecar for ${sourceURL} — falling back to runtime extraction`
+          )
+        }
+        // fall through to runtimeFallback below
       }
-      if (!ctx) throw new Error('resolveAlphaMap: 2D canvas context unavailable')
-      ctx.drawImage(bitmap as CanvasImageSource, 0, 0)
-      const { data, width, height } = ctx.getImageData(0, 0, bitmap.width, bitmap.height)
-      return decodeAlphaPng(data, width, height)
     }
     if (process.env.NODE_ENV !== 'production') {
       console.warn(
