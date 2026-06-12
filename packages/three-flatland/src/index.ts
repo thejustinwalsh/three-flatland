@@ -24,6 +24,9 @@ export * from './tilemap'
 // Global Uniforms
 export * from './GlobalUniforms'
 
+// Events / hit-testing
+export * from './events'
+
 // Lights
 export * from './lights'
 

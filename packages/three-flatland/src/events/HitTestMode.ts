@@ -1,3 +1,7 @@
+// Types the build-time `process.env` read without requiring @types/node
+// (shadows the global where present; erased at compile).
+declare const process: { env: { NODE_ENV?: string } }
+
 /** Hit-testing strategy for pointer raycasts. See spec §6. */
 export type HitTestMode = 'radius' | 'bounds' | 'alpha' | 'none'
 
