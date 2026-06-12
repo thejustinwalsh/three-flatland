@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { AnimatedSprite2D } from './AnimatedSprite2D'
+import { AlphaMap } from '../events/AlphaMap'
 import type { SpriteSheet, SpriteFrame } from './types'
 
 describe('AnimatedSprite2D', () => {
@@ -276,9 +277,9 @@ describe('AnimatedSprite2D', () => {
       spriteSheet,
     })
 
-    expect(() =>
-      sprite.addAnimationFromFrames('bad', ['nonexistent'], { fps: 8 })
-    ).toThrow('Frame not found: nonexistent')
+    expect(() => sprite.addAnimationFromFrames('bad', ['nonexistent'], { fps: 8 })).toThrow(
+      'Frame not found: nonexistent'
+    )
     sprite.dispose()
   })
 
@@ -294,9 +295,7 @@ describe('AnimatedSprite2D', () => {
       },
     })
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      'Frame not found in spritesheet: nonexistent'
-    )
+    expect(warnSpy).toHaveBeenCalledWith('Frame not found in spritesheet: nonexistent')
     warnSpy.mockRestore()
     sprite.dispose()
   })
@@ -377,6 +376,29 @@ describe('AnimatedSprite2D', () => {
     const sprite = new AnimatedSprite2D()
     expect(sprite).toBeInstanceOf(AnimatedSprite2D)
     expect(sprite.spriteSheet).toBeNull()
+    sprite.dispose()
+  })
+
+  it('adopts the sheet alphaMap for alpha hit-testing (spec §8.4)', () => {
+    const sheetWithAlpha: SpriteSheet = {
+      ...spriteSheet,
+      alphaMap: new AlphaMap(new Uint8Array([255]), 1, 1),
+    }
+    const sprite = new AnimatedSprite2D({ spriteSheet: sheetWithAlpha })
+    expect(sprite.alphaMap).toBe(sheetWithAlpha.alphaMap)
+    sprite.dispose()
+  })
+
+  it('does not clobber an explicitly assigned alphaMap', () => {
+    const sheetWithAlpha: SpriteSheet = {
+      ...spriteSheet,
+      alphaMap: new AlphaMap(new Uint8Array([255]), 1, 1),
+    }
+    const mine = new AlphaMap(new Uint8Array([0]), 1, 1)
+    const sprite = new AnimatedSprite2D({})
+    sprite.alphaMap = mine
+    sprite.spriteSheet = sheetWithAlpha
+    expect(sprite.alphaMap).toBe(mine)
     sprite.dispose()
   })
 })
