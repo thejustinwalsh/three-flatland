@@ -1,5 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Texture } from 'three'
+import { AlphaMap } from '../events/AlphaMap'
 import { SpriteSheetLoader } from './SpriteSheetLoader'
+
+vi.mock('../events/resolveAlphaMap', () => ({
+  resolveAlphaMap: vi.fn(),
+}))
+
+vi.mock('./TextureLoader', () => ({
+  TextureLoader: {
+    load: vi.fn(),
+  },
+}))
+
+import { resolveAlphaMap } from '../events/resolveAlphaMap'
+import { TextureLoader } from './TextureLoader'
 
 // Mock fetch
 const mockJSONHash = {
@@ -62,7 +77,7 @@ describe('SpriteSheetLoader', () => {
     it('should parse JSON Hash format correctly', () => {
       // Access private method via type assertion for testing
       const loader = SpriteSheetLoader as unknown as {
-        parseJSONHash: typeof SpriteSheetLoader['parseJSONHash']
+        parseJSONHash: (typeof SpriteSheetLoader)['parseJSONHash']
       }
 
       // @ts-expect-error - accessing private method for testing
@@ -142,6 +157,51 @@ describe('SpriteSheetLoader', () => {
       const sheet = SpriteSheetLoader.createSpriteSheet(null, frames, 64, 64)
 
       expect(() => sheet.getFrame('nonexistent')).toThrow('Frame not found: nonexistent')
+    })
+  })
+
+  describe('alpha option', () => {
+    beforeEach(() => {
+      SpriteSheetLoader.clearCache()
+      vi.clearAllMocks()
+
+      // Stub fetch to return the mock JSON Hash
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockJSONHash),
+      } as unknown as Response)
+
+      // Stub TextureLoader to return a minimal Texture
+      vi.mocked(TextureLoader.load).mockResolvedValue(new Texture() as never)
+    })
+
+    it('sets sheet.alphaMap when alpha: true and resolveAlphaMap returns a map', async () => {
+      const fakeMap = new AlphaMap(new Uint8Array([128]), 1, 1)
+      vi.mocked(resolveAlphaMap).mockResolvedValue(fakeMap)
+
+      const sheet = await SpriteSheetLoader.load('/sprites/player.json', { alpha: true })
+
+      expect(resolveAlphaMap).toHaveBeenCalledOnce()
+      expect(resolveAlphaMap).toHaveBeenCalledWith(
+        '/sprites/player.png',
+        expect.objectContaining({ forceRuntime: false })
+      )
+      expect(sheet.alphaMap).toBe(fakeMap)
+    })
+
+    it('does not set sheet.alphaMap when alpha option is omitted', async () => {
+      const sheet = await SpriteSheetLoader.load('/sprites/player.json')
+
+      expect(resolveAlphaMap).not.toHaveBeenCalled()
+      expect(sheet.alphaMap).toBeUndefined()
+    })
+
+    it('does not set sheet.alphaMap when resolveAlphaMap returns null', async () => {
+      vi.mocked(resolveAlphaMap).mockResolvedValue(null)
+
+      const sheet = await SpriteSheetLoader.load('/sprites/player.json', { alpha: true })
+
+      expect(sheet.alphaMap).toBeUndefined()
     })
   })
 })

@@ -1,6 +1,11 @@
 import { Loader } from 'three'
 import type { Texture } from 'three'
-import type { SpriteSheet, SpriteFrame, SpriteSheetJSONHash, SpriteSheetJSONArray } from '../sprites/types'
+import type {
+  SpriteSheet,
+  SpriteFrame,
+  SpriteSheetJSONHash,
+  SpriteSheetJSONArray,
+} from '../sprites/types'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
 import {
   resolveNormalMap,
@@ -9,6 +14,8 @@ import {
 } from '@three-flatland/normals'
 import { type TexturePreset, type TextureOptions, resolveTextureOptions } from './texturePresets'
 import { TextureLoader } from './TextureLoader'
+import { resolveAlphaMap } from '../events/resolveAlphaMap'
+import { AlphaMap } from '../events/AlphaMap'
 
 /**
  * Shape accepted by `SpriteSheetLoaderOptions.normals`.
@@ -36,6 +43,15 @@ export interface SpriteSheetLoaderOptions extends BakedAssetLoaderOptions {
    * 1:1 co-registered with the atlas.
    */
   normals?: SpriteSheetNormalsOption
+  /**
+   * Alpha hitmask generation. When `true`, the loader probes for a
+   * baked `<sheet-image>.alpha.png` sidecar and falls back to a
+   * runtime readback via `AlphaMap.fromTexture`.
+   *
+   * The resulting map is attached to `SpriteSheet.alphaMap` and
+   * consumed by `hitTestMode: 'alpha'`. Spec §8.4.
+   */
+  alpha?: boolean
 }
 
 /**
@@ -92,6 +108,11 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   normals: SpriteSheetNormalsOption = false
 
   /**
+   * Alpha hitmask generation. See {@link SpriteSheetLoaderOptions.alpha}.
+   */
+  alpha = false
+
+  /**
    * Generate this sheet's normal map in the browser on every load
    * instead of loading a pre-baked sidecar. The in-memory bake runs on
    * every load; the sidecar probe and "no baked sibling" warn are
@@ -109,6 +130,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     return SpriteSheetLoader.loadUncached(url, {
       texture: resolved,
       normals: this.normals,
+      alpha: this.alpha,
       forceRuntime: this.forceRuntime,
     })
   }
@@ -187,6 +209,15 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       )
     }
 
+    // Resolve alpha hitmask — probe baked sidecar, fall back to runtime readback.
+    if (options?.alpha) {
+      const alphaMap = await resolveAlphaMap(textureUrl, {
+        forceRuntime: options.forceRuntime ?? false,
+        runtimeFallback: () => Promise.resolve(AlphaMap.fromTexture(sheet.texture)),
+      })
+      if (alphaMap) sheet.alphaMap = alphaMap
+    }
+
     return sheet
   }
 
@@ -217,8 +248,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       regions.push({ x, y: yImage, w, h })
     }
 
-    const base: NormalSourceDescriptor =
-      optionDescriptor === true ? {} : optionDescriptor
+    const base: NormalSourceDescriptor = optionDescriptor === true ? {} : optionDescriptor
     const descriptor: NormalSourceDescriptor = {
       ...base,
       regions: base.regions && base.regions.length > 0 ? base.regions : regions,
@@ -244,7 +274,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       const frame: SpriteFrame = {
         name,
         x: data.frame.x / atlasWidth,
-        y: 1 - (data.frame.y / atlasHeight) - normalizedHeight,
+        y: 1 - data.frame.y / atlasHeight - normalizedHeight,
         width: data.frame.w / atlasWidth,
         height: normalizedHeight,
         sourceWidth: data.sourceSize.w,
@@ -288,7 +318,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       const frame: SpriteFrame = {
         name: data.filename,
         x: data.frame.x / atlasWidth,
-        y: 1 - (data.frame.y / atlasHeight) - normalizedHeight,
+        y: 1 - data.frame.y / atlasHeight - normalizedHeight,
         width: data.frame.w / atlasWidth,
         height: normalizedHeight,
         sourceWidth: data.sourceSize.w,
@@ -362,10 +392,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   /**
    * Preload multiple spritesheets.
    */
-  static preload(
-    urls: string[],
-    options?: SpriteSheetLoaderOptions
-  ): Promise<SpriteSheet[]> {
+  static preload(urls: string[], options?: SpriteSheetLoaderOptions): Promise<SpriteSheet[]> {
     return Promise.all(urls.map((url) => this.load(url, options)))
   }
 }
