@@ -401,4 +401,41 @@ describe('AnimatedSprite2D', () => {
     expect(sprite.alphaMap).toBe(mine)
     sprite.dispose()
   })
+
+  it('updates a sheet-inherited alphaMap when swapping to a new sheet', () => {
+    const alphaMapA = new AlphaMap(new Uint8Array([255]), 1, 1)
+    const alphaMapB = new AlphaMap(new Uint8Array([128]), 1, 1)
+    const sheetA: SpriteSheet = { ...spriteSheet, alphaMap: alphaMapA }
+    const sheetB: SpriteSheet = {
+      texture: new Texture(),
+      frames: new Map(),
+      width: 64,
+      height: 64,
+      alphaMap: alphaMapB,
+      getFrame() {
+        throw new Error('not found')
+      },
+      getFrameNames() {
+        return []
+      },
+    }
+    const sprite = new AnimatedSprite2D({ spriteSheet: sheetA })
+    expect(sprite.alphaMap).toBe(alphaMapA)
+    sprite.spriteSheet = sheetB
+    expect(sprite.alphaMap).toBe(alphaMapB)
+    sprite.dispose()
+  })
+
+  it('preserves an explicitly user-set alphaMap across a sheet swap', () => {
+    const sheetWithAlpha: SpriteSheet = {
+      ...spriteSheet,
+      alphaMap: new AlphaMap(new Uint8Array([255]), 1, 1),
+    }
+    const mine = new AlphaMap(new Uint8Array([0]), 1, 1)
+    const sprite = new AnimatedSprite2D()
+    sprite.alphaMap = mine
+    sprite.spriteSheet = sheetWithAlpha
+    expect(sprite.alphaMap).toBe(mine)
+    sprite.dispose()
+  })
 })
