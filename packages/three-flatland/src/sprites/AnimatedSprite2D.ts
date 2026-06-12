@@ -102,6 +102,10 @@ export class AnimatedSprite2D extends Sprite2D {
 
     this._spriteSheet = options.spriteSheet
 
+    if (options.spriteSheet?.alphaMap && this.alphaMap === null) {
+      this.alphaMap = options.spriteSheet.alphaMap
+    }
+
     // Add animations
     if (options.animations) {
       this.controller.addAnimations(options.animations)
@@ -141,6 +145,9 @@ export class AnimatedSprite2D extends Sprite2D {
       const firstFrame = value.frames.values().next().value
       if (firstFrame && !this.frame) {
         this.setFrame(firstFrame)
+      }
+      if (value.alphaMap && this.alphaMap === null) {
+        this.alphaMap = value.alphaMap
       }
     }
   }
@@ -395,7 +402,10 @@ export class AnimatedSprite2D extends Sprite2D {
 
     // Clone effect instances from parent
     for (const effect of this._effects) {
-      const EffectClass = effect.constructor as { new (): MaterialEffect; _fields: typeof MaterialEffect._fields }
+      const EffectClass = effect.constructor as {
+        new (): MaterialEffect
+        _fields: typeof MaterialEffect._fields
+      }
       const clonedEffect = new EffectClass()
       for (const field of EffectClass._fields) {
         const value = effect._defaults[field.name]!
