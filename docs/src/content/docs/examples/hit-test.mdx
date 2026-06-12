@@ -7,6 +7,7 @@ sort: 11
 
 import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
 import { loadExample } from '../../../utils/loadExample'
+import { Tabs, TabItem } from 'starlight-theme/components'
 
 export const threeFiles = loadExample('three', 'hit-test')
 export const reactFiles = loadExample('react', 'hit-test')
@@ -108,7 +109,96 @@ Sprites managed by `SpriteGroup` or the `Flatland` batching layer are not yet in
 
 ## Alpha mode and pixel-perfect picking
 
-For irregular sprites — characters, foliage, large items with transparent cutouts — `hitTestMode: 'alpha'` rejects rays that land on fully transparent pixels. It requires a baked alpha sidecar alongside the spritesheet. See the [Loaders guide](../../guides/loaders/) for how to include the sidecar in your spritesheet JSON.
+For irregular sprites — characters, foliage, large items with transparent cutouts — `hitTestMode: 'alpha'` rejects rays that land on fully transparent pixels. The mode does an AABB pre-check first, then samples the CPU-side alpha map only when the bounds test passes, so the extra cost is proportional to how often the outer box is hit rather than every frame.
+
+Getting there is a three-step process: bake a sidecar at build time, tell the loader to load it, then assign it to the sprite and flip the mode.
+
+### Step 1 — bake the sidecar
+
+The `flatland-bake alpha` command (from `@three-flatland/normals`) extracts the alpha channel of your sprite PNG into a companion file. Run it once as part of your asset pipeline, typically in a `package.json` `prebuild` script or a Makefile rule:
+
+```sh
+flatland-bake alpha sprites.png
+# writes sprites.alpha.png
+```
+
+The output is a grayscale PNG with alpha stored in the R channel, stamped with a version hash so the runtime can detect stale bakes. The sibling is named by replacing the source extension: `sprites.png` → `sprites.alpha.png`, `player/knight.png` → `player/knight.alpha.png`.
+
+The sidecar is **optional at runtime**. If the loader cannot find it — or the hash doesn't match the current format version — it falls back to a synchronous canvas readback of the already-loaded texture and logs a `console.warn` in non-production builds. The fallback is correct but blocks the main thread on load; the sidecar is worth the asset-pipeline step for anything interactive.
+
+### Step 2 — load with `alpha: true`
+
+Pass `alpha: true` to the loader. The loader probes for the `sprites.alpha.png` sibling, loads it if the hash matches, and attaches the result to `sheet.alphaMap`.
+
+<Tabs>
+<TabItem label="Three.js">
+```typescript
+const sheet = await SpriteSheetLoader.load('/sprites/sprites.json', { alpha: true })
+// sheet.alphaMap is now populated (AlphaMap instance)
+```
+</TabItem>
+<TabItem label="React">
+```tsx
+const sheet = useLoader(SpriteSheetLoader, '/sprites/sprites.json', (loader) => {
+  loader.alpha = true
+})
+// sheet.alphaMap is populated by the time the component renders
+```
+</TabItem>
+</Tabs>
+
+### Step 3 — assign and enable
+
+For a `Sprite2D`, assign the map and switch the mode. For `AnimatedSprite2D`, the constructor and the `spriteSheet` setter both adopt `sheet.alphaMap` automatically — you only need to set `hitTestMode`.
+
+<Tabs>
+<TabItem label="Three.js (Sprite2D)">
+```typescript
+const sprite = new Sprite2D({ texture: sheet.texture, frame: sheet.getFrame('knight_idle') })
+sprite.alphaMap = sheet.alphaMap        // wire up the CPU map
+sprite.hitTestMode = 'alpha'            // enable pixel-perfect rejection
+sprite.alphaThreshold = 0.5            // optional — default is 0.5 (0–1)
+```
+</TabItem>
+<TabItem label="Three.js (AnimatedSprite2D)">
+```typescript
+const knight = new AnimatedSprite2D({ spriteSheet: sheet, animation: 'idle' })
+// alphaMap is adopted automatically from sheet.alphaMap
+knight.hitTestMode = 'alpha'
+// knight.alphaThreshold defaults to 0.5
+```
+</TabItem>
+<TabItem label="React">
+```tsx
+// AnimatedSprite2D adopts sheet.alphaMap via the spriteSheet prop
+<animatedSprite2D
+  spriteSheet={sheet}
+  animation="idle"
+  hitTestMode="alpha"
+  alphaThreshold={0.5}
+  onClick={(e) => { e.stopPropagation(); handleClick() }}
+/>
+```
+</TabItem>
+</Tabs>
+
+`alphaThreshold` is a 0–1 value; pixels with alpha below it are treated as transparent for hit testing. The default of `0.5` works well for sprites with hard edges. Softer, anti-aliased outlines may benefit from a lower value like `0.1`.
+
+### Caveats
+
+- **Rotated / trimmed atlas frames** — three-flatland does not yet honor `frame.rotated` or `frame.trimmed` **anywhere**: the sprite shader (`Sprite2DMaterial`) maps sprite-local UV linearly through the frame's atlas rect with no 90° transpose and no trim-offset correction, and the alpha sampler deliberately mirrors that exact remap. Alpha hit-testing therefore stays consistent with what is actually drawn — but a rotated/trimmed-packed atlas is mis-_rendered_ in the first place, and hit-testing inherits that. This is a renderer-wide limitation, not an alpha-mode bug. Until full atlas support lands (the VS Code atlas tooling, [PR #117](https://github.com/thejustinwalsh/three-flatland/pull/117)), disable rotation and trimming in your packer.
+- **Missing alphaMap fallback** — if you set `hitTestMode: 'alpha'` without assigning an `alphaMap`, the sprite falls back to `'bounds'` behaviour and logs a one-shot warning in development.
+
+### Roadmap — not yet supported
+
+The raycast contract is the foundation; these build on it and are tracked separately:
+
+- **Batched-sprite picking** — interactivity for `SpriteGroup`/`Flatland`-batched sprites, once the orchestration overhaul makes them scene-graph citizens ([#127](https://github.com/thejustinwalsh/three-flatland/issues/127), depends on [#85](https://github.com/thejustinwalsh/three-flatland/issues/85)).
+- **`FlatlandTexture`** — render flatland to a texture with pointer events through the portal compute seam ([#126](https://github.com/thejustinwalsh/three-flatland/issues/126)).
+- **GPU ID-buffer picking** — the high-instance-count Phase 2 path behind the same `pick()` signature ([#128](https://github.com/thejustinwalsh/three-flatland/issues/128)).
+- **Drag helper** — an ergonomic drag primitive composed from the pointer events you already get ([#129](https://github.com/thejustinwalsh/three-flatland/issues/129)).
+- **Skia node hit-testing** — path-accurate picking inside Skia surfaces via `SkPath::contains` in our WASM C API ([#130](https://github.com/thejustinwalsh/three-flatland/issues/130)).
+- **Baked alpha sidecar schema** — `meta.alpha` atlas-JSON discovery, landing with the atlas schema work ([#124](https://github.com/thejustinwalsh/three-flatland/issues/124)).
 
 ## Further Reading
 
