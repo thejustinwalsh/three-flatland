@@ -1477,6 +1477,10 @@ export class Sprite2D extends Mesh {
    * method works entirely in centered-quad local space with no anchor math.
    */
   override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
+    // `hitTestMode = 'none'` also nulls the instance `raycast` so R3F skips
+    // this object at registration (the zero-cost path); this guard is
+    // defense-in-depth for direct raycast() calls.
+    if (this._hitTestMode === 'none') return
     const hit = rayPlaneZ0(raycaster, this)
     if (!hit) return
 
@@ -1488,8 +1492,12 @@ export class Sprite2D extends Mesh {
     } else if (mode === 'alpha') {
       if (localX < -0.5 || localX > 0.5 || localY < -0.5 || localY > 0.5) return
       if (this.alphaMap) {
-        const u = localX + 0.5
-        const v = localY + 0.5
+        let u = localX + 0.5
+        let v = localY + 0.5
+        // Mirror the renderer's UV flip (Sprite2DMaterial: flipped → 1 - uv)
+        // so the alpha sample aligns with the drawn pixels for flipped sprites.
+        if (this.flipX) u = 1 - u
+        if (this.flipY) v = 1 - v
         // Map sprite-local UV through the frame rect so atlas sub-region
         // sprites sample the right pixels; full-texture sprites have a
         // unit frame, making this equivalent to sampleAtlasUV.
@@ -1821,6 +1829,15 @@ export class Sprite2D extends Mesh {
     cloned.position.copy(this.position)
     cloned.rotation.copy(this.rotation)
     cloned.scale.copy(this.scale)
+
+    // Carry hit-test configuration so a clone stays interactively identical.
+    // alphaMap is shared by reference (read-only CPU data). hitTestMode goes
+    // through the setter so a cloned 'none' sprite re-nulls its raycast.
+    cloned.alphaMap = this.alphaMap
+    cloned.alphaThreshold = this.alphaThreshold
+    cloned.hitRadius = this._hitRadius
+    cloned.hitTestMode = this._hitTestMode
+
     return cloned as this
   }
 }
