@@ -7,42 +7,11 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { Color, NearestFilter, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
+import { Color } from 'three'
 import type { ThreeEvent } from '@react-three/fiber/webgpu'
 
 // Register both sprite classes with R3F (tree-shakeable)
 extend({ AnimatedSprite2D, Sprite2D })
-
-// ---------------------------------------------------------------------------
-// Camera
-// ---------------------------------------------------------------------------
-
-/**
- * Declarative orthographic camera matching basic-sprite's frustumSize math.
- * Ref callback fires synchronously during reconciliation; re-fires on resize.
- */
-function OrthoCamera({ viewSize }: { viewSize: number }) {
-  const set = useThree((s) => s.set)
-  const size = useThree((s) => s.size)
-  const aspect = size.width / size.height
-  return (
-    <orthographicCamera
-      ref={(cam: ThreeOrthographicCamera | null) => {
-        if (!cam) return
-        cam.left = (-viewSize * aspect) / 2
-        cam.right = (viewSize * aspect) / 2
-        cam.top = viewSize / 2
-        cam.bottom = -viewSize / 2
-        ;(cam as unknown as { manual: boolean }).manual = true
-        cam.updateProjectionMatrix()
-        set({ camera: cam })
-      }}
-      position={[0, 0, 100]}
-      near={0.1}
-      far={1000}
-    />
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Knight animation definition
@@ -76,9 +45,6 @@ function Knight({ target }: KnightProps) {
   // Track target in a ref so useFrame reads the latest without re-subscribing
   const targetRef = useRef(target)
   targetRef.current = target
-
-  sheet.texture.minFilter = NearestFilter
-  sheet.texture.magFilter = NearestFilter
 
   useFrame((_, delta) => {
     const sprite = ref.current
@@ -155,9 +121,6 @@ function Coin({ id, position, onCollect }: CoinProps) {
   const hoverTint = useRef(new Color(1, 1, 1))
   const currentTint = useRef(new Color(1, 0.85, 0.2))
 
-  sheet.texture.minFilter = NearestFilter
-  sheet.texture.magFilter = NearestFilter
-
   useFrame((_, delta) => {
     const sprite = ref.current
     if (!sprite) return
@@ -218,10 +181,11 @@ interface GroundProps {
 }
 
 function Ground({ onWalk }: GroundProps) {
+  const { viewport } = useThree()
   return (
     <sprite2D
       anchor={[0.5, 0.5]}
-      scale={[800, 600, 1]}
+      scale={[viewport.width, viewport.height, 1]}
       position={[0, 0, -1]}
       layer={Layers.BACKGROUND}
       tint="#1a1a2e"
@@ -278,13 +242,10 @@ export default function App() {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas
-        dpr={1}
-        renderer={{ antialias: false }}
-        onCreated={({ gl }) => {
-          gl.domElement.style.imageRendering = 'pixelated'
-        }}
+        orthographic
+        camera={{ zoom: 5, position: [0, 0, 100] }}
+        renderer={{ antialias: true }}
       >
-        <OrthoCamera viewSize={400} />
         <Suspense fallback={null}>
           <Scene />
         </Suspense>

@@ -1,14 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
-import {
-  Scene,
-  OrthographicCamera,
-  Color,
-  NearestFilter,
-  Raycaster,
-  Vector2,
-  Plane,
-  Vector3,
-} from 'three'
+import { Scene, OrthographicCamera, Color, Raycaster, Vector2, Plane, Vector3 } from 'three'
 import { AnimatedSprite2D, SpriteSheetLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 
@@ -128,12 +119,6 @@ async function main() {
     SpriteSheetLoader.load(base + 'sprites/knight.json'),
     SpriteSheetLoader.load(base + 'sprites/coin.json'),
   ])
-
-  // Nearest-neighbor filtering for pixel art.
-  knightSheet.texture.minFilter = NearestFilter
-  knightSheet.texture.magFilter = NearestFilter
-  coinSheet.texture.minFilter = NearestFilter
-  coinSheet.texture.magFilter = NearestFilter
 
   // ── Knight ────────────────────────────────────────────────────────────
 
