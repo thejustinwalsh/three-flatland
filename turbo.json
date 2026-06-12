@@ -124,6 +124,8 @@
         "example-react-skia#build",
         "example-three-lighting#build",
         "example-react-lighting#build",
+        "example-three-hit-test#build",
+        "example-react-hit-test#build",
         "@three-flatland/devtools#build:bundle"
       ],
       "outputs": ["dist/**"],
