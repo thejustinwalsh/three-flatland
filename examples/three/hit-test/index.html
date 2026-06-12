@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hit Test</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #16191e;
+      }
+      canvas {
+        display: block;
+        /* Layer-promote so Safari gives the canvas its own GPU layer
+           — without this, 60fps canvas paints co-paint with adjacent
+           DOM (Tweakpane, overlays) and drop the iframe rAF to ~30. */
+        transform: translateZ(0);
+        will-change: transform;
+        isolation: isolate;
+      }
+      #hud {
+        position: fixed;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        padding: 8px 16px;
+        background: rgba(10, 10, 26, 0.85);
+        border-radius: 8px;
+        font-family: monospace;
+        color: #f0edd8;
+        font-size: 13px;
+        text-align: center;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      #collected {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <div id="status">Hover over coins. Click to walk. Click coins to collect!</div>
+      <div id="collected"></div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
