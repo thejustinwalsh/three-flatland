@@ -231,14 +231,17 @@ function Scene() {
     setCoins(COIN_POSITIONS.map((pos, i) => ({ id: i, pos })))
   })
 
+  // usePane (above) must stay mounted while assets load, so the suspending
+  // loaders live below an inner Suspense — not an outer one that would
+  // unmount the pane (the "usePane leak under StrictMode + Suspense" guard).
   return (
-    <>
+    <Suspense fallback={null}>
       <Ground onWalk={handleWalk} />
       <Knight target={target} />
       {coins.map((c) => (
         <Coin key={c.id} id={c.id} position={c.pos} onCollect={handleCollect} />
       ))}
-    </>
+    </Suspense>
   )
 }
 
@@ -254,9 +257,7 @@ export default function App() {
         camera={{ zoom: 5, position: [0, 0, 100] }}
         renderer={{ antialias: true }}
       >
-        <Suspense fallback={null}>
-          <Scene />
-        </Suspense>
+        <Scene />
       </Canvas>
       <div
         style={{
