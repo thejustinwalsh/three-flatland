@@ -7,7 +7,12 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneButton } from '@three-flatland/devtools/react'
+import {
+  usePane,
+  usePaneFolder,
+  usePaneButton,
+  DevtoolsProvider,
+} from '@three-flatland/devtools/react'
 import { Color } from 'three'
 import type { ThreeEvent } from '@react-three/fiber/webgpu'
 
@@ -254,10 +259,12 @@ export default function App() {
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas
         orthographic
-        camera={{ zoom: 5, position: [0, 0, 100] }}
+        camera={{ zoom: 1.5, position: [0, 0, 100] }}
         renderer={{ antialias: true }}
       >
         <Scene />
+        {/* Instruments the renderer so the devtools stats (fps, draw calls) populate. */}
+        <DevtoolsProvider name="hit-test" />
       </Canvas>
       <div
         style={{
