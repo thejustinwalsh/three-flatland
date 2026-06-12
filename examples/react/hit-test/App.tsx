@@ -7,6 +7,7 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
+import { usePane, usePaneFolder, usePaneButton } from '@three-flatland/devtools/react'
 import { Color } from 'three'
 import type { ThreeEvent } from '@react-three/fiber/webgpu'
 
@@ -222,6 +223,13 @@ function Scene() {
   const handleCollect = useCallback((id: number) => {
     setCoins((prev) => prev.filter((c) => c.id !== id))
   }, [])
+
+  // Devtools pane (every example mounts exactly one Tweakpane root).
+  const { pane } = usePane()
+  const folder = usePaneFolder(pane, 'Hit Testing')
+  usePaneButton(folder, 'Respawn coins', () => {
+    setCoins(COIN_POSITIONS.map((pos, i) => ({ id: i, pos })))
+  })
 
   return (
     <>
