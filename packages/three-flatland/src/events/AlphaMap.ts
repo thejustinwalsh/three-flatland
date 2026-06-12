@@ -1,5 +1,17 @@
 import type { Texture } from 'three'
-import type { SpriteFrame } from '../sprites/types'
+
+/**
+ * Minimal atlas-rect shape `sampleFrame` needs — a structural subset of
+ * `SpriteFrame`, declared here so `events/` never imports `sprites/`
+ * (avoids an `AlphaMap` ↔ `sprites/types` type cycle). A full
+ * `SpriteFrame` is assignable to it.
+ */
+export interface AtlasRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 /**
  * CPU-side alpha-channel store for pixel-perfect hit testing
@@ -24,7 +36,7 @@ export class AlphaMap {
   }
 
   /** Sample at sprite-local UV (0–1 within the frame quad). Returns 0–255. */
-  sampleFrame(localU: number, localV: number, frame: SpriteFrame): number {
+  sampleFrame(localU: number, localV: number, frame: AtlasRect): number {
     return this.sampleAtlasUV(frame.x + localU * frame.width, frame.y + localV * frame.height)
   }
 
