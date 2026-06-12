@@ -13,11 +13,21 @@ describe('HitTestMode', () => {
   })
 
   it('falls back to bounds first, then radius, then first supported', () => {
+    const previousNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'test'
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(resolveHitTestMode('alpha', ['bounds', 'none'], 'TileMap2D')).toBe('bounds')
-    expect(resolveHitTestMode('alpha', ['radius', 'none'], 'X')).toBe('radius')
-    expect(resolveHitTestMode('alpha', ['none'], 'X')).toBe('none')
-    expect(warn).toHaveBeenCalledTimes(3)
-    warn.mockRestore()
+    try {
+      expect(resolveHitTestMode('alpha', ['bounds', 'none'], 'TileMap2D')).toBe('bounds')
+      expect(resolveHitTestMode('alpha', ['radius', 'none'], 'X')).toBe('radius')
+      expect(resolveHitTestMode('alpha', ['none'], 'X')).toBe('none')
+      expect(warn).toHaveBeenCalledTimes(3)
+    } finally {
+      warn.mockRestore()
+      process.env.NODE_ENV = previousNodeEnv
+    }
+  })
+
+  it('throws when supported list is empty', () => {
+    expect(() => resolveHitTestMode('bounds', [], 'X')).toThrow()
   })
 })

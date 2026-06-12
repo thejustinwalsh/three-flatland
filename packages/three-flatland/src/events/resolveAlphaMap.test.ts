@@ -47,4 +47,17 @@ describe('resolveAlphaMap', () => {
       expectedHash: bake.hashDescriptor(ALPHA_SIDECAR_DESCRIPTOR),
     })
   })
+
+  it('falls back to runtimeFallback when the sidecar fetch fails', async () => {
+    vi.spyOn(bake, 'probeBakedSibling').mockResolvedValue({
+      ok: true,
+      hashMatches: true,
+    } as never)
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fallback = vi.fn().mockResolvedValue(new AlphaMap(new Uint8Array([42]), 1, 1))
+    const map = await resolveAlphaMap('/sprites/a.png', { runtimeFallback: fallback })
+    expect(fallback).toHaveBeenCalledOnce()
+    expect(map!.data[0]).toBe(42)
+  })
 })

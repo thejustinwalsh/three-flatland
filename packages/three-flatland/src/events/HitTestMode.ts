@@ -16,6 +16,9 @@ export function resolveHitTestMode(
   supported: readonly HitTestMode[],
   className: string
 ): HitTestMode {
+  if (supported.length === 0) {
+    throw new Error(`three-flatland: ${className} has no supported hitTestModes`)
+  }
   if (supported.includes(requested)) return requested
   const fallback = supported.includes('bounds')
     ? 'bounds'
