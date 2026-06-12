@@ -1,5 +1,5 @@
 import type { Color } from 'three'
-import { colorToOklab, srgbToLinear } from './conversions'
+import { colorToOklab } from './conversions'
 
 /**
  * Perceptual distance between two colors in OKLAB space.
@@ -16,13 +16,11 @@ export function deltaEOklab(a: Color, b: Color): number {
 }
 
 /**
- * WCAG 2.1 relative luminance from an sRGB color.
- * Uses Rec. 709 coefficients on linearized sRGB values.
+ * WCAG 2.1 relative luminance from a Three.js Color.
+ * Rec. 709 coefficients applied directly — components are already working-space linear (the three.js default).
  */
 export function relativeLuminance(color: Color): number {
-  return (
-    0.2126 * srgbToLinear(color.r) + 0.7152 * srgbToLinear(color.g) + 0.0722 * srgbToLinear(color.b)
-  )
+  return 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b
 }
 
 /**

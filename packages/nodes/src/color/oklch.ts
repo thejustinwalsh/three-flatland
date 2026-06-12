@@ -1,24 +1,29 @@
-import { vec4, float, atan, cos, sin } from 'three/tsl'
+import { vec4, float, atan, cos, sin, TWO_PI } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { FloatInput } from '../types'
 import { linearRgbToOklab, oklabToLinearRgb, rgbToOklab, oklabToRgb } from './oklab'
 
-const TWO_PI = float(Math.PI * 2)
-
-/** Convert OKLAB vec4(L,a,b,alpha) to OKLCH vec4(L,C,H,alpha). H in radians. */
-function oklabToOklchNode(lab: Node<'vec4'>): Node<'vec4'> {
+/**
+ * Convert OKLAB vec4(L,a,b,alpha) to OKLCH vec4(L,C,H,alpha). H in radians,
+ * normalized to [0, 2*PI). Shared with oklchLerp; not part of the public API
+ * (omitted from index.ts re-exports).
+ */
+export function oklabToOklchNode(lab: Node<'vec4'>): Node<'vec4'> {
   const L = lab.x
   const a = lab.y
   const b = lab.z
   const C = a.mul(a).add(b.mul(b)).sqrt()
-  // atan2 returns [-PI, PI], wrap to [0, 2*PI]
+  // atan2 returns [-PI, PI], wrap to [0, 2*PI)
   const rawH = atan(b, a)
   const H = rawH.add(TWO_PI).mod(TWO_PI)
   return vec4(L, C, H, lab.a)
 }
 
-/** Convert OKLCH vec4(L,C,H,alpha) to OKLAB vec4(L,a,b,alpha). H in radians. */
-function oklchToOklabNode(lch: Node<'vec4'>): Node<'vec4'> {
+/**
+ * Convert OKLCH vec4(L,C,H,alpha) to OKLAB vec4(L,a,b,alpha). H in radians.
+ * Shared with oklchLerp; not part of the public API (omitted from index.ts).
+ */
+export function oklchToOklabNode(lch: Node<'vec4'>): Node<'vec4'> {
   const L = lch.x
   const C = lch.y
   const H = lch.z

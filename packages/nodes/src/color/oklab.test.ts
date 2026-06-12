@@ -37,3 +37,15 @@ describe('oklabToRgb', () => {
     expect(result.nodeType).toBeDefined()
   })
 })
+
+describe('rgbToOklab negative-input guard', () => {
+  it('constructs without throwing for out-of-range input (clamp guard in graph)', () => {
+    // Display sRGB is [0,1] by definition; the gamma entry point clamps before
+    // the EOTF so an out-of-range input still builds a valid node graph.
+    const outOfRange = vec4(-0.5, 1.7, 2.3, 1)
+    expect(() => rgbToOklab(outOfRange)).not.toThrow()
+    const result = rgbToOklab(outOfRange)
+    expect(result).toBeDefined()
+    expect(result.nodeType).toBeDefined()
+  })
+})

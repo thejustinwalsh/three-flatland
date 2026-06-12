@@ -15,13 +15,15 @@ export interface Oklch {
 }
 
 // --- sRGB transfer functions ---
+// For explicit gamma-encoded values (CSS/hex-derived numbers), not three.js
+// Color components, which are already working-space linear.
 
-/** Convert a single sRGB gamma-encoded component to linear. */
+/** Decode a gamma-encoded sRGB component (e.g. from CSS/hex) to linear. */
 export function srgbToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
 }
 
-/** Convert a single linear component to sRGB gamma-encoded. */
+/** Encode a linear component to gamma-encoded sRGB (e.g. for CSS/hex output). */
 export function linearToSrgb(c: number): number {
   return c >= 0.0031308 ? 1.055 * Math.pow(c, 1 / 2.4) - 0.055 : 12.92 * c
 }
@@ -97,29 +99,32 @@ export function oklchToOklab(L: number, C: number, h: number): Oklab {
 
 // --- High-level: Three.js Color wrappers ---
 
-/** Convert a Three.js Color (sRGB) to OKLAB. */
+/** Convert a Three.js Color to OKLAB. Components are working-space linear (the three.js default). */
 export function colorToOklab(color: Color): Oklab {
-  return linearRgbToOklab(srgbToLinear(color.r), srgbToLinear(color.g), srgbToLinear(color.b))
+  return linearRgbToOklab(color.r, color.g, color.b)
 }
 
-/** Convert a Three.js Color (sRGB) to OKLCH. */
+/** Convert a Three.js Color to OKLCH. Components are working-space linear (the three.js default). */
 export function colorToOklch(color: Color): Oklch {
   const lab = colorToOklab(color)
   return oklabToOklch(lab.L, lab.a, lab.b)
 }
 
-/** Convert OKLAB to a Three.js Color (sRGB). Clamps to 0..1. */
+/**
+ * Convert OKLAB to a Three.js Color. Clamps to 0..1.
+ * Writes working-space linear components via setRGB (no colorSpace arg), matching the three.js default.
+ */
 export function oklabToColor(L: number, a: number, b: number, target?: Color): Color {
   const rgb = oklabToLinearRgb(L, a, b)
   const out = target ?? new Color()
   return out.setRGB(
-    Math.max(0, Math.min(1, linearToSrgb(rgb.r))),
-    Math.max(0, Math.min(1, linearToSrgb(rgb.g))),
-    Math.max(0, Math.min(1, linearToSrgb(rgb.b)))
+    Math.max(0, Math.min(1, rgb.r)),
+    Math.max(0, Math.min(1, rgb.g)),
+    Math.max(0, Math.min(1, rgb.b))
   )
 }
 
-/** Convert OKLCH to a Three.js Color (sRGB). Hue in degrees. Clamps to 0..1. */
+/** Convert OKLCH to a Three.js Color. Hue in degrees. Clamps to 0..1. */
 export function oklchToColor(L: number, C: number, h: number, target?: Color): Color {
   const lab = oklchToOklab(L, C, h)
   return oklabToColor(lab.L, lab.a, lab.b, target)

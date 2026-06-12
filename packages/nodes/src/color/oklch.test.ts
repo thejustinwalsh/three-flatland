@@ -8,6 +8,8 @@ import {
   oklchHueShift,
   oklchSaturate,
   oklchLightness,
+  oklabToOklchNode,
+  oklchToOklabNode,
 } from './oklch'
 
 describe('linearRgbToOklch', () => {
@@ -81,5 +83,26 @@ describe('oklchLightness', () => {
     const result = oklchLightness(vec4(0.5, 0.5, 0.5, 1), float(-0.1))
     expect(result).toBeDefined()
     expect(result.nodeType).toBeDefined()
+  })
+})
+
+describe('rgbToOklch negative-input guard', () => {
+  it('constructs without throwing for out-of-range input (clamp guard via rgbToOklab)', () => {
+    const outOfRange = vec4(-0.2, 1.4, 3.1, 1)
+    expect(() => rgbToOklch(outOfRange)).not.toThrow()
+    const result = rgbToOklch(outOfRange)
+    expect(result).toBeDefined()
+    expect(result.nodeType).toBeDefined()
+  })
+})
+
+describe('shared polar helpers', () => {
+  it('oklabToOklchNode and oklchToOklabNode build valid vec4 nodes', () => {
+    const lch = oklabToOklchNode(vec4(0.63, 0.22, 0.13, 1))
+    expect(lch).toBeDefined()
+    expect(lch.nodeType).toBeDefined()
+    const lab = oklchToOklabNode(vec4(0.63, 0.26, 1.5, 1))
+    expect(lab).toBeDefined()
+    expect(lab.nodeType).toBeDefined()
   })
 })

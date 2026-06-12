@@ -46,12 +46,15 @@ describe('lerpOklab', () => {
     expect(end.r).toBeCloseTo(0, 2)
   })
 
-  it('midpoint of black and white is a gray', () => {
+  it('midpoint of black and white is a perceptual mid-gray', () => {
     const mid = lerpOklab(black, white, 0.5)
-    expect(mid.r).toBeCloseTo(mid.g, 2)
-    expect(mid.g).toBeCloseTo(mid.b, 2)
-    expect(mid.r).toBeGreaterThan(0.3)
-    expect(mid.r).toBeLessThan(0.7)
+    // Components are working-space linear. A perceptual-50% gray (OKLAB L=0.5)
+    // maps to a linear component near 0.125, not 0.5.
+    expect(mid.r).toBeCloseTo(mid.g, 5)
+    expect(mid.g).toBeCloseTo(mid.b, 5)
+    expect(mid.r).toBeGreaterThan(0)
+    expect(mid.r).toBeLessThan(1)
+    expect(mid.r).toBeCloseTo(0.125, 3)
   })
 })
 

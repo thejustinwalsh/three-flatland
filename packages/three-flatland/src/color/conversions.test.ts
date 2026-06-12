@@ -13,8 +13,6 @@ import {
   oklchToColor,
 } from './conversions'
 
-const EPSILON = 1e-4
-
 describe('srgbToLinear / linearToSrgb', () => {
   it('maps 0 to 0 and 1 to 1', () => {
     expect(srgbToLinear(0)).toBe(0)
@@ -105,7 +103,54 @@ describe('oklabToOklch / oklchToOklab', () => {
 })
 
 describe('colorToOklab / oklabToColor', () => {
-  it('roundtrips for sRGB colors', () => {
+  // Three.js Color components are working-space linear (ColorManagement default).
+  // These assert published Ottosson / CSS Color 4 OKLAB values for linear primaries.
+  it('linear red maps to known OKLAB values', () => {
+    const lab = colorToOklab(new Color(1, 0, 0))
+    expect(lab.L).toBeCloseTo(0.628, 3)
+    expect(lab.a).toBeCloseTo(0.2249, 3)
+    expect(lab.b).toBeCloseTo(0.1258, 3)
+  })
+
+  it('linear blue maps to known OKLAB values', () => {
+    const lab = colorToOklab(new Color(0, 0, 1))
+    expect(lab.L).toBeCloseTo(0.452, 3)
+    expect(lab.a).toBeCloseTo(-0.0325, 3)
+    expect(lab.b).toBeCloseTo(-0.3115, 3)
+  })
+
+  it('white maps to L=1, a=b=0', () => {
+    const lab = colorToOklab(new Color(1, 1, 1))
+    expect(lab.L).toBeCloseTo(1, 3)
+    expect(lab.a).toBeCloseTo(0, 3)
+    expect(lab.b).toBeCloseTo(0, 3)
+  })
+
+  it('black maps to all zeros', () => {
+    const lab = colorToOklab(new Color(0, 0, 0))
+    expect(lab.L).toBeCloseTo(0, 5)
+    expect(lab.a).toBeCloseTo(0, 5)
+    expect(lab.b).toBeCloseTo(0, 5)
+  })
+
+  it('applies no transfer function to Color components', () => {
+    // Components are linear; colorToOklab must feed them straight to linearRgbToOklab.
+    const lab = colorToOklab(new Color(0.5, 0.5, 0.5))
+    const ref = linearRgbToOklab(0.5, 0.5, 0.5)
+    expect(lab.L).toBe(ref.L)
+    expect(lab.a).toBe(ref.a)
+    expect(lab.b).toBe(ref.b)
+  })
+
+  it('oklabToColor writes linear components (non-cancelling roundtrip)', () => {
+    const lab = linearRgbToOklab(0.5, 0.25, 0.75)
+    const result = oklabToColor(lab.L, lab.a, lab.b)
+    expect(result.r).toBeCloseTo(0.5, 6)
+    expect(result.g).toBeCloseTo(0.25, 6)
+    expect(result.b).toBeCloseTo(0.75, 6)
+  })
+
+  it('roundtrips for linear colors', () => {
     const colors = [
       new Color(1, 0, 0),
       new Color(0, 1, 0),
@@ -132,7 +177,7 @@ describe('colorToOklab / oklabToColor', () => {
 })
 
 describe('colorToOklch / oklchToColor', () => {
-  it('roundtrips for sRGB colors', () => {
+  it('roundtrips for linear colors', () => {
     const colors = [
       new Color(1, 0, 0),
       new Color(0, 1, 0),

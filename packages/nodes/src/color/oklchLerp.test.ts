@@ -29,3 +29,17 @@ describe('oklabLerp', () => {
     expect(result.nodeType).toBeDefined()
   })
 })
+
+describe('lerp negative-input guard', () => {
+  it('oklchLerp constructs for out-of-range endpoints (clamp guard via rgbToOklab)', () => {
+    const result = oklchLerp(vec4(-0.3, 1.5, 0.2, 1), vec4(2, -1, 0.5, 1), 0.5)
+    expect(result).toBeDefined()
+    expect(result.nodeType).toBeDefined()
+  })
+
+  it('oklabLerp constructs for out-of-range endpoints', () => {
+    const result = oklabLerp(vec4(-0.3, 1.5, 0.2, 1), vec4(2, -1, 0.5, 1), 0.5)
+    expect(result).toBeDefined()
+    expect(result.nodeType).toBeDefined()
+  })
+})

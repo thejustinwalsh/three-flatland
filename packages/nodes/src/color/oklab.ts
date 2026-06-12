@@ -1,4 +1,4 @@
-import { vec3, vec4, mat3 } from 'three/tsl'
+import { vec4, mat3, cbrt, Fn, sRGBTransferEOTF, sRGBTransferOETF } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 
 // --- Ottosson matrices ---
@@ -55,25 +55,39 @@ const M2_INV = mat3(
   -1.291485548
 )
 
-/** Safe cube root that handles negative values: sign(x) * pow(abs(x), 1/3). */
-function cbrt(x: Node<'vec3'>): Node<'vec3'> {
-  const third = vec3(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
-  return x.sign().mul(x.abs().pow(third))
-}
+/**
+ * Element-wise cube root via three's `cbrt` (`sign(x) * pow(abs(x), 1/3)`).
+ * `@types/three` types `cbrt` scalar-only, but the runtime is component-wise;
+ * the narrow cast adapts the typed surface without changing emitted shader math.
+ */
+const cbrt3 = (v: Node<'vec3'>): Node<'vec3'> =>
+  cbrt(v as unknown as Node<'float'>) as unknown as Node<'vec3'>
 
-/** sRGB -> linear transfer function (per-channel). */
-function srgbTransferIn(c: Node<'vec3'>): Node<'vec3'> {
-  // Approximation: pow(c, 2.2)
-  const gamma = vec3(2.2, 2.2, 2.2)
-  return c.pow(gamma)
-}
+// --- Shared conversion cores (Fn so repeated calls emit shader fn invocations) ---
 
-/** linear -> sRGB transfer function (per-channel). */
-function srgbTransferOut(c: Node<'vec3'>): Node<'vec3'> {
-  // Approximation: pow(c, 1/2.2)
-  const invGamma = vec3(1.0 / 2.2, 1.0 / 2.2, 1.0 / 2.2)
-  return c.clamp(0, 1).pow(invGamma)
-}
+/**
+ * `@types/three` omits Fn's array-inputs overload under some module
+ * resolutions (the examples' `source`-condition path only sees the
+ * object-inputs form); the runtime supports array destructure. Single
+ * adapter cast, same pattern as `cbrt3` above.
+ */
+const fnVec3 = Fn as unknown as (
+  cb: (args: [Node<'vec3'>]) => Node<'vec3'>
+) => (v: Node<'vec3'>) => Node<'vec3'>
+
+/** Linear sRGB rgb -> OKLAB lab (vec3 core). */
+const linearToOklabCore = fnVec3(([rgb]) => {
+  const lms = M1.mul(rgb)
+  const lms_ = cbrt3(lms)
+  return M2.mul(lms_)
+})
+
+/** OKLAB lab -> linear sRGB rgb (vec3 core). */
+const oklabToLinearCore = fnVec3(([lab]) => {
+  const lms_ = M2_INV.mul(lab)
+  const lms = lms_.mul(lms_).mul(lms_) // cube
+  return M1_INV.mul(lms)
+})
 
 /**
  * Convert linear sRGB to OKLAB color space.
@@ -87,10 +101,7 @@ function srgbTransferOut(c: Node<'vec3'>): Node<'vec3'> {
  * linearRgbToOklab(someLinearColor)
  */
 export function linearRgbToOklab(inputColor: Node<'vec4'>): Node<'vec4'> {
-  const lms = M1.mul(inputColor.rgb)
-  const lms_ = cbrt(lms)
-  const lab = M2.mul(lms_)
-  return vec4(lab, inputColor.a)
+  return vec4(linearToOklabCore(inputColor.rgb), inputColor.a)
 }
 
 /**
@@ -103,15 +114,14 @@ export function linearRgbToOklab(inputColor: Node<'vec4'>): Node<'vec4'> {
  * oklabToLinearRgb(oklabColor)
  */
 export function oklabToLinearRgb(lab: Node<'vec4'>): Node<'vec4'> {
-  const lms_ = M2_INV.mul(lab.rgb)
-  const lms = lms_.mul(lms_).mul(lms_) // cube
-  const rgb = M1_INV.mul(lms)
-  return vec4(rgb, lab.a)
+  return vec4(oklabToLinearCore(lab.rgb), lab.a)
 }
 
 /**
  * Convert sRGB (gamma-encoded) color to OKLAB.
- * Applies sRGB->linear transfer function first.
+ * Applies the exact IEC 61966-2-1 sRGB->linear transfer (`sRGBTransferEOTF`)
+ * first. Input rgb is clamped to [0,1] — display sRGB is bounded by definition
+ * and this avoids pow-on-negative undefined behavior.
  *
  * @param inputColor - sRGB color (vec4, alpha preserved)
  * @returns vec4(L, a, b, alpha)
@@ -120,13 +130,14 @@ export function oklabToLinearRgb(lab: Node<'vec4'>): Node<'vec4'> {
  * rgbToOklab(texture(tex, uv()))
  */
 export function rgbToOklab(inputColor: Node<'vec4'>): Node<'vec4'> {
-  const linear = vec4(srgbTransferIn(inputColor.rgb), inputColor.a)
-  return linearRgbToOklab(linear)
+  const linear = sRGBTransferEOTF(inputColor.rgb.clamp(0, 1)) as Node<'vec3'>
+  return vec4(linearToOklabCore(linear), inputColor.a)
 }
 
 /**
  * Convert OKLAB to sRGB (gamma-encoded).
- * Applies linear->sRGB transfer function.
+ * Applies the exact IEC 61966-2-1 linear->sRGB transfer (`sRGBTransferOETF`),
+ * clamping the linear result to [0,1] first.
  *
  * @param lab - OKLAB color as vec4(L, a, b, alpha)
  * @returns sRGB color as vec4(r, g, b, alpha)
@@ -135,6 +146,7 @@ export function rgbToOklab(inputColor: Node<'vec4'>): Node<'vec4'> {
  * oklabToRgb(oklabColor)
  */
 export function oklabToRgb(lab: Node<'vec4'>): Node<'vec4'> {
-  const linear = oklabToLinearRgb(lab)
-  return vec4(srgbTransferOut(linear.rgb), lab.a)
+  const linear = oklabToLinearCore(lab.rgb)
+  const srgb = sRGBTransferOETF(linear.clamp(0, 1)) as Node<'vec3'>
+  return vec4(srgb, lab.a)
 }

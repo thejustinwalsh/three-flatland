@@ -22,12 +22,21 @@ describe('deltaEOklab', () => {
 })
 
 describe('relativeLuminance', () => {
+  // Color components are working-space linear, so Rec. 709 coefficients apply directly.
   it('white has luminance 1', () => {
     expect(relativeLuminance(new Color(1, 1, 1))).toBeCloseTo(1, 3)
   })
 
   it('black has luminance 0', () => {
     expect(relativeLuminance(new Color(0, 0, 0))).toBeCloseTo(0, 5)
+  })
+
+  it('mid-gray luminance equals the linear value (no transfer applied)', () => {
+    expect(relativeLuminance(new Color(0.5, 0.5, 0.5))).toBeCloseTo(0.5, 9)
+  })
+
+  it('red luminance equals its Rec. 709 coefficient', () => {
+    expect(relativeLuminance(new Color(1, 0, 0))).toBeCloseTo(0.2126, 9)
   })
 
   it('uses Rec. 709 weights', () => {
@@ -41,10 +50,11 @@ describe('relativeLuminance', () => {
 })
 
 describe('contrastRatio', () => {
-  it('black on white returns 21', () => {
+  it('black on white returns exactly 21', () => {
     const black = new Color(0, 0, 0)
     const white = new Color(1, 1, 1)
-    expect(contrastRatio(black, white)).toBeCloseTo(21, 0)
+    // (1 + 0.05) / (0 + 0.05) = 21
+    expect(contrastRatio(black, white)).toBeCloseTo(21, 9)
   })
 
   it('same color returns 1', () => {

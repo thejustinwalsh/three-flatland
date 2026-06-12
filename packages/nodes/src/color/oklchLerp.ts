@@ -1,9 +1,8 @@
-import { vec4, float, mix, atan, cos, sin } from 'three/tsl'
+import { vec4, float, mix, TWO_PI } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { FloatInput } from '../types'
 import { rgbToOklab, oklabToRgb } from './oklab'
-
-const TWO_PI = float(Math.PI * 2)
+import { oklabToOklchNode, oklchToOklabNode } from './oklch'
 
 /**
  * Interpolate between two colors in OKLCH space on the GPU.
@@ -21,30 +20,27 @@ const TWO_PI = float(Math.PI * 2)
 export function oklchLerp(colorA: Node<'vec4'>, colorB: Node<'vec4'>, t: FloatInput): Node<'vec4'> {
   const tNode = typeof t === 'number' ? float(t) : t
 
-  const labA = rgbToOklab(colorA)
-  const labB = rgbToOklab(colorB)
+  // Reuse the shared OKLAB<->OKLCH polar helpers (same sqrt/atan math).
+  const lchA = oklabToOklchNode(rgbToOklab(colorA))
+  const lchB = oklabToOklchNode(rgbToOklab(colorB))
 
-  // Convert to polar (LCH)
-  const cA = labA.y.mul(labA.y).add(labA.z.mul(labA.z)).sqrt()
-  const cB = labB.y.mul(labB.y).add(labB.z.mul(labB.z)).sqrt()
-  const hA = atan(labA.z, labA.y)
-  const hB = atan(labB.z, labB.y)
+  const cA = lchA.y
+  const cB = lchB.y
+  const hA = lchA.z
+  const hB = lchB.z
 
-  // Shortest-path hue interpolation
+  // Shortest-path hue interpolation. `dh.add(PI).mod(TWO_PI).sub(PI)` is
+  // correct for any hue representative, so normalized hues are fine here.
   const rawDh = hB.sub(hA)
   const dh = rawDh.add(float(Math.PI)).mod(TWO_PI).sub(float(Math.PI))
 
-  // Interpolate L, C, H
-  const L = mix(labA.x, labB.x, tNode)
+  // Interpolate L, C, H, then convert back through the shared OKLCH->OKLAB core.
+  const L = mix(lchA.x, lchB.x, tNode)
   const C = mix(cA, cB, tNode)
   const H = hA.add(dh.mul(tNode))
-
-  // Convert back to OKLAB
-  const a = C.mul(cos(H))
-  const b = C.mul(sin(H))
   const alpha = mix(colorA.a, colorB.a, tNode)
 
-  return oklabToRgb(vec4(L, a, b, alpha))
+  return oklabToRgb(oklchToOklabNode(vec4(L, C, H, alpha)))
 }
 
 /**
