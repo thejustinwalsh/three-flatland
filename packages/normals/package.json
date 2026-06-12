@@ -65,6 +65,11 @@
         "name": "normal",
         "description": "Bake a tangent-space normal map from a sprite PNG",
         "entry": "./dist/cli.js"
+      },
+      {
+        "name": "alpha",
+        "description": "Bake an alpha hitmask sidecar from a sprite PNG",
+        "entry": "./dist/alphaCli.js"
       }
     ]
   },
