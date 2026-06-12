@@ -5,12 +5,47 @@ import type { Texture } from 'three'
  * `SpriteFrame`, declared here so `events/` never imports `sprites/`
  * (avoids an `AlphaMap` ↔ `sprites/types` type cycle). A full
  * `SpriteFrame` is assignable to it.
+ *
+ * The optional fields (`rotated`, `trimmed`, `trimOffset`, `sourceWidth`,
+ * `sourceHeight`) are carried for type-compatibility with `SpriteFrame` and
+ * for documentation purposes. `sampleFrame` intentionally does **not** apply
+ * rotation or trim-offset corrections, because the renderer
+ * (`Sprite2DMaterial._buildBaseColor`) performs the identical plain linear
+ * remap — `atlasUV = localUV * (frame.width, frame.height) + (frame.x, frame.y)`
+ * — without any rotation or trim handling either. Alpha and rendered pixels
+ * must agree; correcting one without the other would reintroduce the
+ * disagreement the alpha mask exists to prevent. Full rotated/trimmed atlas
+ * support (renderer + sampling) is owned by the atlas overhaul in PR #117
+ * (feat-vscode-tools); when it lands, both the shader remap and this method
+ * gain the matching rotation/trim transform together.
  */
 export interface AtlasRect {
   x: number
   y: number
   width: number
   height: number
+  /** Original logical sprite width in pixels. */
+  sourceWidth?: number
+  /** Original logical sprite height in pixels. */
+  sourceHeight?: number
+  /**
+   * Whether the frame was packed with a 90° rotation in the atlas.
+   * The renderer does not apply a reverse-rotation UV transform, so
+   * `sampleFrame` does not either — both sample the atlas linearly.
+   */
+  rotated?: boolean
+  /**
+   * Whether transparent border pixels were stripped when the frame was
+   * packed. The renderer does not offset into the trimmed sub-rect, so
+   * `sampleFrame` does not either — both sample the atlas linearly.
+   */
+  trimmed?: boolean
+  /**
+   * Pixel-space offset of the trimmed content within the logical source
+   * rect (`{ x, y, width, height }` in source pixels). Present when
+   * `trimmed` is `true`. Not used by `sampleFrame`; see `trimmed` note.
+   */
+  trimOffset?: { x: number; y: number; width: number; height: number }
 }
 
 /**
@@ -35,7 +70,22 @@ export class AlphaMap {
     return this.data[yFromTop * this.width + x] ?? 0
   }
 
-  /** Sample at sprite-local UV (0–1 within the frame quad). Returns 0–255. */
+  /**
+   * Sample at sprite-local UV (0–1 within the frame quad). Returns 0–255.
+   *
+   * Maps `localUV` through the frame rect with the same linear transform
+   * the renderer uses:
+   *
+   * ```
+   * atlasU = frame.x + localU * frame.width
+   * atlasV = frame.y + localV * frame.height
+   * ```
+   *
+   * This is intentionally identical to `Sprite2DMaterial._buildBaseColor`'s
+   * TSL expression `flippedUV.mul(instanceUV.zw).add(instanceUV.xy)`.
+   * Neither the shader nor this method applies rotation or trim-offset
+   * corrections — see the `AtlasRect` interface for the full rationale.
+   */
   sampleFrame(localU: number, localV: number, frame: AtlasRect): number {
     return this.sampleAtlasUV(frame.x + localU * frame.width, frame.y + localV * frame.height)
   }
