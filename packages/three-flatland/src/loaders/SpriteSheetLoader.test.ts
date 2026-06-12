@@ -203,5 +203,17 @@ describe('SpriteSheetLoader', () => {
 
       expect(sheet.alphaMap).toBeUndefined()
     })
+
+    it('keys the cache on the alpha flag so a bare load does not collide', async () => {
+      const fakeMap = new AlphaMap(new Uint8Array([128]), 1, 1)
+      vi.mocked(resolveAlphaMap).mockResolvedValue(fakeMap)
+
+      // Same URL, with and without alpha — must produce distinct sheets.
+      const withAlpha = await SpriteSheetLoader.load('/sprites/player.json', { alpha: true })
+      const bare = await SpriteSheetLoader.load('/sprites/player.json')
+
+      expect(withAlpha.alphaMap).toBe(fakeMap)
+      expect(bare.alphaMap).toBeUndefined()
+    })
   })
 })
