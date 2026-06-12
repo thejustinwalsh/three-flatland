@@ -27,6 +27,9 @@ export * from './GlobalUniforms'
 // Color
 export * from './color'
 
+// Events / hit-testing
+export * from './events'
+
 // Lights
 export * from './lights'
 
