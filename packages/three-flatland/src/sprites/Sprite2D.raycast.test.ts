@@ -146,4 +146,51 @@ describe('Sprite2D.raycast', () => {
     expect(warn).toHaveBeenCalledTimes(1)
     warn.mockRestore()
   })
+
+  it('alpha mode mirrors flipX so flipped sprites hit the drawn pixels', () => {
+    const sprite = makeSprite()
+    sprite.hitTestMode = 'alpha'
+    // 2x1: left column opaque, right column transparent (top-row pixel order)
+    sprite.alphaMap = new AlphaMap(new Uint8Array([255, 0]), 2, 1)
+    sprite.scale.set(20, 20, 1)
+    sprite.updateMatrixWorld(true)
+    // Unflipped: left side (worldX < 0) opaque → hit; right side → miss
+    expect(makeRaycaster(-5, 0).intersectObject(sprite)).toHaveLength(1)
+    expect(makeRaycaster(5, 0).intersectObject(sprite)).toHaveLength(0)
+    // flipX mirrors the draw, so the alpha test mirrors too: the opaque
+    // column now renders on the right → right hits, left misses.
+    sprite.flipX = true
+    sprite.updateMatrixWorld(true)
+    expect(makeRaycaster(5, 0).intersectObject(sprite)).toHaveLength(1)
+    expect(makeRaycaster(-5, 0).intersectObject(sprite)).toHaveLength(0)
+  })
+
+  it("raycast() called directly returns nothing in 'none' mode", () => {
+    const sprite = makeSprite()
+    sprite.updateMatrixWorld(true)
+    sprite.hitTestMode = 'none'
+    const out: Parameters<typeof Sprite2D.prototype.raycast>[1] = []
+    Sprite2D.prototype.raycast.call(sprite, makeRaycaster(0, 0), out)
+    expect(out).toHaveLength(0)
+  })
+
+  it('clone() carries hit-test configuration', () => {
+    const sprite = makeSprite()
+    sprite.hitTestMode = 'bounds'
+    sprite.hitRadius = 0.3
+    sprite.alphaThreshold = 0.2
+    sprite.alphaMap = new AlphaMap(new Uint8Array([255]), 1, 1)
+    const clone = sprite.clone()
+    expect(clone.hitTestMode).toBe('bounds')
+    expect(clone.hitRadius).toBe(0.3)
+    expect(clone.alphaThreshold).toBe(0.2)
+    expect(clone.alphaMap).toBe(sprite.alphaMap)
+  })
+
+  it("clone() preserves 'none' by re-nulling the cloned raycast", () => {
+    const sprite = makeSprite()
+    sprite.hitTestMode = 'none'
+    const clone = sprite.clone()
+    expect(clone.raycast).toBeNull()
+  })
 })
