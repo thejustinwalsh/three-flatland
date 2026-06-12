@@ -162,7 +162,15 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   private static getCacheKey(url: string, options?: SpriteSheetLoaderOptions): string {
     const resolved = resolveTextureOptions(options?.texture, this.options)
     const optionsKey = typeof resolved === 'string' ? resolved : JSON.stringify(resolved)
-    return `${url}:${optionsKey}`
+    // Sidecar flags change the produced sheet (normalMap / alphaMap), so they
+    // are part of the cache identity — otherwise a `{ alpha: true }` load and a
+    // bare load of the same URL collide and one silently gets the wrong sheet.
+    const sidecarKey = JSON.stringify({
+      normals: options?.normals ?? false,
+      alpha: options?.alpha ?? false,
+      forceRuntime: options?.forceRuntime ?? false,
+    })
+    return `${url}:${optionsKey}:${sidecarKey}`
   }
 
   /**
