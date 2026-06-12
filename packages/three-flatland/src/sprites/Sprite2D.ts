@@ -8,6 +8,8 @@ import {
   InterleavedBuffer,
   InterleavedBufferAttribute,
   type Texture,
+  type Raycaster,
+  type Intersection,
 } from 'three'
 import type { Entity, World } from 'koota'
 import type { MaterialEffect } from '../materials/MaterialEffect'
@@ -30,6 +32,14 @@ import type { RegistryData } from '../ecs/batchUtils'
 import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 import { observable } from '../observable'
+import type { HitTestMode } from '../events/HitTestMode'
+import { resolveHitTestMode } from '../events/HitTestMode'
+import type { AlphaMap } from '../events/AlphaMap'
+import { rayPlaneZ0, createIntersection } from '../events/raycastHelpers'
+
+// Types the build-time `process.env` read without requiring @types/node
+// (shadows the global where present; erased at compile).
+declare const process: { env: { NODE_ENV?: string } }
 
 /**
  * System flag layout for `_systemFlags` now lives in a neutral module
@@ -44,11 +54,7 @@ export {
   CAST_SHADOW_MASK,
   EFFECT_BIT_OFFSET,
 } from '../materials/effectFlagBits'
-import {
-  LIT_FLAG_MASK,
-  RECEIVE_SHADOWS_MASK,
-  CAST_SHADOW_MASK,
-} from '../materials/effectFlagBits'
+import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK } from '../materials/effectFlagBits'
 
 /** Size in floats for each attribute type. */
 const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
@@ -77,10 +83,14 @@ const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, ve
  * scene.add(sprite);
  * ```
  */
+/** One-shot latch: warn once per process when 'alpha' mode lacks an
+ * alphaMap, so a scene of thousands of misconfigured sprites doesn't
+ * flood the console. Spec §7.1. */
+let _warnedMissingAlphaMap = false
+
 export class Sprite2D extends Mesh {
   declare geometry: PlaneGeometry
   declare material: Sprite2DMaterial
-
 
   /**
    * Own-geometry buffers for custom attributes (unbatched rendering).
@@ -101,6 +111,55 @@ export class Sprite2D extends Mesh {
   /** Source texture */
   private _texture: Texture | null = null
 
+  // ============================================
+  // HIT-TESTING STATE
+  // ============================================
+
+  /** Hit-test modes supported by this class. See spec §6. */
+  static readonly supportedHitTestModes: readonly HitTestMode[] = [
+    'radius',
+    'bounds',
+    'alpha',
+    'none',
+  ]
+
+  /** CPU-side alpha data for `'alpha'` hit-test mode. */
+  alphaMap: AlphaMap | null = null
+
+  /** Alpha value (0–1) below which a pixel is treated as transparent. */
+  alphaThreshold: number = 0.5
+
+  /** Custom hit radius in local units (default 0.5 = inscribed circle of unit quad). */
+  private _hitRadius: number = 0.5
+
+  /** Active hit-test strategy. */
+  private _hitTestMode: HitTestMode = 'radius'
+
+  /** Hit radius override in local units. Default 0.5 (inscribed half-width of unit quad). */
+  get hitRadius(): number {
+    return this._hitRadius
+  }
+
+  set hitRadius(value: number) {
+    this._hitRadius = value
+  }
+
+  /** Pointer hit-testing strategy. Setting `'none'` nulls the instance `raycast` property. */
+  get hitTestMode(): HitTestMode {
+    return this._hitTestMode
+  }
+
+  set hitTestMode(value: HitTestMode) {
+    const resolved = resolveHitTestMode(value, Sprite2D.supportedHitTestModes, 'Sprite2D')
+    this._hitTestMode = resolved
+    if (resolved === 'none') {
+      // Null the own-property so R3F / three skips this object in raycast traversal
+      ;(this as { raycast: unknown }).raycast = null
+    } else {
+      // Delete the own-property to restore the prototype method
+      delete (this as { raycast?: unknown }).raycast
+    }
+  }
 
   /** Pixel-perfect mode */
   pixelPerfect: boolean = false
@@ -645,7 +704,9 @@ export class Sprite2D extends Mesh {
       } else if (value == null) {
         parts.push(`${key}=null`)
       } else {
-        parts.push(`${key}=${typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : 'ref'}`)
+        parts.push(
+          `${key}=${typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : 'ref'}`
+        )
       }
     }
     return parts.join(',')
@@ -958,9 +1019,7 @@ export class Sprite2D extends Mesh {
    * per-vertex stride.
    */
   private _markInstanceDataDirty() {
-    const attr = this.geometry.getAttribute('instanceUV') as
-      | InterleavedBufferAttribute
-      | undefined
+    const attr = this.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute | undefined
     if (attr && (attr.data as { needsUpdate?: boolean })) {
       ;(attr.data as { needsUpdate: boolean }).needsUpdate = true
     }
@@ -1117,8 +1176,10 @@ export class Sprite2D extends Mesh {
 
       // Build effects key for all effects with constants
       const effectsKey = this._effects
-        .filter(e => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0)
-        .map(e => {
+        .filter(
+          (e) => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0
+        )
+        .map((e) => {
           const EC = e.constructor as typeof MaterialEffect
           return `${EC.effectName}:${this._constantsKey(e._constants)}`
         })
@@ -1145,7 +1206,7 @@ export class Sprite2D extends Mesh {
 
       // Set enable bit (lives in instanceSystem.w, indexed from bit 0)
       const bitIndex = this.material._effectBitIndex.get(EffectClass.effectName)!
-      this._effectFlags |= (1 << bitIndex)
+      this._effectFlags |= 1 << bitIndex
 
       // Add trait to entity (if enrolled)
       if (this._entity) {
@@ -1406,6 +1467,54 @@ export class Sprite2D extends Mesh {
       batch.writeSystemFlags(bs.slot, this._systemFlags)
       batch.writeEnableBits(bs.slot, this._effectFlags)
     }
+  }
+
+  /**
+   * Pointer raycast against the sprite's local Z=0 plane.
+   *
+   * The quad is a centered unit square ([-0.5, 0.5] in X and Y). Anchor and
+   * scale are already baked into the world matrix by `updateMatrix()`, so this
+   * method works entirely in centered-quad local space with no anchor math.
+   */
+  override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
+    const hit = rayPlaneZ0(raycaster, this)
+    if (!hit) return
+
+    const { localX, localY } = hit
+    const mode = this._hitTestMode
+
+    if (mode === 'bounds') {
+      if (localX < -0.5 || localX > 0.5 || localY < -0.5 || localY > 0.5) return
+    } else if (mode === 'alpha') {
+      if (localX < -0.5 || localX > 0.5 || localY < -0.5 || localY > 0.5) return
+      if (this.alphaMap) {
+        const u = localX + 0.5
+        const v = localY + 0.5
+        // Map sprite-local UV through the frame rect so atlas sub-region
+        // sprites sample the right pixels; full-texture sprites have a
+        // unit frame, making this equivalent to sampleAtlasUV.
+        const sample = this._frame
+          ? this.alphaMap.sampleFrame(u, v, this._frame)
+          : this.alphaMap.sampleAtlasUV(u, v)
+        if (sample / 255 < this.alphaThreshold) return
+      } else if (!_warnedMissingAlphaMap && process.env.NODE_ENV !== 'production') {
+        _warnedMissingAlphaMap = true
+        console.warn(
+          "three-flatland: Sprite2D hitTestMode 'alpha' requires an alphaMap — falling back to 'bounds'"
+        )
+      }
+    } else {
+      // radius — inscribed ellipse: (lx/0.5)^2 + (ly/0.5)^2 <= 1
+      // Using configurable _hitRadius as the local-space half-extent
+      const r = this._hitRadius
+      const nx = localX / r
+      const ny = localY / r
+      if (nx * nx + ny * ny > 1) return
+    }
+
+    const u = localX + 0.5
+    const v = localY + 0.5
+    intersects.push(createIntersection(hit, this, u, v))
   }
 
   /**
