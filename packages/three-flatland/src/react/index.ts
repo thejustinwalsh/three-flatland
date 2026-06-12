@@ -7,3 +7,6 @@ export type { EffectElement, LightEffectElement } from './types'
 
 // Attach helpers
 export { attachEffect, attachLighting } from './attach'
+
+// Event integration
+export { createFlatlandCompute } from './flatlandEvents'
