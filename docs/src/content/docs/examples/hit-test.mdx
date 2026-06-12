@@ -22,6 +22,25 @@ export const reactFiles = loadExample('react', 'hit-test')
 
 `Sprite2D`, `AnimatedSprite2D`, and `TileMap2D` all participate in the standard three.js raycast pipeline. That means R3F's `onPointerOver`, `onPointerOut`, and `onClick` props work on them without any extra wiring, and vanilla users reach for the same `Raycaster` they already know.
 
+## Pointer events: the shortcut
+
+three.js ships exactly one picking primitive — `Raycaster` — and no event system at all. The bare-metal "did they click this sprite?" is yours to wire up by hand:
+
+```ts
+const ray = new Raycaster()
+ray.setFromCamera(ndc, camera) // you convert the DOM event to NDC yourself
+const hit = ray.intersectObjects(sprites)[0]
+if (hit) collect(hit.object) // ...and re-do this on every pointer event
+```
+
+Because flatland sprites implement `raycast()`, **R3F turns all of that into props**:
+
+```tsx
+<sprite2D texture={texture} onClick={() => collect()} onPointerOver={() => highlight()} />
+```
+
+Same raycast underneath — R3F just hands you `onClick` / `onPointerOver` / `onPointerOut` / `onPointerMissed`, with bubbling, `e.stopPropagation()`, `e.point` (world-space hit), and pointer capture for free. You only touch a `Raycaster` directly when you're in raw three.js with no R3F.
+
 ## Hit-test modes
 
 Every sprite carries a `hitTestMode` property that controls what the raycaster tests against. Choose the mode that matches your use case's tolerance for false positives and memory cost.
