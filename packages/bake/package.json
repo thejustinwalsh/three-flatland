@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/bake",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Shared bake pipeline infrastructure — CLI, discovery, and browser-safe loader utilities for assets with offline-baked siblings",
   "type": "module",
   "bin": {

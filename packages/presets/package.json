@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/presets",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-alpha.7",
   "description": "Pre-configured setups for three-flatland",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -45,7 +45,9 @@
     "@react-three/fiber": "catalog:"
   },
   "peerDependenciesMeta": {
-    "@react-three/fiber": { "optional": true }
+    "@react-three/fiber": {
+      "optional": true
+    }
   },
   "dependencies": {
     "three-flatland": "workspace:*",
