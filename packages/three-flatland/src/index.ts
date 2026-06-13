@@ -24,6 +24,9 @@ export * from './tilemap'
 // Global Uniforms
 export * from './GlobalUniforms'
 
+// Color
+export * from './color'
+
 // Lights
 export * from './lights'
 
