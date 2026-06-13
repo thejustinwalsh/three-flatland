@@ -37,11 +37,7 @@ export function hueShift(inputColor: Node<'vec4'>, angle: FloatInput): Node<'vec
   const c = k.mul(float(1).sub(cosA)).add(sinA.div(sqrt3))
 
   // Build rotation matrix
-  const rotMat = mat3(
-    a, b, c,
-    c, a, b,
-    b, c, a
-  )
+  const rotMat = mat3(a, b, c, c, a, b, b, c, a)
 
   // Apply rotation
   const rotatedRGB = rotMat.mul(inputColor.rgb)
