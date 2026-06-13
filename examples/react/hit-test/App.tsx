@@ -100,6 +100,28 @@ function buildLootLayout(): CoinSpec[] {
   return coins
 }
 
+// A fresh random coin — used by the periodic spawner. Unlike buildLootLayout
+// (seeded, for the deterministic starting set) this is genuinely random.
+function randomCoin(id: number): CoinSpec {
+  const rarity = RARITIES[Math.floor(Math.random() * RARITIES.length)]!
+  const angle = Math.random() * Math.PI * 2
+  const radius = 60 + Math.random() * 110
+  return {
+    id,
+    rarity: rarity.name,
+    name: `${rarity.name} Coin`,
+    color: rarity.color,
+    x: Math.cos(angle) * radius,
+    y: Math.sin(angle) * radius,
+    z: 0.5,
+    fps: 8 + Math.random() * 4,
+  }
+}
+
+const SPAWN_INTERVAL_MS = 3000
+// Cap live coins so an idle session doesn't grow the scene without bound.
+const MAX_LIVE_COINS = 24
+
 const KNIGHT_SCALE = 96
 const COIN_SCALE = 48
 const KNIGHT_SPEED = 140
@@ -312,9 +334,11 @@ function Coin({ spec, collecting, onClick, onCollected }: CoinProps) {
 
   // Stable color objects — mutated in useFrame, never recreated.
   const baseTint = useMemo(() => new Color(spec.color), [spec.color])
-  // Hover highlight: a BRIGHTER version of the rarity color, not white —
-  // lerping to white would drop the coin's rarity identity on hover.
-  const hoverTint = useMemo(() => new Color(spec.color).lerp(new Color(1, 1, 1), 0.5), [spec.color])
+  // Hover highlight: the SAME rarity hue, just brighter. Multiply — do NOT
+  // lerp toward white. The coin texture is dark gold (~108,86,27), so pulling
+  // the tint to white desaturates it into a muddy near-white and the rarity
+  // identity is lost; scaling the rarity color keeps the hue and makes it pop.
+  const hoverTint = useMemo(() => new Color(spec.color).multiplyScalar(2), [spec.color])
   const tint = useRef(new Color(spec.color))
   const shrink = useRef(0)
 
@@ -422,11 +446,14 @@ function Ground({ onWalk }: { onWalk: (x: number, y: number) => void }) {
 // ---------------------------------------------------------------------------
 
 function Scene({ onCounts }: { onCounts: (counts: Record<RarityName, number>) => void }) {
-  const layout = useMemo(buildLootLayout, [])
+  const initial = useMemo(buildLootLayout, [])
+  // The coin set grows over time as the spawner adds coins.
+  const [coins, setCoins] = useState<CoinSpec[]>(() => initial)
+  const nextId = useRef(initial.length)
   const [target, setTarget] = useState<{ x: number; y: number } | null>(null)
   const [pendingCoinId, setPendingCoinId] = useState<number | null>(null)
   // alive: pickable + visible. collecting: playing the shrink-out.
-  const [alive, setAlive] = useState<Set<number>>(() => new Set(layout.map((c) => c.id)))
+  const [alive, setAlive] = useState<Set<number>>(() => new Set(initial.map((c) => c.id)))
   const [collecting, setCollecting] = useState<Set<number>>(() => new Set())
   const [counts, setCounts] = useState<Record<RarityName, number>>({
     Common: 0,
@@ -435,7 +462,23 @@ function Scene({ onCounts }: { onCounts: (counts: Record<RarityName, number>) =>
     Legendary: 0,
   })
 
-  const byId = useMemo(() => new Map(layout.map((c) => [c.id, c])), [layout])
+  const byId = useMemo(() => new Map(coins.map((c) => [c.id, c])), [coins])
+
+  // Live coin count, read by the spawner without re-subscribing the interval.
+  const liveCount = alive.size + collecting.size
+  const liveCountRef = useRef(liveCount)
+  liveCountRef.current = liveCount
+
+  // Periodically drop a fresh random coin onto the map (up to the cap).
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (liveCountRef.current >= MAX_LIVE_COINS) return
+      const id = nextId.current++
+      setCoins((prev) => [...prev, randomCoin(id)])
+      setAlive((prev) => new Set(prev).add(id))
+    }, SPAWN_INTERVAL_MS)
+    return () => clearInterval(t)
+  }, [])
 
   const walkToGround = useCallback((x: number, y: number) => {
     setPendingCoinId(null)
@@ -488,12 +531,15 @@ function Scene({ onCounts }: { onCounts: (counts: Record<RarityName, number>) =>
   }, [])
 
   const respawn = useCallback(() => {
-    setAlive(new Set(layout.map((c) => c.id)))
+    const fresh = buildLootLayout()
+    nextId.current = fresh.length
+    setCoins(fresh)
+    setAlive(new Set(fresh.map((c) => c.id)))
     setCollecting(new Set())
     setPendingCoinId(null)
     setTarget(null)
     setCounts({ Common: 0, Uncommon: 0, Rare: 0, Legendary: 0 })
-  }, [layout])
+  }, [])
 
   // Mirror collect counts up to the DOM HUD (rendered outside the Canvas).
   useEffect(() => onCounts(counts), [counts, onCounts])
@@ -503,7 +549,7 @@ function Scene({ onCounts }: { onCounts: (counts: Record<RarityName, number>) =>
   const folder = usePaneFolder(pane, 'Hit Testing')
   usePaneButton(folder, 'Respawn coins', respawn)
 
-  const visible = layout.filter((c) => alive.has(c.id) || collecting.has(c.id))
+  const visible = coins.filter((c) => alive.has(c.id) || collecting.has(c.id))
 
   return (
     <>
