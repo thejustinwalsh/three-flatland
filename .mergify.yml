@@ -47,11 +47,13 @@ pull_request_rules:
           inactive for 30 days. Update it (merge/rebase main or push commits)
           within 14 days or it may be closed automatically.
   - name: Make sure PR are up to date before merging
-    description: This automatically updates PRs when they are out-of-date with the
-      base branch.
+    description: This automatically updates PRs when they are out-of-date with the base 
+      branch.
     conditions:
       - base = main
       - "#commits-behind > 0"
       - author = thejustinwalsh
     actions:
       update:
+merge_protections_settings:
+  reporting_method: check-runs
