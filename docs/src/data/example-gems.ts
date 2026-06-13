@@ -10,6 +10,7 @@ export const EXAMPLE_GEMS: Record<string, Gem | null> = {
   "animation": 'emerald',
   "basic-sprite": 'diamond',
   "batch-demo": 'gold',
+  "hit-test": 'gold',
   "knightmark": 'amethyst',
   "lighting": 'emerald',
   "pass-effects": 'ruby',
