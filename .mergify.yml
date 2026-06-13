@@ -1,0 +1,68 @@
+merge_protections:
+  - name: Enforce conventional commit
+    description: Make sure that we follow https://www.conventionalcommits.org/en/v1.0.0/
+    if:
+      - base = main
+    success_conditions:
+      - "title ~=
+        ^(fix|feat|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\\(.+\
+        \\))?:"
+pull_request_rules:
+  - name: Clear stale label when PR is active or up-to-date
+    description: Remove stale label when community PR activity resumes or drift is fixed.
+    conditions:
+      - base = main
+      - label = stale
+      - -author = thejustinwalsh
+      - or:
+          - updated-at >= 30 days ago
+          - "#commits-behind = 0"
+    actions:
+      label:
+        remove:
+          - stale
+  - name: Close stale community PRs
+    description: Close non-maintainer PRs that stay stale and behind.
+    conditions:
+      - base = main
+      - label = stale
+      - "#commits-behind > 0"
+      - updated-at < 44 days ago
+      - -author = thejustinwalsh
+      - -draft
+      - -closed
+    actions:
+      close:
+        message: >
+          Auto-closing this PR because it remained behind the base branch and
+          stale.
+  - name: Mark stale community PRs
+    description: Mark non-maintainer PRs stale when behind and inactive.
+    conditions:
+      - base = main
+      - "#commits-behind > 0"
+      - updated-at < 30 days ago
+      - -author = thejustinwalsh
+      - -draft
+      - -closed
+      - -label = stale
+    actions:
+      label:
+        add:
+          - stale
+      comment:
+        message: >
+          This PR is marked stale because it is behind `main` and has been
+          inactive for 30 days. Update it (merge/rebase main or push commits)
+          within 14 days or it may be closed automatically.
+  - name: Make sure PR are up to date before merging
+    description: This automatically updates PRs when they are out-of-date with the base 
+      branch.
+    conditions:
+      - base = main
+      - "#commits-behind > 0"
+      - author = thejustinwalsh
+    actions:
+      update:
+merge_protections_settings:
+  reporting_method: check-runs

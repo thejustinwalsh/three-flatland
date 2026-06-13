@@ -1,7 +1,7 @@
 // three-flatland
 // 2D sprites and effects for Three.js using WebGPU and TSL
 
-export const VERSION = '0.1.0-alpha.6'
+export const VERSION = '0.1.0-alpha.7'
 
 // Sprites
 export * from './sprites'
