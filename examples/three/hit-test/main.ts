@@ -2,6 +2,8 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, Raycaster, Vector2, Plane, Vector3 } from 'three'
 import { AnimatedSprite2D, SpriteSheetLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
+import { gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 
 // HMR cleanup — stop the old animate loop + dispose the old renderer
 // when Vite reloads this module. Without this, every dev save stacks a
@@ -64,7 +66,8 @@ function setStatus(msg: string) {
 
 async function main() {
   const scene = new Scene()
-  scene.background = new Color(0x0a0a1a)
+  // Gem-tinted radial gradient backdrop (the canonical example background).
+  ;(scene as unknown as { backgroundNode: unknown }).backgroundNode = gemGradientNode({ gem: GEM })
 
   const frustumSize = 400
   const aspect = window.innerWidth / window.innerHeight
