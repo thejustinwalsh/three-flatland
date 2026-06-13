@@ -1,5 +1,6 @@
 import type { Texture, Color, Vector2 } from 'three'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { AlphaMap } from '../events/AlphaMap'
 
 /**
  * Represents a single frame in a spritesheet atlas.
@@ -93,6 +94,12 @@ export interface SpriteSheet {
    * sprite.
    */
   normalMap?: Texture
+  /**
+   * CPU alpha hitmask, co-registered with `texture`. Populated when
+   * the loader is given `alpha: true`. Consumed by
+   * `hitTestMode: 'alpha'` (assign to `sprite.alphaMap`). Spec §8.4.
+   */
+  alphaMap?: AlphaMap
   /** Get a frame by name */
   getFrame(name: string): SpriteFrame
   /** Get all frame names */

@@ -194,6 +194,28 @@
         "default": "./dist/tilemap/*.cjs"
       }
     },
+    "./events": {
+      "source": "./src/events/index.ts",
+      "import": {
+        "types": "./dist/events/index.d.ts",
+        "default": "./dist/events/index.js"
+      },
+      "require": {
+        "types": "./dist/events/index.d.cts",
+        "default": "./dist/events/index.cjs"
+      }
+    },
+    "./events/*": {
+      "source": "./src/events/*.ts",
+      "import": {
+        "types": "./dist/events/*.d.ts",
+        "default": "./dist/events/*.js"
+      },
+      "require": {
+        "types": "./dist/events/*.d.cts",
+        "default": "./dist/events/*.cjs"
+      }
+    },
     "./react/*": {
       "source": "./src/react/*.ts",
       "import": {
@@ -214,7 +236,7 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
+    "build": "NODE_OPTIONS=--max-old-space-size=8192 tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"

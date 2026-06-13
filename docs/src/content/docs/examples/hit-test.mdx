@@ -1,0 +1,228 @@
+---
+title: Hit Testing
+description: Pick sprites and tilemaps with any three.js Raycaster — R3F pointer events and vanilla intersectObjects, both covered.
+template: splash
+sort: 11
+---
+
+import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
+import { loadExample } from '../../../utils/loadExample'
+import { Tabs, TabItem } from 'starlight-theme/components'
+
+export const threeFiles = loadExample('three', 'hit-test')
+export const reactFiles = loadExample('react', 'hit-test')
+
+<ExampleDetailLayout
+  slug="hit-test"
+  threeFiles={threeFiles}
+  reactFiles={reactFiles}
+>
+
+## What you get
+
+`Sprite2D`, `AnimatedSprite2D`, and `TileMap2D` all participate in the standard three.js raycast pipeline. That means R3F's `onPointerOver`, `onPointerOut`, and `onClick` props work on them without any extra wiring, and vanilla users reach for the same `Raycaster` they already know.
+
+## Pointer events: the shortcut
+
+three.js ships exactly one picking primitive — `Raycaster` — and no event system at all. The bare-metal "did they click this sprite?" is yours to wire up by hand:
+
+```ts
+const ray = new Raycaster()
+ray.setFromCamera(ndc, camera) // you convert the DOM event to NDC yourself
+const hit = ray.intersectObjects(sprites)[0]
+if (hit) collect(hit.object) // ...and re-do this on every pointer event
+```
+
+Because flatland sprites implement `raycast()`, **R3F turns all of that into props**:
+
+```tsx
+<sprite2D texture={texture} onClick={() => collect()} onPointerOver={() => highlight()} />
+```
+
+Same raycast underneath — R3F just hands you `onClick` / `onPointerOver` / `onPointerOut` / `onPointerMissed`, with bubbling, `e.stopPropagation()`, `e.point` (world-space hit), and pointer capture for free. You only touch a `Raycaster` directly when you're in raw three.js with no R3F.
+
+## Hit-test modes
+
+Every sprite carries a `hitTestMode` property that controls what the raycaster tests against. Choose the mode that matches your use case's tolerance for false positives and memory cost.
+
+| Mode     | How it tests                                                                             | Cost                  | Default            |
+| -------- | ---------------------------------------------------------------------------------------- | --------------------- | ------------------ |
+| `radius` | Distance to the inscribed circle of the sprite's bounding quad                           | O(1)                  | `Sprite2D` default |
+| `bounds` | Local axis-aligned bounding box (AABB) of the full quad                                  | O(1)                  | —                  |
+| `alpha`  | AABB pass first, then a CPU sample of the alpha channel against a configurable threshold | O(1) + sidecar memory | opt-in             |
+| `none`   | `raycast()` returns immediately; the object is invisible to the raycaster                | zero                  | —                  |
+
+`radius` avoids false corner hits on small sprites and is the right default for round or square icons. `bounds` fits rectangular sprites without wasted margin. `alpha` delivers pixel-perfect picking at the cost of uploading an alpha sidecar texture to CPU-accessible memory — worth it for large irregular sprites like characters, not worth it for small coins. `none` is the right choice for objects you want rendered but not interactive; the knight in this example sets `hitTestMode='none'` so ground clicks pass straight through it.
+
+## Two paths to the same raycaster
+
+**R3F** — attach pointer callbacks directly to the JSX element. R3F manages the raycaster internally, dispatches synthetic `ThreeEvent`s, and handles propagation through the scene graph.
+
+```tsx
+<sprite2D
+  texture={sheet.texture}
+  frame={frame}
+  anchor={[0.5, 0.5]}
+  scale={[48, 48, 1]}
+  hitTestMode="bounds"
+  onPointerOver={(e) => {
+    e.stopPropagation()
+    setHovered(true)
+  }}
+  onPointerOut={() => setHovered(false)}
+  onClick={(e) => {
+    e.stopPropagation()
+    handleCollect(id)
+  }}
+/>
+```
+
+**Vanilla** — build NDC coordinates from the pointer event, load the raycaster, then call `intersectObjects` against the array of sprites you want to be pickable. Keep a parallel array of pickable objects and remove sprites from it when they are collected so they stop receiving hits.
+
+```typescript
+const raycaster = new Raycaster()
+const pointer = new Vector2()
+
+renderer.domElement.addEventListener('pointermove', (e) => {
+  const rect = renderer.domElement.getBoundingClientRect()
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+  raycaster.setFromCamera(pointer, camera)
+
+  const hits = raycaster.intersectObjects(pickableCoins, false)
+  setHover(hits.length > 0 ? hits[0].object : null)
+})
+```
+
+The examples above show both paths in full.
+
+## Picking tiles from a TileMap2D
+
+When a ray hits a `TileMap2D`, `tileFromIntersection` converts the `Intersection` result into layer and tile coordinates:
+
+```typescript
+const hits = raycaster.intersectObject(tilemap, true)
+if (hits.length > 0) {
+  const cell = tilemap.tileFromIntersection(hits[0])
+  // cell → { layer: TileLayer2D, tileX: number, tileY: number, gid: number }
+  console.log(`hit gid ${cell.gid} at (${cell.tileX}, ${cell.tileY})`)
+}
+```
+
+## Hover under a moving camera
+
+When you animate the camera while the pointer is stationary, R3F does not re-fire the last pointer event automatically. Call `state.events.update()` from `useFrame` to force a re-evaluation each frame:
+
+```tsx
+useFrame((state) => {
+  // Advance camera, pan, zoom…
+  state.events.update()
+})
+```
+
+Without this, a hoverable sprite that slides under a stationary cursor will not receive `onPointerOver` until the user moves the mouse.
+
+:::caution[Batched sprites are not yet interactive]
+Sprites managed by `SpriteGroup` or the `Flatland` batching layer are not yet included in the raycast pipeline — batched geometry merges draw calls in ways that break per-object hit testing. Standalone `Sprite2D` and `AnimatedSprite2D` instances (added directly to the scene, as shown here) are fully interactive today. Raycasting for batched sprites is tracked in [issue #85](https://github.com/thejustinwalsh/three-flatland/issues/85) and lands with the orchestration overhaul.
+:::
+
+## Alpha mode and pixel-perfect picking
+
+For irregular sprites — characters, foliage, large items with transparent cutouts — `hitTestMode: 'alpha'` rejects rays that land on fully transparent pixels. The mode does an AABB pre-check first, then samples the CPU-side alpha map only when the bounds test passes, so the extra cost is proportional to how often the outer box is hit rather than every frame.
+
+Getting there is a three-step process: bake a sidecar at build time, tell the loader to load it, then assign it to the sprite and flip the mode.
+
+### Step 1 — bake the sidecar
+
+The `flatland-bake alpha` command (from `@three-flatland/normals`) extracts the alpha channel of your sprite PNG into a companion file. Run it once as part of your asset pipeline, typically in a `package.json` `prebuild` script or a Makefile rule:
+
+```sh
+flatland-bake alpha sprites.png
+# writes sprites.alpha.png
+```
+
+The output is a grayscale PNG with alpha stored in the R channel, stamped with a version hash so the runtime can detect stale bakes. The sibling is named by replacing the source extension: `sprites.png` → `sprites.alpha.png`, `player/knight.png` → `player/knight.alpha.png`.
+
+The sidecar is **optional at runtime**. If the loader cannot find it — or the hash doesn't match the current format version — it falls back to a synchronous canvas readback of the already-loaded texture and logs a `console.warn` in non-production builds. The fallback is correct but blocks the main thread on load; the sidecar is worth the asset-pipeline step for anything interactive.
+
+### Step 2 — load with `alpha: true`
+
+Pass `alpha: true` to the loader. The loader probes for the `sprites.alpha.png` sibling, loads it if the hash matches, and attaches the result to `sheet.alphaMap`.
+
+<Tabs>
+<TabItem label="Three.js">
+```typescript
+const sheet = await SpriteSheetLoader.load('/sprites/sprites.json', { alpha: true })
+// sheet.alphaMap is now populated (AlphaMap instance)
+```
+</TabItem>
+<TabItem label="React">
+```tsx
+const sheet = useLoader(SpriteSheetLoader, '/sprites/sprites.json', (loader) => {
+  loader.alpha = true
+})
+// sheet.alphaMap is populated by the time the component renders
+```
+</TabItem>
+</Tabs>
+
+### Step 3 — assign and enable
+
+For a `Sprite2D`, assign the map and switch the mode. For `AnimatedSprite2D`, the constructor and the `spriteSheet` setter both adopt `sheet.alphaMap` automatically — you only need to set `hitTestMode`.
+
+<Tabs>
+<TabItem label="Three.js (Sprite2D)">
+```typescript
+const sprite = new Sprite2D({ texture: sheet.texture, frame: sheet.getFrame('knight_idle') })
+sprite.alphaMap = sheet.alphaMap        // wire up the CPU map
+sprite.hitTestMode = 'alpha'            // enable pixel-perfect rejection
+sprite.alphaThreshold = 0.5            // optional — default is 0.5 (0–1)
+```
+</TabItem>
+<TabItem label="Three.js (AnimatedSprite2D)">
+```typescript
+const knight = new AnimatedSprite2D({ spriteSheet: sheet, animation: 'idle' })
+// alphaMap is adopted automatically from sheet.alphaMap
+knight.hitTestMode = 'alpha'
+// knight.alphaThreshold defaults to 0.5
+```
+</TabItem>
+<TabItem label="React">
+```tsx
+// AnimatedSprite2D adopts sheet.alphaMap via the spriteSheet prop
+<animatedSprite2D
+  spriteSheet={sheet}
+  animation="idle"
+  hitTestMode="alpha"
+  alphaThreshold={0.5}
+  onClick={(e) => { e.stopPropagation(); handleClick() }}
+/>
+```
+</TabItem>
+</Tabs>
+
+`alphaThreshold` is a 0–1 value; pixels with alpha below it are treated as transparent for hit testing. The default of `0.5` works well for sprites with hard edges. Softer, anti-aliased outlines may benefit from a lower value like `0.1`.
+
+### Caveats
+
+- **Rotated / trimmed atlas frames** — three-flatland does not yet honor `frame.rotated` or `frame.trimmed` **anywhere**: the sprite shader (`Sprite2DMaterial`) maps sprite-local UV linearly through the frame's atlas rect with no 90° transpose and no trim-offset correction, and the alpha sampler deliberately mirrors that exact remap. Alpha hit-testing therefore stays consistent with what is actually drawn — but a rotated/trimmed-packed atlas is mis-_rendered_ in the first place, and hit-testing inherits that. This is a renderer-wide limitation, not an alpha-mode bug. Until full atlas support lands (the VS Code atlas tooling, [PR #117](https://github.com/thejustinwalsh/three-flatland/pull/117)), disable rotation and trimming in your packer.
+- **Missing alphaMap fallback** — if you set `hitTestMode: 'alpha'` without assigning an `alphaMap`, the sprite falls back to `'bounds'` behaviour and logs a one-shot warning in development.
+
+### Roadmap — not yet supported
+
+The raycast contract is the foundation; these build on it and are tracked separately:
+
+- **Batched-sprite picking** — interactivity for `SpriteGroup`/`Flatland`-batched sprites, once the orchestration overhaul makes them scene-graph citizens ([#127](https://github.com/thejustinwalsh/three-flatland/issues/127), depends on [#85](https://github.com/thejustinwalsh/three-flatland/issues/85)).
+- **`FlatlandTexture`** — render flatland to a texture with pointer events through the portal compute seam ([#126](https://github.com/thejustinwalsh/three-flatland/issues/126)).
+- **GPU ID-buffer picking** — the high-instance-count Phase 2 path behind the same `pick()` signature ([#128](https://github.com/thejustinwalsh/three-flatland/issues/128)).
+- **Drag helper** — an ergonomic drag primitive composed from the pointer events you already get ([#129](https://github.com/thejustinwalsh/three-flatland/issues/129)).
+- **Skia node hit-testing** — path-accurate picking inside Skia surfaces via `SkPath::contains` in our WASM C API ([#130](https://github.com/thejustinwalsh/three-flatland/issues/130)).
+- **Baked alpha sidecar schema** — `meta.alpha` atlas-JSON discovery, landing with the atlas schema work ([#124](https://github.com/thejustinwalsh/three-flatland/issues/124)).
+
+## Further Reading
+
+- [Sprites Guide](../../guides/sprites/) — Sprite2D properties and layers
+- [Loaders Guide](../../guides/loaders/) — Spritesheet format and alpha sidecar
+- [Tilemap](../tilemap/) — TileMap2D setup and layer access
+
+</ExampleDetailLayout>
