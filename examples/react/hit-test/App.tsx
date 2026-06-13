@@ -14,7 +14,7 @@ import {
   usePaneButton,
   DevtoolsProvider,
 } from '@three-flatland/devtools/react'
-import { Color } from 'three'
+import { Color, Vector3 } from 'three'
 import type { ThreeEvent } from '@react-three/fiber/webgpu'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
@@ -125,6 +125,12 @@ const knightAnims: AnimationSetDefinition = {
       fps: 12,
       loop: true,
     },
+    // Tumble — played while the knight is being dragged.
+    roll: {
+      frames: Array.from({ length: 8 }, (_, i) => `roll_${i}`),
+      fps: 15,
+      loop: true,
+    },
   },
 }
 
@@ -132,30 +138,56 @@ interface KnightProps {
   target: { x: number; y: number } | null
   pendingCoinId: number | null
   onReachCoin: (id: number) => void
+  onDragStart: () => void
 }
 
-function Knight({ target, pendingCoinId, onReachCoin }: KnightProps) {
+function Knight({ target, pendingCoinId, onReachCoin, onDragStart }: KnightProps) {
   const ref = useRef<AnimatedSprite2D>(null)
   const sheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
-  const anim = useRef<'idle' | 'run'>('idle')
+  const anim = useRef<'idle' | 'run' | 'roll'>('idle')
+  const camera = useThree((s) => s.camera)
+  const gl = useThree((s) => s.gl)
 
-  // Read the latest target/pending in useFrame without re-subscribing.
+  // Read the latest walk target/pending in useFrame without re-subscribing.
   const targetRef = useRef(target)
   targetRef.current = target
   const pendingRef = useRef(pendingCoinId)
   pendingRef.current = pendingCoinId
+  // While dragging, the pointer drives the position and the walk logic pauses.
+  const dragging = useRef(false)
+
+  const play = useCallback((name: 'idle' | 'run' | 'roll') => {
+    const k = ref.current
+    if (k && anim.current !== name) {
+      k.play(name)
+      anim.current = name
+    }
+  }, [])
+
+  // Unproject a DOM point to world XY on the knight's z-plane.
+  const toWorld = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = gl.domElement.getBoundingClientRect()
+      const v = new Vector3(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1,
+        0
+      )
+      v.unproject(camera)
+      return v
+    },
+    [camera, gl]
+  )
 
   useFrame((_, delta) => {
     const knight = ref.current
     if (!knight) return
     knight.update(delta * 1000)
+    if (dragging.current) return // pointer listeners own the position while dragging
 
     const t = targetRef.current
     if (!t) {
-      if (anim.current !== 'idle') {
-        knight.play('idle')
-        anim.current = 'idle'
-      }
+      play('idle')
       return
     }
 
@@ -171,24 +203,67 @@ function Knight({ target, pendingCoinId, onReachCoin }: KnightProps) {
 
     // Arrived at a ground target — stop and idle.
     if (dist < 2) {
-      if (anim.current !== 'idle') {
-        knight.play('idle')
-        anim.current = 'idle'
-      }
+      play('idle')
       return
     }
 
-    if (anim.current !== 'run') {
-      knight.play('run')
-      anim.current = 'run'
-    }
+    play('run')
     const step = Math.min(KNIGHT_SPEED * delta, dist)
     knight.position.x += (dx / dist) * step
     knight.position.y += (dy / dist) * step
-    // Face the direction of travel.
-    const sx = Math.abs(knight.scale.x)
-    knight.scale.x = dx < 0 ? -sx : sx
+    // Face the direction of travel via flipX (a UV flip). Negating scale.x
+    // would reverse the quad's winding and the FrontSide material culls it —
+    // the knight vanishes whenever it faces left. Only flip on real
+    // horizontal travel so walking straight up/down keeps the last facing.
+    if (Math.abs(dx) > 0.5) knight.flipX = dx < 0
   })
+
+  // Drag-and-drop: grab the knight and fling him around — he tumbles (roll)
+  // while held and drops to idle on release. Canvas-level listeners with
+  // pointer capture keep the drag alive even when the cursor outruns the
+  // sprite (an object-only onPointerMove would drop the moment you leave it).
+  const handlePointerDown = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      e.stopPropagation()
+      onDragStart() // cancel any walk-to target
+      dragging.current = true
+      play('roll')
+      document.body.style.cursor = 'grabbing'
+
+      const el = gl.domElement
+      // Capture keeps moves flowing when the cursor outruns the sprite; it can
+      // throw on synthetic/non-active pointers, so never let it abort the drag.
+      try {
+        el.setPointerCapture(e.pointerId)
+      } catch {
+        /* ignore — listeners below still drive the drag */
+      }
+
+      const onMove = (ev: PointerEvent) => {
+        const knight = ref.current
+        if (!knight) return
+        const w = toWorld(ev.clientX, ev.clientY)
+        const dx = w.x - knight.position.x
+        if (Math.abs(dx) > 0.5) knight.flipX = dx < 0
+        knight.position.set(w.x, w.y, 1)
+      }
+      const onUp = () => {
+        dragging.current = false
+        play('idle')
+        document.body.style.cursor = 'grab'
+        try {
+          el.releasePointerCapture?.(e.pointerId)
+        } catch {
+          /* ignore */
+        }
+        el.removeEventListener('pointermove', onMove)
+        el.removeEventListener('pointerup', onUp)
+      }
+      el.addEventListener('pointermove', onMove)
+      el.addEventListener('pointerup', onUp)
+    },
+    [gl, onDragStart, play, toWorld]
+  )
 
   return (
     <animatedSprite2D
@@ -200,9 +275,16 @@ function Knight({ target, pendingCoinId, onReachCoin }: KnightProps) {
       scale={[KNIGHT_SCALE, KNIGHT_SCALE, 1]}
       position={[0, 0, 1]}
       layer={Layers.ENTITIES}
-      // hitTestMode="none" — the knight never intercepts pointer events, so
-      // clicks pass straight through it to the coins and ground below.
-      hitTestMode="none"
+      // hitTestMode="bounds" — the full quad is grabbable for drag-and-drop.
+      hitTestMode="bounds"
+      onPointerDown={handlePointerDown}
+      onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+        e.stopPropagation()
+        if (!dragging.current) document.body.style.cursor = 'grab'
+      }}
+      onPointerOut={() => {
+        if (!dragging.current) document.body.style.cursor = 'default'
+      }}
     />
   )
 }
@@ -230,7 +312,9 @@ function Coin({ spec, collecting, onClick, onCollected }: CoinProps) {
 
   // Stable color objects — mutated in useFrame, never recreated.
   const baseTint = useMemo(() => new Color(spec.color), [spec.color])
-  const hoverTint = useRef(new Color(1, 1, 1))
+  // Hover highlight: a BRIGHTER version of the rarity color, not white —
+  // lerping to white would drop the coin's rarity identity on hover.
+  const hoverTint = useMemo(() => new Color(spec.color).lerp(new Color(1, 1, 1), 0.5), [spec.color])
   const tint = useRef(new Color(spec.color))
   const shrink = useRef(0)
 
@@ -245,13 +329,13 @@ function Coin({ spec, collecting, onClick, onCollected }: CoinProps) {
       const s = (1 - shrink.current) * COIN_SCALE
       coin.scale.set(s, s, 1)
       coin.position.y += delta * 40
-      coin.tint = hoverTint.current
+      coin.tint = hoverTint
       if (shrink.current >= 1) onCollected(spec.id)
       return
     }
 
     // Ease tint toward base/hover and bump scale on hover.
-    const target = hoveredRef.current ? hoverTint.current : baseTint
+    const target = hoveredRef.current ? hoverTint : baseTint
     const c = tint.current
     const k = Math.min(delta * 12, 1)
     c.r += (target.r - c.r) * k
@@ -363,6 +447,12 @@ function Scene({ onCounts }: { onCounts: (counts: Record<RarityName, number>) =>
     setTarget({ x: spec.x, y: spec.y })
   }, [])
 
+  // Grabbing the knight cancels any walk-to so the drag takes over cleanly.
+  const cancelWalk = useCallback(() => {
+    setPendingCoinId(null)
+    setTarget(null)
+  }, [])
+
   // Knight reached the pending coin → start its collect (shrink) animation.
   const reachCoin = useCallback(
     (id: number) => {
@@ -423,7 +513,12 @@ function Scene({ onCounts }: { onCounts: (counts: Record<RarityName, number>) =>
           suspending loaders live below an inner Suspense. */}
       <Suspense fallback={null}>
         <Ground onWalk={walkToGround} />
-        <Knight target={target} pendingCoinId={pendingCoinId} onReachCoin={reachCoin} />
+        <Knight
+          target={target}
+          pendingCoinId={pendingCoinId}
+          onReachCoin={reachCoin}
+          onDragStart={cancelWalk}
+        />
         {visible.map((spec) => (
           <Coin
             key={spec.id}
@@ -510,6 +605,7 @@ export default function App() {
         }}
       >
         Hover coins to highlight · Click a coin to walk over and collect · Click the ground to walk
+        · Drag the knight to fling him around
       </div>
     </div>
   )
