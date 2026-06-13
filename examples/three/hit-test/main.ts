@@ -206,7 +206,14 @@ async function main() {
   const COIN_SCALE = 48
   const rng = mulberry32(42)
 
-  function createCoin(rarity: (typeof RARITIES)[number], index: number): CoinItem {
+  // Core: build a coin sprite at a given spot and register it as pickable.
+  function addCoin(
+    rarity: (typeof RARITIES)[number],
+    x: number,
+    y: number,
+    z: number,
+    fps: number
+  ): CoinItem {
     const sprite = new AnimatedSprite2D({
       spriteSheet: coinSheet,
       animationSet: {
@@ -214,7 +221,7 @@ async function main() {
         animations: {
           spin: {
             frames: Array.from({ length: 12 }, (_, i) => `coin_${i}`),
-            fps: 8 + rng() * 4,
+            fps,
             loop: true,
           },
         },
@@ -223,9 +230,7 @@ async function main() {
       anchor: [0.5, 0.5],
     })
 
-    const angle = (index / 14) * Math.PI * 2 + (rng() - 0.5) * 0.5
-    const radius = 60 + rng() * 110
-    sprite.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, index * 0.01)
+    sprite.position.set(x, y, z)
     sprite.scale.set(COIN_SCALE, COIN_SCALE, 1)
     const baseColor = new Color(rarity.color)
     sprite.tint = baseColor
@@ -241,6 +246,38 @@ async function main() {
       alive: true,
       shrinkProgress: null,
     }
+  }
+
+  // Seeded layout coin (deterministic starting set — matches the React example).
+  function createCoin(rarity: (typeof RARITIES)[number], index: number): CoinItem {
+    const angle = (index / 14) * Math.PI * 2 + (rng() - 0.5) * 0.5
+    const radius = 60 + rng() * 110
+    return addCoin(
+      rarity,
+      Math.cos(angle) * radius,
+      Math.sin(angle) * radius,
+      index * 0.01,
+      8 + rng() * 4
+    )
+  }
+
+  // Genuinely random coin — used by the periodic spawner. Capped on live
+  // (pickable) coins so an idle session doesn't grow the scene without bound.
+  const MAX_LIVE_COINS = 24
+  function spawnRandomCoin() {
+    if (pickableCoins.length >= MAX_LIVE_COINS) return
+    const rarity = RARITIES[Math.floor(Math.random() * RARITIES.length)]!
+    const angle = Math.random() * Math.PI * 2
+    const radius = 60 + Math.random() * 110
+    coins.push(
+      addCoin(
+        rarity,
+        Math.cos(angle) * radius,
+        Math.sin(angle) * radius,
+        0.5,
+        8 + Math.random() * 4
+      )
+    )
   }
 
   for (const rarity of RARITIES) {
@@ -269,7 +306,6 @@ async function main() {
   // ── Hover state ───────────────────────────────────────────────────────
 
   let hoveredCoin: CoinItem | null = null
-  const WHITE = new Color(1, 1, 1)
 
   function setHover(item: CoinItem | null) {
     if (hoveredCoin === item) return
@@ -283,9 +319,10 @@ async function main() {
     hoveredCoin = item
 
     if (item) {
-      // Brighten the rarity color rather than washing to white — keeps the
-      // coin's rarity identity on hover.
-      item.sprite.tint = item.baseColor.clone().lerp(WHITE, 0.5)
+      // Brighten the rarity color (multiply) rather than washing to white —
+      // the coin texture is dark gold, so a pull toward white desaturates it
+      // into a muddy near-white. Scaling keeps the hue and makes it pop.
+      item.sprite.tint = item.baseColor.clone().multiplyScalar(2)
       const s = COIN_SCALE * 1.2
       item.sprite.scale.set(s, s, 1)
       setStatus(`${item.name} — Click to collect!`)
@@ -427,6 +464,8 @@ async function main() {
   updateHUD()
 
   let lastTime = performance.now()
+  let spawnAccum = 0
+  const SPAWN_INTERVAL_SEC = 3
 
   function animate() {
     rafId = requestAnimationFrame(animate)
@@ -435,6 +474,13 @@ async function main() {
     const deltaMs = now - lastTime
     const deltaSec = deltaMs / 1000
     lastTime = now
+
+    // Periodically drop a fresh random coin onto the map.
+    spawnAccum += deltaSec
+    if (spawnAccum >= SPAWN_INTERVAL_SEC) {
+      spawnAccum = 0
+      spawnRandomCoin()
+    }
 
     // Animate sprites.
     knight.update(deltaMs)
