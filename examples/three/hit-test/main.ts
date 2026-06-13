@@ -138,12 +138,18 @@ async function main() {
           fps: 12,
           loop: true,
         },
+        // Tumble — played while the knight is being dragged.
+        roll: {
+          frames: Array.from({ length: 8 }, (_, i) => `roll_${i}`),
+          fps: 15,
+          loop: true,
+        },
       },
     },
     animation: 'idle',
     anchor: [0.5, 0.5],
   })
-  knight.hitTestMode = 'none' // knight is not pickable
+  knight.hitTestMode = 'bounds' // full quad is grabbable for drag-and-drop
   knight.scale.set(KNIGHT_SCALE, KNIGHT_SCALE, 1)
   knight.position.set(0, 0, 0)
   scene.add(knight)
@@ -158,8 +164,10 @@ async function main() {
   function moveKnightTo(x: number, y: number) {
     knightTarget = { x, y }
     knight.play('run')
-    const sx = Math.abs(knight.scale.x)
-    knight.scale.x = x < knight.position.x ? -sx : sx
+    // Face the target via flipX (a UV flip). Negating scale.x would reverse
+    // the quad winding and the FrontSide material culls it — the knight
+    // vanishes when facing left. Only flip on real horizontal travel.
+    if (Math.abs(x - knight.position.x) > 0.5) knight.flipX = x < knight.position.x
   }
 
   function updateKnightMovement(dt: number) {
@@ -275,28 +283,88 @@ async function main() {
     hoveredCoin = item
 
     if (item) {
-      item.sprite.tint = WHITE
+      // Brighten the rarity color rather than washing to white — keeps the
+      // coin's rarity identity on hover.
+      item.sprite.tint = item.baseColor.clone().lerp(WHITE, 0.5)
       const s = COIN_SCALE * 1.2
       item.sprite.scale.set(s, s, 1)
       setStatus(`${item.name} — Click to collect!`)
       renderer.domElement.style.cursor = 'pointer'
     } else {
-      setStatus('Hover over coins. Click to walk. Click coins to collect!')
+      setStatus('Hover over coins. Click to walk. Click coins to collect. Drag the knight!')
       renderer.domElement.style.cursor = 'default'
     }
   }
 
+  // ── Drag-and-drop the knight ──────────────────────────────────────────
+  // Grab the knight and fling him around — he tumbles (roll) while held and
+  // drops to idle on release. `engaged` marks any press that started on the
+  // knight so the trailing click doesn't also fire a walk.
+  const knightDrag = { active: false, engaged: false }
+
   // ── Pointer events ────────────────────────────────────────────────────
 
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    castFromEvent(e)
+    // A coin under the cursor wins — let the click handler collect it.
+    if (raycaster.intersectObjects(pickableCoins, false).length > 0) return
+    if (raycaster.intersectObject(knight, false).length === 0) return
+    knightDrag.active = true
+    knightDrag.engaged = true
+    knightTarget = null
+    pendingPickup = null
+    knight.play('roll')
+    // Capture can throw on synthetic/non-active pointers — don't let it abort.
+    try {
+      renderer.domElement.setPointerCapture(e.pointerId)
+    } catch {
+      /* ignore */
+    }
+    renderer.domElement.style.cursor = 'grabbing'
+  })
+
+  renderer.domElement.addEventListener('pointerup', (e) => {
+    if (!knightDrag.active) return
+    knightDrag.active = false
+    knight.play('idle')
+    try {
+      renderer.domElement.releasePointerCapture?.(e.pointerId)
+    } catch {
+      /* ignore */
+    }
+    renderer.domElement.style.cursor = 'default'
+  })
+
   renderer.domElement.addEventListener('pointermove', (e) => {
+    // While dragging, the pointer drives the knight's position.
+    if (knightDrag.active) {
+      castFromEvent(e)
+      const g = rayToGroundXY()
+      if (g) {
+        const dx = g.x - knight.position.x
+        if (Math.abs(dx) > 0.5) knight.flipX = dx < 0
+        knight.position.set(g.x, g.y, knight.position.z)
+      }
+      return
+    }
+
     castFromEvent(e)
     const hits = raycaster.intersectObjects(pickableCoins, false)
     const hitCoin =
       hits.length > 0 ? (coins.find((c) => c.sprite === hits[0]!.object) ?? null) : null
     setHover(hitCoin)
+    // Grab cursor when hovering the knight (and not already over a coin).
+    if (!hitCoin && raycaster.intersectObject(knight, false).length > 0) {
+      renderer.domElement.style.cursor = 'grab'
+    }
   })
 
   renderer.domElement.addEventListener('click', (e) => {
+    // A press that started on the knight (tap or drag) never walks him.
+    if (knightDrag.engaged) {
+      knightDrag.engaged = false
+      return
+    }
     castFromEvent(e as PointerEvent)
 
     // 1. Try coins first.
@@ -334,7 +402,7 @@ async function main() {
 
   const infoFolder = pane.addFolder({ title: 'Info', expanded: true })
   infoFolder.addBinding(
-    { note: 'Hover = highlight  |  Click coin = collect  |  Click ground = walk' },
+    { note: 'Hover = highlight | Click coin = collect | Click ground = walk | Drag = grab knight' },
     'note',
     {
       readonly: true,
