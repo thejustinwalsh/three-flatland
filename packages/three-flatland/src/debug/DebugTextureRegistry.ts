@@ -18,8 +18,6 @@ import type {
   TexturePixelType,
 } from '../debug-protocol'
 import type { BuffersSubscription } from './SubscriberRegistry'
-import type { BufferCursor } from './bus-pool'
-import { copyTypedTo } from './bus-pool'
 
 /**
  * Shape the provider holds for a registered texture. Supports:
@@ -68,8 +66,6 @@ interface DebugTextureEntry {
    * entry; reused thereafter (`setSize` if aspect/dims change).
    */
   scratchRT?: RenderTarget
-  /** True once we've logged the "doesn't fit in pool buffer" warning. */
-  warnedOversized?: boolean
   /** True once we've logged a readback rejection — prevents per-frame spam. */
   readbackErrorLogged?: boolean
 }
@@ -160,7 +156,6 @@ export class DebugTextureRegistry {
     out: BuffersPayload,
     subscription: BuffersSubscription,
     _renderer: WebGPURenderer | undefined,
-    into?: BufferCursor,
   ): boolean {
     let wrote = false
     const entries: Record<string, BufferDelta | null> = {}
@@ -207,24 +202,14 @@ export class DebugTextureRegistry {
         ...(e.label !== undefined ? { label: e.label } : {}),
       }
       if (inFilter && e.sample !== null) {
-        if (into !== undefined) {
-          const need = e.sample.byteLength
-          const have = into.buffer.byteLength - into.byteOffset
-          if (need > have) {
-            if (e.warnedOversized !== true) {
-              console.warn(
-                `[devtools] buffer entry '${name}' (${need}B) exceeds remaining ` +
-                `pool buffer space (${have}B). Shipping metadata only. ` +
-                `Bump POOL.large.size in bus-pool.ts if you want this entry visible.`,
-              )
-              e.warnedOversized = true
-            }
-          } else {
-            delta.pixels = copyTypedTo(into, e.sample)
-          }
-        } else {
-          delta.pixels = e.sample
-        }
+        // Reference the cached sample directly; we never copy into the
+        // shared pool cursor. The convert path (DevtoolsProvider._flush)
+        // reads `delta.pixels` to populate its own per-entry large buffer
+        // and then strips `entry.pixels` before broadcast, so pixel bytes
+        // never travel via the data message. Anything that needs pixels —
+        // every consumer rendering path — reads them off the worker's
+        // `buffer:raw` / `buffer:chunk` broadcasts instead.
+        delta.pixels = e.sample
       }
       entries[name] = delta
       e.lastEmittedVersion = e.version
