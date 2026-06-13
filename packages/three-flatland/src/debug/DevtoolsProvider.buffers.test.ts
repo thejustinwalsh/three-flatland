@@ -70,11 +70,18 @@ function makeProvider(suffix: string): {
   })
   p.start()
   active = p
+  const originalTransport = (p as unknown as { _dataTransport: BusTransport })._dataTransport
   const transport = mkTransport()
   // Replace the live transport with our capturing mock so we can inspect
   // the exact messages and convert requests `_flush` produces. The real
-  // transport stays disposed of by `provider.dispose()` in afterEach via
-  // the original reference held internally; the mock has no resources.
+  // transport is disposed immediately after capture, and the mock transport is
+  // then disposed by `provider.dispose()` in afterEach.
+  const originalTransportApi = originalTransport as { dispose?: () => void; close?: () => void }
+  if (originalTransportApi.dispose !== undefined) {
+    originalTransportApi.dispose()
+  } else {
+    originalTransportApi.close?.()
+  }
   ;(p as unknown as { _dataTransport: BusTransport })._dataTransport = transport
   return { provider: p, transport }
 }
