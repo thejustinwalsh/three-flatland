@@ -57,11 +57,6 @@ function updateHUD() {
   ).join('')
 }
 
-function setStatus(msg: string) {
-  const el = document.getElementById('status')
-  if (el) el.textContent = msg
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -117,10 +112,13 @@ async function main() {
 
   // ── Load spritesheets ─────────────────────────────────────────────────
 
-  const base = import.meta.env.BASE_URL
+  // Relative paths (like the other three examples) so assets resolve against
+  // the document URL in BOTH the per-example server and the MPA. Using
+  // import.meta.env.BASE_URL here breaks under the MPA, where BASE_URL is '/'
+  // → '/sprites/knight.json' 404s → the loader throws → the canvas stays black.
   const [knightSheet, coinSheet] = await Promise.all([
-    SpriteSheetLoader.load(base + 'sprites/knight.json'),
-    SpriteSheetLoader.load(base + 'sprites/coin.json'),
+    SpriteSheetLoader.load('./sprites/knight.json'),
+    SpriteSheetLoader.load('./sprites/coin.json'),
   ])
 
   // ── Knight ────────────────────────────────────────────────────────────
@@ -294,7 +292,6 @@ async function main() {
     item.shrinkProgress = 0
     collectedCount[item.rarity]!++
     updateHUD()
-    setStatus(`Collected ${item.name}!`)
 
     // Remove from pickable array immediately so it can't be re-hit.
     const idx = pickableCoins.indexOf(item.sprite)
@@ -325,10 +322,8 @@ async function main() {
       item.sprite.tint = item.baseColor.clone().multiplyScalar(2)
       const s = COIN_SCALE * 1.2
       item.sprite.scale.set(s, s, 1)
-      setStatus(`${item.name} — Click to collect!`)
       renderer.domElement.style.cursor = 'pointer'
     } else {
-      setStatus('Hover over coins. Click to walk. Click coins to collect. Drag the knight!')
       renderer.domElement.style.cursor = 'default'
     }
   }
@@ -418,7 +413,6 @@ async function main() {
         } else {
           pendingPickup = coin
           moveKnightTo(coin.sprite.position.x, coin.sprite.position.y)
-          setStatus(`Walking to ${coin.name}…`)
         }
       }
       return
