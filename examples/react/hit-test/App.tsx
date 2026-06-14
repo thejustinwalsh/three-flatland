@@ -617,16 +617,18 @@ export default function App() {
       <div
         style={{
           position: 'fixed',
-          top: 12,
-          right: 12,
+          bottom: 12,
+          left: '50%',
+          transform: 'translateX(-50%)',
           zIndex: 100,
-          padding: '8px 12px',
+          padding: '8px 16px',
           background: 'rgba(0,2,28,0.85)',
           borderRadius: 8,
           fontFamily: 'monospace',
           fontSize: 13,
           display: 'flex',
           gap: 12,
+          pointerEvents: 'none',
         }}
       >
         {(Object.keys(RARITY_CSS) as RarityName[]).map((r) => (
@@ -634,24 +636,6 @@ export default function App() {
             {r}: {counts[r]}
           </span>
         ))}
-      </div>
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 12,
-          left: 12,
-          zIndex: 100,
-          padding: '8px 12px',
-          background: 'rgba(0,2,28,0.85)',
-          borderRadius: 8,
-          fontFamily: 'monospace',
-          color: '#f0edd8',
-          fontSize: 13,
-          pointerEvents: 'none',
-        }}
-      >
-        Hover coins to highlight · Click a coin to walk over and collect · Click the ground to walk
-        · Drag the knight to fling him around
       </div>
     </div>
   )
