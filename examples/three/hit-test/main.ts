@@ -429,18 +429,9 @@ async function main() {
 
   // ── Tweakpane UI ──────────────────────────────────────────────────────
 
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  // Default stats only; this example exposes no custom controls.
+  const { update: updateDevtools } = createPane({ driver: 'manual' })
   const devtools = createDevtoolsProvider({ name: 'hit-test' })
-
-  const infoFolder = pane.addFolder({ title: 'Info', expanded: true })
-  infoFolder.addBinding(
-    { note: 'Hover = highlight | Click coin = collect | Click ground = walk | Drag = grab knight' },
-    'note',
-    {
-      readonly: true,
-      label: '',
-    }
-  )
 
   // ── Resize ────────────────────────────────────────────────────────────
 

@@ -8,12 +8,7 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import {
-  usePane,
-  usePaneFolder,
-  usePaneButton,
-  DevtoolsProvider,
-} from '@three-flatland/devtools/react'
+import { usePane, DevtoolsProvider } from '@three-flatland/devtools/react'
 import { Color, Vector3 } from 'three'
 import type { ThreeEvent } from '@react-three/fiber/webgpu'
 import { GemBackground } from './GemBackground'
@@ -530,24 +525,11 @@ function Scene({ onCounts }: { onCounts: (counts: Record<RarityName, number>) =>
     })
   }, [])
 
-  const respawn = useCallback(() => {
-    const fresh = buildLootLayout()
-    nextId.current = fresh.length
-    setCoins(fresh)
-    setAlive(new Set(fresh.map((c) => c.id)))
-    setCollecting(new Set())
-    setPendingCoinId(null)
-    setTarget(null)
-    setCounts({ Common: 0, Uncommon: 0, Rare: 0, Legendary: 0 })
-  }, [])
-
   // Mirror collect counts up to the DOM HUD (rendered outside the Canvas).
   useEffect(() => onCounts(counts), [counts, onCounts])
 
-  // Devtools pane — every example mounts exactly one Tweakpane root.
-  const { pane } = usePane()
-  const folder = usePaneFolder(pane, 'Hit Testing')
-  usePaneButton(folder, 'Respawn coins', respawn)
+  // Devtools pane — default stats only; this example exposes no custom controls.
+  usePane()
 
   const visible = coins.filter((c) => alive.has(c.id) || collecting.has(c.id))
 
