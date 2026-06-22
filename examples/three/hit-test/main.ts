@@ -316,10 +316,11 @@ async function main() {
     hoveredCoin = item
 
     if (item) {
-      // Brighten the rarity color (multiply) rather than washing to white —
-      // the coin texture is dark gold, so a pull toward white desaturates it
-      // into a muddy near-white. Scaling keeps the hue and makes it pop.
-      item.sprite.tint = item.baseColor.clone().multiplyScalar(2)
+      // The coin atlas is neutral grayscale, so `tint` reproduces the rarity
+      // color exactly (highlights hit the pure hue, matching the HUD legend).
+      // On hover, brighten the same hue a touch rather than washing to white —
+      // a hard pull to white would desaturate and drop the rarity identity.
+      item.sprite.tint = item.baseColor.clone().multiplyScalar(1.4)
       const s = COIN_SCALE * 1.2
       item.sprite.scale.set(s, s, 1)
       renderer.domElement.style.cursor = 'pointer'

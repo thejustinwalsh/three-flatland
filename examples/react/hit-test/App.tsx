@@ -334,11 +334,11 @@ function Coin({ spec, collecting, onClick, onCollected }: CoinProps) {
 
   // Stable color objects — mutated in useFrame, never recreated.
   const baseTint = useMemo(() => new Color(spec.color), [spec.color])
-  // Hover highlight: the SAME rarity hue, just brighter. Multiply — do NOT
-  // lerp toward white. The coin texture is dark gold (~108,86,27), so pulling
-  // the tint to white desaturates it into a muddy near-white and the rarity
-  // identity is lost; scaling the rarity color keeps the hue and makes it pop.
-  const hoverTint = useMemo(() => new Color(spec.color).multiplyScalar(2), [spec.color])
+  // The coin atlas is neutral grayscale, so `tint` reproduces the rarity color
+  // exactly (highlights hit the pure hue, matching the HUD legend). Hover keeps
+  // the SAME hue, just brighter — a small multiply, NOT a lerp toward white,
+  // which would desaturate and drop the rarity identity.
+  const hoverTint = useMemo(() => new Color(spec.color).multiplyScalar(1.4), [spec.color])
   const tint = useRef(new Color(spec.color))
   const shrink = useRef(0)
 
