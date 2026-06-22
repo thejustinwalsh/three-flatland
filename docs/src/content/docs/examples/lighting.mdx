@@ -1,6 +1,6 @@
 ---
 title: 2D Lighting
-description: Dynamic sprite lighting with draggable point lights.
+description: Forward+ tiled sprite lighting in a dungeon, with torch flicker and a click-to-walk hero.
 template: splash
 sort: 10
 ---
@@ -19,12 +19,13 @@ export const reactFiles = loadExample('react', 'lighting')
 
 ## Interactive Lighting Demo
 
-This example demonstrates dynamic 2D lighting using `DefaultLightEffect` (Forward+ tiled culling), two flickering point lights with draggable indicators, and animated knight sprites:
+This example demonstrates dynamic 2D lighting using `DefaultLightEffect` (Forward+ tiled culling): flickering torch lights, an animated hero and slime sprites, and a click-to-walk hero exploring an LDtk dungeon. Walk the hero up to a switchable torch and toggle it to watch the lit area change:
 
 | Control | Action |
 |---------|--------|
-| **Torch 1 / 2** | Toggle point lights on/off |
-| **Drag** | Move point lights (touch or mouse) |
+| **Click** | Walk the hero toward that point (Diablo-style) |
+| **WASD / arrow keys** | Move the hero directly |
+| **Space** | Toggle the nearest switchable torch on/off |
 
 ## Lighting Setup
 

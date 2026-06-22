@@ -101,7 +101,6 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
       preload="none"
       aria-hidden="true"
     ></video>
-    <span class="gallery-tile-cta" aria-hidden="true">Click to interact</span>
   </div>
   <div class="gallery-tile-body">
     <h3 class="gallery-tile-title">{title}</h3>
@@ -372,33 +371,6 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
     opacity: 0;
   }
 
-  /* "Click to interact" affordance — appears on hover so the user
-   * understands the tile is more than a passive thumbnail. */
-  .gallery-tile-cta {
-    position: absolute;
-    right: 0.625rem;
-    bottom: 0.625rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: calc(var(--radius) - 4px);
-    background: color-mix(in oklab, var(--background) 78%, transparent);
-    backdrop-filter: blur(0.25rem);
-    -webkit-backdrop-filter: blur(0.25rem);
-    color: color-mix(in oklab, var(--tile-accent) 65%, var(--foreground));
-    font-family: 'Inter', system-ui, sans-serif;
-    font-size: 0.6875rem;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    opacity: 0;
-    transition: opacity 180ms ease-out;
-    pointer-events: none;
-  }
-
-  .gallery-tile:hover .gallery-tile-cta,
-  .gallery-tile:focus-visible .gallery-tile-cta {
-    opacity: 1;
-  }
-
   .gallery-tile-body {
     padding: 0.875rem 1rem 1rem;
     display: flex;
@@ -422,13 +394,25 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
     line-height: 1.4;
     color: var(--muted-foreground);
     margin: 0;
+    /* Reserve exactly two lines so every tile body is the same
+     * height regardless of copy length. The grid uses
+     * `align-items: start` (no stretch), so a one-line description
+     * left a tile shorter and a three-line one left it taller than
+     * its row-mates — the Hit Testing tile was the tall outlier.
+     * Reserve two lines (min-height) AND cap at two (line-clamp) so
+     * the grid stays even even if future copy runs long or short. */
+    min-height: calc(2 * 1.4 * 0.8125rem);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
   }
 
   @media (prefers-reduced-motion: reduce) {
     .gallery-tile,
     .gallery-tile-poster,
-    .gallery-tile-video,
-    .gallery-tile-cta {
+    .gallery-tile-video {
       transition: none;
     }
     .gallery-tile:hover {
