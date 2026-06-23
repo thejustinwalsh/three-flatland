@@ -472,6 +472,41 @@
         </div>
       </article>
 
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Rejected: Paper Readout Offset Probe</h3>
+            <p>
+              The paper's <code>R0([x + 1, y], 0)</code> offset was tested again
+              after the square-grid fix, this time in each quadrant's local
+              parallel axis. It is still not valid as a standalone final-pass patch
+              on the current coordinate basis.
+            </p>
+          </div>
+          <span class="badge reject">rejected</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/009-rejected-paper-readout-offset-square-grid.png" alt="Rejected paper readout offset on square HRC grid" />
+            <figcaption>Rejected: final-radiance SSIM regressed and edge/high-frequency error increased.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Canvas Metrics</b>
+            <span>luma MAE 0.05077; RMSE 0.08460; SSIM 0.94676; edge MAE 0.03234.</span>
+          </div>
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>luma MAE 33.34636; RMSE 42.33952; SSIM 0.88900; edge MAE 33.46918.</span>
+          </div>
+          <div class="note">
+            <b>Diagnostic</b>
+            <span>No-occluder HRC is darker than RC, but occluded HRC is brighter in shadows; this is not a single exposure-scale bug.</span>
+          </div>
+        </div>
+      </article>
+
       <h2>Next Feature Template</h2>
       <article class="entry">
         <div class="entry-header">

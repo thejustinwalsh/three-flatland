@@ -220,3 +220,28 @@ Interpretation:
   especially visible in final radiance/shadow luminance.
 - The next paper-aligned shader fix should target the Holographic normalization
   and final readout contract before any pass collapse or runtime optimization.
+
+## 2026-06-23 Rejected Paper Readout Offset on Square Grid
+
+Probe: reintroduced the paper's `R0([x + 1, y], 0)` final readout offset
+after the square-grid fix, applying the `+1` in each quadrant's local parallel
+axis.
+
+| Field | Value |
+| --- | --- |
+| Screenshot | `planning/experiments/hrc-review-captures/009-rejected-paper-readout-offset-square-grid.png` |
+| Canvas metrics | luma MAE `0.05077`; RMSE `0.08460`; SSIM `0.94676`; edge MAE `0.03234`; high-frequency MAE `0.001907`; profile excess peaks `-3` |
+| Final radiance metrics | luma MAE `33.34636`; RMSE `42.33952`; SSIM `0.88900`; edge MAE `33.46918`; high-frequency MAE `1.97328`; profile excess peaks `-1` |
+| Final means | RC `[155.814, 93.674, 177.658]`; HRC `[185.111, 115.982, 225.736]` |
+| Verdict | Rejected and reverted. Visible canvas MAE moved slightly down, but final-radiance SSIM and edge/high-frequency error regressed. The offset is paper-required, but it is not safe as a standalone final-pass patch on the current coordinate basis. |
+
+Additional probes:
+
+- No occluders, `1280x720`: HRC becomes substantially darker than RC
+  (`finalRadiance.ssim=0.66519`, RC mean `[454.141, 295.025, 586.855]`,
+  HRC mean `[266.851, 174.822, 349.280]`). This rules out a single global
+  brightness scale as the main error.
+- Square viewport, `720x720`: visible canvas improves
+  (`canvas.ssim=0.96516`, `profileExcessPeaks=0`), but final radiance remains
+  off (`finalRadiance.ssim=0.89774`). View/world aspect contributes to visible
+  artifacts, but it is not the whole HRC correctness bug.
