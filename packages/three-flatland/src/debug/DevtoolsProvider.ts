@@ -375,15 +375,15 @@ export class DevtoolsProvider {
     delete features.registry
     delete features.batches
 
-    // Acquire a pool buffer up front; encoders write into it via the
-    // cursor. Large tier covers the worst case (a buffer payload up to
-    // 256×256×4 = 256 KB). If nothing actually gets encoded, we
-    // release the buffer back to the pool unused.
-    // Medium tier (256 KB): the data packet (stats/batch/env/registry deltas)
-    // is small, so it must NOT ride the 16 MB texture tier — sitting there made
-    // the worker's BroadcastChannel re-broadcast clone the full 16 MB backing
-    // buffer on every same-page receiver. The large tier stays for texture
-    // pixel readback only.
+    // Medium tier (256 KB) is permanently sufficient. The data packet carries
+    // only stats/env/registry/batches deltas plus buffer *metadata*; texture
+    // pixel bytes never travel via this buffer. `_textures.drain` references
+    // each entry's cached sample directly (no cursor copy), the per-entry
+    // convert loop below copies those pixels into its own large buffer and
+    // queues a `__convert__` transfer, and `delete entry.pixels` strips the
+    // reference before this message is broadcast. So the BroadcastChannel
+    // re-broadcast never clones a 16 MB texture payload, even when consumers
+    // are actively subscribed to every buffer.
     const poolBuf = transport.acquireMedium()
     const cursor: BufferCursor = { buffer: poolBuf, byteOffset: 0 }
 
@@ -434,7 +434,7 @@ export class DevtoolsProvider {
       const subscription = this._subs.buffersSelection()
 
       const bufOut = this._buffersScratch
-      if (this._textures.drain(bufOut, subscription, this._latestRenderer, cursor)) {
+      if (this._textures.drain(bufOut, subscription, this._latestRenderer)) {
         features.buffers = bufOut
         anyFeature = true
         // Route every buffer's raw pixels through __convert__ on the
