@@ -146,22 +146,14 @@ jobs:
         with:
           app-id: ${{ secrets.APPLICATION_ID }}
           private-key: ${{ secrets.APPLICATION_PRIVATE_KEY }}
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          # Check out PR code when:
-          # 1. Issue comment on PR: refs/pull/{number}/head
-          # 2. Direct PR event: pull_request.head.sha
-          # 3. Other events: default to workflow ref
           submodules: true
-          ref: >-
-            ${{
-              (github.event.issue.pull_request && format('refs/pull/{0}/head', github.event.issue.number))
-              || github.event.pull_request.head.sha
-              || ''
-            }}
           token: ${{ steps.get-app-token.outputs.token }}
+          persist-credentials: false
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
