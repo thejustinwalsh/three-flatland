@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HRC Visual Review Report</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101316;
+        --panel: #171c21;
+        --panel-2: #1e252b;
+        --text: #e8edf2;
+        --muted: #a9b3bd;
+        --line: #313b45;
+        --accent: #7cc7ff;
+        --bad: #ff9b8d;
+        --ok: #9ee6a8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.45;
+      }
+
+      main {
+        width: min(1440px, calc(100vw - 48px));
+        margin: 0 auto;
+        padding: 32px 0 64px;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        font-weight: 700;
+      }
+
+      h2 {
+        font-size: 20px;
+        margin-top: 36px;
+      }
+
+      h3 {
+        font-size: 15px;
+        margin-bottom: 10px;
+      }
+
+      p {
+        color: var(--muted);
+        margin: 8px 0 0;
+      }
+
+      code {
+        color: var(--accent);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.95em;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .metric,
+      .entry,
+      .shot {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .metric {
+        padding: 14px;
+      }
+
+      .metric b {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .metric span {
+        display: block;
+        margin-top: 6px;
+        font-size: 14px;
+      }
+
+      .entry {
+        margin-top: 16px;
+        padding: 18px;
+      }
+
+      .entry-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .badge.reject {
+        color: var(--bad);
+      }
+
+      .badge.reference {
+        color: var(--accent);
+      }
+
+      .badge.select {
+        color: var(--ok);
+      }
+
+      .shots {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 16px;
+      }
+
+      .shot {
+        overflow: hidden;
+      }
+
+      .shot img {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #050608;
+      }
+
+      .shot figcaption {
+        padding: 10px 12px;
+        color: var(--muted);
+        font-size: 13px;
+        border-top: 1px solid var(--line);
+      }
+
+      .notes {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .note {
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      .note b {
+        color: var(--muted);
+        display: block;
+        font-size: 12px;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+
+      .note span {
+        font-size: 13px;
+      }
+
+      @media (max-width: 900px) {
+        main {
+          width: min(100vw - 24px, 720px);
+        }
+
+        .summary,
+        .shots,
+        .notes {
+          grid-template-columns: 1fr;
+        }
+
+        .entry-header {
+          display: block;
+        }
+
+        .badge {
+          margin-top: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>HRC Visual Review Report</h1>
+      <p>
+        Append-only review report for paper-aligned Holographic Radiance Cascades changes.
+        Each accepted feature should include one RC reference, up to three HRC candidates,
+        a selected candidate, the commit hash, vitexec settings, quality notes, and perf.
+      </p>
+
+      <section class="summary" aria-label="Current status">
+        <div class="metric">
+          <b>Branch</b>
+          <span><code>pr-72-radiance-cascades</code></span>
+        </div>
+        <div class="metric">
+          <b>Current Gate</b>
+          <span>RC visual parity first</span>
+        </div>
+        <div class="metric">
+          <b>Review Cadence</b>
+          <span>Stop about hourly or on regression</span>
+        </div>
+        <div class="metric">
+          <b>Candidate Count</b>
+          <span>Up to 3 screenshots per feature</span>
+        </div>
+      </section>
+
+      <h2>Baseline Comparison</h2>
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Current RC vs Holographic Baseline</h3>
+            <p>
+              Commit <code>5fb0a0ec</code> introduced the review log and stored these captures.
+              This entry records the current visual gap, not an accepted HRC quality change.
+            </p>
+          </div>
+          <span class="badge reference">baseline</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/000-reference-rc.png" alt="RC reference render" />
+            <figcaption>RC reference: clean continuous penumbrae.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/001-current-holographic.png" alt="Current HRC Holographic render" />
+            <figcaption>Current Holographic: faster, but shadow banding/repetition is visible.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Settings</b>
+            <span>comparison baseline, cap 512, intensity 0.005, warm 6.1, cool 9.7</span>
+          </div>
+          <div class="note">
+            <b>Perf</b>
+            <span>HRC estimated sample count 4,980,736</span>
+          </div>
+          <div class="note">
+            <b>Verdict</b>
+            <span>Not RC parity. Continue paper-coordinate audit before optimization.</span>
+          </div>
+        </div>
+      </article>
+
+      <h2>Rejected Probes</h2>
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Readout Offset / Paper Resolution / Mirror-Origin Probes</h3>
+            <p>
+              These captures are kept as negative evidence. They were reverted and should not
+              be treated as accepted improvements.
+            </p>
+          </div>
+          <span class="badge reject">rejected</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/002-rejected-readout-offset.png" alt="Rejected readout offset probe" />
+            <figcaption>Rejected: readout offset without full coordinate realignment.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/003-rejected-paper-resolution.png" alt="Rejected paper-resolution probe" />
+            <figcaption>Rejected: full paper-resolution output, still structurally wrong.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/004-rejected-offset-mirror.png" alt="Rejected offset plus mirror-origin probe" />
+            <figcaption>Rejected: offset plus mirror-origin probe, no visual fix.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Commit</b>
+            <span>None. Probes were not accepted and were reverted.</span>
+          </div>
+          <div class="note">
+            <b>Perf</b>
+            <span>Readout offset: 4,980,736 samples. Full-res probes: 79,691,776 samples.</span>
+          </div>
+          <div class="note">
+            <b>Verdict</b>
+            <span>Failures point to a coordinate-system mismatch upstream, not tuning.</span>
+          </div>
+        </div>
+      </article>
+
+      <h2>Next Feature Template</h2>
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Feature: TBD Paper-Aligned Fix</h3>
+            <p>
+              Replace this template when the next isolated change is committed. Include RC,
+              candidate A, candidate B, and candidate C when tuning is involved.
+            </p>
+          </div>
+          <span class="badge select">template</span>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Commit</b>
+            <span><code>TBD</code></span>
+          </div>
+          <div class="note">
+            <b>Selected Candidate</b>
+            <span>TBD</span>
+          </div>
+          <div class="note">
+            <b>Review Verdict</b>
+            <span>TBD by user review.</span>
+          </div>
+        </div>
+      </article>
+    </main>
+  </body>
+</html>
