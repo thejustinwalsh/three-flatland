@@ -82,11 +82,23 @@ Before the next shader edit, fill in an equation-to-code table for:
 
 | Paper item | Required behavior | Current code location | Status |
 | --- | --- | --- | --- |
-| Eq. 13 | Cone angular arc `A_n(i)` from `v_n(i +/- 1/2)` | TBD | TBD |
-| Eq. 14 | Odd-`x` radiance merge via `T_n(p, i +/- 1/2)` and `R_{n+1}(q, j)` | TBD | TBD |
-| Eq. 15-17 | Even-`x` radiance average of direct child and traced child | TBD | TBD |
-| Eq. 18 | Even transfer merge `T_n(p,k)` with `T_n(p + v_n(k), k)` | TBD | TBD |
-| Eq. 20 | Odd transfer averaged merge of neighboring directions | TBD | TBD |
-| Algorithm 1 Lighting | Four rotated quadrants and final `R0([x + 1, y], 0)` | TBD | TBD |
-| Eq. 21 | 1px opacity-aware cross blur after quadrant sum | TBD | TBD |
+| Eq. 13 | Cone angular arc `A_n(i)` from `v_n(i +/- 1/2)` | `HierarchicalRadianceCascades.ts`, `_ensureHolographicRadianceMaterial`, `coneArc()` | Mostly aligned. Direction index `d` represents paper half-integer `i = d + 1/2`; child `d` spans edge directions `d..d+1`. |
+| Eq. 14 | Odd-`x` radiance merge via `T_n(p, i +/- 1/2)` and `R_{n+1}(q, j)` | `_ensureHolographicRadianceMaterial`, `contributionOdd()` | Mostly aligned. Uses `T_n` at `parallel, localY, edgeDirection`, then samples `R_{n+1}` at `p + v_n(edge)`. Needs visual proof under paper output contract. |
+| Eq. 15-17 | Even-`x` radiance average of direct child and traced child | `_ensureHolographicRadianceMaterial`, `contributionEven()` | Mostly aligned. Uses direct `R_{n+1}(p,j)` and traced branch through `T_{n+1}(p, 2i +/- 1)`. Needs proof that valid-domain masks are not clipping rectangular scenes incorrectly. |
+| Eq. 18 | Even transfer merge `T_n(p,k)` with `T_n(p + v_n(k), k)` | `_ensureHolographicRecursiveTransferMaterial`, even `directionIndex` branch | Aligned in structure. Uses previous-level near/far transfer and standard radiance/transmittance merge. |
+| Eq. 20 | Odd transfer averaged merge of neighboring directions | `_ensureHolographicRecursiveTransferMaterial`, odd `directionIndex` branch | Aligned in structure. Uses neighboring low/high direction merges and averages them. |
+| Algorithm 1 HRC grid | HRC operates on an `X x Y` fluence grid; only the parallel axis decimates per cascade. | `_holographicFinalRadianceDimensions()` and `_holographicLevelInfoForResolution()` | Not paper-clean. Current native HRC output is `cascadeResolution / sqrt(baseRayCount)` to fit RC display texture conventions. This may be a display optimization, but it should not be assumed equivalent to the paper solver grid. |
+| Algorithm 1 Lighting | Four rotated quadrants and final `R0([x + 1, y], 0)` | `_ensureHolographicDirectTransferMaterial()` quadrant transforms; `_ensureHolographicFinalRadianceMaterial()` readout | Suspect. Current best visual state omits the paper `+1` readout offset because reintroducing it without a full coordinate-system realignment worsened output. The paper offset is not optional; this points to a coordinate convention mismatch that must be fixed systematically. |
+| Eq. 21 | 1px opacity-aware cross blur after quadrant sum | `_ensureHolographicFinalRadianceMaterial()`, `sampleNeighbor()` | Present. Center weight 4 and four cardinal taps; SDF guards block cross-occluder blur. |
 
+Audit conclusion: the recurrence equations are plausibly close, but the active
+visual artifact should be treated as a coordinate/output-contract bug, not a
+filtering or exposure problem. The next implementation change should either:
+
+- restore a paper-native HRC fluence grid behind a separate RC-compatible display
+  downsample, or
+- fully realign the current reduced HRC grid's quadrant transforms so the paper
+  `R0([x + 1, y], 0)` readout is valid again.
+
+Do not optimize or tune blur/noise until the selected path removes the repeated
+shadow structure against the RC reference.
