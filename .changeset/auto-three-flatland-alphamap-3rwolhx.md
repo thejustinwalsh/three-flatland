@@ -1,5 +1,5 @@
 ---
-"@three-flatland/normals": minor
+"@three-flatland/alphamap": minor
 ---
 
 > Branch: worktree-events-system
@@ -25,8 +25,3 @@ finds whichever bakers are installed via their package.json flatland.bake
 manifest, so consumers install only the baker they need.
 Files: docs/src/content/docs/examples/hit-test.mdx, docs/src/content/docs/guides/baking.mdx, packages/alphamap/README.md, packages/alphamap/package.json, packages/alphamap/src/bake.node.test.ts, packages/alphamap/src/bake.node.ts, packages/alphamap/src/cli.ts, packages/alphamap/src/descriptor.ts, packages/alphamap/src/index.ts, packages/alphamap/src/node.ts, packages/alphamap/tsconfig.json, packages/alphamap/tsup.config.ts, packages/normals/package.json, packages/normals/src/alphaBake.node.ts, packages/normals/src/alphaBake.test.ts, packages/normals/src/alphaCli.ts, packages/three-flatland/src/events/resolveAlphaMap.ts, pnpm-lock.yaml, pnpm-workspace.yaml
 Stats: 19 files changed, 283 insertions(+), 121 deletions(-)
-
-### f48d546b9a12b1b1ec839f9dd70d70226dd4ac0c
-feat: register flatland-bake alpha baker writing stamped .alpha.png sidecars
-Files: packages/normals/package.json, packages/normals/src/alphaBake.node.ts, packages/normals/src/alphaBake.test.ts, packages/normals/src/alphaCli.ts
-Stats: 4 files changed, 113 insertions(+)
