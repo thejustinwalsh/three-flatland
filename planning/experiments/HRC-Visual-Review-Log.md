@@ -245,3 +245,17 @@ Additional probes:
   (`canvas.ssim=0.96516`, `profileExcessPeaks=0`), but final radiance remains
   off (`finalRadiance.ssim=0.89774`). View/world aspect contributes to visible
   artifacts, but it is not the whole HRC correctness bug.
+
+## 2026-06-23 Rejected Final `/pi` Removal
+
+Probe: removed the final HRC `fluence / pi` normalization from
+`sampleReadout()`.
+
+| Scenario | Canvas SSIM | Final radiance SSIM | RC mean | HRC mean | Verdict |
+| --- | ---: | ---: | --- | --- | --- |
+| Occluders enabled | `0.80117` | `0.26584` | `[155.814, 93.674, 177.658]` | `[590.458, 369.805, 719.575]` | Rejected: severe over-brightening. |
+| Occluders disabled | `0.97293` | `0.43349` | `[454.141, 295.025, 586.855]` | `[838.328, 549.220, 1097.300]` | Rejected: canvas saturation hides final-radiance error. |
+
+Conclusion: the paper's final lighting pseudocode does not explicitly show a
+`/pi`, but removing it in this implementation is not correct. The root problem
+is not a missing global scale factor.
