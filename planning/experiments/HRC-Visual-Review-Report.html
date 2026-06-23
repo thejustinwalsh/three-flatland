@@ -334,6 +334,61 @@
         </div>
       </article>
 
+      <h2>Accepted Fixes</h2>
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Holographic Final Decode: Remove Mandatory Neighbor Cleanup</h3>
+            <p>
+              This entry addresses the reported HRC contact-shadow ring: shadow touching
+              the blocker, then a bright gap, then continued shadow. The root cause was
+              an always-on four-neighbor cleanup inside the Holographic final readout,
+              before optional filtering. The accepted change decodes <code>R0</code>
+              directly and leaves smoothing to the explicit filter stage.
+            </p>
+          </div>
+          <span class="badge select">accepted</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/001-current-holographic.png" alt="HRC before final cleanup removal" />
+            <figcaption>Before: visible bright contact ring near occluder silhouettes.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/005-accepted-no-final-cleanup.png" alt="Accepted HRC render without mandatory final cleanup" />
+            <figcaption>Accepted: direct final decode removes the detached contact ring.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Change</b>
+            <span>Removed mandatory final-readout spatial cleanup; no transfer-coordinate changes retained.</span>
+          </div>
+          <div class="note">
+            <b>Canvas Perceptual</b>
+            <span>luma MAE 0.03449; RMSE 0.05590; SSIM 0.97589; edge MAE 0.02349; profile excess peaks -2</span>
+          </div>
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>luma MAE 28.0138; RMSE 34.5007; SSIM 0.91827; edge MAE 26.7811; high-frequency MAE 1.1684</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Validation</b>
+            <span><code>typecheck</code>, focused vitest lighting tests, vitexec <code>--gpu</code> screenshot and metrics</span>
+          </div>
+          <div class="note">
+            <b>Perf</b>
+            <span>HRC estimated sample count remains 4,980,736; pass count remains 21.</span>
+          </div>
+          <div class="note">
+            <b>Verdict</b>
+            <span>Accepted for the ring artifact. Residual RC/HRC quality mismatch remains a separate parity task.</span>
+          </div>
+        </div>
+      </article>
+
       <h2>Next Feature Template</h2>
       <article class="entry">
         <div class="entry-header">
