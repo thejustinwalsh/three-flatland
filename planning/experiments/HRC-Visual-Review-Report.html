@@ -276,6 +276,20 @@
             <span>Not RC parity. Continue paper-coordinate audit before optimization.</span>
           </div>
         </div>
+        <div class="notes">
+          <div class="note">
+            <b>Canvas Perceptual</b>
+            <span>scene crop 668x425; luma MAE 0.6506; RMSE 0.6899; SSIM 0.000004; edge MAE 0.0951; profile excess peaks +6</span>
+          </div>
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>RC 128x128 vs HRC 128x72; luma MAE 29.3040; RMSE 36.0992; SSIM 0.9135; edge MAE 30.6153; high-frequency MAE 1.4183</span>
+          </div>
+          <div class="note">
+            <b>Metric Source</b>
+            <span><code>window.__radianceCascadeControls.comparePerceptual()</code>, vitexec <code>--gpu</code>, June 23 2026</span>
+          </div>
+        </div>
       </article>
 
       <h2>Rejected Probes</h2>

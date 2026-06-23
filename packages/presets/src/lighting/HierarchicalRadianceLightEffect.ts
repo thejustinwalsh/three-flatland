@@ -1,35 +1,41 @@
 import { vec2, vec3, vec4, Fn, texture as sampleTexture, uniform } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { Vector2 } from 'three'
-import { createLightEffect, RadianceCascades, createRadianceCascadesConfig } from 'three-flatland'
+import {
+  createLightEffect,
+  HierarchicalRadianceCascades,
+  createHierarchicalRadianceCascadesConfig,
+} from 'three-flatland'
 
 /**
- * Radiance Cascades GI: SDF + hierarchical radiance cascades for global illumination.
+ * Hierarchical/Holographic Radiance Cascades GI.
  *
- * Provides indirect lighting via cascade merging. Uses RadianceCascades as a
- * schema constant with config baked into the factory function.
- *
- * The radiance texture reference is stable from construction — RadianceCascades
- * eagerly allocates its final RT so TSL sampleTexture() can capture it at
- * node-build time. The RT is resized later in init(), but the .texture object
- * reference stays the same.
- *
- * @example
- * ```typescript
- * import { RadianceLightEffect } from '@three-flatland/presets'
- *
- * const lighting = new RadianceLightEffect()
- * flatland.setLighting(lighting)
- * lighting.radianceIntensity = 0.5
- * ```
+ * This preset intentionally uses `HierarchicalRadianceCascades` instead of
+ * changing `RadianceLightEffect` defaults. It exists so examples can compare the
+ * conventional Alexander Sannikov RC path against the experimental interval
+ * composer and the Holographic transfer/radiance hierarchy from Freeman,
+ * Sannikov, and Margel's 2025 paper.
  */
-export const RadianceLightEffect = createLightEffect({
-  name: 'radianceLight',
+export const HierarchicalRadianceLightEffect = createLightEffect({
+  name: 'hierarchicalRadianceLight',
   schema: {
-    // Uniforms (runtime-settable, TSL nodes)
     radianceIntensity: 1.0,
-    // Constants (per-instance, read-only reference, mutable internals)
-    radiance: () => new RadianceCascades(createRadianceCascadesConfig('balanced')),
+    radiance: () =>
+      new HierarchicalRadianceCascades(
+        createHierarchicalRadianceCascadesConfig('balanced', {
+          sceneRadianceDownsampleFactor: 1,
+          raymarchSteps: 32,
+          blueNoiseStrength: 0.45,
+          filterRadius: 1.25,
+          filterStrength: 0.8,
+          filterDiagonals: true,
+          filterJitterStrength: 0.35,
+          mipBlur: 0,
+          mipStrength: 0.25,
+          wideDownsampleFactor: 2,
+          wideLevels: 1,
+        })
+      ),
     occSize: () => uniform(new Vector2(1, 1)),
     occOffset: () => uniform(new Vector2(0, 0)),
   } as const,
@@ -38,22 +44,14 @@ export const RadianceLightEffect = createLightEffect({
     const radianceIntensity = uniforms.radianceIntensity
     const occSize = constants.occSize
     const occOffset = constants.occOffset
-
-    // Capture the stable texture reference at node-build time.
-    // RadianceCascades eagerly allocates its final RT in the constructor,
-    // so this is always non-null. The underlying RT gets resized in init(),
-    // but the .texture object reference stays the same.
     const radianceTexture = constants.radiance.finalRadianceTexture
 
     return (ctx) => {
       const lit = Fn(() => {
         const totalLight = vec3(0, 0, 0).toVar('totalLight')
-
-        // Sample radiance texture for indirect GI
         const surfaceUV = vec2(ctx.worldPosition).sub(occOffset).div(occSize)
         const indirect = sampleTexture(radianceTexture, surfaceUV)
         totalLight.addAssign(indirect.rgb.mul(radianceIntensity))
-
         return vec3(totalLight)
       })() as Node<'vec3'>
 
@@ -80,7 +78,6 @@ export const RadianceLightEffect = createLightEffect({
     this.radiance.setWorldBounds(ctx.worldSize, ctx.worldOffset)
     this.radiance.generate(ctx.renderer, ctx.sdfGenerator.sdfTexture)
 
-    // Update world bounds uniforms — zero-cost, no shader rebuild
     this.occSize.value.copy(ctx.worldSize)
     this.occOffset.value.copy(ctx.worldOffset)
   },

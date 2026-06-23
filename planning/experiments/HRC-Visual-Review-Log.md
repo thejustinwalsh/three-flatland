@@ -18,6 +18,24 @@ vitexec, and recorded here before the next change.
 No uncommitted shader probes count as accepted progress. Rejected probes must be
 reverted or parked before the next accepted commit.
 
+## Perceptual Metrics
+
+`window.__radianceCascadeControls.comparePerceptual()` is the current deterministic
+probe for perceptual review. It compares both the visible scene crop and the
+final radiance render targets:
+
+| Metric | Meaning | Direction |
+| --- | --- | --- |
+| `luminanceMae` | Mean absolute luminance error after resampling to a shared grid. | Lower is better. |
+| `luminanceRmse` | Root mean squared luminance error; penalizes larger local misses. | Lower is better. |
+| `ssim` | Global SSIM-style luminance/contrast/structure score. | Higher is better. |
+| `edgeMae` | Sobel edge-magnitude error; catches misplaced penumbra edges. | Lower is better. |
+| `highFrequencyMae` | Difference in 3x3 high-frequency residual; catches shimmer/banding. | Lower is better. |
+| `profileExcessPeaks` | Extra strong horizontal shadow-profile peaks in HRC versus RC. | Near zero is better; positive values indicate repeated/ringing structure. |
+
+The visible-canvas metric crops to the deterministic example scene rectangle
+before scoring, so the Tweakpane/devtools overlay does not dominate the result.
+
 ## Current Baseline
 
 | Item | Value |
