@@ -259,3 +259,18 @@ Probe: removed the final HRC `fluence / pi` normalization from
 Conclusion: the paper's final lighting pseudocode does not explicitly show a
 `/pi`, but removing it in this implementation is not correct. The root problem
 is not a missing global scale factor.
+
+## 2026-06-23 Rejected Aspect-Aware Cone Arc
+
+Probe: changed Eq. 13 `coneArc()` to account for physical world-cell aspect
+instead of assuming square grid cells. Direct transfer already traces physical
+world segments, so this tested whether the radiance recurrence needed matching
+physical angular widths.
+
+| Scenario | Canvas SSIM | Final radiance SSIM | Final luma MAE | Verdict |
+| --- | ---: | ---: | ---: | --- |
+| `1280x720` | `0.96983` | `0.89274` | `34.24054` | Rejected for reference: visible canvas improved, but final-radiance oracle regressed from baseline `0.90512`. |
+| `720x720` | `0.96516` | `0.89774` | `33.03426` | Neutral versus baseline square viewport. |
+
+Conclusion: aspect-aware cone arcs may be useful later as a visual/runtime
+approximation, but it does not improve the reference HRC parity gate. Reverted.
