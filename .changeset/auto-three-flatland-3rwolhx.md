@@ -5,6 +5,20 @@
 > Branch: worktree-events-system
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/125
 
+### 68fcbdf27396059dca8296c02ab23efd0bc7cc69
+fix: AnimatedSprite2D keeps a user-set alphaMap across sheet swaps
+The spriteSheet setter decided whether to replace alphaMap from the
+_usesSpriteSheetAlphaMap flag, but that flag only tracks the sheet path
+— assigning the public alphaMap property directly leaves it stale at
+true. So inherit-from-sheet → user override → swap clobbered the user's
+map. Decide replacement by comparing the current alphaMap against the
+previous sheet's inherited map instead: replace only when alphaMap is
+null or still that inherited map. Add a regression test for the
+inherit → override → swap lifecycle (the existing user-set test never
+inherited first, so it missed the stale-flag path).
+Files: packages/three-flatland/src/sprites/AnimatedSprite2D.test.ts, packages/three-flatland/src/sprites/AnimatedSprite2D.ts
+Stats: 2 files changed, 34 insertions(+), 1 deletion(-)
+
 ### 024cb610d30e1683e400c1d2962b22348590c15d
 fix: AnimatedSprite2D updates inherited alphaMap on sheet swap
 CodeRabbit #125: the null-only guard left a sheet-inherited alphaMap stale
