@@ -144,8 +144,79 @@ Accepted probe:
 | Canvas metrics | luma MAE 0.03449; RMSE 0.05590; SSIM 0.97589; edge MAE 0.02349; high-frequency MAE 0.001386; profile excess peaks -2. |
 | Final radiance metrics | luma MAE 28.0138; RMSE 34.5007; SSIM 0.91827; edge MAE 26.7811; high-frequency MAE 1.1684; profile excess peaks 1. |
 | Validation | `pnpm --filter example-three-radiance-cascades typecheck`; `pnpm vitest run packages/three-flatland/src/lights/HierarchicalRadianceCascades.test.ts packages/three-flatland/src/lights/RadianceCascades.test.ts`; `pnpm exec vitexec --gpu --config examples/three/radiance-cascades/vite.config.ts --screenshot /private/tmp/hrc-ring-no-cleanup-only.png --timeout 60 ...` |
-| Verdict | Accepted. This fixes the reported ring without changing transfer coordinates or using tuning as a mask. Residual quality mismatch remains a separate HRC parity task. |
+| Verdict | Superseded. This reduced one contact artifact, but the later luminance-diff and viewport probes showed it did not solve RC/HRC parity and was not the root cause of viewport-dependent ringing. |
 
-Audit update: the Eq. 21 cleanup row above is no longer current for the accepted
-implementation. A cleanup kernel may still be useful later, but it must be an
-explicit, separately tested filter and must not reintroduce contact-shadow gaps.
+Audit update: the Eq. 21 cleanup row above is current again after the
+viewport-dependent grid bug was isolated. The cleanup kernel was not the root
+cause of the viewport-dependent ring; the rectangular HRC output grid was.
+
+## 2026-06-23 Viewport-Dependent HRC Grid Fix
+
+User-reported issue: the browser showed harder north/south rings around
+horizontal occluders than the report screenshots. Luminance diff confirmed HRC
+was being compared against RC, but the screenshot did not reproduce the exact
+browser artifact.
+
+Root cause: Holographic HRC used a rectangular final grid derived from
+`worldSize / maxWorldDim`. Different viewport aspects changed the HRC output
+dimensions and probe density while RC kept a square final grid. Examples:
+
+- `1280x720`: world `640x360`, old HRC final `128x72`.
+- `1440x900`: world `576x360`, old HRC final `128x80`.
+
+Accepted fix:
+
+| Field | Value |
+| --- | --- |
+| Screenshot | `planning/experiments/hrc-review-captures/007-square-grid-viewport-invariance.png` |
+| Change | Holographic HRC now uses the same square final fluence grid size as RC: `finalResolution x finalResolution`, independent of viewport aspect. |
+| Restored code | Reinstated the Holographic final-readout cleanup kernel removed in the earlier false lead. With the square grid, it no longer causes the viewport-dependent ring. |
+| Validation | `pnpm --filter example-three-radiance-cascades typecheck`; `pnpm vitest run packages/three-flatland/src/lights/HierarchicalRadianceCascades.test.ts packages/three-flatland/src/lights/RadianceCascades.test.ts`; vitexec forced-size luminance probe at `1280x720` and `1440x900`. |
+| Probe result | Both forced sizes now report HRC final `128x128`. The ring no longer changes with final-grid aspect, but HRC remains brighter than RC in shadow regions. |
+| Remaining work | RC still has better shadow quality. Continue with square-grid HRC as the baseline and use signed luminance diff as the quality gate. |
+
+## 2026-06-23 Holographic Reference Pass Audit
+
+Purpose: establish a hard baseline after the viewport bug fix before changing
+the Holographic shader math again.
+
+Probe setup:
+
+- vitexec `--gpu`, Vite example config, forced render size `1280x720`.
+- Comparison baseline: filters/noise/GI disabled, `raymarchSteps=64`,
+  `sceneRadianceDownsampleFactor=1`, cap `512`.
+- HRC mode: `holographic`.
+
+| Field | Value |
+| --- | --- |
+| Screenshot | `planning/experiments/hrc-review-captures/008-holographic-reference-audit.png` |
+| HRC active pass count | `17` = `1` scene radiance + `8` transfer passes + `7` radiance passes + `1` final readout |
+| HRC direct-transfer samples | `4,980,736` |
+| RC reference samples | `67,108,864` |
+| Final resolution | RC `128x128`, HRC `128x128` |
+| Canvas metrics | luma MAE `0.05353`; RMSE `0.08618`; SSIM `0.94895`; edge MAE `0.03111`; high-frequency MAE `0.001773`; profile excess peaks `-3` |
+| Final radiance metrics | luma MAE `33.33434`; RMSE `41.36446`; SSIM `0.90512`; edge MAE `27.78260`; high-frequency MAE `1.35245`; profile excess peaks `0` |
+| Active buffers | `hrc.sceneRadiance`, `hrc.T0..T7`, `hrc.R0..R6`, `hrc.finalRadiance` |
+| Buffer audit result | Every active target has finite data and non-zero signal. Inactive filter targets are skipped when filters are disabled. |
+| Verdict | Valid reference baseline, not RC parity. HRC is still materially brighter than RC in final radiance and shadow regions. |
+
+Notable buffer activity:
+
+| Buffer | Size | Mean luma | Max luma | Non-black |
+| --- | ---: | ---: | ---: | ---: |
+| `hrc.sceneRadiance` | `512x512` | `0.618176` | `3.191212` | `1.0000` |
+| `hrc.T0` | `256x512` | `3.398519` | `18.2966` | `0.9718` |
+| `hrc.T7` | `129x512` | `59.139097` | `931.9972` | `0.7990` |
+| `hrc.R6` | `128x512` | `0.784151` | `17.9314` | `1.0000` |
+| `hrc.R0` | `128x512` | `110.526307` | `612.7660` | `1.0000` |
+| `hrc.finalRadiance` | `128x128` | `140.682128` | `379.0004` | `1.0000` |
+
+Interpretation:
+
+- The graph is not dead; all transfer/radiance hierarchy levels carry finite
+  signal.
+- The biggest correctness gap is no longer repeated translated shadows from the
+  viewport bug. The current measurable gap is HRC over-brightening versus RC,
+  especially visible in final radiance/shadow luminance.
+- The next paper-aligned shader fix should target the Holographic normalization
+  and final readout contract before any pass collapse or runtime optimization.
