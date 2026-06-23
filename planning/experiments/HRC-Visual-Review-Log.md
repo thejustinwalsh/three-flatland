@@ -274,3 +274,16 @@ physical angular widths.
 
 Conclusion: aspect-aware cone arcs may be useful later as a visual/runtime
 approximation, but it does not improve the reference HRC parity gate. Reverted.
+
+## 2026-06-23 Rejected Full Direct Transfer Steps
+
+Probe: changed Holographic direct transfer initialization for `T0..T2` from
+`ceil(raymarchSteps / 4)` capped at `16` to the full `raymarchSteps` value.
+
+| Scenario | HRC direct samples | Canvas SSIM | Final radiance SSIM | Verdict |
+| --- | ---: | ---: | ---: | --- |
+| Occluders enabled | `19,922,944` | `0.94896` | `0.90511` | Neutral versus baseline `0.90512`; not worth 4x direct-transfer samples. |
+| Occluders disabled | `19,922,944` | `0.89040` | `0.66519` | No improvement versus baseline no-occluder failure. |
+
+Conclusion: HRC correctness is not currently limited by the direct transfer
+raymarch step count. Reverted to the cheaper direct transfer step count.
