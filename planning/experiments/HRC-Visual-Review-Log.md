@@ -120,3 +120,32 @@ filtering or exposure problem. The next implementation change should either:
 
 Do not optimize or tune blur/noise until the selected path removes the repeated
 shadow structure against the RC reference.
+
+## 2026-06-23 Ring Artifact Probe
+
+User-reported issue: HRC Holographic showed a detached contact shadow around
+occluders: dark shadow at the object, then a bright ring/gap, then continued
+shadow. RC did not show the gap.
+
+Rejected probes:
+
+- Final readout paper-offset probe: still showed the ring and worsened final
+  radiance buffer SSIM. Reverted.
+- Center-to-center direct-transfer probe: mildly changed aggregate metrics but
+  did not remove the visible ring. Reverted.
+
+Accepted probe:
+
+| Field | Value |
+| --- | --- |
+| Screenshot | `planning/experiments/hrc-review-captures/005-accepted-no-final-cleanup.png` |
+| Change | Removed the always-on four-neighbor Holographic final-readout cleanup pass. The HRC final readout now decodes `R0` directly and leaves smoothing to the explicit filter stage. |
+| Root cause | The mandatory cleanup was a hidden spatial blur before optional filtering. Near SDF silhouettes, its visibility gate blended unequal neighbor samples and produced the bright ring between the blocker and the continuing shadow. |
+| Canvas metrics | luma MAE 0.03449; RMSE 0.05590; SSIM 0.97589; edge MAE 0.02349; high-frequency MAE 0.001386; profile excess peaks -2. |
+| Final radiance metrics | luma MAE 28.0138; RMSE 34.5007; SSIM 0.91827; edge MAE 26.7811; high-frequency MAE 1.1684; profile excess peaks 1. |
+| Validation | `pnpm --filter example-three-radiance-cascades typecheck`; `pnpm vitest run packages/three-flatland/src/lights/HierarchicalRadianceCascades.test.ts packages/three-flatland/src/lights/RadianceCascades.test.ts`; `pnpm exec vitexec --gpu --config examples/three/radiance-cascades/vite.config.ts --screenshot /private/tmp/hrc-ring-no-cleanup-only.png --timeout 60 ...` |
+| Verdict | Accepted. This fixes the reported ring without changing transfer coordinates or using tuning as a mask. Residual quality mismatch remains a separate HRC parity task. |
+
+Audit update: the Eq. 21 cleanup row above is no longer current for the accepted
+implementation. A cleanup kernel may still be useful later, but it must be an
+explicit, separately tested filter and must not reintroduce contact-shadow gaps.
