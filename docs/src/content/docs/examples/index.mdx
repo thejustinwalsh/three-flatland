@@ -20,61 +20,67 @@ import GalleryTile from '../../../components/gallery/GalleryTile.astro'
     surface="examples"
     slug="basic-sprite"
     title="Basic Sprite"
-    description="A 2D sprite on screen with the smallest possible setup. The starting point."
+    description="Minimal Sprite2D setup with hover and press states."
   />
   <GalleryTile
     surface="examples"
     slug="animation"
     title="Animation"
-    description="Spritesheet-driven animation with frame-perfect timing on the GPU."
+    description="CPU-clocked spritesheet animation, frames sampled from a packed atlas."
   />
   <GalleryTile
     surface="examples"
     slug="batch-demo"
     title="Batch Rendering"
-    description="Thousands of sprites in a single draw call via automatic batching."
+    description="Interactive building placement, one shared material, batchCount locked at 1."
   />
   <GalleryTile
     surface="examples"
     slug="knightmark"
     title="Knightmark"
-    description="Animated knights, collisions, spatial hashing — the throughput stress test."
+    description="Spatial-hashed knight collision stress test, spacebar adds 100 more."
   />
   <GalleryTile
     surface="examples"
     slug="pass-effects"
     title="Pass Effects"
-    description="Composable post-processing — CRT, LCD, VHS, and friends — applied per scene."
+    description="Full-screen post-processing: CRT, LCD, VHS, scanlines, swapped between presets."
   />
   <GalleryTile
     surface="examples"
     slug="tsl-nodes"
     title="TSL Nodes"
-    description="Custom shader effects authored in Three Shader Language. Per-sprite, batched."
+    description="Per-sprite TSL node shader effects, still drawn in one shared batch."
   />
   <GalleryTile
     surface="examples"
     slug="tilemap"
     title="Tilemap"
-    description="Tiled-editor JSON loaded as efficient tile layers, animated tiles, collision data."
+    description="A procedurally generated dungeon as batched tile layers, with animated tiles."
   />
   <GalleryTile
     surface="examples"
     slug="skia"
     title="Skia"
-    description="GPU-accelerated 2D vector graphics via Skia WASM with WebGPU and WebGL."
+    description="Skia WASM vector rendering through the active WebGPU or WebGL backend."
   />
   <GalleryTile
     surface="examples"
     slug="slug-text"
     title="Slug Text"
-    description="Resolution-independent GPU text — Bezier outlines evaluated per-pixel, crisp at any zoom."
+    description="Per-pixel Bezier glyph outlines via the Slug algorithm, crisp at any scale."
   />
   <GalleryTile
     surface="examples"
     slug="lighting"
     title="2D Lighting"
-    description="Dynamic Forward+ sprite lighting — draggable point lights, flicker, and animated sprites in a lit dungeon."
+    description="Forward+ lighting (DefaultLightEffect) in a dungeon: torch flicker, click-to-walk."
+  />
+  <GalleryTile
+    surface="examples"
+    slug="hit-test"
+    title="Hit Testing"
+    description="Raycaster sprite picking: hover, drag, and walk-to-collect coins."
   />
 </GalleryGrid>
 

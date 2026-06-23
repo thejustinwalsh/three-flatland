@@ -26,11 +26,13 @@ catalog:
   # `three/webgpu` which no released three.js exports. Pin until alpha.3+
   # ships and Renovate can propose the bump.
   '@react-three/fiber': 10.0.0-alpha.2
+  '@types/pngjs': ^6.0.5
   '@types/react': ^19.0.2
   '@types/react-dom': ^19.0.2
   '@types/three': ^0.183.1
   '@vitejs/plugin-react': ^4.3.4
   koota: ^0.6.5
+  pngjs: ^7.0.0
   react: ^19.2.0
   react-dom: ^19.2.0
   three: ^0.183.1

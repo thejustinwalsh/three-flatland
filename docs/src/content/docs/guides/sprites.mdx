@@ -213,6 +213,21 @@ Available layers (in render order):
 - `Layers.FOREGROUND` - Foreground elements
 - `Layers.UI` - User interface
 
+## Pointer events
+
+Sprites implement three.js's `raycast()`, so they're pickable the standard way — no event bus, no manual raycaster. In R3F, pointer events are just props:
+
+```tsx
+<sprite2D
+  texture={tex}
+  onClick={(e) => { e.stopPropagation() }}
+  onPointerOver={() => {}}
+  onPointerOut={() => {}}
+/>
+```
+
+Control what counts as a hit with `hitTestMode` — `'radius'` (default), `'bounds'`, `'alpha'` (pixel-perfect), or `'none'` (unpickable). Vanilla three.js users use a plain `Raycaster`; `intersectObjects([...])` returns the sprite as `hit.object`. For DOM-style pointer events (capture, bubbling) without R3F, [`@pmndrs/pointer-events`](https://www.npmjs.com/package/@pmndrs/pointer-events) works with sprites out of the box since they implement `raycast()`. See the [Hit Testing example](/examples/hit-test/) for the full walkthrough, including the baked alpha sidecar and tilemap picking.
+
 ## Next steps
 
 - [Basic Sprite example](../../examples/basic-sprite/) — texture loading, anchor, and interaction in a runnable scene.

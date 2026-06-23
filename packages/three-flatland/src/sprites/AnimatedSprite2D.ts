@@ -70,6 +70,9 @@ export class AnimatedSprite2D extends Sprite2D {
   /** Source spritesheet */
   private _spriteSheet: SpriteSheet | null = null
 
+  /** True when alphaMap was inherited from a sheet, false when explicitly set by the user */
+  private _usesSpriteSheetAlphaMap = false
+
   /**
    * Create a new AnimatedSprite2D.
    * Can be called with no arguments for R3F compatibility - set spriteSheet via property.
@@ -101,6 +104,11 @@ export class AnimatedSprite2D extends Sprite2D {
     }
 
     this._spriteSheet = options.spriteSheet
+
+    if (options.spriteSheet?.alphaMap && this.alphaMap === null) {
+      this.alphaMap = options.spriteSheet.alphaMap
+      this._usesSpriteSheetAlphaMap = true
+    }
 
     // Add animations
     if (options.animations) {
@@ -134,6 +142,13 @@ export class AnimatedSprite2D extends Sprite2D {
    * Set a new spritesheet.
    */
   set spriteSheet(value: SpriteSheet | null) {
+    // Only replace the current alphaMap if it is unset or still the map we
+    // inherited from the previous sheet — a user-assigned alphaMap (set
+    // directly on the public property, which does not touch the flag) must
+    // survive a sheet swap. Compare against the previous sheet's map rather
+    // than trusting the flag alone, which goes stale on a direct assignment.
+    const prevSheetAlpha = this._usesSpriteSheetAlphaMap ? (this._spriteSheet?.alphaMap ?? null) : null
+    const shouldReplaceAlpha = this.alphaMap === null || this.alphaMap === prevSheetAlpha
     this._spriteSheet = value
     if (value) {
       this.texture = value.texture
@@ -141,6 +156,13 @@ export class AnimatedSprite2D extends Sprite2D {
       const firstFrame = value.frames.values().next().value
       if (firstFrame && !this.frame) {
         this.setFrame(firstFrame)
+      }
+      if (value.alphaMap && shouldReplaceAlpha) {
+        this.alphaMap = value.alphaMap
+        this._usesSpriteSheetAlphaMap = true
+      } else if (shouldReplaceAlpha) {
+        this.alphaMap = null
+        this._usesSpriteSheetAlphaMap = false
       }
     }
   }
@@ -395,7 +417,10 @@ export class AnimatedSprite2D extends Sprite2D {
 
     // Clone effect instances from parent
     for (const effect of this._effects) {
-      const EffectClass = effect.constructor as { new (): MaterialEffect; _fields: typeof MaterialEffect._fields }
+      const EffectClass = effect.constructor as {
+        new (): MaterialEffect
+        _fields: typeof MaterialEffect._fields
+      }
       const clonedEffect = new EffectClass()
       for (const field of EffectClass._fields) {
         const value = effect._defaults[field.name]!

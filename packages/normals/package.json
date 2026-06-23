@@ -49,13 +49,13 @@
   },
   "dependencies": {
     "@three-flatland/bake": "workspace:*",
-    "pngjs": "^7.0.0"
+    "pngjs": "catalog:"
   },
   "peerDependencies": {
     "three": ">=0.170.0"
   },
   "devDependencies": {
-    "@types/pngjs": "^6.0.5",
+    "@types/pngjs": "catalog:",
     "@types/three": "catalog:",
     "three": "catalog:"
   },

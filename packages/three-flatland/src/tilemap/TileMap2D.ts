@@ -1,4 +1,5 @@
-import { Group, Box3, Vector3 } from 'three'
+import { Group, Box3, Matrix4, Vector3 } from 'three'
+import type { Intersection, Raycaster } from 'three'
 import { Tileset } from './Tileset'
 import { TileLayer } from './TileLayer'
 import type { MaterialEffect } from '../materials/MaterialEffect'
@@ -11,6 +12,10 @@ import type {
   TileMapObject,
   CollisionShape,
 } from './types'
+import { rayPlaneZ0, createIntersection } from '../events/raycastHelpers'
+
+const _tileInvMatrix = new Matrix4()
+const _tileLocalPoint = new Vector3()
 
 /**
  * Main tilemap class for rendering 2D tile-based maps.
@@ -315,11 +320,7 @@ export class TileMap2D extends Group {
   /**
    * Transform a collision shape to world space.
    */
-  private transformShape(
-    shape: CollisionShape,
-    offsetX: number,
-    offsetY: number
-  ): CollisionShape {
+  private transformShape(shape: CollisionShape, offsetX: number, offsetY: number): CollisionShape {
     switch (shape.type) {
       case 'rect':
         return {
@@ -445,7 +446,6 @@ export class TileMap2D extends Group {
     return this
   }
 
-   
   removeEffect(_effect: MaterialEffect): this {
     return this
   }
@@ -549,6 +549,53 @@ export class TileMap2D extends Group {
       x: Math.floor(worldX / this._tileWidth),
       y: this._heightInTiles - 1 - Math.floor(worldY / this._tileHeight),
     }
+  }
+
+  /**
+   * Canonical three.js raycast: O(1) arithmetic tile lookup on the
+   * local Z=0 plane. Top-most layer with a non-zero GID wins;
+   * `faceIndex` carries the layer index. Returns `false` to stop
+   * three's traversal from recursing into TileLayer children
+   * (spec §7.2 / §11.1).
+   */
+  override raycast(raycaster: Raycaster, intersects: Intersection[]): false {
+    const hit = rayPlaneZ0(raycaster, this)
+    if (!hit) return false
+    const { localX, localY } = hit
+    if (
+      localX < 0 ||
+      localX >= this._widthInPixels ||
+      localY < 0 ||
+      localY >= this._heightInPixels
+    ) {
+      return false
+    }
+    for (let i = this.tileLayers.length - 1; i >= 0; i--) {
+      const gid = this.getTileAtWorld(localX, localY, i)
+      if (gid === 0) continue
+      const u = (localX % this._tileWidth) / this._tileWidth
+      const v = (localY % this._tileHeight) / this._tileHeight
+      const intersection = createIntersection(hit, this, u, v)
+      intersection.faceIndex = i
+      intersects.push(intersection)
+      break
+    }
+    return false
+  }
+
+  /**
+   * Resolve a raycast intersection produced by this tilemap into
+   * layer + tile coordinates (Tiled Y-down) + GID. Returns null for
+   * foreign intersections. Spec §7.2.
+   */
+  tileFromIntersection(
+    hit: Intersection
+  ): { layer: number; tileX: number; tileY: number; gid: number } | null {
+    if (hit.object !== this || hit.faceIndex === undefined || hit.faceIndex === null) return null
+    _tileLocalPoint.copy(hit.point).applyMatrix4(_tileInvMatrix.copy(this.matrixWorld).invert())
+    const { x: tileX, y: tileY } = this.worldToTile(_tileLocalPoint.x, _tileLocalPoint.y)
+    const gid = this.tileLayers[hit.faceIndex]?.getTileAt(tileX, tileY) ?? 0
+    return { layer: hit.faceIndex, tileX, tileY, gid }
   }
 
   /**

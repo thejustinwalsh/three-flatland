@@ -155,12 +155,17 @@ Every confirmed defect from the harvest review becomes a named regression test i
 - `HitTester.pick(x, y) → Pickable` and `InputBridge` remain **showcase-level thin wrappers** consuming R3F pointer events, per the showcase spec's own D13/D14 simplification note. This spec supplies the library half: sprites and tilemaps that R3F can actually hit.
 - **GPU ID-buffer picking stays Phase 2 of the showcase plan**, with `instanceExtras.y` remaining reserved (interleaved-buffer spec) and the same `pick()` signature — unchanged by this spec, enabled by it.
 
-## 13. Out of scope (explicit)
+## 13. Out of scope (explicit, all tracked)
 
-- GPU ID-buffer picking (above).
-- Drag-and-drop primitives — R3F v10 (which we run) is where upstream drag support lands; revisit when it stabilizes.
-- Skia-node picking (`SkPath::contains`) — dead with the old tree for now; the Skia integration owns its own picking story.
-- Any interim batched-sprite picking (D1).
+Deferred from this PR; each has a tracking issue so nothing is lost.
+
+- **`FlatlandTexture`** render-to-texture portal (§8.2) — `createFlatlandCompute` ships; the component needs a render-target ownership story. → [#126](https://github.com/thejustinwalsh/three-flatland/issues/126).
+- **Batched-sprite picking** (D1) — interactive once #85 makes batched sprites graph citizens. → [#127](https://github.com/thejustinwalsh/three-flatland/issues/127) (depends on #85). No interim code by design.
+- **GPU ID-buffer picking** — high-instance Phase 2 path, same `pick()` signature; `instanceExtras.y` reserved. → [#128](https://github.com/thejustinwalsh/three-flatland/issues/128).
+- **Drag helper** — *not blocked by anything*: we're on R3F v10 everywhere, so drag is already composable from the pointer events the raycast contract ships. A dedicated ergonomic helper is future scope. → [#129](https://github.com/thejustinwalsh/three-flatland/issues/129).
+- **Skia node picking** (`SkPath::contains`) — needs the C export from **our** zig Skia WASM build (we own Skia end-to-end). → [#130](https://github.com/thejustinwalsh/three-flatland/issues/130).
+- **`meta.alpha` atlas-schema discovery** — lands with the atlas schema work. → [#124](https://github.com/thejustinwalsh/three-flatland/issues/124).
+- **Rotated/trimmed atlas frames** — not honored by the renderer (and so, consistently, not by alpha hit-testing); owned by the atlas overhaul in [PR #117](https://github.com/thejustinwalsh/three-flatland/pull/117), not this workstream.
 
 ## 14. Harvest manifest (from `d24fd704`)
 

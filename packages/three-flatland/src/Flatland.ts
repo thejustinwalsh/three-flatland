@@ -319,7 +319,10 @@ export class Flatland extends Group implements WorldProvider {
     // never added to a parent) and React/R3F (discarded renders never
     // reach `render()`, so orphan Flatland instances stay inert and GC).
     // Cleanup happens in `dispose()` below.
-    if ((process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') && isDevtoolsActive()) {
+    if (
+      (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') &&
+      isDevtoolsActive()
+    ) {
       // Lazy-load the producer via dynamic import so a production build (gate
       // folded to `false`) dead-strips this `import()` and never bundles
       // DevtoolsProvider or its dependencies (BatchCollector, registries, the
@@ -370,7 +373,9 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
-   * Get the camera.
+   * The camera flatland renders its internal scene with. Read-only
+   * access for event integration (portal `events.compute` re-casts
+   * pointer rays from this camera — spec §8.1) and debugging.
    */
   get camera(): OrthographicCamera {
     return this._camera

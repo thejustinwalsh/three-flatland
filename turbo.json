@@ -15,6 +15,12 @@
   // three-flatland DTS pass (bundle:false over all of src/**) otherwise OOMs
   // the rollup-plugin-dts worker on the default Node heap.
   "globalPassThroughEnv": ["EXAMPLES_PORT", "NODE_OPTIONS"],
+  // Local filesystem cache eviction — keep the on-disk cache tight instead
+  // of letting it balloon to tens of GB. Entries older than cacheMaxAge are
+  // evicted at the start of each `turbo run`; once the cache exceeds
+  // cacheMaxSize the oldest entries are dropped until it fits.
+  "cacheMaxAge": "24h",
+  "cacheMaxSize": "2GB",
   "tasks": {
     "build": {
       "dependsOn": ["^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build", "@three-flatland/skia#build"],
@@ -118,6 +124,8 @@
         "example-react-skia#build",
         "example-three-lighting#build",
         "example-react-lighting#build",
+        "example-three-hit-test#build",
+        "example-react-hit-test#build",
         "@three-flatland/devtools#build:bundle"
       ],
       "outputs": ["dist/**"],

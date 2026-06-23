@@ -404,6 +404,7 @@ export default defineConfig({
               { label: 'Animation', slug: 'guides/animation' },
               { label: 'Loaders', slug: 'guides/loaders' },
               { label: 'Tilemaps', slug: 'guides/tilemaps' },
+              { label: 'Hit Testing', slug: 'guides/hit-testing' },
               { label: 'Lighting', slug: 'guides/lighting-setup' },
               { label: 'Shadows', slug: 'guides/shadows-setup' },
               { label: 'Baking', slug: 'guides/baking' },
