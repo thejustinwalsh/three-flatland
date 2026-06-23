@@ -138,7 +138,7 @@ Getting there is a three-step process: bake a sidecar at build time, tell the lo
 
 ### Step 1 — bake the sidecar
 
-The `flatland-bake alpha` command (from `@three-flatland/normals`) extracts the alpha channel of your sprite PNG into a companion file. Run it once as part of your asset pipeline, typically in a `package.json` `prebuild` script or a Makefile rule:
+The `flatland-bake alpha` command (from `@three-flatland/alphamap`) extracts the alpha channel of your sprite PNG into a companion file. Run it once as part of your asset pipeline, typically in a `package.json` `prebuild` script or a Makefile rule:
 
 ```sh
 flatland-bake alpha sprites.png

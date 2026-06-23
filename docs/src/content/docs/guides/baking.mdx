@@ -14,7 +14,7 @@ import bakedNormalPipeline from '../../../assets/diagrams/baked-normal-pipeline.
 
 ---
 
-`@three-flatland/bake` is a generic asset-pipeline framework: discovery, sidecar PNGs with stamped hashes, and dev-time staleness warnings. It ships standalone today with one consumer — `@three-flatland/normals`, which contributes the offline normal-map baker via the `flatland-bake normal` subcommand. Future bake types (lightmap atlases, font SDFs, occlusion atlases) plug into the same machinery.
+`@three-flatland/bake` is a generic asset-pipeline framework: discovery, sidecar PNGs with stamped hashes, and dev-time staleness warnings. Each bake type ships as its own small package that registers a subcommand: `@three-flatland/normals` contributes `flatland-bake normal` (tangent-space normal maps), and `@three-flatland/alphamap` contributes `flatland-bake alpha` (alpha hitmasks for pixel-perfect hit testing). Future bake types (lightmap atlases, font SDFs, occlusion atlases) plug into the same machinery — install the one you need.
 
 You only need this page when you're ready to *ship*. During development, the runtime bake fallback handles everything — no CLI step, no extra files. Read on when first-paint cost shows up in production.
 
@@ -25,7 +25,7 @@ For the runtime side of the same pipeline — how `SpriteSheetLoader` and `LDtkL
 <Diagram caption="The baked-normal pipeline — probe for a hash-stamped sidecar, load it on a match, or fall back to an in-memory bake; forceRuntime skips the probe." src={bakedNormalPipeline} />
 
 - **Source asset** — a sprite sheet PNG (plus its TexturePacker JSON), an LDtk tileset, or any other texture the runtime wants enriched. Lives in your project's `public/` (or equivalent) directory.
-- **Bake step** — `flatland-bake <type> <source>` runs the registered baker (currently `normal`) and writes a sidecar file (`<source>.normal.png`) next to the source. The sidecar carries the descriptor's content hash stamped into a PNG `tEXt` chunk under the `flatland` keyword.
+- **Bake step** — `flatland-bake <type> <source>` runs the registered baker (e.g. `normal` or `alpha`) and writes a sidecar file (`<source>.normal.png`, `<source>.alpha.png`) next to the source. The sidecar carries the descriptor's content hash stamped into a PNG `tEXt` chunk under the `flatland` keyword.
 - **Runtime** — a sidecar-aware loader (`SpriteSheetLoader` / `LDtkLoader` with `normals: true`, or `resolveNormalMap` directly) hashes the descriptor it would have used, range-fetches the sidecar's first ~4 KB to read the stamp, and uses the baked file when the hashes match. On miss it falls back to an in-memory bake and emits a dev-time warning.
 
 The pipeline is fully renderer-agnostic — the baker doesn't depend on Three.js, and the sidecar is a plain RGBA PNG with metadata. Any 2D engine can consume the same files.
@@ -63,6 +63,14 @@ npx flatland-bake normal <input.png> [output.png] [options]
 ```
 
 Use the flat flags for simple per-frame work. For tilemaps where each tile carries different cap/face geometry, write a JSON descriptor and pass it via `--descriptor`. The `scripts/bake-dungeon-normals.ts` script in the repo is a worked example: it reads tile `customData` out of an LDtk project, synthesizes a region-aware descriptor with `tilesetToRegions`, and bakes the tileset PNG.
+
+### `flatland-bake alpha`
+
+Contributed by `@three-flatland/alphamap`. Reads an RGBA PNG and writes `<input>.alpha.png` — the source alpha stored in the R channel (replicated to G/B for viewability), stamped with the descriptor hash. It backs `hitTestMode: 'alpha'` for pixel-perfect pointer picking; see the [Hit Testing guide](../hit-testing/).
+
+```bash
+npx flatland-bake alpha <input.png> [output.png]
+```
 
 ## Sidecar Files & Hash Stamping
 

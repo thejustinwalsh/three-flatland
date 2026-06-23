@@ -4,7 +4,7 @@ import { AlphaMap } from './AlphaMap'
 // Types the build-time `process.env` read without requiring @types/node.
 declare const process: { env: { NODE_ENV?: string } }
 
-/** Must stay in lockstep with ALPHA_DESCRIPTOR in @three-flatland/normals/alphaBake. */
+/** Must stay in lockstep with ALPHA_DESCRIPTOR in @three-flatland/alphamap. */
 export const ALPHA_SIDECAR_DESCRIPTOR = { kind: 'alpha', v: 1 } as const
 
 export interface ResolveAlphaMapOptions {

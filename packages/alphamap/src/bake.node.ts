@@ -2,13 +2,7 @@ import { readFileSync } from 'node:fs'
 import { PNG } from 'pngjs'
 import { bakedSiblingURL, hashDescriptor } from '@three-flatland/bake'
 import { writeSidecarPng } from '@three-flatland/bake/node'
-
-/**
- * Versioned descriptor for the alpha sidecar. Parameterless — the hash
- * is constant per format version, so probeBakedSibling staleness only
- * triggers on a `v` bump. Spec §10.
- */
-export const ALPHA_DESCRIPTOR = { kind: 'alpha', v: 1 } as const
+import { ALPHA_DESCRIPTOR } from './descriptor.js'
 
 /**
  * Bake `<input>.alpha.png` from an RGBA PNG: source alpha stored in R

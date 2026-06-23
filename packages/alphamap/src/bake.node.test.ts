@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Buffer } from 'node:buffer'
 import { PNG } from 'pngjs'
-import { bakeAlphaMapFile, ALPHA_DESCRIPTOR } from './alphaBake.node'
 import { hashDescriptor } from '@three-flatland/bake'
+import { bakeAlphaMapFile } from './bake.node'
+import { ALPHA_DESCRIPTOR } from './descriptor'
 
 function writeTestPng(path: string): void {
   const png = new PNG({ width: 2, height: 2 })

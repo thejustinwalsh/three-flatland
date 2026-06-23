@@ -18,6 +18,9 @@ catalogs:
     '@tweakpane/plugin-essentials':
       specifier: ^0.2.1
       version: 0.2.1
+    '@types/pngjs':
+      specifier: ^6.0.5
+      version: 6.0.5
     '@types/react':
       specifier: ^19.0.2
       version: 19.2.9
@@ -33,6 +36,9 @@ catalogs:
     koota:
       specifier: ^0.6.5
       version: 0.6.5
+    pngjs:
+      specifier: ^7.0.0
+      version: 7.0.0
     react:
       specifier: ^19.2.0
       version: 19.2.3
@@ -1285,6 +1291,19 @@ importers:
         specifier: ^6.4.1
         version: 6.4.1(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
 
+  packages/alphamap:
+    dependencies:
+      '@three-flatland/bake':
+        specifier: workspace:*
+        version: link:../bake
+      pngjs:
+        specifier: 'catalog:'
+        version: 7.0.0
+    devDependencies:
+      '@types/pngjs':
+        specifier: 'catalog:'
+        version: 6.0.5
+
   packages/bake:
     dependencies:
       pngjs:
@@ -1358,11 +1377,11 @@ importers:
         specifier: workspace:*
         version: link:../bake
       pngjs:
-        specifier: ^7.0.0
+        specifier: 'catalog:'
         version: 7.0.0
     devDependencies:
       '@types/pngjs':
-        specifier: ^6.0.5
+        specifier: 'catalog:'
         version: 6.0.5
       '@types/three':
         specifier: 'catalog:'

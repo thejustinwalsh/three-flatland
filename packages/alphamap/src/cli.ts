@@ -1,5 +1,5 @@
 import type { Baker } from '@three-flatland/bake'
-import { bakeAlphaMapFile } from './alphaBake.node.js'
+import { bakeAlphaMapFile } from './bake.node.js'
 
 const USAGE = [
   'Usage:',

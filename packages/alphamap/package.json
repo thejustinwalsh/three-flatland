@@ -1,7 +1,7 @@
 {
-  "name": "@three-flatland/normals",
-  "version": "0.1.0-alpha.2",
-  "description": "Offline + runtime normal map generation for sprites and tilesets. Contributes a `normal` subcommand to the flatland-bake CLI.",
+  "name": "@three-flatland/alphamap",
+  "version": "0.1.0-alpha.0",
+  "description": "Offline alpha hitmask baker for pixel-perfect sprite hit testing. Contributes an `alpha` subcommand to the flatland-bake CLI.",
   "type": "module",
   "exports": {
     ".": {
@@ -28,11 +28,6 @@
       "source": "./src/cli.ts",
       "types": "./dist/cli.d.ts",
       "import": "./dist/cli.js"
-    },
-    "./bake": {
-      "source": "./src/bake.ts",
-      "types": "./dist/bake.d.ts",
-      "import": "./dist/bake.js"
     }
   },
   "module": "./dist/index.js",
@@ -51,32 +46,28 @@
     "@three-flatland/bake": "workspace:*",
     "pngjs": "catalog:"
   },
-  "peerDependencies": {
-    "three": ">=0.170.0"
-  },
   "devDependencies": {
-    "@types/pngjs": "catalog:",
-    "@types/three": "catalog:",
-    "three": "catalog:"
+    "@types/pngjs": "catalog:"
   },
   "flatland": {
     "bake": [
       {
-        "name": "normal",
-        "description": "Bake a tangent-space normal map from a sprite PNG",
+        "name": "alpha",
+        "description": "Bake an alpha hitmask sidecar from a sprite PNG",
         "entry": "./dist/cli.js"
       }
     ]
   },
   "keywords": [
     "three-flatland",
-    "normal-map",
+    "alpha",
+    "hit-test",
     "bake"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
-    "directory": "packages/normals"
+    "directory": "packages/alphamap"
   }
 }
