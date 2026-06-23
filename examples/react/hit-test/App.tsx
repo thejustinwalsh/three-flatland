@@ -336,6 +336,10 @@ function Coin({ spec, collecting, onClick, onCollected }: CoinProps) {
   const hoverTint = useMemo(() => new Color(spec.color).multiplyScalar(1.4), [spec.color])
   const tint = useRef(new Color(spec.color))
   const shrink = useRef(0)
+  // One-shot gate: `onCollected` schedules a parent re-render that unmounts us,
+  // but the next frame can re-enter this branch before React commits. Dispatch
+  // exactly once per collect so we never fire duplicate collection events.
+  const collectedRef = useRef(false)
 
   useFrame((_, delta) => {
     const coin = ref.current
@@ -349,7 +353,10 @@ function Coin({ spec, collecting, onClick, onCollected }: CoinProps) {
       coin.scale.set(s, s, 1)
       coin.position.y += delta * 40
       coin.tint = hoverTint
-      if (shrink.current >= 1) onCollected(spec.id)
+      if (shrink.current >= 1 && !collectedRef.current) {
+        collectedRef.current = true
+        onCollected(spec.id)
+      }
       return
     }
 

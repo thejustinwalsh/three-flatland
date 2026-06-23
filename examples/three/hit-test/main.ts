@@ -10,6 +10,10 @@ import { GEM } from './gem'
 // fresh renderer on top of the previous one's still-running rAF.
 let rafId = 0
 let activeRenderer: WebGPURenderer | null = null
+// Named resize handler so HMR can remove it on dispose. An anonymous
+// callback can't be removed, so each dev save would stack another
+// closure over the old (disposed) camera/renderer.
+let onResize: (() => void) | null = null
 
 // ── Rarity tiers ──────────────────────────────────────────────────────────
 
@@ -435,7 +439,7 @@ async function main() {
 
   // ── Resize ────────────────────────────────────────────────────────────
 
-  window.addEventListener('resize', () => {
+  onResize = () => {
     const a = window.innerWidth / window.innerHeight
     camera.left = (-frustumSize * a) / 2
     camera.right = (frustumSize * a) / 2
@@ -443,7 +447,8 @@ async function main() {
     camera.bottom = -frustumSize / 2
     camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
-  })
+  }
+  window.addEventListener('resize', onResize)
 
   // ── Render loop ───────────────────────────────────────────────────────
 
@@ -510,6 +515,10 @@ if (import.meta.hot) {
     if (rafId) {
       cancelAnimationFrame(rafId)
       rafId = 0
+    }
+    if (onResize) {
+      window.removeEventListener('resize', onResize)
+      onResize = null
     }
     if (activeRenderer) {
       activeRenderer.dispose?.()
