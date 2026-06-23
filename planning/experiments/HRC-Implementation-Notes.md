@@ -50,6 +50,18 @@ renderer, not a faithful Holographic Radiance Cascades implementation. It must b
 `RadianceCascades` first. If it cannot visually match RC on simple scenes at lower or comparable
 cost, it is not useful as the default path.
 
+Work-scaling clarification from expert review: Holographic RC is not expected to
+reduce work across cascades in the same way conventional RC does. It keeps high
+spatial density along the axis perpendicular to the gathered quadrant, so the raw
+paper graph is closer to constant work per level and intentionally oversamples
+one axis. With 2x angular branching, conventional RC can be effectively `O(1)`
+across cascades while HRC is `O(log N)`; with 4x angular branching, conventional
+RC is `O(log N)` while HRC can trend toward `O(N)`. That means this branch should
+not treat "fewer raw HRC passes than RC" as the proof target. The proof target is
+RC-like or better visual stability from the HRC representation, followed by a
+game-runtime collapse/packing pass that makes the single shipping implementation
+mobile viable.
+
 Do not tune around visible differences with blue noise, temporal accumulation, broad GI, or final
 filtering. Those effects can hide artifacts, but they cannot prove the hierarchy is correct.
 
