@@ -140,6 +140,12 @@ jobs:
         )
       )
     steps:
+      - id: get-app-token
+        name: Get Workflow Access Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.APPLICATION_ID }}
+          private-key: ${{ secrets.APPLICATION_PRIVATE_KEY }}
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
@@ -155,7 +161,7 @@ jobs:
               || github.event.pull_request.head.sha
               || ''
             }}
-          token: ${{ secrets.FRO_BOT_PAT }}
+          token: ${{ steps.get-app-token.outputs.token }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
@@ -211,7 +217,7 @@ jobs:
               || ''
             }}
         with:
-          github-token: ${{ secrets.FRO_BOT_PAT }}
+          github-token: ${{ steps.get-app-token.outputs.token }}
           auth-json: ${{ secrets.OPENCODE_AUTH_JSON }}
           model: ${{ vars.FRO_BOT_MODEL }}
           prompt: ${{ env.PROMPT }}
