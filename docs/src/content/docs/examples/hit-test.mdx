@@ -96,6 +96,10 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 
 The examples above show both paths in full.
 
+:::tip[Vanilla pointer events without the loop]
+Hand-rolling the raycaster is fine for a handful of pickable objects. When you want DOM-style semantics in plain three.js — `pointerover` / `pointerout` / `click`, pointer capture, and bubbling — without writing the loop yourself, reach for [`@pmndrs/pointer-events`](https://www.npmjs.com/package/@pmndrs/pointer-events), the framework-agnostic event system that backs React Three Fiber. Its `forwardHtmlEvents` turns DOM pointer events into raycasts against your scene each frame, and flatland sprites participate unchanged because they implement `raycast()` — the same contract R3F relies on. Use the raw `Raycaster` when you want full control; reach for `@pmndrs/pointer-events` when you want the events handed to you.
+:::
+
 ## Picking tiles from a TileMap2D
 
 When a ray hits a `TileMap2D`, `tileFromIntersection` converts the `Intersection` result into layer and tile coordinates:
@@ -221,6 +225,7 @@ The raycast contract is the foundation; these build on it and are tracked separa
 
 ## Further Reading
 
+- [Hit Testing Guide](../../guides/hit-testing/) — the task recipes outside this example's context, including `@pmndrs/pointer-events` and the open-work roadmap
 - [Sprites Guide](../../guides/sprites/) — Sprite2D properties and layers
 - [Loaders Guide](../../guides/loaders/) — Spritesheet format and alpha sidecar
 - [Tilemap](../tilemap/) — TileMap2D setup and layer access

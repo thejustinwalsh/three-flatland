@@ -226,7 +226,7 @@ Sprites implement three.js's `raycast()`, so they're pickable the standard way �
 />
 ```
 
-Control what counts as a hit with `hitTestMode` — `'radius'` (default), `'bounds'`, `'alpha'` (pixel-perfect), or `'none'` (unpickable). Vanilla three.js users use a plain `Raycaster`; `intersectObjects([...])` returns the sprite as `hit.object`. See the [Hit Testing example](/examples/hit-test/) for the full walkthrough, including the baked alpha sidecar and tilemap picking.
+Control what counts as a hit with `hitTestMode` — `'radius'` (default), `'bounds'`, `'alpha'` (pixel-perfect), or `'none'` (unpickable). Vanilla three.js users use a plain `Raycaster`; `intersectObjects([...])` returns the sprite as `hit.object`. For DOM-style pointer events (capture, bubbling) without R3F, [`@pmndrs/pointer-events`](https://www.npmjs.com/package/@pmndrs/pointer-events) works with sprites out of the box since they implement `raycast()`. See the [Hit Testing example](/examples/hit-test/) for the full walkthrough, including the baked alpha sidecar and tilemap picking.
 
 ## Next steps
 
