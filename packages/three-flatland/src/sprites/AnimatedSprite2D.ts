@@ -142,7 +142,13 @@ export class AnimatedSprite2D extends Sprite2D {
    * Set a new spritesheet.
    */
   set spriteSheet(value: SpriteSheet | null) {
-    const shouldReplaceAlpha = this.alphaMap === null || this._usesSpriteSheetAlphaMap
+    // Only replace the current alphaMap if it is unset or still the map we
+    // inherited from the previous sheet — a user-assigned alphaMap (set
+    // directly on the public property, which does not touch the flag) must
+    // survive a sheet swap. Compare against the previous sheet's map rather
+    // than trusting the flag alone, which goes stale on a direct assignment.
+    const prevSheetAlpha = this._usesSpriteSheetAlphaMap ? (this._spriteSheet?.alphaMap ?? null) : null
+    const shouldReplaceAlpha = this.alphaMap === null || this.alphaMap === prevSheetAlpha
     this._spriteSheet = value
     if (value) {
       this.texture = value.texture

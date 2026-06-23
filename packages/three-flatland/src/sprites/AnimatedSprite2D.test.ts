@@ -438,4 +438,31 @@ describe('AnimatedSprite2D', () => {
     expect(sprite.alphaMap).toBe(mine)
     sprite.dispose()
   })
+
+  it('keeps a user override set after inheriting, across a later sheet swap', () => {
+    const alphaMapA = new AlphaMap(new Uint8Array([255]), 1, 1)
+    const alphaMapB = new AlphaMap(new Uint8Array([128]), 1, 1)
+    const mine = new AlphaMap(new Uint8Array([0]), 1, 1)
+    const sheetA: SpriteSheet = { ...spriteSheet, alphaMap: alphaMapA }
+    const sheetB: SpriteSheet = {
+      texture: new Texture(),
+      frames: new Map(),
+      width: 64,
+      height: 64,
+      alphaMap: alphaMapB,
+      getFrame() {
+        throw new Error('not found')
+      },
+      getFrameNames() {
+        return []
+      },
+    }
+    const sprite = new AnimatedSprite2D({ spriteSheet: sheetA })
+    expect(sprite.alphaMap).toBe(alphaMapA) // inherited from sheetA
+    sprite.alphaMap = mine // user overrides the inherited map
+    expect(sprite.alphaMap).toBe(mine)
+    sprite.spriteSheet = sheetB // swap must not clobber the override
+    expect(sprite.alphaMap).toBe(mine)
+    sprite.dispose()
+  })
 })
