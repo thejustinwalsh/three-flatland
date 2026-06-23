@@ -347,7 +347,7 @@
               directly and leaves smoothing to the explicit filter stage.
             </p>
           </div>
-          <span class="badge select">accepted</span>
+          <span class="badge reject">superseded</span>
         </div>
         <div class="shots">
           <figure class="shot">
@@ -384,7 +384,90 @@
           </div>
           <div class="note">
             <b>Verdict</b>
-            <span>Accepted for the ring artifact. Residual RC/HRC quality mismatch remains a separate parity task.</span>
+            <span>Superseded. Later viewport probes showed the rectangular HRC grid, not this cleanup kernel, was the root cause of viewport-dependent ringing.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Holographic Output Grid: Square Final Fluence</h3>
+            <p>
+              HRC previously scaled its final output grid by viewport world aspect,
+              producing <code>128x72</code> at 16:9 and <code>128x80</code> at 16:10.
+              RC stayed square. This made shadow artifacts change with browser size.
+              Holographic HRC now uses the square final grid convention.
+            </p>
+          </div>
+          <span class="badge select">accepted</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/007-square-grid-viewport-invariance.png" alt="HRC square grid viewport invariance probe" />
+            <figcaption>Forced 1280x720 and 1440x900 captures both report HRC final 128x128; signed luminance diff remains the quality gate.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Change</b>
+            <span>Holographic final dimensions now use <code>finalResolution x finalResolution</code>, independent of viewport aspect.</span>
+          </div>
+          <div class="note">
+            <b>Restored</b>
+            <span>The final-readout cleanup kernel is restored; it was not the root cause once the HRC grid is square.</span>
+          </div>
+          <div class="note">
+            <b>Remaining Gap</b>
+            <span>HRC is still brighter than RC in shadow regions. Continue using signed luminance diff for RC parity work.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Holographic Reference Pass Audit</h3>
+            <p>
+              This baseline was captured after the square-grid fix and before the next
+              shader math change. It verifies the active HRC pass graph is alive, finite,
+              and measurable, while also recording that HRC is still not RC parity.
+            </p>
+          </div>
+          <span class="badge select">baseline</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/008-holographic-reference-audit.png" alt="HRC reference pass audit capture" />
+            <figcaption>Forced 1280x720 comparison baseline; filters, noise, and broad GI disabled.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Pass Graph</b>
+            <span>17 active passes: 1 scene radiance, 8 transfer, 7 radiance, 1 final readout.</span>
+          </div>
+          <div class="note">
+            <b>Samples</b>
+            <span>HRC direct-transfer samples 4,980,736 versus RC reference samples 67,108,864.</span>
+          </div>
+          <div class="note">
+            <b>Active Buffers</b>
+            <span><code>sceneRadiance</code>, <code>T0..T7</code>, <code>R0..R6</code>, and <code>finalRadiance</code> are finite and non-empty.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Canvas Metrics</b>
+            <span>luma MAE 0.05353; RMSE 0.08618; SSIM 0.94895; edge MAE 0.03111; profile excess peaks -3.</span>
+          </div>
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>luma MAE 33.33434; RMSE 41.36446; SSIM 0.90512; edge MAE 27.78260; high-frequency MAE 1.35245.</span>
+          </div>
+          <div class="note">
+            <b>Verdict</b>
+            <span>Valid reference baseline, not accepted parity. HRC still over-brightens shadow regions versus RC.</span>
           </div>
         </div>
       </article>

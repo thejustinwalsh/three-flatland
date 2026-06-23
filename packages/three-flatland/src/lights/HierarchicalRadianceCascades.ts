@@ -915,10 +915,9 @@ export class HierarchicalRadianceCascades {
     height: number
   } {
     const maxResolution = this._finalRadianceResolution(resolution)
-    const maxWorldDim = Math.max(this._worldSize.x, this._worldSize.y, 1)
     return {
-      width: Math.max(1, Math.ceil(maxResolution * (this._worldSize.x / maxWorldDim))),
-      height: Math.max(1, Math.ceil(maxResolution * (this._worldSize.y / maxWorldDim))),
+      width: maxResolution,
+      height: maxResolution,
     }
   }
 
@@ -1877,7 +1876,38 @@ export class HierarchicalRadianceCascades {
         return fluence.div(float(Math.PI))
       }
 
-      return vec4(sampleReadout(probeCoord), centerSDF.greaterThan(float(EPS)).select(float(1), float(0)))
+      const total = sampleReadout(probeCoord).mul(float(4)).toVar()
+      const totalWeight = float(4).toVar()
+
+      const sampleNeighbor = (dx: number, dy: number): void => {
+        const offset = vec2(dx, dy)
+        const neighborCoord = probeCoord.add(offset)
+        const validCoord = neighborCoord.x
+          .greaterThanEqual(float(0))
+          .and(neighborCoord.x.lessThan(float(outputWidth)))
+          .and(neighborCoord.y.greaterThanEqual(float(0)))
+          .and(neighborCoord.y.lessThan(float(outputHeight)))
+        const neighborUV = neighborCoord.add(float(0.5)).div(outputSize)
+        const midpointUV = probeCoord.add(offset.mul(float(0.5))).add(float(0.5)).div(outputSize)
+        const neighborSDFUV = vec2(neighborUV.x, float(1).sub(neighborUV.y))
+        const midpointSDFUV = vec2(midpointUV.x, float(1).sub(midpointUV.y))
+        const neighborSDF = sampleTexture(sdfTexture, neighborSDFUV).r
+        const midpointSDF = sampleTexture(sdfTexture, midpointSDFUV).r
+        const visible = validCoord
+          .and(centerSDF.greaterThan(float(EPS)))
+          .and(neighborSDF.greaterThan(float(EPS)))
+          .and(midpointSDF.greaterThan(float(EPS)))
+        const weight = visible.select(float(1), float(0))
+        total.addAssign(sampleReadout(neighborCoord).mul(weight))
+        totalWeight.addAssign(weight)
+      }
+
+      sampleNeighbor(1, 0)
+      sampleNeighbor(-1, 0)
+      sampleNeighbor(0, 1)
+      sampleNeighbor(0, -1)
+
+      return vec4(total.div(totalWeight.max(float(1))), float(1))
     })() as Node<'vec4'>
   }
 

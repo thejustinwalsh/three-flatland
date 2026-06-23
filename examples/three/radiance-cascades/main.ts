@@ -54,6 +54,26 @@ type PerceptualCompareResult = {
   }
 }
 
+type BufferStats = {
+  name: string
+  width: number
+  height: number
+  pixels: number
+  meanRgb: [number, number, number]
+  meanAlpha: number
+  meanLuminance: number
+  minLuminance: number
+  maxLuminance: number
+  nonBlackRatio: number
+  finiteRatio: number
+  error?: string
+}
+
+type BufferAuditResult = {
+  probe: unknown
+  buffers: BufferStats[]
+}
+
 function cloneProbeSnapshot<T>(value: T): T {
   if (typeof structuredClone === 'function') {
     return structuredClone(value)
@@ -591,9 +611,11 @@ async function main(): Promise<void> {
         setLightIntensities: (warmIntensity: number, coolIntensity: number) => void
         setOccluders: (enabled: boolean) => void
         setWallOpen: (open: boolean) => void
+        setRenderSize: (width: number, height: number) => void
         setComparisonBaseline: () => void
         compareFinalRadiance: () => Promise<unknown>
         comparePerceptual: () => Promise<PerceptualCompareResult>
+        auditHrcBuffers: () => Promise<BufferAuditResult>
       }
     }
   ).__radianceCascadeControls = {
@@ -717,6 +739,13 @@ async function main(): Promise<void> {
     setWallOpen(open: boolean): void {
       params.wallOpen = open
       warm.position.x = open ? -38 : -128
+      pane.refresh()
+    },
+    setRenderSize(width: number, height: number): void {
+      const nextWidth = Math.max(1, Math.round(width))
+      const nextHeight = Math.max(1, Math.round(height))
+      renderer.setSize(nextWidth, nextHeight)
+      flatland.resize(nextWidth, nextHeight)
       pane.refresh()
     },
     setComparisonBaseline(): void {
@@ -939,6 +968,147 @@ async function main(): Promise<void> {
         },
       }
       console.log('perceptual-compare', JSON.stringify(result))
+      return result
+    },
+    async auditHrcBuffers(): Promise<BufferAuditResult> {
+      const waitFrames = async (count: number): Promise<void> => {
+        for (let i = 0; i < count; i++) await new Promise(requestAnimationFrame)
+      }
+      const readTarget = async (target: ReadableRenderTarget): Promise<RadianceReadback> => {
+        const readAsync = (renderer as unknown as {
+          readRenderTargetPixelsAsync?: (
+            renderTarget: unknown,
+            x: number,
+            y: number,
+            width: number,
+            height: number
+          ) => Promise<ArrayBufferView>
+        }).readRenderTargetPixelsAsync
+        if (typeof readAsync !== 'function') {
+          throw new Error('renderer.readRenderTargetPixelsAsync is unavailable')
+        }
+        const pixels = await readAsync.call(renderer, target, 0, 0, target.width, target.height)
+        const values = new Float32Array(target.width * target.height * 4)
+        if (pixels instanceof Float32Array) {
+          values.set(pixels.subarray(0, values.length))
+        } else if (pixels instanceof Uint16Array) {
+          for (let i = 0; i < values.length; i++) values[i] = halfToFloat(pixels[i] ?? 0)
+        } else if (pixels instanceof Uint8Array || pixels instanceof Uint8ClampedArray) {
+          for (let i = 0; i < values.length; i++) values[i] = (pixels[i] ?? 0) / 255
+        } else {
+          const view = new Uint16Array(pixels.buffer, pixels.byteOffset, Math.floor(pixels.byteLength / 2))
+          for (let i = 0; i < values.length; i++) values[i] = halfToFloat(view[i] ?? 0)
+        }
+        return { width: target.width, height: target.height, data: values }
+      }
+      const statsFor = (name: string, readback: RadianceReadback): BufferStats => {
+        let r = 0
+        let g = 0
+        let b = 0
+        let a = 0
+        let luma = 0
+        let minLuma = Number.POSITIVE_INFINITY
+        let maxLuma = Number.NEGATIVE_INFINITY
+        let finite = 0
+        let nonBlack = 0
+        const pixels = readback.width * readback.height
+        for (let i = 0; i < pixels; i++) {
+          const j = i * 4
+          const rv = readback.data[j] ?? 0
+          const gv = readback.data[j + 1] ?? 0
+          const bv = readback.data[j + 2] ?? 0
+          const av = readback.data[j + 3] ?? 0
+          const valuesFinite = Number.isFinite(rv) && Number.isFinite(gv) && Number.isFinite(bv) && Number.isFinite(av)
+          if (valuesFinite) finite++
+          const y = 0.2126 * rv + 0.7152 * gv + 0.0722 * bv
+          r += rv
+          g += gv
+          b += bv
+          a += av
+          luma += y
+          minLuma = Math.min(minLuma, y)
+          maxLuma = Math.max(maxLuma, y)
+          if (Math.abs(rv) + Math.abs(gv) + Math.abs(bv) + Math.abs(av) > 1e-5) nonBlack++
+        }
+        const inv = 1 / Math.max(1, pixels)
+        return {
+          name,
+          width: readback.width,
+          height: readback.height,
+          pixels,
+          meanRgb: [r * inv, g * inv, b * inv],
+          meanAlpha: a * inv,
+          meanLuminance: luma * inv,
+          minLuminance: Number.isFinite(minLuma) ? minLuma : 0,
+          maxLuminance: Number.isFinite(maxLuma) ? maxLuma : 0,
+          nonBlackRatio: nonBlack * inv,
+          finiteRatio: finite * inv,
+        }
+      }
+
+      params.algorithm = 'hrc'
+      lighting = hrcLighting
+      syncParamsFromActiveRadiance()
+      lighting.radianceIntensity = params.intensity
+      flatland.setLighting(lighting)
+      pane.refresh()
+      await waitFrames(12)
+
+      const internals = hrcLighting.radiance as unknown as {
+        _sceneRadianceRT: ReadableRenderTarget | null
+        _holographicTransferRTs: ReadableRenderTarget[]
+        _holographicRadianceRTs: ReadableRenderTarget[]
+        _rawFinalRadianceRT: ReadableRenderTarget
+        _wideRadianceRT: ReadableRenderTarget
+        _wideBlurRT: ReadableRenderTarget
+        _wideRadianceRT2: ReadableRenderTarget
+        _wideBlurRT2: ReadableRenderTarget
+        _finalRadianceRT: ReadableRenderTarget
+      }
+      const targets: Array<[string, ReadableRenderTarget | null | undefined]> = [
+        ['hrc.sceneRadiance', internals._sceneRadianceRT],
+        ...internals._holographicTransferRTs.map((target, index) => [`hrc.T${index}`, target] as [string, ReadableRenderTarget]),
+        ...internals._holographicRadianceRTs.map((target, index) => [`hrc.R${index}`, target] as [string, ReadableRenderTarget]),
+        ['hrc.finalRadiance', internals._finalRadianceRT],
+      ]
+      if (hrcLighting.radiance.wideFilterEnabled) {
+        targets.push(['hrc.rawFinalRadiance', internals._rawFinalRadianceRT])
+        targets.push(['hrc.wideRadiance', internals._wideRadianceRT])
+        if (hrcLighting.radiance.wideBlurEnabled) {
+          targets.push(['hrc.wideBlur', internals._wideBlurRT])
+          if (hrcLighting.radiance.wideLevels > 1) {
+            targets.push(['hrc.wideRadiance2', internals._wideRadianceRT2])
+            targets.push(['hrc.wideBlur2', internals._wideBlurRT2])
+          }
+        }
+      }
+      const buffers: BufferStats[] = []
+      for (const [name, target] of targets) {
+        if (!target || target.width <= 0 || target.height <= 0) continue
+        try {
+          buffers.push(statsFor(name, await readTarget(target)))
+        } catch (error) {
+          buffers.push({
+            name,
+            width: target.width,
+            height: target.height,
+            pixels: target.width * target.height,
+            meanRgb: [0, 0, 0],
+            meanAlpha: 0,
+            meanLuminance: 0,
+            minLuminance: 0,
+            maxLuminance: 0,
+            nonBlackRatio: 0,
+            finiteRatio: 0,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+      const result = {
+        probe: cloneProbeSnapshot((window as Window & { __radianceCascadeProbe?: unknown }).__radianceCascadeProbe),
+        buffers,
+      }
+      console.log('hrc-buffer-audit', JSON.stringify(result))
       return result
     },
   }
