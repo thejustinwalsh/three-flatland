@@ -287,3 +287,81 @@ Probe: changed Holographic direct transfer initialization for `T0..T2` from
 
 Conclusion: HRC correctness is not currently limited by the direct transfer
 raymarch step count. Reverted to the cheaper direct transfer step count.
+
+## 2026-06-23 Locked Holographic Shipping Default
+
+Decision: lock the example default to Holographic HRC and remove the separable
+wide blur from the default visual stack. Broad GI remains enabled through the
+SDF-aware wide downsample.
+
+| Field | Value |
+| --- | --- |
+| Screenshot | `planning/experiments/hrc-review-captures/012-locked-holographic-shipping-default.png` |
+| Default algorithm | `hrc` |
+| HRC mode | `holographic` |
+| Settings | intensity `0.005`; filter radius `0.7`; filter strength `1.0`; raymarch steps `64`; blue noise `0`; mip blur `0`; mip strength `0.4`; warm `6.1`; cool `9.7` |
+| Estimated pass count | `19` |
+| Estimated HRC samples | `4,980,736` |
+| Wide filter | enabled |
+| Wide blur | disabled |
+| Canvas metrics | luma MAE `0.05109`; RMSE `0.07767`; SSIM `0.95838`; edge MAE `0.03045`; high-frequency MAE `0.001916`; profile excess peaks `0` |
+| Final radiance metrics | luma MAE `33.02878`; RMSE `40.88525`; SSIM `0.90688`; edge MAE `26.15856`; high-frequency MAE `1.12586`; profile excess peaks `0` |
+
+Mip blur A/B:
+
+- `mipBlur=0.2`: `21` HRC passes, canvas SSIM `0.95940`, final-radiance
+  SSIM `0.90968`.
+- `mipBlur=0`: `19` HRC passes, canvas SSIM `0.95653`, final-radiance
+  SSIM `0.90649`.
+
+Verdict: keep `mipBlur=0` as the shipping default. The two-pass saving is worth
+the small visual delta; future smoothing should prefer the existing SDF-aware
+filter/cardinal cleanup before reintroducing separable blur.
+
+## 2026-06-23 HRC Contact Shadow Hardening Probes
+
+Goal: respond to the current visual complaint that HRC shadows are smooth but too
+soft, with visible light/edge artifacts around occluder contact. RC remains a
+shadow-placement reference, not ground truth for total energy.
+
+Wide-fill A/B:
+
+| Candidate | Screenshot | Estimated passes | Final radiance SSIM | Verdict |
+| --- | --- | ---: | ---: | --- |
+| Current wide fill `mipStrength=0.4` | `planning/experiments/hrc-review-captures/013-current-wide040.png` | `19` | `0.90688` | Baseline. |
+| Reduced wide fill `mipStrength=0.2` | `planning/experiments/hrc-review-captures/014-reduced-wide020.png` | `19` | `0.90665` | Not the main artifact source. |
+| Wide fill off `mipStrength=0` | `planning/experiments/hrc-review-captures/015-wide-off000.png` | `18` | `0.90643` | Slightly darker, but contact halo remains. |
+
+Rejected first-principles coordinate probe:
+
+- `planning/experiments/hrc-review-captures/016-centered-direct-transfer.png`
+- Changed Holographic direct-transfer world endpoints from grid corners to
+  texel centers.
+- Result: shadows darkened, but contact halos hardened and final-radiance
+  metrics regressed (`SSIM 0.90088`, edge MAE `27.65096`,
+  high-frequency MAE `1.48579`). Reverted.
+
+Selected candidate for review:
+
+- `planning/experiments/hrc-review-captures/018-edge-aware-wide-mix.png`
+- Adds a local luminance floor from visible SDF-neighborhood taps inside the
+  existing filter pass, then reduces broad GI mix only where the local HRC field
+  already contains a nearby shadow edge.
+- No new pass, no new public knob. Estimated HRC pass count remains `19`;
+  estimated HRC direct samples remain `4,980,736`.
+- Final-radiance metrics are near-neutral versus the locked baseline:
+  SSIM `0.90679`, edge MAE `26.29096`, high-frequency MAE `1.14499`.
+
+Targeted screenshot crop stats versus the locked baseline:
+
+| Region | Baseline mean | Candidate mean | Interpretation |
+| --- | ---: | ---: | --- |
+| bottom contact | `0.429784` | `0.425155` | Slightly darker contact shadow. |
+| vertical top contact | `0.404333` | `0.404316` | Neutral. |
+| bar shadow | `0.262056` | `0.257229` | Slightly darker shadow body. |
+| open area | `0.903466` | `0.903466` | Open-area lighting unchanged. |
+
+Verdict: keep for user visual review as a small, no-pass-cost hardening step.
+It does not solve the whole cardinal/quadrant issue; next work should isolate
+the HRC final readout directions and edge artifacts with a dedicated contact
+probe scene.

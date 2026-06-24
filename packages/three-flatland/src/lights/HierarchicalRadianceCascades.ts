@@ -2132,6 +2132,8 @@ export class HierarchicalRadianceCascades {
       const centerSDF = sampleTexture(sdfTexture, centerSDFUV).r
       const total = vec3(center.rgb).mul(float(4)).toVar()
       const totalWeight = float(4).toVar()
+      const centerLuma = center.r.mul(float(0.2126)).add(center.g.mul(float(0.7152))).add(center.b.mul(float(0.0722)))
+      const minVisibleLuma = float(centerLuma).toVar()
       const filterRadiusScale = useFilterJitter
         ? float(1).add(
             sampleTexture(blueNoiseTexture, centerUV.mul(float(blueNoiseScale)))
@@ -2157,6 +2159,8 @@ export class HierarchicalRadianceCascades {
         const sample = sampleTexture(rawFinalTexture, neighborUV)
         total.addAssign(sample.rgb.mul(weight))
         totalWeight.addAssign(weight)
+        const sampleLuma = sample.r.mul(float(0.2126)).add(sample.g.mul(float(0.7152))).add(sample.b.mul(float(0.0722)))
+        minVisibleLuma.assign(min(minVisibleLuma, visible.select(sampleLuma, minVisibleLuma)))
       }
 
       if (useLocalFilter) {
@@ -2177,6 +2181,14 @@ export class HierarchicalRadianceCascades {
       const crossFiltered = useLocalFilter
         ? mix(center.rgb, filtered, strength.mul(radius.greaterThan(float(0)).select(1, 0)))
         : center.rgb
+      const crossLuma = crossFiltered.r
+        .mul(float(0.2126))
+        .add(crossFiltered.g.mul(float(0.7152)))
+        .add(crossFiltered.b.mul(float(0.0722)))
+      const lumaScale = minVisibleLuma.div(crossLuma.max(float(0.001))).clamp(float(0.65), float(1))
+      const edgeArea = float(1).sub(smoothstep(float(EPS * 4), float(EPS * 28), centerSDF))
+      const shadowContrast = smoothstep(float(0.06), float(0.32), crossLuma.sub(minVisibleLuma).div(crossLuma.max(float(0.001))))
+      const edgePreserved = crossFiltered.mul(mix(float(1), lumaScale, edgeArea.mul(shadowContrast).mul(float(0.45))))
 
       if (useWideFilter) {
         const wide1 = sampleTexture(this._wideRadianceRT.texture, centerUV)
@@ -2187,10 +2199,13 @@ export class HierarchicalRadianceCascades {
           mipFiltered.assign(mix(wide1.rgb, wide2.rgb, veryOpenArea.mul(this._mipBlurNode)))
         }
         const openArea = smoothstep(float(EPS * 2), float(EPS * 16), centerSDF)
-        return vec4(mix(crossFiltered, mipFiltered, mipStrength.mul(openArea)), center.a)
+        const edgeAwareMipStrength = mipStrength
+          .mul(openArea)
+          .mul(float(1).sub(edgeArea.mul(shadowContrast).mul(float(0.55))))
+        return vec4(mix(edgePreserved, mipFiltered, edgeAwareMipStrength), center.a)
       }
 
-      return vec4(crossFiltered, center.a)
+      return vec4(edgePreserved, center.a)
     })() as Node<'vec4'>
   }
 
