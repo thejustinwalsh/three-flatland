@@ -115,6 +115,12 @@ export interface HierarchicalRadianceCascadesConfig extends RadianceCascadesConf
   compositionLevels: number
   /** HRC composition family: experimental interval composition or Holographic transfer/radiance recursion. */
   compositionMode: HierarchicalRadianceCascadesMode
+  /**
+   * Multiplier for Holographic final/reconstruction resolution relative to the
+   * legacy RC probe-grid final resolution. `1` preserves the current compact
+   * output; `4` makes a 16-ray cascade render at cascade/display resolution.
+   */
+  holographicFinalResolutionScale: number
 }
 
 const DEFAULT_HRC_CONFIG: HierarchicalRadianceCascadesConfig = {
@@ -139,6 +145,7 @@ const DEFAULT_HRC_CONFIG: HierarchicalRadianceCascadesConfig = {
   shortIntervalCount: 4,
   compositionLevels: 2,
   compositionMode: 'hierarchical',
+  holographicFinalResolutionScale: 1,
 }
 
 export const HIERARCHICAL_RADIANCE_CASCADES_PRESETS: Record<
@@ -151,6 +158,7 @@ export const HIERARCHICAL_RADIANCE_CASCADES_PRESETS: Record<
     shortIntervalCount: 4,
     compositionLevels: 2,
     compositionMode: 'hierarchical',
+    holographicFinalResolutionScale: 1,
   },
   balanced: {
     ...RADIANCE_CASCADES_PRESETS.balanced,
@@ -160,6 +168,7 @@ export const HIERARCHICAL_RADIANCE_CASCADES_PRESETS: Record<
     shortIntervalCount: 4,
     compositionLevels: 2,
     compositionMode: 'hierarchical',
+    holographicFinalResolutionScale: 1,
   },
   quality: {
     ...RADIANCE_CASCADES_PRESETS.quality,
@@ -167,6 +176,7 @@ export const HIERARCHICAL_RADIANCE_CASCADES_PRESETS: Record<
     shortIntervalCount: 8,
     compositionLevels: 3,
     compositionMode: 'hierarchical',
+    holographicFinalResolutionScale: 1,
   },
 }
 
@@ -412,6 +422,30 @@ export class HierarchicalRadianceCascades {
       this._finalTexelSizeNode.value.set(1 / finalResolution, 1 / finalResolution)
       this._resizeWideRadianceTargets()
     }
+    this._finalRadianceMaterial?.dispose()
+    this._finalRadianceMaterial = null
+    this._finalRadianceSourceTexture = null
+  }
+
+  get holographicFinalResolutionScale(): number {
+    return this._config.holographicFinalResolutionScale
+  }
+
+  set holographicFinalResolutionScale(value: number) {
+    const scale = Math.max(1, Math.min(4, Math.round(value)))
+    if (scale === this._config.holographicFinalResolutionScale) return
+    this._config.holographicFinalResolutionScale = scale
+    if (this._config.compositionMode !== 'holographic') return
+
+    const final = this._holographicFinalRadianceDimensions()
+    this._rebuildHolographicRenderTargets()
+    this._rawFinalRadianceRT.setSize(final.width, final.height)
+    this._finalRadianceRT.setSize(final.width, final.height)
+    this._finalTexelSizeNode.value.set(1 / final.width, 1 / final.height)
+    this._resizeWideRadianceTargets()
+    this._disposeWideRadianceMaterials()
+    this._filterRadianceMaterial?.dispose()
+    this._filterRadianceMaterial = null
     this._finalRadianceMaterial?.dispose()
     this._finalRadianceMaterial = null
     this._finalRadianceSourceTexture = null
@@ -914,7 +948,9 @@ export class HierarchicalRadianceCascades {
     width: number
     height: number
   } {
-    const maxResolution = this._finalRadianceResolution(resolution)
+    const scale = Math.max(1, Math.min(4, Math.round(this._config.holographicFinalResolutionScale)))
+    const baseResolution = resolution > 0 ? resolution : 128
+    const maxResolution = Math.min(baseResolution, this._finalRadianceResolution(resolution) * scale)
     return {
       width: maxResolution,
       height: maxResolution,

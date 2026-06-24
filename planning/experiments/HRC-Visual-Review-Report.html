@@ -618,6 +618,65 @@
         </div>
       </article>
 
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Holographic Final-Resolution Scale Probe</h3>
+            <p>
+              This probe tests whether the compact HRC final grid is hiding too
+              much local shadow structure. The library default remains
+              <code>1</code>; the live example now opens at <code>2</code> as the
+              current review target.
+            </p>
+          </div>
+          <span class="badge select">review</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/019-hrc-scale1-baseline.png" alt="HRC final resolution scale 1 baseline" />
+            <figcaption>Scale 1: compact 128x128 HRC final grid, 19 passes, 4,980,736 direct samples.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/020-hrc-scale2-256.png" alt="HRC final resolution scale 2 candidate" />
+            <figcaption>Scale 2: selected review target, 256x256 HRC final grid, 21 passes, 19,922,944 direct samples.</figcaption>
+          </figure>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/021-hrc-scale4-512.png" alt="HRC final resolution scale 4 probe" />
+            <figcaption>Scale 4: 512x512 reference-scale probe, 23 passes, 79,691,776 direct samples; rejected for shipping cost/artifacts.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Scale 1 Final</b>
+            <span>SSIM 0.90679; luma MAE 33.03289; RMSE 40.88412; edge MAE 26.29096; high-frequency MAE 1.14499.</span>
+          </div>
+          <div class="note">
+            <b>Scale 2 Canvas</b>
+            <span>SSIM 0.96203; luma MAE 0.04350; RMSE 0.06899; edge MAE 0.03156; high-frequency MAE 0.002027.</span>
+          </div>
+          <div class="note">
+            <b>Scale 2 Final</b>
+            <span>SSIM 0.89636; luma MAE 31.75782; RMSE 38.80289; edge MAE 15.75619; high-frequency MAE 0.71227.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Scale 4 Final</b>
+            <span>SSIM 0.87464; luma MAE 37.66296; RMSE 45.51817; edge MAE 8.59454; high-frequency MAE 0.32191.</span>
+          </div>
+          <div class="note">
+            <b>Visual Read</b>
+            <span>Scale 2 improves contact placement and definition. Scale 4 exposes more cardinal/parity structure instead of solving it.</span>
+          </div>
+          <div class="note">
+            <b>Next Target</b>
+            <span>Amitabha-style parity/cardinal final reconstruction, then explicit emissive scene content.</span>
+          </div>
+        </div>
+      </article>
+
       <h2>Next Feature Template</h2>
       <article class="entry">
         <div class="entry-header">

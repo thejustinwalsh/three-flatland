@@ -318,6 +318,7 @@ const DEFAULT_RADIANCE = {
   wideLevels: 1,
   hrcShortIntervalCount: 4,
   hrcCompositionLevels: 2,
+  hrcFinalResolutionScale: 2,
 }
 
 const COMPARISON_BASELINE = {
@@ -335,6 +336,7 @@ const COMPARISON_BASELINE = {
   wideLevels: 1,
   hrcShortIntervalCount: 4,
   hrcCompositionLevels: 2,
+  hrcFinalResolutionScale: 1,
 }
 
 const DEFAULT_LIGHTS = {
@@ -381,6 +383,7 @@ async function main(): Promise<void> {
   hrcLighting.radiance.shortIntervalCount = DEFAULT_RADIANCE.hrcShortIntervalCount
   hrcLighting.radiance.compositionLevels = DEFAULT_RADIANCE.hrcCompositionLevels
   hrcLighting.radiance.compositionMode = DEFAULT_RADIANCE.hrcCompositionMode
+  hrcLighting.radiance.holographicFinalResolutionScale = DEFAULT_RADIANCE.hrcFinalResolutionScale
   let lighting:
     | InstanceType<typeof RadianceLightEffect>
     | InstanceType<typeof HierarchicalRadianceLightEffect> =
@@ -442,6 +445,7 @@ async function main(): Promise<void> {
     hrcCompositionMode: hrcLighting.radiance.compositionMode,
     hrcShortIntervalCount: hrcLighting.radiance.shortIntervalCount,
     hrcCompositionLevels: hrcLighting.radiance.compositionLevels,
+    hrcFinalResolutionScale: hrcLighting.radiance.holographicFinalResolutionScale,
     warmIntensity: warm.intensity,
     coolIntensity: cool.intensity,
     occluders: true,
@@ -465,6 +469,7 @@ async function main(): Promise<void> {
     params.hrcCompositionMode = hrcLighting.radiance.compositionMode
     params.hrcShortIntervalCount = hrcLighting.radiance.shortIntervalCount
     params.hrcCompositionLevels = hrcLighting.radiance.compositionLevels
+    params.hrcFinalResolutionScale = hrcLighting.radiance.holographicFinalResolutionScale
   }
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
   const folder = pane.addFolder({ title: 'Radiance Cascades', expanded: true })
@@ -591,6 +596,13 @@ async function main(): Promise<void> {
       params.hrcCompositionLevels = hrcLighting.radiance.compositionLevels
       pane.refresh()
     })
+  advanced
+    .addBinding(params, 'hrcFinalResolutionScale', { min: 1, max: 4, step: 1 })
+    .on('change', () => {
+      hrcLighting.radiance.holographicFinalResolutionScale = params.hrcFinalResolutionScale
+      params.hrcFinalResolutionScale = hrcLighting.radiance.holographicFinalResolutionScale
+      pane.refresh()
+    })
   ;(
     window as Window & {
       __radianceCascadeControls?: {
@@ -607,6 +619,7 @@ async function main(): Promise<void> {
         setWideDownsampleFactor: (factor: number) => void
         setHrcComposition: (shortIntervalCount: number, compositionLevels?: number) => void
         setHrcCompositionMode: (mode: 'hierarchical' | 'holographic') => void
+        setHrcFinalResolutionScale: (scale: number) => void
         setComparisonResolutionCap: (cap: number) => void
         setLightIntensities: (warmIntensity: number, coolIntensity: number) => void
         setOccluders: (enabled: boolean) => void
@@ -711,6 +724,11 @@ async function main(): Promise<void> {
       params.hrcCompositionMode = hrcLighting.radiance.compositionMode
       pane.refresh()
     },
+    setHrcFinalResolutionScale(scale: number): void {
+      hrcLighting.radiance.holographicFinalResolutionScale = scale
+      params.hrcFinalResolutionScale = hrcLighting.radiance.holographicFinalResolutionScale
+      pane.refresh()
+    },
     setComparisonResolutionCap(cap: number): void {
       const resolutionCap = Math.max(128, Math.min(2048, Math.round(cap)))
       rcLighting.radiance.config.maxAutoCascadeResolution = resolutionCap
@@ -763,6 +781,7 @@ async function main(): Promise<void> {
       params.wideLevels = COMPARISON_BASELINE.wideLevels
       params.hrcShortIntervalCount = COMPARISON_BASELINE.hrcShortIntervalCount
       params.hrcCompositionLevels = COMPARISON_BASELINE.hrcCompositionLevels
+      params.hrcFinalResolutionScale = COMPARISON_BASELINE.hrcFinalResolutionScale
 
       for (const radiance of [rcLighting.radiance, hrcLighting.radiance]) {
         radiance.filterRadius = COMPARISON_BASELINE.filterRadius
@@ -781,6 +800,7 @@ async function main(): Promise<void> {
       hrcLighting.radiance.intervalOverlap = COMPARISON_BASELINE.intervalOverlap
       hrcLighting.radiance.shortIntervalCount = COMPARISON_BASELINE.hrcShortIntervalCount
       hrcLighting.radiance.compositionLevels = COMPARISON_BASELINE.hrcCompositionLevels
+      hrcLighting.radiance.holographicFinalResolutionScale = COMPARISON_BASELINE.hrcFinalResolutionScale
       params.hrcCompositionMode = hrcLighting.radiance.compositionMode
       pane.refresh()
     },
@@ -1216,6 +1236,7 @@ async function main(): Promise<void> {
           hrcLighting.radiance.estimatedHolographicRadianceTexelCount,
         holographicLevelCount: hrcLighting.radiance.holographicLevelCount,
         holographicLevelInfo: hrcLighting.radiance.holographicLevelInfo,
+        holographicFinalResolutionScale: hrcLighting.radiance.holographicFinalResolutionScale,
         estimatedHolographicTransferValueCount:
           hrcLighting.radiance.estimatedHolographicTransferValueCount,
         estimatedHolographicRadianceValueCount:

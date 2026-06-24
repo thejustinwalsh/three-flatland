@@ -615,6 +615,26 @@ Current falsified Holographic hypotheses:
   only where that local neighborhood already contains a shadow edge. It adds no
   pass and no public tuning knob. This is a small visual hardening step, not a
   final answer to the quadrant/cardinal energy question.
+- Amitabha reference audit:
+  - Amitabha renders HRC radiance at display resolution and uses four cardinal
+    rotations with two offset/parity segments per rotation.
+  - Its final reconstruction is parity-aware (`merge_0`) instead of a simple
+    four-quadrant readout.
+  - It treats scene color as emission plus opacity and converts it to fluence
+    during tracing, which is the model we should use for self illumination.
+- HRC final-resolution probe:
+  - Added `holographicFinalResolutionScale` as an explicit experiment knob.
+  - Scale `1` preserves the compact current 128x128 HRC final at 512 cascade
+    resolution.
+  - Scale `2` renders 256x256 HRC final output, improves contact/shadow
+    definition in the example, and costs 21 estimated passes with `19,922,944`
+    direct-transfer samples.
+  - Scale `4` reaches 512x512 and confirms the reference-resolution direction,
+    but exposes more cardinal/parity structure and costs 23 estimated passes
+    with `79,691,776` direct-transfer samples.
+  - Conclusion: use scale `2` in the example as the current review target, but
+    do not call this a correctness fix. The next structural fix is still the
+    Amitabha-style parity/cardinal final reconstruction.
 
 ## Pinned Follow-Up: Self Luminance
 

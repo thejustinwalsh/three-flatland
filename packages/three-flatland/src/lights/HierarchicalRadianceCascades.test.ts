@@ -430,6 +430,52 @@ describe('HierarchicalRadianceCascades', () => {
     hrc.dispose()
   })
 
+  it('scales holographic final output resolution for quality probes', () => {
+    const hrc = new HierarchicalRadianceCascades({
+      cascadeResolution: 512,
+      baseRayCount: 16,
+      compositionMode: 'holographic',
+      sceneRadianceDownsampleFactor: 1,
+      raymarchSteps: 64,
+      filterRadius: 0.7,
+      filterStrength: 1,
+      mipBlur: 0,
+      mipStrength: 0.4,
+      wideDownsampleFactor: 2,
+      wideLevels: 1,
+    })
+
+    const internals = hrc as unknown as {
+      _finalRadianceRT: { width: number; height: number }
+      _rawFinalRadianceRT: { width: number; height: number }
+      _wideRadianceRT: { width: number; height: number }
+    }
+
+    expect(hrc.holographicFinalResolutionScale).toBe(1)
+    expect(internals._finalRadianceRT).toMatchObject({ width: 128, height: 128 })
+    expect(hrc.holographicLevelCount).toBe(7)
+    expect(hrc.estimatedPassCount).toBe(19)
+    expect(hrc.estimatedHolographicDirectTransferSampleCount).toBe(4_980_736)
+
+    hrc.holographicFinalResolutionScale = 2
+
+    expect(hrc.holographicFinalResolutionScale).toBe(2)
+    expect(internals._finalRadianceRT).toMatchObject({ width: 256, height: 256 })
+    expect(internals._rawFinalRadianceRT).toMatchObject({ width: 256, height: 256 })
+    expect(internals._wideRadianceRT).toMatchObject({ width: 128, height: 128 })
+    expect(hrc.holographicLevelCount).toBe(8)
+    expect(hrc.estimatedPassCount).toBe(21)
+    expect(hrc.estimatedHolographicDirectTransferSampleCount).toBe(19_922_944)
+
+    hrc.holographicFinalResolutionScale = 4
+
+    expect(internals._finalRadianceRT).toMatchObject({ width: 512, height: 512 })
+    expect(hrc.holographicLevelCount).toBe(9)
+    expect(hrc.estimatedPassCount).toBe(23)
+    expect(hrc.estimatedHolographicDirectTransferSampleCount).toBe(79_691_776)
+    hrc.dispose()
+  })
+
   it('supports broad GI without extra wide blur passes', () => {
     const hrc = new HierarchicalRadianceCascades({
       cascadeResolution: 128,
