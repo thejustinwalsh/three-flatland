@@ -62,6 +62,18 @@ RC-like or better visual stability from the HRC representation, followed by a
 game-runtime collapse/packing pass that makes the single shipping implementation
 mobile viable.
 
+Shipping visual target, current branch:
+
+- Use the Holographic four-quadrant/cardinal output as the chosen look, not an
+  attempt to recreate every conventional RC angular detail.
+- Keep the Eq. 21-style cardinal cleanup and the SDF-aware local filter.
+- Keep broad GI through the SDF-aware wide downsample (`mipStrength=0.4`), but
+  disable separable wide blur by default (`mipBlur=0`) to save two full passes.
+- Locked example/default budget: `19` estimated HRC passes at `512` cap and
+  `4,980,736` direct-transfer samples.
+- Revisit quadrant/cardinal energy only with a targeted transform test; do not
+  tune global exposure or blur to hide cardinal-direction errors.
+
 Do not tune around visible differences with blue noise, temporal accumulation, broad GI, or final
 filtering. Those effects can hide artifacts, but they cannot prove the hierarchy is correct.
 
@@ -588,6 +600,21 @@ Current falsified Holographic hypotheses:
     wrong and should not be treated as a solved fast path.
 
 ## Current Tuning Evidence
+
+- Current Holographic target is visually useful but still too soft around
+  occluder contact. RC is now treated as a placement/reference signal, not as
+  energy ground truth.
+- Wide-fill probes show the contact artifact is not primarily caused by broad GI:
+  `mipStrength=0.4`, `0.2`, and `0` keep the same visible contact problem, while
+  only changing broad fill strength and one pass when disabled.
+- Rejected direct-transfer texel-center endpoints: the probe darkened contact but
+  hardened the halo and worsened final-radiance metrics, so the current
+  grid-corner direct trace convention remains in place for now.
+- Current contact-hardening candidate preserves the darkest visible local
+  luminance inside the existing SDF-aware filter pass and reduces wide GI mix
+  only where that local neighborhood already contains a shadow edge. It adds no
+  pass and no public tuning knob. This is a small visual hardening step, not a
+  final answer to the quadrant/cardinal energy question.
 
 ## Pinned Follow-Up: Self Luminance
 

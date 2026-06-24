@@ -507,6 +507,117 @@
         </div>
       </article>
 
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Locked Holographic Shipping Default</h3>
+            <p>
+              The example now opens on Holographic HRC with the current selected
+              visual target. The separable wide blur is disabled by default; broad
+              GI remains enabled through the SDF-aware wide downsample.
+            </p>
+          </div>
+          <span class="badge select">selected</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/012-locked-holographic-shipping-default.png" alt="Locked Holographic HRC shipping default" />
+            <figcaption>Fresh-load 1280x720 capture with <code>algorithm=hrc</code>, <code>mode=holographic</code>, and <code>mipBlur=0</code>.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Default Settings</b>
+            <span>intensity 0.005; filter radius 0.7; filter strength 1.0; raymarch steps 64; blue noise 0; mip blur 0; mip strength 0.4.</span>
+          </div>
+          <div class="note">
+            <b>Budget</b>
+            <span>19 estimated HRC passes, 4,980,736 estimated HRC direct samples, wide filter enabled, wide blur disabled.</span>
+          </div>
+          <div class="note">
+            <b>Canvas Metrics</b>
+            <span>luma MAE 0.05109; RMSE 0.07767; SSIM 0.95838; edge MAE 0.03045; profile excess peaks 0.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>luma MAE 33.02878; RMSE 40.88525; SSIM 0.90688; edge MAE 26.15856; high-frequency MAE 1.12586.</span>
+          </div>
+          <div class="note">
+            <b>Mip Blur A/B</b>
+            <span><code>mipBlur=0.2</code> cost 21 passes for final SSIM 0.90968; <code>mipBlur=0</code> cost 19 passes for final SSIM 0.90649.</span>
+          </div>
+          <div class="note">
+            <b>Verdict</b>
+            <span>Selected for the current shipping target. Next correctness work should focus on quadrant/cardinal energy handling, not global exposure or extra blur.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>HRC Contact Shadow Hardening</h3>
+            <p>
+              This pass keeps the current Holographic budget and targets the
+              occluder-edge complaint directly. Broad GI was tested first; the
+              artifact remained, so the selected candidate changes only the
+              existing local filter and wide mix near SDF-confirmed shadow edges.
+            </p>
+          </div>
+          <span class="badge select">review</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/013-current-wide040.png" alt="Current HRC wide fill baseline" />
+            <figcaption>Baseline: <code>mipStrength=0.4</code>, 19 estimated HRC passes.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/018-edge-aware-wide-mix.png" alt="HRC edge-aware wide mix candidate" />
+            <figcaption>Selected candidate: edge-aware local luminance preservation, still 19 estimated HRC passes.</figcaption>
+          </figure>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/014-reduced-wide020.png" alt="Reduced wide fill HRC probe" />
+            <figcaption>Probe: <code>mipStrength=0.2</code>. Contact artifact remains, so broad fill is not the primary cause.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/016-centered-direct-transfer.png" alt="Rejected centered direct transfer HRC probe" />
+            <figcaption>Rejected: centered direct-transfer endpoints darkened contact but hardened the halo and regressed metrics.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Selected Budget</b>
+            <span>19 estimated HRC passes; 4,980,736 estimated direct-transfer samples; no new render target or public tuning knob.</span>
+          </div>
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>SSIM 0.90679; luma MAE 33.03289; edge MAE 26.29096; high-frequency MAE 1.14499.</span>
+          </div>
+          <div class="note">
+            <b>Rejected Coordinate Probe</b>
+            <span>Centered endpoints dropped final SSIM to 0.90088 and raised edge MAE to 27.65096.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Bottom Contact Crop</b>
+            <span>Mean luma moved from 0.429784 to 0.425155; slightly darker contact shadow.</span>
+          </div>
+          <div class="note">
+            <b>Bar Shadow Crop</b>
+            <span>Mean luma moved from 0.262056 to 0.257229; shadow body darkened without changing open area.</span>
+          </div>
+          <div class="note">
+            <b>Open Area Crop</b>
+            <span>Mean luma stayed 0.903466, so broad-lit regions are not globally darkened.</span>
+          </div>
+        </div>
+      </article>
+
       <h2>Next Feature Template</h2>
       <article class="entry">
         <div class="entry-header">
