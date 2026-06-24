@@ -397,6 +397,39 @@ describe('HierarchicalRadianceCascades', () => {
     hrc.dispose()
   })
 
+  it('locks the holographic shipping visual budget without wide blur passes', () => {
+    const hrc = new HierarchicalRadianceCascades({
+      cascadeResolution: 512,
+      baseRayCount: 16,
+      compositionMode: 'holographic',
+      sceneRadianceDownsampleFactor: 1,
+      raymarchSteps: 64,
+      blueNoiseStrength: 0,
+      intervalOverlap: 0,
+      filterRadius: 0.7,
+      filterStrength: 1,
+      filterDiagonals: false,
+      filterJitterStrength: 0,
+      mipBlur: 0,
+      mipStrength: 0.4,
+      wideDownsampleFactor: 2,
+      wideLevels: 1,
+      shortIntervalCount: 4,
+      compositionLevels: 2,
+    })
+
+    expect(hrc.finalRadianceReadoutMode).toBe('holographic-r0')
+    expect(hrc.estimatedHolographicDirectTransferPassCount).toBe(3)
+    expect(hrc.estimatedHolographicRecursiveTransferPassCount).toBe(5)
+    expect(hrc.estimatedHolographicRadiancePassCount).toBe(7)
+    expect(hrc.wideFilterEnabled).toBe(true)
+    expect(hrc.wideBlurEnabled).toBe(false)
+    expect(hrc.estimatedPassCount).toBe(19)
+    expect(hrc.estimatedHolographicDirectTransferSampleCount).toBe(4_980_736)
+    expect(hrc.estimatedRaymarchSampleCount).toBe(4_980_736)
+    hrc.dispose()
+  })
+
   it('supports broad GI without extra wide blur passes', () => {
     const hrc = new HierarchicalRadianceCascades({
       cascadeResolution: 128,

@@ -301,7 +301,7 @@ function addRect(
 }
 
 const DEFAULT_RADIANCE = {
-  algorithm: 'rc' as 'rc' | 'hrc',
+  algorithm: 'hrc' as 'rc' | 'hrc',
   hrcCompositionMode: 'holographic' as 'hierarchical' | 'holographic',
   intensity: 0.005,
   filterRadius: 0.7,
@@ -312,7 +312,7 @@ const DEFAULT_RADIANCE = {
   blueNoiseStrength: 0,
   intervalOverlap: 0,
   sceneRadianceDownsampleFactor: 1,
-  mipBlur: 0.2,
+  mipBlur: 0,
   mipStrength: 0.4,
   wideDownsampleFactor: 2,
   wideLevels: 1,
