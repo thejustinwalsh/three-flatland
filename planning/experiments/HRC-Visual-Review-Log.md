@@ -218,6 +218,53 @@ Interpretation:
 - The biggest correctness gap is no longer repeated translated shadows from the
   viewport bug. The current measurable gap is HRC over-brightening versus RC,
   especially visible in final radiance/shadow luminance.
+
+## 2026-06-23 Holographic Final-Resolution Scale Probe
+
+Purpose: test whether HRC is losing too much local shadow structure by forcing
+the final Holographic reconstruction into the compact RC probe-grid resolution.
+
+Accepted implementation:
+
+- Added `holographicFinalResolutionScale` to HRC.
+- Library default remains `1` to preserve existing compact HRC behavior.
+- The radiance-cascades example now opens at scale `2` as the current review
+  target.
+- Scale is clamped to `1..4` and only rebuilds Holographic render targets when
+  Holographic mode is active.
+
+Probe setup:
+
+- vitexec `--gpu`, Vite example config, forced render size `1280x720`.
+- HRC mode: `holographic`.
+- Baseline visual settings: `mipBlur=0`, `mipStrength=0.4`, raymarch steps `64`,
+  no blue noise jitter.
+
+| Candidate | Screenshot | Final Grid | Passes | Direct Samples | Canvas SSIM | Canvas Luma MAE | Final SSIM | Final Edge MAE | Verdict |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Scale 1 | `planning/experiments/hrc-review-captures/019-hrc-scale1-baseline.png` | `128x128` | `19` | `4,980,736` | unreliable in this sweep | unreliable | `0.90679` | `26.29096` | Baseline compact HRC. Smooth, but contact/shadow definition is still too filled-in. |
+| Scale 2 | `planning/experiments/hrc-review-captures/020-hrc-scale2-256.png` | `256x256` | `21` | `19,922,944` | `0.96203` | `0.04350` | `0.89636` | `15.75619` | Selected review target. Better contact placement and definition; still exposes cardinal/parity structure. |
+| Scale 4 | `planning/experiments/hrc-review-captures/021-hrc-scale4-512.png` | `512x512` | `23` | `79,691,776` | `0.96103` | `0.04603` | `0.87464` | `8.59454` | Rejected for shipping. Too expensive and exposes more structural artifacts. |
+
+Crop statistics:
+
+| Crop | Scale 1 Mean/Sd | Scale 2 Mean/Sd | Scale 4 Mean/Sd |
+| --- | ---: | ---: | ---: |
+| bottom contact | `0.425155 / 0.223568` | `0.437795 / 0.217451` | `0.454881 / 0.220797` |
+| vertical top | `0.404316 / 0.225349` | `0.403143 / 0.225504` | `0.415755 / 0.236363` |
+| bar shadow | `0.257229 / 0.130758` | `0.276739 / 0.133863` | `0.291787 / 0.150294` |
+| open area | `0.903466 / 0.002080` | `0.891837 / 0.009355` | `0.888714 / 0.010951` |
+
+Interpretation:
+
+- Higher final resolution improves contact and penumbra placement, but it does
+  not simply darken shadows. The crop means get brighter in several shadow
+  regions because more HRC structure is visible.
+- Scale `2` is a useful review target because it exposes more detail without
+  jumping to the reference-scale cost.
+- Scale `4` confirms that resolution alone is not the correctness fix. The next
+  paper-aligned target remains Amitabha-style parity/cardinal final
+  reconstruction, then emissive scene content.
 - The next paper-aligned shader fix should target the Holographic normalization
   and final readout contract before any pass collapse or runtime optimization.
 
