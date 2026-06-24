@@ -677,6 +677,65 @@
         </div>
       </article>
 
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Rejected: Eight-Segment Half-Grid HRC</h3>
+            <p>
+              This probe packed real Holographic parity storage as eight logical
+              half-height segments. It deepened shadows, but introduced
+              contact/phase artifacts and regressed the current scale-2 hybrid
+              metrics, so the shader changes were reverted.
+            </p>
+          </div>
+          <span class="badge reject">rejected</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/024-hrc-eight-segment-half-grid.png" alt="Rejected eight-segment HRC far R0 readout" />
+            <figcaption>Eight segments with far <code>R0</code> readout: deeper shadows, but hard parity/contact artifacts.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/025-hrc-eight-segment-merge0-transfer.png" alt="Rejected eight-segment HRC T0 over R0 readout" />
+            <figcaption>Eight segments with local <code>T0</code> over <code>R0</code>: did not fix edge artifacts.</figcaption>
+          </figure>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/026-hrc-eight-segment-no-y-minus-one.png" alt="Rejected eight-segment HRC without halfY minus one" />
+            <figcaption>No <code>halfY - 1</code> offset: slightly better edge score, still worse than the accepted hybrid.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Far R0 Metrics</b>
+            <span>Canvas SSIM 0.95094; luma MAE 0.07282. Final SSIM 0.85352; luma MAE 53.76546.</span>
+          </div>
+          <div class="note">
+            <b>T0 Over R0 Metrics</b>
+            <span>Canvas SSIM 0.95072; luma MAE 0.07636. Final SSIM 0.85711; luma MAE 55.34485.</span>
+          </div>
+          <div class="note">
+            <b>No Minus-One Metrics</b>
+            <span>Canvas SSIM 0.95148; luma MAE 0.07561. Final SSIM 0.85535; luma MAE 55.39231.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Budget</b>
+            <span>19 estimated passes and 16,252,928 direct samples at scale 2; lower than the naive doubled-angular four-row probe.</span>
+          </div>
+          <div class="note">
+            <b>Read</b>
+            <span>The packed shape is plausible, but segment world-origin/readout alignment is still wrong near occluder contact.</span>
+          </div>
+          <div class="note">
+            <b>Action</b>
+            <span>Do not revive the four-row doubled-angular path. Prove segment world mapping before another final readout rewrite.</span>
+          </div>
+        </div>
+      </article>
+
       <h2>Next Feature Template</h2>
       <article class="entry">
         <div class="entry-header">

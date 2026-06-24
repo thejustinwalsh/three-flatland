@@ -268,6 +268,40 @@ Interpretation:
 - The next paper-aligned shader fix should target the Holographic normalization
   and final readout contract before any pass collapse or runtime optimization.
 
+## 2026-06-24 Rejected Eight-Segment Half-Grid Probe
+
+Purpose: test whether Amitabha-style parity storage can be packed into the same
+height budget as the current four-row hybrid by using eight logical segments at
+half-height.
+
+Rejected implementation:
+
+- Changed Holographic metadata to a half-size base grid with eight logical
+  segments: four rotations times two parity offsets.
+- Updated direct transfer, recursive transfer, radiance sampling, and final
+  readout to address segment rows.
+- Tested two final readouts:
+  - far `R0` only,
+  - local `T0` over far `R0`, closer to `merge_0`.
+
+| Candidate | Screenshot | Direct Samples | Canvas SSIM | Canvas Luma MAE | Final SSIM | Final Luma MAE | Verdict |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Eight segments, far `R0` readout | `planning/experiments/hrc-review-captures/024-hrc-eight-segment-half-grid.png` | `16,252,928` | `0.95094` | `0.07282` | `0.85352` | `53.76546` | Rejected. Deeper shadows, but hard parity/contact artifacts and worse metrics than scale-2 hybrid. |
+| Eight segments, `T0` over `R0` readout | `planning/experiments/hrc-review-captures/025-hrc-eight-segment-merge0-transfer.png` | `16,252,928` | `0.95072` | `0.07636` | `0.85711` | `55.34485` | Rejected. Local transfer merge did not fix contact artifacts. |
+| Eight segments, no `halfY - 1` offset | `planning/experiments/hrc-review-captures/026-hrc-eight-segment-no-y-minus-one.png` | `16,252,928` | `0.95148` | `0.07561` | `0.85535` | `55.39231` | Rejected. Slightly better edge metric, but still worse than current hybrid. |
+
+Conclusion:
+
+- The packed eight-segment shape is plausible and keeps the cost lower than the
+  naive doubled-angular four-row attempt, but the implementation is not correct
+  enough to replace the current hybrid.
+- The visible failure mode is phase/contact artifacting near occluder edges,
+  which means final reconstruction and segment world-origin alignment still do
+  not match the reference.
+- Do not revive the doubled-angular four-row path. If eight-segment work
+  resumes, start by proving direct-transfer segment world mapping against a
+  no-occluder and single-occluder probe before changing final readout again.
+
 ## 2026-06-23 Rejected Paper Readout Offset on Square Grid
 
 Probe: reintroduced the paper's `R0([x + 1, y], 0)` final readout offset
