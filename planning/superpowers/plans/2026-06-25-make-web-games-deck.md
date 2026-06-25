@@ -6,11 +6,12 @@
 
 **Architecture:** A standalone, unlinked Astro page (`docs/src/pages/slides/make-web-games.astro`) mounts a single React island. That island (`Presentation`) owns both a fixed fullscreen R3F `<Canvas>` and the reveal.js DOM so they share a module-level store. reveal.js is the source of truth for navigation; a thin adapter pushes `{slideIndex, fragment}` into the store on reveal events; a `<SceneDirector>` inside the canvas reads the store and eases the camera to a per-slide "beat." The engine (`components/deck/`) is deck-agnostic; per-deck content lives in `components/slides/<name>/`.
 
-**Tech Stack:** Astro 6, Starlight (bypassed for this page), `@react-three/fiber/webgpu`, three.js (WebGPU/TSL), `three-flatland`, reveal.js, Public Sans, gem-palette CSS tokens, Vitest (pure logic), Playwright (smoke).
+**Tech Stack:** Astro 6, Starlight (bypassed for this page), `@react-three/fiber/webgpu`, three.js (WebGPU/TSL), `three-flatland`, reveal.js, **anime.js ≥ 4.5.0 (Three.js adapter)** for scene motion, Public Sans, gem-palette CSS tokens, Vitest (pure logic), Playwright (smoke).
 
 ## Global Constraints
 
 - WebGPU + TSL only — R3F Canvas imported from `@react-three/fiber/webgpu`; import library types from `three-flatland/react`. No WebGL1, no GLSL, no `onBeforeCompile`.
+- Scene motion uses the **anime.js Three.js adapter** (`animejs` ≥ 4.5.0): side-effect import `'animejs/adapters/three'`, then `animate(threeObject, { ...props, duration, ease })`. anime.js drives its own RAF; do not add a `createTimer` render loop (R3F renders). Do not hand-roll easing where anime.js fits.
 - All custom three.js classes used as JSX must be registered with `extend({ ... })` before use.
 - Code style: no semicolons, single quotes, trailing commas; `type` keyword for type-only imports; unused vars prefixed `_`.
 - Conventional Commits for every commit.
@@ -19,6 +20,7 @@
 - Dark-only is acceptable (projected talk); near-black scene is the backdrop.
 - CC-BY-4.0 device models require **visible attribution** (exact strings in the spec, Assets section). Raw model originals are vaulted at `assets-src/devices/` (git-excluded); optimized `.glb` is what gets committed.
 - Phase 1 = complete slide content + speaker notes + a wired scene **scaffold**. Real per-feature flatland demos and the device render-to-texture are explicitly later phases.
+- Audio reuses the existing headless engine (`docs/src/scripts/sounds.ts` + `docs/src/audio/*`); never render the header transport controls (`starlight-theme/.../MusicPlayer.astro`, `SoundToggle.astro`). Never autoplay; always respect mute. `zzfx` + `@zzfx-studio/zzfxm` are already docs deps — add no audio dependency.
 
 **Spec:** `planning/superpowers/specs/2026-06-25-make-web-games-deck-design.md` (slide copy is content of record).
 
@@ -41,7 +43,9 @@ docs/
         beats.test.ts                            # T3
         DeckCanvas.tsx                           # T4
         SceneDirector.tsx                        # T4
-        Presentation.tsx                         # T6
+        Presentation.tsx                         # T6 (+ audio wiring T11)
+        useDeckAudio.ts                          # T11 (SFX on slide change, music unlock)
+        DeckSoundToggle.tsx                       # T11 (minimal deck mute toggle)
         primitives/Slide.tsx                     # T5
         primitives/Eyebrow.tsx                   # T5
         primitives/Headline.tsx                  # T5
@@ -57,7 +61,7 @@ docs/
 vitest.workspace.ts                              # + docs/vitest.config.ts (T1)
 ```
 
-**Dependency order:** T1 (foundation) → then T2, T3, T5 in parallel → T4 (needs T2,T3) and T6 (needs T2,T4) → T7 (needs T3), T8, T9 (need T5) in parallel → T10 (integration, needs all).
+**Dependency order:** T1 (foundation) → then T2, T3, T5 in parallel → T4 (needs T2,T3) and T6 (needs T2,T4) → T7 (needs T3), T8, T9 (need T5) in parallel → T10 (integration, needs all) → T11 (deck audio, edits T6 + extends T10 smoke).
 
 **Gating model.** Pure logic (T2, T3) is TDD'd with Vitest. Visual/R3F/Astro tasks (T4–T9) gate on `pnpm --filter docs astro check` (typecheck) passing with zero errors. The integration task (T10) gates on the full `pnpm --filter docs build` plus the Playwright smoke. This is deliberate: unit-testing visual slides adds no signal; the build + e2e smoke is the non-gameable integration gate.
 
@@ -75,14 +79,21 @@ vitest.workspace.ts                              # + docs/vitest.config.ts (T1)
 **Interfaces:**
 - Produces: a reachable route `/slides/make-web-games` rendering a placeholder island; a docs Vitest project so `docs/src/components/**/*.test.ts` run under `pnpm test`.
 
-- [ ] **Step 1: Add reveal.js dependency**
+- [ ] **Step 1: Add reveal.js and anime.js dependencies**
 
 In `docs/package.json` `dependencies`, add (keep alphabetical near other deps):
 ```json
+"animejs": "^4.5.0",
 "reveal.js": "^5.1.0"
 ```
+Also add the anime.js types to `devDependencies` if not bundled:
+```json
+"@types/animejs": "^4.0.0"
+```
 Run: `pnpm install`
-Expected: installs `reveal.js` into `docs`.
+Expected: installs `animejs` and `reveal.js` into `docs`. Note: anime.js v4 ships its
+own types — verify with `ls docs/node_modules/animejs/types* docs/node_modules/animejs/*.d.ts`;
+if present, omit `@types/animejs`.
 
 - [ ] **Step 2: Create docs Vitest project**
 
@@ -379,49 +390,50 @@ git commit -m "feat(deck): add scene beat type and resolver"
 
 **Reference:** mirror the WebGPU Canvas props in `examples/react/basic-sprite/App.tsx` (`Canvas` from `@react-three/fiber/webgpu`, `renderer={{ antialias: false }}`).
 
-- [ ] **Step 1: Implement SceneDirector**
+- [ ] **Step 1: Implement SceneDirector (anime.js-driven)**
 
-Create `docs/src/components/deck/SceneDirector.tsx`:
+Create `docs/src/components/deck/SceneDirector.tsx`. On each slide change, anime.js
+tweens the camera position; R3F's render loop keeps the camera oriented at the beat's
+look target. The side-effect adapter import makes `camera` (a three.js object) a valid
+`animate()` target.
 ```tsx
-import { useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber/webgpu'
 import { Vector3 } from 'three'
+import 'animejs/adapters/three'
+import { animate } from 'animejs'
 import { usePosition } from './presentationStore'
 import { resolveBeat, type SceneBeat } from './beats'
 
-// Critically-damped-ish exponential approach: frame-rate independent.
-function approach(current: number, target: number, dt: number, rate = 4): number {
-  return current + (target - current) * (1 - Math.exp(-rate * dt))
-}
-
 export function SceneDirector({ beats }: { beats: readonly SceneBeat[] }) {
   const { slideIndex } = usePosition()
-  const beat = useMemo(() => resolveBeat(beats, slideIndex), [beats, slideIndex])
-  const lookAt = useRef(new Vector3())
+  const camera = useThree((s) => s.camera)
+  const lookAt = useRef(new Vector3(0, 0, 0))
 
-  useFrame(({ camera }, dt) => {
-    const [px, py, pz] = beat.camera.position
-    camera.position.set(
-      approach(camera.position.x, px, dt),
-      approach(camera.position.y, py, dt),
-      approach(camera.position.z, pz, dt),
-    )
+  // On slide change, tween the camera position with the anime.js three adapter.
+  useEffect(() => {
+    const beat = resolveBeat(beats, slideIndex)
+    const [x, y, z] = beat.camera.position
     const [lx, ly, lz] = beat.camera.lookAt
-    lookAt.current.set(
-      approach(lookAt.current.x, lx, dt),
-      approach(lookAt.current.y, ly, dt),
-      approach(lookAt.current.z, lz, dt),
-    )
-    camera.lookAt(lookAt.current)
-    if ('zoom' in camera) {
-      camera.zoom = approach(camera.zoom, beat.camera.zoom, dt)
-      camera.updateProjectionMatrix()
+    lookAt.current.set(lx, ly, lz)
+    const anim = animate(camera, { x, y, z, duration: 700, ease: 'inOutQuad' })
+    return () => {
+      anim.pause()
     }
+  }, [beats, slideIndex, camera])
+
+  // R3F render loop keeps the camera oriented at the (fixed, Phase 1) look target.
+  useFrame(() => {
+    camera.lookAt(lookAt.current)
   })
 
   return null
 }
 ```
+Note: the three adapter maps `x`/`y`/`z` to `camera.position` (per the docs example
+`animate(mesh, { x: 5 })`). If `astro check` reports the animate return type lacks
+`.pause()`, consult the installed `animejs` types and use the documented stop/pause
+method name — do not delete the cleanup.
 
 - [ ] **Step 2: Implement DeckCanvas**
 
@@ -905,8 +917,8 @@ export function Slides() {
         <Headline>You're not trapped in a browser.</Headline>
         <Subline>NativeScript + three.js · ANGLE → native WebGL2 · Steam Deck</Subline>
         <Credit>
-          Device models: "Steam Deck" by VM-Models and "Iphone 14 Pro" by mister dude,
-          licensed CC-BY-4.0.
+          Device models: "Steam Deck" by VM-Models and "iPhone 16 Pro Max" by
+          MajdyModels, licensed CC-BY-4.0.
         </Credit>
         <aside className="notes">
           The Steam Deck / native question is the real worry — answer it head-on. In
@@ -916,9 +928,9 @@ export function Slides() {
 
           Full credits: This work is based on "Steam Deck"
           (https://sketchfab.com/3d-models/steam-deck-502407f2dab048728e1b63699bf99d45)
-          by VM-Models licensed under CC-BY-4.0. This work is based on "Iphone 14 Pro"
-          (https://sketchfab.com/3d-models/iphone-14-pro-5cb0778041a34f09b409a38c687bb1d4)
-          by mister dude licensed under CC-BY-4.0.
+          by VM-Models licensed under CC-BY-4.0. This work is based on "iPhone 16 Pro Max"
+          (https://sketchfab.com/3d-models/iphone-16-pro-max-41a071ae12794b668502f58d1e0fd1a3)
+          by MajdyModels licensed under CC-BY-4.0.
         </aside>
       </Slide>
 
@@ -1054,16 +1066,166 @@ git commit -m "feat(make-web-games): assemble deck, wire page, add smoke test"
 
 ---
 
+### Task 11: Deck audio (zzfx SFX + zzfx-studio music, no header UI)
+
+**Files:**
+- Create: `docs/src/components/deck/useDeckAudio.ts`
+- Create: `docs/src/components/deck/DeckSoundToggle.tsx`
+- Modify: `docs/src/components/deck/Presentation.tsx` (call the hook, render the toggle)
+- Modify: `e2e/smoke-make-web-games.spec.ts` (assert the toggle is present)
+
+**Interfaces:**
+- Consumes: `subscribe`, `getPosition` (T2); existing `docs/src/scripts/sounds.ts`
+  (`createZzfxProxy`, `setVolumeLevel`, `getVolumeLevel`, `initVolumeLevel`) and
+  `docs/src/audio/storage.ts` (`type VolumeLevel`).
+- Produces:
+  - `useDeckAudio(): void` — subscribes to the store; plays a transition SFX on each
+    slide change via a memoized `createZzfxProxy()` instance.
+  - `DeckSoundToggle(): JSX.Element` — small fixed-corner mute/unmute button.
+
+**Reuse note:** Do NOT import or render `MusicPlayer.astro` / `SoundToggle.astro`
+(header parts). Drive the headless engine directly. Music auto-starts via the bridge's
+existing first-unmute path — no autoplay code here. The first navigation keypress (or
+the toggle click) is the user gesture that unlocks the AudioContext.
+
+- [ ] **Step 1: Implement the audio hook**
+
+Create `docs/src/components/deck/useDeckAudio.ts`:
+```ts
+import { useEffect, useRef } from 'react'
+import { createZzfxProxy } from '../../scripts/sounds'
+import type { PlaySoundFn, ZzFxParams } from '../../audio/types'
+import { subscribe, getPosition } from './presentationStore'
+
+// Subtle UI tick on slide advance. Tune to taste; kept gentle and short.
+const TRANSITION_SFX: ZzFxParams = [0.4, 0, 320, 0, 0.02, 0.08, 0, 1.4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.7, 0.02]
+
+export function useDeckAudio(): void {
+  const playRef = useRef<PlaySoundFn | null>(null)
+  const lastIndex = useRef(getPosition().slideIndex)
+
+  useEffect(() => {
+    playRef.current = createZzfxProxy()
+    const unsub = subscribe(() => {
+      const { slideIndex } = getPosition()
+      if (slideIndex !== lastIndex.current) {
+        lastIndex.current = slideIndex
+        playRef.current?.(...TRANSITION_SFX)
+      }
+    })
+    return unsub
+  }, [])
+}
+```
+
+- [ ] **Step 2: Implement the deck sound toggle**
+
+Create `docs/src/components/deck/DeckSoundToggle.tsx`. Reuses the same volume state as
+the header toggle, so mute persists across the site:
+```tsx
+import { useEffect, useState } from 'react'
+import { initVolumeLevel, getVolumeLevel, setVolumeLevel } from '../../scripts/sounds'
+
+export function DeckSoundToggle() {
+  const [on, setOn] = useState(false)
+
+  useEffect(() => {
+    initVolumeLevel()
+    setOn(getVolumeLevel() > 0)
+  }, [])
+
+  const toggle = () => {
+    const next = on ? 0 : 2
+    setVolumeLevel(next)
+    setOn(next > 0)
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={on ? 'Mute audio' : 'Unmute audio'}
+      aria-pressed={on}
+      onClick={toggle}
+      className="deck-sound-toggle"
+      style={{
+        position: 'fixed',
+        right: '1.25rem',
+        top: '1.25rem',
+        zIndex: 3,
+        width: '2.25rem',
+        height: '2.25rem',
+        display: 'grid',
+        placeItems: 'center',
+        border: '1px solid rgba(255,255,255,0.18)',
+        borderRadius: '0.5rem',
+        background: 'rgba(0,0,0,0.35)',
+        color: on ? 'var(--gold)' : 'rgba(255,255,255,0.55)',
+        cursor: 'pointer',
+        font: '600 0.85rem/1 Inter, system-ui, sans-serif',
+      }}
+    >
+      {on ? '♪' : '×'}
+    </button>
+  )
+}
+```
+
+- [ ] **Step 3: Wire audio into Presentation**
+
+In `docs/src/components/deck/Presentation.tsx`, import and use the hook + toggle.
+Add near the top:
+```tsx
+import { useDeckAudio } from './useDeckAudio'
+import { DeckSoundToggle } from './DeckSoundToggle'
+```
+Inside the component body, call the hook before the return:
+```tsx
+  useDeckAudio()
+```
+And render the toggle inside the returned fragment, after the `.reveal-root` div:
+```tsx
+      <DeckSoundToggle />
+```
+
+- [ ] **Step 4: Extend the smoke test**
+
+In `e2e/smoke-make-web-games.spec.ts`, add before the final assertion:
+```ts
+  // Deck-local sound toggle present (header transport controls are absent).
+  await expect(page.locator('.deck-sound-toggle')).toBeVisible()
+  await expect(page.locator('starlight-menu-button, .music-player')).toHaveCount(0)
+```
+
+- [ ] **Step 5: Typecheck, build, smoke**
+
+Run: `pnpm --filter docs astro check`
+Expected: 0 errors.
+Run: `pnpm --filter docs build`
+Expected: completes.
+Run: `pnpm exec playwright test e2e/smoke-make-web-games.spec.ts`
+Expected: 1 passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add docs/src/components/deck/useDeckAudio.ts docs/src/components/deck/DeckSoundToggle.tsx docs/src/components/deck/Presentation.tsx e2e/smoke-make-web-games.spec.ts
+git commit -m "feat(deck): add zzfx transition SFX and minimal deck sound toggle"
+```
+
+---
+
 ## Deferred (later phases — captured, not in this plan)
 
 - **Real feature demos** in slides 6–8 (live SpriteGroup batch, tilemap + Forward+ lighting, radiance cascades GI) replacing the scaffold mesh.
-- **GO NATIVE device render-to-texture:** optimize `assets-src/devices/steam-deck` (and `iphone-14-pro`) via gltf-transform into `docs/public/slides/make-web-games/`, load on slide 9, swap the screen material (Steam Deck: replace `steam_deck_mat03` mesh material; iPhone: offline screen-split or emissive-mask TSL composite) with a `RenderTarget` rendering a flatland demo. See spec Assets section.
+- **GO NATIVE device render-to-texture:** optimize `assets-src/devices/steam-deck` and `assets-src/devices/iphone-16-pro-max` via gltf-transform into `docs/public/slides/make-web-games/`, load on slide 9, swap the screen material (Steam Deck: replace `steam_deck_mat03` mesh material; iPhone 16 Pro Max: replace the `screen.001` material on mesh `Cube.014_screen.001_0` — both clean single-material swaps) with a `RenderTarget` rendering a flatland demo. See spec Assets section.
 - **Sourced statistics** for slide 3 (verified market-size / player / revenue figures).
 - **Real QR code** on slide 10 pointing at Getting Started.
-- **Reduced-motion** pass (collapse camera easing when `prefers-reduced-motion`).
+- **Deck-specific zzfx-studio track** — compose/select a dedicated ambient zzfxm track for the deck (Phase 1 reuses the existing `tracks.json` library).
+- **Reduced-motion** pass (collapse anime.js camera tweens + audio when `prefers-reduced-motion`).
 
 ## Self-Review
 
-- **Spec coverage:** route/page (T1), engine store+beats+canvas+director+presentation+primitives (T2–T6), 10 slides with notes (T9), beats (T7), scene scaffold (T8), integration+smoke (T10), CC-BY credits (T9), reusable layout (deck/ vs slides/<name>/). Deferred items match the spec's deferred list. ✓
+- **Spec coverage:** route/page (T1), engine store+beats+canvas+director+presentation+primitives (T2–T6), anime.js motion layer (T1 dep + T4 director), 10 slides with notes (T9), beats (T7), scene scaffold (T8), integration+smoke (T10), zzfx SFX + zzfx-studio music + deck-local toggle, no header UI (T11), CC-BY credits incl. iPhone 16 Pro Max (T9), reusable layout (deck/ vs slides/<name>/). Deferred items match the spec's deferred list. ✓
 - **Placeholder scan:** `[SOURCE]` / `[QR …]` markers are intentional content placeholders mandated by the spec and called out in notes + Deferred — not plan-step gaps. No "TODO/implement later" in steps. ✓
-- **Type consistency:** `DeckPosition`, `SceneBeat`/`CameraPose`/`resolveBeat`, `usePosition`/`setPosition`, `Presentation({slides,scene})`, `Slides()`, `DeckScene()`, `beats` are used consistently across tasks. ✓
+- **Type consistency:** `DeckPosition`, `SceneBeat`/`CameraPose`/`resolveBeat`, `usePosition`/`setPosition`/`subscribe`/`getPosition`, `Presentation({slides,scene})`, `Slides()`, `DeckScene()`, `beats`, `useDeckAudio()`, `DeckSoundToggle()` are used consistently across tasks. ✓
+- **External APIs pinned:** anime.js Three.js adapter (`'animejs/adapters/three'` + `animate`, v4.5.0+) and the headless audio engine (`sounds.ts` `createZzfxProxy`/`setVolumeLevel`, `bridge.ts`) are referenced by their verified real export names; tasks flag the one-line verifications (animejs types, `window.Reveal` globalness). ✓

@@ -188,9 +188,21 @@ Future decks add a route + a content folder and reuse all of `deck/`.
   for `useSyncExternalStore`; setter called from reveal event handlers.
 - **`DeckCanvas`** — R3F `<Canvas>` (WebGPU per repo convention) fixed at `inset:0`,
   `z-index` below slides; renders the deck's `scene` and a `SceneDirector`.
-- **`SceneDirector`** — `useFrame` loop that reads the store's `slideIndex`,
-  looks up the beat, and damps the camera (and any beat-driven element state)
-  toward it.
+- **`SceneDirector`** — reads the store's `slideIndex`; on each change, looks up
+  the beat and fires an **anime.js** tween at the camera (and any beat-driven
+  element state) toward the target pose.
+
+### Motion layer — anime.js Three.js adapter
+
+Scene animation uses the **anime.js Three.js adapter** (anime.js ≥ 4.5.0). Side-effect
+import `'animejs/adapters/three'` makes three.js objects animate directly:
+`animate(camera, { x, y, z, duration, ease })`. anime.js runs its own RAF and
+mutates the object in place; R3F keeps its own `frameloop="always"` render loop, so
+the two coexist without a shared tick. `camera.lookAt` is a method (not a tweenable
+prop), so the director keeps the look target fixed (origin) for Phase 1 and applies
+it in a light `useFrame`; later beats can tween a look-target proxy. This replaces
+hand-rolled damping — anime.js owns the deck's motion, dogfooding a clean R3F + anime
+integration.
 - **`primitives/`** — `Slide`, `Eyebrow`, `Headline`, `Subline` — typography
   components carrying the bold-minimalist style and gem-palette tokens, so deck
   content stays declarative.
@@ -217,6 +229,28 @@ Future decks add a route + a content folder and reuse all of `deck/`.
 - All color via existing `starlight-theme` gem tokens; light/dark not required for
   a presentation (dark-only is fine for a projected talk) — confirm if otherwise.
 
+## Audio (zzfx SFX + zzfx-studio music)
+
+The deck reuses the **existing headless audio engine** — `docs/src/audio/bridge.ts`
+(`getBridge`, `playSfx`, `playTrack`, `setMusicVolume`, `subscribe`) and the
+`docs/src/scripts/sounds.ts` facade (`setVolumeLevel`, `getVolumeLevel`,
+`isSoundEnabled`, `createZzfxProxy`) — **without** the header's physical transport
+controls. Those controls live in `packages/starlight-theme/components/overrides/parts/`
+(`MusicPlayer.astro`, `SoundToggle.astro`), injected via the Starlight `Header.astro`;
+a standalone `src/pages` deck page never renders them. The engine is fully decoupled,
+so the deck drives it directly. `zzfx` and `@zzfx-studio/zzfxm` are already docs
+dependencies; the music library loads from `public/audio/tracks.json` (route-agnostic).
+
+Behavior, honoring the repo's audio principle (never autoplay; always respect mute):
+- **Transition SFX** — a subtle zzfx blip on slide advance/retreat, via `createZzfxProxy()`
+  (master-mute aware, unlocks the AudioContext on the first navigation gesture).
+- **Ambient music (zzfx-studio)** — reuses the bridge's existing "auto-start on first
+  unmute" path: the deck does not autoplay; music begins only when the user unmutes.
+- **Minimal deck sound control** — since there is no header, the deck renders one small,
+  unobtrusive mute/unmute toggle (corner, low-opacity) that reuses
+  `setVolumeLevel`/`getVolumeLevel` from `sounds.ts` and persists via `storage.ts` —
+  same behavior as the header toggle, just a deck-local button. No jukebox/transport UI.
+
 ## Assets (GO NATIVE device showcase)
 
 Two CC-BY-4.0 glTF device models are vaulted in the worktree at
@@ -231,19 +265,16 @@ Two CC-BY-4.0 glTF device models are vaulted in the worktree at
 - **Swap mechanism:** replace that mesh's material with a TSL node material whose
   color/emissive samples the flatland `RenderTarget`. Trivial, well-bounded.
 
-### iphone-14-pro (`assets-src/devices/iphone-14-pro/`)
-- Screen is **NOT separable by material/mesh**: the whole phone is one mesh
-  (`defaultMaterial`, mesh 0) with one material (`Material`), screen baked into a
-  shared 4096² baseColor + 4096² emissive (`Material_emissive.jpeg`) atlas.
-- **Swap mechanism — two options, decide at implementation:**
-  1. **Offline screen split (recommended):** preprocess with gltf-transform /
-     Blender so the screen faces become their own primitive + material with flat,
-     axis-aligned quad UVs. Cleanest runtime, correctly oriented demo, one-time
-     asset prep. Fits dogfooding our own asset pipeline.
-  2. **Emissive-mask composite (TSL fallback):** custom node material samples the
-     flatland `RenderTarget` where emissive luminance marks the screen, original
-     PBR elsewhere. No asset surgery, but risks UV distortion if the screen UVs
-     are not a clean rect.
+### iphone-16-pro-max (`assets-src/devices/iphone-16-pro-max/`)
+- **Replaces the earlier iPhone 14 Pro** (which had a single shared material and an
+  unseparable screen). This model is properly split: the screen is its **own
+  material** `screen.001` (material 6) on its **own mesh node**
+  `Cube.014_screen.001_0` (mesh 10, node 18), textured by `screen.001_baseColor.jpeg`.
+  Body, glass, metal frame, lens, and Apple-logo are all separate materials.
+- **Swap mechanism:** clean — replace that one mesh's material with a TSL node
+  material sampling the flatland `RenderTarget`. Identical approach to the Steam
+  Deck; no geometry split, no emissive-mask compositing. ~7.5 MB raw (lighter than
+  the 14 Pro's ~15 MB).
 
 ### Optimization (plan task)
 Raw is ~40 MB. Before committing: gltf-transform pass — meshopt/draco geometry
@@ -256,9 +287,9 @@ Visible credit required wherever shared. Exact strings (from each `license.txt`)
   (https://sketchfab.com/3d-models/steam-deck-502407f2dab048728e1b63699bf99d45)
   by VM-Models (https://sketchfab.com/vm-models) licensed under CC-BY-4.0
   (http://creativecommons.org/licenses/by/4.0/)*
-- iPhone 14 Pro: *This work is based on "Iphone 14 Pro"
-  (https://sketchfab.com/3d-models/iphone-14-pro-5cb0778041a34f09b409a38c687bb1d4)
-  by mister dude (https://sketchfab.com/misterdude) licensed under CC-BY-4.0
+- iPhone 16 Pro Max: *This work is based on "iPhone 16 Pro Max"
+  (https://sketchfab.com/3d-models/iphone-16-pro-max-41a071ae12794b668502f58d1e0fd1a3)
+  by MajdyModels (https://sketchfab.com/MG990) licensed under CC-BY-4.0
   (http://creativecommons.org/licenses/by/4.0/)*
 - Placement: a small persistent credit line on slide 9 (GO NATIVE) plus the full
   strings in that slide's speaker notes, and a `CREDITS` entry in the deck folder.
@@ -275,8 +306,8 @@ Visible credit required wherever shared. Exact strings (from each `license.txt`)
 - **WebGPU fallback:** repo targets WebGPU + WebGL2 via TSL. Confirm the canvas
   uses the repo's standard renderer setup so the deck runs on the presentation
   machine / projector.
-- **iPhone screen swap:** decide offline-split vs. emissive-mask (see Assets) at
-  implementation — depends on inspecting the screen UV island.
+- **anime.js version:** pin `animejs` ≥ 4.5.0 (the release that introduced the
+  Three.js adapter). Add to `docs/package.json`.
 
 ## Out of scope (this project)
 
