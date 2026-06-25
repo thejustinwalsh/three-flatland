@@ -20,6 +20,7 @@ declare module 'reveal.js' {
     constructor(container: HTMLElement, options?: RevealOptions)
     on(event: string, listener: () => void): void
     getIndices(): RevealIndices
+    getCurrentSlide(): HTMLElement | undefined
     initialize(): Promise<void>
     destroy(): void
   }

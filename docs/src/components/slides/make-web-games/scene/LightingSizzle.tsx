@@ -249,25 +249,26 @@ function LightingScene({ lit }: { lit: boolean }) {
 
   return (
     <>
-      {/* DefaultLightEffect: only attached when lit=true. Values mirror the
+      {/* DefaultLightEffect: ALWAYS mounted so the `lit` toggle never
+          re-attaches the flatland lighting effect — remount doesn't cleanly
+          recover. The lit/unlit look is driven entirely by the lights'
+          props below (enabled + ambient color/intensity). Values mirror the
           examples/react/lighting demo's Tweakpane defaults exactly. */}
-      {lit && (
-        <defaultLightEffect
-          attach={attachLighting}
-          bands={4}
-          pixelSize={4}
-          lightHeight={0.75}
-          glowRadius={0}
-          glowIntensity={0.6}
-          rimIntensity={0}
-          shadowStrength={0.8}
-          shadowBias={0.5}
-          shadowStartOffsetScale={1}
-          shadowMaxDistance={300}
-          shadowPixelSize={4}
-          categoryQuotas={{ slime: 4 }}
-        />
-      )}
+      <defaultLightEffect
+        attach={attachLighting}
+        bands={4}
+        pixelSize={4}
+        lightHeight={0.75}
+        glowRadius={0}
+        glowIntensity={0.6}
+        rimIntensity={0}
+        shadowStrength={0.8}
+        shadowBias={0.5}
+        shadowStartOffsetScale={1}
+        shadowMaxDistance={300}
+        shadowPixelSize={4}
+        categoryQuotas={{ slime: 4 }}
+      />
 
       {/* Tilemap */}
       <tileMap2D
@@ -282,8 +283,14 @@ function LightingScene({ lit }: { lit: boolean }) {
         />
       </tileMap2D>
 
-      {/* Ambient — purple dungeon atmosphere */}
-      {lit && <light2D lightType="ambient" color={0x5544aa} intensity={0.6} />}
+      {/* Ambient — always mounted; props swap between the demo's purple
+          dungeon atmosphere (lit) and a bright flat white fill (unlit) so
+          the tilemap reads "unlit/flat" without unmounting the light. */}
+      <light2D
+        lightType="ambient"
+        color={lit ? 0x5544aa : 0xffffff}
+        intensity={lit ? 0.6 : 1.3}
+      />
 
       {/* Wall torches (fixed) — warm orange */}
       {fixedLightPositions.map((pos, i) => (
@@ -390,24 +397,26 @@ function LightingScene({ lit }: { lit: boolean }) {
         </animatedSprite2D>
       ))}
 
-      {/* Slime glow lights — only when lit; positions tracked each frame */}
-      {lit &&
-        slimesRef.current.map((s, i) => (
-          <light2D
-            key={`slime-light-${i}`}
-            ref={(el: Light2D | null) => {
-              s.light = el
-            }}
-            lightType="point"
-            position={[s.pos.x, s.pos.y, 0]}
-            color={0x33ff66}
-            intensity={0.25}
-            distance={40}
-            decay={2}
-            castsShadow={false}
-            category="slime"
-          />
-        ))}
+      {/* Slime glow lights — ALWAYS mounted; disabled (not unmounted) when
+          unlit so the `lit` toggle only flips props. Positions tracked
+          each frame. */}
+      {slimesRef.current.map((s, i) => (
+        <light2D
+          key={`slime-light-${i}`}
+          ref={(el: Light2D | null) => {
+            s.light = el
+          }}
+          lightType="point"
+          position={[s.pos.x, s.pos.y, 0]}
+          color={0x33ff66}
+          intensity={0.25}
+          distance={40}
+          decay={2}
+          castsShadow={false}
+          category="slime"
+          enabled={lit}
+        />
+      ))}
     </>
   )
 }

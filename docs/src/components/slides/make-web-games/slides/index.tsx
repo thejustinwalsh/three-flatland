@@ -51,7 +51,7 @@ export function Slides() {
       <Slide>
         <Eyebrow gem="ruby">Web Game FUD</Eyebrow>
         <Headline small>"Web games are low quality casual free-to-play traps."</Headline>
-        <Subline>That was true. It isn't anymore.</Subline>
+        <Subline>WebGPU and WebAudio slap.<br />Three.js is pushing AAA quality to the web.</Subline>
         <aside className="notes">
           Name the Unity/Unreal skepticism directly and respect it. The turn:
           WebGPU and TSL changed the rendering ceiling. Set up the toolkit.
@@ -60,9 +60,9 @@ export function Slides() {
 
       {/* 5 */}
       <Slide>
-        <Eyebrow gem="gold">First class 2D</Eyebrow>
-        <Headline>three-flatland</Headline>
-        <Subline>Spartan development. One library. All you need.</Subline>
+        <Eyebrow gem="gold">The composable 2D library for Three.js</Eyebrow>
+        <Headline>FLATLAND</Headline>
+        <Subline>Spartan game development.<br />3D and 2D composition.</Subline>
         <aside className="notes">
           raylib calls it Spartan development — minimal dependencies, you against
           the machine. three-flatland is that for web 2D: WebGPU + TSL, sprites,
@@ -99,11 +99,7 @@ export function Slides() {
       <Slide>
         <Eyebrow gem="diamond">Go Native</Eyebrow>
         <Headline>You're not trapped in a browser.</Headline>
-        <Subline>NativeScript + three.js · ANGLE → native WebGL2 · Steam Deck</Subline>
-        <Credit>
-          Device models: "Steam Deck" by VM-Models and "iPhone 16 Pro Max" by
-          MajdyModels, licensed CC-BY-4.0.
-        </Credit>
+        <Subline>NativeScript, React Native, and my native tech can take you to SteamDeck, Mobile and Desktop, without a browser.</Subline>
         <aside className="notes">
           The Steam Deck / native question is the real worry — answer it head-on. In
           2026 you are not boxed in: my NativeScript + three.js demo, ANGLE bridging
@@ -121,10 +117,9 @@ export function Slides() {
       {/* 9 — the provocation */}
       <Slide>
         <Eyebrow gem="turquoize">Our AI Overlords</Eyebrow>
-        <Headline>Your next teammate is an agent.</Headline>
+        <Headline>Is your next teammate an agent?</Headline>
         <Subline>
-          It already speaks the web — and reaches for three-flatland. As AI writes
-          more of the game, what do we build with?
+          Agents are here, they speak in react, html, and three.js. What do our workflows look like outside of Unity and Unreal?
         </Subline>
         <aside className="notes">
           My bet: as agents do more of the building, they reach for the web — it is
@@ -141,11 +136,25 @@ export function Slides() {
 
       {/* 10 */}
       <Slide>
-        <Headline>three-flatland</Headline>
+        <Headline small>three-flatland</Headline>
         <Subline>Make web games. First-class 2D. Go anywhere.</Subline>
-        <p style={{ marginTop: '2rem', font: "600 1rem/1 Inter, sans-serif", color: 'var(--gold)' }}>
-          [QR → Getting Started]
-        </p>
+        <div style={{ marginTop: '2.4rem', display: 'flex', alignItems: 'center', gap: '1.6rem' }}>
+          <img
+            src={`${import.meta.env.BASE_URL}slides/make-web-games/qr-getting-started.svg`}
+            alt="Scan for three-flatland — Getting Started"
+            width={184}
+            height={184}
+            style={{ background: '#fff', padding: '0.7rem', borderRadius: '0.7rem', imageRendering: 'pixelated' }}
+          />
+          <a
+            href="https://thejustinwalsh.com/three-flatland/"
+            target="_blank"
+            rel="noreferrer"
+            style={{ font: "600 clamp(1rem, 2vw, 1.4rem)/1.3 Inter, system-ui, sans-serif", color: 'var(--diamond)', textDecoration: 'none' }}
+          >
+            thejustinwalsh.com/three-flatland
+          </a>
+        </div>
         <aside className="notes">
           The advertisement close. Invite questions — leave one thread deliberately
           unpulled (Hylo / the native pipeline / a feature not shown) so the Q&A has

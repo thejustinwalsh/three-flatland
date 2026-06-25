@@ -324,11 +324,24 @@ function KnightmarkScene() {
     [sheet],
   )
 
+  // Reset and ramp from zero each time the slide becomes active (revisits start
+  // the demo over, so the counter always climbs from 0).
   useEffect(() => {
-    // Defer initial spawn until the group ref is populated (next tick)
+    if (!active) return
+    const group = groupRef.current
+    if (group) {
+      for (const k of knightsRef.current) group.remove(k.sprite)
+    }
+    knightsRef.current = []
+    batchRef.current = INITIAL_BATCH
+    saturatedRef.current = false
+    lowFpsTimeRef.current = 0
+    spawnTimerRef.current = 0
+    fpsRef.current = 60
+    setSizzleStats({ spriteCount: 0, fps: 60 })
     const id = setTimeout(() => spawnBatch(INITIAL_BATCH), 0)
     return () => clearTimeout(id)
-  }, [spawnBatch])
+  }, [active, spawnBatch])
 
   useFrame((_, delta) => {
     if (!active) return
