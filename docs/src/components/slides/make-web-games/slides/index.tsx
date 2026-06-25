@@ -5,7 +5,7 @@ export function Slides() {
     <>
       {/* 1 */}
       <Slide>
-        <Headline>MAKE WEB GAMES</Headline>
+        <Headline hero>MAKE WEB GAMES</Headline>
         <aside className="notes">
           Who I am, and the provocation. This room ships on Unity and Unreal. I am
           here to make the case for the platform you already have open.
@@ -28,13 +28,21 @@ export function Slides() {
         <Eyebrow gem="emerald">Use the platform</Eyebrow>
         <Headline>The web is already the biggest game platform.</Headline>
         <Subline>
-          [SOURCE: web/HTML5 market size] · [SOURCE: monthly players, Poki / CrazyGames]
-          · [SOURCE: growth/revenue trend]
+          Poki: 100M monthly players · CrazyGames: 50M+ monthly players · browser
+          games market: $7.81B (2025)
         </Subline>
         <aside className="notes">
-          Cite each source out loud. Reach plus revenue. This is the load-bearing
-          data slide — web games are a real market, not a toy. Numbers are
-          placeholders pending a sourced research pass; do not present fabricated figures.
+          Reach plus revenue — this is the load-bearing data slide. Web games are a
+          real market, not a toy. Cite each figure: Poki hit 100 million monthly
+          players in June 2025, announced by the platform itself — that puts them in
+          the same sentence as PlayStation Network (119M). Source: Poki via
+          techfundingnews.com, June 2025 (https://techfundingnews.com/browser-gaming-website-poki-won-big-at-the-dutch-game-awards-celebrating-hitting-1-billion-monthly-plays/).
+          CrazyGames reports 50M+ monthly players in their official developer docs.
+          Source: docs.crazygames.com/faq/ (2025). Browser games market valued at
+          $7.81B in 2025, projected $9.07B by 2030 at 3.1% CAGR. Source: The
+          Business Research Company, thebusinessresearchcompany.com/report/browser-games-global-market-report
+          (2026). Bloomberg named the web "video games' hottest new platform" in
+          November 2025: bloomberg.com/news/articles/2025-11-07/video-games-hottest-new-platform-is-an-old-one-websites.
         </aside>
       </Slide>
 
@@ -64,10 +72,12 @@ export function Slides() {
       {/* 6 */}
       <Slide>
         <Eyebrow gem="amethyst">Sizzle</Eyebrow>
-        <Headline>100,000 sprites. One draw call.</Headline>
+        <Headline>30,000 sprites. One draw call.</Headline>
+        <Subline>Automatic, ECS-driven batching — scaling live until the frame budget says stop.</Subline>
         <aside className="notes">
-          SpriteGroup batching, GPU-driven. The hard thing in 2D — throughput — is
-          the thing the GPU does best. (Live background demo target.)
+          The real tech on display: automatic, ECS-driven sprite batching. This demo
+          ramps the sprite count on a timer with live FPS and count on screen, scaling
+          until it stops being stable (≈30k, not a magic 100k). One draw call the whole way.
         </aside>
       </Slide>
 

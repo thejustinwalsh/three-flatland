@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+// reveal.js vertically centers the section (config `center: true`); keep this
+// wrapper simple so that centering stays viewport-height independent.
 export function Slide({ children }: { children: ReactNode }) {
   return (
     <section>
