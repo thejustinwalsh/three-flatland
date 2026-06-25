@@ -1,5 +1,34 @@
+import type { CSSProperties } from 'react'
 import { Slide, Eyebrow, Headline, Subline, Credit } from '../../../deck/primitives'
 import { SpriteSizzleStats } from '../SpriteSizzleStats'
+import { StyledQR } from '../StyledQR'
+
+const linkStyle = (color: string): CSSProperties => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.7rem',
+  font: "600 clamp(1rem, 1.9vw, 1.35rem)/1.2 Inter, system-ui, sans-serif",
+  color,
+  textDecoration: 'none',
+})
+
+function GlobeIcon() {
+  return (
+    <svg width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  )
+}
+
+function XIcon() {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  )
+}
 
 export function Slides() {
   return (
@@ -138,22 +167,26 @@ export function Slides() {
       <Slide>
         <Headline small>three-flatland</Headline>
         <Subline>Make web games. First-class 2D. Go anywhere.</Subline>
-        <div style={{ marginTop: '2.4rem', display: 'flex', alignItems: 'center', gap: '1.6rem' }}>
-          <img
-            src={`${import.meta.env.BASE_URL}slides/make-web-games/qr-getting-started.svg`}
-            alt="Scan for three-flatland — Getting Started"
-            width={184}
-            height={184}
-            style={{ background: '#fff', padding: '0.7rem', borderRadius: '0.7rem', imageRendering: 'pixelated' }}
-          />
-          <a
-            href="https://tjw.dev/three-flatland/"
-            target="_blank"
-            rel="noreferrer"
-            style={{ font: "600 clamp(1rem, 2vw, 1.4rem)/1.3 Inter, system-ui, sans-serif", color: 'var(--diamond)', textDecoration: 'none' }}
-          >
-            tjw.dev/three-flatland
-          </a>
+        <div style={{ marginTop: '2.4rem', display: 'flex', alignItems: 'center', gap: '2rem' }}>
+          <StyledQR data="https://tjw.dev/three-flatland/" size={200} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+            <a
+              href="https://tjw.dev/three-flatland/"
+              target="_blank"
+              rel="noreferrer"
+              style={linkStyle('var(--diamond)')}
+            >
+              <GlobeIcon /> tjw.dev/three-flatland
+            </a>
+            <a
+              href="https://x.com/thejustinwalsh"
+              target="_blank"
+              rel="noreferrer"
+              style={linkStyle('var(--foreground)')}
+            >
+              <XIcon /> @thejustinwalsh
+            </a>
+          </div>
         </div>
         <aside className="notes">
           The advertisement close. Invite questions — leave one thread deliberately

@@ -37,6 +37,7 @@
     "astro": "^6.2.1",
     "reveal.js": "^5.1.0",
     "koota": "catalog:",
+    "qr-code-styling": "^1.9.2",
     "react": "catalog:",
     "react-dom": "catalog:",
     "sharp": "^0.33.5",
