@@ -38,9 +38,10 @@ marketing froth.
 **Deliberately deferred (later iteration):**
 - Polished three-flatland scene content per beat (real sprite batches, tilemap,
   lighting, radiance cascades demos). Scaffold now, dogfood for real later.
-- GO NATIVE device showcase: a Steam Deck / mobile **textured 3D model** with a
-  three-flatland demo **rendered to its screen texture** running on the virtual
-  device screen. Noted as the target for slide 9's scene; placeholder for now.
+- GO NATIVE device showcase: Steam Deck / iPhone **textured 3D models** (assets
+  now in hand — see Assets) with a three-flatland demo **rendered to the screen
+  texture** running on the virtual device screen. The render-texture swap is a
+  recorded design requirement; placeholder framing in Phase 1, full integration later.
 - Surfacing the deck anywhere in the docs site navigation.
 - Real sourced statistics (numbers are marked `[SOURCE]` — see Open Items).
 
@@ -124,8 +125,10 @@ Copy below is near-final; implementation should treat it as the content of recor
   WebGL2 to native, Steam Deck's browser-grade runtime. **Hylo** is the long game —
   publish once, ship everywhere — mention it here as the trajectory, not a slide.
 - **Scene beat (target):** camera zooms out; the canvas reframed inside a
-  Steam Deck / phone **device model**, three-flatland demo rendered to its screen
-  texture. *(Phase 1: placeholder framing.)*
+  Steam Deck / iPhone **device model**, three-flatland demo rendered to its screen
+  texture (see Assets for the screen-swap mechanism). *(Phase 1: placeholder framing.)*
+- **Credits:** CC-BY models require visible attribution — small credit line on
+  this slide (and full strings in notes). See Assets.
 
 ### 10 — Close / CTA
 - **Eyebrow:** —
@@ -214,6 +217,52 @@ Future decks add a route + a content folder and reuse all of `deck/`.
 - All color via existing `starlight-theme` gem tokens; light/dark not required for
   a presentation (dark-only is fine for a projected talk) — confirm if otherwise.
 
+## Assets (GO NATIVE device showcase)
+
+Two CC-BY-4.0 glTF device models are vaulted in the worktree at
+`assets-src/devices/` (git-excluded staging — raw originals ~40 MB; optimized
+`.glb` gets committed to `docs/public/`, not the raw source). Both are
+`scene.gltf` + `scene.bin` + textures.
+
+### steam-deck (`assets-src/devices/steam-deck/`)
+- Screen is **cleanly isolable**: material `steam_deck_mat03` (material 0) is the
+  screen only, on its own mesh node `steam_deck_steam_deck_mat03_0` (mesh 0,
+  node 4), emissive-lit (`emissiveFactor [1,1,1]`, emissiveTexture).
+- **Swap mechanism:** replace that mesh's material with a TSL node material whose
+  color/emissive samples the flatland `RenderTarget`. Trivial, well-bounded.
+
+### iphone-14-pro (`assets-src/devices/iphone-14-pro/`)
+- Screen is **NOT separable by material/mesh**: the whole phone is one mesh
+  (`defaultMaterial`, mesh 0) with one material (`Material`), screen baked into a
+  shared 4096² baseColor + 4096² emissive (`Material_emissive.jpeg`) atlas.
+- **Swap mechanism — two options, decide at implementation:**
+  1. **Offline screen split (recommended):** preprocess with gltf-transform /
+     Blender so the screen faces become their own primitive + material with flat,
+     axis-aligned quad UVs. Cleanest runtime, correctly oriented demo, one-time
+     asset prep. Fits dogfooding our own asset pipeline.
+  2. **Emissive-mask composite (TSL fallback):** custom node material samples the
+     flatland `RenderTarget` where emissive luminance marks the screen, original
+     PBR elsewhere. No asset surgery, but risks UV distortion if the screen UVs
+     are not a clean rect.
+
+### Optimization (plan task)
+Raw is ~40 MB. Before committing: gltf-transform pass — meshopt/draco geometry
+compression, resize + KTX2 textures, **drop the baked screen textures** (the
+render target replaces them). Target a lean `.glb` per device in `docs/public/`.
+
+### Attribution (mandatory — CC-BY-4.0)
+Visible credit required wherever shared. Exact strings (from each `license.txt`):
+- Steam Deck: *This work is based on "Steam Deck"
+  (https://sketchfab.com/3d-models/steam-deck-502407f2dab048728e1b63699bf99d45)
+  by VM-Models (https://sketchfab.com/vm-models) licensed under CC-BY-4.0
+  (http://creativecommons.org/licenses/by/4.0/)*
+- iPhone 14 Pro: *This work is based on "Iphone 14 Pro"
+  (https://sketchfab.com/3d-models/iphone-14-pro-5cb0778041a34f09b409a38c687bb1d4)
+  by mister dude (https://sketchfab.com/misterdude) licensed under CC-BY-4.0
+  (http://creativecommons.org/licenses/by/4.0/)*
+- Placement: a small persistent credit line on slide 9 (GO NATIVE) plus the full
+  strings in that slide's speaker notes, and a `CREDITS` entry in the deck folder.
+
 ## Open items
 
 - **Statistics (slide 3):** three figures marked `[SOURCE]`. Need verified
@@ -226,6 +275,8 @@ Future decks add a route + a content folder and reuse all of `deck/`.
 - **WebGPU fallback:** repo targets WebGPU + WebGL2 via TSL. Confirm the canvas
   uses the repo's standard renderer setup so the deck runs on the presentation
   machine / projector.
+- **iPhone screen swap:** decide offline-split vs. emissive-mask (see Assets) at
+  implementation — depends on inspecting the screen UV island.
 
 ## Out of scope (this project)
 
