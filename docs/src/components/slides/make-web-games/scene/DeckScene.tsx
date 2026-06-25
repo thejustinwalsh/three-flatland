@@ -3,6 +3,10 @@ import { extend, useFrame, useLoader } from '@react-three/fiber/webgpu'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import type { Group } from 'three'
 import { SceneDirector } from '../../../deck/SceneDirector'
+import { FlatlandLayer } from '../../../deck/FlatlandLayer'
+import { usePosition } from '../../../deck/presentationStore'
+import { KnightmarkSizzle } from './KnightmarkSizzle'
+import { LightingSizzle } from './LightingSizzle'
 import { beats } from '../beats'
 
 extend({ Sprite2D })
@@ -108,6 +112,7 @@ function StarLayer() {
 }
 
 export function DeckScene() {
+  const { slideIndex, fragment } = usePosition()
   return (
     <>
       <color attach="background" args={['#111418']} />
@@ -115,6 +120,17 @@ export function DeckScene() {
       <Suspense fallback={null}>
         <StarLayer />
         <LogoField />
+        {/* Real flatland sizzles — always mounted (so the camera can transition to
+            them); active-gated so only the in-view panel renders/animates/shows. */}
+        {/* Slide 6 (index 5): automatic ECS sprite batching. */}
+        <FlatlandLayer active={slideIndex === 5} position={[1.6, 0.4, 0]} size={3.6} clearAlpha={1} clearColor={0x1a1a2e} resolution={[1280, 720]} viewSize={700}>
+          <KnightmarkSizzle />
+        </FlatlandLayer>
+        {/* Slide 7 (index 6): tilemap + real-time 2D lighting. */}
+        <FlatlandLayer active={slideIndex === 6} position={[1.6, 0.4, 0]} size={3.6} clearAlpha={1} clearColor={0x111418} resolution={[1280, 720]} viewSize={400}>
+          {/* lights off until the first fragment reveal (Tilemaps → lights on). */}
+          <LightingSizzle lit={fragment >= 0} />
+        </FlatlandLayer>
       </Suspense>
     </>
   )

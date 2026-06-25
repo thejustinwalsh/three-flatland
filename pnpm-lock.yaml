@@ -207,6 +207,9 @@ importers:
       '@three-flatland/mini-breakout':
         specifier: workspace:*
         version: link:../minis/breakout
+      '@three-flatland/presets':
+        specifier: workspace:*
+        version: link:../packages/presets
       '@unocss/astro':
         specifier: ^66.6.8
         version: 66.6.8(vite@7.3.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))

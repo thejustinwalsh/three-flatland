@@ -28,7 +28,7 @@ export function Presentation({ slides, scene }: { slides: ReactNode; scene: Reac
 
       const sync = () => {
         const { h, f } = instance.getIndices()
-        setPosition({ slideIndex: h ?? 0, fragment: f ?? 0 })
+        setPosition({ slideIndex: h ?? 0, fragment: f ?? -1 })
       }
       instance.on('ready', sync)
       instance.on('slidechanged', sync)

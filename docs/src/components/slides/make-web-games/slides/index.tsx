@@ -1,11 +1,12 @@
 import { Slide, Eyebrow, Headline, Subline, Credit } from '../../../deck/primitives'
+import { SpriteSizzleStats } from '../SpriteSizzleStats'
 
 export function Slides() {
   return (
     <>
       {/* 1 */}
       <Slide>
-        <Headline hero>MAKE WEB GAMES</Headline>
+        <Headline hero>MAKE<br />WEB<br />GAMES</Headline>
         <aside className="notes">
           Who I am, and the provocation. This room ships on Unity and Unreal. I am
           here to make the case for the platform you already have open.
@@ -14,8 +15,8 @@ export function Slides() {
 
       {/* 2 */}
       <Slide>
-        <Eyebrow gem="diamond">The pitch</Eyebrow>
-        <Headline>No install. No store. One URL.</Headline>
+        <Eyebrow gem="diamond">Distribution</Eyebrow>
+        <Headline>Share a URL<br />No install.<br />No friction.</Headline>
         <Subline>Your game is one click from every player on Earth.</Subline>
         <aside className="notes">
           The friction tax of native distribution — downloads, store review,
@@ -71,9 +72,8 @@ export function Slides() {
 
       {/* 6 */}
       <Slide>
-        <Eyebrow gem="amethyst">Sizzle</Eyebrow>
-        <Headline>30,000 sprites. One draw call.</Headline>
-        <Subline>Automatic, ECS-driven batching — scaling live until the frame budget says stop.</Subline>
+        <Eyebrow gem="amethyst">Sprite Batching</Eyebrow>
+        <SpriteSizzleStats />
         <aside className="notes">
           The real tech on display: automatic, ECS-driven sprite batching. This demo
           ramps the sprite count on a timer with live FPS and count on screen, scaling
@@ -81,30 +81,23 @@ export function Slides() {
         </aside>
       </Slide>
 
-      {/* 7 */}
+      {/* 7 — first beat: tilemap (lights off); fragment reveal: lights on */}
       <Slide>
-        <Eyebrow gem="amethyst">Sizzle</Eyebrow>
-        <Headline>Tilemaps. Real-time 2D lights. Soft shadows.</Headline>
+        <Eyebrow gem="amethyst">Tiles & Lighting</Eyebrow>
+        <Headline>Tilemaps.</Headline>
+        <div className="fragment">
+          <Subline>Real-time 2D lights. Soft shadows.</Subline>
+        </div>
         <aside className="notes">
-          Tiled Forward+ lighting and dynamic shadows — lighting that used to mean
-          a PC/console budget, in a 2D browser scene. (Live background demo target.)
+          First beat: the tilemap, lights off. Next click flips on real-time 2D
+          lights + soft shadows — lighting that used to mean a PC/console budget,
+          in a 2D browser scene.
         </aside>
       </Slide>
 
       {/* 8 */}
       <Slide>
-        <Eyebrow gem="amethyst">Sizzle</Eyebrow>
-        <Headline>Radiance cascades. Global illumination in 2D.</Headline>
-        <Subline>Light that bounces. In a browser.</Subline>
-        <aside className="notes">
-          GI was console/PC-only territory. Radiance cascades bring bounced light to
-          2D, running live in the page. This is the wow beat. (Live background demo target.)
-        </aside>
-      </Slide>
-
-      {/* 9 */}
-      <Slide>
-        <Eyebrow gem="diamond">Go native</Eyebrow>
+        <Eyebrow gem="diamond">Go Native</Eyebrow>
         <Headline>You're not trapped in a browser.</Headline>
         <Subline>NativeScript + three.js · ANGLE → native WebGL2 · Steam Deck</Subline>
         <Credit>
@@ -125,7 +118,7 @@ export function Slides() {
         </aside>
       </Slide>
 
-      {/* 10 — the provocation */}
+      {/* 9 — the provocation */}
       <Slide>
         <Eyebrow gem="turquoize">The question</Eyebrow>
         <Headline>Your next teammate is an agent.</Headline>
@@ -146,7 +139,7 @@ export function Slides() {
         </aside>
       </Slide>
 
-      {/* 11 */}
+      {/* 10 */}
       <Slide>
         <Headline>three-flatland</Headline>
         <Subline>Make web games. First-class 2D. Go anywhere.</Subline>
