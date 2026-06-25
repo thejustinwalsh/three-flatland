@@ -1,0 +1,5 @@
+export { Slide } from './Slide'
+export { Eyebrow, type Gem } from './Eyebrow'
+export { Headline } from './Headline'
+export { Subline } from './Subline'
+export { Credit } from './Credit'

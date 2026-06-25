@@ -1,0 +1,23 @@
+---
+// Standalone, unlinked deck page. Bypasses the Starlight layout entirely.
+import '@fontsource/public-sans/latin-400.css'
+import '@fontsource/public-sans/latin-600.css'
+import '@fontsource/public-sans/latin-700.css'
+import '@fontsource/silkscreen/latin-400.css'
+import 'reveal.js/dist/reveal.css'
+import 'starlight-theme/styles/theme'
+import '../../styles/deck.css'
+import MakeWebGamesDeck from '../../components/slides/make-web-games/deck'
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Make Web Games — three-flatland</title>
+  </head>
+  <body>
+    <MakeWebGamesDeck client:only="react" />
+  </body>
+</html>
