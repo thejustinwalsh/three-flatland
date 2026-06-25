@@ -324,24 +324,13 @@ function KnightmarkScene() {
     [sheet],
   )
 
-  // Reset and ramp from zero each time the slide becomes active (revisits start
-  // the demo over, so the counter always climbs from 0).
+  // Spawn the seed batch on mount. Each visit to the slide remounts this whole
+  // component (via a key in DeckScene), which is the reset — fresh empty batch,
+  // ramp from zero — and disposes the old batch in one shot (no per-sprite churn).
   useEffect(() => {
-    if (!active) return
-    const group = groupRef.current
-    if (group) {
-      for (const k of knightsRef.current) group.remove(k.sprite)
-    }
-    knightsRef.current = []
-    batchRef.current = INITIAL_BATCH
-    saturatedRef.current = false
-    lowFpsTimeRef.current = 0
-    spawnTimerRef.current = 0
-    fpsRef.current = 60
-    setSizzleStats({ spriteCount: 0, fps: 60 })
     const id = setTimeout(() => spawnBatch(INITIAL_BATCH), 0)
     return () => clearTimeout(id)
-  }, [active, spawnBatch])
+  }, [spawnBatch])
 
   useFrame((_, delta) => {
     if (!active) return

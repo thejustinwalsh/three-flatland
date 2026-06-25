@@ -1,4 +1,4 @@
-import { Suspense, useRef } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { extend, useFrame, useLoader } from '@react-three/fiber/webgpu'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import type { Group } from 'three'
@@ -113,6 +113,16 @@ function StarLayer() {
 
 export function DeckScene() {
   const { slideIndex, fragment } = usePosition()
+
+  // Remount the sprite sizzle each time slide 6 is (re)entered — a fresh batch
+  // that ramps from zero, and a one-shot dispose of the old one (no per-sprite churn).
+  const knightActive = slideIndex === 5
+  const [knightKey, setKnightKey] = useState(0)
+  const prevKnightActive = useRef(false)
+  useEffect(() => {
+    if (knightActive && !prevKnightActive.current) setKnightKey((k) => k + 1)
+    prevKnightActive.current = knightActive
+  }, [knightActive])
   return (
     <>
       <color attach="background" args={['#111418']} />
@@ -123,7 +133,7 @@ export function DeckScene() {
         {/* Real flatland sizzles — always mounted (so the camera can transition to
             them); active-gated so only the in-view panel renders/animates/shows. */}
         {/* Slide 6 (index 5): automatic ECS sprite batching. */}
-        <FlatlandLayer active={slideIndex === 5} position={[1.6, 0.4, 0]} size={3.6} clearAlpha={1} clearColor={0x1a1a2e} resolution={[1280, 720]} viewSize={700}>
+        <FlatlandLayer key={knightKey} active={knightActive} position={[1.6, 0.4, 0]} size={3.6} clearAlpha={1} clearColor={0x1a1a2e} resolution={[1280, 720]} viewSize={700}>
           <KnightmarkSizzle />
         </FlatlandLayer>
         {/* Slide 7 (index 6): tilemap + real-time 2D lighting. */}
