@@ -25,6 +25,8 @@ export function Presentation({ slides, scene }: { slides: ReactNode; scene: Reac
         backgroundTransition: 'none',
         plugins: [Notes],
       })
+      // Track immediately so an unmount during initialize() still destroys it.
+      deck = instance
 
       // Count the actually-visible fragments on the current slide from the DOM.
       // This stays correct in every nav direction — including backward entry,
@@ -41,7 +43,7 @@ export function Presentation({ slides, scene }: { slides: ReactNode; scene: Reac
       instance.on('fragmenthidden', sync)
 
       await instance.initialize()
-      deck = instance
+      if (cancelled) return
       sync()
     })()
 

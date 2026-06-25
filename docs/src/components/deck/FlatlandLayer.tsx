@@ -55,6 +55,13 @@ export function FlatlandLayer({
     return t
   }, [resolution[0], resolution[1]])
 
+  // Release GPU memory on unmount / remount (the panel is keyed per slide visit).
+  useEffect(() => {
+    return () => {
+      target.dispose()
+    }
+  }, [target])
+
   // Render the flatland to its target each active frame; resize() locks the ortho
   // aspect to the target so pixels stay square. Inactive layers freeze (no cost).
   useFrame(() => {

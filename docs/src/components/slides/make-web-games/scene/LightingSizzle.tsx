@@ -127,15 +127,22 @@ function LightingScene({ lit }: { lit: boolean }) {
   const heroTarget = useRef<Vector2 | null>(null)
   const heroMoving = useRef(false)
   const heroSpawned = useRef(false)
-  if (!heroSpawned.current && fixedLightPositions.length > 0) {
+  // Spawn the hero near the first torch once the map's light positions land.
+  // `heroPos` only feeds the useFrame loop (not rendered directly), so this
+  // can run as an effect without flashing a wrong first-frame position.
+  useEffect(() => {
+    if (heroSpawned.current || fixedLightPositions.length === 0) return
     const [tx, ty] = fixedLightPositions[0]!
     heroPos.current.set(tx + WALL_INSET, ty)
     heroSpawned.current = true
-  }
+  }, [fixedLightPositions])
 
   // ── Slime wander state ────────────────────────────────────────────
   // Each slime drifts on a slow random velocity, retargets every few
-  // seconds, and bounces off the interior bounds.
+  // seconds, and bounces off the interior bounds. Built once via a lazy
+  // state initializer so the array exists for the JSX on first render
+  // (a useEffect would render zero slimes on first paint). The objects
+  // are mutated in place by the useFrame loop — never via a setter.
   type Slime = {
     sprite: AnimatedSprite2D | null
     light: Light2D | null
@@ -143,9 +150,8 @@ function LightingScene({ lit }: { lit: boolean }) {
     vel: Vector2
     retarget: number
   }
-  const slimesRef = useRef<Slime[]>([])
-  if (slimesRef.current.length !== SLIME_COUNT) {
-    slimesRef.current = Array.from({ length: SLIME_COUNT }, () => {
+  const [slimes] = useState<Slime[]>(() =>
+    Array.from({ length: SLIME_COUNT }, () => {
       const angle = Math.random() * Math.PI * 2
       return {
         sprite: null,
@@ -154,8 +160,8 @@ function LightingScene({ lit }: { lit: boolean }) {
         vel: new Vector2(Math.cos(angle) * SLIME_SPEED, Math.sin(angle) * SLIME_SPEED),
         retarget: SLIME_RETARGET_MIN + Math.random() * (SLIME_RETARGET_MAX - SLIME_RETARGET_MIN),
       }
-    })
-  }
+    }),
+  )
 
   useEffect(() => {
     tilemapRef.current?.markOccluders(['collision'])
@@ -187,7 +193,7 @@ function LightingScene({ lit }: { lit: boolean }) {
     // ── Slimes: drift + retarget + bounce ──────────────────────────
     const slimeBoundX = mapHalfW - WALL_INSET - SLIME_SCALE / 2
     const slimeBoundY = mapHalfH - WALL_INSET - SLIME_SCALE / 2
-    for (const s of slimesRef.current) {
+    for (const s of slimes) {
       s.retarget -= delta
       if (s.retarget <= 0) {
         const angle = Math.random() * Math.PI * 2
@@ -357,7 +363,7 @@ function LightingScene({ lit }: { lit: boolean }) {
       </animatedSprite2D>
 
       {/* Slimes — drift around the interior and bounce off the bounds */}
-      {slimesRef.current.map((s, i) => (
+      {slimes.map((s, i) => (
         <animatedSprite2D
           key={`slime-${i}`}
           ref={(el: AnimatedSprite2D | null) => {
@@ -400,7 +406,7 @@ function LightingScene({ lit }: { lit: boolean }) {
       {/* Slime glow lights — ALWAYS mounted; disabled (not unmounted) when
           unlit so the `lit` toggle only flips props. Positions tracked
           each frame. */}
-      {slimesRef.current.map((s, i) => (
+      {slimes.map((s, i) => (
         <light2D
           key={`slime-light-${i}`}
           ref={(el: Light2D | null) => {
