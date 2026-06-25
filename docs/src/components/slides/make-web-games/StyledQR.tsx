@@ -25,16 +25,18 @@ export function StyledQR({ data, size = 208 }: { data: string; size?: number }) 
           gradient: {
             type: 'linear',
             rotation: 0.8,
+            // Gem-tone gradient: diamond → amethyst → ruby.
             colorStops: [
-              { offset: 0, color: '#1098c7' },
-              { offset: 0.5, color: '#8b3ff0' },
+              { offset: 0, color: '#11b7d4' },
+              { offset: 0.5, color: '#a85ff1' },
               { offset: 1, color: '#c62f52' },
             ],
           },
         },
         backgroundOptions: { color: '#ffffff' },
-        cornersSquareOptions: { type: 'extra-rounded', color: '#8b3ff0' },
-        cornersDotOptions: { type: 'dot', color: '#1098c7' },
+        // Anchor targets in black, matching the FL mark in the logo.
+        cornersSquareOptions: { type: 'extra-rounded', color: '#0a0a0a' },
+        cornersDotOptions: { type: 'dot', color: '#0a0a0a' },
         imageOptions: { margin: 4, imageSize: 0.26, hideBackgroundDots: true, crossOrigin: 'anonymous' },
       })
       qr.append(ref.current)
