@@ -147,12 +147,12 @@ export function Slides() {
             style={{ background: '#fff', padding: '0.7rem', borderRadius: '0.7rem', imageRendering: 'pixelated' }}
           />
           <a
-            href="https://thejustinwalsh.com/three-flatland/"
+            href="https://tjw.dev/three-flatland/"
             target="_blank"
             rel="noreferrer"
             style={{ font: "600 clamp(1rem, 2vw, 1.4rem)/1.3 Inter, system-ui, sans-serif", color: 'var(--diamond)', textDecoration: 'none' }}
           >
-            thejustinwalsh.com/three-flatland
+            tjw.dev/three-flatland
           </a>
         </div>
         <aside className="notes">
