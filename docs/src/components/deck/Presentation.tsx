@@ -26,14 +26,29 @@ export function Presentation({ slides, scene }: { slides: ReactNode; scene: Reac
         plugins: [Notes],
       })
 
+      // Track the number of revealed fragments on the current slide via events —
+      // more reliable than getIndices().f for "has the Nth fragment been shown".
+      let fragmentsShown = 0
       const sync = () => {
-        const { h, f } = instance.getIndices()
-        setPosition({ slideIndex: h ?? 0, fragment: f ?? -1 })
+        const { h } = instance.getIndices()
+        setPosition({ slideIndex: h ?? 0, fragment: fragmentsShown })
       }
-      instance.on('ready', sync)
-      instance.on('slidechanged', sync)
-      instance.on('fragmentshown', sync)
-      instance.on('fragmenthidden', sync)
+      instance.on('ready', () => {
+        fragmentsShown = 0
+        sync()
+      })
+      instance.on('slidechanged', () => {
+        fragmentsShown = 0
+        sync()
+      })
+      instance.on('fragmentshown', () => {
+        fragmentsShown += 1
+        sync()
+      })
+      instance.on('fragmenthidden', () => {
+        fragmentsShown = Math.max(0, fragmentsShown - 1)
+        sync()
+      })
 
       await instance.initialize()
       deck = instance

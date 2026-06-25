@@ -129,7 +129,7 @@ export function DeckScene() {
         {/* Slide 7 (index 6): tilemap + real-time 2D lighting. */}
         <FlatlandLayer active={slideIndex === 6} position={[1.6, 0.4, 0]} size={3.6} clearAlpha={1} clearColor={0x111418} resolution={[1280, 720]} viewSize={400}>
           {/* lights off until the first fragment reveal (Tilemaps → lights on). */}
-          <LightingSizzle lit={fragment >= 0} />
+          <LightingSizzle lit={fragment >= 1} />
         </FlatlandLayer>
       </Suspense>
     </>

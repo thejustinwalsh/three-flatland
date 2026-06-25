@@ -16,7 +16,7 @@ export function Slides() {
       {/* 2 */}
       <Slide>
         <Eyebrow gem="diamond">Distribution</Eyebrow>
-        <Headline>Share a URL<br />No install.<br />No friction.</Headline>
+        <Headline>Share a URL.<br />No install.<br />No friction.</Headline>
         <Subline>Your game is one click from every player on Earth.</Subline>
         <aside className="notes">
           The friction tax of native distribution — downloads, store review,
@@ -27,7 +27,7 @@ export function Slides() {
       {/* 3 */}
       <Slide>
         <Eyebrow gem="emerald">Use the platform</Eyebrow>
-        <Headline>The web is already the biggest game platform.</Headline>
+        <Headline>The web is a games platform.</Headline>
         <Subline>
           Poki: 100M monthly players · CrazyGames: 50M+ monthly players · browser
           games market: $7.81B (2025)
@@ -49,7 +49,7 @@ export function Slides() {
 
       {/* 4 */}
       <Slide>
-        <Eyebrow gem="ruby">The catch</Eyebrow>
+        <Eyebrow gem="ruby">Web Game Perception</Eyebrow>
         <Headline>"But the web can't make real games."</Headline>
         <Subline>That was true. It isn't anymore.</Subline>
         <aside className="notes">
@@ -120,7 +120,7 @@ export function Slides() {
 
       {/* 9 — the provocation */}
       <Slide>
-        <Eyebrow gem="turquoize">The question</Eyebrow>
+        <Eyebrow gem="turquoize">Our AI Overlords</Eyebrow>
         <Headline>Your next teammate is an agent.</Headline>
         <Subline>
           It already speaks the web — and reaches for three-flatland. As AI writes

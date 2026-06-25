@@ -37,7 +37,7 @@ const TILE_SCALE = 2
 const TILE_PX = 16
 const WALL_INSET = TILE_PX * TILE_SCALE
 
-const SLIME_COUNT = 4
+const SLIME_COUNT = 16
 const SLIME_SCALE = TILE_PX * TILE_SCALE
 const SLIME_SPEED = 16 // world units / s — slow drift
 const SLIME_RETARGET_MIN = 1.5
