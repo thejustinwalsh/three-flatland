@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type Gem = 'gold' | 'ruby' | 'emerald' | 'diamond' | 'amethyst'
+export type Gem = 'gold' | 'ruby' | 'emerald' | 'diamond' | 'amethyst' | 'turquoize' | 'pink' | 'salmon'
 
 export function Eyebrow({ children, gem = 'emerald' }: { children: ReactNode; gem?: Gem }) {
   return (

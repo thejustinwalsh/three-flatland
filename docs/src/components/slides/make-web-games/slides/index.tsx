@@ -115,7 +115,28 @@ export function Slides() {
         </aside>
       </Slide>
 
-      {/* 10 */}
+      {/* 10 — the provocation */}
+      <Slide>
+        <Eyebrow gem="turquoize">The question</Eyebrow>
+        <Headline>Your next teammate is an agent.</Headline>
+        <Subline>
+          It already speaks the web — and reaches for three-flatland. As AI writes
+          more of the game, what do we build with?
+        </Subline>
+        <aside className="notes">
+          My bet: as agents do more of the building, they reach for the web — it is
+          the platform they know best, and they can drive the whole loop themselves:
+          write the code, open a browser, test it, ship it, with no GUI editor in the
+          way. The signal is already here — one AI game jam pulled in over a thousand
+          games, browser-only, three.js the default. The honest nuance: LLMs
+          autocomplete C# inside Unity; agents build whole games on the web.
+          three-flatland is built for that agent. I do not think this is settled —
+          that is the point. The question I want to leave you with: with AI in the
+          room, what should we be building games with? [pause — invite questions]
+        </aside>
+      </Slide>
+
+      {/* 11 */}
       <Slide>
         <Headline>three-flatland</Headline>
         <Subline>Make web games. First-class 2D. Go anywhere.</Subline>

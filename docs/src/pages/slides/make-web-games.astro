@@ -5,7 +5,9 @@ import '@fontsource/public-sans/latin-600.css'
 import '@fontsource/public-sans/latin-700.css'
 import '@fontsource/silkscreen/latin-400.css'
 import 'reveal.js/dist/reveal.css'
+import 'starlight-theme/styles/theme'
 import '../../styles/deck.css'
+import MakeWebGamesDeck from '../../components/slides/make-web-games/deck'
 ---
 
 <!doctype html>
@@ -16,8 +18,6 @@ import '../../styles/deck.css'
     <title>Make Web Games — three-flatland</title>
   </head>
   <body>
-    <main id="deck-root">
-      <p style="position:fixed;inset:0;display:grid;place-items:center;">deck mounts here</p>
-    </main>
+    <MakeWebGamesDeck client:only="react" />
   </body>
 </html>

@@ -45,7 +45,7 @@ marketing froth.
 - Surfacing the deck anywhere in the docs site navigation.
 - Real sourced statistics (numbers are marked `[SOURCE]` — see Open Items).
 
-## Slide spine (10 slides)
+## Slide spine (11 slides)
 
 Each slide carries: eyebrow, headline, optional subline, **speaker notes**
 (`<aside class="notes">`), and a **scene beat** (camera pose + active BG elements).
@@ -130,7 +130,20 @@ Copy below is near-final; implementation should treat it as the content of recor
 - **Credits:** CC-BY models require visible attribution — small credit line on
   this slide (and full strings in notes). See Assets.
 
-### 10 — Close / CTA
+### 10 — AI / agents (the provocation)
+- **Eyebrow:** THE QUESTION (turquoize)
+- **Headline:** Your next teammate is an agent.
+- **Subline:** It already speaks the web — and reaches for three-flatland. As AI
+  writes more of the game, what do we build with?
+- **Notes:** The bet, stated plainly: as agents do more of the building, they reach
+  for the web (the platform they know best) and can drive the whole loop themselves —
+  write, open a browser, test, ship — no GUI editor in the way. Evidence to cite: one
+  AI game jam pulled 1,000+ games, browser-only, three.js the default. The honest
+  nuance: LLMs autocomplete C# *inside* Unity; agents build *whole games* on the web.
+  Deliberately left as an open question to seed Q&A. See "Research note" below.
+- **Scene beat:** camera pushes head-on to center (`[0,0,7]`) — direct, confrontational.
+
+### 11 — Close / CTA
 - **Eyebrow:** —
 - **Headline:** three-flatland
 - **Subline:** Make web games. First-class 2D. Go anywhere.
@@ -139,6 +152,37 @@ Copy below is near-final; implementation should treat it as the content of recor
   deliberately unpulled (Hylo / native pipeline / a feature not shown) so the
   Q&A has somewhere obvious to start.
 - **Scene beat:** camera returns to the hero sprite, now lit by everything we built.
+
+## Research note — the AI/agents bet (slide 10)
+
+The bet is forward-looking but has real, current support — and is honestly *not*
+settled, which is what makes it a good provocation to leave hanging for Q&A.
+
+Supporting signal:
+- **The Vibe Coding Game Jam** (Levels.io, sponsored by Bolt.new + CodeRabbit) drew
+  **1,000+ AI-built game submissions**, with a browser-only rule (no downloads/login)
+  and Three.js as the recommended/de-facto engine. Large-scale evidence that
+  AI-driven game building lands on the web. (vibejam 2025/2026.)
+- Three.js is described as **"the de facto foundation for games built using vibe
+  coding"** — in-browser, no installs, compact modular code "ideal for AI generation,"
+  fast feedback "key to the vibe."
+- **Browser-native agent tools** (Bolt.new, v0.dev, Cursor, Lovable, Windsurf,
+  websim) let an agent own the whole loop — generate → run → test → deploy — without
+  a GUI editor. The web is code + a browser the agent can drive end-to-end.
+- The broader **"agentic web"** shift (agent-centric, action-oriented) is an active
+  research theme (arXiv 2507.21206).
+- "Vibe coding" coined by Karpathy; AI-driven development is rising (the second bet).
+
+Honest counter-signal (keep the slide a question, not a claim):
+- Unity isn't abandoned — there's a healthy **LLM-*inside*-Unity** tooling layer
+  (LLMUnity, Unity Asset Store LLM packages, C# autocomplete). AI game-dev tooling is
+  partly engine-agnostic today.
+- The sharp distinction the slide rests on: **LLMs autocomplete C# inside Unity;
+  agents build whole games on the web.** That's the defensible, non-overclaimed form.
+
+Sources: vibejam.am/2026; nilo.io "best AI vibe coding games" / "play vibe coded
+games 2026"; threejsresources.com "AI & Three.js"; webtech.tools vibe-coding-games;
+arXiv 2507.21206 (Agentic Web); github.com/undreamai/LLMUnity.
 
 ## Architecture
 
