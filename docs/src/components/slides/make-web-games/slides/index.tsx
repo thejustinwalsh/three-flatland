@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { Slide, Eyebrow, Headline, Subline, Credit } from '../../../deck/primitives'
+import { Slide, Eyebrow, Headline, Subline } from '../../../deck/primitives'
 import { SpriteSizzleStats } from '../SpriteSizzleStats'
 import { StyledQR } from '../StyledQR'
 
@@ -30,12 +30,73 @@ function XIcon() {
   )
 }
 
+const GEMS = ['gold', 'ruby', 'emerald', 'diamond', 'amethyst', 'turquoize', 'pink', 'salmon']
+
+const FEATURES: [string, string][] = [
+  ['Sprite batching', 'automatic, ECS-driven'],
+  ['Tilemaps', 'LDtk maps, autotiling'],
+  ['2D lighting', 'soft shadows, normal maps'],
+  ['Radiance cascades', 'global illumination'],
+  ['Skia', 'animated SVG & vector'],
+  ['Slug', 'resolution-independent GPU fonts'],
+  ['TSL shaders', 'composable node materials'],
+  ['Pass effects', 'CRT, bloom, pixelate, dither'],
+  ['Animation', 'spritesheets & tweens'],
+  ['Hit testing', 'pixel-perfect picking'],
+  ['Devtools', 'Tweakpane, stats, inspection'],
+  ['Bake pipeline', 'offline normals & hitmasks'],
+]
+
+function FeatureGrid() {
+  return (
+    <ul
+      style={{
+        listStyle: 'none',
+        margin: '1.8rem 0 0',
+        padding: '1.5rem 2rem',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        gap: '0.7rem 2.6rem',
+        maxWidth: '56rem',
+        background: 'rgba(8, 10, 14, 0.64)',
+        backdropFilter: 'blur(3px)',
+        WebkitBackdropFilter: 'blur(3px)',
+        borderRadius: '0.9rem',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+      }}
+    >
+      {FEATURES.map(([name, desc], i) => (
+        <li
+          key={name}
+          style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', font: "400 clamp(0.95rem, 1.7vw, 1.25rem)/1.35 'Public Sans', system-ui, sans-serif" }}
+        >
+          <span aria-hidden style={{ color: `var(--${GEMS[i % GEMS.length]})`, fontWeight: 800 }}>▪</span>
+          <span>
+            <strong style={{ fontWeight: 700 }}>{name}</strong>{' '}
+            <span style={{ color: 'rgba(255,255,255,0.6)' }}>— {desc}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function Slides() {
   return (
     <>
       {/* 1 */}
       <Slide>
         <Headline hero>MAKE<br />WEB<br />GAMES</Headline>
+        <p
+          style={{
+            margin: '2.6rem 0 0',
+            textAlign: 'right',
+            font: "600 clamp(1rem, 1.8vw, 1.35rem)/1.3 Inter, system-ui, sans-serif",
+            color: 'rgba(255,255,255,0.7)',
+          }}
+        >
+          Justin Walsh · June 2026
+        </p>
         <aside className="notes">
           Who I am, and the provocation. This room ships on Unity and Unreal. I am
           here to make the case for the platform you already have open.
@@ -124,7 +185,19 @@ export function Slides() {
         </aside>
       </Slide>
 
-      {/* 8 */}
+      {/* 8 — full feature breakdown */}
+      <Slide>
+        <Eyebrow gem="gold">The toolkit</Eyebrow>
+        <Headline small>One library. Everything 2D.</Headline>
+        <FeatureGrid />
+        <aside className="notes">
+          The full kit, composable on top of Three.js — beyond what's on the sizzle
+          slides. Call out the headliners: Skia for animated SVG/vector, Slug for
+          GPU font rendering, plus lighting, GI, pass effects, and the bake pipeline.
+        </aside>
+      </Slide>
+
+      {/* 9 */}
       <Slide>
         <Eyebrow gem="diamond">Go Native</Eyebrow>
         <Headline>You're not trapped in a browser.</Headline>
@@ -148,7 +221,7 @@ export function Slides() {
         <Eyebrow gem="turquoize">Our AI Overlords</Eyebrow>
         <Headline>Is your next teammate an agent?</Headline>
         <Subline>
-          Agents are here, they speak in react, html, and three.js. What do our workflows look like outside of Unity and Unreal?
+          Agents are here, they are good at react, typescript, html, and three.js. What do our workflows look like outside of Unity and Unreal?
         </Subline>
         <aside className="notes">
           My bet: as agents do more of the building, they reach for the web — it is
