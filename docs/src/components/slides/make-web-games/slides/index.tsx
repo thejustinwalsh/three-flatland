@@ -49,8 +49,8 @@ export function Slides() {
 
       {/* 4 */}
       <Slide>
-        <Eyebrow gem="ruby">Web Game Perception</Eyebrow>
-        <Headline>"But the web can't make real games."</Headline>
+        <Eyebrow gem="ruby">Web Game FUD</Eyebrow>
+        <Headline small>"Web games are low quality casual free-to-play traps."</Headline>
         <Subline>That was true. It isn't anymore.</Subline>
         <aside className="notes">
           Name the Unity/Unreal skepticism directly and respect it. The turn:

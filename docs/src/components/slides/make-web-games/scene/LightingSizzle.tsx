@@ -249,18 +249,23 @@ function LightingScene({ lit }: { lit: boolean }) {
 
   return (
     <>
-      {/* DefaultLightEffect: only attached when lit=true */}
+      {/* DefaultLightEffect: only attached when lit=true. Values mirror the
+          examples/react/lighting demo's Tweakpane defaults exactly. */}
       {lit && (
         <defaultLightEffect
           attach={attachLighting}
           bands={4}
+          pixelSize={4}
+          lightHeight={0.75}
+          glowRadius={0}
+          glowIntensity={0.6}
+          rimIntensity={0}
           shadowStrength={0.8}
           shadowBias={0.5}
           shadowStartOffsetScale={1}
           shadowMaxDistance={300}
           shadowPixelSize={4}
-          pixelSize={4}
-          lightHeight={0.75}
+          categoryQuotas={{ slime: 4 }}
         />
       )}
 
@@ -290,7 +295,7 @@ function LightingScene({ lit }: { lit: boolean }) {
           lightType="point"
           position={[pos[0], pos[1], 0]}
           color={0xff6600}
-          intensity={1.8 * 1.6}
+          intensity={1.8}
           distance={140}
           decay={2}
           importance={10}
@@ -308,7 +313,7 @@ function LightingScene({ lit }: { lit: boolean }) {
           lightType="point"
           position={[pos[0], pos[1], 0]}
           color={0xffcc44}
-          intensity={1.8 * 0.8 * 0.8}
+          intensity={1.8 * 0.8}
           distance={140 * 0.7}
           decay={2}
           importance={10}
@@ -400,6 +405,7 @@ function LightingScene({ lit }: { lit: boolean }) {
             distance={40}
             decay={2}
             castsShadow={false}
+            category="slime"
           />
         ))}
     </>
