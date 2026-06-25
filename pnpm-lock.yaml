@@ -258,6 +258,9 @@ importers:
       three:
         specifier: 'catalog:'
         version: 0.183.1
+      three-flatland:
+        specifier: workspace:*
+        version: link:../packages/three-flatland
       typedoc:
         specifier: ^0.28.19
         version: 0.28.19(typescript@5.9.3)
@@ -286,6 +289,9 @@ importers:
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.183.1
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

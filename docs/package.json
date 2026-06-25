@@ -45,6 +45,7 @@
     "starlight-theme": "workspace:*",
     "starlight-typedoc": "^0.21.5",
     "three": "catalog:",
+    "three-flatland": "workspace:*",
     "typedoc": "^0.28.19",
     "typedoc-plugin-markdown": "^4.11.0",
     "unist-util-visit": "^5.1.0",
@@ -56,6 +57,7 @@
     "@playwright/test": "^1.60.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@types/three": "catalog:",
     "typescript": "catalog:",
     "vite": "^7.3.2"
   }
