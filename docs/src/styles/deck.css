@@ -1,0 +1,35 @@
+/* Deck layout: the R3F scene is a fixed backdrop; reveal sits over it, transparent. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--surface-0, #111418);
+  color: #fff;
+  overflow: hidden;
+}
+
+.deck-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+/* reveal.js base ships its own .reveal sizing; make it transparent so the scene shows through. */
+.reveal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+.reveal,
+.reveal .slides,
+.reveal .slides section {
+  background: transparent !important;
+}
+.reveal .slides {
+  text-align: left;
+}
+
+/* Bold-minimalist type defaults for slide content. */
+.reveal .slides section {
+  font-family: 'Public Sans', system-ui, sans-serif;
+}
