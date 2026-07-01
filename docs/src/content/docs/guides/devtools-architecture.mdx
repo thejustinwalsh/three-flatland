@@ -1,0 +1,151 @@
+---
+title: Devtools Architecture
+description: How the three-flatland devtools connect and move per-frame telemetry between a scene and its inspecting clients — over the Broadcast Channel API, with a Web Worker, transferable ArrayBuffers, WebGPU timestamp queries, and WebCodecs.
+---
+
+import Diagram from '../../../components/Diagram.astro'
+import topology from '../../../assets/diagrams/devtools-topology.svg?raw'
+import discoveryLiveness from '../../../assets/diagrams/devtools-discovery-liveness.svg?raw'
+import transportCycle from '../../../assets/diagrams/devtools-transport-cycle.svg?raw'
+import frameCorrelation from '../../../assets/diagrams/devtools-frame-correlation.svg?raw'
+import frameLayout from '../../../assets/diagrams/devtools-frame-layout.svg?raw'
+import bufferStream from '../../../assets/diagrams/devtools-buffer-stream.svg?raw'
+import transportSwap from '../../../assets/diagrams/devtools-transport-swap.svg?raw'
+
+The three-flatland devtools move per-frame renderer telemetry from a running scene to one or more inspecting clients. This page explains how a client connects and how the data flows — within the same browser tab and to another tab — and the Web platform APIs each step uses. For setup and the panel reference, see the [Devtools guide](/three-flatland/guides/devtools/).
+
+## The delivery model
+
+<Diagram caption="Figure 1. A provider and its consumers. Discovery happens on a shared channel; data flows on a per-provider channel." src={topology} />
+
+Every message between a provider and a consumer travels over the [Broadcast Channel API](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel). A `BroadcastChannel` is identified by a name. Every same-origin browsing context that constructs a channel with that name — the page itself, a Web Worker, another tab — receives every message posted to it:
+
+```js
+// any context, same origin:
+const ch = new BroadcastChannel('flatland-debug')
+ch.postMessage({ type: 'provider:query' })   // fan-out to all others
+ch.onmessage = (e) => { /* e.data is a structured-clone copy */ }
+```
+
+This one fact is the whole delivery model. **Sending to the same tab and sending to another tab are the same operation** — a `postMessage` on a named channel — because the browser delivers a copy to every context that opened that name, regardless of which tab it is in.
+
+Connection happens in two phases, on two channels:
+
+- **Discovery** uses one shared channel, `flatland-debug`, that every provider and consumer opens. It carries only `provider:query`, `provider:announce`, and `provider:gone`.
+- **Data** uses a second channel that a consumer opens *after* it picks a provider, named for that provider: `flatland-debug:<providerId>`. All subscription and data traffic — `subscribe`, `subscribe:ack`, `ack`, `data`, `buffer:chunk`, `buffer:raw`, `ping` — flows there, off the shared discovery channel. Only that provider and its subscribers ever open this name, so it acts as a private line between them — though it is still a `BroadcastChannel`, not a socket, and more than one consumer (the panel and the dashboard) can share it.
+
+A **provider** runs in the inspected page and produces telemetry. A **consumer** reads it — the in-page devtools panel, a dashboard in another tab, or a future remote client. There is no static wiring between them; they find each other through discovery.
+
+## Initiating a connection
+
+<Diagram caption="Figure 2. The connection handshake and the heartbeat that follows, with its timeouts." src={discoveryLiveness} />
+
+A connection is a handshake, then a subscription. Each step is a `postMessage` on one of the two channels:
+
+1. **Announce.** On `start()`, the provider opens `flatland-debug` and posts `provider:announce` with its id. When activated through `createDevtoolsProvider()`, the provider class is loaded with a dynamic `import()`, so `start()` runs asynchronously and a frame or two may pass before the provider is live on the bus.
+2. **Query.** A consumer opens `flatland-debug`, posts `provider:query`, and listens. The first `provider:announce` it receives triggers subscription immediately — there is no fixed collection window. Selection prefers a user provider over a system one, first-announced as the tiebreak. If no announce arrives, the consumer retries `provider:query` with exponential backoff: 500 ms, doubling each attempt, capped at 5000 ms, for up to 10 attempts. A provider that starts after the retries are exhausted still connects on its own `provider:announce`.
+3. **Subscribe.** The consumer opens the chosen provider's data channel, `flatland-debug:<id>`, and posts `subscribe` with payload `{ id, features, registry?, buffers? }`. `registry` is an optional name filter: omitted samples every entry, `[]` samples none (metadata still ships so the UI can list them), a named list narrows to those. `buffers` maps entry names to `{ mode: 'thumbnail' | 'stream', thumbSize? }`: `thumbnail` requests a downsampled preview (default 256 px on the long edge), `stream` a VP9-encoded full-size stream. An entry absent from the map, or an omitted `buffers`, means metadata only with no GPU readback.
+4. **Acknowledge.** The provider replies `subscribe:ack` and begins collecting *only* those features. The `SubscriberRegistry` holds the union of every consumer's feature set, and each collection site checks it, so nothing is measured that no one is watching.
+
+After that, both sides run a heartbeat so each can detect the other going away: the provider posts `data` on each 250 ms flush that produced output, and a bare `ping` after `IDLE_PING_MS` (2000 ms) of silence; the consumer sends `ack` every `ACK_INTERVAL_MS` (1000 ms). The provider drops a consumer after `ACK_GRACE_MS` (3000 ms) without an ack; the consumer re-subscribes after `SERVER_LIVENESS_MS` (5000 ms) without any message from the provider.
+
+## Sending data
+
+<Diagram caption="Figure 3. The producer's send path: fill a pooled buffer on the render thread, transfer it to a worker, broadcast from there, and transfer it back." src={transportCycle} />
+
+Once a consumer is subscribed, the provider samples once per frame. Every 250 ms `_flush()` runs, but it posts a `data` message on `flatland-debug:<id>` only when at least one subscribed feature produced output that tick; otherwise it may post a bare `ping` for liveness. The Broadcast Channel API delivers a copy to every context that opened that channel — so the same `postMessage` reaches the in-page panel in the same tab and a dashboard in another tab, with no difference in code or path. A consumer's side is just:
+
+```js
+const ch = new BroadcastChannel('flatland-debug:' + providerId)
+ch.onmessage = (e) => applyDelta(e.data)   // decode and render
+```
+
+The producer's side is where the work is, and it is the reason a **Web Worker** is involved. `BroadcastChannel.postMessage` runs the [structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm) synchronously on the calling thread, copying every typed array in the message. Run on the render thread, that copy is charged to the frame budget. So the provider hands the broadcast to a worker and moves one buffer between them using [transferable objects](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Transferable_objects):
+
+1. On the render thread, the flush fills a pooled `ArrayBuffer` with the frame's samples and builds a `data` message whose typed-array fields are views over it.
+2. `worker.postMessage(msg, [poolBuf])` **transfers** the buffer to the worker (zero-copy on this hop).
+3. The worker calls `bc.postMessage(msg)`. The structured clone runs here, on the worker, once per subscriber. This is the step that crosses into every other context — same tab or not.
+4. The worker **transfers** the buffer back with a `{ type: '__release__', buf }` message; the next flush reuses it.
+
+The pool is a set of `ArrayBuffer`s in three tiers — 4 KB × 8, 256 KB × 4 (the per-flush data packet), and 16 MB × 4 (texture readback) — allocated once in the worker and transferred to the producer at boot, so the render thread does no per-frame allocation in steady state. Until the `__pool_init__` seed messages arrive, `acquire*` returns one-off `ArrayBuffer`s; `InlineBusTransport` allocates per call and has no real pool. If a worker cannot be created — no `Worker` global, a bundler that does not resolve the `new URL('./bus-worker', import.meta.url)` pattern, or a blocking Content-Security-Policy — `InlineBusTransport` posts to the `BroadcastChannel` directly on the producer thread instead, trading the offload for a working fallback.
+
+Both implementations sit behind one interface, so nothing above them names a transport:
+
+```ts
+export interface BusTransport {
+  acquireSmall(): ArrayBuffer   // 4 KB
+  acquireMedium(): ArrayBuffer  // 256 KB — the per-flush data packet
+  acquireLarge(): ArrayBuffer   // 16 MB — texture pixel readback
+  post(msg: DebugMessage, bufs?: ArrayBuffer[]): void
+  convert(req: ConvertRequest, poolBuf: ArrayBuffer): void
+  readonly codecSupported: boolean | null
+  releaseUnused(buf: ArrayBuffer): void
+  poolStats(): { smallFree: number; mediumFree: number; largeFree: number }
+  dispose(): void
+}
+```
+
+## What a sample is keyed by
+
+<Diagram caption="Figure 4. Asynchronous GPU timings are attributed to the ring slot of the frame that issued them; the consumer appends the batch's samples to rings and averages." src={frameCorrelation} />
+
+The data being sent is a batch of per-frame samples, and each sample is keyed by the provider's own `_frame` counter, incremented once per `endFrame` and captured into the batch as `startFrame`. That counter is distinct from `renderer.info.frame`, three.js's render counter, which the collector uses only to map resolved WebGPU timestamp durations back to a ring slot via `_tjsFrameToIdx`. A frame index rather than wall-clock time is used because two data sources arrive out of step with the frame they belong to.
+
+WebGPU timestamp queries resolve asynchronously and out of order. three.js exposes `backend.getTimestampFrames('render')`, which returns the frame ids in the batch that just resolved; the last is the frame whose duration is now in `renderer.info.render.timestamp`. The collector keeps a `Map` from frame id to ring slot (`_tjsFrameToIdx`). three.js coalesces concurrent `resolveTimestampsAsync` calls into one promise and returns only the last resolved frame's duration, so intermediate frames lose their individual value. When the promise settles, the collector writes that duration into every ring slot still tracked in `_tjsFrameToIdx`, then clears the mappings at or before the resolved frame id. Slots drained before their resolve arrives keep the forward-filled value rather than a zero.
+
+Batching adds the second offset. Samples are written once per frame into pre-allocated typed arrays as scaled integers — `fps` as `Int16Array × 10`, `cpuMs` and `gpuMs` as `Uint16Array × 100`, the counts as `Uint32Array` — and flushed together. The batch carries a `startFrame` index and a `count`. On receipt the consumer appends all `count` samples into per-field `Float32Array` rings and computes a batch mean for each field's scalar readout; `startFrame` is present in the payload but not read by the current client — it is reserved for future frame-accurate reconstruction. The producer-side ring holds 240 samples and overflow drops the newest.
+
+## Sending only changes
+
+The provider does not resend a value that has not changed. Each feature in a `data` message is a delta against the packet it last sent, so a packet carries only what moved since the previous tick, and the consumer reprojects the full picture by applying the delta to the state it already holds. Field by field:
+
+- **absent** — unchanged; the consumer keeps its current value.
+- **`null`** — cleared; the consumer resets the field.
+- **present** — replaced with the new value.
+
+On the provider side each feature tracks changes its own way. `EnvCollector` keeps a `_prev` snapshot and diffs it field by field. `DebugRegistry` and `DebugTextureRegistry` track per-entry `version` / `lastEmittedVersion` counters plus a shape flag (full sample vs. metadata-only), and skip entries where both match. `BatchCollector` compares a monotonic `_version` against `_lastEmittedVersion` and skips the drain when they are equal. `StatsCollector` always ships fresh typed-array samples; only `heapLimitMB` is deltaed, sent once then omitted. On the consumer side each `data` message is merged into an accumulated `DevtoolsState`, so a panel renders from its own running copy rather than any single packet. When a consumer subscribes, each collector's `resetDelta()` runs so its next batch is a full snapshot, not a delta against state the consumer never received.
+
+The per-frame stats arrays are new samples every batch and are always carried; the delta matters most for the structured features — the registry, buffer metadata, environment, and batch list — where most fields are unchanged from one packet to the next.
+
+## The producer–worker protocol
+
+The producer and its offload worker exchange structured objects over `Worker.postMessage`, not a binary frame. The render thread sends two kinds of message:
+
+- **Control** — `{ type: '__init__', channelName }` to boot the worker, and `{ type: '__convert__', ...req, __poolBufs }` to hand over raw pixels for RGBA8 conversion and optional VP9 encoding.
+- **Data flushes** — a `DebugMessage` object whose typed-array fields are views into a transferred pool `ArrayBuffer`, tagged with `__poolBufs` so the worker knows which buffers to return after `bc.postMessage` has serialised the payload.
+
+The worker replies with `{ type: '__pool_init__', tier, bufs }` to seed the pool, `{ type: '__release__', buf }` after each broadcast to return a pool buffer, and `{ type: '__codec_support__', vp9 }` once the VP9 probe settles. The hand-rolled binary frame in `bus-frame.ts` is not wired to any live transport; it is the planned encoding for the future remote transport, described below.
+
+## Sending a texture: WebCodecs
+
+<Diagram caption="Figure 5. A texture readback encoded with the WebCodecs VideoEncoder and sent as buffer:chunk, with a buffer:raw fallback." src={bufferStream} />
+
+Inspecting a `RenderTarget` or `DataTexture` means sending its pixels. A raw RGBA8 readback is large, so when a subscription is in `stream` mode and the codec is available, the worker converts the pixels to RGBA8 and encodes them with the [WebCodecs](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API) `VideoEncoder`:
+
+```ts
+encoder.configure({
+  codec: 'vp09.00.10.08',   // VP9
+  width, height,
+  framerate: 4,
+  latencyMode: 'realtime',
+  bitrateMode: 'quantizer',
+})
+```
+
+Each `EncodedVideoChunk` is broadcast as a `buffer:chunk` message with the render frame it was read on attached:
+
+```ts
+payload: { name, frame, capturedAt, width, height, pixelType, display, keyFrame, codec, data }
+```
+
+On the consumer side, `buffer:chunk` is delivered to registered chunk listeners; a listener waits for a keyframe before feeding chunks to a `VideoDecoder`. Codec support is probed once at worker boot and reported as `codecSupported` (`null` until it settles, then `true` or `false`). When codec support is `false`, the subscription is not in `stream` mode, or the inline transport is active, the worker broadcasts `buffer:raw` with display-ready RGBA8 instead; the consumer writes those pixels into `DevtoolsState.buffers[name].pixels` and the panel paints them with `putImageData`. Keyframes are forced on a resolution change and at least every two seconds.
+
+## Sending to another machine (roadmap)
+
+<Diagram caption="Figure 6. A WebSocketTransport is another BusTransport implementation; everything above the interface is unchanged." src={transportSwap} />
+
+`BroadcastChannel` reaches other tabs on the same origin, but not another machine. Today's `BusTransport` is the producer-side pool-and-offload interface — buffer acquisition, `post`, and `convert` over the current `BroadcastChannel` path — not a full discovery or client-transport protocol. A remote transport would sit behind the same interface for the broadcast step, but would also need a serialization layer and a client-side bridge, because `BroadcastChannel`'s native structured clone is unavailable over a socket. The connection handshake, the frame-keyed sampling, and the `DebugMessage` taxonomy are above the interface and would not change. A byte transport is where key compression and a binary encoding such as msgpack or CBOR would apply; the same-origin `BroadcastChannel` path uses structured clone, so field names stay verbose there.
+
+The binary wire format for that byte transport is defined in `bus-frame.ts` and is not yet wired. Each frame is a single `ArrayBuffer`: a 16-byte header — `usedBytes` (u32 @0), `type` (u32 @4, from the `BUS_TYPE` enum), and `Date.now()` split into `tsLow`/`tsHigh` (u32 @8 and @12) to avoid a BigInt — followed by TLV feature sections (`featureId` u32, `sectionBytes` u32, then the bytes), one per subscribed feature.
+
+<Diagram caption="Figure 7. The planned binary wire format in bus-frame.ts, not yet wired to a live transport." src={frameLayout} />

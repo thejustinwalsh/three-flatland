@@ -393,6 +393,7 @@ export default defineConfig({
               { label: 'Batch Rendering', slug: 'guides/batch-rendering' },
               { label: '2D Lighting', slug: 'guides/lighting' },
               { label: 'Shadows & Occlusion', slug: 'guides/shadows' },
+              { label: 'Devtools Architecture', slug: 'guides/devtools-architecture' },
             ],
           },
           // Guides — task-oriented how-tos. "I want to do X." Each page should
