@@ -167,7 +167,7 @@ export function Slides() {
         <aside className="notes">
           The real tech on display: automatic, ECS-driven sprite batching. This demo
           ramps the sprite count on a timer with live FPS and count on screen, scaling
-          until it stops being stable (≈30k, not a magic 100k). One draw call the whole way.
+          until it stops being stable (≈30k, not a magic 100k).
         </aside>
       </Slide>
 
