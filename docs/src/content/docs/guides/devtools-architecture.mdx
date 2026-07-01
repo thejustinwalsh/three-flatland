@@ -138,7 +138,7 @@ Each `EncodedVideoChunk` is broadcast as a `buffer:chunk` message with the rende
 payload: { name, frame, capturedAt, width, height, pixelType, display, keyFrame, codec, data }
 ```
 
-On the consumer side, `buffer:chunk` is delivered to registered chunk listeners; a listener waits for a keyframe before feeding chunks to a `VideoDecoder`. Codec support is probed once at worker boot and reported as `codecSupported` (`null` until it settles, then `true` or `false`). When codec support is `false`, the subscription is not in `stream` mode, or the inline transport is active, the worker broadcasts `buffer:raw` with display-ready RGBA8 instead; the consumer writes those pixels into `DevtoolsState.buffers[name].pixels` and the panel paints them with `putImageData`. Keyframes are forced on a resolution change and at least every two seconds.
+On the consumer side, `buffer:chunk` is delivered to registered chunk listeners; a listener waits for a keyframe before feeding chunks to a `VideoDecoder`. Codec support is probed once at worker boot and reported as `codecSupported` (`null` until it settles, then `true` or `false`). When codec support is `false` or the subscription is not in `stream` mode, the worker broadcasts `buffer:raw` with display-ready RGBA8 instead; the consumer writes those pixels into `DevtoolsState.buffers[name].pixels` and the panel paints them with `putImageData`. When the inline transport is active it produces `buffer:raw` directly on the producer thread, bypassing the worker. Keyframes are forced on a resolution change and at least every two seconds.
 
 ## Sending to another machine (roadmap)
 
