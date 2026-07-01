@@ -559,7 +559,7 @@ export class SpriteGroup extends Group implements WorldProvider {
    *
    * Note: `drawCalls` is NOT computed here — it must come from
    * `renderer.info.render.calls` after the actual Three.js render pass.
-   * See Flatland.stats for the real value, or capture the delta yourself:
+   * See `flatland.spriteGroup.stats` for the real value, or capture the delta yourself:
    * ```ts
    * const before = renderer.info.render.calls
    * renderer.render(scene, camera)
