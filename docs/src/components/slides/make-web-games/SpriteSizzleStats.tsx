@@ -57,7 +57,7 @@ export function SpriteSizzleStats() {
         </span>
       </Headline>
       <Subline>
-        Automatic, ECS-driven batching · one draw call · FPS:{' '}
+        Automatic, ECS-driven batching · FPS:{' '}
         <span style={{ display: 'inline-block', minWidth: '2ch', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
           <span ref={fpsRef}>0</span>
         </span>
