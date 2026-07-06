@@ -1,4 +1,4 @@
-import { attribute, texture, uv, vec2, vec4, float, If, Discard, select } from 'three/tsl'
+import { attribute, texture, vec2, vec4, float, If, Discard, select } from 'three/tsl'
 import {
   type Texture,
   FrontSide,
@@ -10,6 +10,7 @@ import {
 import type Node from 'three/src/nodes/core/Node.js'
 import { EffectMaterial } from './EffectMaterial'
 import { readFlip } from './instanceAttributes'
+import { synthQuadNodes } from './synthQuadNodes'
 import type { GlobalUniforms } from '../GlobalUniforms'
 
 // Re-export types that moved to EffectMaterial for backwards compatibility
@@ -135,10 +136,25 @@ export class Sprite2DMaterial extends EffectMaterial {
   private _premultipliedAlpha: boolean = false
   private _globalUniforms: GlobalUniforms | null = null
 
+  /**
+   * Synthesized corner UV varying — replaces the geometry `uv()`
+   * attribute (the synth-quad geometry ships no uv buffer).
+   * @internal
+   */
+  private _cornerUV: ReturnType<typeof synthQuadNodes>['cornerUV']
+
   constructor(options: Sprite2DMaterialOptions = {}) {
     super({ effectTier: options.effectTier })
 
     this.batchId = nextMaterialId++
+
+    // Synthesize the unit-quad corner from vertexIndex — pairs with the
+    // index-only geometry from `createSynthQuadGeometry()`. Reclaims the
+    // 3 vertex-buffer bindings PlaneGeometry cost (position/normal/uv),
+    // which is what funds MAX_EFFECT_FLOATS = 24.
+    const synth = synthQuadNodes()
+    this.positionNode = synth.position
+    this._cornerUV = synth.cornerUV
 
     this._premultipliedAlpha = options.premultipliedAlpha ?? false
     this._globalUniforms = options.globalUniforms ?? null
@@ -221,7 +237,7 @@ export class Sprite2DMaterial extends EffectMaterial {
     const flip = readFlip()
 
     // Apply flip
-    const baseUV = uv()
+    const baseUV = this._cornerUV
     const flippedUV = vec2(
       select(flip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
       select(flip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))

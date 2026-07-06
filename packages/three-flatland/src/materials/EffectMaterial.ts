@@ -134,14 +134,15 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   /**
    * Maximum total effect-data floats allowed across all registered
    * effects on this material. WebGPU allows 8 vertex-buffer bindings
-   * per pipeline; SpriteBatch uses 5 fixed bindings (3 geometry +
-   * instanceMatrix + interleaved core), leaving 3 for `effectBuf0/1/2`
-   * × 4 floats = 12 floats. Exceeding this would force a 4th effectBuf
-   * binding which WebGPU rejects at pipeline creation with a cryptic
-   * "vertex buffer count exceeds maximum" error. `registerEffect`
-   * throws clearly when the cap would be exceeded.
+   * per pipeline; SpriteBatch uses 2 fixed bindings (instanceMatrix +
+   * interleaved core — the synth-quad geometry is index-only and costs
+   * zero), leaving 6 for `effectBuf0..5` × 4 floats = 24 floats.
+   * Exceeding this would force a 7th effectBuf binding which WebGPU
+   * rejects at pipeline creation with a cryptic "vertex buffer count
+   * exceeds maximum" error. `registerEffect` throws clearly when the
+   * cap would be exceeded.
    */
-  static readonly MAX_EFFECT_FLOATS = 12
+  static readonly MAX_EFFECT_FLOATS = 24
 
   /**
    * Maps effect name to its bit position in the enable flags bitmask.
@@ -316,12 +317,12 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
     this._effectTotalFloats = dataFloats
 
     // Hard cap: WebGPU allows 8 vertex-buffer bindings per pipeline.
-    // SpriteBatch uses 5 for fixed bindings (3 geometry + instanceMatrix
-    // + interleaved core), leaving 3 for `effectBuf0/1/2` × 4 floats =
-    // 12 effect floats max. Exceeding that would force a 4th effectBuf
-    // binding which WebGPU will reject at pipeline creation with a
-    // cryptic "vertex buffer count exceeds maximum" error. Reject
-    // clearly here instead.
+    // SpriteBatch uses 2 fixed bindings (instanceMatrix + interleaved
+    // core; synth-quad geometry is index-only), leaving 6 for
+    // `effectBuf0..5` × 4 floats = 24 effect floats max. Exceeding that
+    // would force a 7th effectBuf binding which WebGPU will reject at
+    // pipeline creation with a cryptic "vertex buffer count exceeds
+    // maximum" error. Reject clearly here instead.
     if (dataFloats > EffectMaterial.MAX_EFFECT_FLOATS) {
       const names = this._effects.map((e) => e.effectName).join(', ')
       throw new Error(

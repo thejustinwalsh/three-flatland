@@ -1,12 +1,12 @@
 import {
   Mesh,
-  PlaneGeometry,
   Vector2,
   Vector3,
   Color,
   BufferAttribute,
   InterleavedBuffer,
   InterleavedBufferAttribute,
+  type BufferGeometry,
   type Texture,
   type Raycaster,
   type Intersection,
@@ -38,6 +38,7 @@ import type { HitTestMode } from '../events/HitTestMode'
 import { resolveHitTestMode } from '../events/HitTestMode'
 import type { AlphaMap } from '../events/AlphaMap'
 import { rayPlaneZ0, createIntersection } from '../events/raycastHelpers'
+import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
 
 // Types the build-time `process.env` read without requiring @types/node
 // (shadows the global where present; erased at compile).
@@ -91,7 +92,7 @@ const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, ve
 let _warnedMissingAlphaMap = false
 
 export class Sprite2D extends Mesh {
-  declare geometry: PlaneGeometry
+  declare geometry: BufferGeometry
   declare material: Sprite2DMaterial
 
   /**
@@ -432,12 +433,12 @@ export class Sprite2D extends Mesh {
   /** @internal */ _batchSlot: number = -1
   /** @internal */ _batchIdx: number = -1
 
-  /** Custom geometry for anchor offset */
-  private _geometry: PlaneGeometry | null = null
+  /** Owned per-sprite geometry (carries the instance-attribute buffers) */
+  private _geometry: BufferGeometry | null = null
 
   /**
    * Instance attribute buffers for single-sprite rendering.
-   * PlaneGeometry has 4 vertices, so we need 4 copies of each value.
+   * The synth quad indexes 4 vertices, so we need 4 copies of each value.
    */
   /**
    * Interleaved per-vertex storage mirroring SpriteBatch's instance
@@ -500,8 +501,11 @@ export class Sprite2D extends Mesh {
     }
 
     // Create geometry with instance attributes for single-sprite rendering
-    // (Cannot use shared geometry because each sprite needs its own attribute buffers)
-    const geometry = new PlaneGeometry(1, 1)
+    // (Cannot use shared geometry because each sprite needs its own
+    // attribute buffers.) Index-only synth quad — corner position + UV
+    // come from vertexIndex in the shader; boundingSphere is pre-set to
+    // the unit circumsphere so frustum culling works with no position data.
+    const geometry = createSynthQuadGeometry()
     super(geometry, material)
 
     // Store reference so we can dispose it
@@ -1679,7 +1683,7 @@ export class Sprite2D extends Mesh {
     // Anchor offset baked into translation. Anchor (0.5, 0.5) ⇒
     // center ⇒ zero offset. Anchor (0, 1) ⇒ top-left ⇒ shifts the
     // quad +0.5*sx, -0.5*sy. Removes the per-anchor-change geometry
-    // rebuild entirely; the unit PlaneGeometry never changes.
+    // rebuild entirely; the unit quad never changes.
     const ax = (0.5 - this._anchor.x) * sx
     const ay = (0.5 - this._anchor.y) * sy
     const px = this.position.x + ax

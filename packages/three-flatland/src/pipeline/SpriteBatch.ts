@@ -1,12 +1,15 @@
 import {
   InstancedMesh,
-  PlaneGeometry,
   InstancedBufferAttribute,
   InstancedInterleavedBuffer,
   InterleavedBufferAttribute,
   DynamicDrawUsage,
+  Sphere,
   type Matrix4,
+  type Raycaster,
+  type Intersection,
 } from 'three'
+import { createSynthQuadGeometry } from './synthQuadGeometry'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
 import { BucketedDirtyTracker } from './BucketedDirtyTracker'
@@ -69,10 +72,10 @@ const CUSTOM_FULL_THRESHOLD = 3
  *   (1 buffer slot, 4 logical attribute views)
  * - `effectBuf*` custom attributes from the material's effect schema
  *
- * Total vertex-buffer bindings: 3 (PlaneGeometry) + 1 (instanceMatrix)
- * + 1 (interleaved) + N (effect buffers). N is capped by
- * `EffectMaterial.MAX_EFFECT_FLOATS / 4 = 3` so the total never
- * exceeds the WebGPU 8-binding limit.
+ * Total vertex-buffer bindings: 0 (index-only synth-quad geometry)
+ * + 1 (instanceMatrix) + 1 (interleaved) + N (effect buffers). N is
+ * capped by `EffectMaterial.MAX_EFFECT_FLOATS / 4 = 6` so the total
+ * never exceeds the WebGPU 8-binding limit.
  *
  * Systems write to batch buffers directly via the write methods.
  *
@@ -186,7 +189,12 @@ export class SpriteBatch extends InstancedMesh {
     }
 
     // Create geometry and add ALL instance attributes BEFORE super().
-    const geometry = new PlaneGeometry(1, 1)
+    // Index-only synth quad — the shader derives corner position + UV
+    // from vertexIndex (Sprite2DMaterial.synthQuadNodes), so no
+    // position/normal/uv bindings are spent.
+    const geometry = createSynthQuadGeometry()
+    // The batch is never frustum-culled; give it an honest infinite bound.
+    geometry.boundingSphere = new Sphere(geometry.boundingSphere!.center, Infinity)
 
     const interleavedBuffer = new InstancedInterleavedBuffer(interleavedData, INSTANCE_STRIDE, 1)
     interleavedBuffer.setUsage(DynamicDrawUsage)
@@ -544,6 +552,25 @@ export class SpriteBatch extends InstancedMesh {
       this.computeBoundingSphere()
     }
   }
+
+  /**
+   * Index-only geometry has no position data and the batch is never
+   * frustum-culled — an infinite bound is the honest answer at zero
+   * cost (InstancedMesh's default would union all instance spheres).
+   */
+  override computeBoundingSphere(): void {
+    if (this.boundingSphere === null) this.boundingSphere = new Sphere()
+    this.boundingSphere.center.set(0, 0, 0)
+    this.boundingSphere.radius = Infinity
+  }
+
+  /**
+   * Raycasting a batch is meaningless (and would crash on position-less
+   * geometry). Pointer interaction happens per-Sprite2D via its own
+   * plane-math raycast; batched-sprite picking is tracked separately
+   * (GPU ID-buffer picking).
+   */
+  override raycast(_raycaster: Raycaster, _intersects: Intersection[]): void {}
 
   /**
    * Flush per-buffer dirty state to GPU upload ranges.

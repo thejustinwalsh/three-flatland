@@ -1,7 +1,6 @@
 import {
   Group,
   InstancedMesh,
-  PlaneGeometry,
   InstancedBufferAttribute,
   InstancedInterleavedBuffer,
   InterleavedBufferAttribute,
@@ -10,6 +9,7 @@ import {
   Vector3,
 } from 'three'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
 import {
   _registerMeshBatchSource,
   _unregisterMeshBatchSource,
@@ -388,8 +388,9 @@ export class TileLayer extends Group {
       // path.
       const instanceData = new Float32Array(count * 16)
 
-      // Create geometry with instance attributes
-      const geometry = new PlaneGeometry(1, 1)
+      // Create geometry with instance attributes — index-only synth quad
+      // (corner position/UV synthesized from vertexIndex by the material)
+      const geometry = createSynthQuadGeometry()
 
       const interleaved = new InstancedInterleavedBuffer(instanceData, 16, 1)
       interleaved.setUsage(DynamicDrawUsage)
