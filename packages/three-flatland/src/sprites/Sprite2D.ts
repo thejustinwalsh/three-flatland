@@ -30,7 +30,7 @@ import {
   BatchSlot,
   BatchRegistry,
 } from '../ecs/traits'
-import { resolveSortLayer, type SortLayerValue } from '../pipeline/sortLayers'
+import { resolveSortLayer, type SortLayerName, type SortLayerValue } from '../pipeline/sortLayers'
 import type { RegistryData } from '../ecs/batchUtils'
 import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
@@ -1098,6 +1098,21 @@ export class Sprite2D extends Mesh {
    */
   get sortLayerValue(): number {
     return this._layerArr[this._idx]!
+  }
+
+  /**
+   * SortLayerGroup discipline path — identical to the public setter but
+   * does NOT mark the assignment explicit, so a later direct
+   * `sprite.sortLayer = …` (or a different group) can still take over.
+   * @internal
+   */
+  _applySortLayerFromGroup(name: SortLayerName): void {
+    const numeric = resolveSortLayer(name)
+    this._sortLayerName = name
+    this._layerArr[this._idx] = numeric
+    if (this._entity) {
+      this._entity.set(SortLayer, { value: numeric })
+    }
   }
 
   /**

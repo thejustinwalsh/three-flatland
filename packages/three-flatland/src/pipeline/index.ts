@@ -11,6 +11,7 @@ export type { PassEffectClass, PassEffectContext, PassEffectFn } from './PassEff
 export { SpriteGroup } from './SpriteGroup'
 export { SpriteBatch } from './SpriteBatch'
 export { SortLayerManager, SortLayer } from './SortLayerManager'
+export { SortLayerGroup } from './SortLayerGroup'
 export {
   SortLayers,
   declareSortLayer,
