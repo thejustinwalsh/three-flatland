@@ -155,6 +155,40 @@ describe('sortLayer + layers.mask run-key routing', () => {
     expect(b._batchMesh).toBe(batchMesh)
   })
 
+  it('batch renderOrder derives from the sortLayer value (foreign interop contract)', () => {
+    declareSortLayer('minimap', { renderOrder: 250 })
+    const a = new Sprite2D({ texture, material })
+    const b = new Sprite2D({ texture, material })
+    a.sortLayer = 'minimap'
+    b.sortLayer = 'minimap'
+    group.add(a)
+    group.add(b)
+    runSystems(group)
+
+    const registry = getRegistry(group)
+    const mesh = registry.batchSlots.find((m) => m !== null)!
+    // A foreign object at renderOrder 249 must draw before this batch
+    expect(Math.floor(mesh.renderOrder)).toBe(250)
+  })
+
+  it('writing the sortLayer-derived renderOrder back is a no-op (stays batched)', () => {
+    const a = new Sprite2D({ texture, material })
+    const b = new Sprite2D({ texture, material })
+    a.sortLayer = 6
+    b.sortLayer = 6
+    group.add(a)
+    group.add(b)
+    runSystems(group)
+    expect(a.entity).not.toBeNull()
+
+    a.renderOrder = 6 // matches the layer-derived value → no escape
+    expect(a.entity).not.toBeNull()
+    expect(a._renderOrderOverridden).toBe(false)
+
+    a.renderOrder = 999 // a real override still escapes
+    expect(a.entity).toBeNull()
+  })
+
   it('unenroll clears cached batch refs so setters cannot write into freed slots', () => {
     const a = new Sprite2D({ texture, material })
     group.add(a)

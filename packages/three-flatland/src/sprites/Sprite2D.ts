@@ -1088,6 +1088,10 @@ export class Sprite2D extends Mesh {
     this._layerArr[this._idx] = numeric
     if (this._entity) {
       this._entity.set(SortLayer, { value: numeric })
+    } else if (this._autoRegistry) {
+      // Standalone auto sprite changed its run key — re-evaluate
+      // thresholds on the next sweep (it may now share a run).
+      this._autoRegistry._autoEvalDirty = true
     }
   }
 
@@ -1112,6 +1116,8 @@ export class Sprite2D extends Mesh {
     this._layerArr[this._idx] = numeric
     if (this._entity) {
       this._entity.set(SortLayer, { value: numeric })
+    } else if (this._autoRegistry) {
+      this._autoRegistry._autoEvalDirty = true
     }
   }
 
@@ -1735,6 +1741,9 @@ export class Sprite2D extends Mesh {
     const prev = this._renderOrderValue ?? 0
     this._renderOrderValue = value
     if (!this._interceptionArmed || value === prev) return
+    // Writing the sortLayer-derived value back is a no-op, per the
+    // design contract (`sprite.renderOrder = sortLayer's value`).
+    if (value === this.sortLayerValue) return
     this._renderOrderOverridden = true
     if (this._entity) {
       this._demoteToStandalone()
@@ -1772,6 +1781,9 @@ export class Sprite2D extends Mesh {
   _onLayersMaskChanged(mask: number): void {
     if (this._entity) {
       this._entity.set(CameraLayersMask, { mask })
+    } else if (this._autoRegistry) {
+      // Standalone auto sprite changed its run key — re-evaluate.
+      this._autoRegistry._autoEvalDirty = true
     }
   }
 

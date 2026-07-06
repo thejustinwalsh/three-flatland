@@ -61,12 +61,12 @@ export interface RegistryData {
 }
 
 /**
- * A batch run key: fixed-width hex `sortLayer(4) | materialId(4) | mask(8)`.
+ * A batch run key: fixed-width hex `sortLayer(8) | materialId(8) | mask(8)`.
  *
  * Lexicographic string order equals sortLayer-major numeric order, so the
  * sorted run-key array doubles as the render-order source without any
  * numeric packing. A string key sidesteps Float64 precision: the three
- * components total 48+ bits, past the 53-bit integer-safe range.
+ * components total 96 bits, far past the 53-bit integer-safe range.
  */
 export type RunKey = string
 
@@ -78,9 +78,14 @@ const hexPad = (value: number, width: number) => value.toString(16).padStart(wid
  * share (materialId, sortLayer, layers.mask) and can be in the same batch.
  * Each component is a real GPU constraint — shader pipeline, render-list
  * position, camera visibility.
+ *
+ * Every component gets a full 32 bits — no truncation collisions for
+ * monotonic material ids, and negative sortLayers keep their ordering
+ * via an offset encoding (int32 + 2^31, so -1 sorts below 0).
  */
 export function computeRunKey(sortLayer: number, materialId: number, layersMask: number): RunKey {
-  return hexPad(sortLayer & 0xffff, 4) + hexPad(materialId & 0xffff, 4) + hexPad(layersMask >>> 0, 8)
+  const orderedLayer = ((sortLayer | 0) + 0x80000000) >>> 0
+  return hexPad(orderedLayer, 8) + hexPad(materialId >>> 0, 8) + hexPad(layersMask >>> 0, 8)
 }
 
 /**
@@ -354,6 +359,32 @@ interface DisposeHookedMaterial extends Sprite2DMaterial {
 }
 
 /**
+ * Live dispose listeners installed by a world, so world teardown can
+ * detach them — otherwise a long-lived user material reused across
+ * mount/unmount cycles would retain every dead world through its
+ * listener closures.
+ */
+const worldDisposeHooks = new WeakMap<
+  World,
+  Array<{ material: Sprite2DMaterial; listener: () => void }>
+>()
+
+/**
+ * Detach every material dispose hook a world installed (world/group
+ * disposal path).
+ */
+export function removeMaterialDisposeHooks(world: World): void {
+  const hooks = worldDisposeHooks.get(world)
+  if (!hooks) return
+  for (const { material, listener } of hooks) {
+    material.removeEventListener('dispose', listener)
+    const hooked = (material as DisposeHookedMaterial)[HOOKED_WORLDS]
+    hooked?.delete(world)
+  }
+  worldDisposeHooks.delete(world)
+}
+
+/**
  * Get (or create) the world-scoped default material for a texture.
  *
  * Replaces the static shared-material cache: two worlds (two Flatlands,
@@ -391,9 +422,16 @@ export function ensureMaterialDisposeHook(
   ;(material as DisposeHookedMaterial)[HOOKED_WORLDS] = hooked
   if (hooked.has(world)) return
   hooked.add(world)
-  material.addEventListener('dispose', () => {
+  const listener = (): void => {
     handleMaterialDispose(world, registry, material)
-  })
+  }
+  material.addEventListener('dispose', listener)
+  let hooks = worldDisposeHooks.get(world)
+  if (!hooks) {
+    hooks = []
+    worldDisposeHooks.set(world, hooks)
+  }
+  hooks.push({ material, listener })
 }
 
 /**

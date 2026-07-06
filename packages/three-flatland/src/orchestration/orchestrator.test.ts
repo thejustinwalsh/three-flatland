@@ -119,6 +119,23 @@ describe('lazy materialization — dual-signal registration', () => {
     expect(scene.children.filter((c) => c === registry.group).length).toBe(1)
   })
 
+  it('re-chains when a user overwrites scene.onBeforeRender after install', () => {
+    scene.add(new Sprite2D({ texture }))
+    fireSceneHook(scene, renderer)
+
+    // User clobbers the hook AFTER our install
+    const userHandler = vi.fn()
+    scene.onBeforeRender = userHandler
+
+    // A later prime detects the clobber and re-chains around the user's handler
+    const late = new Sprite2D({ texture })
+    scene.add(late)
+    fireSceneHook(scene, renderer)
+
+    expect(userHandler).toHaveBeenCalledTimes(1)
+    expect(peekRegistry(renderer, scene)!.sprites.has(late)).toBe(true)
+  })
+
   it('sprite removed from scene unregisters', () => {
     const sprite = new Sprite2D({ texture })
     scene.add(sprite)

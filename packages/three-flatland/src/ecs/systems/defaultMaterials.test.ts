@@ -136,6 +136,21 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     group.dispose()
   })
 
+  it('group disposal detaches its material dispose hooks (no world leak)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const custom = new Sprite2DMaterial({ map: texture })
+    const group = new SpriteGroup()
+    group.add(new Sprite2D({ texture, material: custom }))
+    group.update()
+
+    group.dispose()
+
+    // Disposing the material after the group is gone must not fire the
+    // dead world's teardown handler.
+    custom.dispose()
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('disposed material'))
+  })
+
   it('bootstrap texture-setter never mutates the shared bootstrap material', () => {
     const spriteA = new Sprite2D({ texture })
     const bootstrap = spriteA.material

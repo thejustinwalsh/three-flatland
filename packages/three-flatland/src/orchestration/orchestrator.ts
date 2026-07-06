@@ -33,15 +33,15 @@ const PRIME_SYMBOL = Symbol.for('three-flatland.prime')
 interface ScenePrimeState {
   /** Sprites awaiting a renderer — drained by the chained scene hook. */
   pending: Set<Sprite2D>
-  /** Idempotency marker for the chained hook install. */
-  hookInstalled: boolean
+  /** The installed chained hook — identity check for re-chaining. */
+  installedHook: Scene['onBeforeRender'] | null
 }
 
 function getPrimeState(scene: Scene): ScenePrimeState {
   const holder = scene as unknown as Record<symbol, ScenePrimeState | undefined>
   let state = holder[PRIME_SYMBOL]
   if (!state) {
-    state = { pending: new Set(), hookInstalled: false }
+    state = { pending: new Set(), installedHook: null }
     holder[PRIME_SYMBOL] = state
   }
   return state
@@ -110,8 +110,11 @@ export function flatlandUnregister(sprite: Sprite2D): void {
  * the orchestration sweep.
  */
 function installSceneHook(scene: Scene, state: ScenePrimeState): void {
-  if (state.hookInstalled) return
-  state.hookInstalled = true
+  // Re-chain when a user (or framework) assigned scene.onBeforeRender
+  // AFTER our install — their handler replaced ours, so wrap it again.
+  // Identity check keeps steady-state installs a single comparison.
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- identity check only
+  if (state.installedHook !== null && scene.onBeforeRender === state.installedHook) return
 
   // Preserve any real user handler present at install time. Comparing
   // against the prototype method skips a pointless indirect call per
@@ -123,7 +126,7 @@ function installSceneHook(scene: Scene, state: ScenePrimeState): void {
   const original = scene.onBeforeRender
   const hasOriginal = typeof original === 'function' && original !== protoOnBeforeRender
 
-  scene.onBeforeRender = function chainedFlatlandHook(
+  const chainedFlatlandHook = function chainedFlatlandHook(
     renderer: WebGLRenderer,
     hookScene: Scene,
     camera: Camera,
@@ -140,6 +143,9 @@ function installSceneHook(scene: Scene, state: ScenePrimeState): void {
       )
     }
   } as Scene['onBeforeRender']
+
+  state.installedHook = chainedFlatlandHook
+  scene.onBeforeRender = chainedFlatlandHook
 }
 
 /**

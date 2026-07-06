@@ -201,6 +201,24 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     expect(masks).toEqual([1, 4])
   })
 
+  it('a standalone sprite changing its mask into a shared run re-evaluates and batches', () => {
+    const a = new Sprite2D({ texture })
+    const b = new Sprite2D({ texture })
+    b.layers.set(2) // different run — both stay standalone
+    scene.add(a)
+    scene.add(b)
+    fireSceneHook(scene, renderer)
+    expect(a.entity).toBeNull()
+    expect(b.entity).toBeNull()
+
+    b.layers.set(0) // back to default mask — now shares a's run
+    fireSceneHook(scene, renderer)
+
+    expect(a.entity).not.toBeNull()
+    expect(b.entity).not.toBeNull()
+    expect(a._batchMesh).toBe(b._batchMesh)
+  })
+
   it('setFrame on a batched auto sprite does not reveal its own mesh', () => {
     const a = new Sprite2D({ texture })
     const b = new Sprite2D({ texture })

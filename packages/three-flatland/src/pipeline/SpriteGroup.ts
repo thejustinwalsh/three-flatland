@@ -11,6 +11,7 @@ import {
   ensureMaterialDisposeHook,
   evictBatchesForMaterial,
   getWorldDefaultMaterial,
+  removeMaterialDisposeHooks,
 } from '../ecs/batchUtils'
 import { BatchQueryView } from './batchQuery'
 import type { SpriteBatch } from './SpriteBatch'
@@ -700,6 +701,7 @@ export class SpriteGroup extends Group implements WorldProvider {
       this._batchSource = null
     }
     if (this._world) {
+      removeMaterialDisposeHooks(this._world)
       this._world.destroy()
       this._world = null
       this._registryEntity = null
