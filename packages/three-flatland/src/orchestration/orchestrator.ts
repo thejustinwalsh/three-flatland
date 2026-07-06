@@ -1,6 +1,6 @@
 import type { Camera, Scene, WebGLRenderer } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
-import { Registry, getOrCreateRegistry, type RendererLike } from './registry'
+import { getOrCreateRegistry, type Registry, type RendererLike } from './registry'
 
 /**
  * Lazy materialization — dual-signal registration.
@@ -106,10 +106,12 @@ function installSceneHook(scene: Scene, state: ScenePrimeState): void {
   // Preserve any real user handler present at install time. Comparing
   // against the prototype method skips a pointless indirect call per
   // render when the slot still holds three's no-op default.
-  const proto = Object.getPrototypeOf(scene) as { onBeforeRender?: Scene['onBeforeRender'] }
+  const protoOnBeforeRender = (Object.getPrototypeOf(scene) as Record<string, unknown>)[
+    'onBeforeRender'
+  ]
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- re-bound with .call(scene) in the chain
   const original = scene.onBeforeRender
-  const hasOriginal =
-    typeof original === 'function' && original !== proto?.onBeforeRender
+  const hasOriginal = typeof original === 'function' && original !== protoOnBeforeRender
 
   scene.onBeforeRender = function chainedFlatlandHook(
     renderer: WebGLRenderer,
@@ -166,6 +168,12 @@ function registerSprite(registry: Registry, sprite: Sprite2D): void {
   registry.sprites.add(sprite)
   sprite._autoRegistry = registry
   sprite._pendingPrimeScene = null
+
+  // Resolve the bootstrap default to this registry's world-scoped
+  // default so effect registration / dispose stay isolated per registry.
+  if (sprite._materialIsBootstrapDefault && sprite.texture) {
+    sprite._resolveDefaultMaterial(registry.getDefaultMaterial(sprite.texture))
+  }
 }
 
 /** Parent the hidden orchestrator group into the scene exactly once. */

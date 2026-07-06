@@ -411,6 +411,24 @@ export class Sprite2D extends Mesh {
   _autoRegistry: Registry | null = null
 
   /**
+   * True while the material is the construction-time bootstrap default
+   * (texture-only construction, resolved via the static shared cache so
+   * an unmanaged standalone sprite still renders). Enrollment re-resolves
+   * to a world-scoped default and clears this. Explicit materials and
+   * effect-variant switches clear it too.
+   * @internal
+   */
+  _materialIsBootstrapDefault = false
+
+  /**
+   * True when the current material came from a world/registry default
+   * store. Dispose of such a material resurrects the sprite with a
+   * fresh default instead of orphaning it.
+   * @internal
+   */
+  _materialWasRegistryDefault = false
+
+  /**
    * Scene whose prime-pending set still holds this sprite (Signal A
    * fired, no renderer seen yet). Cleared on registration or removal.
    * @internal
@@ -504,8 +522,13 @@ export class Sprite2D extends Mesh {
    * Can be called with no arguments for R3F compatibility - set texture via property.
    */
   constructor(options?: Sprite2DOptions) {
-    // Resolve material: explicit > shared-by-texture > new private
+    // Resolve material: explicit > shared-by-texture bootstrap > new private.
+    // The bootstrap shared material only exists so an unmanaged
+    // standalone sprite renders before (or without) enrollment —
+    // SpriteGroup/Flatland/auto enrollment re-resolves to a
+    // world-scoped default (see _resolveDefaultMaterial).
     let material: Sprite2DMaterial
+    let materialIsBootstrap = false
     if (options?.material) {
       material = options.material
     } else if (options?.texture) {
@@ -513,8 +536,10 @@ export class Sprite2D extends Mesh {
         map: options.texture,
         transparent: true,
       })
+      materialIsBootstrap = true
     } else {
       material = new Sprite2DMaterial({ transparent: true })
+      materialIsBootstrap = true
     }
 
     // Create geometry with instance attributes for single-sprite rendering
@@ -527,6 +552,7 @@ export class Sprite2D extends Mesh {
 
     // Store reference so we can dispose it
     this._geometry = geometry
+    this._materialIsBootstrapDefault = materialIsBootstrap
 
     // Convert stored Color/Vector2 to observable accessors.
     // Position/rotation/scale are NOT observed — accessor overhead on these
@@ -743,7 +769,14 @@ export class Sprite2D extends Mesh {
   set texture(value: Texture | null) {
     this._texture = value
     if (value) {
-      this.material.setTexture(value)
+      if (this._materialIsBootstrapDefault && this.material.getTexture() !== value) {
+        // Never mutate a shared bootstrap material — re-resolve to the
+        // bootstrap default for the new texture instead.
+        this.material = Sprite2DMaterial.getShared({ map: value, transparent: true })
+        this._setupInstanceAttributes()
+      } else {
+        this.material.setTexture(value)
+      }
       // Set default frame if none exists
       if (!this._frame) {
         this._frame = {
@@ -791,6 +824,8 @@ export class Sprite2D extends Mesh {
   private _switchToMaterial(newMaterial: Sprite2DMaterial): void {
     const current = this.material
     this.material = newMaterial
+    this._materialIsBootstrapDefault = false
+    this._materialWasRegistryDefault = false
 
     // Carry over global uniforms
     if (current.globalUniforms) {
@@ -816,6 +851,22 @@ export class Sprite2D extends Mesh {
     if (!this._entity) {
       this._writeEffectDataOwn()
     }
+  }
+
+  /**
+   * Swap to a world-scoped default material (enrollment resolution or
+   * dispose resurrection). Carries effects/uniforms via the standard
+   * switch path, then re-marks the material as a registry default.
+   * @internal
+   */
+  _resolveDefaultMaterial(material: Sprite2DMaterial): void {
+    if (this.material === material) {
+      this._materialIsBootstrapDefault = false
+      this._materialWasRegistryDefault = true
+      return
+    }
+    this._switchToMaterial(material)
+    this._materialWasRegistryDefault = true
   }
 
   /**
@@ -1584,7 +1635,7 @@ export class Sprite2D extends Mesh {
    */
   override onBeforeRender: Mesh['onBeforeRender'] = (renderer, scene) => {
     if (this._autoRegistry || this._flatlandWorld) return
-    flatlandRegister(this, renderer as unknown as object, scene as Scene)
+    flatlandRegister(this, renderer as unknown as object, scene)
   }
 
   /**

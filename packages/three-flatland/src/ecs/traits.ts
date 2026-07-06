@@ -1,7 +1,7 @@
 import { trait, relation } from 'koota'
 import { Vector2 } from 'three'
 import type { Entity, Trait } from 'koota'
-import type { Group, Object3D, OrthographicCamera, Scene } from 'three'
+import type { Group, Object3D, OrthographicCamera, Scene, Texture } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
@@ -155,6 +155,12 @@ export const BatchRegistry = trait(() => ({
   tierLadder: null as readonly number[] | null,
   /** Material references for schema version tracking. */
   materialRefs: new Map<number, { material: Sprite2DMaterial; version: number }>(),
+  /**
+   * Per-texture default Sprite2DMaterials, scoped to this world —
+   * replaces the cross-world static cache footgun. Registering an
+   * effect on one world's default never leaks into another's.
+   */
+  defaultMaterials: new WeakMap<Texture, Sprite2DMaterial>(),
   /** Indexed array of active SpriteBatch meshes for O(1) lookup from BatchSlot.batchIdx. */
   batchSlots: [] as (SpriteBatch | null)[],
   /** Free indices in batchSlots for reuse. */

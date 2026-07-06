@@ -5,7 +5,7 @@ import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { BatchMesh, BatchRegistry } from '../ecs/traits'
-import type { RegistryData, RunKey } from '../ecs/batchUtils'
+import { getWorldDefaultMaterial, type RegistryData, type RunKey } from '../ecs/batchUtils'
 
 /**
  * Module-global registry key. `Symbol.for` survives double-bundling —
@@ -82,6 +82,19 @@ export class Registry {
   /** The Koota world backing this registry (owned by the hidden group). */
   get world(): World {
     return this.group.world
+  }
+
+  /**
+   * Get (or create) this registry's default material for a texture.
+   * Backed by the world-scoped store, so effect registration and
+   * dispose stay isolated between registries/Flatlands sharing textures.
+   */
+  getDefaultMaterial(texture: Texture): Sprite2DMaterial {
+    // Accessing `world` materializes the hidden group's ECS world +
+    // BatchRegistry singleton on first use.
+    const world = this.world
+    const data = this._registryData()!
+    return getWorldDefaultMaterial(world, data, texture)
   }
 
   /**

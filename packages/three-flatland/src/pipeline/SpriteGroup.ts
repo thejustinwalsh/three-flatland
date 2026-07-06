@@ -4,18 +4,14 @@ import type { Sprite2D } from '../sprites/Sprite2D'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { SpriteGroupOptions, RenderStats } from './types'
 import { assignWorld, type WorldProvider } from '../ecs/world'
-import {
-  BatchRegistry,
-  BatchMesh,
-  BatchMeta,
-  BatchSlot,
-  InBatch,
-  IsBatched,
-  IsRenderable,
-  SpriteMaterialRef,
-} from '../ecs/traits'
+import { BatchRegistry, BatchMesh } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
-import { BATCH_TIER_LADDER, computeRunKey, recycleBatchIfEmpty } from '../ecs/batchUtils'
+import {
+  BATCH_TIER_LADDER,
+  ensureMaterialDisposeHook,
+  evictBatchesForMaterial,
+  getWorldDefaultMaterial,
+} from '../ecs/batchUtils'
 import {
   _registerBatchSource,
   _unregisterBatchSource,
@@ -261,6 +257,7 @@ export class SpriteGroup extends Group implements WorldProvider {
           maxBatchSize: this._maxBatchSize,
           tierLadder: this._tierLadder,
           materialRefs: new Map(),
+          defaultMaterials: new WeakMap(),
           batchSlots: [],
           batchSlotFreeList: [],
           spriteArr: [],
@@ -296,8 +293,9 @@ export class SpriteGroup extends Group implements WorldProvider {
     if ('_enrollInWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
       // Skip if already enrolled (R3F insertBefore re-adds during reconciliation)
       if (spriteOrObject.entity) return this
-      // Assign ECS world and enroll entity
+      // Assign ECS world, resolve world-scoped default material, enroll
       assignWorld(spriteOrObject, this.world)
+      this._resolveDefaultMaterial(spriteOrObject)
       spriteOrObject._enrollInWorld(this.world)
       this._spriteCount++
       this._trackMaterial(spriteOrObject)
@@ -308,11 +306,27 @@ export class SpriteGroup extends Group implements WorldProvider {
   }
 
   /**
+   * Re-resolve a bootstrap default material to this group's world-scoped
+   * default for the sprite's texture. Explicit user materials pass
+   * through untouched (their dispose hook still installs via
+   * _trackMaterial → ensureMaterialDisposeHook).
+   */
+  private _resolveDefaultMaterial(sprite: Sprite2D): void {
+    if (!sprite._materialIsBootstrapDefault) return
+    const texture = sprite.texture
+    if (!texture) return
+    const registry = this._getRegistry()
+    if (!registry) return
+    sprite._resolveDefaultMaterial(getWorldDefaultMaterial(this.world, registry, texture))
+  }
+
+  /**
    * Add multiple sprites to the renderer.
    */
   addSprites(...sprites: Sprite2D[]): this {
     for (const sprite of sprites) {
       assignWorld(sprite, this.world)
+      this._resolveDefaultMaterial(sprite)
       sprite._enrollInWorld(this.world)
       this._spriteCount++
       this._trackMaterial(sprite)
@@ -468,6 +482,7 @@ export class SpriteGroup extends Group implements WorldProvider {
       material: mat,
       version: mat._effectSchemaVersion,
     })
+    ensureMaterialDisposeHook(this._world, registry, mat)
   }
 
   /**
@@ -499,51 +514,7 @@ export class SpriteGroup extends Group implements WorldProvider {
    */
   private _rebuildBatchesForMaterial(registry: RegistryData, materialId: number): void {
     if (!this._world) return
-
-    // Find all batched entities using this material
-    const batched = this._world.query(IsBatched, SpriteMaterialRef, BatchSlot)
-    for (const entity of batched) {
-      const matRef = entity.get(SpriteMaterialRef)
-      if (!matRef || matRef.materialId !== materialId) continue
-
-      // Find and free the batch slot
-      const batchEntity = entity.targetFor(InBatch)
-      if (batchEntity) {
-        // BatchSlot.slot is the authoritative live slot (kept in sync by
-        // batchSortSystem); InBatch.slot can be a stale pre-swap index.
-        const slot = entity.get(BatchSlot)?.slot ?? -1
-        const batchMesh = batchEntity.get(BatchMesh)
-        if (slot >= 0 && batchMesh?.mesh) {
-          batchMesh.mesh.freeSlot(slot)
-          batchMesh.mesh.syncCount()
-        }
-
-        // Remove batch relationship
-        entity.remove(InBatch(batchEntity))
-
-        // Recycle batch if empty
-        if (batchMesh?.mesh?.isEmpty) {
-          const meta = batchEntity.get(BatchMeta)
-          if (meta) {
-            const key = computeRunKey(meta.sortLayer, meta.materialId, meta.layersMask)
-            const run = registry.runs.get(key)
-            if (run) {
-              recycleBatchIfEmpty(registry, batchEntity, run)
-            }
-          }
-        }
-      }
-
-      // Reset batch tracking (IsBatched and BatchSlot persist — no archetype change)
-      entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
-
-      // Re-trigger IsRenderable so batchAssignSystem picks it up
-      // and creates a new batch with the correct buffer layout
-      entity.remove(IsRenderable)
-      entity.add(IsRenderable)
-    }
-
-    registry.renderOrderDirty = true
+    evictBatchesForMaterial(this._world, registry, materialId)
   }
 
   /**

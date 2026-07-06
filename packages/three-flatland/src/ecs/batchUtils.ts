@@ -1,11 +1,21 @@
 import type { Entity, World, Trait } from 'koota'
-import type { Group, Object3D } from 'three'
-import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { Group, Object3D, Texture } from 'three'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { Sprite2D } from '../sprites/Sprite2D'
+import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteBatch } from '../pipeline/SpriteBatch'
-import { BatchMesh, BatchMeta, type BatchRun } from './traits'
+import {
+  BatchMesh,
+  BatchMeta,
+  BatchSlot,
+  InBatch,
+  IsBatched,
+  IsRenderable,
+  SpriteMaterialRef,
+  type BatchRun,
+} from './traits'
 import type { SystemSchedule } from './SystemSchedule'
+import { ENTITY_ID_MASK } from './snapshot'
 
 /** Shape of the BatchRegistry trait data, used for parameter typing. */
 export interface RegistryData {
@@ -18,6 +28,8 @@ export interface RegistryData {
   /** Tiered batch sizes for the auto-orchestrate path; null = fixed maxBatchSize. */
   tierLadder: readonly number[] | null
   materialRefs: Map<number, { material: Sprite2DMaterial; version: number }>
+  /** Per-texture default materials, scoped to this world. */
+  defaultMaterials: WeakMap<Texture, Sprite2DMaterial>
   batchSlots: (SpriteBatch | null)[]
   batchSlotFreeList: number[]
   /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
@@ -312,4 +324,173 @@ export function rebuildBatchOrder(registry: RegistryData): void {
   }
 
   registry.renderOrderDirty = false
+}
+
+// ============================================
+// Material lifecycle (world-scoped defaults + dispose handling)
+// ============================================
+
+/**
+ * Marker for materials whose dispose event is already hooked into a
+ * world's teardown path. Lives on the material instance — a material
+ * tracked by two worlds gets one hook per world via the listener list,
+ * guarded per world in `ensureMaterialDisposeHook`.
+ * @internal
+ */
+const HOOKED_WORLDS = Symbol.for('three-flatland.material-dispose-hooks')
+
+interface DisposeHookedMaterial extends Sprite2DMaterial {
+  [HOOKED_WORLDS]?: WeakSet<World>
+}
+
+/**
+ * Get (or create) the world-scoped default material for a texture.
+ *
+ * Replaces the static shared-material cache: two worlds (two Flatlands,
+ * two SpriteGroups, two auto-registries) resolving the same texture get
+ * two material instances, so effect registration and dispose stay
+ * isolated. Three's pipeline cache dedupes the compiled shader by
+ * source, so the only cost is a JS instance.
+ */
+export function getWorldDefaultMaterial(
+  world: World,
+  registry: RegistryData,
+  texture: Texture
+): Sprite2DMaterial {
+  let material = registry.defaultMaterials.get(texture)
+  if (!material) {
+    material = new Sprite2DMaterial({ map: texture, transparent: true })
+    registry.defaultMaterials.set(texture, material)
+    ensureMaterialDisposeHook(world, registry, material)
+  }
+  return material
+}
+
+/**
+ * Attach the dispose teardown hook for a material used by this world's
+ * batches (idempotent per world). Fires `handleMaterialDispose` so
+ * batches referencing freed GPU resources are torn down and
+ * default-material sprites resurrect.
+ */
+export function ensureMaterialDisposeHook(
+  world: World,
+  registry: RegistryData,
+  material: Sprite2DMaterial
+): void {
+  const hooked = (material as DisposeHookedMaterial)[HOOKED_WORLDS] ?? new WeakSet<World>()
+  ;(material as DisposeHookedMaterial)[HOOKED_WORLDS] = hooked
+  if (hooked.has(world)) return
+  hooked.add(world)
+  material.addEventListener('dispose', () => {
+    handleMaterialDispose(world, registry, material)
+  })
+}
+
+/**
+ * Evict every batched entity using `materialId` from its batch: free
+ * the slot, drop the InBatch relation, recycle empty batches, and
+ * re-trigger IsRenderable so `batchAssignSystem` re-batches survivors
+ * with whatever material they hold by then.
+ *
+ * Shared by the tier-upgrade rebuild (material schema changed) and the
+ * dispose teardown (material's GPU resources are gone).
+ */
+export function evictBatchesForMaterial(
+  world: World,
+  registry: RegistryData,
+  materialId: number
+): void {
+  const batched = world.query(IsBatched, SpriteMaterialRef, BatchSlot)
+  for (const entity of batched) {
+    const matRef = entity.get(SpriteMaterialRef)
+    if (!matRef || matRef.materialId !== materialId) continue
+
+    const batchEntity = entity.targetFor(InBatch)
+    if (batchEntity) {
+      // BatchSlot.slot is the authoritative live slot (kept in sync by
+      // batchSortSystem); InBatch's own slot can be a stale pre-swap index.
+      const slot = entity.get(BatchSlot)?.slot ?? -1
+      const batchMesh = batchEntity.get(BatchMesh)
+      if (slot >= 0 && batchMesh?.mesh) {
+        batchMesh.mesh.freeSlot(slot)
+        batchMesh.mesh.syncCount()
+      }
+
+      entity.remove(InBatch(batchEntity))
+
+      if (batchMesh?.mesh?.isEmpty) {
+        const meta = batchEntity.get(BatchMeta)
+        if (meta) {
+          const key = computeRunKey(meta.sortLayer, meta.materialId, meta.layersMask)
+          const run = registry.runs.get(key)
+          if (run) {
+            recycleBatchIfEmpty(registry, batchEntity, run)
+          }
+        }
+      }
+    }
+
+    // Clear the sprite's cached direct-write refs — its slot is gone.
+    const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+    if (sprite) {
+      sprite._batchMesh = null
+      sprite._batchSlot = -1
+      sprite._batchIdx = -1
+    }
+
+    entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
+
+    // Re-trigger assignment for entities that still render
+    entity.remove(IsRenderable)
+    entity.add(IsRenderable)
+  }
+
+  registry.renderOrderDirty = true
+}
+
+/**
+ * Dispose teardown: batches using the material are torn down; sprites
+ * holding a world-supplied default resurrect with a fresh default
+ * (auto-rebatching on the next system pass); sprites with user-supplied
+ * custom materials fall back to three's standard "disposed material in
+ * use" semantics — restored to visible, unenrolled, and warned about.
+ */
+export function handleMaterialDispose(
+  world: World,
+  registry: RegistryData,
+  material: Sprite2DMaterial
+): void {
+  // Drop the default-cache entry first so re-resolution mints a fresh
+  // material instead of handing the disposed one back out.
+  const texture = material.getTexture()
+  if (texture && registry.defaultMaterials.get(texture) === material) {
+    registry.defaultMaterials.delete(texture)
+  }
+
+  // Tear down batches while SpriteMaterialRef still points at the old
+  // material (eviction filters on it).
+  evictBatchesForMaterial(world, registry, material.batchId)
+
+  // Then re-point or demote the affected sprites.
+  let orphaned = 0
+  for (const sprite of registry.spriteArr) {
+    if (!sprite || sprite.material !== material) continue
+    if (sprite._materialWasRegistryDefault && sprite.texture) {
+      sprite._resolveDefaultMaterial(getWorldDefaultMaterial(world, registry, sprite.texture))
+    } else {
+      orphaned++
+      sprite.visible = true
+      sprite._unenrollFromWorld()
+    }
+  }
+
+  registry.materialRefs.delete(material.batchId)
+
+  if (orphaned > 0) {
+    console.warn(
+      `three-flatland: disposed material ${material.name || material.batchId} had ${orphaned} ` +
+        'sprite(s) attached with a user-supplied material — they now render with three.js\'s ' +
+        'standard "disposed material in use" semantics.'
+    )
+  }
 }
