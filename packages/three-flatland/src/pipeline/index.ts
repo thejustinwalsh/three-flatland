@@ -13,6 +13,14 @@ export { SpriteBatch } from './SpriteBatch'
 export { SortLayerManager, SortLayer } from './SortLayerManager'
 export { SortLayerGroup } from './SortLayerGroup'
 export {
+  BatchQueryView,
+  IsAlphaBlendedBatch,
+  IsAlphaTestedBatch,
+  IsLitBatch,
+  IsUnlitBatch,
+} from './batchQuery'
+export type { BatchQueryTag } from './batchQuery'
+export {
   SortLayers,
   declareSortLayer,
   getSortLayer,

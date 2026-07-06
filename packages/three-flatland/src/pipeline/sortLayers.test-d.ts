@@ -1,12 +1,12 @@
 import { describe, it, expectTypeOf } from 'vitest'
 import { Sprite2D } from '../sprites/Sprite2D'
-import type { SortLayerValue } from './sortLayers'
+import type { SortLayerConfig, SortLayerValue } from './sortLayers'
 
 // Simulate a user augmentation — module augmentation targets the package
 // entry in user code; inside the package the interface merges directly.
 declare module './sortLayers' {
   interface SortLayerRegistry {
-    radarBlip: import('./sortLayers').SortLayerConfig
+    radarBlip: SortLayerConfig
   }
 }
 

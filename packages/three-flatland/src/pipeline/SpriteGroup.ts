@@ -12,6 +12,8 @@ import {
   evictBatchesForMaterial,
   getWorldDefaultMaterial,
 } from '../ecs/batchUtils'
+import { BatchQueryView } from './batchQuery'
+import type { SpriteBatch } from './SpriteBatch'
 import {
   _registerBatchSource,
   _unregisterBatchSource,
@@ -564,6 +566,25 @@ export class SpriteGroup extends Group implements WorldProvider {
       batchCount,
       visibleSprites,
     }
+  }
+
+  /**
+   * Read-only view of this group's batches keyed by run key, with the
+   * classification query facade (`group.batches.where(IsLitBatch)`).
+   */
+  get batches(): BatchQueryView {
+    const view = new BatchQueryView(this._world)
+    const registry = this._getRegistry()
+    if (!registry) return view
+    for (const [key, run] of registry.runs) {
+      const meshes: SpriteBatch[] = []
+      for (const batchEntity of run.batches) {
+        const mesh = batchEntity.get(BatchMesh)?.mesh
+        if (mesh) meshes.push(mesh)
+      }
+      view.set(key, meshes)
+    }
+    return view
   }
 
   /**

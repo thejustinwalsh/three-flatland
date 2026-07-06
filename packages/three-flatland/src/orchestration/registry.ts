@@ -5,7 +5,8 @@ import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { BatchMesh, BatchRegistry } from '../ecs/traits'
-import { getWorldDefaultMaterial, type RegistryData, type RunKey } from '../ecs/batchUtils'
+import { getWorldDefaultMaterial, type RegistryData } from '../ecs/batchUtils'
+import { BatchQueryView } from '../pipeline/batchQuery'
 
 /**
  * Module-global registry key. `Symbol.for` survives double-bundling —
@@ -112,19 +113,19 @@ export class Registry {
    * through to the ECS BatchRegistry singleton — no parallel
    * bookkeeping to drift.
    */
-  get batches(): Map<RunKey, SpriteBatch[]> {
-    const result = new Map<RunKey, SpriteBatch[]>()
+  get batches(): BatchQueryView {
+    const view = new BatchQueryView(this.group.world)
     const data = this._registryData()
-    if (!data) return result
+    if (!data) return view
     for (const [key, run] of data.runs) {
       const meshes: SpriteBatch[] = []
       for (const batchEntity of run.batches) {
         const mesh = batchEntity.get(BatchMesh)?.mesh
         if (mesh) meshes.push(mesh)
       }
-      result.set(key, meshes)
+      view.set(key, meshes)
     }
-    return result
+    return view
   }
 
   /** @internal */

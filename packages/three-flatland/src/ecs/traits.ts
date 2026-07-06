@@ -117,6 +117,40 @@ export const BatchMeta = trait({
 })
 
 // ============================================
+// Batch classification traits (public, read-only via facade)
+// ============================================
+//
+// Trait existence declares the architectural fact; query-vs-branch is a
+// per-system tuning knob. Systems today still branch on
+// `material.transparent` (few stable batches → predictable branches are
+// ~free); the traits exist so users and future custom render passes can
+// query-narrow (`group.batches.where(IsLitBatch)`), and so individual
+// systems can flip from branch to query under procedural-batch-heavy
+// workloads without restructuring the data model.
+
+/** Tag: batch's material alpha-blends (`transparent && alphaTest === 0`). */
+export const IsAlphaBlendedBatch = trait()
+
+/** Tag: batch's material alpha-tests (`alphaTest > 0` — opaque fast path). */
+export const IsAlphaTestedBatch = trait()
+
+/** Tag: batch's material is lit (a lighting colorTransform is attached). */
+export const IsLitBatch = trait()
+
+/** Tag: batch's material is unlit. */
+export const IsUnlitBatch = trait()
+
+/**
+ * Which geometry path the batch renders with. `synth-quad` (default
+ * post vertex-binding reclaim) synthesizes the unit quad from
+ * vertexIndex; `tight-mesh` is the alpha-blend overdraw-reduction path;
+ * `custom` is reserved for user-supplied batch geometry.
+ */
+export const BatchGeometryStrategy = trait(() => ({
+  kind: 'synth-quad' as 'synth-quad' | 'tight-mesh' | 'custom',
+}))
+
+// ============================================
 // Batch registry (world-level singleton entity)
 // ============================================
 

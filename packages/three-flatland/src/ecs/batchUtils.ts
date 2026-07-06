@@ -5,12 +5,17 @@ import type { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteBatch } from '../pipeline/SpriteBatch'
 import {
+  BatchGeometryStrategy,
   BatchMesh,
   BatchMeta,
   BatchSlot,
   InBatch,
+  IsAlphaBlendedBatch,
+  IsAlphaTestedBatch,
   IsBatched,
+  IsLitBatch,
   IsRenderable,
+  IsUnlitBatch,
   SpriteMaterialRef,
   type BatchRun,
 } from './traits'
@@ -256,6 +261,11 @@ export function findOrCreateBatch(
   // `layers` mask route to a batch the same cameras see.
   mesh.layers.mask = run.layersMask
 
+  // Classification traits — declared once at construction (the facts
+  // are per-batch-lifetime: pooled entities are reclassified here since
+  // their material may differ from the previous tenancy).
+  classifyBatch(batchEntity, run.material)
+
   // Set descriptive name for devtools scene tree
   mesh.name = `SpriteBatch[sortLayer=${run.sortLayer}, mat=${run.materialId}, mask=${run.layersMask}]`
 
@@ -494,4 +504,32 @@ export function handleMaterialDispose(
         'standard "disposed material in use" semantics.'
     )
   }
+}
+
+/**
+ * Tag a batch entity with its classification traits, replacing any
+ * stale tags from a previous pool tenancy. Systems still branch on the
+ * material directly — see the trait docs for the query-vs-branch rule.
+ */
+export function classifyBatch(batchEntity: Entity, material: Sprite2DMaterial): void {
+  const alphaTested = material.alphaTest > 0
+  const alphaBlended = material.transparent && material.alphaTest === 0
+  const lit = material.colorTransform !== null
+
+  setTag(batchEntity, IsAlphaTestedBatch, alphaTested)
+  setTag(batchEntity, IsAlphaBlendedBatch, alphaBlended)
+  setTag(batchEntity, IsLitBatch, lit)
+  setTag(batchEntity, IsUnlitBatch, !lit)
+
+  if (!batchEntity.has(BatchGeometryStrategy)) {
+    batchEntity.add(BatchGeometryStrategy({ kind: 'synth-quad' }))
+  } else {
+    batchEntity.set(BatchGeometryStrategy, { kind: 'synth-quad' }, false)
+  }
+}
+
+function setTag(entity: Entity, tag: Trait, present: boolean): void {
+  const has = entity.has(tag)
+  if (present && !has) entity.add(tag)
+  else if (!present && has) entity.remove(tag)
 }
