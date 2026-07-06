@@ -7,6 +7,7 @@ import {
   InterleavedBuffer,
   InterleavedBufferAttribute,
   type BufferGeometry,
+  type Scene,
   type Texture,
   type Raycaster,
   type Intersection,
@@ -39,6 +40,8 @@ import { resolveHitTestMode } from '../events/HitTestMode'
 import type { AlphaMap } from '../events/AlphaMap'
 import { rayPlaneZ0, createIntersection } from '../events/raycastHelpers'
 import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
+import { flatlandPrime, flatlandRegister, flatlandUnregister } from '../orchestration/orchestrator'
+import type { Registry } from '../orchestration/registry'
 
 // Types the build-time `process.env` read without requiring @types/node
 // (shadows the global where present; erased at compile).
@@ -400,6 +403,20 @@ export class Sprite2D extends Mesh {
   /** Backing store for the intercepted `renderOrder` accessor. @internal */
   private _renderOrderValue?: number
 
+  /**
+   * The auto-orchestration registry this sprite is tracked by, when it
+   * was picked up from a vanilla scene (no SpriteGroup / Flatland).
+   * @internal
+   */
+  _autoRegistry: Registry | null = null
+
+  /**
+   * Scene whose prime-pending set still holds this sprite (Signal A
+   * fired, no renderer seen yet). Cleared on registration or removal.
+   * @internal
+   */
+  _pendingPrimeScene: Scene | null = null
+
   // ZIndex (SpriteZIndex) — raw array writes, no Changed() needed
   /** @internal */ _zIndexArr: number[] = [0]
 
@@ -564,6 +581,13 @@ export class Sprite2D extends Mesh {
     // instance rather than overriding the property — three's documented
     // `layers` semantics stay intact; we just observe.
     this._wrapLayers()
+
+    // Auto-orchestration Signal A: 'added' fires only on the directly-
+    // added node (three gotcha — descendants of an attached subtree get
+    // nothing), so this is the opportunistic first-frame-correct path;
+    // Signal B in onBeforeRender() is the catch-all fallback.
+    this.addEventListener('added', this._onAddedToTree)
+    this.addEventListener('removed', this._onRemovedFromTree)
 
     // If no options, we're being created by R3F - properties will be set via setters
     if (!options) {
@@ -1530,6 +1554,37 @@ export class Sprite2D extends Mesh {
       batch.writeSystemFlags(bs.slot, this._systemFlags)
       batch.writeEnableBits(bs.slot, this._effectFlags)
     }
+  }
+
+  /**
+   * Auto-orchestration Signal A: walk the parent chain to the scene and
+   * prime it. Explicitly-managed sprites (SpriteGroup / Flatland) skip
+   * inside flatlandPrime via their assigned world.
+   * @internal
+   */
+  _onAddedToTree = (): void => {
+    let p = this.parent
+    while (p && !(p as Scene).isScene) p = p.parent
+    if (p) flatlandPrime(p as Scene, this)
+  }
+
+  /**
+   * Auto-orchestration cleanup: dropped from the tree → out of the
+   * registry (and any still-pending prime set).
+   * @internal
+   */
+  _onRemovedFromTree = (): void => {
+    flatlandUnregister(this)
+  }
+
+  /**
+   * Auto-orchestration Signal B: the sprite's own mesh is being drawn,
+   * so the renderer and scene are in hand. One property check per draw
+   * once registered — the hot path stays ~free.
+   */
+  override onBeforeRender: Mesh['onBeforeRender'] = (renderer, scene) => {
+    if (this._autoRegistry || this._flatlandWorld) return
+    flatlandRegister(this, renderer as unknown as object, scene as Scene)
   }
 
   /**
