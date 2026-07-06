@@ -435,6 +435,15 @@ export class Sprite2D extends Mesh {
    */
   _pendingPrimeScene: Scene | null = null
 
+  /**
+   * True while this auto-orchestrated sprite is drawn by a batch — its
+   * own Mesh stays hidden (`visible = false`) and setters that would
+   * normally reveal the sprite (setFrame, texture) must not flip it
+   * back on. Cleared on demotion/unregistration.
+   * @internal
+   */
+  _autoBatched = false
+
   // ZIndex (SpriteZIndex) — raw array writes, no Changed() needed
   /** @internal */ _zIndexArr: number[] = [0]
 
@@ -791,8 +800,8 @@ export class Sprite2D extends Mesh {
         if (!this._entity) this._updateOwnUV()
         this.updateSize()
       }
-      // Show sprite once texture is set
-      this.visible = true
+      // Show sprite once texture is set — unless a batch draws it
+      if (!this._autoBatched) this.visible = true
     }
   }
 
@@ -912,8 +921,9 @@ export class Sprite2D extends Mesh {
     if (isFirstFrame) {
       this.updateSize()
     }
-    // Show sprite once it has a valid frame
-    this.visible = true
+    // Show sprite once it has a valid frame — unless a batch draws it
+    // (an auto-batched sprite's own mesh must stay hidden).
+    if (!this._autoBatched) this.visible = true
     return this
   }
 
@@ -1764,10 +1774,20 @@ export class Sprite2D extends Mesh {
         ? (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined)
         : undefined
     this._unenrollFromWorld()
-    const parent = registry?.parentGroup
-    if (parent && registry.parentAdd && !parent.children.includes(this)) {
-      registry.parentAdd.call(parent, this)
+    // SpriteGroup-managed sprites were never in the scene tree — parent
+    // them under the group so their own Mesh draw resumes. Auto-managed
+    // sprites already live in the user's tree; just reveal them.
+    if (!this.parent) {
+      const parent = registry?.parentGroup
+      if (parent && registry.parentAdd && !parent.children.includes(this)) {
+        registry.parentAdd.call(parent, this)
+      }
     }
+    if (this._autoRegistry) {
+      this._autoRegistry.standalone.delete(this)
+      this._autoRegistry._autoEvalDirty = true
+    }
+    this._autoBatched = false
     this.visible = true
   }
 

@@ -66,6 +66,16 @@ export class Registry {
    */
   readonly defaultMaterials = new WeakMap<Texture, Sprite2DMaterial>()
 
+  /**
+   * Auto-registered sprites not yet enrolled in the batching world —
+   * each waits standalone until its run reaches the promotion threshold
+   * (2) or an active batch for its run already exists.
+   */
+  readonly standalone = new Set<Sprite2D>()
+
+  /** Set when standalone membership changed; drained by the scene sweep. */
+  _autoEvalDirty = false
+
   /** Idempotency marker for the chained `Scene.onBeforeRender` install. */
   _sceneHookInstalled = false
 

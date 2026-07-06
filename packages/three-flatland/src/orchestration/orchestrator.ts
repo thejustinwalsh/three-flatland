@@ -1,6 +1,7 @@
 import type { Camera, Scene, WebGLRenderer } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
-import { getOrCreateRegistry, type Registry, type RendererLike } from './registry'
+import { computeRunKey } from '../ecs/batchUtils'
+import { getOrCreateRegistry, peekRegistry, type Registry, type RendererLike } from './registry'
 
 /**
  * Lazy materialization — dual-signal registration.
@@ -83,7 +84,16 @@ export function flatlandUnregister(sprite: Sprite2D): void {
   const registry = sprite._autoRegistry
   if (registry) {
     registry.sprites.delete(sprite)
+    registry.standalone.delete(sprite)
+    registry._autoEvalDirty = true
     sprite._autoRegistry = null
+    // Enrolled? Free the slot through the standard removal path and
+    // resume own-mesh drawing (harmless if the sprite left the tree).
+    if (sprite.entity) {
+      sprite._unenrollFromWorld()
+    }
+    sprite._autoBatched = false
+    sprite.visible = true
   }
   // Not yet drained from a pending set? Clear it there too.
   const scene = sprite._pendingPrimeScene
@@ -139,20 +149,78 @@ function installSceneHook(scene: Scene, state: ScenePrimeState): void {
  */
 export function flatlandSceneSweep(renderer: RendererLike, scene: Scene): void {
   const state = getPrimeState(scene)
-  if (state.pending.size === 0) return
+  const registry = state.pending.size > 0 ? getOrCreateRegistry(renderer, scene) : null
 
-  const registry = getOrCreateRegistry(renderer, scene)
-  for (const sprite of state.pending) {
-    registerSprite(registry, sprite)
+  if (registry) {
+    for (const sprite of state.pending) {
+      registerSprite(registry, sprite)
+    }
+    state.pending.clear()
   }
-  state.pending.clear()
 
-  // Run the schedule now so this render call's projection picks up any
-  // batching mutations (scene.updateMatrixWorld — the normal schedule
-  // trigger — already ran earlier in this render call). The
-  // scheduleRuns counter keeps this from double-running systems on
-  // frames where nothing was pending.
-  registry.group.update()
+  // Threshold evaluation runs whenever standalone membership changed —
+  // Signal-B registrations and removals mark the registry dirty for the
+  // next sweep.
+  const evalRegistry = registry ?? peekDirtyRegistry(renderer, scene)
+  if (evalRegistry && evalRegistry._autoEvalDirty) {
+    evaluateAutoBatch(evalRegistry)
+  }
+
+  if (registry || evalRegistry) {
+    // Run the schedule now so this render call's projection picks up any
+    // batching mutations (scene.updateMatrixWorld — the normal schedule
+    // trigger — already ran earlier in this render call). The
+    // scheduleRuns counter keeps this from double-running systems on
+    // frames where nothing was pending.
+    ;(registry ?? evalRegistry)!.group.update()
+  }
+}
+
+/** Resolve an existing registry only when it has evaluation work queued. */
+function peekDirtyRegistry(renderer: RendererLike, scene: Scene): Registry | null {
+  const existing = peekRegistry(renderer, scene)
+  return existing && existing._autoEvalDirty ? existing : null
+}
+
+/**
+ * Threshold routing (the auto-batch activation): group unenrolled
+ * sprites by their live run key and enroll every group that reaches 2 —
+ * or whose run already has an active batch to join. N = 1 stays a
+ * standalone Mesh: no batch overhead until a sibling shows up.
+ *
+ * Enrollment goes through the hidden SpriteGroup's add() (world
+ * assignment, default-material resolution, ECS spawn); the next
+ * schedule run assigns slots and hides the sprites' own meshes.
+ */
+export function evaluateAutoBatch(registry: Registry): void {
+  registry._autoEvalDirty = false
+  if (registry.standalone.size === 0) return
+
+  const data = registry._registryData()
+  const byRun = new Map<string, Sprite2D[]>()
+  for (const sprite of registry.standalone) {
+    if (sprite._renderOrderOverridden) continue // explicit escape hatch
+    const key = computeRunKey(
+      sprite.sortLayerValue,
+      sprite.material.batchId,
+      sprite.layers.mask
+    )
+    let bucket = byRun.get(key)
+    if (!bucket) {
+      bucket = []
+      byRun.set(key, bucket)
+    }
+    bucket.push(sprite)
+  }
+
+  for (const [key, bucket] of byRun) {
+    const runExists = data?.runs.has(key) ?? false
+    if (bucket.length < 2 && !runExists) continue
+    for (const sprite of bucket) {
+      registry.standalone.delete(sprite)
+      registry.group.add(sprite)
+    }
+  }
 }
 
 /**
@@ -174,6 +242,11 @@ function registerSprite(registry: Registry, sprite: Sprite2D): void {
   if (sprite._materialIsBootstrapDefault && sprite.texture) {
     sprite._resolveDefaultMaterial(registry.getDefaultMaterial(sprite.texture))
   }
+
+  // Queue for threshold evaluation — the sweep decides standalone vs
+  // batched from the live run population.
+  registry.standalone.add(sprite)
+  registry._autoEvalDirty = true
 }
 
 /** Parent the hidden orchestrator group into the scene exactly once. */

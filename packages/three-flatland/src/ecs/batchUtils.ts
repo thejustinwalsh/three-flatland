@@ -479,6 +479,7 @@ export function handleMaterialDispose(
       sprite._resolveDefaultMaterial(getWorldDefaultMaterial(world, registry, sprite.texture))
     } else {
       orphaned++
+      sprite._autoBatched = false
       sprite.visible = true
       sprite._unenrollFromWorld()
     }

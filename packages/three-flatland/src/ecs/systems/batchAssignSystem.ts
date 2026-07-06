@@ -113,6 +113,14 @@ export function createBatchAssignSystem(): (
       sprite._batchSlot = slot
       sprite._batchIdx = batchIdx
 
+      // Auto-orchestrated sprites live in the user's scene tree — once a
+      // batch draws them, their own Mesh must stop rendering. Explicit
+      // SpriteGroup sprites were never tree children; leave them alone.
+      if (sprite._autoRegistry) {
+        sprite._autoBatched = true
+        sprite.visible = false
+      }
+
       // Signal that this batch needs sorting on the next pass — the new
       // sprite was just inserted at an arbitrary slot (allocateSlot's
       // free-list / nextIndex), not its sorted position. For gated
