@@ -33,14 +33,26 @@ export const SpriteFlip = trait({ x: 1, y: 1 })
 // Sort/batch metadata
 // ============================================
 
-/** Sort key for batching: render layer (changing this triggers batch reassignment) */
-export const SpriteLayer = trait({ layer: 0 })
+/**
+ * Sort key for batching: numeric sortLayer value (changing this triggers
+ * batch reassignment). Cross-primitive — sprites, particles, and future
+ * batchers all participate through this same trait.
+ */
+export const SortLayer = trait({ value: 0 })
 
-/** Z-index within layer for depth sorting (does NOT affect batch assignment) */
+/** Z-index within sortLayer for depth sorting (does NOT affect batch assignment) */
 export const SpriteZIndex = trait({ zIndex: 0 })
 
 /** Material reference for batching (batchId from Sprite2DMaterial) */
 export const SpriteMaterialRef = trait({ materialId: 0 })
+
+/**
+ * Three's `Object3D.layers` bitmask, mirrored into the ECS so mask
+ * mutations (via the wrapped `Layers` instance on Sprite2D) trigger
+ * batch re-routing. Part of the batch run key — different camera masks
+ * route to differently-masked batches (still batched, never standalone).
+ */
+export const CameraLayersMask = trait({ mask: 1 })
 
 // ============================================
 // Tags
@@ -98,7 +110,8 @@ export const BatchMesh = trait(() => ({
  */
 export const BatchMeta = trait({
   materialId: 0,
-  layer: 0,
+  sortLayer: 0,
+  layersMask: 1,
   renderOrder: 0,
   batchIdx: -1,
 })
@@ -107,10 +120,16 @@ export const BatchMeta = trait({
 // Batch registry (world-level singleton entity)
 // ============================================
 
-/** A run groups batches sharing the same (layer, materialId) sort dimensions. */
+/**
+ * A run groups batches sharing the same (materialId, sortLayer,
+ * layers.mask) run-key dimensions. Each component is a real GPU
+ * constraint: material = shader pipeline, sortLayer = render-list
+ * position, layers.mask = camera visibility.
+ */
 export interface BatchRun {
   materialId: number
-  layer: number
+  sortLayer: number
+  layersMask: number
   material: Sprite2DMaterial
   batches: Entity[]
 }
@@ -120,18 +139,20 @@ export interface BatchRun {
  * Spawned once by SpriteGroup; systems query for it.
  */
 export const BatchRegistry = trait(() => ({
-  /** Runs indexed by run key — groups batches by (layer, materialId). */
-  runs: new Map<number, BatchRun>(),
+  /** Runs indexed by run key — groups batches by (materialId, sortLayer, layers.mask). */
+  runs: new Map<string, BatchRun>(),
   /** Sorted run keys for O(log R) binary search on insert. */
-  sortedRunKeys: [] as number[],
+  sortedRunKeys: [] as string[],
   /** Pool of recycled batch entities for reuse. */
   batchPool: [] as Entity[],
   /** Active batch entities in sorted render order. */
   activeBatches: [] as Entity[],
   /** Whether the scene graph children need rebuilding. */
   renderOrderDirty: false as boolean,
-  /** Maximum sprites per batch. */
-  maxBatchSize: 10000,
+  /** Maximum sprites per batch (explicit opt-in path). */
+  maxBatchSize: 16384,
+  /** Tiered batch sizes for the auto-orchestrate path; null = fixed maxBatchSize. */
+  tierLadder: null as readonly number[] | null,
   /** Material references for schema version tracking. */
   materialRefs: new Map<number, { material: Sprite2DMaterial; version: number }>(),
   /** Indexed array of active SpriteBatch meshes for O(1) lookup from BatchSlot.batchIdx. */

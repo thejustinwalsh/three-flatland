@@ -4,6 +4,7 @@ import { AnimationController } from '../animation/AnimationController'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { SpriteSheet, SpriteFrame } from './types'
+import type { SortLayerValue } from '../pipeline/sortLayers'
 import type { Animation, AnimationSetDefinition, PlayOptions } from '../animation/types'
 
 /**
@@ -32,9 +33,9 @@ export interface AnimatedSprite2DOptions {
   flipX?: boolean
   /** Flip vertically */
   flipY?: boolean
-  /** Render layer (for SpriteGroup) */
-  layer?: number
-  /** Z-index within layer */
+  /** Sort layer — registered name or numeric order */
+  sortLayer?: SortLayerValue
+  /** Z-index within sortLayer */
   zIndex?: number
   /** Pixel-perfect rendering (snap to pixels) */
   pixelPerfect?: boolean
@@ -90,7 +91,7 @@ export class AnimatedSprite2D extends Sprite2D {
       alpha: options?.alpha,
       flipX: options?.flipX,
       flipY: options?.flipY,
-      layer: options?.layer,
+      sortLayer: options?.sortLayer,
       zIndex: options?.zIndex,
       pixelPerfect: options?.pixelPerfect,
     })
@@ -406,7 +407,7 @@ export class AnimatedSprite2D extends Sprite2D {
       alpha: this.alpha,
       flipX: this.flipX,
       flipY: this.flipY,
-      layer: this.layer,
+      sortLayer: this.sortLayer,
       zIndex: this.zIndex,
       pixelPerfect: this.pixelPerfect,
     })

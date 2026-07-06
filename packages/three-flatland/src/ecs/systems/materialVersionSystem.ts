@@ -59,7 +59,7 @@ function rebuildBatchesForMaterial(world: World, registry: RegistryData, materia
       if (batchMesh?.mesh?.isEmpty) {
         const meta = batchEntity.get(BatchMeta)
         if (meta) {
-          const key = computeRunKey(meta.layer, meta.materialId)
+          const key = computeRunKey(meta.sortLayer, meta.materialId, meta.layersMask)
           const run = registry.runs.get(key)
           if (run) {
             recycleBatchIfEmpty(registry, batchEntity, run)

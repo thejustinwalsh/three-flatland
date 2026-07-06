@@ -8,7 +8,7 @@ import {
   SpriteSheetLoader,
   TextureLoader,
   TileMap2D,
-  Layers,
+  SortLayers,
   type AnimationSetDefinition,
   type SpriteSheet,
   type TileMapData,
@@ -233,7 +233,7 @@ function spawnKnight(
     spriteSheet: sheet,
     animationSet: knightAnimations,
     animation: 'idle',
-    layer: Layers.ENTITIES,
+    sortLayer: SortLayers.ENTITIES,
     anchor: [0.5, 0.5],
     material,
   })

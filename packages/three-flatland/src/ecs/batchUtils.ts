@@ -9,12 +9,14 @@ import type { SystemSchedule } from './SystemSchedule'
 
 /** Shape of the BatchRegistry trait data, used for parameter typing. */
 export interface RegistryData {
-  runs: Map<number, BatchRun>
-  sortedRunKeys: number[]
+  runs: Map<string, BatchRun>
+  sortedRunKeys: string[]
   batchPool: Entity[]
   activeBatches: Entity[]
   renderOrderDirty: boolean
   maxBatchSize: number
+  /** Tiered batch sizes for the auto-orchestrate path; null = fixed maxBatchSize. */
+  tierLadder: readonly number[] | null
   materialRefs: Map<number, { material: Sprite2DMaterial; version: number }>
   batchSlots: (SpriteBatch | null)[]
   batchSlotFreeList: number[]
@@ -42,19 +44,33 @@ export interface RegistryData {
 }
 
 /**
- * Compute a run key from layer and materialId.
- * Runs are the primary batch grouping dimension: sprites in the same run
- * share (layer, materialId) and can be in the same batch.
+ * A batch run key: fixed-width hex `sortLayer(4) | materialId(4) | mask(8)`.
+ *
+ * Lexicographic string order equals sortLayer-major numeric order, so the
+ * sorted run-key array doubles as the render-order source without any
+ * numeric packing. A string key sidesteps Float64 precision: the three
+ * components total 48+ bits, past the 53-bit integer-safe range.
  */
-export function computeRunKey(layer: number, materialId: number): number {
-  return ((layer & 0xff) << 16) | (materialId & 0xffff)
+export type RunKey = string
+
+const hexPad = (value: number, width: number) => value.toString(16).padStart(width, '0')
+
+/**
+ * Compute a run key from sortLayer, materialId, and camera layers mask.
+ * Runs are the primary batch grouping dimension: sprites in the same run
+ * share (materialId, sortLayer, layers.mask) and can be in the same batch.
+ * Each component is a real GPU constraint — shader pipeline, render-list
+ * position, camera visibility.
+ */
+export function computeRunKey(sortLayer: number, materialId: number, layersMask: number): RunKey {
+  return hexPad(sortLayer & 0xffff, 4) + hexPad(materialId & 0xffff, 4) + hexPad(layersMask >>> 0, 8)
 }
 
 /**
  * Binary search for insertion point in a sorted array.
  * Returns the index where `key` should be inserted to maintain sort order.
  */
-export function binarySearch(arr: number[], key: number): number {
+export function binarySearch<T extends number | string>(arr: T[], key: T): number {
   let lo = 0
   let hi = arr.length - 1
   while (lo <= hi) {
@@ -71,7 +87,7 @@ export function binarySearch(arr: number[], key: number): number {
  * Insert a value into a sorted array at the correct position.
  * No-op if the value already exists.
  */
-export function sortedInsert(arr: number[], key: number): void {
+export function sortedInsert<T extends number | string>(arr: T[], key: T): void {
   const idx = binarySearch(arr, key)
   if (idx >= 0) return
   arr.splice(~idx, 0, key)
@@ -81,7 +97,7 @@ export function sortedInsert(arr: number[], key: number): void {
  * Remove a value from a sorted array.
  * No-op if the value doesn't exist.
  */
-export function sortedRemove(arr: number[], key: number): void {
+export function sortedRemove<T extends number | string>(arr: T[], key: T): void {
   const idx = binarySearch(arr, key)
   if (idx >= 0) arr.splice(idx, 1)
 }
@@ -112,22 +128,44 @@ export function freeBatchIdx(registry: RegistryData, idx: number): void {
 }
 
 /**
- * Get or create a batch run for a given (layer, materialId) combo.
+ * Get or create a batch run for a given (sortLayer, materialId, layersMask) combo.
  */
 export function getOrCreateRun(
   registry: RegistryData,
-  layer: number,
+  sortLayer: number,
   materialId: number,
+  layersMask: number,
   material: Sprite2DMaterial
 ): { run: BatchRun; created: boolean } {
-  const key = computeRunKey(layer, materialId)
+  const key = computeRunKey(sortLayer, materialId, layersMask)
   let run = registry.runs.get(key)
   if (run) return { run, created: false }
 
-  run = { materialId, layer, material, batches: [] }
+  run = { materialId, sortLayer, layersMask, material, batches: [] }
   registry.runs.set(key, run)
   sortedInsert(registry.sortedRunKeys, key)
   return { run, created: true }
+}
+
+/**
+ * Auto-batch tier ladder. Each SpriteBatch is born at a fixed tier and
+ * stays that size for life; when it fills, the next batch in the run is
+ * created one tier up. Memory scales with actual usage: 2 sprites cost
+ * ~11 KB (tier 0), not the 2.75 MB a max-size batch would.
+ */
+export const BATCH_TIER_LADDER: readonly number[] = [64, 256, 1024, 4096, 16384]
+
+/**
+ * Resolve the slot count for the next batch in a run.
+ *
+ * `registry.tierLadder` non-null → tiered sizing indexed by how many
+ * batches the run already has (clamped to the top tier). Null → the
+ * registry's fixed `maxBatchSize` (explicit SpriteGroup opt-in).
+ */
+export function resolveBatchSize(registry: RegistryData, run: BatchRun): number {
+  const ladder = registry.tierLadder
+  if (!ladder || ladder.length === 0) return registry.maxBatchSize
+  return ladder[Math.min(run.batches.length, ladder.length - 1)]!
 }
 
 /**
@@ -149,18 +187,28 @@ export function findOrCreateBatch(
   let batchEntity = registry.batchPool.pop()
   let mesh: SpriteBatch | null = null
 
+  // Tier ladder: each successive batch in a run is born at the next
+  // tier size (64 → 256 → 1024 → 4096 → 16384). Explicit SpriteGroup
+  // users override via `maxBatchSize`, which pins every batch to that
+  // size (tierLadder null).
+  const batchSize = resolveBatchSize(registry, run)
+
   if (batchEntity) {
     const existing = batchEntity.get(BatchMesh)
-    if (existing?.mesh && existing.mesh.spriteMaterial.batchId === run.materialId) {
+    if (
+      existing?.mesh &&
+      existing.mesh.spriteMaterial.batchId === run.materialId &&
+      existing.mesh.maxSize === batchSize
+    ) {
       mesh = existing.mesh
       mesh.resetSlots()
     } else {
       if (existing?.mesh) existing.mesh.dispose()
-      mesh = new SpriteBatch(run.material, registry.maxBatchSize)
+      mesh = new SpriteBatch(run.material, batchSize)
     }
   } else {
     batchEntity = world.spawn()
-    mesh = new SpriteBatch(run.material, registry.maxBatchSize)
+    mesh = new SpriteBatch(run.material, batchSize)
   }
 
   // Allocate a batchIdx for O(1) mesh lookup from BatchSlot
@@ -176,22 +224,28 @@ export function findOrCreateBatch(
   if (batchEntity.has(BatchMeta)) {
     batchEntity.set(BatchMeta, {
       materialId: run.materialId,
-      layer: run.layer,
+      sortLayer: run.sortLayer,
+      layersMask: run.layersMask,
       batchIdx,
     }, false)
   } else {
     batchEntity.add(
       BatchMeta({
         materialId: run.materialId,
-        layer: run.layer,
+        sortLayer: run.sortLayer,
+        layersMask: run.layersMask,
         renderOrder: 0,
         batchIdx,
       })
     )
   }
 
+  // The batch's camera mask mirrors its run — sprites with a custom
+  // `layers` mask route to a batch the same cameras see.
+  mesh.layers.mask = run.layersMask
+
   // Set descriptive name for devtools scene tree
-  mesh.name = `SpriteBatch[layer=${run.layer}, mat=${run.materialId}]`
+  mesh.name = `SpriteBatch[sortLayer=${run.sortLayer}, mat=${run.materialId}, mask=${run.layersMask}]`
 
   run.batches.push(batchEntity)
   registry.activeBatches.push(batchEntity)
@@ -218,7 +272,7 @@ export function recycleBatchIfEmpty(
 
   // If run is now empty, remove it
   if (run.batches.length === 0) {
-    const key = computeRunKey(run.layer, run.materialId)
+    const key = computeRunKey(run.sortLayer, run.materialId, run.layersMask)
     registry.runs.delete(key)
     sortedRemove(registry.sortedRunKeys, key)
   }

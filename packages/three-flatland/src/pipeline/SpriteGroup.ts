@@ -3,7 +3,6 @@ import { createWorld, type World, type Entity, type Trait } from 'koota'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { SpriteGroupOptions, RenderStats } from './types'
-import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
 import { assignWorld, type WorldProvider } from '../ecs/world'
 import {
   BatchRegistry,
@@ -16,7 +15,7 @@ import {
   SpriteMaterialRef,
 } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
-import { computeRunKey, recycleBatchIfEmpty } from '../ecs/batchUtils'
+import { BATCH_TIER_LADDER, computeRunKey, recycleBatchIfEmpty } from '../ecs/batchUtils'
 import {
   _registerBatchSource,
   _unregisterBatchSource,
@@ -59,7 +58,7 @@ declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
  * scene.add(spriteGroup)
  *
  * const sprite = new Sprite2D({ texture })
- * sprite.layer = Layers.ENTITIES
+ * sprite.sortLayer = SortLayers.ENTITIES
  * spriteGroup.add(sprite)
  *
  * // In render loop — no update() call needed
@@ -94,9 +93,16 @@ export class SpriteGroup extends Group implements WorldProvider {
   private _lastRunSeen = 0
 
   /**
-   * Maximum sprites per batch.
+   * Maximum sprites per batch (explicit `maxBatchSize` opt-in). When the
+   * user doesn't pass one, batches size themselves off the tier ladder.
    */
   private _maxBatchSize: number
+
+  /**
+   * Tier ladder for batch sizing — non-null unless the user pinned an
+   * explicit `maxBatchSize`, in which case every batch uses that size.
+   */
+  private _tierLadder: readonly number[] | null
 
   /**
    * Whether frustum culling is enabled.
@@ -149,7 +155,10 @@ export class SpriteGroup extends Group implements WorldProvider {
     this.name = 'SpriteGroup'
     this.frustumCulled = false
 
-    this._maxBatchSize = options.maxBatchSize ?? DEFAULT_BATCH_SIZE
+    // Explicit maxBatchSize pins every batch to that size; otherwise the
+    // tier ladder scales allocation with usage (64 → … → 16384).
+    this._maxBatchSize = options.maxBatchSize ?? BATCH_TIER_LADDER[BATCH_TIER_LADDER.length - 1]!
+    this._tierLadder = options.maxBatchSize !== undefined ? null : BATCH_TIER_LADDER
 
     this.autoSort = options.autoSort ?? true
     this.frustumCulling = options.frustumCulling ?? true
@@ -250,6 +259,7 @@ export class SpriteGroup extends Group implements WorldProvider {
           activeBatches: [],
           renderOrderDirty: false,
           maxBatchSize: this._maxBatchSize,
+          tierLadder: this._tierLadder,
           materialRefs: new Map(),
           batchSlots: [],
           batchSlotFreeList: [],
@@ -348,7 +358,7 @@ export class SpriteGroup extends Group implements WorldProvider {
    * This method is kept for explicit invalidation if needed.
    */
   invalidate(_sprite: Sprite2D): void {
-    // No-op: batchReassignSystem detects Changed(SpriteLayer/SpriteMaterialRef) automatically
+    // No-op: batchReassignSystem detects Changed(SortLayer/SpriteMaterialRef/CameraLayersMask) automatically
   }
 
   /**
@@ -515,7 +525,7 @@ export class SpriteGroup extends Group implements WorldProvider {
         if (batchMesh?.mesh?.isEmpty) {
           const meta = batchEntity.get(BatchMeta)
           if (meta) {
-            const key = computeRunKey(meta.layer, meta.materialId)
+            const key = computeRunKey(meta.sortLayer, meta.materialId, meta.layersMask)
             const run = registry.runs.get(key)
             if (run) {
               recycleBatchIfEmpty(registry, batchEntity, run)

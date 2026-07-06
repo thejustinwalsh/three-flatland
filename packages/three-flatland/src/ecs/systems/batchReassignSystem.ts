@@ -5,8 +5,9 @@ import {
   SpriteColor,
   SpriteUV,
   SpriteFlip,
-  SpriteLayer,
+  SortLayer,
   SpriteMaterialRef,
+  CameraLayersMask,
   InBatch,
   BatchSlot,
   BatchMesh,
@@ -33,11 +34,12 @@ import { ENTITY_ID_MASK } from '../snapshot'
  * + effect-trait map and moves sprites between batches when their sort
  * key (layer or material) changes.
  *
- * Triggered by Changed(SpriteLayer) or Changed(SpriteMaterialRef) on
- * batched sprites. If the new (layer, materialId) differs from the
- * current batch's run, removes from old batch and inserts into correct one.
+ * Triggered by Changed(SortLayer), Changed(SpriteMaterialRef), or
+ * Changed(CameraLayersMask) on batched sprites. If the new
+ * (sortLayer, materialId, layers.mask) differs from the current batch's
+ * run, removes from old batch and inserts into the correct one.
  *
- * zIndex changes within the same (layer, material) do NOT require
+ * zIndex changes within the same run do NOT require
  * batch movement — Z-offset handles depth sorting.
  *
  * Closes over its own `Changed` subscription + reused dedup Set so each
@@ -55,14 +57,16 @@ export function createBatchReassignSystem(): (
     world: World,
     effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
   ): void {
-    const layerChanged = world.query(Changed(SpriteLayer), IsBatched)
+    const layerChanged = world.query(Changed(SortLayer), IsBatched)
     const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched)
+    const maskChanged = world.query(Changed(CameraLayersMask), IsBatched)
 
-    // Dedup entities that appear in both queries — reuse the closure
+    // Dedup entities that appear in multiple queries — reuse the closure
     // Set, clear-and-fill instead of allocating a new one + array spreads.
     toReassign.clear()
     for (const e of layerChanged) toReassign.add(e)
     for (const e of matChanged) toReassign.add(e)
+    for (const e of maskChanged) toReassign.add(e)
     if (toReassign.size === 0) return
 
     const registryEntities = world.query(BatchRegistry)
@@ -74,9 +78,10 @@ export function createBatchReassignSystem(): (
       const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
       if (!sprite) continue
 
-      const newLayer = entity.get(SpriteLayer)
+      const newLayer = entity.get(SortLayer)
       const newMatRef = entity.get(SpriteMaterialRef)
       if (!newLayer || !newMatRef) continue
+      const newMask = entity.get(CameraLayersMask)?.mask ?? sprite.layers.mask
 
       // Check if the batch entity still exists
       const oldBatchEntity = entity.targetFor(InBatch)
@@ -85,9 +90,9 @@ export function createBatchReassignSystem(): (
       const oldMeta = oldBatchEntity.get(BatchMeta)
       if (!oldMeta) continue
 
-      // Compare run keys — only reassign if (layer, materialId) actually changed
-      const oldRunKey = computeRunKey(oldMeta.layer, oldMeta.materialId)
-      const newRunKey = computeRunKey(newLayer.layer, newMatRef.materialId)
+      // Compare run keys — only reassign if the run actually changed
+      const oldRunKey = computeRunKey(oldMeta.sortLayer, oldMeta.materialId, oldMeta.layersMask)
+      const newRunKey = computeRunKey(newLayer.value, newMatRef.materialId, newMask)
 
       if (oldRunKey === newRunKey) continue // Same run — no batch movement needed
 
@@ -120,7 +125,13 @@ export function createBatchReassignSystem(): (
         version: material._effectSchemaVersion,
       })
 
-      const { run } = getOrCreateRun(registry, newLayer.layer, newMatRef.materialId, material)
+      const { run } = getOrCreateRun(
+        registry,
+        newLayer.value,
+        newMatRef.materialId,
+        newMask,
+        material
+      )
       const newBatchEntity = findOrCreateBatch(world, registry, run)
       const newBatchMesh = newBatchEntity.get(BatchMesh)
       if (!newBatchMesh?.mesh) continue

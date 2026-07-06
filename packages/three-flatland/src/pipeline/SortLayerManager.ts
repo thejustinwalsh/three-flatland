@@ -1,11 +1,11 @@
 import type { Sprite2D } from '../sprites/Sprite2D'
-import type { LayerConfig, BlendMode, SortMode } from './types'
-import { Layers } from './layers'
+import type { SortLayerDescriptor, BlendMode, SortMode } from './types'
+import { SortLayers } from './sortLayers'
 
 /**
- * A managed layer containing sprites.
+ * A managed sort layer containing sprites.
  */
-export class Layer {
+export class SortLayer {
   /**
    * Layer name.
    */
@@ -41,7 +41,7 @@ export class Layer {
    */
   onVisibilityChange?: (visible: boolean) => void
 
-  constructor(config: LayerConfig) {
+  constructor(config: SortLayerDescriptor) {
     this.name = config.name
     this.value = config.value
     this.blendMode = config.blendMode ?? 'normal'
@@ -89,7 +89,7 @@ export class Layer {
    * Add a sprite to this layer.
    */
   add(sprite: Sprite2D): void {
-    sprite.layer = this.value
+    sprite.sortLayer = this.value
     sprite.visible = this._visible
     this._sprites.add(sprite)
   }
@@ -124,18 +124,18 @@ export class Layer {
 }
 
 /**
- * Manages render layers for 2D scenes.
+ * Manages named sort layers for 2D scenes.
  *
  * Provides a higher-level API for organizing sprites into layers.
  * Use with SpriteGroup for automatic batching and sorting.
  *
  * @example
  * ```typescript
- * const layers = new LayerManager()
+ * const layers = new SortLayerManager()
  *
  * // Create layers
- * const entities = layers.createLayer({ name: 'entities', value: Layers.ENTITIES })
- * const effects = layers.createLayer({ name: 'effects', value: Layers.EFFECTS })
+ * const entities = layers.createLayer({ name: 'entities', value: SortLayers.ENTITIES })
+ * const effects = layers.createLayer({ name: 'effects', value: SortLayers.EFFECTS })
  *
  * // Add sprites to layers
  * layers.addToLayer('entities', playerSprite)
@@ -147,25 +147,25 @@ export class Layer {
  *
  * @internal
  */
-export class LayerManager {
+export class SortLayerManager {
   /**
    * Layers by name.
    */
-  private _layers: Map<string, Layer> = new Map()
+  private _layers: Map<string, SortLayer> = new Map()
 
   /**
    * Layers by value (for fast lookup).
    */
-  private _layersByValue: Map<number, Layer> = new Map()
+  private _layersByValue: Map<number, SortLayer> = new Map()
 
   /**
-   * Create default layers based on the Layers constant.
+   * Create default layers based on the SortLayers constant.
    */
-  static withDefaults(): LayerManager {
-    const manager = new LayerManager()
+  static withDefaults(): SortLayerManager {
+    const manager = new SortLayerManager()
 
-    // Create layers from Layers constant
-    for (const [name, value] of Object.entries(Layers)) {
+    // Create layers from SortLayers constant
+    for (const [name, value] of Object.entries(SortLayers)) {
       manager.createLayer({
         name: name.toLowerCase(),
         value: value as number,
@@ -178,12 +178,12 @@ export class LayerManager {
   /**
    * Create a new layer.
    */
-  createLayer(config: LayerConfig): Layer {
+  createLayer(config: SortLayerDescriptor): SortLayer {
     if (this._layers.has(config.name)) {
-      throw new Error(`Layer "${config.name}" already exists`)
+      throw new Error(`SortLayer "${config.name}" already exists`)
     }
 
-    const layer = new Layer(config)
+    const layer = new SortLayer(config)
     this._layers.set(config.name, layer)
     this._layersByValue.set(config.value, layer)
 
@@ -193,14 +193,14 @@ export class LayerManager {
   /**
    * Get a layer by name.
    */
-  getLayer(name: string): Layer | undefined {
+  getLayer(name: string): SortLayer | undefined {
     return this._layers.get(name)
   }
 
   /**
    * Get a layer by value.
    */
-  getLayerByValue(value: number): Layer | undefined {
+  getLayerByValue(value: number): SortLayer | undefined {
     return this._layersByValue.get(value)
   }
 
@@ -223,7 +223,7 @@ export class LayerManager {
   addToLayer(layerName: string, sprite: Sprite2D): void {
     const layer = this._layers.get(layerName)
     if (!layer) {
-      throw new Error(`Layer "${layerName}" not found`)
+      throw new Error(`SortLayer "${layerName}" not found`)
     }
     layer.add(sprite)
   }
@@ -232,7 +232,7 @@ export class LayerManager {
    * Remove a sprite from its current layer.
    */
   removeFromLayer(sprite: Sprite2D): void {
-    const layer = this._layersByValue.get(sprite.layer)
+    const layer = this._layersByValue.get(sprite.sortLayerValue)
     if (layer) {
       layer.remove(sprite)
     }
@@ -248,7 +248,7 @@ export class LayerManager {
     // Add to new layer
     const newLayer = this._layers.get(newLayerName)
     if (!newLayer) {
-      throw new Error(`Layer "${newLayerName}" not found`)
+      throw new Error(`SortLayer "${newLayerName}" not found`)
     }
     newLayer.add(sprite)
   }
@@ -259,7 +259,7 @@ export class LayerManager {
   setLayerVisible(name: string, visible: boolean): void {
     const layer = this._layers.get(name)
     if (!layer) {
-      throw new Error(`Layer "${name}" not found`)
+      throw new Error(`SortLayer "${name}" not found`)
     }
     layer.visible = visible
   }
@@ -270,7 +270,7 @@ export class LayerManager {
   isLayerVisible(name: string): boolean {
     const layer = this._layers.get(name)
     if (!layer) {
-      throw new Error(`Layer "${name}" not found`)
+      throw new Error(`SortLayer "${name}" not found`)
     }
     return layer.visible
   }
@@ -281,7 +281,7 @@ export class LayerManager {
   toggleLayerVisible(name: string): boolean {
     const layer = this._layers.get(name)
     if (!layer) {
-      throw new Error(`Layer "${name}" not found`)
+      throw new Error(`SortLayer "${name}" not found`)
     }
     layer.visible = !layer.visible
     return layer.visible
@@ -297,7 +297,7 @@ export class LayerManager {
   /**
    * Get all layers.
    */
-  getLayers(): Layer[] {
+  getLayers(): SortLayer[] {
     return Array.from(this._layers.values())
   }
 
@@ -329,7 +329,7 @@ export class LayerManager {
   /**
    * Iterate over layers.
    */
-  [Symbol.iterator](): Iterator<Layer> {
+  [Symbol.iterator](): Iterator<SortLayer> {
     return this._layers.values()
   }
 }

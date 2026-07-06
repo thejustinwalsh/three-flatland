@@ -108,7 +108,7 @@ When a ray hits a `TileMap2D`, `tileFromIntersection` converts the `Intersection
 const hits = raycaster.intersectObject(tilemap, true)
 if (hits.length > 0) {
   const cell = tilemap.tileFromIntersection(hits[0])
-  // cell → { layer: TileLayer2D, tileX: number, tileY: number, gid: number }
+  // cell → { sortLayer: TileLayer2D, tileX: number, tileY: number, gid: number }
   console.log(`hit gid ${cell.gid} at (${cell.tileX}, ${cell.tileY})`)
 }
 ```

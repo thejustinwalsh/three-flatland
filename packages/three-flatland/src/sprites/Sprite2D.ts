@@ -20,7 +20,8 @@ import {
   SpriteUV,
   SpriteColor,
   SpriteFlip,
-  SpriteLayer,
+  SortLayer,
+  CameraLayersMask,
   SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
@@ -28,6 +29,7 @@ import {
   BatchSlot,
   BatchRegistry,
 } from '../ecs/traits'
+import { resolveSortLayer, type SortLayerValue } from '../pipeline/sortLayers'
 import type { RegistryData } from '../ecs/batchUtils'
 import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
@@ -78,7 +80,7 @@ const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, ve
  *   anchor: [0.5, 1], // Bottom center
  * });
  * sprite.position.set(100, 200, 0);
- * sprite.layer = Layers.ENTITIES;
+ * sprite.sortLayer = SortLayers.ENTITIES; // or the typed name: 'entities'
  * sprite.zIndex = sprite.position.y; // Y-sort
  * scene.add(sprite);
  * ```
@@ -361,8 +363,41 @@ export class Sprite2D extends Mesh {
   /** @internal */ _flipXArr: number[] = [1]
   /** @internal */ _flipYArr: number[] = [1]
 
-  // Layer (SpriteLayer) — needs entity.set() for Changed() on write
+  // SortLayer — needs entity.set() for Changed() on write
   /** @internal */ _layerArr: number[] = [0]
+
+  /**
+   * The registered sortLayer name when assigned by name; null when the
+   * sprite uses a raw numeric sortLayer. The numeric resolution always
+   * lives in `_layerArr` — this only preserves the name for reads.
+   * @internal
+   */
+  _sortLayerName: string | null = null
+
+  /**
+   * True once the user explicitly assigned a sortLayer (name or number).
+   * SortLayerGroup respects explicit assignments and never overrides them.
+   * @internal
+   */
+  _sortLayerExplicit = false
+
+  /**
+   * True once the user directly customized `renderOrder`, escaping the
+   * sortLayer system — the sprite renders standalone from then on.
+   * @internal
+   */
+  _renderOrderOverridden = false
+
+  /**
+   * Armed at the end of construction; gates the `renderOrder` setter so
+   * three's `Object3D` constructor default assignment doesn't count as a
+   * user override.
+   * @internal
+   */
+  private _interceptionArmed = false
+
+  /** Backing store for the intercepted `renderOrder` accessor. @internal */
+  private _renderOrderValue?: number
 
   // ZIndex (SpriteZIndex) — raw array writes, no Changed() needed
   /** @internal */ _zIndexArr: number[] = [0]
@@ -519,8 +554,16 @@ export class Sprite2D extends Mesh {
     // Hide until properly configured (prevents flash on load)
     this.visible = false
 
+    // Wrap three's inherited `Layers` instance so mask mutations
+    // (enable/disable/toggle/set or direct `mask =` writes) re-route the
+    // sprite to a batch matching the new camera mask. We wrap the
+    // instance rather than overriding the property — three's documented
+    // `layers` semantics stay intact; we just observe.
+    this._wrapLayers()
+
     // If no options, we're being created by R3F - properties will be set via setters
     if (!options) {
+      this._interceptionArmed = true
       return
     }
 
@@ -573,8 +616,8 @@ export class Sprite2D extends Mesh {
       this.flipY = options.flipY
     }
 
-    if (options.layer !== undefined) {
-      this.layer = options.layer
+    if (options.sortLayer !== undefined) {
+      this.sortLayer = options.sortLayer
     }
 
     if (options.zIndex !== undefined) {
@@ -603,6 +646,7 @@ export class Sprite2D extends Mesh {
 
     this._updateOwnFlip()
     this._updateOwnShadowRadius()
+    this._interceptionArmed = true
   }
 
   /**
@@ -936,20 +980,35 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Get render layer (primary sort key).
+   * Get the sortLayer (primary sort key). Returns the registered name
+   * when one was assigned; the numeric order otherwise.
    */
-  get layer(): number {
-    return this._layerArr[this._idx]!
+  get sortLayer(): SortLayerValue {
+    return (this._sortLayerName as SortLayerValue) ?? this._layerArr[this._idx]!
   }
 
   /**
-   * Set render layer (primary sort key).
+   * Set the sortLayer (primary sort key) — a registered name (typed via
+   * `SortLayerRegistry` augmentation) or a raw numeric order. Routes the
+   * sprite to the batch matching its new run key on the next system pass.
    */
-  set layer(value: number) {
-    this._layerArr[this._idx] = value
+  set sortLayer(value: SortLayerValue) {
+    const numeric = resolveSortLayer(value)
+    this._sortLayerName = typeof value === 'string' ? value : null
+    this._sortLayerExplicit = true
+    this._layerArr[this._idx] = numeric
     if (this._entity) {
-      this._entity.set(SpriteLayer, { layer: value })
+      this._entity.set(SortLayer, { value: numeric })
     }
+  }
+
+  /**
+   * The numeric sortLayer order (names resolved). Hot-path accessor for
+   * matrix Z-baking and run-key computation.
+   * @internal
+   */
+  get sortLayerValue(): number {
+    return this._layerArr[this._idx]!
   }
 
   /**
@@ -1526,6 +1585,83 @@ export class Sprite2D extends Mesh {
   }
 
   /**
+   * Intercepted `renderOrder` write path — three's inherited numeric
+   * primitive, installed as a prototype accessor below the class body
+   * (TS disallows overriding a data property with an accessor).
+   *
+   * A batched sprite isn't in three's render list (its batch is), so a
+   * direct `renderOrder` write would otherwise be silently ignored.
+   * Instead, an explicit user write escapes the sortLayer system: the
+   * sprite demotes to standalone and renders with the custom order,
+   * exactly as three documents for any Object3D.
+   * @internal
+   */
+  _setRenderOrder(value: number): void {
+    const prev = this._renderOrderValue ?? 0
+    this._renderOrderValue = value
+    if (!this._interceptionArmed || value === prev) return
+    this._renderOrderOverridden = true
+    if (this._entity) {
+      this._demoteToStandalone()
+    }
+  }
+
+  /**
+   * Wrap the inherited `Layers` instance with a Proxy that observes
+   * `mask` writes. `enable`/`disable`/`toggle`/`set` all funnel through
+   * `this.mask = …` internally, so a single set-trap covers every
+   * mutation path. Reads pass straight through.
+   * @internal
+   */
+  private _wrapLayers(): void {
+    const target = this.layers
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const sprite = this
+    this.layers = new Proxy(target, {
+      set(t, prop, value): boolean {
+        const isMaskChange = prop === 'mask' && t.mask !== value
+        ;(t as unknown as Record<string | symbol, unknown>)[prop] = value
+        if (isMaskChange) sprite._onLayersMaskChanged(t.mask)
+        return true
+      },
+    })
+  }
+
+  /**
+   * Camera-mask mutation hook: mirror the new mask into the ECS so
+   * `batchReassignSystem` routes the sprite to a batch with a matching
+   * mask. Still batched — a custom mask never drops a sprite to
+   * standalone, it just rides in a differently-masked batch.
+   * @internal
+   */
+  _onLayersMaskChanged(mask: number): void {
+    if (this._entity) {
+      this._entity.set(CameraLayersMask, { mask })
+    }
+  }
+
+  /**
+   * Drop out of batching to standalone rendering. Unenrolls from the
+   * ECS (freeing the batch slot on the next system pass) and re-parents
+   * the sprite under the batching group so its own Mesh draw resumes.
+   * @internal
+   */
+  _demoteToStandalone(): void {
+    if (!this._entity || !this._flatlandWorld) return
+    const registryEntities = this._flatlandWorld.query(BatchRegistry)
+    const registry =
+      registryEntities.length > 0
+        ? (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined)
+        : undefined
+    this._unenrollFromWorld()
+    const parent = registry?.parentGroup
+    if (parent && registry.parentAdd && !parent.children.includes(this)) {
+      registry.parentAdd.call(parent, this)
+    }
+    this.visible = true
+  }
+
+  /**
    * Fast 2D matrix update — bypasses Three.js quaternion-based compose().
    *
    * Three.js Object3D.updateMatrix() calls matrix.compose(position, quaternion, scale)
@@ -1548,7 +1684,7 @@ export class Sprite2D extends Mesh {
     const ay = (0.5 - this._anchor.y) * sy
     const px = this.position.x + ax
     const py = this.position.y + ay
-    const pz = this.position.z + this.layer * 10 + this.zIndex * 0.001
+    const pz = this.position.z + this.sortLayerValue * 10 + this.zIndex * 0.001
 
     const rz = this.rotation.z
     if (rz !== 0) {
@@ -1622,8 +1758,9 @@ export class Sprite2D extends Mesh {
       SpriteUV({ x: uvX, y: uvY, w: uvW, h: uvH }),
       SpriteColor({ r: cR, g: cG, b: cB, a: cA }),
       SpriteFlip({ x: fX, y: fY }),
-      SpriteLayer({ layer: lay }),
+      SortLayer({ value: lay }),
       SpriteZIndex({ zIndex: zIdx }),
+      CameraLayersMask({ mask: this.layers.mask }),
       SpriteMaterialRef({
         materialId: this.material.batchId,
       }),
@@ -1652,7 +1789,7 @@ export class Sprite2D extends Mesh {
     this._flipXArr = flipStore['x']!
     this._flipYArr = flipStore['y']!
 
-    this._layerArr = resolveStore(w, SpriteLayer)['layer']!
+    this._layerArr = resolveStore(w, SortLayer)['value']!
     this._zIndexArr = resolveStore(w, SpriteZIndex)['zIndex']!
 
     // Register in the spriteArr for O(1) lookup by entity SoA index.
@@ -1749,6 +1886,15 @@ export class Sprite2D extends Mesh {
     // the entity after cleanup.
     this._entity.remove(IsRenderable)
     this._entity = null
+
+    // Clear cached batch refs immediately. batchRemoveSystem can't do it
+    // (the spriteArr entry above is already nulled), and a stale
+    // _batchMesh would let direct-write setters (color/alpha/flip/UV)
+    // clobber a freed — possibly reallocated — slot before the next
+    // system pass.
+    this._batchMesh = null
+    this._batchSlot = -1
+    this._batchIdx = -1
   }
 
   /**
@@ -1796,7 +1942,7 @@ export class Sprite2D extends Mesh {
             alpha: this.alpha,
             flipX: this.flipX,
             flipY: this.flipY,
-            layer: this.layer,
+            sortLayer: this.sortLayer,
             zIndex: this.zIndex,
             pixelPerfect: this.pixelPerfect,
             lit: this.lit,
@@ -1841,3 +1987,19 @@ export class Sprite2D extends Mesh {
     return cloned as this
   }
 }
+
+// Install the `renderOrder` interception as a prototype accessor.
+// Object3D declares `renderOrder` as a data property, and TypeScript
+// disallows shadowing a data property with a class accessor (ts2611) —
+// defineProperty sidesteps that while keeping identical runtime shape.
+// Object3D's constructor assignment (`this.renderOrder = 0`) runs through
+// this setter pre-arming and is treated as the non-override default.
+Object.defineProperty(Sprite2D.prototype, 'renderOrder', {
+  get(this: Sprite2D): number {
+    return (this as unknown as { _renderOrderValue?: number })._renderOrderValue ?? 0
+  },
+  set(this: Sprite2D, value: number): void {
+    this._setRenderOrder(value)
+  },
+  configurable: true,
+})

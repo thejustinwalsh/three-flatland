@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber/webgpu'
 import { useQuery } from 'koota/react'
 import type { Entity } from 'koota'
 import type { Sprite2DMaterial, Sprite2D as Sprite2DType } from 'three-flatland/react'
-import { Layers, attachEffect } from 'three-flatland/react'
+import { SortLayers, attachEffect } from 'three-flatland/react'
 import { Ball as BallTrait, Position, Bounds, BallFlash } from '../traits'
 import type { FlashEffect } from '../materials'
 
@@ -52,7 +52,7 @@ function BallView({ entity, material }: BallViewProps) {
       tint="#ff6b9d"
       position={[pos.x, pos.y, 0]}
       scale={[bounds.width, bounds.height, 1]}
-      layer={Layers.ENTITIES}
+      sortLayer={SortLayers.ENTITIES}
       zIndex={20}
     >
       <flashEffect

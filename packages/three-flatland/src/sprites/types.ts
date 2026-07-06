@@ -1,3 +1,4 @@
+import type { SortLayerValue } from '../pipeline/sortLayers'
 import type { Texture, Color, Vector2 } from 'three'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { AlphaMap } from '../events/AlphaMap'
@@ -48,9 +49,9 @@ export interface Sprite2DOptions {
   flipX?: boolean
   /** Flip vertically */
   flipY?: boolean
-  /** Render layer (for SpriteGroup) */
-  layer?: number
-  /** Z-index within layer */
+  /** Sort layer — registered name or numeric order */
+  sortLayer?: SortLayerValue
+  /** Z-index within sortLayer */
   zIndex?: number
   /** Pixel-perfect rendering (snap to pixels) */
   pixelPerfect?: boolean

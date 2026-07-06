@@ -12,17 +12,12 @@ import type { InstanceAttributeType } from './types'
 import { BucketedDirtyTracker } from './BucketedDirtyTracker'
 
 /**
- * Default maximum sprites per batch.
- *
- * 16k is the sweet spot across mobile and desktop:
- *   - ~2MB per batch (matrix + interleaved core + effects). Fits in
- *     mobile VRAM even with 3–5 materials per scene.
- *   - Covers indie-scale workloads in a single batch (no draw-call
- *     overhead from batch splits).
- *   - Scenes that want 30k+ sprites per material pass an explicit
- *     `maxBatchSize: 32_768` on `SpriteGroup` — knightmark-style.
+ * Fallback slot count when a batch is constructed without an explicit
+ * size (tests, direct construction). Orchestrated paths always pass a
+ * size — the tier ladder for auto-batch, `maxBatchSize` for explicit
+ * SpriteGroup opt-ins.
  */
-export const DEFAULT_BATCH_SIZE = 16384
+const FALLBACK_BATCH_SIZE = 16384
 
 /**
  * Stride (in floats) of the interleaved per-instance core buffer. Layout
@@ -159,7 +154,7 @@ export class SpriteBatch extends InstancedMesh {
   private _matrixTracker!: BucketedDirtyTracker
   private _interleavedTracker!: BucketedDirtyTracker
 
-  constructor(material: Sprite2DMaterial, maxSize: number = DEFAULT_BATCH_SIZE) {
+  constructor(material: Sprite2DMaterial, maxSize: number = FALLBACK_BATCH_SIZE) {
     // Allocate interleaved core storage BEFORE creating InstancedMesh
     // so the attribute bindings exist during shader compilation.
     const interleavedData = new Float32Array(maxSize * INSTANCE_STRIDE)

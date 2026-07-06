@@ -5,8 +5,9 @@ import {
   SpriteColor,
   SpriteUV,
   SpriteFlip,
-  SpriteLayer,
+  SortLayer,
   SpriteMaterialRef,
+  CameraLayersMask,
   InBatch,
   BatchSlot,
   BatchMesh,
@@ -27,7 +28,7 @@ import { ENTITY_ID_MASK } from '../snapshot'
  * + effect-trait map and assigns newly renderable sprites to batches.
  *
  * Triggered by Added(IsRenderable). Computes the run key from
- * (layer, materialId), finds or creates a batch in that run, allocates
+ * (sortLayer, materialId, layers.mask), finds or creates a batch in that run, allocates
  * a slot, and sets the InBatch relation with slot data. Also performs
  * a one-time full buffer sync from trait state.
  *
@@ -60,9 +61,10 @@ export function createBatchAssignSystem(): (
       const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
       if (!sprite) continue
 
-      const layerData = entity.get(SpriteLayer)
+      const layerData = entity.get(SortLayer)
       const matRef = entity.get(SpriteMaterialRef)
       if (!layerData || !matRef) continue
+      const layersMask = entity.get(CameraLayersMask)?.mask ?? sprite.layers.mask
 
       // Track material for schema version detection
       const material = sprite.material
@@ -73,8 +75,14 @@ export function createBatchAssignSystem(): (
         })
       }
 
-      // Find or create the run for this (layer, materialId)
-      const { run } = getOrCreateRun(registry, layerData.layer, matRef.materialId, material)
+      // Find or create the run for this (sortLayer, materialId, layers.mask)
+      const { run } = getOrCreateRun(
+        registry,
+        layerData.value,
+        matRef.materialId,
+        layersMask,
+        material
+      )
 
       // Find or create a batch with free slots
       const batchEntity = findOrCreateBatch(world, registry, run)

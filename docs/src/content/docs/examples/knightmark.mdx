@@ -38,7 +38,7 @@ const sprite = new AnimatedSprite2D({
   spriteSheet: knightSheet,
   animationSet: knightAnimations,
   animation: 'idle',
-  layer: Layers.ENTITIES,
+  sortLayer: SortLayers.ENTITIES,
 });
 
 sprite.play('run');

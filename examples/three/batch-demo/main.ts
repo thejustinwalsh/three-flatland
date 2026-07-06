@@ -4,7 +4,7 @@ import {
   Sprite2D,
   Sprite2DMaterial,
   SpriteGroup,
-  Layers,
+  SortLayers,
   TextureLoader,
   SpriteSheetLoader,
   createDevtoolsProvider,
@@ -160,7 +160,7 @@ async function main() {
       })
 
       tile.position.set(gridOffsetX + x * TILE_SIZE, gridOffsetY + y * TILE_SIZE, 0)
-      tile.layer = Layers.GROUND
+      tile.sortLayer = SortLayers.GROUND
       tile.zIndex = 0
 
       spriteGroup.add(tile)
@@ -179,7 +179,7 @@ async function main() {
   // renderOrder set high to ensure it renders above all batched sprites
   const hoverSprite = new Sprite2D({ material: spritesMaterial })
   hoverSprite.alpha = 0.5
-  hoverSprite.layer = Layers.FOREGROUND
+  hoverSprite.sortLayer = SortLayers.FOREGROUND
   hoverSprite.visible = false
   hoverSprite.renderOrder = 1000 // Render above all batched sprites
   const building = BUILDINGS[selectedBuilding]!
@@ -232,7 +232,7 @@ async function main() {
     const shadow = new Sprite2D({ material: shadowMaterial })
     shadow.scale.set(TILE_SIZE * buildingDef.shadowScale, TILE_SIZE * buildingDef.shadowScale * 0.5, 1)
     shadow.position.set(pos.x, pos.y - TILE_SIZE * 0.3, 0)
-    shadow.layer = Layers.SHADOWS
+    shadow.sortLayer = SortLayers.SHADOWS
     shadow.zIndex = 0
     shadow.alpha = 0.5
     spriteGroup.add(shadow)
@@ -252,7 +252,7 @@ async function main() {
 
     // Position with anchor at bottom center
     sprite.position.set(pos.x, pos.y + buildingDef.height / 2 - TILE_SIZE / 2, 0)
-    sprite.layer = Layers.ENTITIES
+    sprite.sortLayer = SortLayers.ENTITIES
     // Y-sort: use zIndex for depth sorting (lower Y = higher zIndex = renders in front)
     sprite.zIndex = -Math.floor(pos.y)
 

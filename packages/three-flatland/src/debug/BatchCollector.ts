@@ -367,9 +367,12 @@ export class BatchCollector {
       const label = mat.name.length > 0
         ? `${mat.type}[${mat.name}]`
         : (mat.type.length > 0 ? mat.type : `material#${meta.materialId}`)
-      info.runKey = ((meta.layer & 0xff) << 16) | (meta.materialId & 0xffff)
+      // Numeric surrogate for the wire — the real run key is a string
+      // (sortLayer|materialId|mask); the protocol's numeric field keeps
+      // the legacy (sortLayer << 16 | materialId) packing for display.
+      info.runKey = ((meta.sortLayer & 0xff) << 16) | (meta.materialId & 0xffff)
       info.materialId = meta.materialId
-      info.layer = meta.layer
+      info.layer = meta.sortLayer
       info.materialName = label
       info.spriteCount = mesh.count
       info.batchIdx = meta.batchIdx

@@ -38,9 +38,9 @@ for (let i = 0; i < 1000; i++) {
 Use layers and zIndex for proper depth sorting:
 
 ```typescript
-import { Layers } from 'three-flatland';
+import { SortLayers } from 'three-flatland';
 
-sprite.layer = Layers.ENTITIES;
+sprite.sortLayer = SortLayers.ENTITIES;
 sprite.zIndex = -Math.floor(sprite.position.y); // Y-sort
 ```
 

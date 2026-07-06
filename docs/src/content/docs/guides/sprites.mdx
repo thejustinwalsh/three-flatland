@@ -196,22 +196,22 @@ For the full occlusion pipeline — caster pre-pass, SDF generation, and how the
 Use the `Layers` enum to control render order:
 
 ```typescript
-import { Layers } from 'three-flatland';
+import { SortLayers } from 'three-flatland';
 
-sprite.layer = Layers.BACKGROUND;  // Renders behind other sprites
-sprite.layer = Layers.ENTITIES;    // Normal render order for game entities
-sprite.layer = Layers.FOREGROUND;  // Renders in front
-sprite.layer = Layers.UI;          // UI layer (renders last)
+sprite.sortLayer = SortLayers.BACKGROUND;  // Renders behind other sprites
+sprite.sortLayer = SortLayers.ENTITIES;    // Normal render order for game entities
+sprite.sortLayer = SortLayers.FOREGROUND;  // Renders in front
+sprite.sortLayer = SortLayers.UI;          // UI layer (renders last)
 ```
 
 Available layers (in render order):
-- `Layers.BACKGROUND` - Background elements
-- `Layers.GROUND` - Ground/terrain
-- `Layers.SHADOWS` - Shadow sprites
-- `Layers.ENTITIES` - Game entities (default)
-- `Layers.EFFECTS` - Particles and effect sprites
-- `Layers.FOREGROUND` - Foreground elements
-- `Layers.UI` - User interface
+- `SortLayers.BACKGROUND` - Background elements
+- `SortLayers.GROUND` - Ground/terrain
+- `SortLayers.SHADOWS` - Shadow sprites
+- `SortLayers.ENTITIES` - Game entities (default)
+- `SortLayers.EFFECTS` - Particles and effect sprites
+- `SortLayers.FOREGROUND` - Foreground elements
+- `SortLayers.UI` - User interface
 
 ## Pointer events
 

@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber/webgpu'
 import { useQuery } from 'koota/react'
 import type { Entity } from 'koota'
 import type { Sprite2DMaterial, Sprite2D as Sprite2DType } from 'three-flatland/react'
-import { Layers, attachEffect } from 'three-flatland/react'
+import { SortLayers, attachEffect } from 'three-flatland/react'
 import { Block as BlockTrait, Position, Bounds, BlockState, Dissolving } from '../traits'
 import type { BlockDissolveEffect } from '../materials'
 
@@ -56,7 +56,7 @@ function BlockView({ entity, material }: BlockViewProps) {
       tint={blockState.color}
       position={[pos.x, pos.y, 0]}
       scale={[bounds.width * 0.95, bounds.height * 0.9, 1]}
-      layer={Layers.ENTITIES}
+      sortLayer={SortLayers.ENTITIES}
       zIndex={10}
     >
       <blockDissolveEffect
