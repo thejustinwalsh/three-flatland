@@ -559,10 +559,11 @@ export function classifyBatch(batchEntity: Entity, material: Sprite2DMaterial): 
   setTag(batchEntity, IsLitBatch, lit)
   setTag(batchEntity, IsUnlitBatch, !lit)
 
+  const kind = material._tightMesh ? 'tight-mesh' : 'synth-quad'
   if (!batchEntity.has(BatchGeometryStrategy)) {
-    batchEntity.add(BatchGeometryStrategy({ kind: 'synth-quad' }))
+    batchEntity.add(BatchGeometryStrategy({ kind }))
   } else {
-    batchEntity.set(BatchGeometryStrategy, { kind: 'synth-quad' }, false)
+    batchEntity.set(BatchGeometryStrategy, { kind }, false)
   }
 }
 

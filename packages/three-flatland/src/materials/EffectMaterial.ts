@@ -188,6 +188,15 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   }
 
   /**
+   * Per-instance effect-float cap for THIS material. Strategy-dependent
+   * in subclasses: tight-mesh geometry spends bindings on position/uv,
+   * shrinking the effect budget (see Sprite2DMaterial).
+   */
+  get maxEffectFloats(): number {
+    return EffectMaterial.MAX_EFFECT_FLOATS
+  }
+
+  /**
    * Current per-instance effect-float usage (sum across all registered
    * effects). Complements {@link getMaxEffectFloats}.
    */
@@ -323,12 +332,12 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
     // would force a 7th effectBuf binding which WebGPU will reject at
     // pipeline creation with a cryptic "vertex buffer count exceeds
     // maximum" error. Reject clearly here instead.
-    if (dataFloats > EffectMaterial.MAX_EFFECT_FLOATS) {
+    if (dataFloats > this.maxEffectFloats) {
       const names = this._effects.map((e) => e.effectName).join(', ')
       throw new Error(
         `[EffectMaterial] Cannot register '${effectClass.effectName}': ` +
           `effects would use ${dataFloats} floats of per-instance data, ` +
-          `exceeding the cap of ${EffectMaterial.MAX_EFFECT_FLOATS} ` +
+          `exceeding the cap of ${this.maxEffectFloats} ` +
           `(WebGPU 8-buffer limit). Registered so far: [${names}]. ` +
           `Reduce a schema or consolidate effects.`
       )

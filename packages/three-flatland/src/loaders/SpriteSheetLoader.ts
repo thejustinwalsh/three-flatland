@@ -424,7 +424,12 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       }
       sheet.meshVerts = meshVerts
       sheet.meshIndices = meshIndices
-      registerAtlasMesh(texture, { frames: meshed, meshVerts, meshIndices })
+      registerAtlasMesh(texture, {
+        frames: meshed,
+        complete: meshed.length === frames.size,
+        meshVerts,
+        meshIndices,
+      })
     }
 
     return sheet

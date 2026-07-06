@@ -8,9 +8,11 @@ import {
   OneMinusSrcAlphaFactor,
 } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
+import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
 import { readFlip } from './instanceAttributes'
 import { synthQuadNodes } from './synthQuadNodes'
+import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { GlobalUniforms } from '../GlobalUniforms'
 
 // Re-export types that moved to EffectMaterial for backwards compatibility
@@ -138,10 +140,21 @@ export class Sprite2DMaterial extends EffectMaterial {
 
   /**
    * Synthesized corner UV varying — replaces the geometry `uv()`
-   * attribute (the synth-quad geometry ships no uv buffer).
+   * attribute (the synth-quad geometry ships no uv buffer). On the
+   * tight-mesh strategy this is the geometry `uv()` node instead.
    * @internal
    */
   private _cornerUV: ReturnType<typeof synthQuadNodes>['cornerUV']
+
+  /**
+   * True while this material renders through the tight-mesh path:
+   * alpha-blend (`transparent`, no alphaTest) with polygon data
+   * registered for its texture. Fixed per shader build — a strategy
+   * flip bumps `_effectSchemaVersion` so batches rebuild with matching
+   * geometry.
+   * @internal
+   */
+  _tightMesh = false
 
   constructor(options: Sprite2DMaterialOptions = {}) {
     super({ effectTier: options.effectTier })
@@ -151,7 +164,9 @@ export class Sprite2DMaterial extends EffectMaterial {
     // Synthesize the unit-quad corner from vertexIndex — pairs with the
     // index-only geometry from `createSynthQuadGeometry()`. Reclaims the
     // 3 vertex-buffer bindings PlaneGeometry cost (position/normal/uv),
-    // which is what funds MAX_EFFECT_FLOATS = 24.
+    // which is what funds MAX_EFFECT_FLOATS = 24. `setTexture` may flip
+    // the material to the tight-mesh strategy (geometry-driven position
+    // + uv) when the texture's atlas registered polygon data.
     const synth = synthQuadNodes()
     this.positionNode = synth.position
     this._cornerUV = synth.cornerUV
@@ -306,14 +321,51 @@ export class Sprite2DMaterial extends EffectMaterial {
   }
 
   /**
-   * Set the sprite texture.
+   * Set the sprite texture. Re-resolves the geometry strategy: an
+   * alpha-blend material whose atlas registered polygon meshes flips to
+   * the tight-mesh path (geometry position/uv instead of vertexIndex
+   * synthesis). A flip bumps the schema version so existing batches
+   * rebuild with matching geometry.
    */
   setTexture(value: Texture | null) {
     this._spriteTexture = value
+    this._resolveGeometryStrategy()
     if (value) {
       this._rebuildColorNode()
       this.needsUpdate = true
     }
+  }
+
+  /** @internal */
+  private _resolveGeometryStrategy(): void {
+    const wantsTight =
+      this.transparent && this.alphaTest === 0 && getAtlasMesh(this._spriteTexture) !== null
+    if (wantsTight === this._tightMesh) return
+    this._tightMesh = wantsTight
+    if (wantsTight) {
+      // Geometry-driven path: default position pipeline (instancing
+      // still applies downstream) + the geometry uv attribute.
+      this.positionNode = null
+      this._cornerUV = uv() as unknown as ReturnType<typeof synthQuadNodes>['cornerUV']
+    } else {
+      const synth = synthQuadNodes()
+      this.positionNode = synth.position
+      this._cornerUV = synth.cornerUV
+    }
+    // Batches were built for the previous strategy — force a rebuild
+    // through the same version channel tier upgrades use.
+    this._effectSchemaVersion++
+  }
+
+  /**
+   * Effect capacity depends on the geometry strategy: tight-mesh spends
+   * 2 vertex-buffer bindings on geometry (position + uv), leaving 4
+   * effect buffers = 16 floats under WebGPU's 8-binding cap; the
+   * index-only synth quad leaves 6 buffers = 24 floats.
+   * @internal
+   */
+  override get maxEffectFloats(): number {
+    return this._tightMesh ? 16 : EffectMaterial.MAX_EFFECT_FLOATS
   }
 
   /**

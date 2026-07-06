@@ -10,6 +10,7 @@ import {
   type Intersection,
 } from 'three'
 import { createSynthQuadGeometry } from './synthQuadGeometry'
+import { buildEnvelopeGeometry } from './envelopeGeometry'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
 import { BucketedDirtyTracker } from './BucketedDirtyTracker'
@@ -189,10 +190,16 @@ export class SpriteBatch extends InstancedMesh {
     }
 
     // Create geometry and add ALL instance attributes BEFORE super().
-    // Index-only synth quad — the shader derives corner position + UV
-    // from vertexIndex (Sprite2DMaterial.synthQuadNodes), so no
-    // position/normal/uv bindings are spent.
-    const geometry = createSynthQuadGeometry()
+    // Strategy split (GEOMETRY-PIPELINE-OPTIMIZATION §Part 2):
+    //   synth-quad  — index-only; corner position + UV derived from
+    //                 vertexIndex (alphaTest path; discard kills fringe)
+    //   tight-mesh  — per-batch envelope hull of the atlas polygons
+    //                 (alpha-blend path; fringe blend cost is real)
+    // The material's resolved strategy decides — its shader was built
+    // for exactly one of these attribute layouts.
+    const geometry = material._tightMesh
+      ? (buildEnvelopeGeometry(material.getTexture()) ?? createSynthQuadGeometry())
+      : createSynthQuadGeometry()
     // The batch is never frustum-culled; give it an honest infinite bound.
     geometry.boundingSphere = new Sphere(geometry.boundingSphere!.center, Infinity)
 

@@ -553,10 +553,24 @@ export class Sprite2D extends Mesh {
 
     // Create geometry with instance attributes for single-sprite rendering
     // (Cannot use shared geometry because each sprite needs its own
-    // attribute buffers.) Index-only synth quad — corner position + UV
-    // come from vertexIndex in the shader; boundingSphere is pre-set to
-    // the unit circumsphere so frustum culling works with no position data.
+    // attribute buffers.) Same index/corner layout as the synth quad,
+    // plus real position/uv attributes: synth-strategy materials never
+    // reference them (so they're never bound), while tight-mesh
+    // strategy materials read geometry position/uv — one standalone
+    // geometry serves both shader paths.
     const geometry = createSynthQuadGeometry()
+    geometry.setAttribute(
+      'position',
+      new BufferAttribute(
+        // Corner order mirrors synthQuadNodes: v = (u, v) grid
+        new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, -0.5, 0.5, 0, 0.5, 0.5, 0]),
+        3
+      )
+    )
+    geometry.setAttribute(
+      'uv',
+      new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2)
+    )
     super(geometry, material)
 
     // Store reference so we can dispose it

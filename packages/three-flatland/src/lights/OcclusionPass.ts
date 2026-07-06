@@ -19,7 +19,7 @@ import {
   registerDebugTexture,
   unregisterDebugTexture,
 } from '../debug/debug-sink'
-import { Fn, vec2, vec4, float, select, attribute, texture as sampleTexture } from 'three/tsl'
+import { Fn, vec2, vec4, float, select, attribute, uv, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { readCastShadowFlag, readFlip } from '../materials/instanceAttributes'
 import { synthQuadNodes } from '../materials/synthQuadNodes'
@@ -92,7 +92,7 @@ export class OcclusionPass {
    * the pass has its own source texture (sprite atlas); we mint an
    * occlusion material once per texture and reuse it across frames.
    */
-  private _occlusionMaterials = new Map<Texture, MeshBasicNodeMaterial>()
+  private _occlusionMaterials = new Map<string, MeshBasicNodeMaterial>()
 
   /**
    * Reusable arrays for the per-frame material-swap dance. Never reallocated
@@ -286,17 +286,24 @@ export class OcclusionPass {
     const texture = current.getTexture()
     if (!texture) return
 
-    const occlusion = this._getOrCreateOcclusionMaterial(texture)
+    const occlusion = this._getOrCreateOcclusionMaterial(texture, current._tightMesh)
     this._swappedMeshes.push(mesh)
     this._swappedOriginals.push(current)
     mesh.material = occlusion
   }
 
-  private _getOrCreateOcclusionMaterial(texture: Texture): MeshBasicNodeMaterial {
-    const cached = this._occlusionMaterials.get(texture)
+  private _getOrCreateOcclusionMaterial(
+    texture: Texture,
+    tightMesh: boolean
+  ): MeshBasicNodeMaterial {
+    // Keyed by (texture, geometry strategy): the occlusion shader must
+    // mirror the source material's vertex path — vertexIndex synthesis
+    // for synth-quad batches, geometry position/uv for tight-mesh ones.
+    const key = `${texture.id}:${tightMesh ? 'tight' : 'synth'}`
+    const cached = this._occlusionMaterials.get(key)
     if (cached) return cached
-    const material = buildOcclusionMaterial(texture)
-    this._occlusionMaterials.set(texture, material)
+    const material = buildOcclusionMaterial(texture, tightMesh)
+    this._occlusionMaterials.set(key, material)
     return material
   }
 
@@ -328,18 +335,19 @@ export class OcclusionPass {
  * in lockstep — there is no shared helper yet. Revisit if we grow a
  * second consumer of the same UV math.
  */
-function buildOcclusionMaterial(texture: Texture): MeshBasicNodeMaterial {
+function buildOcclusionMaterial(texture: Texture, tightMesh = false): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial({ transparent: true })
-  // The occlusion pass re-renders SpriteBatch/TileLayer meshes, whose
-  // geometry is the index-only synth quad — position and UV must be
-  // synthesized from vertexIndex here exactly as Sprite2DMaterial does.
-  const synth = synthQuadNodes()
-  material.positionNode = synth.position
+  // The occlusion pass re-renders SpriteBatch/TileLayer meshes. Its
+  // vertex path must mirror the source material's geometry strategy:
+  // synth-quad meshes are index-only (synthesize from vertexIndex);
+  // tight-mesh envelopes carry real position/uv attributes.
+  const synth = tightMesh ? null : synthQuadNodes()
+  if (synth) material.positionNode = synth.position
   material.colorNode = Fn(() => {
     const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
     const flip = readFlip()
 
-    const baseUV = synth.cornerUV
+    const baseUV = synth ? synth.cornerUV : (uv() as unknown as Node<'vec2'>)
     const flippedUV = vec2(
       select(flip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
       select(flip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))

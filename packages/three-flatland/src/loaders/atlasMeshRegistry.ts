@@ -10,6 +10,12 @@ import type { SpriteFrame } from '../sprites/types'
 export interface AtlasMeshData {
   /** Frames that carry a polygon mesh. */
   frames: SpriteFrame[]
+  /**
+   * True when EVERY frame in the atlas carries a mesh. When false, the
+   * per-batch envelope hull must include the full quad corners so
+   * meshless frames still render un-clipped.
+   */
+  complete: boolean
   /** Concatenated [x,y,u,v] vertex data across those frames. */
   meshVerts: Float32Array
   /** Concatenated triangle indices (frame-local, see frame.mesh offsets). */
