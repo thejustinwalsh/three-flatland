@@ -31,7 +31,7 @@ export type Song = {
 export type PlayCommand = { cmd: 'play'; params: number[] }
 export type PlaySongCommand = { cmd: 'playSong'; song: Song }
 export type StopSongCommand = { cmd: 'stopSong' }
-/** Stops everything currently audible (today: equivalent to `stopSong` — one-shots have no persistent handle to interrupt mid-flight, see sidecar.ts). */
+/** Stops everything currently audible (today: equivalent to `stopSong` — one-shots have no persistent handle to interrupt mid-flight, see commandHandler.ts). */
 export type StopCommand = { cmd: 'stop' }
 export type ShutdownCommand = { cmd: 'shutdown' }
 

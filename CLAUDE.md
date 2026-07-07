@@ -34,6 +34,7 @@
 - Save superpowers plans to planning/superpowers/plans.
 
 ## Architectural references (`.library/`)
+
 - `.library/threejs/` — three.js + TSL reference patterns
 - `.library/react-three-fiber/` — R3F idioms and helpers
 - `.library/three-flatland/loader-architecture.md` — **must-read** before designing or refactoring any loader (texture, atlas, tilemap, font, normal map, image format). Defines package layering, the no-registry rule, three-tier surface (everyday/direct/preload), and cross-package dependency policy. Companion: `planning/bake/loader-pattern.md` (baked → runtime fallback shape).
@@ -48,15 +49,18 @@
 - **Tech debt is fixed at the point of discovery — fold it in, every turn.** When you hit a bug, a broken build step, or tech debt while working — even if it's outside your immediate task — you fix it in the same change. Do not dodge it, do not merely note it, do not defer-by-default. The **only** exception: you can prove another active workstream already owns the fix (a named branch/PR/issue) — then cross-reference that work so the connection isn't lost, and move on. "I'll leave it for later" is not an option.
 
 ## Editor tools (`tools/`)
+
 The VSCode extension and its supporting packages live under `tools/`. Each has its own agent-facing reference:
 
-| Package | Doc | Read this when |
-|---|---|---|
-| `tools/vscode` | [`tools/vscode/CLAUDE.md`](tools/vscode/CLAUDE.md) | adding/modifying a VSCode tool (host + webview) |
-| `tools/design-system` | [`tools/design-system/CLAUDE.md`](tools/design-system/CLAUDE.md) | building any tool UI — primitive inventory, StyleX token rules, Lit gotchas |
-| `tools/preview` | [`tools/preview/CLAUDE.md`](tools/preview/CLAUDE.md) | reusing canvas / animation / drag primitives |
-| `tools/bridge` | [`tools/bridge/CLAUDE.md`](tools/bridge/CLAUDE.md) | host ↔ webview messaging — `ClientBridge` vs `HostBridge` semantics |
-| `tools/io` | [`tools/io/CLAUDE.md`](tools/io/CLAUDE.md) | adding pure data helpers (image decode, atlas types/builders/packing/merge) |
+| Package                  | Doc                                                                    | Read this when                                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tools/vscode`           | [`tools/vscode/CLAUDE.md`](tools/vscode/CLAUDE.md)                     | adding/modifying a VSCode tool (host + webview)                                                                                                           |
+| `tools/design-system`    | [`tools/design-system/CLAUDE.md`](tools/design-system/CLAUDE.md)       | building any tool UI — primitive inventory, StyleX token rules, Lit gotchas                                                                               |
+| `tools/preview`          | [`tools/preview/CLAUDE.md`](tools/preview/CLAUDE.md)                   | reusing canvas / animation / drag primitives                                                                                                              |
+| `tools/bridge`           | [`tools/bridge/CLAUDE.md`](tools/bridge/CLAUDE.md)                     | host ↔ webview messaging — `ClientBridge` vs `HostBridge` semantics                                                                                       |
+| `tools/io`               | [`tools/io/CLAUDE.md`](tools/io/CLAUDE.md)                             | adding pure data helpers (image decode, atlas types/builders/packing/merge)                                                                               |
+| `tools/codelens-service` | [`tools/codelens-service/CLAUDE.md`](tools/codelens-service/CLAUDE.md) | the ZzFX CodeLens's Rust sidecar (workspace scan/parse) + its TS client — wire protocol, framing fatality policy, `varRef.defRange` contract              |
+| `tools/zzfx-play`        | [`tools/zzfx-play/CLAUDE.md`](tools/zzfx-play/CLAUDE.md)               | the inline (no-panel) audio sidecar — real `AudioContext` via `node-web-audio-api`, the macOS code-signing prototype-gate findings, newline-JSON protocol |
 
 When dispatching a sub-agent for tool work, include the relevant `tools/<pkg>/CLAUDE.md` paths in the prompt — they encode hard-won API contracts (e.g. `ClientBridge.on()` returns an unsubscribe function, NOT a `dispose()` method) that aren't obvious from the source.
 

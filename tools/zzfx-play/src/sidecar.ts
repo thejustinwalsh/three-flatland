@@ -18,64 +18,29 @@
  * then. Both packages run completely unmodified past this point — no
  * synth port, zero fidelity drift from what the studio webview (Web
  * Audio in a real browser context) produces.
+ *
+ * The command state machine itself (song replacement, stop semantics)
+ * lives in `commandHandler.ts`, injected with this real zzfx/zzfxm-backed
+ * `AudioBackend` — see that file's tests for the state machine covered
+ * without a real `AudioContext`. This file is only the stdin/stdout
+ * wiring + the one real backend implementation.
  */
 import 'node-web-audio-api/polyfill.js'
 import * as readline from 'node:readline'
 import { zzfx, ZZFX } from 'zzfx'
 import { zzfxm } from '@zzfx-studio/zzfxm'
-import type { Command, Response, Song } from './protocol.js'
+import type { Command, Response } from './protocol.js'
+import { createCommandHandler } from './commandHandler.js'
 
-let currentSong: AudioBufferSourceNode | undefined
+const handler = createCommandHandler({
+  play: (params) => {
+    zzfx(...params)
+  },
+  playSong: (song) => zzfxm(song.instruments, song.patterns, song.sequence, song.bpm),
+})
 
 function send(response: Response): void {
   process.stdout.write(`${JSON.stringify(response)}\n`)
-}
-
-function handlePlay(params: number[]): void {
-  zzfx(...params)
-}
-
-function handlePlaySong(song: Song): void {
-  currentSong?.stop()
-  currentSong = zzfxm(song.instruments, song.patterns, song.sequence, song.bpm)
-}
-
-function handleStopSong(): void {
-  currentSong?.stop()
-  currentSong = undefined
-}
-
-// Distinct from stopSong in the protocol so a future "stop everything"
-// affordance (e.g. on panel close, or a global hotkey) has a command to
-// grow into without a protocol change — one-shots are typically <1s with
-// their own release envelope and have no persistent handle to interrupt
-// today, so this is presently identical to stopSong.
-function handleStop(): void {
-  handleStopSong()
-}
-
-function handleCommand(command: Command): void {
-  switch (command.cmd) {
-    case 'play':
-      handlePlay(command.params)
-      send({ ok: true, cmd: 'play' })
-      return
-    case 'playSong':
-      handlePlaySong(command.song)
-      send({ ok: true, cmd: 'playSong' })
-      return
-    case 'stopSong':
-      handleStopSong()
-      send({ ok: true, cmd: 'stopSong' })
-      return
-    case 'stop':
-      handleStop()
-      send({ ok: true, cmd: 'stop' })
-      return
-    case 'shutdown':
-      send({ ok: true, cmd: 'shutdown' })
-      process.exit(0)
-  }
 }
 
 const rl = readline.createInterface({ input: process.stdin })
@@ -94,11 +59,9 @@ rl.on('line', (line) => {
     return
   }
 
-  try {
-    handleCommand(command)
-  } catch (err) {
-    send({ ok: false, cmd: command.cmd, error: err instanceof Error ? err.message : String(err) })
-  }
+  const response = handler.handleCommand(command)
+  send(response)
+  if (command.cmd === 'shutdown') process.exit(0)
 })
 
 // stdin closing means the parent (extension host) is gone or the pipe
