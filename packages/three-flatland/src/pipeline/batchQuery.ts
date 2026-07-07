@@ -1,6 +1,6 @@
 import type { Trait, World } from 'koota'
 import type { SpriteBatch } from './SpriteBatch'
-import type { RunKey } from '../ecs/batchUtils'
+import type { RegistryData, RunKey } from '../ecs/batchUtils'
 import {
   BatchMesh,
   IsAlphaBlendedBatch as _IsAlphaBlendedBatch,
@@ -59,4 +59,26 @@ export class BatchQueryView extends Map<RunKey, SpriteBatch[]> {
     }
     return result
   }
+}
+
+/**
+ * Build a {@link BatchQueryView} from a world's registry data, keyed by
+ * run key. Shared by `SpriteGroup.batches` and `Registry.batches` so the
+ * run → mesh-list traversal has exactly one implementation.
+ */
+export function buildBatchQueryView(
+  world: World | null,
+  registryData: RegistryData | null
+): BatchQueryView {
+  const view = new BatchQueryView(world)
+  if (!registryData) return view
+  for (const [key, run] of registryData.runs) {
+    const meshes: SpriteBatch[] = []
+    for (const batchEntity of run.batches) {
+      const mesh = batchEntity.get(BatchMesh)?.mesh
+      if (mesh) meshes.push(mesh)
+    }
+    view.set(key, meshes)
+  }
+  return view
 }
