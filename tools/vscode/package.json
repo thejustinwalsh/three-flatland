@@ -32,6 +32,11 @@
         "command": "threeFlatland.encode.open",
         "title": "Open Image Encoder",
         "category": "FL"
+      },
+      {
+        "command": "threeFlatland.normalBaker.open",
+        "title": "Open in FL Normal Baker",
+        "category": "FL"
       }
     ],
     "customEditors": [
@@ -68,6 +73,11 @@
           "command": "threeFlatland.encode.open",
           "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2",
           "group": "navigation@13"
+        },
+        {
+          "command": "threeFlatland.normalBaker.open",
+          "when": "resourceExtname == .png",
+          "group": "navigation@20"
         }
       ],
       "commandPalette": [
@@ -82,6 +92,10 @@
         {
           "command": "threeFlatland.encode.open",
           "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2"
+        },
+        {
+          "command": "threeFlatland.normalBaker.open",
+          "when": "resourceExtname == .png"
         }
       ]
     },
@@ -119,6 +133,7 @@
   "dependencies": {
     "@jsquash/webp": "catalog:",
     "@stylexjs/stylex": "catalog:",
+    "@three-flatland/bake": "workspace:*",
     "@three-flatland/bridge": "workspace:*",
     "@three-flatland/image": "workspace:*",
     "@three-flatland/design-system": "workspace:*",

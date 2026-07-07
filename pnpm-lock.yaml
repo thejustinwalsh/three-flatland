@@ -1708,6 +1708,9 @@ importers:
       '@stylexjs/stylex':
         specifier: 'catalog:'
         version: 0.18.3
+      '@three-flatland/bake':
+        specifier: workspace:*
+        version: link:../../packages/bake
       '@three-flatland/bridge':
         specifier: workspace:*
         version: link:../bridge

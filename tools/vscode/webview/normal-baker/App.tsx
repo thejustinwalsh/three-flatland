@@ -120,6 +120,13 @@ export function App() {
     () => window.__FL_NORMAL_BAKER__ ?? null
   )
   const [loadError, setLoadError] = useState<string | null>(null)
+  // Gates Save (button + Cmd/Ctrl+S) until the initial descriptor has
+  // actually landed. The Toolbar mounts and the Save button becomes
+  // clickable well before the async normalBaker/ready → normalBaker/init
+  // bridge round-trip resolves — without this gate, a fast click (or a
+  // reflexive Cmd+S right after opening) would save the store's still-empty
+  // initial `regions: []` over the user's existing sidecar.
+  const [ready, setReady] = useState(false)
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null)
   const [imageData, setImageData] = useState<ImageData | null>(null)
   const [saveStatus, setSaveStatus] = useState<
@@ -181,6 +188,7 @@ export function App() {
         normalBakerActions.loadFromInit(r, d)
         dirtySnapshotRef.current = JSON.stringify({ r, d })
       }
+      setReady(true)
       return
     }
 
@@ -195,6 +203,7 @@ export function App() {
         dirtySnapshotRef.current = JSON.stringify({ r, d })
       }
       if (p.loadError) setLoadError(p.loadError)
+      setReady(true)
     })
     void bridge.request('normalBaker/ready')
     return off
@@ -214,7 +223,11 @@ export function App() {
 
   const handleSave = useCallback(async () => {
     const bridge = bridgeRef.current
-    if (!bridge) return
+    // `!ready` is the defensive check that matters here — see the `ready`
+    // state's doc comment: without it, a save fired before the initial
+    // descriptor lands would overwrite the sidecar with the store's empty
+    // starting state.
+    if (!bridge || !ready) return
     setSaveStatus({ kind: 'saving' })
     try {
       const descriptor = stateToDescriptor(regions, defaults)
@@ -224,7 +237,7 @@ export function App() {
     } catch (err) {
       setSaveStatus({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
     }
-  }, [regions, defaults])
+  }, [regions, defaults, ready])
 
   const handleRectCreate = useCallback((r: Rect) => {
     // `Rect` (id, x, y, w, h, name?) satisfies `EditableRegion`'s required
@@ -314,7 +327,7 @@ export function App() {
           icon="save"
           title="Save (.normal.png + .normal.json)"
           onClick={() => void handleSave()}
-          disabled={saveStatus.kind === 'saving'}
+          disabled={!ready || saveStatus.kind === 'saving'}
         />
       </Toolbar>
       {loadError ? (
