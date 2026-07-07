@@ -94,6 +94,35 @@ describe('sortLayer + layers.mask run-key routing', () => {
     expect(b._batchMesh).toBe(originalMesh)
   })
 
+  it('layers.set(N) mutation routes the sprite to a differently-masked batch (still batched)', () => {
+    const a = new Sprite2D({ texture, material })
+    const b = new Sprite2D({ texture, material })
+    group.add(a)
+    group.add(b)
+    runSystems(group)
+
+    const registry = getRegistry(group)
+    expect(registry.activeBatches.length).toBe(1)
+    const originalMesh = a._batchMesh
+
+    // Unlike enable(N) (OR's a bit in), set(N) replaces the whole mask —
+    // a distinct write path through the Layers instance that must still
+    // funnel through the same Proxy `set` trap.
+    a.layers.set(5)
+    expect(a.entity!.get(CameraLayersMask)!.mask).toBe(1 << 5)
+
+    runSystems(group)
+
+    // Still batched — but in a new batch with the new mask
+    expect(a.entity!.has(IsBatched)).toBe(true)
+    expect(a._batchMesh).not.toBe(originalMesh)
+    expect(a._batchMesh!.layers.mask).toBe(1 << 5)
+    expect(registry.activeBatches.length).toBe(2)
+
+    // b stays in the original batch
+    expect(b._batchMesh).toBe(originalMesh)
+  })
+
   it('named sortLayer assignment resolves through the declared registry', () => {
     declareSortLayer('ui', { renderOrder: 6 })
     const sprite = new Sprite2D({ texture, material })
@@ -187,6 +216,41 @@ describe('sortLayer + layers.mask run-key routing', () => {
 
     a.renderOrder = 999 // a real override still escapes
     expect(a.entity).toBeNull()
+  })
+
+  it('renderOrder is installed as a prototype accessor, not an own instance property', () => {
+    const sprite = new Sprite2D({ texture, material })
+    expect(Object.prototype.hasOwnProperty.call(sprite, 'renderOrder')).toBe(false)
+
+    const descriptor = Object.getOwnPropertyDescriptor(Sprite2D.prototype, 'renderOrder')
+    expect(descriptor).toBeDefined()
+    expect(typeof descriptor!.get).toBe('function')
+    expect(typeof descriptor!.set).toBe('function')
+
+    // The accessor still round-trips a plain numeric read/write.
+    sprite.renderOrder = 42
+    expect(sprite.renderOrder).toBe(42)
+  })
+
+  it('re-setting renderOrder to its current (already-overridden) value is a no-op', () => {
+    const a = new Sprite2D({ texture, material })
+    const b = new Sprite2D({ texture, material })
+    group.add(a)
+    group.add(b)
+    runSystems(group)
+
+    a.renderOrder = 999 // first write: a real override, demotes to standalone
+    expect(a.entity).toBeNull()
+    expect(a._renderOrderOverridden).toBe(true)
+    expect(group.children.includes(a)).toBe(true)
+    const childCountAfterDemotion = group.children.length
+
+    // Writing the SAME value again must short-circuit before any of the
+    // override/demotion machinery re-runs — no duplicate re-parenting.
+    a.renderOrder = 999
+    expect(a.renderOrder).toBe(999)
+    expect(a.entity).toBeNull()
+    expect(group.children.length).toBe(childCountAfterDemotion)
   })
 
   it('unenroll clears cached batch refs so setters cannot write into freed slots', () => {
