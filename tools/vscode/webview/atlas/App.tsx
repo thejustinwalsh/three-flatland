@@ -2379,7 +2379,7 @@ function SaveStatusLine({
     // prefix ("Save failed: …", "Sidecar load failed: …", etc.).
     return (
       <div role="alertdialog" aria-modal="true" {...stylex.props(s.errorModal)}>
-        <i className="codicon codicon-error" {...stylex.props(s.errorModalIcon)} />
+        <i className={`codicon codicon-error ${stylex.props(s.errorModalIcon).className}`} />
         <span {...stylex.props(s.errorModalText)}>{status.message}</span>
         <button
           type="button"
