@@ -5,9 +5,9 @@
 > Branch: fix/dissolve-instant-vanish
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/158
 
-### Fixes
+### Bug Fixes
 
-- Fix the React `tsl-nodes` dissolve example vanishing almost instantly instead of fading over 1.5s. The noise texture was tagged sRGB via the `pixel-art` preset, causing WebGPU to hardware-decode the scalar noise values and skew them toward 0. Noise texture now sets nearest filtering directly and leaves `colorSpace` untouched, matching the vanilla Three.js example's behavior.
-- `applyTextureOptions` now only applies `colorSpace` when explicitly provided in a custom options object, so data/mask textures (noise, height, distortion) can opt out of color-space tagging entirely.
+- Fixed the dissolve effect in the react `tsl-nodes` example vanishing almost instantly instead of fading over 1.5s. The noise texture was tagged sRGB via the `'pixel-art'` preset, causing WebGPU to hardware-decode it as color data and skew the noise distribution toward 0. It now applies nearest filtering directly instead of going through the preset, leaving `colorSpace` untouched — matching the vanilla three.js example's behavior.
+- `applyTextureOptions` now only sets `colorSpace` when explicitly provided in the options object, letting callers building data/mask textures (noise, height, distortion) opt out of color-space tagging entirely.
 
-Fixes a visual regression in the React dissolve example; no public API changes.
+Fixes an incorrect sRGB tag on the dissolve noise texture that was breaking the fade timing in the react tsl-nodes example.
