@@ -162,6 +162,47 @@ describe('atlas mesh format extension', () => {
     expect([...mesh.indices]).toEqual([0, 2, 1])
   })
 
+  it('a rotated ASYMMETRIC trimmed frame keeps unrotated-space positions and trim-relative UVs', async () => {
+    // 64×32 source, trimmed to a 40×20 rect at (8, 6), packed rotated.
+    // Asymmetric dims would expose any accidental w/h swap in the mesh
+    // math (a square frame cannot); trim exposes the UV denominators.
+    const sheet = await mockLoad({
+      frames: [
+        {
+          filename: 'asym',
+          frame: { x: 0, y: 0, w: 40, h: 20 },
+          rotated: true,
+          trimmed: true,
+          spriteSourceSize: { x: 8, y: 6, w: 40, h: 20 },
+          sourceSize: { w: 64, h: 32 },
+          vertices: [
+            [8, 6], // trim-rect top-left in source pixels
+            [48, 6], // trim-rect top-right
+            [28, 26], // trim-rect bottom-center
+          ],
+          triangles: [[0, 1, 2]],
+        },
+      ],
+      meta: { image: 'test.png', size: { w: 128, h: 128 }, scale: '1' },
+    })
+
+    const mesh = sheet.getFrame('asym').mesh!
+    expect(mesh.vertexCount).toBe(3)
+    // (8,6) source px → local ((8/64)-0.5, 0.5-(6/32)) = (-0.375, 0.3125),
+    // trim-relative uv ((8-8)/40, 1-(6-6)/20) = (0, 1)
+    expect(mesh.verts[0]).toBeCloseTo(-0.375)
+    expect(mesh.verts[1]).toBeCloseTo(0.3125)
+    expect(mesh.verts[2]).toBeCloseTo(0)
+    expect(mesh.verts[3]).toBeCloseTo(1)
+    // (28,26) → local ((28/64)-0.5, 0.5-(26/32)) = (-0.0625, -0.3125),
+    // uv ((28-8)/40, 1-(26-6)/20) = (0.5, 0)
+    expect(mesh.verts[8]).toBeCloseTo(-0.0625)
+    expect(mesh.verts[9]).toBeCloseTo(-0.3125)
+    expect(mesh.verts[10]).toBeCloseTo(0.5)
+    expect(mesh.verts[11]).toBeCloseTo(0)
+    expect([...mesh.indices]).toEqual([0, 2, 1])
+  })
+
   it('a rotated polygon frame contributes its hull to buildEnvelopeGeometry (previously excluded)', async () => {
     const sheet = await mockLoad({
       frames: [
