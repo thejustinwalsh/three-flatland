@@ -1,7 +1,7 @@
 {
   "name": "three-flatland",
   "version": "0.1.0-alpha.7",
-  "description": "High-performance 2D sprites, tilemaps, and effects for Three.js — built for WebGPU with composable TSL shaders",
+  "description": "High-performance 2D sprites, tilemaps, and effects for Three.js \u2014 built for WebGPU with composable TSL shaders",
   "flatland": {
     "badge": "Alpha"
   },
@@ -285,7 +285,8 @@
     "@types/react": "catalog:",
     "@types/three": "catalog:",
     "react": "catalog:",
-    "three": "catalog:"
+    "three": "catalog:",
+    "@three-flatland/atlas": "workspace:*"
   },
   "keywords": [
     "three.js",

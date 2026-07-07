@@ -47,6 +47,10 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "@three-flatland/atlas#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
     "@three-flatland/normals#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
