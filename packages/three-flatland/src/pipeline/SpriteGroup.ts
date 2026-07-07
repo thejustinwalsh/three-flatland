@@ -154,7 +154,7 @@ export class SpriteGroup extends Group implements WorldProvider {
     this.frustumCulled = false
 
     // Explicit maxBatchSize pins every batch to that size; otherwise the
-    // tier ladder scales allocation with usage (64 → … → 16384).
+    // tier ladder scales allocation with usage (1024 → 4096 → 16384).
     this._maxBatchSize = options.maxBatchSize ?? BATCH_TIER_LADDER[BATCH_TIER_LADDER.length - 1]!
     this._tierLadder = options.maxBatchSize !== undefined ? null : BATCH_TIER_LADDER
 

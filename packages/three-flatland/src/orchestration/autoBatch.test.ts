@@ -58,7 +58,7 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
 
     expect(data.activeBatches.length).toBe(1)
     const mesh = data.batchSlots.find((m) => m !== null)!
-    expect(mesh.maxSize).toBe(64) // tier 0
+    expect(mesh.maxSize).toBe(1024) // tier 0
     expect(mesh.activeCount).toBe(2)
 
     // First-frame correctness: both sprites' own meshes already hidden
@@ -107,14 +107,22 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     expect(mesh.activeCount).toBe(3)
   })
 
-  it('tier ladder: 65 sprites produce a 64-slot batch plus a 256-slot batch', () => {
+  it('tier ladder: filling the 1024 tier then adding one more overflows to a 4096-slot batch', () => {
+    // Bulk-aware sizing (see batchUtils.ts resolveBatchSize) means a
+    // single-pass bulk add sizes its batch for the load it already knows
+    // about, so overflow across ladder tiers only shows up across
+    // separate passes (a trickle), not within one bulk `fireSceneHook`.
     const sprites: Sprite2D[] = []
-    for (let i = 0; i < 65; i++) {
+    for (let i = 0; i < 1024; i++) {
       const sprite = new Sprite2D({ texture })
       sprites.push(sprite)
       scene.add(sprite)
     }
-    fireSceneHook(scene, renderer)
+    fireSceneHook(scene, renderer) // fills the tier-0 (1024) batch exactly
+
+    const overflow = new Sprite2D({ texture })
+    scene.add(overflow)
+    fireSceneHook(scene, renderer) // one more sprite overflows to the next tier
 
     const registry = peekRegistry(renderer, scene)!
     const data = registryData(registry)
@@ -122,13 +130,13 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
       .filter((m) => m !== null)
       .map((m) => m!.maxSize)
       .sort((x, y) => x - y)
-    expect(sizes).toEqual([64, 256])
+    expect(sizes).toEqual([1024, 4096])
 
     const counts = data.batchSlots
       .filter((m) => m !== null)
       .map((m) => m!.activeCount)
       .sort((x, y) => x - y)
-    expect(counts).toEqual([1, 64])
+    expect(counts).toEqual([1, 1024])
   })
 
   it('hysteresis: batch survives at N=1, dies at N=0', () => {

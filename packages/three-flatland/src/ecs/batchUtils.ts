@@ -172,32 +172,59 @@ export function getOrCreateRun(
 /**
  * Auto-batch tier ladder. Each SpriteBatch is born at a fixed tier and
  * stays that size for life; when it fills, the next batch in the run is
- * created one tier up. Memory scales with actual usage: 2 sprites cost
- * ~11 KB (tier 0), not the 2.75 MB a max-size batch would.
+ * created one tier up (or, for a bulk prime — see `resolveBatchSize` —
+ * straight at the tier sized for the incoming load). A small scene pays
+ * for at most one ~180 KB batch (1024 slots × ~176 B/slot); a large
+ * scene's runs converge on 16384-slot batches, the same steady state a
+ * fixed-size SpriteGroup would reach.
  */
-export const BATCH_TIER_LADDER: readonly number[] = [64, 256, 1024, 4096, 16384]
+export const BATCH_TIER_LADDER: readonly number[] = [1024, 4096, 16384]
 
 /**
  * Resolve the slot count for the next batch in a run.
  *
- * `registry.tierLadder` non-null → tiered sizing indexed by how many
- * batches the run already has (clamped to the top tier). Null → the
- * registry's fixed `maxBatchSize` (explicit SpriteGroup opt-in).
+ * `registry.tierLadder` non-null → tiered sizing. By default the tier is
+ * chosen by how many batches the run already has (clamped to the top
+ * tier, so growth only ratchets up). When the caller passes `pendingCount`
+ * — the number of sprites it's about to place in this run in one shot —
+ * the tier is instead sized to the smallest tier that can hold that many,
+ * clamped to the top, but never smaller than the batches-length tier
+ * (growth still ratchets). Null ladder → the registry's fixed
+ * `maxBatchSize` (explicit SpriteGroup opt-in).
  */
-export function resolveBatchSize(registry: RegistryData, run: BatchRun): number {
+export function resolveBatchSize(
+  registry: RegistryData,
+  run: BatchRun,
+  pendingCount = 0
+): number {
   const ladder = registry.tierLadder
   if (!ladder || ladder.length === 0) return registry.maxBatchSize
-  return ladder[Math.min(run.batches.length, ladder.length - 1)]!
+  const byGrowth = Math.min(run.batches.length, ladder.length - 1)
+  if (pendingCount <= 0) return ladder[byGrowth]!
+
+  let byBulk = ladder.length - 1
+  for (let i = 0; i < ladder.length; i++) {
+    if (ladder[i]! >= pendingCount) {
+      byBulk = i
+      break
+    }
+  }
+  return ladder[Math.max(byGrowth, byBulk)]!
 }
 
 /**
  * Find a batch in a run that has free slots, or create a new one.
  * Tries the batch pool first for reuse.
+ *
+ * `pendingCount`, when passed, is the number of sprites the caller is
+ * about to place in this run during the current pass — see
+ * `resolveBatchSize`.
  */
 export function findOrCreateBatch(
   world: World,
   registry: RegistryData,
-  run: BatchRun
+  run: BatchRun,
+  pendingCount = 0
 ): Entity {
   // Check existing batches in this run for free slots
   for (const batchEntity of run.batches) {
@@ -210,10 +237,27 @@ export function findOrCreateBatch(
   let mesh: SpriteBatch | null = null
 
   // Tier ladder: each successive batch in a run is born at the next
-  // tier size (64 → 256 → 1024 → 4096 → 16384). Explicit SpriteGroup
-  // users override via `maxBatchSize`, which pins every batch to that
-  // size (tierLadder null).
-  const batchSize = resolveBatchSize(registry, run)
+  // tier size (1024 → 4096 → 16384), or straight at the tier sized for
+  // a bulk prime. Explicit SpriteGroup users override via `maxBatchSize`,
+  // which pins every batch to that size (tierLadder null).
+  const batchSize = resolveBatchSize(registry, run, pendingCount)
+
+  // Ladder-top consolidation: this run just grew enough to earn a
+  // top-tier batch. Any warmup-tier batches it's still holding (below
+  // the ladder's second-highest tier) cost CPU every frame without
+  // adding draw calls now that a top-tier sibling exists — fold their
+  // sprites into the new batch instead of letting them linger. Captured
+  // BEFORE the new batch joins `run.batches` below, so it only ever
+  // targets pre-existing siblings.
+  const ladder = registry.tierLadder
+  let warmupBatches: Entity[] = []
+  if (ladder && ladder.length > 1 && batchSize === ladder[ladder.length - 1]) {
+    const warmupCeiling = ladder[ladder.length - 2]!
+    warmupBatches = run.batches.filter((e) => {
+      const m = e.get(BatchMesh)?.mesh
+      return !!m && m.maxSize < warmupCeiling
+    })
+  }
 
   if (batchEntity) {
     const existing = batchEntity.get(BatchMesh)
@@ -277,6 +321,14 @@ export function findOrCreateBatch(
   run.batches.push(batchEntity)
   registry.activeBatches.push(batchEntity)
   registry.renderOrderDirty = true
+
+  // Fold the warmup siblings' sprites into the batch we just created —
+  // re-triggers their IsRenderable so the schedule's late-assign pass
+  // re-places them here, and recycles each warmup batch to the pool once
+  // it empties out (see evictBatchEntities / recycleBatchIfEmpty).
+  if (warmupBatches.length > 0) {
+    evictBatchEntities(world, registry, warmupBatches)
+  }
 
   return batchEntity
 }
@@ -435,25 +487,29 @@ export function ensureMaterialDisposeHook(
 }
 
 /**
- * Evict every batched entity using `materialId` from its batch: free
- * the slot, drop the InBatch relation, recycle empty batches, and
- * re-trigger IsRenderable so `batchAssignSystem` re-batches survivors
- * with whatever material they hold by then.
+ * Shared eviction core: for every batched entity for which `shouldEvict`
+ * returns true, free its live slot, drop the InBatch relation, recycle
+ * the batch if it goes empty, clear the sprite's cached direct-write
+ * refs, and re-trigger IsRenderable so `batchAssignSystem` re-batches the
+ * survivor with whatever material/batch it resolves to by then.
  *
- * Shared by the tier-upgrade rebuild (material schema changed) and the
- * dispose teardown (material's GPU resources are gone).
+ * Backs both `evictBatchesForMaterial` (materialId scope — tier-upgrade
+ * rebuild, dispose teardown) and `evictBatchEntities` (explicit
+ * batch-entity scope — ladder-top consolidation in `findOrCreateBatch`).
  */
-export function evictBatchesForMaterial(
+function evictMatchingBatchedEntities(
   world: World,
   registry: RegistryData,
-  materialId: number
+  shouldEvict: (matRef: { materialId: number }, batchEntity: Entity | undefined) => boolean
 ): void {
   const batched = world.query(IsBatched, SpriteMaterialRef, BatchSlot)
   for (const entity of batched) {
     const matRef = entity.get(SpriteMaterialRef)
-    if (!matRef || matRef.materialId !== materialId) continue
+    if (!matRef) continue
 
     const batchEntity = entity.targetFor(InBatch)
+    if (!shouldEvict(matRef, batchEntity)) continue
+
     if (batchEntity) {
       // BatchSlot.slot is the authoritative live slot (kept in sync by
       // batchSortSystem); InBatch's own slot can be a stale pre-swap index.
@@ -494,6 +550,41 @@ export function evictBatchesForMaterial(
   }
 
   registry.renderOrderDirty = true
+}
+
+/**
+ * Evict every batched entity using `materialId` from its batch.
+ *
+ * Shared by the tier-upgrade rebuild (material schema changed) and the
+ * dispose teardown (material's GPU resources are gone).
+ */
+export function evictBatchesForMaterial(
+  world: World,
+  registry: RegistryData,
+  materialId: number
+): void {
+  evictMatchingBatchedEntities(world, registry, (matRef) => matRef.materialId === materialId)
+}
+
+/**
+ * Evict every sprite currently assigned to one of `batchEntities`.
+ *
+ * Used by the ladder-top consolidation path in `findOrCreateBatch`: when
+ * a run grows into a top-tier batch, its still-live warmup-tier siblings
+ * get folded into it rather than kept alive alongside it.
+ */
+export function evictBatchEntities(
+  world: World,
+  registry: RegistryData,
+  batchEntities: readonly Entity[]
+): void {
+  if (batchEntities.length === 0) return
+  const targets = new Set(batchEntities)
+  evictMatchingBatchedEntities(
+    world,
+    registry,
+    (_matRef, batchEntity) => !!batchEntity && targets.has(batchEntity)
+  )
 }
 
 /**
