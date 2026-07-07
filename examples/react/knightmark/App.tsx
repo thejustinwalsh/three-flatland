@@ -8,7 +8,7 @@ import {
   SpriteSheetLoader,
   TextureLoader,
   TileMap2D,
-  Layers,
+  SortLayers,
   type AnimationSetDefinition,
   type SpriteSheet,
   type TileMapData,
@@ -233,7 +233,7 @@ function spawnKnight(
     spriteSheet: sheet,
     animationSet: knightAnimations,
     animation: 'idle',
-    layer: Layers.ENTITIES,
+    sortLayer: SortLayers.ENTITIES,
     anchor: [0.5, 0.5],
     material,
   })
@@ -499,7 +499,9 @@ function KnightmarkScene({
         scale={[TILE_SCALE, TILE_SCALE, 1]}
         position={[-mapWorldW / 2, -mapWorldH / 2, -1]}
       />
-      <spriteGroup ref={spriteGroupRef} />
+      {/* This scene stresses 40k+ sprites — pin fixed 16384-slot batches
+          (ladder off) to minimize per-batch overhead. */}
+      <spriteGroup ref={spriteGroupRef} maxBatchSize={16384} />
     </>
   )
 }

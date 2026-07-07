@@ -7,7 +7,7 @@ import {
   SpriteSheetLoader,
   LDtkLoader,
   AnimatedSprite2D,
-  Layers,
+  SortLayers,
   attachLighting,
   attachEffect,
 } from 'three-flatland/react'
@@ -357,7 +357,7 @@ function LightingScene({ lit }: { lit: boolean }) {
         scale={[KNIGHT_SCALE, KNIGHT_SCALE, 1]}
         castsShadow
         lit={lit}
-        layer={Layers.ENTITIES + 1}
+        sortLayer={SortLayers.ENTITIES + 1}
       >
         <normalMapProvider attach={attachEffect} normalMap={knightSheet.normalMap ?? null} />
       </animatedSprite2D>
@@ -397,7 +397,7 @@ function LightingScene({ lit }: { lit: boolean }) {
           scale={[SLIME_SCALE, SLIME_SCALE, 1]}
           anchor={[0.5, 0.5]}
           lit={lit}
-          layer={Layers.ENTITIES}
+          sortLayer={SortLayers.ENTITIES}
         >
           <normalMapProvider attach={attachEffect} normalMap={slimeSheet.normalMap ?? null} />
         </animatedSprite2D>

@@ -28,18 +28,18 @@ export interface InstanceAttributeConfig {
 }
 
 /**
- * Layer configuration.
+ * SortLayerManager layer descriptor.
  */
-export interface LayerConfig {
-  /** Layer name */
+export interface SortLayerDescriptor {
+  /** Sort layer name */
   name: string
-  /** Layer value/index */
+  /** Sort layer value (render order) */
   value: number
-  /** Blend mode for this layer */
+  /** Blend mode for this sort layer */
   blendMode?: BlendMode
-  /** Sort mode for sprites in this layer */
+  /** Sort mode for sprites in this sort layer */
   sortMode?: SortMode
-  /** Whether this layer is visible */
+  /** Whether this sort layer is visible */
   visible?: boolean
 }
 
@@ -83,7 +83,10 @@ export interface SpriteGroupOptions {
 /**
  * Sorting function for custom sort mode.
  */
-export type SpriteSortFunction = (a: { layer: number; zIndex: number }, b: { layer: number; zIndex: number }) => number
+export type SpriteSortFunction = (
+  a: { sortLayer: number; zIndex: number },
+  b: { sortLayer: number; zIndex: number }
+) => number
 
 /**
  * Batch key for grouping sprites by material.

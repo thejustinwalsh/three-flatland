@@ -1,28 +1,26 @@
 import {
   InstancedMesh,
-  PlaneGeometry,
   InstancedBufferAttribute,
   InstancedInterleavedBuffer,
   InterleavedBufferAttribute,
   DynamicDrawUsage,
+  Sphere,
   type Matrix4,
+  type Raycaster,
+  type Intersection,
 } from 'three'
+import { createSynthQuadGeometry } from './synthQuadGeometry'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
 import { BucketedDirtyTracker } from './BucketedDirtyTracker'
 
 /**
- * Default maximum sprites per batch.
- *
- * 16k is the sweet spot across mobile and desktop:
- *   - ~2MB per batch (matrix + interleaved core + effects). Fits in
- *     mobile VRAM even with 3–5 materials per scene.
- *   - Covers indie-scale workloads in a single batch (no draw-call
- *     overhead from batch splits).
- *   - Scenes that want 30k+ sprites per material pass an explicit
- *     `maxBatchSize: 32_768` on `SpriteGroup` — knightmark-style.
+ * Fallback slot count when a batch is constructed without an explicit
+ * size (tests, direct construction). Orchestrated paths always pass a
+ * size — the tier ladder for auto-batch, `maxBatchSize` for explicit
+ * SpriteGroup opt-ins.
  */
-export const DEFAULT_BATCH_SIZE = 16384
+const FALLBACK_BATCH_SIZE = 16384
 
 /**
  * Stride (in floats) of the interleaved per-instance core buffer. Layout
@@ -74,10 +72,12 @@ const CUSTOM_FULL_THRESHOLD = 3
  *   (1 buffer slot, 4 logical attribute views)
  * - `effectBuf*` custom attributes from the material's effect schema
  *
- * Total vertex-buffer bindings: 3 (PlaneGeometry) + 1 (instanceMatrix)
- * + 1 (interleaved) + N (effect buffers). N is capped by
- * `EffectMaterial.MAX_EFFECT_FLOATS / 4 = 3` so the total never
- * exceeds the WebGPU 8-binding limit.
+ * Total vertex-buffer bindings: 0 (synth-quad `position`/`uv` exist for
+ * user TSL but the built-in shader synthesizes from `vertexIndex`
+ * instead, so neither is consumed) + 1 (instanceMatrix) + 1
+ * (interleaved) + N (effect buffers). N is capped by
+ * `EffectMaterial.MAX_EFFECT_FLOATS / 4 = 6` so the total never exceeds
+ * the WebGPU 8-binding limit.
  *
  * Systems write to batch buffers directly via the write methods.
  *
@@ -159,7 +159,7 @@ export class SpriteBatch extends InstancedMesh {
   private _matrixTracker!: BucketedDirtyTracker
   private _interleavedTracker!: BucketedDirtyTracker
 
-  constructor(material: Sprite2DMaterial, maxSize: number = DEFAULT_BATCH_SIZE) {
+  constructor(material: Sprite2DMaterial, maxSize: number = FALLBACK_BATCH_SIZE) {
     // Allocate interleaved core storage BEFORE creating InstancedMesh
     // so the attribute bindings exist during shader compilation.
     const interleavedData = new Float32Array(maxSize * INSTANCE_STRIDE)
@@ -191,7 +191,12 @@ export class SpriteBatch extends InstancedMesh {
     }
 
     // Create geometry and add ALL instance attributes BEFORE super().
-    const geometry = new PlaneGeometry(1, 1)
+    // Synth quad — the shader derives corner position + UV from
+    // vertexIndex (Sprite2DMaterial.synthQuadNodes) rather than reading
+    // the geometry's own position/uv attributes, so no binding is spent.
+    const geometry = createSynthQuadGeometry()
+    // The batch is never frustum-culled; give it an honest infinite bound.
+    geometry.boundingSphere = new Sphere(geometry.boundingSphere!.center, Infinity)
 
     const interleavedBuffer = new InstancedInterleavedBuffer(interleavedData, INSTANCE_STRIDE, 1)
     interleavedBuffer.setUsage(DynamicDrawUsage)
@@ -549,6 +554,25 @@ export class SpriteBatch extends InstancedMesh {
       this.computeBoundingSphere()
     }
   }
+
+  /**
+   * The batch is never frustum-culled — an infinite bound is the
+   * honest answer at zero cost (InstancedMesh's default would union
+   * all instance spheres).
+   */
+  override computeBoundingSphere(): void {
+    if (this.boundingSphere === null) this.boundingSphere = new Sphere()
+    this.boundingSphere.center.set(0, 0, 0)
+    this.boundingSphere.radius = Infinity
+  }
+
+  /**
+   * Raycasting a batch is meaningless — the unit-quad geometry knows
+   * nothing about per-instance UV flip/atlas remap or alpha. Pointer
+   * interaction happens per-Sprite2D via its own plane-math raycast;
+   * batched-sprite picking is tracked separately (GPU ID-buffer picking).
+   */
+  override raycast(_raycaster: Raycaster, _intersects: Intersection[]): void {}
 
   /**
    * Flush per-buffer dirty state to GPU upload ranges.

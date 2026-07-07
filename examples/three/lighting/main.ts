@@ -7,7 +7,7 @@ import {
   TileMap2D,
   SpriteSheetLoader,
   LDtkLoader,
-  Layers,
+  SortLayers,
   type TileMapData,
   type TileMapObject,
   type AnimationSetDefinition,
@@ -285,7 +285,7 @@ async function main() {
     spriteSheet: knightSheet,
     animationSet: knightAnimations,
     animation: 'idle',
-    layer: Layers.ENTITIES + 1,
+    sortLayer: SortLayers.ENTITIES + 1,
   })
   hero.scale.set(KNIGHT_SCALE, KNIGHT_SCALE, 1)
   hero.lit = true
@@ -320,7 +320,7 @@ async function main() {
       animationSet: slimeAnimations,
       animation: s.animation,
       anchor: [0.5, 0.5],
-      layer: Layers.ENTITIES,
+      sortLayer: SortLayers.ENTITIES,
     })
     sprite.scale.set(SLIME_SCALE, SLIME_SCALE, 1)
     sprite.lit = true

@@ -19,9 +19,10 @@ import {
   registerDebugTexture,
   unregisterDebugTexture,
 } from '../debug/debug-sink'
-import { Fn, uv, vec2, vec4, float, select, attribute, texture as sampleTexture } from 'three/tsl'
+import { Fn, vec2, vec4, float, select, attribute, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { readCastShadowFlag, readFlip } from '../materials/instanceAttributes'
+import { synthQuadNodes } from '../materials/synthQuadNodes'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 
 /**
@@ -329,11 +330,17 @@ export class OcclusionPass {
  */
 function buildOcclusionMaterial(texture: Texture): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial({ transparent: true })
+  // The occlusion pass re-renders SpriteBatch/TileLayer meshes. Their
+  // synth-quad geometry carries position/uv attributes for user TSL,
+  // but this material — like Sprite2DMaterial — synthesizes both from
+  // vertexIndex instead, so it spends no extra binding either.
+  const synth = synthQuadNodes()
+  material.positionNode = synth.position
   material.colorNode = Fn(() => {
     const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
     const flip = readFlip()
 
-    const baseUV = uv()
+    const baseUV = synth.cornerUV
     const flippedUV = vec2(
       select(flip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
       select(flip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))

@@ -23,7 +23,7 @@ If you've ever wired up sprite animation by hand — frame timers, wraparound ma
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
-    import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland';
+    import { AnimatedSprite2D, SpriteSheetLoader, SortLayers } from 'three-flatland';
 
     // Load spritesheet (texture presets automatically applied)
     const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
@@ -52,7 +52,7 @@ If you've ever wired up sprite animation by hand — frame timers, wraparound ma
         },
       },
       animation: 'idle', // Start with idle animation
-      layer: Layers.ENTITIES,
+      sortLayer: SortLayers.ENTITIES,
     });
 
     sprite.scale.set(64, 64, 1);
@@ -70,7 +70,7 @@ If you've ever wired up sprite animation by hand — frame timers, wraparound ma
     ```tsx
     import { Suspense, useRef } from 'react';
     import { extend, useFrame, useLoader } from '@react-three/fiber/webgpu';
-    import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland/react';
+    import { AnimatedSprite2D, SpriteSheetLoader, SortLayers } from 'three-flatland/react';
 
     extend({ AnimatedSprite2D });
 
@@ -95,7 +95,7 @@ If you've ever wired up sprite animation by hand — frame timers, wraparound ma
             },
           }}
           animation="idle"
-          layer={Layers.ENTITIES}
+          sortLayer={SortLayers.ENTITIES}
           scale={[64, 64, 1]}
         />
       );

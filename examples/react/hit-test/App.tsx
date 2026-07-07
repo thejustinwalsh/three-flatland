@@ -5,7 +5,7 @@ import {
   AnimatedSprite2D,
   Sprite2D,
   SpriteSheetLoader,
-  Layers,
+  SortLayers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
 import { usePane, DevtoolsProvider } from '@three-flatland/devtools/react'
@@ -291,7 +291,7 @@ function Knight({ target, pendingCoinId, onReachCoin, onDragStart }: KnightProps
       anchor={[0.5, 0.5]}
       scale={[KNIGHT_SCALE, KNIGHT_SCALE, 1]}
       position={[0, 0, 1]}
-      layer={Layers.ENTITIES}
+      sortLayer={SortLayers.ENTITIES}
       // hitTestMode="bounds" — the full quad is grabbable for drag-and-drop.
       hitTestMode="bounds"
       onPointerDown={handlePointerDown}
@@ -407,7 +407,7 @@ function Coin({ spec, collecting, onClick, onCollected }: CoinProps) {
       anchor={[0.5, 0.5]}
       scale={[COIN_SCALE, COIN_SCALE, 1]}
       position={[spec.x, spec.y, spec.z]}
-      layer={Layers.ENTITIES}
+      sortLayer={SortLayers.ENTITIES}
       tint={`#${spec.color.toString(16).padStart(6, '0')}`}
       // hitTestMode left at the default 'radius' — the inscribed circle is the
       // natural pickable surface for a round coin.
@@ -429,7 +429,7 @@ function Ground({ onWalk }: { onWalk: (x: number, y: number) => void }) {
       anchor={[0.5, 0.5]}
       scale={[viewport.width, viewport.height, 1]}
       position={[0, 0, -1]}
-      layer={Layers.BACKGROUND}
+      sortLayer={SortLayers.BACKGROUND}
       // Invisible (alpha 0) so the gem GemBackground shows through — we only
       // need the quad as a click target, not as a visible surface. The
       // geometry is still pickable: raycast is unaffected by alpha.

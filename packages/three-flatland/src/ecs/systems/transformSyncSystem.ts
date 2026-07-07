@@ -2,7 +2,7 @@ import { getStore as kootaGetStore, type World, type Trait } from 'koota'
 import {
   IsRenderable,
   IsBatched,
-  SpriteLayer,
+  SortLayer,
   SpriteZIndex,
   BatchSlot,
   BatchRegistry,
@@ -46,7 +46,7 @@ export function transformSyncSystem(world: World): void {
   const batchIdxArr = bsStore['batchIdx']!
   const slotArr = bsStore['slot']!
 
-  const layerArr = getNumericStore(world, SpriteLayer)['layer']!
+  const layerArr = getNumericStore(world, SortLayer)['value']!
   const zIndexArr = getNumericStore(world, SpriteZIndex)['zIndex']!
 
   for (const entity of entities) {

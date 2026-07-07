@@ -4,7 +4,7 @@ import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import {
   AnimatedSprite2D,
   SpriteSheetLoader,
-  Layers,
+  SortLayers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
@@ -102,7 +102,7 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
       spriteSheet={sheet}
       animationSet={animationSet}
       animation="idle"
-      layer={Layers.ENTITIES}
+      sortLayer={SortLayers.ENTITIES}
       anchor={[0.5, 0.5]}
       scale={[128, 128, 1]}
     />

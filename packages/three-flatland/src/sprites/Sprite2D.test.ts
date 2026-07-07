@@ -21,7 +21,7 @@ describe('Sprite2D', () => {
     expect(sprite).toBeInstanceOf(Sprite2D)
     expect(sprite.texture).toBe(texture)
     expect(sprite.alpha).toBe(1)
-    expect(sprite.layer).toBe(0)
+    expect(sprite.sortLayer).toBe(0)
     expect(sprite.zIndex).toBe(0)
   })
 
@@ -74,14 +74,14 @@ describe('Sprite2D', () => {
     expect(sprite.height).toBe(50)
   })
 
-  it('should set layer and zIndex', () => {
+  it('should set sortLayer and zIndex', () => {
     const sprite = new Sprite2D({
       texture,
-      layer: 3,
+      sortLayer: 3,
       zIndex: 100,
     })
 
-    expect(sprite.layer).toBe(3)
+    expect(sprite.sortLayer).toBe(3)
     expect(sprite.zIndex).toBe(100)
   })
 
@@ -90,7 +90,7 @@ describe('Sprite2D', () => {
       texture,
       tint: 0xff0000,
       alpha: 0.5,
-      layer: 2,
+      sortLayer: 2,
       zIndex: 10,
     })
     sprite.position.set(100, 200, 0)
@@ -99,7 +99,7 @@ describe('Sprite2D', () => {
 
     expect(cloned.tint.equals(sprite.tint)).toBe(true)
     expect(cloned.alpha).toBe(sprite.alpha)
-    expect(cloned.layer).toBe(sprite.layer)
+    expect(cloned.sortLayer).toBe(sprite.sortLayer)
     expect(cloned.zIndex).toBe(sprite.zIndex)
     expect(cloned.position.equals(sprite.position)).toBe(true)
   })

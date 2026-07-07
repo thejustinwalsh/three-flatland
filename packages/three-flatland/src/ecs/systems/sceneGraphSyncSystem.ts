@@ -1,6 +1,6 @@
 import type { Group, Object3D } from 'three'
 import type { World } from 'koota'
-import { BatchRegistry, BatchMesh } from '../traits'
+import { BatchRegistry, BatchMesh, BatchMeta } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { rebuildBatchOrder } from '../batchUtils'
 
@@ -53,13 +53,23 @@ export function createSceneGraphSyncSystem(): (
       }
     }
 
-    // Add new batches and set renderOrder
+    // Add new batches and set renderOrder. The batch's renderOrder IS
+    // the sortLayer's declared numeric order — that's the documented
+    // interop contract (foreign objects place themselves relative to
+    // `flatland.sortLayer(name).renderOrder`). Batches sharing a layer
+    // get a tiny deterministic sub-order so same-layer draw order is
+    // stable without ever crossing into the next integer layer.
+    let prevLayer = Number.NaN
+    let subOrder = 0
     for (let i = 0; i < registry.activeBatches.length; i++) {
       const batchEntity = registry.activeBatches[i]!
       const batchMesh = batchEntity.get(BatchMesh)
       if (!batchMesh?.mesh) continue
 
-      batchMesh.mesh.renderOrder = i
+      const sortLayer = batchEntity.get(BatchMeta)?.sortLayer ?? 0
+      subOrder = sortLayer === prevLayer ? subOrder + 1 : 0
+      prevLayer = sortLayer
+      batchMesh.mesh.renderOrder = sortLayer + subOrder * 1e-6
       if (!parent.children.includes(batchMesh.mesh)) {
         parentAdd.call(parent, batchMesh.mesh)
       }

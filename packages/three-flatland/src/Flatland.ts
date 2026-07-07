@@ -14,6 +14,13 @@ import type { WebGPURenderer } from 'three/webgpu'
 import { pass, uv as uvNode, convertToTexture, uniform } from 'three/tsl'
 import type { World, Entity } from 'koota'
 import { SpriteGroup } from './pipeline/SpriteGroup'
+import {
+  declareSortLayer,
+  getSortLayer,
+  resolveSortLayer,
+  type SortLayerConfig,
+  type SortLayerName,
+} from './pipeline/sortLayers'
 import { GlobalUniforms } from './GlobalUniforms'
 import { Sprite2D } from './sprites/Sprite2D'
 import { TileMap2D } from './tilemap/TileMap2D'
@@ -162,6 +169,27 @@ export interface FlatlandOptions {
 export class Flatland extends Group implements WorldProvider {
   /** Internal scene containing sprites */
   readonly scene: Scene
+
+  /**
+   * Declare (or redeclare) a named sort layer for use with
+   * `sprite.sortLayer` and `SortLayerGroup`. Pair with a
+   * `SortLayerRegistry` interface augmentation for typed names.
+   */
+  declareSortLayer(name: SortLayerName, config: SortLayerConfig): SortLayerConfig {
+    return declareSortLayer(name, config)
+  }
+
+  /**
+   * Resolve a declared sort layer's config — the hook for placing
+   * foreign objects relative to a layer:
+   *
+   * ```ts
+   * skiaText.renderOrder = flatland.sortLayer('ui').renderOrder - 1
+   * ```
+   */
+  sortLayer(name: SortLayerName): SortLayerConfig {
+    return getSortLayer(name) ?? { renderOrder: resolveSortLayer(name) }
+  }
 
   /** Internal sprite group for batching */
   readonly spriteGroup: SpriteGroup
