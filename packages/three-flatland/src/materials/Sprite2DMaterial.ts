@@ -156,6 +156,17 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   _tightMesh = false
 
+  /**
+   * Registry `version` this material's current geometry strategy was
+   * last resolved against. Lets `_resolveGeometryStrategy` notice a
+   * merge/degrade that changed the atlas's CONTENT (new frames folded
+   * in, or a `complete` flip) even when `_tightMesh` itself didn't
+   * flip — a plain presence check can't see that, but a stale `version`
+   * still means the batch's baked-at-construction envelope is wrong.
+   * @internal
+   */
+  private _atlasMeshVersion = -1
+
   constructor(options: Sprite2DMaterialOptions = {}) {
     super({ effectTier: options.effectTier })
 
@@ -347,8 +358,8 @@ export class Sprite2DMaterial extends EffectMaterial {
 
   /** @internal */
   _resolveGeometryStrategy(): void {
-    let wantsTight =
-      this.transparent && this.alphaTest === 0 && getAtlasMesh(this._spriteTexture) !== null
+    const atlas = getAtlasMesh(this._spriteTexture)
+    let wantsTight = this.transparent && this.alphaTest === 0 && atlas !== null
     if (wantsTight && this._effectTotalFloats > 16) {
       // Tight-mesh spends 2 bindings on geometry — a material already
       // carrying more than 16 effect floats can't fit under WebGPU's
@@ -360,22 +371,37 @@ export class Sprite2DMaterial extends EffectMaterial {
       )
       wantsTight = false
     }
-    if (wantsTight === this._tightMesh) return
+
+    const strategyChanged = wantsTight !== this._tightMesh
+    const atlasVersion = atlas?.version ?? -1
+    // A second sheet merging into (or degrading) an already-registered
+    // texture changes the envelope's CONTENT without flipping `wantsTight`
+    // — the atlas was already non-null either way. Batches bake their
+    // envelope once at construction (buildEnvelopeGeometry), so a stale
+    // `version` here means their hull no longer matches the registry and
+    // the rebuild channel below must still fire.
+    const contentChanged = wantsTight && atlasVersion !== this._atlasMeshVersion
+    if (!strategyChanged && !contentChanged) return
+
     this._tightMesh = wantsTight
-    if (wantsTight) {
-      // Geometry-driven path: default position pipeline (instancing
-      // still applies downstream) + the geometry uv attribute.
-      this.positionNode = null
-      this._cornerUV = uv() as unknown as ReturnType<typeof synthQuadNodes>['cornerUV']
-    } else {
-      const synth = synthQuadNodes()
-      this.positionNode = synth.position
-      this._cornerUV = synth.cornerUV
+    this._atlasMeshVersion = atlasVersion
+    if (strategyChanged) {
+      if (wantsTight) {
+        // Geometry-driven path: default position pipeline (instancing
+        // still applies downstream) + the geometry uv attribute.
+        this.positionNode = null
+        this._cornerUV = uv() as unknown as ReturnType<typeof synthQuadNodes>['cornerUV']
+      } else {
+        const synth = synthQuadNodes()
+        this.positionNode = synth.position
+        this._cornerUV = synth.cornerUV
+      }
     }
-    // Batches were built for the previous strategy — force a rebuild
-    // through the same version channel tier upgrades use. Rebuild the
-    // color node too when this flip happens outside setTexture (late
-    // atlas registration re-resolves through the version check).
+    // Batches were built for the previous strategy (or the previous
+    // envelope content) — force a rebuild through the same version
+    // channel tier upgrades use. Rebuild the color node too when this
+    // flip happens outside setTexture (late atlas registration
+    // re-resolves through the version check).
     this._effectSchemaVersion++
     if (this._spriteTexture) {
       this._rebuildColorNode()

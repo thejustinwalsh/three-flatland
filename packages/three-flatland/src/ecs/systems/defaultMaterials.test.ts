@@ -164,4 +164,89 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     expect(spriteB.material).not.toBe(bootstrap)
     expect(spriteB.material.getTexture()).toBe(otherTexture)
   })
+
+  it('registry-default texture setter re-resolves instead of mutating the shared default', () => {
+    const group = new SpriteGroup()
+    const a = new Sprite2D({ texture })
+    const b = new Sprite2D({ texture })
+    group.add(a)
+    group.add(b)
+
+    const shared = a.material
+    expect(b.material).toBe(shared)
+    expect(a._materialWasRegistryDefault).toBe(true)
+
+    const otherTexture = makeTexture()
+    a.texture = otherTexture
+
+    // The shared registry default is untouched, and b still holds it.
+    expect(shared.getTexture()).toBe(texture)
+    expect(b.material).toBe(shared)
+
+    // a re-resolved to a (different) registry default for the new texture.
+    expect(a.material).not.toBe(shared)
+    expect(a.material.getTexture()).toBe(otherTexture)
+    expect(a._materialWasRegistryDefault).toBe(true)
+
+    group.dispose()
+  })
+
+  it('bootstrap-default texture setter re-resolves through the world once enrolled', () => {
+    // No texture at construction — material stays the bootstrap default
+    // (SpriteGroup.add's own resolution is a no-op without a texture).
+    const group = new SpriteGroup()
+    const sprite = new Sprite2D({})
+    group.add(sprite)
+    expect(sprite._materialIsBootstrapDefault).toBe(true)
+
+    const other = new Sprite2D({ texture })
+    group.add(other)
+    const registryDefaultForTexture = other.material
+
+    sprite.texture = texture
+
+    // Re-resolved to this group's registry default for the texture,
+    // not a fresh module-global `getShared` instance.
+    expect(sprite.material).toBe(registryDefaultForTexture)
+    expect(sprite._materialWasRegistryDefault).toBe(true)
+    expect(sprite._materialIsBootstrapDefault).toBe(false)
+
+    group.dispose()
+  })
+
+  it('repeated texture swaps do not leak abandoned default materials in registry.materialRefs', () => {
+    const group = new SpriteGroup()
+    const a = new Sprite2D({ texture })
+    group.add(a)
+    group.update() // batchAssignSystem: a batches under materialA
+
+    const registry = getRegistry(group)
+    const materialA = a.material
+    expect(registry.materialRefs.has(materialA.batchId)).toBe(true)
+
+    const textureB = makeTexture()
+    a.texture = textureB
+    group.update() // batchReassignSystem: a moves off materialA onto materialB
+    const materialB = a.material
+    expect(materialB).not.toBe(materialA)
+
+    // materialA has zero batched users now — its materialRefs entry
+    // (and the strong ref to the material + its texture it carries)
+    // must be dropped, not held forever.
+    expect(registry.materialRefs.has(materialA.batchId)).toBe(false)
+    expect(registry.materialRefs.has(materialB.batchId)).toBe(true)
+
+    const textureC = makeTexture()
+    a.texture = textureC
+    group.update()
+    const materialC = a.material
+    expect(materialC).not.toBe(materialB)
+
+    // Same invariant holds on a second swap: materialB is now orphaned too.
+    expect(registry.materialRefs.has(materialA.batchId)).toBe(false)
+    expect(registry.materialRefs.has(materialB.batchId)).toBe(false)
+    expect(registry.materialRefs.has(materialC.batchId)).toBe(true)
+
+    group.dispose()
+  })
 })

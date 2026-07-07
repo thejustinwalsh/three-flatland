@@ -434,8 +434,6 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       registerAtlasMesh(texture, {
         frames: meshed,
         complete: meshed.length === frames.size,
-        meshVerts,
-        meshIndices,
       })
     } else {
       // A meshless sheet sharing a texture with a previously-registered
