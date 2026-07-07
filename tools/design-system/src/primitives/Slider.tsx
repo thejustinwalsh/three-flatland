@@ -83,7 +83,10 @@ const s = stylex.create({
   thumbActive: {
     backgroundColor: vscode.focusRing,
   },
-  thumbLeft: (pct: number) => ({ left: `${pct * 100}%` }),
+  // Inset travel by the thumb's own half-width so it never hangs off
+  // the rail at the extremes — `pct: 0` (most params' resting value) is
+  // the common case that made this visible.
+  thumbLeft: (pct: number) => ({ left: `calc(4px + (100% - 8px) * ${pct})` }),
 })
 
 export type SliderProps = {
@@ -174,7 +177,7 @@ export function Slider({ value, range, onChange, disabled = false, ...rest }: Sl
       onPointerCancel={endDrag}
       onLostPointerCapture={endDrag}
       onKeyDown={handleKeyDown}
-      onFocus={() => setFocusVisible(true)}
+      onFocus={(e) => setFocusVisible(e.currentTarget.matches(':focus-visible'))}
       onBlur={() => setFocusVisible(false)}
     >
       <span {...stylex.props(s.rail)}>

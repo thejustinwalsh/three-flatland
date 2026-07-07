@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { Button, Panel } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
@@ -16,7 +17,7 @@ export const AI_GENERATE_ENABLED = true
 
 const s = stylex.create({
   // This panel always occupies the sidebar's flexible last row (see
-  // App.tsx's sidebarStack grid) — same "stretch to fill, scroll
+  // App.tsx's sidebar flex column) — same "stretch to fill, scroll
   // internally" slot Atlas's Frames panel fills, so it keeps Panel's
   // 'auto' bodyOverflow default rather than the sibling Category/Style
   // panels' 'visible' override.
@@ -138,6 +139,16 @@ export function AiGeneratePanel({
   onGenerate,
   onApplyCandidate,
 }: AiGeneratePanelProps) {
+  const streamRef = useRef<HTMLPreElement>(null)
+
+  // Follow the tail as tokens stream in — otherwise the readout stays
+  // pinned to the top and the most recent (most useful) text scrolls
+  // out of view under its own `maxHeight`/`overflow: auto`.
+  useEffect(() => {
+    const el = streamRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [generateStream])
+
   if (!AI_GENERATE_ENABLED) return null
 
   // No vscode.lm in this editor host at all (or no signed-in model) —
@@ -184,8 +195,12 @@ export function AiGeneratePanel({
           above.
         </p>
         <div {...stylex.props(s.row)}>
-          <Button onClick={onGenerate} disabled={standalone || generating || !category}>
-            {generating ? 'Generating…' : '✨ Generate'}
+          <Button
+            icon="sparkle"
+            onClick={onGenerate}
+            disabled={standalone || generating || !category}
+          >
+            {generating ? 'Generating…' : 'Generate'}
           </Button>
           {!category && <span {...stylex.props(s.description)}>Pick a category above first.</span>}
         </div>
@@ -198,7 +213,11 @@ export function AiGeneratePanel({
             generation can't pop the sidebar's height and shove the
             params column next to it. */}
         <div {...stylex.props(s.results)}>
-          {generating && generateStream && <pre {...stylex.props(s.stream)}>{generateStream}</pre>}
+          {generating && generateStream && (
+            <pre ref={streamRef} {...stylex.props(s.stream)}>
+              {generateStream}
+            </pre>
+          )}
           {generateError && <p {...stylex.props(s.error)}>Generate failed: {generateError}</p>}
           {!generating && candidates.length > 0 && (
             <>
@@ -240,7 +259,9 @@ function CandidateCard({
       <span {...stylex.props(s.cardLabel)}>{label}</span>
       {rationale && <p {...stylex.props(s.cardRationale)}>{rationale}</p>}
       <div {...stylex.props(s.cardActions)}>
-        <Button onClick={onPlay}>▶ Play</Button>
+        <Button secondary icon="play" onClick={onPlay}>
+          Play
+        </Button>
         <Button onClick={onUse}>Use this</Button>
       </div>
     </div>

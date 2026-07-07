@@ -81,8 +81,13 @@ const styles = stylex.create({
   },
   sidebar: (px: number) => ({
     width: px,
+    // Belt-and-suspenders against the params panel's own 200px floor:
+    // a persisted-wide sidebar (from a wider window last session)
+    // could otherwise crush it in a narrower split-editor width.
+    maxWidth: 'calc(100% - 204px)',
     flexShrink: 0,
     minHeight: 0,
+    overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
     gap: space.sm,
@@ -198,10 +203,13 @@ export function App() {
             if (!el) return
             // Sidebar width = distance from the cursor to the work
             // area's right edge — same convention as atlas's Frames
-            // splitter. Clamping to [SIDEBAR_MIN_PX, SIDEBAR_MAX_PX]
-            // happens inside the hook.
+            // splitter. [SIDEBAR_MIN_PX, SIDEBAR_MAX_PX] clamping
+            // happens inside the hook; the extra `rect.width - 204`
+            // term here is container-aware on top of that, so a wide
+            // sidebar can't crush the params panel below its own
+            // 200px floor (+ the splitter's 4px) in a narrow window.
             const rect = el.getBoundingClientRect()
-            setSidebarPx(rect.right - clientX)
+            setSidebarPx(Math.min(rect.right - clientX, rect.width - 204))
           }}
         />
 
