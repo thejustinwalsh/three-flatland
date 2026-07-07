@@ -55,8 +55,6 @@ function registerDiamondAtlas(texture: Texture, complete = true): void {
   registerAtlasMesh(texture, {
     frames: [frame],
     complete,
-    meshVerts: frame.mesh!.verts,
-    meshIndices: frame.mesh!.indices,
   })
 }
 

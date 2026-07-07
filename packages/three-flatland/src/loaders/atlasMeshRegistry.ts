@@ -6,6 +6,12 @@ import type { SpriteFrame } from '../sprites/types'
  * Registered per texture by the loaders; consumed at batch-creation
  * time to build per-batch envelope geometry (and, later, the per-frame
  * mesh table).
+ *
+ * Geometry itself is not duplicated here — each frame's polygon lives
+ * on `frame.mesh` (verts/indices already local to that frame). The
+ * registry only holds frame references, so merging entries from
+ * multiple sheets sharing a texture can't leave a stale/dangling
+ * concatenated array behind.
  */
 export interface AtlasMeshData {
   /** Frames that carry a polygon mesh. */
@@ -16,10 +22,6 @@ export interface AtlasMeshData {
    * meshless frames still render un-clipped.
    */
   complete: boolean
-  /** Concatenated [x,y,u,v] vertex data across those frames. */
-  meshVerts: Float32Array
-  /** Concatenated triangle indices (frame-local, see frame.mesh offsets). */
-  meshIndices: Uint16Array
 }
 
 /**
@@ -33,9 +35,9 @@ const atlasMeshes = new WeakMap<Texture, AtlasMeshData>()
  * Register an atlas's mesh data for its texture (loader-side).
  *
  * Re-registration for the same texture (two sheets sharing one image)
- * merges conservatively: frames accumulate and `complete` drops to
- * false unless the entries agree — the envelope degrades toward the
- * full quad instead of clipping frames the other sheet defined.
+ * merges conservatively: frames accumulate, and `complete` stays true
+ * only when both entries agree — the envelope degrades toward the
+ * full quad the moment either sheet contributed a meshless frame.
  */
 export function registerAtlasMesh(texture: Texture, data: AtlasMeshData): void {
   const existing = atlasMeshes.get(texture)
@@ -49,9 +51,7 @@ export function registerAtlasMesh(texture: Texture, data: AtlasMeshData): void {
   }
   atlasMeshes.set(texture, {
     frames,
-    complete: false,
-    meshVerts: data.meshVerts,
-    meshIndices: data.meshIndices,
+    complete: existing.complete && data.complete,
   })
 }
 

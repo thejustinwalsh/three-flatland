@@ -230,6 +230,5 @@ describe('atlas mesh format extension', () => {
 
     const registered = getAtlasMesh(sheet.texture)!
     expect(registered.frames.length).toBe(2)
-    expect(registered.meshVerts).toBe(sheet.meshVerts)
   })
 })
