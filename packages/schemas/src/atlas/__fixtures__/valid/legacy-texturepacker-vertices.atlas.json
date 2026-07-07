@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "size": { "w": 64, "h": 64 },
+    "scale": "1",
+    "image": "hero.png"
+  },
+  "frames": {
+    "hero_idle_0": {
+      "frame": { "x": 0, "y": 0, "w": 32, "h": 32 },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 32 },
+      "sourceSize": { "w": 32, "h": 32 },
+      "vertices": [
+        [0, 0],
+        [32, 0],
+        [32, 32]
+      ],
+      "verticesUV": [
+        [0, 0],
+        [1, 0],
+        [1, 1]
+      ],
+      "triangles": [[0, 1, 2]]
+    }
+  }
+}
