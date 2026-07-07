@@ -10,6 +10,20 @@ import { copyTypedTo } from './bus-pool'
  * and only emits entries whose version has advanced since the last
  * emission.
  */
+/**
+ * After this many consecutive checkpoint attempts where an entry
+ * degraded to metadata-only, stop waiting for a clean drain and emit
+ * `checkpoint: true, partial: true` instead (see `DebugRegistry.drain`)
+ * — otherwise a durably oversized entry (bigger than the pool tier by
+ * itself; see `bus-pool.ts`) would starve the checkpoint forever. A
+ * handful of retries rides out transient contention for the shared
+ * pool cursor from other features (stats, etc.) sharing the same
+ * flush's buffer; if the entry is durably oversized, no amount of
+ * retrying would ever succeed, so settling on `partial` is the honest
+ * steady state.
+ */
+const CHECKPOINT_PARTIAL_AFTER_ATTEMPTS = 3
+
 interface RegistryEntry {
   kind: RegistryEntryKind
   ref: Float32Array | Uint32Array | Int32Array
@@ -54,6 +68,13 @@ export class DebugRegistry {
    * nothing registered yet) so the flag isn't lost waiting for content.
    */
   private _checkpointPending = false
+  /**
+   * Consecutive drains where `_checkpointPending` was true but at
+   * least one entry degraded to metadata-only. Resets to 0 whenever a
+   * drain succeeds cleanly (no degradation) or a new checkpoint cycle
+   * begins (`resetDelta()`). See `CHECKPOINT_PARTIAL_AFTER_ATTEMPTS`.
+   */
+  private _checkpointDegradedAttempts = 0
 
   /**
    * Register (or replace) a named buffer. Re-calling with the same name
@@ -127,6 +148,7 @@ export class DebugRegistry {
    */
   drain(out: RegistryPayload, filter: Set<string> | null = null, into?: BufferCursor): boolean {
     let wrote = false
+    let anyDegraded = false
     const entries: Record<string, RegistryEntryDelta | null> = {}
     for (const [name, e] of this._entries) {
       const inFilter = filter === null || filter.has(name)
@@ -140,6 +162,13 @@ export class DebugRegistry {
         count: e.length,
         ...(e.label !== undefined ? { label: e.label } : {}),
       }
+      // What actually got shipped — starts equal to `target`, but a
+      // pool-overflow degrades it to 'meta' below. Recording the SHIP
+      // shape (not the intended one) here is what keeps a degraded
+      // entry eligible for retry on the next drain — marking it
+      // 'full' when only metadata went out would make the next
+      // drain's `lastShape === target` check wrongly think it's done.
+      let shippedShape: 'full' | 'meta' = target
       if (inFilter) {
         if (into !== undefined) {
           // Pool path. Guard against the entry not fitting in the
@@ -158,6 +187,8 @@ export class DebugRegistry {
               )
               e.warnedOversized = true
             }
+            shippedShape = 'meta'
+            anyDegraded = true
           } else {
             base.sample = copyTypedTo(into, e.sampleView)
           }
@@ -167,7 +198,7 @@ export class DebugRegistry {
       }
       entries[name] = base
       e.lastEmittedVersion = e.version
-      e.lastEmittedShape = target
+      e.lastEmittedShape = shippedShape
       wrote = true
     }
     for (const name of this._removed) {
@@ -178,14 +209,36 @@ export class DebugRegistry {
     if (wrote) {
       out.entries = entries
       if (this._checkpointPending) {
-        out.checkpoint = true
-        this._checkpointPending = false
+        if (anyDegraded) {
+          // A checkpoint drain isn't allowed to claim `checkpoint:
+          // true` while it silently dropped a sample it was supposed
+          // to carry — that would hand reconstruction a "complete"
+          // anchor that's actually missing data. Keep pending and
+          // retry, up to the bound below.
+          this._checkpointDegradedAttempts++
+          if (this._checkpointDegradedAttempts >= CHECKPOINT_PARTIAL_AFTER_ATTEMPTS) {
+            out.checkpoint = true
+            out.partial = true
+            this._checkpointPending = false
+            this._checkpointDegradedAttempts = 0
+          } else {
+            delete out.checkpoint
+            delete out.partial
+          }
+        } else {
+          out.checkpoint = true
+          delete out.partial
+          this._checkpointPending = false
+          this._checkpointDegradedAttempts = 0
+        }
       } else {
         delete out.checkpoint
+        delete out.partial
       }
     } else {
       delete out.entries
       delete out.checkpoint
+      delete out.partial
     }
     return wrote
   }
@@ -202,6 +255,7 @@ export class DebugRegistry {
       e.lastEmittedShape = 'none'
     }
     this._checkpointPending = true
+    this._checkpointDegradedAttempts = 0
   }
 
   dispose(): void {

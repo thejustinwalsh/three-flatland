@@ -111,6 +111,18 @@ const PRUNE_MAX_EMPTY_RETRIES = 3
 const ENTRY_OVERHEAD_BYTES = 96
 
 type Listener = () => void
+/**
+ * Fired after a write-batch transaction actually COMMITS to IDB — not
+ * merely accepted into `push()`'s in-memory write buffer. `addListener`
+ * (`_fire`) already covers "something changed, re-render"; this is
+ * strictly narrower and exists for consumers that read persisted rows
+ * back out via `queryFiltered`/`prefetchRange` (an async IDB cursor),
+ * where a query issued between `push()` and the batch's eventual
+ * commit would silently miss the newest rows and never know to retry
+ * (#29 Phase C review fix — see the registry panel's reconstruction
+ * effect for the motivating case).
+ */
+type FlushListener = (providerIds: ReadonlySet<string>) => void
 
 interface ProviderState {
   maxId: number
@@ -162,6 +174,7 @@ export class ProtocolStore {
   private _flushTimer: number | null = null
   private _writeFlushMs: number
   private _listeners = new Set<Listener>()
+  private _flushListeners = new Set<FlushListener>()
   private _pendingRanges = new Map<string, Promise<void>>()
 
   private _opts: ProtocolStoreOptions
@@ -254,6 +267,25 @@ export class ProtocolStore {
   addListener(cb: Listener): () => void {
     this._listeners.add(cb)
     return () => { this._listeners.delete(cb) }
+  }
+
+  /**
+   * Subscribe to post-commit write-batch notifications. Fires only
+   * after a batch's IDB transaction actually completes (never on a
+   * failed/aborted one — see `_writeBatch`'s `tx.oncomplete`), with the
+   * set of provider ids the just-committed batch touched. Use this
+   * (not `addListener`) when a caller is about to re-run an IDB query
+   * and needs to know when freshly-pushed rows are actually queryable.
+   */
+  addFlushListener(cb: FlushListener): () => void {
+    this._flushListeners.add(cb)
+    return () => { this._flushListeners.delete(cb) }
+  }
+
+  private _fireFlush(providerIds: ReadonlySet<string>): void {
+    for (const cb of this._flushListeners) {
+      try { cb(providerIds) } catch { /* listener errors shouldn't break the store */ }
+    }
   }
 
   private _fire(): void {
@@ -473,6 +505,14 @@ export class ProtocolStore {
       tx.onerror = () => {
         console.warn('[devtools-dashboard] IDB write failed:', tx?.error)
         this._rollbackBatch(batch)
+      }
+      // Only fires on a genuine commit (never alongside `onerror` — a
+      // transaction either completes or aborts/errors, never both), so
+      // this is the honest "these rows are now queryable" signal.
+      tx.oncomplete = () => {
+        const providerIds = new Set<string>()
+        for (const entry of batch) providerIds.add(entry.providerId)
+        this._fireFlush(providerIds)
       }
     } catch (err) {
       console.warn('[devtools-dashboard] IDB transaction failed:', err)
@@ -755,6 +795,7 @@ export class ProtocolStore {
       this._pruneArmTimer = null
     }
     this._listeners.clear()
+    this._flushListeners.clear()
     this._db?.close()
   }
 }

@@ -129,28 +129,23 @@ export function ProtocolLog() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameCursor, activeProviderId])
 
-  // Wire the raw-message tap → store. The store owns IDB persistence,
-  // counters, cache + eviction; this listener translates raw messages
-  // to log rows AND tags each with whichever provider was selected at
-  // the moment it arrived, so per-provider scoping stays honest even
-  // when the user switches mid-stream.
+  // Display-only bump tracking. Persistence into the store happens
+  // unconditionally at dashboard bootstrap now (`log-ingest.ts`, wired
+  // from `hooks.ts`) — this listener only tracks how many new rows
+  // landed for the CURRENTLY RENDERED provider, so the tail-off scroll
+  // compensation effect below knows how far to bump. Gated on `paused`
+  // because that toggle is a display concern scoped to this panel: it
+  // freezes what THIS list shows, it does not stop the store from
+  // recording (see `log-ingest.ts`'s doc comment for why those two
+  // used to be — wrongly — the same thing).
   useEffect(() => {
-    return client.addRawMessageListener((msg, direction) => {
+    return client.addRawMessageListener((_msg, _direction) => {
       if (pausedRef.current) return
       const providerId = client.state.selectedProviderId
       if (providerId === null) return
-      store.push(providerId, {
-        at: Date.now(),
-        direction,
-        type: msg.type,
-        tag: extractTag(msg),
-        frame: extractFrame(msg),
-        bytes: estimateBytes(msg),
-        msg,
-      })
       if (providerId === activeProviderId) pendingBumpRef.current += 1
     })
-  }, [client, store, activeProviderId])
+  }, [client, activeProviderId])
 
   // The shared `useDevtoolsState` hook + store-driven listener both
   // tick through the dashboard-wide rAF scheduler, so we don't need our
@@ -710,47 +705,6 @@ function matchesFilter(e: LogEntry, f: FilterSpec): boolean {
   if (e.type.includes(f.needle)) return true
   if (e.tag !== undefined && e.tag.toLowerCase().includes(f.needle)) return true
   return false
-}
-
-function extractTag(msg: DebugMessage): string | undefined {
-  if (msg.type === 'data') {
-    const features = (msg as unknown as { payload?: { features?: Record<string, unknown> } }).payload?.features
-    if (features !== undefined) {
-      const keys = Object.keys(features).filter((k) => features[k] != null)
-      return keys.length > 0 ? keys.join(',') : 'empty'
-    }
-  }
-  const p = (msg as unknown as { payload?: { name?: string } }).payload
-  if (p !== undefined && typeof p === 'object' && typeof p.name === 'string') return p.name
-  return undefined
-}
-
-function extractFrame(msg: DebugMessage): number | undefined {
-  const f = (msg as unknown as { payload?: { frame?: number } }).payload?.frame
-  return typeof f === 'number' ? f : undefined
-}
-
-function estimateBytes(msg: DebugMessage): number {
-  let bytes = 0
-  const seen = new WeakSet<object>()
-  const walk = (v: unknown): void => {
-    if (v === null || v === undefined) return
-    if (typeof v === 'string') { bytes += v.length; return }
-    if (typeof v === 'number' || typeof v === 'boolean') { bytes += 8; return }
-    if (v instanceof ArrayBuffer) { bytes += v.byteLength; return }
-    if (ArrayBuffer.isView(v)) { bytes += v.byteLength; return }
-    if (typeof v === 'object') {
-      if (seen.has(v)) return
-      seen.add(v)
-      if (Array.isArray(v)) { for (const x of v) walk(x); return }
-      for (const k in v as Record<string, unknown>) {
-        bytes += k.length
-        walk((v as Record<string, unknown>)[k])
-      }
-    }
-  }
-  walk(msg)
-  return bytes
 }
 
 function formatBytes(n: number): string {

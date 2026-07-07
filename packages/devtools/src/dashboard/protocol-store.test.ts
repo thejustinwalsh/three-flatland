@@ -359,3 +359,100 @@ describe('ProtocolStore byte-budget pruning', () => {
     expect(store.statsFor('p1').ids).toEqual(idsAtDispose)
   })
 })
+
+/**
+ * Post-commit flush notification (#29 Phase C review fix). `push()`
+ * accepts a row into the in-memory write buffer synchronously, but the
+ * row isn't actually queryable via `queryFiltered`/`prefetchRange`
+ * until its batch's IDB transaction commits, moments later. A consumer
+ * that queries in that gap (the registry panel's parked reconstruction
+ * effect, debounced 80ms after a cursor move) can land before the
+ * commit and never learn to retry. `addFlushListener` closes that gap.
+ */
+describe('ProtocolStore.addFlushListener', () => {
+  it('fires after a write batch commits, naming the touched providers', async () => {
+    const store = makeStore()
+    const seen: Array<Set<string>> = []
+    store.addFlushListener((ids) => seen.push(new Set(ids)))
+
+    store.push('p1', makeEntry({ frame: 1 }))
+    store.push('p2', makeEntry({ frame: 1 }))
+
+    await vi.waitFor(() => {
+      expect(seen.length).toBeGreaterThan(0)
+    }, { timeout: 1000, interval: 10 })
+
+    const touched = new Set<string>()
+    for (const batch of seen) for (const id of batch) touched.add(id)
+    expect(touched.has('p1')).toBe(true)
+    expect(touched.has('p2')).toBe(true)
+  })
+
+  it('does not fire for a write-batch transaction that fails to commit', async () => {
+    const store = makeStore()
+    const originalPut = IDBObjectStore.prototype.put
+    IDBObjectStore.prototype.put = function (this: IDBObjectStore, ..._args: unknown[]): IDBRequest {
+      throw new DOMException('simulated failure', 'UnknownError')
+    } as typeof originalPut
+    const seen: Array<Set<string>> = []
+    store.addFlushListener((ids) => seen.push(new Set(ids)))
+    try {
+      store.push('p1', makeEntry({ frame: 1 }))
+      // Wait for the failure's rollback to land (mirrors the existing
+      // "reconciles in-memory counters" test's wait), then confirm the
+      // flush listener never fired for it — a transaction that never
+      // commits must never claim rows are now queryable.
+      await vi.waitFor(() => {
+        expect(store.statsFor('p1').ids).toEqual([])
+      }, { timeout: 1000, interval: 10 })
+      expect(seen).toEqual([])
+    } finally {
+      IDBObjectStore.prototype.put = originalPut
+    }
+  })
+
+  it('lets a parked requery pick up rows committed after the first query', async () => {
+    const store = makeStore()
+    store.push('p1', makeEntry({ frame: 1 }))
+    await vi.waitFor(async () => {
+      expect(await idbIds(store, 'p1')).toEqual([1])
+    }, { timeout: 1000, interval: 10 })
+
+    // Simulates the registry panel's effect: an initial query while
+    // parked, then a re-query triggered by the flush listener once
+    // more rows land for the active provider.
+    const firstQuery = await store.queryFiltered('p1', () => true)
+    expect(firstQuery).toEqual([1])
+
+    const requeried = new Promise<number[]>((resolve) => {
+      const off = store.addFlushListener((ids) => {
+        if (!ids.has('p1')) return
+        off()
+        resolve(store.queryFiltered('p1', () => true))
+      })
+    })
+
+    store.push('p1', makeEntry({ frame: 2 }))
+
+    expect(await requeried).toEqual([1, 2])
+  })
+
+  it('stops firing after the returned unsubscribe is called', async () => {
+    const store = makeStore()
+    const seen: Array<Set<string>> = []
+    const off = store.addFlushListener((ids) => seen.push(new Set(ids)))
+
+    store.push('p1', makeEntry({ frame: 1 }))
+    await vi.waitFor(() => {
+      expect(seen.length).toBe(1)
+    }, { timeout: 1000, interval: 10 })
+
+    off()
+    store.push('p1', makeEntry({ frame: 2 }))
+    await vi.waitFor(async () => {
+      expect(await idbIds(store, 'p1')).toEqual([1, 2])
+    }, { timeout: 1000, interval: 10 })
+
+    expect(seen.length).toBe(1)
+  })
+})

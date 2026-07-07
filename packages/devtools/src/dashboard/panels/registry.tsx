@@ -61,9 +61,8 @@ export function RegistryPanel() {
   // `state.registry` (delta-accumulated by the client) is exactly what
   // we want. Parked at a past frame, it's only ever the latest state —
   // reconstructing frame N needs the checkpoint+deltas replay below,
-  // fed from the ProtocolStore's persisted history (kept current by
-  // the Protocol Log panel's raw-message tap, always mounted alongside
-  // this one in the fixed dashboard layout — see `app.tsx`).
+  // fed from the ProtocolStore's persisted history (recorded
+  // unconditionally at dashboard bootstrap — see `log-ingest.ts`).
   const [reconstruction, setReconstruction] = useState<RegistryReconstruction | null>(null)
   const [reconstructing, setReconstructing] = useState(false)
 
@@ -75,34 +74,58 @@ export function RegistryPanel() {
     }
     const store = getProtocolStore()
     const target = cursorFrame
-    const signal = { aborted: false }
-    setReconstructing(true)
+    // Reassigned on every run so a later trigger (debounce timer OR a
+    // flush notification) supersedes whatever query the previous one
+    // started, without the cleanup below having to track which is current.
+    let signal = { aborted: false }
+
+    const runQuery = (): void => {
+      signal.aborted = true
+      const mySignal = { aborted: false }
+      signal = mySignal
+      setReconstructing(true)
+      void store
+        .queryFiltered(providerId, (e) => isRegistryDataEntry(e) && e.frame! <= target, mySignal)
+        .then((ids) => {
+          if (mySignal.aborted) return
+          const history: RegistryHistoryEntry[] = []
+          for (const id of ids) {
+            const logEntry = store.peek(providerId, id)
+            if (logEntry === null) continue
+            const historyEntry = toRegistryHistoryEntry(logEntry)
+            if (historyEntry !== null) history.push(historyEntry)
+          }
+          setReconstruction(reconstructRegistryAt(history, target))
+          setReconstructing(false)
+        })
+    }
+
     // Debounced, not immediate — dragging the scrubber can fire many
     // cursor updates per second and every reconstruction needs a full
     // IDB cursor scan (unlike the protocol log's parked-scroll effect,
     // there's no cheap tail-cache fast path here).
-    const handle = (globalThis.setTimeout as unknown as (cb: () => void, ms: number) => number)(
-      () => {
-        void store
-          .queryFiltered(providerId, (e) => isRegistryDataEntry(e) && e.frame! <= target, signal)
-          .then((ids) => {
-            if (signal.aborted) return
-            const history: RegistryHistoryEntry[] = []
-            for (const id of ids) {
-              const logEntry = store.peek(providerId, id)
-              if (logEntry === null) continue
-              const historyEntry = toRegistryHistoryEntry(logEntry)
-              if (historyEntry !== null) history.push(historyEntry)
-            }
-            setReconstruction(reconstructRegistryAt(history, target))
-            setReconstructing(false)
-          })
-      },
+    setReconstructing(true)
+    const debounceHandle = (globalThis.setTimeout as unknown as (cb: () => void, ms: number) => number)(
+      runQuery,
       80,
     )
+
+    // Re-run whenever a write batch commits rows for this provider
+    // while parked. `push()` lands in the store's in-memory write
+    // buffer synchronously, but rows aren't queryable via
+    // `queryFiltered` until their batch's IDB transaction actually
+    // commits (up to `writeFlushMs` later) — without this, a query
+    // that raced ahead of that commit would produce a stale
+    // reconstruction that nothing else ever re-triggers.
+    const offFlush = store.addFlushListener((touchedProviders) => {
+      if (!touchedProviders.has(providerId)) return
+      runQuery()
+    })
+
     return () => {
       signal.aborted = true
-      clearTimeout(handle)
+      clearTimeout(debounceHandle)
+      offFlush()
     }
   }, [cursorFrame, providerId])
 

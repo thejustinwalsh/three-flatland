@@ -29,10 +29,7 @@
  */
 import type { RegistryPayload } from 'three-flatland/debug-protocol'
 import type { RegistryEntrySnapshot } from '../devtools-client.js'
-
-/** Shared zero-length placeholder for entries whose checkpoint/delta
- *  never carried a sample (metadata-only — filtered out on the wire). */
-const EMPTY_SAMPLE: Float32Array = new Float32Array(0)
+import { applyRegistryEntryDelta } from '../registry-delta.js'
 
 /** One registry-carrying `data` packet, reduced to what replay needs. */
 export interface RegistryHistoryEntry {
@@ -46,14 +43,16 @@ export interface RegistryReconstruction {
   /** Reconstructed name → snapshot map, same shape the live client's `state.registry` uses. */
   entries: Map<string, RegistryEntrySnapshot>
   /**
-   * `true` when a checkpoint at or before the target frame anchored
-   * the replay — `entries` reflects the producer's actual full state
-   * at that point. `false` means no checkpoint was found at or before
-   * the target frame in the supplied history (pruned out of retention,
-   * or the session hasn't reached its first cadence tick yet);
-   * `entries` is still populated from whatever deltas were available,
-   * starting from the earliest history supplied, but callers should
-   * present that as a best-effort partial result, not a verified one.
+   * `true` when a COMPLETE checkpoint at or before the target frame
+   * anchored the replay — `entries` reflects the producer's actual
+   * full state at that point. `false` means no complete checkpoint was
+   * found at or before the target frame in the supplied history
+   * (pruned out of retention, the session hasn't reached its first
+   * cadence tick yet, or every checkpoint in range was flagged
+   * `partial` — see below); `entries` is still populated from
+   * whatever deltas were available, starting from the earliest
+   * history supplied, but callers should present that as a
+   * best-effort partial result, not a verified one.
    */
   complete: boolean
 }
@@ -62,18 +61,30 @@ export interface RegistryReconstruction {
  * Reconstruct registry state at `targetFrame` from an ordered
  * (ascending-frame) history of registry payloads.
  *
- * Scans for the last checkpoint-flagged payload at or before
- * `targetFrame`, then replays every payload from there forward through
- * `targetFrame` — the same delta rules the live client applies:
+ * Scans for the last COMPLETE checkpoint-flagged payload
+ * (`checkpoint: true`, `partial` NOT set) at or before `targetFrame`,
+ * then replays every payload from there forward through `targetFrame`
+ * — the same delta rules the live client applies (`applyRegistryEntryDelta`,
+ * shared with `devtools-client.ts` so the two can't diverge):
  * `entries[name] === null` removes the entry, a present delta
  * overwrites it (falling back to the previously known sample when the
  * new delta didn't carry one — i.e. it was outside the consumer's
- * selection filter at drain time). Entries created after the
- * checkpoint (absent from it) apply normally the first time their
- * delta arrives; payloads at frames after `targetFrame` are ignored.
+ * selection filter, or the producer had to degrade it to metadata-only).
+ * Entries created after the checkpoint (absent from it) apply normally
+ * the first time their delta arrives; payloads at frames after
+ * `targetFrame` are ignored.
  *
- * If no checkpoint exists at or before `targetFrame`, replay still
- * runs from the start of the supplied history so the panel has
+ * A checkpoint flagged `partial: true` (the producer gave up retrying
+ * a degraded entry — see `DebugRegistry.drain`) is deliberately NOT
+ * eligible as an anchor: it doesn't actually carry every entry's full
+ * state, so treating it as one would silently lose whatever sample an
+ * earlier, genuinely complete checkpoint (or the live accumulator)
+ * still had for the degraded entry. Its `entries` are still applied
+ * as ordinary deltas when replay passes through it — only its
+ * eligibility as a REPLAY START is excluded.
+ *
+ * If no complete checkpoint exists at or before `targetFrame`, replay
+ * still runs from the start of the supplied history so the panel has
  * *something* to show — `complete: false` marks it as best-effort
  * rather than a point-in-time-accurate snapshot.
  */
@@ -88,7 +99,8 @@ export function reconstructRegistryAt(
       scanEnd = i
       break
     }
-    if (history[i]!.payload.checkpoint === true) checkpointIdx = i
+    const payload = history[i]!.payload
+    if (payload.checkpoint === true && payload.partial !== true) checkpointIdx = i
   }
 
   const complete = checkpointIdx !== -1
@@ -96,33 +108,8 @@ export function reconstructRegistryAt(
   const entries = new Map<string, RegistryEntrySnapshot>()
 
   for (let i = startIdx; i < scanEnd; i++) {
-    applyRegistryDelta(entries, history[i]!.payload)
+    applyRegistryEntryDelta(entries, history[i]!.payload)
   }
 
   return { entries, complete }
-}
-
-/** Fold one payload's entries into an accumulating snapshot map. */
-function applyRegistryDelta(
-  entries: Map<string, RegistryEntrySnapshot>,
-  payload: RegistryPayload,
-): void {
-  if (payload.entries === undefined) return
-  for (const name in payload.entries) {
-    const d = payload.entries[name]
-    if (d === undefined) continue
-    if (d === null) {
-      entries.delete(name)
-      continue
-    }
-    const prev = entries.get(name)
-    entries.set(name, {
-      name,
-      kind: d.kind,
-      version: d.version,
-      count: d.count,
-      sample: d.sample ?? prev?.sample ?? EMPTY_SAMPLE,
-      label: d.label,
-    })
-  }
 }

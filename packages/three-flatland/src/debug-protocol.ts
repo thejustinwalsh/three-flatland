@@ -466,6 +466,20 @@ export interface RegistryPayload {
    * deltas forward from there.
    */
   checkpoint?: true
+  /**
+   * Present (`true`) only alongside `checkpoint: true` — signals that
+   * at least one entry which should have carried a fresh sample this
+   * drain (in the consumer's filter) had to degrade to metadata-only,
+   * typically because it doesn't fit the wire's pool-buffer tier (see
+   * `DebugRegistry.drain`'s oversized-entry fail-soft). A checkpoint
+   * flagged `partial` is NOT a trustworthy reconstruction anchor for
+   * whichever entries degraded — it under-represents the producer's
+   * actual state, unlike an ordinary (non-checkpoint) delta, which
+   * never claims to be complete in the first place. Consumers should
+   * keep scanning backward for the nearest COMPLETE checkpoint instead
+   * of anchoring on a partial one.
+   */
+  partial?: true
 }
 
 /**
