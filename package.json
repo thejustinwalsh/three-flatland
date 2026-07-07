@@ -45,6 +45,8 @@
     "size:why": "tsx scripts/size-why.ts",
     "gen:types": "tsx scripts/gen-schema-types.ts",
     "gen:types:verify": "tsx scripts/gen-schema-types.ts --verify",
+    "sync:docs:schemas": "tsx scripts/sync-docs-schemas.ts",
+    "sync:docs:schemas:verify": "tsx scripts/sync-docs-schemas.ts --verify",
     "graph:sync": "tsx scripts/generate-madge-tsconfig.ts",
     "graph": "pnpm graph:sync && tsx scripts/graph-render.ts && tsx scripts/wrap-graph-viewer.ts monorepo.json && tsx scripts/wrap-graph-viewer.ts overview.json",
     "graph:open": "pnpm graph && open .reports/graphs/monorepo.html",

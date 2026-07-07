@@ -66,6 +66,9 @@ jobs:
       - name: Verify generated schema types
         run: pnpm gen:types:verify
 
+      - name: Verify published docs schemas
+        run: pnpm sync:docs:schemas:verify
+
       - name: Lint
         run: pnpm exec turbo run //#lint
 
