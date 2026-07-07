@@ -18,6 +18,7 @@ import { createPane } from '@three-flatland/devtools'
  * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
 let rafId = 0
 let activeRenderer: WebGPURenderer | null = null
+let activeResizeHandler: (() => void) | null = null
 
 const ASSET_BASE = './assets/'
 const FRAME_NAMES = ['puff', 'wisp', 'spark', 'ring'] as const
@@ -131,6 +132,10 @@ async function main() {
   // simulation state) is untouched by a mode switch — only the render
   // objects (and which material/sheet they point at) are rebuilt.
   function rebuildSprites(): void {
+    // group.clear() only detaches sprites from the scene graph; each Sprite2D
+    // still owns geometry until dispose() runs. Release it before rebuilding
+    // so the benchmark's repeated mode/count switches don't leak GPU memory.
+    for (const sprite of sprites) sprite.dispose()
     group.clear()
     sprites = []
     const { sheet, material } = activeSheetAndMaterial()
@@ -213,8 +218,14 @@ async function main() {
   const readouts = { mode: 'tight', particles: 0, batches: 0 }
   const statsFolder = pane.addFolder({ title: 'Batching', expanded: false })
   statsFolder.addBinding(readouts, 'mode', { readonly: true })
-  statsFolder.addBinding(readouts, 'particles', { readonly: true, format: (v: number) => v.toFixed(0) })
-  statsFolder.addBinding(readouts, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) })
+  statsFolder.addBinding(readouts, 'particles', {
+    readonly: true,
+    format: (v: number) => v.toFixed(0),
+  })
+  statsFolder.addBinding(readouts, 'batches', {
+    readonly: true,
+    format: (v: number) => v.toFixed(0),
+  })
 
   // Resize
   function handleResize(): void {
@@ -227,6 +238,7 @@ async function main() {
     renderer.setSize(window.innerWidth, window.innerHeight)
   }
   window.addEventListener('resize', handleResize)
+  activeResizeHandler = handleResize
 
   // Animation loop
   let lastTime = performance.now()
@@ -272,13 +284,19 @@ async function main() {
   animate()
 }
 
-main()
+main().catch((err) => {
+  console.error('[overdraw-bench] failed to start:', err)
+})
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     if (rafId) {
       cancelAnimationFrame(rafId)
       rafId = 0
+    }
+    if (activeResizeHandler) {
+      window.removeEventListener('resize', activeResizeHandler)
+      activeResizeHandler = null
     }
     if (activeRenderer) {
       activeRenderer.dispose?.()
