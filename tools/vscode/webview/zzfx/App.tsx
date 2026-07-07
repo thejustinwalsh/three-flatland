@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
   Toolbar,
   ToolbarButton,
   Divider,
   Panel,
+  Splitter,
   DevReloadToast,
 } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
@@ -13,6 +14,7 @@ import { useZzfxSession } from './useZzfxSession'
 import { ParamGroup } from './ParamGroup'
 import { PillGroup } from './PillGroup'
 import { AiGeneratePanel } from './AiGeneratePanel'
+import { useSidebarWidth } from './useSidebarWidth'
 import { playParams } from './audio'
 import {
   CATEGORIES,
@@ -51,23 +53,47 @@ const styles = stylex.create({
     borderBottomStyle: 'solid',
     borderBottomColor: vscode.errorBorder,
   },
-  body: {
-    flex: 1,
-    minHeight: 0,
-    overflow: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.lg,
-    padding: space.lg,
-  },
   spacer: {
     flex: 1,
   },
+  // Params (main) | Splitter | Category+Style+Generate (sidebar) — the
+  // same shell shape atlas/merge use (Toolbar header, resizable side
+  // column), so params are always visible without collapsing anything,
+  // and the category/style/generate workflow reads as one group instead
+  // of being stacked in-line with — and pushed off-screen by — the
+  // param list.
+  workArea: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    padding: space.lg,
+    gap: 0,
+  },
+  paramsPanel: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
+  paramsBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.lg,
+  },
+  sidebar: (px: number) => ({
+    width: px,
+    flexShrink: 0,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.sm,
+  }),
 })
 
 export function App() {
   const session = useZzfxSession()
   const [playError, setPlayError] = useState<string | null>(null)
+  const [sidebarPx, setSidebarPx] = useSidebarWidth()
+  const workAreaRef = useRef<HTMLDivElement>(null)
 
   const handlePlay = () => {
     setPlayError(null)
@@ -151,54 +177,74 @@ export function App() {
         </div>
       )}
 
-      <div {...stylex.props(styles.body)}>
-        {/* bodyOverflow="visible": these panels wrap a single short pill
-            row in normal document flow, not a stretched/scrolling
-            sidebar — see the prop's doc comment in design-system's
-            Panel.tsx for why the 'auto' default silently collapses an
-            un-stretched body to ~0px. */}
-        <Panel title="Category" bodyPadding="normal" bodyOverflow="visible">
-          <PillGroup<Category>
-            options={CATEGORIES}
-            selected={session.category ? [session.category as Category] : []}
-            onChange={(next) => session.setCategory(next[0] ?? null)}
-            aria-label="Sound category"
-          />
+      <div ref={workAreaRef} {...stylex.props(styles.workArea)}>
+        <Panel title="Parameters" bodyPadding="normal" style={styles.paramsPanel}>
+          <div {...stylex.props(styles.paramsBody)}>
+            {PARAM_GROUPS.map((g) => (
+              <ParamGroup
+                key={g.key}
+                groupKey={g.key}
+                params={session.params}
+                onChangeParam={session.setParam}
+              />
+            ))}
+          </div>
         </Panel>
 
-        <Panel title={`Style (max ${MAX_STYLES})`} bodyPadding="normal" bodyOverflow="visible">
-          <PillGroup<Style>
-            options={STYLES}
-            selected={session.styles as Style[]}
-            onChange={(next) => session.setStyles(next)}
-            multiple
-            max={MAX_STYLES}
-            aria-label={`Sound style, up to ${MAX_STYLES}`}
-          />
-        </Panel>
-
-        {PARAM_GROUPS.map((g) => (
-          <ParamGroup
-            key={g.key}
-            groupKey={g.key}
-            params={session.params}
-            onChangeParam={session.setParam}
-          />
-        ))}
-
-        <AiGeneratePanel
-          standalone={session.standalone}
-          lmAvailable={session.lmAvailable}
-          category={session.category}
-          presets={session.presets}
-          generating={session.generating}
-          generateError={session.generateError}
-          generateStream={session.generateStream}
-          candidates={session.candidates}
-          lastGenerateSource={session.lastGenerateSource}
-          onGenerate={() => void session.generate()}
-          onApplyCandidate={session.applyCandidate}
+        <Splitter
+          axis="vertical"
+          onDrag={(clientX) => {
+            const el = workAreaRef.current
+            if (!el) return
+            // Sidebar width = distance from the cursor to the work
+            // area's right edge — same convention as atlas's Frames
+            // splitter. Clamping to [SIDEBAR_MIN_PX, SIDEBAR_MAX_PX]
+            // happens inside the hook.
+            const rect = el.getBoundingClientRect()
+            setSidebarPx(rect.right - clientX)
+          }}
         />
+
+        <div {...stylex.props(styles.sidebar(sidebarPx))}>
+          {/* bodyOverflow="visible": these two panels wrap a single
+              short pill row sized by their own content, not stretched
+              to fill the sidebar — see the prop's doc comment in
+              design-system's Panel.tsx for why the 'auto' default
+              silently collapses an un-stretched body to ~0px. */}
+          <Panel title="Category" bodyPadding="normal" bodyOverflow="visible">
+            <PillGroup<Category>
+              options={CATEGORIES}
+              selected={session.category ? [session.category as Category] : []}
+              onChange={(next) => session.setCategory(next[0] ?? null)}
+              aria-label="Sound category"
+            />
+          </Panel>
+
+          <Panel title={`Style (max ${MAX_STYLES})`} bodyPadding="normal" bodyOverflow="visible">
+            <PillGroup<Style>
+              options={STYLES}
+              selected={session.styles as Style[]}
+              onChange={(next) => session.setStyles(next)}
+              multiple
+              max={MAX_STYLES}
+              aria-label={`Sound style, up to ${MAX_STYLES}`}
+            />
+          </Panel>
+
+          <AiGeneratePanel
+            standalone={session.standalone}
+            lmAvailable={session.lmAvailable}
+            category={session.category}
+            presets={session.presets}
+            generating={session.generating}
+            generateError={session.generateError}
+            generateStream={session.generateStream}
+            candidates={session.candidates}
+            lastGenerateSource={session.lastGenerateSource}
+            onGenerate={() => void session.generate()}
+            onApplyCandidate={session.applyCandidate}
+          />
+        </div>
       </div>
 
       <DevReloadToast />

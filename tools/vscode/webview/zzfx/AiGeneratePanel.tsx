@@ -15,6 +15,16 @@ import type { ZzfxCandidate, ZzfxGenerateResultEvent } from './protocol'
 export const AI_GENERATE_ENABLED = true
 
 const s = stylex.create({
+  // This panel always occupies the sidebar's flexible last row (see
+  // App.tsx's sidebarStack grid) — same "stretch to fill, scroll
+  // internally" slot Atlas's Frames panel fills, so it keeps Panel's
+  // 'auto' bodyOverflow default rather than the sibling Category/Style
+  // panels' 'visible' override.
+  panelFill: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
   body: {
     display: 'flex',
     flexDirection: 'column',
@@ -49,6 +59,17 @@ const s = stylex.create({
   error: {
     fontSize: '11px',
     color: vscode.errorFg,
+  },
+  // Stable-footprint wrapper for the idle hint / streaming readout /
+  // error / candidate cards — always mounted (never conditionally
+  // removed), so swapping its content never collapses or pops the
+  // sidebar's height out from under the params column next to it. The
+  // panel itself (not this wrapper) owns the scroll once cards outgrow
+  // it — see AiGeneratePanel's `bodyOverflow` (left at the 'auto'
+  // default now that this panel is the sidebar's stretched, scrolling
+  // row, same slot Atlas's Frames panel fills).
+  results: {
+    minHeight: 96,
   },
   cards: {
     display: 'flex',
@@ -127,7 +148,7 @@ export function AiGeneratePanel({
   if (!lmAvailable) {
     const entries = category ? (presets[category] ?? []) : []
     return (
-      <Panel title="Sound Presets (AI unavailable)" bodyOverflow="visible">
+      <Panel title="Sound Presets (AI unavailable)" style={s.panelFill}>
         <div {...stylex.props(s.body)}>
           <p {...stylex.props(s.description)}>
             No AI model is available in this editor — browsing the curated preset library instead.
@@ -135,26 +156,28 @@ export function AiGeneratePanel({
           {!category && (
             <p {...stylex.props(s.description)}>Pick a category above to see its presets.</p>
           )}
-          {entries.length > 0 && (
-            <div {...stylex.props(s.cards)}>
-              {entries.map((entry, i) => (
-                <CandidateCard
-                  key={`${entry.label}-${i}`}
-                  label={entry.label}
-                  rationale=""
-                  onPlay={() => void playParams(fromArgs(entry.params))}
-                  onUse={() => onApplyCandidate(entry)}
-                />
-              ))}
-            </div>
-          )}
+          <div {...stylex.props(s.results)}>
+            {entries.length > 0 && (
+              <div {...stylex.props(s.cards)}>
+                {entries.map((entry, i) => (
+                  <CandidateCard
+                    key={`${entry.label}-${i}`}
+                    label={entry.label}
+                    rationale=""
+                    onPlay={() => void playParams(fromArgs(entry.params))}
+                    onUse={() => onApplyCandidate(entry)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </Panel>
     )
   }
 
   return (
-    <Panel title="AI Generate" bodyOverflow="visible">
+    <Panel title="AI Generate" style={s.panelFill}>
       <div {...stylex.props(s.body)}>
         <p {...stylex.props(s.description)}>
           Generates {DEFAULT_CANDIDATE_COUNT} candidate variations from the category + style pills
@@ -169,26 +192,33 @@ export function AiGeneratePanel({
         {standalone && (
           <p {...stylex.props(s.description)}>Connect to a host to use AI Generate.</p>
         )}
-        {generating && generateStream && <pre {...stylex.props(s.stream)}>{generateStream}</pre>}
-        {generateError && <p {...stylex.props(s.error)}>Generate failed: {generateError}</p>}
-        {!generating && candidates.length > 0 && (
-          <>
-            {lastGenerateSource && (
-              <span {...stylex.props(s.badge)}>{sourceLabel(lastGenerateSource)}</span>
-            )}
-            <div {...stylex.props(s.cards)}>
-              {candidates.map((c, i) => (
-                <CandidateCard
-                  key={`${c.label}-${i}`}
-                  label={c.label}
-                  rationale={c.rationale}
-                  onPlay={() => void playParams(fromArgs(c.params))}
-                  onUse={() => onApplyCandidate(c)}
-                />
-              ))}
-            </div>
-          </>
-        )}
+        {/* Always-mounted footprint — see `s.results`'s doc comment. Its
+            content swaps (empty → stream → error → cards) but the
+            wrapper itself never mounts/unmounts, so finishing a
+            generation can't pop the sidebar's height and shove the
+            params column next to it. */}
+        <div {...stylex.props(s.results)}>
+          {generating && generateStream && <pre {...stylex.props(s.stream)}>{generateStream}</pre>}
+          {generateError && <p {...stylex.props(s.error)}>Generate failed: {generateError}</p>}
+          {!generating && candidates.length > 0 && (
+            <>
+              {lastGenerateSource && (
+                <span {...stylex.props(s.badge)}>{sourceLabel(lastGenerateSource)}</span>
+              )}
+              <div {...stylex.props(s.cards)}>
+                {candidates.map((c, i) => (
+                  <CandidateCard
+                    key={`${c.label}-${i}`}
+                    label={c.label}
+                    rationale={c.rationale}
+                    onPlay={() => void playParams(fromArgs(c.params))}
+                    onUse={() => onApplyCandidate(c)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </Panel>
   )

@@ -48,7 +48,10 @@ const s = stylex.create({
     backgroundColor: vscode.inputBg,
     borderWidth: 1,
     borderStyle: 'solid',
-    borderColor: vscode.inputBorder,
+    // Quiet hover cue — a shade toward `fg`, not the focus accent, so
+    // hover reads as "this is interactive" without pre-announcing the
+    // stronger active/focus state.
+    borderColor: { default: vscode.inputBorder, ':hover': vscode.descriptionFg },
     overflow: 'hidden',
   },
   // Idle fill reads as a value indicator, not an affordance — same
@@ -98,7 +101,8 @@ export type SliderProps = {
  * interaction (dragging or keyboard focus); the resting fill uses the
  * muted description-foreground tone so a row of sliders doesn't read as a
  * bank of always-lit volume bars. Drag math lives in `sliderMath.ts` so
- * it's unit-testable without a DOM.
+ * it's unit-testable without a DOM. Keyboard: arrows step by `range.step`
+ * (×10 with Shift), Home/End jump to `range.min`/`range.max`.
  */
 export function Slider({ value, range, onChange, disabled = false, ...rest }: SliderProps) {
   const ariaLabel = rest['aria-label']
@@ -144,6 +148,12 @@ export function Slider({ value, range, onChange, disabled = false, ...rest }: Sl
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
       e.preventDefault()
       onChange(snapToStep(value - range.step * multiplier, range))
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      onChange(range.min)
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      onChange(range.max)
     }
   }
 
