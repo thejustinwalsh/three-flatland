@@ -13,3 +13,5 @@ export type {
   DevtoolsState,
   DevtoolsStateListener,
 } from './devtools-client.js'
+export { connectRemoteDevtools } from './remote.js'
+export type { ConnectRemoteDevtoolsOptions } from './remote.js'
