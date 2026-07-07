@@ -1,33 +1,46 @@
 /**
  * Proves genuine interop with the real Rust sidecar binary (not the
  * fake-sidecar fixture used by client.test.ts), driven end-to-end through
- * this package's public client API. Skips gracefully — rather than
- * failing — when the binary hasn't been built locally, since this
- * workspace package doesn't own building the Rust crate (see
- * tools/codelens-service/sidecar/, built via `cargo build`) and CI may not
- * always have a Rust toolchain available.
+ * this package's public client API. Actively `cargo build`s the sidecar as
+ * a test-setup step rather than hoping a prior build is lying around, so
+ * these tests are actually exercised whenever a Rust toolchain is present.
+ * If `cargo` isn't on PATH at all, this loudly warns and skips — this
+ * workspace package doesn't own the Rust crate's toolchain requirement, and
+ * CI may not always have one available.
  */
 
-import { existsSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { CodelensServiceClient } from './client.js'
+import { resolveBinary } from './resolveBinary.js'
 
-const BINARY_PATH = fileURLToPath(
-  new URL('../sidecar/target/debug/codelens-service', import.meta.url)
-)
-const BINARY_AVAILABLE = existsSync(BINARY_PATH)
+const SIDECAR_DIR = fileURLToPath(new URL('../sidecar', import.meta.url))
+const CARGO_AVAILABLE = spawnSync('cargo', ['--version'], { stdio: 'ignore' }).status === 0
 
-describe.skipIf(!BINARY_AVAILABLE)('CodelensServiceClient against the real sidecar binary', () => {
-  let client: CodelensServiceClient | undefined
+if (!CARGO_AVAILABLE) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '\n[codelens-service] cargo not found on PATH — skipping real-sidecar integration tests ' +
+      '(src/realSidecar.test.ts). Install the Rust toolchain and re-run to exercise these.\n'
+  )
+}
+
+describe.skipIf(!CARGO_AVAILABLE)('CodelensServiceClient against the real sidecar binary', () => {
+  let binaryPath: string
   let workDir: string
 
   beforeAll(async () => {
+    execFileSync('cargo', ['build'], { cwd: SIDECAR_DIR, stdio: 'inherit' })
+    binaryPath = resolveBinary({
+      candidates: [join(SIDECAR_DIR, 'target', 'debug', 'codelens-service')],
+      includeDevFallback: false,
+    })
     workDir = await mkdtemp(join(tmpdir(), 'codelens-ts-client-'))
-  })
+  }, 120_000)
 
   afterAll(async () => {
     await rm(workDir, { recursive: true, force: true })
@@ -38,13 +51,16 @@ describe.skipIf(!BINARY_AVAILABLE)('CodelensServiceClient against the real sidec
     client = undefined
   })
 
-  it('runs a full initialize -> scan -> parse -> shutdown round trip', async () => {
-    client = new CodelensServiceClient({ command: BINARY_PATH })
+  let client: CodelensServiceClient | undefined
 
-    const init = await client.initialize({
+  it('runs a full start(initialize) -> scan -> parse -> shutdown round trip', async () => {
+    client = new CodelensServiceClient({
+      binaryPath,
       workspaceRoot: workDir,
       storageUri: join(workDir, 'storage'),
     })
+
+    const init = await client.start()
     expect(init.capabilities).toEqual({ scan: true, parse: true, incremental: true })
     expect(init.degraded).toBeUndefined()
 
@@ -70,24 +86,46 @@ describe.skipIf(!BINARY_AVAILABLE)('CodelensServiceClient against the real sidec
     expect(client.isExited).toBe(true)
   })
 
-  it('didChange notification is silently accepted by the real sidecar', async () => {
-    client = new CodelensServiceClient({ command: BINARY_PATH })
-    await client.initialize({ workspaceRoot: workDir, storageUri: join(workDir, 'storage2') })
-    client.didChange({ uri: 'file:///virtual/a.ts', text: 'zzfx(1,2,3);' })
-    const parsed = await client.parse({ uri: 'file:///virtual/a.ts', text: 'zzfx(1,2,3);' })
-    expect(parsed.findings).toHaveLength(1)
+  it('didChange triggers a real reparse the sidecar serves back on the next parse', async () => {
+    client = new CodelensServiceClient({
+      binaryPath,
+      workspaceRoot: workDir,
+      storageUri: join(workDir, 'storage2'),
+    })
+    await client.start()
+
+    const uri = 'file:///virtual/a.ts'
+    const original = await client.parse({ uri, text: 'zzfx(1,2,3);' })
+    expect(original.findings).toHaveLength(1)
+    expect(original.findings[0]!.payload.params).toEqual([1, 2, 3])
+
+    // Notify a content change, then re-parse with the NEW text — the
+    // sidecar must reflect the updated call, not silently serve a cached
+    // result keyed to the old content.
+    client.didChange({ uri, text: 'zzfx(4,5,6);zzfx(7,8,9);' })
+    const reparsed = await client.parse({ uri, text: 'zzfx(4,5,6);zzfx(7,8,9);' })
+    expect(reparsed.findings).toHaveLength(2)
+    expect(reparsed.findings[0]!.payload.params).toEqual([4, 5, 6])
+    expect(reparsed.findings[1]!.payload.params).toEqual([7, 8, 9])
+
     await client.shutdown()
   })
 
   it('an unknown method against the real sidecar rejects without killing the process', async () => {
-    client = new CodelensServiceClient({ command: BINARY_PATH })
-    await client.initialize({ workspaceRoot: workDir, storageUri: join(workDir, 'storage3') })
+    client = new CodelensServiceClient({
+      binaryPath,
+      workspaceRoot: workDir,
+      storageUri: join(workDir, 'storage3'),
+    })
+    await client.start()
     await expect(client.request('totally/bogus' as never, undefined)).rejects.toMatchObject({
       code: -32601,
     })
-    // Process must still be responsive afterward.
+    // Process must still be responsive afterward — zzfx() with zero args is
+    // still one finding (empty params), per the sidecar's own contract.
     const parsed = await client.parse({ uri: 'file:///a.ts', text: 'zzfx();' })
     expect(parsed.findings).toHaveLength(1)
+    expect(parsed.findings[0]!.payload.params).toEqual([])
     await client.shutdown()
   })
 })

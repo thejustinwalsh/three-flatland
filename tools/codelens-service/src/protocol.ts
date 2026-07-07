@@ -28,7 +28,7 @@ export interface VarRef {
   defRange?: Range
 }
 
-export interface Payload {
+export interface FindingPayload {
   params: number[]
   argRange: Range
   varRef?: VarRef
@@ -41,7 +41,7 @@ export interface Finding {
   id: string
   range: Range
   byteRange: ByteRange
-  payload: Payload
+  payload: FindingPayload
 }
 
 export interface Capabilities {

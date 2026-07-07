@@ -11,6 +11,10 @@
 
 let buffer = Buffer.alloc(0)
 const didChangeLog = []
+// Exercises CodelensServiceClient's SIGKILL-after-timeout shutdown path:
+// this process responds to `shutdown` but deliberately never calls
+// process.exit(), simulating a sidecar stuck in a hang.
+const HANG_ON_SHUTDOWN = process.argv.includes('--hang-on-shutdown')
 
 function writeMessage(body) {
   const json = Buffer.from(JSON.stringify(body), 'utf8')
@@ -55,10 +59,21 @@ function handleRequest(message) {
       })
     case 'shutdown':
       respond(id, null)
-      process.stdout.end(() => process.exit(0))
+      if (!HANG_ON_SHUTDOWN) process.stdout.end(() => process.exit(0))
       return
     case 'boom':
       return respondError(id, -32000, 'boom requested')
+    case 'garbage': {
+      // Writes one deliberately-malformed frame (valid Content-Length
+      // framing, invalid JSON body) immediately before a normal response to
+      // this same request — proves the client's onError path fires AND that
+      // one bad frame doesn't corrupt the decoder's ability to read the
+      // next, well-formed one.
+      const garbage = Buffer.from('{this is not valid json', 'utf8')
+      process.stdout.write(`Content-Length: ${garbage.byteLength}\r\n\r\n`)
+      process.stdout.write(garbage)
+      return respond(id, null)
+    }
     default:
       return respondError(id, -32601, `method not found: ${method}`)
   }
