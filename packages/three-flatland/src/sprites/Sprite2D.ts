@@ -89,10 +89,12 @@ const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, ve
  * scene.add(sprite);
  * ```
  */
-/** One-shot latch: warn once per process when 'alpha' mode lacks an
+/** One-shot latch: warn once per sprite when 'alpha' mode lacks an
  * alphaMap, so a scene of thousands of misconfigured sprites doesn't
- * flood the console. Spec §7.1. */
-let _warnedMissingAlphaMap = false
+ * flood the console on every raycast. Keyed by sprite (not a single
+ * process-wide flag) so one misconfigured sprite's warning doesn't
+ * suppress the same warning for every other sprite. Spec §7.1. */
+const _warnedMissingAlphaMap = new WeakSet<object>()
 
 export class Sprite2D extends Mesh {
   declare geometry: BufferGeometry
@@ -1735,8 +1737,8 @@ export class Sprite2D extends Mesh {
           ? this.alphaMap.sampleFrame(u, v, this._frame)
           : this.alphaMap.sampleAtlasUV(u, v)
         if (sample / 255 < this.alphaThreshold) return
-      } else if (!_warnedMissingAlphaMap && process.env.NODE_ENV !== 'production') {
-        _warnedMissingAlphaMap = true
+      } else if (!_warnedMissingAlphaMap.has(this) && process.env.NODE_ENV !== 'production') {
+        _warnedMissingAlphaMap.add(this)
         console.warn(
           "three-flatland: Sprite2D hitTestMode 'alpha' requires an alphaMap — falling back to 'bounds'"
         )
