@@ -39,7 +39,13 @@ export function getFrameCursor(): number | null {
   return liveCursor
 }
 
-/** Park at a frame (clamped by callers to their known range). */
+/**
+ * Park at a frame (clamped by callers to their known range). Passing
+ * `null` deletes the active provider's parked cursor entirely, not
+ * just sets it to "live" — the next `setCursorProvider` switch away
+ * and back finds no stored entry and comes up live rather than
+ * re-parking at the old frame.
+ */
 export function setFrameCursor(frame: number | null): void {
   if (liveCursor === frame) return
   liveCursor = frame
@@ -50,7 +56,12 @@ export function setFrameCursor(frame: number | null): void {
   fire()
 }
 
-/** Return to live. */
+/**
+ * Return to live. Deletes the active provider's parked cursor (see
+ * `setFrameCursor`) — intentional: a manual go-live is a decision to
+ * stop watching a specific frame, so switching providers and back
+ * should not silently re-park.
+ */
 export function goLive(): void {
   setFrameCursor(null)
 }
