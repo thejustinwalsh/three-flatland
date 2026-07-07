@@ -20,14 +20,16 @@ export function validateAtlas(json: unknown): boolean {
     )
     return false
   }
-  const sources = (json as { meta: { sources: { format: string }[] } }).meta.sources
-  const seen = new Set<string>()
-  for (const s of sources) {
-    if (seen.has(s.format)) {
-      lastErrors.push(`/meta/sources duplicate format "${s.format}"`)
-      return false
+  const sources = (json as { meta: { sources?: { format: string }[] } }).meta.sources
+  if (sources) {
+    const seen = new Set<string>()
+    for (const s of sources) {
+      if (seen.has(s.format)) {
+        lastErrors.push(`/meta/sources duplicate format "${s.format}"`)
+        return false
+      }
+      seen.add(s.format)
     }
-    seen.add(s.format)
   }
   return true
 }
