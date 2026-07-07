@@ -5,23 +5,17 @@
 > Branch: feat/overdraw-tight-mesh
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/142
 
-## New geometry option for alpha-blend sprites
+## Tight-mesh envelope geometry for alpha-blend sprites
 
-- Added a tight-mesh render path for transparent sprites: batches sharing an atlas now render through a per-atlas convex-hull envelope instead of a full quad, cutting overdraw/fringe shading for alpha-blended sprite batches.
-- Sprite2DMaterial automatically selects tight-mesh vs the existing synth-quad geometry based on texture transparency, alphaTest, and whether the atlas has registered polygon data — no API changes required to opt in.
-- Atlas/SpriteSheet format extended with optional per-frame polygon mesh data (native format and TexturePacker polygon-trim import), fully backwards compatible; frames without mesh data keep rendering as quads.
-- Standalone `Sprite2D` geometry now carries real position/uv attributes usable by both the quad and tight-mesh shader paths.
-- `OcclusionPass` mirrors the tight-mesh/synth-quad strategy of its source material so occluders render with matching geometry.
+- Add tight-mesh (convex-hull envelope) geometry path for transparent, non-alpha-tested sprite materials, cutting overdraw/fringe shading vs the synth-quad path. Materials auto-select the strategy from registered atlas polygon data; unregistered/meshless textures keep rendering as the synth quad with no behavior change.
+- Extend the atlas format with optional per-frame polygon mesh data (native `mesh` field or TexturePacker polygon-trim import), concatenated per-sheet and registered against each texture via a new atlas mesh registry.
+- Rebuild affected batches automatically when atlas content changes after sprites are already batched (late-loading sheets, re-registration, merges, degrades) — envelopes and geometry versioning now track atlas state so stale/clipped geometry can't persist.
+- Rotated TexturePacker frames fall back to the quad (rotated sampling isn't supported yet) instead of producing incorrectly sampled meshes.
+- Disconnected sprite silhouettes (multiple alpha blobs) now trace every connected component instead of only the first, preventing clipped envelopes.
+- A material already over the tight-mesh effect-float budget (16 floats, vs 24 for synth-quad) now demotes to synth-quad with a warning instead of throwing or silently overflowing WebGPU's binding budget; `registerEffect` is transactional so a rejected effect never leaves partial state behind.
+- Fix atlas merge bugs: a meshless sheet loading before a meshed sheet sharing its texture no longer gets marked complete prematurely (which would clip its frames); two complete sheets merging now correctly stay complete; dangling registry-level mesh arrays from re-registration are removed since only per-frame data is used.
 
-## Fixes
+Files: packages/three-flatland/src/loaders/SpriteSheetLoader.ts, packages/three-flatland/src/loaders/atlasMeshRegistry.ts, packages/three-flatland/src/loaders/atlasMesh.test.ts, packages/three-flatland/src/materials/EffectMaterial.ts, packages/three-flatland/src/materials/Sprite2DMaterial.ts, packages/three-flatland/src/pipeline/SpriteBatch.ts, packages/three-flatland/src/pipeline/convexHull.ts, packages/three-flatland/src/pipeline/envelopeGeometry.ts, packages/three-flatland/src/pipeline/tightMesh.test.ts, packages/three-flatland/src/ecs/batchUtils.ts, packages/three-flatland/src/lights/OcclusionPass.ts, packages/three-flatland/src/sprites/Sprite2D.ts, packages/three-flatland/src/sprites/types.ts, packages/atlas/src/polygon.ts
 
-- Fixed stale/clipped geometry: batches now rebuild when an atlas's registered mesh data changes (new sheet merged in, or a mesh degraded to quad), instead of keeping a stale baked envelope.
-- Fixed the batch pool reusing a pooled `SpriteBatch` with an outdated envelope even after a version bump — pool lookup now checks the atlas version the batch's geometry was built from.
-- Fixed disconnected alpha shapes: polygon tracing now covers every connected component instead of only the first, so multi-blob sprites no longer get clipped by an incomplete hull.
-- Fixed winding mismatch between the opaque fast path and the earclip path so both produce correct front-facing triangles after the baker's y-flip.
-- Materials with more than 16 effect floats now correctly fall back to synth-quad instead of exceeding WebGPU's binding budget.
-- Re-registering an atlas mesh (two sheets sharing a texture) now merges conservatively and no longer leaves dangling vertex/index offsets; `complete` only stays `true` when all merged entries are complete.
-- Late atlas registration (loader finishes after sprites are already batched) now correctly re-resolves geometry strategy and re-batches instead of leaving mismatched geometry.
-- Rotated TexturePacker frames now fall back to the quad instead of sampling incorrect texels, since rotated source meshes don't match unrotated frame UVs yet.
+Summary: Adds an opt-in tight-mesh envelope geometry path that reduces alpha-blend overdraw for sprites with registered atlas polygon data, plus a series of correctness fixes for atlas merging, late registration, and effect-budget handling discovered during review.
 
-Adds an opt-in tight-mesh geometry path that reduces overdraw for alpha-blended sprite batches, along with a batch of correctness fixes for atlas mesh registration, batch caching, and polygon tracing found during review.
