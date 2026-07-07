@@ -39,6 +39,7 @@ coverage/
 playwright-report/
 test-results/
 .playwright/
+.vscode-test/
 
 # Turbo
 .turbo/
