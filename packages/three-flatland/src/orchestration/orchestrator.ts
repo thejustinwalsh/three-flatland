@@ -178,7 +178,7 @@ export function flatlandSceneSweep(renderer: RendererLike, scene: Scene): void {
     // trigger — already ran earlier in this render call). The
     // scheduleRuns counter keeps this from double-running systems on
     // frames where nothing was pending.
-    ;(registry ?? evalRegistry)!.group.update()
+    ;(registry ?? evalRegistry)!.group._runScheduleNow()
   }
 }
 

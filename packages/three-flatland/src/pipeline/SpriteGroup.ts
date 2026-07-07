@@ -452,14 +452,26 @@ export class SpriteGroup extends Group implements WorldProvider {
    * automatically in `updateMatrixWorld()`. Kept for backwards compatibility.
    */
   update(): void {
+    this._runScheduleNow()
+  }
+
+  /**
+   * Force-run the ECS schedule for this frame if it hasn't already run.
+   * The non-deprecated internal used by callers that need the schedule
+   * to have executed before they proceed this frame (e.g. the
+   * auto-orchestration scene sweep) — `update()` is the deprecated
+   * public alias of this same logic.
+   * @internal
+   */
+  _runScheduleNow(): void {
     if (!this._world) return
     const registry = this._getRegistry()
     if (registry?.schedule) {
       // Skip when the schedule has already run this frame (e.g. via
-      // Flatland.render's direct `schedule.run`). `update()` becoming
-      // a no-op under Flatland is intentional — the direct call above
-      // it already did the work. Standalone callers who haven't run
-      // the schedule yet still get a full run here.
+      // Flatland.render's direct `schedule.run`). Becoming a no-op under
+      // Flatland is intentional — the direct call above it already did
+      // the work. Standalone callers who haven't run the schedule yet
+      // still get a full run here.
       if (registry.scheduleRuns !== this._lastRunSeen) {
         this._lastRunSeen = registry.scheduleRuns
         return
