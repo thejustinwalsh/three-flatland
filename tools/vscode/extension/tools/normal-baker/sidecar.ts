@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import { bakeNormalMapFile, type NormalSourceDescriptor } from '@three-flatland/normals/node'
 import { writeSidecarJson } from '@three-flatland/bake/node'
 import { assertValidNormalDescriptor } from '@three-flatland/schemas/normal-descriptor'
+import { normalJsonPath, normalPngPath } from './paths'
 
 // The schemas package exports only the ajv validator (`assertValidNormalDescriptor`
 // etc.), not a TS type — `NormalSourceDescriptor` from packages/normals is
@@ -10,11 +11,11 @@ import { assertValidNormalDescriptor } from '@three-flatland/schemas/normal-desc
 // planning/vscode-tools/tool-normal-baker.md "JSON Schema").
 
 export function normalJsonUriFor(imageUri: vscode.Uri): vscode.Uri {
-  return imageUri.with({ path: imageUri.path.replace(/\.png$/i, '.normal.json') })
+  return imageUri.with({ path: normalJsonPath(imageUri.path) })
 }
 
 export function normalPngUriFor(imageUri: vscode.Uri): vscode.Uri {
-  return imageUri.with({ path: imageUri.path.replace(/\.png$/i, '.normal.png') })
+  return imageUri.with({ path: normalPngPath(imageUri.path) })
 }
 
 export type LoadedDescriptor = { descriptor: NormalSourceDescriptor }
