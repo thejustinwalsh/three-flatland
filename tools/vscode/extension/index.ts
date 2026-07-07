@@ -3,6 +3,7 @@ import { registerAtlasTool } from './tools/atlas/register'
 import { registerMergeTool } from './tools/merge/register'
 import { registerEncodeTool } from './tools/encode/register'
 import { registerWasmTest } from './tools/_wasm-test/register'
+import { registerZzfxTool } from './tools/zzfx/register'
 import { getChannel, log } from './log'
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -12,6 +13,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerMergeTool(context)
   registerEncodeTool(context)
   registerWasmTest(context)
+  registerZzfxTool(context)
   log(`activate: extensionUri = ${context.extensionUri.fsPath}`)
 }
 

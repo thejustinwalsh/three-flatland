@@ -10,7 +10,12 @@
   "engines": {
     "vscode": "^1.94.0"
   },
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact"
+  ],
   "contributes": {
     "commands": [
       {
@@ -32,6 +37,16 @@
         "command": "threeFlatland.encode.open",
         "title": "Open Image Encoder",
         "category": "FL"
+      },
+      {
+        "command": "threeFlatland.zzfx.playAtCursor",
+        "title": "Play ZzFX at Cursor",
+        "category": "FL"
+      },
+      {
+        "command": "threeFlatland.zzfx.openEditor",
+        "title": "Open ZzFX Editor",
+        "category": "FL"
       }
     ],
     "customEditors": [
@@ -39,7 +54,9 @@
         "viewType": "threeFlatland.atlas",
         "displayName": "FL Sprite Atlas",
         "selector": [
-          { "filenamePattern": "*.png" }
+          {
+            "filenamePattern": "*.png"
+          }
         ],
         "priority": "option"
       },
@@ -47,7 +64,9 @@
         "viewType": "threeFlatland.encode",
         "displayName": "FL KTX2 Viewer",
         "selector": [
-          { "filenamePattern": "*.ktx2" }
+          {
+            "filenamePattern": "*.ktx2"
+          }
         ],
         "priority": "default"
       }
@@ -82,14 +101,26 @@
         {
           "command": "threeFlatland.encode.open",
           "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2"
+        },
+        {
+          "command": "threeFlatland.zzfx.playAtCursor",
+          "when": "resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact"
+        },
+        {
+          "command": "threeFlatland.zzfx.openEditor",
+          "when": "resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact"
         }
       ]
     },
     "languages": [
       {
         "id": "fl-atlas",
-        "aliases": ["FL Atlas"],
-        "filenamePatterns": ["*.atlas.json"],
+        "aliases": [
+          "FL Atlas"
+        ],
+        "filenamePatterns": [
+          "*.atlas.json"
+        ],
         "icon": {
           "light": "./icons/atlas-light.svg",
           "dark": "./icons/atlas-dark.svg"
@@ -120,6 +151,7 @@
     "@jsquash/webp": "catalog:",
     "@stylexjs/stylex": "catalog:",
     "@three-flatland/bridge": "workspace:*",
+    "@three-flatland/codelens-service": "workspace:*",
     "@three-flatland/image": "workspace:*",
     "@three-flatland/design-system": "workspace:*",
     "@three-flatland/io": "workspace:*",

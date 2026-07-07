@@ -1717,6 +1717,9 @@ importers:
       '@three-flatland/bridge':
         specifier: workspace:*
         version: link:../bridge
+      '@three-flatland/codelens-service':
+        specifier: workspace:*
+        version: link:../codelens-service
       '@three-flatland/design-system':
         specifier: workspace:*
         version: link:../design-system
