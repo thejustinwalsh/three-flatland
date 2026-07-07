@@ -1,15 +1,24 @@
 /** @jsxImportSource preact */
 /**
- * Time-travel scrubber (#29 Phase A) — sits under the stats strip:
+ * Time-travel scrubber (#29 Phase A + Phase C slice 2) — sits under the
+ * stats strip:
  *
- *   [◀] ──●── [▶]  [N/M]  [● LIVE]
+ *   [◀] ──●── [▶]  [N/M]  [● LIVE]  [❄ FREEZE]
  *
  * Entry points: drag the slider, step ◀/▶, or click a protocol-log
  * row. Return to live: the LIVE button, double-click the slider, or
- * Esc. The scrubbable range is the frames covered by the stats series
- * ring (~17s at 60 fps); deeper history is the Phase C flight recorder.
+ * Esc — all three now also drop any flight-recorder freeze snapshot
+ * (`handleGoLive`), matching "unfreeze = existing goLive semantics"
+ * (#29 item 14).
+ *
+ * Live, the scrubbable range is the frames covered by the stats series
+ * ring (~17s at 60 fps) — unchanged from Phase A. Frozen, the range
+ * widens (or narrows) to whatever the flight ring's snapshot actually
+ * retains, intersected with the protocol store's `retainedRange` so
+ * the user is never offered a frame whose protocol log rows already
+ * pruned out from under it.
  */
-import { useEffect } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import { useDevtoolsState, useFrameTick } from '../hooks.js'
 import {
   addFrameCursorListener,
@@ -18,10 +27,18 @@ import {
   setCursorProvider,
   setFrameCursor,
 } from '../frame-cursor.js'
-import { useState } from 'preact/hooks'
+import {
+  addFlightRingListener,
+  freeze,
+  getFrozenRing,
+  getLiveRing,
+  isFrozen,
+  unfreeze,
+} from '../flight-ring.js'
+import { getProtocolStore } from '../protocol-store.js'
 
 /** Oldest/newest engine frame currently held by the stats ring. */
-function frameRange(state: ReturnType<typeof useDevtoolsState>): {
+function liveFrameRange(state: ReturnType<typeof useDevtoolsState>): {
   min: number
   max: number
 } | null {
@@ -33,6 +50,27 @@ function frameRange(state: ReturnType<typeof useDevtoolsState>): {
   return { min: oldest, max: newest }
 }
 
+/**
+ * Claimable frame range while frozen: the intersection of the frozen
+ * ring's own span and whatever the protocol store still retains for
+ * the selected provider (#29 slice 2, item 2's "claimable range").
+ * `null` when nothing is frozen, or the frozen ring is empty.
+ */
+function frozenFrameRange(providerId: string | null): { min: number; max: number } | null {
+  const frozen = getFrozenRing()
+  if (frozen === null) return null
+  const ringRange = frozen.frameRange()
+  if (ringRange === null) return null
+  if (providerId === null) return ringRange
+  const retained = getProtocolStore().retainedRange(providerId)
+  if (retained === null || retained.oldestFrame === undefined || retained.newestFrame === undefined) {
+    return ringRange
+  }
+  const min = Math.max(ringRange.min, retained.oldestFrame)
+  const max = Math.min(ringRange.max, retained.newestFrame)
+  return min <= max ? { min, max } : null
+}
+
 export function Scrubber() {
   const state = useDevtoolsState()
   useFrameTick()
@@ -42,6 +80,20 @@ export function Scrubber() {
     return addFrameCursorListener(() => setTick((n) => (n + 1) & 0xffff))
   }, [])
 
+  // Freeze/unfreeze toggles need their own re-render trigger — neither
+  // the frame cursor nor the client state necessarily change when the
+  // ring snapshot flips.
+  useEffect(() => {
+    return addFlightRingListener(() => setTick((n) => (n + 1) & 0xffff))
+  }, [])
+
+  // Feed the flight ring's stats-arrival log (#29 slice 2) — one entry
+  // per new data batch, so freeze can honestly claim the 30s storage
+  // policy independent of the fixed-size `state.series` ring.
+  useEffect(() => {
+    if (state.frame !== undefined) getLiveRing().pushFrame(state.frame)
+  }, [state.frame])
+
   // Per-provider cursor memory follows the producer switcher. Effect,
   // not render: restoring a parked cursor fires listeners → setState,
   // which must not happen mid-render.
@@ -49,21 +101,36 @@ export function Scrubber() {
     setCursorProvider(state.selectedProviderId)
   }, [state.selectedProviderId])
 
+  // Unfreeze (drop the ring snapshot) is coupled to every existing
+  // "go live" entry point — Esc, the LIVE button, double-click — so
+  // there's no separate "unfreeze" affordance to learn (#29 item 14).
+  const handleGoLive = (): void => {
+    unfreeze()
+    goLive()
+  }
+
   // Esc returns to live (no modal handling needed here — modals stop
   // propagation of their own keys).
   useEffect(() => {
     const onKey = (ev: KeyboardEvent): void => {
       // A handler that consumed Esc (detail pane close, modal) wins.
       if (ev.defaultPrevented) return
-      if (ev.key === 'Escape' && getFrameCursor() !== null) goLive()
+      if (ev.key === 'Escape' && getFrameCursor() !== null) handleGoLive()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   const cursor = getFrameCursor()
-  const range = frameRange(state)
-  if (range === null) return null
+  const live = liveFrameRange(state)
+  if (live === null) return null
+
+  const frozen = isFrozen()
+  // Frozen, prefer the ring snapshot's own (possibly wider or
+  // narrower) claimable span; fall back to the live series range if
+  // the snapshot came up empty so the scrubber never disappears out
+  // from under a frozen session.
+  const range = (frozen ? frozenFrameRange(state.selectedProviderId) : null) ?? live
 
   const parked = cursor !== null
   const shown = parked ? Math.min(Math.max(cursor, range.min), range.max) : range.max
@@ -72,6 +139,13 @@ export function Scrubber() {
     const base = parked ? shown : range.max
     const next = Math.min(range.max, Math.max(range.min, base + delta))
     setFrameCursor(next)
+  }
+
+  const onFreeze = (): void => {
+    if (isFrozen()) return
+    freeze()
+    const frozenRange = getFrozenRing()?.frameRange() ?? null
+    setFrameCursor(frozenRange?.max ?? state.frame ?? live.max)
   }
 
   return (
@@ -86,7 +160,7 @@ export function Scrubber() {
         max={range.max}
         value={shown}
         onInput={(ev) => setFrameCursor(Number((ev.target as HTMLInputElement).value))}
-        onDblClick={() => goLive()}
+        onDblClick={() => handleGoLive()}
       />
       <button class="scrub-step" title="Forward one frame" onClick={() => step(1)}>
         ▶
@@ -97,9 +171,21 @@ export function Scrubber() {
       <button
         class={`scrub-live${parked ? '' : ' active'}`}
         title={parked ? 'Return to live' : 'Live'}
-        onClick={() => goLive()}
+        onClick={() => handleGoLive()}
       >
         ● LIVE
+      </button>
+      <button
+        class={`scrub-freeze${frozen ? ' frozen' : ''}`}
+        title={
+          frozen
+            ? 'Frozen — return to live to unfreeze'
+            : 'Freeze the flight recorder ring for retroactive buffer scrubbing'
+        }
+        disabled={frozen}
+        onClick={onFreeze}
+      >
+        {frozen ? '❄ FROZEN' : '❄ FREEZE'}
       </button>
     </div>
   )

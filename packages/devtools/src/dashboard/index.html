@@ -1201,6 +1201,22 @@
       position: static;
       pointer-events: auto;
     }
+
+    /* ── Flight recorder ring + freeze (#29 Phase C slice 2) ────────── */
+    .frame-scrubber .scrub-freeze {
+      background: none;
+      border: 1px solid var(--border, #22262e);
+      border-radius: 3px;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      padding: 1px 6px;
+    }
+    .frame-scrubber .scrub-freeze.frozen {
+      color: #4cc3ff;
+      border-color: #4cc3ff;
+      cursor: default;
+    }
   </style>
 </head>
 <body>

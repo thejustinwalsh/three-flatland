@@ -18,7 +18,8 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { BufferChunkPayload } from '../../devtools-client.js'
 import { getClient } from '../client.js'
-import { getFrameCursor } from '../frame-cursor.js'
+import { addFrameCursorListener, getFrameCursor } from '../frame-cursor.js'
+import { addFlightRingListener, getFrozenRing, getLiveRing, isFrozen } from '../flight-ring.js'
 import { useDevtoolsState } from '../hooks.js'
 
 const VP9_CODEC = 'vp09.00.10.08'
@@ -89,6 +90,14 @@ export function BuffersPanel() {
     client.setBuffers({ [effectiveSelected]: { mode: 'stream' } })
     return () => { client.setBuffers({}) }
   }, [client, effectiveSelected])
+
+  // Flight recorder ring (#29 Phase C slice 2): track chunks for
+  // whichever buffer is currently streamed. Switching (or clearing)
+  // the selection drops whatever the ring had recorded for the prior
+  // one — a decode chain can't span two different buffers' streams.
+  useEffect(() => {
+    getLiveRing().setBufferName(effectiveSelected)
+  }, [effectiveSelected])
 
   // WebCodecs decoder lifecycle — one instance per active selection.
   // We keep decoder state in refs (not component state) because it's
@@ -175,6 +184,7 @@ export function BuffersPanel() {
     const activeName = effectiveSelected
     const unsub = client.addChunkListener((chunk: BufferChunkPayload) => {
       if (chunk.name !== activeName) return
+      getLiveRing().pushChunk(chunk)
       if (
         decoderRef.current === null ||
         chunk.width !== decoderDimsRef.current.w ||
@@ -203,13 +213,134 @@ export function BuffersPanel() {
     }
   }, [client, effectiveSelected])
 
+  // Frozen scrub playback (#29 Phase C slice 2) — a decoder instance
+  // separate from the live one above. It's fed only the frozen ring's
+  // keyframe-anchored chain for the current cursor frame; every chunk
+  // in the chain has to be decoded in order to advance the delta
+  // chain, but only the LAST one (the target) gets drawn — earlier
+  // ones just close().
+  const scrubDecoderRef = useRef<VideoDecoder | null>(null)
+  const scrubDecoderDimsRef = useRef({ w: 0, h: 0 })
+  const scrubExpectedRef = useRef(0)
+  const scrubReceivedRef = useRef(0)
+
+  const stopScrubDecoder = (): void => {
+    const d = scrubDecoderRef.current
+    if (d !== null && d.state !== 'closed') {
+      try { d.close() } catch { /* may already be errored */ }
+    }
+    scrubDecoderRef.current = null
+    scrubDecoderDimsRef.current = { w: 0, h: 0 }
+  }
+
+  const ensureScrubDecoder = (w: number, h: number): VideoDecoder | null => {
+    if (
+      scrubDecoderRef.current !== null &&
+      scrubDecoderDimsRef.current.w === w &&
+      scrubDecoderDimsRef.current.h === h
+    ) {
+      return scrubDecoderRef.current
+    }
+    stopScrubDecoder()
+    const canvas = canvasRef.current
+    if (canvas === null) return null
+    const ctx = canvas.getContext('2d')
+    if (ctx === null) return null
+    const decoder = new globalThis.VideoDecoder({
+      output: (frame) => {
+        scrubReceivedRef.current++
+        if (scrubReceivedRef.current !== scrubExpectedRef.current) {
+          frame.close()
+          return
+        }
+        if (canvas.width !== frame.codedWidth || canvas.height !== frame.codedHeight) {
+          canvas.width = frame.codedWidth
+          canvas.height = frame.codedHeight
+        }
+        canvasSrcRef.current = { w: frame.codedWidth, h: frame.codedHeight }
+        fitCanvas(frame.codedWidth, frame.codedHeight)
+        ctx.drawImage(frame as unknown as CanvasImageSource, 0, 0)
+        frame.close()
+      },
+      error: () => { stopScrubDecoder() },
+    })
+    decoder.configure({ codec: VP9_CODEC, codedWidth: w, codedHeight: h })
+    scrubDecoderRef.current = decoder
+    scrubDecoderDimsRef.current = { w, h }
+    return decoder
+  }
+
+  // Re-render on cursor moves and freeze/unfreeze toggles — neither
+  // necessarily changes `state`.
+  const [, setFlightTick] = useState(0)
+  useEffect(() => {
+    const offCursor = addFrameCursorListener(() => setFlightTick((n) => (n + 1) & 0xffff))
+    const offRing = addFlightRingListener(() => setFlightTick((n) => (n + 1) & 0xffff))
+    return () => { offCursor(); offRing() }
+  }, [])
+
+  const frozen = isFrozen()
+  const cursorFrame = getFrameCursor()
+  const frozenRing = frozen ? getFrozenRing() : null
+  // Whether the frozen ring can actually resolve a frame for the
+  // current cursor + selection — used both to decide whether to run
+  // the decode below and to choose the parked-note copy in the render.
+  // The frozen ring is a snapshot fixed to whatever buffer was tracked
+  // at freeze time — if the user switches the buffer selection while
+  // frozen, `bufferName` no longer matches and playback correctly goes
+  // stale rather than silently decoding the wrong stream.
+  const scrubAvailable =
+    CODEC_AVAILABLE &&
+    frozenRing !== null &&
+    cursorFrame !== null &&
+    effectiveSelected !== null &&
+    frozenRing.bufferName === effectiveSelected &&
+    (frozenRing.decodeChain(cursorFrame)?.length ?? 0) > 0
+
+  useEffect(() => {
+    if (!scrubAvailable || cursorFrame === null || frozenRing === null) {
+      stopScrubDecoder()
+      return
+    }
+    const chain = frozenRing.decodeChain(cursorFrame)
+    if (chain === null || chain.length === 0) {
+      stopScrubDecoder()
+      return
+    }
+    const first = chain[0]!
+    const decoder = ensureScrubDecoder(first.width, first.height)
+    if (decoder === null) return
+    scrubExpectedRef.current = chain.length
+    scrubReceivedRef.current = 0
+    for (const c of chain) {
+      try {
+        decoder.decode(new EncodedVideoChunk({
+          type: c.keyFrame ? 'key' : 'delta',
+          timestamp: c.capturedAt * 1000,
+          data: c.data,
+        }))
+      } catch {
+        stopScrubDecoder()
+        break
+      }
+    }
+    // `scrubAvailable` already folds in every input this needs to react
+    // to (frozen, cursor, selection) — recomputing the chain here keeps
+    // the dependency list to primitives instead of a fresh array
+    // reference every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrubAvailable, cursorFrame])
+
+  useEffect(() => stopScrubDecoder, [])
+
   // Thumbnail fallback: when WebCodecs isn't available the worker sends
   // `buffer:raw` payloads which land on `state.buffers[name].pixels`.
   // Paint those when the stream path isn't decoding.
   useEffect(() => {
     if (CODEC_AVAILABLE) return
     // Parked cursor freezes the canvas — the last-drawn pixels stay put
-    // until the user returns to live (historical playback is Phase C).
+    // until the user returns to live, or (frozen) until a scrub decode
+    // above lands one.
     if (getFrameCursor() !== null) return
     if (effectiveSelected === null) return
     const snap = state.buffers.get(effectiveSelected)
@@ -393,10 +524,11 @@ export function BuffersPanel() {
                 onMouseMove={onCanvasMove}
                 onMouseLeave={onCanvasLeave}
               />
-              {getFrameCursor() !== null ? (
+              {cursorFrame !== null && !scrubAvailable ? (
                 <div class="buffers-parked-note">
-                  parked at frame {getFrameCursor()} — no playback yet (flight
-                  recorder lands in Phase C); canvas frozen
+                  {frozen
+                    ? `parked at frame ${cursorFrame} — outside the frozen recording window`
+                    : `parked at frame ${cursorFrame} — freeze to enable scrub playback`}
                 </div>
               ) : null}
               <div class="buffers-info">
