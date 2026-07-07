@@ -4,6 +4,7 @@ import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteBatch } from '../pipeline/SpriteBatch'
+import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import {
   BatchGeometryStrategy,
   BatchMesh,
@@ -244,10 +245,20 @@ export function findOrCreateBatch(
 
   if (batchEntity) {
     const existing = batchEntity.get(BatchMesh)
+    const wantedKind = run.material._tightMesh ? 'tight-mesh' : 'synth-quad'
+    // A merge/degrade on the atlas bumps its registry version without
+    // necessarily flipping `wantedKind` (tight-mesh stays tight-mesh) —
+    // matching on `geometryKind` alone would hand back a pooled batch
+    // whose envelope was baked from a now-stale hull. Compare versions
+    // too so that case falls through to a fresh construction.
+    const wantedEnvelopeVersion =
+      wantedKind === 'tight-mesh' ? (getAtlasMesh(run.material.getTexture())?.version ?? -1) : -1
     if (
       existing?.mesh &&
       existing.mesh.spriteMaterial.batchId === run.materialId &&
-      existing.mesh.maxSize === batchSize
+      existing.mesh.maxSize === batchSize &&
+      existing.mesh.geometryKind === wantedKind &&
+      existing.mesh.envelopeVersion === wantedEnvelopeVersion
     ) {
       mesh = existing.mesh
       mesh.resetSlots()
@@ -603,10 +614,11 @@ export function classifyBatch(batchEntity: Entity, material: Sprite2DMaterial): 
   setTag(batchEntity, IsLitBatch, lit)
   setTag(batchEntity, IsUnlitBatch, !lit)
 
+  const kind = material._tightMesh ? 'tight-mesh' : 'synth-quad'
   if (!batchEntity.has(BatchGeometryStrategy)) {
-    batchEntity.add(BatchGeometryStrategy({ kind: 'synth-quad' }))
+    batchEntity.add(BatchGeometryStrategy({ kind }))
   } else {
-    batchEntity.set(BatchGeometryStrategy, { kind: 'synth-quad' }, false)
+    batchEntity.set(BatchGeometryStrategy, { kind }, false)
   }
 }
 

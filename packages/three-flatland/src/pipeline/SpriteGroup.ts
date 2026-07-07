@@ -538,6 +538,12 @@ export class SpriteGroup extends Group implements WorldProvider {
     if (!registry) return
 
     for (const [materialId, ref] of registry.materialRefs) {
+      // Late atlas-mesh registration (loader finished after sprites
+      // batched) flips the geometry strategy here — the flip bumps the
+      // schema version, and the standard rebuild below re-batches with
+      // matching geometry. Cheap when nothing changed: a WeakMap lookup
+      // + boolean compare per tracked material.
+      ref.material._resolveGeometryStrategy()
       if (ref.material._effectSchemaVersion !== ref.version) {
         ref.version = ref.material._effectSchemaVersion
         this._rebuildBatchesForMaterial(registry, materialId)

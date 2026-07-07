@@ -10,6 +10,8 @@ import {
   type Intersection,
 } from 'three'
 import { createSynthQuadGeometry } from './synthQuadGeometry'
+import { buildEnvelopeGeometry } from './envelopeGeometry'
+import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
 import { BucketedDirtyTracker } from './BucketedDirtyTracker'
@@ -93,6 +95,23 @@ export class SpriteBatch extends InstancedMesh {
    * Maximum number of sprites this batch can hold.
    */
   readonly maxSize: number
+
+  /**
+   * Geometry strategy this batch was built with. Pool recycling must
+   * match it — a synth-quad mesh can't serve a tight-mesh material
+   * (different attribute layouts compiled into the shader).
+   */
+  readonly geometryKind: 'synth-quad' | 'tight-mesh'
+
+  /**
+   * Atlas registry `version` the envelope hull was built from (-1 for
+   * synth-quad, which has no envelope). A merge/degrade on the same
+   * texture bumps the registry's version without necessarily flipping
+   * `geometryKind` — pool recycling in `findOrCreateBatch` compares
+   * this against the live atlas version so a batch whose hull no
+   * longer matches its registration gets rebuilt instead of reused.
+   */
+  readonly envelopeVersion: number
 
   /**
    * Current number of active slots in the batch.
@@ -191,10 +210,16 @@ export class SpriteBatch extends InstancedMesh {
     }
 
     // Create geometry and add ALL instance attributes BEFORE super().
-    // Synth quad — the shader derives corner position + UV from
-    // vertexIndex (Sprite2DMaterial.synthQuadNodes) rather than reading
-    // the geometry's own position/uv attributes, so no binding is spent.
-    const geometry = createSynthQuadGeometry()
+    // Strategy split (GEOMETRY-PIPELINE-OPTIMIZATION §Part 2):
+    //   synth-quad  — index-only; corner position + UV derived from
+    //                 vertexIndex (alphaTest path; discard kills fringe)
+    //   tight-mesh  — per-batch envelope hull of the atlas polygons
+    //                 (alpha-blend path; fringe blend cost is real)
+    // The material's resolved strategy decides — its shader was built
+    // for exactly one of these attribute layouts.
+    const atlas = material._tightMesh ? getAtlasMesh(material.getTexture()) : null
+    const envelope = atlas ? buildEnvelopeGeometry(material.getTexture()) : null
+    const geometry = envelope ?? createSynthQuadGeometry()
     // The batch is never frustum-culled; give it an honest infinite bound.
     geometry.boundingSphere = new Sphere(geometry.boundingSphere!.center, Infinity)
 
@@ -263,6 +288,8 @@ export class SpriteBatch extends InstancedMesh {
     this._customAttributes = customAttributes
     this.spriteMaterial = material
     this.maxSize = maxSize
+    this.geometryKind = envelope !== null ? 'tight-mesh' : 'synth-quad'
+    this.envelopeVersion = atlas?.version ?? -1
     this.frustumCulled = false
 
     // Initialize dirty trackers — matrix tracks the auto-created
@@ -497,11 +524,19 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Free a slot. Writes alpha=0 to the color row so the slot doesn't
-   * render, and pushes it onto the free list for reuse.
+   * Free a slot. Collapses the instance matrix to zero scale — a
+   * degenerate quad rasterizes no fragments at all, unlike the previous
+   * alpha=0 approach where every freed slot still paid full-quad
+   * rasterization + a per-fragment discard. Alpha is zeroed too as
+   * belt-and-braces (any path that resurrects the matrix before
+   * reassignment still draws nothing).
    */
   freeSlot(index: number): void {
     if (index < 0 || index >= this._nextIndex) return
+
+    const m = this.instanceMatrix.array as Float32Array
+    m.fill(0, index * 16, index * 16 + 16)
+    this._matrixTracker.markDirty(index)
 
     this._interleavedData[index * INSTANCE_STRIDE + OFFSET_COLOR + 3] = 0
     this._interleavedTracker.markDirty(index)

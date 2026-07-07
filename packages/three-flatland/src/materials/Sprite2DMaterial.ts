@@ -8,9 +8,11 @@ import {
   OneMinusSrcAlphaFactor,
 } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
+import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
 import { readFlip } from './instanceAttributes'
 import { synthQuadNodes } from './synthQuadNodes'
+import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { GlobalUniforms } from '../GlobalUniforms'
 
 // Re-export types that moved to EffectMaterial for backwards compatibility
@@ -93,7 +95,6 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   override type: string = 'Sprite2DMaterial'
 
-
   /**
    * Cache of shared material instances, keyed by configuration.
    * Used by `getShared()` so sprites with identical config reuse the same material.
@@ -137,22 +138,45 @@ export class Sprite2DMaterial extends EffectMaterial {
   private _globalUniforms: GlobalUniforms | null = null
 
   /**
-   * Synthesized corner UV varying — used instead of the geometry's
-   * `uv` attribute so the built-in shader spends no vertex-buffer
-   * binding on it.
+   * Synthesized corner UV varying — replaces the geometry `uv()`
+   * attribute (the synth-quad geometry ships no uv buffer). On the
+   * tight-mesh strategy this is the geometry `uv()` node instead.
    * @internal
    */
   private _cornerUV: ReturnType<typeof synthQuadNodes>['cornerUV']
+
+  /**
+   * True while this material renders through the tight-mesh path:
+   * alpha-blend (`transparent`, no alphaTest) with polygon data
+   * registered for its texture. Fixed per shader build — a strategy
+   * flip bumps `_effectSchemaVersion` so batches rebuild with matching
+   * geometry.
+   * @internal
+   */
+  _tightMesh = false
+
+  /**
+   * Registry `version` this material's current geometry strategy was
+   * last resolved against. Lets `_resolveGeometryStrategy` notice a
+   * merge/degrade that changed the atlas's CONTENT (new frames folded
+   * in, or a `complete` flip) even when `_tightMesh` itself didn't
+   * flip — a plain presence check can't see that, but a stale `version`
+   * still means the batch's baked-at-construction envelope is wrong.
+   * @internal
+   */
+  private _atlasMeshVersion = -1
 
   constructor(options: Sprite2DMaterialOptions = {}) {
     super({ effectTier: options.effectTier })
 
     this.batchId = nextMaterialId++
 
-    // Synthesize the unit-quad corner from vertexIndex instead of
-    // reading `createSynthQuadGeometry()`'s position/uv attributes —
-    // avoids the 3 vertex-buffer bindings PlaneGeometry cost
-    // (position/normal/uv), which is what funds MAX_EFFECT_FLOATS = 24.
+    // Synthesize the unit-quad corner from vertexIndex — pairs with the
+    // index-only geometry from `createSynthQuadGeometry()`. Reclaims the
+    // 3 vertex-buffer bindings PlaneGeometry cost (position/normal/uv),
+    // which is what funds MAX_EFFECT_FLOATS = 24. `setTexture` may flip
+    // the material to the tight-mesh strategy (geometry-driven position
+    // + uv) when the texture's atlas registered polygon data.
     const synth = synthQuadNodes()
     this.positionNode = synth.position
     this._cornerUV = synth.cornerUV
@@ -307,14 +331,128 @@ export class Sprite2DMaterial extends EffectMaterial {
   }
 
   /**
-   * Set the sprite texture.
+   * Set the sprite texture. Re-resolves the geometry strategy: an
+   * alpha-blend material whose atlas registered polygon meshes flips to
+   * the tight-mesh path (geometry position/uv instead of vertexIndex
+   * synthesis). A flip bumps the schema version so existing batches
+   * rebuild with matching geometry.
    */
   setTexture(value: Texture | null) {
     this._spriteTexture = value
+    this._resolveGeometryStrategy()
     if (value) {
       this._rebuildColorNode()
       this.needsUpdate = true
     }
+  }
+
+  /**
+   * Re-resolve the tight-mesh/synth-quad geometry strategy.
+   *
+   * @param deferRebuild - When true, skip the `_rebuildColorNode()` call
+   * even if the strategy flipped. Set by `_beforeEffectCapCheck()`,
+   * which runs mid-`registerEffect()` before the effect buffer tier is
+   * resized — rebuilding the color node there would read `bufNodes` at
+   * the OLD (too-small) tier and crash on an out-of-range buffer index
+   * for the effect that just pushed floats past it. `registerEffect`
+   * rebuilds the color node itself once the tier is correct; this just
+   * needs `_tightMesh`/`positionNode`/`_cornerUV` updated beforehand so
+   * that later rebuild picks up the demoted strategy.
+   * @internal
+   */
+  _resolveGeometryStrategy(deferRebuild = false): void {
+    const atlas = getAtlasMesh(this._spriteTexture)
+    let wantsTight =
+      this.transparent && this.alphaTest === 0 && atlas !== null && atlas.frames.length > 0
+    if (wantsTight && this._effectTotalFloats > 16) {
+      // Tight-mesh spends 2 bindings on geometry — a material already
+      // carrying more than 16 effect floats can't fit under WebGPU's
+      // 8-binding cap. Stay on synth-quad (correct, just no overdraw
+      // win) rather than building an uncompilable pipeline.
+      console.warn(
+        'three-flatland: material carries more than 16 effect floats — staying on the ' +
+          'synth-quad path instead of tight-mesh (WebGPU vertex-buffer budget).'
+      )
+      wantsTight = false
+    }
+
+    const strategyChanged = wantsTight !== this._tightMesh
+    const atlasVersion = atlas?.version ?? -1
+    // A second sheet merging into (or degrading) an already-registered
+    // texture changes the envelope's CONTENT without flipping `wantsTight`
+    // — the atlas was already non-null either way. Batches bake their
+    // envelope once at construction (buildEnvelopeGeometry), so a stale
+    // `version` here means their hull no longer matches the registry and
+    // the rebuild channel below must still fire.
+    const contentChanged = wantsTight && atlasVersion !== this._atlasMeshVersion
+    if (!strategyChanged && !contentChanged) return
+
+    this._tightMesh = wantsTight
+    this._atlasMeshVersion = atlasVersion
+    if (strategyChanged) {
+      if (wantsTight) {
+        // Geometry-driven path: default position pipeline (instancing
+        // still applies downstream) + the geometry uv attribute.
+        this.positionNode = null
+        this._cornerUV = uv() as unknown as ReturnType<typeof synthQuadNodes>['cornerUV']
+      } else {
+        const synth = synthQuadNodes()
+        this.positionNode = synth.position
+        this._cornerUV = synth.cornerUV
+      }
+    }
+    // Batches were built for the previous strategy (or the previous
+    // envelope content) — force a rebuild through the same version
+    // channel tier upgrades use. Rebuild the color node too when this
+    // flip happens outside setTexture (late atlas registration
+    // re-resolves through the version check).
+    this._effectSchemaVersion++
+    if (deferRebuild) return
+    if (this._spriteTexture) {
+      this._rebuildColorNode()
+      this.needsUpdate = true
+    }
+  }
+
+  /**
+   * Effective effect-float cap for a prospective total. A tight-mesh
+   * material demotes to synth-quad (cap 24) rather than staying tight
+   * (cap 16) the moment its effect floats exceed 16, so a late effect
+   * registration that crosses 16 is measured against the synth cap it
+   * will actually run under — not thrown against the stale tight cap.
+   * Recomputes `wantsTight` from scratch (not `_tightMesh`) so it stays
+   * a pure query, safe on `registerEffect`'s throw path.
+   * @internal
+   */
+  protected override _effectFloatCap(prospectiveTotal: number): number {
+    const atlas = getAtlasMesh(this._spriteTexture)
+    const wantsTight =
+      this.transparent && this.alphaTest === 0 && atlas !== null && atlas.frames.length > 0
+    return wantsTight && prospectiveTotal <= 16 ? 16 : EffectMaterial.MAX_EFFECT_FLOATS
+  }
+
+  /**
+   * After an effect commits, re-resolve the geometry strategy so a
+   * material that crossed the 16-float tight-mesh cap actually demotes to
+   * synth-quad. Deferred rebuild: `registerEffect` resizes the buffer
+   * tier and rebuilds the color node itself right after this returns, so
+   * we only need `_tightMesh`/`positionNode`/`_cornerUV` updated here (see
+   * `_resolveGeometryStrategy`). Runs on the success path only.
+   * @internal
+   */
+  protected override _applyEffectGeometryStrategy(): void {
+    this._resolveGeometryStrategy(true)
+  }
+
+  /**
+   * Effect capacity depends on the geometry strategy: tight-mesh spends
+   * 2 vertex-buffer bindings on geometry (position + uv), leaving 4
+   * effect buffers = 16 floats under WebGPU's 8-binding cap; the
+   * index-only synth quad leaves 6 buffers = 24 floats.
+   * @internal
+   */
+  override get maxEffectFloats(): number {
+    return this._tightMesh ? 16 : EffectMaterial.MAX_EFFECT_FLOATS
   }
 
   /**

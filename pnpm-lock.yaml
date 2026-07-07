@@ -1322,6 +1322,16 @@ importers:
         specifier: 'catalog:'
         version: 6.0.5
 
+  packages/atlas:
+    dependencies:
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
+    devDependencies:
+      '@types/pngjs':
+        specifier: ^6.0.5
+        version: 6.0.5
+
   packages/bake:
     dependencies:
       pngjs:
@@ -1542,6 +1552,9 @@ importers:
       '@react-three/fiber':
         specifier: 'catalog:'
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/atlas':
+        specifier: workspace:*
+        version: link:../atlas
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.9
