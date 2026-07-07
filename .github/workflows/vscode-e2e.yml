@@ -1,0 +1,71 @@
+name: VSCode E2E
+
+on:
+  workflow_call:
+
+jobs:
+  vscode-e2e:
+    name: VS Code extension e2e (xvfb)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Turbo
+        uses: actions/cache@v5
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-current-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-current-
+
+      # ~264 MB per VS Code build. downloadAndUnzipVSCode resolves "stable"
+      # to a concrete build on every call and only re-downloads when that
+      # resolved build isn't already on disk, so a static cache key is safe
+      # long-term — a new stable release just adds a new subfolder under
+      # this path rather than invalidating the whole cache.
+      - name: Cache VS Code test download
+        uses: actions/cache@v5
+        with:
+          path: tools/vscode/.vscode-test
+          key: ${{ runner.os }}-vscode-test-stable
+          restore-keys: |
+            ${{ runner.os }}-vscode-test-
+
+      # xvfb ships preinstalled on the ubuntu-latest runner image — this is
+      # the same minimal invocation as microsoft/vscode-test's own sample CI
+      # workflow (github.com/microsoft/vscode-test/blob/main/sample/.github/
+      # workflows/ci.yml): no extra system packages needed on top of it.
+      - name: Run VS Code extension e2e tests
+        run: xvfb-run -a pnpm --filter @three-flatland/vscode test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: vscode-e2e-report
+          path: tools/vscode/e2e/playwright-report/
+          retention-days: 14
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: vscode-e2e-traces
+          path: tools/vscode/e2e/test-results/
+          retention-days: 14

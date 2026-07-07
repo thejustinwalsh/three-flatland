@@ -15,6 +15,17 @@ const FIXTURE_WORKSPACE = path.join(__dirname, 'fixtures', 'workspace')
 const RUNNER_PATH = path.join(__dirname, 'host-bridge', 'dist', 'runner.cjs')
 const VSCODE_TEST_ROOT = path.join(EXTENSION_ROOT, '.vscode-test')
 
+type CachedWindow = {
+  /** Absolute path of the spec file this window was launched for — see `_sharedWindow`. */
+  file: string
+  app: ElectronApplication
+  workbox: Page
+  bridge: HostBridgeClient
+  baseDir: string
+  extensionsDir: string
+  userDataDir: string
+}
+
 type Fixtures = {
   baseDir: string
   electronApp: ElectronApplication
@@ -47,10 +58,97 @@ type Fixtures = {
    * of silently resolving an unrelated iframe.
    */
   webviewFrame: (panelTitle: string | RegExp) => Promise<FrameLocator>
+  /** Internal — see the comment on its implementation below. */
+  _sharedWindow: CachedWindow
 }
 
 type WorkerFixtures = {
   vscodeInstallPath: string
+  /** Internal — a worker-lifetime mutable box `_sharedWindow` reads/writes into. */
+  _windowCache: { current?: CachedWindow }
+}
+
+async function launchWindow(vscodeInstallPath: string, file: string): Promise<CachedWindow> {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fl-vscode-e2e-'))
+  // realpath: macOS resolves os.tmpdir() through a /tmp -> /private/tmp
+  // symlink. VS Code reports workspaceFolders[0].uri.fsPath through the
+  // resolved path, so comparing against the un-resolved tmpDir would
+  // fail the workspace-identity assertion every time, not flakily.
+  const baseDir = await fs.realpath(tmpDir)
+  await fs.cp(FIXTURE_WORKSPACE, baseDir, { recursive: true })
+
+  const extensionsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fl-vscode-e2e-ext-'))
+  const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fl-vscode-e2e-userdata-'))
+
+  // Removing VSCODE_* env vars avoids a known failure mode where a nested
+  // VS Code (this test running inside a VS Code integrated terminal, or a
+  // prior run's leaked env) makes custom webviews fail to register their
+  // service worker ("InvalidStateError: Failed to register a
+  // ServiceWorker …").
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && !/^VSCODE_/i.test(key)) env[key] = value
+  }
+
+  const app = await _electron.launch({
+    executablePath: vscodeInstallPath,
+    env,
+    args: [
+      // Same flag set @vscode/test-electron's own runTests() launcher
+      // uses (see its lib/runTest.ts) — sandboxing and first-run dialogs
+      // are the well-known ways Electron-under-automation hangs or
+      // crashes.
+      '--no-sandbox',
+      '--disable-gpu-sandbox',
+      '--disable-updates',
+      '--skip-welcome',
+      '--skip-release-notes',
+      '--disable-workspace-trust',
+      `--extensions-dir=${extensionsDir}`,
+      `--user-data-dir=${userDataDir}`,
+      `--extensionDevelopmentPath=${EXTENSION_ROOT}`,
+      `--extensionTestsPath=${RUNNER_PATH}`,
+      baseDir,
+    ],
+  })
+
+  const workbox = await app.firstWindow()
+  // Attached immediately once the process exists, before any other setup
+  // — extension host activation (and so the bridge starting) reliably
+  // takes longer than that, but a listener attached any later risks
+  // missing already-flushed output.
+  const bridge = await HostBridgeClient.connect(app.process())
+
+  return { file, app, workbox, bridge, baseDir, extensionsDir, userDataDir }
+}
+
+async function teardownWindow(win: CachedWindow | undefined): Promise<void> {
+  if (!win) return
+  win.bridge.close()
+  await win.app.close()
+  await Promise.all([
+    fs.rm(win.baseDir, { recursive: true, force: true }),
+    fs.rm(win.extensionsDir, { recursive: true, force: true }),
+    fs.rm(win.userDataDir, { recursive: true, force: true }),
+  ])
+}
+
+/**
+ * Restores isolation for a window being reused by a second (or later) test
+ * in the same spec file: closes every open editor/webview tab (so a stale
+ * panel from the previous test can't satisfy this test's `webviewFrame`
+ * lookup) and wipes + recopies `baseDir` back to the pristine fixture
+ * workspace (so a previous test's sidecar/encode/merge output can't leak
+ * into this one). Not called after a fresh `launchWindow` — there's
+ * nothing to reset yet.
+ */
+async function resetWindowWorkspace(win: CachedWindow): Promise<void> {
+  await win.bridge.evaluate((vscode) =>
+    vscode.commands.executeCommand('workbench.action.closeAllEditors')
+  )
+  await fs.rm(win.baseDir, { recursive: true, force: true })
+  await fs.mkdir(win.baseDir, { recursive: true })
+  await fs.cp(FIXTURE_WORKSPACE, win.baseDir, { recursive: true })
 }
 
 export const test = base.extend<Fixtures, WorkerFixtures>({
@@ -68,76 +166,53 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
     { scope: 'worker' },
   ],
 
-  // Fresh copy of the fixture workspace for every test — tests mutate
-  // files (sidecars, encoded outputs, merged atlases) and must never share
-  // state with each other.
-  baseDir: async ({}, use) => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fl-vscode-e2e-'))
-    // realpath: macOS resolves os.tmpdir() through a /tmp -> /private/tmp
-    // symlink. VS Code reports workspaceFolders[0].uri.fsPath through the
-    // resolved path, so comparing against the un-resolved tmpDir would
-    // fail the workspace-identity assertion every time, not flakily.
-    const dir = await fs.realpath(tmpDir)
-    await fs.cp(FIXTURE_WORKSPACE, dir, { recursive: true })
-    await use(dir)
-    await fs.rm(dir, { recursive: true, force: true })
-  },
+  // Worker-lifetime box holding whatever window is currently "live". Its
+  // teardown (after `use`) runs once, when the worker itself shuts down —
+  // i.e. after the very last test of the very last file this worker ran —
+  // and closes whatever's left in the box. Per-file teardown (closing a
+  // file's window before the next file's replaces it) happens explicitly
+  // in `_sharedWindow` below, not here; Playwright has no native "once per
+  // file" fixture scope to hang that off of.
+  _windowCache: [
+    async ({}, use) => {
+      const state: { current?: CachedWindow } = {}
+      await use(state)
+      await teardownWindow(state.current)
+    },
+    { scope: 'worker' },
+  ],
 
-  electronApp: async ({ vscodeInstallPath, baseDir }, use) => {
-    const extensionsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fl-vscode-e2e-ext-'))
-    const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fl-vscode-e2e-userdata-'))
-
-    // Removing VSCODE_* env vars avoids a known failure mode where a
-    // nested VS Code (this test running inside a VS Code integrated
-    // terminal, or a prior run's leaked env) makes custom webviews fail
-    // to register their service worker
-    // ("InvalidStateError: Failed to register a ServiceWorker …").
-    const env: Record<string, string> = {}
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value !== undefined && !/^VSCODE_/i.test(key)) env[key] = value
+  // One real VS Code window per spec *file*, not per test: launching VS
+  // Code (download-cached, but still an Electron cold start + extension
+  // host activation) dominates a test's wall time far more than the test
+  // itself does. Compares `testInfo.file` against the cached window's file
+  // to decide reuse-vs-relaunch — tests run strictly in file order here
+  // (workers: 1, fullyParallel: false in playwright.config.ts), so this
+  // transition happens exactly once per file boundary, never mid-file.
+  _sharedWindow: async ({ vscodeInstallPath, _windowCache }, use, testInfo) => {
+    if (_windowCache.current && _windowCache.current.file === testInfo.file) {
+      await resetWindowWorkspace(_windowCache.current)
+    } else {
+      await teardownWindow(_windowCache.current)
+      _windowCache.current = await launchWindow(vscodeInstallPath, testInfo.file)
     }
-
-    const app = await _electron.launch({
-      executablePath: vscodeInstallPath,
-      env,
-      args: [
-        // Same flag set @vscode/test-electron's own runTests() launcher
-        // uses (see its lib/runTest.ts) — sandboxing and first-run
-        // dialogs are the well-known ways Electron-under-automation hangs
-        // or crashes.
-        '--no-sandbox',
-        '--disable-gpu-sandbox',
-        '--disable-updates',
-        '--skip-welcome',
-        '--skip-release-notes',
-        '--disable-workspace-trust',
-        `--extensions-dir=${extensionsDir}`,
-        `--user-data-dir=${userDataDir}`,
-        `--extensionDevelopmentPath=${EXTENSION_ROOT}`,
-        `--extensionTestsPath=${RUNNER_PATH}`,
-        baseDir,
-      ],
-    })
-
-    await use(app)
-
-    await app.close()
-    await fs.rm(extensionsDir, { recursive: true, force: true })
-    await fs.rm(userDataDir, { recursive: true, force: true })
+    await use(_windowCache.current)
   },
 
-  workbox: async ({ electronApp }, use) => {
-    await use(await electronApp.firstWindow())
+  baseDir: async ({ _sharedWindow }, use) => {
+    await use(_sharedWindow.baseDir)
   },
 
-  evaluateInVSCode: async ({ electronApp }, use) => {
-    // Attached immediately once the process exists, before any other
-    // fixture setup — extension host activation (and so the bridge
-    // starting) reliably takes longer than that, but a listener attached
-    // any later risks missing already-flushed output.
-    const bridge = await HostBridgeClient.connect(electronApp.process())
-    await use((fn, arg) => bridge.evaluate(fn, arg))
-    bridge.close()
+  electronApp: async ({ _sharedWindow }, use) => {
+    await use(_sharedWindow.app)
+  },
+
+  workbox: async ({ _sharedWindow }, use) => {
+    await use(_sharedWindow.workbox)
+  },
+
+  evaluateInVSCode: async ({ _sharedWindow }, use) => {
+    await use((fn, arg) => _sharedWindow.bridge.evaluate(fn, arg))
   },
 
   openCommand: async ({ evaluateInVSCode }, use) => {

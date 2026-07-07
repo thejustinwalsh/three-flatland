@@ -32,4 +32,36 @@ test.describe('extension activation', () => {
 
     expect(workspacePath).toBe(baseDir)
   })
+
+  // These two tests are ordered on purpose (workers: 1, fullyParallel:
+  // false guarantee it) — together they prove the window-reuse-per-file
+  // fixture (`_sharedWindow` in ../fixtures.ts) actually resets workspace
+  // content between tests that share one VS Code window, not just that it
+  // reuses the window. Without this pair, a broken reset could pass every
+  // spec that only *reads* workspace state and never *writes* it.
+  test('writes a marker file for the next test to check', async ({ evaluateInVSCode }) => {
+    await evaluateInVSCode(async (vscode) => {
+      const folder = vscode.workspace.workspaceFolders![0]!
+      await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(folder.uri, 'e2e-reset-marker.txt'),
+        new Uint8Array()
+      )
+    })
+  })
+
+  test('the previous test marker did not survive the window-reuse reset', async ({
+    evaluateInVSCode,
+  }) => {
+    const markerExists = await evaluateInVSCode(async (vscode) => {
+      const folder = vscode.workspace.workspaceFolders![0]!
+      try {
+        await vscode.workspace.fs.stat(vscode.Uri.joinPath(folder.uri, 'e2e-reset-marker.txt'))
+        return true
+      } catch {
+        return false
+      }
+    })
+
+    expect(markerExists).toBe(false)
+  })
 })

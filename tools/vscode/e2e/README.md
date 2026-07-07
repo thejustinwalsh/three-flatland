@@ -110,16 +110,41 @@ stay aligned with.
   undocumented internal of an 0.0.1-beta package for no real savings over
   writing the ~60 lines this harness actually needs.
 
-## How `baseDir` becomes the opened workspace folder
+## One VS Code window per spec file, reset between tests
 
-`baseDir` (the last positional arg in the `electronApp` fixture's launch
-`args`) is literally the folder VS Code opens — `code <flags…> <baseDir>`.
-`e2e/fixtures.ts`'s `baseDir` fixture `fs.cp()`s the entire
-`e2e/fixtures/workspace/` tree into a fresh `fs.mkdtemp()` directory
-**before every single test** — never once per file, never shared. Tests
-save sidecars, encoded images, and merged atlases into this folder; the
-fresh-copy-per-test rule is what makes that safe to do without one test's
-mutation leaking into the next.
+Launching VS Code (Electron cold start + extension host activation) costs
+far more wall time than most individual tests do, so `e2e/fixtures.ts`
+launches **one window per spec file**, not one per test:
+
+- An internal `_sharedWindow` fixture compares the running test's
+  `testInfo.file` against whichever window is currently cached
+  (`_windowCache`, a worker-lifetime box). Same file as last time → reuse
+  the existing window. Different file (or none cached yet) → tear down
+  whatever's cached and launch fresh. Tests run strictly in file order
+  here (`workers: 1`, `fullyParallel: false` in `playwright.config.ts`),
+  so this transition happens exactly once per file boundary, never
+  mid-file — safe to reason about without a "which test is this" check.
+- `baseDir` (the last positional arg in the launch `args` — literally the
+  folder VS Code opens, `code <flags…> <baseDir>`) is decided once, at
+  launch, from an `fs.mkdtemp()`'d + `fs.cp()`'d copy of
+  `e2e/fixtures/workspace/`. It **cannot** change without relaunching the
+  window (it's a CLI arg), so reuse-within-a-file needs a different
+  mechanism to stay test-isolated: **content** reset. Every reused test
+  gets `workbench.action.closeAllEditors` run over the host-eval bridge
+  (no stale tab from the previous test can satisfy this test's
+  `webviewFrame` lookup) and `baseDir` wiped + recopied from the pristine
+  fixture workspace (no previous test's sidecar/encode/merge output can
+  leak forward). See `resetWindowWorkspace()` in `fixtures.ts`.
+- `specs/activation.spec.ts`'s marker-file pair and `specs/atlas.spec.ts`'s
+  "exactly one tab" test exist specifically to prove this reset actually
+  works, not just that the window is reused — a broken reset could still
+  pass every spec that only *reads* workspace state and never *writes* it.
+
+None of this changes what a spec author calls: `baseDir`, `electronApp`,
+`workbox`, `evaluateInVSCode`, `openCommand`, and `webviewFrame` all keep
+their exact existing signatures and per-test semantics (a fresh-looking
+workspace, a window that responds to your commands) — only the
+*implementation* now reuses the expensive part across a file's tests.
 
 Because `os.tmpdir()` resolves through a `/tmp` → `/private/tmp` symlink on
 macOS, and VS Code reports `workspaceFolders[0].uri.fsPath` through the
@@ -245,11 +270,16 @@ not just that the iframe loaded an empty document.
 
 ## CI posture
 
-Not wired into CI in this unit — deliberately deferred, same as the
-root `test:smoke` Playwright suite's relationship to CI historically. On
-Linux, running this needs `xvfb` (or `--headless`, once verified to still
-render webviews correctly under it) since a real VS Code window needs a
-display. Wiring that up is a follow-up, not a blocker for landing the
-harness — the gate for this change is that it proves out **locally**
-against all three existing tools, which it does (all 5 smoke specs pass,
-run twice for stability, real output in the PR/commit history).
+Wired into CI as `.github/workflows/vscode-e2e.yml`, called from the root
+`ci.yml` orchestrator alongside `smoke`/`size` — see
+`.github/workflows/README.md` for the full orchestration picture (path-filter
+gating on the `vscode` bucket, which is all of `tools/**`, `ci-passed` gate
+membership, turbo cache sharing with the main `build` job). It runs on
+`ubuntu-latest` under `xvfb-run -a` (the exact invocation
+[microsoft/vscode-test's own sample CI workflow](https://github.com/microsoft/vscode-test/blob/main/sample/.github/workflows/ci.yml)
+uses) — `xvfb` ships preinstalled on that runner image, confirmed against
+`actions/runner-images`' published software list, so no extra system
+packages are installed. `tools/vscode/.vscode-test/` (the downloaded VS
+Code build) is cached across runs; see the cache-key comment in
+`vscode-e2e.yml` for why a static key is safe long-term. On failure, the
+job uploads the Playwright HTML report and traces as artifacts.
