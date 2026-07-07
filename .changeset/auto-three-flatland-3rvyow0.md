@@ -5,40 +5,39 @@
 > Branch: feat/sort-layers-orchestration
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/141
 
+## Auto-orchestration & batching
 
-## Auto-orchestration for vanilla three.js scenes
-
-- Drop a `Sprite2D` into any three.js `Scene` and it now auto-batches with sibling sprites sharing the same run key (material, sortLayer, camera layer mask) — zero setup required. Per-`(renderer, scene)` registries track sprites, default materials, and batches.
-- Threshold routing: a lone sprite renders as a standalone mesh (no batch overhead); a second sprite in the same run promotes both to a shared batch. Hysteresis prevents create/destroy flapping around the promotion threshold.
-- New `SortLayerGroup` container: bridges first-party sprites and foreign `Object3D`s (Skia, Slug, plain meshes) under one sort-ordering discipline. Exposes `flatland.declareSortLayer(name, config)` and `flatland.sortLayer(name)` for placing foreign objects relative to a layer.
-- Default materials are now registry/world-scoped instead of a single cross-world shared cache, so registering an effect on one `Flatland`'s default material no longer leaks into unrelated scenes/worlds.
-- Batches expose classification traits (`IsAlphaBlendedBatch`, `IsLitBatch`, `BatchGeometryStrategy`, etc.) via a public `batches` query view (`group.batches` / `registry.batches`).
-
-## Batching and performance
-
-- Batch tier ladder now starts at 1024 slots (was 64) and steps 1024 → 4096 → 16384, cutting per-batch CPU overhead for small-to-medium scenes (~20% faster at matched sprite counts vs. the old ladder).
-- Bulk sprite additions size their first batch for the known pending count instead of always starting at the ladder floor.
-- Batches synthesize their quad from `vertexIndex` instead of `PlaneGeometry`, freeing 3 WebGPU vertex-buffer bindings. This doubles per-material effect capacity (`MAX_EFFECT_FLOATS` 12 → 24, up to 6 effect buffers).
-- `SpriteGroup.maxBatchSize` is now a settable property (previously constructor-only), so it can be set via R3F JSX.
-- Explicit `renderOrder` writes on an auto-batched sprite now correctly demote it to standalone rendering in place.
+- Sprites in a plain three.js scene now self-register per (renderer, scene) and auto-batch with siblings sharing the same material/sortLayer/layers.mask — zero setup required
+- Tiered batch buffers (1024 → 4096 → 16384 slots) with hysteresis, so batches grow/shrink without create/destroy flapping around thresholds; bulk-adds size their first batch for the load they already know about
+- Default materials are now scoped per world/registry instead of a single cross-world static cache, preventing effect registrations or texture swaps on one scene from leaking into another
+- Batch classification traits (`IsAlphaBlendedBatch`, `IsLitBatch`, `BatchGeometryStrategy`) exposed via `group.batches` / `registry.batches` query views
+- New `SortLayerGroup` container bridges first-party sprites and foreign three.js objects (Skia, Slug, plain Mesh) under one sort-ordering discipline
+- `SpriteGroup.maxBatchSize` is now a settable property (previously constructor-only), so it can be set via R3F JSX
 
 ## Fixes
 
-- Fixed a material/texture leak: reassigning a sprite's material no longer leaves the old material's registry entry (and its texture) referenced forever.
-- Fixed default-material mutation bug where a sprite holding a shared default material could retexture every sibling in its batch on texture swap.
-- Fixed batch eviction reading an undefined slot during effect-tier upgrades, which silently no-op'd slot cleanup.
-- Fixed `AnimatedSprite2D` not re-resolving its current frame when swapping `spriteSheet` mid-animation (stale UVs).
-- Fixed the missing-`alphaMap` raycast warning being suppressed globally after the first misconfigured sprite instead of per-sprite.
-- `EffectMaterial` now validates `effectTier` at construction and throws a clear error if it exceeds the WebGPU buffer cap, instead of failing deep in pipeline creation.
-- Silenced three.js's missing-position shader warning for synth-quad geometries (position-less by design; rendering was already correct).
-- Fixed several sortLayer/orchestration correctness issues: batch `renderOrder` now derives from the sortLayer's declared numeric order, `Scene.onBeforeRender` re-chains if overwritten, standalone sprites converging on one run key now batch correctly, material dispose hooks are properly detached per-world, and run-key hashing no longer collides at large material counts.
+- Assigning `sprite.material` directly no longer gets silently clobbered by auto-orchestration on the next render sweep
+- Synth-quad geometry now carries real position/uv attributes, fixing custom TSL effects that read `uv()`/`positionGeometry()` (pixelate, dissolve, outline effects were previously broken)
+- Fixed a material leak: reassigning a sprite's material no longer keeps the old material (and its texture) alive forever
+- `spriteSheet` swaps now re-resolve the active animation frame instead of rendering with stale UVs
+- Missing-alphaMap raycast warning is now latched per sprite instead of a single process-wide flag that suppressed it for every other sprite
+- `effectTier` values that exceed the WebGPU buffer cap now throw at construction instead of failing deep in pipeline creation
+- Fixed batch eviction reading the wrong (undefined) slot during effect-tier upgrades, which silently no-op'd cleanup
+- Auto-batch tier floor raised from 64 to 1024 to cut CPU overhead (~20% faster on the knightmark example at matched sprite counts); batch consolidation across the ladder was dropped in favor of hand-tuned `maxBatchSize` for very large scenes
+- Fixed the missing-position console warning firing for synth-quad geometry, and various adversarial-review fixes to the sortLayer/batching stack (renderOrder derivation, dispose listener leaks, run-key bit width, negative sortLayer handling)
+
+## Performance
+
+- Synth-quad geometry (index-only, position synthesized in the vertex shader) replaces `PlaneGeometry` for sprites, freeing 3 vertex-buffer bindings and doubling effect capacity (`MAX_EFFECT_FLOATS` 12 → 24)
+
+## Refactors
+
+- Internal cleanup: shared eviction core, deduped batch-view builder between `SpriteGroup`/`Registry`, internal scene sweep no longer calls the deprecated `SpriteGroup.update()`
 
 ## BREAKING CHANGES
 
-- `Sprite2D.layer` / `{ layer }` construction option renamed to `sortLayer` / `{ sortLayer }`. `sortLayer` accepts a registered name or raw number via the new `SortLayerRegistry` module-augmentation interface (`declareSortLayer`/`getSortLayer`/`resolveSortLayer`).
-- `Layers` → `SortLayers`, `LayerManager` → `SortLayerManager` (and its `Layer` type → `SortLayer`) renamed for clarity against three.js's `Object3D.layers` camera bitmask.
-- `DEFAULT_BATCH_SIZE` removed in favor of the batch tier ladder (`BATCH_TIER_LADDER`).
-- Batch run-key format changed from `(layer, materialId)` to `(materialId, sortLayer, layers.mask)` — camera layer masks now participate in batch grouping.
-- Writing `sprite.renderOrder` directly now demotes the sprite out of auto-batching (previously ignored on batched sprites).
+- `Sprite2D.layer` renamed to `sortLayer` (and the `{ layer }` constructor option to `{ sortLayer }`), to avoid confusion with three.js's `Object3D.layers` camera bitmask. `Layers`/`LayerManager` renamed to `SortLayers`/`SortLayerManager`. Update any code, examples, or docs referencing the old `layer` property/option.
 
-Summary: this release ships full auto-orchestration for vanilla three.js scenes (auto-batching, tiered batch sizing, sort-layer groups), doubles per-material effect capacity via synth-quad geometry, and fixes several material-lifecycle and batch-eviction bugs, alongside a breaking rename of `layer` to `sortLayer` across the API.
+---
+
+This release activates the full auto-orchestration and auto-batching pipeline for vanilla three.js scenes, adds a `SortLayerGroup` container and per-world default materials, and fixes a series of material/batching correctness bugs surfaced along the way, alongside a sort-layer rename that is the sole breaking change.
