@@ -57,6 +57,7 @@ The VSCode extension and its supporting packages live under `tools/`. Each has i
 | `tools/preview` | [`tools/preview/CLAUDE.md`](tools/preview/CLAUDE.md) | reusing canvas / animation / drag primitives |
 | `tools/bridge` | [`tools/bridge/CLAUDE.md`](tools/bridge/CLAUDE.md) | host ↔ webview messaging — `ClientBridge` vs `HostBridge` semantics |
 | `tools/io` | [`tools/io/CLAUDE.md`](tools/io/CLAUDE.md) | adding pure data helpers (image decode, atlas types/builders/packing/merge) |
+| `tools/codelens-service` | [`tools/codelens-service/CLAUDE.md`](tools/codelens-service/CLAUDE.md) | spawning/talking to the Rust codelens sidecar — LSP framing, JSON-RPC protocol, the Rust/TS wire-type mirroring |
 
 When dispatching a sub-agent for tool work, include the relevant `tools/<pkg>/CLAUDE.md` paths in the prompt — they encode hard-won API contracts (e.g. `ClientBridge.on()` returns an unsubscribe function, NOT a `dispose()` method) that aren't obvious from the source.
 

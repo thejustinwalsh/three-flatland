@@ -1639,6 +1639,15 @@ importers:
 
   tools/bridge: {}
 
+  tools/codelens-service:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.19.7
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   tools/design-system:
     dependencies:
       '@stylexjs/stylex':
