@@ -106,7 +106,11 @@ describe('CodelensServiceClient', () => {
     )
   })
 
-  it('onError fires on a malformed frame without corrupting the stream for the next message', async () => {
+  it('onError fires on a malformed message BODY without corrupting the stream (non-fatal)', async () => {
+    // Framing stays intact here (correct Content-Length, just invalid JSON
+    // inside it) — the decoder's byte position is never lost, so this must
+    // NOT kill the connection. Contrast with framingBoom below, which
+    // corrupts the byte stream itself and IS fatal.
     client = spawnFake()
     await client.start()
     const errors: Error[] = []
@@ -118,6 +122,29 @@ describe('CodelensServiceClient', () => {
     expect(result).toBeNull()
     expect(errors).toHaveLength(1)
     expect(errors[0]!.message).toMatch(/malformed JSON frame/)
+    expect(client.isExited).toBe(false)
+  })
+
+  it('a genuine framing-level error (lost byte alignment) is fatal to the connection', async () => {
+    client = spawnFake()
+    await client.start()
+    const errors: Error[] = []
+    const exits: Array<{ code: number | null; signal: NodeJS.Signals | null }> = []
+    client.onError((error) => errors.push(error))
+    client.onExit((code, signal) => exits.push({ code, signal }))
+
+    // The fixture never sends a valid response for this request — the
+    // pending promise must still settle (reject), driven by connection
+    // failure, not a response.
+    const pending = client.request('framingBoom' as never, undefined)
+    await expect(pending).rejects.toThrow()
+
+    expect(client.isExited).toBe(true)
+    expect(exits).toEqual([{ code: null, signal: null }])
+    expect(errors.length).toBeGreaterThan(0)
+
+    // The connection is dead — further requests fail immediately too.
+    await expect(client.scan()).rejects.toBeInstanceOf(CodelensServiceExitedError)
   })
 
   it('shutdown resolves once the process has actually exited', async () => {
@@ -168,13 +195,32 @@ describe('CodelensServiceClient', () => {
     await expect(client.scan()).rejects.toBeInstanceOf(CodelensServiceExitedError)
   })
 
-  it('rejects when the command cannot be spawned at all', async () => {
+  it('rejects when the command cannot be spawned at all, and isExited becomes true immediately', async () => {
     client = new CodelensServiceClient({
       binaryPath: '/definitely/not/a/real/binary-xyz',
       workspaceRoot: '/ws',
       storageUri: '/ws/.storage',
     })
     await expect(client.start()).rejects.toBeInstanceOf(CodelensServiceExitedError)
+    // Regression: a spawn failure (Node's 'error' event) does not reliably
+    // guarantee a subsequent 'exit' event across all failure modes/OSes —
+    // isExited must be set directly on the spawn-error path, not left for
+    // 'exit' to (maybe) set later. Otherwise this would incorrectly read
+    // false forever, and a caller checking it before retrying would never
+    // learn the process is dead.
+    expect(client.isExited).toBe(true)
+  })
+
+  it('a spawn failure makes onExit fire too (not just the rejected start() promise)', async () => {
+    client = new CodelensServiceClient({
+      binaryPath: '/definitely/not/a/real/binary-xyz',
+      workspaceRoot: '/ws',
+      storageUri: '/ws/.storage',
+    })
+    const exits: Array<{ code: number | null; signal: NodeJS.Signals | null }> = []
+    client.onExit((code, signal) => exits.push({ code, signal }))
+    await expect(client.start()).rejects.toBeInstanceOf(CodelensServiceExitedError)
+    expect(exits).toEqual([{ code: null, signal: null }])
   })
 
   it('exposes the sidecar stderr stream', async () => {

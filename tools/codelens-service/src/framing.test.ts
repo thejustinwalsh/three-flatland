@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { encodeMessage, MessageDecoder } from './framing.js'
+import { encodeMessage, MAX_MESSAGE_BYTES, MessageDecoder } from './framing.js'
 
 function decodeAll(chunks: Buffer[]): Buffer[] {
   const out: Buffer[] = []
@@ -118,6 +118,70 @@ describe('MessageDecoder', () => {
     decoder.push(frame.subarray(0, frame.byteLength - 1))
     expect(onMessage).not.toHaveBeenCalled()
     decoder.push(frame.subarray(frame.byteLength - 1))
+    expect(onMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects duplicate Content-Length headers rather than silently picking one', () => {
+    const json = Buffer.from(JSON.stringify({ ok: true }), 'utf8')
+    const raw = Buffer.concat([
+      Buffer.from(`Content-Length: ${json.byteLength}\r\nContent-Length: 9999\r\n\r\n`, 'ascii'),
+      json,
+    ])
+    const decoder = new MessageDecoder(vi.fn())
+    expect(() => decoder.push(raw)).toThrow(/duplicate/i)
+  })
+
+  it('rejects a Content-Length with trailing non-digit garbage', () => {
+    // A lenient parser (e.g. one that stops at the first non-digit) would
+    // silently accept "4abc" as 4 — this must be a hard error instead.
+    const raw = Buffer.from('Content-Length: 4abc\r\n\r\ntest', 'ascii')
+    const decoder = new MessageDecoder(vi.fn())
+    expect(() => decoder.push(raw)).toThrow(/invalid Content-Length/)
+  })
+
+  it('rejects a negative Content-Length', () => {
+    const raw = Buffer.from('Content-Length: -4\r\n\r\ntest', 'ascii')
+    const decoder = new MessageDecoder(vi.fn())
+    expect(() => decoder.push(raw)).toThrow(/invalid Content-Length/)
+  })
+
+  it('rejects a Content-Length exceeding the max message size', () => {
+    const raw = Buffer.from(`Content-Length: ${MAX_MESSAGE_BYTES + 1}\r\n\r\n`, 'ascii')
+    const decoder = new MessageDecoder(vi.fn())
+    expect(() => decoder.push(raw)).toThrow(/exceeds/)
+  })
+
+  it('accepts a Content-Length at exactly the max (bound is strictly greater-than)', () => {
+    // Doesn't need MAX_MESSAGE_BYTES of actual body data — just proves the
+    // bound check itself doesn't reject the boundary value; the decoder
+    // then correctly waits for the (never-arriving) rest of the body.
+    const raw = Buffer.from(`Content-Length: ${MAX_MESSAGE_BYTES}\r\n\r\nshort`, 'ascii')
+    const onMessage = vi.fn()
+    const decoder = new MessageDecoder(onMessage)
+    expect(() => decoder.push(raw)).not.toThrow()
+    expect(onMessage).not.toHaveBeenCalled() // still waiting for the rest of the body
+  })
+
+  it('poisons itself on a framing error: subsequent push calls throw immediately without reprocessing', () => {
+    const decoder = new MessageDecoder(vi.fn())
+    const bad = Buffer.from('Content-Type: application/json\r\n\r\ntest', 'ascii')
+    expect(() => decoder.push(bad)).toThrow()
+
+    // A second push — even with perfectly well-formed data appended — must
+    // not silently resume as if nothing happened. It must fail fast and
+    // deterministically, not re-attempt parsing the same poisoned buffer.
+    const good = encodeMessage({ a: 1 })
+    expect(() => decoder.push(good)).toThrow(/poisoned/)
+  })
+
+  it('a framing error does not corrupt an unrelated, freshly constructed decoder', () => {
+    // Sanity check that poisoning is per-instance, not global/module state.
+    const poisoned = new MessageDecoder(vi.fn())
+    expect(() => poisoned.push(Buffer.from('bad header\r\n\r\n', 'ascii'))).toThrow()
+
+    const onMessage = vi.fn()
+    const fresh = new MessageDecoder(onMessage)
+    fresh.push(encodeMessage({ a: 1 }))
     expect(onMessage).toHaveBeenCalledTimes(1)
   })
 })

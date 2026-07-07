@@ -3,6 +3,7 @@ pub mod framing;
 pub mod fsutil;
 pub mod glob;
 pub mod handlers;
+pub mod hash;
 pub mod id;
 pub mod model;
 pub mod parse;

@@ -9,14 +9,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::{Db, FileMeta};
 use crate::fsutil::{DEFAULT_MAX_FILES, file_mtime_secs, path_to_uri, uri_to_path, walk_workspace};
+use crate::hash::content_hash;
 use crate::id::fnv1a64;
 use crate::model::Finding;
 use crate::parse::find_zzfx_calls;
 use crate::scan::has_zzfx_candidate;
-
-fn hex_hash(bytes: &[u8]) -> String {
-    format!("{:016x}", fnv1a64(bytes))
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -157,18 +154,18 @@ impl AppState {
                 continue;
             };
             let has_candidate = has_zzfx_candidate(&bytes);
-            let content_hash = hex_hash(&bytes);
+            let hash = content_hash(&bytes);
             let disk_meta = std::fs::metadata(&path).ok();
             let meta = FileMeta {
                 mtime: disk_meta.as_ref().map(file_mtime_secs).unwrap_or(0),
                 size: bytes.len() as i64,
-                content_hash: content_hash.clone(),
+                content_hash: hash.clone(),
                 has_candidate,
             };
             self.db.write_file_meta(&uri_to_path(&uri), meta);
             matches.push(ScanMatch {
                 uri,
-                content_hash,
+                content_hash: hash,
                 has_candidate,
             });
         }
@@ -195,25 +192,26 @@ impl AppState {
     }
 
     /// Shared cache-or-parse path for `document/parse` and
-    /// `document/didChange`: reuses the cached findings when `text` is
-    /// byte-identical to what's on disk at the cached (mtime, size); parses
-    /// fresh and writes through otherwise.
+    /// `document/didChange`: reuses the cached findings when `text`'s
+    /// content hash matches what's cached for this path; parses fresh and
+    /// writes through otherwise. Trust rides entirely on the content hash
+    /// (see [`Db::has_fresh_findings`]) — no disk `mtime`/`size` comparison
+    /// needed, which also means virtual/untitled buffers (no disk file to
+    /// stat) benefit from this cache too, not just saved files.
     fn parse_and_cache(&mut self, uri: &str, text: &str) -> Vec<Finding> {
         let path = uri_to_path(uri);
-        let disk_meta = std::fs::metadata(&path).ok();
-        let disk_mtime = disk_meta.as_ref().map(file_mtime_secs).unwrap_or(0);
-        let disk_size = disk_meta.as_ref().map(|m| m.len() as i64);
-        let text_hash = hex_hash(text.as_bytes());
+        let text_hash = content_hash(text.as_bytes());
 
-        if let Some(disk_size) = disk_size
-            && self
-                .db
-                .has_fresh_findings(&path, disk_mtime, disk_size, &text_hash)
-        {
+        if self.db.has_fresh_findings(&path, &text_hash) {
             return self.db.cached_findings(&path);
         }
 
         let findings = find_zzfx_calls(uri, text);
+        let disk_mtime = std::fs::metadata(&path)
+            .ok()
+            .as_ref()
+            .map(file_mtime_secs)
+            .unwrap_or(0);
         let meta = FileMeta {
             mtime: disk_mtime,
             size: text.len() as i64,

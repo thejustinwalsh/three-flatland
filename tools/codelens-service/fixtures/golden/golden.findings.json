@@ -1,0 +1,182 @@
+[
+  {
+    "byteRange": {
+      "end": 515,
+      "start": 495
+    },
+    "id": "1e3a0d7981aaf20c",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 21,
+          "line": 10
+        },
+        "start": {
+          "character": 7,
+          "line": 10
+        }
+      },
+      "params": [],
+      "varRef": {
+        "defRange": {
+          "end": {
+            "character": 43,
+            "line": 7
+          },
+          "start": {
+            "character": 6,
+            "line": 7
+          }
+        },
+        "defUri": "file:///golden.ts",
+        "name": "laserPreset"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 22,
+        "line": 10
+      },
+      "start": {
+        "character": 2,
+        "line": 10
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 567,
+      "start": 550
+    },
+    "id": "1b35442d76997fdb",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 18,
+          "line": 14
+        },
+        "start": {
+          "character": 7,
+          "line": 14
+        }
+      },
+      "params": [
+        1,
+        0.1,
+        440
+      ]
+    },
+    "range": {
+      "end": {
+        "character": 19,
+        "line": 14
+      },
+      "start": {
+        "character": 2,
+        "line": 14
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 629,
+      "start": 607
+    },
+    "id": "eea70803412ecfd6",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 23,
+          "line": 18
+        },
+        "start": {
+          "character": 11,
+          "line": 18
+        }
+      },
+      "params": [
+        1,
+        -0.5,
+        0.2
+      ]
+    },
+    "range": {
+      "end": {
+        "character": 24,
+        "line": 18
+      },
+      "start": {
+        "character": 2,
+        "line": 18
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 708,
+      "start": 694
+    },
+    "id": "c57edf04c723f9f9",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 15,
+          "line": 22
+        },
+        "start": {
+          "character": 7,
+          "line": 22
+        }
+      },
+      "params": [],
+      "varRef": {
+        "name": "myPreset"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 16,
+        "line": 22
+      },
+      "start": {
+        "character": 2,
+        "line": 22
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 814,
+      "start": 808
+    },
+    "id": "bc9b813a6f536442",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 7,
+          "line": 27
+        },
+        "start": {
+          "character": 7,
+          "line": 27
+        }
+      },
+      "params": []
+    },
+    "range": {
+      "end": {
+        "character": 8,
+        "line": 27
+      },
+      "start": {
+        "character": 2,
+        "line": 27
+      }
+    }
+  }
+]

@@ -64,15 +64,26 @@ function handleRequest(message) {
     case 'boom':
       return respondError(id, -32000, 'boom requested')
     case 'garbage': {
-      // Writes one deliberately-malformed frame (valid Content-Length
-      // framing, invalid JSON body) immediately before a normal response to
-      // this same request — proves the client's onError path fires AND that
-      // one bad frame doesn't corrupt the decoder's ability to read the
-      // next, well-formed one.
+      // Writes one deliberately-malformed *body* (valid Content-Length
+      // framing, invalid JSON inside it) immediately before a normal
+      // response to this same request — proves the client's onError path
+      // fires AND that a bad body doesn't corrupt the decoder's ability to
+      // read the next, well-formed frame. This is a message-level error,
+      // NOT a framing-level one: the byte stream stays in sync (framing.ts
+      // correctly consumed exactly Content-Length bytes), so it must stay
+      // non-fatal to the connection.
       const garbage = Buffer.from('{this is not valid json', 'utf8')
       process.stdout.write(`Content-Length: ${garbage.byteLength}\r\n\r\n`)
       process.stdout.write(garbage)
       return respond(id, null)
+    }
+    case 'framingBoom': {
+      // A genuine framing-level error: no Content-Length header at all, so
+      // the client's decoder can no longer find any frame boundary. Never
+      // sends a valid response for this request's id — the point is
+      // proving the connection dies, not that this request resolves.
+      process.stdout.write('Content-Type: text/plain\r\n\r\nthis has no Content-Length header')
+      return
     }
     default:
       return respondError(id, -32601, `method not found: ${method}`)
