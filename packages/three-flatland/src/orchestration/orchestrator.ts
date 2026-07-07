@@ -113,7 +113,6 @@ function installSceneHook(scene: Scene, state: ScenePrimeState): void {
   // Re-chain when a user (or framework) assigned scene.onBeforeRender
   // AFTER our install — their handler replaced ours, so wrap it again.
   // Identity check keeps steady-state installs a single comparison.
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- identity check only
   if (state.installedHook !== null && scene.onBeforeRender === state.installedHook) return
 
   // Preserve any real user handler present at install time. Comparing
