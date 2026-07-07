@@ -45,6 +45,25 @@ function buildClientFrame(opcode: number, payload: Buffer, fin = true): Buffer {
   return Buffer.concat([header, mask, masked])
 }
 
+/** Build an unmasked client→server frame — invalid per RFC 6455 §5.1, used to prove the relay rejects it. */
+function buildUnmaskedFrame(opcode: number, payload: Buffer, fin = true): Buffer {
+  let header: Buffer
+  if (payload.length < 126) {
+    header = Buffer.from([(fin ? 0x80 : 0) | opcode, payload.length])
+  } else if (payload.length < 0x10000) {
+    header = Buffer.alloc(4)
+    header[0] = (fin ? 0x80 : 0) | opcode
+    header[1] = 126
+    header.writeUInt16BE(payload.length, 2)
+  } else {
+    header = Buffer.alloc(10)
+    header[0] = (fin ? 0x80 : 0) | opcode
+    header[1] = 127
+    header.writeBigUInt64BE(BigInt(payload.length), 2)
+  }
+  return Buffer.concat([header, payload]) // no mask bit, no mask key
+}
+
 /** Raw header declaring a length past MAX_PAYLOAD, with no body — the relay must reject on the declared length alone. */
 function buildOversizeHeader(declaredLength: number): Buffer {
   const header = Buffer.alloc(10)
@@ -234,9 +253,30 @@ describe('flatland-devtools-relay', () => {
     const socket = await connectSocket(port)
     cleanup.push(() => socket.destroy())
 
-    const { statusLine } = await handshake(socket, port, '8')
-    expect(statusLine).toContain('426')
-    await waitClose(socket)
+    const key = Buffer.from(Math.random().toString(36).slice(2, 18)).toString('base64')
+    const req =
+      'GET / HTTP/1.1\r\n' +
+      `Host: 127.0.0.1:${port}\r\n` +
+      'Upgrade: websocket\r\n' +
+      'Connection: Upgrade\r\n' +
+      `Sec-WebSocket-Key: ${key}\r\n` +
+      'Sec-WebSocket-Version: 8\r\n\r\n'
+
+    // Read until the socket actually closes rather than stopping at the
+    // first sight of a header terminator — proves the 426 response was
+    // fully flushed before the connection ended (`write()` immediately
+    // followed by `destroy()` could otherwise truncate it under
+    // backpressure; this is flush-safe against that regression).
+    const raw = await new Promise<Buffer>((resolve) => {
+      let acc = Buffer.alloc(0)
+      socket.on('data', (chunk: Buffer) => {
+        acc = Buffer.concat([acc, chunk])
+      })
+      socket.once('close', () => resolve(acc))
+      socket.write(req)
+    })
+
+    expect(raw.toString('latin1')).toContain('426')
   })
 
   it('broadcasts a single masked binary frame from one client to another, unmasked', async () => {
@@ -332,4 +372,41 @@ describe('flatland-devtools-relay', () => {
     },
     20000
   )
+
+  it('destroys the connection when a client frame arrives unmasked, without broadcasting it', async () => {
+    const { port } = await openRelay()
+    const a = await openClient(port)
+    const b = await openClient(port)
+
+    a.socket.write(buildUnmaskedFrame(0x2, Buffer.from('unmasked')))
+
+    await waitClose(a.socket)
+    // Nothing should have reached B — the frame must be rejected outright, not relayed.
+    await expect(b.reader.next(300)).rejects.toThrow()
+  })
+
+  it('destroys the connection for a malformed control frame (fragmented or oversized ping)', async () => {
+    const { port } = await openRelay()
+
+    // Control frames must not be fragmented (FIN must be 1).
+    const a = await openClient(port)
+    a.socket.write(buildClientFrame(0x9, Buffer.from('ping'), false))
+    await waitClose(a.socket)
+
+    // Control frames are capped at 125 bytes — 200 forces the 2-byte
+    // extended-length encoding, which is itself invalid for a control frame.
+    const b = await openClient(port)
+    b.socket.write(buildClientFrame(0x9, Buffer.alloc(200)))
+    await waitClose(b.socket)
+  })
+
+  it('destroys the connection when a data frame interrupts an in-progress fragmented message', async () => {
+    const { port } = await openRelay()
+    const a = await openClient(port)
+
+    a.socket.write(buildClientFrame(0x2, Buffer.from('start'), false)) // fragment start, FIN=0
+    a.socket.write(buildClientFrame(0x1, Buffer.from('interrupt'))) // new data frame — protocol error
+
+    await waitClose(a.socket)
+  })
 })

@@ -58,8 +58,10 @@ export function startRelay(port: number, host: string): RelayHandle {
       return
     }
     if (req.headers['sec-websocket-version'] !== '13') {
-      socket.write('HTTP/1.1 426 Upgrade Required\r\nSec-WebSocket-Version: 13\r\n\r\n')
-      socket.destroy()
+      // `end(data)` writes then closes only once the write has flushed —
+      // an immediate `write()` + `destroy()` pair can drop the response
+      // under backpressure before the peer ever sees it.
+      socket.end('HTTP/1.1 426 Upgrade Required\r\nSec-WebSocket-Version: 13\r\n\r\n')
       return
     }
     const accept = createHash('sha1').update(key + WS_GUID).digest('base64')
@@ -108,6 +110,12 @@ export function startRelay(port: number, host: string): RelayHandle {
         } else if (frame.opcode === 0xa) {
           // pong — ignore
         } else if (frame.opcode === 0x2 || frame.opcode === 0x1) {
+          if (client.fragments.length > 0) {
+            // A new data frame while a fragmented message is still open —
+            // only control frames may interleave fragments (RFC §5.4).
+            socket.destroy()
+            break
+          }
           if (frame.fin) {
             broadcast(frame.payload, frame.opcode)
           } else {
@@ -183,8 +191,22 @@ function readFrame(client: Client): WsFrame | null {
   const fin = (buf[0]! & 0x80) !== 0
   const opcode = buf[0]! & 0x0f
   const masked = (buf[1]! & 0x80) !== 0
+  if (!masked) {
+    // RFC 6455 §5.1: the server MUST fail the connection if a client
+    // frame arrives unmasked.
+    client.socket.destroy()
+    return null
+  }
   let payloadLength = buf[1]! & 0x7f
   let offset = 2
+  // Control frames (close/ping/pong, opcode >= 0x8) must not be
+  // fragmented and their payload must fit the 7-bit length field
+  // directly — RFC §5.5 caps them at 125 bytes and forbids the
+  // 126/127 extended encodings entirely, regardless of the real length.
+  if (opcode >= 0x8 && (!fin || payloadLength >= 126)) {
+    client.socket.destroy()
+    return null
+  }
   if (payloadLength === 126) {
     if (buf.length < 4) return null
     payloadLength = buf.readUInt16BE(2)
@@ -199,22 +221,16 @@ function readFrame(client: Client): WsFrame | null {
     payloadLength = Number(big)
     offset = 10
   }
-  const maskLength = masked ? 4 : 0
-  if (buf.length < offset + maskLength + payloadLength) return null
+  if (buf.length < offset + 4 + payloadLength) return null
 
-  let payload = buf.subarray(offset + maskLength, offset + maskLength + payloadLength)
-  if (masked) {
-    const mask = buf.subarray(offset, offset + 4)
-    const unmasked = Buffer.allocUnsafe(payloadLength)
-    for (let i = 0; i < payloadLength; i++) {
-      unmasked[i] = payload[i]! ^ mask[i % 4]!
-    }
-    payload = unmasked
-  } else {
-    payload = Buffer.from(payload) // copy out of the rolling buffer
+  const maskedPayload = buf.subarray(offset + 4, offset + 4 + payloadLength)
+  const mask = buf.subarray(offset, offset + 4)
+  const payload = Buffer.allocUnsafe(payloadLength)
+  for (let i = 0; i < payloadLength; i++) {
+    payload[i] = maskedPayload[i]! ^ mask[i % 4]!
   }
 
-  client.buffer = buf.subarray(offset + maskLength + payloadLength)
+  client.buffer = buf.subarray(offset + 4 + payloadLength)
   return { opcode, fin, payload }
 }
 
