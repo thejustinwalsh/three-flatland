@@ -6,7 +6,7 @@ import {
   addFlightRingListener,
   exceedsMarkGuardrail,
   freeze,
-  frozenUnionFrameRange,
+  frozenClaimableFrameRange,
   getBufferFrozenRing,
   getBufferLiveRing,
   getFrozenRing,
@@ -371,22 +371,67 @@ describe('multi-buffer marks — per-buffer ring map (#29 Phase C slice 4)', () 
     expect(getBufferFrozenRing('atlas')!.chunkFrameRange()).toEqual({ min: 1, max: 1 })
   })
 
-  it('frozenUnionFrameRange unions the primary ring with every marked buffer snapshot', () => {
+  it('frozenClaimableFrameRange bounds a single marked buffer by the stats window — does not overclaim past its own chunks', () => {
+    // Stats retention (~30s) typically outlives a buffer's narrower
+    // chunk window (~10s) — the claimable range must follow the
+    // buffer, not the wider stats span, or the slider offers frames
+    // the buffer can never decode.
     getLiveRing().pushFrame(1)
-    getLiveRing().pushFrame(2)
+    getLiveRing().pushFrame(1000)
     markBuffer('atlas')
-    markBuffer('shadowmap')
-    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 100, keyFrame: true, name: 'atlas' }))
-    getBufferLiveRing('shadowmap')!.pushChunk(chunk({ frame: 500, keyFrame: true, name: 'shadowmap' }))
+    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 950, keyFrame: true, name: 'atlas' }))
+    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 990, name: 'atlas' }))
 
     freeze()
 
-    expect(frozenUnionFrameRange()).toEqual({ min: 1, max: 500 })
+    expect(frozenClaimableFrameRange()).toEqual({ min: 950, max: 990 })
   })
 
-  it('frozenUnionFrameRange is null while live', () => {
+  it('unions multiple marked buffers as a min/max span, then bounds that span by the stats window', () => {
+    getLiveRing().pushFrame(1)
+    getLiveRing().pushFrame(1000)
     markBuffer('atlas')
-    expect(frozenUnionFrameRange()).toBeNull()
+    markBuffer('shadowmap')
+    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 950, keyFrame: true, name: 'atlas' }))
+    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 990, name: 'atlas' }))
+    getBufferLiveRing('shadowmap')!.pushChunk(chunk({ frame: 100, keyFrame: true, name: 'shadowmap' }))
+    getBufferLiveRing('shadowmap')!.pushChunk(chunk({ frame: 200, name: 'shadowmap' }))
+
+    freeze()
+
+    // 100-990 is a min/max SPAN, not the exact union — frames 201-949
+    // aren't decodable by either buffer. The slider can only express
+    // one contiguous range; the interior gap is covered by each
+    // buffer cell's own "outside the frozen recording window" notice,
+    // not by narrowing the shared claimable range.
+    expect(frozenClaimableFrameRange()).toEqual({ min: 100, max: 990 })
+  })
+
+  it('falls back to the primary ring range when no marked buffer has any chunks', () => {
+    getLiveRing().pushFrame(1)
+    getLiveRing().pushFrame(1000)
+
+    freeze()
+
+    expect(frozenClaimableFrameRange()).toEqual({ min: 1, max: 1000 })
+  })
+
+  it('skips a marked buffer that was frozen with an empty ring (no chunks ever pushed)', () => {
+    getLiveRing().pushFrame(1)
+    getLiveRing().pushFrame(1000)
+    markBuffer('atlas')
+    markBuffer('empty')
+    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 950, keyFrame: true, name: 'atlas' }))
+
+    freeze()
+
+    // 'empty' contributes nothing — same result as if it weren't marked at all.
+    expect(frozenClaimableFrameRange()).toEqual({ min: 950, max: 950 })
+  })
+
+  it('frozenClaimableFrameRange is null while live', () => {
+    markBuffer('atlas')
+    expect(frozenClaimableFrameRange()).toBeNull()
   })
 })
 

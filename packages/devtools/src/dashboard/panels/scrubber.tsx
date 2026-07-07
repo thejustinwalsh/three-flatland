@@ -30,7 +30,7 @@ import {
 import {
   addFlightRingListener,
   freeze,
-  frozenUnionFrameRange,
+  frozenClaimableFrameRange,
   getFrozenRing,
   getLiveRing,
   isFrozen,
@@ -53,15 +53,16 @@ function liveFrameRange(state: ReturnType<typeof useDevtoolsState>): {
 
 /**
  * Claimable frame range while frozen: the intersection of the frozen
- * rings' combined span (primary ring + every marked buffer, see
- * `frozenUnionFrameRange` — #29 Phase C slice 4) and whatever the
+ * rings' claimable span (primary stats range intersected with the
+ * union of every marked buffer's chunk range, see
+ * `frozenClaimableFrameRange` — #29 Phase C slice 4) and whatever the
  * protocol store still retains for the selected provider (#29 slice
  * 2, item 2's "claimable range"). `null` when nothing is frozen, or
  * every frozen ring is empty.
  */
 function frozenFrameRange(providerId: string | null): { min: number; max: number } | null {
   if (getFrozenRing() === null) return null
-  const ringRange = frozenUnionFrameRange()
+  const ringRange = frozenClaimableFrameRange()
   if (ringRange === null) return null
   if (providerId === null) return ringRange
   const retained = getProtocolStore().retainedRange(providerId)
@@ -146,7 +147,7 @@ export function Scrubber() {
   const onFreeze = (): void => {
     if (isFrozen()) return
     freeze()
-    const frozenRange = frozenUnionFrameRange()
+    const frozenRange = frozenClaimableFrameRange()
     setFrameCursor(frozenRange?.max ?? state.frame ?? live.max)
   }
 

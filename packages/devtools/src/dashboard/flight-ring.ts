@@ -331,21 +331,46 @@ export function getBufferFrozenRing(name: string): FlightRing | null {
 }
 
 /**
- * Union of every currently frozen ring's frame range — the primary
- * stats ring plus every marked buffer's snapshot — so the scrubber's
- * overall claimable span covers whichever ring retains the widest
- * history. Individual grid cells still bound their own decode to
- * their own ring's range via `decodeChain`. `null` while live.
+ * The scrubber's overall claimable frame range while frozen — bounded
+ * by the primary ring's own range (the stats-arrival log's ~30s
+ * window, intersected with any chunks the primary ring itself happens
+ * to carry — see `FlightRing.frameRange`), further intersected with
+ * the UNION of every marked buffer's own chunk range.
+ *
+ * The buffer union is deliberately a plain min/max span, not the exact
+ * union with any interior gap preserved: a slider can only express a
+ * single contiguous range. Two buffers covering 950-990 and 100-200
+ * claim 100-990 as scrubbable even though frames 201-949 aren't
+ * decodable by EITHER — that gap is covered by each buffer cell's own
+ * "outside the frozen recording window" notice (`decodeChain` already
+ * returns `null` there), not by narrowing the shared slider.
+ *
+ * When no marked buffer has any chunks (nothing marked, or a marked
+ * buffer never received one), the buffer term drops out entirely and
+ * this returns the primary ring's own range unmodified — the
+ * stats/registry/protocol-log-only scrubbing case from slice 2/3,
+ * preserved exactly. This is the fix for a regression where an
+ * earlier version of this function UNIONED the primary range with
+ * buffer ranges instead of intersecting: a single marked buffer with a
+ * narrow chunk window (e.g. 950-990) could get overridden by a much
+ * wider stats window (e.g. 1-1000), letting the slider claim frames
+ * the buffer could never actually decode.
  */
-export function frozenUnionFrameRange(): FrameRange | null {
+export function frozenClaimableFrameRange(): FrameRange | null {
   if (_frozenRing === null) return null
-  let range = _frozenRing.frameRange()
-  if (_frozenBufferRings !== null) {
-    for (const ring of _frozenBufferRings.values()) {
-      const r = ring.frameRange()
-      if (r === null) continue
-      range = range === null ? r : { min: Math.min(range.min, r.min), max: Math.max(range.max, r.max) }
-    }
+  const statsRange = _frozenRing.frameRange()
+  if (_frozenBufferRings === null) return statsRange
+
+  let bufferUnion: FrameRange | null = null
+  for (const ring of _frozenBufferRings.values()) {
+    const r = ring.chunkFrameRange()
+    if (r === null) continue
+    bufferUnion = bufferUnion === null ? r : { min: Math.min(bufferUnion.min, r.min), max: Math.max(bufferUnion.max, r.max) }
   }
-  return range
+  if (bufferUnion === null) return statsRange
+  if (statsRange === null) return bufferUnion
+
+  const min = Math.max(statsRange.min, bufferUnion.min)
+  const max = Math.min(statsRange.max, bufferUnion.max)
+  return min <= max ? { min, max } : null
 }
