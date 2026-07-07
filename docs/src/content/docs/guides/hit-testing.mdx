@@ -108,7 +108,7 @@ A ray that hits a `TileMap2D` gives you back the cell with `tileFromIntersection
 const hits = raycaster.intersectObject(tilemap, true)
 if (hits.length > 0) {
   const cell = tilemap.tileFromIntersection(hits[0])
-  // cell → { layer: TileLayer2D, tileX: number, tileY: number, gid: number }
+  // cell → { layer: number, tileX: number, tileY: number, gid: number }
 }
 ```
 

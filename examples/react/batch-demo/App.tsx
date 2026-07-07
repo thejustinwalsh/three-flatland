@@ -5,7 +5,7 @@ import {
   Sprite2D,
   Sprite2DMaterial,
   SpriteGroup,
-  Layers,
+  SortLayers,
   TextureLoader,
   SpriteSheetLoader,
   type SpriteFrame,
@@ -142,7 +142,7 @@ function GroundTile({ gridX, gridY, material, gridOffsetX, gridOffsetY }: Ground
     <sprite2D
       material={material}
       position={[gridOffsetX + gridX * TILE_SIZE, gridOffsetY + gridY * TILE_SIZE, 0]}
-      layer={Layers.GROUND}
+      sortLayer={SortLayers.GROUND}
       zIndex={0}
       frame={frame}
     />
@@ -171,7 +171,7 @@ function EntitySprites({ entity, spritesMaterial, spritesSheet, shadowMaterial, 
         material={shadowMaterial}
         position={[posX, posY - TILE_SIZE * 0.3, 0]}
         scale={[TILE_SIZE * building.shadowScale, TILE_SIZE * building.shadowScale * 0.5, 1]}
-        layer={Layers.SHADOWS}
+        sortLayer={SortLayers.SHADOWS}
         zIndex={0}
         alpha={0.5}
       />
@@ -181,7 +181,7 @@ function EntitySprites({ entity, spritesMaterial, spritesSheet, shadowMaterial, 
         material={spritesMaterial}
         position={[posX, posY + building.height / 2 - TILE_SIZE / 2, 0]}
         scale={[building.width, building.height, 1]}
-        layer={Layers.ENTITIES}
+        sortLayer={SortLayers.ENTITIES}
         zIndex={-Math.floor(posY)}
         frame={frame}
       />
@@ -207,7 +207,7 @@ function HoverPreview({ visible, position, material, spritesSheet, building }: H
       position={position}
       scale={[building.width, building.height, 1]}
       alpha={0.5}
-      layer={Layers.FOREGROUND}
+      sortLayer={SortLayers.FOREGROUND}
       renderOrder={1000}
       frame={frame}
     />

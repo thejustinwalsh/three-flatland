@@ -5,7 +5,7 @@ import { SpriteGroup } from './SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createMaterialEffect } from '../materials/MaterialEffect'
-import { Layers } from './layers'
+import { SortLayers } from './sortLayers'
 import { SpriteColor, InBatch, BatchMesh, BatchSlot } from '../ecs/traits'
 
 // Create effect class at module level so the Koota trait survives universe.reset()
@@ -112,7 +112,7 @@ describe('SpriteGroup', () => {
     renderer.add(sprite)
     renderer.update()
 
-    sprite.layer = Layers.UI
+    sprite.sortLayer = SortLayers.UI
     renderer.invalidate(sprite)
     renderer.update()
 

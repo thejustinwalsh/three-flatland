@@ -3,6 +3,7 @@ import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { AnimatedSprite2D } from '../sprites/AnimatedSprite2D'
 import type { SpriteGroup } from '../pipeline/SpriteGroup'
+import type { SortLayerGroup } from '../pipeline/SortLayerGroup'
 import type { Flatland } from '../Flatland'
 import type { TileMap2D } from '../tilemap/TileMap2D'
 import type { TileLayer } from '../tilemap/TileLayer'
@@ -67,6 +68,7 @@ declare module '@react-three/fiber' {
     sprite2DMaterial: ThreeElement<typeof Sprite2DMaterial>
     animatedSprite2D: ThreeElement<typeof AnimatedSprite2D>
     spriteGroup: ThreeElement<typeof SpriteGroup>
+    sortLayerGroup: ThreeElement<typeof SortLayerGroup>
     flatland: ThreeElement<typeof Flatland>
     tileMap2D: ThreeElement<typeof TileMap2D>
     tileLayer: ThreeElement<typeof TileLayer>

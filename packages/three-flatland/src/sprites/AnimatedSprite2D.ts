@@ -4,6 +4,7 @@ import { AnimationController } from '../animation/AnimationController'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { SpriteSheet, SpriteFrame } from './types'
+import type { SortLayerValue } from '../pipeline/sortLayers'
 import type { Animation, AnimationSetDefinition, PlayOptions } from '../animation/types'
 
 /**
@@ -32,9 +33,9 @@ export interface AnimatedSprite2DOptions {
   flipX?: boolean
   /** Flip vertically */
   flipY?: boolean
-  /** Render layer (for SpriteGroup) */
-  layer?: number
-  /** Z-index within layer */
+  /** Sort layer — registered name or numeric order */
+  sortLayer?: SortLayerValue
+  /** Z-index within sortLayer */
   zIndex?: number
   /** Pixel-perfect rendering (snap to pixels) */
   pixelPerfect?: boolean
@@ -90,7 +91,7 @@ export class AnimatedSprite2D extends Sprite2D {
       alpha: options?.alpha,
       flipX: options?.flipX,
       flipY: options?.flipY,
-      layer: options?.layer,
+      sortLayer: options?.sortLayer,
       zIndex: options?.zIndex,
       pixelPerfect: options?.pixelPerfect,
     })
@@ -152,10 +153,19 @@ export class AnimatedSprite2D extends Sprite2D {
     this._spriteSheet = value
     if (value) {
       this.texture = value.texture
-      // Set initial frame from spritesheet
+      // Re-resolve the active frame against the new sheet. A frame rect
+      // is only meaningful relative to the atlas it came from, so
+      // keeping the OLD rect while the texture swaps underneath it would
+      // sample the new atlas through stale UVs. Match by name so a
+      // mid-animation swap (e.g. re-skin) lands on the equivalent frame
+      // in the new sheet; fall back to the sheet's first frame when the
+      // name doesn't exist there (or there was no active frame yet) —
+      // a reset frame is strictly better than stale UVs on a new texture.
+      const matchedFrame = this.frame ? value.frames.get(this.frame.name) : undefined
       const firstFrame = value.frames.values().next().value
-      if (firstFrame && !this.frame) {
-        this.setFrame(firstFrame)
+      const nextFrame = matchedFrame ?? firstFrame
+      if (nextFrame) {
+        this.setFrame(nextFrame)
       }
       if (value.alphaMap && shouldReplaceAlpha) {
         this.alphaMap = value.alphaMap
@@ -406,7 +416,7 @@ export class AnimatedSprite2D extends Sprite2D {
       alpha: this.alpha,
       flipX: this.flipX,
       flipY: this.flipY,
-      layer: this.layer,
+      sortLayer: this.sortLayer,
       zIndex: this.zIndex,
       pixelPerfect: this.pixelPerfect,
     })

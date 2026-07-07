@@ -1,5 +1,5 @@
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
-import { useRef, useEffect, useMemo, useState, Suspense } from 'react'
+import { Component, useRef, useEffect, useMemo, useState, Suspense, type ReactNode } from 'react'
 import {
   SkiaCanvas,
   SkiaRect,
@@ -47,6 +47,56 @@ const PATH_OP_COLORS: [number, number, number, number][] = [
 ]
 
 // ── Utilities ──
+
+const SKIA_WASM_BUILD_HINT =
+  'packages/skia/dist/ is gitignored — build it first: pnpm --filter @three-flatland/skia build'
+
+/** True when `err` is the WASM instantiate failure that fires when packages/skia/dist/ hasn't been built. */
+function isSkiaWasmLoadError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return /webassembly\.instantiate/i.test(message) || /buffersource argument is empty/i.test(message)
+}
+
+/**
+ * Catches `useSkiaContext()`'s suspended `Skia.init()` rejecting — most
+ * commonly because packages/skia/dist/ (gitignored) hasn't been built
+ * in a fresh checkout/worktree — and reports an actionable message
+ * instead of the default "Uncaught Error" render crash.
+ */
+class SkiaErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(error: Error) {
+    if (isSkiaWasmLoadError(error)) {
+      console.error(`[skia example] Skia WASM failed to load. ${SKIA_WASM_BUILD_HINT}`)
+    } else {
+      console.error(error)
+    }
+  }
+
+  render() {
+    const { error } = this.state
+    if (!error) return this.props.children
+    return (
+      <div
+        style={{
+          position: 'fixed', top: 12, left: 12, zIndex: 100,
+          padding: '8px 14px', background: 'rgba(0, 0, 0, 0.75)',
+          borderRadius: 6, fontSize: 13, fontFamily: 'ui-monospace, monospace',
+          color: '#ff6b6b',
+        }}
+      >
+        {isSkiaWasmLoadError(error)
+          ? 'Skia WASM not built — run: pnpm --filter @three-flatland/skia build'
+          : `Error: ${error.message}`}
+      </div>
+    )
+  }
+}
 
 function hslToArgb(h: number, s: number, l: number): number {
   const c = (1 - Math.abs(2 * l - 1)) * s
@@ -464,61 +514,70 @@ function SkiaDemo() {
 
 export default function App() {
   return (
-    <Canvas
-      camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
-      renderer={{ antialias: true }}
-      onCreated={({ scene, gl }) => {
-        // Pure-black clear + fog so foreground 3D meshes (floor, panels)
-        // fade to the same void the floor's distant edges dissolve into.
-        gl.setClearColor(new Color(0x000000))
-        scene.background = new Color(0x000000)
-        scene.fog = new Fog(0x000000, 6, 18)
+    // Wraps <Canvas>, not its children: R3F's own internal wiring
+    // re-throws captured render errors (including a suspended
+    // Skia.init() rejection) during Canvas's own DOM-tree render, so an
+    // ancestor boundary out here is what actually catches it — and it's
+    // the only safe place for a DOM-rendering fallback, since Canvas's
+    // children render through R3F's own reconciler, which can't host
+    // plain HTML elements.
+    <SkiaErrorBoundary>
+      <Canvas
+        camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
+        renderer={{ antialias: true }}
+        onCreated={({ scene, gl }) => {
+          // Pure-black clear + fog so foreground 3D meshes (floor, panels)
+          // fade to the same void the floor's distant edges dissolve into.
+          gl.setClearColor(new Color(0x000000))
+          scene.background = new Color(0x000000)
+          scene.fog = new Fog(0x000000, 6, 18)
 
-        // Gem-gradient backdrop as a real 3D plane (L2). Sits at z=-15
-        // behind the panel/floor; opaque, with a tightened gradient
-        // radius (0.4) so the gem identity stays in the upper-left
-        // and the visible top portion of the screen reads mostly as
-        // outer-ring BG (dark). Atmospheric blend into the floor is
-        // handled by the FloorEdgeFade quad below, not by alpha here.
-        const bgMat = new MeshBasicNodeMaterial({ depthWrite: false, fog: false })
-        bgMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
-        const bgPlane = new Mesh(new PlaneGeometry(40, 25), bgMat)
-        bgPlane.position.set(0, 0.9, -15)
-        bgPlane.renderOrder = -100
-        scene.add(bgPlane)
+          // Gem-gradient backdrop as a real 3D plane (L2). Sits at z=-15
+          // behind the panel/floor; opaque, with a tightened gradient
+          // radius (0.4) so the gem identity stays in the upper-left
+          // and the visible top portion of the screen reads mostly as
+          // outer-ring BG (dark). Atmospheric blend into the floor is
+          // handled by the FloorEdgeFade quad below, not by alpha here.
+          const bgMat = new MeshBasicNodeMaterial({ depthWrite: false, fog: false })
+          bgMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
+          const bgPlane = new Mesh(new PlaneGeometry(40, 25), bgMat)
+          bgPlane.position.set(0, 0.9, -15)
+          bgPlane.renderOrder = -100
+          scene.add(bgPlane)
 
-        // Floor edge fade — horizontal sibling quad just above the
-        // ground plane that paints the SAME gem gradient as the bg
-        // plane over the floor's hard rectangular silhouette via a
-        // radial alpha smoothstep — opaque at the corners, transparent
-        // in the center where reflections show through. Because
-        // gemGradientNode is screen-space, the floor-edge quad and the
-        // bg plane sample the same colors at any given screen pixel —
-        // the floor's edges dissolve seamlessly into the bg plane (no
-        // color discontinuity).
-        // Ported from remotion-studio-monorepo's FloorEdgeFade.tsx,
-        // adapted: their version paints scene.background (flat color);
-        // ours paints the same screen-space gem gradient as the bg
-        // plane so the match holds against a non-flat backdrop.
-        const edgeMat = new MeshBasicNodeMaterial({
-          transparent: true,
-          depthWrite: false,
-          fog: false,
-        })
-        edgeMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
-        const edgeDist = tslLength(uv().sub(vec2(0.5))).mul(tslFloat(2))
-        edgeMat.opacityNode = tslSmoothstep(tslFloat(0.35), tslFloat(0.7), edgeDist)
-        const floorEdge = new Mesh(new PlaneGeometry(50, 50), edgeMat)
-        floorEdge.rotation.x = -Math.PI / 2
-        floorEdge.position.y = 0 // just above ground (at -0.01)
-        floorEdge.renderOrder = 1 // after the floor (default 0)
-        scene.add(floorEdge)
-      }}
-    >
-      <DevtoolsProvider name="skia" />
-      <Suspense fallback={null}>
-        <SkiaDemo />
-      </Suspense>
-    </Canvas>
+          // Floor edge fade — horizontal sibling quad just above the
+          // ground plane that paints the SAME gem gradient as the bg
+          // plane over the floor's hard rectangular silhouette via a
+          // radial alpha smoothstep — opaque at the corners, transparent
+          // in the center where reflections show through. Because
+          // gemGradientNode is screen-space, the floor-edge quad and the
+          // bg plane sample the same colors at any given screen pixel —
+          // the floor's edges dissolve seamlessly into the bg plane (no
+          // color discontinuity).
+          // Ported from remotion-studio-monorepo's FloorEdgeFade.tsx,
+          // adapted: their version paints scene.background (flat color);
+          // ours paints the same screen-space gem gradient as the bg
+          // plane so the match holds against a non-flat backdrop.
+          const edgeMat = new MeshBasicNodeMaterial({
+            transparent: true,
+            depthWrite: false,
+            fog: false,
+          })
+          edgeMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
+          const edgeDist = tslLength(uv().sub(vec2(0.5))).mul(tslFloat(2))
+          edgeMat.opacityNode = tslSmoothstep(tslFloat(0.35), tslFloat(0.7), edgeDist)
+          const floorEdge = new Mesh(new PlaneGeometry(50, 50), edgeMat)
+          floorEdge.rotation.x = -Math.PI / 2
+          floorEdge.position.y = 0 // just above ground (at -0.01)
+          floorEdge.renderOrder = 1 // after the floor (default 0)
+          scene.add(floorEdge)
+        }}
+      >
+        <DevtoolsProvider name="skia" />
+        <Suspense fallback={null}>
+          <SkiaDemo />
+        </Suspense>
+      </Canvas>
+    </SkiaErrorBoundary>
   )
 }
