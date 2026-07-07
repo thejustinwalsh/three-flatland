@@ -5,31 +5,33 @@
 > Branch: feat/sort-layers-orchestration
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/141
 
-## Auto-orchestration and sort layers
+## Auto-orchestration and batching overhaul
 
-- Sprites in plain three.js scenes (no `SpriteGroup`/`Flatland` wrapper) now auto-register and auto-batch with siblings sharing the same material, sort layer, and camera layer mask — zero setup required.
-- Batching is threshold- and hysteresis-driven: a lone sprite stays a standalone `Mesh`; a second sprite promotes both to a batch; batches persist until they're empty (no flapping at the promote/demote boundary).
-- Auto-batches grow through a tier ladder (64 → 256 → 1024 → 4096 → 16384 slots) instead of a single fixed size; `maxBatchSize` still pins an explicit size when set.
-- New `SortLayerGroup` container: bridges first-party sprites and foreign `Object3D`s (e.g. Skia, Slug meshes) under one sort-order discipline, with nested-group and explicit-assignment precedence rules.
-- New `flatland.declareSortLayer(name, config)` / `flatland.sortLayer(name)` APIs for declaring named sort layers and reading their numeric `renderOrder` for placing foreign objects relative to a layer.
-- `renderOrder` is now derived from a sprite's declared `sortLayer` order; writing it back is a no-op unless the value differs, at which point the sprite is demoted to standalone and never re-promoted automatically.
-- Default (untextured-material-less) sprite materials are now scoped per world/registry instead of shared globally — an effect applied to one `Flatland`'s default material no longer leaks into other `Flatland` instances sharing the same texture.
-- Disposing a tracked material now correctly tears down its batches and either resurrects default-material sprites with a fresh material or restores and unenrolls custom-material sprites (matching three's standard "disposed material in use" warning behavior).
-- Batches are now queryable and tagged with architectural traits (`IsAlphaBlendedBatch`, `IsLitBatch`, `BatchGeometryStrategy`, etc.) via `group.batches` / `registry.batches`, exposed as an opaque `BatchQueryView`.
-
-## Performance
-
-- Sprites now render from an index-only "synth quad" geometry instead of `PlaneGeometry`, freeing 3 of WebGPU's 8 vertex-buffer bindings — effect buffer capacity doubles (`MAX_EFFECT_FLOATS` 12 → 24) with no API change.
-- Fixed a spurious three.js console warning about missing `position` attributes on the new synth-quad geometry (position-less rendering is intentional here; genuinely broken user geometry still warns).
-- `computeRunKey` now uses the full 32 bits per component (fixes a collision at 65536 materials) and encodes negative sort layers order-preservingly.
+- Sprites in vanilla three.js scenes now auto-register and auto-batch with siblings sharing a run key (material, sort layer, camera layer mask) — zero setup required
+- Tiered batch buffers (64 → 256 → 1024 → 4096 → 16384 slots) grow/shrink with hysteresis to avoid create/destroy flapping at the promotion threshold
+- New `SortLayerGroup` container bridges first-party sprites and foreign `Object3D`s (Skia, Slug, plain meshes) for consistent sort ordering
+- New `flatland.declareSortLayer(name, config)` / `flatland.sortLayer(name)` API for declaring layers and reading their numeric render order
+- Default materials are now scoped per world/registry instead of a single global static cache, preventing cross-`Flatland`-instance effect leakage
+- Batches carry classification traits (`IsAlphaBlendedBatch`, `IsLitBatch`, `IsUnlitBatch`, `BatchGeometryStrategy`) exposed via `group.batches` / `registry.batches` query views
+- Synth-quad geometry (index-only, position derived in the vertex shader) frees 3 vertex-buffer bindings, doubling effect capacity (`MAX_EFFECT_FLOATS` 12 → 24, up to 6 effect buffers)
 
 ## Fixes
 
-- Fixed the chained `Scene.onBeforeRender` hook losing sprites when a user or framework replaced the render hook after install.
-- Fixed sort layer / `layers.mask` changes on standalone auto-registered sprites not triggering re-batching when they converge onto the same run.
+- Fixed a memory leak where reassigning a sprite's material left the old material (and its texture) permanently referenced in the batch registry
+- Fixed animated sprites keeping stale UVs from their previous sprite sheet after a `spriteSheet` swap mid-animation
+- Fixed the missing-alphaMap raycast warning being silently suppressed for every sprite after the first one
+- Fixed batch eviction on material effect-tier upgrades being a silent no-op, leaking stale batch slots
+- Fixed default-material sprites retexturing every sibling sprite in a batch on texture swap instead of re-resolving their own material
+- Rejected `effectTier` values exceeding the WebGPU 8-buffer pipeline cap at construction time (previously failed deep inside pipeline creation)
+- Silenced three.js's missing-position console warning for synth-quad geometries (expected, harmless) while preserving it for genuine user errors
+- Fixed several adversarial-review findings in the sort-layer/orchestration stack: correct `renderOrder` derivation from declared layer order, safe re-chaining of `Scene.onBeforeRender`, dirty-marking for standalone sprites that should batch, per-world material dispose tracking, and 32-bit run-key encoding (previously collided at 65536 batches)
+- Internal: removed use of `SpriteGroup`'s deprecated `update()` in favor of an internal `_runScheduleNow()`; deduplicated the batches-view builder between `SpriteGroup` and `Registry`
 
-## Breaking changes
+## BREAKING CHANGES
 
-- `Sprite2D.layer` is renamed to `Sprite2D.sortLayer`; the `{ layer }` constructor option is now `{ sortLayer }`. `Layers`/`LayerManager` are renamed to `SortLayers`/`SortLayerManager`. `sortLayer` accepts either a registered name or a raw number, and a new `SortLayerRegistry` interface supports module augmentation for typed layer names. Update any code, examples, or docs referencing the old `layer`/`Layers`/`LayerManager` names.
+- `Sprite2D.layer` renamed to `Sprite2D.sortLayer`; the `{ layer }` constructor option is now `{ sortLayer }`
+- `SpriteLayer` trait renamed to `SortLayer`; `Layers`/`LayerManager` renamed to `SortLayers`/`SortLayerManager`
+- `DEFAULT_BATCH_SIZE` removed in favor of the new batch tier ladder
+- Batch run key format changed from `(layer, materialId)` to `(materialId, sortLayer, layers.mask)`
 
-Adds automatic cross-scene sprite batching with sort-layer-aware ordering, a `SortLayerGroup` container for mixing first-party and foreign objects, doubled effect-buffer capacity via synth-quad geometry, and per-world default materials — alongside a breaking rename of `layer` to `sortLayer`.
+Adds automatic scene-graph batching/orchestration with tiered buffers and per-world default materials, introduces `sortLayer`/`SortLayerGroup` for render ordering, and fixes several material-lifecycle and batch-eviction bugs found during review.
