@@ -70,19 +70,42 @@ export function registerAtlasMesh(texture: Texture, data: AtlasMeshRegistration)
 }
 
 /**
- * A sheet WITHOUT mesh data loaded over a texture that has registered
- * polygons: its frames are unknown to the envelope, so the hull must
- * include the full quad corners from now on.
+ * A sheet WITHOUT mesh data loaded over this texture: its frames are
+ * unknown to the envelope, so the hull must include the full quad
+ * corners. Records the incomplete marker even when no entry exists
+ * yet — a meshless sheet can load BEFORE a meshed sheet that shares
+ * its texture, and the marker has to survive so the later
+ * `registerAtlasMesh` call merges against it (`existing.complete &&
+ * data.complete` stays false) instead of the texture coming out
+ * `complete: true` from load-order luck.
  */
 export function degradeAtlasMesh(texture: Texture): void {
+  if (!texture) return
   const existing = atlasMeshes.get(texture)
-  if (existing && existing.complete) {
+  if (!existing) {
+    atlasMeshes.set(texture, { frames: [], complete: false, version: 0 })
+    return
+  }
+  if (existing.complete) {
     atlasMeshes.set(texture, { ...existing, complete: false, version: existing.version + 1 })
   }
 }
 
-/** Mesh data for a texture, when its atlas was baked with polygons. */
+/**
+ * Mesh data for a texture, when its atlas was baked with polygons.
+ *
+ * A zero-frame entry (a purely meshless texture that `degradeAtlasMesh`
+ * marked incomplete but no sheet has ever merged actual mesh frames
+ * into) reads as `null` here — there is no hull to build and no
+ * complete/incomplete distinction worth surfacing yet. The raw entry
+ * still lives in the WeakMap so a LATER `registerAtlasMesh` call for
+ * the same texture merges against its `complete: false`, but that is
+ * an internal bookkeeping detail; public consumers only care once real
+ * frames are present.
+ */
 export function getAtlasMesh(texture: Texture | null): AtlasMeshData | null {
   if (!texture) return null
-  return atlasMeshes.get(texture) ?? null
+  const data = atlasMeshes.get(texture)
+  if (!data || data.frames.length === 0) return null
+  return data
 }

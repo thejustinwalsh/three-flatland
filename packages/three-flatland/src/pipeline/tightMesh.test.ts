@@ -3,6 +3,7 @@ import { Texture } from 'three'
 import { universe } from 'koota'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { createMaterialEffect } from '../materials/MaterialEffect'
 import { SpriteGroup } from './SpriteGroup'
 import { convexHull, fanTriangulate } from './convexHull'
 import { buildEnvelopeGeometry } from './envelopeGeometry'
@@ -171,7 +172,12 @@ describe('tight-mesh batch routing', () => {
 
     const data = registryData()
     const mesh = data.batchSlots.find((m) => m !== null)!
-    expect(mesh.geometry.getAttribute('position')).toBeUndefined()
+    // Synth-quad geometry now carries real position/uv attributes for
+    // user TSL (`uv()` contract) — attribute absence no longer
+    // discriminates the strategy. The 6-index unit quad does: an
+    // envelope hull is fan-triangulated from its own hull point count.
+    expect(mesh.geometryKind).toBe('synth-quad')
+    expect(mesh.geometry.getIndex()!.count).toBe(6)
     expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
   })
 
@@ -185,7 +191,10 @@ describe('tight-mesh batch routing', () => {
 
     const data = registryData()
     const mesh = data.batchSlots.find((m) => m !== null)!
-    expect(mesh.geometry.getAttribute('position')).toBeUndefined()
+    // See above — geometryKind + the 6-index quad discriminate the
+    // strategy now that synth-quad geometry ships real attributes.
+    expect(mesh.geometryKind).toBe('synth-quad')
+    expect(mesh.geometry.getIndex()!.count).toBe(6)
     expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
   })
 
@@ -232,9 +241,7 @@ describe('tight-mesh batch routing', () => {
     expect(material._tightMesh).toBe(true)
     const mesh = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
     expect(mesh.geometry.getAttribute('position')).toBeDefined()
-    expect(
-      data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind
-    ).toBe('tight-mesh')
+    expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('tight-mesh')
   })
 
   it('tight-mesh strategy shrinks the effect-float budget to 16', () => {
@@ -270,7 +277,8 @@ describe('tight-mesh batch routing', () => {
     const before = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
     const beforePos = before.geometry.getAttribute('position')
     let beforeMax = 0
-    for (let i = 0; i < beforePos.count; i++) beforeMax = Math.max(beforeMax, Math.abs(beforePos.getX(i)))
+    for (let i = 0; i < beforePos.count; i++)
+      beforeMax = Math.max(beforeMax, Math.abs(beforePos.getX(i)))
     expect(beforeMax).toBeCloseTo(0.2)
 
     // A second sheet merges a diamond reaching the quad edges into the
@@ -293,7 +301,8 @@ describe('tight-mesh batch routing', () => {
     const after = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
     const afterPos = after.geometry.getAttribute('position')
     let afterMax = 0
-    for (let i = 0; i < afterPos.count; i++) afterMax = Math.max(afterMax, Math.abs(afterPos.getX(i)))
+    for (let i = 0; i < afterPos.count; i++)
+      afterMax = Math.max(afterMax, Math.abs(afterPos.getX(i)))
     expect(afterMax).toBeCloseTo(0.5) // ...but the batch's envelope grew to match
   })
 
@@ -330,5 +339,129 @@ describe('tight-mesh batch routing', () => {
       }
     }
     expect(hasCorner).toBe(true) // quad corners joined the hull
+  })
+
+  it('a degrade-only zero-frame atlas entry does not force the tight-mesh strategy', () => {
+    const texture = makeTexture()
+    // A meshless sheet loads first with no prior registration for this
+    // texture — degradeAtlasMesh now records an incomplete marker
+    // internally instead of staying a no-op, but getAtlasMesh's public
+    // read filters a zero-frame entry back to null (nothing for
+    // buildEnvelopeGeometry to hull yet). Sprite2DMaterial's own
+    // `atlas.frames.length > 0` check is a second, defense-in-depth
+    // guard against the same case: if it ever fired without the
+    // registry-level filter, forcing tight-mesh here would make
+    // findOrCreateBatch's wanted strategy and the batch's actual
+    // synth-quad fallback geometry disagree — every update would
+    // dispose and rebuild the batch.
+    degradeAtlasMesh(texture)
+    const material = new Sprite2DMaterial({ map: texture, transparent: true })
+
+    expect(material._tightMesh).toBe(false)
+    expect(material.maxEffectFloats).toBe(24)
+
+    group.add(new Sprite2D({ texture, material }))
+    group.update()
+    const data = registryData()
+    const mesh = data.batchSlots.find((m) => m !== null)!
+    expect(mesh.geometryKind).toBe('synth-quad')
+    expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
+  })
+})
+
+describe('late effect registration past the tight-mesh effect-float cap', () => {
+  afterEach(() => {
+    universe.reset()
+  })
+
+  it('demotes an already-tight material to synth-quad instead of throwing when growth crosses 16', () => {
+    const texture = makeTexture()
+    registerDiamondAtlas(texture)
+    const material = new Sprite2DMaterial({ map: texture, transparent: true })
+    expect(material._tightMesh).toBe(true)
+    expect(material.maxEffectFloats).toBe(16)
+
+    const Big1 = createMaterialEffect({
+      name: 'lateBig1',
+      schema: { a: [0, 0, 0, 0], b: [0, 0, 0, 0], c: [0, 0, 0, 0] }, // 12 floats
+      node: ({ inputColor }) => inputColor,
+    })
+    const Big2 = createMaterialEffect({
+      name: 'lateBig2',
+      schema: { d: [0, 0, 0, 0], e: [0, 0, 0, 0] }, // 8 floats — total 20, crosses 16
+      node: ({ inputColor }) => inputColor,
+    })
+
+    expect(() => material.registerEffect(Big1)).not.toThrow()
+    expect(material._tightMesh).toBe(true) // 12 floats still fits under the 16 cap
+
+    expect(() => material.registerEffect(Big2)).not.toThrow() // would have thrown pre-fix
+    expect(material._tightMesh).toBe(false) // demoted to synth-quad
+    expect(material.maxEffectFloats).toBe(24)
+    expect(material._effectTotalFloats).toBe(20)
+  })
+
+  it('still throws when total effect floats exceed the hard 24-float cap after demotion', () => {
+    const texture = makeTexture()
+    registerDiamondAtlas(texture)
+    const material = new Sprite2DMaterial({ map: texture, transparent: true })
+    expect(material._tightMesh).toBe(true)
+
+    const Big1 = createMaterialEffect({
+      name: 'hardCap1',
+      schema: { a: [0, 0, 0, 0], b: [0, 0, 0, 0], c: [0, 0, 0, 0] }, // 12
+      node: ({ inputColor }) => inputColor,
+    })
+    const Big2 = createMaterialEffect({
+      name: 'hardCap2',
+      schema: { d: [0, 0, 0, 0], e: [0, 0, 0, 0], f: [0, 0, 0, 0] }, // 12 — total 24
+      node: ({ inputColor }) => inputColor,
+    })
+    const Big3 = createMaterialEffect({
+      name: 'hardCap3',
+      schema: { g: 0 }, // 1 more — total 25, over the hard cap
+      node: ({ inputColor }) => inputColor,
+    })
+
+    material.registerEffect(Big1)
+    material.registerEffect(Big2)
+    expect(material._tightMesh).toBe(false) // already demoted at 24
+    expect(material._effectTotalFloats).toBe(24)
+
+    expect(() => material.registerEffect(Big3)).toThrow(/exceeding the cap/)
+  })
+
+  it('leaves material state untouched when an over-cap registration is rejected', () => {
+    // The cap check runs BEFORE any mutation, so a rejected effect must
+    // not pollute _effects / hasEffect / _effectTotalFloats, and must not
+    // leave a half-applied geometry-strategy demotion behind.
+    const texture = makeTexture()
+    registerDiamondAtlas(texture)
+    const material = new Sprite2DMaterial({ map: texture, transparent: true })
+    expect(material._tightMesh).toBe(true)
+
+    // A single effect whose floats overshoot the 24-float hard cap in one
+    // shot — from a fresh tight-mesh material (16-float cap on paper).
+    const Overflow = createMaterialEffect({
+      name: 'overflow28',
+      schema: {
+        a: [0, 0, 0, 0],
+        b: [0, 0, 0, 0],
+        c: [0, 0, 0, 0],
+        d: [0, 0, 0, 0],
+        e: [0, 0, 0, 0],
+        f: [0, 0, 0, 0],
+        g: [0, 0, 0, 0], // 28 floats — over the hard 24 cap
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+
+    expect(() => material.registerEffect(Overflow)).toThrow(/exceeding the cap/)
+    // Transactional: nothing committed, no demotion leaked.
+    expect(material.hasEffect(Overflow)).toBe(false)
+    expect(material.getEffects()).toHaveLength(0)
+    expect(material._effectTotalFloats).toBe(0)
+    expect(material._tightMesh).toBe(true) // still tight — never demoted on the failed path
+    expect(material.maxEffectFloats).toBe(16)
   })
 })

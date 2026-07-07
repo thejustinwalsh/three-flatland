@@ -74,10 +74,12 @@ const CUSTOM_FULL_THRESHOLD = 3
  *   (1 buffer slot, 4 logical attribute views)
  * - `effectBuf*` custom attributes from the material's effect schema
  *
- * Total vertex-buffer bindings: 0 (index-only synth-quad geometry)
- * + 1 (instanceMatrix) + 1 (interleaved) + N (effect buffers). N is
- * capped by `EffectMaterial.MAX_EFFECT_FLOATS / 4 = 6` so the total
- * never exceeds the WebGPU 8-binding limit.
+ * Total vertex-buffer bindings: 0 (synth-quad `position`/`uv` exist for
+ * user TSL but the built-in shader synthesizes from `vertexIndex`
+ * instead, so neither is consumed) + 1 (instanceMatrix) + 1
+ * (interleaved) + N (effect buffers). N is capped by
+ * `EffectMaterial.MAX_EFFECT_FLOATS / 4 = 6` so the total never exceeds
+ * the WebGPU 8-binding limit.
  *
  * Systems write to batch buffers directly via the write methods.
  *
@@ -589,9 +591,9 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Index-only geometry has no position data and the batch is never
-   * frustum-culled — an infinite bound is the honest answer at zero
-   * cost (InstancedMesh's default would union all instance spheres).
+   * The batch is never frustum-culled — an infinite bound is the
+   * honest answer at zero cost (InstancedMesh's default would union
+   * all instance spheres).
    */
   override computeBoundingSphere(): void {
     if (this.boundingSphere === null) this.boundingSphere = new Sphere()
@@ -600,10 +602,10 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Raycasting a batch is meaningless (and would crash on position-less
-   * geometry). Pointer interaction happens per-Sprite2D via its own
-   * plane-math raycast; batched-sprite picking is tracked separately
-   * (GPU ID-buffer picking).
+   * Raycasting a batch is meaningless — the unit-quad geometry knows
+   * nothing about per-instance UV flip/atlas remap or alpha. Pointer
+   * interaction happens per-Sprite2D via its own plane-math raycast;
+   * batched-sprite picking is tracked separately (GPU ID-buffer picking).
    */
   override raycast(_raycaster: Raycaster, _intersects: Intersection[]): void {}
 

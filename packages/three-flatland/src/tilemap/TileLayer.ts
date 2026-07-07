@@ -388,8 +388,9 @@ export class TileLayer extends Group {
       // path.
       const instanceData = new Float32Array(count * 16)
 
-      // Create geometry with instance attributes — index-only synth quad
-      // (corner position/UV synthesized from vertexIndex by the material)
+      // Create geometry with instance attributes — synth quad (corner
+      // position/UV synthesized from vertexIndex by the material, not
+      // read from the geometry's own position/uv attributes)
       const geometry = createSynthQuadGeometry()
 
       const interleaved = new InstancedInterleavedBuffer(instanceData, 16, 1)
