@@ -22,7 +22,20 @@ export interface AtlasMeshData {
    * meshless frames still render un-clipped.
    */
   complete: boolean
+  /**
+   * Monotonic counter bumped on every merge or degrade. A consumer that
+   * only compares "registered or not" (a boolean) can't see a sheet
+   * merging more frames into an already-registered texture, or a
+   * `complete` flip — the registration was already present either way.
+   * Comparing `version` against a previously-seen value catches CONTENT
+   * changes a presence check misses, so batches built from a stale hull
+   * know to rebuild. Loaders don't set this — the registry assigns it.
+   */
+  version: number
 }
+
+/** Loader-facing registration payload; the registry assigns `version`. */
+export type AtlasMeshRegistration = Pick<AtlasMeshData, 'frames' | 'complete'>
 
 /**
  * Texture → atlas mesh data. WeakMap so dropping the texture drops the
@@ -39,10 +52,10 @@ const atlasMeshes = new WeakMap<Texture, AtlasMeshData>()
  * only when both entries agree — the envelope degrades toward the
  * full quad the moment either sheet contributed a meshless frame.
  */
-export function registerAtlasMesh(texture: Texture, data: AtlasMeshData): void {
+export function registerAtlasMesh(texture: Texture, data: AtlasMeshRegistration): void {
   const existing = atlasMeshes.get(texture)
   if (!existing) {
-    atlasMeshes.set(texture, data)
+    atlasMeshes.set(texture, { ...data, version: 0 })
     return
   }
   const frames = [...existing.frames]
@@ -52,6 +65,7 @@ export function registerAtlasMesh(texture: Texture, data: AtlasMeshData): void {
   atlasMeshes.set(texture, {
     frames,
     complete: existing.complete && data.complete,
+    version: existing.version + 1,
   })
 }
 
@@ -63,7 +77,7 @@ export function registerAtlasMesh(texture: Texture, data: AtlasMeshData): void {
 export function degradeAtlasMesh(texture: Texture): void {
   const existing = atlasMeshes.get(texture)
   if (existing && existing.complete) {
-    atlasMeshes.set(texture, { ...existing, complete: false })
+    atlasMeshes.set(texture, { ...existing, complete: false, version: existing.version + 1 })
   }
 }
 

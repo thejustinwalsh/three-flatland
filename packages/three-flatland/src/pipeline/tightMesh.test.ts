@@ -6,7 +6,7 @@ import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from './SpriteGroup'
 import { convexHull, fanTriangulate } from './convexHull'
 import { buildEnvelopeGeometry } from './envelopeGeometry'
-import { registerAtlasMesh } from '../loaders/atlasMeshRegistry'
+import { registerAtlasMesh, degradeAtlasMesh } from '../loaders/atlasMeshRegistry'
 import { BatchGeometryStrategy } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
 import type { SpriteFrame, SpriteFrameMesh } from '../sprites/types'
@@ -245,5 +245,90 @@ describe('tight-mesh batch routing', () => {
 
     expect(tight.maxEffectFloats).toBe(16)
     expect(synth.maxEffectFloats).toBe(24)
+  })
+
+  it('a content-only atlas merge on an already-tight material still rebuilds the envelope', () => {
+    const texture = makeTexture()
+    // Sheet A: a small triangle well inside the quad.
+    registerAtlasMesh(texture, {
+      frames: [
+        makeMeshedFrame('a', [
+          [-0.2, -0.2],
+          [0.2, -0.2],
+          [0, 0.2],
+        ]),
+      ],
+      complete: true,
+    })
+    const material = new Sprite2DMaterial({ map: texture, transparent: true })
+    expect(material._tightMesh).toBe(true)
+
+    group.add(new Sprite2D({ texture, material }))
+    group.add(new Sprite2D({ texture, material }))
+    group.update()
+    const data = registryData()
+    const before = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
+    const beforePos = before.geometry.getAttribute('position')
+    let beforeMax = 0
+    for (let i = 0; i < beforePos.count; i++) beforeMax = Math.max(beforeMax, Math.abs(beforePos.getX(i)))
+    expect(beforeMax).toBeCloseTo(0.2)
+
+    // A second sheet merges a diamond reaching the quad edges into the
+    // SAME texture. `complete` stays true on both sides, so the boolean
+    // `wantsTight` strategy never flips — only the CONTENT changed.
+    registerAtlasMesh(texture, {
+      frames: [
+        makeMeshedFrame('b', [
+          [0, -0.5],
+          [0.5, 0],
+          [0, 0.5],
+          [-0.5, 0],
+        ]),
+      ],
+      complete: true,
+    })
+    group.update()
+
+    expect(material._tightMesh).toBe(true) // strategy never flipped...
+    const after = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
+    const afterPos = after.geometry.getAttribute('position')
+    let afterMax = 0
+    for (let i = 0; i < afterPos.count; i++) afterMax = Math.max(afterMax, Math.abs(afterPos.getX(i)))
+    expect(afterMax).toBeCloseTo(0.5) // ...but the batch's envelope grew to match
+  })
+
+  it('a complete-to-incomplete degrade on an already-tight material adds the quad corners', () => {
+    const texture = makeTexture()
+    registerDiamondAtlas(texture) // complete: true
+    const material = new Sprite2DMaterial({ map: texture, transparent: true })
+    expect(material._tightMesh).toBe(true)
+
+    group.add(new Sprite2D({ texture, material }))
+    group.add(new Sprite2D({ texture, material }))
+    group.update()
+    const data = registryData()
+    const before = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
+    expect(before.geometry.getAttribute('position').count).toBe(4) // diamond hull only
+
+    // A meshless sheet loads over the same texture afterward — degrades
+    // `complete` to false. `wantsTight` still evaluates true (the atlas
+    // registration is still present), so the strategy boolean never
+    // flips even though the envelope must now include the full quad.
+    degradeAtlasMesh(texture)
+    group.update()
+
+    expect(material._tightMesh).toBe(true) // strategy stayed tight-mesh
+    const after = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
+    const afterPos = after.geometry.getAttribute('position')
+    // The diamond's own vertices already sit at |x| or |y| = 0.5 (but
+    // never both at once) — a true (0.5, 0.5) quad corner only appears
+    // once the degrade pushes the full quad into the hull.
+    let hasCorner = false
+    for (let i = 0; i < afterPos.count; i++) {
+      if (Math.abs(afterPos.getX(i)) === 0.5 && Math.abs(afterPos.getY(i)) === 0.5) {
+        hasCorner = true
+      }
+    }
+    expect(hasCorner).toBe(true) // quad corners joined the hull
   })
 })

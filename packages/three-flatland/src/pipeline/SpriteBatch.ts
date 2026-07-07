@@ -11,6 +11,7 @@ import {
 } from 'three'
 import { createSynthQuadGeometry } from './synthQuadGeometry'
 import { buildEnvelopeGeometry } from './envelopeGeometry'
+import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
 import { BucketedDirtyTracker } from './BucketedDirtyTracker'
@@ -99,6 +100,16 @@ export class SpriteBatch extends InstancedMesh {
    * (different attribute layouts compiled into the shader).
    */
   readonly geometryKind: 'synth-quad' | 'tight-mesh'
+
+  /**
+   * Atlas registry `version` the envelope hull was built from (-1 for
+   * synth-quad, which has no envelope). A merge/degrade on the same
+   * texture bumps the registry's version without necessarily flipping
+   * `geometryKind` — pool recycling in `findOrCreateBatch` compares
+   * this against the live atlas version so a batch whose hull no
+   * longer matches its registration gets rebuilt instead of reused.
+   */
+  readonly envelopeVersion: number
 
   /**
    * Current number of active slots in the batch.
@@ -204,7 +215,8 @@ export class SpriteBatch extends InstancedMesh {
     //                 (alpha-blend path; fringe blend cost is real)
     // The material's resolved strategy decides — its shader was built
     // for exactly one of these attribute layouts.
-    const envelope = material._tightMesh ? buildEnvelopeGeometry(material.getTexture()) : null
+    const atlas = material._tightMesh ? getAtlasMesh(material.getTexture()) : null
+    const envelope = atlas ? buildEnvelopeGeometry(material.getTexture()) : null
     const geometry = envelope ?? createSynthQuadGeometry()
     // The batch is never frustum-culled; give it an honest infinite bound.
     geometry.boundingSphere = new Sphere(geometry.boundingSphere!.center, Infinity)
@@ -275,6 +287,7 @@ export class SpriteBatch extends InstancedMesh {
     this.spriteMaterial = material
     this.maxSize = maxSize
     this.geometryKind = envelope !== null ? 'tight-mesh' : 'synth-quad'
+    this.envelopeVersion = atlas?.version ?? -1
     this.frustumCulled = false
 
     // Initialize dirty trackers — matrix tracks the auto-created
