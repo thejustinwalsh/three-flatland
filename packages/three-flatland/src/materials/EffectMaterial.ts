@@ -61,7 +61,8 @@ export function getPackedComponent(
 export interface EffectMaterialOptions {
   /**
    * Effect buffer tier size in floats.
-   * Buffers are allocated in tiers: 0, 4, 8, 16.
+   * Buffers are allocated in tiers: 0, 4, 8, 16, then multiples of 4 up
+   * to the 24-float cap ({@link EffectMaterial.MAX_EFFECT_FLOATS}).
    * Default is 8 (2 vec4 buffers), covering most effect combinations.
    * Set to 0 for fully effect-free materials (no effect buffer overhead).
    */
@@ -218,6 +219,14 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
   constructor(options: EffectMaterialOptions = {}) {
     super()
+
+    if (options.effectTier !== undefined && options.effectTier > EffectMaterial.MAX_EFFECT_FLOATS) {
+      throw new Error(
+        `[EffectMaterial] Cannot construct with effectTier: ${options.effectTier}, ` +
+          `exceeding the cap of ${EffectMaterial.MAX_EFFECT_FLOATS} ` +
+          `(WebGPU 8-buffer limit).`
+      )
+    }
 
     // Set up effect tier
     this._defaultEffectTier = options.effectTier ?? 8

@@ -87,7 +87,7 @@ scene.add(spriteGroup);
 
 ## Automatic Change Detection
 
-Property changes on sprites are detected automatically through the ECS. When you update a sprite's tint, alpha, flip, frame, layer, or position, the renderer syncs only the changed data to the GPU on the next frame. No manual invalidation needed.
+Property changes on sprites are detected automatically through the ECS. When you update a sprite's tint, alpha, flip, frame, sortLayer, or position, the renderer syncs only the changed data to the GPU on the next frame. No manual invalidation needed.
 
 ```typescript
 // Just change properties — the renderer handles the rest
@@ -148,9 +148,9 @@ const player = new Sprite2D({ material, frame: frames.get('player') });
 const enemy = new Sprite2D({ material, frame: frames.get('enemy') });
 ```
 
-### Organize by Layer
+### Organize by Sort Layer
 
-Sprites are sorted by layer before batching. Keep related sprites on the same layer:
+Sprites are sorted by sortLayer before batching. Keep related sprites on the same layer:
 
 ```typescript
 import { SortLayers } from 'three-flatland';

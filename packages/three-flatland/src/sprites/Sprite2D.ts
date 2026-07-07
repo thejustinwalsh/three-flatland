@@ -31,7 +31,7 @@ import {
   BatchRegistry,
 } from '../ecs/traits'
 import { resolveSortLayer, type SortLayerName, type SortLayerValue } from '../pipeline/sortLayers'
-import type { RegistryData } from '../ecs/batchUtils'
+import { getWorldDefaultMaterial, type RegistryData } from '../ecs/batchUtils'
 import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 import { observable } from '../observable'
@@ -89,10 +89,12 @@ const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, ve
  * scene.add(sprite);
  * ```
  */
-/** One-shot latch: warn once per process when 'alpha' mode lacks an
+/** One-shot latch: warn once per sprite when 'alpha' mode lacks an
  * alphaMap, so a scene of thousands of misconfigured sprites doesn't
- * flood the console. Spec §7.1. */
-let _warnedMissingAlphaMap = false
+ * flood the console on every raycast. Keyed by sprite (not a single
+ * process-wide flag) so one misconfigured sprite's warning doesn't
+ * suppress the same warning for every other sprite. Spec §7.1. */
+const _warnedMissingAlphaMap = new WeakSet<object>()
 
 export class Sprite2D extends Mesh {
   declare geometry: BufferGeometry
@@ -780,6 +782,27 @@ export class Sprite2D extends Mesh {
   }
 
   /**
+   * Resolve a world- or registry-scoped default material for `texture`,
+   * for a sprite that isn't holding a user-supplied material.
+   *
+   * Returns `null` when the sprite has neither an assigned world nor an
+   * auto-orchestration registry yet — the pre-enrollment bootstrap
+   * fallback (`Sprite2DMaterial.getShared`) covers that case instead.
+   * @internal
+   */
+  private _resolveWorldDefaultMaterial(texture: Texture): Sprite2DMaterial | null {
+    if (this._flatlandWorld) {
+      const registryEntities = this._flatlandWorld.query(BatchRegistry)
+      const registry = registryEntities[0]?.get(BatchRegistry) as RegistryData | undefined
+      if (registry) return getWorldDefaultMaterial(this._flatlandWorld, registry, texture)
+    }
+    if (this._autoRegistry) {
+      return this._autoRegistry.getDefaultMaterial(texture)
+    }
+    return null
+  }
+
+  /**
    * Get the current texture.
    */
   get texture(): Texture | null {
@@ -792,11 +815,20 @@ export class Sprite2D extends Mesh {
   set texture(value: Texture | null) {
     this._texture = value
     if (value) {
-      if (this._materialIsBootstrapDefault && this.material.getTexture() !== value) {
-        // Never mutate a shared bootstrap material — re-resolve to the
-        // bootstrap default for the new texture instead.
-        this.material = Sprite2DMaterial.getShared({ map: value, transparent: true })
-        this._setupInstanceAttributes()
+      if (
+        (this._materialIsBootstrapDefault || this._materialWasRegistryDefault) &&
+        this.material.getTexture() !== value
+      ) {
+        // Never mutate a shared bootstrap/world-default material — every
+        // other sprite holding the same instance would retexture with
+        // it. Re-resolve to the default for the new texture instead.
+        const worldDefault = this._resolveWorldDefaultMaterial(value)
+        if (worldDefault) {
+          this._resolveDefaultMaterial(worldDefault)
+        } else {
+          this.material = Sprite2DMaterial.getShared({ map: value, transparent: true })
+          this._setupInstanceAttributes()
+        }
       } else {
         this.material.setTexture(value)
       }
@@ -1719,8 +1751,8 @@ export class Sprite2D extends Mesh {
           ? this.alphaMap.sampleFrame(u, v, this._frame)
           : this.alphaMap.sampleAtlasUV(u, v)
         if (sample / 255 < this.alphaThreshold) return
-      } else if (!_warnedMissingAlphaMap && process.env.NODE_ENV !== 'production') {
-        _warnedMissingAlphaMap = true
+      } else if (!_warnedMissingAlphaMap.has(this) && process.env.NODE_ENV !== 'production') {
+        _warnedMissingAlphaMap.add(this)
         console.warn(
           "three-flatland: Sprite2D hitTestMode 'alpha' requires an alphaMap — falling back to 'bounds'"
         )
