@@ -1,13 +1,11 @@
 {
   "meta": {
-    "app": "a",
-    "version": "1",
-    "size": { "w": 64, "h": 64 },
-    "scale": "1",
-    "sources": [{ "format": "png", "uri": "hero.png" }]
+    "image": "knight.png",
+    "size": { "w": 256, "h": 256 },
+    "scale": "1"
   },
   "frames": {
-    "hero_idle_0": {
+    "idle_0": {
       "frame": { "x": "0", "y": 0, "w": 32, "h": 32 },
       "rotated": false,
       "trimmed": false,

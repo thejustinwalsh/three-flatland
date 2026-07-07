@@ -63,7 +63,7 @@ describe('atlas.schema.json — invalid fixtures assert a specific ajv error', (
     expect(validate(json)).toBe(false)
     expect(validate.errors).toContainEqual(
       expect.objectContaining({
-        instancePath: '/frames/hero_idle_0/frame/x',
+        instancePath: '/frames/idle_0/frame/x',
         keyword: 'type',
         params: { type: 'integer' },
       })

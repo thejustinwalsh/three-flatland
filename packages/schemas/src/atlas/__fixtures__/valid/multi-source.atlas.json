@@ -2,22 +2,22 @@
   "meta": {
     "app": "fl-sprite-atlas",
     "version": "1.0",
-    "size": { "w": 64, "h": 64 },
+    "size": { "w": 1020, "h": 364 },
     "scale": "1",
     "sources": [
-      { "format": "webp", "uri": "hero.webp" },
-      { "format": "png", "uri": "hero.png" },
-      { "format": "avif", "uri": "hero.avif" },
-      { "format": "ktx2", "uri": "hero.ktx2" }
+      { "format": "webp", "uri": "sprites.webp" },
+      { "format": "png", "uri": "sprites.png" },
+      { "format": "avif", "uri": "sprites.avif" },
+      { "format": "ktx2", "uri": "sprites.ktx2" }
     ]
   },
   "frames": {
-    "hero_idle_0": {
-      "frame": { "x": 0, "y": 0, "w": 32, "h": 32 },
+    "castle": {
+      "frame": { "x": 2, "y": 2, "w": 296, "h": 205 },
       "rotated": false,
       "trimmed": false,
-      "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 32 },
-      "sourceSize": { "w": 32, "h": 32 }
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 296, "h": 205 },
+      "sourceSize": { "w": 296, "h": 205 }
     }
   }
 }

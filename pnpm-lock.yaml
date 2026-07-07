@@ -66,6 +66,9 @@ catalogs:
     three:
       specifier: ^0.183.1
       version: 0.183.1
+    ts-json-schema-generator:
+      specifier: ^2.9.0
+      version: 2.9.0
     tweakpane:
       specifier: ^4.0.5
       version: 4.0.5
@@ -1505,7 +1508,7 @@ importers:
         version: 8.17.1
     devDependencies:
       ts-json-schema-generator:
-        specifier: ^2.9.0
+        specifier: 'catalog:'
         version: 2.9.0
 
   packages/skia:
