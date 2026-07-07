@@ -16,7 +16,26 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { CodelensServiceClient } from './client.js'
+import type { Range } from './protocol.js'
 import { resolveBinary } from './resolveBinary.js'
+
+/**
+ * Slices `text` at an LSP `Range` (0-based line, UTF-16-code-unit
+ * character) — JS strings are natively UTF-16-code-unit indexed, so this
+ * needs no encoding conversion, just line splitting. Used to prove a
+ * defRange's semantics directly against the source it was computed from,
+ * rather than trusting position numbers in isolation.
+ */
+function sliceRange(text: string, range: Range): string {
+  const lines = text.split('\n')
+  if (range.start.line === range.end.line) {
+    return lines[range.start.line]!.slice(range.start.character, range.end.character)
+  }
+  const startLine = lines[range.start.line]!.slice(range.start.character)
+  const middleLines = lines.slice(range.start.line + 1, range.end.line)
+  const endLine = lines[range.end.line]!.slice(0, range.end.character)
+  return [startLine, ...middleLines, endLine].join('\n')
+}
 
 const SIDECAR_DIR = fileURLToPath(new URL('../sidecar', import.meta.url))
 const CARGO_AVAILABLE = spawnSync('cargo', ['--version'], { stdio: 'ignore' }).status === 0
@@ -126,6 +145,34 @@ describe.skipIf(!CARGO_AVAILABLE)('CodelensServiceClient against the real sideca
     const parsed = await client.parse({ uri: 'file:///a.ts', text: 'zzfx();' })
     expect(parsed.findings).toHaveLength(1)
     expect(parsed.findings[0]!.payload.params).toEqual([])
+    await client.shutdown()
+  })
+
+  it("a type-annotated variable's defRange slices out exactly the initializer, nothing else", async () => {
+    // The one assertion that can never lie about semantics: rather than
+    // trusting line/character numbers in isolation, slice the ORIGINAL
+    // source text at defRange and check it's byte-for-byte the array
+    // literal — not "LASER: number[] = [...]" (the whole declarator, the
+    // bug this test guards against — a write-back replacing that range
+    // would delete the variable's name and type), not the initializer
+    // plus a trailing `;`, just the value.
+    client = new CodelensServiceClient({
+      binaryPath,
+      workspaceRoot: workDir,
+      storageUri: join(workDir, 'storage4'),
+    })
+    await client.start()
+
+    const uri = 'file:///virtual/typed.ts'
+    const text = 'const LASER: number[] = [0.6, 0, 100, 0.02, 0.15];\nzzfx(...LASER);\n'
+    const parsed = await client.parse({ uri, text })
+    expect(parsed.findings).toHaveLength(1)
+
+    const varRef = parsed.findings[0]!.payload.varRef
+    expect(varRef?.name).toBe('LASER')
+    expect(varRef?.defRange).toBeDefined()
+    expect(sliceRange(text, varRef!.defRange!)).toBe('[0.6, 0, 100, 0.02, 0.15]')
+
     await client.shutdown()
   })
 })

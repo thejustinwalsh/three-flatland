@@ -402,6 +402,30 @@ mod tests {
     }
 
     #[test]
+    fn var_ref_def_range_covers_only_the_value_for_var() {
+        // `var` is legacy but still valid TS/JS — same declarator shape as
+        // const/let, must behave identically.
+        let prefix = "var myPreset = ";
+        let value = "[1,.05,220]";
+        let src = format!("{prefix}{value};\nzzfx(myPreset);");
+        assert_def_range_covers_value(prefix, value, &src);
+    }
+
+    #[test]
+    fn var_ref_def_range_reports_a_non_array_initializers_range_unvalidated() {
+        // The sidecar reports the initializer's range regardless of its
+        // shape — it does not require (or check) that the value is an
+        // array literal. `getPreset()` here is a call expression, not an
+        // array, and defRange must still cover exactly that expression;
+        // deciding what to do with a non-array initializer is the client's
+        // job, not this layer's.
+        let prefix = "const myPreset = ";
+        let value = "getPreset()";
+        let src = format!("{prefix}{value};\nzzfx(myPreset);");
+        assert_def_range_covers_value(prefix, value, &src);
+    }
+
+    #[test]
     fn calls_inside_line_comments_do_not_match() {
         let findings = find_zzfx_calls("a.ts", "// zzfx(1,2,3) commented out\n");
         assert!(findings.is_empty());

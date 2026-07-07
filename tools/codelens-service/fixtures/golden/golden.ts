@@ -11,6 +11,16 @@ export function playLaser() {
   zzfx(...laserPreset)
 }
 
+// Type-annotated declarator — the shape that caught a real bug: defRange
+// must cover only the array literal, never "explosionPreset: number[] = ".
+// A write-back that (incorrectly) replaced the whole declarator's text
+// would delete the name and type annotation here.
+const explosionPreset: number[] = [0.6, 0, 100, 0.02, 0.15]
+
+export function playExplosion() {
+  zzfx(...explosionPreset)
+}
+
 export function playBeep() {
   zzfx(1, 0.1, 440)
 }

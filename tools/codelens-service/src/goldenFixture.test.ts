@@ -86,5 +86,24 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     // to sidestep serde_json::Value's format-sensitive equality), this
     // straightforward JSON round-trip comparison is already correct.
     expect(result.findings).toEqual(goldenFindings)
+
+    // The specific regression this fixture exists to prevent: a
+    // type-annotated declarator's defRange must land INSIDE the
+    // initializer, past the `=` — not at the declarator's start (the
+    // name). golden.ts's `explosionPreset` is `const explosionPreset:
+    // number[] = [0.6, ...]`; `=` sits at character 32 on that line, so a
+    // defRange starting at or before 32 would mean the old,
+    // whole-declarator bug is back (it would have deleted the variable's
+    // name and type annotation on a write-back).
+    const explosionFinding = result.findings.find(
+      (f) => f.payload.varRef?.name === 'explosionPreset'
+    )
+    expect(
+      explosionFinding,
+      'golden.ts must still declare and reference explosionPreset'
+    ).toBeDefined()
+    const defRange = explosionFinding!.payload.varRef!.defRange
+    expect(defRange, 'explosionPreset has an initializer; defRange must be present').toBeDefined()
+    expect(defRange!.start.character).toBeGreaterThan(32)
   })
 })

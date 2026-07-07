@@ -25,6 +25,12 @@ export interface ByteRange {
 export interface VarRef {
   name: string
   defUri?: string
+  /**
+   * The initializer VALUE range — what a write-back replaces — never the
+   * whole declarator (name, type annotation, and `=` excluded). Absent
+   * when the declaration has no initializer to point at, even if defUri
+   * is present (there's a real declaration site, just no value there yet).
+   */
   defRange?: Range
 }
 
