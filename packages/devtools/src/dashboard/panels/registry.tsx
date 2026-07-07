@@ -43,6 +43,13 @@ export function RegistryPanel() {
   const state = useDevtoolsState()
   const client = getClient()
   const [selected, setSelected] = useState<string | null>(null)
+  // Multi-select (#29 Phase C slice 4): entries the user has explicitly
+  // pinned alongside `selected`, shown as a tab strip on the detail
+  // side once there's more than one. A plain click always browses solo
+  // (matches the panel's pre-existing single-select idiom exactly);
+  // ⌘/Ctrl-click adds to (or removes from) the pinned set without
+  // disturbing the others — see `onRowClick` below.
+  const [pinned, setPinned] = useState<string[]>([])
   const [filter, setFilter] = useState('')
 
   // Default client state has `registrySelection = []` — subscribed to
@@ -148,9 +155,49 @@ export function RegistryPanel() {
     ? entries.filter((e) => e.name.toLowerCase().includes(needle) || (e.label?.toLowerCase().includes(needle) ?? false))
     : entries
 
-  const effectiveSelected = selected !== null && visible.some((e) => e.name === selected)
+  // Pinned tabs, minus any name that's vanished from the registry
+  // outright — deliberately checked against the FULL `entries`, not
+  // the filtered `visible` list, so typing in the filter box never
+  // silently drops a pinned tab just because it scrolled out of view.
+  const effectivePinned = useMemo(
+    () => pinned.filter((name) => entries.some((e) => e.name === name)),
+    [pinned, entries],
+  )
+
+  const effectiveSelected = selected !== null && (visible.some((e) => e.name === selected) || effectivePinned.includes(selected))
     ? selected
     : (visible[0]?.name ?? null)
+
+  /**
+   * Plain click: browse solo, same as the pre-multi-select behavior —
+   * replaces the whole pinned set with just this entry. ⌘/Ctrl-click:
+   * toggle this entry in the pinned set without touching the others,
+   * seeding the set from whatever was already the active entry the
+   * first time it goes from 0/1 pins to 2+.
+   */
+  const onRowClick = (ev: MouseEvent, name: string): void => {
+    if (!ev.metaKey && !ev.ctrlKey) {
+      setPinned([name])
+      setSelected(name)
+      return
+    }
+    const base = effectivePinned.length > 0 ? effectivePinned : (effectiveSelected !== null ? [effectiveSelected] : [])
+    if (base.includes(name)) {
+      const next = base.filter((n) => n !== name)
+      setPinned(next)
+      if (selected === name) setSelected(next[0] ?? null)
+    } else {
+      setPinned([...base, name])
+      setSelected(name)
+    }
+  }
+
+  /** Unpin from the tab strip's own close (×) button. */
+  const unpin = (name: string): void => {
+    const next = effectivePinned.filter((n) => n !== name)
+    setPinned(next)
+    if (selected === name) setSelected(next[0] ?? null)
+  }
 
   const selectedEntry = effectiveSelected !== null ? effectiveRegistry.get(effectiveSelected) ?? null : null
 
@@ -187,9 +234,11 @@ export function RegistryPanel() {
                   type="button"
                   class={
                     'registry-row' +
-                    (e.name === effectiveSelected ? ' registry-row-selected' : '')
+                    (e.name === effectiveSelected ? ' registry-row-selected' : '') +
+                    (effectivePinned.includes(e.name) && e.name !== effectiveSelected ? ' registry-row-pinned' : '')
                   }
-                  onClick={() => setSelected(e.name)}
+                  onClick={(ev) => onRowClick(ev, e.name)}
+                  title="Click to select · ⌘/Ctrl-click to pin alongside the current selection"
                 >
                   <span class="registry-kind">{e.kind}</span>
                   <span class="registry-name">{e.name}</span>
@@ -201,6 +250,32 @@ export function RegistryPanel() {
           )}
         </ul>
         <div class="registry-detail">
+          {effectivePinned.length > 1 && (
+            <div class="registry-tabs">
+              {effectivePinned.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  class={`registry-tab${name === effectiveSelected ? ' registry-tab-active' : ''}`}
+                  onClick={() => setSelected(name)}
+                  title={name}
+                >
+                  <span class="registry-tab-name">{name}</span>
+                  <span
+                    class="registry-tab-close"
+                    role="button"
+                    aria-label={`Unpin ${name}`}
+                    onClick={(ev) => {
+                      ev.stopPropagation()
+                      unpin(name)
+                    }}
+                  >
+                    ×
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           {selectedEntry === null ? (
             <div class="panel-empty">Select an entry.</div>
           ) : (

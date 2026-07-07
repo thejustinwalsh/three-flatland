@@ -192,11 +192,18 @@ export class FlightRing {
 
 // ─── Live/frozen singleton facade ──────────────────────────────────────────
 //
-// One always-on live ring per dashboard session. Freezing clones it;
-// unfreezing drops the clone. Deliberately not provider-scoped in this
-// slice — issue #29's "multi-provider semantics" (item 3) is called
-// out as unresolved and is out of scope for the single-buffer minimum
-// viable flight recorder.
+// One always-on "primary" ring per dashboard session, used for the
+// frame-arrival log that anchors the scrubber's claimable range even
+// when no buffer is marked (`getLiveRing()`/`getFrozenRing()` below —
+// unchanged since slice 2). Layered on top (#29 Phase C slice 4): a
+// per-buffer-name map of additional rings, one per buffer the user has
+// marked for the grid viewer. `freeze()` clones the primary ring AND
+// every marked buffer's ring into one atomic snapshot set — one
+// freeze = one consistent moment across every marked buffer, even
+// though each ring is a physically separate object; `unfreeze()` drops
+// all of them together. Deliberately still not provider-scoped —
+// issue #29's "multi-provider semantics" (item 3) is called out as
+// unresolved and stays out of scope.
 
 type Listener = () => void
 
@@ -212,7 +219,7 @@ function fire(): void {
   }
 }
 
-/** Notified whenever freeze/unfreeze toggles. */
+/** Notified whenever freeze/unfreeze toggles, or a buffer is marked/unmarked. */
 export function addFlightRingListener(cb: Listener): () => void {
   _listeners.add(cb)
   return () => {
@@ -222,6 +229,8 @@ export function addFlightRingListener(cb: Listener): () => void {
 
 let _liveRing = new FlightRing()
 let _frozenRing: FlightRing | null = null
+const _liveBufferRings = new Map<string, FlightRing>()
+let _frozenBufferRings: Map<string, FlightRing> | null = null
 
 /** The always-on live ring. Ingest writes here whether frozen or not. */
 export function getLiveRing(): FlightRing {
@@ -238,20 +247,25 @@ export function getFrozenRing(): FlightRing | null {
 }
 
 /**
- * Clone the live ring and hold the snapshot. No-op if already frozen —
+ * Clone the primary ring plus every currently marked buffer's live
+ * ring into one atomic snapshot set. No-op if already frozen —
  * re-freezing isn't exposed in this slice; unfreeze (via `goLive`)
  * first.
  */
 export function freeze(): void {
   if (_frozenRing !== null) return
   _frozenRing = _liveRing.clone()
+  const snap = new Map<string, FlightRing>()
+  for (const [name, ring] of _liveBufferRings) snap.set(name, ring.clone())
+  _frozenBufferRings = snap
   fire()
 }
 
-/** Drop the snapshot and resume reading the live ring. No-op if already live. */
+/** Drop every snapshot (primary + per-buffer) and resume reading the live rings. No-op if already live. */
 export function unfreeze(): void {
   if (_frozenRing === null) return
   _frozenRing = null
+  _frozenBufferRings = null
   fire()
 }
 
@@ -260,4 +274,78 @@ export function unfreeze(): void {
 export function __resetFlightRecorderForTests(ring: FlightRing = new FlightRing()): void {
   _liveRing = ring
   _frozenRing = null
+  _liveBufferRings.clear()
+  _frozenBufferRings = null
+}
+
+// ─── Multi-buffer marks (#29 Phase C slice 4) ──────────────────────────────
+//
+// The buffers panel lets the user "mark" more than one registered
+// buffer at once for the grid viewer. Each marked buffer gets its own
+// `FlightRing` (keyed by name) tracking only that buffer's chunks —
+// unlike the primary ring, these are never used for the frame-arrival
+// log. Marking/unmarking is independent of freeze/unfreeze: it only
+// controls which buffers are LIVE-tracked; a buffer already captured
+// in a frozen snapshot keeps its frozen ring even after being unmarked.
+
+/**
+ * GPU readback + VP9 encode cost scales linearly per concurrently
+ * streamed buffer (#29 item 8). Marking beyond this is still allowed —
+ * the UI surfaces a warning rather than blocking.
+ */
+export const CONCURRENT_MARK_GUARDRAIL = 4
+
+/** `true` once `markedCount` exceeds the concurrent-streaming guardrail. Pure — doesn't touch the live registry. */
+export function exceedsMarkGuardrail(markedCount: number): boolean {
+  return markedCount > CONCURRENT_MARK_GUARDRAIL
+}
+
+/** Names of currently marked buffers, in mark order. */
+export function getMarkedBufferNames(): string[] {
+  return Array.from(_liveBufferRings.keys())
+}
+
+/** Start tracking `name`'s chunk stream in its own live ring. Idempotent. */
+export function markBuffer(name: string): void {
+  if (_liveBufferRings.has(name)) return
+  const ring = new FlightRing()
+  ring.setBufferName(name)
+  _liveBufferRings.set(name, ring)
+  fire()
+}
+
+/** Stop live-tracking `name` — drops its live ring. A prior frozen snapshot (if any) is unaffected. */
+export function unmarkBuffer(name: string): void {
+  if (!_liveBufferRings.delete(name)) return
+  fire()
+}
+
+/** The live ring tracking `name`'s chunks, or `null` if `name` isn't currently marked. */
+export function getBufferLiveRing(name: string): FlightRing | null {
+  return _liveBufferRings.get(name) ?? null
+}
+
+/** The frozen snapshot ring for `name`, or `null` while live, or if `name` wasn't marked at freeze time. */
+export function getBufferFrozenRing(name: string): FlightRing | null {
+  return _frozenBufferRings?.get(name) ?? null
+}
+
+/**
+ * Union of every currently frozen ring's frame range — the primary
+ * stats ring plus every marked buffer's snapshot — so the scrubber's
+ * overall claimable span covers whichever ring retains the widest
+ * history. Individual grid cells still bound their own decode to
+ * their own ring's range via `decodeChain`. `null` while live.
+ */
+export function frozenUnionFrameRange(): FrameRange | null {
+  if (_frozenRing === null) return null
+  let range = _frozenRing.frameRange()
+  if (_frozenBufferRings !== null) {
+    for (const ring of _frozenBufferRings.values()) {
+      const r = ring.frameRange()
+      if (r === null) continue
+      range = range === null ? r : { min: Math.min(range.min, r.min), max: Math.max(range.max, r.max) }
+    }
+  }
+  return range
 }

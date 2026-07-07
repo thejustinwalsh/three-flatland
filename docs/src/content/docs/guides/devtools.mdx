@@ -349,7 +349,7 @@ createPane({
 
 ## Dashboard Panels
 
-The dashboard renders four panels driven by feature subscriptions. Each panel is independently subscribable — collapse a panel and its data stops being collected on the producer side too.
+The dashboard renders several panels driven by feature subscriptions. Each panel is independently subscribable — collapse a panel and its data stops being collected on the producer side too.
 
 ### Stats panel
 
@@ -373,13 +373,21 @@ Click a card to open a detail histogram with min, p50, mean, p95, p99, and max o
 
 Live list of active sprite batches grouped by material, plus per-batch counts and any `kind` / `label` annotations the engine attaches (e.g. `chunk(0,2)` for tile chunks). Useful for confirming that sprites you expect to share a material actually do — see the [Batch Rendering guide](../batch-rendering/) for the underlying behavior.
 
-### Buffers panel
+### Registry panel
 
 Registered CPU arrays — `Float32Array`, `Uint32Array`, `Int32Array`. Each entry shows its label, length, kind (`float` / `uint` / `int`), and a small histogram. The engine itself uses this to expose tile-light counts, scoring buffers, and similar internal state; you can register your own (see below).
 
-### Texture registry
+Click an entry to inspect it on its own, or ⌘/Ctrl-click additional entries to pin them alongside it — once two or more are pinned, a tab strip appears above the detail view so you can flip between them without losing your place. Parked at a past frame (see below), every pinned entry reconstructs from the same checkpoint, so comparing two arrays at the same moment in time is just a click away.
 
-Registered `DataTexture` and `RenderTarget` outputs, viewable as images. Readbacks are async — the dashboard only triggers them when a texture is selected for preview, so leaving things registered is free until somebody actually opens the panel.
+### Buffers panel
+
+Registered `DataTexture` and `RenderTarget` outputs, viewable as images. Readbacks are async — the dashboard only triggers them when a buffer is marked for streaming, so leaving things registered is free until somebody actually opens the panel.
+
+Mark more than one buffer and the preview lays out as a grid — full, split, 2×2, 3×2, or 3×3 depending on how many are marked, each cell aspect-fit and labeled with its buffer name. GPU readback and VP9 encode cost scales with every concurrently streamed buffer, so marking past about four surfaces a warning; it won't stop you, it just tells you what you're spending.
+
+### Time-travel scrubbing
+
+The scrubber under the stats bar lets you park at a past engine frame — drag the slider, step with the arrows, or click a protocol-log row. **Freeze** snapshots a short rolling window (the "flight recorder") so you can scrub retroactively through every marked buffer and pinned registry entry while live recording keeps running underneath; **Live** drops you back to the present. Freezing while multiple buffers are marked snapshots all of them in the same instant, so the whole grid scrubs together rather than drifting out of sync.
 
 ## Custom Debug Instrumentation
 

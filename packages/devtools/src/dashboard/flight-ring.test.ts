@@ -1,13 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  CONCURRENT_MARK_GUARDRAIL,
   FlightRing,
   __resetFlightRecorderForTests,
   addFlightRingListener,
+  exceedsMarkGuardrail,
   freeze,
+  frozenUnionFrameRange,
+  getBufferFrozenRing,
+  getBufferLiveRing,
   getFrozenRing,
   getLiveRing,
+  getMarkedBufferNames,
   isFrozen,
+  markBuffer,
   unfreeze,
+  unmarkBuffer,
 } from './flight-ring'
 import type { BufferChunkPayload } from '../devtools-client'
 
@@ -267,5 +275,130 @@ describe('flight recorder singleton — freeze/unfreeze', () => {
     off()
     freeze()
     expect(fired).toBe(2)
+  })
+})
+
+describe('multi-buffer marks — per-buffer ring map (#29 Phase C slice 4)', () => {
+  beforeEach(() => {
+    __resetFlightRecorderForTests()
+  })
+  afterEach(() => {
+    __resetFlightRecorderForTests()
+  })
+
+  it('starts with no marked buffers', () => {
+    expect(getMarkedBufferNames()).toEqual([])
+    expect(getBufferLiveRing('atlas')).toBeNull()
+  })
+
+  it('marking a buffer creates a ring tracking that buffer name', () => {
+    markBuffer('atlas')
+    expect(getMarkedBufferNames()).toEqual(['atlas'])
+    const ring = getBufferLiveRing('atlas')
+    expect(ring).not.toBeNull()
+    expect(ring!.bufferName).toBe('atlas')
+  })
+
+  it('marking is idempotent — marking twice keeps the same ring instance', () => {
+    markBuffer('atlas')
+    const first = getBufferLiveRing('atlas')
+    markBuffer('atlas')
+    expect(getBufferLiveRing('atlas')).toBe(first)
+  })
+
+  it('marking multiple buffers keeps independent rings', () => {
+    markBuffer('atlas')
+    markBuffer('shadowmap')
+    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 1, keyFrame: true, name: 'atlas' }))
+    getBufferLiveRing('shadowmap')!.pushChunk(chunk({ frame: 5, keyFrame: true, name: 'shadowmap' }))
+    expect(getBufferLiveRing('atlas')!.chunkFrameRange()).toEqual({ min: 1, max: 1 })
+    expect(getBufferLiveRing('shadowmap')!.chunkFrameRange()).toEqual({ min: 5, max: 5 })
+    expect(getMarkedBufferNames()).toEqual(['atlas', 'shadowmap'])
+  })
+
+  it('unmarking drops the live ring for that buffer only', () => {
+    markBuffer('atlas')
+    markBuffer('shadowmap')
+    unmarkBuffer('atlas')
+    expect(getBufferLiveRing('atlas')).toBeNull()
+    expect(getBufferLiveRing('shadowmap')).not.toBeNull()
+    expect(getMarkedBufferNames()).toEqual(['shadowmap'])
+  })
+
+  it('unmarking an unmarked name is a no-op', () => {
+    expect(() => unmarkBuffer('nope')).not.toThrow()
+    expect(getMarkedBufferNames()).toEqual([])
+  })
+
+  it('freeze clones every marked buffer ring atomically; further live pushes do not affect the snapshots', () => {
+    markBuffer('atlas')
+    markBuffer('shadowmap')
+    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 1, keyFrame: true, name: 'atlas' }))
+    getBufferLiveRing('shadowmap')!.pushChunk(chunk({ frame: 10, keyFrame: true, name: 'shadowmap' }))
+
+    freeze()
+
+    expect(getBufferFrozenRing('atlas')!.chunkFrameRange()).toEqual({ min: 1, max: 1 })
+    expect(getBufferFrozenRing('shadowmap')!.chunkFrameRange()).toEqual({ min: 10, max: 10 })
+
+    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 2, name: 'atlas' }))
+    expect(getBufferLiveRing('atlas')!.chunkFrameRange()).toEqual({ min: 1, max: 2 })
+    // The frozen snapshot is unaffected by the live ring's later pushes.
+    expect(getBufferFrozenRing('atlas')!.chunkFrameRange()).toEqual({ min: 1, max: 1 })
+  })
+
+  it('a buffer marked after freeze has no frozen ring (it was not live at freeze time)', () => {
+    markBuffer('atlas')
+    freeze()
+    markBuffer('shadowmap')
+    expect(getBufferFrozenRing('atlas')).not.toBeNull()
+    expect(getBufferFrozenRing('shadowmap')).toBeNull()
+  })
+
+  it('unfreeze drops every frozen buffer ring', () => {
+    markBuffer('atlas')
+    freeze()
+    unfreeze()
+    expect(getBufferFrozenRing('atlas')).toBeNull()
+  })
+
+  it('unmarking a live buffer after freeze does not affect its already-frozen snapshot', () => {
+    markBuffer('atlas')
+    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 1, keyFrame: true, name: 'atlas' }))
+    freeze()
+    unmarkBuffer('atlas')
+    expect(getBufferLiveRing('atlas')).toBeNull()
+    expect(getBufferFrozenRing('atlas')!.chunkFrameRange()).toEqual({ min: 1, max: 1 })
+  })
+
+  it('frozenUnionFrameRange unions the primary ring with every marked buffer snapshot', () => {
+    getLiveRing().pushFrame(1)
+    getLiveRing().pushFrame(2)
+    markBuffer('atlas')
+    markBuffer('shadowmap')
+    getBufferLiveRing('atlas')!.pushChunk(chunk({ frame: 100, keyFrame: true, name: 'atlas' }))
+    getBufferLiveRing('shadowmap')!.pushChunk(chunk({ frame: 500, keyFrame: true, name: 'shadowmap' }))
+
+    freeze()
+
+    expect(frozenUnionFrameRange()).toEqual({ min: 1, max: 500 })
+  })
+
+  it('frozenUnionFrameRange is null while live', () => {
+    markBuffer('atlas')
+    expect(frozenUnionFrameRange()).toBeNull()
+  })
+})
+
+describe('concurrent-mark guardrail (#29 item 8)', () => {
+  it('is quiet at or below the guardrail', () => {
+    expect(exceedsMarkGuardrail(0)).toBe(false)
+    expect(exceedsMarkGuardrail(1)).toBe(false)
+    expect(exceedsMarkGuardrail(CONCURRENT_MARK_GUARDRAIL)).toBe(false)
+  })
+
+  it('warns beyond the guardrail', () => {
+    expect(exceedsMarkGuardrail(CONCURRENT_MARK_GUARDRAIL + 1)).toBe(true)
+    expect(exceedsMarkGuardrail(9)).toBe(true)
   })
 })
