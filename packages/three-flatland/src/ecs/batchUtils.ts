@@ -473,23 +473,26 @@ export function ensureMaterialDisposeHook(
 }
 
 /**
- * Evict every batched entity using `materialId` from its batch: free
- * the slot, drop the InBatch relation, recycle empty batches, and
- * re-trigger IsRenderable so `batchAssignSystem` re-batches survivors
- * with whatever material they hold by then.
+ * Shared eviction core: for every batched entity whose `SpriteMaterialRef`
+ * satisfies `shouldEvict`, free its live slot, drop the InBatch relation,
+ * recycle the batch if it goes empty, clear the sprite's cached
+ * direct-write refs, and re-trigger IsRenderable so `batchAssignSystem`
+ * re-batches the survivor with whatever material/batch it resolves to
+ * by then.
  *
- * Shared by the tier-upgrade rebuild (material schema changed) and the
- * dispose teardown (material's GPU resources are gone).
+ * Extracted so `evictBatchesForMaterial` stays a thin materialId filter
+ * over the mechanics — the eviction machinery itself (slot free, recycle,
+ * re-trigger) is the reusable part.
  */
-export function evictBatchesForMaterial(
+function evictMatchingBatchedEntities(
   world: World,
   registry: RegistryData,
-  materialId: number
+  shouldEvict: (matRef: { materialId: number }) => boolean
 ): void {
   const batched = world.query(IsBatched, SpriteMaterialRef, BatchSlot)
   for (const entity of batched) {
     const matRef = entity.get(SpriteMaterialRef)
-    if (!matRef || matRef.materialId !== materialId) continue
+    if (!matRef || !shouldEvict(matRef)) continue
 
     const batchEntity = entity.targetFor(InBatch)
     if (batchEntity) {
@@ -532,6 +535,20 @@ export function evictBatchesForMaterial(
   }
 
   registry.renderOrderDirty = true
+}
+
+/**
+ * Evict every batched entity using `materialId` from its batch.
+ *
+ * Shared by the tier-upgrade rebuild (material schema changed) and the
+ * dispose teardown (material's GPU resources are gone).
+ */
+export function evictBatchesForMaterial(
+  world: World,
+  registry: RegistryData,
+  materialId: number
+): void {
+  evictMatchingBatchedEntities(world, registry, (matRef) => matRef.materialId === materialId)
 }
 
 /**
