@@ -19,7 +19,7 @@ import type {
   ZzfxSaveResult,
 } from './protocol'
 
-export const DEFAULT_CANDIDATE_COUNT = 3
+export const DEFAULT_CANDIDATE_COUNT = 4
 
 export type ZzfxSessionState = {
   /** True when `acquireVsCodeApi()` isn't available — dev/standalone run
