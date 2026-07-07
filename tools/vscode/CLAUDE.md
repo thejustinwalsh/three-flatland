@@ -15,16 +15,32 @@ Build outputs: `dist/extension.js` (host) + `dist/webview/<tool>/index.html` (we
 
 ### 1 — Host side: `extension/tools/<name>/`
 
+`register*Tool` returns ONE aggregate `vscode.Disposable` — collect everything you register into a
+local array and `vscode.Disposable.from(...)` it at the end, rather than pushing to
+`context.subscriptions` directly. The tool registry (`extension/toolRegistry.ts`) owns
+`context.subscriptions` and needs the same disposable back to support live enable/disable — see
+"Per-tool settings" below.
+
 ```ts
 // register.ts — wire into the extension context
-export function registerMyTool(context: vscode.ExtensionContext): void {
-  context.subscriptions.push(
-    vscode.commands.registerCommand('threeFlatland.myTool.open',
-      async (clicked?: vscode.Uri, allSelected?: vscode.Uri[]) => {
-        await openMyPanel(context, /* … */)
+import { isToolEnabled } from '../../toolRegistry'
+
+export function registerMyTool(context: vscode.ExtensionContext): vscode.Disposable {
+  return vscode.commands.registerCommand('threeFlatland.myTool.open',
+    async (clicked?: vscode.Uri, allSelected?: vscode.Uri[]) => {
+      // Defense in depth: the menu items are already gated on the tool's
+      // context key, but a keybinding can still invoke the command id
+      // directly.
+      if (!isToolEnabled('myTool')) {
+        void vscode.window.showInformationMessage('My Tool is disabled in Settings.')
+        return
       }
-    )
+      await openMyPanel(context, /* … */)
+    }
   )
+  // Multiple registrations? Push each into a local `disposables: vscode.Disposable[]`
+  // array and `return vscode.Disposable.from(...disposables)` — see atlas/register.ts
+  // or zzfx/register.ts for the multi-disposable shape.
 }
 
 // host.ts — create panel + bridge
@@ -57,23 +73,57 @@ Vite auto-discovers `webview/<name>/index.html`. No config change needed.
 
 ### 3 — `package.json` contributes
 
+Add a `contributes.configuration` property for the tool's enable/disable setting, then gate its
+menu/palette entries on the matching context key (see "Per-tool settings" below for the exact
+naming convention):
+
 ```json
+"configuration": {
+  "properties": {
+    "threeFlatland.tools.myTool.enabled": { "type": "boolean", "default": true, "description": "…" }
+  }
+},
 "commands": [{ "command": "threeFlatland.myTool.open", "title": "Do the thing", "category": "FL" }],
 "menus": {
-  "explorer/context": [{ "command": "threeFlatland.myTool.open", "when": "resourceExtname == .ext", "group": "navigation@12" }],
-  "commandPalette": [{ "command": "threeFlatland.myTool.open", "when": "resourceExtname == .ext" }]
+  "threeFlatland.flatlandMenu": [{
+    "command": "threeFlatland.myTool.open",
+    "when": "threeFlatland.tool.myTool.enabled && resourceExtname == .ext",
+    "group": "1_authoring@3"
+  }],
+  "commandPalette": [{
+    "command": "threeFlatland.myTool.open",
+    "when": "threeFlatland.tool.myTool.enabled && resourceExtname == .ext"
+  }]
 }
 ```
 
-For a file-backed editor add a `customEditors` entry (see atlas pattern below). For a new sidecar file type add `languages` + `grammars`.
+Explorer-context entries go inside the `threeFlatland.flatlandMenu` submenu (one "Flatland" entry
+in `explorer/context`, all tool commands nested under it) — don't add a new top-level
+`explorer/context` entry per tool. If your tool's file types aren't already covered by the
+submenu's own placement `when` in `explorer/context`, extend that union too (see the existing
+entry). For a file-backed editor add a `customEditors` entry (see atlas pattern below). For a new
+sidecar file type add `languages` + `grammars`.
 
-### 4 — `extension/index.ts`
+### 4 — `extension/toolRegistry.ts`
+
+Add one entry to `TOOL_DESCRIPTORS` — this is the single point of extension for "which tools does
+this extension ship, and can each be turned off":
 
 ```ts
-import { registerMyTool } from './tools/myTool/register'
-// inside activate():
-registerMyTool(context)
+{
+  id: 'myTool',
+  settingKey: 'threeFlatland.tools.myTool.enabled',
+  contextKey: 'threeFlatland.tool.myTool.enabled',
+  label: 'My Tool',
+  liveToggle: true, // false if the tool owns background listeners/external processes
+  register: registerMyTool,
+}
 ```
+
+`extension/index.ts` calls `activateTools(context)` + `watchToolConfiguration(context)` once;
+it does not import individual `register*Tool` functions directly. See "Per-tool settings" below
+for the full contract (`liveToggle`, the `setContext` mirroring, live enable/disable vs. the
+reload-window prompt).
 
 ## Two patterns: custom editor vs ad-hoc command
 
@@ -87,6 +137,35 @@ registerMyTool(context)
 | Reference | `extension/tools/atlas/{register,provider}.ts` | `extension/tools/merge/{register,host}.ts` |
 
 **Pick custom editor** when the tool is the primary viewer for a file type. Pick **ad-hoc command** for everything else.
+
+## Per-tool settings (`extension/toolRegistry.ts`)
+
+Every user-facing tool (not `_wasm-test`, a dev/e2e-only diagnostic panel with no settings surface)
+is a `ToolDescriptor` in `TOOL_DESCRIPTORS`: `id`, `settingKey`
+(`threeFlatland.tools.<id>.enabled`), `contextKey` (`threeFlatland.tool.<id>.enabled`, mirrored via
+`setContext` for `when` clauses), `label`, `liveToggle`, `register`. Adding a tool means one entry
+here + one `package.json` `contributes.configuration` property + the menu items gated on
+`contextKey` — normal-baker's future PR is exactly this shape (see the commented-out slot in
+`TOOL_DESCRIPTORS`).
+
+- **`liveToggle: true`** (atlas, encode, merge — plain commands/custom-editor providers, no
+  background listeners or external processes): flipping the setting mid-session registers or
+  disposes the tool immediately. `register*Tool` must return ONE aggregate `vscode.Disposable`
+  (see "Adding a new tool" step 1) so the registry can dispose exactly that tool without touching
+  the others.
+- **`liveToggle: false`** (zzfx — a CodeLens provider with a debounced document-change listener,
+  plus two external sidecar processes with async spawn/shutdown lifecycles): flipping the setting
+  still updates the context key immediately (menus/palette react right away), but the actual
+  register/dispose waits for a window reload — prompted automatically. Live re-register/dispose was
+  judged too likely to race an in-flight sidecar shutdown.
+- **Defense in depth**: every command callback re-checks `isToolEnabled(id)` at the top, even
+  though the menu/palette entry that would normally invoke it is already gated on the context key —
+  a keybinding can call the command id directly, bypassing the menu.
+- **Sub-tool settings** (e.g. `threeFlatland.zzfx.inlinePlayback.enabled`, gating zzfx's inline
+  vs. panel-based `▶ Play` route) aren't full `ToolDescriptor`s — they're plain config reads inside
+  the relevant code path, watched with their own narrow `onDidChangeConfiguration` listener if
+  something needs live teardown (inline playback's already-spawned sidecar gets killed when the
+  setting flips off, even though no new sidecars would spawn either way).
 
 ## webview-host helpers (`extension/webview-host.ts`)
 

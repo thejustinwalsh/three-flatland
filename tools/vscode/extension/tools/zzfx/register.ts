@@ -5,7 +5,10 @@ import { getPlaySidecarClient, shutdownPlaySidecar } from './playSidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
 import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
+import { isToolEnabled } from '../../toolRegistry'
 import { log } from '../../log'
+
+const INLINE_PLAYBACK_SETTING = 'threeFlatland.zzfx.inlinePlayback.enabled'
 
 function findFindingAtPosition(
   findings: readonly Finding[],
@@ -60,6 +63,7 @@ async function resolveFindingAtCursor(
  */
 function tryPlayInline(context: vscode.ExtensionContext, params: number[]): boolean {
   if (vscode.env.remoteName) return false
+  if (!vscode.workspace.getConfiguration().get<boolean>(INLINE_PLAYBACK_SETTING, true)) return false
   const playClient = getPlaySidecarClient(context)
   if (!playClient) return false
   try {
@@ -73,9 +77,11 @@ function tryPlayInline(context: vscode.ExtensionContext, params: number[]): bool
   }
 }
 
-export function registerZzfxTool(context: vscode.ExtensionContext): void {
+export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Disposable {
+  const disposables: vscode.Disposable[] = []
+
   const provider = new ZzfxCodeLensProvider(() => getSidecarClient(context))
-  context.subscriptions.push(
+  disposables.push(
     vscode.languages.registerCodeLensProvider(ZZFX_DOCUMENT_SELECTOR, provider),
     provider
   )
@@ -91,7 +97,7 @@ export function registerZzfxTool(context: vscode.ExtensionContext): void {
   })
 
   // Tier 3 (incremental on change): notify + debounce-refresh CodeLenses.
-  context.subscriptions.push(
+  disposables.push(
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (!vscode.languages.match(ZZFX_DOCUMENT_SELECTOR, e.document)) return
       void getSidecarClient(context).then((client) => {
@@ -117,10 +123,18 @@ export function registerZzfxTool(context: vscode.ExtensionContext): void {
   // see provider.ts), carries the real finding this play request is for,
   // used only by the fallback path to open/reuse that finding's own
   // editor panel rather than needing a synthetic one.
-  context.subscriptions.push(
+  disposables.push(
     vscode.commands.registerCommand(
       'threeFlatland.zzfx.playParams',
       async (params: number[], source?: { uri: string; findingId: string }) => {
+        // Defense in depth — see atlas/register.ts's identical guard
+        // comment. Reachable here only via a direct command invocation
+        // (no command-palette entry) since the CodeLens itself can't
+        // exist while the provider above is unregistered.
+        if (!isToolEnabled('zzfxStudio')) {
+          void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
+          return
+        }
         if (tryPlayInline(context, params)) return
 
         const client = await getSidecarClient(context)
@@ -149,8 +163,13 @@ export function registerZzfxTool(context: vscode.ExtensionContext): void {
     )
   )
 
-  context.subscriptions.push(
+  disposables.push(
     vscode.commands.registerCommand('threeFlatland.zzfx.playAtCursor', async () => {
+      // Defense in depth — see atlas/register.ts's identical guard comment.
+      if (!isToolEnabled('zzfxStudio')) {
+        void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
+        return
+      }
       const client = await getSidecarClient(context)
       if (!client) {
         void vscode.window.showErrorMessage('FL ZzFX: sidecar unavailable.')
@@ -167,10 +186,15 @@ export function registerZzfxTool(context: vscode.ExtensionContext): void {
   // call site; the command-palette form ("FL: Open ZzFX Editor") is
   // invoked with no args and falls back to the finding under the cursor,
   // same resolution playAtCursor uses.
-  context.subscriptions.push(
+  disposables.push(
     vscode.commands.registerCommand(
       'threeFlatland.zzfx.openEditor',
       async (arg?: { uri: string; findingId: string }) => {
+        // Defense in depth — see atlas/register.ts's identical guard comment.
+        if (!isToolEnabled('zzfxStudio')) {
+          void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
+          return
+        }
         const client = await getSidecarClient(context)
         if (!client) {
           void vscode.window.showErrorMessage('FL ZzFX: sidecar unavailable — cannot open editor.')
@@ -187,6 +211,21 @@ export function registerZzfxTool(context: vscode.ExtensionContext): void {
     )
   )
 
-  context.subscriptions.push({ dispose: () => void shutdownSidecar() })
-  context.subscriptions.push({ dispose: () => void shutdownPlaySidecar() })
+  // Turning inline playback off mid-session shouldn't leave an already-
+  // spawned zzfx-play sidecar process lingering — the setting means
+  // "the panel route only," not just "no *new* sidecars."
+  disposables.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration(INLINE_PLAYBACK_SETTING)) return
+      const enabled = vscode.workspace
+        .getConfiguration()
+        .get<boolean>(INLINE_PLAYBACK_SETTING, true)
+      if (!enabled) void shutdownPlaySidecar()
+    })
+  )
+
+  disposables.push({ dispose: () => void shutdownSidecar() })
+  disposables.push({ dispose: () => void shutdownPlaySidecar() })
+
+  return vscode.Disposable.from(...disposables)
 }

@@ -1,10 +1,7 @@
 import * as vscode from 'vscode'
-import { registerAtlasTool } from './tools/atlas/register'
-import { registerMergeTool } from './tools/merge/register'
-import { registerEncodeTool } from './tools/encode/register'
 import { registerWasmTest } from './tools/_wasm-test/register'
-import { registerZzfxTool } from './tools/zzfx/register'
 import { getActivePlaySidecarPid, shutdownPlaySidecar } from './tools/zzfx/playSidecarManager'
+import { activateTools, watchToolConfiguration } from './toolRegistry'
 import { getChannel, log } from './log'
 
 /**
@@ -28,11 +25,13 @@ export type ExtensionApi = {
 export function activate(context: vscode.ExtensionContext): ExtensionApi {
   context.subscriptions.push(getChannel())
   log('activate: @three-flatland/vscode')
-  registerAtlasTool(context)
-  registerMergeTool(context)
-  registerEncodeTool(context)
+  // User-toggleable tools (threeFlatland.tools.*.enabled) — see
+  // toolRegistry.ts for the single-point-of-extension registry contract.
+  activateTools(context)
+  watchToolConfiguration(context)
+  // Not user-toggleable — a dev/e2e-only diagnostic panel, no
+  // package.json menu surface to disable it from.
   registerWasmTest(context)
-  registerZzfxTool(context)
   log(`activate: extensionUri = ${context.extensionUri.fsPath}`)
 
   return {

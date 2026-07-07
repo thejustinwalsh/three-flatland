@@ -1,10 +1,13 @@
 import * as vscode from 'vscode'
 import { AtlasCustomEditorProvider } from './provider'
+import { isToolEnabled } from '../../toolRegistry'
 
-export function registerAtlasTool(context: vscode.ExtensionContext): void {
+export function registerAtlasTool(context: vscode.ExtensionContext): vscode.Disposable {
+  const disposables: vscode.Disposable[] = []
+
   // CustomEditor: handles `vscode.openWith(uri, 'threeFlatland.atlas')` and
   // the "Reopen Editor With..." pathway.
-  context.subscriptions.push(
+  disposables.push(
     vscode.window.registerCustomEditorProvider(
       AtlasCustomEditorProvider.viewType,
       new AtlasCustomEditorProvider(context),
@@ -20,31 +23,36 @@ export function registerAtlasTool(context: vscode.ExtensionContext): void {
   // Accepts either an image (foo.png) or its sidecar (foo.atlas.json) — when
   // invoked on a sidecar we resolve back to the associated image so the
   // editor opens on the right document.
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      'threeFlatland.atlas.openEditor',
-      async (uri?: vscode.Uri) => {
-        const target = uri ?? vscode.window.activeTextEditor?.document.uri
-        if (!target) {
-          void vscode.window.showErrorMessage('FL Sprite Atlas: no file selected.')
-          return
-        }
-        const resolved = await resolveImageForCommand(target)
-        if (!resolved) {
-          const name = target.path.split('/').pop() ?? target.fsPath
-          void vscode.window.showErrorMessage(
-            `FL Sprite Atlas: no matching image found for ${name}.`,
-          )
-          return
-        }
-        await vscode.commands.executeCommand(
-          'vscode.openWith',
-          resolved,
-          AtlasCustomEditorProvider.viewType,
-        )
+  disposables.push(
+    vscode.commands.registerCommand('threeFlatland.atlas.openEditor', async (uri?: vscode.Uri) => {
+      // Defense in depth: the explorer/context and command-palette menu
+      // items are already gated on the `threeFlatland.tool.spriteAtlas.enabled`
+      // context key, but a keybinding can still invoke the command id
+      // directly.
+      if (!isToolEnabled('spriteAtlas')) {
+        void vscode.window.showInformationMessage('FL Sprite Atlas is disabled in Settings.')
+        return
       }
-    )
+      const target = uri ?? vscode.window.activeTextEditor?.document.uri
+      if (!target) {
+        void vscode.window.showErrorMessage('FL Sprite Atlas: no file selected.')
+        return
+      }
+      const resolved = await resolveImageForCommand(target)
+      if (!resolved) {
+        const name = target.path.split('/').pop() ?? target.fsPath
+        void vscode.window.showErrorMessage(`FL Sprite Atlas: no matching image found for ${name}.`)
+        return
+      }
+      await vscode.commands.executeCommand(
+        'vscode.openWith',
+        resolved,
+        AtlasCustomEditorProvider.viewType
+      )
+    })
   )
+
+  return vscode.Disposable.from(...disposables)
 }
 
 /**

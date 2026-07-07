@@ -71,44 +71,88 @@
         "priority": "default"
       }
     ],
+    "configuration": {
+      "title": "Flatland Tools",
+      "properties": {
+        "threeFlatland.tools.spriteAtlas.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable FL Sprite Atlas (packing + animation editor for sprite sheets)."
+        },
+        "threeFlatland.tools.imageEncoder.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable FL Image Encoder (PNG/WebP/AVIF/KTX2 comparison + encoding)."
+        },
+        "threeFlatland.tools.atlasMerge.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable FL Atlas Merge (combine multiple .atlas.json sprite sheets)."
+        },
+        "threeFlatland.tools.zzfxStudio.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable FL ZzFX Studio (CodeLens + tuner panel for zzfx() sound-effect calls). Changing this setting requires a window reload."
+        },
+        "threeFlatland.zzfx.inlinePlayback.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Play ZzFX one-shots via a lightweight background process instead of opening the editor panel. Disable to always route ▶ Play through the panel."
+        }
+      }
+    },
+    "submenus": [
+      {
+        "id": "threeFlatland.flatlandMenu",
+        "label": "Flatland",
+        "icon": "$(package)"
+      }
+    ],
     "menus": {
       "explorer/context": [
         {
-          "command": "threeFlatland.atlas.openEditor",
-          "when": "resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/",
-          "group": "navigation@10"
-        },
+          "submenu": "threeFlatland.flatlandMenu",
+          "group": "navigation@10",
+          "when": "(threeFlatland.tool.spriteAtlas.enabled && (resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/)) || (threeFlatland.tool.imageEncoder.enabled && (resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2)) || (threeFlatland.tool.atlasMerge.enabled && resourceFilename =~ /\\.atlas\\.json$/)"
+        }
+      ],
+      "threeFlatland.flatlandMenu": [
         {
-          "command": "threeFlatland.merge.openMergeTool",
-          "when": "resourceFilename =~ /\\.atlas\\.json$/",
-          "group": "navigation@11"
+          "command": "threeFlatland.atlas.openEditor",
+          "when": "threeFlatland.tool.spriteAtlas.enabled && (resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/)",
+          "group": "1_authoring@1"
         },
         {
           "command": "threeFlatland.encode.open",
-          "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2",
-          "group": "navigation@13"
+          "when": "threeFlatland.tool.imageEncoder.enabled && (resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2)",
+          "group": "2_convert@1"
+        },
+        {
+          "command": "threeFlatland.merge.openMergeTool",
+          "when": "threeFlatland.tool.atlasMerge.enabled && resourceFilename =~ /\\.atlas\\.json$/",
+          "group": "3_combine@1"
         }
       ],
       "commandPalette": [
         {
           "command": "threeFlatland.atlas.openEditor",
-          "when": "resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/"
+          "when": "threeFlatland.tool.spriteAtlas.enabled && (resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/)"
         },
         {
           "command": "threeFlatland.merge.openMergeTool",
-          "when": "resourceFilename =~ /\\.atlas\\.json$/"
+          "when": "threeFlatland.tool.atlasMerge.enabled && resourceFilename =~ /\\.atlas\\.json$/"
         },
         {
           "command": "threeFlatland.encode.open",
-          "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2"
+          "when": "threeFlatland.tool.imageEncoder.enabled && (resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2)"
         },
         {
           "command": "threeFlatland.zzfx.playAtCursor",
-          "when": "resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact"
+          "when": "threeFlatland.tool.zzfxStudio.enabled && (resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact)"
         },
         {
           "command": "threeFlatland.zzfx.openEditor",
-          "when": "resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact"
+          "when": "threeFlatland.tool.zzfxStudio.enabled && (resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact)"
         }
       ]
     },
