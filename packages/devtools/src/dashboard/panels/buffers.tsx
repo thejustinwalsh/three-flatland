@@ -21,6 +21,7 @@ import { getClient } from '../client.js'
 import { addFrameCursorListener, getFrameCursor } from '../frame-cursor.js'
 import { addFlightRingListener, getFrozenRing, getLiveRing, isFrozen } from '../flight-ring.js'
 import { useDevtoolsState } from '../hooks.js'
+import { ScrubRequestTracker } from '../scrub-request-tracker.js'
 
 const VP9_CODEC = 'vp09.00.10.08'
 const CODEC_AVAILABLE = typeof globalThis.VideoDecoder !== 'undefined'
@@ -219,10 +220,19 @@ export function BuffersPanel() {
   // in the chain has to be decoded in order to advance the delta
   // chain, but only the LAST one (the target) gets drawn — earlier
   // ones just close().
+  //
+  // `decode()` is async: a rapid cursor move can queue a new (often
+  // shorter) chain before the previous chain's outputs have all
+  // arrived. A plain "reset expected/received counters per request"
+  // scheme can't tell a late output from the OLD request apart from
+  // the new request's own first output — an adversarial review caught
+  // this landing the wrong frame. `ScrubRequestTracker` correlates
+  // every output back to the request that actually produced it (FIFO,
+  // matching `VideoDecoder`'s in-order output guarantee) so a
+  // superseded request's outputs are rejected regardless of count.
   const scrubDecoderRef = useRef<VideoDecoder | null>(null)
   const scrubDecoderDimsRef = useRef({ w: 0, h: 0 })
-  const scrubExpectedRef = useRef(0)
-  const scrubReceivedRef = useRef(0)
+  const scrubTrackerRef = useRef(new ScrubRequestTracker())
 
   const stopScrubDecoder = (): void => {
     const d = scrubDecoderRef.current
@@ -231,6 +241,7 @@ export function BuffersPanel() {
     }
     scrubDecoderRef.current = null
     scrubDecoderDimsRef.current = { w: 0, h: 0 }
+    scrubTrackerRef.current.reset()
   }
 
   const ensureScrubDecoder = (w: number, h: number): VideoDecoder | null => {
@@ -248,8 +259,7 @@ export function BuffersPanel() {
     if (ctx === null) return null
     const decoder = new globalThis.VideoDecoder({
       output: (frame) => {
-        scrubReceivedRef.current++
-        if (scrubReceivedRef.current !== scrubExpectedRef.current) {
+        if (!scrubTrackerRef.current.reportOutput()) {
           frame.close()
           return
         }
@@ -310,10 +320,12 @@ export function BuffersPanel() {
     const first = chain[0]!
     const decoder = ensureScrubDecoder(first.width, first.height)
     if (decoder === null) return
-    scrubExpectedRef.current = chain.length
-    scrubReceivedRef.current = 0
+    const generation = scrubTrackerRef.current.start(chain.length)
     for (const c of chain) {
       try {
+        // Enqueue before decode() so the tracker's FIFO already has an
+        // entry to correlate against however soon the output arrives.
+        scrubTrackerRef.current.enqueue(generation)
         decoder.decode(new EncodedVideoChunk({
           type: c.keyFrame ? 'key' : 'delta',
           timestamp: c.capturedAt * 1000,
