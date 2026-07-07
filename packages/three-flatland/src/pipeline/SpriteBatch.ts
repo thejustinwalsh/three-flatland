@@ -94,6 +94,13 @@ export class SpriteBatch extends InstancedMesh {
   readonly maxSize: number
 
   /**
+   * Geometry strategy this batch was built with. Pool recycling must
+   * match it — a synth-quad mesh can't serve a tight-mesh material
+   * (different attribute layouts compiled into the shader).
+   */
+  readonly geometryKind: 'synth-quad' | 'tight-mesh'
+
+  /**
    * Current number of active slots in the batch.
    */
   private _activeCount: number = 0
@@ -197,9 +204,8 @@ export class SpriteBatch extends InstancedMesh {
     //                 (alpha-blend path; fringe blend cost is real)
     // The material's resolved strategy decides — its shader was built
     // for exactly one of these attribute layouts.
-    const geometry = material._tightMesh
-      ? (buildEnvelopeGeometry(material.getTexture()) ?? createSynthQuadGeometry())
-      : createSynthQuadGeometry()
+    const envelope = material._tightMesh ? buildEnvelopeGeometry(material.getTexture()) : null
+    const geometry = envelope ?? createSynthQuadGeometry()
     // The batch is never frustum-culled; give it an honest infinite bound.
     geometry.boundingSphere = new Sphere(geometry.boundingSphere!.center, Infinity)
 
@@ -268,6 +274,7 @@ export class SpriteBatch extends InstancedMesh {
     this._customAttributes = customAttributes
     this.spriteMaterial = material
     this.maxSize = maxSize
+    this.geometryKind = envelope !== null ? 'tight-mesh' : 'synth-quad'
     this.frustumCulled = false
 
     // Initialize dirty trackers — matrix tracks the auto-created

@@ -217,10 +217,12 @@ export function findOrCreateBatch(
 
   if (batchEntity) {
     const existing = batchEntity.get(BatchMesh)
+    const wantedKind = run.material._tightMesh ? 'tight-mesh' : 'synth-quad'
     if (
       existing?.mesh &&
       existing.mesh.spriteMaterial.batchId === run.materialId &&
-      existing.mesh.maxSize === batchSize
+      existing.mesh.maxSize === batchSize &&
+      existing.mesh.geometryKind === wantedKind
     ) {
       mesh = existing.mesh
       mesh.resetSlots()

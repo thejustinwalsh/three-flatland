@@ -71,6 +71,44 @@ describe('polygonizeAlpha', () => {
   })
 })
 
+describe('polygonizeAlpha — review regressions', () => {
+  it('covers ALL disconnected blobs (hull fallback), not just the first', () => {
+    // Two separated 8x8 blobs in a 64x24 frame
+    const w = 64
+    const h = 24
+    const rgba = new Uint8Array(w * h * 4)
+    const fill = (x0: number, y0: number) => {
+      for (let y = y0; y < y0 + 8; y++)
+        for (let x = x0; x < x0 + 8; x++) rgba[(y * w + x) * 4 + 3] = 255
+    }
+    fill(2, 8)
+    fill(52, 8)
+
+    const polygon = polygonizeAlpha(rgba, w, h, { vertexBudget: 8 })!
+    expect(polygon).not.toBeNull()
+    // The polygon must span BOTH blobs
+    const xs = polygon.outline.map(([x]) => x)
+    expect(Math.min(...xs)).toBeLessThanOrEqual(3)
+    expect(Math.max(...xs)).toBeGreaterThanOrEqual(59)
+  })
+
+  it('fully-opaque fast path matches earClip winding (baker swap → CCW y-up)', () => {
+    const rgba = new Uint8Array(8 * 8 * 4).fill(255)
+    const polygon = polygonizeAlpha(rgba, 8, 8)!
+    // y-down signed area of each triangle should share the sign of the
+    // traced-contour path (positive here = clockwise in y-down)
+    for (let i = 0; i < polygon.triangles.length; i += 3) {
+      const [a, b, c] = [
+        polygon.outline[polygon.triangles[i]!]!,
+        polygon.outline[polygon.triangles[i + 1]!]!,
+        polygon.outline[polygon.triangles[i + 2]!]!,
+      ]
+      const area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+      expect(area).toBeGreaterThan(0)
+    }
+  })
+})
+
 describe('earClip', () => {
   it('triangulates a non-convex polygon', () => {
     // An arrow shape (concave at index 3)

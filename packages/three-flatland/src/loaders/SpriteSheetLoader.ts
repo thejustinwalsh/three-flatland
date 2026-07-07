@@ -8,7 +8,7 @@ import type {
   SpriteSheetJSONHash,
   SpriteSheetJSONArray,
 } from '../sprites/types'
-import { registerAtlasMesh } from './atlasMeshRegistry'
+import { degradeAtlasMesh, registerAtlasMesh } from './atlasMeshRegistry'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
 import {
   resolveNormalMap,
@@ -430,6 +430,11 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
         meshVerts,
         meshIndices,
       })
+    } else {
+      // A meshless sheet sharing a texture with a previously-registered
+      // meshed sheet: its frames are unknown to the envelope — degrade
+      // it toward the full quad so nothing clips.
+      degradeAtlasMesh(texture)
     }
 
     return sheet
@@ -470,6 +475,11 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     }
 
     if (data.vertices && data.triangles && data.vertices.length >= 3) {
+      // Rotated frames pack 90°-turned in the atlas; the quad path
+      // doesn't rotate its sampling yet, and deriving rotated
+      // frame-local UVs here would desync from it. Fall back to the
+      // quad for rotated frames — correctness over overdraw.
+      if (frame.rotated) return null
       const sourceW = frame.sourceWidth
       const sourceH = frame.sourceHeight
       const trim = frame.trimOffset ?? { x: 0, y: 0, width: sourceW, height: sourceH }

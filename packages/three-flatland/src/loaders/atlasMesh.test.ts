@@ -126,6 +126,70 @@ describe('atlas mesh format extension', () => {
     expect([...mesh.indices]).toEqual([0, 2, 1])
   })
 
+  it('a rotated TexturePacker frame rejects the polygon mesh (quad fallback)', async () => {
+    const sheet = await mockLoad({
+      frames: [
+        {
+          filename: 'rot',
+          ...baseFrame,
+          rotated: true,
+          vertices: [
+            [0, 0],
+            [64, 0],
+            [32, 64],
+          ],
+          triangles: [[0, 1, 2]],
+        },
+      ],
+      meta: { image: 'test.png', size: { w: 128, h: 128 }, scale: '1' },
+    })
+    expect(sheet.getFrame('rot').mesh).toBeNull()
+  })
+
+  it('a meshless sheet over a meshed texture degrades the envelope (no clipping)', async () => {
+    const meshed = await mockLoad({
+      frames: {
+        tri: {
+          ...baseFrame,
+          mesh: {
+            verts: [
+              [-0.5, -0.5, 0, 0],
+              [0.5, -0.5, 1, 0],
+              [0, 0.5, 0.5, 1],
+            ],
+            indices: [0, 1, 2],
+          },
+        },
+      },
+      meta: { image: 'test.png', size: { w: 128, h: 128 }, scale: '1' },
+    })
+    expect(getAtlasMesh(meshed.texture)!.complete).toBe(true)
+
+    // Second, meshless sheet resolving to the SAME texture instance
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            frames: { plain: { ...baseFrame } },
+            meta: { image: 'test.png', size: { w: 128, h: 128 }, scale: '1' },
+          }),
+      })
+    )
+    vi.spyOn(
+      SpriteSheetLoader as unknown as { loadTexture(url: string, o?: unknown): Promise<Texture> },
+      'loadTexture'
+    ).mockResolvedValue(meshed.texture)
+    await (
+      SpriteSheetLoader as unknown as {
+        loadUncached(url: string, o?: unknown): Promise<SpriteSheet>
+      }
+    ).loadUncached('/atlas/other.json')
+
+    expect(getAtlasMesh(meshed.texture)!.complete).toBe(false)
+  })
+
   it('concatenates multiple meshed frames with correct offsets', async () => {
     const triMesh = {
       verts: [

@@ -62,6 +62,8 @@ export function polygonizeAlpha(
   if (solidCount === 0) return null
 
   // Degenerate fast path: a fully-opaque rectangle needs no tracing.
+  // Winding matches earClip's y-down output convention so the baker's
+  // uniform y-flip index swap yields CCW y-up triangles for every path.
   if (solidCount === width * height) {
     return {
       outline: [
@@ -70,17 +72,36 @@ export function polygonizeAlpha(
         [width, height],
         [0, height],
       ],
-      triangles: [0, 2, 1, 0, 3, 2],
+      triangles: [0, 1, 2, 0, 2, 3],
     }
   }
 
-  // 2. Moore-Neighbor contour trace from the first solid pixel.
-  const contour = traceContour(mask, mw, mh)
-  if (contour.length < 3) return null
+  // 2. Trace EVERY connected component (Moore-Neighbor per component).
+  // A single-blob frame follows the tight contour path; disconnected
+  // blobs (muzzle flash + weapon, split particles) fall back to the
+  // convex hull of all component contours — conservative, still
+  // covers everything, never clips a blob the first trace missed.
+  const contours = traceAllContours(mask, mw, mh)
+  if (contours.length === 0) return null
+
+  if (contours.length > 1) {
+    const allPoints: [number, number][] = []
+    for (const contour of contours) {
+      for (const [x, y] of contour) allPoints.push([x - 1, y - 1])
+    }
+    let hull = convexHullYDown(allPoints)
+    if (hull.length < 3) return null
+    if (padding > 0) hull = padOutline(hull, padding, width, height)
+    hull = simplifyToBudget(hull, budget)
+    if (hull.length < 3) return null
+    const hullTriangles = earClip(hull)
+    if (hullTriangles.length < 3) return null
+    return { outline: hull, triangles: hullTriangles }
+  }
 
   // Undo the border offset, apply outward padding via bbox-relative
   // scaling (cheap dilation adequate at sprite scales).
-  let outline: [number, number][] = contour.map(([x, y]) => [x - 1, y - 1])
+  let outline: [number, number][] = contours[0]!.map(([x, y]) => [x - 1, y - 1])
   if (padding > 0) outline = padOutline(outline, padding, width, height)
 
   // 3. Douglas–Peucker down to the vertex budget (binary search on
@@ -95,8 +116,85 @@ export function polygonizeAlpha(
   return { outline, triangles }
 }
 
+/**
+ * Trace the outer contour of every connected component. Components are
+ * discovered by scanning for unvisited solid pixels and flood-filling
+ * each one after its contour is traced.
+ */
+function traceAllContours(mask: Uint8Array, mw: number, mh: number): [number, number][][] {
+  const visited = new Uint8Array(mask.length)
+  const contours: [number, number][][] = []
+  const queue: number[] = []
+
+  for (let y = 0; y < mh; y++) {
+    for (let x = 0; x < mw; x++) {
+      const idx = y * mw + x
+      if (mask[idx] !== 1 || visited[idx] === 1) continue
+
+      contours.push(traceContour(mask, mw, mh, x, y))
+
+      // Flood-fill this component so the scan skips it.
+      queue.length = 0
+      queue.push(idx)
+      visited[idx] = 1
+      while (queue.length > 0) {
+        const current = queue.pop()!
+        const cx = current % mw
+        const cy = (current / mw) | 0
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue
+            const nx = cx + dx
+            const ny = cy + dy
+            if (nx < 0 || ny < 0 || nx >= mw || ny >= mh) continue
+            const nIdx = ny * mw + nx
+            if (mask[nIdx] === 1 && visited[nIdx] === 0) {
+              visited[nIdx] = 1
+              queue.push(nIdx)
+            }
+          }
+        }
+      }
+    }
+  }
+  return contours
+}
+
+/** Convex hull for y-down pixel coords (monotone chain). */
+function convexHullYDown(points: [number, number][]): [number, number][] {
+  const sorted = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  const unique: [number, number][] = []
+  for (const point of sorted) {
+    const last = unique[unique.length - 1]
+    if (!last || last[0] !== point[0] || last[1] !== point[1]) unique.push(point)
+  }
+  if (unique.length < 3) return unique
+  const cross = (o: [number, number], a: [number, number], b: [number, number]) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+  const lower: [number, number][] = []
+  for (const point of unique) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, point) <= 0) lower.pop()
+    lower.push(point)
+  }
+  const upper: [number, number][] = []
+  for (let i = unique.length - 1; i >= 0; i--) {
+    const point = unique[i]!
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, point) <= 0) upper.pop()
+    upper.push(point)
+  }
+  lower.pop()
+  upper.pop()
+  return [...lower, ...upper]
+}
+
 /** Moore-Neighbor tracing over a border-padded binary mask. */
-function traceContour(mask: Uint8Array, mw: number, mh: number): [number, number][] {
+function traceContour(
+  mask: Uint8Array,
+  mw: number,
+  mh: number,
+  fromX?: number,
+  fromY?: number
+): [number, number][] {
   // Clockwise Moore neighborhood, starting west.
   const neighbors = [
     [-1, 0],
@@ -109,14 +207,16 @@ function traceContour(mask: Uint8Array, mw: number, mh: number): [number, number
     [-1, 1],
   ] as const
 
-  let startX = -1
-  let startY = -1
-  outer: for (let y = 0; y < mh; y++) {
-    for (let x = 0; x < mw; x++) {
-      if (mask[y * mw + x] === 1) {
-        startX = x
-        startY = y
-        break outer
+  let startX = fromX ?? -1
+  let startY = fromY ?? -1
+  if (startX < 0) {
+    outer: for (let y = 0; y < mh; y++) {
+      for (let x = 0; x < mw; x++) {
+        if (mask[y * mw + x] === 1) {
+          startX = x
+          startY = y
+          break outer
+        }
       }
     }
   }

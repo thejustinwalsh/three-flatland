@@ -205,6 +205,40 @@ describe('tight-mesh batch routing', () => {
     expect(material._effectSchemaVersion).toBeGreaterThan(before)
   })
 
+  it('a material already over 16 effect floats refuses the tight-mesh flip', () => {
+    const texture = makeTexture()
+    const material = new Sprite2DMaterial({ map: texture, transparent: true, effectTier: 20 })
+    ;(material as unknown as { _effectTotalFloats: number })._effectTotalFloats = 20
+
+    registerDiamondAtlas(texture)
+    material.setTexture(texture)
+
+    expect(material._tightMesh).toBe(false) // stayed synth — no uncompilable pipeline
+  })
+
+  it('late atlas registration re-resolves through the version check and rebuilds', () => {
+    const texture = makeTexture()
+    const material = new Sprite2DMaterial({ map: texture, transparent: true })
+    expect(material._tightMesh).toBe(false)
+
+    group.add(new Sprite2D({ texture, material }))
+    group.add(new Sprite2D({ texture, material }))
+    group.update()
+    const data = registryData()
+    expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
+
+    // Loader finishes AFTER the sprites batched
+    registerDiamondAtlas(texture)
+    group.update()
+
+    expect(material._tightMesh).toBe(true)
+    const mesh = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
+    expect(mesh.geometry.getAttribute('position')).toBeDefined()
+    expect(
+      data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind
+    ).toBe('tight-mesh')
+  })
+
   it('tight-mesh strategy shrinks the effect-float budget to 16', () => {
     const texture = makeTexture()
     registerDiamondAtlas(texture)

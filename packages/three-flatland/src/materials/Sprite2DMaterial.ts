@@ -337,9 +337,20 @@ export class Sprite2DMaterial extends EffectMaterial {
   }
 
   /** @internal */
-  private _resolveGeometryStrategy(): void {
-    const wantsTight =
+  _resolveGeometryStrategy(): void {
+    let wantsTight =
       this.transparent && this.alphaTest === 0 && getAtlasMesh(this._spriteTexture) !== null
+    if (wantsTight && this._effectTotalFloats > 16) {
+      // Tight-mesh spends 2 bindings on geometry — a material already
+      // carrying more than 16 effect floats can't fit under WebGPU's
+      // 8-binding cap. Stay on synth-quad (correct, just no overdraw
+      // win) rather than building an uncompilable pipeline.
+      console.warn(
+        'three-flatland: material carries more than 16 effect floats — staying on the ' +
+          'synth-quad path instead of tight-mesh (WebGPU vertex-buffer budget).'
+      )
+      wantsTight = false
+    }
     if (wantsTight === this._tightMesh) return
     this._tightMesh = wantsTight
     if (wantsTight) {
@@ -353,8 +364,14 @@ export class Sprite2DMaterial extends EffectMaterial {
       this._cornerUV = synth.cornerUV
     }
     // Batches were built for the previous strategy — force a rebuild
-    // through the same version channel tier upgrades use.
+    // through the same version channel tier upgrades use. Rebuild the
+    // color node too when this flip happens outside setTexture (late
+    // atlas registration re-resolves through the version check).
     this._effectSchemaVersion++
+    if (this._spriteTexture) {
+      this._rebuildColorNode()
+      this.needsUpdate = true
+    }
   }
 
   /**
