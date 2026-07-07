@@ -465,4 +465,81 @@ describe('AnimatedSprite2D', () => {
     expect(sprite.alphaMap).toBe(mine)
     sprite.dispose()
   })
+
+  it('re-resolves the active frame against the new sheet on swap (matching name)', () => {
+    const sprite = new AnimatedSprite2D({ spriteSheet })
+    sprite.setFrame(spriteSheet.getFrame('walk_0'))
+    expect(sprite.frame).toBe(spriteSheet.frames.get('walk_0'))
+
+    // A repack of the same atlas: 'walk_0' now lives at a different UV
+    // rect. The sprite must pick up the NEW rect, not keep sampling the
+    // new texture through the OLD (now-wrong) UVs.
+    const repackedWalk0: SpriteFrame = {
+      name: 'walk_0',
+      x: 0.5,
+      y: 0.5,
+      width: 0.1,
+      height: 0.1,
+      sourceWidth: 16,
+      sourceHeight: 16,
+    }
+    const newTexture = new Texture()
+    const newSheet: SpriteSheet = {
+      texture: newTexture,
+      frames: new Map([['walk_0', repackedWalk0]]),
+      width: 64,
+      height: 64,
+      getFrame(name) {
+        const frame = this.frames.get(name)
+        if (!frame) throw new Error(`Frame not found: ${name}`)
+        return frame
+      },
+      getFrameNames() {
+        return Array.from(this.frames.keys())
+      },
+    }
+
+    sprite.spriteSheet = newSheet
+    expect(sprite.texture).toBe(newTexture)
+    expect(sprite.frame).toBe(repackedWalk0)
+    sprite.dispose()
+  })
+
+  it('falls back to the new sheet\'s first frame when the active frame name is absent', () => {
+    const sprite = new AnimatedSprite2D({ spriteSheet })
+    sprite.setFrame(spriteSheet.getFrame('walk_0'))
+    expect(sprite.frame).toBe(spriteSheet.frames.get('walk_0'))
+
+    // The new sheet doesn't have a 'walk_0' at all — a stale old-atlas
+    // rect sampled against the new texture is strictly worse than
+    // resetting to a valid frame in the new sheet.
+    const onlyFrame: SpriteFrame = {
+      name: 'only',
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      sourceWidth: 8,
+      sourceHeight: 8,
+    }
+    const newTexture = new Texture()
+    const newSheet: SpriteSheet = {
+      texture: newTexture,
+      frames: new Map([['only', onlyFrame]]),
+      width: 8,
+      height: 8,
+      getFrame(name) {
+        const frame = this.frames.get(name)
+        if (!frame) throw new Error(`Frame not found: ${name}`)
+        return frame
+      },
+      getFrameNames() {
+        return Array.from(this.frames.keys())
+      },
+    }
+
+    sprite.spriteSheet = newSheet
+    expect(sprite.frame).toBe(onlyFrame)
+    sprite.dispose()
+  })
 })
