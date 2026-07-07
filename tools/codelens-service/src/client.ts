@@ -89,7 +89,15 @@ export class CodelensServiceClient {
         // trusted. This is fatal to the whole connection, not just a
         // dropped message: fail every pending request and kill the
         // process rather than pretending the connection is still healthy.
-        const wrapped = error instanceof Error ? error : new Error(String(error))
+        // Wrapped in CodelensServiceExitedError (not the raw framing
+        // Error) so every fatal-connection path — spawn failure, this,
+        // unexpected exit — rejects pending requests with the SAME
+        // catchable type; the original framing error's message is
+        // preserved in the wrapper's message for diagnosis.
+        const original = error instanceof Error ? error.message : String(error)
+        const wrapped = new CodelensServiceExitedError(
+          `sidecar connection killed by a framing error: ${original}`
+        )
         this.emitError(wrapped)
         this.failConnection(wrapped)
       }

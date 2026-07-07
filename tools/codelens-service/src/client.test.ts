@@ -135,9 +135,12 @@ describe('CodelensServiceClient', () => {
 
     // The fixture never sends a valid response for this request — the
     // pending promise must still settle (reject), driven by connection
-    // failure, not a response.
+    // failure, not a response. Rejects with the SAME error type as every
+    // other fatal-connection path (spawn failure, unexpected exit) — a
+    // distinct, catchable class, not a bare Error carrying the raw framing
+    // failure message.
     const pending = client.request('framingBoom' as never, undefined)
-    await expect(pending).rejects.toThrow()
+    await expect(pending).rejects.toBeInstanceOf(CodelensServiceExitedError)
 
     expect(client.isExited).toBe(true)
     expect(exits).toEqual([{ code: null, signal: null }])
@@ -209,6 +212,25 @@ describe('CodelensServiceClient', () => {
     // false forever, and a caller checking it before retrying would never
     // learn the process is dead.
     expect(client.isExited).toBe(true)
+  })
+
+  it('a follow-up scan() call after a failed spawn rejects immediately — no hang', async () => {
+    client = new CodelensServiceClient({
+      binaryPath: '/definitely/not/a/real/binary-xyz',
+      workspaceRoot: '/ws',
+      storageUri: '/ws/.storage',
+    })
+    await expect(client.start()).rejects.toBeInstanceOf(CodelensServiceExitedError)
+
+    // The actual observable contract callers rely on: a real public-API
+    // call made after a failed start() must fail fast (not hang waiting on
+    // a response that will never come) and reject with the same error
+    // type. isExited being true (asserted separately above) is necessary
+    // but not sufficient proof of this — the request() codepath actually
+    // has to honor it.
+    const startedAt = Date.now()
+    await expect(client.scan()).rejects.toBeInstanceOf(CodelensServiceExitedError)
+    expect(Date.now() - startedAt).toBeLessThan(100)
   })
 
   it('a spawn failure makes onExit fire too (not just the rejected start() promise)', async () => {

@@ -146,6 +146,13 @@ mod tests {
     }
 
     #[test]
+    fn content_length_with_a_decimal_point_is_rejected() {
+        let raw = b"Content-Length: 1.5\r\n\r\ntest";
+        let mut reader = BufReader::new(Cursor::new(raw.to_vec()));
+        assert!(read_message(&mut reader).is_err());
+    }
+
+    #[test]
     fn negative_content_length_is_rejected() {
         let raw = b"Content-Length: -4\r\n\r\ntest";
         let mut reader = BufReader::new(Cursor::new(raw.to_vec()));

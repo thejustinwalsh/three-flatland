@@ -100,7 +100,19 @@ fn document_parse_matches_the_golden_fixture_exactly() {
         }))
         .unwrap(),
     );
-    read_frame(&mut stdout); // discard initialize response
+    let init_response = read_frame(&mut stdout);
+    let init_response: Value = serde_json::from_slice(&init_response).unwrap();
+    // Raw-JSON check, not through the typed InitializeResult: serde
+    // deserializes a missing key and an explicit `null` into the exact
+    // same `Option::None`, so a typed comparison can't tell "degraded key
+    // omitted" (the actual, intended wire contract) apart from a
+    // regression that starts sending `"degraded": null`. `.get()` on a
+    // serde_json::Value::Object returns None only when the key is truly
+    // absent — Some(&Value::Null) if it's present-but-null.
+    assert!(
+        init_response["result"].get("degraded").is_none(),
+        "initialize's response must OMIT the degraded key when not degraded (not send \"degraded\": null); got {init_response}"
+    );
 
     write_frame(
         &mut stdin,
@@ -123,6 +135,19 @@ fn document_parse_matches_the_golden_fixture_exactly() {
          If this is an intentional protocol/extraction change, regenerate the golden file \
          (see tools/codelens-service/CLAUDE.md) and update BOTH this test and \
          src/goldenFixture.test.ts's expectations together."
+    );
+
+    // Same "typed comparison can't see this" gap as the degraded check
+    // above: golden.ts's `zzfx(1, 0.1, 440)` call (index 1, all-literal
+    // args, no var reference) must have its `varRef` key OMITTED from the
+    // wire JSON, not present as `null` — verified directly on the raw
+    // response, not via the typed Vec<Finding> comparison just above.
+    let raw_findings = response["result"]["findings"].as_array().unwrap();
+    let literal_call = &raw_findings[1];
+    assert_eq!(literal_call["payload"]["params"], json!([1.0, 0.1, 440.0]));
+    assert!(
+        literal_call["payload"].get("varRef").is_none(),
+        "a literal-args call's payload must OMIT the varRef key, not send \"varRef\": null; got {literal_call}"
     );
 
     write_frame(

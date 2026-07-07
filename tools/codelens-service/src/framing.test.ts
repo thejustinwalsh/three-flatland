@@ -139,6 +139,14 @@ describe('MessageDecoder', () => {
     expect(() => decoder.push(raw)).toThrow(/invalid Content-Length/)
   })
 
+  it('rejects a decimal Content-Length', () => {
+    // "1.5" fails the strict all-digits check even though Number.parseInt
+    // alone would happily (and wrongly) parse it as 1.
+    const raw = Buffer.from('Content-Length: 1.5\r\n\r\ntest', 'ascii')
+    const decoder = new MessageDecoder(vi.fn())
+    expect(() => decoder.push(raw)).toThrow(/invalid Content-Length/)
+  })
+
   it('rejects a negative Content-Length', () => {
     const raw = Buffer.from('Content-Length: -4\r\n\r\ntest', 'ascii')
     const decoder = new MessageDecoder(vi.fn())

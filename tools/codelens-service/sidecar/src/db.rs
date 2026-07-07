@@ -423,6 +423,28 @@ mod tests {
     }
 
     #[test]
+    fn degrades_gracefully_when_the_existing_schema_is_fundamentally_incompatible() {
+        // Distinct from the missing-column migration case below (which
+        // migrate() successfully repairs in place): here `files` exists
+        // but as a VIEW, not a table. `CREATE TABLE IF NOT EXISTS` treats
+        // any existing object with that name as "already there" and is a
+        // silent no-op — so schema init doesn't fail there — but
+        // migrate()'s `ALTER TABLE files ADD COLUMN ...` genuinely cannot
+        // succeed against a view. This must degrade, not panic.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("codelens-cache.sqlite");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("CREATE VIEW files AS SELECT 1 as path;")
+                .unwrap();
+        }
+
+        let db = Db::open(Some(dir.path().to_str().unwrap()));
+        assert!(db.degraded);
+        assert!(db.file_meta("a.ts").is_none());
+    }
+
+    #[test]
     fn opening_a_pre_has_findings_column_cache_file_migrates_in_place() {
         let dir = tempfile::tempdir().unwrap();
         let storage_dir = dir.path().to_str().unwrap();
