@@ -39,6 +39,50 @@ ear-clip triangulation → normalization to unit-quad locals + frame-local
 UVs. Fully-opaque frames short-circuit to the trivial 4-vertex rect;
 fully-transparent frames are skipped.
 
-Build-tool integration (Vite plugin) is sketched as a follow-up: the
-programmatic API is the integration point — a plugin wraps `bakeAtlas`
-over a glob and emits the pair as assets.
+## Vite plugin
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+import { flatlandAtlas } from '@three-flatland/atlas/vite'
+
+export default defineConfig({
+  plugins: [
+    flatlandAtlas({
+      entries: [
+        { src: 'sprites/particles/*.png', out: 'assets/particles' },
+        { src: 'sprites/ui', out: 'assets/ui', bake: { vertexBudget: 12 } },
+      ],
+    }),
+  ],
+})
+```
+
+Declare source sprite directories and get baked atlases at dev/build
+time — no baked artifacts committed to the repo. Each entry bakes to a
+stable pair at its `out` path (never content-hashed), e.g. `out:
+'assets/particles'` → `assets/particles.json` + `assets/particles.png`,
+fetchable at that same URL in both dev and prod (`SpriteSheetLoader.load('/assets/particles.json')`).
+
+| Option | Meaning |
+| --- | --- |
+| `entries[].src` | Glob pattern(s) or a bare directory. A bare directory (no `*`, `?`, `[]`) expands to every `.png` directly inside it; a pattern with a wildcard in its final path segment (e.g. `sprites/particles/*.png`) matches sibling files. No recursive `**` — this wraps the same flat shelf-packer the CLI uses, not a general-purpose glob engine. Accepts an array to union multiple patterns into one atlas. |
+| `entries[].out` | Output basename, project-root-relative — also the basename used for both files (and `meta.image`). Must be unique across entries. |
+| `entries[].bake` | Forwarded to `bakeAtlas` (`vertexBudget`, `alphaThreshold`, `spacing`, …). `imageName` is always derived from `out`, overriding any value set here. |
+
+**Dev vs build:**
+
+- **Dev** — entries bake once at server boot (skipped if the cache is
+  warm), served from memory by a dev-only middleware at `/<out>.json`
+  and `/<out>.png`. Nothing is written to disk. Source directories are
+  watched; adding, changing, or removing a `.png` inside one re-bakes
+  that entry and triggers a full reload.
+- **Build** — entries bake once at `buildStart`, then land in the
+  bundle via `this.emitFile` at the exact `fileName: '<out>.json' |
+  '<out>.png'` (not content-hashed, so the app's fetch path matches dev).
+
+**Cache:** a SHA-256 digest over each source file's bytes plus the bake
+options is compared against the last run; on a match the cached JSON +
+PNG bytes are reused and `bakeAtlas` isn't called again. The cache lives
+under Vite's own `cacheDir` (`node_modules/.vite/flatland-atlas/` by
+default) — safe to delete, it just forces a re-bake.

@@ -1325,12 +1325,15 @@ importers:
   packages/atlas:
     dependencies:
       pngjs:
-        specifier: ^7.0.0
+        specifier: 'catalog:'
         version: 7.0.0
     devDependencies:
       '@types/pngjs':
-        specifier: ^6.0.5
+        specifier: 'catalog:'
         version: 6.0.5
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
 
   packages/bake:
     dependencies:
