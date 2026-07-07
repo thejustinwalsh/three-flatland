@@ -1720,6 +1720,9 @@ importers:
       '@three-flatland/io':
         specifier: workspace:*
         version: link:../io
+      '@three-flatland/normals':
+        specifier: workspace:*
+        version: link:../../packages/normals
       '@three-flatland/preview':
         specifier: workspace:*
         version: link:../preview

@@ -19,6 +19,7 @@ export default defineConfig({
       'packages/starlight-theme/**/*.test.ts',
       'scripts/**/*.test.ts',
       'tools/*/src/**/*.test.ts',
+      'tools/vscode/webview/normal-baker/**/*.test.ts',
     ],
     exclude: ['packages/skia/**', 'packages/devtools/**', '**/node_modules/**'],
     setupFiles: ['./vitest.setup.ts'],

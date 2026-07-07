@@ -122,6 +122,7 @@
     "@three-flatland/image": "workspace:*",
     "@three-flatland/design-system": "workspace:*",
     "@three-flatland/io": "workspace:*",
+    "@three-flatland/normals": "workspace:*",
     "@three-flatland/preview": "workspace:*",
     "@three-flatland/schemas": "workspace:*",
     "@react-three/fiber": "catalog:",
