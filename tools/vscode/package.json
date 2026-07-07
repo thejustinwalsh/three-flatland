@@ -111,9 +111,10 @@
     "dev": "concurrently -n host,webview -c blue,magenta --prefix \"[{name}]\" \"pnpm run dev:host\" \"pnpm run dev:webview\"",
     "dev:host": "node esbuild.config.mjs --watch",
     "dev:webview": "vite build --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
     "clean": "rm -rf dist",
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies",
+    "test:e2e": "playwright test --config=e2e/playwright.config.ts"
   },
   "dependencies": {
     "@jsquash/webp": "catalog:",
@@ -137,16 +138,20 @@
     "zustand": "catalog:"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@stylexjs/unplugin": "catalog:",
     "@types/node": "^22.10.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/three": "catalog:",
     "@types/vscode": "^1.94.0",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "catalog:",
+    "@vscode/test-electron": "^3.0.0",
     "concurrently": "^9.1.0",
     "esbuild": "^0.25.0",
     "typescript": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "ws": "^8.21.0"
   }
 }
