@@ -1,5 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Color } from 'three'
+import { Scene, OrthographicCamera } from 'three'
+import { gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 import {
   Sprite2D,
   Sprite2DMaterial,
@@ -70,7 +72,7 @@ function halfExtents(): { halfW: number; halfH: number } {
 
 async function main() {
   const scene = new Scene()
-  scene.background = new Color(0x0a0c10)
+  ;(scene as { backgroundNode?: unknown }).backgroundNode = gemGradientNode({ gem: GEM })
 
   const aspect = window.innerWidth / window.innerHeight
   const camera = new OrthographicCamera(
@@ -193,7 +195,15 @@ async function main() {
   folder
     .addBinding(params, 'count', {
       label: 'particles',
-      options: { '500': 500, '1500': 1500, '3000': 3000, '6000': 6000 },
+      options: {
+        '500': 500,
+        '1500': 1500,
+        '3000': 3000,
+        '6000': 6000,
+        '20000': 20000,
+        '40000': 40000,
+        '60000': 60000,
+      },
     })
     .on('change', (ev) => {
       setParticleCount(ev.value as number)

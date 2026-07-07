@@ -11,6 +11,8 @@ import {
   type RenderStats,
 } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
+import { GemBackground } from './GemBackground'
+import { GEM } from './gem'
 import type { Pane } from 'tweakpane'
 
 extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
@@ -241,7 +243,15 @@ function Scene() {
     options: { 'Tight Mesh': 'tight', 'Synth Quad': 'quad' },
   })
   const [count] = usePaneInput(folder, 'count', 1500, {
-    options: { '500': 500, '1500': 1500, '3000': 3000, '6000': 6000 },
+    options: {
+      '500': 500,
+      '1500': 1500,
+      '3000': 3000,
+      '6000': 6000,
+      '20000': 20000,
+      '40000': 40000,
+      '60000': 60000,
+    },
   })
   const [paused] = usePaneInput(folder, 'paused', false)
 
@@ -269,7 +279,7 @@ function Scene() {
 
   return (
     <>
-      <color attach="background" args={['#0a0c10']} />
+      <GemBackground gem={GEM} />
       <FitOrthoCamera viewSize={VIEW_SIZE} />
       <DevtoolsProvider name="overdraw-bench" />
       <ParticleField
