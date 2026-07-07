@@ -22,5 +22,8 @@ export function createSynthQuadGeometry(): BufferGeometry {
   const geometry = new BufferGeometry()
   geometry.setIndex(SYNTH_QUAD_INDEX as number[])
   geometry.boundingSphere = new Sphere(new Vector3(), Math.SQRT1_2)
+  // Marks the geometry for the AttributeNode patch: the missing
+  // position attribute is by design here, not a bug to warn about.
+  geometry.userData.flSynthQuad = true
   return geometry
 }
