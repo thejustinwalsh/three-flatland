@@ -187,6 +187,53 @@ fn did_change_notification_produces_no_response_and_updates_cache() {
     sidecar.shutdown();
 }
 
+/// Regression: `Db::cached_findings` had no `ORDER BY`, so a cache-hit read
+/// could return findings sorted by their (unrelated) hash-derived `id`
+/// instead of source position — invisible until content-hash became the
+/// sole cache-trust signal made virtual/untitled buffers (which never have
+/// disk mtime/size to compare) cache-eligible for the first time. This
+/// exact end-to-end shape (a virtual URI, an initial single-call parse to
+/// seed the cache, then a didChange to a two-call body, then a matching
+/// parse) reliably reproduced the bug before the `ORDER BY rowid` fix —
+/// unlike the crafted unit-level repro in `src/db.rs`, which could not
+/// force SQLite's on-disk query planner into the same choice in isolation.
+#[test]
+fn did_change_then_parse_preserves_finding_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut sidecar = Sidecar::spawn();
+    sidecar.request(
+        "initialize",
+        json!({
+            "workspaceRoot": dir.path().to_string_lossy(),
+            "storageUri": dir.path().join("storage").to_string_lossy(),
+        }),
+    );
+
+    let uri = "file:///virtual/order.ts";
+    let original = sidecar.request(
+        "document/parse",
+        json!({ "uri": uri, "text": "zzfx(1,2,3);" }),
+    );
+    assert_eq!(original["result"]["findings"].as_array().unwrap().len(), 1);
+
+    let two_calls = "zzfx(4,5,6);zzfx(7,8,9);";
+    sidecar.notify(
+        "document/didChange",
+        json!({ "uri": uri, "text": two_calls }),
+    );
+    let reparsed = sidecar.request("document/parse", json!({ "uri": uri, "text": two_calls }));
+    let findings = reparsed["result"]["findings"].as_array().unwrap();
+    assert_eq!(findings.len(), 2);
+    assert_eq!(
+        findings[0]["payload"]["params"],
+        json!([4.0, 5.0, 6.0]),
+        "zzfx(4,5,6) appears first in source and must be findings[0], not sorted by hash id"
+    );
+    assert_eq!(findings[1]["payload"]["params"], json!([7.0, 8.0, 9.0]));
+
+    sidecar.shutdown();
+}
+
 #[test]
 fn unknown_method_returns_json_rpc_error_and_process_stays_alive() {
     let dir = tempfile::tempdir().unwrap();
@@ -210,4 +257,54 @@ fn unknown_method_returns_json_rpc_error_and_process_stays_alive() {
     assert_eq!(parse["result"]["findings"].as_array().unwrap().len(), 1);
 
     sidecar.shutdown();
+}
+
+/// A framing error desyncs the byte stream — the process cannot recover
+/// alignment with the next frame, so it must exit non-zero. This is the
+/// signal a supervising client uses to distinguish "died from a protocol
+/// violation" from a clean `shutdown` (exit 0, see `sidecar.shutdown()`
+/// above) or simply closing the pipe (also exit 0, `eof_without_shutdown`
+/// below).
+#[test]
+fn malformed_framing_is_fatal_and_exits_non_zero() {
+    let exe = env!("CARGO_BIN_EXE_codelens-service");
+    let mut child = Command::new(exe)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn codelens-service");
+
+    // No Content-Length header at all — an unambiguous framing violation.
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin
+            .write_all(b"garbage: not a real header\r\n\r\n")
+            .unwrap();
+        // Drop stdin so the process sees EOF if it were (incorrectly)
+        // still waiting for more header bytes rather than erroring out
+        // immediately on the missing Content-Length.
+    }
+
+    let status = child.wait().expect("process must exit");
+    assert!(
+        !status.success(),
+        "a framing error must exit non-zero, got {status:?}"
+    );
+}
+
+#[test]
+fn clean_eof_without_shutdown_exits_zero() {
+    // The client simply closing the pipe (no `shutdown` request sent) is a
+    // normal disconnect, not a protocol violation — must still exit 0.
+    let exe = env!("CARGO_BIN_EXE_codelens-service");
+    let mut child = Command::new(exe)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("failed to spawn codelens-service");
+    drop(child.stdin.take());
+    let status = child.wait().expect("process must exit");
+    assert!(status.success(), "clean EOF must exit 0, got {status:?}");
 }

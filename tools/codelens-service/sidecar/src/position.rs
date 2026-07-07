@@ -124,4 +124,60 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn surrogate_pair_character_counts_as_two_utf16_units() {
+        // '😀' (U+1F600) is outside the Basic Multilingual Plane: 4 UTF-8
+        // bytes, but 2 UTF-16 code units (a surrogate pair) — the previous
+        // non-ASCII tests here (é, 字) only covered BMP characters, which
+        // are always 1 UTF-16 unit and so could never catch a decoder that
+        // (wrongly) counted Unicode scalar values instead of UTF-16 units.
+        let sanity_check_this_is_really_a_surrogate_pair = "😀".encode_utf16().count();
+        assert_eq!(sanity_check_this_is_really_a_surrogate_pair, 2);
+
+        let prefix = "const s = \"😀\"; ";
+        let text = format!("{prefix}zzfx(1,2,3);");
+        let idx = LineIndex::new(&text);
+        let zzfx_byte_offset = text.find("zzfx").unwrap();
+        let pos = idx.position(&text, zzfx_byte_offset);
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.character, prefix.encode_utf16().count() as u32);
+    }
+
+    #[test]
+    fn crlf_line_ending_does_not_leak_into_the_next_lines_character_count() {
+        // Windows-style CRLF: LineIndex splits on '\n' only, so a line's
+        // trailing '\r' becomes the last byte counted as part of that
+        // line's own content — it must never shift the character offset
+        // of anything on the FOLLOWING line, which starts fresh at 0.
+        let text = "const a = 1;\r\nzzfx(1,2,3);\r\n";
+        let idx = LineIndex::new(text);
+        let zzfx_byte_offset = text.find("zzfx").unwrap();
+        let pos = idx.position(text, zzfx_byte_offset);
+        assert_eq!(pos.line, 1);
+        assert_eq!(pos.character, 0);
+    }
+
+    #[test]
+    fn crlf_multiple_lines_advance_line_numbers_correctly() {
+        let text = "a\r\nb\r\nzzfx(1,2,3);\r\n";
+        let idx = LineIndex::new(text);
+        let zzfx_byte_offset = text.find("zzfx").unwrap();
+        let pos = idx.position(text, zzfx_byte_offset);
+        assert_eq!(pos.line, 2);
+        assert_eq!(pos.character, 0);
+    }
+
+    #[test]
+    fn crlf_with_non_ascii_content_before_the_call_on_the_same_line() {
+        // Combines both edge cases: a CRLF-terminated prior line, then
+        // non-ASCII content sharing the line with the call itself.
+        let prefix = "// é字\r\n";
+        let text = format!("{prefix}zzfx(1,2,3);\r\n");
+        let idx = LineIndex::new(&text);
+        let zzfx_byte_offset = text.find("zzfx").unwrap();
+        let pos = idx.position(&text, zzfx_byte_offset);
+        assert_eq!(pos.line, 1);
+        assert_eq!(pos.character, 0);
+    }
 }

@@ -84,15 +84,40 @@ export class CodelensServiceClient {
       try {
         this.decoder!.push(chunk)
       } catch (error) {
-        this.emitError(error instanceof Error ? error : new Error(String(error)))
+        // A framing error desyncs the byte stream — MessageDecoder is now
+        // poisoned (see framing.ts) and nothing further it produces can be
+        // trusted. This is fatal to the whole connection, not just a
+        // dropped message: fail every pending request and kill the
+        // process rather than pretending the connection is still healthy.
+        // Wrapped in CodelensServiceExitedError (not the raw framing
+        // Error) so every fatal-connection path — spawn failure, this,
+        // unexpected exit — rejects pending requests with the SAME
+        // catchable type; the original framing error's message is
+        // preserved in the wrapper's message for diagnosis.
+        const original = error instanceof Error ? error.message : String(error)
+        const wrapped = new CodelensServiceExitedError(
+          `sidecar connection killed by a framing error: ${original}`
+        )
+        this.emitError(wrapped)
+        this.failConnection(wrapped)
       }
     })
     this.child.on('error', (error) => {
+      // Spawn failure (e.g. ENOENT). Node does not reliably guarantee an
+      // 'exit' event follows an 'error' event across all failure modes, so
+      // `exited` must be set here directly — not left for 'exit' to set —
+      // or isExited would stay false forever and later request()/notify()
+      // calls could try to write to a process that never came up.
       const wrapped = new CodelensServiceExitedError(`sidecar failed to spawn: ${error.message}`)
       this.emitError(wrapped)
-      this.failAllPending(wrapped)
+      this.failConnection(wrapped)
     })
     this.child.on('exit', (code, signal) => {
+      // If failConnection already ran (spawn error or fatal framing
+      // error), this is the same connection's real-but-delayed OS exit —
+      // pending requests are already failed and exitHandlers already
+      // fired; firing them again here would be a duplicate notification.
+      if (this.exited) return
       this.exited = true
       this.failAllPending(
         new CodelensServiceExitedError(
@@ -159,6 +184,24 @@ export class CodelensServiceClient {
   private failAllPending(error: Error): void {
     for (const { reject } of this.pending.values()) reject(error)
     this.pending.clear()
+  }
+
+  /**
+   * Marks the connection dead: fails every pending request, kills the
+   * process (best-effort — a spawn failure means there's nothing to
+   * kill), and notifies `onExit` subscribers immediately with a
+   * `(null, null)` sentinel rather than waiting for (or possibly never
+   * receiving) a real OS exit event. Used for both spawn failure and a
+   * fatal framing error — the two cases `isExited` must reflect
+   * immediately, per this client's exit-tracking contract, rather than
+   * risk `isExited` staying `false` forever.
+   */
+  private failConnection(error: Error): void {
+    if (this.exited) return
+    this.exited = true
+    this.failAllPending(error)
+    this.child?.kill()
+    for (const handler of this.exitHandlers) handler(null, null)
   }
 
   private ensureStarted(): ChildProcessByStdio<Writable, Readable, Readable> {

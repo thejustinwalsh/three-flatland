@@ -365,6 +365,34 @@ mod tests {
     }
 
     #[test]
+    fn surrogate_pair_before_call_end_to_end_through_tree_sitter() {
+        // Full-pipeline version of position.rs's LineIndex-level test: an
+        // astral character (outside the BMP, so a UTF-16 surrogate pair —
+        // 2 code units) sharing a line with the call, run through the real
+        // tree-sitter parse + find_zzfx_calls, not just LineIndex directly.
+        let prefix = "const s = \"😀\"; ";
+        let src = format!("{prefix}zzfx(1,2,3);");
+        let f = call("a.ts", &src);
+        assert_eq!(f.range.start.line, 0);
+        assert_eq!(
+            f.range.start.character,
+            prefix.encode_utf16().count() as u32
+        );
+    }
+
+    #[test]
+    fn crlf_source_end_to_end_through_tree_sitter() {
+        // A CRLF-terminated file, parsed for real (not just LineIndex in
+        // isolation) — proves tree-sitter's own byte offsets plus our
+        // position conversion agree on where the call actually is.
+        let src = "const a = 1;\r\nzzfx(1,2,3);\r\n";
+        let f = call("a.ts", src);
+        assert_eq!(f.range.start.line, 1);
+        assert_eq!(f.range.start.character, 0);
+        assert_eq!(f.payload.params, vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
     fn arg_range_covers_interior_only_not_parens() {
         let src = "zzfx(1,.05,220);";
         let f = call("a.ts", src);
