@@ -136,12 +136,17 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    * Maximum total effect-data floats allowed across all registered
    * effects on this material. WebGPU allows 8 vertex-buffer bindings
    * per pipeline; SpriteBatch uses 2 fixed bindings (instanceMatrix +
-   * interleaved core — the synth-quad geometry is index-only and costs
-   * zero), leaving 6 for `effectBuf0..5` × 4 floats = 24 floats.
-   * Exceeding this would force a 7th effectBuf binding which WebGPU
-   * rejects at pipeline creation with a cryptic "vertex buffer count
-   * exceeds maximum" error. `registerEffect` throws clearly when the
-   * cap would be exceeded.
+   * interleaved core — the synth-quad geometry's `position`/`uv`
+   * attributes exist for user TSL but cost a binding only when a
+   * material's nodes actually read them), leaving 6 for
+   * `effectBuf0..5` × 4 floats = 24 floats. Exceeding this would force
+   * a 7th effectBuf binding which WebGPU rejects at pipeline creation
+   * with a cryptic "vertex buffer count exceeds maximum" error.
+   * `registerEffect` throws clearly when the cap would be exceeded.
+   *
+   * A material whose custom TSL nodes call `uv()`/`positionGeometry()`
+   * consumes one or two additional vertex-buffer bindings beyond the 2
+   * above, reducing headroom below 24 floats for that material.
    */
   static readonly MAX_EFFECT_FLOATS = 24
 
@@ -327,7 +332,8 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
     // Hard cap: WebGPU allows 8 vertex-buffer bindings per pipeline.
     // SpriteBatch uses 2 fixed bindings (instanceMatrix + interleaved
-    // core; synth-quad geometry is index-only), leaving 6 for
+    // core; the synth-quad's position/uv attributes cost nothing here
+    // since the built-in shader doesn't read them), leaving 6 for
     // `effectBuf0..5` × 4 floats = 24 effect floats max. Exceeding that
     // would force a 7th effectBuf binding which WebGPU will reject at
     // pipeline creation with a cryptic "vertex buffer count exceeds

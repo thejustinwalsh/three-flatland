@@ -330,9 +330,10 @@ export class OcclusionPass {
  */
 function buildOcclusionMaterial(texture: Texture): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial({ transparent: true })
-  // The occlusion pass re-renders SpriteBatch/TileLayer meshes, whose
-  // geometry is the index-only synth quad — position and UV must be
-  // synthesized from vertexIndex here exactly as Sprite2DMaterial does.
+  // The occlusion pass re-renders SpriteBatch/TileLayer meshes. Their
+  // synth-quad geometry carries position/uv attributes for user TSL,
+  // but this material — like Sprite2DMaterial — synthesizes both from
+  // vertexIndex instead, so it spends no extra binding either.
   const synth = synthQuadNodes()
   material.positionNode = synth.position
   material.colorNode = Fn(() => {

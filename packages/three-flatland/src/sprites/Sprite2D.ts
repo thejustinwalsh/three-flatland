@@ -555,9 +555,10 @@ export class Sprite2D extends Mesh {
 
     // Create geometry with instance attributes for single-sprite rendering
     // (Cannot use shared geometry because each sprite needs its own
-    // attribute buffers.) Index-only synth quad — corner position + UV
-    // come from vertexIndex in the shader; boundingSphere is pre-set to
-    // the unit circumsphere so frustum culling works with no position data.
+    // attribute buffers.) Synth quad — the shader synthesizes corner
+    // position + UV from vertexIndex rather than reading the geometry's
+    // own attributes; boundingSphere is pre-set to the unit circumsphere
+    // so frustum culling skips computeBoundingSphere().
     const geometry = createSynthQuadGeometry()
     super(geometry, material)
 

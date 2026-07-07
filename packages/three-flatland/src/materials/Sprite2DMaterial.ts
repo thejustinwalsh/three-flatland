@@ -137,8 +137,9 @@ export class Sprite2DMaterial extends EffectMaterial {
   private _globalUniforms: GlobalUniforms | null = null
 
   /**
-   * Synthesized corner UV varying — replaces the geometry `uv()`
-   * attribute (the synth-quad geometry ships no uv buffer).
+   * Synthesized corner UV varying — used instead of the geometry's
+   * `uv` attribute so the built-in shader spends no vertex-buffer
+   * binding on it.
    * @internal
    */
   private _cornerUV: ReturnType<typeof synthQuadNodes>['cornerUV']
@@ -148,10 +149,10 @@ export class Sprite2DMaterial extends EffectMaterial {
 
     this.batchId = nextMaterialId++
 
-    // Synthesize the unit-quad corner from vertexIndex — pairs with the
-    // index-only geometry from `createSynthQuadGeometry()`. Reclaims the
-    // 3 vertex-buffer bindings PlaneGeometry cost (position/normal/uv),
-    // which is what funds MAX_EFFECT_FLOATS = 24.
+    // Synthesize the unit-quad corner from vertexIndex instead of
+    // reading `createSynthQuadGeometry()`'s position/uv attributes —
+    // avoids the 3 vertex-buffer bindings PlaneGeometry cost
+    // (position/normal/uv), which is what funds MAX_EFFECT_FLOATS = 24.
     const synth = synthQuadNodes()
     this.positionNode = synth.position
     this._cornerUV = synth.cornerUV
