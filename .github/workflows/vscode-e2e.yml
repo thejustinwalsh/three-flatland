@@ -26,6 +26,36 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # tools/codelens-service's Rust sidecar doesn't exist on this branch
+      # yet (lands via a separate branch) — this step is a guarded no-op
+      # until it merges, so this workflow doesn't need editing again when
+      # it does. The extension's e2e build step itself doesn't currently
+      # depend on the sidecar binary being present; this just makes sure
+      # it's built before e2e runs once that dependency exists.
+      - name: Check for codelens-service Rust sidecar
+        id: codelens
+        run: |
+          if [ -d tools/codelens-service/sidecar ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Rust toolchain
+        if: steps.codelens.outputs.present == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        if: steps.codelens.outputs.present == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/codelens-service/sidecar
+
+      - name: Build codelens-service sidecar
+        if: steps.codelens.outputs.present == 'true'
+        run: cargo build --release
+        working-directory: tools/codelens-service/sidecar
+
       - name: Cache Turbo
         uses: actions/cache@v5
         with:

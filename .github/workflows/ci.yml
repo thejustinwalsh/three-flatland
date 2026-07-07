@@ -74,6 +74,7 @@ jobs:
       !cancelled() && needs.build.result != 'failure' &&
       needs.changes.outputs.changeset_only != 'true' &&
       (needs.changes.outputs.vscode == 'true' ||
+       needs.changes.outputs.packages == 'true' ||
        needs.changes.outputs.ci == 'true')
     uses: ./.github/workflows/vscode-e2e.yml
 

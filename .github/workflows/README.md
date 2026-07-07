@@ -109,7 +109,7 @@ Job gating:
 | `ci.build` (matrix) | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `vscode` ∨ `ci` — lint/typecheck/test are too valuable to bucket-gate; turbo cache makes the no-ops cheap |
 | `ci.smoke` | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` (and upstream `build` didn't fail) |
 | `ci.size` | `packages` ∨ `configs` ∨ `ci` (PR events only; size-limit only tracks published packages) |
-| `ci.vscode-e2e` | `vscode` ∨ `ci` (and upstream `build` didn't fail) — real VS Code (Electron) launched under Playwright via `xvfb-run`, see `tools/vscode/e2e/README.md` |
+| `ci.vscode-e2e` | `vscode` ∨ `packages` ∨ `ci` (and upstream `build` didn't fail) — real VS Code (Electron) launched under Playwright via `xvfb-run`, see `tools/vscode/e2e/README.md`. `packages` is included because the extension's real `workspace:*` dependency closure reaches into `packages/schemas`, `packages/normals`, `packages/bake`, `packages/image`, `packages/atlas`, and `three-flatland` itself — not just `tools/**` |
 | `ci.changeset` | PR events only, when `build` succeeded and `smoke` / `size` / `vscode-e2e` didn't fail, and not `changeset_only` — generates + pushes the release changeset after the gate jobs pass |
 | `ci-passed` | always — gates the merge |
 | `docs.smoke` | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — docs#build pulls in all of them (API reference from `packages`, showcases from `minis`, embedded demos from `examples`) |
