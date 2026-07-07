@@ -13,7 +13,6 @@ export const EXAMPLE_GEMS: Record<string, Gem | null> = {
   "hit-test": 'gold',
   "knightmark": 'amethyst',
   "lighting": 'emerald',
-  "overdraw-bench": 'amethyst',
   "pass-effects": 'ruby',
   "skia": 'turquoize',
   "slug-text": 'diamond',

@@ -5,7 +5,7 @@ export default defineConfig(({ command }) => ({
   define: {
     'process.env.FL_DEVTOOLS': JSON.stringify('true'),
   },
-  base: command === 'serve' ? '/three/overdraw-bench/' : './',
+  base: command === 'serve' ? '/' : './',
   server: {
     strictPort: true,
   },

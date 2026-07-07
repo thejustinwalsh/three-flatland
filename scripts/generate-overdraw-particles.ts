@@ -1,5 +1,5 @@
-// Generates the soft-particle sprite atlas for the overdraw-bench example
-// pair (examples/{three,react}/overdraw-bench) and bakes it into TWO
+// Generates the soft-particle sprite atlas for the overdraw benchmark
+// (benchmarks/overdraw) and bakes it into TWO
 // SpriteSheetLoader-compatible variants via @three-flatland/atlas:
 //
 //   particles.png      + particles.json      — polygon meshes included,
@@ -172,10 +172,7 @@ function main(): void {
   const meshJson = JSON.stringify(meshBaked.json, null, 2) + '\n'
   const quadJson = JSON.stringify(quadBaked.json, null, 2) + '\n'
 
-  const targets = [
-    resolve(ROOT, 'examples/three/overdraw-bench/public/assets'),
-    resolve(ROOT, 'examples/react/overdraw-bench/public/assets'),
-  ]
+  const targets = [resolve(ROOT, 'benchmarks/overdraw/public/assets')]
   for (const dir of targets) {
     mkdirSync(dir, { recursive: true })
     writeFileSync(resolve(dir, 'particles.png'), meshPagePng)

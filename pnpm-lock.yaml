@@ -157,6 +157,34 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.7)(happy-dom@15.11.7)(terser@5.46.1)
 
+  benchmarks/overdraw:
+    dependencies:
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../packages/devtools
+      '@tweakpane/plugin-essentials':
+        specifier: ^0.2.1
+        version: 0.2.1(tweakpane@4.0.5)
+      three:
+        specifier: ^0.183.1
+        version: 0.183.1
+      three-flatland:
+        specifier: workspace:*
+        version: link:../../packages/three-flatland
+      tweakpane:
+        specifier: ^4.0.5
+        version: 4.0.5
+    devDependencies:
+      '@types/three':
+        specifier: ^0.183.1
+        version: 0.183.1
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.4.1
+        version: 6.4.1(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
+
   docs:
     dependencies:
       '@astrojs/check':
@@ -642,52 +670,6 @@ importers:
         specifier: ^6.4.1
         version: 6.4.1(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
 
-  examples/react/overdraw-bench:
-    dependencies:
-      '@react-three/fiber':
-        specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
-      '@three-flatland/devtools':
-        specifier: workspace:*
-        version: link:../../../packages/devtools
-      '@tweakpane/plugin-essentials':
-        specifier: ^0.2.1
-        version: 0.2.1(tweakpane@4.0.5)
-      react:
-        specifier: ^19.2.0
-        version: 19.2.3
-      react-dom:
-        specifier: ^19.2.0
-        version: 19.2.3(react@19.2.3)
-      three:
-        specifier: ^0.183.1
-        version: 0.183.1
-      three-flatland:
-        specifier: workspace:*
-        version: link:../../../packages/three-flatland
-      tweakpane:
-        specifier: ^4.0.5
-        version: 4.0.5
-    devDependencies:
-      '@types/react':
-        specifier: ^19.0.2
-        version: 19.2.9
-      '@types/react-dom':
-        specifier: ^19.0.2
-        version: 19.2.3(@types/react@19.2.9)
-      '@types/three':
-        specifier: ^0.183.1
-        version: 0.183.1
-      '@vitejs/plugin-react':
-        specifier: ^4.3.4
-        version: 4.7.0(vite@6.4.1(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))
-      typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
-      vite:
-        specifier: ^6.4.1
-        version: 6.4.1(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
-
   examples/react/pass-effects:
     dependencies:
       '@react-three/fiber':
@@ -1112,34 +1094,6 @@ importers:
       '@three-flatland/presets':
         specifier: workspace:*
         version: link:../../../packages/presets
-      '@tweakpane/plugin-essentials':
-        specifier: ^0.2.1
-        version: 0.2.1(tweakpane@4.0.5)
-      three:
-        specifier: ^0.183.1
-        version: 0.183.1
-      three-flatland:
-        specifier: workspace:*
-        version: link:../../../packages/three-flatland
-      tweakpane:
-        specifier: ^4.0.5
-        version: 4.0.5
-    devDependencies:
-      '@types/three':
-        specifier: ^0.183.1
-        version: 0.183.1
-      typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
-      vite:
-        specifier: ^6.4.1
-        version: 6.4.1(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
-
-  examples/three/overdraw-bench:
-    dependencies:
-      '@three-flatland/devtools':
-        specifier: workspace:*
-        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
