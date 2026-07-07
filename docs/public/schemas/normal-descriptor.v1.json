@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://three-flatland.dev/schemas/normal-descriptor.v1.json",
+  "title": "three-flatland Normal Source Descriptor",
+  "description": "Region-aware control document for the normal-map baker (`bakeNormalMap` in packages/normals). The authoritative shape is the hand-authored `NormalSourceDescriptor` TypeScript interface at packages/normals/src/descriptor.ts — this schema conforms to that type, not the other way around, so the baker's runtime types never depend on this package. Consumed by the library API (`bakeNormalMap(pixels, w, h, descriptor)`), the CLI (`flatland-bake normal --descriptor <file>`), and the loader API (`LDtkLoader.load(url, { normals: descriptor })`). All fields at the descriptor root are defaults inherited by every region unless a region overrides them.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1,
+      "description": "Reserved for future schema evolution. Currently always 1."
+    },
+    "bump": {
+      "$ref": "#/$defs/NormalBump",
+      "description": "Default bump source for regions that don't specify one. Default 'alpha'."
+    },
+    "direction": {
+      "$ref": "#/$defs/NormalDirection",
+      "description": "Default tilt for regions that don't specify one. Default 'flat'."
+    },
+    "pitch": {
+      "type": "number",
+      "description": "Default tilt pitch in radians. Default Math.PI / 4."
+    },
+    "strength": {
+      "type": "number",
+      "description": "Default gradient strength. Negative values invert the bump. Default 1."
+    },
+    "elevation": {
+      "$ref": "#/$defs/Elevation",
+      "description": "Default elevation for regions that don't specify one. Default 0 (ground)."
+    },
+    "regions": {
+      "type": "array",
+      "description": "Regions of the source texture. When omitted, the whole texture is treated as a single region inheriting all descriptor defaults.",
+      "items": {
+        "$ref": "#/$defs/NormalRegion"
+      }
+    }
+  },
+  "$defs": {
+    "NormalBump": {
+      "type": "string",
+      "description": "Per-texel bump source inside a region.",
+      "enum": [
+        "alpha",
+        "luminance",
+        "red",
+        "green",
+        "blue",
+        "none"
+      ]
+    },
+    "NormalDirection": {
+      "description": "Screen-relative direction the surface normal's XY component points. Cardinal/compass aliases (e.g. 'up'/'north') are equivalent. Numbers are radians in standard math convention (0 = +X / right, CCW positive).",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "flat",
+            "up",
+            "north",
+            "down",
+            "south",
+            "left",
+            "west",
+            "right",
+            "east",
+            "up-left",
+            "north-west",
+            "up-right",
+            "north-east",
+            "down-left",
+            "south-west",
+            "down-right",
+            "south-east"
+          ]
+        },
+        {
+          "type": "number"
+        }
+      ]
+    },
+    "Elevation": {
+      "type": "number",
+      "description": "World-space elevation in [0, 1], where 0 = ground plane (floor) and 1 = top-of-wall (cap). Baked into the normal atlas's B channel.",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "NormalRegion": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0
+        },
+        "w": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "h": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "bump": {
+          "$ref": "#/$defs/NormalBump",
+          "description": "Per-texel bump source. Default inherits from descriptor ('alpha')."
+        },
+        "direction": {
+          "$ref": "#/$defs/NormalDirection",
+          "description": "Base tilt direction. Default inherits from descriptor ('flat')."
+        },
+        "pitch": {
+          "type": "number",
+          "description": "Tilt angle in radians from flat. Ignored when direction === 'flat'. Default inherits from descriptor, which defaults to Math.PI / 4."
+        },
+        "strength": {
+          "type": "number",
+          "description": "Gradient strength multiplier for this region. Default 1."
+        },
+        "elevation": {
+          "$ref": "#/$defs/Elevation",
+          "description": "Default inherits from the descriptor, which defaults to 0."
+        }
+      }
+    }
+  }
+}

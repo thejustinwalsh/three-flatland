@@ -1469,6 +1469,9 @@ importers:
         specifier: 'catalog:'
         version: 7.0.0
     devDependencies:
+      '@three-flatland/schemas':
+        specifier: workspace:*
+        version: link:../schemas
       '@types/pngjs':
         specifier: 'catalog:'
         version: 6.0.5

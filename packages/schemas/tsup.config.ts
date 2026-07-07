@@ -14,6 +14,8 @@ export default defineConfig({
   entry: {
     'atlas/index': 'src/atlas/index.ts',
     'atlas/validator': 'src/atlas/validator.ts',
+    'normal-descriptor/index': 'src/normal-descriptor/index.ts',
+    'normal-descriptor/validator': 'src/normal-descriptor/validator.ts',
     version: 'src/version.ts',
   },
   format: ['esm'],
@@ -26,6 +28,8 @@ export default defineConfig({
     // intact in the output JS, so the JSON file must be present alongside it.
     mkdirSync('dist/atlas', { recursive: true })
     copyFileSync('src/atlas/schema.json', 'dist/atlas/schema.json')
+    mkdirSync('dist/normal-descriptor', { recursive: true })
+    copyFileSync('src/normal-descriptor/schema.json', 'dist/normal-descriptor/schema.json')
 
     // Regenerate the AtlasJson types in three-flatland + tools/io. In `dev`
     // (tsup --watch), schema edits trigger a rebuild → onSuccess → codegen,
