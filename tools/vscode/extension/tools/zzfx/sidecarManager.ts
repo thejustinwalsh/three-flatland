@@ -30,16 +30,38 @@ export function getSidecarClient(
   return clientPromise
 }
 
+const BINARY_NAME = process.platform === 'win32' ? 'codelens-service.exe' : 'codelens-service'
+
 /**
- * `resolveBinary()`'s own dev-mode fallback resolves candidates relative
- * to its OWN `import.meta.url` — correct when that module runs from its
- * real `tools/codelens-service/dist/resolveBinary.js` location, but wrong
- * once esbuild bundles it INTO `tools/vscode/dist/extension.js`:
- * `import.meta.url` then points at the bundle's own location, so the
- * relative walk lands on `tools/vscode/sidecar/target/...` (nonexistent)
- * instead of `tools/codelens-service/sidecar/target/...`. Confirmed via a
- * real e2e run — `resolveBinary()` alone reported "binary not found" at
- * exactly that wrong path.
+ * Production (VSIX-packaged) candidate path, per the convention documented
+ * in `tools/codelens-service/CLAUDE.md`: `<extensionUri>/bin/<platform>-
+ * <arch>/codelens-service`. Actually bundling the binary into the VSIX at
+ * that path is out of scope for this unit — packaging is a separate,
+ * later concern — but the resolution order is wired up now so that work
+ * has nothing to change here when it lands.
+ */
+function productionCandidates(context: vscode.ExtensionContext): string[] {
+  const platformDir = `${process.platform}-${process.arch}`
+  return [vscode.Uri.joinPath(context.extensionUri, 'bin', platformDir, BINARY_NAME).fsPath]
+}
+
+/**
+ * `resolveBinary()`'s own dev-mode fallback (`includeDevFallback: true`,
+ * or its default) resolves candidates relative to its OWN
+ * `import.meta.url` — correct when that module runs from its real
+ * `tools/codelens-service/dist/resolveBinary.js` location, but wrong once
+ * esbuild bundles it INTO `tools/vscode/dist/extension.js`: `import.meta
+ * .url` then points at the bundle's own location, so the relative walk
+ * lands on `tools/vscode/sidecar/target/...` (nonexistent) instead of
+ * `tools/codelens-service/sidecar/target/...`. Confirmed via a real e2e
+ * run — `resolveBinary()` alone reported "binary not found" at exactly
+ * that wrong path. This is why `resolveBinary()` is called below with
+ * `includeDevFallback: false` — its broken fallback would otherwise still
+ * be appended after these candidates, risking a worse error or (if a
+ * stray local `target/` happened to exist at the wrong relative location
+ * some workspace layout could produce) silently picking up the wrong
+ * binary. This function exists to serve exactly the role
+ * `includeDevFallback: true` would have, just anchored correctly.
  *
  * `context.extensionUri` sidesteps this entirely: it's VS Code's own
  * knowledge of where the extension is actually loaded from
@@ -47,14 +69,8 @@ export function getSidecarClient(
  * any bundler's `import.meta.url` rewriting. `tools/codelens-service/` is
  * a sibling of `tools/vscode/` in this monorepo, so walking `../` from
  * the extension root reaches it directly.
- *
- * Dev-mode only — production/VSIX packaging would need the sidecar
- * binary bundled INTO the VSIX itself (a platform-specific `candidates`
- * path resolved from `context.extensionUri` directly, `includeDevFallback:
- * false`) — not wired up in this unit.
  */
 function devCandidates(context: vscode.ExtensionContext): string[] {
-  const binaryName = process.platform === 'win32' ? 'codelens-service.exe' : 'codelens-service'
   const sidecarTarget = vscode.Uri.joinPath(
     context.extensionUri,
     '..',
@@ -63,8 +79,8 @@ function devCandidates(context: vscode.ExtensionContext): string[] {
     'target'
   )
   return [
-    vscode.Uri.joinPath(sidecarTarget, 'release', binaryName).fsPath,
-    vscode.Uri.joinPath(sidecarTarget, 'debug', binaryName).fsPath,
+    vscode.Uri.joinPath(sidecarTarget, 'release', BINARY_NAME).fsPath,
+    vscode.Uri.joinPath(sidecarTarget, 'debug', BINARY_NAME).fsPath,
   ]
 }
 
@@ -79,7 +95,10 @@ async function startSidecar(
 
   let binaryPath: string
   try {
-    binaryPath = resolveBinary({ candidates: devCandidates(context), includeDevFallback: false })
+    binaryPath = resolveBinary({
+      candidates: [...productionCandidates(context), ...devCandidates(context)],
+      includeDevFallback: false,
+    })
   } catch (err) {
     log(
       `zzfx sidecar: binary not found — CodeLenses disabled: ${err instanceof Error ? err.message : err}`
@@ -87,10 +106,17 @@ async function startSidecar(
     return null
   }
 
+  // Workspace-scoped, not context.globalStorageUri — the sidecar's SQLite
+  // cache is per-project (file paths/hashes only make sense scoped to the
+  // workspace that produced them). `context.storageUri` is undefined only
+  // when no workspace is open, which the check above already ruled out;
+  // the globalStorageUri fallback is defensive for any edge case VS Code
+  // itself doesn't document (e.g. an untrusted workspace).
+  const storageUri = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath
   const client = new CodelensServiceClient({
     binaryPath,
     workspaceRoot,
-    storageUri: context.globalStorageUri.fsPath,
+    storageUri,
   })
 
   try {

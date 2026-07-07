@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
   Toolbar,
@@ -14,7 +14,15 @@ import { ParamGroup } from './ParamGroup'
 import { PillGroup } from './PillGroup'
 import { AiGeneratePanel } from './AiGeneratePanel'
 import { playParams } from './audio'
-import { CATEGORIES, MAX_STYLES, PARAM_GROUPS, STYLES, type Category, type Style } from './params'
+import {
+  CATEGORIES,
+  fromArgs,
+  MAX_STYLES,
+  PARAM_GROUPS,
+  STYLES,
+  type Category,
+  type Style,
+} from './params'
 
 const styles = stylex.create({
   root: {
@@ -67,6 +75,25 @@ export function App() {
       setPlayError(err instanceof Error ? err.message : String(err))
     })
   }
+
+  // CodeLens ▶ Play / playAtCursor route (#148 Z3) — host.ts opens/reuses
+  // this panel and pushes `zzfx/play`, independent of whatever finding is
+  // loaded here. Reuses the exact same playback + error path as the
+  // toolbar button above. If the panel was just opened programmatically
+  // (not from a click inside this webview's own document), the browser's
+  // autoplay policy may block AudioContext.resume() until a real user
+  // gesture happens INSIDE this document — that failure surfaces through
+  // the same `playError` banner, worded to point at the toolbar ▶ Play
+  // button as the fallback, rather than silently pretending it played.
+  useEffect(() => {
+    if (!session.playRequest) return
+    setPlayError(null)
+    playParams(fromArgs(session.playRequest.params)).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err)
+      setPlayError(`${message} — click ▶ Play above to enable audio in this panel first.`)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.playRequest])
 
   const subtitle = session.varRefName
     ? `Editing "${session.varRefName}"`

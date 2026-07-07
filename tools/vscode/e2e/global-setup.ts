@@ -1,10 +1,12 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as esbuild from 'esbuild'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.join(__dirname, '..', '..', '..')
+const CODELENS_SIDECAR_DIR = path.join(REPO_ROOT, 'tools', 'codelens-service', 'sidecar')
+const CARGO_AVAILABLE = spawnSync('cargo', ['--version'], { stdio: 'ignore' }).status === 0
 
 /**
  * Builds the extension (host bundle + webview bundles) before any test
@@ -36,6 +38,29 @@ export default async function globalSetup(): Promise<void> {
     cwd: REPO_ROOT,
     stdio: 'inherit',
   })
+
+  // The zzfx CodeLens specs (e2e/specs/zzfx.spec.ts) exercise the real
+  // codelens-service Rust sidecar through the real extension host, not a
+  // fake/fixture binary. `sidecarManager.ts` degrades gracefully (no
+  // CodeLenses, no crash) when the binary isn't found, so without this
+  // step a clean checkout wouldn't fail loudly — those specs would just
+  // silently assert against zero lenses / "sidecar unavailable" instead
+  // of real behavior. Same pattern as
+  // tools/codelens-service/src/realSidecar.test.ts's own beforeAll: build
+  // fresh rather than hope a prior build is lying around, warn-and-skip
+  // (not fail) if cargo isn't on PATH at all — this harness doesn't own
+  // the Rust toolchain requirement, and per e2e/README.md's "CI posture"
+  // this suite isn't CI-wired yet regardless.
+  if (CARGO_AVAILABLE) {
+    console.log('[e2e] cargo build (codelens-service sidecar) …')
+    execFileSync('cargo', ['build'], { cwd: CODELENS_SIDECAR_DIR, stdio: 'inherit' })
+  } else {
+    console.warn(
+      '[e2e] cargo not found on PATH — the zzfx CodeLens specs will run against a missing ' +
+        'sidecar binary (degrades to zero lenses, not a hard failure). Install the Rust ' +
+        'toolchain and re-run to exercise real sidecar behavior.'
+    )
+  }
 
   // Bundles the extension-host side of e2e/host-bridge/ (runner.ts) to a
   // plain CJS file VS Code can `require()` directly via

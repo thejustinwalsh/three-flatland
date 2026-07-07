@@ -90,3 +90,17 @@ export type ZzfxGenerateResultEvent = {
    * lies about having used AI. */
   source: 'lm' | 'cache' | 'preset'
 }
+
+/** host -> webview, plays `params` immediately through the existing Web
+ * Audio path — the CodeLens `▶ Play` / `playAtCursor` route (#148 Z3).
+ * Fully decoupled from the loaded finding's session state: firing this
+ * never touches `findingId`, `dirty`, or the sliders' displayed params —
+ * it rides on top of whichever panel is open/reused for the play request,
+ * independent of what that panel happens to be editing. See
+ * `useZzfxSession.ts` and `./README.md`'s "Play without opening the
+ * editor" section for the autoplay-policy caveat this implies. */
+export type ZzfxPlayEvent = {
+  /** Positional zzfx args as found in source — same shape as
+   * `ZzfxInitPayload.params`; run through `fromArgs` before use. */
+  params: (number | null | undefined)[]
+}

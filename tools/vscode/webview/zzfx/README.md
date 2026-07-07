@@ -192,6 +192,44 @@ Nothing in the design system covers a pill/chip toggle or a horizontal scrub sli
 
 If a future tool needs either, promote them into `tools/design-system/src/primitives/` following that package's "Adding a primitive" steps.
 
+## Play without opening the editor (`zzfx/play`) — #148 Z3
+
+The CodeLens `▶ Play` / `FL: Play ZzFX at Cursor` route needs to make a
+sound without requiring the user to first click into the sliders panel.
+Since the extension host has no Web Audio API of its own, it still needs
+_a_ webview to own the `AudioContext` — so `host.ts` opens or reuses this
+same editor panel (`preserveFocus: true`, so the source editor keeps
+focus) and pushes a `zzfx/play` event once the panel's ready handshake has
+resolved:
+
+```ts
+// host -> webview, at any time after zzfx/ready — decoupled from
+// findingId/dirty/the loaded params entirely
+type ZzfxPlayEvent = { params: (number | null | undefined)[] }
+```
+
+`useZzfxSession` listens for it and exposes `playRequest` (the latest
+event, tagged with a local monotonic `requestId` so replaying the same
+sound twice still re-fires); `App.tsx` reacts to `playRequest` by calling
+the exact same `playParams`/`playError` path the toolbar ▶ Play button
+uses. This is the **one** additive touch authorized against this
+otherwise-frozen webview — `protocol.ts` (this type), `useZzfxSession.ts`
+(the listener + `playRequest` state), `App.tsx` (a small effect wiring
+`playRequest` into the existing play/error path), and this README section.
+Nothing else in this directory changed for it.
+
+**Autoplay-policy honesty**: a `zzfx/play` event arriving via
+`postMessage` did not originate from a click inside this webview's own
+document, so it does not satisfy the browser's "user gesture" requirement
+for `AudioContext.resume()` the same way clicking the toolbar button does.
+When VS Code's webview host blocks it, the attempt fails and surfaces
+through the same error banner the toolbar button uses, worded to point at
+that button as the fallback — this deliberately does **not** pretend the
+sound played when it didn't. Whether a given VS Code build's webview host
+actually enforces this restriction (Electron's autoplay policy differs
+from a stricter web browser's) isn't asserted either way here; both
+outcomes are handled correctly.
+
 ## Playback autoplay-policy note
 
 `zzfx` constructs its own `AudioContext` as a module-level side effect. `audio.ts` dynamic-imports the package (deferring that construction) from inside the Play button's click handler and explicitly `resume()`s the context if it's `suspended` before playing — see the comment in `audio.ts` for the full reasoning. No automated test covers this file: it requires a real `AudioContext`/user gesture, which isn't available under the repo's `environment: 'node'` vitest config (consistent with how `minis/breakout`'s zzfx usage is untested too). Verify manually via `pnpm --filter @three-flatland/vscode dev:webview` + opening `dist/webview/zzfx/index.html`'s dev URL, or through the built extension once Z3 wires up the CodeLens.

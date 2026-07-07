@@ -2,8 +2,7 @@ import * as vscode from 'vscode'
 import type { CodelensServiceClient, Finding } from '@three-flatland/codelens-service'
 import { getSidecarClient, shutdownSidecar } from './sidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
-import { openZzfxEditorPanel } from './host'
-import { openZzfxPlayerPanel } from './player'
+import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
 
 function findFindingAtPosition(
@@ -75,15 +74,43 @@ export function registerZzfxTool(context: vscode.ExtensionContext): void {
     })
   )
 
-  // CodeLens-only — takes a raw params array, no sensible cursor-based
-  // fallback, so (per planning/vscode-tools/tool-zzfx-studio.md) it is
-  // NOT listed in package.json's contributes.commands for the command
-  // palette. Still a real registered command: CodeLens titles reference it
-  // by id directly.
+  // CodeLens-only — takes a raw params array as its primary argument, no
+  // sensible cursor-based fallback, so (per
+  // planning/vscode-tools/tool-zzfx-studio.md) it is NOT listed in
+  // package.json's contributes.commands for the command palette. Still a
+  // real registered command: CodeLens titles reference it by id directly.
+  // `source`, when supplied (the CodeLens always supplies it — see
+  // provider.ts), carries the real finding this play request is for, so
+  // it can open/reuse that finding's own editor panel to play through
+  // rather than needing a synthetic one.
   context.subscriptions.push(
-    vscode.commands.registerCommand('threeFlatland.zzfx.playParams', async (params: number[]) => {
-      await openZzfxPlayerPanel(context, params)
-    })
+    vscode.commands.registerCommand(
+      'threeFlatland.zzfx.playParams',
+      async (params: number[], source?: { uri: string; findingId: string }) => {
+        const client = await getSidecarClient(context)
+        if (!client) {
+          void vscode.window.showErrorMessage('FL ZzFX: sidecar unavailable.')
+          return
+        }
+        if (source) {
+          await playInEditorPanel(
+            context,
+            client,
+            vscode.Uri.parse(source.uri),
+            source.findingId,
+            params
+          )
+          return
+        }
+        // No finding context to open a panel from scratch — reuse
+        // whichever zzfx panel is already open, if any.
+        if (!(await playInAnyOpenPanel(params))) {
+          void vscode.window.showInformationMessage(
+            'FL ZzFX: open a ZzFX editor (⚙ Edit) first, then Play.'
+          )
+        }
+      }
+    )
   )
 
   context.subscriptions.push(
@@ -96,7 +123,7 @@ export function registerZzfxTool(context: vscode.ExtensionContext): void {
       const resolved = await resolveFindingAtCursor(client)
       if (!resolved) return
       const params = await resolveParams(resolved.finding)
-      await openZzfxPlayerPanel(context, params)
+      await playInEditorPanel(context, client, resolved.uri, resolved.finding.id, params)
     })
   )
 

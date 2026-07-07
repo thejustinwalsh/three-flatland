@@ -17,7 +17,15 @@ const TOOL = 'zzfx'
 type ZzfxGeneratePayload = { category: string; styles: string[]; n: number }
 type ZzfxSavePayload = { findingId: string; params: number[]; category?: string; styles?: string[] }
 
-type OpenPanel = { panel: vscode.WebviewPanel; bridge: HostBridge }
+type OpenPanel = {
+  panel: vscode.WebviewPanel
+  bridge: HostBridge
+  /** Resolves once this panel's `zzfx/ready` handshake has completed at
+   * least once — already-resolved for a reused panel. `playInEditorPanel`
+   * awaits this before emitting `zzfx/play` so the event is never posted
+   * to a webview whose bridge listener hasn't attached yet. */
+  ready: Promise<void>
+}
 
 // One panel per findingId — re-invoking "Edit" on the same call site
 // focuses the existing panel instead of opening a duplicate.
@@ -86,7 +94,11 @@ export async function openZzfxEditorPanel(
   panel.webview.html = await renderHtml()
 
   const bridge = createHostBridge(panel.webview)
-  openPanels.set(findingId, { panel, bridge })
+  let resolveReady!: () => void
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve
+  })
+  openPanels.set(findingId, { panel, bridge, ready })
 
   const lmService = new ZzfxLmService(context)
 
@@ -105,6 +117,7 @@ export async function openZzfxEditorPanel(
       lmAvailable: await lmService.isAvailable(),
       presets: PRESET_LIBRARY,
     })
+    resolveReady()
     return { ok: true }
   })
 
@@ -165,4 +178,46 @@ export async function openZzfxEditorPanel(
     bridge.dispose()
     openPanels.delete(findingId)
   })
+}
+
+/**
+ * Opens/reveals `findingId`'s editor panel (same as {@link openZzfxEditorPanel})
+ * and, once its `zzfx/ready` handshake has resolved, pushes `zzfx/play` so
+ * it plays immediately — the `playAtCursor` / CodeLens-with-a-real-finding
+ * route. Reveals with `preserveFocus: true` regardless of whether the panel
+ * was just created or already open: playing a sound shouldn't steal focus
+ * away from the source editor the way an explicit "Edit" click should.
+ */
+export async function playInEditorPanel(
+  context: vscode.ExtensionContext,
+  client: CodelensServiceClient,
+  uri: vscode.Uri,
+  findingId: string,
+  params: number[]
+): Promise<void> {
+  await openZzfxEditorPanel(context, client, uri, findingId)
+  const opened = openPanels.get(findingId)
+  if (!opened) return // openZzfxEditorPanel already surfaced an error toast
+  opened.panel.reveal(undefined, true)
+  await opened.ready
+  opened.bridge.emit('zzfx/play', { params })
+}
+
+/**
+ * Plays `params` through whichever zzfx editor panel is already open, if
+ * any — the fallback for `threeFlatland.zzfx.playParams` when invoked
+ * without a `{ uri, findingId }` source (the CodeLens ▶ Play route always
+ * supplies one; this only matters for a hypothetical bare invocation).
+ * There is no real finding to back opening a fresh panel in this case, so
+ * unlike {@link playInEditorPanel} this never creates one — returns
+ * `false` when nothing is open for the caller to report that honestly
+ * rather than silently no-op.
+ */
+export async function playInAnyOpenPanel(params: number[]): Promise<boolean> {
+  const [first] = openPanels.values()
+  if (!first) return false
+  first.panel.reveal(undefined, true)
+  await first.ready
+  first.bridge.emit('zzfx/play', { params })
+  return true
 }

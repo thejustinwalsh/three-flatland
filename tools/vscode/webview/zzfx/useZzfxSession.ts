@@ -15,6 +15,7 @@ import type {
   ZzfxGenerateProgressEvent,
   ZzfxGenerateResultEvent,
   ZzfxInitPayload,
+  ZzfxPlayEvent,
   ZzfxSavePayload,
   ZzfxSaveResult,
 } from './protocol'
@@ -73,6 +74,14 @@ export type ZzfxSessionState = {
   /** Applies a candidate's params to the editor state (from either a
    * generate result or the preset browser) and marks the session dirty. */
   applyCandidate: (candidate: { params: number[] }) => void
+
+  /** The most recent `zzfx/play` push event from the host (CodeLens
+   * `▶ Play` / `playAtCursor` — #148 Z3) — App.tsx watches this by
+   * `requestId` identity to trigger playback through the same Web Audio
+   * path the toolbar Play button uses. Fully decoupled from `params`/
+   * `findingId`/`dirty` — a play request never edits the loaded session.
+   * `null` until the first such event arrives. */
+  playRequest: { params: (number | null | undefined)[]; requestId: number } | null
 }
 
 export function useZzfxSession(): ZzfxSessionState {
@@ -95,7 +104,12 @@ export function useZzfxSession(): ZzfxSessionState {
   const [lastGenerateSource, setLastGenerateSource] = useState<
     ZzfxGenerateResultEvent['source'] | null
   >(null)
+  const [playRequest, setPlayRequest] = useState<{
+    params: (number | null | undefined)[]
+    requestId: number
+  } | null>(null)
   const bridgeRef = useRef<ClientBridge | null>(null)
+  const playRequestIdRef = useRef(0)
 
   useEffect(() => {
     let bridge: ClientBridge
@@ -126,11 +140,21 @@ export function useZzfxSession(): ZzfxSessionState {
       setCandidates(p.candidates)
       setLastGenerateSource(p.source)
     })
+    // CodeLens ▶ Play / playAtCursor route (#148 Z3) — a pure "make this
+    // sound now" push, independent of the session's loaded finding.
+    // `requestId` is a local monotonic counter (not the params themselves)
+    // so App.tsx's effect fires even when the same sound is played twice
+    // in a row.
+    const offPlay = bridge.on<ZzfxPlayEvent>('zzfx/play', (p) => {
+      playRequestIdRef.current += 1
+      setPlayRequest({ params: p.params, requestId: playRequestIdRef.current })
+    })
     void bridge.request('zzfx/ready')
     return () => {
       offInit()
       offProgress()
       offResult()
+      offPlay()
       bridgeRef.current = null
     }
   }, [])
@@ -212,5 +236,6 @@ export function useZzfxSession(): ZzfxSessionState {
     candidates,
     lastGenerateSource,
     applyCandidate,
+    playRequest,
   }
 }

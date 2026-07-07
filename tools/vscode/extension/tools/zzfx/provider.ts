@@ -18,6 +18,7 @@ export const ZZFX_DOCUMENT_SELECTOR: vscode.DocumentSelector = [
   { language: 'javascriptreact' },
 ]
 
+const DIDCHANGE_DEBOUNCE_MS = 350
 const REFRESH_DEBOUNCE_MS = 250
 
 function toVscodeRange(range: Finding['range']): vscode.Range {
@@ -46,14 +47,17 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
   private readonly _onDidChangeCodeLenses = new vscode.EventEmitter<void>()
   readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event
 
-  private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private readonly notifyTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private readonly refreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(private readonly getClient: () => Promise<CodelensServiceClient | null>) {}
 
   dispose(): void {
     this._onDidChangeCodeLenses.dispose()
-    for (const timer of this.debounceTimers.values()) clearTimeout(timer)
-    this.debounceTimers.clear()
+    for (const timer of this.notifyTimers.values()) clearTimeout(timer)
+    for (const timer of this.refreshTimers.values()) clearTimeout(timer)
+    this.notifyTimers.clear()
+    this.refreshTimers.clear()
   }
 
   async provideCodeLenses(
@@ -96,10 +100,16 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
       // before binding the command's argument so Play actually plays
       // NAME's sound, not silence.
       const params = await resolveParams(codeLens.finding)
+      // First argument is the plain params array (planning doc: "args:
+      // params array") — the second, additive argument carries this
+      // finding's real identity so register.ts can open/reuse its actual
+      // editor panel to play through, rather than needing a synthetic
+      // panel. Optional in the command's own signature; only this
+      // provider ever supplies it.
       codeLens.command = {
         title: '▶ Play',
         command: 'threeFlatland.zzfx.playParams',
-        arguments: [params],
+        arguments: [params, { uri: codeLens.docUri.toString(), findingId: codeLens.finding.id }],
       }
     } else {
       const isVar = Boolean(codeLens.finding.payload.varRef)
@@ -113,27 +123,45 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
   }
 
   /**
-   * Tier 3 (incremental on change): notifies the sidecar of the live edit
-   * (a perf hint for its own incremental reparse — this provider's
-   * correctness never depends on that path; `provideCodeLenses` always
-   * re-parses the full current text), then fires `onDidChangeCodeLenses`
-   * once edits settle. Debounced per-document so a burst of keystrokes
-   * produces one refresh, not one per keystroke.
+   * Tier 3 (incremental on change) — two independent, separately-debounced
+   * signals per the planning doc's scanner strategy, not one shared timer:
+   *
+   * 1. Notify the sidecar of the live edit (350ms), a perf hint for its
+   *    own incremental reparse cache. This provider's correctness never
+   *    depends on it — `provideCodeLenses` always re-parses the full
+   *    current text itself.
+   * 2. Fire `onDidChangeCodeLenses` (250ms), which makes VS Code re-invoke
+   *    `provideCodeLenses` — that fresh, synchronous `client.parse()` call
+   *    IS the "parse completion" this refresh represents; `didChange`
+   *    itself is a fire-and-forget notification with no response to key
+   *    completion off.
+   *
+   * Both debounced independently per-document so a burst of keystrokes
+   * produces one of each, not one per keystroke.
    */
   scheduleRefresh(client: CodelensServiceClient, document: vscode.TextDocument): void {
     const key = document.uri.toString()
-    try {
-      client.didChange({ uri: key, text: document.getText() })
-    } catch (err) {
-      log(`zzfx CodeLens: didChange notify failed: ${err instanceof Error ? err.message : err}`)
-    }
 
-    const existing = this.debounceTimers.get(key)
-    if (existing) clearTimeout(existing)
-    this.debounceTimers.set(
+    const existingNotify = this.notifyTimers.get(key)
+    if (existingNotify) clearTimeout(existingNotify)
+    this.notifyTimers.set(
       key,
       setTimeout(() => {
-        this.debounceTimers.delete(key)
+        this.notifyTimers.delete(key)
+        try {
+          client.didChange({ uri: key, text: document.getText() })
+        } catch (err) {
+          log(`zzfx CodeLens: didChange notify failed: ${err instanceof Error ? err.message : err}`)
+        }
+      }, DIDCHANGE_DEBOUNCE_MS)
+    )
+
+    const existingRefresh = this.refreshTimers.get(key)
+    if (existingRefresh) clearTimeout(existingRefresh)
+    this.refreshTimers.set(
+      key,
+      setTimeout(() => {
+        this.refreshTimers.delete(key)
         this._onDidChangeCodeLenses.fire()
       }, REFRESH_DEBOUNCE_MS)
     )
