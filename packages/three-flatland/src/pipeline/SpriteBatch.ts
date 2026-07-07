@@ -502,11 +502,19 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Free a slot. Writes alpha=0 to the color row so the slot doesn't
-   * render, and pushes it onto the free list for reuse.
+   * Free a slot. Collapses the instance matrix to zero scale — a
+   * degenerate quad rasterizes no fragments at all, unlike the previous
+   * alpha=0 approach where every freed slot still paid full-quad
+   * rasterization + a per-fragment discard. Alpha is zeroed too as
+   * belt-and-braces (any path that resurrects the matrix before
+   * reassignment still draws nothing).
    */
   freeSlot(index: number): void {
     if (index < 0 || index >= this._nextIndex) return
+
+    const m = this.instanceMatrix.array as Float32Array
+    m.fill(0, index * 16, index * 16 + 16)
+    this._matrixTracker.markDirty(index)
 
     this._interleavedData[index * INSTANCE_STRIDE + OFFSET_COLOR + 3] = 0
     this._interleavedTracker.markDirty(index)
