@@ -225,8 +225,9 @@ async function main() {
   const camera = new OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, 1000)
   camera.position.z = 100
 
-  // SpriteGroup for batching
-  const spriteGroup = new SpriteGroup()
+  // SpriteGroup for batching — this scene stresses 40k+ sprites, so pin
+  // fixed 16384-slot batches (ladder off) to minimize per-batch overhead.
+  const spriteGroup = new SpriteGroup({ maxBatchSize: 16384 })
   scene.add(spriteGroup)
 
   // Load assets

@@ -103,6 +103,31 @@ export class SpriteGroup extends Group implements WorldProvider {
   private _tierLadder: readonly number[] | null
 
   /**
+   * Maximum sprites per batch. Reads back whichever sizing mode is
+   * active; setting it pins every future batch in this group to that
+   * fixed size (tier ladder off) — the escape hatch for hand-tuned
+   * scenes where the ladder's warmup tiers cost more than they save
+   * (e.g. a scene that's always going to hold tens of thousands of
+   * sprites). Property setter (not just a constructor option) so R3F's
+   * JSX prop path (`<spriteGroup maxBatchSize={16384} />`) works — only
+   * affects batches created after the set; existing live batches keep
+   * their size.
+   */
+  get maxBatchSize(): number {
+    return this._maxBatchSize
+  }
+
+  set maxBatchSize(value: number) {
+    this._maxBatchSize = value
+    this._tierLadder = null
+    const registry = this._getRegistry()
+    if (registry) {
+      registry.maxBatchSize = value
+      registry.tierLadder = null
+    }
+  }
+
+  /**
    * Whether frustum culling is enabled.
    */
   frustumCulling: boolean
@@ -154,7 +179,7 @@ export class SpriteGroup extends Group implements WorldProvider {
     this.frustumCulled = false
 
     // Explicit maxBatchSize pins every batch to that size; otherwise the
-    // tier ladder scales allocation with usage (64 → … → 16384).
+    // tier ladder scales allocation with usage (1024 → 4096 → 16384).
     this._maxBatchSize = options.maxBatchSize ?? BATCH_TIER_LADDER[BATCH_TIER_LADDER.length - 1]!
     this._tierLadder = options.maxBatchSize !== undefined ? null : BATCH_TIER_LADDER
 
