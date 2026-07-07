@@ -14,6 +14,7 @@ import {
   type GenerateOutcome,
   type LmSend,
 } from './core'
+import { createMemoizedLoader } from './memoizedLoader'
 import { log } from '../../../log'
 
 const REQUEST_TIMEOUT_MS = 20_000
@@ -52,7 +53,16 @@ export type GenerateArgs = {
  * ```
  */
 export class ZzfxLmService {
-  private cachedMap: Record<string, string> | null = null
+  /** Created lazily on first `cacheStore()` call, then reused — a class
+   * field, not local to `cacheStore()`'s closure, since `cacheStore()`
+   * is re-created on every `generate()` call (see its own doc comment).
+   * `createMemoizedLoader` is what makes two concurrent cold cache loads
+   * (e.g. two Generate clicks in different panels before either has
+   * finished its first cache lookup) share one file read instead of both
+   * reading independently and the second's resolution clobbering
+   * whatever the first one's caller already did to the loaded map in the
+   * gap. */
+  private cacheLoader: ReturnType<typeof createMemoizedLoader<Record<string, string>>> | null = null
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -147,19 +157,21 @@ export class ZzfxLmService {
 
   /**
    * Single JSON blob at `<globalStorageUri>/zzfx-lm-cache.json` mapping
-   * cache key -> `JSON.stringify({candidates})`. Loaded lazily, held
-   * in-memory for the life of this service instance, capped at
-   * `CACHE_MAX_ENTRIES` (oldest — by insertion order — evicted first).
+   * cache key -> `JSON.stringify({candidates})`. Loaded lazily via
+   * `this.cacheLoader` (memoized so concurrent cold loads share one
+   * read — see its own doc comment), held in-memory for the life of this
+   * service instance, capped at `CACHE_MAX_ENTRIES` (oldest — by
+   * insertion order — evicted first).
    *
    * `set` does a read-merge-write, not a blind overwrite (#148 Z7b
-   * Finding B): `this.cachedMap` is mutated SYNCHRONOUSLY first (safe by
+   * Finding B): the loaded map is mutated SYNCHRONOUSLY first (safe by
    * construction now that `host.ts` shares one `ZzfxLmService` instance
    * across all panels — no async gap for a same-process sibling call to
    * interleave), then, immediately before writing, the file is re-read
-   * fresh and merged UNDER `this.cachedMap` (so this write's own known
-   * entries always win, but a key written by another process — e.g. a
-   * second VS Code window sharing this `globalStorageUri` — since we
-   * last loaded is preserved rather than clobbered). This can't provide
+   * fresh and merged UNDER that map (so this write's own known entries
+   * always win, but a key written by another process — e.g. a second
+   * VS Code window sharing this `globalStorageUri` — since we last
+   * loaded is preserved rather than clobbered). This can't provide
    * perfect cross-process atomicity (two truly simultaneous writers can
    * still race on the SAME key), but it closes the "last writer's blind
    * overwrite erases every OTHER key" failure mode entirely.
@@ -176,18 +188,16 @@ export class ZzfxLmService {
       }
     }
 
-    const load = async (): Promise<Record<string, string>> => {
-      if (!this.cachedMap) this.cachedMap = await readFile()
-      return this.cachedMap
-    }
+    this.cacheLoader ??= createMemoizedLoader(readFile)
+    const loader = this.cacheLoader
 
     return {
       async get(key) {
-        const map = await load()
+        const map = await loader.get()
         return map[key]
       },
       set: async (key, value) => {
-        const map = await load()
+        const map = await loader.get()
         map[key] = value // synchronous — same-process safety comes from this being the ONE shared instance's map, not from anything below
 
         const onDisk = await readFile()
@@ -196,7 +206,7 @@ export class ZzfxLmService {
         if (keys.length > CACHE_MAX_ENTRIES) {
           for (const evict of keys.slice(0, keys.length - CACHE_MAX_ENTRIES)) delete merged[evict]
         }
-        this.cachedMap = merged
+        loader.set(merged)
 
         await vscode.workspace.fs.createDirectory(this.context.globalStorageUri)
         await vscode.workspace.fs.writeFile(file, new TextEncoder().encode(JSON.stringify(merged)))

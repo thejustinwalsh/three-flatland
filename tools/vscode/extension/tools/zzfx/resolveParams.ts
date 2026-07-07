@@ -25,30 +25,12 @@
 // "looks like a plain number array."
 import * as vscode from 'vscode'
 import type { Finding } from '@three-flatland/codelens-service'
+import { isNumberArrayLiteralText, parseNumberArrayLiteral } from './numberArrayLiteral'
 
-/** Whether `text` (already trimmed) is shaped like `[n, n, ...]` — no
- * nested expressions, no function calls, just a bracket-wrapped,
- * comma-separated list. Deliberately conservative: the sidecar reports
- * `defRange` for WHATEVER initializer is there without validating its
- * shape (tools/codelens-service/CLAUDE.md), so this is the one place
- * both the read path (resolveParams) and the write path (host.ts's
- * zzfx/save) agree on what's safe to treat as "a preset array." */
-export function isNumberArrayLiteralText(text: string): boolean {
-  const trimmed = text.trim()
-  if (!/^\[[\s\S]*\]$/.test(trimmed)) return false
-  const inner = trimmed.slice(1, -1).trim()
-  if (inner === '') return true
-  return inner.split(',').every((part) => Number.isFinite(Number(part.trim())))
-}
-
-function parseNumberArrayLiteral(text: string): number[] {
-  const trimmed = text.trim().replace(/^\[/, '').replace(/\]$/, '').trim()
-  if (trimmed === '') return []
-  return trimmed
-    .split(',')
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isFinite(n))
-}
+// Re-exported so host.ts's existing `from './resolveParams'` import
+// keeps working — the actual logic lives in numberArrayLiteral.ts (pure,
+// unlike this file, so it's unit-testable without the `vscode` module).
+export { isNumberArrayLiteralText } from './numberArrayLiteral'
 
 export type ResolvedParams = {
   params: number[]

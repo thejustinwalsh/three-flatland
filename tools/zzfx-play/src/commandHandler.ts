@@ -50,12 +50,20 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
         case 'play':
           backend.play(command.params)
           return { ok: true, cmd: 'play' }
-        case 'playSong':
+        case 'playSong': {
           // Replace, never stack — a new playSong stops whatever's
-          // currently playing before starting the new one.
-          currentSong?.stop()
+          // currently playing before starting the new one. Clear the
+          // field BEFORE calling stop()/playSong(), not after: if
+          // backend.playSong throws, the old assignment below never
+          // runs, and leaving currentSong pointing at the just-stopped
+          // handle means a later stopSong/stop calls .stop() on it a
+          // second time.
+          const old = currentSong
+          currentSong = undefined
+          old?.stop()
           currentSong = backend.playSong(command.song)
           return { ok: true, cmd: 'playSong' }
+        }
         case 'stopSong':
           handleStopSong()
           return { ok: true, cmd: 'stopSong' }

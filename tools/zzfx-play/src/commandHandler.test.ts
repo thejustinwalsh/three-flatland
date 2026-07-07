@@ -129,14 +129,19 @@ describe('createCommandHandler', () => {
     }
     const handler = createCommandHandler(throwing)
     handler.handleCommand({ cmd: 'playSong', song: SONG })
+    const firstHandle = backend.songHandles[0]!
 
     shouldThrow = true
     const response = handler.handleCommand({ cmd: 'playSong', song: SONG })
     expect(response).toEqual({ ok: false, cmd: 'playSong', error: 'song failed' })
 
     // The failed playSong stopped the previous song (replace-before-start
-    // semantics) but never got a new handle back — stopSong afterward must
-    // not throw trying to stop a handle that no longer exists.
-    expect(() => handler.handleCommand({ cmd: 'stopSong' })).not.toThrow()
+    // semantics) but never got a new handle back — currentSong must be
+    // cleared BEFORE that stop() call, not after, or a stopSong here
+    // would find the same stale handle still referenced and call .stop()
+    // on it a second time.
+    const stopSongResponse = handler.handleCommand({ cmd: 'stopSong' })
+    expect(stopSongResponse).toEqual({ ok: true, cmd: 'stopSong' })
+    expect(firstHandle.stop).toHaveBeenCalledTimes(1)
   })
 })

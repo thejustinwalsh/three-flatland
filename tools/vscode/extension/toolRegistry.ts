@@ -147,9 +147,20 @@ export function watchToolConfiguration(context: vscode.ExtensionContext): void {
           wasLive,
           liveToggle: descriptor.liveToggle,
         })
-        if (action === 'noop') continue
 
+        // Unconditional, BEFORE the noop check below: the context key
+        // must always mirror the current setting value, not just the
+        // register/dispose action taken. A non-liveToggle tool toggled
+        // off then back on (before reloading) never re-registers — `live`
+        // still has its stale entry from before the disable, so `wasLive`
+        // reads true again and the action correctly comes back 'noop' —
+        // but the context key was flipped to `false` on the way down and
+        // needs flipping back to `true` on the way up, or menus/palette
+        // stay hidden despite isToolEnabled() (which reads the setting
+        // directly, not this mirror) correctly allowing the command.
         setContext(descriptor, enabled)
+
+        if (action === 'noop') continue
 
         if (action === 'register') {
           const disposable = descriptor.register(context)
