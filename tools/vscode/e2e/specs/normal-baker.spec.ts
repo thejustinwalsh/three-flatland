@@ -1,6 +1,8 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import { PNG } from 'pngjs'
 import { readPngTextChunk } from '@three-flatland/bake'
+import { bakeNormalMap, type NormalSourceDescriptor } from '@three-flatland/normals'
 import { expect, test } from '../fixtures'
 
 test('FL Normal Baker opens on a PNG and renders', async ({ openCommand, webviewFrame }) => {
@@ -70,10 +72,32 @@ test('Save re-bakes .normal.png and re-stamps its content-hash', async ({
   // region count the webview loaded from the untouched fixture sidecar
   // (examples/react/lighting/public/sprites/Dungeon_Tileset.normal.json
   // ships 122 regions), not an empty stub.
-  const descriptor = JSON.parse(await fs.readFile(jsonOut, 'utf8')) as {
-    version?: number
+  const descriptor = JSON.parse(await fs.readFile(jsonOut, 'utf8')) as NormalSourceDescriptor & {
     regions?: unknown[]
   }
   expect(descriptor.version).toBe(1)
   expect(descriptor.regions).toHaveLength(122)
+
+  // Bake correctness, not just "a plausible-looking file exists": decode
+  // the SOURCE PNG and independently run the exact same `bakeNormalMap`
+  // (browser-safe, pure — @three-flatland/normals's root export) the host
+  // service's `bakeNormalMapFile` calls internally, using the descriptor
+  // that was actually saved. The disk-baked output must match this
+  // independently-computed result byte-for-byte — the bake is
+  // deterministic integer math, so anything short of exact equality means
+  // the host baked against a different image, a different/stale
+  // descriptor, or the pipeline diverged from what packages/normals
+  // actually implements.
+  const pngIn = path.join(baseDir, 'sprites', 'Dungeon_Tileset.png')
+  const sourcePng = PNG.sync.read(await fs.readFile(pngIn))
+  const expectedBake = bakeNormalMap(
+    new Uint8Array(sourcePng.data.buffer, sourcePng.data.byteOffset, sourcePng.data.byteLength),
+    sourcePng.width,
+    sourcePng.height,
+    descriptor
+  )
+  const bakedPng = PNG.sync.read(pngBytes)
+  expect(bakedPng.width).toBe(sourcePng.width)
+  expect(bakedPng.height).toBe(sourcePng.height)
+  expect(Array.from(bakedPng.data)).toEqual(Array.from(expectedBake))
 })

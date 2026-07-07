@@ -156,6 +156,7 @@
     "@playwright/test": "^1.60.0",
     "@stylexjs/unplugin": "catalog:",
     "@types/node": "^22.10.0",
+    "@types/pngjs": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/three": "catalog:",
@@ -165,6 +166,7 @@
     "@vscode/test-electron": "^3.0.0",
     "concurrently": "^9.1.0",
     "esbuild": "^0.25.0",
+    "pngjs": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "ws": "^8.21.0"

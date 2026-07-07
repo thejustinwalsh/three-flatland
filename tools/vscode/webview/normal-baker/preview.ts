@@ -25,7 +25,16 @@ export function bakePreviewNormalMap(
   return bakeNormalMap(src, width, height, descriptor)
 }
 
-export type LightVector = { x: number; y: number; z: number }
+/**
+ * Horizontal light direction (the orbit's x/y) plus the light's OWN
+ * world-space height above the ground plane — NOT a pre-combined 3D unit
+ * vector. The per-pixel Z component is derived from `lightHeight` and
+ * that PIXEL's baked elevation inside `computeLitComposite` (see its doc
+ * comment) — a single upfront `{x,y,z}` vector can't represent that,
+ * since two texels in the same baked map can sit at different
+ * elevations and therefore see the same light at different angles.
+ */
+export type LightVector = { x: number; y: number; lightHeight: number }
 
 /**
  * Decode a baked normal map's R/G channels into unit tangent-space
@@ -33,22 +42,36 @@ export type LightVector = { x: number; y: number; z: number }
  * encode convention documented in `packages/normals/src/bake.ts` (nz is
  * never written; it's always ≥ 0 by the outward-facing convention) — and
  * compute per-pixel 2D Lambert `max(0, N·L)`, alpha-masked by the source.
- * `light` need not be pre-normalized; it's normalized internally.
+ *
+ * The B channel carries per-texel world-space elevation in [0, 1] (see
+ * `packages/normals/src/bake.ts`'s encode comment and
+ * `packages/three-flatland/src/materials/channels.ts`'s `elevation`
+ * channel doc). The real-time renderer's `DefaultLightEffect` computes
+ * each fragment's light-Z as `lightHeight − elevation` PER FRAGMENT, so a
+ * torch below a wall cap's elevation stops lighting that cap — this
+ * preview reproduces that exact formula per pixel rather than applying
+ * one global light vector to every texel regardless of its baked
+ * elevation. `light.x`/`light.y` need not be pre-normalized; the full
+ * (x, y, lightHeight − elevation) vector is normalized per pixel, since
+ * elevation varies pixel-to-pixel and so, therefore, does the light's
+ * effective direction.
  */
 export function computeLitComposite(
   normalRGBA: Uint8Array | Uint8ClampedArray,
   light: LightVector
 ): Uint8ClampedArray {
   const out = new Uint8ClampedArray(normalRGBA.length)
-  const len = Math.hypot(light.x, light.y, light.z) || 1
-  const lx = light.x / len
-  const ly = light.y / len
-  const lz = light.z / len
   for (let i = 0; i < normalRGBA.length; i += 4) {
     const nx = (normalRGBA[i]! / 255) * 2 - 1
     const ny = (normalRGBA[i + 1]! / 255) * 2 - 1
     const nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny))
-    const ndotl = Math.max(0, nx * lx + ny * ly + nz * lz)
+    const elevation = normalRGBA[i + 2]! / 255
+    const lz = light.lightHeight - elevation
+    const len = Math.hypot(light.x, light.y, lz) || 1
+    const lx = light.x / len
+    const ly = light.y / len
+    const lzNorm = lz / len
+    const ndotl = Math.max(0, nx * lx + ny * ly + nz * lzNorm)
     const v = Math.round(ndotl * 255)
     out[i] = v
     out[i + 1] = v
@@ -59,19 +82,21 @@ export function computeLitComposite(
 }
 
 /**
- * Light position for the rotating rig — orbits at a fixed elevation so
- * the sweep reads as a light circling overhead rather than dipping below
- * the surface. `timeSeconds` is expected to come from a rAF loop;
+ * Light position for the rotating rig — orbits horizontally at a fixed
+ * `lightHeight` above the ground plane (0.75 by default, matching the
+ * worked example in `packages/three-flatland/src/loaders/normalDescriptor.ts`'s
+ * `DEFAULT_FACE_ELEVATION` doc comment: a torch at height 0.75 lights a
+ * face at elevation 0.5 from slightly above, which reads as natural
+ * down-lighting). `timeSeconds` is expected to come from a rAF loop;
  * `reducedMotion` pins the light at `theta = 0` (a fixed, still key
  * light) instead of advancing it.
  */
 export function orbitingLight(
   timeSeconds: number,
-  opts: { hz?: number; elevation?: number; reducedMotion?: boolean } = {}
+  opts: { hz?: number; lightHeight?: number; reducedMotion?: boolean } = {}
 ): LightVector {
   const hz = opts.hz ?? 0.08
-  const elevation = Math.max(0, Math.min(1, opts.elevation ?? 0.6))
+  const lightHeight = opts.lightHeight ?? 0.75
   const theta = opts.reducedMotion ? 0 : timeSeconds * hz * Math.PI * 2
-  const horizontal = Math.sqrt(Math.max(0, 1 - elevation * elevation))
-  return { x: Math.cos(theta) * horizontal, y: Math.sin(theta) * horizontal, z: elevation }
+  return { x: Math.cos(theta), y: Math.sin(theta), lightHeight }
 }

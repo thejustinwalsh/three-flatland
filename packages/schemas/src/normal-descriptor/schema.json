@@ -81,10 +81,10 @@
       "required": ["x", "y", "w", "h"],
       "additionalProperties": false,
       "properties": {
-        "x": { "type": "number", "minimum": 0 },
-        "y": { "type": "number", "minimum": 0 },
-        "w": { "type": "number", "exclusiveMinimum": 0 },
-        "h": { "type": "number", "exclusiveMinimum": 0 },
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "w": { "type": "integer", "exclusiveMinimum": 0 },
+        "h": { "type": "integer", "exclusiveMinimum": 0 },
         "bump": {
           "$ref": "#/$defs/NormalBump",
           "description": "Per-texel bump source. Default inherits from descriptor ('alpha')."

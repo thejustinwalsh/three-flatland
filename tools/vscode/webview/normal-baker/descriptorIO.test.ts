@@ -38,7 +38,7 @@ describe('descriptorToState', () => {
 })
 
 describe('stateToDescriptor', () => {
-  it('assembles defaults + normalized regions, always stamping version 1', () => {
+  it('assembles defaults + regions verbatim (minus the client-only id), always stamping version 1', () => {
     const descriptor = stateToDescriptor(
       [
         { id: 'a', x: 0, y: 0, w: 16, h: 16 },
@@ -51,7 +51,11 @@ describe('stateToDescriptor', () => {
       direction: 'south',
       regions: [
         { x: 0, y: 0, w: 16, h: 16 },
-        { x: 16, y: 0, w: 16, h: 16 }, // direction: 'south' matches the default → stripped
+        // Explicit direction: 'south' survives even though it currently
+        // equals the descriptor default — an explicit choice is never
+        // silently reinterpreted as "inherited" just because it happens
+        // to match right now. See fieldResolution.ts's module doc.
+        { x: 16, y: 0, w: 16, h: 16, direction: 'south' },
       ],
     })
   })
@@ -67,10 +71,6 @@ describe('round-trip', () => {
       regions: [
         { x: 0, y: 0, w: 16, h: 16 },
         { x: 16, y: 0, w: 16, h: 4, elevation: 1 },
-        // elevation genuinely diverges from the descriptor default (0.5)
-        // so the round-trip actually exercises "keep an override", not
-        // just "correctly drop a redundant one" (see the dedicated
-        // normalizeRegion tests in fieldResolution.test.ts for that case).
         { x: 16, y: 4, w: 16, h: 12, direction: 'south-west', elevation: 0.75 },
       ],
     }
@@ -88,5 +88,22 @@ describe('round-trip', () => {
     const roundtripped = stateToDescriptor(regions, defaults)
     expect(roundtripped.regions![0]).toEqual({ x: 0, y: 0, w: 16, h: 16 })
     expect('direction' in roundtripped.regions![0]!).toBe(false)
+  })
+
+  it('keeps an explicit field that matches the descriptor default AT LOAD TIME, even when the default later changes', () => {
+    // The bug this guards against: a region explicitly set to
+    // direction: 'south' while the descriptor default was ALSO 'south'
+    // must NOT be silently reinterpreted as "inherits the default" —
+    // editing the default afterward (here to 'north') must leave this
+    // region's own direction untouched at 'south'.
+    const original: NormalSourceDescriptor = {
+      version: 1,
+      direction: 'south',
+      regions: [{ x: 0, y: 0, w: 16, h: 16, direction: 'south' }],
+    }
+    const { regions, defaults } = descriptorToState(original, idGen())
+    const editedDefaults = { ...defaults, direction: 'north' as const }
+    const saved = stateToDescriptor(regions, editedDefaults)
+    expect(saved.regions![0]!.direction).toBe('south')
   })
 })

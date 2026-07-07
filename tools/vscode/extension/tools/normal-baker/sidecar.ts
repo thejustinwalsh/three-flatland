@@ -1,4 +1,6 @@
 import * as vscode from 'vscode'
+import { randomUUID } from 'node:crypto'
+import { renameSync, unlinkSync } from 'node:fs'
 import { bakeNormalMapFile, type NormalSourceDescriptor } from '@three-flatland/normals/node'
 import { writeSidecarJson } from '@three-flatland/bake/node'
 import { assertValidNormalDescriptor } from '@three-flatland/schemas/normal-descriptor'
@@ -57,13 +59,28 @@ export type SaveResult = { pngUri: vscode.Uri; jsonUri: vscode.Uri }
  *
  * `bakeNormalMapFile` (Node fs — the extension host is Node, so this
  * runs directly, no subprocess) reads the source PNG, bakes it, and
- * writes `<source>.normal.png` stamped with a `tEXt` chunk carrying
+ * writes a PNG stamped with a `tEXt` chunk carrying
  * `hashDescriptor(descriptor)`. `writeSidecarJson` then writes the exact
- * same `descriptor` object as `<source>.normal.json`. Baking and
- * JSON-writing both read from the one `descriptor` parameter, so the
- * PNG's stamped hash and the JSON sidecar can never drift apart — see
+ * same `descriptor` object as JSON. Baking and JSON-writing both read
+ * from the one `descriptor` parameter, so the PNG's stamped hash and the
+ * JSON sidecar can never disagree about WHAT was baked — see
  * planning/vscode-tools/tool-normal-baker.md, "Risk 3: Hash re-stamp on
  * Save."
+ *
+ * Both outputs are written to temp files in the same directory first,
+ * then published via `renameSync` — `rename` is atomic on POSIX
+ * filesystems when source and destination share one (same directory
+ * here), so a crash or thrown error mid-bake or mid-serialize can never
+ * leave a torn/truncated `.normal.png` or `.normal.json`: the previous
+ * file (if any) stays fully intact until the instant its replacement is
+ * completely written. This narrows, but doesn't fully close, the window
+ * between the two files individually going out of sync with each other
+ * (a crash between the two `renameSync` calls) — that residual case is
+ * self-healing at the runtime layer regardless, since `NormalMapLoader`
+ * validates the PNG's stamped hash against the descriptor it was given
+ * before trusting the baked sibling (`resolveNormalMap.ts`), so a stale
+ * pairing just triggers an in-memory re-bake rather than a silently
+ * wrong render.
  *
  * Only supports local (`file://`) sources — `bakeNormalMapFile` is a
  * synchronous Node `fs` reader/writer, not `vscode.workspace.fs`, so a
@@ -82,7 +99,24 @@ export function saveNormalDescriptor(
   }
   const jsonUri = normalJsonUriFor(imageUri)
   const pngUri = normalPngUriFor(imageUri)
-  bakeNormalMapFile(imageUri.fsPath, descriptor, pngUri.fsPath)
-  writeSidecarJson(jsonUri.fsPath, descriptor)
+  const tmpSuffix = `.tmp-${randomUUID()}`
+  const pngTmp = pngUri.fsPath + tmpSuffix
+  const jsonTmp = jsonUri.fsPath + tmpSuffix
+  try {
+    bakeNormalMapFile(imageUri.fsPath, descriptor, pngTmp)
+    writeSidecarJson(jsonTmp, descriptor)
+    renameSync(pngTmp, pngUri.fsPath)
+    renameSync(jsonTmp, jsonUri.fsPath)
+  } catch (err) {
+    for (const tmp of [pngTmp, jsonTmp]) {
+      try {
+        unlinkSync(tmp)
+      } catch {
+        // Best-effort cleanup — the temp file may never have been
+        // created (e.g. bake failed before writeSidecarJson ran).
+      }
+    }
+    throw err
+  }
   return { pngUri, jsonUri }
 }

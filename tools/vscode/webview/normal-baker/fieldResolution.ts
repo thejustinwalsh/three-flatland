@@ -3,20 +3,34 @@ import {
   DEFAULT_ELEVATION,
   DEFAULT_PITCH,
   DEFAULT_STRENGTH,
-  directionToAngle,
   type NormalBump,
   type NormalDirection,
   type NormalRegion,
   type NormalSourceDescriptor,
 } from '@three-flatland/normals'
 
-// Per-region-vs-descriptor field resolution. Mirrors `resolveRegion()` in
-// packages/normals/src/descriptor.ts (region field ?? descriptor field ??
-// built-in default) field-by-field, plus the inverse: deciding whether an
-// edited value should be written explicitly onto the region or omitted so
-// it keeps inheriting the descriptor default. Keeping the two directions
-// (resolve for display, normalize for write) in the same module keeps
-// them from drifting out of sync with each other.
+// Per-region-vs-descriptor field resolution for DISPLAY only. Mirrors
+// `resolveRegion()` in packages/normals/src/descriptor.ts (region field ??
+// descriptor field ?? built-in default) field-by-field — used to show the
+// EFFECTIVE value of a field a region may be inheriting.
+//
+// There is deliberately no inverse "normalize for write" direction here
+// anymore. An earlier version of this module also stripped a region's
+// explicit field when it happened to equal the descriptor's CURRENT
+// default, on the theory that "redundant" values shouldn't be stored
+// explicitly. That was wrong: it made an explicit choice the user made
+// retroactively reinterpretable by a later, unrelated edit to the
+// descriptor default. Concretely — a region explicitly set to
+// `direction: 'south'` while the descriptor default was ALSO `'south'`
+// got silently stored as "inherits the default" (field omitted); if the
+// descriptor default was later changed to `'north'`, that region's
+// direction would silently flip to `'north'` too, even though the user
+// never touched it after their original explicit choice. Explicit means
+// explicit — `RegionPropertiesPanel.tsx`'s `commit()` and
+// `descriptorIO.ts`'s `stateToDescriptor()` now write back exactly what
+// the store holds, no default-comparison stripping. A field only stays
+// omitted (inherited) when the user never wrote to it in the first place
+// (e.g. a freshly drawn region's bump/direction/pitch/strength/elevation).
 
 export function resolveBump(region: NormalRegion, descriptor: NormalSourceDescriptor): NormalBump {
   return region.bump ?? descriptor.bump ?? DEFAULT_BUMP
@@ -39,56 +53,4 @@ export function resolveStrength(region: NormalRegion, descriptor: NormalSourceDe
 
 export function resolveElevation(region: NormalRegion, descriptor: NormalSourceDescriptor): number {
   return region.elevation ?? descriptor.elevation ?? DEFAULT_ELEVATION
-}
-
-function numEqual(a: number, b: number): boolean {
-  return Math.abs(a - b) < 1e-9
-}
-
-function directionsEqual(a: NormalDirection, b: NormalDirection): boolean {
-  const aa = directionToAngle(a)
-  const ba = directionToAngle(b)
-  if (aa === null || ba === null) return aa === ba
-  return numEqual(aa, ba)
-}
-
-/**
- * Strip explicit region fields that match the descriptor's current
- * resolved default — keeps a region's explicit fields limited to genuine
- * divergence from the descriptor, matching `resolveRegion()`'s
- * inherit-when-omitted semantics. Direction compares by resolved angle
- * (an explicit `'up'` against a `'north'` default is still redundant);
- * numbers compare with an epsilon so float settling doesn't leave a
- * spurious override. Returns a new object; the input is never mutated.
- */
-export function normalizeRegion(
-  region: NormalRegion,
-  descriptor: NormalSourceDescriptor
-): NormalRegion {
-  const next: NormalRegion = { ...region }
-  if (next.bump !== undefined && next.bump === (descriptor.bump ?? DEFAULT_BUMP)) {
-    delete next.bump
-  }
-  if (
-    next.direction !== undefined &&
-    directionsEqual(next.direction, descriptor.direction ?? 'flat')
-  ) {
-    delete next.direction
-  }
-  if (next.pitch !== undefined && numEqual(next.pitch, descriptor.pitch ?? DEFAULT_PITCH)) {
-    delete next.pitch
-  }
-  if (
-    next.strength !== undefined &&
-    numEqual(next.strength, descriptor.strength ?? DEFAULT_STRENGTH)
-  ) {
-    delete next.strength
-  }
-  if (
-    next.elevation !== undefined &&
-    numEqual(next.elevation, descriptor.elevation ?? DEFAULT_ELEVATION)
-  ) {
-    delete next.elevation
-  }
-  return next
 }

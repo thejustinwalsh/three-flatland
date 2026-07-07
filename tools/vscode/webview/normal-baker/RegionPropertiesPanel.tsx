@@ -5,7 +5,6 @@ import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import type { NormalBump, NormalRegion } from '@three-flatland/normals'
 import { DirectionCompass } from './DirectionCompass'
 import {
-  normalizeRegion,
   resolveBump,
   resolveDirection,
   resolveElevation,
@@ -76,10 +75,18 @@ export type RegionPropertiesPanelProps = {
 
 /**
  * Numeric geometry + direction/pitch/strength/bump/elevation editor for
- * the single selected region. Every non-geometry field is written back
- * through `normalizeRegion` — if the edited value equals the descriptor's
- * current default, the field is omitted instead of stored explicitly, so
- * the region keeps inheriting rather than pinning a redundant override.
+ * the single selected region. Every field the user touches here is
+ * written back explicitly — even when the new value happens to equal
+ * the descriptor's current default. This is deliberate: an explicit
+ * value the user picked must survive a LATER edit to the descriptor
+ * default unchanged (it was pinned, not inherited-by-coincidence).
+ * Silently stripping a field just because it currently matches the
+ * default would make that field's meaning retroactively depend on
+ * default edits the user never asked it to track — see
+ * `fieldResolution.ts`'s module doc for the fuller writeup of why an
+ * earlier normalize-on-write design here was wrong. Only fields the
+ * user never touches (freshly drawn regions' bump/direction/pitch/
+ * strength/elevation) stay omitted/inherited.
  */
 export function RegionPropertiesPanel({ region, defaults, onChange }: RegionPropertiesPanelProps) {
   if (!region) {
@@ -91,9 +98,7 @@ export function RegionPropertiesPanel({ region, defaults, onChange }: RegionProp
   }
 
   const commit = (patch: Partial<NormalRegion>) => {
-    const merged: EditableRegion = { ...region, ...patch }
-    const normalized = normalizeRegion(merged, defaults)
-    onChange({ ...normalized, id: region.id })
+    onChange({ ...region, ...patch })
   }
 
   const direction = resolveDirection(region, defaults)

@@ -83,11 +83,14 @@ type SavePayload = {
 // Expected host response: { ok: true, sidecarUri: string } (mirrors atlas/save's shape) — host's call to make.
 ```
 
-The webview always sends a **normalized** descriptor: every region has
-been passed through `normalizeRegion()` (./fieldResolution.ts) against
-the descriptor's own defaults, so a per-region field that coincides with
-its inherited default is omitted rather than written explicitly. `version`
-is always stamped `1`.
+The webview sends regions **exactly as the store holds them** (minus the
+client-only `id`) — no default-comparison stripping. A field the user
+explicitly set stays explicit even if it currently equals the descriptor
+default, so it survives a later edit to that default unchanged (an
+earlier version of this contract normalized on write; that was reversed
+— see `fieldResolution.ts`'s module doc for why). A field only stays
+omitted (inherited) when the user never wrote to it in the first place.
+`version` is always stamped `1`.
 
 The host is expected to:
 1. Validate the incoming descriptor with `@three-flatland/schemas/normal-descriptor` (defense in depth — the webview already only ever produces well-formed shapes, but the host is the trust boundary).
@@ -127,8 +130,9 @@ patterns: custom editor vs ad-hoc command" for that decision).
   primitive), strength (`NumberField`), bump source (`CompactSelect`,
   full `NormalBump` enum — alpha/luminance/red/green/blue/none — not just
   the CLI's alpha/none subset, since the descriptor type and baker
-  support all six). Edits are written through `normalizeRegion()` so a
-  value that matches the current default is omitted, not pinned.
+  support all six). Every field the user touches here is written back
+  explicitly, even if it currently equals the descriptor default — see
+  `fieldResolution.ts`'s module doc.
 - **Defaults** — `DefaultsPanel.tsx`. Descriptor-level direction, pitch,
   elevation, strength, bump. (Elevation wasn't explicitly named in the
   original spec's Defaults-panel bullet, but `descriptor.elevation` is a
@@ -138,11 +142,15 @@ patterns: custom editor vs ad-hoc command" for that decision).
   normal map (direct `bakeNormalMap()` call from `@three-flatland/normals`
   — see "Browser-safe bake math" below) and a lit composite driven by a
   continuous rAF loop with an orbiting light (`preview.ts`'s
-  `orbitingLight()`/`computeLitComposite()`, pure 2D Lambert
-  `max(0, N·L)`). Debounced 200ms on descriptor/pixel change so a fast
-  drag doesn't re-bake every frame. `prefers-reduced-motion` pins the
-  light instead of orbiting it (`usePrefersReducedMotion` local hook in
-  `LivePreviewPanel.tsx`).
+  `orbitingLight()`/`computeLitComposite()`). Elevation-aware 2D Lambert
+  `max(0, N·L)` — the light's Z is computed PER PIXEL as
+  `lightHeight − elevation`, reading the baked map's B channel, matching
+  `DefaultLightEffect`'s real-time formula
+  (`packages/three-flatland/src/materials/channels.ts`) rather than
+  applying one flat light vector across every elevation. Debounced 200ms
+  on descriptor/pixel change so a fast drag doesn't re-bake every frame.
+  `prefers-reduced-motion` pins the light instead of orbiting it
+  (`usePrefersReducedMotion` local hook in `LivePreviewPanel.tsx`).
 - **Standalone dev mode** — `main.tsx`/`App.tsx` detect a missing
   `acquireVsCodeApi()` and load `fixtures.ts` (the Dungeon_Tileset fixture
   from `examples/react/lighting/public/sprites/`, inlined as a base64
@@ -211,7 +219,7 @@ What that actually gets you, precisely (see `tools/preview/CLAUDE.md`):
 | `normalBakerStore.ts` | Zustand + zundo store — regions, defaults, selection, undo |
 | `regionOps.ts` / `regionOps.test.ts` | Region add/remove/reorder/replace reducers (pure) |
 | `direction.ts` / `direction.test.ts` | Direction → hue/color mapping, compass-cell resolution (pure) |
-| `fieldResolution.ts` / `fieldResolution.test.ts` | Region-vs-descriptor field resolve + normalize-on-write (pure) |
+| `fieldResolution.ts` / `fieldResolution.test.ts` | Region-vs-descriptor field resolve for display (pure) |
 | `descriptorIO.ts` / `descriptorIO.test.ts` | Descriptor ⇄ store-state conversion, incl. round-trip tests (pure) |
 | `preview.ts` / `preview.test.ts` | Bake wrapper + lit-composite Lambert math + light rig (pure) |
 | `sliderMath.ts` / `sliderMath.test.ts` | Slider drag/click/step math (pure — split out so importing it doesn't need the StyleX transform) |

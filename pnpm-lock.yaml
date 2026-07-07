@@ -1769,6 +1769,9 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.7
+      '@types/pngjs':
+        specifier: 'catalog:'
+        version: 6.0.5
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.9
@@ -1796,6 +1799,9 @@ importers:
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12
+      pngjs:
+        specifier: 'catalog:'
+        version: 7.0.0
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

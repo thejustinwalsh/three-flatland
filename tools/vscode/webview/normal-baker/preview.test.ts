@@ -11,21 +11,29 @@ describe('bakePreviewNormalMap', () => {
 })
 
 describe('computeLitComposite', () => {
-  // Two synthetic texels: pixel 0 is a flat normal (0,0,1); pixel 1 is
-  // fully tilted toward +X (1,0,0). Both fully opaque.
+  // Three synthetic texels, all fully opaque:
+  //   0: flat normal (0,0,1), elevation 0
+  //   1: flat normal (0,0,1), elevation 1 — SAME normal as texel 0, only
+  //      elevation differs, to isolate elevation's effect on lighting
+  //      from the normal's own contribution
+  //   2: tilted toward +X (1,0,0), elevation 0
   const normalRGBA = new Uint8Array([
     128,
     128,
     0,
-    255, // flat
+    255, // flat, elevation 0
+    128,
+    128,
+    255,
+    255, // flat, elevation 1
     255,
     128,
     0,
-    255, // tilted toward +X (nx=1, ny=0, nz=0)
+    255, // tilted +X, elevation 0
   ])
 
-  it('lights a flat normal at full brightness under an overhead light', () => {
-    const out = computeLitComposite(normalRGBA, { x: 0, y: 0, z: 1 })
+  it('lights a flat normal at full brightness under an overhead light at matching height', () => {
+    const out = computeLitComposite(normalRGBA, { x: 0, y: 0, lightHeight: 1 })
     expect(out[0]).toBe(255)
     expect(out[1]).toBe(255)
     expect(out[2]).toBe(255)
@@ -33,33 +41,59 @@ describe('computeLitComposite', () => {
   })
 
   it('lights a normal at full brightness when the light matches its tilt exactly', () => {
-    const out = computeLitComposite(normalRGBA, { x: 1, y: 0, z: 0 })
-    expect(out[4]).toBe(255)
-    expect(out[5]).toBe(255)
-    expect(out[6]).toBe(255)
+    const out = computeLitComposite(normalRGBA, { x: 1, y: 0, lightHeight: 0 })
+    expect(out[8]).toBe(255)
+    expect(out[9]).toBe(255)
+    expect(out[10]).toBe(255)
   })
 
   it('clamps a back-facing dot product to zero instead of going negative', () => {
-    // Light directly opposite the +X-tilted texel's normal.
-    const out = computeLitComposite(normalRGBA, { x: -1, y: 0, z: 0 })
+    const out = computeLitComposite(normalRGBA, { x: -1, y: 0, lightHeight: 0 })
+    expect(out[8]).toBe(0)
+    expect(out[9]).toBe(0)
+    expect(out[10]).toBe(0)
+  })
+
+  it('reads elevation from the B channel — same normal, different elevation, different light', () => {
+    // Light directly overhead at height 1. Texel 0 (elevation 0) sees the
+    // light straight up (Lz = 1 - 0 = 1, full brightness). Texel 1 (same
+    // normal, elevation 1) sees the light AT its own height (Lz = 1 - 1 =
+    // 0, grazing — the light is level with the surface, not above it).
+    const out = computeLitComposite(normalRGBA, { x: 0, y: 0, lightHeight: 1 })
+    expect(out[0]).toBe(255) // texel 0: full brightness
+    expect(out[4]).toBe(0) // texel 1: grazing → zero
+  })
+
+  it("a light below a texel's elevation stops lighting it (torch-below-wall-cap case)", () => {
+    // lightHeight 0.5, texel 1 at elevation 1 → Lz = 0.5 - 1 = -0.5 (light
+    // is BELOW the surface) → clamped to zero, not a wrapped/negative value.
+    const out = computeLitComposite(normalRGBA, { x: 0, y: 0, lightHeight: 0.5 })
     expect(out[4]).toBe(0)
-    expect(out[5]).toBe(0)
-    expect(out[6]).toBe(0)
   })
 
   it('normalizes a non-unit light vector', () => {
-    const unit = computeLitComposite(normalRGBA, { x: 0, y: 0, z: 1 })
-    const scaled = computeLitComposite(normalRGBA, { x: 0, y: 0, z: 50 })
+    const unit = computeLitComposite(normalRGBA, { x: 0, y: 0, lightHeight: 1 })
+    const scaled = computeLitComposite(normalRGBA, { x: 0, y: 0, lightHeight: 50 })
+    // Both have elevation-0 lz proportional to their lightHeight — scaling
+    // lightHeight scales lz the same way scaling z used to, so the
+    // normalized result at texel 0 (elevation 0) is identical.
     expect(scaled[0]).toBe(unit[0])
   })
 })
 
 describe('orbitingLight', () => {
-  it('always returns a unit vector', () => {
+  it('always returns a unit vector in the XY plane', () => {
     for (const t of [0, 1.3, 7.25, 42]) {
       const l = orbitingLight(t)
-      expect(Math.hypot(l.x, l.y, l.z)).toBeCloseTo(1, 6)
+      expect(Math.hypot(l.x, l.y)).toBeCloseTo(1, 6)
     }
+  })
+
+  it('holds lightHeight fixed regardless of orbit position', () => {
+    const a = orbitingLight(0, { lightHeight: 0.75 })
+    const b = orbitingLight(3, { lightHeight: 0.75 })
+    expect(a.lightHeight).toBe(0.75)
+    expect(b.lightHeight).toBe(0.75)
   })
 
   it('advances theta over time when motion is not reduced', () => {
