@@ -157,6 +157,7 @@
     "@three-flatland/io": "workspace:*",
     "@three-flatland/preview": "workspace:*",
     "@three-flatland/schemas": "workspace:*",
+    "@three-flatland/zzfx-play": "workspace:*",
     "@react-three/fiber": "catalog:",
     "@vscode-elements/elements": "^2.5.1",
     "@vscode-elements/react-elements": "^2.4.0",

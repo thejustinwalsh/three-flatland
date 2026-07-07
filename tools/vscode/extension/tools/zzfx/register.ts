@@ -1,9 +1,11 @@
 import * as vscode from 'vscode'
 import type { CodelensServiceClient, Finding } from '@three-flatland/codelens-service'
 import { getSidecarClient, shutdownSidecar } from './sidecarManager'
+import { getPlaySidecarClient, shutdownPlaySidecar } from './playSidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
 import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
+import { log } from '../../log'
 
 function findFindingAtPosition(
   findings: readonly Finding[],
@@ -47,6 +49,30 @@ async function resolveFindingAtCursor(
   return { uri: editor.document.uri, finding }
 }
 
+/**
+ * Attempts the inline (no-panel) play route for `playParams`'s "▶ Play"
+ * CodeLens. Returns `false` — never throws — for either fallback trigger:
+ * a remote window (no local speaker for the extension host's process to
+ * play through) or the sidecar failing to resolve/spawn (logged via
+ * `getPlaySidecarClient`/`PlaySidecarClient.onError`, not surfaced to the
+ * user here — the caller's panel-based fallback is the user-visible
+ * recovery).
+ */
+function tryPlayInline(context: vscode.ExtensionContext, params: number[]): boolean {
+  if (vscode.env.remoteName) return false
+  const playClient = getPlaySidecarClient(context)
+  if (!playClient) return false
+  try {
+    playClient.play(params)
+    return true
+  } catch (err) {
+    log(
+      `zzfx-play: inline play failed, falling back to panel: ${err instanceof Error ? err.message : err}`
+    )
+    return false
+  }
+}
+
 export function registerZzfxTool(context: vscode.ExtensionContext): void {
   const provider = new ZzfxCodeLensProvider(() => getSidecarClient(context))
   context.subscriptions.push(
@@ -79,14 +105,24 @@ export function registerZzfxTool(context: vscode.ExtensionContext): void {
   // planning/vscode-tools/tool-zzfx-studio.md) it is NOT listed in
   // package.json's contributes.commands for the command palette. Still a
   // real registered command: CodeLens titles reference it by id directly.
-  // `source`, when supplied (the CodeLens always supplies it — see
-  // provider.ts), carries the real finding this play request is for, so
-  // it can open/reuse that finding's own editor panel to play through
-  // rather than needing a synthetic one.
+  //
+  // Routes through the zzfx-play sidecar (real AudioContext, no webview
+  // panel) — a click on "▶ Play" above a source-code call site shouldn't
+  // have to open/reuse an editor panel just to hear a one-shot. Falls
+  // back to the pre-Z9 panel-based route (`source`'s own editor panel, or
+  // whichever zzfx panel is already open) in two cases: a remote window
+  // (`vscode.env.remoteName` set — the extension host's process has no
+  // local audio device to play through), or the sidecar failing to spawn
+  // at all. `source`, when supplied (the CodeLens always supplies it —
+  // see provider.ts), carries the real finding this play request is for,
+  // used only by the fallback path to open/reuse that finding's own
+  // editor panel rather than needing a synthetic one.
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'threeFlatland.zzfx.playParams',
       async (params: number[], source?: { uri: string; findingId: string }) => {
+        if (tryPlayInline(context, params)) return
+
         const client = await getSidecarClient(context)
         if (!client) {
           void vscode.window.showErrorMessage('FL ZzFX: sidecar unavailable.')
@@ -152,4 +188,5 @@ export function registerZzfxTool(context: vscode.ExtensionContext): void {
   )
 
   context.subscriptions.push({ dispose: () => void shutdownSidecar() })
+  context.subscriptions.push({ dispose: () => void shutdownPlaySidecar() })
 }

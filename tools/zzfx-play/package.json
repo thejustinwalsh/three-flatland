@@ -1,0 +1,37 @@
+{
+  "name": "@three-flatland/zzfx-play",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Inline audio sidecar — real AudioContext (node-web-audio-api) driving zzfx one-shots and @zzfx-studio/zzfxm songs, unmodified, over a newline-JSON stdio protocol",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@zzfx-studio/zzfxm": "catalog:",
+    "node-web-audio-api": "^2.0.0",
+    "zzfx": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "catalog:"
+  }
+}
