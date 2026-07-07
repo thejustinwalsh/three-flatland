@@ -71,6 +71,15 @@ describe('computeLitComposite', () => {
     expect(out[4]).toBe(0)
   })
 
+  it('shades a high-elevation pixel darker than the same normal at elevation 0, under a low light', () => {
+    // lightHeight 0.3 is "low" — closer to the ground than either texel's
+    // elevation extreme. Texel 0 (elevation 0) is nearer the light
+    // (Lz = 0.3) than texel 1 (elevation 1, Lz = -0.7, clamped by the
+    // dot product) — same normal, strictly darker at higher elevation.
+    const out = computeLitComposite(normalRGBA, { x: 0, y: 0, lightHeight: 0.3 })
+    expect(out[0]).toBeGreaterThan(out[4]!)
+  })
+
   it('normalizes a non-unit light vector', () => {
     const unit = computeLitComposite(normalRGBA, { x: 0, y: 0, lightHeight: 1 })
     const scaled = computeLitComposite(normalRGBA, { x: 0, y: 0, lightHeight: 50 })

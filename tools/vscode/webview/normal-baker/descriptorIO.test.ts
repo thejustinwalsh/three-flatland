@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { NormalSourceDescriptor } from '@three-flatland/normals'
 import { descriptorToState, stateToDescriptor } from './descriptorIO'
+import { clearRegionField } from './fieldResolution'
 
 function idGen(): () => string {
   let n = 0
@@ -105,5 +106,21 @@ describe('round-trip', () => {
     const editedDefaults = { ...defaults, direction: 'north' as const }
     const saved = stateToDescriptor(regions, editedDefaults)
     expect(saved.regions![0]!.direction).toBe('south')
+  })
+
+  it('resetting a field to inherited (clearRegionField) actually removes it from the saved output', () => {
+    // The other side of fidelity: explicit stays explicit UNTIL the user
+    // deliberately resets it — at which point it's gone, not "still there
+    // but happens to equal the default."
+    const original: NormalSourceDescriptor = {
+      version: 1,
+      direction: 'south',
+      regions: [{ x: 0, y: 0, w: 16, h: 16, direction: 'north', elevation: 0.8 }],
+    }
+    const { regions, defaults } = descriptorToState(original, idGen())
+    const reset = regions.map((r) => clearRegionField(r, 'direction'))
+    const saved = stateToDescriptor(reset, defaults)
+    expect('direction' in saved.regions![0]!).toBe(false)
+    expect(saved.regions![0]!.elevation).toBe(0.8) // untouched field survives
   })
 })

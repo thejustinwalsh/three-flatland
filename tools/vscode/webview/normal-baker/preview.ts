@@ -46,15 +46,26 @@ export type LightVector = { x: number; y: number; lightHeight: number }
  * The B channel carries per-texel world-space elevation in [0, 1] (see
  * `packages/normals/src/bake.ts`'s encode comment and
  * `packages/three-flatland/src/materials/channels.ts`'s `elevation`
- * channel doc). The real-time renderer's `DefaultLightEffect` computes
- * each fragment's light-Z as `lightHeight − elevation` PER FRAGMENT, so a
- * torch below a wall cap's elevation stops lighting that cap — this
- * preview reproduces that exact formula per pixel rather than applying
- * one global light vector to every texel regardless of its baked
- * elevation. `light.x`/`light.y` need not be pre-normalized; the full
- * (x, y, lightHeight − elevation) vector is normalized per pixel, since
- * elevation varies pixel-to-pixel and so, therefore, does the light's
- * effective direction.
+ * channel doc). The real-time renderer's `DefaultLightEffect` computes,
+ * per fragment per light (`packages/presets/src/lighting/DefaultLightEffect.ts:296`):
+ *
+ *   lightDir3D = normalize(vec3(toLightN, lightHeight - ctx.elevation))
+ *   NdotL = clamp(dot(normal, lightDir3D), 0, 1)
+ *
+ * — this preview reproduces the Z term (`lightHeight - elevation`,
+ * per-fragment) and the clamped dot product exactly. The one honest
+ * divergence: `toLightN` in the real shader is the normalized direction
+ * FROM the fragment TO the light's actual world position (a positional
+ * point/spot light — every fragment sees a slightly different XY
+ * direction). A 2D canvas preview has no world-space fragment position
+ * to compute that from without inventing one, so `light.x`/`light.y`
+ * here are a single orbit direction applied uniformly to every pixel —
+ * closer to a directional ("sun") light's XY than a point light's. The
+ * Z-axis behavior that actually depends on elevation (the part this fix
+ * is about) is unaffected by that simplification. `light.x`/`light.y`
+ * need not be pre-normalized; the full (x, y, lightHeight − elevation)
+ * vector is normalized per pixel, since elevation varies pixel-to-pixel
+ * and so, therefore, does the light's effective direction.
  */
 export function computeLitComposite(
   normalRGBA: Uint8Array | Uint8ClampedArray,

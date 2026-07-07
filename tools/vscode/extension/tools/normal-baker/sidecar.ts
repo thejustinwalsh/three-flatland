@@ -4,6 +4,7 @@ import { renameSync, unlinkSync } from 'node:fs'
 import { bakeNormalMapFile, type NormalSourceDescriptor } from '@three-flatland/normals/node'
 import { writeSidecarJson } from '@three-flatland/bake/node'
 import { assertValidNormalDescriptor } from '@three-flatland/schemas/normal-descriptor'
+import { publishAtomically } from './atomicPublish'
 import { normalJsonPath, normalPngPath } from './paths'
 
 // The schemas package exports only the ajv validator (`assertValidNormalDescriptor`
@@ -67,20 +68,12 @@ export type SaveResult = { pngUri: vscode.Uri; jsonUri: vscode.Uri }
  * planning/vscode-tools/tool-normal-baker.md, "Risk 3: Hash re-stamp on
  * Save."
  *
- * Both outputs are written to temp files in the same directory first,
- * then published via `renameSync` — `rename` is atomic on POSIX
- * filesystems when source and destination share one (same directory
- * here), so a crash or thrown error mid-bake or mid-serialize can never
- * leave a torn/truncated `.normal.png` or `.normal.json`: the previous
- * file (if any) stays fully intact until the instant its replacement is
- * completely written. This narrows, but doesn't fully close, the window
- * between the two files individually going out of sync with each other
- * (a crash between the two `renameSync` calls) — that residual case is
- * self-healing at the runtime layer regardless, since `NormalMapLoader`
- * validates the PNG's stamped hash against the descriptor it was given
- * before trusting the baked sibling (`resolveNormalMap.ts`), so a stale
- * pairing just triggers an in-memory re-bake rather than a silently
- * wrong render.
+ * The actual bake-to-temp / write-to-temp / rename-into-place / cleanup-
+ * on-failure orchestration lives in `publishAtomically()` (atomicPublish.ts)
+ * — extracted so it's unit-testable with injected fakes, including a
+ * simulated failure, which a function importing `vscode` at module scope
+ * can't be (see paths.ts's note). This function just supplies the real
+ * dependencies and the four concrete paths.
  *
  * Only supports local (`file://`) sources — `bakeNormalMapFile` is a
  * synchronous Node `fs` reader/writer, not `vscode.workspace.fs`, so a
@@ -100,23 +93,19 @@ export function saveNormalDescriptor(
   const jsonUri = normalJsonUriFor(imageUri)
   const pngUri = normalPngUriFor(imageUri)
   const tmpSuffix = `.tmp-${randomUUID()}`
-  const pngTmp = pngUri.fsPath + tmpSuffix
-  const jsonTmp = jsonUri.fsPath + tmpSuffix
-  try {
-    bakeNormalMapFile(imageUri.fsPath, descriptor, pngTmp)
-    writeSidecarJson(jsonTmp, descriptor)
-    renameSync(pngTmp, pngUri.fsPath)
-    renameSync(jsonTmp, jsonUri.fsPath)
-  } catch (err) {
-    for (const tmp of [pngTmp, jsonTmp]) {
-      try {
-        unlinkSync(tmp)
-      } catch {
-        // Best-effort cleanup — the temp file may never have been
-        // created (e.g. bake failed before writeSidecarJson ran).
-      }
+  publishAtomically(
+    {
+      pngPath: pngUri.fsPath,
+      jsonPath: jsonUri.fsPath,
+      pngTmpPath: pngUri.fsPath + tmpSuffix,
+      jsonTmpPath: jsonUri.fsPath + tmpSuffix,
+    },
+    {
+      bake: (tmpPngPath) => bakeNormalMapFile(imageUri.fsPath, descriptor, tmpPngPath),
+      writeJson: (tmpJsonPath) => writeSidecarJson(tmpJsonPath, descriptor),
+      rename: renameSync,
+      unlink: unlinkSync,
     }
-    throw err
-  }
+  )
   return { pngUri, jsonUri }
 }

@@ -86,6 +86,11 @@ describe('validateNormalDescriptor — invalid fixtures', () => {
     expect(validateNormalDescriptor({ regions: [{ x: 0, y: 0, w: -4, h: 4 }] })).toBe(false)
   })
 
+  it('rejects fractional region coordinates — bake.ts indexes pixel buffers with them directly', () => {
+    const region: NormalRegion = { x: 0.5, y: 0, w: 16, h: 16 }
+    expect(validateNormalDescriptor({ regions: [region] })).toBe(false)
+  })
+
   it('rejects an unknown version', () => {
     expect(validateNormalDescriptor({ version: 2 })).toBe(false)
   })

@@ -101,19 +101,19 @@
       "additionalProperties": false,
       "properties": {
         "x": {
-          "type": "number",
+          "type": "integer",
           "minimum": 0
         },
         "y": {
-          "type": "number",
+          "type": "integer",
           "minimum": 0
         },
         "w": {
-          "type": "number",
+          "type": "integer",
           "exclusiveMinimum": 0
         },
         "h": {
-          "type": "number",
+          "type": "integer",
           "exclusiveMinimum": 0
         },
         "bump": {

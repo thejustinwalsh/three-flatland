@@ -111,6 +111,16 @@ describe('normal-descriptor.schema.json', () => {
     expect(validate({ regions: [{ x: 0, y: -1, w: 16, h: 16 }] })).toBe(false)
   })
 
+  it('rejects fractional region x/y/w/h — pixel coordinates must be integers', () => {
+    // packages/normals/src/bake.ts indexes pixel buffers with these values
+    // directly ((y * width + x) * 4) — a fractional coordinate would
+    // silently misalign every texel read in the region.
+    expect(validate({ regions: [{ x: 0.5, y: 0, w: 16, h: 16 }] })).toBe(false)
+    expect(validate({ regions: [{ x: 0, y: 0.5, w: 16, h: 16 }] })).toBe(false)
+    expect(validate({ regions: [{ x: 0, y: 0, w: 16.5, h: 16 }] })).toBe(false)
+    expect(validate({ regions: [{ x: 0, y: 0, w: 16, h: 16.5 }] })).toBe(false)
+  })
+
   it('rejects a region missing a required field', () => {
     expect(validate({ regions: [{ x: 0, y: 0, w: 16 }] })).toBe(false)
   })

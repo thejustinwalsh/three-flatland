@@ -1,15 +1,18 @@
 import * as stylex from '@stylexjs/stylex'
-import { CompactSelect, NumberField, Panel } from '@three-flatland/design-system'
+import { CompactSelect, NumberField, Panel, ToolbarButton } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import type { NormalBump, NormalRegion } from '@three-flatland/normals'
 import { DirectionCompass } from './DirectionCompass'
 import {
+  clearRegionField,
+  isFieldOverridden,
   resolveBump,
   resolveDirection,
   resolveElevation,
   resolvePitch,
   resolveStrength,
+  type OverridableField,
 } from './fieldResolution'
 import type { NormalBakerDefaults } from './normalBakerStore'
 import type { EditableRegion } from './regionOps'
@@ -41,6 +44,16 @@ const s = stylex.create({
     flexDirection: 'column',
     gap: space.xs,
   },
+  fieldHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.sm,
+    // Reserve the reset button's height even when it's not rendered
+    // (field not overridden) so the label row doesn't shift height as
+    // the user toggles a field between inherited and explicit.
+    minHeight: 18,
+  },
   label: {
     color: vscode.descriptionFg,
     fontSize: '11px',
@@ -67,6 +80,36 @@ function formatUnit(v: number): string {
   return v.toFixed(2)
 }
 
+type FieldHeaderProps = {
+  label: string
+  field: OverridableField
+  region: NormalRegion
+  onReset: (field: OverridableField) => void
+}
+
+/**
+ * Label + a "reset to inherited" button that only renders when this
+ * field is explicitly set on the region. Resetting is the one
+ * legitimate way an explicit field goes back to omitted/inherited —
+ * see `fieldResolution.ts`'s module doc for why nothing does this
+ * automatically anymore.
+ */
+function FieldHeader({ label, field, region, onReset }: FieldHeaderProps) {
+  const overridden = isFieldOverridden(region, field)
+  return (
+    <div {...stylex.props(s.fieldHeader)}>
+      <span {...stylex.props(s.label)}>{label}</span>
+      {overridden ? (
+        <ToolbarButton
+          icon="close"
+          title={`Reset ${label.toLowerCase()} to inherited`}
+          onClick={() => onReset(field)}
+        />
+      ) : null}
+    </div>
+  )
+}
+
 export type RegionPropertiesPanelProps = {
   region: EditableRegion | null
   defaults: NormalBakerDefaults
@@ -86,7 +129,9 @@ export type RegionPropertiesPanelProps = {
  * `fieldResolution.ts`'s module doc for the fuller writeup of why an
  * earlier normalize-on-write design here was wrong. Only fields the
  * user never touches (freshly drawn regions' bump/direction/pitch/
- * strength/elevation) stay omitted/inherited.
+ * strength/elevation) stay omitted/inherited — and the only way BACK to
+ * omitted after an explicit edit is the per-field reset button below,
+ * a deliberate action, not a side effect of some other edit.
  */
 export function RegionPropertiesPanel({ region, defaults, onChange }: RegionPropertiesPanelProps) {
   if (!region) {
@@ -99,6 +144,10 @@ export function RegionPropertiesPanel({ region, defaults, onChange }: RegionProp
 
   const commit = (patch: Partial<NormalRegion>) => {
     onChange({ ...region, ...patch })
+  }
+
+  const reset = (field: OverridableField) => {
+    onChange({ ...clearRegionField(region, field), id: region.id })
   }
 
   const direction = resolveDirection(region, defaults)
@@ -130,14 +179,14 @@ export function RegionPropertiesPanel({ region, defaults, onChange }: RegionProp
         </div>
 
         <div {...stylex.props(s.field)}>
-          <span {...stylex.props(s.label)}>Direction</span>
+          <FieldHeader label="Direction" field="direction" region={region} onReset={reset} />
           <div {...stylex.props(s.compassRow)}>
             <DirectionCompass value={direction} onChange={(next) => commit({ direction: next })} />
           </div>
         </div>
 
         <div {...stylex.props(s.field)}>
-          <span {...stylex.props(s.label)}>Pitch</span>
+          <FieldHeader label="Pitch" field="pitch" region={region} onReset={reset} />
           <Slider
             value={pitch}
             min={0}
@@ -150,7 +199,7 @@ export function RegionPropertiesPanel({ region, defaults, onChange }: RegionProp
         </div>
 
         <div {...stylex.props(s.field)}>
-          <span {...stylex.props(s.label)}>Elevation</span>
+          <FieldHeader label="Elevation" field="elevation" region={region} onReset={reset} />
           <Slider
             value={elevation}
             min={0}
@@ -163,7 +212,7 @@ export function RegionPropertiesPanel({ region, defaults, onChange }: RegionProp
         </div>
 
         <div {...stylex.props(s.field)}>
-          <span {...stylex.props(s.label)}>Strength</span>
+          <FieldHeader label="Strength" field="strength" region={region} onReset={reset} />
           <NumberField
             value={strength}
             step={0.1}
@@ -173,7 +222,7 @@ export function RegionPropertiesPanel({ region, defaults, onChange }: RegionProp
         </div>
 
         <div {...stylex.props(s.field)}>
-          <span {...stylex.props(s.label)}>Bump source</span>
+          <FieldHeader label="Bump source" field="bump" region={region} onReset={reset} />
           <CompactSelect
             value={bump}
             options={BUMP_OPTIONS}

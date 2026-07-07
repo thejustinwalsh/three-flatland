@@ -54,3 +54,24 @@ export function resolveStrength(region: NormalRegion, descriptor: NormalSourceDe
 export function resolveElevation(region: NormalRegion, descriptor: NormalSourceDescriptor): number {
   return region.elevation ?? descriptor.elevation ?? DEFAULT_ELEVATION
 }
+
+/** The five region fields a descriptor default can supply when a region omits them. */
+export type OverridableField = 'bump' | 'direction' | 'pitch' | 'strength' | 'elevation'
+
+/** Whether `field` is explicitly set on this region (vs. inheriting the descriptor default). */
+export function isFieldOverridden(region: NormalRegion, field: OverridableField): boolean {
+  return region[field] !== undefined
+}
+
+/**
+ * Deliberately clear an explicit field back to "inherited" — the one
+ * legitimate way a field goes from explicit to omitted post-load. Not
+ * automatic, not triggered by a value happening to equal the default
+ * (see this module's top doc comment) — only a direct user action
+ * (`RegionPropertiesPanel.tsx`'s per-field reset button) calls this.
+ */
+export function clearRegionField(region: NormalRegion, field: OverridableField): NormalRegion {
+  const next = { ...region }
+  delete next[field]
+  return next
+}

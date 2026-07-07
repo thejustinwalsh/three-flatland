@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import { Icon, Panel, ToolbarButton } from '@three-flatland/design-system'
+import { Panel, ToolbarButton } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import type { NormalBakerDefaults } from './normalBakerStore'
@@ -57,18 +57,6 @@ const s = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     flexShrink: 0,
-  },
-  reorderBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 14,
-    height: 12,
-    padding: 0,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    color: { default: vscode.descriptionFg, ':hover': vscode.fg },
-    cursor: 'pointer',
   },
   empty: {
     padding: space.lg,
@@ -134,30 +122,24 @@ export function RegionListPanel({
                   {r.x},{r.y} {r.w}×{r.h}
                 </span>
                 <span {...stylex.props(s.reorderCol)}>
-                  <button
-                    type="button"
+                  <ToolbarButton
+                    icon="chevron-up"
+                    title="Move up"
                     disabled={i === 0}
-                    aria-label="Move up"
                     onClick={(e) => {
                       e.stopPropagation()
                       onMove(i, i - 1)
                     }}
-                    {...stylex.props(s.reorderBtn)}
-                  >
-                    <Icon name="chevron-up" />
-                  </button>
-                  <button
-                    type="button"
+                  />
+                  <ToolbarButton
+                    icon="chevron-down"
+                    title="Move down"
                     disabled={i === regions.length - 1}
-                    aria-label="Move down"
                     onClick={(e) => {
                       e.stopPropagation()
                       onMove(i, i + 2)
                     }}
-                    {...stylex.props(s.reorderBtn)}
-                  >
-                    <Icon name="chevron-down" />
-                  </button>
+                  />
                 </span>
               </li>
             )
