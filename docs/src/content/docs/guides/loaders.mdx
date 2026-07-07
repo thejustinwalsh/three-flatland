@@ -198,8 +198,9 @@ with size-optimizing options render correctly out of the box:
   true position inside the source bounds (baked into the sprite
   matrix), so animations with per-frame trim don't wobble or stretch
 - **Polygon trim** (`Trim mode: Polygon`) — per-frame meshes feed the
-  tight-mesh overdraw-reduction path for alpha-blended sprites
-  (rotation + polygon combined falls back to the plain quad)
+  tight-mesh overdraw-reduction path for alpha-blended sprites, rotated
+  frames included: mesh verts/UVs live in unrotated frame space, and
+  the shader's per-instance unrotation samples them correctly
 
 ## TiledLoader
 
