@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { Texture } from 'three'
+import { Matrix4, Texture } from 'three'
 import { SpriteBatch } from './SpriteBatch'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createMaterialEffect } from '../materials/MaterialEffect'
@@ -72,8 +72,9 @@ describe('SpriteBatch', () => {
     // Free the slot
     batch.freeSlot(slot)
 
-    // Alpha should be 0 (invisible). Interleaved layout: stride 16,
-    // color at offset 4, alpha is component 3.
+    // Alpha should be 0 (invisible). All core attributes share one
+    // interleaved buffer with stride INSTANCE_STRIDE=16 and color at
+    // offset 4; alpha is component 3 of color.
     const colorAttr = batch.getColorAttribute()
     const array = colorAttr.array as Float32Array
     expect(array[slot * 16 + 4 + 3]).toBe(0)
@@ -87,7 +88,7 @@ describe('SpriteBatch', () => {
 
     const colorAttr = batch.getColorAttribute()
     const array = colorAttr.array as Float32Array
-    // Interleaved layout: stride 16, color at offset 4.
+    // Interleaved layout: stride 16 per instance, color at offset 4.
     expect(array[slot * 16 + 4 + 0]).toBeCloseTo(1) // r
     expect(array[slot * 16 + 4 + 1]).toBeCloseTo(0) // g
     expect(array[slot * 16 + 4 + 2]).toBeCloseTo(0) // b
@@ -115,7 +116,7 @@ describe('SpriteBatch', () => {
 
     batch.writeFlip(slot, -1, 1)
 
-    // Flip lives at `instanceSystem.xy` — stride 16, offset 8/9.
+    // Flip lives at `instanceSystem.xy` — offset 8/9 within the stride.
     const systemAttr = batch.getSystemAttribute()
     const array = systemAttr.array as Float32Array
     expect(array[slot * 16 + 8]).toBe(-1) // x flipped
@@ -201,5 +202,25 @@ describe('SpriteBatch', () => {
     batch.dispose()
 
     expect(batch.activeCount).toBe(0)
+  })
+})
+
+describe('freed slots', () => {
+  it('collapse to a zero-scale matrix (no fragments rasterized) and zero alpha', () => {
+    const material = new Sprite2DMaterial()
+    const batch = new SpriteBatch(material, 8)
+    const slot = batch.allocateSlot()
+    const matrix = new Matrix4().makeScale(3, 3, 1)
+    batch.writeMatrix(slot, matrix)
+    batch.writeColor(slot, 1, 1, 1, 1)
+
+    batch.freeSlot(slot)
+
+    const m = batch.instanceMatrix.array as Float32Array
+    for (let i = 0; i < 16; i++) {
+      expect(m[slot * 16 + i]).toBe(0)
+    }
+    const color = batch.getColorAttribute()
+    expect(color.getW(slot)).toBe(0)
   })
 })

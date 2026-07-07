@@ -1,5 +1,5 @@
 ---
-"@three-flatland/tweakpane": minor
+"@three-flatland/devtools": minor
 ---
 
 > Branch: feat-slug
@@ -12,7 +12,7 @@
 - Returns `[value, setValue]`; blade and React state stay in sync bidirectionally
 - Accepts `cells`, `initialValue`, optional `groupName`, and explicit `size: [cols, rows]`
 - Disposal deferred via `setTimeout(0)` to survive React strict-mode's synchronous cleanup/re-mount pair
-- Exported from `@three-flatland/tweakpane/react` as `usePaneRadioGrid` + types `PaneRadioGridCell`, `PaneRadioGridOptions`
+- Exported from `@three-flatland/devtools/react` as `usePaneRadioGrid` + types `PaneRadioGridCell`, `PaneRadioGridOptions`
 
 **`usePaneInput` additions**
 - `readonly` option — renders the binding as a read-only monitor; value still updates via `setValue`

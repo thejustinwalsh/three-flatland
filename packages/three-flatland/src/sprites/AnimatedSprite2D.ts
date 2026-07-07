@@ -3,7 +3,8 @@ import { Sprite2D } from './Sprite2D'
 import { AnimationController } from '../animation/AnimationController'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { MaterialEffect } from '../materials/MaterialEffect'
-import type { SpriteSheet, SpriteAnimation } from './types'
+import type { SpriteSheet, SpriteAnimation, SpriteFrame } from './types'
+import type { SortLayerValue } from '../pipeline/sortLayers'
 import type { Animation, AnimationSetDefinition, PlayOptions } from '../animation/types'
 
 /**
@@ -32,9 +33,9 @@ export interface AnimatedSprite2DOptions {
   flipX?: boolean
   /** Flip vertically */
   flipY?: boolean
-  /** Render layer (for SpriteGroup) */
-  layer?: number
-  /** Z-index within layer */
+  /** Sort layer — registered name or numeric order */
+  sortLayer?: SortLayerValue
+  /** Z-index within sortLayer */
   zIndex?: number
   /** Pixel-perfect rendering (snap to pixels) */
   pixelPerfect?: boolean
@@ -70,6 +71,9 @@ export class AnimatedSprite2D extends Sprite2D {
   /** Source spritesheet */
   private _spriteSheet: SpriteSheet | null = null
 
+  /** True when alphaMap was inherited from a sheet, false when explicitly set by the user */
+  private _usesSpriteSheetAlphaMap = false
+
   /**
    * Create a new AnimatedSprite2D.
    * Can be called with no arguments for R3F compatibility - set spriteSheet via property.
@@ -87,7 +91,7 @@ export class AnimatedSprite2D extends Sprite2D {
       alpha: options?.alpha,
       flipX: options?.flipX,
       flipY: options?.flipY,
-      layer: options?.layer,
+      sortLayer: options?.sortLayer,
       zIndex: options?.zIndex,
       pixelPerfect: options?.pixelPerfect,
     })
@@ -101,6 +105,11 @@ export class AnimatedSprite2D extends Sprite2D {
     }
 
     this._spriteSheet = options.spriteSheet
+
+    if (options.spriteSheet?.alphaMap && this.alphaMap === null) {
+      this.alphaMap = options.spriteSheet.alphaMap
+      this._usesSpriteSheetAlphaMap = true
+    }
 
     // Add animations
     if (options.animations) {
@@ -139,13 +148,36 @@ export class AnimatedSprite2D extends Sprite2D {
    * Set a new spritesheet.
    */
   set spriteSheet(value: SpriteSheet | null) {
+    // Only replace the current alphaMap if it is unset or still the map we
+    // inherited from the previous sheet — a user-assigned alphaMap (set
+    // directly on the public property, which does not touch the flag) must
+    // survive a sheet swap. Compare against the previous sheet's map rather
+    // than trusting the flag alone, which goes stale on a direct assignment.
+    const prevSheetAlpha = this._usesSpriteSheetAlphaMap ? (this._spriteSheet?.alphaMap ?? null) : null
+    const shouldReplaceAlpha = this.alphaMap === null || this.alphaMap === prevSheetAlpha
     this._spriteSheet = value
     if (value) {
       this.texture = value.texture
-      // Set initial frame from spritesheet
+      // Re-resolve the active frame against the new sheet. A frame rect
+      // is only meaningful relative to the atlas it came from, so
+      // keeping the OLD rect while the texture swaps underneath it would
+      // sample the new atlas through stale UVs. Match by name so a
+      // mid-animation swap (e.g. re-skin) lands on the equivalent frame
+      // in the new sheet; fall back to the sheet's first frame when the
+      // name doesn't exist there (or there was no active frame yet) —
+      // a reset frame is strictly better than stale UVs on a new texture.
+      const matchedFrame = this.frame ? value.frames.get(this.frame.name) : undefined
       const firstFrame = value.frames.values().next().value
-      if (firstFrame && !this.frame) {
-        this.setFrame(firstFrame)
+      const nextFrame = matchedFrame ?? firstFrame
+      if (nextFrame) {
+        this.setFrame(nextFrame)
+      }
+      if (value.alphaMap && shouldReplaceAlpha) {
+        this.alphaMap = value.alphaMap
+        this._usesSpriteSheetAlphaMap = true
+      } else if (shouldReplaceAlpha) {
+        this.alphaMap = null
+        this._usesSpriteSheetAlphaMap = false
       }
       // Atlas-sourced animations: populate the controller from the sheet's
       // named animations (`meta.animations` / Aseprite `frameTags`) when
@@ -315,11 +347,17 @@ export class AnimatedSprite2D extends Sprite2D {
    * @param deltaMs Time since last frame in milliseconds
    */
   update(deltaMs: number): void {
-    this.controller.update(
-      deltaMs,
-      (frame) => this.setFrame(frame),
-      (event, frameIndex) => this.onAnimationEvent(event, frameIndex)
-    )
+    this.controller.update(deltaMs, this._onAnimFrame, this._onAnimEvent)
+  }
+
+  // Bound once per instance so the per-frame update() doesn't allocate a fresh
+  // closure per sprite per frame — that per-frame allocation is GC pressure
+  // that shows up as frame-time wobble in dense animated scenes (10k+ sprites).
+  private readonly _onAnimFrame = (frame: SpriteFrame): void => {
+    this.setFrame(frame)
+  }
+  private readonly _onAnimEvent = (event: string, frameIndex: number): void => {
+    this.onAnimationEvent(event, frameIndex)
   }
 
   /**
@@ -393,7 +431,7 @@ export class AnimatedSprite2D extends Sprite2D {
       alpha: this.alpha,
       flipX: this.flipX,
       flipY: this.flipY,
-      layer: this.layer,
+      sortLayer: this.sortLayer,
       zIndex: this.zIndex,
       pixelPerfect: this.pixelPerfect,
     })
@@ -404,7 +442,10 @@ export class AnimatedSprite2D extends Sprite2D {
 
     // Clone effect instances from parent
     for (const effect of this._effects) {
-      const EffectClass = effect.constructor as { new (): MaterialEffect; _fields: typeof MaterialEffect._fields }
+      const EffectClass = effect.constructor as {
+        new (): MaterialEffect
+        _fields: typeof MaterialEffect._fields
+      }
       const clonedEffect = new EffectClass()
       for (const field of EffectClass._fields) {
         const value = effect._defaults[field.name]!

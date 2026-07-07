@@ -21,7 +21,8 @@ import {
   SkiaGroup,
   SkiaFontLoader,
 } from '@three-flatland/skia/three'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
+import { createDevtoolsProvider } from 'three-flatland'
 
 function setStatus(msg: string, _ok: boolean) {
   console.log(`[skia] ${msg}`)
@@ -56,7 +57,7 @@ async function main() {
   const dpr = Math.min(devicePixelRatio, 2)
 
   // ── Three.js setup (3D perspective) ──
-  const renderer = new WebGPURenderer({ antialias: true, trackTimestamp: true })
+  const renderer = new WebGPURenderer({ antialias: true })
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
@@ -359,13 +360,12 @@ async function main() {
   scene.add(floorEdge)
 
   // ── TweakPane debug controls ──
-  const { pane, stats } = createPane({ scene })
+  const { update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'skia' })
 
   // ── Animation loop ──
 
   function animate(t: number) {
-    stats.begin()
-
     // ── Animate squares ──
     const sqDur = 3000
     let sqT = Math.min((t - sqSwapStart) / sqDur, 1.0)
@@ -457,12 +457,14 @@ async function main() {
     }
 
     // 3. Three.js renders 3D scene (panel with Skia texture + reflection + ground)
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
+    devtools.endFrame(renderer)
 
     // 4. Skia overlay on top of 3D
     overlayCanvas.render(true)
+    updateDevtools()
 
-    stats.end()
     rafId = requestAnimationFrame(animate)
   }
   rafId = requestAnimationFrame(animate)

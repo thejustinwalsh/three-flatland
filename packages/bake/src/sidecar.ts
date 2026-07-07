@@ -86,7 +86,7 @@ export async function probeBakedSibling(
   } catch {
     return { ok: true, hashMatches: false, url }
   }
-  if (!header.ok && header.status !== 206) {
+  if (!header.ok) {
     return { ok: true, hashMatches: false, url }
   }
   const buf = await header.arrayBuffer()

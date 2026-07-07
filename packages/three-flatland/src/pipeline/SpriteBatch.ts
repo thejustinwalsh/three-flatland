@@ -1,28 +1,28 @@
 import {
   InstancedMesh,
-  PlaneGeometry,
   InstancedBufferAttribute,
   InstancedInterleavedBuffer,
   InterleavedBufferAttribute,
   DynamicDrawUsage,
+  Sphere,
   type Matrix4,
+  type Raycaster,
+  type Intersection,
 } from 'three'
+import { createSynthQuadGeometry } from './synthQuadGeometry'
+import { buildEnvelopeGeometry } from './envelopeGeometry'
+import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
 import { BucketedDirtyTracker } from './BucketedDirtyTracker'
 
 /**
- * Default maximum sprites per batch.
- *
- * 16k is the sweet spot across mobile and desktop:
- *   - ~2MB per batch (matrix + interleaved core + effects). Fits in
- *     mobile VRAM even with 3–5 materials per scene.
- *   - Covers indie-scale workloads in a single batch (no draw-call
- *     overhead from batch splits).
- *   - Scenes that want 30k+ sprites per material pass an explicit
- *     `maxBatchSize: 32_768` on `SpriteGroup` — knightmark-style.
+ * Fallback slot count when a batch is constructed without an explicit
+ * size (tests, direct construction). Orchestrated paths always pass a
+ * size — the tier ladder for auto-batch, `maxBatchSize` for explicit
+ * SpriteGroup opt-ins.
  */
-export const DEFAULT_BATCH_SIZE = 16384
+const FALLBACK_BATCH_SIZE = 16384
 
 /**
  * Stride (in floats) of the interleaved per-instance core buffer. Layout
@@ -74,12 +74,14 @@ const CUSTOM_FULL_THRESHOLD = 3
  *   (1 buffer slot, 4 logical attribute views)
  * - `effectBuf*` custom attributes from the material's effect schema
  *
- * Total vertex-buffer bindings: 3 (PlaneGeometry) + 1 (instanceMatrix)
- * + 1 (interleaved) + N (effect buffers). N is capped by
- * `EffectMaterial.MAX_EFFECT_FLOATS / 4 = 3` so the total never
- * exceeds the WebGPU 8-binding limit.
+ * Total vertex-buffer bindings: 0 (index-only synth-quad geometry)
+ * + 1 (instanceMatrix) + 1 (interleaved) + N (effect buffers). N is
+ * capped by `EffectMaterial.MAX_EFFECT_FLOATS / 4 = 6` so the total
+ * never exceeds the WebGPU 8-binding limit.
  *
  * Systems write to batch buffers directly via the write methods.
+ *
+ * @internal
  */
 export class SpriteBatch extends InstancedMesh {
   /**
@@ -91,6 +93,23 @@ export class SpriteBatch extends InstancedMesh {
    * Maximum number of sprites this batch can hold.
    */
   readonly maxSize: number
+
+  /**
+   * Geometry strategy this batch was built with. Pool recycling must
+   * match it — a synth-quad mesh can't serve a tight-mesh material
+   * (different attribute layouts compiled into the shader).
+   */
+  readonly geometryKind: 'synth-quad' | 'tight-mesh'
+
+  /**
+   * Atlas registry `version` the envelope hull was built from (-1 for
+   * synth-quad, which has no envelope). A merge/degrade on the same
+   * texture bumps the registry's version without necessarily flipping
+   * `geometryKind` — pool recycling in `findOrCreateBatch` compares
+   * this against the live atlas version so a batch whose hull no
+   * longer matches its registration gets rebuilt instead of reused.
+   */
+  readonly envelopeVersion: number
 
   /**
    * Current number of active slots in the batch.
@@ -157,7 +176,7 @@ export class SpriteBatch extends InstancedMesh {
   private _matrixTracker!: BucketedDirtyTracker
   private _interleavedTracker!: BucketedDirtyTracker
 
-  constructor(material: Sprite2DMaterial, maxSize: number = DEFAULT_BATCH_SIZE) {
+  constructor(material: Sprite2DMaterial, maxSize: number = FALLBACK_BATCH_SIZE) {
     // Allocate interleaved core storage BEFORE creating InstancedMesh
     // so the attribute bindings exist during shader compilation.
     const interleavedData = new Float32Array(maxSize * INSTANCE_STRIDE)
@@ -189,7 +208,18 @@ export class SpriteBatch extends InstancedMesh {
     }
 
     // Create geometry and add ALL instance attributes BEFORE super().
-    const geometry = new PlaneGeometry(1, 1)
+    // Strategy split (GEOMETRY-PIPELINE-OPTIMIZATION §Part 2):
+    //   synth-quad  — index-only; corner position + UV derived from
+    //                 vertexIndex (alphaTest path; discard kills fringe)
+    //   tight-mesh  — per-batch envelope hull of the atlas polygons
+    //                 (alpha-blend path; fringe blend cost is real)
+    // The material's resolved strategy decides — its shader was built
+    // for exactly one of these attribute layouts.
+    const atlas = material._tightMesh ? getAtlasMesh(material.getTexture()) : null
+    const envelope = atlas ? buildEnvelopeGeometry(material.getTexture()) : null
+    const geometry = envelope ?? createSynthQuadGeometry()
+    // The batch is never frustum-culled; give it an honest infinite bound.
+    geometry.boundingSphere = new Sphere(geometry.boundingSphere!.center, Infinity)
 
     const interleavedBuffer = new InstancedInterleavedBuffer(interleavedData, INSTANCE_STRIDE, 1)
     interleavedBuffer.setUsage(DynamicDrawUsage)
@@ -256,6 +286,8 @@ export class SpriteBatch extends InstancedMesh {
     this._customAttributes = customAttributes
     this.spriteMaterial = material
     this.maxSize = maxSize
+    this.geometryKind = envelope !== null ? 'tight-mesh' : 'synth-quad'
+    this.envelopeVersion = atlas?.version ?? -1
     this.frustumCulled = false
 
     // Initialize dirty trackers — matrix tracks the auto-created
@@ -335,7 +367,13 @@ export class SpriteBatch extends InstancedMesh {
    * Stored in `instanceExtras.x`. Lighting-only; zero for sprite-sort PR.
    */
   writeShadowRadius(index: number, radius: number): void {
-    this._interleavedData[index * INSTANCE_STRIDE + OFFSET_EXTRAS + 0] = radius
+    // Idempotent: transformSyncSystem re-derives this from scale every frame
+    // for every sprite, but scale is static in the common case. Skip the write
+    // and the dirty mark when the value is unchanged, so a static-scale scene
+    // doesn't re-upload the whole interleaved buffer every frame.
+    const o = index * INSTANCE_STRIDE + OFFSET_EXTRAS + 0
+    if (this._interleavedData[o] === radius) return
+    this._interleavedData[o] = radius
     this._interleavedTracker.markDirty(index)
   }
 
@@ -484,11 +522,19 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Free a slot. Writes alpha=0 to the color row so the slot doesn't
-   * render, and pushes it onto the free list for reuse.
+   * Free a slot. Collapses the instance matrix to zero scale — a
+   * degenerate quad rasterizes no fragments at all, unlike the previous
+   * alpha=0 approach where every freed slot still paid full-quad
+   * rasterization + a per-fragment discard. Alpha is zeroed too as
+   * belt-and-braces (any path that resurrects the matrix before
+   * reassignment still draws nothing).
    */
   freeSlot(index: number): void {
     if (index < 0 || index >= this._nextIndex) return
+
+    const m = this.instanceMatrix.array as Float32Array
+    m.fill(0, index * 16, index * 16 + 16)
+    this._matrixTracker.markDirty(index)
 
     this._interleavedData[index * INSTANCE_STRIDE + OFFSET_COLOR + 3] = 0
     this._interleavedTracker.markDirty(index)
@@ -543,6 +589,25 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
+   * Index-only geometry has no position data and the batch is never
+   * frustum-culled — an infinite bound is the honest answer at zero
+   * cost (InstancedMesh's default would union all instance spheres).
+   */
+  override computeBoundingSphere(): void {
+    if (this.boundingSphere === null) this.boundingSphere = new Sphere()
+    this.boundingSphere.center.set(0, 0, 0)
+    this.boundingSphere.radius = Infinity
+  }
+
+  /**
+   * Raycasting a batch is meaningless (and would crash on position-less
+   * geometry). Pointer interaction happens per-Sprite2D via its own
+   * plane-math raycast; batched-sprite picking is tracked separately
+   * (GPU ID-buffer picking).
+   */
+  override raycast(_raycaster: Raycaster, _intersects: Intersection[]): void {}
+
+  /**
    * Flush per-buffer dirty state to GPU upload ranges.
    *
    * Each tracker decides per-buffer whether to emit a single full-
@@ -550,6 +615,17 @@ export class SpriteBatch extends InstancedMesh {
    * `addUpdateRange` per dirty bucket, based on how many buckets
    * accumulated changes during the frame.
    */
+  /**
+   * Whether any occluder-relevant attribute changed since the last flush.
+   * Reads the matrix tracker (transforms) and interleaved tracker
+   * (frame/castsShadow/alpha/add-remove) — together these capture every
+   * change that alters an occluder silhouette. Must be read BEFORE
+   * `flushDirtyRanges`, which clears the trackers.
+   */
+  get isDirty(): boolean {
+    return this._matrixTracker.isDirty || this._interleavedTracker.isDirty
+  }
+
   flushDirtyRanges(): void {
     this._matrixTracker.flush()
     this._interleavedTracker.flush()

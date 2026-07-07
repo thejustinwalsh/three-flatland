@@ -1,5 +1,7 @@
 # Unify WithPropsSync dirty bits with ECS dirty tracking
 
+> **Superseded (2026-05-24):** The dirty-bit work shipped as `BucketedDirtyTracker`, and the prop-sync layer consolidated onto the shared `observable` strategies (`packages/three-flatland/src/observable/`) — `Sprite2D` and external extenders now call `observable.color.attach(value, notify)` directly. The `WithPropsSync` installer/mixin was removed; references to it below are historical context only.
+
 **Status:** Future improvement. NOT in scope for the WithPropsSync recast PR.
 
 **Captured:** During the WithPropsSync recast discussion (event-driven → dirty-bit). User flagged the parallel to recent sprite-sort-fix work.
@@ -18,10 +20,12 @@ Both signal "this state is stale until something acts on it." The WithPropsSync 
 Sprite2D has a dual life — standalone or batched. Standalone = own geometry + local arrays. Batched = ECS-backed with array refs swapped to world SoA. Late enrollment (when added to a SpriteGroup parent) does the swap.
 
 This forces WithPropsSync's resolver to branch on `_entity`:
+
 - `if (!this._entity) this._updateOwnUV()` (standalone)
 - `else this._entity.set(SpriteUV, {...})` (batched)
 
 If every sprite was always ECS-backed from construction (no standalone path):
+
 - Sprite props project directly to ECS traits, unconditionally.
 - WithPropsSync's resolver could be auto-generated from schema-to-trait mapping.
 - Auto-batching dynamically batches/unbatches based on material/layer/etc. — sprite doesn't know or care.
@@ -32,12 +36,14 @@ This is the auto-batching milestone (referenced in existing plans). Late enrollm
 ## What it would mean
 
 The resolver currently has branches like:
+
 ```ts
 if (!this._entity) this._updateOwnUV()
 else this._entity.set(SpriteUV, { ... })
 ```
 
 With always-on-ECS:
+
 ```ts
 this._entity.set(SpriteUV, { ... })
 ```

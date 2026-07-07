@@ -20,7 +20,7 @@ export default defineConfig({
       'scripts/**/*.test.ts',
       'tools/*/src/**/*.test.ts',
     ],
-    exclude: ['packages/skia/**', 'packages/tweakpane/**', '**/node_modules/**'],
+    exclude: ['packages/skia/**', 'packages/devtools/**', '**/node_modules/**'],
     setupFiles: ['./vitest.setup.ts'],
     coverage: {
       provider: 'v8',

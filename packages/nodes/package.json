@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/nodes",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.7",
   "description": "TSL shader nodes for sprite rendering and effects",
   "type": "module",
   "exports": {
@@ -145,6 +145,28 @@
       "require": {
         "types": "./dist/distortion/*.d.cts",
         "default": "./dist/distortion/*.cjs"
+      }
+    },
+    "./lighting": {
+      "source": "./src/lighting/index.ts",
+      "import": {
+        "types": "./dist/lighting/index.d.ts",
+        "default": "./dist/lighting/index.js"
+      },
+      "require": {
+        "types": "./dist/lighting/index.d.cts",
+        "default": "./dist/lighting/index.cjs"
+      }
+    },
+    "./lighting/*": {
+      "source": "./src/lighting/*.ts",
+      "import": {
+        "types": "./dist/lighting/*.d.ts",
+        "default": "./dist/lighting/*.js"
+      },
+      "require": {
+        "types": "./dist/lighting/*.d.cts",
+        "default": "./dist/lighting/*.cjs"
       }
     },
     "./retro": {

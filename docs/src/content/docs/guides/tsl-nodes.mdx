@@ -4,8 +4,19 @@ description: Create custom shader effects using Three Shader Language.
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import tslNodeChain from '../../../assets/diagrams/tsl-node-chain.svg?raw';
+
+**What you'll learn**
+- How to author a `MaterialEffect` with typed per-instance parameters (`createMaterialEffect`)
+- The catalog of effect nodes from `@three-flatland/nodes` — color, retro, dissolve, outline, dithering
+- How to compose multiple effects on a single sprite via `addEffect()` / `removeEffect()`
+
+---
 
 TSL (Three Shader Language) is a node-based shader system in Three.js that enables custom GPU effects without writing raw WGSL/GLSL code.
+
+If you've been writing GLSL strings or `onBeforeCompile` hacks for years, this page is the unlearning. Composition replaces concatenation; the type system catches you.
 
 three-flatland provides two ways to use TSL:
 
@@ -13,6 +24,8 @@ three-flatland provides two ways to use TSL:
 2. **Raw TSL nodes** — compose low-level node functions directly for full shader control
 
 TSL node functions (tint, hueShift, outline, dissolve, etc.) are exported from `@three-flatland/nodes`. The effect system (`createMaterialEffect`, `createPassEffect`) and core classes are exported from `three-flatland`.
+
+<Diagram caption="Composing a sprite's effect chain — the base texture color flows through each effect node as inputColor and out as a vec4, chaining in addEffect order into one node material." src={tslNodeChain} />
 
 ## Material Effects :badge[Recommended]{variant=success}
 
@@ -328,12 +341,12 @@ With Material Effects, multiple effects can be active simultaneously. Each effec
 
 ```typescript
 const flash = new DamageFlash();
-const outline = new SelectOutline();
+const select = new Select();
 
 sprite.addEffect(flash);
-sprite.addEffect(outline);
+sprite.addEffect(select);
 
-// Both effects are active — outline runs after flash in the shader
+// Both effects are active — select runs after flash in the shader
 ```
 
 For low-level TSL, chain node functions directly:
@@ -352,11 +365,14 @@ material.colorNode = Fn(() => {
 
 ## Performance Tips
 
+:::tip[Performance note]
+Material Effects pack per-sprite data into fixed-size GPU buffers, so adding effects to thousands of sprites doesn't cost extra draw calls — it costs shader ops per fragment. Reach for `addEffect()` freely. Compose, don't worry.
+:::
+
 - Complex node graphs increase shader compile time
 - Use `uniform()` for values that change frequently
 - Cache compiled materials when reusing effects
 - Avoid dynamic branching in hot paths
-- Material Effects pack per-sprite data into fixed-size GPU buffers, avoiding per-effect draw calls
 
 ## Next Steps
 

@@ -31,9 +31,13 @@
     "@stackblitz/sdk": "^1.11.0",
     "@unocss/astro": "^66.6.8",
     "@three-flatland/mini-breakout": "workspace:*",
+    "@three-flatland/presets": "workspace:*",
     "@zzfx-studio/zzfxm": "catalog:",
+    "animejs": "^4.5.0",
     "astro": "^6.2.1",
+    "reveal.js": "^5.1.0",
     "koota": "catalog:",
+    "qr-code-styling": "^1.9.2",
     "react": "catalog:",
     "react-dom": "catalog:",
     "sharp": "^0.33.5",
@@ -43,6 +47,7 @@
     "starlight-theme": "workspace:*",
     "starlight-typedoc": "^0.21.5",
     "three": "catalog:",
+    "three-flatland": "workspace:*",
     "typedoc": "^0.28.19",
     "typedoc-plugin-markdown": "^4.11.0",
     "unist-util-visit": "^5.1.0",
@@ -51,9 +56,10 @@
     "zzfx": "catalog:"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.60.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@types/three": "catalog:",
     "typescript": "catalog:",
     "vite": "^7.3.2"
   }

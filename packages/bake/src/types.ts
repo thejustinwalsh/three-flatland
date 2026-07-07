@@ -67,14 +67,27 @@ export interface FlatlandManifest {
  */
 export interface BakedAssetLoaderOptions {
   /**
-   * Skip the baked-sibling probe. Loader generates in-memory directly
-   * (or uses an explicit URL the caller provided). Suppresses the
-   * devtime "no baked sibling" warning.
+   * Generate this asset's derived data in the browser on every load
+   * instead of loading a pre-baked sidecar. The runtime generator
+   * becomes the canonical source — no sidecar probe, no devtime "no
+   * baked sibling" warning, just a fresh generate on every load.
    *
-   * Use during asset iteration when you know no baked output exists yet
-   * and don't want the probe cost or console noise.
+   * If you ask for the data (e.g. `normals: true`), you always get it.
+   * `forceRuntime` chooses *where* the generation happens — browser vs
+   * CI — it does not choose whether you get the data. The default path
+   * still produces the data on every miss; this flag just commits to
+   * "the browser is always where it's produced for this asset."
+   *
+   * Use when runtime really is the right home for the generation:
+   * procedurally varied content, throwaway prototypes, asset bundles
+   * where shipping the sidecar isn't worth the bytes. Not a dev-
+   * iteration knob — the default path (probe → generate on miss + warn
+   * pointing at `flatland-bake`) already handles iteration.
+   *
+   * Default `false`. Mirrors `SlugFontLoader.forceRuntime` — one flag
+   * across every baked-asset loader in the codebase.
    */
-  skipBakedProbe?: boolean
+  forceRuntime?: boolean
 }
 
 /**

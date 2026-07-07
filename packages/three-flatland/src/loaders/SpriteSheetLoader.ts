@@ -3,21 +3,61 @@ import type { Texture } from 'three'
 import type {
   SpriteSheet,
   SpriteFrame,
+  SpriteFrameMesh,
+  SpriteSheetFrameMeshJSON,
   SpriteSheetJSONHash,
   SpriteSheetJSONArray,
   SpriteAnimation,
   AsepriteFrameTag,
   AtlasAnimation,
 } from '../sprites/types'
+import { degradeAtlasMesh, registerAtlasMesh } from './atlasMeshRegistry'
+import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
+import {
+  resolveNormalMap,
+  type NormalSourceDescriptor,
+  type NormalRegion,
+} from '@three-flatland/normals'
 import { type TexturePreset, type TextureOptions, resolveTextureOptions } from './texturePresets'
 import { TextureLoader } from './TextureLoader'
+import { resolveAlphaMap } from '../events/resolveAlphaMap'
+import { AlphaMap } from '../events/AlphaMap'
+
+/**
+ * Shape accepted by `SpriteSheetLoaderOptions.normals`.
+ *
+ * - `false` — no normals generated.
+ * - `true` — auto-synthesize one region per frame.
+ * - `NormalSourceDescriptor` — user provides defaults (and optionally
+ *   regions). Frame-derived regions fill in when `regions` is absent.
+ */
+export type SpriteSheetNormalsOption = false | true | NormalSourceDescriptor
 
 /**
  * Options for loading a spritesheet.
  */
-export interface SpriteSheetLoaderOptions {
+export interface SpriteSheetLoaderOptions extends BakedAssetLoaderOptions {
   /** Texture preset or custom options. Overrides loader and global defaults. */
   texture?: TexturePreset | TextureOptions
+  /**
+   * Normal-map generation. When truthy, the loader synthesizes one
+   * region per sprite frame (pixel rects from the sheet JSON), probes
+   * for a baked `<sheet-image>.normal.png` sibling with a matching
+   * descriptor hash, and falls back to an in-memory bake.
+   *
+   * The resulting texture is attached to `SpriteSheet.normalMap`,
+   * 1:1 co-registered with the atlas.
+   */
+  normals?: SpriteSheetNormalsOption
+  /**
+   * Alpha hitmask generation. When `true`, the loader probes for a
+   * baked `<sheet-image>.alpha.png` sidecar and falls back to a
+   * runtime readback via `AlphaMap.fromTexture`.
+   *
+   * The resulting map is attached to `SpriteSheet.alphaMap` and
+   * consumed by `hitTestMode: 'alpha'`. Spec §8.4.
+   */
+  alpha?: boolean
 }
 
 /**
@@ -69,12 +109,36 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   preset: TexturePreset | TextureOptions | undefined = undefined
 
   /**
+   * Normal-map generation. See {@link SpriteSheetLoaderOptions.normals}.
+   */
+  normals: SpriteSheetNormalsOption = false
+
+  /**
+   * Alpha hitmask generation. See {@link SpriteSheetLoaderOptions.alpha}.
+   */
+  alpha = false
+
+  /**
+   * Generate this sheet's normal map in the browser on every load
+   * instead of loading a pre-baked sidecar. The in-memory bake runs on
+   * every load; the sidecar probe and "no baked sibling" warn are
+   * skipped. Not a dev-iteration knob.
+   * See {@link BakedAssetLoaderOptions.forceRuntime}.
+   */
+  forceRuntime = false
+
+  /**
    * Load a spritesheet asynchronously (for R3F useLoader compatibility).
    * Presets are automatically applied.
    */
   loadAsync(url: string): Promise<SpriteSheet> {
     const resolved = resolveTextureOptions(this.preset, SpriteSheetLoader.options)
-    return SpriteSheetLoader.loadUncached(url, { texture: resolved })
+    return SpriteSheetLoader.loadUncached(url, {
+      texture: resolved,
+      normals: this.normals,
+      alpha: this.alpha,
+      forceRuntime: this.forceRuntime,
+    })
   }
 
   // ==========================================
@@ -104,7 +168,15 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   private static getCacheKey(url: string, options?: SpriteSheetLoaderOptions): string {
     const resolved = resolveTextureOptions(options?.texture, this.options)
     const optionsKey = typeof resolved === 'string' ? resolved : JSON.stringify(resolved)
-    return `${url}:${optionsKey}`
+    // Sidecar flags change the produced sheet (normalMap / alphaMap), so they
+    // are part of the cache identity — otherwise a `{ alpha: true }` load and a
+    // bare load of the same URL collide and one silently gets the wrong sheet.
+    const sidecarKey = JSON.stringify({
+      normals: options?.normals ?? false,
+      alpha: options?.alpha ?? false,
+      forceRuntime: options?.forceRuntime ?? false,
+    })
+    return `${url}:${optionsKey}:${sidecarKey}`
   }
 
   /**
@@ -143,7 +215,77 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     const frameDurations = parsed.frameDurations
     const animations = parseAnimations(json.meta, orderedFrameNames, frameDurations)
 
-    return this.createSpriteSheet(texture, parsed.frames, animations, parsed.width, parsed.height)
+    // Create SpriteSheet
+    const sheet = this.createSpriteSheet(
+      texture,
+      parsed.frames,
+      animations,
+      parsed.width,
+      parsed.height
+    )
+
+    // Resolve normal map — probe baked sibling, fall back to in-memory bake.
+    if (options?.normals) {
+      sheet.normalMap = await this.resolveSheetNormals(
+        textureUrl,
+        parsed.frames,
+        parsed.width,
+        parsed.height,
+        options.normals,
+        options.forceRuntime ?? false,
+        texture.flipY
+      )
+    }
+
+    // Resolve alpha hitmask — probe baked sidecar, fall back to runtime readback.
+    if (options?.alpha) {
+      const alphaMap = await resolveAlphaMap(textureUrl, {
+        forceRuntime: options.forceRuntime ?? false,
+        runtimeFallback: () => Promise.resolve(AlphaMap.fromTexture(sheet.texture)),
+      })
+      if (alphaMap) sheet.alphaMap = alphaMap
+    }
+
+    return sheet
+  }
+
+  /**
+   * Synthesize a descriptor from the sheet's frame rects and hand it
+   * to `resolveNormalMap`. One region per frame — region-local alpha
+   * clamping keeps adjacent frames from bleeding gradients into each
+   * other.
+   */
+  private static async resolveSheetNormals(
+    textureUrl: string,
+    frames: Map<string, SpriteFrame>,
+    atlasWidth: number,
+    atlasHeight: number,
+    optionDescriptor: true | NormalSourceDescriptor,
+    forceRuntime: boolean,
+    diffuseFlipY: boolean
+  ): Promise<Texture> {
+    // Convert each frame's normalized UV back to pixel coords. Frames
+    // parsed via `parseJSONHash` store Y flipped (0 = bottom) — undo
+    // that here so regions stay in image-space (0 = top).
+    const regions: NormalRegion[] = []
+    for (const frame of frames.values()) {
+      const x = Math.round(frame.x * atlasWidth)
+      const w = Math.round(frame.width * atlasWidth)
+      const h = Math.round(frame.height * atlasHeight)
+      const yImage = Math.round((1 - frame.y - frame.height) * atlasHeight)
+      regions.push({ x, y: yImage, w, h })
+    }
+
+    const base: NormalSourceDescriptor = optionDescriptor === true ? {} : optionDescriptor
+    const descriptor: NormalSourceDescriptor = {
+      ...base,
+      regions: base.regions && base.regions.length > 0 ? base.regions : regions,
+    }
+
+    return resolveNormalMap(textureUrl, descriptor, {
+      forceRuntime,
+      flipY: diffuseFlipY,
+    })
   }
 
   /**
@@ -161,12 +303,17 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     for (const [name, data] of Object.entries(json.frames)) {
       // Convert to normalized UV coordinates
       // Note: UV Y is flipped (0 = bottom, 1 = top) vs image coords (0 = top)
-      const normalizedHeight = data.frame.h / atlasHeight
+      // Rotated frames (TexturePacker 90° CW) occupy a swapped-dims
+      // region in the atlas: JSON w/h describe the unrotated sprite,
+      // the packed rect is (h × w) — pixi's convention.
+      const rectW = data.rotated ? data.frame.h : data.frame.w
+      const rectH = data.rotated ? data.frame.w : data.frame.h
+      const normalizedHeight = rectH / atlasHeight
       const frame: SpriteFrame = {
         name,
         x: data.frame.x / atlasWidth,
-        y: 1 - (data.frame.y / atlasHeight) - normalizedHeight,
-        width: data.frame.w / atlasWidth,
+        y: 1 - data.frame.y / atlasHeight - normalizedHeight,
+        width: rectW / atlasWidth,
         height: normalizedHeight,
         sourceWidth: data.sourceSize.w,
         sourceHeight: data.sourceSize.h,
@@ -183,6 +330,8 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
           height: data.spriteSourceSize.h,
         }
       }
+
+      frame.mesh = SpriteSheetLoader.parseFrameMesh(data, frame)
 
       frames.set(name, frame)
       orderedFrameNames.push(name)
@@ -213,12 +362,14 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     for (const data of json.frames) {
       // Convert to normalized UV coordinates
       // Note: UV Y is flipped (0 = bottom, 1 = top) vs image coords (0 = top)
-      const normalizedHeight = data.frame.h / atlasHeight
+      const rectW = data.rotated ? data.frame.h : data.frame.w
+      const rectH = data.rotated ? data.frame.w : data.frame.h
+      const normalizedHeight = rectH / atlasHeight
       const frame: SpriteFrame = {
         name: data.filename,
         x: data.frame.x / atlasWidth,
-        y: 1 - (data.frame.y / atlasHeight) - normalizedHeight,
-        width: data.frame.w / atlasWidth,
+        y: 1 - data.frame.y / atlasHeight - normalizedHeight,
+        width: rectW / atlasWidth,
         height: normalizedHeight,
         sourceWidth: data.sourceSize.w,
         sourceHeight: data.sourceSize.h,
@@ -235,6 +386,8 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
           height: data.spriteSourceSize.h,
         }
       }
+
+      frame.mesh = SpriteSheetLoader.parseFrameMesh(data, frame)
 
       frames.set(data.filename, frame)
       orderedFrameNames.push(data.filename)
@@ -270,7 +423,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     width: number,
     height: number
   ): SpriteSheet {
-    return {
+    const sheet: SpriteSheet = {
       texture,
       frames,
       animations,
@@ -293,6 +446,122 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
         return Array.from(animations.keys())
       },
     }
+
+    // Concatenate per-frame mesh data into sheet-level arrays and stamp
+    // each frame's offsets — the layout the tight-mesh render path (and
+    // a future vertex-shader mesh table) indexes into.
+    let vertexTotal = 0
+    let indexTotal = 0
+    const meshed: SpriteFrame[] = []
+    for (const frame of frames.values()) {
+      if (!frame.mesh) continue
+      meshed.push(frame)
+      vertexTotal += frame.mesh.vertexCount
+      indexTotal += frame.mesh.indices.length
+    }
+    if (meshed.length > 0) {
+      const meshVerts = new Float32Array(vertexTotal * 4)
+      const meshIndices = new Uint16Array(indexTotal)
+      let vOff = 0
+      let iOff = 0
+      for (const frame of meshed) {
+        const mesh = frame.mesh!
+        mesh.vertexOffset = vOff
+        mesh.indexOffset = iOff
+        meshVerts.set(mesh.verts, vOff * 4)
+        meshIndices.set(mesh.indices, iOff)
+        vOff += mesh.vertexCount
+        iOff += mesh.indices.length
+      }
+      sheet.meshVerts = meshVerts
+      sheet.meshIndices = meshIndices
+      registerAtlasMesh(texture, {
+        frames: meshed,
+        complete: meshed.length === frames.size,
+      })
+    } else {
+      // A meshless sheet sharing a texture with a previously-registered
+      // meshed sheet: its frames are unknown to the envelope — degrade
+      // it toward the full quad so nothing clips.
+      degradeAtlasMesh(texture)
+    }
+
+    return sheet
+  }
+
+  /**
+   * Normalize a frame's optional polygon payload to a SpriteFrameMesh.
+   *
+   * Two accepted inputs:
+   * - our own \`mesh\` field — already local [-0.5, 0.5] + frame-local
+   *   UV [0, 1], pre-triangulated; passed through
+   * - TexturePacker polygon-trim output (\`vertices\`/\`triangles\` in
+   *   source-image pixels, y-down) — normalized here. Frame-local UVs
+   *   are derived from the vertex position within the (trimmed) frame
+   *   rect, so the shader's instanceUV atlas remap applies unchanged.
+   */
+  private static parseFrameMesh(
+    data: SpriteSheetFrameMeshJSON,
+    frame: SpriteFrame
+  ): SpriteFrameMesh | null {
+    if (data.mesh && data.mesh.verts.length >= 3 && data.mesh.indices.length >= 3) {
+      const count = data.mesh.verts.length
+      const verts = new Float32Array(count * 4)
+      for (let i = 0; i < count; i++) {
+        const [x, y, u, v] = data.mesh.verts[i]!
+        verts[i * 4 + 0] = x
+        verts[i * 4 + 1] = y
+        verts[i * 4 + 2] = u
+        verts[i * 4 + 3] = v
+      }
+      return {
+        verts,
+        indices: Uint16Array.from(data.mesh.indices),
+        vertexCount: count,
+        vertexOffset: 0,
+        indexOffset: 0,
+      }
+    }
+
+    if (data.vertices && data.triangles && data.vertices.length >= 3) {
+      // Rotated frames pack 90°-turned in the atlas; the quad path
+      // doesn't rotate its sampling yet, and deriving rotated
+      // frame-local UVs here would desync from it. Fall back to the
+      // quad for rotated frames — correctness over overdraw.
+      if (frame.rotated) return null
+      const sourceW = frame.sourceWidth
+      const sourceH = frame.sourceHeight
+      const trim = frame.trimOffset ?? { x: 0, y: 0, width: sourceW, height: sourceH }
+      const count = data.vertices.length
+      const verts = new Float32Array(count * 4)
+      for (let i = 0; i < count; i++) {
+        const [px, py] = data.vertices[i]!
+        // Source-image pixels (y-down) → unit-quad locals (y-up)
+        verts[i * 4 + 0] = px / sourceW - 0.5
+        verts[i * 4 + 1] = 0.5 - py / sourceH
+        // Frame-local UV relative to the (trimmed) packed rect, v-up
+        verts[i * 4 + 2] = (px - trim.x) / trim.width
+        verts[i * 4 + 3] = 1 - (py - trim.y) / trim.height
+      }
+      const indices = new Uint16Array(data.triangles.length * 3)
+      for (let i = 0; i < data.triangles.length; i++) {
+        const [a, b, c] = data.triangles[i]!
+        indices[i * 3 + 0] = a
+        // TexturePacker triangles are wound for y-down screen space —
+        // the y flip above mirrors them, so swap to keep CCW front faces.
+        indices[i * 3 + 1] = c
+        indices[i * 3 + 2] = b
+      }
+      return {
+        verts,
+        indices,
+        vertexCount: count,
+        vertexOffset: 0,
+        indexOffset: 0,
+      }
+    }
+
+    return null
   }
 
   /**
@@ -305,10 +574,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   /**
    * Preload multiple spritesheets.
    */
-  static preload(
-    urls: string[],
-    options?: SpriteSheetLoaderOptions
-  ): Promise<SpriteSheet[]> {
+  static preload(urls: string[], options?: SpriteSheetLoaderOptions): Promise<SpriteSheet[]> {
     return Promise.all(urls.map((url) => this.load(url, options)))
   }
 }

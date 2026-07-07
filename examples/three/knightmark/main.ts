@@ -9,14 +9,15 @@ import {
   SpriteSheetLoader,
   TextureLoader,
   TileMap2D,
-  Layers,
+  SortLayers,
   type AnimationSetDefinition,
   type SpriteSheet,
   type TileMapData,
   type TilesetData,
   type TileLayerData,
+  createDevtoolsProvider,
 } from 'three-flatland'
-import { createPane, wireSceneStats } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 // ============================================
 // CONSTANTS
@@ -36,7 +37,8 @@ const TILE_SCALE = 2
 // TWEAKPANE
 // ============================================
 
-const { pane, stats: globalStats } = createPane()
+const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+const devtools = createDevtoolsProvider({ name: 'knightmark' })
 
 // Stats monitors — explicitly refreshed each frame via knightStatsBindings
 // below. The default readonly-binding MonitorBinding ticker (200ms) can
@@ -201,7 +203,7 @@ let activeRenderer: WebGPURenderer | null = null
 
 async function main() {
   // WebGPU renderer
-  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  const renderer = new WebGPURenderer({ antialias: false })
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
@@ -216,10 +218,6 @@ async function main() {
   const scene = new Scene()
   scene.background = gemClearColor(GEM)
 
-  // Wire the pane's stats hooks to this scene — captures draws/tris/etc
-  // on each render and drains the GPU timestamp query pool.
-  wireSceneStats(scene, globalStats)
-
   // Orthographic camera
   const aspect = window.innerWidth / window.innerHeight
   const halfW = (VIEW_SIZE * aspect) / 2
@@ -227,8 +225,9 @@ async function main() {
   const camera = new OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, 1000)
   camera.position.z = 100
 
-  // SpriteGroup for batching
-  const spriteGroup = new SpriteGroup()
+  // SpriteGroup for batching — this scene stresses 40k+ sprites, so pin
+  // fixed 16384-slot batches (ladder off) to minimize per-batch overhead.
+  const spriteGroup = new SpriteGroup({ maxBatchSize: 16384 })
   scene.add(spriteGroup)
 
   // Load assets
@@ -338,7 +337,7 @@ async function main() {
       spriteSheet: sheet,
       animationSet: knightAnimations,
       animation: 'idle',
-      layer: Layers.ENTITIES,
+      sortLayer: SortLayers.ENTITIES,
       anchor: [0.5, 0.5],
       material,
     })
@@ -432,9 +431,6 @@ async function main() {
     lastTime = now
     const dt = deltaMs / 1000
 
-    // FPS graph
-    globalStats.begin()
-
     // Derive cell size from current hitRadius
     const cellSize = sim.hitRadius * 4
 
@@ -521,15 +517,15 @@ async function main() {
     }
 
     // Render — systems run automatically in updateMatrixWorld
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
+    devtools.endFrame(renderer)
+    updateDevtools()
 
-    // Knight batch monitors — draws/tris/etc are captured automatically
-    // by the `wireSceneStats(scene, globalStats)` call in main().
+    // Knight batch monitors
     const s = spriteGroup.stats
     knightStats.knights = knights.length
     knightStats.batches = s.batchCount
-    for (const b of knightStatsBindings) b.refresh()
-    globalStats.end()
   }
   animate()
 }

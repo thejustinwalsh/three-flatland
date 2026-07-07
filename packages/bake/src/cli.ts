@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+/**
+ * `flatland-bake` — the unified bake entry point. Discovers bakers
+ * contributed by installed packages (via a `flatland.bake` field in
+ * their package.json), then dispatches `flatland-bake <name> [args]` to
+ * the matching baker's `run()`. `--list` enumerates available bakers and
+ * `--help` prints usage. See {@link discoverBakers} and the {@link Baker}
+ * contract for how a package registers a subcommand.
+ */
 import { pathToFileURL } from 'node:url'
 import { existsSync } from 'node:fs'
 import { discoverBakers } from './discovery.js'
@@ -11,7 +19,7 @@ Usage:
   flatland-bake --list              List registered bakers
   flatland-bake --help              Show this usage
 
-Bakers are contributed by packages via a \`flatland.bakers\` field in
+Bakers are contributed by packages via a \`flatland.bake\` field in
 package.json. Install a package that provides one (e.g. @three-flatland/slug)
 and its subcommand will appear in --list.`
 

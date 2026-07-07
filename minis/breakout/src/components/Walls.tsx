@@ -1,5 +1,5 @@
 import type { Sprite2DMaterial } from 'three-flatland/react'
-import { Layers } from 'three-flatland/react'
+import { SortLayers } from 'three-flatland/react'
 import {
   WORLD_LEFT,
   WORLD_RIGHT,
@@ -23,7 +23,7 @@ export function WallsRenderer({ wallMaterial }: WallsRendererProps) {
         material={wallMaterial}
         position={[WORLD_LEFT - WALL_THICKNESS / 2, 0, 0]}
         scale={[WALL_THICKNESS, WORLD_HEIGHT + WALL_THICKNESS, 1]}
-        layer={Layers.GROUND}
+        sortLayer={SortLayers.GROUND}
         zIndex={1}
       />
 
@@ -32,7 +32,7 @@ export function WallsRenderer({ wallMaterial }: WallsRendererProps) {
         material={wallMaterial}
         position={[WORLD_RIGHT + WALL_THICKNESS / 2, 0, 0]}
         scale={[WALL_THICKNESS, WORLD_HEIGHT + WALL_THICKNESS, 1]}
-        layer={Layers.GROUND}
+        sortLayer={SortLayers.GROUND}
         zIndex={1}
       />
 
@@ -41,7 +41,7 @@ export function WallsRenderer({ wallMaterial }: WallsRendererProps) {
         material={wallMaterial}
         position={[0, WORLD_TOP + WALL_THICKNESS / 2, 0]}
         scale={[WORLD_WIDTH + WALL_THICKNESS * 2, WALL_THICKNESS, 1]}
-        layer={Layers.GROUND}
+        sortLayer={SortLayers.GROUND}
         zIndex={1}
       />
     </>

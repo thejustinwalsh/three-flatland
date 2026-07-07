@@ -2,6 +2,25 @@
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
   "concurrency": "20",
+  // Strict env mode (turbo 2.x default) filters the environment before
+  // spawning tasks. EXAMPLES_PORT is the single knob that sets the
+  // examples Vite dev port (`examples/package.json`: `--port ${EXAMPLES_PORT:-5174}`)
+  // AND the port the docs site bakes into `import.meta.env.VITE_EXAMPLES_PORT`
+  // (`docs/astro.config.mjs`) so `DevtoolsDemo.astro` builds same-origin
+  // iframe + `/.devtools` URLs. Without passing it through, both tasks
+  // silently fall back to 5174 and the override is a no-op — pass it
+  // through so docs + examples stay on the same origin when it's set.
+  // EXAMPLES_PORT: see note above. NODE_OPTIONS: forwarded so the heap bump
+  // set by the root `build` script reaches each package's tsup build — the
+  // three-flatland DTS pass (bundle:false over all of src/**) otherwise OOMs
+  // the rollup-plugin-dts worker on the default Node heap.
+  "globalPassThroughEnv": ["EXAMPLES_PORT", "NODE_OPTIONS"],
+  // Local filesystem cache eviction — keep the on-disk cache tight instead
+  // of letting it balloon to tens of GB. Entries older than cacheMaxAge are
+  // evicted at the start of each `turbo run`; once the cache exceeds
+  // cacheMaxSize the oldest entries are dropped until it fits.
+  "cacheMaxAge": "24h",
+  "cacheMaxSize": "2GB",
   "tasks": {
     "//#gen:types": {
       "inputs": ["packages/schemas/src/**/schema.json", "scripts/gen-schema-types.ts"],
@@ -34,6 +53,27 @@
     "@three-flatland/presets#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
+    },
+    "@three-flatland/bake#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/atlas#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/normals#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/devtools#build:bundle": {
+      "dependsOn": ["^build"],
+      "outputs": ["bundle/**"],
+      "inputs": [
+        "src/dashboard/**",
+        "vite.config.bundle.ts",
+        "package.json"
+      ]
     },
     "dev": {
       "cache": false,
@@ -96,7 +136,12 @@
         "example-react-tsl-nodes#build",
         "example-react-slug-text#build",
         "example-three-skia#build",
-        "example-react-skia#build"
+        "example-react-skia#build",
+        "example-three-lighting#build",
+        "example-react-lighting#build",
+        "example-three-hit-test#build",
+        "example-react-hit-test#build",
+        "@three-flatland/devtools#build:bundle"
       ],
       "outputs": ["dist/**"],
       "inputs": [

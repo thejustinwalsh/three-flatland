@@ -1,4 +1,17 @@
-import { Mesh, PlaneGeometry, Vector2, Vector3, Color, BufferAttribute, type Texture } from 'three'
+import {
+  Mesh,
+  Vector2,
+  Vector3,
+  Color,
+  BufferAttribute,
+  InterleavedBuffer,
+  InterleavedBufferAttribute,
+  type BufferGeometry,
+  type Scene,
+  type Texture,
+  type Raycaster,
+  type Intersection,
+} from 'three'
 import type { Entity, World } from 'koota'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
@@ -8,7 +21,8 @@ import {
   SpriteUV,
   SpriteColor,
   SpriteFlip,
-  SpriteLayer,
+  SortLayer,
+  CameraLayersMask,
   SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
@@ -16,106 +30,43 @@ import {
   BatchSlot,
   BatchRegistry,
 } from '../ecs/traits'
-import type { RegistryData } from '../ecs/batchUtils'
+import { resolveSortLayer, type SortLayerName, type SortLayerValue } from '../pipeline/sortLayers'
+import { getWorldDefaultMaterial, type RegistryData } from '../ecs/batchUtils'
 import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
+import { observable } from '../observable'
+import type { HitTestMode } from '../events/HitTestMode'
+import { resolveHitTestMode } from '../events/HitTestMode'
+import type { AlphaMap } from '../events/AlphaMap'
+import { rayPlaneZ0, createIntersection } from '../events/raycastHelpers'
+import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
+import { flatlandPrime, flatlandRegister, flatlandUnregister } from '../orchestration/orchestrator'
+import type { Registry } from '../orchestration/registry'
 
-// ============================================
-// Observable property helpers
-// ============================================
-//
-// Convert data properties (x/y/z, r/g/b) on Three.js objects to accessor
-// properties that fire a callback on write. Replaces the generic Proxy approach
-// with zero per-instance function allocations — descriptors are shared at
-// module level and reuse `this._cb` on the instance.
-//
-// Works because ALL Three.js Vector3/Color/Vector2 methods mutate via
-// `this.x = ...` etc., so the accessor setters catch every mutation path.
+// Types the build-time `process.env` read without requiring @types/node
+// (shadows the global where present; erased at compile).
+declare const process: { env: { NODE_ENV?: string } }
 
-/** @internal */
-interface Observable {
-  _cb: () => void
-}
-
-const _vec2Desc: PropertyDescriptorMap = {
-  x: {
-    get(this: Observable & { _ox: number }) {
-      return this._ox
-    },
-    set(this: Observable & { _ox: number }, v: number) {
-      this._ox = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-  y: {
-    get(this: Observable & { _oy: number }) {
-      return this._oy
-    },
-    set(this: Observable & { _oy: number }, v: number) {
-      this._oy = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-}
-
-const _colorDesc: PropertyDescriptorMap = {
-  r: {
-    get(this: Observable & { _or: number }) {
-      return this._or
-    },
-    set(this: Observable & { _or: number }, v: number) {
-      this._or = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-  g: {
-    get(this: Observable & { _og: number }) {
-      return this._og
-    },
-    set(this: Observable & { _og: number }, v: number) {
-      this._og = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-  b: {
-    get(this: Observable & { _ob: number }) {
-      return this._ob
-    },
-    set(this: Observable & { _ob: number }, v: number) {
-      this._ob = v
-      this._cb()
-    },
-    configurable: true,
-    enumerable: true,
-  },
-}
-
-/** Convert a Vector2's x/y data properties to callback-firing accessors in place. */
-function observeVector2(v: Vector2, cb: () => void): void {
-  const a = v as unknown as Record<string, unknown>
-  a._ox = v.x
-  a._oy = v.y
-  a._cb = cb
-  Object.defineProperties(v, _vec2Desc)
-}
-
-/** Convert a Color's r/g/b data properties to callback-firing accessors in place. */
-function observeColor(c: Color, cb: () => void): void {
-  const a = c as unknown as Record<string, unknown>
-  a._or = c.r
-  a._og = c.g
-  a._ob = c.b
-  a._cb = cb
-  Object.defineProperties(c, _colorDesc)
-}
+/**
+ * System flag layout for `_systemFlags` now lives in a neutral module
+ * so `EffectMaterial` can consume the same constants without creating a
+ * Sprite2D → Sprite2DMaterial → EffectMaterial → Sprite2D cycle.
+ * Re-exported here so existing `import { LIT_FLAG_MASK } from '.../Sprite2D'`
+ * call sites keep working.
+ */
+export {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+  ROTATED_FRAME_MASK,
+  EFFECT_BIT_OFFSET,
+} from '../materials/effectFlagBits'
+import {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+  ROTATED_FRAME_MASK,
+} from '../materials/effectFlagBits'
 
 /** Size in floats for each attribute type. */
 const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
@@ -139,21 +90,21 @@ const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, ve
  *   anchor: [0.5, 1], // Bottom center
  * });
  * sprite.position.set(100, 200, 0);
- * sprite.layer = Layers.ENTITIES;
+ * sprite.sortLayer = SortLayers.ENTITIES; // or the typed name: 'entities'
  * sprite.zIndex = sprite.position.y; // Y-sort
  * scene.add(sprite);
  * ```
  */
-export class Sprite2D extends Mesh {
-  declare geometry: PlaneGeometry
-  declare material: Sprite2DMaterial
+/** One-shot latch: warn once per sprite when 'alpha' mode lacks an
+ * alphaMap, so a scene of thousands of misconfigured sprites doesn't
+ * flood the console on every raycast. Keyed by sprite (not a single
+ * process-wide flag) so one misconfigured sprite's warning doesn't
+ * suppress the same warning for every other sprite. Spec §7.1. */
+const _warnedMissingAlphaMap = new WeakSet<object>()
 
-  /**
-   * Shared material cache keyed by texture. Sprites created with just a texture
-   * (no explicit material) reuse the same Sprite2DMaterial, which means they share
-   * the same batchId and are automatically batched together by SpriteGroup.
-   */
-  private static _sharedMaterials = new WeakMap<Texture, Sprite2DMaterial>()
+export class Sprite2D extends Mesh {
+  declare geometry: BufferGeometry
+  declare material: Sprite2DMaterial
 
   /**
    * Own-geometry buffers for custom attributes (unbatched rendering).
@@ -174,16 +125,218 @@ export class Sprite2D extends Mesh {
   /** Source texture */
   private _texture: Texture | null = null
 
+  // ============================================
+  // HIT-TESTING STATE
+  // ============================================
+
+  /** Hit-test modes supported by this class. See spec §6. */
+  static readonly supportedHitTestModes: readonly HitTestMode[] = [
+    'radius',
+    'bounds',
+    'alpha',
+    'none',
+  ]
+
+  /** CPU-side alpha data for `'alpha'` hit-test mode. */
+  alphaMap: AlphaMap | null = null
+
+  /** Alpha value (0–1) below which a pixel is treated as transparent. */
+  alphaThreshold: number = 0.5
+
+  /** Custom hit radius in local units (default 0.5 = inscribed circle of unit quad). */
+  private _hitRadius: number = 0.5
+
+  /** Active hit-test strategy. */
+  private _hitTestMode: HitTestMode = 'radius'
+
+  /** Hit radius override in local units. Default 0.5 (inscribed half-width of unit quad). */
+  get hitRadius(): number {
+    return this._hitRadius
+  }
+
+  set hitRadius(value: number) {
+    this._hitRadius = value
+  }
+
+  /** Pointer hit-testing strategy. Setting `'none'` nulls the instance `raycast` property. */
+  get hitTestMode(): HitTestMode {
+    return this._hitTestMode
+  }
+
+  set hitTestMode(value: HitTestMode) {
+    const resolved = resolveHitTestMode(value, Sprite2D.supportedHitTestModes, 'Sprite2D')
+    this._hitTestMode = resolved
+    if (resolved === 'none') {
+      // Null the own-property so R3F / three skips this object in raycast traversal
+      ;(this as { raycast: unknown }).raycast = null
+    } else {
+      // Delete the own-property to restore the prototype method
+      delete (this as { raycast?: unknown }).raycast
+    }
+  }
+
   /** Pixel-perfect mode */
   pixelPerfect: boolean = false
+
+  /**
+   * Whether this sprite receives lighting from Flatland's LightEffect.
+   * Stored as bit 0 of `_systemFlags` so lit/unlit sprites with the same
+   * texture share the same material and batch together.
+   * Default: `true` — set `lit = false` to opt out.
+   */
+  get lit(): boolean {
+    return (this._systemFlags & LIT_FLAG_MASK) !== 0
+  }
+
+  set lit(value: boolean) {
+    const was = (this._systemFlags & LIT_FLAG_MASK) !== 0
+    if (was === value) return
+
+    if (value) {
+      this._systemFlags |= LIT_FLAG_MASK
+    } else {
+      this._systemFlags &= ~LIT_FLAG_MASK
+    }
+
+    // Sync to GPU buffers
+    if (this._entity) {
+      this._syncEffectFlagsToBatch()
+    } else {
+      this._writeEffectDataOwn()
+    }
+  }
+
+  /**
+   * Whether this sprite receives shadows from the SDF shadow pipeline.
+   * Stored as bit 1 of `_systemFlags`.
+   * Default: `true` — set `receiveShadows = false` to opt out.
+   */
+  get receiveShadows(): boolean {
+    return (this._systemFlags & RECEIVE_SHADOWS_MASK) !== 0
+  }
+
+  set receiveShadows(value: boolean) {
+    const was = (this._systemFlags & RECEIVE_SHADOWS_MASK) !== 0
+    if (was === value) return
+
+    if (value) {
+      this._systemFlags |= RECEIVE_SHADOWS_MASK
+    } else {
+      this._systemFlags &= ~RECEIVE_SHADOWS_MASK
+    }
+
+    // Sync to GPU buffers
+    if (this._entity) {
+      this._syncEffectFlagsToBatch()
+    } else {
+      this._writeEffectDataOwn()
+    }
+  }
+
+  /**
+   * Per-sprite occluder radius used by shadow-casting effects (world
+   * units). Consumed by any LightEffect that needs to know "how big is
+   * this sprite as an occluder" — the SDF sphere-tracer uses it as the
+   * self-silhouette escape distance; a future shadow-map effect would
+   * use it for depth bias; an AO pass could use it as sample radius.
+   *
+   * `undefined` (default) means auto-resolve from `max(scale.x, scale.y)`
+   * at batch-write time — tracks scale changes automatically, covers
+   * sprite animation frames whose source size differs (AnimatedSprite2D
+   * updates `scale` from `frame.sourceWidth/Height`). Assign a number
+   * to override — useful when the visible body is tighter than the
+   * quad's bounds or when the anchor pushes the silhouette off-center.
+   */
+  private _shadowRadius: number | undefined = undefined
+
+  /**
+   * Per-sprite occluder radius (world units) consumed by shadow-casting
+   * LightEffects — e.g. {@link DefaultLightEffect}'s SDF sphere-tracer
+   * uses it as the self-silhouette escape distance so a tracer launched
+   * from inside the caster steps out cleanly.
+   *
+   * Returns `undefined` while in auto-resolve mode (default), in which
+   * case `transformSyncSystem` writes `max(|scale.x|, |scale.y|)` into
+   * the per-instance attribute each frame — covering animation frames
+   * and runtime scale changes without manual updates. Assign a number
+   * to override (useful when the visible body is tighter than the
+   * quad's bounds, or when an off-center anchor pushes the silhouette).
+   * Assign `undefined` to return to auto-resolve.
+   */
+  get shadowRadius(): number | undefined {
+    return this._shadowRadius
+  }
+
+  set shadowRadius(value: number | undefined) {
+    if (this._shadowRadius === value) return
+    this._shadowRadius = value
+    // Push to GPU: standalone writes the own-geometry buffer; batched
+    // lets transformSyncSystem pick it up on the next frame (it reads
+    // scale + override together when resolving the per-slot value).
+    if (this._entity) {
+      this._syncShadowRadiusToBatch()
+    } else {
+      this._updateOwnShadowRadius()
+    }
+  }
+
+  /**
+   * Whether this sprite contributes its silhouette to the shadow-caster
+   * occlusion pre-pass. Stored as bit 2 of `_systemFlags`. Default: `false`
+   * — most sprites don't cast; opt in by setting to `true`.
+   *
+   * Consumed by the occlusion pre-pass shader, which masks the sprite's
+   * alpha by this bit before the SDF seed. Flipping it takes effect on
+   * the next frame with zero CPU rebuild (same model as `receiveShadows`).
+   */
+  get castsShadow(): boolean {
+    return (this._systemFlags & CAST_SHADOW_MASK) !== 0
+  }
+
+  set castsShadow(value: boolean) {
+    const was = (this._systemFlags & CAST_SHADOW_MASK) !== 0
+    if (was === value) return
+
+    if (value) {
+      this._systemFlags |= CAST_SHADOW_MASK
+    } else {
+      this._systemFlags &= ~CAST_SHADOW_MASK
+    }
+
+    // Sync to GPU buffers
+    if (this._entity) {
+      this._syncEffectFlagsToBatch()
+    } else {
+      this._writeEffectDataOwn()
+    }
+  }
 
   // ============================================
   // EFFECT STATE
   // ============================================
 
   /**
-   * Enable flags bitmask for packed effects.
-   * Bit N = 1 means effect at index N is enabled for this sprite.
+   * System-flag bitmask written to `instanceSystem.z`.
+   *
+   * Bits:
+   *   0 — lit             (default on)
+   *   1 — receiveShadows  (default on)
+   *   2 — castsShadow     (default off, opt in)
+   *   3..23 — reserved for future system flags
+   *
+   * MaterialEffect enable bits live in a separate field
+   * ({@link _effectFlags}) written to `instanceSystem.w`.
+   * @internal
+   */
+  _systemFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
+
+  /**
+   * MaterialEffect enable-bit bitmask written to `instanceSystem.w`.
+   *
+   * Bit N is set while the Nth registered MaterialEffect on this sprite's
+   * material is currently active. 24 slots, bits 0..23. Separate from
+   * {@link _systemFlags} so system flags don't compete with user-defined
+   * effect capacity.
    * @internal
    */
   _effectFlags: number = 0
@@ -222,8 +375,95 @@ export class Sprite2D extends Mesh {
   /** @internal */ _flipXArr: number[] = [1]
   /** @internal */ _flipYArr: number[] = [1]
 
-  // Layer (SpriteLayer) — needs entity.set() for Changed() on write
+  // SortLayer — needs entity.set() for Changed() on write
   /** @internal */ _layerArr: number[] = [0]
+
+  /**
+   * The registered sortLayer name when assigned by name; null when the
+   * sprite uses a raw numeric sortLayer. The numeric resolution always
+   * lives in `_layerArr` — this only preserves the name for reads.
+   * @internal
+   */
+  _sortLayerName: string | null = null
+
+  /**
+   * True once the user explicitly assigned a sortLayer (name or number).
+   * SortLayerGroup respects explicit assignments and never overrides them.
+   * @internal
+   */
+  _sortLayerExplicit = false
+
+  /**
+   * True once the user directly customized `renderOrder`, escaping the
+   * sortLayer system — the sprite renders standalone from then on.
+   * @internal
+   */
+  _renderOrderOverridden = false
+
+  /**
+   * Armed at the end of construction; gates the `renderOrder` setter so
+   * three's `Object3D` constructor default assignment doesn't count as a
+   * user override.
+   * @internal
+   */
+  private _interceptionArmed = false
+
+  /** Backing store for the intercepted `renderOrder` accessor. @internal */
+  private _renderOrderValue?: number
+
+  /**
+   * The auto-orchestration registry this sprite is tracked by, when it
+   * was picked up from a vanilla scene (no SpriteGroup / Flatland).
+   * @internal
+   */
+  _autoRegistry: Registry | null = null
+
+  /**
+   * True while the material is the construction-time bootstrap default
+   * (texture-only construction, resolved via the static shared cache so
+   * an unmanaged standalone sprite still renders). Enrollment re-resolves
+   * to a world-scoped default and clears this. Explicit materials and
+   * effect-variant switches clear it too.
+   * @internal
+   */
+  _materialIsBootstrapDefault = false
+
+  /**
+   * True when the current material came from a world/registry default
+   * store. Dispose of such a material resurrects the sprite with a
+   * fresh default instead of orphaning it.
+   * @internal
+   */
+  _materialWasRegistryDefault = false
+
+  /**
+   * Scene whose prime-pending set still holds this sprite (Signal A
+   * fired, no renderer seen yet). Cleared on registration or removal.
+   * @internal
+   */
+  _pendingPrimeScene: Scene | null = null
+
+  /**
+   * True while this auto-orchestrated sprite is drawn by a batch — its
+   * own Mesh stays hidden (`visible = false`) and setters that would
+   * normally reveal the sprite (setFrame, texture) must not flip it
+   * back on. Cleared on demotion/unregistration.
+   * @internal
+   */
+  _autoBatched = false
+
+  /**
+   * Trimmed-frame placement, baked into the matrix by `updateMatrix`
+   * and `transformSyncSystem`: the quad shrinks to the trimmed rect
+   * (scale factors) and shifts to its position within the source
+   * bounds (offsets, unit-quad space, y-up). Identity for untrimmed
+   * frames.
+   * @internal
+   */
+  _trimSX = 1
+  /** @internal */ _trimSY = 1
+  /** @internal */ _trimOX = 0
+  /** @internal */ _trimOY = 0
 
   // ZIndex (SpriteZIndex) — raw array writes, no Changed() needed
   /** @internal */ _zIndexArr: number[] = [0]
@@ -258,111 +498,111 @@ export class Sprite2D extends Mesh {
   /** @internal */ _batchSlot: number = -1
   /** @internal */ _batchIdx: number = -1
 
-  /** Custom geometry for anchor offset */
-  private _geometry: PlaneGeometry | null = null
+  /** Owned per-sprite geometry (carries the instance-attribute buffers) */
+  private _geometry: BufferGeometry | null = null
 
   /**
    * Instance attribute buffers for single-sprite rendering.
-   * PlaneGeometry has 4 vertices, so we need 4 copies of each value.
+   * The synth quad indexes 4 vertices, so we need 4 copies of each value.
    */
-  // instanceUV: 4 vertices x vec4 = 16 floats
-  private _instanceUVBuffer: Float32Array = new Float32Array([
-    0,
-    0,
-    1,
-    1, // vertex 0
-    0,
-    0,
-    1,
-    1, // vertex 1
-    0,
-    0,
-    1,
-    1, // vertex 2
-    0,
-    0,
-    1,
-    1, // vertex 3
-  ])
-  // instanceColor: 4 vertices x vec4 = 16 floats
-  private _instanceColorBuffer: Float32Array = new Float32Array([
-    1,
-    1,
-    1,
-    1, // vertex 0
-    1,
-    1,
-    1,
-    1, // vertex 1
-    1,
-    1,
-    1,
-    1, // vertex 2
-    1,
-    1,
-    1,
-    1, // vertex 3
-  ])
-  // instanceSystem: 4 vertices x vec4 = 16 floats
-  //   .x = flipX, .y = flipY, .z = sysFlags, .w = enableBits
-  // Matches the batched interleaved layout so the shader can read
-  // flip + system flags + effect enable bits from the same attribute
-  // regardless of standalone vs batched.
-  private _instanceSystemBuffer: Float32Array = new Float32Array([
-    1,
-    1,
-    0,
-    0, // vertex 0
-    1,
-    1,
-    0,
-    0, // vertex 1
-    1,
-    1,
-    0,
-    0, // vertex 2
-    1,
-    1,
-    0,
-    0, // vertex 3
-  ])
-  // instanceExtras: 4 vertices x vec4 = 16 floats. All zeros — reserved
-  // for lighting (shadowRadius). Sprite-sort PR doesn't write to it.
-  private _instanceExtrasBuffer: Float32Array = new Float32Array(16)
+  /**
+   * Interleaved per-vertex storage mirroring SpriteBatch's instance
+   * layout. 4 vertices × 16 floats per vertex = 64 floats. Each
+   * vertex carries the same instance data (no per-vertex variation on
+   * standalone sprites). One buffer keeps the standalone draw under the
+   * WebGPU vertex-buffer cap even with effectBuf* attributes present
+   * (geo + 1 interleaved + effectBuf* vs geo + 4 + effectBuf*).
+   *
+   * Layout per vertex (offset in floats from vertex base):
+   *   0..3   instanceUV      (x, y, w, h)
+   *   4..7   instanceColor   (r, g, b, a)
+   *   8..11  instanceSystem  (flipX, flipY, sysFlags, enableBits)
+   *  12..15  instanceExtras  (shadowRadius, reserved, reserved, reserved)
+   */
+  private _instanceDataBuffer: Float32Array = (() => {
+    const data = new Float32Array(4 * 16)
+    for (let v = 0; v < 4; v++) {
+      const base = v * 16
+      // UV: full texture
+      data[base + 0] = 0
+      data[base + 1] = 0
+      data[base + 2] = 1
+      data[base + 3] = 1
+      // Color: white, fully opaque
+      data[base + 4] = 1
+      data[base + 5] = 1
+      data[base + 6] = 1
+      data[base + 7] = 1
+      // System: flipX=1, flipY=1, sysFlags=0, enableBits=0
+      data[base + 8] = 1
+      data[base + 9] = 1
+      data[base + 10] = 0
+      data[base + 11] = 0
+      // Extras: shadowRadius=0, reserved=0
+      data[base + 12] = 0
+      data[base + 13] = 0
+      data[base + 14] = 0
+      data[base + 15] = 0
+    }
+    return data
+  })()
 
   /**
    * Create a new Sprite2D.
    * Can be called with no arguments for R3F compatibility - set texture via property.
    */
   constructor(options?: Sprite2DOptions) {
-    // Resolve material: explicit > shared-by-texture > new private
+    // Resolve material: explicit > shared-by-texture bootstrap > new private.
+    // The bootstrap shared material only exists so an unmanaged
+    // standalone sprite renders before (or without) enrollment —
+    // SpriteGroup/Flatland/auto enrollment re-resolves to a
+    // world-scoped default (see _resolveDefaultMaterial).
     let material: Sprite2DMaterial
+    let materialIsBootstrap = false
     if (options?.material) {
       material = options.material
     } else if (options?.texture) {
-      let shared = Sprite2D._sharedMaterials.get(options.texture)
-      if (!shared) {
-        shared = new Sprite2DMaterial({ map: options.texture, transparent: true })
-        Sprite2D._sharedMaterials.set(options.texture, shared)
-      }
-      material = shared
+      material = Sprite2DMaterial.getShared({
+        map: options.texture,
+        transparent: true,
+      })
+      materialIsBootstrap = true
     } else {
       material = new Sprite2DMaterial({ transparent: true })
+      materialIsBootstrap = true
     }
 
     // Create geometry with instance attributes for single-sprite rendering
-    // (Cannot use shared geometry because each sprite needs its own attribute buffers)
-    const geometry = new PlaneGeometry(1, 1)
+    // (Cannot use shared geometry because each sprite needs its own
+    // attribute buffers.) Same index/corner layout as the synth quad,
+    // plus real position/uv attributes: synth-strategy materials never
+    // reference them (so they're never bound), while tight-mesh
+    // strategy materials read geometry position/uv — one standalone
+    // geometry serves both shader paths.
+    const geometry = createSynthQuadGeometry()
+    geometry.setAttribute(
+      'position',
+      new BufferAttribute(
+        // Corner order mirrors synthQuadNodes: v = (u, v) grid
+        new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, -0.5, 0.5, 0, 0.5, 0.5, 0]),
+        3
+      )
+    )
+    geometry.setAttribute(
+      'uv',
+      new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2)
+    )
     super(geometry, material)
 
     // Store reference so we can dispose it
     this._geometry = geometry
+    this._materialIsBootstrapDefault = materialIsBootstrap
 
     // Convert stored Color/Vector2 to observable accessors.
     // Position/rotation/scale are NOT observed — accessor overhead on these
     // hot properties (read/written millions of times per frame in game loops)
     // costs more than it saves. transformSyncSystem reads directly from Object3D.
-    observeColor(this._tintColor, () => {
+    observable.color.attach(this._tintColor, () => {
       const i = this._idx
       this._colorR[i] = this._tintColor.r
       this._colorG[i] = this._tintColor.g
@@ -391,7 +631,7 @@ export class Sprite2D extends Mesh {
     // rebuild. The empty callback exists to keep the observer wired
     // (in case future code wants to react), but no work is needed
     // since `updateMatrix` reads the current `_anchor` every frame.
-    observeVector2(this._anchor, () => {
+    observable.vector2.attach(this._anchor, () => {
       this.matrixWorldNeedsUpdate = true
     })
 
@@ -405,8 +645,23 @@ export class Sprite2D extends Mesh {
     // Hide until properly configured (prevents flash on load)
     this.visible = false
 
+    // Wrap three's inherited `Layers` instance so mask mutations
+    // (enable/disable/toggle/set or direct `mask =` writes) re-route the
+    // sprite to a batch matching the new camera mask. We wrap the
+    // instance rather than overriding the property — three's documented
+    // `layers` semantics stay intact; we just observe.
+    this._wrapLayers()
+
+    // Auto-orchestration Signal A: 'added' fires only on the directly-
+    // added node (three gotcha — descendants of an attached subtree get
+    // nothing), so this is the opportunistic first-frame-correct path;
+    // Signal B in onBeforeRender() is the catch-all fallback.
+    this.addEventListener('added', this._onAddedToTree)
+    this.addEventListener('removed', this._onRemovedFromTree)
+
     // If no options, we're being created by R3F - properties will be set via setters
     if (!options) {
+      this._interceptionArmed = true
       return
     }
 
@@ -459,8 +714,8 @@ export class Sprite2D extends Mesh {
       this.flipY = options.flipY
     }
 
-    if (options.layer !== undefined) {
-      this.layer = options.layer
+    if (options.sortLayer !== undefined) {
+      this.sortLayer = options.sortLayer
     }
 
     if (options.zIndex !== undefined) {
@@ -471,7 +726,99 @@ export class Sprite2D extends Mesh {
       this.pixelPerfect = options.pixelPerfect
     }
 
+    if (options.lit === false) {
+      this._systemFlags &= ~LIT_FLAG_MASK
+    }
+
+    if (options.receiveShadows === false) {
+      this._systemFlags &= ~RECEIVE_SHADOWS_MASK
+    }
+
+    if (options.castsShadow === true) {
+      this._systemFlags |= CAST_SHADOW_MASK
+    }
+
+    if (options.shadowRadius !== undefined) {
+      this._shadowRadius = options.shadowRadius
+    }
+
     this._updateOwnFlip()
+    this._updateOwnShadowRadius()
+    this._interceptionArmed = true
+  }
+
+  /**
+   * Resolve the effective shadow radius for this sprite — either the
+   * explicit user override or the auto-derived `max(scale.x, scale.y)`.
+   * Called by both the standalone path (_updateOwnShadowRadius) and
+   * `transformSyncSystem` when populating the batch's per-instance
+   * `instanceShadowRadius` attribute.
+   * @internal
+   */
+  _resolveShadowRadius(): number {
+    if (this._shadowRadius !== undefined) return this._shadowRadius
+    const sx = Math.abs(this.scale.x)
+    const sy = Math.abs(this.scale.y)
+    return sx > sy ? sx : sy
+  }
+
+  /**
+   * Write the resolved shadow radius into `instanceExtras.x`
+   * (interleaved core buffer, float offset 12 within each vertex's
+   * stride of 16).
+   * @internal
+   */
+  private _updateOwnShadowRadius() {
+    const r = this._resolveShadowRadius()
+    for (let v = 0; v < 4; v++) {
+      this._instanceDataBuffer[v * 16 + 12] = r
+    }
+    this._markInstanceDataDirty()
+  }
+
+  /**
+   * Push the resolved shadow radius to the enrolled SpriteBatch's
+   * `instanceExtras.x`. Used when `shadowRadius` is imperatively set
+   * by user code; the per-frame `transformSyncSystem` also writes this
+   * value as part of the transform sync so scale-driven auto values
+   * stay in lockstep with `instanceMatrix`.
+   * @internal
+   */
+  private _syncShadowRadiusToBatch() {
+    if (!this._entity || !this._flatlandWorld) return
+    const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
+    if (!bs || bs.batchIdx < 0) return
+    const registryEntities = this._flatlandWorld.query(BatchRegistry)
+    if (registryEntities.length === 0) return
+    const registry = registryEntities[0]!.get(BatchRegistry) as
+      | { batchSlots: readonly unknown[] }
+      | undefined
+    if (!registry) return
+    const mesh = registry.batchSlots[bs.batchIdx] as
+      | { writeShadowRadius(i: number, r: number): void }
+      | undefined
+    mesh?.writeShadowRadius(bs.slot, this._resolveShadowRadius())
+  }
+
+  /**
+   * Resolve a world- or registry-scoped default material for `texture`,
+   * for a sprite that isn't holding a user-supplied material.
+   *
+   * Returns `null` when the sprite has neither an assigned world nor an
+   * auto-orchestration registry yet — the pre-enrollment bootstrap
+   * fallback (`Sprite2DMaterial.getShared`) covers that case instead.
+   * @internal
+   */
+  private _resolveWorldDefaultMaterial(texture: Texture): Sprite2DMaterial | null {
+    if (this._flatlandWorld) {
+      const registryEntities = this._flatlandWorld.query(BatchRegistry)
+      const registry = registryEntities[0]?.get(BatchRegistry) as RegistryData | undefined
+      if (registry) return getWorldDefaultMaterial(this._flatlandWorld, registry, texture)
+    }
+    if (this._autoRegistry) {
+      return this._autoRegistry.getDefaultMaterial(texture)
+    }
+    return null
   }
 
   /**
@@ -487,7 +834,23 @@ export class Sprite2D extends Mesh {
   set texture(value: Texture | null) {
     this._texture = value
     if (value) {
-      this.material.setTexture(value)
+      if (
+        (this._materialIsBootstrapDefault || this._materialWasRegistryDefault) &&
+        this.material.getTexture() !== value
+      ) {
+        // Never mutate a shared bootstrap/world-default material — every
+        // other sprite holding the same instance would retexture with
+        // it. Re-resolve to the default for the new texture instead.
+        const worldDefault = this._resolveWorldDefaultMaterial(value)
+        if (worldDefault) {
+          this._resolveDefaultMaterial(worldDefault)
+        } else {
+          this.material = Sprite2DMaterial.getShared({ map: value, transparent: true })
+          this._setupInstanceAttributes()
+        }
+      } else {
+        this.material.setTexture(value)
+      }
       // Set default frame if none exists
       if (!this._frame) {
         this._frame = {
@@ -502,9 +865,82 @@ export class Sprite2D extends Mesh {
         if (!this._entity) this._updateOwnUV()
         this.updateSize()
       }
-      // Show sprite once texture is set
-      this.visible = true
+      // Show sprite once texture is set — unless a batch draws it
+      if (!this._autoBatched) this.visible = true
     }
+  }
+
+  /**
+   * Build a stable cache key fragment from effect constants.
+   * Uses texture ID for Textures, String() for primitives.
+   * @internal
+   */
+  private _constantsKey(constants: Record<string, unknown>): string {
+    const parts: string[] = []
+    for (const [key, value] of Object.entries(constants)) {
+      if (value && typeof value === 'object' && 'id' in value) {
+        parts.push(`${key}=${(value as { id: number }).id}`)
+      } else if (value == null) {
+        parts.push(`${key}=null`)
+      } else {
+        parts.push(
+          `${key}=${typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : 'ref'}`
+        )
+      }
+    }
+    return parts.join(',')
+  }
+
+  /**
+   * Switch to a different shared material, carrying over all state.
+   * @internal
+   */
+  private _switchToMaterial(newMaterial: Sprite2DMaterial): void {
+    const current = this.material
+    this.material = newMaterial
+    this._materialIsBootstrapDefault = false
+    this._materialWasRegistryDefault = false
+
+    // Carry over global uniforms
+    if (current.globalUniforms) {
+      newMaterial.globalUniforms = current.globalUniforms
+    }
+    // Carry over required channels and color transform
+    newMaterial.requiredChannels = current.requiredChannels
+    newMaterial.colorTransform = current.colorTransform
+
+    // Re-register all effects on the new material
+    for (const effect of this._effects) {
+      const EffectClass = effect.constructor as typeof MaterialEffect
+      if (!newMaterial.hasEffect(EffectClass)) {
+        newMaterial.registerEffect(EffectClass, effect._constants)
+      }
+    }
+
+    // Update SpriteMaterialRef for batch reassignment
+    if (this._entity) {
+      this._entity.set(SpriteMaterialRef, { materialId: newMaterial.batchId })
+    }
+    this._setupInstanceAttributes()
+    if (!this._entity) {
+      this._writeEffectDataOwn()
+    }
+  }
+
+  /**
+   * Swap to a world-scoped default material (enrollment resolution or
+   * dispose resurrection). Carries effects/uniforms via the standard
+   * switch path, then re-marks the material as a registry default.
+   * @internal
+   */
+  _resolveDefaultMaterial(material: Sprite2DMaterial): void {
+    if (this.material === material) {
+      this._materialIsBootstrapDefault = false
+      this._materialWasRegistryDefault = true
+      return
+    }
+    this._switchToMaterial(material)
+    this._materialWasRegistryDefault = true
   }
 
   /**
@@ -536,6 +972,36 @@ export class Sprite2D extends Mesh {
     this._uvY[i] = frame.y
     this._uvW[i] = frame.width
     this._uvH[i] = frame.height
+
+    // Rotated-frame flag (TexturePacker 90° CW packing) — the shader
+    // unrotates its frame-local sampling per instance.
+    const wasRotated = (this._systemFlags & ROTATED_FRAME_MASK) !== 0
+    const isRotated = frame.rotated === true
+    if (wasRotated !== isRotated) {
+      if (isRotated) this._systemFlags |= ROTATED_FRAME_MASK
+      else this._systemFlags &= ~ROTATED_FRAME_MASK
+      if (this._batchMesh) {
+        this._batchMesh.writeSystemFlags(this._batchSlot, this._systemFlags)
+      } else if (!this._entity) {
+        this._writeEffectDataOwn()
+      }
+    }
+
+    // Trimmed-frame placement: the packed rect renders at its true
+    // position within the source bounds instead of stretching over
+    // them. Baked into the matrix (both matrix writers read these).
+    if (frame.trimmed && frame.trimOffset) {
+      const trim = frame.trimOffset
+      this._trimSX = trim.width / frame.sourceWidth
+      this._trimSY = trim.height / frame.sourceHeight
+      this._trimOX = (trim.x + trim.width / 2) / frame.sourceWidth - 0.5
+      this._trimOY = 0.5 - (trim.y + trim.height / 2) / frame.sourceHeight
+    } else if (this._trimSX !== 1 || this._trimSY !== 1) {
+      this._trimSX = 1
+      this._trimSY = 1
+      this._trimOX = 0
+      this._trimOY = 0
+    }
     // Direct-write to the batch buffer when batched — transformSyncSystem
     // no longer rewrites UV every frame (only AnimatedSprite2D and explicit
     // setFrame calls change it, and they all route through here). Enrolled-
@@ -550,8 +1016,9 @@ export class Sprite2D extends Mesh {
     if (isFirstFrame) {
       this.updateSize()
     }
-    // Show sprite once it has a valid frame
-    this.visible = true
+    // Show sprite once it has a valid frame — unless a batch draws it
+    // (an auto-batched sprite's own mesh must stay hidden).
+    if (!this._autoBatched) this.visible = true
     return this
   }
 
@@ -579,7 +1046,7 @@ export class Sprite2D extends Mesh {
    *
    * The anchor offset is baked into the matrix transform — no
    * geometry rebuild. Writing `_anchor.set(...)` triggers the
-   * observeVector2 callback which marks the matrix dirty; the next
+   * observable.vector2 callback which marks the matrix dirty; the next
    * `updateMatrix` picks up the new value.
    */
   setAnchor(x: number, y: number): this {
@@ -697,19 +1164,55 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Get render layer (primary sort key).
+   * Get the sortLayer (primary sort key). Returns the registered name
+   * when one was assigned; the numeric order otherwise.
    */
-  get layer(): number {
+  get sortLayer(): SortLayerValue {
+    return (this._sortLayerName as SortLayerValue) ?? this._layerArr[this._idx]!
+  }
+
+  /**
+   * Set the sortLayer (primary sort key) — a registered name (typed via
+   * `SortLayerRegistry` augmentation) or a raw numeric order. Routes the
+   * sprite to the batch matching its new run key on the next system pass.
+   */
+  set sortLayer(value: SortLayerValue) {
+    const numeric = resolveSortLayer(value)
+    this._sortLayerName = typeof value === 'string' ? value : null
+    this._sortLayerExplicit = true
+    this._layerArr[this._idx] = numeric
+    if (this._entity) {
+      this._entity.set(SortLayer, { value: numeric })
+    } else if (this._autoRegistry) {
+      // Standalone auto sprite changed its run key — re-evaluate
+      // thresholds on the next sweep (it may now share a run).
+      this._autoRegistry._autoEvalDirty = true
+    }
+  }
+
+  /**
+   * The numeric sortLayer order (names resolved). Hot-path accessor for
+   * matrix Z-baking and run-key computation.
+   * @internal
+   */
+  get sortLayerValue(): number {
     return this._layerArr[this._idx]!
   }
 
   /**
-   * Set render layer (primary sort key).
+   * SortLayerGroup discipline path — identical to the public setter but
+   * does NOT mark the assignment explicit, so a later direct
+   * `sprite.sortLayer = …` (or a different group) can still take over.
+   * @internal
    */
-  set layer(value: number) {
-    this._layerArr[this._idx] = value
+  _applySortLayerFromGroup(name: SortLayerName): void {
+    const numeric = resolveSortLayer(name)
+    this._sortLayerName = name
+    this._layerArr[this._idx] = numeric
     if (this._entity) {
-      this._entity.set(SpriteLayer, { layer: value })
+      this._entity.set(SortLayer, { value: numeric })
+    } else if (this._autoRegistry) {
+      this._autoRegistry._autoEvalDirty = true
     }
   }
 
@@ -773,57 +1276,69 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Update flip flags in own geometry buffer (standalone mode).
-   * Writes to instanceSystem.xy — the same slot the batched path uses.
+   * Mark the shared instance-data buffer dirty so three.js re-uploads
+   * it on the next render. The four `InterleavedBufferAttribute`
+   * views all point at the same underlying `InterleavedBuffer`, so
+   * flipping `needsUpdate` on any one of them re-uploads the full
+   * per-vertex stride.
+   */
+  private _markInstanceDataDirty() {
+    const attr = this.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute | undefined
+    if (attr && (attr.data as { needsUpdate?: boolean })) {
+      ;(attr.data as { needsUpdate: boolean }).needsUpdate = true
+    }
+  }
+
+  /**
+   * Update flip flags in own geometry buffer (standalone mode). Flip
+   * lives in `instanceSystem.xy` per the interleaved layout.
    */
   private _updateOwnFlip() {
     const idx = this._idx
     const fx = this._flipXArr[idx]!
     const fy = this._flipYArr[idx]!
-    for (let i = 0; i < 4; i++) {
-      this._instanceSystemBuffer[i * 4 + 0] = fx
-      this._instanceSystemBuffer[i * 4 + 1] = fy
+    for (let v = 0; v < 4; v++) {
+      this._instanceDataBuffer[v * 16 + 8] = fx
+      this._instanceDataBuffer[v * 16 + 9] = fy
     }
-    const systemAttr = this.geometry.getAttribute('instanceSystem') as BufferAttribute
-    if (systemAttr) {
-      systemAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
-   * Update the effect enable-bits slot (instanceSystem.w) in own
-   * geometry buffer (standalone mode). Mirrors SpriteBatch.writeEnableBits
-   * for the batched path.
+   * Update the effect enable-bits slot (instanceSystem.w = interleaved
+   * offset 11) in own geometry buffer (standalone mode). Mirrors
+   * SpriteBatch.writeEnableBits for the batched path.
    */
   private _updateOwnEnableBits() {
-    for (let i = 0; i < 4; i++) {
-      this._instanceSystemBuffer[i * 4 + 3] = this._effectFlags
+    for (let v = 0; v < 4; v++) {
+      this._instanceDataBuffer[v * 16 + 11] = this._effectFlags
     }
-    const systemAttr = this.geometry.getAttribute('instanceSystem') as BufferAttribute
-    if (systemAttr) {
-      systemAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
    * Set up instance attributes on the geometry for single-sprite rendering.
-   * These are the same attributes used by SpriteBatch for batched rendering.
-   * Also allocates buffers for custom attributes from the material's schema
-   * (including effectBuf0, effectBuf1, ... for packed effect data).
+   * Uses one interleaved buffer (mirroring SpriteBatch) so batched and
+   * standalone paths share the same shader attribute shape. Also
+   * allocates buffers for custom attributes from the material's schema
+   * (pure effect data — `effectBuf0`, `effectBuf1`, ...).
    */
   _setupInstanceAttributes() {
     const geo = this.geometry
 
-    // Core instance attributes (persistent buffers). instanceSystem and
-    // instanceExtras carry the same logical slots the batched path packs
-    // into its InstancedInterleavedBuffer (flip + sysFlags + enableBits
-    // for system; shadowRadius + reserved for extras).
-    geo.setAttribute('instanceUV', new BufferAttribute(this._instanceUVBuffer, 4))
-    geo.setAttribute('instanceColor', new BufferAttribute(this._instanceColorBuffer, 4))
-    geo.setAttribute('instanceSystem', new BufferAttribute(this._instanceSystemBuffer, 4))
-    geo.setAttribute('instanceExtras', new BufferAttribute(this._instanceExtrasBuffer, 4))
+    // Core instance data — single interleaved buffer, four attribute
+    // views. InterleavedBuffer (not InstancedInterleavedBuffer) because
+    // standalone Sprite2D is a regular Mesh, not an InstancedMesh. One
+    // buffer keeps standalone-with-effects under the WebGPU vertex-buffer
+    // cap (geo + 1 interleaved + effectBuf* vs geo + 4 + effectBuf*).
+    const interleaved = new InterleavedBuffer(this._instanceDataBuffer, 16)
+    geo.setAttribute('instanceUV', new InterleavedBufferAttribute(interleaved, 4, 0))
+    geo.setAttribute('instanceColor', new InterleavedBufferAttribute(interleaved, 4, 4))
+    geo.setAttribute('instanceSystem', new InterleavedBufferAttribute(interleaved, 4, 8))
+    geo.setAttribute('instanceExtras', new InterleavedBufferAttribute(interleaved, 4, 12))
 
-    // Custom attributes from material schema (effects add these)
+    // Custom attributes from material schema (pure effect data — no
+    // system reservations)
     this._customBuffers.clear()
     const schema = this.material.getInstanceAttributeSchema()
     for (const [name, config] of schema) {
@@ -855,16 +1370,14 @@ export class Sprite2D extends Mesh {
     const y = this._uvY[idx]!
     const w = this._uvW[idx]!
     const h = this._uvH[idx]!
-    for (let i = 0; i < 4; i++) {
-      this._instanceUVBuffer[i * 4 + 0] = x
-      this._instanceUVBuffer[i * 4 + 1] = y
-      this._instanceUVBuffer[i * 4 + 2] = w
-      this._instanceUVBuffer[i * 4 + 3] = h
+    for (let v = 0; v < 4; v++) {
+      const base = v * 16
+      this._instanceDataBuffer[base + 0] = x
+      this._instanceDataBuffer[base + 1] = y
+      this._instanceDataBuffer[base + 2] = w
+      this._instanceDataBuffer[base + 3] = h
     }
-    const uvAttr = this.geometry.getAttribute('instanceUV') as BufferAttribute
-    if (uvAttr) {
-      uvAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
@@ -877,16 +1390,14 @@ export class Sprite2D extends Mesh {
     const g = this._colorG[idx]!
     const b = this._colorB[idx]!
     const a = this._colorA[idx]!
-    for (let i = 0; i < 4; i++) {
-      this._instanceColorBuffer[i * 4 + 0] = r
-      this._instanceColorBuffer[i * 4 + 1] = g
-      this._instanceColorBuffer[i * 4 + 2] = b
-      this._instanceColorBuffer[i * 4 + 3] = a
+    for (let v = 0; v < 4; v++) {
+      const base = v * 16 + 4
+      this._instanceDataBuffer[base + 0] = r
+      this._instanceDataBuffer[base + 1] = g
+      this._instanceDataBuffer[base + 2] = b
+      this._instanceDataBuffer[base + 3] = a
     }
-    const colorAttr = this.geometry.getAttribute('instanceColor') as BufferAttribute
-    if (colorAttr) {
-      colorAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
@@ -918,8 +1429,65 @@ export class Sprite2D extends Mesh {
     // Same instance already attached — no-op (R3F stable children)
     if (this._effects.includes(effect)) return this
 
-    const material = this.material
     const EffectClass = effect.constructor as typeof MaterialEffect
+    const hasConstants = Object.keys(EffectClass._constantFactories).length > 0
+
+    // Provider effects with constants may need a different material
+    if (hasConstants) {
+      // Link and store the effect first (needed for _switchToMaterial)
+      effect._attach(this)
+      this._effects.push(effect)
+
+      // Build effects key for all effects with constants
+      const effectsKey = this._effects
+        .filter(
+          (e) => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0
+        )
+        .map((e) => {
+          const EC = e.constructor as typeof MaterialEffect
+          return `${EC.effectName}:${this._constantsKey(e._constants)}`
+        })
+        .join(';')
+
+      const newMaterial = Sprite2DMaterial.getShared({
+        map: this._texture ?? undefined,
+        transparent: this.material.transparent,
+        colorTransform: this.material.colorTransform ?? undefined,
+        effectsKey,
+      })
+
+      if (newMaterial !== this.material) {
+        this._switchToMaterial(newMaterial)
+      } else {
+        // Same material — just register the effect
+        if (!this.material.hasEffect(EffectClass)) {
+          const tierChanged = this.material.registerEffect(EffectClass, effect._constants)
+          if (tierChanged) {
+            this._setupInstanceAttributes()
+          }
+        }
+      }
+
+      // Set enable bit (lives in instanceSystem.w, indexed from bit 0)
+      const bitIndex = this.material._effectBitIndex.get(EffectClass.effectName)!
+      this._effectFlags |= 1 << bitIndex
+
+      // Add trait to entity (if enrolled)
+      if (this._entity) {
+        const traitData = this._buildTraitData(effect)
+        this._entity.add(EffectClass._trait(traitData))
+        this._entity.set(EffectClass._trait, traitData)
+      }
+
+      if (!this._entity) {
+        this._writeEffectDataOwn()
+      }
+
+      return this
+    }
+
+    // Standard (non-provider) effect flow
+    const material = this.material
 
     // 1. Auto-register on material if not already registered
     if (!material.hasEffect(EffectClass)) {
@@ -938,7 +1506,7 @@ export class Sprite2D extends Mesh {
     // 2. Link effect to this sprite's entity
     effect._attach(this)
 
-    // 3. Set enable bit in flags bitmask
+    // 3. Set enable bit (instanceSystem.w)
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
     this._effectFlags |= 1 << bitIndex
 
@@ -977,7 +1545,7 @@ export class Sprite2D extends Mesh {
     const effectIndex = this._effects.indexOf(effect)
     if (effectIndex === -1) return this
 
-    // 1. Clear enable bit in flags bitmask
+    // 1. Clear enable bit (instanceSystem.w)
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
     this._effectFlags &= ~(1 << bitIndex)
 
@@ -1070,13 +1638,18 @@ export class Sprite2D extends Mesh {
    */
   _writeEffectDataOwn(): void {
     const material = this.material
+
+    // System flags + enable bits live on `instanceSystem.z/.w` (offsets
+    // 10, 11 within each vertex's stride of 16). Write unconditionally
+    // — lit non-effect sprites still need their flags.
+    for (let v = 0; v < 4; v++) {
+      this._instanceDataBuffer[v * 16 + 10] = this._systemFlags
+      this._instanceDataBuffer[v * 16 + 11] = this._effectFlags
+    }
+    this._markInstanceDataDirty()
+
     const tier = material._effectTier
     if (tier === 0) return
-
-    // Enable bits live in instanceSystem.w (same as the batched path's
-    // writeEnableBits). Effect buffers are now pure effect data starting
-    // at offset 0 — no flags slot.
-    this._updateOwnEnableBits()
 
     // Write effect field values to their packed positions
     for (const effect of this._effects) {
@@ -1135,6 +1708,212 @@ export class Sprite2D extends Mesh {
   }
 
   /**
+   * Sync both per-sprite flag words to the batch buffer for already-
+   * batched sprites. Writes system flags + enable bits into
+   * `instanceSystem.z/.w`, bypassing ECS change detection.
+   * @internal
+   */
+  _syncEffectFlagsToBatch(): void {
+    if (!this._entity || !this._flatlandWorld) return
+    const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
+    if (!bs || bs.batchIdx < 0) return
+    const registryEntities = this._flatlandWorld.query(BatchRegistry)
+    if (registryEntities.length === 0) return
+    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    if (!registry) return
+    const batch = registry.batchSlots[bs.batchIdx] as
+      | {
+          writeSystemFlags(i: number, v: number): void
+          writeEnableBits(i: number, v: number): void
+        }
+      | undefined
+    if (batch) {
+      batch.writeSystemFlags(bs.slot, this._systemFlags)
+      batch.writeEnableBits(bs.slot, this._effectFlags)
+    }
+  }
+
+  /**
+   * Auto-orchestration Signal A: walk the parent chain to the scene and
+   * prime it. Explicitly-managed sprites (SpriteGroup / Flatland) skip
+   * inside flatlandPrime via their assigned world.
+   * @internal
+   */
+  _onAddedToTree = (): void => {
+    let p = this.parent
+    while (p && !(p as Scene).isScene) p = p.parent
+    if (p) flatlandPrime(p as Scene, this)
+  }
+
+  /**
+   * Auto-orchestration cleanup: dropped from the tree → out of the
+   * registry (and any still-pending prime set).
+   * @internal
+   */
+  _onRemovedFromTree = (): void => {
+    flatlandUnregister(this)
+  }
+
+  /**
+   * Auto-orchestration Signal B: the sprite's own mesh is being drawn,
+   * so the renderer and scene are in hand. One property check per draw
+   * once registered — the hot path stays ~free.
+   */
+  override onBeforeRender: Mesh['onBeforeRender'] = (renderer, scene) => {
+    if (this._autoRegistry || this._flatlandWorld) return
+    flatlandRegister(this, renderer as unknown as object, scene)
+  }
+
+  /**
+   * Pointer raycast against the sprite's local Z=0 plane.
+   *
+   * The quad is a centered unit square ([-0.5, 0.5] in X and Y). Anchor and
+   * scale are already baked into the world matrix by `updateMatrix()`, so this
+   * method works entirely in centered-quad local space with no anchor math.
+   */
+  override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
+    // `hitTestMode = 'none'` also nulls the instance `raycast` so R3F skips
+    // this object at registration (the zero-cost path); this guard is
+    // defense-in-depth for direct raycast() calls.
+    if (this._hitTestMode === 'none') return
+    const hit = rayPlaneZ0(raycaster, this)
+    if (!hit) return
+
+    const { localX, localY } = hit
+    const mode = this._hitTestMode
+
+    if (mode === 'bounds') {
+      if (localX < -0.5 || localX > 0.5 || localY < -0.5 || localY > 0.5) return
+    } else if (mode === 'alpha') {
+      if (localX < -0.5 || localX > 0.5 || localY < -0.5 || localY > 0.5) return
+      if (this.alphaMap) {
+        let u = localX + 0.5
+        let v = localY + 0.5
+        // Mirror the renderer's UV flip (Sprite2DMaterial: flipped → 1 - uv)
+        // so the alpha sample aligns with the drawn pixels for flipped sprites.
+        if (this.flipX) u = 1 - u
+        if (this.flipY) v = 1 - v
+        // Map sprite-local UV through the frame rect so atlas sub-region
+        // sprites sample the right pixels; full-texture sprites have a
+        // unit frame, making this equivalent to sampleAtlasUV.
+        const sample = this._frame
+          ? this.alphaMap.sampleFrame(u, v, this._frame)
+          : this.alphaMap.sampleAtlasUV(u, v)
+        if (sample / 255 < this.alphaThreshold) return
+      } else if (!_warnedMissingAlphaMap.has(this) && process.env.NODE_ENV !== 'production') {
+        _warnedMissingAlphaMap.add(this)
+        console.warn(
+          "three-flatland: Sprite2D hitTestMode 'alpha' requires an alphaMap — falling back to 'bounds'"
+        )
+      }
+    } else {
+      // radius — inscribed ellipse: (lx/0.5)^2 + (ly/0.5)^2 <= 1
+      // Using configurable _hitRadius as the local-space half-extent
+      const r = this._hitRadius
+      const nx = localX / r
+      const ny = localY / r
+      if (nx * nx + ny * ny > 1) return
+    }
+
+    const u = localX + 0.5
+    const v = localY + 0.5
+    intersects.push(createIntersection(hit, this, u, v))
+  }
+
+  /**
+   * Intercepted `renderOrder` write path — three's inherited numeric
+   * primitive, installed as a prototype accessor below the class body
+   * (TS disallows overriding a data property with an accessor).
+   *
+   * A batched sprite isn't in three's render list (its batch is), so a
+   * direct `renderOrder` write would otherwise be silently ignored.
+   * Instead, an explicit user write escapes the sortLayer system: the
+   * sprite demotes to standalone and renders with the custom order,
+   * exactly as three documents for any Object3D.
+   * @internal
+   */
+  _setRenderOrder(value: number): void {
+    const prev = this._renderOrderValue ?? 0
+    this._renderOrderValue = value
+    if (!this._interceptionArmed || value === prev) return
+    // Writing the sortLayer-derived value back is a no-op, per the
+    // design contract (`sprite.renderOrder = sortLayer's value`).
+    if (value === this.sortLayerValue) return
+    this._renderOrderOverridden = true
+    if (this._entity) {
+      this._demoteToStandalone()
+    }
+  }
+
+  /**
+   * Wrap the inherited `Layers` instance with a Proxy that observes
+   * `mask` writes. `enable`/`disable`/`toggle`/`set` all funnel through
+   * `this.mask = …` internally, so a single set-trap covers every
+   * mutation path. Reads pass straight through.
+   * @internal
+   */
+  private _wrapLayers(): void {
+    const target = this.layers
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const sprite = this
+    this.layers = new Proxy(target, {
+      set(t, prop, value): boolean {
+        const isMaskChange = prop === 'mask' && t.mask !== value
+        ;(t as unknown as Record<string | symbol, unknown>)[prop] = value
+        if (isMaskChange) sprite._onLayersMaskChanged(t.mask)
+        return true
+      },
+    })
+  }
+
+  /**
+   * Camera-mask mutation hook: mirror the new mask into the ECS so
+   * `batchReassignSystem` routes the sprite to a batch with a matching
+   * mask. Still batched — a custom mask never drops a sprite to
+   * standalone, it just rides in a differently-masked batch.
+   * @internal
+   */
+  _onLayersMaskChanged(mask: number): void {
+    if (this._entity) {
+      this._entity.set(CameraLayersMask, { mask })
+    } else if (this._autoRegistry) {
+      // Standalone auto sprite changed its run key — re-evaluate.
+      this._autoRegistry._autoEvalDirty = true
+    }
+  }
+
+  /**
+   * Drop out of batching to standalone rendering. Unenrolls from the
+   * ECS (freeing the batch slot on the next system pass) and re-parents
+   * the sprite under the batching group so its own Mesh draw resumes.
+   * @internal
+   */
+  _demoteToStandalone(): void {
+    if (!this._entity || !this._flatlandWorld) return
+    const registryEntities = this._flatlandWorld.query(BatchRegistry)
+    const registry =
+      registryEntities.length > 0
+        ? (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined)
+        : undefined
+    this._unenrollFromWorld()
+    // SpriteGroup-managed sprites were never in the scene tree — parent
+    // them under the group so their own Mesh draw resumes. Auto-managed
+    // sprites already live in the user's tree; just reveal them.
+    if (!this.parent) {
+      const parent = registry?.parentGroup
+      if (parent && registry.parentAdd && !parent.children.includes(this)) {
+        registry.parentAdd.call(parent, this)
+      }
+    }
+    if (this._autoRegistry) {
+      this._autoRegistry.standalone.delete(this)
+      this._autoRegistry._autoEvalDirty = true
+    }
+    this._autoBatched = false
+    this.visible = true
+  }
+
+  /**
    * Fast 2D matrix update — bypasses Three.js quaternion-based compose().
    *
    * Three.js Object3D.updateMatrix() calls matrix.compose(position, quaternion, scale)
@@ -1146,18 +1925,21 @@ export class Sprite2D extends Mesh {
    */
   override updateMatrix(): void {
     const te = this.matrix.elements
-    const sx = this.scale.x
-    const sy = this.scale.y
+    // Trim bake: the quad covers only the trimmed rect, positioned
+    // where it sits inside the source bounds (offsets combine with the
+    // anchor term, unrotated — same convention as the anchor bake).
+    const sx = this.scale.x * this._trimSX
+    const sy = this.scale.y * this._trimSY
 
     // Anchor offset baked into translation. Anchor (0.5, 0.5) ⇒
     // center ⇒ zero offset. Anchor (0, 1) ⇒ top-left ⇒ shifts the
     // quad +0.5*sx, -0.5*sy. Removes the per-anchor-change geometry
-    // rebuild entirely; the unit PlaneGeometry never changes.
-    const ax = (0.5 - this._anchor.x) * sx
-    const ay = (0.5 - this._anchor.y) * sy
+    // rebuild entirely; the unit quad never changes.
+    const ax = (0.5 - this._anchor.x + this._trimOX) * this.scale.x
+    const ay = (0.5 - this._anchor.y + this._trimOY) * this.scale.y
     const px = this.position.x + ax
     const py = this.position.y + ay
-    const pz = this.position.z + this.layer * 10 + this.zIndex * 0.001
+    const pz = this.position.z + this.sortLayerValue * 10 + this.zIndex * 0.001
 
     const rz = this.rotation.z
     if (rz !== 0) {
@@ -1231,8 +2013,9 @@ export class Sprite2D extends Mesh {
       SpriteUV({ x: uvX, y: uvY, w: uvW, h: uvH }),
       SpriteColor({ r: cR, g: cG, b: cB, a: cA }),
       SpriteFlip({ x: fX, y: fY }),
-      SpriteLayer({ layer: lay }),
+      SortLayer({ value: lay }),
       SpriteZIndex({ zIndex: zIdx }),
+      CameraLayersMask({ mask: this.layers.mask }),
       SpriteMaterialRef({
         materialId: this.material.batchId,
       }),
@@ -1261,7 +2044,7 @@ export class Sprite2D extends Mesh {
     this._flipXArr = flipStore['x']!
     this._flipYArr = flipStore['y']!
 
-    this._layerArr = resolveStore(w, SpriteLayer)['layer']!
+    this._layerArr = resolveStore(w, SortLayer)['value']!
     this._zIndexArr = resolveStore(w, SpriteZIndex)['zIndex']!
 
     // Register in the spriteArr for O(1) lookup by entity SoA index.
@@ -1358,6 +2141,15 @@ export class Sprite2D extends Mesh {
     // the entity after cleanup.
     this._entity.remove(IsRenderable)
     this._entity = null
+
+    // Clear cached batch refs immediately. batchRemoveSystem can't do it
+    // (the spriteArr entry above is already nulled), and a stale
+    // _batchMesh would let direct-write setters (color/alpha/flip/UV)
+    // clobber a freed — possibly reallocated — slot before the next
+    // system pass.
+    this._batchMesh = null
+    this._batchSlot = -1
+    this._batchIdx = -1
   }
 
   /**
@@ -1405,9 +2197,13 @@ export class Sprite2D extends Mesh {
             alpha: this.alpha,
             flipX: this.flipX,
             flipY: this.flipY,
-            layer: this.layer,
+            sortLayer: this.sortLayer,
             zIndex: this.zIndex,
             pixelPerfect: this.pixelPerfect,
+            lit: this.lit,
+            receiveShadows: this.receiveShadows,
+            castsShadow: this.castsShadow,
+            shadowRadius: this._shadowRadius,
           }
         : undefined
     )
@@ -1434,6 +2230,31 @@ export class Sprite2D extends Mesh {
     cloned.position.copy(this.position)
     cloned.rotation.copy(this.rotation)
     cloned.scale.copy(this.scale)
+
+    // Carry hit-test configuration so a clone stays interactively identical.
+    // alphaMap is shared by reference (read-only CPU data). hitTestMode goes
+    // through the setter so a cloned 'none' sprite re-nulls its raycast.
+    cloned.alphaMap = this.alphaMap
+    cloned.alphaThreshold = this.alphaThreshold
+    cloned.hitRadius = this._hitRadius
+    cloned.hitTestMode = this._hitTestMode
+
     return cloned as this
   }
 }
+
+// Install the `renderOrder` interception as a prototype accessor.
+// Object3D declares `renderOrder` as a data property, and TypeScript
+// disallows shadowing a data property with a class accessor (ts2611) —
+// defineProperty sidesteps that while keeping identical runtime shape.
+// Object3D's constructor assignment (`this.renderOrder = 0`) runs through
+// this setter pre-arming and is treated as the non-override default.
+Object.defineProperty(Sprite2D.prototype, 'renderOrder', {
+  get(this: Sprite2D): number {
+    return (this as unknown as { _renderOrderValue?: number })._renderOrderValue ?? 0
+  },
+  set(this: Sprite2D, value: number): void {
+    this._setRenderOrder(value)
+  },
+  configurable: true,
+})

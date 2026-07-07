@@ -1,10 +1,10 @@
 // Emit JSON graph data for the cytoscape viewer (runtime monorepo + overview).
 
 import madge from 'madge'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { buildGraphData, buildOverviewData } from './lib/build-graph-data.ts'
 
-const TARGETS = ['packages', 'minis', 'tools']
+const TARGETS = ['packages', 'minis', 'tools'].filter((d) => existsSync(d))
 
 const result = await madge(TARGETS, {
   fileExtensions: ['ts', 'tsx'],

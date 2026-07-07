@@ -13,7 +13,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput, usePaneButton, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/devtools/react'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -582,14 +582,9 @@ function CameraController({ mapSize, zoomRef, zoomSlider, setZoomSlider }: {
   return null
 }
 
-function StatsTracker({ stats }: { stats: import('@three-flatland/tweakpane/react').StatsHandle }) {
-  useStatsMonitor(stats)
-  return null
-}
-
 export default function App() {
   // Tweakpane
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
 
   // Layers folder
   const layerFolder = usePaneFolder(pane, 'Layers')
@@ -682,15 +677,15 @@ export default function App() {
   return (
     <Canvas
       dpr={1}
-      renderer={{ antialias: false, trackTimestamp: true }}
+      renderer={{ antialias: false }}
       style={{ touchAction: 'none' }}
       onCreated={({ gl }) => {
         gl.domElement.style.imageRendering = 'pixelated'
       }}
     >
       <OrthoCamera viewSize={800} />
+      <DevtoolsProvider name="tilemap" />
       <GemBackground gem={GEM} />
-      <StatsTracker stats={stats} />
       <CameraController mapSize={mapSize} zoomRef={zoomRef} zoomSlider={zoomSlider} setZoomSlider={setZoomSlider} />
       <Suspense fallback={null}>
         <TilemapScene

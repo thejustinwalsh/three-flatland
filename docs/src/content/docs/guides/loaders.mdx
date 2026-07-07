@@ -4,8 +4,19 @@ description: Load spritesheets and tilemaps with configurable texture presets.
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import bakedNormalPipeline from '../../../assets/diagrams/baked-normal-pipeline.svg?raw';
+
+**What you'll learn**
+- How to load textures, spritesheets, Tiled `.tmj`, and LDtk `.ldtk` files with the right filtering preset
+- How the `TextureConfig → Loader → Instance` preset hierarchy lets you set defaults once
+- How `normals: true` produces a baked normal-map atlas for `NormalMapProvider` lighting
+
+---
 
 three-flatland provides loaders for common 2D asset formats. All loaders share a unified texture configuration system with hierarchical presets.
+
+The default preset is `pixel-art` — `NearestFilter`, no mipmaps, clamp wrap. If you're shipping pixel art (most three-flatland projects), you don't have to configure anything.
 
 ## Available Loaders
 
@@ -176,6 +187,20 @@ Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/textu
 - **JSON Hash** (TexturePacker default) - Frames as object properties
 - **JSON Array** - Frames as array with `filename` property
 
+### TexturePacker features
+
+The loader understands the full TexturePacker output, so atlases packed
+with size-optimizing options render correctly out of the box:
+
+- **Rotation** (`Allow rotation`) — frames packed 90° clockwise are
+  unrotated per-instance in the shader; no extra draw cost
+- **Trimming** (`Trim mode: Trim`) — the trimmed rect renders at its
+  true position inside the source bounds (baked into the sprite
+  matrix), so animations with per-frame trim don't wobble or stretch
+- **Polygon trim** (`Trim mode: Polygon`) — per-frame meshes feed the
+  tight-mesh overdraw-reduction path for alpha-blended sprites
+  (rotation + polygon combined falls back to the plain quad)
+
 ## TiledLoader
 
 Load maps from [Tiled Map Editor](https://www.mapeditor.org/). See the [Tilemaps guide](../tilemaps/) for detailed usage.
@@ -274,6 +299,212 @@ Load projects from [LDtk](https://ldtk.io/). See the [Tilemaps guide](../tilemap
 - Entity layers with custom fields
 - IntGrid collision data
 - Tile flip flags
+
+## Baked Normal Pipeline
+
+three-flatland's lighting wants per-fragment **normal vectors** (for N·L diffuse) and an **elevation** scalar (for elevation-aware wall caps in `DefaultLightEffect`). Authoring a normal-map atlas alongside the diffuse atlas covers the easy case; for tilemaps, where per-tile orientation is decided in the level editor, `LDtkLoader` goes a step further and *bakes* a per-tileset normal atlas at load time from per-tile custom data.
+
+<Diagram caption="The baked-normal pipeline — a hash-stamped .normal.png sidecar is probed and loaded on a match, with an in-memory bake fallback feeding NormalMapProvider." src={bakedNormalPipeline} />
+
+Both `SpriteSheetLoader` and `LDtkLoader` accept a `normals: true` option. The resulting texture lands on the loaded asset (`sheet.normalMap`, `tileset.normalMap`) and is consumed by [`NormalMapProvider`](../lighting-setup/#normalmapprovider) — a `MaterialEffect` from `@three-flatland/presets` — which feeds the `normal` and `elevation` channels into [`DefaultLightEffect`](../lighting-setup/#defaultlighteffect)'s lighting math.
+
+The atlas encoding is RGB+A: R/G hold the tangent-space normal XY in `[0, 1]` (decoded to `[-1, 1]` at sample time, with Z reconstructed as `sqrt(1 − x² − y²)`), B holds elevation in `[0, 1]`, and A passes through the source alpha.
+
+### Resolution Strategy
+
+Both loaders use the same resolution path for the baked atlas:
+
+1. **Hash the descriptor** — every tile/frame's region geometry plus its tilt direction, cap thickness, elevation, etc. produces a stable hash.
+2. **Probe a baked sibling** — look for `<source-image>.normal.png` next to the diffuse, with a matching hash stamp. If present, load it directly.
+3. **In-memory bake fallback** — fetch the diffuse, decode pixels, run the bake, and wrap the result in a `DataTexture`.
+
+Run `npx flatland-bake normal <source>` ahead of time to skip the in-memory path in production. For the offline workflow — running `flatland-bake` ahead of time, sidecar staleness warnings, CI integration — see the [Baking guide](../baking/).
+
+The `normals` option accepts:
+
+- `true` — auto-synthesize the descriptor from the asset's frame/tile layout
+- `NormalSourceDescriptor` — pass a hand-authored descriptor
+- `false` (default) — no normal map is loaded or generated
+
+`forceRuntime: true` is a sibling option (not nested inside `normals`) that declares **the browser is where this asset's normal map is produced** — not the CI bake step. The in-memory bake runs on every load; the sidecar probe and "no baked sibling" warn are skipped. The data is always there, the same as the default path; this flag just commits to "the browser is where it's produced for this asset, on purpose." Use it for procedurally varied tilesets, throwaway prototypes, or asset bundles where shipping the sidecar isn't worth the bytes. Same flag every baked-asset loader exposes (`SlugFontLoader.forceRuntime`). **Not a dev-iteration knob** — the default path (probe → bake on miss + warn) already handles iteration.
+
+The in-memory bake path is lazy-imported, so its bundle cost is not paid unless the fallback fires. A dev-mode warning (`NODE_ENV !== 'production'`) points at `npx flatland-bake normal` when the sidecar is absent. See the [Runtime bake fallback](../lighting-setup/#runtime-bake-fallback) section for the full story.
+
+### `SpriteSheetLoader.normals: true`
+
+For sprite sheets, the loader synthesizes one flat region per frame rect (read from the sheet JSON) and hands the descriptor to the baker. Region-local alpha clamping in the baker keeps adjacent frames from bleeding gradients into each other. The resulting atlas is exposed as `sheet.normalMap` (a `THREE.Texture`), 1:1 co-registered with `sheet.texture`.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    import { SpriteSheetLoader } from 'three-flatland'
+
+    const knightSheet = await SpriteSheetLoader.load('./sprites/knight.json', {
+      normals: true,
+    })
+
+    // sheet.normalMap is a Texture aligned to sheet.texture
+    console.log(knightSheet.normalMap)
+    ```
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
+      l.normals = true
+    })
+    ```
+  </TabItem>
+</Tabs>
+
+For sprites whose individual frames want different per-frame tilt/bump (rare — most character sheets stay flat with alpha-derived shading) pass a `NormalSourceDescriptor` instead of `true` and provide your own `regions`. For an atlas whose normal map is generated in the browser by design (procedural variation, throwaway prototype, lean bundle), set `forceRuntime: true`:
+
+```typescript
+// Three.js
+const sheet = await SpriteSheetLoader.load('./sprites/proc-tiles.json', {
+  normals: true,
+  forceRuntime: true,
+})
+
+// R3F useLoader
+const sheet = useLoader(SpriteSheetLoader, './sprites/proc-tiles.json', (l) => {
+  l.normals = true
+  l.forceRuntime = true
+})
+```
+
+### `LDtkLoader.normals: true`
+
+For LDtk projects, the loader walks every tile cell of every used tileset and reads the tile's free-form custom data string. Where that string parses as a JSON object containing the recognized fields, the baker carves the cell into cap and face regions:
+
+| Custom-data field | Effect |
+|-------------------|--------|
+| `tileDir` | Direction the face tilts (`'up'`, `'down'`, `'left'`, `'right'`, `'flat'`, etc.) |
+| `tilePitch` | Override the tilt angle in radians |
+| `tileCap` | Shorthand cap thickness (top edge by default) in pixels |
+| `tileCapTop` / `tileCapBottom` / `tileCapLeft` / `tileCapRight` | Per-edge cap strip thickness in pixels |
+| `tileCapTopLeft` / `tileCapTopRight` / `tileCapBottomLeft` / `tileCapBottomRight` | Square N×N corner caps for L-shaped wall-cap geometry |
+| `tileElevation` | Elevation override in `[0, 1]` (0 = floor plane, 1 = top of wall) |
+| `tileBump` / `tileStrength` | Bump source / gradient strength override |
+
+A wall tile tagged `{ "tileDir": "down", "tileCap": 4 }` bakes a 4px flat strip at the top of the cell at elevation 1 (the wall *top*), and the rest of the cell as a face region tilted "down" at the default mid-wall elevation. Untagged tiles bake as a single flat region — floors stay flat, no further work required.
+
+The atlas lands on each tileset as `tileset.normalMap`:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    import { LDtkLoader } from 'three-flatland'
+
+    const mapData = await LDtkLoader.load('./maps/dungeon.ldtk', undefined, {
+      normals: true,
+    })
+
+    // One normalMap per tileset, co-registered with tileset.texture
+    const tilesetNormals = mapData.tilesets[0]?.normalMap
+    ```
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    const mapData = useLoader(LDtkLoader, './maps/dungeon.ldtk', (l) => {
+      l.normals = true
+    })
+    ```
+  </TabItem>
+</Tabs>
+
+The blue (elevation) channel feeds `DefaultLightEffect`'s elevation-aware diffuse — wall caps physically sit *above* `lightHeight` in the lighting math, so torches geometrically miss them. See the [Shadows guide](../shadows/#elevation-aware-shadows) for the elevation-channel story.
+
+### Wiring to the Lighting System
+
+Once the normal map is loaded, attach a `NormalMapProvider` MaterialEffect to the consuming `Sprite2D` / `AnimatedSprite2D` / `TileMap2D`. The provider feeds the `normal` and `elevation` channels into the active `LightEffect` (typically `DefaultLightEffect`).
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    import {
+      Flatland, Sprite2D, AnimatedSprite2D, TileMap2D,
+      SpriteSheetLoader, LDtkLoader,
+    } from 'three-flatland'
+    import {
+      DefaultLightEffect, NormalMapProvider,
+    } from '@three-flatland/presets'
+
+    const flatland = new Flatland({ viewSize: 400 })
+    flatland.setLighting(new DefaultLightEffect())
+
+    const [knightSheet, mapData] = await Promise.all([
+      SpriteSheetLoader.load('./sprites/knight.json', { normals: true }),
+      LDtkLoader.load('./maps/dungeon.ldtk', undefined, { normals: true }),
+    ])
+
+    // Tilemap — baked tileset normals drive directional lighting
+    // (walls tilt toward their visible face, floors stay flat).
+    const tilemap = new TileMap2D({ data: mapData })
+    const tilemapNormals = new NormalMapProvider()
+    tilemapNormals.normalMap = mapData.tilesets[0]?.normalMap ?? null
+    tilemap.addEffect(tilemapNormals)
+    flatland.add(tilemap)
+
+    // Hero — sheet.normalMap lights every animation frame consistently.
+    const hero = new AnimatedSprite2D({ spriteSheet: knightSheet, /* ... */ })
+    const heroNormals = new NormalMapProvider()
+    heroNormals.normalMap = knightSheet.normalMap ?? null
+    hero.addEffect(heroNormals)
+    flatland.add(hero)
+    ```
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    import { useLoader } from '@react-three/fiber/webgpu'
+    import {
+      SpriteSheetLoader, LDtkLoader, AnimatedSprite2D, TileMap2D,
+      attachEffect, attachLighting,
+    } from 'three-flatland/react'
+    import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
+    import '@three-flatland/presets/react'
+
+    extend({ AnimatedSprite2D, TileMap2D, DefaultLightEffect, NormalMapProvider })
+
+    function Scene() {
+      const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
+        l.normals = true
+      })
+      const mapData = useLoader(LDtkLoader, './maps/dungeon.ldtk', (l) => {
+        l.normals = true
+      })
+
+      return (
+        <flatland viewSize={400}>
+          <defaultLightEffect attach={attachLighting} />
+
+          {/* Floor + walls — baked tileset normals from per-tile
+              `tileDir` / `tileCap*` custom data. */}
+          <tileMap2D data={mapData}>
+            <normalMapProvider
+              attach={attachEffect}
+              normalMap={mapData.tilesets[0]?.normalMap ?? null}
+            />
+          </tileMap2D>
+
+          {/* Hero — sheet's baked atlas lights every frame consistently. */}
+          <animatedSprite2D
+            texture={knightSheet.texture}
+            spriteSheet={knightSheet}
+            /* ... */
+          >
+            <normalMapProvider
+              attach={attachEffect}
+              normalMap={knightSheet.normalMap ?? null}
+            />
+          </animatedSprite2D>
+        </flatland>
+      )
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+For the broader lighting story, see the [Lighting guide](../lighting/) (presets and Light2D types) and the [Shadows guide](../shadows/) (elevation-aware shaping and the SDF trace). For the `NormalMapProvider` MaterialEffect in context with the rest of the effect system, see [Pass Effects](../pass-effects/#the-three-effect-layers).
 
 ## Texture Presets
 
@@ -436,7 +667,9 @@ const pixelSprite = await SpriteSheetLoader.load('/sprites/retro.json', {
 
 ## Caching
 
-All loaders cache results by URL and texture options. Subsequent loads return the cached promise:
+:::tip[Performance note]
+All loaders cache results by URL and texture options. Calling `SpriteSheetLoader.load(url)` from ten components on the same page is one fetch, ten promise-resolutions — not ten round-trips. Don't pre-load defensively; just call where you need it.
+:::
 
 ```typescript
 // First load - fetches from network

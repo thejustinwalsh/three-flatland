@@ -11,10 +11,10 @@
 // the published .d.ts.
 
 import madge from 'madge'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, writeFileSync, mkdirSync } from 'node:fs'
 import { buildGraphData, pkgOf } from './lib/build-graph-data.ts'
 
-const TARGETS = ['packages', 'minis', 'tools']
+const TARGETS = ['packages', 'minis', 'tools'].filter((d) => existsSync(d))
 const BASE = {
   fileExtensions: ['ts', 'tsx'],
   tsConfig: 'tsconfig.madge.json',

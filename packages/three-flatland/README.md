@@ -29,13 +29,13 @@ three-flatland exposes 2D primitives as plain `Object3D` subclasses on the Three
 ## Install
 
 ```bash
-npm install three-flatland@alpha
+npm install three-flatland
 ```
 
 For React Three Fiber:
 
 ```bash
-npm install three-flatland@alpha @react-three/fiber@alpha
+npm install three-flatland @react-three/fiber@alpha
 ```
 
 ### Requirements

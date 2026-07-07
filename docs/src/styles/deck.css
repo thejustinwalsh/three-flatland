@@ -1,0 +1,63 @@
+/* Deck layout: the R3F scene is a fixed backdrop; reveal sits over it, transparent.
+ * Gem tokens (--gold, --turquoize, --background, --foreground, …) come from
+ * `starlight-theme/styles/theme` imported by the page. */
+
+/* The deck is always dark. The site theme flips its tokens under
+ * `@media (prefers-color-scheme: light)`, but this standalone page has no theme
+ * toggle, so a light system preference would turn slide text dark on the
+ * near-black scene. Pin the dark tokens here — this rule is unlayered, so it
+ * beats the theme's `@layer theme` values regardless of the OS preference. */
+:root {
+  color-scheme: dark;
+  --background: oklch(18% 0.006 250); /* ≈ #111418 */
+  --foreground: oklch(92% 0.008 250); /* near-white */
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--background, #111418);
+  color: var(--foreground, #fff);
+  overflow: hidden;
+}
+
+.deck-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+/* reveal.js paints an opaque viewport background; force it transparent so the
+ * 3D scene behind it shows through, and keep slide text on the near-black scene. */
+.reveal-viewport {
+  background: transparent !important;
+}
+.reveal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+.reveal,
+.reveal .slides,
+.reveal .slides section {
+  background: transparent !important;
+}
+.reveal {
+  color: var(--foreground, #fff);
+}
+.reveal .slides {
+  text-align: left;
+}
+
+/* Bold-minimalist type defaults for slide content. */
+.reveal .slides section {
+  font-family: 'Public Sans', system-ui, sans-serif;
+  color: var(--foreground, #fff);
+}
+
+/* reveal.js hardcodes the prev/next nav arrows to black; keep them on the
+ * light foreground so they read on the near-black scene. */
+.reveal .controls {
+  color: var(--foreground, #fff);
+}

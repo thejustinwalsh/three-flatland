@@ -4,8 +4,23 @@ description: GPU-accelerated 2D vector graphics with Skia WASM — shapes, text,
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components';
+import Diagram from '../../../components/Diagram.astro';
+import skiaRenderModes from '../../../assets/diagrams/skia-render-modes.svg?raw';
+
+**What you'll learn**
+- How to initialize Skia, mount a `SkiaCanvas` in texture or overlay mode, and render shapes
+- How to load fonts and apply custom paints (gradients, blend modes, blur, drop shadow)
+- How to perform programmatic path operations — `union`, `intersect`, `difference`, `xor`
+
+---
+
+:::caution[Experimental]
+The `@three-flatland/skia` API isn't settled yet. We're dogfooding it across the examples and folding in [community feedback](https://github.com/thejustinwalsh/three-flatland/issues?q=is%3Aissue+label%3Askia) to stabilize it, so it can shift between releases. Pin an exact version for now.
+:::
 
 `@three-flatland/skia` brings Skia's GPU-accelerated vector rendering to Three.js via WASM, built with Zig. It auto-detects WebGPU or WebGL from your renderer and supports both Three.js and React Three Fiber.
+
+You probably don't need this page yet. Skia earns its WASM weight when you need real vector graphics in 3D — UI overlays, dynamic text, path operations, gradients. For static images and animated sprites, plain `Sprite2D` is the right answer.
 
 Includes a native WebGPU backend (Graphite/Dawn) — CanvasKit's npm package ships WebGL only. At **857 KB** (WebGPU) / **1 MB** (WebGL) brotli vs CanvasKit's 2.2 MB.
 
@@ -14,22 +29,22 @@ Includes a native WebGPU backend (Graphite/Dawn) — CanvasKit's npm package shi
 <Tabs syncKey="pkg">
   <TabItem label="npm">
     ```bash
-    npm install @three-flatland/skia@alpha
+    npm install @three-flatland/skia
     ```
   </TabItem>
   <TabItem label="pnpm">
     ```bash
-    pnpm add @three-flatland/skia@alpha
+    pnpm add @three-flatland/skia
     ```
   </TabItem>
   <TabItem label="yarn">
     ```bash
-    yarn add @three-flatland/skia@alpha three
+    yarn add @three-flatland/skia three
     ```
   </TabItem>
   <TabItem label="bun">
     ```bash
-    bun add @three-flatland/skia@alpha
+    bun add @three-flatland/skia
     ```
   </TabItem>
   <TabItem label="agents">
@@ -40,7 +55,7 @@ Includes a native WebGPU backend (Graphite/Dawn) — CanvasKit's npm package shi
 
     Read the API reference: https://thejustinwalsh.com/three-flatland/llms-full.txt
 
-    Install: npm install @three-flatland/skia@alpha
+    Install: npm install @three-flatland/skia
     Requires: three >= 0.183.1, auto-detects WebGPU or WebGL from renderer
     Import from: "@three-flatland/skia" (core), "@three-flatland/skia/three" (scene nodes), "@three-flatland/skia/react" (R3F integration)
 
@@ -116,7 +131,7 @@ During development, Vite resolves `import.meta.url` correctly so the WASM loads 
 
     // In your animation loop:
     canvas.invalidate()
-    canvas.render(renderer)
+    canvas.render()
     ```
   </TabItem>
   <TabItem label="React" icon="simple-icons:react">
@@ -146,6 +161,8 @@ React: import from `@three-flatland/skia/react` which re-exports everything plus
 ## SkiaCanvas :badge[Alpha]{variant=caution}
 
 The root node that owns the render target and walks children to draw. Two modes:
+
+<Diagram caption="SkiaCanvas render modes — texture mode draws before the scene and feeds a mesh map; overlay mode composites onto the framebuffer after the scene." src={skiaRenderModes} />
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
@@ -306,7 +323,11 @@ Uses standard Object3D `position`, `scale`, and `rotation.z` (radians). The `deg
 
 ## Font Loading
 
-`SkiaFontLoader` loads a `SkiaTypeface` — the font data independent of size. Call `.atSize(n)` to get a sized `SkiaFont`. The typeface is cached by URL, and sized fonts are cached internally — so multiple `.atSize()` calls are cheap.
+:::tip[Performance note]
+The typeface is cached by URL, and sized fonts are cached internally on the typeface — so calling `.atSize(14)` and `.atSize(32)` from many components shares a single font fetch and a single set of size objects. No need to memoize.
+:::
+
+`SkiaFontLoader` loads a `SkiaTypeface` — the font data independent of size. Call `.atSize(n)` to get a sized `SkiaFont`.
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">

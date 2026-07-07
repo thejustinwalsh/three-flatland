@@ -4,10 +4,10 @@ import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import {
   AnimatedSprite2D,
   SpriteSheetLoader,
-  Layers,
+  SortLayers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -102,7 +102,7 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
       spriteSheet={sheet}
       animationSet={animationSet}
       animation="idle"
-      layer={Layers.ENTITIES}
+      sortLayer={SortLayers.ENTITIES}
       anchor={[0.5, 0.5]}
       scale={[128, 128, 1]}
     />
@@ -110,7 +110,7 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
 }
 
 function Scene() {
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
   const animFolder = usePaneFolder(pane, 'Animation', { expanded: true })
 
   // Use state so changes trigger re-render → Knight gets new props
@@ -163,8 +163,6 @@ function Scene() {
     }
   }, [])
 
-  useStatsMonitor(stats)
-
   return (
     <>
       <GemBackground gem={GEM} />
@@ -216,12 +214,13 @@ export default function App() {
           far: 1000,
           left: -1, right: 1, top: 1, bottom: -1,
         }}
-        renderer={{ antialias: false, trackTimestamp: true }}
+        renderer={{ antialias: false }}
         onCreated={({ gl }) => {
           gl.domElement.style.imageRendering = 'pixelated'
         }}
       >
         <OrthoCamera viewSize={200} />
+        <DevtoolsProvider name="animation" />
         <Scene />
       </Canvas>
     </>

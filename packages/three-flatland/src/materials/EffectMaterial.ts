@@ -1,8 +1,34 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { attribute, vec2, vec3, vec4, float, Fn, mix, floor, mod } from 'three/tsl'
+import { attribute, vec2, vec3, vec4, float, Fn, mix, floor, mod, positionWorld } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
+import type { Texture } from 'three'
 import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
-import type { MaterialEffect, EffectSchemaValue, SchemaToNodeType } from './MaterialEffect'
+import type { MaterialEffect, EffectSchemaValue, SchemaToNodeType, ChannelNodeContext } from './MaterialEffect'
+import { channelDefaults } from './channels'
+
+import { EFFECT_BIT_OFFSET } from './effectFlagBits'
+
+// ============================================
+// Color Transform Types
+// ============================================
+
+/**
+ * Context passed to colorTransform callbacks.
+ */
+export interface ColorTransformContext {
+  /** Base sampled + tinted color (vec4) */
+  color: Node<'vec4'>
+  /** UV after flip + atlas remap */
+  atlasUV: Node<'vec2'>
+  /** World position XY (works with instancing via positionWorld) */
+  worldPosition: Node<'vec2'>
+}
+
+/**
+ * A function that transforms the base sprite color.
+ * Receives the base color and context, returns modified color (vec4).
+ */
+export type ColorTransformFn = (ctx: ColorTransformContext) => Node<'vec4'>
 
 /**
  * Compute the buffer tier for a given float count.
@@ -35,7 +61,8 @@ export function getPackedComponent(
 export interface EffectMaterialOptions {
   /**
    * Effect buffer tier size in floats.
-   * Buffers are allocated in tiers: 0, 4, 8, 16.
+   * Buffers are allocated in tiers: 0, 4, 8, 16, then multiples of 4 up
+   * to the 24-float cap ({@link EffectMaterial.MAX_EFFECT_FLOATS}).
    * Default is 8 (2 vec4 buffers), covering most effect combinations.
    * Set to 0 for fully effect-free materials (no effect buffer overhead).
    */
@@ -85,6 +112,13 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    */
   _effects: (typeof MaterialEffect)[] = []
 
+  /**
+   * Stored constants per effect (keyed by effect name).
+   * Used by _rebuildColorNode to pass constants to channelNode and _node.
+   * @internal
+   */
+  _effectConstants: Map<string, Record<string, unknown>> = new Map()
+
   // ============================================
   // PACKED EFFECT BUFFER STATE
   // ============================================
@@ -101,14 +135,15 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   /**
    * Maximum total effect-data floats allowed across all registered
    * effects on this material. WebGPU allows 8 vertex-buffer bindings
-   * per pipeline; SpriteBatch uses 5 fixed bindings (3 geometry +
-   * instanceMatrix + interleaved core), leaving 3 for `effectBuf0/1/2`
-   * × 4 floats = 12 floats. Exceeding this would force a 4th effectBuf
-   * binding which WebGPU rejects at pipeline creation with a cryptic
-   * "vertex buffer count exceeds maximum" error. `registerEffect`
-   * throws clearly when the cap would be exceeded.
+   * per pipeline; SpriteBatch uses 2 fixed bindings (instanceMatrix +
+   * interleaved core — the synth-quad geometry is index-only and costs
+   * zero), leaving 6 for `effectBuf0..5` × 4 floats = 24 floats.
+   * Exceeding this would force a 7th effectBuf binding which WebGPU
+   * rejects at pipeline creation with a cryptic "vertex buffer count
+   * exceeds maximum" error. `registerEffect` throws clearly when the
+   * cap would be exceeded.
    */
-  static readonly MAX_EFFECT_FLOATS = 12
+  static readonly MAX_EFFECT_FLOATS = 24
 
   /**
    * Maps effect name to its bit position in the enable flags bitmask.
@@ -145,8 +180,53 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    */
   _effectSchemaVersion: number = 0
 
+  /**
+   * Return the maximum number of per-instance effect floats this
+   * material type supports. See {@link MAX_EFFECT_FLOATS}.
+   */
+  static getMaxEffectFloats(): number {
+    return EffectMaterial.MAX_EFFECT_FLOATS
+  }
+
+  /**
+   * Per-instance effect-float cap for THIS material. Strategy-dependent
+   * in subclasses: tight-mesh geometry spends bindings on position/uv,
+   * shrinking the effect budget (see Sprite2DMaterial).
+   */
+  get maxEffectFloats(): number {
+    return EffectMaterial.MAX_EFFECT_FLOATS
+  }
+
+  /**
+   * Current per-instance effect-float usage (sum across all registered
+   * effects). Complements {@link getMaxEffectFloats}.
+   */
+  getUsedEffectFloats(): number {
+    return this._effectTotalFloats
+  }
+
+  /**
+   * Color transform function (e.g., lighting).
+   * @internal
+   */
+  protected _colorTransform: ColorTransformFn | null = null
+
+  /**
+   * Set of per-fragment channel names required by the active colorTransform.
+   * @internal
+   */
+  protected _requiredChannels: ReadonlySet<string> = new Set()
+
   constructor(options: EffectMaterialOptions = {}) {
     super()
+
+    if (options.effectTier !== undefined && options.effectTier > EffectMaterial.MAX_EFFECT_FLOATS) {
+      throw new Error(
+        `[EffectMaterial] Cannot construct with effectTier: ${options.effectTier}, ` +
+          `exceeding the cap of ${EffectMaterial.MAX_EFFECT_FLOATS} ` +
+          `(WebGPU 8-buffer limit).`
+      )
+    }
 
     // Set up effect tier
     this._defaultEffectTier = options.effectTier ?? 8
@@ -154,6 +234,46 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
     // Allocate effect buffer attributes for the initial tier
     this._rebuildEffectBufferAttributes()
+  }
+
+  /**
+   * Get the color transform function.
+   */
+  get colorTransform(): ColorTransformFn | null {
+    return this._colorTransform
+  }
+
+  /**
+   * Set the color transform function.
+   * Triggers shader rebuild.
+   */
+  set colorTransform(value: ColorTransformFn | null) {
+    if (this._colorTransform === value) return
+    this._colorTransform = value
+    if (this._canBuildColor()) {
+      this._rebuildColorNode()
+      this.needsUpdate = true
+    }
+  }
+
+  /**
+   * Get the required channels set.
+   */
+  get requiredChannels(): ReadonlySet<string> {
+    return this._requiredChannels
+  }
+
+  /**
+   * Set the required channels.
+   * Triggers shader rebuild when channels change.
+   */
+  set requiredChannels(value: ReadonlySet<string>) {
+    if (this._requiredChannels === value) return
+    this._requiredChannels = value
+    if (this._canBuildColor()) {
+      this._rebuildColorNode()
+      this.needsUpdate = true
+    }
   }
 
   // ============================================
@@ -166,25 +286,32 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    * If the effect is already registered, this is a no-op.
    *
    * @param effectClass - The MaterialEffect subclass to register
+   * @param constants - Optional constants from the effect instance (for provider effects)
    * @returns Whether the buffer tier changed (requiring batch rebuild).
    */
-  registerEffect(effectClass: typeof MaterialEffect): boolean {
+  registerEffect(effectClass: typeof MaterialEffect, constants?: Record<string, unknown>): boolean {
     // Ensure static initialization
     effectClass._initialize()
 
     // Skip if already registered
     if (this._effectBitIndex.has(effectClass.effectName)) return false
 
-    // 1. Push effect class and assign bit index
+    // Store constants if provided
+    if (constants && Object.keys(constants).length > 0) {
+      this._effectConstants.set(effectClass.effectName, constants)
+    }
+
+    // 1. Push effect class and assign bit index (offset past system flag bits)
     this._effects.push(effectClass)
-    const bitIndex = this._effects.length - 1
+    const bitIndex = this._effects.length - 1 + EFFECT_BIT_OFFSET
     this._effectBitIndex.set(effectClass.effectName, bitIndex)
 
     // 2. Assign sequential float offsets for each field starting at
-    //    slot 0 (effectBuf0.x). Flags and enable bits used to live here,
-    //    but they moved to `instanceSystem.w` in the interleaved core
-    //    buffer (see SpriteBatch.writeEnableBits), so effect buffers are
-    //    now pure effect data with no reservations.
+    //    slot 0 (effectBuf0.x). System flags (instanceSystem.z) and
+    //    MaterialEffect enable bits (instanceSystem.w) used to live here,
+    //    but they moved to the interleaved `instanceSystem` attribute
+    //    (see SpriteBatch), so `effectBuf*` is now pure effect data with
+    //    no reservations.
     let nextOffset = 0
     for (const existingEffect of this._effects) {
       for (const field of existingEffect._fields) {
@@ -199,22 +326,27 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
     }
 
     // 3. Compute new total — sum of all effect data floats only. No
-    //    longer includes the +1 for the flags slot.
+    //    longer includes any reservation for the system/enable slots
+    //    (those live in instanceSystem now).
     let dataFloats = 0
     for (const eff of this._effects) {
       dataFloats += eff._totalFloats
     }
     this._effectTotalFloats = dataFloats
 
-    // Hard cap before tier-bump — see MAX_EFFECT_FLOATS comment for
-    // the WebGPU 8-buffer reasoning. Reject clearly here instead of
-    // letting WebGPU fail at pipeline creation time.
-    if (dataFloats > EffectMaterial.MAX_EFFECT_FLOATS) {
+    // Hard cap: WebGPU allows 8 vertex-buffer bindings per pipeline.
+    // SpriteBatch uses 2 fixed bindings (instanceMatrix + interleaved
+    // core; synth-quad geometry is index-only), leaving 6 for
+    // `effectBuf0..5` × 4 floats = 24 effect floats max. Exceeding that
+    // would force a 7th effectBuf binding which WebGPU will reject at
+    // pipeline creation with a cryptic "vertex buffer count exceeds
+    // maximum" error. Reject clearly here instead.
+    if (dataFloats > this.maxEffectFloats) {
       const names = this._effects.map((e) => e.effectName).join(', ')
       throw new Error(
         `[EffectMaterial] Cannot register '${effectClass.effectName}': ` +
           `effects would use ${dataFloats} floats of per-instance data, ` +
-          `exceeding the cap of ${EffectMaterial.MAX_EFFECT_FLOATS} ` +
+          `exceeding the cap of ${this.maxEffectFloats} ` +
           `(WebGPU 8-buffer limit). Registered so far: [${names}]. ` +
           `Reduce a schema or consolidate effects.`
       )
@@ -297,18 +429,70 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   }
 
   /**
-   * Rebuild the colorNode from scratch: base color + effect chain.
-   * Called when texture is set or effects are registered.
+   * Get the base texture for channel providers (e.g., auto-normal from diffuse alpha).
+   * Returns null by default. Sprite2DMaterial overrides to return the sprite texture.
+   * @internal
+   */
+  protected _getBaseTexture(): Texture | null {
+    return null
+  }
+
+  /**
+   * Build TSL attribute nodes for an effect from packed buffer data.
+   * @internal
+   */
+  protected _buildEffectAttrs(
+    effectClass: typeof MaterialEffect,
+    bufNodes: Node<'vec4'>[]
+  ): Record<string, SchemaToNodeType<EffectSchemaValue>> {
+    const attrs: Record<string, SchemaToNodeType<EffectSchemaValue>> = {}
+    for (const field of effectClass._fields) {
+      const slotKey = `${effectClass.effectName}_${field.name}`
+      const slotInfo = this._effectSlots.get(slotKey)!
+      if (field.size === 1) {
+        attrs[field.name] = getPackedComponent(bufNodes, slotInfo.offset)
+      } else if (field.size === 2) {
+        attrs[field.name] = vec2(
+          getPackedComponent(bufNodes, slotInfo.offset),
+          getPackedComponent(bufNodes, slotInfo.offset + 1)
+        )
+      } else if (field.size === 3) {
+        attrs[field.name] = vec3(
+          getPackedComponent(bufNodes, slotInfo.offset),
+          getPackedComponent(bufNodes, slotInfo.offset + 1),
+          getPackedComponent(bufNodes, slotInfo.offset + 2)
+        )
+      } else {
+        attrs[field.name] = vec4(
+          getPackedComponent(bufNodes, slotInfo.offset),
+          getPackedComponent(bufNodes, slotInfo.offset + 1),
+          getPackedComponent(bufNodes, slotInfo.offset + 2),
+          getPackedComponent(bufNodes, slotInfo.offset + 3)
+        )
+      }
+    }
+    return attrs
+  }
+
+  /**
+   * Rebuild the colorNode from scratch using the 4-phase pipeline:
    *
-   * The _buildBaseColor() hook is called inside the Fn() context so that
-   * TSL statements like If/Discard work correctly.
+   * Phase 0: Base color via _buildBaseColor() (no lighting)
+   * Phase 1: Resolve channels from provider effects
+   * Phase 2: Apply colorTransform (lighting) — only if all required channels resolved
+   * Phase 3: Chain color-transforming MaterialEffects (non-providers)
+   *
+   * Called when texture is set, effects are registered, or colorTransform/channels change.
    * @internal
    */
   _rebuildColorNode(): void {
     if (!this._canBuildColor()) return
 
-    // Bind method for use inside Fn closure (avoids no-this-alias)
+    // Bind methods for use inside Fn closure (avoids no-this-alias)
     const buildBaseColor = this._buildBaseColor.bind(this)
+    const colorTransformFn = this._colorTransform
+    const requiredChannels = this._requiredChannels
+    const baseTexture = this._getBaseTexture()
 
     // Pre-build packed buffer TSL nodes for effects (can be outside Fn)
     const numVec4s = this._effectTier / 4
@@ -317,67 +501,88 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       bufNodes.push(attribute<'vec4'>(`effectBuf${i}`, 'vec4'))
     }
 
-    // Attr value type: any typed node from packed buffer reconstruction
-    type AttrNode = SchemaToNodeType<EffectSchemaValue>
-
-    // Pre-build per-effect data: bit index and reconstructed attrs (can be outside Fn)
+    // Pre-build per-effect data: bit index, attrs, constants
     const effectData: Array<{
       effectClass: typeof MaterialEffect
       bitIndex: number
-      attrs: Record<string, AttrNode>
+      attrs: Record<string, SchemaToNodeType<EffectSchemaValue>>
+      constants: Record<string, unknown>
+      isProvider: boolean
     }> = []
 
     for (const effectClass of this._effects) {
       const bitIndex = this._effectBitIndex.get(effectClass.effectName)!
-      const attrs: Record<string, AttrNode> = {}
+      const attrs = this._buildEffectAttrs(effectClass, bufNodes)
+      const constants = this._effectConstants.get(effectClass.effectName) ?? {}
+      const isProvider = effectClass.provides.length > 0
 
-      for (const field of effectClass._fields) {
-        const slotKey = `${effectClass.effectName}_${field.name}`
-        const slotInfo = this._effectSlots.get(slotKey)!
-
-        if (field.size === 1) {
-          attrs[field.name] = getPackedComponent(bufNodes, slotInfo.offset)
-        } else if (field.size === 2) {
-          attrs[field.name] = vec2(
-            getPackedComponent(bufNodes, slotInfo.offset),
-            getPackedComponent(bufNodes, slotInfo.offset + 1)
-          )
-        } else if (field.size === 3) {
-          attrs[field.name] = vec3(
-            getPackedComponent(bufNodes, slotInfo.offset),
-            getPackedComponent(bufNodes, slotInfo.offset + 1),
-            getPackedComponent(bufNodes, slotInfo.offset + 2)
-          )
-        } else {
-          attrs[field.name] = vec4(
-            getPackedComponent(bufNodes, slotInfo.offset),
-            getPackedComponent(bufNodes, slotInfo.offset + 1),
-            getPackedComponent(bufNodes, slotInfo.offset + 2),
-            getPackedComponent(bufNodes, slotInfo.offset + 3)
-          )
-        }
-      }
-
-      effectData.push({ effectClass, bitIndex, attrs })
+      effectData.push({ effectClass, bitIndex, attrs, constants, isProvider })
     }
 
-    // Build color node: base color + effect chain (all inside Fn for TSL context)
+    // Build color node: 4-phase pipeline (all inside Fn for TSL context)
     this.colorNode = Fn(() => {
+      // ─── Phase 0: Base color ──────────────────────────────────────────
       const baseResult = buildBaseColor()
       if (!baseResult) return vec4(0, 0, 0, 0)
 
       let color: Node<'vec4'> = baseResult.color
       const atlasUV = baseResult.uv
 
-      // Chain effects with branchless enable/disable via the per-instance
-      // enable-bits bitmask. After the interleaved-buffer refactor this
-      // lives in `instanceSystem.w` (written by SpriteBatch.writeEnableBits
-      // and Sprite2D._writeEffectStateToBatch), NOT in effectBuf0 — effect
-      // buffers are now pure effect data starting at offset 0.
+      // ─── Phase 1: Resolve channels from provider effects ─────────────
+      const resolvedChannels: Record<string, Node> = {}
+
+      if (requiredChannels.size > 0) {
+        for (const { effectClass, attrs, constants, isProvider } of effectData) {
+          if (!isProvider) continue
+          for (const ch of effectClass.provides) {
+            if (!requiredChannels.has(ch)) continue
+            if (resolvedChannels[ch]) continue // first provider wins
+            if (effectClass.channelNode) {
+              resolvedChannels[ch] = effectClass.channelNode(ch, {
+                atlasUV,
+                constants,
+                attrs,
+                baseTexture,
+              } as ChannelNodeContext)
+            }
+          }
+        }
+        // Fill any remaining required channels from channelDefaults
+        for (const ch of requiredChannels) {
+          if (!resolvedChannels[ch] && channelDefaults[ch]) {
+            resolvedChannels[ch] = channelDefaults[ch]()
+          }
+        }
+      }
+
+      // ─── Phase 2: Apply colorTransform (lighting) ────────────────────
+      if (colorTransformFn) {
+        const ctx = {
+          color,
+          atlasUV,
+          worldPosition: positionWorld.xy,
+          ...resolvedChannels,
+        } as ColorTransformContext
+        color = colorTransformFn(ctx)
+      }
+
+      // ─── Phase 3: Chain color-transforming MaterialEffects ───────────
       if (effectData.length > 0) {
+        // Enable bits live in `instanceSystem.w` after the interleaved-
+        // buffer refactor — the writers (`Sprite2D._writeEffectDataOwn`,
+        // `SpriteBatch.writeEnableBits`) put them there. Reading from
+        // `effectBuf0.y` (the pre-refactor slot) lands on
+        // never-written-to data, so every chained MaterialEffect's
+        // enable bit reads as 0 and the effect's color contribution
+        // is mixed in at zero weight — visually a no-op. Provider
+        // effects skip this gate entirely (they bypass via `isProvider`),
+        // which is why the lighting example never tripped on this.
         const enableFlags = attribute<'vec4'>('instanceSystem', 'vec4').w
 
-        for (const { effectClass, bitIndex, attrs } of effectData) {
+        for (const { effectClass, bitIndex, attrs, constants, isProvider } of effectData) {
+          // Skip provider-only effects (they only produce channel data)
+          if (isProvider) continue
+
           // Extract enable bit: floor(mod(enableFlags / 2^bitIndex, 2))
           const divisor = float(1 << bitIndex)
           const shifted = floor(enableFlags.div(divisor))
@@ -387,6 +592,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
             inputColor: color,
             inputUV: atlasUV,
             attrs,
+            constants,
           })
 
           // Branchless: mix(original, effectResult, enabled)
@@ -437,5 +643,31 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       stride += getTypeSize(config.type)
     }
     return stride
+  }
+
+  /**
+   * Locate an effect's schema field within the packed instance buffers.
+   * Returns the `effectBufN` attribute that contains this field, the
+   * float offset within a single instance's 4-float slice of that
+   * buffer (0-3), and the field's float width. Returns `undefined`
+   * if no registered effect declares the given field.
+   *
+   * Used by instance-writing code (e.g. TileLayer, SpriteBatch) that
+   * needs to poke per-instance effect values directly without going
+   * through a MaterialEffect instance's property setter.
+   */
+  getEffectFieldLocation(
+    effectName: string,
+    fieldName: string
+  ): { bufferName: string; componentIndex: number; size: number } | undefined {
+    const slotKey = `${effectName}_${fieldName}`
+    const slotInfo = this._effectSlots.get(slotKey)
+    if (!slotInfo) return undefined
+    const bufferIndex = Math.floor(slotInfo.offset / 4)
+    return {
+      bufferName: `effectBuf${bufferIndex}`,
+      componentIndex: slotInfo.offset % 4,
+      size: slotInfo.size,
+    }
   }
 }

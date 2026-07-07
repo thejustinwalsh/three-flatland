@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/presets",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-alpha.7",
   "description": "Pre-configured setups for three-flatland",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -17,6 +17,17 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./react": {
+      "source": "./src/react.ts",
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
     }
   },
   "files": [
@@ -30,7 +41,13 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "three": "catalog:"
+    "three": "catalog:",
+    "@react-three/fiber": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "@react-three/fiber": {
+      "optional": true
+    }
   },
   "dependencies": {
     "three-flatland": "workspace:*",
@@ -38,7 +55,8 @@
   },
   "devDependencies": {
     "@types/three": "catalog:",
-    "three": "catalog:"
+    "three": "catalog:",
+    "@react-three/fiber": "catalog:"
   },
   "keywords": [
     "three.js",

@@ -5,6 +5,7 @@
 **For:** the developer rebasing `lighting-stochastic-adoption` after `fix-sprite-sort-regression` lands on `main`.
 
 **TL;DR:**
+
 - Most of the cherry-pick is **additive** (new files, new symlinks) — adopt as-is.
 - Three file-level conflict zones to resolve carefully: `Sprite2D.ts` (anchor-in-matrix surgery), `index.ts` (barrel), and `package.json` (test script).
 - One bonus fix to adopt: `skills/package.json` validate script (iterates over skills).
@@ -15,17 +16,17 @@
 
 Beyond its core sprite-sort fixes (untouched here), the branch cherry-picked the following from the abandoned `feat/with-props-sync` work:
 
-| Item | Why it landed | Type |
-|------|---------------|------|
-| `packages/three-flatland/src/observable/` (whole directory) | Standalone mutation-hook utility for Color/Vector2/Vector3/Euler; useful primitive even without WithPropsSync | **New** |
-| `skills/codemod/` (single skill with authoring + applying routing) | Authoring + applying flow for breaking-change migrations | **New** |
-| `.claude/skills/codemod` (symlink to `../../skills/codemod`) | Standard skills-package convention | **New** |
-| `planning/dirty-bits-unify-with-ecs.md` | Direction doc for the future always-on-ECS work | **New** |
-| `vitest.config.ts` typecheck block | Enables `.test-d.ts` discovery | **Additive** |
-| `package.json` `test` script `--typecheck` flag | Bundles type tests into the default `pnpm test` run | **Additive** |
-| `packages/three-flatland/src/index.ts` `export * from './observable'` | Wires the new observable module into the barrel | **Additive** |
-| `packages/three-flatland/src/sprites/Sprite2D.ts` anchor-in-matrix surgery | Removes per-anchor-change geometry rebuild; bakes anchor offset into `updateMatrix` translation | **Modifies existing** |
-| `skills/package.json` validate script fix | `for d in */` loop instead of relying on glob-to-multi-arg | **Bug fix in existing** |
+| Item                                                                       | Why it landed                                                                                                                                                                                         | Type                    |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `packages/three-flatland/src/observable/` (whole directory)                | Shared mutation-hook strategies for Color/Vector2/Vector3/Euler; `Sprite2D` and external extenders call `observable.color.attach(value, notify)` directly (the `WithPropsSync` installer was removed) | **New**                 |
+| `skills/codemod/` (single skill with authoring + applying routing)         | Authoring + applying flow for breaking-change migrations                                                                                                                                              | **New**                 |
+| `.claude/skills/codemod` (symlink to `../../skills/codemod`)               | Standard skills-package convention                                                                                                                                                                    | **New**                 |
+| `planning/dirty-bits-unify-with-ecs.md`                                    | Direction doc for the future always-on-ECS work                                                                                                                                                       | **New**                 |
+| `vitest.config.ts` typecheck block                                         | Enables `.test-d.ts` discovery                                                                                                                                                                        | **Additive**            |
+| `package.json` `test` script `--typecheck` flag                            | Bundles type tests into the default `pnpm test` run                                                                                                                                                   | **Additive**            |
+| `packages/three-flatland/src/index.ts` `export * from './observable'`      | Wires the new observable module into the barrel                                                                                                                                                       | **Additive**            |
+| `packages/three-flatland/src/sprites/Sprite2D.ts` anchor-in-matrix surgery | Removes per-anchor-change geometry rebuild; bakes anchor offset into `updateMatrix` translation                                                                                                       | **Modifies existing**   |
+| `skills/package.json` validate script fix                                  | `for d in */` loop instead of relying on glob-to-multi-arg                                                                                                                                            | **Bug fix in existing** |
 
 ---
 
@@ -57,11 +58,13 @@ Lighting's main branched from the same Sprite2D as sprite-sort, so the BEFORE st
 #### Edit 1 — `observeVector2(this._anchor, …)` callback
 
 **Before (both branches):**
+
 ```ts
 observeVector2(this._anchor, () => this.updateAnchor())
 ```
 
 **After (sprite-sort):**
+
 ```ts
 // Anchor mutation triggers a matrix recompose — `updateMatrix`
 // bakes the anchor offset into the translation component, so the
@@ -79,6 +82,7 @@ observeVector2(this._anchor, () => {
 #### Edit 2 — `setAnchor(x, y)` body
 
 **Before (both branches):**
+
 ```ts
 setAnchor(x: number, y: number): this {
   this._anchor.set(x, y)
@@ -88,6 +92,7 @@ setAnchor(x: number, y: number): this {
 ```
 
 **After (sprite-sort):**
+
 ```ts
 setAnchor(x: number, y: number): this {
   this._anchor.set(x, y)
@@ -112,6 +117,7 @@ setAnchor(x: number, y: number): this {
 #### Edit 4 — `override updateMatrix()` bakes anchor offset
 
 **Before (both branches):**
+
 ```ts
 override updateMatrix(): void {
   const te = this.matrix.elements
@@ -125,6 +131,7 @@ override updateMatrix(): void {
 ```
 
 **After (sprite-sort):**
+
 ```ts
 override updateMatrix(): void {
   const te = this.matrix.elements
@@ -235,11 +242,13 @@ exclude: ['packages/skia/**', 'packages/devtools/**', '**/node_modules/**'],
 ### Resolution
 
 Adopt both:
+
 - Keep lighting's new `exclude` value (`packages/devtools/**` instead of `packages/tweakpane/**`) in the main `exclude`
 - Add sprite-sort's `typecheck` block
 - **Update the `typecheck` block's `exclude` to also use the lighting convention** if needed — i.e., `'packages/devtools/**'` instead of `'packages/tweakpane/**'`
 
 Final:
+
 ```ts
 test: {
   // ...
@@ -366,7 +375,7 @@ If knightmark animation looks stuck on one frame, or tiles don't render: revisit
 ## What's NOT in this PR (intentionally parked)
 
 - `setFrame` removal — depends on always-on-ECS resolving the synchronous-setter contract. Codemod authored but not shipped.
-- WithPropsSync reactive mixin (event-driven OR dirty-bit) — confirmed the wrong tool for Sprite2D's ECS-bridge case. Pivoting to always-on-ECS instead.
+- WithPropsSync reactive mixin (event-driven OR dirty-bit) — confirmed the wrong tool for Sprite2D's ECS-bridge case and since removed. Prop reactivity now goes through the shared `observable` strategies (`observable.color.attach(value, notify)`); the deeper ECS-bridge coordination pivots to always-on-ECS instead.
 - Sprite2D's `texture`/`frame`/`material` reactive coordination — same reason.
 
 See [`planning/dirty-bits-unify-with-ecs.md`](../../dirty-bits-unify-with-ecs.md) for the always-on-ECS roadmap. That's the next major refactor; this PR clears the runway.

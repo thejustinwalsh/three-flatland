@@ -5,8 +5,9 @@ import {
   SpriteColor,
   SpriteUV,
   SpriteFlip,
-  SpriteLayer,
+  SortLayer,
   SpriteMaterialRef,
+  CameraLayersMask,
   InBatch,
   BatchSlot,
   BatchMesh,
@@ -17,7 +18,7 @@ import type { MaterialEffect } from '../../materials/MaterialEffect'
 import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
-import { getOrCreateRun, findOrCreateBatch } from '../batchUtils'
+import { computeRunKey, getOrCreateRun, findOrCreateBatch } from '../batchUtils'
 import { ENTITY_ID_MASK } from '../snapshot'
 
 /**
@@ -27,13 +28,14 @@ import { ENTITY_ID_MASK } from '../snapshot'
  * + effect-trait map and assigns newly renderable sprites to batches.
  *
  * Triggered by Added(IsRenderable). Computes the run key from
- * (layer, materialId), finds or creates a batch in that run, allocates
+ * (sortLayer, materialId, layers.mask), finds or creates a batch in that run, allocates
  * a slot, and sets the InBatch relation with slot data. Also performs
  * a one-time full buffer sync from trait state.
  *
- * Closes over its own `Added` subscription + `dirtyMeshes` scratch Set
- * so multiple SpriteGroups don't share Koota change-tracking state and
- * the Set is cleared-and-reused instead of allocated per frame.
+ * Closes over its own `Added` subscription + `dirtyMeshes`/`pendingCounts`
+ * scratch collections so multiple SpriteGroups don't share Koota
+ * change-tracking state and the collections are cleared-and-reused
+ * instead of allocated per frame.
  */
 export function createBatchAssignSystem(): (
   world: World,
@@ -41,6 +43,7 @@ export function createBatchAssignSystem(): (
 ) => boolean {
   const Added = createAdded()
   const dirtyMeshes = new Set<SpriteBatch>()
+  const pendingCounts = new Map<string, number>()
 
   return function batchAssignSystem(
     world: World,
@@ -56,13 +59,30 @@ export function createBatchAssignSystem(): (
 
     dirtyMeshes.clear()
 
+    // Precompute how many pending sprites share each run in this pass —
+    // a bulk prime (thousands of sprites added in one shot) sizes its
+    // first batch for that load instead of the ladder's bottom tier. See
+    // resolveBatchSize/findOrCreateBatch.
+    pendingCounts.clear()
+    for (const entity of added) {
+      const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+      if (!sprite) continue
+      const layerData = entity.get(SortLayer)
+      const matRef = entity.get(SpriteMaterialRef)
+      if (!layerData || !matRef) continue
+      const layersMask = entity.get(CameraLayersMask)?.mask ?? sprite.layers.mask
+      const key = computeRunKey(layerData.value, matRef.materialId, layersMask)
+      pendingCounts.set(key, (pendingCounts.get(key) ?? 0) + 1)
+    }
+
     for (const entity of added) {
       const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
       if (!sprite) continue
 
-      const layerData = entity.get(SpriteLayer)
+      const layerData = entity.get(SortLayer)
       const matRef = entity.get(SpriteMaterialRef)
       if (!layerData || !matRef) continue
+      const layersMask = entity.get(CameraLayersMask)?.mask ?? sprite.layers.mask
 
       // Track material for schema version detection
       const material = sprite.material
@@ -73,11 +93,19 @@ export function createBatchAssignSystem(): (
         })
       }
 
-      // Find or create the run for this (layer, materialId)
-      const { run } = getOrCreateRun(registry, layerData.layer, matRef.materialId, material)
+      // Find or create the run for this (sortLayer, materialId, layers.mask)
+      const runKey = computeRunKey(layerData.value, matRef.materialId, layersMask)
+      const { run } = getOrCreateRun(
+        registry,
+        layerData.value,
+        matRef.materialId,
+        layersMask,
+        material
+      )
 
       // Find or create a batch with free slots
-      const batchEntity = findOrCreateBatch(world, registry, run)
+      const pendingCount = pendingCounts.get(runKey) ?? 0
+      const batchEntity = findOrCreateBatch(world, registry, run, pendingCount)
       const batchMesh = batchEntity.get(BatchMesh)
       if (!batchMesh?.mesh) continue
       const mesh = batchMesh.mesh
@@ -104,6 +132,14 @@ export function createBatchAssignSystem(): (
       sprite._batchMesh = mesh
       sprite._batchSlot = slot
       sprite._batchIdx = batchIdx
+
+      // Auto-orchestrated sprites live in the user's scene tree — once a
+      // batch draws them, their own Mesh must stop rendering. Explicit
+      // SpriteGroup sprites were never tree children; leave them alone.
+      if (sprite._autoRegistry) {
+        sprite._autoBatched = true
+        sprite.visible = false
+      }
 
       // Signal that this batch needs sorting on the next pass — the new
       // sprite was just inserted at an arbitrary slot (allocateSlot's
@@ -162,6 +198,15 @@ function syncSlotBuffers(
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
 
+  // Lighting system flags (lit/receiveShadows/castsShadow → instanceSystem.z)
+  // and per-instance shadow radius (instanceExtras.x). Written for every
+  // sprite, not just effect-bearing ones — a flat sprite can still be lit.
+  mesh.writeSystemFlags(slot, sprite._systemFlags)
+  mesh.writeShadowRadius(
+    slot,
+    sprite.shadowRadius ?? Math.max(Math.abs(sprite.scale.x), Math.abs(sprite.scale.y))
+  )
+
   // Effect data
   syncEffectBuffers(slot, mesh, sprite, effectTraits)
 }
@@ -176,8 +221,14 @@ function syncEffectBuffers(
   const tier = material._effectTier
   if (tier === 0) return
 
-  // Write flags to slot 0
-  mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
+  // Effect-enable bitmask → instanceSystem.w (the slot the shader reads;
+  // see EffectMaterial + SpriteBatch.writeEnableBits). On first assign
+  // this is the ONLY writer of .w — _writeEffectStateToBatch only fires
+  // on add/removeEffect and reassign is a later event, so without this a
+  // sprite that had effects added before enrollment would land with
+  // .w = 0 and render its effects disabled. (Was a stale write to the
+  // now-pure-data effectBuf0.x.)
+  mesh.writeEnableBits(slot, sprite._effectFlags)
 
   // Write effect field values
   for (const effect of sprite._effects) {

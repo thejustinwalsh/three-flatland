@@ -1,7 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, NearestFilter } from 'three'
-import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland'
-import { createPane } from '@three-flatland/tweakpane'
+import { AnimatedSprite2D, SpriteSheetLoader, SortLayers, createDevtoolsProvider } from 'three-flatland'
+import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
@@ -29,7 +29,7 @@ async function main() {
   camera.position.z = 100
 
   // WebGPU Renderer (required for TSL materials)
-  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
+  const renderer = new WebGPURenderer({ antialias: false })
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
@@ -111,7 +111,7 @@ async function main() {
       },
     },
     animation: 'idle',
-    layer: Layers.ENTITIES,
+    sortLayer: SortLayers.ENTITIES,
     anchor: [0.5, 0.5],
   })
 
@@ -120,8 +120,9 @@ async function main() {
   knight.position.set(0, 0, 0)
   scene.add(knight)
 
-  // Tweakpane UI — pass `scene` so draws/triangles are auto-wired
-  const { pane, stats } = createPane({ scene })
+  // Tweakpane UI
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'animation' })
 
   const animFolder = pane.addFolder({ title: 'Animation' })
 
@@ -185,14 +186,13 @@ async function main() {
     const deltaMs = now - lastTime
     lastTime = now
 
-    stats.begin()
-
     // Update sprite animation
     knight.update(deltaMs)
 
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
-
-    stats.end()
+    devtools.endFrame(renderer)
+    updateDevtools()
   }
 
   animate()

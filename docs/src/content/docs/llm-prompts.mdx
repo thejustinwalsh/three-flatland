@@ -41,8 +41,8 @@ Key things to know:
 - Three.js users import from "three-flatland"
 - React Three Fiber users import from "three-flatland/react"
 - TSL effect nodes come from "@three-flatland/nodes"
-- Install with @alpha tag: npm install three-flatland@alpha
-- Requires three.js >= 0.183.1 and WebGPURenderer from "three/webgpu"
+- Install: npm install three-flatland three koota
+- Requires three.js >= 0.183.1, koota, and WebGPURenderer from "three/webgpu"
 
 Help me with the following:
 [Describe your task here]
@@ -91,6 +91,9 @@ Replace `EXAMPLE_NAME` with one of these:
 | `tsl-nodes` | Per-sprite effects with `MaterialEffect` and TSL nodes |
 | `pass-effects` | Full-screen post-processing with `PassEffect` |
 | `tilemap` | Tiled/LDtk tilemap loading and rendering |
+| `lighting` | 2D lighting, draggable point lights, preset comparison |
+| `skia` | Skia WASM vector graphics — shapes, text, paths, gradients |
+| `slug-text` | GPU-rendered vector text with the Slug font pipeline |
 | `knightmark` | Sprite benchmark with batching stress test |
 
 ### Deep Context (File Access Required)
@@ -122,7 +125,6 @@ These are the mistakes AI assistants make most often with three-flatland. If you
 |---------|-----|
 | `new THREE.WebGLRenderer()` | Use `new WebGPURenderer()` from `'three/webgpu'` |
 | `import { ... } from '@three-flatland/core'` | Import from `'three-flatland'` (or `'three-flatland/react'`) |
-| `npm install three-flatland` (no alpha tag) | Use `npm install three-flatland@alpha` |
 | Missing `await renderer.init()` | WebGPU requires async initialization before rendering |
 | Using `THREE.Sprite` | Use `Sprite2D` from three-flatland — different API entirely |
 | `renderer.render(scene, camera)` with Flatland | Use `flatland.render(renderer)` — Flatland manages its own scene and camera |

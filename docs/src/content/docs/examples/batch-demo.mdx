@@ -33,14 +33,14 @@ for (let i = 0; i < 1000; i++) {
 }
 ```
 
-## Layers and Sorting
+## Sort Layers and Sorting
 
-Use layers and zIndex for proper depth sorting:
+Use sort layers and zIndex for proper depth sorting:
 
 ```typescript
-import { Layers } from 'three-flatland';
+import { SortLayers } from 'three-flatland';
 
-sprite.layer = Layers.ENTITIES;
+sprite.sortLayer = SortLayers.ENTITIES;
 sprite.zIndex = -Math.floor(sprite.position.y); // Y-sort
 ```
 
@@ -49,8 +49,8 @@ sprite.zIndex = -Math.floor(sprite.position.y); // Y-sort
 Monitor batching performance with the stats object:
 
 ```typescript
-const { spriteCount, batchCount, drawCalls } = spriteGroup.stats;
-console.log(`Sprites: ${spriteCount}, Batches: ${batchCount}, Draw Calls: ${drawCalls}`);
+const { spriteCount, batchCount, visibleSprites } = spriteGroup.stats;
+console.log(`Sprites: ${spriteCount}, Batches: ${batchCount}, Visible: ${visibleSprites}`);
 ```
 
 ## Further Reading

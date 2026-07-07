@@ -28,31 +28,37 @@ export interface InstanceAttributeConfig {
 }
 
 /**
- * Layer configuration.
+ * SortLayerManager layer descriptor.
  */
-export interface LayerConfig {
-  /** Layer name */
+export interface SortLayerDescriptor {
+  /** Sort layer name */
   name: string
-  /** Layer value/index */
+  /** Sort layer value (render order) */
   value: number
-  /** Blend mode for this layer */
+  /** Blend mode for this sort layer */
   blendMode?: BlendMode
-  /** Sort mode for sprites in this layer */
+  /** Sort mode for sprites in this sort layer */
   sortMode?: SortMode
-  /** Whether this layer is visible */
+  /** Whether this sort layer is visible */
   visible?: boolean
 }
 
 /**
- * Render statistics.
+ * Sprite-domain render statistics.
+ *
+ * Tracks counts the sprite pipeline owns: sprite instance count,
+ * batch count, visible-after-culling count. Does NOT include
+ * renderer-level stats (draw calls, triangles, GPU time) — those live
+ * in the devtools producer (`@three-flatland/debug` subpath), which is
+ * fully tree-shaken in prod builds and therefore doesn't pollute the
+ * prod bundle with stats math. If you want renderer stats, subscribe
+ * to the debug bus's `stats` feature.
  */
 export interface RenderStats {
   /** Total sprites in the renderer */
   spriteCount: number
   /** Number of batches created */
   batchCount: number
-  /** Number of draw calls this frame */
-  drawCalls: number
   /** Number of visible sprites rendered */
   visibleSprites: number
 }
@@ -77,7 +83,10 @@ export interface SpriteGroupOptions {
 /**
  * Sorting function for custom sort mode.
  */
-export type SpriteSortFunction = (a: { layer: number; zIndex: number }, b: { layer: number; zIndex: number }) => number
+export type SpriteSortFunction = (
+  a: { sortLayer: number; zIndex: number },
+  b: { sortLayer: number; zIndex: number }
+) => number
 
 /**
  * Batch key for grouping sprites by material.

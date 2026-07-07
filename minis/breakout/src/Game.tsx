@@ -128,12 +128,15 @@ function GameScene({ soundsRef, isVisible, onGameStateChange, onStatsChange }: G
     }
     onGameStateChange(prev => shallow(prev, gameState) ? prev : gameState)
 
-    const rendererStats = flatlandRef.current?.stats
-    if (rendererStats) {
+    // Sprite-domain stats come from SpriteGroup.stats (no renderer math —
+    // devtools bus owns drawCalls/triangles/GPU timing separately).
+    const spriteGroup = flatlandRef.current?.spriteGroup
+    if (spriteGroup) {
+      const sg = spriteGroup.stats
       const stats: Stats = {
-        spriteCount: rendererStats.spriteCount,
-        batchCount: rendererStats.batchCount,
-        drawCalls: rendererStats.drawCalls,
+        spriteCount: sg.spriteCount,
+        batchCount: sg.batchCount,
+        drawCalls: 0,
         fps: fpsRef.current.current,
       }
       onStatsChange(prev => prev && shallow(prev, stats) ? prev : stats)

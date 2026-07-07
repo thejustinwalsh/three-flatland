@@ -1,5 +1,25 @@
 # ECS Render Graph - Research
 
+> **Status (2026-05-24): Active foundation — *not* superseded. Names predate the shipped API.**
+>
+> This is the ECS/trait design the current engine is built on: Koota traits as the
+> source of truth, `Changed()` as the dirty-tracking mechanism, buffer-sync + transform
+> systems. It pairs with the orchestration layer in
+> [`../milestones/RENDERING-ARCHITECTURE.md`](../milestones/RENDERING-ARCHITECTURE.md) —
+> this doc is *how sprites/batches work as ECS*; that doc is *where the world is owned*.
+>
+> Three reconciliations against today's code (apply mentally when reading):
+> - **Package/class names** here predate the rename: `@three-flatland/core` →
+>   `three-flatland`; `Renderer2D` → `SpriteGroup` (with `Flatland` as the optional
+>   opinionated wrapper).
+> - **World ownership.** This doc proposes a lazy *global* fallback world for standalone
+>   sprites. That singleton was **not** adopted — each `SpriteGroup` owns its own world
+>   today, and the next step is to move ownership into the per-`(renderer, scene)`
+>   Registry (`RENDERING-ARCHITECTURE.md` Principle #3, "no singletons"). Tracked by
+>   epic #85 / #75. This is the singleton-removal work being built next.
+> - The **"traits authoritative / `Changed()` sole dirty-tracking"** decision is the
+>   basis for #112 (unify `WithPropsSync` dirty bits with ECS dirty tracking).
+
 ## System Classification
 
 Three-flatland is a high-performance 2D sprite and effects library for Three.js using WebGPU and TSL (Three Shader Language). It provides batched instanced rendering of 2D sprites with per-instance attributes, automatic layer/material-based sorting, and a composable TSL node system for shader effects.

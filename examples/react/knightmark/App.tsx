@@ -8,20 +8,14 @@ import {
   SpriteSheetLoader,
   TextureLoader,
   TileMap2D,
-  Layers,
+  SortLayers,
   type AnimationSetDefinition,
   type SpriteSheet,
   type TileMapData,
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import {
-  usePane,
-  usePaneFolder,
-  usePaneInput,
-  useStatsMonitor,
-} from '@three-flatland/tweakpane/react'
-import type { StatsHandle } from '@three-flatland/tweakpane/react'
+import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 // Knightmark doesn't render any gem-background layer — its sprites
 // fill the viewport. The body bg (#16191e) shows through during
 // initial sprite load. GEM/GemBackground imports intentionally
@@ -239,7 +233,7 @@ function spawnKnight(
     spriteSheet: sheet,
     animationSet: knightAnimations,
     animation: 'idle',
-    layer: Layers.ENTITIES,
+    sortLayer: SortLayers.ENTITIES,
     anchor: [0.5, 0.5],
     material,
   })
@@ -278,8 +272,6 @@ interface KnightmarkSceneProps {
   hitRadius: number
   knightScale: number
   knightStatsRef: React.RefObject<{ knights: number; batches: number }>
-  refreshStatsRef: React.RefObject<() => void>
-  stats: StatsHandle
 }
 
 function KnightmarkScene({
@@ -289,12 +281,8 @@ function KnightmarkScene({
   hitRadius,
   knightScale,
   knightStatsRef,
-  refreshStatsRef,
-  stats,
 }: KnightmarkSceneProps) {
   const { size } = useThree()
-
-  useStatsMonitor(stats)
 
   // Load assets (presets automatically apply NearestFilter)
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
@@ -501,7 +489,6 @@ function KnightmarkScene({
       knightStatsRef.current.knights = knights.length
       knightStatsRef.current.batches = s.batchCount
     }
-    refreshStatsRef.current()
   })
 
   return (
@@ -512,7 +499,9 @@ function KnightmarkScene({
         scale={[TILE_SCALE, TILE_SCALE, 1]}
         position={[-mapWorldW / 2, -mapWorldH / 2, -1]}
       />
-      <spriteGroup ref={spriteGroupRef} />
+      {/* This scene stresses 40k+ sprites — pin fixed 16384-slot batches
+          (ladder off) to minimize per-batch overhead. */}
+      <spriteGroup ref={spriteGroupRef} maxBatchSize={16384} />
     </>
   )
 }
@@ -525,7 +514,7 @@ export default function App() {
   const addKnightsRef = useRef<(() => void) | null>(null)
 
   // Tweakpane
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
 
   // Knights monitors (first)
   const knightStatsRef = useRef({ knights: 0, batches: 0 })
@@ -600,12 +589,13 @@ export default function App() {
     <>
       <Canvas
         dpr={1}
-        renderer={{ antialias: false, trackTimestamp: true }}
+        renderer={{ antialias: false }}
         onCreated={({ gl }) => {
           gl.domElement.style.imageRendering = 'pixelated'
         }}
       >
         <OrthoCamera viewSize={VIEW_SIZE} />
+        <DevtoolsProvider name="knightmark" />
         {/* No L1/L2/L3 — knightmark's sprites fill the viewport, so a
            backdrop wouldn't be visible anyway. Body bg (#16191e) shows
            through during initial sprite load, no color jump. */}
@@ -617,8 +607,6 @@ export default function App() {
             hitRadius={hitRadius}
             knightScale={knightScale}
             knightStatsRef={knightStatsRef}
-            refreshStatsRef={refreshStatsRef}
-            stats={stats}
           />
         </Suspense>
       </Canvas>

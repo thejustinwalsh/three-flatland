@@ -7,7 +7,7 @@ Creates a new three-flatland example with both Three.js and React variants.
 - Examples are **self-contained** and **copy-paste-able** — real npm version strings, not `workspace:*` or `catalog:`
 - Always create **both** Three.js AND React variants simultaneously (project rule, not optional)
 - Root `pnpm.overrides` maps `@three-flatland/*` to workspace packages during development
-- Examples use `@three-flatland/tweakpane` for UI controls — never Web Awesome
+- Examples use `@three-flatland/devtools` for UI controls — never Web Awesome
 - Run `pnpm syncpack:examples` after catalog version changes to keep examples in sync
 
 ## Discovery, Not Registration
@@ -68,7 +68,7 @@ examples/
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@three-flatland/tweakpane": "^0.1.0-alpha.1",
+    "@three-flatland/devtools": "^0.1.0-alpha.1",
     "@tweakpane/plugin-essentials": "^0.2.1",
     "three-flatland": "^0.1.0-alpha.2",
     "three": "^0.183.1",
@@ -111,11 +111,11 @@ React example uses `<div id="root">` and mounts via `main.tsx`.
 
 ## Tweakpane UI Controls
 
-Both variants use `@three-flatland/tweakpane`. The Three.js path uses the `createPane()` helper; React uses hooks. Both apply the project's `FLATLAND_THEME` automatically.
+Both variants use `@three-flatland/devtools`. The Three.js path uses the `createPane()` helper; React uses hooks. Both apply the project's `FLATLAND_THEME` automatically.
 
 **Three.js (`main.ts`):**
 ```ts
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 const { pane, stats } = createPane()
 
@@ -135,7 +135,7 @@ function animate() {
 
 **React (`App.tsx`):**
 ```tsx
-import { usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/devtools/react'
 
 function Scene() {
   const { pane, stats } = usePane()
