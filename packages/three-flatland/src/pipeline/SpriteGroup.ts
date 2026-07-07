@@ -11,6 +11,7 @@ import {
   ensureMaterialDisposeHook,
   evictBatchesForMaterial,
   getWorldDefaultMaterial,
+  getWorldEffectVariant,
   removeMaterialDisposeHooks,
 } from '../ecs/batchUtils'
 import { buildBatchQueryView, type BatchQueryView } from './batchQuery'
@@ -285,6 +286,7 @@ export class SpriteGroup extends Group implements WorldProvider {
           tierLadder: this._tierLadder,
           materialRefs: new Map(),
           defaultMaterials: new WeakMap(),
+          effectVariants: new WeakMap(),
           batchSlots: [],
           batchSlotFreeList: [],
           spriteArr: [],
@@ -333,18 +335,25 @@ export class SpriteGroup extends Group implements WorldProvider {
   }
 
   /**
-   * Re-resolve a bootstrap default material to this group's world-scoped
-   * default for the sprite's texture. Explicit user materials pass
-   * through untouched (their dispose hook still installs via
-   * _trackMaterial → ensureMaterialDisposeHook).
+   * Re-resolve a bootstrap default or bootstrap effect-variant material
+   * to this group's world-scoped store for the sprite's texture.
+   * Explicit user materials pass through untouched (their dispose hook
+   * still installs via _trackMaterial → ensureMaterialDisposeHook).
    */
   private _resolveDefaultMaterial(sprite: Sprite2D): void {
-    if (!sprite._materialIsBootstrapDefault) return
     const texture = sprite.texture
     if (!texture) return
-    const registry = this._getRegistry()
-    if (!registry) return
-    sprite._resolveDefaultMaterial(getWorldDefaultMaterial(this.world, registry, texture))
+    if (sprite._materialIsBootstrapDefault) {
+      const registry = this._getRegistry()
+      if (!registry) return
+      sprite._resolveDefaultMaterial(getWorldDefaultMaterial(this.world, registry, texture))
+    } else if (sprite._materialIsBootstrapVariant) {
+      const registry = this._getRegistry()
+      if (!registry) return
+      sprite._resolveEffectVariantMaterial(
+        getWorldEffectVariant(this.world, registry, texture, sprite._currentVariantOptions())
+      )
+    }
   }
 
   /**

@@ -250,3 +250,121 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     group.dispose()
   })
 })
+
+// A provider-style effect with a constant (factory) field — the
+// `Sprite2D.addEffect` constants branch routes these through a material
+// *variant* (keyed by texture + effectsKey), not the plain default.
+const VariantMarker = createMaterialEffect({
+  name: 'variantMarker',
+  schema: { marker: () => null as Texture | null },
+  node: ({ inputColor }) => inputColor,
+})
+
+describe('registry-scoped effect-variant materials + dispose resurrection', () => {
+  let texture: Texture
+
+  beforeEach(() => {
+    texture = makeTexture()
+  })
+
+  afterEach(() => {
+    universe.reset()
+    vi.restoreAllMocks()
+  })
+
+  it('two groups sharing a texture+effect+constants combination hold their OWN variant instances', () => {
+    const groupA = new SpriteGroup()
+    const groupB = new SpriteGroup()
+
+    const spriteA = new Sprite2D({ texture })
+    const spriteB = new Sprite2D({ texture })
+    groupA.add(spriteA)
+    groupB.add(spriteB)
+
+    spriteA.addEffect(new VariantMarker())
+    spriteB.addEffect(new VariantMarker())
+
+    expect(spriteA.material).not.toBe(spriteB.material)
+    expect(spriteA._materialWasRegistryVariant).toBe(true)
+    expect(spriteB._materialWasRegistryVariant).toBe(true)
+    expect(spriteA.material.hasEffect(VariantMarker)).toBe(true)
+    expect(spriteB.material.hasEffect(VariantMarker)).toBe(true)
+
+    groupA.dispose()
+    groupB.dispose()
+  })
+
+  it('sprites in the same group with the same combination share one variant instance (cache hit)', () => {
+    const group = new SpriteGroup()
+    const a = new Sprite2D({ texture })
+    const b = new Sprite2D({ texture })
+    group.add(a)
+    group.add(b)
+
+    const sharedDefault = a.material
+    expect(b.material).toBe(sharedDefault)
+
+    a.addEffect(new VariantMarker())
+    b.addEffect(new VariantMarker())
+
+    expect(a.material).toBe(b.material)
+    expect(a.material).not.toBe(sharedDefault)
+    expect(a.material.hasEffect(VariantMarker)).toBe(true)
+
+    group.dispose()
+  })
+
+  it("disposing world A's variant does not affect world B's sprites", () => {
+    const groupA = new SpriteGroup()
+    const groupB = new SpriteGroup()
+
+    const spriteA = new Sprite2D({ texture })
+    const spriteB = new Sprite2D({ texture })
+    groupA.add(spriteA)
+    groupB.add(spriteB)
+
+    spriteA.addEffect(new VariantMarker())
+    spriteB.addEffect(new VariantMarker())
+
+    const variantA = spriteA.material
+    const variantB = spriteB.material
+    expect(variantA).not.toBe(variantB)
+
+    variantA.dispose()
+
+    // spriteA resurrects with a fresh variant carrying the same effect;
+    // spriteB (a different world) is untouched.
+    expect(spriteA.material).not.toBe(variantA)
+    expect(spriteA._materialWasRegistryVariant).toBe(true)
+    expect(spriteA.material.hasEffect(VariantMarker)).toBe(true)
+    expect(spriteA.entity).not.toBeNull()
+
+    expect(spriteB.material).toBe(variantB)
+    expect(variantB.hasEffect(VariantMarker)).toBe(true)
+
+    groupA.dispose()
+    groupB.dispose()
+  })
+
+  it('pre-enrollment sprite resolves via the module-global path, then re-resolves world-scoped on enrollment', () => {
+    const sprite = new Sprite2D({ texture })
+    sprite.addEffect(new VariantMarker())
+
+    expect(sprite._materialIsBootstrapVariant).toBe(true)
+    expect(sprite._materialWasRegistryVariant).toBe(false)
+    const bootstrapVariant = sprite.material
+    expect(bootstrapVariant.hasEffect(VariantMarker)).toBe(true)
+
+    const group = new SpriteGroup()
+    group.add(sprite)
+
+    // Re-resolved off the module-global fallback onto this group's
+    // world-scoped variant store.
+    expect(sprite.material).not.toBe(bootstrapVariant)
+    expect(sprite._materialIsBootstrapVariant).toBe(false)
+    expect(sprite._materialWasRegistryVariant).toBe(true)
+    expect(sprite.material.hasEffect(VariantMarker)).toBe(true)
+
+    group.dispose()
+  })
+})

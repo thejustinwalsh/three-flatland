@@ -14,7 +14,7 @@ import {
 } from 'three'
 import type { Entity, World } from 'koota'
 import type { MaterialEffect } from '../materials/MaterialEffect'
-import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { Sprite2DMaterial, type Sprite2DMaterialOptions } from '../materials/Sprite2DMaterial'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import type { Sprite2DOptions, SpriteFrame } from './types'
 import {
@@ -31,7 +31,11 @@ import {
   BatchRegistry,
 } from '../ecs/traits'
 import { resolveSortLayer, type SortLayerName, type SortLayerValue } from '../pipeline/sortLayers'
-import { getWorldDefaultMaterial, type RegistryData } from '../ecs/batchUtils'
+import {
+  getWorldDefaultMaterial,
+  getWorldEffectVariant,
+  type RegistryData,
+} from '../ecs/batchUtils'
 import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 import { observable } from '../observable'
@@ -437,6 +441,26 @@ export class Sprite2D extends Mesh {
   _materialWasRegistryDefault = false
 
   /**
+   * True while the material is a constants-effect variant resolved
+   * through the module-global `Sprite2DMaterial.getShared` fallback
+   * (an `addEffect` with constants ran before this sprite had a world
+   * or auto-orchestration registry to resolve through). Enrollment
+   * re-resolves to a world-scoped variant and clears this — the
+   * constants-effect counterpart of `_materialIsBootstrapDefault`.
+   * @internal
+   */
+  _materialIsBootstrapVariant = false
+
+  /**
+   * True when the current material came from a world/registry
+   * effect-variant store. Dispose of such a material resurrects the
+   * sprite with a fresh variant instead of orphaning it — the
+   * constants-effect counterpart of `_materialWasRegistryDefault`.
+   * @internal
+   */
+  _materialWasRegistryVariant = false
+
+  /**
    * Scene whose prime-pending set still holds this sprite (Signal A
    * fired, no renderer seen yet). Cleared on registration or removal.
    * @internal
@@ -822,6 +846,31 @@ export class Sprite2D extends Mesh {
   }
 
   /**
+   * Resolve a world- or registry-scoped effect-variant material for
+   * `texture` + `options` — the constants-effect counterpart of
+   * `_resolveWorldDefaultMaterial`.
+   *
+   * Returns `null` when the sprite has neither an assigned world nor an
+   * auto-orchestration registry yet — the pre-enrollment bootstrap
+   * fallback (`Sprite2DMaterial.getShared`) covers that case instead.
+   * @internal
+   */
+  private _resolveWorldEffectVariant(
+    texture: Texture,
+    options: Sprite2DMaterialOptions
+  ): Sprite2DMaterial | null {
+    if (this._flatlandWorld) {
+      const registryEntities = this._flatlandWorld.query(BatchRegistry)
+      const registry = registryEntities[0]?.get(BatchRegistry) as RegistryData | undefined
+      if (registry) return getWorldEffectVariant(this._flatlandWorld, registry, texture, options)
+    }
+    if (this._autoRegistry) {
+      return this._autoRegistry.getEffectVariant(texture, options)
+    }
+    return null
+  }
+
+  /**
    * Get the current texture.
    */
   get texture(): Texture | null {
@@ -847,6 +896,21 @@ export class Sprite2D extends Mesh {
         } else {
           this.material = Sprite2DMaterial.getShared({ map: value, transparent: true })
           this._setupInstanceAttributes()
+        }
+      } else if (
+        (this._materialIsBootstrapVariant || this._materialWasRegistryVariant) &&
+        this.material.getTexture() !== value
+      ) {
+        // Same reasoning for a shared effect-variant material — re-resolve
+        // to the variant for the new texture, carrying the same config
+        // (transparent/colorTransform/effectsKey) instead of mutating.
+        const options = this._currentVariantOptions()
+        const worldVariant = this._resolveWorldEffectVariant(value, options)
+        if (worldVariant) {
+          this._resolveEffectVariantMaterial(worldVariant)
+        } else {
+          this._switchToMaterial(Sprite2DMaterial.getShared({ map: value, ...options }))
+          this._materialIsBootstrapVariant = true
         }
       } else {
         this.material.setTexture(value)
@@ -892,6 +956,42 @@ export class Sprite2D extends Mesh {
   }
 
   /**
+   * Build the effectsKey for this sprite's currently-attached
+   * constants-bearing effects (from `_effects` + `_constantsKey`).
+   * Shared by `addEffect` (initial resolution, where the just-added
+   * effect is already in `_effects`) and by enrollment/dispose
+   * re-resolution, which rebuild the same key from the sprite's live
+   * effect state.
+   * @internal
+   */
+  private _buildEffectsKey(): string {
+    return this._effects
+      .filter(
+        (e) => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0
+      )
+      .map((e) => {
+        const EC = e.constructor as typeof MaterialEffect
+        return `${EC.effectName}:${this._constantsKey(e._constants)}`
+      })
+      .join(';')
+  }
+
+  /**
+   * Options mirroring this sprite's current material config, for
+   * re-resolving an effect-variant material (enrollment bootstrap
+   * re-resolution, dispose resurrection, or a texture reassignment that
+   * must not mutate a shared variant in place).
+   * @internal
+   */
+  _currentVariantOptions(): Sprite2DMaterialOptions {
+    return {
+      transparent: this.material.transparent,
+      colorTransform: this.material.colorTransform ?? undefined,
+      effectsKey: this._buildEffectsKey(),
+    }
+  }
+
+  /**
    * Switch to a different shared material, carrying over all state.
    * @internal
    */
@@ -900,6 +1000,8 @@ export class Sprite2D extends Mesh {
     this.material = newMaterial
     this._materialIsBootstrapDefault = false
     this._materialWasRegistryDefault = false
+    this._materialIsBootstrapVariant = false
+    this._materialWasRegistryVariant = false
 
     // Carry over global uniforms
     if (current.globalUniforms) {
@@ -941,6 +1043,22 @@ export class Sprite2D extends Mesh {
     }
     this._switchToMaterial(material)
     this._materialWasRegistryDefault = true
+  }
+
+  /**
+   * Swap to a world-scoped effect-variant material (enrollment
+   * resolution or dispose resurrection) — the constants-effect
+   * counterpart of `_resolveDefaultMaterial`.
+   * @internal
+   */
+  _resolveEffectVariantMaterial(material: Sprite2DMaterial): void {
+    if (this.material === material) {
+      this._materialIsBootstrapVariant = false
+      this._materialWasRegistryVariant = true
+      return
+    }
+    this._switchToMaterial(material)
+    this._materialWasRegistryVariant = true
   }
 
   /**
@@ -1434,30 +1552,36 @@ export class Sprite2D extends Mesh {
 
     // Provider effects with constants may need a different material
     if (hasConstants) {
-      // Link and store the effect first (needed for _switchToMaterial)
+      // Link and store the effect first (needed for _switchToMaterial /
+      // _buildEffectsKey, which reads this._effects)
       effect._attach(this)
       this._effects.push(effect)
 
-      // Build effects key for all effects with constants
-      const effectsKey = this._effects
-        .filter(
-          (e) => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0
-        )
-        .map((e) => {
-          const EC = e.constructor as typeof MaterialEffect
-          return `${EC.effectName}:${this._constantsKey(e._constants)}`
-        })
-        .join(';')
-
-      const newMaterial = Sprite2DMaterial.getShared({
-        map: this._texture ?? undefined,
+      const options: Sprite2DMaterialOptions = {
         transparent: this.material.transparent,
         colorTransform: this.material.colorTransform ?? undefined,
-        effectsKey,
-      })
+        effectsKey: this._buildEffectsKey(),
+      }
+
+      // Resolve through the sprite's world/registry when enrolled, so
+      // two worlds sharing a texture+effectsKey combination get distinct
+      // material instances (effect registration / dispose stay
+      // isolated); fall back to the module-global shared cache only
+      // pre-enrollment.
+      const worldVariant = this._texture
+        ? this._resolveWorldEffectVariant(this._texture, options)
+        : null
+      const newMaterial =
+        worldVariant ??
+        Sprite2DMaterial.getShared({ map: this._texture ?? undefined, ...options })
 
       if (newMaterial !== this.material) {
         this._switchToMaterial(newMaterial)
+        if (worldVariant) {
+          this._materialWasRegistryVariant = true
+        } else {
+          this._materialIsBootstrapVariant = true
+        }
       } else {
         // Same material — just register the effect
         if (!this.material.hasEffect(EffectClass)) {

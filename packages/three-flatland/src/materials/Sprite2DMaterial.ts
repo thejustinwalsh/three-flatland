@@ -71,6 +71,29 @@ function getColorTransformId(fn: ColorTransformFn | undefined): number {
 }
 
 /**
+ * Compute the non-texture fragment of `Sprite2DMaterial`'s shared-cache
+ * key (transparent, lit, colorTransform, alphaTest, premultipliedAlpha,
+ * effectsKey). `getShared()` prefixes this with the texture id for its
+ * flat module-global cache; world-scoped variant resolution
+ * (`ecs/batchUtils.ts`'s `getWorldEffectVariant`) keys its per-world
+ * store by texture identity already, so it uses this fragment alone.
+ * Exported so both call sites build an identical key from one place.
+ */
+export function sprite2DMaterialVariantKey(options: Sprite2DMaterialOptions = {}): string {
+  const alphaTest = options.alphaTest ?? 0
+  // alphaTest > 0 implies the depth-test fast path: opaque + depthWrite=true.
+  const transparent = options.transparent ?? (alphaTest > 0 ? false : true)
+  const lit = options.lit ?? false
+  const ctId = getColorTransformId(options.colorTransform)
+  const premultiplied = options.premultipliedAlpha ?? false
+  const effectsKey = options.effectsKey ?? ''
+
+  // Every option that changes the shader or blend state must be in the
+  // key so distinct materials don't collide in the shared cache.
+  return `${transparent}:${lit}:${ctId}:${alphaTest}:${premultiplied}:${effectsKey}`
+}
+
+/**
  * TSL-based material for 2D sprites.
  *
  * UNIFIED API: This material reads from instance attributes, which works for:
@@ -109,17 +132,7 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   static getShared(options: Sprite2DMaterialOptions = {}): Sprite2DMaterial {
     const textureId = options.map?.id ?? -1
-    const alphaTest = options.alphaTest ?? 0
-    // alphaTest > 0 implies the depth-test fast path: opaque + depthWrite=true.
-    const transparent = options.transparent ?? (alphaTest > 0 ? false : true)
-    const lit = options.lit ?? false
-    const ctId = getColorTransformId(options.colorTransform)
-    const premultiplied = options.premultipliedAlpha ?? false
-    const effectsKey = options.effectsKey ?? ''
-
-    // Every option that changes the shader or blend state must be in the
-    // key so distinct materials don't collide in the shared cache.
-    const key = `${textureId}:${transparent}:${lit}:${ctId}:${alphaTest}:${premultiplied}:${effectsKey}`
+    const key = `${textureId}:${sprite2DMaterialVariantKey(options)}`
 
     let material = Sprite2DMaterial._cache.get(key)
     if (!material) {
