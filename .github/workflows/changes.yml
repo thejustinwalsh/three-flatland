@@ -13,6 +13,8 @@ on:
         value: ${{ jobs.detect.outputs.docs }}
       configs:
         value: ${{ jobs.detect.outputs.configs }}
+      vscode:
+        value: ${{ jobs.detect.outputs.vscode }}
       ci:
         value: ${{ jobs.detect.outputs.ci }}
       changeset_only:
@@ -27,6 +29,7 @@ jobs:
       examples: ${{ steps.filter.outputs.examples }}
       docs: ${{ steps.filter.outputs.docs }}
       configs: ${{ steps.filter.outputs.configs }}
+      vscode: ${{ steps.filter.outputs.vscode }}
       ci: ${{ steps.filter.outputs.ci }}
       changeset_only: ${{ steps.skip.outputs.changeset_only }}
     steps:
@@ -93,5 +96,7 @@ jobs:
               - 'eslint.config.*'
               - 'vitest.config.*'
               - 'scripts/**'
+            vscode:
+              - 'tools/**'
             ci:
               - '.github/workflows/**'
