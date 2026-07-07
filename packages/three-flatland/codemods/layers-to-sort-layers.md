@@ -48,9 +48,15 @@ You are migrating a TypeScript/JavaScript codebase that uses `three-flatland`. T
 ### 1. Discover candidate sites
 
 ```bash
-rg -n '\bLayers\b|\bLayerManager\b|\bLayerConfig\b|\bLayerName\b|\bLayerValue\b|\bLayerType\b|\bSpriteLayer\b|\blayer\s*[:=]|\[.layer.\]' \
+rg -n '\bLayers\b|\bLayerManager\b|\bLayerConfig\b|\bLayerName\b|\bLayerValue\b|\bLayerType\b|\bSpriteLayer\b|\.layer\b|\blayer\s*[:=]|\[.layer.\]' \
   --type ts --type tsx --type js --type jsx
 ```
+
+The `\.layer\b` and `\[.layer.\]` terms are deliberately broad — they surface
+member reads (`const l = sprite.layer`), string-key bracket access
+(`sprite['layer']`), and inevitably tile-layer and other out-of-scope hits
+too. That is intentional: discovery favors recall, and step 2's scope rules
+decide what actually gets transformed.
 
 **Always skip:**
 - `node_modules/`
