@@ -111,11 +111,15 @@ export function App() {
           title={
             session.standalone
               ? 'Save disabled — no host connection'
-              : session.dirty
-                ? 'Save (unsaved changes)'
-                : 'Save'
+              : session.loadError
+                ? "Save disabled — this declaration couldn't be read"
+                : session.dirty
+                  ? 'Save (unsaved changes)'
+                  : 'Save'
           }
-          disabled={session.standalone || session.saving || !session.findingId}
+          disabled={
+            session.standalone || session.saving || !session.findingId || Boolean(session.loadError)
+          }
           onClick={() => void session.save()}
         />
         <div {...stylex.props(styles.spacer)} />
@@ -131,6 +135,11 @@ export function App() {
         <div {...stylex.props(styles.banner, styles.infoBanner)}>
           Standalone mode — not connected to a host. Play works with default params; Save is
           disabled.
+        </div>
+      )}
+      {session.loadError && (
+        <div {...stylex.props(styles.banner, styles.errorBanner)}>
+          {session.loadError} Showing defaults — Save is disabled until the source is fixed.
         </div>
       )}
       {playError && (

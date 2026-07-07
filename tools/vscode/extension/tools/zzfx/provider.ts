@@ -99,7 +99,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
       // only in the declaration's source text via `varRef`. Resolve
       // before binding the command's argument so Play actually plays
       // NAME's sound, not silence.
-      const params = await resolveParams(codeLens.finding)
+      const { params } = await resolveParams(codeLens.finding)
       // First argument is the plain params array (planning doc: "args:
       // params array") — the second, additive argument carries this
       // finding's real identity so register.ts can open/reuse its actual

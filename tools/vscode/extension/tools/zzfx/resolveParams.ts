@@ -10,8 +10,36 @@
 // sufficient for the preset-const shape every real caller uses (see
 // e2e/fixtures/workspace/src/sounds.ts's `LASER`), not a general JS
 // expression evaluator.
+//
+// `defRange` (#148 Z7a, tools/codelens-service/CLAUDE.md's contract) is
+// the initializer VALUE range only — this module's parsing has assumed
+// that shape all along, so Z7a's sidecar fix aligns reality with what
+// was already written here rather than requiring a change; see the
+// e2e "resolving LASER to real params" spec for the empirical proof.
+// `defRange` may also be absent even when `defUri` is present (no
+// initializer, e.g. `let preset;`), and the initializer need not be an
+// array literal at all (`const preset = getPreset()` — the sidecar
+// reports the call expression's range unvalidated). Both are handled
+// below via `isNumberArrayLiteralText`, shared with `host.ts`'s save-path
+// revalidation so read and write agree on exactly one definition of
+// "looks like a plain number array."
 import * as vscode from 'vscode'
 import type { Finding } from '@three-flatland/codelens-service'
+
+/** Whether `text` (already trimmed) is shaped like `[n, n, ...]` — no
+ * nested expressions, no function calls, just a bracket-wrapped,
+ * comma-separated list. Deliberately conservative: the sidecar reports
+ * `defRange` for WHATEVER initializer is there without validating its
+ * shape (tools/codelens-service/CLAUDE.md), so this is the one place
+ * both the read path (resolveParams) and the write path (host.ts's
+ * zzfx/save) agree on what's safe to treat as "a preset array." */
+export function isNumberArrayLiteralText(text: string): boolean {
+  const trimmed = text.trim()
+  if (!/^\[[\s\S]*\]$/.test(trimmed)) return false
+  const inner = trimmed.slice(1, -1).trim()
+  if (inner === '') return true
+  return inner.split(',').every((part) => Number.isFinite(Number(part.trim())))
+}
 
 function parseNumberArrayLiteral(text: string): number[] {
   const trimmed = text.trim().replace(/^\[/, '').replace(/\]$/, '').trim()
@@ -22,6 +50,25 @@ function parseNumberArrayLiteral(text: string): number[] {
     .filter((n) => Number.isFinite(n))
 }
 
+export type ResolvedParams = {
+  params: number[]
+  /** Set when a variable-spread call's initializer couldn't be read as a
+   * plain numeric array — e.g. `const preset = getPreset()`, or the
+   * declaration's text changed to something unparseable since the
+   * sidecar last scanned it. `params` falls back to
+   * `finding.payload.params` (defaults, via the webview's `fromArgs`)
+   * in this case; the editor surfaces `loadError` so the user knows why,
+   * and MUST refuse Save while it's set — see host.ts's zzfx/save
+   * handler, which independently re-validates at save time rather than
+   * trusting this snapshot. */
+  loadError?: string
+}
+
+function previewText(text: string, max = 40): string {
+  const trimmed = text.trim()
+  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
+}
+
 /**
  * Returns `finding.payload.params` directly when non-empty (the literal-
  * array call case). For a variable-spread call, reads the declaration's
@@ -30,10 +77,10 @@ function parseNumberArrayLiteral(text: string): number[] {
  * unparseable declaration must not crash Play/Edit, just play nothing
  * (all defaults) rather than throwing.
  */
-export async function resolveParams(finding: Finding): Promise<number[]> {
-  if (finding.payload.params.length > 0) return finding.payload.params
+export async function resolveParams(finding: Finding): Promise<ResolvedParams> {
+  if (finding.payload.params.length > 0) return { params: finding.payload.params }
   const varRef = finding.payload.varRef
-  if (!varRef?.defUri || !varRef.defRange) return finding.payload.params
+  if (!varRef?.defUri || !varRef.defRange) return { params: finding.payload.params }
   try {
     const defDoc = await vscode.workspace.openTextDocument(vscode.Uri.parse(varRef.defUri))
     const range = new vscode.Range(
@@ -42,8 +89,15 @@ export async function resolveParams(finding: Finding): Promise<number[]> {
       varRef.defRange.end.line,
       varRef.defRange.end.character
     )
-    return parseNumberArrayLiteral(defDoc.getText(range))
+    const text = defDoc.getText(range)
+    if (!isNumberArrayLiteralText(text)) {
+      return {
+        params: finding.payload.params,
+        loadError: `Can't read "${varRef.name}"'s declaration as a plain number array (found "${previewText(text)}").`,
+      }
+    }
+    return { params: parseNumberArrayLiteral(text) }
   } catch {
-    return finding.payload.params
+    return { params: finding.payload.params }
   }
 }

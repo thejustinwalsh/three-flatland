@@ -122,7 +122,7 @@ export function registerZzfxTool(context: vscode.ExtensionContext): void {
       }
       const resolved = await resolveFindingAtCursor(client)
       if (!resolved) return
-      const params = await resolveParams(resolved.finding)
+      const { params } = await resolveParams(resolved.finding)
       await playInEditorPanel(context, client, resolved.uri, resolved.finding.id, params)
     })
   )

@@ -9,6 +9,8 @@ const LITERAL_CALL_LINE = 48 // 0-indexed
 const VARIABLE_CALL_LINE = 52 // 0-indexed
 const LITERAL_CALL_TEXT = 'zzfx(...[0.5, 0, 300, 0, 0.02, 0.05, 1])'
 const LITERAL_CALL_CANONICAL = 'zzfx(0.5, 0, 300, 0, 0.02, 0.05, 1)'
+const LASER_ARRAY_TEXT = '[0.6, 0, 1500, 0, 0.03, 0.05, 4, 2, 0, 0, 900, 0.03]'
+const LASER_ARRAY_FREQ_1800 = '[0.6, 0, 1800, 0, 0.03, 0.05, 4, 2, 0, 0, 900, 0.03]'
 
 async function readFile(
   evaluateInVSCode: <R, Arg = undefined>(
@@ -120,6 +122,123 @@ test.describe('FL ZzFX Studio', () => {
     // host.ts titles the panel `ZzFX: <filename>:<1-indexed line>`.
     const frame = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
     await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
+
+    // "resolving LASER to real params" isn't proven by the panel merely
+    // opening — assert the actual loaded value against LASER's real
+    // frequency (1500, index 2 of LASER_ARRAY_TEXT), a value nowhere near
+    // the param's default (220) so this can't pass by coincidence. Proves
+    // resolveParams.ts correctly parsed the (now Z7a-corrected)
+    // value-only defRange rather than silently falling back to defaults.
+    await expect(frame.getByLabel('Frequency value')).toHaveValue('1500')
+  })
+
+  test("Save writes the canonical params back into LASER's declaration, preserving the declarator's name/type/'=' — never touching the call site", async ({
+    evaluateInVSCode,
+    webviewFrame,
+  }) => {
+    const originalText = await readFile(evaluateInVSCode, SOUNDS_FILE)
+    expect(originalText).toContain(`const LASER: ZzFXParams = ${LASER_ARRAY_TEXT}`)
+
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const editor = await vscode.window.showTextDocument(doc)
+        editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
+        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+      },
+      { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
+    )
+
+    const frame = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
+    await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
+
+    // Change ONE param (frequency 1500 -> 1800) so the write-back is
+    // provably real, not just a no-op round-trip that happens to
+    // reproduce the original text byte-for-byte.
+    await frame.getByLabel('Frequency value').fill('1800')
+    await frame.locator('vscode-toolbar-button[title^="Save"]').click()
+
+    const actualText = await readFile(evaluateInVSCode, SOUNDS_FILE)
+
+    // Whole-file strict equality, computed the same way as the literal
+    // write-back test: only LASER's array text should differ, and only
+    // by the one changed value — "const LASER: ZzFXParams = " and every
+    // other line (including the `zzfx(...LASER)` call site itself, which
+    // this write-back must NEVER touch) stay byte-identical.
+    const expectedText = originalText.replace(LASER_ARRAY_TEXT, LASER_ARRAY_FREQ_1800)
+    expect(actualText).toBe(expectedText)
+    expect(actualText).toContain('zzfx(...LASER)')
+  })
+
+  test("Save refuses — loudly, without touching the file further — when LASER's initializer was edited to a non-array expression after the panel opened", async ({
+    evaluateInVSCode,
+    webviewFrame,
+  }) => {
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const editor = await vscode.window.showTextDocument(doc)
+        editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
+        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+      },
+      { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
+    )
+
+    const frame = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
+    await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
+
+    // Edit the DOCUMENT directly (not through the panel) — LASER's
+    // initializer becomes a call expression, exactly the
+    // "sidecar reports the range unvalidated" case
+    // tools/codelens-service/CLAUDE.md's contract calls out. host.ts's
+    // save-path revalidation (isNumberArrayLiteralText) is the only
+    // thing standing between this and silently overwriting a function
+    // call with a hardcoded array.
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const text = doc.getText()
+        const start = text.indexOf(arg.oldArray)
+        const edit = new vscode.WorkspaceEdit()
+        const startPos = doc.positionAt(start)
+        const endPos = doc.positionAt(start + arg.oldArray.length)
+        edit.replace(uri, new vscode.Range(startPos, endPos), arg.newInitializer)
+        await vscode.workspace.applyEdit(edit)
+      },
+      {
+        file: SOUNDS_FILE,
+        oldArray: LASER_ARRAY_TEXT,
+        newInitializer: "getPreset('laser', 99999999999999999999999999999999)",
+      }
+    )
+
+    await frame.locator('vscode-toolbar-button[title^="Save"]').click()
+    await expect(frame.getByText(/not a plain array literal/)).toBeVisible()
+
+    const text = await readFile(evaluateInVSCode, SOUNDS_FILE)
+    // The direct-document edit survived (it happened outside the panel,
+    // independent of the refused save) and the call site is untouched —
+    // proving the refusal didn't also revert or otherwise mutate the file.
+    expect(text).toContain(
+      "const LASER: ZzFXParams = getPreset('laser', 99999999999999999999999999999999)"
+    )
+    expect(text).toContain('zzfx(...LASER)')
   })
 
   test("Save writes the canonical params back into the literal call site's argRange, byte-for-byte across the whole file", async ({
@@ -164,7 +283,7 @@ test.describe('FL ZzFX Studio', () => {
     // normalizes the call from spread-array to plain positional args —
     // functionally identical, and the expected/only sane behavior since
     // nothing specifies "preserve original calling-convention style."
-    await frame.locator('vscode-toolbar-button[title="Save"]').click()
+    await frame.locator('vscode-toolbar-button[title^="Save"]').click()
 
     const actualText = await readFile(evaluateInVSCode, SOUNDS_FILE)
 
@@ -223,7 +342,7 @@ test.describe('FL ZzFX Studio', () => {
       { file: SOUNDS_FILE }
     )
 
-    await frame.locator('vscode-toolbar-button[title="Save"]').click()
+    await frame.locator('vscode-toolbar-button[title^="Save"]').click()
     await expect(frame.getByText(/could not be found/)).toBeVisible()
 
     const text = await readFile(evaluateInVSCode, SOUNDS_FILE)
@@ -279,7 +398,7 @@ test.describe('FL ZzFX Studio', () => {
       { file: SOUNDS_FILE, line: LITERAL_CALL_LINE }
     )
 
-    await frame.locator('vscode-toolbar-button[title="Save"]').click()
+    await frame.locator('vscode-toolbar-button[title^="Save"]').click()
     await expect(frame.getByText(/could not be found/)).toBeVisible()
 
     const text = await readFile(evaluateInVSCode, SOUNDS_FILE)

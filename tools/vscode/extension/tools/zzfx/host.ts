@@ -10,7 +10,7 @@ import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
 import { PRESET_LIBRARY } from './lm/core'
 import { ZzfxLmService } from './lm/service'
-import { resolveParams } from './resolveParams'
+import { isNumberArrayLiteralText, resolveParams } from './resolveParams'
 
 const TOOL = 'zzfx'
 
@@ -165,13 +165,16 @@ export async function openZzfxEditorPanel(
     // For a variable-spread call, payload.params is genuinely empty — the
     // resolved values live only in the declaration's source text. Resolve
     // before sending init so the sliders start at NAME's actual values,
-    // not all-defaults.
-    const params = await resolveParams(finding)
+    // not all-defaults. `loadError` (set when the initializer couldn't
+    // be read as a plain number array) rides along so the webview can
+    // surface it and refuse Save — see useZzfxSession.ts/App.tsx.
+    const { params, loadError } = await resolveParams(finding)
     bridge.emit('zzfx/init', {
       findingId,
       uri: uri.toString(),
       params,
       varRef: finding.payload.varRef,
+      loadError,
       lmAvailable: await lmService.isAvailable(),
       presets: PRESET_LIBRARY,
     })
@@ -199,17 +202,65 @@ export async function openZzfxEditorPanel(
       )
     }
     const { document, finding: currentFinding } = current
+    // Snapshot right after resolveFindingForSave's own version check has
+    // already confirmed `document` is consistent with the parse that
+    // produced `varRef.defRange` — the baseline the def-document version
+    // guard below compares against.
+    const versionAfterResolve = document.version
     const edit = new vscode.WorkspaceEdit()
     const varRef = currentFinding.payload.varRef
     if (varRef?.defRange && varRef.defUri) {
       // Variable case: rewrite the declaration's VALUE (the array
       // literal), not the call site's `...VARNAME` spread — matches
       // planning doc: "edit the variable's value range."
-      edit.replace(
-        vscode.Uri.parse(varRef.defUri),
-        rangeFromWire(varRef.defRange),
-        `[${params.join(', ')}]`
-      )
+      //
+      // Two independent guards, both required (#148 Z7b part 2):
+      //
+      // 1. Shape revalidation. The sidecar reports `defRange` for
+      //    WHATEVER initializer expression is there — it does not
+      //    validate that it's actually an array literal (`const preset =
+      //    getPreset()` still reports the call expression's range; see
+      //    tools/codelens-service/CLAUDE.md's `varRef.defRange` contract:
+      //    "the sidecar reports the range, it doesn't validate the
+      //    shape; that's the client's job"). Blindly overwriting that
+      //    range with `[${params...}]` would silently turn a function
+      //    call (or any other non-array expression) into a hardcoded
+      //    array — a real, surprising rewrite that has nothing to do
+      //    with "save my slider changes." Uses the SAME
+      //    `isNumberArrayLiteralText` check `resolveParams.ts` reads
+      //    with, so read and write never disagree about what counts as
+      //    "a preset array."
+      //
+      // 2. Document-version guard on the DEF document specifically —
+      //    NOT redundant with resolveFindingForSave's own guard on the
+      //    call-site document. The finding id is derived from the CALL
+      //    SITE's byte range + its (empty, for a var-ref) params — it
+      //    does NOT change when the variable's initializer changes, so a
+      //    successful id re-location says nothing about whether the
+      //    initializer text shifted underneath `defRange`'s coordinates
+      //    in the gap since resolveFindingForSave's parse. In the
+      //    common (v0/single-file) case `defUri === document.uri`, so
+      //    `document.version` — a live getter, already reflecting
+      //    whatever's current by the time we check it here — is the
+      //    same guarantee Finding A gave the call-site path, applied to
+      //    this one.
+      const defUri = vscode.Uri.parse(varRef.defUri)
+      const defDoc = await vscode.workspace.openTextDocument(defUri)
+      if (defUri.toString() === document.uri.toString() && defDoc.version !== versionAfterResolve) {
+        throw new Error(`"${varRef.name}"'s declaration changed while saving — please try again.`)
+      }
+      const currentInitializerText = defDoc.getText(rangeFromWire(varRef.defRange)).trim()
+      if (!isNumberArrayLiteralText(currentInitializerText)) {
+        const preview =
+          currentInitializerText.length > 40
+            ? `${currentInitializerText.slice(0, 40)}…`
+            : currentInitializerText
+        throw new Error(
+          `Can't save "${varRef.name}" — its declaration is not a plain array literal ` +
+            `(found "${preview}"). Edit the source directly for this case.`
+        )
+      }
+      edit.replace(defUri, rangeFromWire(varRef.defRange), `[${params.join(', ')}]`)
     } else {
       edit.replace(document.uri, rangeFromWire(currentFinding.payload.argRange), params.join(', '))
     }

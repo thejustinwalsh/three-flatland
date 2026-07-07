@@ -45,6 +45,12 @@ export type ZzfxSessionState = {
   save: () => Promise<void>
   saving: boolean
   saveError: string | null
+  /** From `ZzfxInitPayload.loadError` (#148 Z7b part 2) — set when a
+   * variable-spread call's initializer couldn't be read as a plain number
+   * array. `params` is showing defaults, not this call's real values, in
+   * this state. `save()` refuses locally (in addition to the host's own
+   * independent revalidation) while this is set. */
+  loadError: string | null
 
   /** Whether the host found an available vscode.lm model at init — see
    * ZzfxInitPayload.lmAvailable. Gates whether AiGeneratePanel shows the
@@ -108,6 +114,7 @@ export function useZzfxSession(): ZzfxSessionState {
     params: (number | null | undefined)[]
     requestId: number
   } | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const bridgeRef = useRef<ClientBridge | null>(null)
   const playRequestIdRef = useRef(0)
 
@@ -130,6 +137,7 @@ export function useZzfxSession(): ZzfxSessionState {
       setVarRefName(p.varRef?.name ?? null)
       setParams(fromArgs(p.params))
       setDirty(false)
+      setLoadError(p.loadError ?? null)
       setLmAvailable(p.lmAvailable)
       setPresets(p.presets)
     })
@@ -167,6 +175,15 @@ export function useZzfxSession(): ZzfxSessionState {
   const save = useCallback(async () => {
     const bridge = bridgeRef.current
     if (!bridge || !findingId) return
+    // Local refusal, defense-in-depth: the host independently
+    // re-validates the CURRENT declaration text at save time regardless
+    // (#148 Z7b part 2) — this just avoids a round trip for a state the
+    // webview already knows will be refused, and keeps the error message
+    // consistent with what App.tsx already shows.
+    if (loadError) {
+      setSaveError(`Can't save — ${loadError}`)
+      return
+    }
     setSaving(true)
     setSaveError(null)
     try {
@@ -183,7 +200,7 @@ export function useZzfxSession(): ZzfxSessionState {
     } finally {
       setSaving(false)
     }
-  }, [findingId, params, category, styles])
+  }, [findingId, params, category, styles, loadError])
 
   const generate = useCallback(
     async (n: number = DEFAULT_CANDIDATE_COUNT) => {
@@ -227,6 +244,7 @@ export function useZzfxSession(): ZzfxSessionState {
     save,
     saving,
     saveError,
+    loadError,
     lmAvailable,
     presets,
     generate,

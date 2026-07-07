@@ -26,6 +26,14 @@ export type ZzfxInitPayload = {
   /** Present when the finding is a named variable (`const sfx = zzfx(...)`)
    * rather than an inline call — informational, not required for saving. */
   varRef?: { name: string }
+  /** Set when a variable-spread call's initializer couldn't be read as a
+   * plain number array (#148 Z7b part 2) — e.g. `const preset =
+   * getPreset()`, or a declaration text change the sidecar hasn't
+   * re-scanned yet. `params` is defaults in this case. The webview
+   * surfaces this message and MUST disable Save while it's set — the
+   * host independently re-validates at save time regardless (never
+   * trust this snapshot for the actual write). */
+  loadError?: string
   /** Whether the host found an available `vscode.lm` chat model
    * (`ZzfxLmService.isAvailable()`) at panel-open time. `false` hides the
    * Generate button entirely — the webview falls back to browsing
