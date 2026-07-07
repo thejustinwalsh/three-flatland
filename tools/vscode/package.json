@@ -133,7 +133,8 @@
     "three": "catalog:",
     "three-flatland": "workspace:*",
     "zundo": "catalog:",
-    "zustand": "catalog:"
+    "zustand": "catalog:",
+    "zzfx": "catalog:"
   },
   "devDependencies": {
     "@stylexjs/unplugin": "catalog:",

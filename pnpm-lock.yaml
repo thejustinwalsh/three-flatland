@@ -1750,6 +1750,9 @@ importers:
       zustand:
         specifier: 'catalog:'
         version: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
+      zzfx:
+        specifier: 'catalog:'
+        version: 1.3.2
     devDependencies:
       '@stylexjs/unplugin':
         specifier: 'catalog:'
