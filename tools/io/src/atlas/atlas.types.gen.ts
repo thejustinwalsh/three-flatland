@@ -14,12 +14,92 @@ export type Vec2Tuple = [number, number]
  */
 export interface AtlasJson {
   $schema?: string
-  meta: {
+  /**
+   * Requires at least one of `sources` or `image` (see $defs/MetaBase). The `anyOf` sits alongside a `$ref` rather than inline on `MetaBase` itself — nesting a bare combinator next to `properties` collapses object-property codegen (json-schema-to-typescript) to an index signature, which would erase every typed `meta.*` field including `animations`.
+   */
+  meta: MetaBase & {
     [k: string]: unknown
   }
   frames: {
     [k: string]: Frame
   }
+}
+export interface MetaBase {
+  app?: string
+  version?: string
+  size: Size
+  scale?: string
+  format?: string
+  pivot?: Vec2
+  normal?: string
+  /**
+   * Legacy single-file image name/path (TexturePacker/Aseprite default output). Fallback source on read when `sources` is absent — `sources` is preferred for new atlases since it names a format + URI per encoding.
+   */
+  image?: string
+  /**
+   * @minItems 1
+   */
+  sources?: SourceEntry[]
+  /**
+   * Our richer animation map — named, references frame keys (not indices), explicit fps, optional events. Aseprite's `frameTags` lives alongside under `meta.frameTags`; readers prefer `meta.animations` when present and fall back to converting `frameTags` + per-frame `duration`.
+   */
+  animations?: {
+    [k: string]: Animation
+  }
+  /**
+   * Aseprite-emitted animation tags: integer ranges into the frames array with a direction. Validated explicitly so Aseprite files round-trip and our reader can normalize them into `meta.animations`.
+   */
+  frameTags?: AsepriteFrameTag[]
+  [k: string]: unknown
+}
+export interface Size {
+  w: number
+  h: number
+}
+export interface Vec2 {
+  x: number
+  y: number
+}
+export interface SourceEntry {
+  format: 'png' | 'webp' | 'avif' | 'ktx2'
+  uri: string
+}
+export interface Animation {
+  /**
+   * Unique frame names referenced by this animation. `frames` indexes into this array. Order is significant: `events` and `frames` both reference indices that depend on this ordering.
+   *
+   * @minItems 1
+   */
+  frameSet: string[]
+  /**
+   * Playback sequence as indices into `frameSet` — `frames[k]` is the k-th frame to display, looking up `frameSet[frames[k]]` for the frame name. Repeated indices encode hold counts (e.g. [0,0,1,2,2,2] = 2-frame hold of frameSet[0], then frameSet[1], then a 3-frame hold of frameSet[2]).
+   *
+   * @minItems 1
+   */
+  frames: number[]
+  fps?: number
+  loop?: boolean
+  pingPong?: boolean
+  /**
+   * Per-frame event tags keyed by index INTO `frames` (not into `frameSet`). I.e. event '3' fires when the playhead reaches `frames[3]`.
+   */
+  events?: {
+    /**
+     * This interface was referenced by `undefined`'s JSON-Schema definition
+     * via the `patternProperty` "^[0-9]+$".
+     */
+    [k: string]: string
+  }
+}
+export interface AsepriteFrameTag {
+  name: string
+  from: number
+  to: number
+  direction?: 'forward' | 'reverse' | 'pingpong' | 'pingpong_reverse'
+  color?: string
+  repeat?: string
+  data?: string
+  [k: string]: unknown
 }
 /**
  * This interface was referenced by `undefined`'s JSON-Schema definition
@@ -55,14 +135,6 @@ export interface Rect {
   y: number
   w: number
   h: number
-}
-export interface Size {
-  w: number
-  h: number
-}
-export interface Vec2 {
-  x: number
-  y: number
 }
 /**
  * three-flatland's own baked per-frame polygon mesh (locals in [-0.5, 0.5], frame-local UVs in [0, 1], pre-triangulated). Read priority mirrors `meta.animations` vs `meta.frameTags`: this beats `vertices`/`verticesUV`/`triangles` when both are present. See issue #81.

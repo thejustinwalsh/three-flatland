@@ -118,7 +118,7 @@ export class AnimatedSprite2D extends Sprite2D {
 
     if (options.animationSet) {
       this.loadAnimationSet(options.animationSet)
-    } else if (options.spriteSheet.animations && options.spriteSheet.animations.size > 0) {
+    } else if (options.spriteSheet?.animations && options.spriteSheet.animations.size > 0) {
       // Atlas-sourced animations: derive the set from the sheet's named
       // animations (parsed from `meta.animations` / Aseprite `frameTags`)
       // when no explicit animationSet is supplied.

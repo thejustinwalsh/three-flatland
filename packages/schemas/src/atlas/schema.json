@@ -8,9 +8,26 @@
   "properties": {
     "$schema": { "type": "string" },
     "meta": {
+      "description": "Requires at least one of `sources` or `image` (see $defs/MetaBase). The `anyOf` sits alongside a `$ref` rather than inline on `MetaBase` itself — nesting a bare combinator next to `properties` collapses object-property codegen (json-schema-to-typescript) to an index signature, which would erase every typed `meta.*` field including `animations`.",
+      "allOf": [
+        { "$ref": "#/$defs/MetaBase" },
+        {
+          "anyOf": [{ "required": ["sources"] }, { "required": ["image"] }]
+        }
+      ]
+    },
+    "frames": {
+      "type": "object",
+      "patternProperties": {
+        "^.+$": { "$ref": "#/$defs/Frame" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "MetaBase": {
       "type": "object",
       "required": ["size"],
-      "anyOf": [{ "required": ["sources"] }, { "required": ["image"] }],
       "additionalProperties": true,
       "properties": {
         "app": { "type": "string" },
@@ -41,15 +58,6 @@
         }
       }
     },
-    "frames": {
-      "type": "object",
-      "patternProperties": {
-        "^.+$": { "$ref": "#/$defs/Frame" }
-      },
-      "additionalProperties": false
-    }
-  },
-  "$defs": {
     "Size": {
       "type": "object",
       "required": ["w", "h"],
