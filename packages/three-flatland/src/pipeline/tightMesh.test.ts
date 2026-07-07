@@ -171,7 +171,12 @@ describe('tight-mesh batch routing', () => {
 
     const data = registryData()
     const mesh = data.batchSlots.find((m) => m !== null)!
-    expect(mesh.geometry.getAttribute('position')).toBeUndefined()
+    // Synth-quad geometry now carries real position/uv attributes for
+    // user TSL (`uv()` contract) — attribute absence no longer
+    // discriminates the strategy. The 6-index unit quad does: an
+    // envelope hull is fan-triangulated from its own hull point count.
+    expect(mesh.geometryKind).toBe('synth-quad')
+    expect(mesh.geometry.getIndex()!.count).toBe(6)
     expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
   })
 
@@ -185,7 +190,10 @@ describe('tight-mesh batch routing', () => {
 
     const data = registryData()
     const mesh = data.batchSlots.find((m) => m !== null)!
-    expect(mesh.geometry.getAttribute('position')).toBeUndefined()
+    // See above — geometryKind + the 6-index quad discriminate the
+    // strategy now that synth-quad geometry ships real attributes.
+    expect(mesh.geometryKind).toBe('synth-quad')
+    expect(mesh.geometry.getIndex()!.count).toBe(6)
     expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
   })
 

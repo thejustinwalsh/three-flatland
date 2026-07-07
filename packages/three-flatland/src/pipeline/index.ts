@@ -5,10 +5,6 @@
 // when an InstancedMesh's `count` grows). Imported here so anyone using the
 // pipeline picks up the patch.
 import './_instanceNodeUpdateBeforePatch'
-// Side-effect: silences three's missing-position warning for synth-quad
-// geometries (the constant fallback is the design there — positionNode
-// fully overrides the value and no binding is spent).
-import './_synthQuadPositionWarnPatch'
 
 export { PassEffect, createPassEffect } from './PassEffect'
 export type { PassEffectClass, PassEffectContext, PassEffectFn } from './PassEffect'
