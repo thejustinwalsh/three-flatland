@@ -118,6 +118,25 @@ export function createBatchReassignSystem(): (
         }
       }
 
+      // If the material itself changed, the old material's materialRefs
+      // entry (a strong ref — keeps the material, and transitively its
+      // texture, alive) is dead weight once no run still batches it.
+      // registry.runs is sized by distinct (sortLayer, materialId, mask)
+      // combinations, not sprite count, so this scan is cheap and only
+      // runs on this reassignment event, never per frame.
+      if (oldMeta.materialId !== newMatRef.materialId) {
+        let stillBatched = false
+        for (const otherRun of registry.runs.values()) {
+          if (otherRun.materialId === oldMeta.materialId) {
+            stillBatched = true
+            break
+          }
+        }
+        if (!stillBatched) {
+          registry.materialRefs.delete(oldMeta.materialId)
+        }
+      }
+
       // --- Insert into new batch ---
       const material = sprite.material
       registry.materialRefs.set(newMatRef.materialId, {

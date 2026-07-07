@@ -213,4 +213,40 @@ describe('registry-scoped default materials + dispose resurrection', () => {
 
     group.dispose()
   })
+
+  it('repeated texture swaps do not leak abandoned default materials in registry.materialRefs', () => {
+    const group = new SpriteGroup()
+    const a = new Sprite2D({ texture })
+    group.add(a)
+    group.update() // batchAssignSystem: a batches under materialA
+
+    const registry = getRegistry(group)
+    const materialA = a.material
+    expect(registry.materialRefs.has(materialA.batchId)).toBe(true)
+
+    const textureB = makeTexture()
+    a.texture = textureB
+    group.update() // batchReassignSystem: a moves off materialA onto materialB
+    const materialB = a.material
+    expect(materialB).not.toBe(materialA)
+
+    // materialA has zero batched users now — its materialRefs entry
+    // (and the strong ref to the material + its texture it carries)
+    // must be dropped, not held forever.
+    expect(registry.materialRefs.has(materialA.batchId)).toBe(false)
+    expect(registry.materialRefs.has(materialB.batchId)).toBe(true)
+
+    const textureC = makeTexture()
+    a.texture = textureC
+    group.update()
+    const materialC = a.material
+    expect(materialC).not.toBe(materialB)
+
+    // Same invariant holds on a second swap: materialB is now orphaned too.
+    expect(registry.materialRefs.has(materialA.batchId)).toBe(false)
+    expect(registry.materialRefs.has(materialB.batchId)).toBe(false)
+    expect(registry.materialRefs.has(materialC.batchId)).toBe(true)
+
+    group.dispose()
+  })
 })
