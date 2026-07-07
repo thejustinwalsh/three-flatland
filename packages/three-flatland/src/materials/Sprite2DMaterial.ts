@@ -95,7 +95,6 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   override type: string = 'Sprite2DMaterial'
 
-
   /**
    * Cache of shared material instances, keyed by configuration.
    * Used by `getShared()` so sprites with identical config reuse the same material.
@@ -356,10 +355,24 @@ export class Sprite2DMaterial extends EffectMaterial {
     }
   }
 
-  /** @internal */
-  _resolveGeometryStrategy(): void {
+  /**
+   * Re-resolve the tight-mesh/synth-quad geometry strategy.
+   *
+   * @param deferRebuild - When true, skip the `_rebuildColorNode()` call
+   * even if the strategy flipped. Set by `_beforeEffectCapCheck()`,
+   * which runs mid-`registerEffect()` before the effect buffer tier is
+   * resized — rebuilding the color node there would read `bufNodes` at
+   * the OLD (too-small) tier and crash on an out-of-range buffer index
+   * for the effect that just pushed floats past it. `registerEffect`
+   * rebuilds the color node itself once the tier is correct; this just
+   * needs `_tightMesh`/`positionNode`/`_cornerUV` updated beforehand so
+   * that later rebuild picks up the demoted strategy.
+   * @internal
+   */
+  _resolveGeometryStrategy(deferRebuild = false): void {
     const atlas = getAtlasMesh(this._spriteTexture)
-    let wantsTight = this.transparent && this.alphaTest === 0 && atlas !== null
+    let wantsTight =
+      this.transparent && this.alphaTest === 0 && atlas !== null && atlas.frames.length > 0
     if (wantsTight && this._effectTotalFloats > 16) {
       // Tight-mesh spends 2 bindings on geometry — a material already
       // carrying more than 16 effect floats can't fit under WebGPU's
@@ -403,10 +416,41 @@ export class Sprite2DMaterial extends EffectMaterial {
     // flip happens outside setTexture (late atlas registration
     // re-resolves through the version check).
     this._effectSchemaVersion++
+    if (deferRebuild) return
     if (this._spriteTexture) {
       this._rebuildColorNode()
       this.needsUpdate = true
     }
+  }
+
+  /**
+   * Effective effect-float cap for a prospective total. A tight-mesh
+   * material demotes to synth-quad (cap 24) rather than staying tight
+   * (cap 16) the moment its effect floats exceed 16, so a late effect
+   * registration that crosses 16 is measured against the synth cap it
+   * will actually run under — not thrown against the stale tight cap.
+   * Recomputes `wantsTight` from scratch (not `_tightMesh`) so it stays
+   * a pure query, safe on `registerEffect`'s throw path.
+   * @internal
+   */
+  protected override _effectFloatCap(prospectiveTotal: number): number {
+    const atlas = getAtlasMesh(this._spriteTexture)
+    const wantsTight =
+      this.transparent && this.alphaTest === 0 && atlas !== null && atlas.frames.length > 0
+    return wantsTight && prospectiveTotal <= 16 ? 16 : EffectMaterial.MAX_EFFECT_FLOATS
+  }
+
+  /**
+   * After an effect commits, re-resolve the geometry strategy so a
+   * material that crossed the 16-float tight-mesh cap actually demotes to
+   * synth-quad. Deferred rebuild: `registerEffect` resizes the buffer
+   * tier and rebuilds the color node itself right after this returns, so
+   * we only need `_tightMesh`/`positionNode`/`_cornerUV` updated here (see
+   * `_resolveGeometryStrategy`). Runs on the success path only.
+   * @internal
+   */
+  protected override _applyEffectGeometryStrategy(): void {
+    this._resolveGeometryStrategy(true)
   }
 
   /**
