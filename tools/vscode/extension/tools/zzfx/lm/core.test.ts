@@ -468,3 +468,110 @@ describe('runGeneration', () => {
     expect(result.source).toBe('lm')
   })
 })
+
+// ─── cache persistence: concurrent writers (Finding B, #148 Z7b) ───────────
+
+/**
+ * Models `lm/service.ts`'s real `ZzfxLmService.cacheStore()` shape at the
+ * file-store level: each "instance" (mirroring one `ZzfxLmService`) holds
+ * its own local snapshot, loaded once from a SHARED backing object
+ * standing in for the on-disk cache file. `merge: false` reproduces the
+ * bug this fix closes — `set` blind-overwrites the shared backing using
+ * only this instance's own (possibly-stale) local snapshot; `merge: true`
+ * reproduces the fix — `set` re-reads the shared backing fresh
+ * immediately before writing and merges its own key into THAT. The
+ * artificial yield inside `set` forces two concurrently-invoked
+ * `runGeneration` calls' `cache.set` steps to genuinely interleave rather
+ * than coincidentally serialize by scheduling luck, so both tests below
+ * are deterministic.
+ *
+ * Returns `readBacking` alongside the pair, not just the two `CacheStore`s
+ * — asserting through either instance's own `get()` after the race would
+ * read THAT instance's stale pre-race `local` snapshot (captured during
+ * `runGeneration`'s own cache-miss check, before either `set` ran), not
+ * what actually ended up persisted. `readBacking` is the one honest
+ * "what's really in the file" view, matching how a real test would
+ * inspect the actual written JSON blob.
+ */
+function fileBackedCachePair(
+  merge: boolean
+): [CacheStore, CacheStore, (key: string) => string | undefined] {
+  const backing: Record<string, string> = {}
+  function makeInstance(): CacheStore {
+    let local: Record<string, string> | null = null
+    return {
+      async get(key) {
+        local ??= { ...backing }
+        return local[key]
+      },
+      async set(key, value) {
+        local ??= { ...backing }
+        local[key] = value
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        const toWrite = merge ? { ...backing, ...local } : local
+        for (const existingKey of Object.keys(backing)) delete backing[existingKey]
+        Object.assign(backing, toWrite)
+      },
+    }
+  }
+  return [makeInstance(), makeInstance(), (key) => backing[key]]
+}
+
+async function generateDistinctKeys(cacheA: CacheStore, cacheB: CacheStore): Promise<void> {
+  await Promise.all([
+    runGeneration({
+      category: 'Laser',
+      styles: [],
+      n: 1,
+      modelId: 'gpt-4',
+      send: sendReturning(VALID_CANDIDATE_JSON),
+      cache: cacheA,
+      hash: fakeHash,
+    }),
+    runGeneration({
+      category: 'Blip',
+      styles: [],
+      n: 1,
+      modelId: 'gpt-4',
+      send: sendReturning(VALID_CANDIDATE_JSON),
+      cache: cacheB,
+      hash: fakeHash,
+    }),
+  ])
+}
+
+const LASER_KEY = cacheKeyFor({
+  modelId: 'gpt-4',
+  promptVersion: PROMPT_VERSION,
+  category: 'Laser',
+  styles: [],
+  n: 1,
+  hash: fakeHash,
+})
+const BLIP_KEY = cacheKeyFor({
+  modelId: 'gpt-4',
+  promptVersion: PROMPT_VERSION,
+  category: 'Blip',
+  styles: [],
+  n: 1,
+  hash: fakeHash,
+})
+
+describe('cache persistence — concurrent writers (Finding B, #148 Z7b)', () => {
+  it("BUG REPRODUCTION: two instances blind-overwriting a shared file lose a concurrent sibling's key — proves this harness can detect the failure the fix below closes", async () => {
+    const [cacheA, cacheB, readBacking] = fileBackedCachePair(false)
+    await generateDistinctKeys(cacheA, cacheB)
+
+    const laserSurvived = readBacking(LASER_KEY) !== undefined
+    const blipSurvived = readBacking(BLIP_KEY) !== undefined
+    expect(laserSurvived && blipSurvived).toBe(false)
+  })
+
+  it('two instances sharing a read-merge-write file store both survive a concurrent distinct-key write', async () => {
+    const [cacheA, cacheB, readBacking] = fileBackedCachePair(true)
+    await generateDistinctKeys(cacheA, cacheB)
+
+    expect(readBacking(LASER_KEY)).toBeDefined()
+    expect(readBacking(BLIP_KEY)).toBeDefined()
+  })
+})

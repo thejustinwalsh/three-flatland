@@ -150,24 +150,35 @@ export class ZzfxLmService {
    * cache key -> `JSON.stringify({candidates})`. Loaded lazily, held
    * in-memory for the life of this service instance, capped at
    * `CACHE_MAX_ENTRIES` (oldest — by insertion order — evicted first).
+   *
+   * `set` does a read-merge-write, not a blind overwrite (#148 Z7b
+   * Finding B): `this.cachedMap` is mutated SYNCHRONOUSLY first (safe by
+   * construction now that `host.ts` shares one `ZzfxLmService` instance
+   * across all panels — no async gap for a same-process sibling call to
+   * interleave), then, immediately before writing, the file is re-read
+   * fresh and merged UNDER `this.cachedMap` (so this write's own known
+   * entries always win, but a key written by another process — e.g. a
+   * second VS Code window sharing this `globalStorageUri` — since we
+   * last loaded is preserved rather than clobbered). This can't provide
+   * perfect cross-process atomicity (two truly simultaneous writers can
+   * still race on the SAME key), but it closes the "last writer's blind
+   * overwrite erases every OTHER key" failure mode entirely.
    */
   private cacheStore(): CacheStore {
     const file = vscode.Uri.joinPath(this.context.globalStorageUri, CACHE_FILE_NAME)
 
-    const load = async (): Promise<Record<string, string>> => {
-      if (this.cachedMap) return this.cachedMap
+    const readFile = async (): Promise<Record<string, string>> => {
       try {
         const bytes = await vscode.workspace.fs.readFile(file)
-        this.cachedMap = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, string>
+        return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, string>
       } catch {
-        this.cachedMap = {}
+        return {}
       }
-      return this.cachedMap
     }
 
-    const persist = async (map: Record<string, string>): Promise<void> => {
-      await vscode.workspace.fs.createDirectory(this.context.globalStorageUri)
-      await vscode.workspace.fs.writeFile(file, new TextEncoder().encode(JSON.stringify(map)))
+    const load = async (): Promise<Record<string, string>> => {
+      if (!this.cachedMap) this.cachedMap = await readFile()
+      return this.cachedMap
     }
 
     return {
@@ -175,14 +186,20 @@ export class ZzfxLmService {
         const map = await load()
         return map[key]
       },
-      async set(key, value) {
+      set: async (key, value) => {
         const map = await load()
-        map[key] = value
-        const keys = Object.keys(map)
+        map[key] = value // synchronous — same-process safety comes from this being the ONE shared instance's map, not from anything below
+
+        const onDisk = await readFile()
+        const merged = { ...onDisk, ...map }
+        const keys = Object.keys(merged)
         if (keys.length > CACHE_MAX_ENTRIES) {
-          for (const evict of keys.slice(0, keys.length - CACHE_MAX_ENTRIES)) delete map[evict]
+          for (const evict of keys.slice(0, keys.length - CACHE_MAX_ENTRIES)) delete merged[evict]
         }
-        await persist(map)
+        this.cachedMap = merged
+
+        await vscode.workspace.fs.createDirectory(this.context.globalStorageUri)
+        await vscode.workspace.fs.writeFile(file, new TextEncoder().encode(JSON.stringify(merged)))
       },
     }
   }

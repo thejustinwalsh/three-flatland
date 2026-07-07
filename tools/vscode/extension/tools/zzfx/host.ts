@@ -31,6 +31,24 @@ type OpenPanel = {
 // focuses the existing panel instead of opening a duplicate.
 const openPanels = new Map<string, OpenPanel>()
 
+// ONE ZzfxLmService for the whole extension host, not one per panel (#148
+// Z7b Finding B) — each instance lazily loads + holds its own in-memory
+// LM-response cache map (`lm/service.ts`'s `cachedMap`); two panels each
+// constructing their own meant two independent maps racing to blind-
+// overwrite the SAME cache file, so a concurrent Generate in one panel
+// could silently drop a concurrent Generate's entry in the other. A
+// single shared instance makes same-process writes correct by
+// construction (JS mutates the ONE shared in-memory map synchronously,
+// with no window for two same-process calls to interleave); the
+// remaining cross-process case (a second VS Code window sharing this
+// `globalStorageUri`) is handled by `cacheStore()`'s own read-merge-write
+// persist step, not by this singleton.
+let lmServiceInstance: ZzfxLmService | undefined
+function getLmService(context: vscode.ExtensionContext): ZzfxLmService {
+  if (!lmServiceInstance) lmServiceInstance = new ZzfxLmService(context)
+  return lmServiceInstance
+}
+
 /** Re-parses the live document text and returns the finding matching
  * `findingId`, or `undefined` if it's gone (edited away, file changed
  * externally since the panel opened, etc.). Always re-parses fresh rather
@@ -46,6 +64,46 @@ async function resolveFinding(
   const finding = findings.find((f) => f.id === findingId)
   if (!finding) return undefined
   return { document, finding }
+}
+
+const SAVE_RESOLVE_MAX_ATTEMPTS = 2
+
+/**
+ * Save-specific finding resolution — layers a `document.version` guard on
+ * top of {@link resolveFinding}'s plain re-parse-and-locate (#148 Z7b
+ * Finding A). `client.parse` is an async IPC round-trip to the sidecar;
+ * if the document changes while it's in flight, the range the parse just
+ * computed no longer corresponds to the CURRENT document text, and
+ * applying a `WorkspaceEdit` built from it would silently edit the wrong
+ * location — the id-equality check alone doesn't catch this, since the id
+ * lookup can still succeed against a range that's already gone stale by
+ * the time this function returns.
+ *
+ * Captures `document.version` immediately before calling `client.parse`;
+ * if it's different by the time the parse resolves, retries the whole
+ * parse-and-locate step once (edits settle fast in practice — a single
+ * retry is enough for the common case of one intervening keystroke).
+ * Gives up (returns `undefined`, same as an id-miss) if the version is
+ * STILL moving on the retry, rather than ever hand back a
+ * (document, finding) pair computed against a version that's no longer
+ * current. The caller applies its edit immediately after this resolves,
+ * with no further `await` in between — closing the race this guards.
+ */
+async function resolveFindingForSave(
+  client: CodelensServiceClient,
+  uri: vscode.Uri,
+  findingId: string
+): Promise<{ document: vscode.TextDocument; finding: Finding } | undefined> {
+  for (let attempt = 0; attempt < SAVE_RESOLVE_MAX_ATTEMPTS; attempt++) {
+    const document = await vscode.workspace.openTextDocument(uri)
+    const versionAtParse = document.version
+    const { findings } = await client.parse({ uri: uri.toString(), text: document.getText() })
+    if (document.version !== versionAtParse) continue
+    const finding = findings.find((f) => f.id === findingId)
+    if (!finding) return undefined
+    return { document, finding }
+  }
+  return undefined
 }
 
 function rangeFromWire(range: Finding['range']): vscode.Range {
@@ -100,7 +158,7 @@ export async function openZzfxEditorPanel(
   })
   openPanels.set(findingId, { panel, bridge, ready })
 
-  const lmService = new ZzfxLmService(context)
+  const lmService = getLmService(context)
 
   bridge.on('zzfx/ready', async () => {
     log(`zzfx/ready for finding ${findingId}`)
@@ -134,7 +192,7 @@ export async function openZzfxEditorPanel(
   })
 
   bridge.on<ZzfxSavePayload>('zzfx/save', async ({ findingId: fid, params }) => {
-    const current = await resolveFinding(client, uri, fid)
+    const current = await resolveFindingForSave(client, uri, fid)
     if (!current) {
       throw new Error(
         'This zzfx() call could not be found — the source may have changed since the panel opened.'
