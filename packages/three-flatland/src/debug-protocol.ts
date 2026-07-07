@@ -176,6 +176,33 @@ export const STATS_RING_SIZE = 240
 export const SERVER_LIVENESS_MS = 5000
 
 /**
+ * Registry checkpoint cadence (#29 Phase C). Every this-often, the
+ * producer force-resends every currently registered registry entry
+ * (flagged `RegistryPayload.checkpoint: true` on the wire) instead of
+ * only entries that changed since the last drain — see
+ * `DebugRegistry.resetDelta`.
+ *
+ * This bounds how far a time-travel consumer has to replay deltas to
+ * reconstruct registry state at an arbitrary parked frame: nearest
+ * checkpoint ≤ target + deltas forward, rather than replaying every
+ * delta since session start (which gets slower the longer the session
+ * runs — the exact problem this constant exists to cap).
+ *
+ * 5 s ≈ 20 `STATS_BATCH_MS` flushes between checkpoints. Chosen from
+ * what a registry drain actually costs: entries that mutate every
+ * frame (`forwardPlus.tileScores`, `lightStore.data`, …) already
+ * re-ship on nearly every flush regardless of cadence, so a checkpoint
+ * adds nothing for them — the marginal cost is limited to otherwise-
+ * quiet entries (registered once, rarely touched) getting re-sent
+ * once per window. Registry payloads share the medium pool tier
+ * (256 KB, see `bus-pool.ts`) with the same fail-soft, metadata-only
+ * degrade `DebugRegistry.drain` already applies to an individual entry
+ * that doesn't fit — this cadence doesn't change that ceiling, it only
+ * controls how often the *whole* registry re-ships at once.
+ */
+export const REGISTRY_CHECKPOINT_MS = 5000
+
+/**
  * Consumer discovery window: after sending `provider:query`, collect
  * `provider:announce` responses for this long before picking one.
  * Short enough to not delay startup; long enough to hear back from
@@ -424,6 +451,21 @@ export interface RegistryEntryDelta {
  */
 export interface RegistryPayload {
   entries?: Record<string, RegistryEntryDelta | null>
+  /**
+   * Present (`true`) only when this payload is a periodic full re-send
+   * (#29 Phase C, `REGISTRY_CHECKPOINT_MS`) — every currently
+   * registered entry included (subject to the consumer's selection
+   * filter), rather than only entries that changed since the last
+   * drain. Omitted on ordinary delta drains. Additive/optional field
+   * on an existing message shape — old consumers that don't know about
+   * it simply ignore it and keep working exactly as before; it isn't a
+   * new message type, so no codec version bump is needed.
+   *
+   * Time-travel consumers use this to anchor registry reconstruction:
+   * nearest checkpoint at or before the target frame, then replay
+   * deltas forward from there.
+   */
+  checkpoint?: true
 }
 
 /**

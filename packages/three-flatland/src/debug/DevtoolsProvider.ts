@@ -14,6 +14,7 @@ import type {
 import {
   DISCOVERY_CHANNEL,
   IDLE_PING_MS,
+  REGISTRY_CHECKPOINT_MS,
   STATS_BATCH_MS,
   providerChannelName,
   stampMessage,
@@ -180,6 +181,15 @@ export class DevtoolsProvider {
 
   /** Wall-clock time of the last outbound broadcast. */
   private _lastBroadcastAt = Date.now()
+  /**
+   * `performance.now()` timestamp of the last registry checkpoint
+   * (forced full resend) — same clock `_flush`'s `flushStart` already
+   * reads, so no extra timing call is needed to compare against it.
+   * `0` so the very first flush with an active registry subscriber is
+   * always due — consistent with a fresh subscribe already forcing one
+   * via `resetDelta()`.
+   */
+  private _lastRegistryCheckpointAt = 0
 
   /** Latest renderer seen during `endFrame` — cached so `_sendSubscribeAck` has something to read. */
   private _latestRenderer: WebGPURenderer | undefined
@@ -448,6 +458,15 @@ export class DevtoolsProvider {
     }
 
     if (active.has('registry')) {
+      // Periodic full re-send (#29 Phase C checkpoint): forces the
+      // drain below to re-emit every entry and flag the payload
+      // `checkpoint: true`, so a time-travel consumer never has to
+      // replay further back than `REGISTRY_CHECKPOINT_MS` to
+      // reconstruct registry state at an arbitrary parked frame.
+      if (flushStart - this._lastRegistryCheckpointAt >= REGISTRY_CHECKPOINT_MS) {
+        this._registry.resetDelta()
+        this._lastRegistryCheckpointAt = flushStart
+      }
       // Union selection across all consumers — `null` means everyone
       // wants everything; a set means only those names get their
       // sample; an empty set means nobody wants samples right now
@@ -667,6 +686,10 @@ export class DevtoolsProvider {
         this._stats.resetDelta()
         this._env.resetDelta()
         this._registry.resetDelta()
+        // This subscribe-triggered reset already produces a checkpoint
+        // on the next drain — re-arm the periodic cadence from here so
+        // it doesn't immediately fire a second one right after.
+        this._lastRegistryCheckpointAt = performance.now()
         this._textures.resetDelta()
         this._batches.resetDelta()
         this._batches.setCapturing(this._subs.isActive('batches'))

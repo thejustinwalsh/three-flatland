@@ -15,10 +15,17 @@
  * below. Click entry to select.
  */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import type { DebugMessage } from 'three-flatland/debug-protocol'
 import type { RegistryEntrySnapshot } from '../../devtools-client.js'
 import { getClient } from '../client.js'
 import { getFrameCursor } from '../frame-cursor.js'
 import { useDevtoolsState } from '../hooks.js'
+import { getProtocolStore, type LogEntry } from '../protocol-store.js'
+import {
+  reconstructRegistryAt,
+  type RegistryHistoryEntry,
+  type RegistryReconstruction,
+} from '../registry-reconstruction.js'
 
 const ROW_STRIDE = 8
 
@@ -47,11 +54,71 @@ export function RegistryPanel() {
     return () => { client.setRegistry([]) }
   }, [client])
 
+  const cursorFrame = getFrameCursor()
+  const providerId = state.selectedProviderId
+
+  // Registry reconstruction while parked (#29 Phase C slice 3). Live,
+  // `state.registry` (delta-accumulated by the client) is exactly what
+  // we want. Parked at a past frame, it's only ever the latest state —
+  // reconstructing frame N needs the checkpoint+deltas replay below,
+  // fed from the ProtocolStore's persisted history (kept current by
+  // the Protocol Log panel's raw-message tap, always mounted alongside
+  // this one in the fixed dashboard layout — see `app.tsx`).
+  const [reconstruction, setReconstruction] = useState<RegistryReconstruction | null>(null)
+  const [reconstructing, setReconstructing] = useState(false)
+
+  useEffect(() => {
+    if (cursorFrame === null || providerId === null) {
+      setReconstruction(null)
+      setReconstructing(false)
+      return
+    }
+    const store = getProtocolStore()
+    const target = cursorFrame
+    const signal = { aborted: false }
+    setReconstructing(true)
+    // Debounced, not immediate — dragging the scrubber can fire many
+    // cursor updates per second and every reconstruction needs a full
+    // IDB cursor scan (unlike the protocol log's parked-scroll effect,
+    // there's no cheap tail-cache fast path here).
+    const handle = (globalThis.setTimeout as unknown as (cb: () => void, ms: number) => number)(
+      () => {
+        void store
+          .queryFiltered(providerId, (e) => isRegistryDataEntry(e) && e.frame! <= target, signal)
+          .then((ids) => {
+            if (signal.aborted) return
+            const history: RegistryHistoryEntry[] = []
+            for (const id of ids) {
+              const logEntry = store.peek(providerId, id)
+              if (logEntry === null) continue
+              const historyEntry = toRegistryHistoryEntry(logEntry)
+              if (historyEntry !== null) history.push(historyEntry)
+            }
+            setReconstruction(reconstructRegistryAt(history, target))
+            setReconstructing(false)
+          })
+      },
+      80,
+    )
+    return () => {
+      signal.aborted = true
+      clearTimeout(handle)
+    }
+  }, [cursorFrame, providerId])
+
+  // Live: the client's own accumulated state. Parked: the reconstructed
+  // snapshot for the cursor frame, once it resolves — until then (or
+  // if reconstruction can't run, e.g. no provider selected) fall back
+  // to the live state rather than blanking the panel.
+  const effectiveRegistry = cursorFrame !== null && reconstruction !== null
+    ? reconstruction.entries
+    : state.registry
+
   const entries = useMemo(() => {
-    const arr = Array.from(state.registry.values())
+    const arr = Array.from(effectiveRegistry.values())
     arr.sort((a, b) => a.name.localeCompare(b.name))
     return arr
-  }, [state.registry, state.registry.size])
+  }, [effectiveRegistry, effectiveRegistry.size])
 
   const needle = filter.trim().toLowerCase()
   const visible = needle.length > 0
@@ -62,7 +129,7 @@ export function RegistryPanel() {
     ? selected
     : (visible[0]?.name ?? null)
 
-  const selectedEntry = effectiveSelected !== null ? state.registry.get(effectiveSelected) ?? null : null
+  const selectedEntry = effectiveSelected !== null ? effectiveRegistry.get(effectiveSelected) ?? null : null
 
   return (
     <section class="panel registry-panel">
@@ -77,10 +144,13 @@ export function RegistryPanel() {
         />
         <span class="registry-count">{entries.length}</span>
       </header>
-      {getFrameCursor() !== null ? (
+      {cursorFrame !== null ? (
         <div class="registry-parked-note">
-          parked — showing the latest registry state (per-frame history
-          needs the Phase C checkpoint snapshots)
+          {reconstruction === null
+            ? `parked at frame ${cursorFrame} — reconstructing registry state…`
+            : reconstruction.complete
+              ? `parked at frame ${cursorFrame} — reconstructed from the nearest checkpoint${reconstructing ? ' (updating…)' : ''}`
+              : `parked at frame ${cursorFrame} — no checkpoint retained before this frame; showing best-effort partial state${reconstructing ? ' (updating…)' : ''}`}
         </div>
       ) : null}
       <div class="registry-layout">
@@ -646,4 +716,22 @@ function drawBits(
       }
     }
   }
+}
+
+/** `true` for a stored `data` message that carries a non-null `registry` feature and a known frame. */
+function isRegistryDataEntry(e: LogEntry): boolean {
+  if (e.frame === undefined) return false
+  const msg = e.msg as DebugMessage
+  if (msg.type !== 'data') return false
+  const registry = msg.payload.features.registry
+  return registry !== undefined && registry !== null
+}
+
+/** Reduce a stored log entry to the `{ frame, payload }` shape the reconstruction core replays. */
+function toRegistryHistoryEntry(e: LogEntry): RegistryHistoryEntry | null {
+  const msg = e.msg as DebugMessage
+  if (msg.type !== 'data') return null
+  const registry = msg.payload.features.registry
+  if (registry === undefined || registry === null) return null
+  return { frame: e.frame ?? msg.payload.frame, payload: registry }
 }

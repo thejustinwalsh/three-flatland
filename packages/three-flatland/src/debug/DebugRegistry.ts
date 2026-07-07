@@ -45,6 +45,15 @@ export class DebugRegistry {
   private _entries = new Map<string, RegistryEntry>()
   /** Names removed since the last drain — emitted as `null` deltas. */
   private _removed = new Set<string>()
+  /**
+   * Set by `resetDelta()`; cleared once a drain actually writes
+   * something. The next *productive* drain after a reset is a full
+   * resend of every entry — flagged `checkpoint: true` on the wire
+   * (#29 Phase C) so a time-travel consumer can anchor reconstruction
+   * on it. Held pending (not cleared) across unproductive drains (e.g.
+   * nothing registered yet) so the flag isn't lost waiting for content.
+   */
+  private _checkpointPending = false
 
   /**
    * Register (or replace) a named buffer. Re-calling with the same name
@@ -166,17 +175,33 @@ export class DebugRegistry {
       wrote = true
     }
     this._removed.clear()
-    if (wrote) out.entries = entries
-    else delete out.entries
+    if (wrote) {
+      out.entries = entries
+      if (this._checkpointPending) {
+        out.checkpoint = true
+        this._checkpointPending = false
+      } else {
+        delete out.checkpoint
+      }
+    } else {
+      delete out.entries
+      delete out.checkpoint
+    }
     return wrote
   }
 
-  /** Force the next drain to re-emit everything. Used when a new consumer subscribes. */
+  /**
+   * Force the next drain to re-emit everything, flagged as a
+   * checkpoint. Used both when a new consumer subscribes (late-joiners
+   * need a full baseline) and on the producer's periodic checkpoint
+   * cadence (`REGISTRY_CHECKPOINT_MS`) — same mechanism either way.
+   */
   resetDelta(): void {
     for (const e of this._entries.values()) {
       e.lastEmittedVersion = 0
       e.lastEmittedShape = 'none'
     }
+    this._checkpointPending = true
   }
 
   dispose(): void {
