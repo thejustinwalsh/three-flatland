@@ -233,4 +233,63 @@ test.describe('FL ZzFX Studio', () => {
     expect(text).toContain('// shifted')
     expect(text).toContain(LITERAL_CALL_TEXT)
   })
+
+  test('Save fails safely — file byte-identical — when the call has been deleted entirely since the panel opened', async ({
+    evaluateInVSCode,
+    webviewFrame,
+  }) => {
+    const originalText = await readFile(evaluateInVSCode, SOUNDS_FILE)
+
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const editor = await vscode.window.showTextDocument(doc)
+        editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
+        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+      },
+      { file: SOUNDS_FILE, line: LITERAL_CALL_LINE }
+    )
+
+    const frame = await webviewFrame(/^ZzFX: sounds\.ts:49$/)
+    await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
+
+    // Delete the call's entire line — there is no "new position" to
+    // relocate to; re-parsing the current text simply can't produce a
+    // finding with the id host.ts captured at open time. This is the
+    // cleanest, least ambiguous case for the guard: any matching strategy
+    // (exact id, or a looser kind+params fallback) must fail here, since
+    // the call plain doesn't exist anymore.
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const edit = new vscode.WorkspaceEdit()
+        const line = doc.lineAt(arg.line)
+        edit.delete(uri, line.rangeIncludingLineBreak)
+        await vscode.workspace.applyEdit(edit)
+      },
+      { file: SOUNDS_FILE, line: LITERAL_CALL_LINE }
+    )
+
+    await frame.locator('vscode-toolbar-button[title="Save"]').click()
+    await expect(frame.getByText(/could not be found/)).toBeVisible()
+
+    const text = await readFile(evaluateInVSCode, SOUNDS_FILE)
+    // File is exactly "the original minus the deleted line" — the refused
+    // save left the (already-applied, independent) deletion alone and
+    // wrote nothing else.
+    const expectedText = originalText
+      .split('\n')
+      .filter((line) => line !== LITERAL_CALL_TEXT)
+      .join('\n')
+    expect(text).toBe(expectedText)
+  })
 })
