@@ -9,6 +9,10 @@
 
 The two are protocol-compatible by hand, not by a shared schema — `src/protocol.ts` mirrors `sidecar/src/model.rs`/`handlers.rs` field-for-field (with one intentional rename: the sidecar's `payload` field type is called `FindingPayload` here, not `Payload`). If you change one side's wire shape, update the other and both test suites.
 
+## `varRef.defRange` covers only the value, never the whole declarator
+
+For `zzfx(...somePreset)` / `zzfx(somePreset)` where `somePreset` resolves to a same-file `const`/`let`/`var` declaration, `defRange` (`sidecar/src/parse.rs::resolve_var_ref`) is the range of the declarator's **initializer value node only** — e.g. just `[1, .05, 220]` in `const preset: number[] = [1, .05, 220]` — never the name, any type annotation, or the `=`. The intent is "jump to / preview the actual preset values"; the name and type aren't that. A declarator with no initializer (`let preset;`) has no value node to point at: `defUri` is still set (there is a real declaration site) but `defRange` is `None` — don't assume the two are always both-or-neither.
+
 ## Binary resolution: `resolveBinary()`
 
 `CodelensServiceClient` takes a plain `binaryPath: string` — it does not resolve anything itself. Use `resolveBinary()` (`src/resolveBinary.ts`) to find it:
