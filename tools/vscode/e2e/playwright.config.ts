@@ -31,7 +31,13 @@ export default defineConfig({
   workers: 1,
   forbidOnly: IS_CI,
   retries: IS_CI ? 1 : 0,
-  reporter: IS_CI ? [['github'], ['list']] : 'list',
+  reporter: IS_CI
+    ? [
+        ['github'],
+        ['html', { outputFolder: path.join(__dirname, 'playwright-report'), open: 'never' }],
+        ['list'],
+      ]
+    : 'list',
   timeout: 60_000,
   expect: {
     timeout: 15_000,
