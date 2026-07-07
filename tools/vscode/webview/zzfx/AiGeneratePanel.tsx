@@ -3,13 +3,15 @@ import { Button, Panel } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
-import type { ZzfxGenerateResult } from './protocol'
+import { fromArgs } from './params'
+import { playParams } from './audio'
+import { DEFAULT_CANDIDATE_COUNT } from './useZzfxSession'
+import type { ZzfxCandidate, ZzfxGenerateResultEvent } from './protocol'
 
-// Ship kill-switch for the whole AI Generate feature. The host-side
-// vscode.lm service (extension/tools/zzfx/lmService.ts) and this panel
-// are both implemented (#148 Z5); Z3 wires `bridge.on('zzfx/generate', ...)`
-// into a live panel. Flip to `false` to hide the panel entirely without
-// reverting either side.
+// Ship kill-switch for the whole AI Generate feature. Both halves are
+// implemented (#148 Z5) — the host wiring that actually registers
+// `bridge.on('zzfx/generate', ...)` is Z3's job. Flip to `false` to hide
+// this panel entirely without reverting either side.
 export const AI_GENERATE_ENABLED = true
 
 const s = stylex.create({
@@ -48,53 +50,169 @@ const s = stylex.create({
     fontSize: '11px',
     color: vscode.errorFg,
   },
+  cards: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.sm,
+  },
+  card: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.xs,
+    padding: space.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.inputBorder,
+    backgroundColor: vscode.panelBg,
+  },
+  cardLabel: {
+    fontSize: '12px',
+    fontWeight: 600,
+    color: vscode.fg,
+  },
+  cardRationale: {
+    fontSize: '11px',
+    color: vscode.descriptionFg,
+    margin: 0,
+  },
+  cardActions: {
+    display: 'flex',
+    gap: space.sm,
+  },
 })
 
-function sourceLabel(source: ZzfxGenerateResult['source']): string {
-  if (source === 'lm') return 'Applied — generated via AI'
-  if (source === 'cache') return 'Applied — cached AI result'
-  return 'Applied — curated preset (AI unavailable or declined)'
+function sourceLabel(source: ZzfxGenerateResultEvent['source']): string {
+  if (source === 'lm') return 'Generated via AI'
+  if (source === 'cache') return 'Cached AI result'
+  return 'Curated preset (AI unavailable)'
 }
+
+export type PresetEntryLike = { label: string; params: number[] }
 
 export type AiGeneratePanelProps = {
   standalone: boolean
+  lmAvailable: boolean
+  category: string | null
+  presets: Record<string, PresetEntryLike[]>
   generating: boolean
   generateError: string | null
   generateStream: string
-  lastGenerateSource: ZzfxGenerateResult['source'] | null
+  candidates: ZzfxCandidate[]
+  lastGenerateSource: ZzfxGenerateResultEvent['source'] | null
   onGenerate: () => void
+  onApplyCandidate: (candidate: PresetEntryLike) => void
 }
 
 export function AiGeneratePanel({
   standalone,
+  lmAvailable,
+  category,
+  presets,
   generating,
   generateError,
   generateStream,
+  candidates,
   lastGenerateSource,
   onGenerate,
+  onApplyCandidate,
 }: AiGeneratePanelProps) {
   if (!AI_GENERATE_ENABLED) return null
+
+  // No vscode.lm in this editor host at all (or no signed-in model) —
+  // browse the curated preset library directly, no Generate button, no
+  // request round trip. planning/vscode-tools/tool-zzfx-studio.md's "AI
+  // generation" section: "hide Generate panel and surface a curated
+  // preset library."
+  if (!lmAvailable) {
+    const entries = category ? (presets[category] ?? []) : []
+    return (
+      <Panel title="Sound Presets (AI unavailable)">
+        <div {...stylex.props(s.body)}>
+          <p {...stylex.props(s.description)}>
+            No AI model is available in this editor — browsing the curated preset library instead.
+          </p>
+          {!category && (
+            <p {...stylex.props(s.description)}>Pick a category above to see its presets.</p>
+          )}
+          {entries.length > 0 && (
+            <div {...stylex.props(s.cards)}>
+              {entries.map((entry, i) => (
+                <CandidateCard
+                  key={`${entry.label}-${i}`}
+                  label={entry.label}
+                  rationale=""
+                  onPlay={() => void playParams(fromArgs(entry.params))}
+                  onUse={() => onApplyCandidate(entry)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </Panel>
+    )
+  }
+
   return (
     <Panel title="AI Generate">
       <div {...stylex.props(s.body)}>
         <p {...stylex.props(s.description)}>
-          Generates a param set from the category + style pills above, via the editor's language
-          model — falls back to a curated preset when no model is available.
+          Generates {DEFAULT_CANDIDATE_COUNT} candidate variations from the category + style pills
+          above.
         </p>
         <div {...stylex.props(s.row)}>
-          <Button onClick={onGenerate} disabled={standalone || generating}>
+          <Button onClick={onGenerate} disabled={standalone || generating || !category}>
             {generating ? 'Generating…' : '✨ Generate'}
           </Button>
-          {!generating && lastGenerateSource && (
-            <span {...stylex.props(s.badge)}>{sourceLabel(lastGenerateSource)}</span>
-          )}
+          {!category && <span {...stylex.props(s.description)}>Pick a category above first.</span>}
         </div>
         {standalone && (
           <p {...stylex.props(s.description)}>Connect to a host to use AI Generate.</p>
         )}
         {generating && generateStream && <pre {...stylex.props(s.stream)}>{generateStream}</pre>}
         {generateError && <p {...stylex.props(s.error)}>Generate failed: {generateError}</p>}
+        {!generating && candidates.length > 0 && (
+          <>
+            {lastGenerateSource && (
+              <span {...stylex.props(s.badge)}>{sourceLabel(lastGenerateSource)}</span>
+            )}
+            <div {...stylex.props(s.cards)}>
+              {candidates.map((c, i) => (
+                <CandidateCard
+                  key={`${c.label}-${i}`}
+                  label={c.label}
+                  rationale={c.rationale}
+                  onPlay={() => void playParams(fromArgs(c.params))}
+                  onUse={() => onApplyCandidate(c)}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </Panel>
+  )
+}
+
+function CandidateCard({
+  label,
+  rationale,
+  onPlay,
+  onUse,
+}: {
+  label: string
+  rationale: string
+  onPlay: () => void
+  onUse: () => void
+}) {
+  return (
+    <div {...stylex.props(s.card)}>
+      <span {...stylex.props(s.cardLabel)}>{label}</span>
+      {rationale && <p {...stylex.props(s.cardRationale)}>{rationale}</p>}
+      <div {...stylex.props(s.cardActions)}>
+        <Button onClick={onPlay}>▶ Play</Button>
+        <Button onClick={onUse}>Use this</Button>
+      </div>
+    </div>
   )
 }

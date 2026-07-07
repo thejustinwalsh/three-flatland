@@ -81,12 +81,23 @@ export function App() {
         <Divider />
         <ToolbarButton
           icon="save"
-          title={session.standalone ? 'Save disabled — no host connection' : 'Save'}
+          title={
+            session.standalone
+              ? 'Save disabled — no host connection'
+              : session.dirty
+                ? 'Save (unsaved changes)'
+                : 'Save'
+          }
           disabled={session.standalone || session.saving || !session.findingId}
           onClick={() => void session.save()}
         />
         <div {...stylex.props(styles.spacer)} />
-        {subtitle && <span {...stylex.props(styles.banner)}>{subtitle}</span>}
+        {subtitle && (
+          <span {...stylex.props(styles.banner)}>
+            {subtitle}
+            {session.dirty ? ' •' : ''}
+          </span>
+        )}
       </Toolbar>
 
       {session.standalone && (
@@ -136,11 +147,16 @@ export function App() {
 
         <AiGeneratePanel
           standalone={session.standalone}
+          lmAvailable={session.lmAvailable}
+          category={session.category}
+          presets={session.presets}
           generating={session.generating}
           generateError={session.generateError}
           generateStream={session.generateStream}
+          candidates={session.candidates}
           lastGenerateSource={session.lastGenerateSource}
           onGenerate={() => void session.generate()}
+          onApplyCandidate={session.applyCandidate}
         />
       </div>
 

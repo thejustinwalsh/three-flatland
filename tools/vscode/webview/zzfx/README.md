@@ -2,20 +2,22 @@
 
 Sound-effect editor for [zzfx](https://github.com/KilledByAPixel/ZzFX) params, surfaced via a CodeLens on `zzfx(...)` calls in source. **This directory is the webview only.** The CodeLens provider + host-side wiring (opening the panel, resolving the finding, writing the save back into source) is a separate unit — issue #148, sub-task Z3. This README is the contract that unit builds against.
 
+Full tool spec, including the AI-generation prompt template verbatim: `planning/vscode-tools/tool-zzfx-studio.md`.
+
 ## Files
 
-| File                                      | What                                                                                                                                                                                                                                               |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `params.ts`                               | The 21-param model: `ParamKey`, `PARAM_SPECS` (label/default/min/max/step), `PARAM_GROUPS` (UI grouping), `defaultParams`/`clampParam`/`toArgs`/`fromArgs`. Also `CATEGORIES`/`STYLES`/`MAX_STYLES`.                                               |
-| `sliderMath.ts`                           | Pure drag math for `Slider.tsx` (`computeDragValue`, `snapToStep`, `ratioForValue`) — unit-tested without a DOM.                                                                                                                                   |
-| `protocol.ts`                             | Bridge message types — `ZzfxInitPayload`, `ZzfxSavePayload`, `ZzfxGeneratePayload`/`ZzfxGenerateResult`/`ZzfxGenerateProgressEvent`, result types. Source of truth for the host-wiring unit.                                                       |
-| `audio.ts`                                | Lazy zzfx playback — dynamic-imports `zzfx` and resumes its `AudioContext` from inside a user-gesture handler.                                                                                                                                     |
-| `zzfx.d.ts`                               | Ambient module declaration — the `zzfx` npm package ships no `.d.ts`. Mirrors `minis/breakout/src/zzfx.d.ts`; keep in sync if the pinned version changes.                                                                                          |
-| `Slider.tsx`, `Pill.tsx`, `PillGroup.tsx` | Locally-composed primitives (see "Local primitives" below).                                                                                                                                                                                        |
-| `ParamRow.tsx`, `ParamGroup.tsx`          | One param row (slider + NumberField, or a dropdown for `shape`); one collapsible group of rows.                                                                                                                                                    |
-| `AiGeneratePanel.tsx`                     | AI Generate UI — Generate button, live stream readout, source badge (`lm`/`cache`/`preset`). Feature-flagged (`AI_GENERATE_ENABLED`, currently `true`) — a ship kill-switch, not a "not implemented" placeholder anymore. See "AI Generate" below. |
-| `useZzfxSession.ts`                       | Bridge handshake + all editable state (params, category, styles, save, generate).                                                                                                                                                                  |
-| `App.tsx`, `main.tsx`, `index.html`       | Standard tool boot — see `tools/vscode/CLAUDE.md`.                                                                                                                                                                                                 |
+| File                                      | What                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `params.ts`                               | The 21-param model: `ParamKey`, `PARAM_SPECS` (label/default/min/max/step), `PARAM_GROUPS` (UI grouping), `defaultParams`/`clampParam`/`toArgs`/`fromArgs`/`fromPartial`. Also `CATEGORIES`/`STYLES`/`MAX_STYLES`.                                                                                                                       |
+| `sliderMath.ts`                           | Pure drag math for `Slider.tsx` (`computeDragValue`, `snapToStep`, `ratioForValue`) — unit-tested without a DOM.                                                                                                                                                                                                                         |
+| `protocol.ts`                             | Bridge message types — `ZzfxInitPayload`, `ZzfxSavePayload`, `ZzfxGeneratePayload`/`ZzfxGenerateProgressEvent`/`ZzfxGenerateResultEvent`, `ZzfxCandidate`. Source of truth for the host-wiring unit.                                                                                                                                     |
+| `audio.ts`                                | Lazy zzfx playback — dynamic-imports `zzfx` and resumes its `AudioContext` from inside a user-gesture handler.                                                                                                                                                                                                                           |
+| `zzfx.d.ts`                               | Ambient module declaration — the `zzfx` npm package ships no `.d.ts`. Mirrors `minis/breakout/src/zzfx.d.ts`; keep in sync if the pinned version changes.                                                                                                                                                                                |
+| `Slider.tsx`, `Pill.tsx`, `PillGroup.tsx` | Locally-composed primitives (see "Local primitives" below).                                                                                                                                                                                                                                                                              |
+| `ParamRow.tsx`, `ParamGroup.tsx`          | One param row (slider + NumberField, or a dropdown for `shape`); one collapsible group of rows.                                                                                                                                                                                                                                          |
+| `AiGeneratePanel.tsx`                     | AI Generate UI — Generate button, live stream readout, N candidate cards (label/rationale/Play/"Use this"), source badge (`lm`/`cache`/`preset`). Falls back to a static preset-browsing card list when `lmAvailable` is false. Feature-flagged (`AI_GENERATE_ENABLED`, currently `true`) — a ship kill-switch. See "AI Generate" below. |
+| `useZzfxSession.ts`                       | Bridge handshake + all editable state (params, dirty flag, category, styles, save, generate, candidates, presets).                                                                                                                                                                                                                       |
+| `App.tsx`, `main.tsx`, `index.html`       | Standard tool boot — see `tools/vscode/CLAUDE.md`.                                                                                                                                                                                                                                                                                       |
 
 ## Bridge contract (`protocol.ts`)
 
@@ -27,7 +29,7 @@ Webview (on mount):
   bridge.request('zzfx/ready')
 
 Host (in 'zzfx/ready' handler):
-  bridge.emit('zzfx/init', { findingId, uri, params, varRef? })
+  bridge.emit('zzfx/init', { findingId, uri, params, varRef?, lmAvailable, presets })
   return { ok: true }
 ```
 
@@ -40,6 +42,8 @@ type ZzfxInitPayload = {
   // short (trailing defaults omitted) or have holes from a
   // sparse array literal — run through params.ts's fromArgs()
   varRef?: { name: string } // present for `const sfx = zzfx(...)`; informational only
+  lmAvailable: boolean // ZzfxLmService.isAvailable() at panel-open time — see "AI Generate" below
+  presets: Record<string, { label: string; params: number[] }[]> // extension/tools/zzfx/lm/core.ts's PRESET_LIBRARY, verbatim
 }
 
 // webview -> host
@@ -52,92 +56,128 @@ type ZzfxSavePayload = {
 type ZzfxSaveResult = { ok: true }
 ```
 
-`zzfx/ready` resolves with `{ ok: true }`. `zzfx/save` throwing on the host side rejects the webview's `save()` promise — `useZzfxSession` surfaces the message as `saveError`, rendered as a banner in `App.tsx`.
+`zzfx/ready` resolves with `{ ok: true }`. `zzfx/save` throwing on the host side rejects the webview's `save()` promise — `useZzfxSession` surfaces the message as `saveError`, rendered as a banner in `App.tsx`. A successful save clears `dirty`.
 
 ### Standalone / dev mode
 
 If `acquireVsCodeApi()` isn't available (e.g. `pnpm --filter @three-flatland/vscode dev:webview` opened directly in a browser, outside the extension host), `useZzfxSession` catches the throw from `createClientBridge()` and sets `standalone: true`. In that mode:
 
-- Params stay at `defaultParams()` — no `zzfx/init` ever arrives.
+- Params stay at `defaultParams()` — no `zzfx/init` ever arrives, so `lmAvailable` stays `false` and `presets` stays `{}`. `AiGeneratePanel` therefore renders its preset-browser branch (no Generate button to disable) — with an empty `presets` map, that browser just shows nothing to pick, which is expected: there's no host to source presets from.
 - The **Save** toolbar button is disabled (`session.standalone` guards it in `App.tsx`).
-- **Play still works** — `audio.ts` only touches the Web Audio API, never the bridge.
+- **Play still works** — `audio.ts` only touches the Web Audio API, never the bridge — including for any candidate/preset card that does render.
 
 This is the "guard the bridge" requirement — every bridge touch in this webview goes through `useZzfxSession`, which is the single try/catch boundary.
 
 ## Param round-trip (`params.ts`)
 
-`toArgs`/`fromArgs` are the canonicalization pair for the `number[]` the bridge and source code exchange:
+`toArgs`/`fromArgs` are the canonicalization pair for the `number[]` the bridge and source code exchange; `fromPartial` is the keyed-object counterpart used by the AI Generate path (see below):
 
 - `fromArgs(args)` — inverse of `toArgs`. Missing trailing elements (array shorter than 21) or `null`/`undefined` holes fill in from `PARAM_SPECS[key].default`, then every value is clamped via `clampParam`.
 - `toArgs(params)` — full 21-value positional array with the **trailing** run of default-valued params trimmed (right-to-left), matching zzfx's own sparse-array convention (`zzfx(...[,,,,.1,,,,9])`). Only trailing defaults trim; a default sitting before a later non-default param stays dense (the result is always a plain `number[]`, never a sparse array with holes).
 - `toDenseArgs(params)` — same values, no trimming; used by `audio.ts` for playback where zzfx just needs all 21 positions.
+- `fromPartial(partial)` — fills a `{ paramKey: value }` object (only some keys, e.g. from an AI-generated candidate's `params` array re-keyed by position) with defaults for every omitted key, clamped.
 
 Round-trip: `fromArgs(toArgs(params))` reproduces `params` (up to `clampParam`'s clamping/rounding). Covered in `params.test.ts`.
 
 ## AI Generate (`zzfx/generate`) — #148 Z5
 
-The webview side (this button, streaming readout, state) is fully implemented. The host-side logic (`extension/tools/zzfx/`) is also fully implemented and unit-tested — **but nothing wires `bridge.on('zzfx/generate', ...)` into a live panel yet**, because there is no live panel until Z3 lands. That wiring is Z3's job; everything it needs is described here.
+Both halves are fully implemented and unit-tested — **but nothing wires `bridge.on('zzfx/generate', ...)` into a live panel yet**, because there is no live panel until Z3 lands. That wiring is Z3's job; everything it needs is described here. Spec source of truth (prompt template verbatim, validation rules, cache-key formula): `planning/vscode-tools/tool-zzfx-studio.md`'s "AI generation" section.
 
 ```ts
-// webview -> host
-type ZzfxGeneratePayload = { category?: string; styles?: string[] }
-
-// resolved value of the zzfx/generate request
-type ZzfxGenerateResult = {
-  ok: true
-  params: number[] // canonical trailing-trimmed args — params.ts's toArgs()
-  source: 'lm' | 'preset' | 'cache'
-}
+// webview -> host — resolves with a plain ack; candidates arrive via the push event below
+type ZzfxGeneratePayload = { category: string; styles: string[]; n: number }
+type ZzfxGenerateAck = { ok: true }
 
 // host -> webview, zero or more times while a request is in flight
 type ZzfxGenerateProgressEvent = { chunk: string }
+
+// host -> webview, exactly once per request, after any progress events
+type ZzfxGenerateResultEvent = {
+  candidates: ZzfxCandidate[] // { label, params: number[] (length 8..21), rationale }
+  fromCache: boolean // exactly `source === 'cache'`
+  source: 'lm' | 'cache' | 'preset'
+}
 ```
 
-`source` is not cosmetic — the webview shows a different confirmation string for each (`AiGeneratePanel.tsx`'s `sourceLabel`), so "AI Generate" never silently claims to have used AI when it actually degraded to a preset.
+`zzfx/generate`'s own resolved value is just an ack (`{ ok: true }`) — the host handler awaits the FULL generation (including any retry) before returning, so `onChunk`-driven `zzfx/generateProgress` events fire during that await and `zzfx/generateResult` fires right before the handler returns. This lets streaming work with the existing request/response bridge primitive without needing a new one.
+
+`source` is not cosmetic — the webview shows a different confirmation string per source (`AiGeneratePanel.tsx`'s `sourceLabel`) and, when `lmAvailable` was false at init, skips the request path entirely and renders `presets[category]` as a static card list instead — so "AI Generate" never silently claims to have used AI when it didn't.
 
 ### What Z3 needs to add to its `host.ts`
 
 ```ts
-import { generateZzfxParams } from './lmService'
-import { createSha256Hasher, createVscodeCacheStore, createVscodeLmCaller } from './vscodeLmAdapter'
+import { ZzfxLmService } from './lm/service'
 
-const lm = createVscodeLmCaller()
-const cache = createVscodeCacheStore(context) // context: vscode.ExtensionContext
-const hash = createSha256Hasher()
+const lmService = new ZzfxLmService(context) // context: vscode.ExtensionContext
 
-bridge.on<ZzfxGeneratePayload>('zzfx/generate', async ({ category, styles }) => {
-  const result = await generateZzfxParams({
-    category,
-    styles: styles ?? [],
-    lm,
-    cache,
-    hash,
-    onChunk: (chunk) => bridge.emit('zzfx/generate/progress', { chunk }),
+// at panel init:
+bridge.emit('zzfx/init', {
+  findingId,
+  uri,
+  params,
+  varRef,
+  lmAvailable: await lmService.isAvailable(),
+  presets: PRESET_LIBRARY, // import { PRESET_LIBRARY } from './lm/core'
+})
+
+// generate handler:
+bridge.on<ZzfxGeneratePayload>('zzfx/generate', async ({ category, styles, n }) => {
+  const outcome = await lmService.generate({ category, styles, n }, (chunk) =>
+    bridge.emit('zzfx/generateProgress', { chunk })
+  )
+  bridge.emit('zzfx/generateResult', {
+    candidates: outcome.candidates,
+    fromCache: outcome.source === 'cache',
+    source: outcome.source,
   })
-  return { ok: true, params: toArgs(result.params), source: result.source }
+  return { ok: true }
 })
 ```
 
-That's the entire integration surface — `generateZzfxParams` (in `extension/tools/zzfx/lmService.ts`) owns the whole cache → LM → retry → preset-fallback state machine; the host handler is just plumbing.
+That's the entire integration surface — `ZzfxLmService` (and the `runGeneration` orchestrator it wraps, in `extension/tools/zzfx/lm/core.ts`) owns the whole cache → LM → retry → preset-fallback state machine; the host handler is just plumbing + re-shaping the event names.
 
-### How the pieces fit (`extension/tools/zzfx/`)
+### `ZzfxLmService` API surface (`extension/tools/zzfx/lm/service.ts`)
 
-| File                    | What                                                                                                                                                                                                                                                                                                                                                                                | Unit-tested?                                                                                                                                                   |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lmService.ts`          | `generateZzfxParams` — the orchestrator (cache check → LM call → validate → one retry → preset fallback → cache write). Dependency-injected (`LmCaller`, `CacheStore`, `hash`) so the whole state machine is testable with fakes, no real `vscode.lm`.                                                                                                                              | Yes — `lmService.test.ts`, 12 cases covering every branch.                                                                                                     |
-| `promptTemplate.ts`     | `buildPrompt`/`buildRetryPrompt` — builds the LM prompt directly from `PARAM_SPECS`/`PARAM_ORDER` (imported from `../../../webview/zzfx/params.ts`) so the described schema can never drift from the real clamp ranges.                                                                                                                                                             | Yes.                                                                                                                                                           |
-| `validateLmResponse.ts` | Parses + validates a raw LM text response into `Partial<Record<ParamKey, number>>` — strips a stray ` ```json ` fence, filters unrecognized keys and non-finite values, only fails on unparseable JSON or zero usable keys.                                                                                                                                                         | Yes.                                                                                                                                                           |
-| `presets.ts`            | `curatedPreset(category, styles)` — one baseline per category + a deterministic modifier per style tag (applied in selection order), fully clamped output. Used for every fallback path.                                                                                                                                                                                            | Yes — includes exhaustiveness tests against the webview's `CATEGORIES`/`STYLES` lists.                                                                         |
-| `vscodeLmAdapter.ts`    | Thin real implementations: `createVscodeLmCaller()` (wraps `vscode.lm.selectChatModels` + `sendRequest`, 20s timeout via `CancellationTokenSource`, treats `vscode.lm` absence/errors as "no model" rather than throwing), `createVscodeCacheStore(context)` (JSON blob at `<globalStorageUri>/zzfx-lm-cache.json`, capped at 200 entries), `createSha256Hasher()` (`node:crypto`). | No — real `vscode`/fs/crypto glue, same precedent as `webview/zzfx/audio.ts`'s untested `AudioContext` boundary. Verify manually once wired into a live panel. |
+```ts
+class ZzfxLmService {
+  constructor(context: vscode.ExtensionContext)
+
+  /** Probes vscode.lm for an available `copilot`-vendor chat model. Cheap
+   * — call once per panel-open to compute ZzfxInitPayload.lmAvailable. */
+  isAvailable(): Promise<boolean>
+
+  /** Generates `n` candidates for category/styles, degrading through
+   * cache -> live model (one retry) -> curated preset. `onChunk` fires
+   * once per streamed text fragment from a live model call. */
+  generate(
+    args: { category: string; styles: readonly string[]; n: number },
+    onChunk?: (chunk: string) => void
+  ): Promise<{
+    source: 'cache' | 'lm' | 'preset'
+    candidates: { label: string; params: number[]; rationale: string }[]
+    dropped?: { index: number; reason: string }[] // only for source: 'lm'
+  }>
+}
+```
+
+### How the pieces fit (`extension/tools/zzfx/lm/`)
+
+| File         | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Unit-tested?                                                                                                                                                                                                                                                                                                                                                       |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `core.ts`    | ALL the decisions, zero `vscode` import: `buildZzfxPrompt`/`buildRetryPrompt` (prompt text, built from `PARAM_SPECS`/`PARAM_ORDER` imported from `../../../../webview/zzfx/params.ts` so the described schema can never drift from the real clamp ranges), `parseCandidates` (strict per-candidate validation — params length 8..21, `shape` an integer 0..4, every param within its real `PARAM_SPECS` range; drops bad candidates individually, only fails the whole response on unparseable JSON or zero survivors), `cacheKeyFor` (`sha256(modelId, promptVersion, category, sortedStyles, n)`), `PRESET_LIBRARY` (≥2 curated presets per category, all 12), `runGeneration` (the cache → LM → one retry → preset orchestrator, dependency-injected on `send`/`cache`/`hash`). | Yes — `core.test.ts`, 32 cases: prompt interpolation, every `parseCandidates` failure mode (garbage, missing-field, out-of-range, non-integer shape, zero-survivors), cache-key stability + styles-order invariance, full `PRESET_LIBRARY` validity (run through `parseCandidates` itself — a bad preset cannot ship), and the full `runGeneration` state machine. |
+| `service.ts` | `ZzfxLmService` — thin real implementations of `core.ts`'s injected interfaces: `vscode.lm.selectChatModels({vendor:'copilot'})` + `sendRequest` + streaming (20s timeout via `CancellationTokenSource`), a JSON-blob cache at `<globalStorageUri>/zzfx-lm-cache.json` (capped 200 entries), `node:crypto` sha256.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | No — real `vscode`/fs/crypto glue, same precedent as `webview/zzfx/audio.ts`'s untested `AudioContext` boundary. Verify manually once Z3 wires it into a live panel.                                                                                                                                                                                               |
 
 ### Retry + cache + fallback behavior
 
-1. `sha256(prompt)` cache hit → `source: 'cache'`, LM never called.
-2. Live call, response validates → `source: 'lm'`, canonical params cached under that hash for next time.
-3. Response fails validation (unparseable / not an object / zero recognized numeric keys) → **one** corrective retry with a follow-up prompt that echoes the failure reason.
-4. Model unavailable (`vscode.lm` missing, no models installed/signed-in, consent declined, timeout, any error), or still invalid after the retry → `curatedPreset(category, styles)`, `source: 'preset'`. **Never cached** — caching a preset would block a retry once the model becomes available.
+1. `cacheKeyFor(...)` hit → `source: 'cache'`, model never called.
+2. Live call, response validates → `source: 'lm'`, canonical `{candidates}` JSON cached under that key for next time.
+3. Response fails `parseCandidates` (unparseable / missing `candidates` array / zero surviving candidates after per-candidate validation) → **one** corrective retry with a follow-up prompt that echoes the failure reason.
+4. Model unavailable (no `copilot`-vendor model selected, consent declined, timeout, any error), or still invalid after the retry → `PRESET_LIBRARY[category]` (or `Blip`'s if the category is unrecognized), `source: 'preset'`. **Never cached** — caching a preset would block a retry once the model becomes available.
 
-`vscode.lm` genuinely may not exist at all in some editor hosts this extension targets (its `package.json` description lists VSCode, Cursor, Antigravity) — `createVscodeLmCaller` treats that the same as "no models returned," not an error, so the whole feature degrades to presets gracefully rather than showing an error banner.
+Two layers of degradation, matching the planning doc's Risks section ("LM API instability — feature-flag the Generate panel; degrade to presets"):
+
+- **Panel-level, static**: `ZzfxInitPayload.lmAvailable` (from `isAvailable()`) decides whether the webview shows the Generate button at all, or renders the preset browser instead. `vscode.lm` genuinely may not exist in every editor host this extension targets (its `package.json` description lists VSCode, Cursor, Antigravity), and even where it exists, no `copilot`-vendor model may be signed in.
+- **Request-level, dynamic**: even when `lmAvailable` was true at init, a single flaky `generate()` call still degrades to the preset library on exhausted retries rather than surfacing an error.
 
 ## Slider ("scrub") interaction
 
