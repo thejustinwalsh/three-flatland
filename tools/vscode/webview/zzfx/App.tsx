@@ -134,7 +134,14 @@ export function App() {
           />
         ))}
 
-        <AiGeneratePanel />
+        <AiGeneratePanel
+          standalone={session.standalone}
+          generating={session.generating}
+          generateError={session.generateError}
+          generateStream={session.generateStream}
+          lastGenerateSource={session.lastGenerateSource}
+          onGenerate={() => void session.generate()}
+        />
       </div>
 
       <DevReloadToast />

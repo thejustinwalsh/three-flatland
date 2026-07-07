@@ -8,7 +8,14 @@ import {
   type ParamKey,
   type ZzfxParams,
 } from './params'
-import type { ZzfxInitPayload, ZzfxSavePayload, ZzfxSaveResult } from './protocol'
+import type {
+  ZzfxGenerateProgressEvent,
+  ZzfxGeneratePayload,
+  ZzfxGenerateResult,
+  ZzfxInitPayload,
+  ZzfxSavePayload,
+  ZzfxSaveResult,
+} from './protocol'
 
 export type ZzfxSessionState = {
   /** True when `acquireVsCodeApi()` isn't available — dev/standalone run
@@ -27,6 +34,19 @@ export type ZzfxSessionState = {
   save: () => Promise<void>
   saving: boolean
   saveError: string | null
+  /** Calls the host's AI Generate flow (vscode.lm, falling back to a
+   * curated preset) for the current category + styles, and applies the
+   * result to `params` on success. */
+  generate: () => Promise<void>
+  generating: boolean
+  generateError: string | null
+  /** Accumulated streamed text from the in-flight (or most recent)
+   * generate call — empty for a preset-sourced result, since there's
+   * nothing to stream in that path. Reset at the start of every call. */
+  generateStream: string
+  /** Where the most recently applied params actually came from. `null`
+   * until the first successful `generate()` call. */
+  lastGenerateSource: ZzfxGenerateResult['source'] | null
 }
 
 export function useZzfxSession(): ZzfxSessionState {
@@ -39,6 +59,12 @@ export function useZzfxSession(): ZzfxSessionState {
   const [styles, setStyles] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState<string | null>(null)
+  const [generateStream, setGenerateStream] = useState('')
+  const [lastGenerateSource, setLastGenerateSource] = useState<ZzfxGenerateResult['source'] | null>(
+    null
+  )
   const bridgeRef = useRef<ClientBridge | null>(null)
 
   useEffect(() => {
@@ -54,15 +80,19 @@ export function useZzfxSession(): ZzfxSessionState {
     bridgeRef.current = bridge
     // Register the init listener BEFORE requesting ready — see
     // tools/bridge/CLAUDE.md's handshake convention.
-    const off = bridge.on<ZzfxInitPayload>('zzfx/init', (p) => {
+    const offInit = bridge.on<ZzfxInitPayload>('zzfx/init', (p) => {
       setFindingId(p.findingId)
       setUri(p.uri)
       setVarRefName(p.varRef?.name ?? null)
       setParams(fromArgs(p.params))
     })
+    const offProgress = bridge.on<ZzfxGenerateProgressEvent>('zzfx/generate/progress', (p) => {
+      setGenerateStream((prev) => prev + p.chunk)
+    })
     void bridge.request('zzfx/ready')
     return () => {
-      off()
+      offInit()
+      offProgress()
       bridgeRef.current = null
     }
   }, [])
@@ -91,6 +121,27 @@ export function useZzfxSession(): ZzfxSessionState {
     }
   }, [findingId, params, category, styles])
 
+  const generate = useCallback(async () => {
+    const bridge = bridgeRef.current
+    if (!bridge) return
+    setGenerating(true)
+    setGenerateError(null)
+    setGenerateStream('')
+    try {
+      const payload: ZzfxGeneratePayload = {
+        category: category ?? undefined,
+        styles: styles.length > 0 ? styles : undefined,
+      }
+      const result = await bridge.request<ZzfxGenerateResult>('zzfx/generate', payload)
+      setParams(fromArgs(result.params))
+      setLastGenerateSource(result.source)
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setGenerating(false)
+    }
+  }, [category, styles])
+
   return {
     standalone,
     findingId,
@@ -105,5 +156,10 @@ export function useZzfxSession(): ZzfxSessionState {
     save,
     saving,
     saveError,
+    generate,
+    generating,
+    generateError,
+    generateStream,
+    lastGenerateSource,
   }
 }

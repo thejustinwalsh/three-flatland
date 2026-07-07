@@ -20,6 +20,7 @@ export default defineConfig({
       'scripts/**/*.test.ts',
       'tools/*/src/**/*.test.ts',
       'tools/vscode/webview/**/*.test.ts',
+      'tools/vscode/extension/**/*.test.ts',
     ],
     exclude: ['packages/skia/**', 'packages/devtools/**', '**/node_modules/**'],
     setupFiles: ['./vitest.setup.ts'],

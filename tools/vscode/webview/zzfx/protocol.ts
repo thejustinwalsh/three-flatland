@@ -33,3 +33,34 @@ export type ZzfxSavePayload = {
 }
 
 export type ZzfxSaveResult = { ok: true }
+
+/** webview -> host, asks the host to generate a param set via
+ * `vscode.lm` (falling back to a curated preset — see
+ * `extension/tools/zzfx/lmService.ts`) for the currently selected
+ * category + styles. */
+export type ZzfxGeneratePayload = {
+  category?: string
+  styles?: string[]
+}
+
+export type ZzfxGenerateResult = {
+  ok: true
+  /** Canonical trailing-trimmed positional args — see `toArgs` in ./params.ts. */
+  params: number[]
+  /** Where the params actually came from — `'lm'` only when a live
+   * model call produced a validated result; `'cache'` for a previous
+   * `'lm'` result served from the sha256 prompt cache; `'preset'`
+   * whenever the model was unavailable, errored, or failed validation
+   * twice. The webview surfaces this so "AI Generate" never silently
+   * lies about having used AI. */
+  source: 'lm' | 'preset' | 'cache'
+}
+
+/** host -> webview, fired zero or more times while a `zzfx/generate`
+ * request is in flight — one event per streamed text chunk from the
+ * model. Never fired for a `'preset'`-sourced result (nothing to
+ * stream). Purely cosmetic — the authoritative result is the resolved
+ * value of the `zzfx/generate` request itself. */
+export type ZzfxGenerateProgressEvent = {
+  chunk: string
+}

@@ -9,6 +9,7 @@ import {
   clampParam,
   defaultParams,
   fromArgs,
+  fromPartial,
   toArgs,
   toDenseArgs,
   type ParamKey,
@@ -185,6 +186,33 @@ describe('round-trip: fromArgs(toArgs(params)) === clamp(params)', () => {
     for (const key of PARAM_ORDER) {
       expect(roundTripped[key]).toBeCloseTo(params[key], 9)
     }
+  })
+})
+
+describe('fromPartial', () => {
+  it('fills every omitted key with its default', () => {
+    const params = fromPartial({ frequency: 880 })
+    expect(params.frequency).toBe(880)
+    expect(params.volume).toBe(PARAM_SPECS.volume.default)
+    expect(params.filter).toBe(PARAM_SPECS.filter.default)
+  })
+
+  it('returns all defaults for an empty object', () => {
+    expect(fromPartial({})).toEqual(defaultParams())
+  })
+
+  it('clamps every provided value', () => {
+    const params = fromPartial({ volume: 50, randomness: -10, shape: 2.6 })
+    expect(params.volume).toBe(1)
+    expect(params.randomness).toBe(0)
+    expect(params.shape).toBe(3)
+  })
+
+  it('ignores keys not present in the partial without touching the rest', () => {
+    const params = fromPartial({ attack: 0.3, decay: 0.4 })
+    expect(params.attack).toBeCloseTo(0.3)
+    expect(params.decay).toBeCloseTo(0.4)
+    expect(params.sustain).toBe(PARAM_SPECS.sustain.default)
   })
 })
 

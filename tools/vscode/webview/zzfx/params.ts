@@ -208,6 +208,23 @@ export function fromArgs(args: readonly (number | null | undefined)[]): ZzfxPara
   return result
 }
 
+/**
+ * Fills a partial, key-addressed param set with defaults for every
+ * omitted key, clamping every provided value. Counterpart to `fromArgs`
+ * for producers that emit `{ paramKey: value }` objects rather than
+ * positional arrays — the LM generate path and the curated presets both
+ * describe sounds this way, since a keyed object is far more reliable
+ * for an LLM to emit correctly than a 21-element positional array.
+ */
+export function fromPartial(partial: Partial<Record<ParamKey, number>>): ZzfxParams {
+  const result = {} as ZzfxParams
+  for (const key of PARAM_ORDER) {
+    const raw = partial[key]
+    result[key] = raw === undefined ? PARAM_SPECS[key].default : clampParam(key, raw)
+  }
+  return result
+}
+
 export const CATEGORIES = [
   'Pickup',
   'Laser',
