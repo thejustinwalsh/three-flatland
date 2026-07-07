@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { RegistryEntrySnapshot } from '../../devtools-client.js'
 import { getClient } from '../client.js'
+import { getFrameCursor } from '../frame-cursor.js'
 import { useDevtoolsState } from '../hooks.js'
 
 const ROW_STRIDE = 8
@@ -76,6 +77,12 @@ export function RegistryPanel() {
         />
         <span class="registry-count">{entries.length}</span>
       </header>
+      {getFrameCursor() !== null ? (
+        <div class="registry-parked-note">
+          parked — showing the latest registry state (per-frame history
+          needs the Phase C checkpoint snapshots)
+        </div>
+      ) : null}
       <div class="registry-layout">
         <ul class="registry-list">
           {visible.length === 0 ? (
