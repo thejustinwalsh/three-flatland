@@ -3,7 +3,12 @@ import { Texture } from 'three'
 import { universe } from 'koota'
 import { SpriteSheetLoader } from './SpriteSheetLoader'
 import { Sprite2D } from '../sprites/Sprite2D'
+import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { ROTATED_FRAME_MASK } from '../materials/effectFlagBits'
+import { BatchSlot, BatchRegistry } from '../ecs/traits'
+import type { RegistryData } from '../ecs/batchUtils'
+import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import type { SpriteSheet } from '../sprites/types'
 
 function mockLoad(json: unknown): Promise<SpriteSheet> {
@@ -85,6 +90,49 @@ describe('TexturePacker compatibility (#95)', () => {
 
     sprite.setFrame(sheet.getFrame('flat'))
     expect(sprite._systemFlags & ROTATED_FRAME_MASK).toBe(0)
+  })
+
+  it('setFrame sets/clears the rotated system flag on the batched path', async () => {
+    const sheet = await mockLoad({
+      frames: {
+        rot: {
+          frame: { x: 0, y: 0, w: 64, h: 32 },
+          rotated: true,
+          trimmed: false,
+          spriteSourceSize: { x: 0, y: 0, w: 64, h: 32 },
+          sourceSize: { w: 64, h: 32 },
+        },
+        flat: {
+          frame: { x: 64, y: 0, w: 64, h: 32 },
+          rotated: false,
+          trimmed: false,
+          spriteSourceSize: { x: 0, y: 0, w: 64, h: 32 },
+          sourceSize: { w: 64, h: 32 },
+        },
+      },
+      meta: { image: 'tp.png', size: { w: 256, h: 256 }, scale: '1' },
+    })
+
+    const material = new Sprite2DMaterial({ map: sheet.texture })
+    const group = new SpriteGroup()
+    const sprite = new Sprite2D({ texture: sheet.texture, material })
+    group.add(sprite)
+    group.update() // assigns the batch slot (sprite._batchMesh / _batchSlot)
+
+    const registryEntities = group.world.query(BatchRegistry)
+    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData
+    const bs = sprite.entity!.get(BatchSlot)!
+    const batch = registry.batchSlots[bs.batchIdx] as SpriteBatch
+    const sysArr = batch.getSystemAttribute().array as Float32Array
+    const flagsOffset = bs.slot * 16 + 8 + 2 // instanceSystem.z — see effectFlagBits.ts
+
+    sprite.setFrame(sheet.getFrame('rot'))
+    expect(sysArr[flagsOffset]! & ROTATED_FRAME_MASK).toBe(ROTATED_FRAME_MASK)
+
+    sprite.setFrame(sheet.getFrame('flat'))
+    expect(sysArr[flagsOffset]! & ROTATED_FRAME_MASK).toBe(0)
+
+    group.dispose()
   })
 
   it('trimmed frames bake trim scale + offset into the matrix (no stretch)', async () => {
