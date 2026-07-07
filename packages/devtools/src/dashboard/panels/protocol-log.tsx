@@ -93,6 +93,7 @@ export function ProtocolLog() {
     parkedFrameRef.current = frameCursor
     if (activeProviderId === null) return
     const { total, ids } = store.statsFor(activeProviderId)
+    let matched = false
     for (let i = 0; i < total; i++) {
       const id = ids[total - 1 - i]
       if (id === undefined) continue
@@ -100,8 +101,30 @@ export function ProtocolLog() {
       if (entry?.frame !== undefined && entry.frame <= frameCursor) {
         const el = scrollerRef.current
         if (el !== null) el.scrollTop = i * ROW_HEIGHT
+        matched = true
         break
       }
+    }
+    if (!matched) {
+      // Older than the tail cache — locate the row through IDB, then
+      // scroll if the cursor hasn't moved on while we were reading.
+      const target = frameCursor
+      const provider = activeProviderId
+      void store
+        .queryFiltered(provider, (entry) => entry.frame !== undefined && entry.frame <= target)
+        .then((matchedIds) => {
+          if (parkedFrameRef.current !== target) return
+          const lastId = matchedIds[matchedIds.length - 1]
+          if (lastId === undefined) return
+          const { total: t, ids: allIds } = store.statsFor(provider)
+          for (let i = 0; i < t; i++) {
+            if (allIds[t - 1 - i] === lastId) {
+              const el = scrollerRef.current
+              if (el !== null) el.scrollTop = i * ROW_HEIGHT
+              break
+            }
+          }
+        })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameCursor, activeProviderId])

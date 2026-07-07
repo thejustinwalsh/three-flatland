@@ -42,8 +42,12 @@ export function Scrubber() {
     return addFrameCursorListener(() => setTick((n) => (n + 1) & 0xffff))
   }, [])
 
-  // Per-provider cursor memory follows the producer switcher.
-  setCursorProvider(state.selectedProviderId)
+  // Per-provider cursor memory follows the producer switcher. Effect,
+  // not render: restoring a parked cursor fires listeners → setState,
+  // which must not happen mid-render.
+  useEffect(() => {
+    setCursorProvider(state.selectedProviderId)
+  }, [state.selectedProviderId])
 
   // Esc returns to live (no modal handling needed here — modals stop
   // propagation of their own keys).

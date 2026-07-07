@@ -22,6 +22,9 @@ const MAX_PAYLOAD = 16 * 1024 * 1024
 interface Client {
   socket: Duplex
   buffer: Buffer
+  /** In-flight fragmented message: first-frame opcode + accumulated payload. */
+  fragmentOpcode: number
+  fragments: Buffer[]
 }
 
 export function startRelay(port: number, host: string): () => void {
@@ -46,8 +49,17 @@ export function startRelay(port: number, host: string): () => void {
         `Sec-WebSocket-Accept: ${accept}\r\n\r\n`
     )
 
-    const client: Client = { socket, buffer: Buffer.alloc(0) }
+    const client: Client = { socket, buffer: Buffer.alloc(0), fragmentOpcode: 0, fragments: [] }
     clients.add(client)
+
+    const broadcast = (payload: Buffer): void => {
+      const out = buildFrame(0x2, payload)
+      for (const other of clients) {
+        if (other !== client && !other.socket.destroyed) {
+          other.socket.write(out)
+        }
+      }
+    }
 
     socket.on('data', (chunk: Buffer) => {
       client.buffer = Buffer.concat([client.buffer, chunk])
@@ -58,15 +70,29 @@ export function startRelay(port: number, host: string): () => void {
           socket.end()
           break
         } else if (frame.opcode === 0x9) {
-          // ping → pong
+          // ping → pong (control frames may interleave with fragments)
           socket.write(buildFrame(0xa, frame.payload))
+        } else if (frame.opcode === 0xa) {
+          // pong — ignore
         } else if (frame.opcode === 0x2 || frame.opcode === 0x1) {
-          // broadcast binary (and tolerate text) to every OTHER client
-          const out = buildFrame(0x2, frame.payload)
-          for (const other of clients) {
-            if (other !== client && !other.socket.destroyed) {
-              other.socket.write(out)
-            }
+          if (frame.fin) {
+            broadcast(frame.payload)
+          } else {
+            // Start of a fragmented message.
+            client.fragmentOpcode = frame.opcode
+            client.fragments = [frame.payload]
+          }
+        } else if (frame.opcode === 0x0) {
+          // Continuation of a fragmented message.
+          if (client.fragments.length === 0) {
+            socket.destroy() // continuation with no start — protocol error
+            break
+          }
+          client.fragments.push(frame.payload)
+          if (frame.fin) {
+            broadcast(Buffer.concat(client.fragments))
+            client.fragments = []
+            client.fragmentOpcode = 0
           }
         }
         frame = readFrame(client)
@@ -96,12 +122,14 @@ export function startRelay(port: number, host: string): () => void {
 
 interface WsFrame {
   opcode: number
+  fin: boolean
   payload: Buffer
 }
 
 function readFrame(client: Client): WsFrame | null {
   const buf = client.buffer
   if (buf.length < 2) return null
+  const fin = (buf[0]! & 0x80) !== 0
   const opcode = buf[0]! & 0x0f
   const masked = (buf[1]! & 0x80) !== 0
   let payloadLength = buf[1]! & 0x7f
@@ -136,7 +164,7 @@ function readFrame(client: Client): WsFrame | null {
   }
 
   client.buffer = buf.subarray(offset + maskLength + payloadLength)
-  return { opcode, payload }
+  return { opcode, fin, payload }
 }
 
 function buildFrame(opcode: number, payload: Buffer): Buffer {

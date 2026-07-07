@@ -232,7 +232,7 @@ describe('remote bridges over a socket pair', () => {
     expect(seen.some((m) => m.type === 'provider:gone')).toBe(true)
   })
 
-  it('queued frames flush when a connecting socket opens', () => {
+  it('a disposed bridge never emits queued frames when the socket opens later', async () => {
     const socket = new FakeSocket()
     socket.readyState = 0 // CONNECTING
     const bridge = createProviderRemoteBridge({
@@ -241,13 +241,79 @@ describe('remote bridges over a socket pair', () => {
       discoveryChannelName: 'fl-discovery-conn',
       providerId: 'conn1',
     })
-    bridge.dispose() // provider:gone queued while CONNECTING
+    // A provider message queues against the connecting socket…
+    const local = new BroadcastChannel('fl-data-conn')
+    local.postMessage({ v: 1, ts: 1, type: 'ping', payload: {} })
+    await new Promise((resolve) => setTimeout(resolve, 20))
 
-    expect(socket.sent.length).toBe(0)
+    bridge.dispose() // …then the bridge dies before the socket opens
+
     socket.readyState = 1
     socket._emit('open', {})
-    expect(socket.sent.length).toBe(1)
-    expect(decodeDebugMessage(socket.sent[0]!).message.type).toBe('provider:gone')
+    // Nothing from the dead bridge — no stale ping, no goodbye either
+    // (provider:gone only crosses an OPEN socket at dispose time).
+    expect(socket.sent.length).toBe(0)
+    local.close()
+  })
+
+  it('wire-borne reposts are never re-forwarded (same-context echo guard)', async () => {
+    const [providerSocket, consumerSocket] = socketPair()
+    const providerBridge = createProviderRemoteBridge({
+      remote: providerSocket,
+      dataChannelName: 'fl-data-echo',
+      discoveryChannelName: 'fl-discovery-echo',
+    })
+    const consumerBridge = createConsumerRemoteBridge({
+      remote: consumerSocket,
+      discoveryChannelName: 'fl-discovery-echo',
+    })
+
+    // A remote data frame arrives at the consumer bridge, which reposts
+    // it locally — the provider bridge tap in the SAME context must not
+    // send it back out (infinite relay ping-pong otherwise).
+    const sentBefore = providerSocket.sent.length
+    consumerSocket.peer = providerSocket // wire back
+    providerSocket.send(
+      encodeDebugMessage(
+        { v: 1, ts: 9, type: 'ping', payload: {} } as unknown as DebugMessage,
+        'fl-data-echo'
+      )
+    )
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    // Exactly the frame we sent — no echo copies queued afterwards.
+    expect(providerSocket.sent.length).toBe(sentBefore + 1)
+
+    providerBridge.dispose()
+    consumerBridge.dispose()
+  })
+
+  it('marker-shaped user payloads survive the codec untouched (path table)', () => {
+    const msg = {
+      v: 1,
+      ts: 7,
+      type: 'data',
+      payload: {
+        frame: 1,
+        features: {
+          registry: {
+            // User data that LOOKS like an internal binary marker
+            meta: { __flBin: 0, ctor: 'Uint8Array' },
+            real: new Uint8Array([1, 2, 3]),
+          },
+        },
+      },
+    } as unknown as DebugMessage
+
+    const { message } = decodeDebugMessage(encodeDebugMessage(msg, 'fl-data-x'))
+    const decoded = (
+      message as unknown as {
+        payload: { features: { registry: { meta: unknown; real: Uint8Array } } }
+      }
+    ).payload.features.registry
+    expect(decoded.meta).toEqual({ __flBin: 0, ctor: 'Uint8Array' })
+    expect(decoded.real).toBeInstanceOf(Uint8Array)
+    expect([...decoded.real]).toEqual([1, 2, 3])
   })
 
   it('malformed / non-binary socket payloads are ignored', () => {
