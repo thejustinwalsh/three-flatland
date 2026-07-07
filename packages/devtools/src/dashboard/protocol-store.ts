@@ -113,12 +113,13 @@ const ENTRY_OVERHEAD_BYTES = 96
 type Listener = () => void
 
 interface ProviderState {
-  total: number
   maxId: number
-  /** Ids belonging to this provider, kept as a dense array. Used so
-   *  visual-index → id mapping doesn't have to round-trip IDB. Pruned
-   *  ids are removed from this array in lockstep with their IDB row
-   *  deletion, so it always reflects what's actually retained. */
+  /** Ids belonging to this provider, kept as a dense, append-ordered
+   *  array. Used so visual-index → id mapping doesn't have to
+   *  round-trip IDB. Pruned ids are removed from this array in
+   *  lockstep with their IDB row deletion, so it always reflects what's
+   *  actually retained — `statsFor().total` is derived from its length
+   *  rather than tracked separately, so the two can never drift. */
   ids: number[]
   /** Frame value of the newest entry (id === maxId), if it carried one. */
   newestFrame?: number
@@ -171,7 +172,12 @@ export class ProtocolStore {
   private _lastPruneAt: number
   private _pruning = false
   private _pruneRetryTimer: number | null = null
+  /** One-shot timer armed when a push leaves the store over budget but
+   *  throttled (see `_maybePrune`) — re-evaluates once the interval
+   *  elapses even if nothing pushes again in the meantime. */
+  private _pruneArmTimer: number | null = null
   private _consecutiveEmptyPasses = 0
+  private _disposed = false
 
   constructor(options: ProtocolStoreOptions = {}) {
     this._opts = options
@@ -256,11 +262,18 @@ export class ProtocolStore {
     }
   }
 
-  /** Per-provider counters. Returns zeros if the provider isn't known. */
+  /**
+   * Per-provider counters. Returns zeros if the provider isn't known.
+   * `total` always equals `ids.length` — the count of currently
+   * retained rows, not a lifetime push count — so it stays valid as a
+   * denominator/index bound for `protocol-log.tsx`'s virtualization
+   * math even after pruning shrinks `ids`.
+   */
   statsFor(providerId: string | null): { total: number; maxId: number; ids: number[] } {
     if (providerId === null) return { total: 0, maxId: 0, ids: [] }
     const s = this._providers.get(providerId)
-    return s !== undefined ? s : { total: 0, maxId: 0, ids: [] }
+    if (s === undefined) return { total: 0, maxId: 0, ids: [] }
+    return { total: s.ids.length, maxId: s.maxId, ids: s.ids }
   }
 
   /** All provider ids currently tracked in the store. */
@@ -279,10 +292,9 @@ export class ProtocolStore {
     this._cache.set(key, entry)
     let ps = this._providers.get(providerId)
     if (ps === undefined) {
-      ps = { total: 0, maxId: 0, ids: [] }
+      ps = { maxId: 0, ids: [] }
       this._providers.set(providerId, ps)
     }
-    ps.total++
     ps.maxId = id
     ps.ids.push(id)
     ps.newestFrame = partial.frame
@@ -341,6 +353,10 @@ export class ProtocolStore {
     if (this._pruneRetryTimer !== null) {
       clearTimeout(this._pruneRetryTimer)
       this._pruneRetryTimer = null
+    }
+    if (this._pruneArmTimer !== null) {
+      clearTimeout(this._pruneArmTimer)
+      this._pruneArmTimer = null
     }
     if (this._db !== null) {
       try {
@@ -440,6 +456,7 @@ export class ProtocolStore {
 
   private _flush(): void {
     this._flushTimer = null
+    if (this._disposed) return
     if (this._writeBuffer.length === 0) return
     const batch = this._writeBuffer
     this._writeBuffer = []
@@ -448,16 +465,79 @@ export class ProtocolStore {
 
   private async _writeBatch(batch: LogEntry[]): Promise<void> {
     const db = await this._dbReady
+    let tx: IDBTransaction | undefined
     try {
-      const tx = db.transaction(STORE, 'readwrite')
+      tx = db.transaction(STORE, 'readwrite')
       const store = tx.objectStore(STORE)
       for (const entry of batch) store.put(entry)
       tx.onerror = () => {
-        console.warn('[devtools-dashboard] IDB write failed:', tx.error)
+        console.warn('[devtools-dashboard] IDB write failed:', tx?.error)
+        this._rollbackBatch(batch)
       }
     } catch (err) {
       console.warn('[devtools-dashboard] IDB transaction failed:', err)
+      // A `put()` can throw synchronously partway through the loop
+      // (e.g. a non-clonable payload) after earlier entries in the
+      // same batch already queued successfully. Abort so none of this
+      // batch commits — otherwise the full-batch rollback below would
+      // zero out accounting for rows IDB actually still has.
+      try { tx?.abort() } catch { /* transaction already finished */ }
+      this._rollbackBatch(batch)
     }
+  }
+
+  /**
+   * Undo the in-memory accounting for a batch that never made it into
+   * IDB. Without this, `_bytesStored` and each provider's `ids` keep
+   * counting rows that don't actually exist there — pruning would then
+   * run from an inflated byte count, and `retainedRange`/`statsFor`
+   * could report ids that a `queryFiltered`/`prefetchRange` call can
+   * never actually find.
+   */
+  private _rollbackBatch(batch: LogEntry[]): void {
+    const failedByProvider = new Map<string, Set<number>>()
+    for (const entry of batch) {
+      this._bytesStored -= estimateEntryBytes(entry)
+      this._cache.delete(cacheKey(entry.providerId, entry.id))
+      let ids = failedByProvider.get(entry.providerId)
+      if (ids === undefined) {
+        ids = new Set()
+        failedByProvider.set(entry.providerId, ids)
+      }
+      ids.add(entry.id)
+    }
+    for (const [providerId, failedIds] of failedByProvider) {
+      const ps = this._providers.get(providerId)
+      if (ps === undefined) continue
+      ps.ids = ps.ids.filter((id) => !failedIds.has(id))
+      if (ps.ids.length === 0) {
+        ps.maxId = 0
+        ps.newestFrame = undefined
+        ps.oldestFrame = undefined
+      } else {
+        ps.maxId = ps.ids[ps.ids.length - 1]!
+        ps.newestFrame = this._cache.get(cacheKey(providerId, ps.maxId))?.frame
+        ps.oldestFrame = this._cache.get(cacheKey(providerId, ps.ids[0]!))?.frame
+      }
+    }
+    this._fire()
+  }
+
+  /**
+   * Id below which an entry falls outside a provider's pinned tail
+   * window. Ids are global-monotonic across every provider, so a fixed
+   * offset from `maxId` (`maxId - TAIL_CACHE + 1`) only isolates that
+   * provider's own newest `TAIL_CACHE` entries when it's the sole
+   * writer — with interleaved providers the same id span holds a mix
+   * of everyone's rows, under-protecting this provider's actual recent
+   * history. Indexing `ps.ids` (per-provider, append-ordered, so
+   * ascending) counts *entries* instead of *id values*, which stays
+   * correct regardless of interleaving. Fewer than `TAIL_CACHE` entries
+   * total → everything is tail, so nothing can be `< ` the cutoff.
+   */
+  private _tailCutoffId(ps: ProviderState): number {
+    const idx = ps.ids.length - TAIL_CACHE
+    return idx > 0 ? ps.ids[idx]! : Number.NEGATIVE_INFINITY
   }
 
   /** LRU eviction, keyed per-provider. Tail always pinned. */
@@ -465,7 +545,7 @@ export class ProtocolStore {
     if (this._cache.size <= LRU_MAX) return
     const ps = this._providers.get(providerId)
     if (ps === undefined) return
-    const keepFrom = ps.maxId - TAIL_CACHE + 1
+    const keepFrom = this._tailCutoffId(ps)
     const toDrop: string[] = []
     for (const k of this._cache.keys()) {
       if (!k.startsWith(`${providerId}:`)) continue
@@ -482,19 +562,54 @@ export class ProtocolStore {
    * pushes doesn't re-run the IDB cursor walk per-message — the pass
    * itself is async and re-entrancy-guarded by `_pruning`. Skipped
    * while a self-heal retry (see `_triggerPrune`) is already pending.
+   *
+   * This only ever runs from `push()` — a short over-budget burst
+   * followed by silence (no further pushes) would otherwise never
+   * prune, since nothing else re-evaluates the throttle. When over
+   * budget but not yet due, arm a one-shot timer for whatever's left
+   * of the interval so the store still self-heals on a quiet
+   * connection.
    */
   private _maybePrune(): void {
+    if (this._disposed) return
     if (this._pruning || this._pruneRetryTimer !== null) return
-    if (this._bytesStored <= this._byteBudget) return
+    if (this._bytesStored <= this._byteBudget) {
+      this._clearArmedPruneTimer()
+      return
+    }
     const everyNWrites = this._opts.pruneEveryNWrites ?? PRUNE_EVERY_N_WRITES
     const intervalMs = this._opts.pruneIntervalMs ?? PRUNE_INTERVAL_MS
     const now = this._now()
     const dueByWrites = this._writesSinceProbe >= everyNWrites
     const dueByInterval = now - this._lastPruneAt >= intervalMs
-    if (!dueByWrites && !dueByInterval) return
+    if (!dueByWrites && !dueByInterval) {
+      // A non-finite interval (tests disabling interval-based
+      // throttling entirely) means "never fire on time alone."
+      if (Number.isFinite(intervalMs)) this._armPruneTimer(intervalMs - (now - this._lastPruneAt))
+      return
+    }
+    this._clearArmedPruneTimer()
     this._writesSinceProbe = 0
     this._lastPruneAt = now
     this._triggerPrune()
+  }
+
+  private _armPruneTimer(delayMs: number): void {
+    if (this._pruneArmTimer !== null) return
+    this._pruneArmTimer = (globalThis.setTimeout as unknown as (cb: () => void, ms: number) => number)(
+      () => {
+        this._pruneArmTimer = null
+        this._maybePrune()
+      },
+      Math.max(0, delayMs),
+    )
+  }
+
+  private _clearArmedPruneTimer(): void {
+    if (this._pruneArmTimer !== null) {
+      clearTimeout(this._pruneArmTimer)
+      this._pruneArmTimer = null
+    }
   }
 
   /**
@@ -511,6 +626,7 @@ export class ProtocolStore {
     this._pruning = true
     void this._runPrune().then((madeProgress) => {
       this._pruning = false
+      if (this._disposed) return
       this._consecutiveEmptyPasses = madeProgress ? 0 : this._consecutiveEmptyPasses + 1
       const shouldRetry =
         this._bytesStored > this._byteBudget && this._consecutiveEmptyPasses < PRUNE_MAX_EMPTY_RETRIES
@@ -518,6 +634,7 @@ export class ProtocolStore {
         this._pruneRetryTimer = (globalThis.setTimeout as unknown as (cb: () => void, ms: number) => number)(
           () => {
             this._pruneRetryTimer = null
+            if (this._disposed) return
             this._triggerPrune()
           },
           this._writeFlushMs + 20,
@@ -560,7 +677,7 @@ export class ProtocolStore {
         const ps = this._providers.get(entry.providerId)
         // No live provider state (e.g. orphaned by a failed `clear()`
         // transaction) — leave it untouched rather than guess.
-        const eligible = ps !== undefined && entry.id < ps.maxId - TAIL_CACHE + 1
+        const eligible = ps !== undefined && entry.id < this._tailCutoffId(ps)
         const deletedForProvider = deletedIdsByProvider.get(entry.providerId)
         if (eligible) {
           cursor.delete()
@@ -594,11 +711,51 @@ export class ProtocolStore {
         ps.oldestFrame = newOldestByProvider.get(providerId)
       } else if (ps.ids.length === 0) {
         ps.oldestFrame = undefined
+      } else {
+        // The pass stopped (batch cap / budget satisfied) before the
+        // cursor reached this provider's first survivor, so its frame
+        // was never observed this pass — `ps.oldestFrame` still names
+        // a row we just deleted above. Best-effort recover from the
+        // cache; otherwise mark unknown rather than report stale data.
+        // A later pass (or any read that hydrates `ids[0]` into the
+        // cache) will resolve it for real.
+        ps.oldestFrame = this._cache.get(cacheKey(providerId, ps.ids[0]!))?.frame
       }
       for (const id of deletedIds) this._cache.delete(cacheKey(providerId, id))
     }
     this._fire()
     return true
+  }
+
+  /**
+   * Cancel every pending timer (write flush, prune self-heal retry,
+   * the throttle-interval arm) and close the IDB connection. Every
+   * timer callback checks `_disposed` and no-ops rather than
+   * rescheduling itself once this has run.
+   *
+   * `getProtocolStore()` never replaces its singleton today, so no
+   * call site needs this yet — it's exported for whichever one
+   * eventually does (dashboard teardown, or a reset that swaps in a
+   * fresh store). Without it, an abandoned instance's stale timers
+   * could keep firing against the shared hardcoded `DB_NAME` behind a
+   * still-live replacement's back.
+   */
+  dispose(): void {
+    this._disposed = true
+    if (this._flushTimer !== null) {
+      clearTimeout(this._flushTimer)
+      this._flushTimer = null
+    }
+    if (this._pruneRetryTimer !== null) {
+      clearTimeout(this._pruneRetryTimer)
+      this._pruneRetryTimer = null
+    }
+    if (this._pruneArmTimer !== null) {
+      clearTimeout(this._pruneArmTimer)
+      this._pruneArmTimer = null
+    }
+    this._listeners.clear()
+    this._db?.close()
   }
 }
 

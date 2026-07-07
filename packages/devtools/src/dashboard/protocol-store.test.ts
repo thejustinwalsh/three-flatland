@@ -20,6 +20,11 @@ beforeEach(() => {
 // earliest ones fall outside the pinned tail and become prune-eligible.
 const TAIL_CACHE = 400
 
+// Mirrors the private `PRUNE_BATCH_SIZE` constant — the cap on rows a
+// single prune pass deletes before yielding. Pushing enough eligible
+// entries to exceed this forces a scenario spanning multiple passes.
+const PRUNE_BATCH_SIZE = 500
+
 function makeEntry(overrides: Partial<Omit<LogEntry, 'id' | 'providerId'>> = {}): Omit<LogEntry, 'id' | 'providerId'> {
   return {
     at: Date.now(),
@@ -192,5 +197,165 @@ describe('ProtocolStore byte-budget pruning', () => {
     await vi.waitFor(() => {
       expect(store.retainedRange('p1')!.oldestId).toBeGreaterThan(1)
     }, { timeout: 2000, interval: 20 })
+  })
+
+  it("pins each provider to its own newest TAIL_CACHE rows when providers interleave writes", async () => {
+    const perProvider = TAIL_CACHE + 100
+    const store = makeStore({ byteBudget: 3000, pruneEveryNWrites: 1, pruneIntervalMs: 0 })
+    // p1 lands on every odd global id, p2 on every even one.
+    for (let i = 1; i <= perProvider; i++) {
+      store.push('p1', makeEntry({ frame: i }))
+      store.push('p2', makeEntry({ frame: i }))
+    }
+
+    await vi.waitFor(async () => {
+      expect(await idbIds(store, 'p1')).toHaveLength(TAIL_CACHE)
+      expect(await idbIds(store, 'p2')).toHaveLength(TAIL_CACHE)
+    }, { timeout: 3000, interval: 20 })
+
+    // Each provider's retained set must be exactly its OWN newest
+    // TAIL_CACHE entries. A global-id-span cutoff (`maxId - TAIL_CACHE
+    // + 1`) would instead retain whichever ids happen to fall in the
+    // last TAIL_CACHE *values* — with two interleaved writers that
+    // numeric span holds only ~TAIL_CACHE/2 of any single provider's
+    // own rows, wrongly pruning the rest of its recent history.
+    const p1All = Array.from({ length: perProvider }, (_, k) => 2 * k + 1)
+    const p2All = Array.from({ length: perProvider }, (_, k) => 2 * k + 2)
+    expect(await idbIds(store, 'p1')).toEqual(p1All.slice(-TAIL_CACHE))
+    expect(await idbIds(store, 'p2')).toEqual(p2All.slice(-TAIL_CACHE))
+  })
+
+  it('reconciles in-memory counters when a write-batch transaction fails to commit', async () => {
+    const store = makeStore({ byteBudget: 1_000_000 })
+    const originalPut = IDBObjectStore.prototype.put
+    let shouldFail = true
+    // Simulates a put() that fails synchronously (quota exceeded, a
+    // non-clonable payload, etc.) — a real failure mode `_writeBatch`
+    // must recover from, not just a theoretical one.
+    IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: unknown[]) {
+      if (shouldFail) {
+        shouldFail = false
+        throw new DOMException('simulated failure', 'UnknownError')
+      }
+      return originalPut.apply(this, args as Parameters<typeof originalPut>)
+    } as typeof originalPut
+    try {
+      store.push('p1', makeEntry({ frame: 1 }))
+      await vi.waitFor(() => {
+        expect(store.statsFor('p1').ids).toEqual([])
+      }, { timeout: 1000, interval: 10 })
+      // The failed row must not linger anywhere in the accounting —
+      // not as a phantom id, not as inflated byte usage, not as a
+      // retainable range with nothing behind it.
+      expect(store.statsFor('p1').total).toBe(0)
+      expect(store.retainedRange('p1')).toBeNull()
+
+      // A subsequent, unaffected write proceeds normally afterward —
+      // the failure doesn't wedge the store.
+      store.push('p1', makeEntry({ frame: 2 }))
+      await vi.waitFor(async () => {
+        expect(await idbIds(store, 'p1')).toEqual([2])
+      }, { timeout: 1000, interval: 10 })
+      expect(store.statsFor('p1').total).toBe(1)
+    } finally {
+      IDBObjectStore.prototype.put = originalPut
+    }
+  })
+
+  it('arms a one-shot timer so an over-budget burst prunes on interval elapse with no further push', async () => {
+    // Write-count threshold set far above what we push, so only the
+    // interval-based path (armed by `_maybePrune` itself, not by a
+    // later `push()`) can trigger the pass.
+    const store = makeStore({
+      byteBudget: 100,
+      pruneEveryNWrites: TAIL_CACHE + 1000,
+      pruneIntervalMs: 30,
+    })
+    for (let i = 1; i <= TAIL_CACHE + 20; i++) store.push('p1', makeEntry({ frame: i }))
+
+    // No further push after this point.
+    await vi.waitFor(async () => {
+      const ids = await idbIds(store, 'p1')
+      expect(ids[0]).toBeGreaterThan(1)
+    }, { timeout: 2000, interval: 10 })
+  })
+
+  it("keeps statsFor().total aligned with the retained row count, not a lifetime push count, after pruning", async () => {
+    const store = makeStore({ byteBudget: 3000, pruneEveryNWrites: 1, pruneIntervalMs: 0 })
+    for (let i = 1; i <= TAIL_CACHE + 20; i++) {
+      store.push('p1', makeEntry({ frame: i }))
+    }
+
+    await vi.waitFor(async () => {
+      expect(await idbIds(store, 'p1')).toHaveLength(TAIL_CACHE)
+    }, { timeout: 2000, interval: 20 })
+
+    // 420 rows were ever pushed, but only TAIL_CACHE (400) survive.
+    // `total` backs `ids[total - 1 - i]` visual-index math in
+    // protocol-log.tsx, so it must track what's retained, not what was
+    // ever pushed — otherwise that indexing walks past the end of the
+    // (shorter) retained `ids` array.
+    const stats = store.statsFor('p1')
+    expect(stats.total).toBe(TAIL_CACHE)
+    expect(stats.total).toBe(stats.ids.length)
+  })
+
+  it('keeps oldestFrame correct (not stale) after a partial prune pass stops before reaching the first survivor', async () => {
+    // 520 eligible entries (TAIL_CACHE=400 protected, 520 prune-
+    // eligible below it) — comfortably more than PRUNE_BATCH_SIZE(500)
+    // so the first pass stops at the batch cap without ever reaching
+    // survivor id 501, but small enough that fake-indexeddb's cursor
+    // walk (whose cost scales with total rows in the store, verified
+    // separately) stays fast.
+    const total = TAIL_CACHE + 520
+    const store = makeStore({ byteBudget: 1, pruneEveryNWrites: 1, pruneIntervalMs: 0 })
+    for (let i = 1; i <= total; i++) store.push('p1', makeEntry({ frame: i }))
+
+    // First pass converges to exactly PRUNE_BATCH_SIZE deletions
+    // without observing the boundary. A regression here leaves
+    // `oldestFrame` at the stale frame of id 1 (deleted in this very
+    // pass) instead of recovering the real boundary's frame.
+    await vi.waitFor(async () => {
+      const ids = await idbIds(store, 'p1')
+      expect(ids[0]).toBe(PRUNE_BATCH_SIZE + 1)
+    }, { timeout: 4000, interval: 10 })
+    expect(store.retainedRange('p1')!.oldestFrame).toBe(PRUNE_BATCH_SIZE + 1)
+  })
+
+  it('dispose() cancels a pending write-flush timer so a buffered batch never lands in IDB', async () => {
+    const store = makeStore({ writeFlushMs: 20 })
+    store.push('p1', makeEntry({ frame: 1 }))
+    store.dispose()
+
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(await idbIds(store, 'p1')).toEqual([])
+  })
+
+  it('dispose() halts an in-flight multi-pass prune instead of letting it keep converging', async () => {
+    const total = TAIL_CACHE + 520
+    const store = makeStore({ byteBudget: 1, pruneEveryNWrites: 1, pruneIntervalMs: 0 })
+    for (let i = 1; i <= total; i++) store.push('p1', makeEntry({ frame: i }))
+
+    await vi.waitFor(() => {
+      expect(store.statsFor('p1').ids[0]).toBe(PRUNE_BATCH_SIZE + 1)
+    }, { timeout: 4000, interval: 10 })
+
+    store.dispose()
+    // `dispose()` closes the IDB connection, so further verification
+    // reads in-memory state (which a surviving pass would still update
+    // synchronously as part of its post-processing) rather than
+    // querying IDB directly — a disposed instance's `queryFiltered`
+    // would throw on the closed connection, which is expected, not a
+    // gap in this check.
+    const idsAtDispose = store.statsFor('p1').ids.slice()
+    expect(idsAtDispose).toHaveLength(total - PRUNE_BATCH_SIZE)
+
+    // Without dispose, the self-heal retry chain would keep firing
+    // every `writeFlushMs + 20`ms and delete the remaining eligible
+    // rows shortly after (verified separately to converge in under a
+    // second at this store size). After dispose, none of that should
+    // happen even after waiting well past that.
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    expect(store.statsFor('p1').ids).toEqual(idsAtDispose)
   })
 })
