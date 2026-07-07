@@ -6,6 +6,16 @@ export {
 } from './primitives/CompactSelect'
 export { NumberField, type NumberFieldProps } from './primitives/NumberField'
 export { Panel, type PanelProps } from './primitives/Panel'
+export { Pill, type PillProps } from './primitives/Pill'
+export { Slider, type SliderProps } from './primitives/Slider'
+export {
+  clamp as sliderClamp,
+  computeDragValue as computeSliderDragValue,
+  ratioForValue as sliderRatioForValue,
+  snapToStep as snapSliderToStep,
+  type SliderDragStart,
+  type SliderRange,
+} from './primitives/sliderMath'
 export { Splitter, type SplitterProps } from './primitives/Splitter'
 export { Toolbar, type ToolbarProps } from './primitives/Toolbar'
 export { ToolbarButton, type ToolbarButtonProps } from './primitives/ToolbarButton'

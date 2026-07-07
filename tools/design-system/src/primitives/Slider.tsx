@@ -5,8 +5,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
-import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
+import { vscode } from '../tokens/vscode-theme.stylex'
+import { radius } from '../tokens/radius.stylex'
 import {
   computeDragValue,
   ratioForValue,
@@ -15,17 +15,23 @@ import {
   type SliderRange,
 } from './sliderMath'
 
+export type { SliderRange } from './sliderMath'
+
 const s = stylex.create({
   track: {
     position: 'relative',
     flex: 1,
     minWidth: 0,
-    height: 14,
+    height: 12,
     display: 'flex',
     alignItems: 'center',
     cursor: 'ew-resize',
     touchAction: 'none',
     outlineStyle: 'none',
+    borderRadius: radius.sm,
+  },
+  trackFocusVisible: {
+    boxShadow: `0 0 0 1px ${vscode.focusRing}`,
   },
   trackDisabled: {
     opacity: 0.4,
@@ -45,18 +51,25 @@ const s = stylex.create({
     borderColor: vscode.inputBorder,
     overflow: 'hidden',
   },
+  // Idle fill reads as a value indicator, not an affordance — same
+  // restraint as NumberField's resting state (plain box, no accent
+  // color until the user actually interacts). Only the active drag
+  // recolors it to the focus-ring accent (`fillActive`).
   fill: {
     position: 'absolute',
     left: 0,
     top: 0,
     bottom: 0,
+    backgroundColor: vscode.descriptionFg,
+  },
+  fillActive: {
     backgroundColor: vscode.focusRing,
   },
   fillWidth: (pct: number) => ({ width: `${pct * 100}%` }),
   thumb: {
     position: 'absolute',
-    width: 10,
-    height: 10,
+    width: 8,
+    height: 8,
     top: '50%',
     borderRadius: '50%',
     backgroundColor: vscode.fg,
@@ -79,18 +92,23 @@ export type SliderProps = {
 }
 
 /**
- * Horizontal "scrub" control — same convention as the design-system
- * `NumberField`'s vertical drag handle (offset-from-drag-start, not
- * jump-to-pointer-position), just on the X axis. Drag math lives in
- * `sliderMath.ts` so it's unit-testable without a DOM.
+ * Horizontal "scrub" control — same convention as `NumberField`'s vertical
+ * drag handle (offset-from-drag-start, not jump-to-pointer-position), just
+ * on the X axis. The accent (focus-ring) color is reserved for active
+ * interaction (dragging or keyboard focus); the resting fill uses the
+ * muted description-foreground tone so a row of sliders doesn't read as a
+ * bank of always-lit volume bars. Drag math lives in `sliderMath.ts` so
+ * it's unit-testable without a DOM.
  */
 export function Slider({ value, range, onChange, disabled = false, ...rest }: SliderProps) {
   const ariaLabel = rest['aria-label']
   const trackRef = useRef<HTMLDivElement>(null)
   const dragStart = useRef<SliderDragStart | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [focusVisible, setFocusVisible] = useState(false)
 
   const ratio = ratioForValue(value, range)
+  const active = dragging || focusVisible
 
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (disabled) return
@@ -139,20 +157,22 @@ export function Slider({ value, range, onChange, disabled = false, ...rest }: Sl
       aria-valuemax={range.max}
       aria-valuenow={value}
       aria-disabled={disabled}
-      {...stylex.props(s.track, disabled && s.trackDisabled)}
+      {...stylex.props(s.track, focusVisible && s.trackFocusVisible, disabled && s.trackDisabled)}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onLostPointerCapture={endDrag}
       onKeyDown={handleKeyDown}
+      onFocus={() => setFocusVisible(true)}
+      onBlur={() => setFocusVisible(false)}
     >
       <span {...stylex.props(s.rail)}>
-        <span {...stylex.props(s.fill, s.fillWidth(ratio))} />
+        <span {...stylex.props(s.fill, active && s.fillActive, s.fillWidth(ratio))} />
       </span>
       <span
         aria-hidden="true"
-        {...stylex.props(s.thumb, dragging && s.thumbActive, s.thumbLeft(ratio))}
+        {...stylex.props(s.thumb, active && s.thumbActive, s.thumbLeft(ratio))}
       />
     </div>
   )

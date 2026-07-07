@@ -127,7 +127,7 @@ export function AiGeneratePanel({
   if (!lmAvailable) {
     const entries = category ? (presets[category] ?? []) : []
     return (
-      <Panel title="Sound Presets (AI unavailable)">
+      <Panel title="Sound Presets (AI unavailable)" bodyOverflow="visible">
         <div {...stylex.props(s.body)}>
           <p {...stylex.props(s.description)}>
             No AI model is available in this editor — browsing the curated preset library instead.
@@ -154,7 +154,7 @@ export function AiGeneratePanel({
   }
 
   return (
-    <Panel title="AI Generate">
+    <Panel title="AI Generate" bodyOverflow="visible">
       <div {...stylex.props(s.body)}>
         <p {...stylex.props(s.description)}>
           Generates {DEFAULT_CANDIDATE_COUNT} candidate variations from the category + style pills

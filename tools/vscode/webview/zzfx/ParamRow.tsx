@@ -1,8 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
-import { CompactSelect, NumberField } from '@three-flatland/design-system'
+import { CompactSelect, NumberField, Slider } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
-import { Slider } from './Slider'
 import { PARAM_SPECS, SHAPE_OPTIONS, type ParamKey } from './params'
 
 const s = stylex.create({

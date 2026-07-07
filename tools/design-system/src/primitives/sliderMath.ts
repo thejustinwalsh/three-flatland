@@ -1,9 +1,9 @@
 // Pure drag math for `Slider.tsx`, split out so pointer-event sequences can
 // be unit-tested without a DOM. The slider is a "scrub" control (same
-// convention as the design-system `NumberField`'s vertical drag handle,
-// just horizontal): dragging doesn't jump to the pointer's absolute
-// position, it offsets the value that was current when the drag started
-// by the pointer's displacement since then.
+// convention as `NumberField`'s vertical drag handle, just horizontal):
+// dragging doesn't jump to the pointer's absolute position, it offsets the
+// value that was current when the drag started by the pointer's
+// displacement since then.
 
 export type SliderRange = {
   min: number

@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
+import { Pill } from '@three-flatland/design-system'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
-import { Pill } from './Pill'
 
 const s = stylex.create({
   wrap: {

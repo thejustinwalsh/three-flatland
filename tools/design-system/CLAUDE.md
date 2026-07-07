@@ -15,6 +15,8 @@ For any VSCode-themed chrome inside a webview, use the primitives from this pack
 | `Splitter` | Resizable divider between sibling panels | `axis: 'vertical'\|'horizontal'`, `onDrag(clientPx)` — parent owns the size state, clamps min/max |
 | `CompactSelect` | Inline 18px dropdown; fits in Panel headers | `value`, `options: {value, label?}[]`, `onChange`, `width`, `disabled` |
 | `NumberField` | Bounded number input with drag handle | `value`, `onChange`, `min`, `max`, `step`, `disabled` |
+| `Slider` | Horizontal scrub control, pairs with `NumberField` for an exact readout | `value`, `range: {min,max,step}`, `onChange`, `disabled` — accent color reserved for active drag/focus, resting fill is muted |
+| `Pill` | Toggleable chip for small enum picks (wrap in your own group for single/multi-select) | `label`, `active`, `onToggle`, `disabled` — active state uses list-selection tokens, not `focusRing` |
 | `Tabs` / `TabHeader` / `TabPanel` | Tab strip + content panels | Lit slot auto-promotion; no `slot=` needed on `TabHeader` children |
 | `Checkbox` | Boolean toggle with label | `label`, `checked`, `onChange` |
 | `SingleSelect` / `Option` | Full-height native-looking dropdown | Use when `CompactSelect` is too compact (< 22 px rows) |
@@ -32,7 +34,7 @@ All of the above are re-exported from `@three-flatland/design-system`. Import fr
 ```ts
 import {
   Toolbar, ToolbarButton, Panel, Splitter, CompactSelect, NumberField,
-  Checkbox, SingleSelect, Option, TextField, Icon, Divider,
+  Slider, Pill, Checkbox, SingleSelect, Option, TextField, Icon, Divider,
   Scrollable, Badge, Collapsible, Tabs, TabHeader, TabPanel,
 } from '@three-flatland/design-system'
 ```
@@ -41,6 +43,7 @@ import {
 
 - A `Panel` should fill its flex parent via `style={{ flex: 1, minWidth: 0, minHeight: 0 }}` (or stylex equivalent) — the shell sets `display: flex; flex-direction: column` but doesn't grow on its own.
 - Fixed-width sidebar panels: `style={{ width: <px>, flexShrink: 0 }}`.
+- A `Panel` that is **not** stretched by an ancestor (sits in normal document flow, sized by its own content — e.g. a short control row) needs `bodyOverflow="visible"`. The body's `flex: 1` tries to grow into the shell's "remaining space" — but an un-stretched shell has no definite height to begin with, so that remaining space is circularly undefined and collapses to ~0 px (the body's explicit `min-height: 0` then lets that 0 stick instead of falling back to content size). `bodyOverflow="visible"` overrides the same `flex` shorthand with `'0 0 auto'` so its size falls through to its own content instead — override the shorthand, not the `flexGrow`/`flexShrink` longhands, or StyleX's atomic-class conflict resolution won't reliably out-order `flex: 1`'s sub-values. Stretched, internally-scrolling panels (atlas's Frames list, etc.) should keep the `'auto'` default.
 - Use `<Splitter>` between sibling panels; its 4 px width doubles as the visual gap. Do NOT add `gap` on the parent flex container in addition.
 - Persist splitter widths on the consumer side (Zustand store + `localStorageStorage` is the established pattern).
 - For an artboard / canvas surface: `<Panel bodyPadding="none">` and let the surface own its padding/scroll.

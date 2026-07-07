@@ -152,7 +152,12 @@ export function App() {
       )}
 
       <div {...stylex.props(styles.body)}>
-        <Panel title="Category" bodyPadding="normal">
+        {/* bodyOverflow="visible": these panels wrap a single short pill
+            row in normal document flow, not a stretched/scrolling
+            sidebar — see the prop's doc comment in design-system's
+            Panel.tsx for why the 'auto' default silently collapses an
+            un-stretched body to ~0px. */}
+        <Panel title="Category" bodyPadding="normal" bodyOverflow="visible">
           <PillGroup<Category>
             options={CATEGORIES}
             selected={session.category ? [session.category as Category] : []}
@@ -161,7 +166,7 @@ export function App() {
           />
         </Panel>
 
-        <Panel title={`Style (max ${MAX_STYLES})`} bodyPadding="normal">
+        <Panel title={`Style (max ${MAX_STYLES})`} bodyPadding="normal" bodyOverflow="visible">
           <PillGroup<Style>
             options={STYLES}
             selected={session.styles as Style[]}
