@@ -4,7 +4,7 @@ import { Texture } from 'three'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
-import { BatchRegistry, BatchMesh, BatchSlot, InBatch } from './traits'
+import { BatchRegistry } from './traits'
 import type { RegistryData } from './batchUtils'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
 
@@ -31,7 +31,12 @@ function makeTexture(): Texture {
 }
 
 // ============================================
-// Auto-batch tier ladder: medium ladder, bulk-aware sizing, consolidation
+// Auto-batch tier ladder: medium ladder + bulk-aware sizing
+//
+// Runtime batch-to-batch sprite migration ("consolidation") was scoped
+// out — rejected on frame-jitter risk. Warmup-tier batches persist for
+// the run's lifetime; hand-tuned scenes (e.g. knightmark) opt out of the
+// ladder entirely via an explicit `maxBatchSize`.
 // ============================================
 
 describe('auto-batch tier defaults (batchUtils)', () => {
@@ -82,7 +87,7 @@ describe('auto-batch tier defaults (batchUtils)', () => {
     20000
   )
 
-  it('trickle growth: adding 100 at a time up to 6000 ladders 1024 → 4096 → 16384 and consolidates the 1024 batch away', () => {
+  it('trickle growth: adding 100 at a time up to 6000 ladders 1024 → 4096 → 16384-partial', () => {
     let placed = 0
     for (let round = 0; round < 60; round++) {
       for (let i = 0; i < 100; i++) {
@@ -93,14 +98,12 @@ describe('auto-batch tier defaults (batchUtils)', () => {
     }
     expect(placed).toBe(6000)
 
+    // No consolidation — every warmup-tier batch the run ever earned is
+    // still live, sized by the ladder shape alone.
     const meshes = activeMeshes(group)
     const sizes = meshes.map((m) => m.maxSize).sort((a, b) => a - b)
-
-    // The 1024 warmup batch gets folded into the 16384 batch once the run
-    // grows enough to earn a top-tier sibling — no sub-4096 batch survives.
-    expect(sizes.every((s) => s >= 4096)).toBe(true)
-    expect(sizes).toContain(16384)
-    expect(meshes.length).toBeLessThanOrEqual(2)
+    expect(sizes).toEqual([1024, 4096, 16384])
+    expect(meshes.length).toBe(3)
 
     const total = meshes.reduce((sum, m) => sum + m.activeCount, 0)
     expect(total).toBe(6000)
@@ -118,56 +121,5 @@ describe('auto-batch tier defaults (batchUtils)', () => {
     for (const mesh of meshes) expect(mesh.maxSize).toBe(8192)
 
     pinned.dispose()
-  })
-
-  it('consolidation preserves sprite tint/UV state when migrated out of a warmup batch', () => {
-    const tracked = new Sprite2D({ texture, material })
-    tracked.tint.set(0.25, 0.75, 0.5)
-    tracked.setFrame({
-      name: 'tracked-frame',
-      x: 0.1,
-      y: 0.2,
-      width: 0.3,
-      height: 0.4,
-      sourceWidth: 8,
-      sourceHeight: 8,
-    })
-    group.add(tracked)
-    group.update() // tracked alone -> a single tier-0 (1024) batch
-
-    const oldBatchEntity = tracked.entity!.targetFor(InBatch)!
-    const oldMesh = oldBatchEntity.get(BatchMesh)!.mesh!
-    expect(oldMesh.maxSize).toBe(1024)
-
-    const oldSlot = tracked.entity!.get(BatchSlot)!.slot
-    const oldColor = oldMesh.getColorAttribute().array as Float32Array
-    const oldUV = oldMesh.getUVAttribute().array as Float32Array
-    const expectedColor = Array.from(oldColor.slice(oldSlot * 16 + 4, oldSlot * 16 + 8))
-    const expectedUV = Array.from(oldUV.slice(oldSlot * 16 + 0, oldSlot * 16 + 4))
-
-    // Bulk-prime a large influx sharing the same run — bulk-aware sizing
-    // creates the new batch straight at the top tier, which triggers
-    // ladder-top consolidation of the still-live 1024 warmup batch.
-    for (let i = 0; i < 5000; i++) {
-      group.add(new Sprite2D({ texture, material }))
-    }
-    group.update() // early assign creates the 16384 batch + evicts tracked; late assign re-places it
-
-    const newBatchEntity = tracked.entity!.targetFor(InBatch)!
-    expect(newBatchEntity).not.toBe(oldBatchEntity)
-    const newMesh = newBatchEntity.get(BatchMesh)!.mesh!
-    expect(newMesh.maxSize).toBe(16384)
-
-    const newSlot = tracked.entity!.get(BatchSlot)!.slot
-    const newColor = newMesh.getColorAttribute().array as Float32Array
-    const newUV = newMesh.getUVAttribute().array as Float32Array
-
-    expect(Array.from(newColor.slice(newSlot * 16 + 4, newSlot * 16 + 8))).toEqual(expectedColor)
-    expect(Array.from(newUV.slice(newSlot * 16 + 0, newSlot * 16 + 4))).toEqual(expectedUV)
-
-    // The old 1024 batch emptied out and was recycled — its slot in the
-    // active batch-mesh index is freed, not left dangling.
-    const oldBatchMesh = oldBatchEntity.get(BatchMesh)
-    expect(oldBatchMesh?.mesh?.isEmpty).toBe(true)
   })
 })

@@ -242,23 +242,6 @@ export function findOrCreateBatch(
   // which pins every batch to that size (tierLadder null).
   const batchSize = resolveBatchSize(registry, run, pendingCount)
 
-  // Ladder-top consolidation: this run just grew enough to earn a
-  // top-tier batch. Any warmup-tier batches it's still holding (below
-  // the ladder's second-highest tier) cost CPU every frame without
-  // adding draw calls now that a top-tier sibling exists — fold their
-  // sprites into the new batch instead of letting them linger. Captured
-  // BEFORE the new batch joins `run.batches` below, so it only ever
-  // targets pre-existing siblings.
-  const ladder = registry.tierLadder
-  let warmupBatches: Entity[] = []
-  if (ladder && ladder.length > 1 && batchSize === ladder[ladder.length - 1]) {
-    const warmupCeiling = ladder[ladder.length - 2]!
-    warmupBatches = run.batches.filter((e) => {
-      const m = e.get(BatchMesh)?.mesh
-      return !!m && m.maxSize < warmupCeiling
-    })
-  }
-
   if (batchEntity) {
     const existing = batchEntity.get(BatchMesh)
     if (
@@ -321,14 +304,6 @@ export function findOrCreateBatch(
   run.batches.push(batchEntity)
   registry.activeBatches.push(batchEntity)
   registry.renderOrderDirty = true
-
-  // Fold the warmup siblings' sprites into the batch we just created —
-  // re-triggers their IsRenderable so the schedule's late-assign pass
-  // re-places them here, and recycles each warmup batch to the pool once
-  // it empties out (see evictBatchEntities / recycleBatchIfEmpty).
-  if (warmupBatches.length > 0) {
-    evictBatchEntities(world, registry, warmupBatches)
-  }
 
   return batchEntity
 }
@@ -487,29 +462,25 @@ export function ensureMaterialDisposeHook(
 }
 
 /**
- * Shared eviction core: for every batched entity for which `shouldEvict`
- * returns true, free its live slot, drop the InBatch relation, recycle
- * the batch if it goes empty, clear the sprite's cached direct-write
- * refs, and re-trigger IsRenderable so `batchAssignSystem` re-batches the
- * survivor with whatever material/batch it resolves to by then.
+ * Evict every batched entity using `materialId` from its batch: free
+ * the slot, drop the InBatch relation, recycle empty batches, and
+ * re-trigger IsRenderable so `batchAssignSystem` re-batches survivors
+ * with whatever material they hold by then.
  *
- * Backs both `evictBatchesForMaterial` (materialId scope — tier-upgrade
- * rebuild, dispose teardown) and `evictBatchEntities` (explicit
- * batch-entity scope — ladder-top consolidation in `findOrCreateBatch`).
+ * Shared by the tier-upgrade rebuild (material schema changed) and the
+ * dispose teardown (material's GPU resources are gone).
  */
-function evictMatchingBatchedEntities(
+export function evictBatchesForMaterial(
   world: World,
   registry: RegistryData,
-  shouldEvict: (matRef: { materialId: number }, batchEntity: Entity | undefined) => boolean
+  materialId: number
 ): void {
   const batched = world.query(IsBatched, SpriteMaterialRef, BatchSlot)
   for (const entity of batched) {
     const matRef = entity.get(SpriteMaterialRef)
-    if (!matRef) continue
+    if (!matRef || matRef.materialId !== materialId) continue
 
     const batchEntity = entity.targetFor(InBatch)
-    if (!shouldEvict(matRef, batchEntity)) continue
-
     if (batchEntity) {
       // BatchSlot.slot is the authoritative live slot (kept in sync by
       // batchSortSystem); InBatch's own slot can be a stale pre-swap index.
@@ -550,41 +521,6 @@ function evictMatchingBatchedEntities(
   }
 
   registry.renderOrderDirty = true
-}
-
-/**
- * Evict every batched entity using `materialId` from its batch.
- *
- * Shared by the tier-upgrade rebuild (material schema changed) and the
- * dispose teardown (material's GPU resources are gone).
- */
-export function evictBatchesForMaterial(
-  world: World,
-  registry: RegistryData,
-  materialId: number
-): void {
-  evictMatchingBatchedEntities(world, registry, (matRef) => matRef.materialId === materialId)
-}
-
-/**
- * Evict every sprite currently assigned to one of `batchEntities`.
- *
- * Used by the ladder-top consolidation path in `findOrCreateBatch`: when
- * a run grows into a top-tier batch, its still-live warmup-tier siblings
- * get folded into it rather than kept alive alongside it.
- */
-export function evictBatchEntities(
-  world: World,
-  registry: RegistryData,
-  batchEntities: readonly Entity[]
-): void {
-  if (batchEntities.length === 0) return
-  const targets = new Set(batchEntities)
-  evictMatchingBatchedEntities(
-    world,
-    registry,
-    (_matRef, batchEntity) => !!batchEntity && targets.has(batchEntity)
-  )
 }
 
 /**

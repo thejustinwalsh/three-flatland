@@ -499,7 +499,9 @@ function KnightmarkScene({
         scale={[TILE_SCALE, TILE_SCALE, 1]}
         position={[-mapWorldW / 2, -mapWorldH / 2, -1]}
       />
-      <spriteGroup ref={spriteGroupRef} />
+      {/* This scene stresses 40k+ sprites — pin fixed 16384-slot batches
+          (ladder off) to minimize per-batch overhead. */}
+      <spriteGroup ref={spriteGroupRef} maxBatchSize={16384} />
     </>
   )
 }
