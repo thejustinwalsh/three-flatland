@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@zzfx-studio/zzfxm": "catalog:",
-    "node-web-audio-api": "^2.0.0",
+    "node-web-audio-api": "catalog:",
     "zzfx": "catalog:"
   },
   "devDependencies": {

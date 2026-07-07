@@ -54,6 +54,9 @@ catalogs:
     koota:
       specifier: ^0.6.5
       version: 0.6.5
+    node-web-audio-api:
+      specifier: ^2.0.0
+      version: 2.0.0
     pngjs:
       specifier: ^7.0.0
       version: 7.0.0
@@ -1821,7 +1824,7 @@ importers:
         specifier: 'catalog:'
         version: 0.1.5(zzfx@1.3.2)
       node-web-audio-api:
-        specifier: ^2.0.0
+        specifier: 'catalog:'
         version: 2.0.0
       zzfx:
         specifier: 'catalog:'
