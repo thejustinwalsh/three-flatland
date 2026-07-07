@@ -35,6 +35,14 @@ export const RECEIVE_SHADOWS_MASK = 1 << RECEIVE_SHADOWS_BIT
 export const CAST_SHADOW_BIT = 2
 export const CAST_SHADOW_MASK = 1 << CAST_SHADOW_BIT
 
+/**
+ * Bit 3: the sprite's current frame is packed 90° clockwise in the
+ * atlas (TexturePacker "Allow rotation"). The shader unrotates its
+ * frame-local sampling: `uv' = (v, 1 - u)`.
+ */
+export const ROTATED_FRAME_BIT = 3
+export const ROTATED_FRAME_MASK = 1 << ROTATED_FRAME_BIT
+
 // ─── MaterialEffect enable bits — live in instanceSystem.w ───────────
 
 /**

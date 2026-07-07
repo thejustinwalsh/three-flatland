@@ -4,6 +4,7 @@ import {
   LIT_FLAG_MASK,
   RECEIVE_SHADOWS_MASK,
   CAST_SHADOW_MASK,
+  ROTATED_FRAME_MASK,
 } from './effectFlagBits'
 
 /**
@@ -104,4 +105,14 @@ export function readReceiveShadowsFlag(): Node<'bool'> {
  */
 export function readCastShadowFlag(): Node<'bool'> {
   return readSystemFlags().bitAnd(int(CAST_SHADOW_MASK)).greaterThan(int(0))
+}
+
+/**
+ * Read the per-instance rotated-frame flag (bit 3 of
+ * `instanceSystem.z`). Set when the current atlas frame is packed 90°
+ * clockwise (TexturePacker rotation); the material unrotates its
+ * frame-local UV before the atlas remap.
+ */
+export function readRotatedFrameFlag(): Node<'bool'> {
+  return readSystemFlags().bitAnd(int(ROTATED_FRAME_MASK)).greaterThan(int(0))
 }

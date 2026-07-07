@@ -65,11 +65,11 @@ export function transformSyncSystem(world: World): void {
     const layer = layerArr[eid]!
     const zIdx = zIndexArr[eid]!
 
-    const px = sprite.position.x
-    const py = sprite.position.y
+    const px = sprite.position.x + sprite._trimOX * sprite.scale.x
+    const py = sprite.position.y + sprite._trimOY * sprite.scale.y
     const pz = sprite.position.z + layer * 10 + zIdx * 0.001
-    const sx = sprite.scale.x
-    const sy = sprite.scale.y
+    const sx = sprite.scale.x * sprite._trimSX
+    const sy = sprite.scale.y * sprite._trimSY
     const rz = sprite.rotation.z
 
     const buf = mesh.instanceMatrix.array as Float32Array

@@ -10,7 +10,7 @@ import {
 import type Node from 'three/src/nodes/core/Node.js'
 import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
-import { readFlip } from './instanceAttributes'
+import { readFlip, readRotatedFrameFlag } from './instanceAttributes'
 import { synthQuadNodes } from './synthQuadNodes'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { GlobalUniforms } from '../GlobalUniforms'
@@ -258,8 +258,17 @@ export class Sprite2DMaterial extends EffectMaterial {
       select(flip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
     )
 
+    // Unrotate frames packed 90° clockwise in the atlas (TexturePacker
+    // rotation, system-flag bit 3): sprite-space (u, v) samples the
+    // packed region at (v, 1 - u). Flip runs first — it's sprite-space.
+    const rotated = readRotatedFrameFlag()
+    const frameUV = vec2(
+      select(rotated, flippedUV.y, flippedUV.x),
+      select(rotated, float(1).sub(flippedUV.x), flippedUV.y)
+    )
+
     // Remap to frame in atlas
-    const atlasUV = flippedUV
+    const atlasUV = frameUV
       .mul(vec2(instanceUV.z, instanceUV.w))
       .add(vec2(instanceUV.x, instanceUV.y))
 
