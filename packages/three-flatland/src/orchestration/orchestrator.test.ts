@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Group, PerspectiveCamera, Scene, Texture } from 'three'
 import { universe } from 'koota'
 import { Sprite2D } from '../sprites/Sprite2D'
+import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { flatlandPrime } from './orchestrator'
 import { peekRegistry } from './registry'
@@ -176,6 +177,46 @@ describe('lazy materialization — dual-signal registration', () => {
     expect(sprite._autoRegistry).toBeNull()
 
     group.dispose()
+  })
+
+  it('does not clobber an explicitly-assigned material on the auto-orchestration sweep', () => {
+    // Mirrors the tsl-nodes example: construct via texture (bootstrap
+    // default material), then explicitly override `.material` before the
+    // sprite is ever added to a scene — the only way user code can set a
+    // custom material, since Sprite2D exposes no other setter. Before the
+    // fix, `_materialIsBootstrapDefault` stayed `true` (only
+    // `_switchToMaterial`/`_resolveDefaultMaterial` cleared it), so
+    // `registerSprite`'s auto-orchestration sweep — triggered here by the
+    // scene-add + first render call — treated the sprite as still needing
+    // its bootstrap default resolved and silently replaced the caller's
+    // material with a shared, non-premultiplied one.
+    const sprite = new Sprite2D({ texture })
+    expect(sprite._materialIsBootstrapDefault).toBe(true)
+
+    const explicit = new Sprite2DMaterial({
+      map: texture,
+      transparent: true,
+      premultipliedAlpha: true,
+    })
+    sprite.material = explicit
+
+    expect(sprite._materialIsBootstrapDefault).toBe(false)
+
+    scene.add(sprite)
+    fireSceneHook(scene, renderer)
+
+    expect(sprite.material).toBe(explicit)
+    expect((sprite.material as Sprite2DMaterial).getTexture()).toBe(texture)
+  })
+
+  it('material setter clears bootstrap/registry-default bookkeeping on direct assignment', () => {
+    const sprite = new Sprite2D({ texture })
+    expect(sprite._materialIsBootstrapDefault).toBe(true)
+
+    sprite.material = new Sprite2DMaterial({ map: texture, transparent: true })
+
+    expect(sprite._materialIsBootstrapDefault).toBe(false)
+    expect(sprite._materialWasRegistryDefault).toBe(false)
   })
 
   it('two renderers rendering the same primed scene register into the first; batches are scene children either way', () => {
