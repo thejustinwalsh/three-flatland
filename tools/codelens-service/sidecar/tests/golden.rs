@@ -138,16 +138,51 @@ fn document_parse_matches_the_golden_fixture_exactly() {
     );
 
     // Same "typed comparison can't see this" gap as the degraded check
-    // above: golden.ts's `zzfx(1, 0.1, 440)` call (index 1, all-literal
-    // args, no var reference) must have its `varRef` key OMITTED from the
-    // wire JSON, not present as `null` — verified directly on the raw
+    // above: golden.ts's `zzfx(1, 0.1, 440)` call (all-literal args, no
+    // var reference) must have its `varRef` key OMITTED from the wire
+    // JSON, not present as `null` — verified directly on the raw
     // response, not via the typed Vec<Finding> comparison just above.
+    // Found by params rather than a hardcoded index, so this doesn't
+    // silently start checking the wrong finding if golden.ts gains or
+    // loses an earlier entry.
     let raw_findings = response["result"]["findings"].as_array().unwrap();
-    let literal_call = &raw_findings[1];
-    assert_eq!(literal_call["payload"]["params"], json!([1.0, 0.1, 440.0]));
+    let literal_call = raw_findings
+        .iter()
+        .find(|f| f["payload"]["params"] == json!([1.0, 0.1, 440.0]))
+        .expect("golden.ts must still contain the zzfx(1, 0.1, 440) literal call");
     assert!(
         literal_call["payload"].get("varRef").is_none(),
         "a literal-args call's payload must OMIT the varRef key, not send \"varRef\": null; got {literal_call}"
+    );
+
+    // The specific regression this unit exists to prevent: a type-annotated
+    // declarator's defRange must land INSIDE the initializer, past the `=`
+    // — not at the declarator's start (the name). golden.ts's
+    // `explosionPreset` declaration is `const explosionPreset: number[] =
+    // [0.6, ...]`; `=` sits at byte/character 32 on that line, so a
+    // defRange starting anywhere at or before 32 would mean the old,
+    // whole-declarator bug is back.
+    let explosion_finding = actual_findings
+        .iter()
+        .find(|f| {
+            f.payload
+                .var_ref
+                .as_ref()
+                .is_some_and(|v| v.name == "explosionPreset")
+        })
+        .expect("golden.ts must still declare and reference explosionPreset");
+    let def_range = explosion_finding
+        .payload
+        .var_ref
+        .as_ref()
+        .unwrap()
+        .def_range
+        .expect("explosionPreset has an initializer; defRange must be Some");
+    assert!(
+        def_range.start.character > 32,
+        "defRange must start past the '=' (character 32 on this fixture's declarator line), \
+         got character {} — this is exactly the whole-declarator regression this test guards against",
+        def_range.start.character
     );
 
     write_frame(

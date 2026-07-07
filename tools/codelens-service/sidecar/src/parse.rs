@@ -213,6 +213,14 @@ fn number_value(node: Node, text: &str) -> Option<f64> {
 /// Resolves `name`'s declaration within the same file only (v0 scope: no
 /// cross-file resolution). Walks up from `from` to the enclosing program and
 /// scans top-level `variable_declarator` nodes for a matching name.
+///
+/// `def_range` covers only the declarator's **value** (initializer) node —
+/// e.g. just `[1, .05, 220]` in `const preset: number[] = [1, .05, 220]` —
+/// not the name, any type annotation, or the `=`. The point of `defRange`
+/// is "jump to / preview the actual preset values," and neither the
+/// variable name nor its type annotation is that. A declarator with no
+/// initializer (`let preset;`) has no value node to point at, so `def_uri`
+/// is still set (there IS a declaration site) but `def_range` is `None`.
 fn resolve_var_ref(name: String, from: Node, text: &str, uri: &str) -> VarRef {
     let mut root = from;
     while let Some(parent) = root.parent() {
@@ -224,9 +232,9 @@ fn resolve_var_ref(name: String, from: Node, text: &str, uri: &str) -> VarRef {
         Some(decl) => VarRef {
             name,
             def_uri: Some(uri.to_string()),
-            def_range: Some(Range {
-                start: line_index.position(text, decl.start_byte()),
-                end: line_index.position(text, decl.end_byte()),
+            def_range: decl.child_by_field_name("value").map(|value| Range {
+                start: line_index.position(text, value.start_byte()),
+                end: line_index.position(text, value.end_byte()),
             }),
         },
         None => VarRef {
@@ -318,6 +326,103 @@ mod tests {
         assert_eq!(var_ref.name, "myPreset");
         assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
         assert!(var_ref.def_range.is_some());
+    }
+
+    /// Computes the expected defRange for a `{prefix}{value};` declarator
+    /// line (both plain-ASCII in these tests, so byte/UTF-16 counts agree)
+    /// and asserts it against the actual resolved varRef — shared by the
+    /// const/let/type-annotation cases below, which only vary the prefix.
+    fn assert_def_range_covers_value(prefix: &str, value: &str, src: &str) {
+        let f = call("a.ts", src);
+        let var_ref = f.payload.var_ref.expect("expected varRef");
+        let def_range = var_ref.def_range.expect("expected defRange");
+        assert_eq!(def_range.start.line, 0);
+        assert_eq!(
+            def_range.start.character,
+            prefix.encode_utf16().count() as u32,
+            "defRange must start at the value, not the declarator's name/keyword"
+        );
+        assert_eq!(
+            def_range.end.character,
+            (prefix.encode_utf16().count() + value.encode_utf16().count()) as u32,
+            "defRange must end at the value's own end, not extend into type/`;`"
+        );
+    }
+
+    #[test]
+    fn var_ref_def_range_covers_only_the_value_for_const() {
+        let prefix = "const myPreset = ";
+        let value = "[1,.05,220]";
+        let src = format!("{prefix}{value};\nzzfx(myPreset);");
+        assert_def_range_covers_value(prefix, value, &src);
+    }
+
+    #[test]
+    fn var_ref_def_range_covers_only_the_value_for_let() {
+        let prefix = "let myPreset = ";
+        let value = "[1,.05,220]";
+        let src = format!("{prefix}{value};\nzzfx(myPreset);");
+        assert_def_range_covers_value(prefix, value, &src);
+    }
+
+    #[test]
+    fn var_ref_def_range_excludes_the_type_annotation() {
+        // The type annotation sits BETWEEN the name and the value
+        // (`name: Type = value`) — defRange must skip over it entirely,
+        // not just trim the declarator's tail.
+        let prefix = "let myPreset: number[] = ";
+        let value = "[1,.05,220]";
+        let src = format!("{prefix}{value};\nzzfx(myPreset);");
+        assert_def_range_covers_value(prefix, value, &src);
+    }
+
+    #[test]
+    fn var_ref_def_range_is_none_when_the_declarator_has_no_initializer() {
+        // `let myPreset;` — declared but never assigned in this scope.
+        // There is no value node to point at, so defRange must be None —
+        // but defUri stays Some, since there genuinely IS a declaration
+        // site, just not one with a value worth previewing.
+        let src = "let myPreset;\nzzfx(myPreset);";
+        let f = call("a.ts", src);
+        let var_ref = f.payload.var_ref.expect("expected varRef");
+        assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
+        assert!(var_ref.def_range.is_none());
+    }
+
+    #[test]
+    fn var_ref_def_range_is_none_when_a_typed_declarator_has_no_initializer() {
+        // Same as above, but with a type annotation and no initializer —
+        // proves the "no value field" detection doesn't get confused by a
+        // present `type` field when `value` is absent.
+        let src = "let myPreset: number[];\nzzfx(myPreset);";
+        let f = call("a.ts", src);
+        let var_ref = f.payload.var_ref.expect("expected varRef");
+        assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
+        assert!(var_ref.def_range.is_none());
+    }
+
+    #[test]
+    fn var_ref_def_range_covers_only_the_value_for_var() {
+        // `var` is legacy but still valid TS/JS — same declarator shape as
+        // const/let, must behave identically.
+        let prefix = "var myPreset = ";
+        let value = "[1,.05,220]";
+        let src = format!("{prefix}{value};\nzzfx(myPreset);");
+        assert_def_range_covers_value(prefix, value, &src);
+    }
+
+    #[test]
+    fn var_ref_def_range_reports_a_non_array_initializers_range_unvalidated() {
+        // The sidecar reports the initializer's range regardless of its
+        // shape — it does not require (or check) that the value is an
+        // array literal. `getPreset()` here is a call expression, not an
+        // array, and defRange must still cover exactly that expression;
+        // deciding what to do with a non-array initializer is the client's
+        // job, not this layer's.
+        let prefix = "const myPreset = ";
+        let value = "getPreset()";
+        let src = format!("{prefix}{value};\nzzfx(myPreset);");
+        assert_def_range_covers_value(prefix, value, &src);
     }
 
     #[test]

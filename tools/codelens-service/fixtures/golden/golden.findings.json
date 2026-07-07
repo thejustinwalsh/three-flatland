@@ -25,7 +25,7 @@
             "line": 7
           },
           "start": {
-            "character": 6,
+            "character": 20,
             "line": 7
           }
         },
@@ -46,20 +46,65 @@
   },
   {
     "byteRange": {
-      "end": 567,
-      "start": 550
+      "end": 915,
+      "start": 891
     },
-    "id": "1b35442d76997fdb",
+    "id": "ec5ed962000d2ec8",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 25,
+          "line": 20
+        },
+        "start": {
+          "character": 7,
+          "line": 20
+        }
+      },
+      "params": [],
+      "varRef": {
+        "defRange": {
+          "end": {
+            "character": 59,
+            "line": 17
+          },
+          "start": {
+            "character": 34,
+            "line": 17
+          }
+        },
+        "defUri": "file:///golden.ts",
+        "name": "explosionPreset"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 26,
+        "line": 20
+      },
+      "start": {
+        "character": 2,
+        "line": 20
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 967,
+      "start": 950
+    },
+    "id": "886367db35013063",
     "kind": "zzfx.call",
     "payload": {
       "argRange": {
         "end": {
           "character": 18,
-          "line": 14
+          "line": 24
         },
         "start": {
           "character": 7,
-          "line": 14
+          "line": 24
         }
       },
       "params": [
@@ -71,30 +116,30 @@
     "range": {
       "end": {
         "character": 19,
-        "line": 14
+        "line": 24
       },
       "start": {
         "character": 2,
-        "line": 14
+        "line": 24
       }
     }
   },
   {
     "byteRange": {
-      "end": 629,
-      "start": 607
+      "end": 1029,
+      "start": 1007
     },
-    "id": "eea70803412ecfd6",
+    "id": "bb5905744fc94b62",
     "kind": "zzfx.call",
     "payload": {
       "argRange": {
         "end": {
           "character": 23,
-          "line": 18
+          "line": 28
         },
         "start": {
           "character": 11,
-          "line": 18
+          "line": 28
         }
       },
       "params": [
@@ -106,30 +151,30 @@
     "range": {
       "end": {
         "character": 24,
-        "line": 18
+        "line": 28
       },
       "start": {
         "character": 2,
-        "line": 18
+        "line": 28
       }
     }
   },
   {
     "byteRange": {
-      "end": 708,
-      "start": 694
+      "end": 1108,
+      "start": 1094
     },
-    "id": "c57edf04c723f9f9",
+    "id": "4a2e7976ffd20855",
     "kind": "zzfx.call",
     "payload": {
       "argRange": {
         "end": {
           "character": 15,
-          "line": 22
+          "line": 32
         },
         "start": {
           "character": 7,
-          "line": 22
+          "line": 32
         }
       },
       "params": [],
@@ -140,30 +185,30 @@
     "range": {
       "end": {
         "character": 16,
-        "line": 22
+        "line": 32
       },
       "start": {
         "character": 2,
-        "line": 22
+        "line": 32
       }
     }
   },
   {
     "byteRange": {
-      "end": 814,
-      "start": 808
+      "end": 1214,
+      "start": 1208
     },
-    "id": "bc9b813a6f536442",
+    "id": "50fd9b0b5a45f07c",
     "kind": "zzfx.call",
     "payload": {
       "argRange": {
         "end": {
           "character": 7,
-          "line": 27
+          "line": 37
         },
         "start": {
           "character": 7,
-          "line": 27
+          "line": 37
         }
       },
       "params": []
@@ -171,11 +216,11 @@
     "range": {
       "end": {
         "character": 8,
-        "line": 27
+        "line": 37
       },
       "start": {
         "character": 2,
-        "line": 27
+        "line": 37
       }
     }
   }

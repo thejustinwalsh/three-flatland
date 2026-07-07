@@ -9,6 +9,10 @@
 
 The two are protocol-compatible by hand, not by a shared schema — `src/protocol.ts` mirrors `sidecar/src/model.rs`/`handlers.rs` field-for-field (with one intentional rename: the sidecar's `payload` field type is called `FindingPayload` here, not `Payload`). If you change one side's wire shape, update the other and both test suites.
 
+## `varRef.defRange` covers only the value, never the whole declarator
+
+**`def_range` = the initializer VALUE range, i.e. what a write-back replaces — never the whole declarator.** For `zzfx(...somePreset)` / `zzfx(somePreset)` where `somePreset` resolves to a same-file `const`/`let`/`var` declaration, `defRange` (`sidecar/src/parse.rs::resolve_var_ref`) is the range of the declarator's **initializer value node only** — e.g. just `[1, .05, 220]` in `const preset: number[] = [1, .05, 220]` — never the name, any type annotation, or the `=`. This is load-bearing, not cosmetic: a consumer that edits a preset's values by replacing the text at `defRange` would corrupt the declaration (deleting the name and type) if this range were ever widened back to the whole declarator — that was a real bug caught by a branch-wide review before this contract was locked down with the tests below. A declarator with no initializer (`let preset;`) has no value node to point at: `defUri` is still set (there is a real declaration site) but `defRange` is `None` — don't assume the two are always both-or-neither. `payload.varRef`'s initializer need not even be an array literal (`const preset = getPreset()` still reports the call expression's range) — the sidecar reports the range, it doesn't validate the shape; that's the client's job.
+
 ## Binary resolution: `resolveBinary()`
 
 `CodelensServiceClient` takes a plain `binaryPath: string` — it does not resolve anything itself. Use `resolveBinary()` (`src/resolveBinary.ts`) to find it:

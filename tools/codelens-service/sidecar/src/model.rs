@@ -31,6 +31,11 @@ pub struct VarRef {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub def_uri: Option<String>,
+    /// The initializer VALUE range — what a write-back replaces — never
+    /// the whole declarator (name, type annotation, and `=` excluded).
+    /// `None` when the declaration has no initializer to point at, even
+    /// if `def_uri` is `Some` (there's a real declaration site, just no
+    /// value there yet).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub def_range: Option<Range>,
 }
