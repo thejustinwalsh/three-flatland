@@ -494,26 +494,33 @@ async function main() {
     for (const k of knights) spatialHash.insert(k)
     const collisionDist = sim.hitRadius * 2
     const collisionDistSq = collisionDist * collisionDist
+    // One reusable visitor closure per frame, steered by `_current`, instead
+    // of allocating a fresh `(other) => …` per WALK knight every frame — at
+    // 20k knights that was ~20k closures/frame, ~0.3MB/frame of allocation
+    // churn (both GC pressure and raw allocation cost).
+    let _current: Knight = knights[0]!
+    const _visitor = (other: Knight): boolean => {
+      if (other.state !== 'WALK') return false
+      const dx = other.sprite.position.x - _current.sprite.position.x
+      const dy = other.sprite.position.y - _current.sprite.position.y
+      const distSq = dx * dx + dy * dy
+      if (distSq < collisionDistSq) {
+        const tripChanceA = _current.speed / (_current.speed + other.speed)
+        if (Math.random() < tripChanceA) {
+          triggerTrip(_current)
+          triggerRoll(other)
+        } else {
+          triggerTrip(other)
+          triggerRoll(_current)
+        }
+        return true
+      }
+      return false
+    }
     for (const k of knights) {
       if (k.state !== 'WALK') continue
-      spatialHash.forEachNeighbor(k, (other) => {
-        if (other.state !== 'WALK') return false
-        const dx = other.sprite.position.x - k.sprite.position.x
-        const dy = other.sprite.position.y - k.sprite.position.y
-        const distSq = dx * dx + dy * dy
-        if (distSq < collisionDistSq) {
-          const tripChanceA = k.speed / (k.speed + other.speed)
-          if (Math.random() < tripChanceA) {
-            triggerTrip(k)
-            triggerRoll(other)
-          } else {
-            triggerTrip(other)
-            triggerRoll(k)
-          }
-          return true
-        }
-        return false
-      })
+      _current = k
+      spatialHash.forEachNeighbor(k, _visitor)
     }
 
     // Render — systems run automatically in updateMatrixWorld

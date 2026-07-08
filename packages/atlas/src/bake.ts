@@ -1,6 +1,6 @@
 import { PNG } from 'pngjs'
-import { packRects } from './pack'
-import { polygonizeAlpha, type PolygonOptions } from './polygon'
+import { packRects } from './pack.js'
+import { polygonizeAlpha, type PolygonOptions } from './polygon.js'
 
 /** A source image handed to the baker (decoded RGBA). */
 export interface AtlasSource {

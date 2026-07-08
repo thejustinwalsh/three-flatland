@@ -190,6 +190,34 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.7)(happy-dom@15.11.7)(lightningcss@1.32.0)(terser@5.46.1)
 
+  benchmarks/overdraw:
+    dependencies:
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../packages/devtools
+      '@tweakpane/plugin-essentials':
+        specifier: ^0.2.1
+        version: 0.2.1(tweakpane@4.0.5)
+      three:
+        specifier: ^0.183.1
+        version: 0.183.1
+      three-flatland:
+        specifier: workspace:*
+        version: link:../../packages/three-flatland
+      tweakpane:
+        specifier: ^4.0.5
+        version: 4.0.5
+    devDependencies:
+      '@types/three':
+        specifier: ^0.183.1
+        version: 0.183.1
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.4.1
+        version: 6.4.1(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
+
   docs:
     dependencies:
       '@astrojs/check':

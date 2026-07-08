@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { polygonizeAlpha, earClip } from './polygon'
-import { packRects } from './pack'
-import { bakeAtlas, type AtlasSource } from './bake'
+import { polygonizeAlpha, earClip } from './polygon.js'
+import { packRects } from './pack.js'
+import { bakeAtlas, type AtlasSource } from './bake.js'
 
 /** Render a filled circle into an RGBA buffer. */
 function circleSource(name: string, size: number, radius: number): AtlasSource {
@@ -124,6 +124,35 @@ describe('earClip', () => {
   })
 })
 
+describe('earClip — review regressions', () => {
+  it('fails closed (returns []) when triangulation stalls on a self-intersecting outline', () => {
+    // A self-intersecting zigzag: the algorithm clips several ears before
+    // stalling with > 3 vertices remaining. Prior behavior returned that
+    // partial index list (still >= 3 long), which slipped past
+    // polygonizeAlpha's `triangles.length < 3` guard as a valid-looking
+    // but incomplete mesh.
+    const outline: [number, number][] = Array.from({ length: 12 }, (_, i) => [
+      i,
+      i % 2 === 0 ? 0 : 10,
+    ])
+    outline.push([12, 5])
+
+    const triangles = earClip(outline)
+    expect(triangles).toEqual([])
+  })
+
+  it('still fully triangulates a normal convex polygon', () => {
+    const outline: [number, number][] = [
+      [0, 0],
+      [4, 0],
+      [4, 4],
+      [0, 4],
+    ]
+    const triangles = earClip(outline)
+    expect(triangles.length).toBe((outline.length - 2) * 3)
+  })
+})
+
 describe('packRects', () => {
   it('packs without overlaps and inside bounds', () => {
     const result = packRects(
@@ -171,8 +200,7 @@ describe('bakeAtlas', () => {
 
     // The page carries the pixels at the packed rects
     const ball = baked.json.frames['ball']!
-    const centerOffset =
-      ((ball.frame.y + 16) * baked.page.width + (ball.frame.x + 16)) * 4 + 3
+    const centerOffset = ((ball.frame.y + 16) * baked.page.width + (ball.frame.x + 16)) * 4 + 3
     expect(baked.page.rgba[centerOffset]).toBe(255)
   })
 
