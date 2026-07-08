@@ -12,22 +12,22 @@ const SONG: Song = {
 const SILENT_STATS: PlaybackStats = { peak: 0, silent: true }
 
 function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
-  playCalls: number[][]
-  playSongCalls: Song[]
+  playCalls: { params: number[]; volume: number }[]
+  playSongCalls: { song: Song; volume: number }[]
   songHandles: { stop: ReturnType<typeof vi.fn> }[]
 } {
-  const playCalls: number[][] = []
-  const playSongCalls: Song[] = []
+  const playCalls: { params: number[]; volume: number }[] = []
+  const playSongCalls: { song: Song; volume: number }[] = []
   const songHandles: { stop: ReturnType<typeof vi.fn> }[] = []
   return {
     playCalls,
     playSongCalls,
     songHandles,
-    play: (params) => {
-      playCalls.push(params)
+    play: (params, volume) => {
+      playCalls.push({ params, volume })
     },
-    playSong: (song) => {
-      playSongCalls.push(song)
+    playSong: (song, volume) => {
+      playSongCalls.push({ song, volume })
       const handle = { stop: vi.fn() }
       songHandles.push(handle)
       return handle
@@ -37,21 +37,35 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
 }
 
 describe('createCommandHandler', () => {
-  it('play forwards params to the backend and acks', () => {
+  it('play forwards params to the backend, defaulting the volume multiplier to 1, and acks', () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
     const response = handler.handleCommand({ cmd: 'play', params: [1, 0, 440] })
     expect(response).toEqual({ ok: true, cmd: 'play' })
-    expect(backend.playCalls).toEqual([[1, 0, 440]])
+    expect(backend.playCalls).toEqual([{ params: [1, 0, 440], volume: 1 }])
   })
 
-  it('playSong starts the song via the backend and acks', () => {
+  it('play passes an explicit volume multiplier through unchanged — the user trim reaches the output gain', () => {
+    const backend = fakeBackend()
+    const handler = createCommandHandler(backend)
+    handler.handleCommand({ cmd: 'play', params: [1, 0, 440], volume: 0.25 })
+    expect(backend.playCalls).toEqual([{ params: [1, 0, 440], volume: 0.25 }])
+  })
+
+  it('playSong starts the song via the backend (volume defaulted to 1) and acks', () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
     const response = handler.handleCommand({ cmd: 'playSong', song: SONG })
     expect(response).toEqual({ ok: true, cmd: 'playSong' })
-    expect(backend.playSongCalls).toEqual([SONG])
+    expect(backend.playSongCalls).toEqual([{ song: SONG, volume: 1 }])
     expect(backend.songHandles[0]!.stop).not.toHaveBeenCalled()
+  })
+
+  it('playSong passes an explicit volume multiplier through — both play paths carry the same trim', () => {
+    const backend = fakeBackend()
+    const handler = createCommandHandler(backend)
+    handler.handleCommand({ cmd: 'playSong', song: SONG, volume: 2 })
+    expect(backend.playSongCalls).toEqual([{ song: SONG, volume: 2 }])
   })
 
   it('a second playSong stops the first song before starting the new one — never stacks', () => {

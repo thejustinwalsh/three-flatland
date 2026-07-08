@@ -33,8 +33,15 @@ export type Song = {
   bpm?: number
 }
 
-export type PlayCommand = { cmd: 'play'; params: number[] }
-export type PlaySongCommand = { cmd: 'playSong'; song: Song }
+/** Optional linear gain multiplier applied on top of the sidecar's
+ * master volume (`ZZFX.volume`), default 1 — the user's playback-volume
+ * trim. The HOST computes it (from a dB setting, via
+ * `tools/vscode/webview/zzfx/volumeTrim.ts`); the sidecar stays
+ * mapping-agnostic and just multiplies. Sent per play (not a persistent
+ * `setVolume` state) so the current setting always wins with no
+ * set-then-play ordering to get wrong. */
+export type PlayCommand = { cmd: 'play'; params: number[]; volume?: number }
+export type PlaySongCommand = { cmd: 'playSong'; song: Song; volume?: number }
 export type StopSongCommand = { cmd: 'stopSong' }
 /** Stops everything currently audible (today: equivalent to `stopSong` — one-shots have no persistent handle to interrupt mid-flight, see commandHandler.ts). */
 export type StopCommand = { cmd: 'stop' }

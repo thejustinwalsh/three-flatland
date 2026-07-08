@@ -41,20 +41,23 @@ import { createCommandHandler } from './commandHandler.js'
 import { getPlaybackStats, playSampleChannels } from './player.js'
 
 const handler = createCommandHandler({
-  play: (params) => {
+  // `volume` is the wire command's user-trim multiplier (handler defaults
+  // it to 1) — applied on top of ZZFX.volume so 1 is byte-for-byte
+  // today's baseline loudness.
+  play: (params, volume) => {
     playSampleChannels(
       ZZFX.audioContext,
       [ZZFX.buildSamples(...params)],
       ZZFX.sampleRate,
-      ZZFX.volume
+      ZZFX.volume * volume
     )
   },
-  playSong: (song) =>
+  playSong: (song, volume) =>
     playSampleChannels(
       ZZFX.audioContext,
       ZZFXM.build(song.instruments, song.patterns, song.sequence, song.bpm),
       ZZFX.sampleRate,
-      ZZFX.volume
+      ZZFX.volume * volume
     ),
   getStats: () => getPlaybackStats(ZZFX.audioContext),
 })

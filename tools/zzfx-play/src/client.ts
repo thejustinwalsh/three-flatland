@@ -81,14 +81,16 @@ export class PlaySidecarClient {
     this.child.stdin.write(`${JSON.stringify(command)}\n`)
   }
 
-  /** Plays a one-shot zzfx sound. Spawns the sidecar on first call. */
-  play(params: number[]): void {
-    this.send({ cmd: 'play', params })
+  /** Plays a one-shot zzfx sound. Spawns the sidecar on first call.
+   * `volume` is the optional user-trim gain multiplier (see
+   * `PlayCommand.volume`); omitted = the untouched baseline loudness. */
+  play(params: number[], volume?: number): void {
+    this.send({ cmd: 'play', params, ...(volume !== undefined ? { volume } : {}) })
   }
 
   /** Plays a ZzFXM song, replacing whatever song is currently playing. Spawns the sidecar on first call. */
-  playSong(song: Song): void {
-    this.send({ cmd: 'playSong', song })
+  playSong(song: Song, volume?: number): void {
+    this.send({ cmd: 'playSong', song, ...(volume !== undefined ? { volume } : {}) })
   }
 
   /** Stops the currently playing song, if any. No-op if the sidecar isn't running. */

@@ -13,8 +13,9 @@ import type { Command, PlaybackStats, Response, Song } from './protocol.js'
  * currently sees, no async work involved.
  */
 export type AudioBackend = {
-  play(params: number[]): void
-  playSong(song: Song): { stop(): void }
+  /** `volume` is the wire command's gain multiplier, already defaulted to 1 by the handler. */
+  play(params: number[], volume: number): void
+  playSong(song: Song, volume: number): { stop(): void }
   getStats(): PlaybackStats
 }
 
@@ -52,7 +53,7 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
     try {
       switch (command.cmd) {
         case 'play':
-          backend.play(command.params)
+          backend.play(command.params, command.volume ?? 1)
           return { ok: true, cmd: 'play' }
         case 'playSong': {
           // Replace, never stack — a new playSong stops whatever's
@@ -65,7 +66,7 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
           const old = currentSong
           currentSong = undefined
           old?.stop()
-          currentSong = backend.playSong(command.song)
+          currentSong = backend.playSong(command.song, command.volume ?? 1)
           return { ok: true, cmd: 'playSong' }
         }
         case 'stopSong':
