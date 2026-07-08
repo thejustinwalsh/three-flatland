@@ -81,13 +81,26 @@ function splitTopLevelElements(inner: string): string[] | null {
   const parts: string[] = []
   let depth = 0
   let quote: '"' | "'" | null = null
+  let escapeNext = false
   let current = ''
 
   for (let i = 0; i < inner.length; i++) {
     const ch = inner[i]!
     if (quote) {
       current += ch
-      if (ch === quote && inner[i - 1] !== '\\') quote = null
+      // Forward escape-state tracking, not a one-character lookback — a
+      // string ending in an ESCAPED backslash (`'a\\'`, i.e. `\`, `\`, `'`)
+      // must close on that final quote, since the two backslashes form one
+      // escaped-backslash pair, not an escape-the-quote marker. A lookback
+      // at `inner[i-1]` alone can't tell an escaped backslash apart from an
+      // escaped quote — only walking the run forward can.
+      if (escapeNext) {
+        escapeNext = false
+      } else if (ch === '\\') {
+        escapeNext = true
+      } else if (ch === quote) {
+        quote = null
+      }
       continue
     }
     if (ch === '"' || ch === "'") {

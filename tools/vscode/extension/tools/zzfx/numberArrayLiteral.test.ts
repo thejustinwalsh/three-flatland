@@ -161,4 +161,21 @@ describe('parseNestedArrayLiteral', () => {
   it('refuses a comma inside a string literal being mistaken for a separator — round-trips correctly instead', () => {
     expect(parseNestedArrayLiteral('["a,b", 1]')).toEqual(['a,b', 1])
   })
+
+  it('a string ending in an escaped backslash (an EVEN trailing-backslash run) still closes on the real quote — not a one-character-lookback false unterminated', () => {
+    // Raw source text: ['a\\', 'b'] — the first element's string literal
+    // ends in two backslashes (one escaped backslash pair), then its real
+    // closing quote. A lookback that only checks `inner[i-1]` sees a bare
+    // backslash immediately before that quote and wrongly treats it as
+    // still-escaped/still-open. The parser doesn't unescape — it just
+    // strips the surrounding quotes — so the parsed value keeps both
+    // raw backslash characters.
+    expect(parseNestedArrayLiteral("['a\\\\', 'b']")).toEqual(['a\\\\', 'b'])
+  })
+
+  it('a string ending in a genuinely escaped quote (an ODD trailing-backslash run) is correctly rejected as unterminated', () => {
+    // Raw source text: ['a\'] — the lone backslash escapes the quote, so
+    // there is no real closing quote left in the string at all.
+    expect(parseNestedArrayLiteral("['a\\']")).toBeNull()
+  })
 })

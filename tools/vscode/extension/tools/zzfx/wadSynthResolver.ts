@@ -66,13 +66,24 @@ function splitTopLevelPairs(inner: string): string[] | null {
   const parts: string[] = []
   let depth = 0
   let quote: '"' | "'" | null = null
+  let escapeNext = false
   let current = ''
 
   for (let i = 0; i < inner.length; i++) {
     const ch = inner[i]!
     if (quote) {
       current += ch
-      if (ch === quote && inner[i - 1] !== '\\') quote = null
+      // Forward escape-state tracking, not a one-character lookback — see
+      // numberArrayLiteral.ts's `splitTopLevelElements` for why a lookback
+      // alone can't tell an escaped backslash (`'a\\'`) apart from an
+      // escaped quote.
+      if (escapeNext) {
+        escapeNext = false
+      } else if (ch === '\\') {
+        escapeNext = true
+      } else if (ch === quote) {
+        quote = null
+      }
       continue
     }
     if (ch === '"' || ch === "'") {
@@ -115,10 +126,18 @@ function splitTopLevelPairs(inner: string): string[] | null {
 function splitKeyValue(pair: string): [string, string] | null {
   let depth = 0
   let quote: '"' | "'" | null = null
+  let escapeNext = false
   for (let i = 0; i < pair.length; i++) {
     const ch = pair[i]!
     if (quote) {
-      if (ch === quote && pair[i - 1] !== '\\') quote = null
+      // Forward escape-state tracking — see splitTopLevelPairs above.
+      if (escapeNext) {
+        escapeNext = false
+      } else if (ch === '\\') {
+        escapeNext = true
+      } else if (ch === quote) {
+        quote = null
+      }
       continue
     }
     if (ch === '"' || ch === "'") {

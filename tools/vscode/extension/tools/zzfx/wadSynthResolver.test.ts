@@ -66,4 +66,23 @@ describe('parseWadSynthLiteralText', () => {
     const result = parseWadSynthLiteralText("{source:'mic'}", 'myOsc')
     expect('loadError' in result && result.loadError).toContain('myOsc')
   })
+
+  it('a field value ending in an escaped backslash (an EVEN trailing-backslash run) does not make the object literal look unterminated', () => {
+    // Raw source text: {source:'square', label:'a\\'} — label's string
+    // literal ends in two backslashes (one escaped backslash pair), then
+    // its real closing quote. A one-character lookback at the character
+    // before the quote sees a bare backslash and wrongly treats it as
+    // still-escaped, corrupting the rest of the split. The parser doesn't
+    // unescape — it just strips the surrounding quotes — so the parsed
+    // value keeps both raw backslash characters.
+    const result = parseWadSynthLiteralText("{source:'square', label:'a\\\\'}", 'cfg')
+    expect(result).toEqual({ config: { source: 'square', label: 'a\\\\' } })
+  })
+
+  it('a field value ending in a genuinely escaped quote (an ODD trailing-backslash run) is correctly rejected as malformed', () => {
+    // Raw source text: {source:'square', label:'a\'} — the lone backslash
+    // escapes the quote, so the object literal is genuinely unterminated.
+    const result = parseWadSynthLiteralText("{source:'square', label:'a\\'}", 'cfg')
+    expect('loadError' in result).toBe(true)
+  })
 })
