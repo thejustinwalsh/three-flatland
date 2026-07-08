@@ -15,7 +15,15 @@ export {
   type CanvasBackgroundStyle,
 } from './canvasBackground'
 export { RectOverlay, type RectOverlayProps, type Rect } from './RectOverlay'
-export { useViewport, viewBoxFor, ViewportContext, type Viewport } from './Viewport'
+export { fitLabelFontSize, type LabelFitOptions } from './labelFit'
+export {
+  useViewport,
+  viewBoxFor,
+  visibleSizeFor,
+  screenScaleFor,
+  ViewportContext,
+  type Viewport,
+} from './Viewport'
 export { InfoPanel, type InfoPanelProps, type ColorMode, type CoordMode } from './InfoPanel'
 export {
   GridSliceOverlay,

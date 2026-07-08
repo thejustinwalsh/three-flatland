@@ -6,8 +6,9 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { useViewport, viewBoxFor } from './Viewport'
+import { screenScaleFor, useViewport, viewBoxFor } from './Viewport'
 import { useDragSource } from './dragKit'
+import { fitLabelFontSize } from './labelFit'
 
 export type Rect = {
   id: string
@@ -155,6 +156,19 @@ const HANDLE_CURSORS: Record<HandleDir, string> = {
 const MOVE_THRESHOLD_PX = 3
 
 /**
+ * Resize-handle sizing, in on-screen (CSS) pixels — kept constant
+ * regardless of zoom (converted to image-px per-render via
+ * `screenScaleFor`, see the handle sizing block below). A handle fixed
+ * in image-px instead scales with zoom: imprecise and oversized at high
+ * zoom (stakeholder: "anchors so big at default scale you can't even
+ * edit the box"), unclickably tiny at low zoom. The hit target is
+ * larger than the visible square — a forgiving click/tap area without a
+ * visually bulky handle, the standard editor convention (Figma et al).
+ */
+const HANDLE_VISUAL_SCREEN_PX = 6
+const HANDLE_HIT_SCREEN_PX = 12
+
+/**
  * Resize edges within this many image-pixels of another rect's matching
  * edge snap to it. Holding Shift bypasses (matches the snapStep convention).
  */
@@ -234,21 +248,24 @@ const EMPTY: ReadonlySet<string> = new Set()
 
 /**
  * Tiny monospace digit drawn inside the top-left corner of a rect.
- * Always visible — no hover-fade, no group-hide logic.
- * Uses image-pixel units (we're inside the viewBox-scaled SVG).
+ * Fit-or-hide (`fitLabelFontSize`): the font clamps to the region's own
+ * size, down to a floor, and the label doesn't render at all rather than
+ * overflow the region or paint illegibly small — stakeholder-reported
+ * overflow on tightly-packed, high-region-count tilesets. Uses
+ * image-pixel units (we're inside the viewBox-scaled SVG).
  */
 function CornerIndex({
   rect,
   index,
   selected,
-  imgW,
 }: {
   rect: { x: number; y: number; w: number; h: number }
   index: number
   selected: boolean
-  imgW: number
 }) {
-  const fontPx = Math.max(7, Math.round(imgW / 120))
+  const text = String(index)
+  const fontPx = fitLabelFontSize(rect.w, rect.h, text.length)
+  if (fontPx == null) return null
 
   return (
     <text
@@ -268,7 +285,7 @@ function CornerIndex({
       }}
       dominantBaseline="auto"
     >
-      {index}
+      {text}
     </text>
   )
 }
@@ -477,9 +494,16 @@ export function RectOverlay({
   const inProgress = drag ? normalized(drag) : null
   const selectionActive = Boolean(onSelectionChange)
 
-  // ── Handle size in image-px: 4×4 squares, centered on the corner/edge ────
-  // We keep them fixed-size in image-px so zoom doesn't shrink them to nothing.
-  const HANDLE_SIZE = 4
+  // ── Handle size in image-px, derived from the current on-screen scale —
+  // see HANDLE_VISUAL_SCREEN_PX/HANDLE_HIT_SCREEN_PX's doc comment.
+  // getBoundingClientRect() is a synchronous, read-only DOM query — same
+  // "read the rendered size at render time" idiom CanvasStage's own
+  // ZoomBadge uses for its pixel-ratio readout. Falls back to a sane
+  // fixed image-px size before the SVG has been laid out (first paint).
+  const svgRect = svgRef.current?.getBoundingClientRect()
+  const screenScale = svgRect ? screenScaleFor(vp, svgRect.width, svgRect.height) : 0
+  const HANDLE_SIZE = screenScale > 0 ? HANDLE_VISUAL_SCREEN_PX / screenScale : 4
+  const HANDLE_HIT_SIZE = screenScale > 0 ? HANDLE_HIT_SCREEN_PX / screenScale : 8
 
   // ── Escape cancels any active drag ────────────────────────────────────────
   const handleKeyDown = (e: ReactKeyboardEvent<SVGSVGElement>) => {
@@ -849,14 +873,7 @@ export function RectOverlay({
               onPointerUp={(e) => handleRectPointerUp(r, e)}
               onPointerCancel={() => handleRectPointerCancel(r)}
             />
-            {showLabels ? (
-              <CornerIndex
-                rect={dispRect}
-                index={i}
-                selected={sel}
-                imgW={vp.imageW}
-              />
-            ) : null}
+            {showLabels ? <CornerIndex rect={dispRect} index={i} selected={sel} /> : null}
           </g>
         )
       })}
@@ -887,26 +904,41 @@ export function RectOverlay({
             <g key={`handles-${r.id}`}>
               {ALL_HANDLES.map((dir) => {
                 const center = handleCenter(gr, dir)
-                const hx = center.x - HANDLE_SIZE / 2
-                const hy = center.y - HANDLE_SIZE / 2
+                const hitX = center.x - HANDLE_HIT_SIZE / 2
+                const hitY = center.y - HANDLE_HIT_SIZE / 2
+                const visX = center.x - HANDLE_SIZE / 2
+                const visY = center.y - HANDLE_SIZE / 2
                 return (
-                  <rect
-                    key={dir}
-                    x={hx}
-                    y={hy}
-                    width={HANDLE_SIZE}
-                    height={HANDLE_SIZE}
-                    fill={selectedColor}
-                    shapeRendering="crispEdges"
-                    style={{
-                      pointerEvents: 'all',
-                      cursor: HANDLE_CURSORS[dir],
-                    }}
-                    onPointerDown={(e) => handleResizePointerDown(r, dir, e)}
-                    onPointerMove={(e) => handleResizePointerMove(r, e)}
-                    onPointerUp={(e) => handleResizePointerUp(r, e)}
-                    onPointerCancel={() => handleResizePointerCancel(r)}
-                  />
+                  <g key={dir}>
+                    {/* Hit target: larger, invisible — carries the pointer
+                        handlers. Kept separate from the visible square so
+                        the click/drag area stays forgiving without the
+                        handle itself looking oversized. */}
+                    <rect
+                      x={hitX}
+                      y={hitY}
+                      width={HANDLE_HIT_SIZE}
+                      height={HANDLE_HIT_SIZE}
+                      fill="transparent"
+                      style={{
+                        pointerEvents: 'all',
+                        cursor: HANDLE_CURSORS[dir],
+                      }}
+                      onPointerDown={(e) => handleResizePointerDown(r, dir, e)}
+                      onPointerMove={(e) => handleResizePointerMove(r, e)}
+                      onPointerUp={(e) => handleResizePointerUp(r, e)}
+                      onPointerCancel={() => handleResizePointerCancel(r)}
+                    />
+                    <rect
+                      x={visX}
+                      y={visY}
+                      width={HANDLE_SIZE}
+                      height={HANDLE_SIZE}
+                      fill={selectedColor}
+                      shapeRendering="crispEdges"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  </g>
                 )
               })}
             </g>

@@ -32,19 +32,48 @@ export type Viewport = {
 }
 
 /**
+ * The image-pixel dimensions of the viewBox at the current zoom —
+ * shared by `viewBoxFor` and `screenScaleFor` so they can't drift.
+ */
+export function visibleSizeFor(vp: Viewport): { w: number; h: number } {
+  return {
+    w: (vp.imageW * vp.fitMargin) / vp.zoom,
+    h: (vp.imageH * vp.fitMargin) / vp.zoom,
+  }
+}
+
+/**
  * SVG `viewBox` attribute that matches `ThreeLayer`'s fit, including pan
  * and zoom. The image still occupies (0, 0) → (imageW, imageH) in
  * SVG-local coords (so all existing pointer math is unchanged); the
  * viewBox shifts and scales to reflect the current pan and zoom level.
  */
 export function viewBoxFor(vp: Viewport): string {
-  const visibleW = (vp.imageW * vp.fitMargin) / vp.zoom
-  const visibleH = (vp.imageH * vp.fitMargin) / vp.zoom
+  const { w: visibleW, h: visibleH } = visibleSizeFor(vp)
   const centerX = vp.imageW / 2 + vp.panX
   const centerY = vp.imageH / 2 + vp.panY
   const x = centerX - visibleW / 2
   const y = centerY - visibleH / 2
   return `${x} ${y} ${visibleW} ${visibleH}`
+}
+
+/**
+ * Screen-pixels-per-image-pixel at the current zoom, given the actual
+ * on-screen size (CSS px) of the element rendering this viewport's
+ * `viewBoxFor` output. Mirrors `preserveAspectRatio="xMidYMid meet"`:
+ * whichever axis fits less tightly determines the on-screen scale (same
+ * math as `CanvasStage.tsx`'s private `scaleAtZoom`, factored out here
+ * so any SVG overlay — not just CanvasStage's own zoom badge/pixel-snap
+ * logic — can size screen-space-constant chrome, e.g. `RectOverlay`'s
+ * resize handles). Returns 0 if either screen dimension is non-positive
+ * (element not yet laid out) — callers should fall back to a sane
+ * default handle size in that case, not divide by it.
+ */
+export function screenScaleFor(vp: Viewport, screenW: number, screenH: number): number {
+  if (screenW <= 0 || screenH <= 0) return 0
+  const { w: visibleW, h: visibleH } = visibleSizeFor(vp)
+  if (visibleW <= 0 || visibleH <= 0) return 0
+  return Math.min(screenW / visibleW, screenH / visibleH)
 }
 
 export const ViewportContext = createContext<Viewport | null>(null)
