@@ -242,10 +242,15 @@ function registerSprite(registry: Registry, sprite: Sprite2D): void {
   sprite._autoRegistry = registry
   sprite._pendingPrimeScene = null
 
-  // Resolve the bootstrap default to this registry's world-scoped
-  // default so effect registration / dispose stay isolated per registry.
+  // Resolve the bootstrap default (or bootstrap effect variant) to this
+  // registry's world-scoped store so effect registration / dispose stay
+  // isolated per registry.
   if (sprite._materialIsBootstrapDefault && sprite.texture) {
     sprite._resolveDefaultMaterial(registry.getDefaultMaterial(sprite.texture))
+  } else if (sprite._materialIsBootstrapVariant && sprite.texture) {
+    sprite._resolveEffectVariantMaterial(
+      registry.getEffectVariant(sprite.texture, sprite._currentVariantOptions())
+    )
   }
 
   // Queue for threshold evaluation — the sweep decides standalone vs

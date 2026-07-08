@@ -2,7 +2,11 @@ import type { Entity, World, Trait } from 'koota'
 import type { Group, Object3D, Texture } from 'three'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { Sprite2D } from '../sprites/Sprite2D'
-import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import {
+  Sprite2DMaterial,
+  sprite2DMaterialVariantKey,
+  type Sprite2DMaterialOptions,
+} from '../materials/Sprite2DMaterial'
 import { SpriteBatch } from '../pipeline/SpriteBatch'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import {
@@ -36,6 +40,17 @@ export interface RegistryData {
   materialRefs: Map<number, { material: Sprite2DMaterial; version: number }>
   /** Per-texture default materials, scoped to this world. */
   defaultMaterials: WeakMap<Texture, Sprite2DMaterial>
+  /**
+   * World-scoped effect-variant materials: texture → variant key →
+   * material. The variant key is the non-texture fragment of
+   * `Sprite2DMaterial`'s shared-cache key (transparent/lit/colorTransform/
+   * alphaTest/premultipliedAlpha/effectsKey) — see
+   * `sprite2DMaterialVariantKey`. Counterpart to `defaultMaterials` for
+   * sprites carrying constants-effects (provider effects like
+   * NormalMapProvider): two worlds resolving the same texture+effectsKey
+   * combination get distinct instances instead of sharing one.
+   */
+  effectVariants: WeakMap<Texture, Map<string, Sprite2DMaterial>>
   batchSlots: (SpriteBatch | null)[]
   batchSlotFreeList: number[]
   /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
@@ -446,6 +461,36 @@ export function getWorldDefaultMaterial(
 }
 
 /**
+ * Get (or create) the world-scoped effect-variant material for a
+ * texture + configuration. Counterpart to `getWorldDefaultMaterial` for
+ * sprites carrying constants-effects (provider effects like
+ * `NormalMapProvider`): two worlds resolving the same
+ * (texture, effectsKey, …) combination get distinct material instances,
+ * so effect registration and dispose stay isolated the same way
+ * defaults do.
+ */
+export function getWorldEffectVariant(
+  world: World,
+  registry: RegistryData,
+  texture: Texture,
+  options: Sprite2DMaterialOptions
+): Sprite2DMaterial {
+  const variantKey = sprite2DMaterialVariantKey(options)
+  let variants = registry.effectVariants.get(texture)
+  if (!variants) {
+    variants = new Map()
+    registry.effectVariants.set(texture, variants)
+  }
+  let material = variants.get(variantKey)
+  if (!material) {
+    material = new Sprite2DMaterial({ ...options, map: texture })
+    variants.set(variantKey, material)
+    ensureMaterialDisposeHook(world, registry, material)
+  }
+  return material
+}
+
+/**
  * Attach the dispose teardown hook for a material used by this world's
  * batches (idempotent per world). Fires `handleMaterialDispose` so
  * batches referencing freed GPU resources are torn down and
@@ -570,6 +615,22 @@ export function handleMaterialDispose(
     registry.defaultMaterials.delete(texture)
   }
 
+  // Same for the effect-variant store — find this material's variant
+  // slot by identity (small per-texture Map, no reverse index needed)
+  // and drop it so re-resolution mints a fresh variant.
+  if (texture) {
+    const variants = registry.effectVariants.get(texture)
+    if (variants) {
+      for (const [variantKey, variantMaterial] of variants) {
+        if (variantMaterial === material) {
+          variants.delete(variantKey)
+          break
+        }
+      }
+      if (variants.size === 0) registry.effectVariants.delete(texture)
+    }
+  }
+
   // Tear down batches while SpriteMaterialRef still points at the old
   // material (eviction filters on it).
   evictBatchesForMaterial(world, registry, material.batchId)
@@ -580,6 +641,10 @@ export function handleMaterialDispose(
     if (!sprite || sprite.material !== material) continue
     if (sprite._materialWasRegistryDefault && sprite.texture) {
       sprite._resolveDefaultMaterial(getWorldDefaultMaterial(world, registry, sprite.texture))
+    } else if (sprite._materialWasRegistryVariant && sprite.texture) {
+      sprite._resolveEffectVariantMaterial(
+        getWorldEffectVariant(world, registry, sprite.texture, sprite._currentVariantOptions())
+      )
     } else {
       orphaned++
       sprite._autoBatched = false

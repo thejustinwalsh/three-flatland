@@ -195,6 +195,13 @@ export const BatchRegistry = trait(() => ({
    * effect on one world's default never leaks into another's.
    */
   defaultMaterials: new WeakMap<Texture, Sprite2DMaterial>(),
+  /**
+   * World-scoped effect-variant materials (the constants-effect
+   * counterpart of `defaultMaterials`): texture → variant key →
+   * material. See `RegistryData.effectVariants` in ecs/batchUtils.ts
+   * for the key composition.
+   */
+  effectVariants: new WeakMap<Texture, Map<string, Sprite2DMaterial>>(),
   /** Indexed array of active SpriteBatch meshes for O(1) lookup from BatchSlot.batchIdx. */
   batchSlots: [] as (SpriteBatch | null)[],
   /** Free indices in batchSlots for reuse. */
