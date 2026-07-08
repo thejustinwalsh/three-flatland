@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getPlaybackStats, playBuffer, playSampleChannels } from './player.js'
+import {
+  getPlaybackStats,
+  playBuffer,
+  playSampleChannels,
+  playToneSynth,
+  playWadSynth,
+  type ToneEngine,
+  type WadConstructor,
+  type WadInstance,
+} from './player.js'
 
 /**
  * A minimal fake `AudioContext` — no `node-web-audio-api`, no real
@@ -280,14 +289,18 @@ describe('getPlaybackStats', () => {
       expect(stats.durationSeconds).toBeCloseTo(0.1)
     })
 
-    it('flips playing:false the moment the source ends — natural completion or an explicit stop()', () => {
+    it('flips playing:false the moment the source ends — natural completion or an explicit stop()', async () => {
       const { ctx, sources } = fakeAudioContext()
       playSampleChannels(ctx, [new Array(88200).fill(0.1)], 44100, 0.3)
       expect(getPlaybackStats(ctx).playing).toBe(true)
 
       // commandHandler's stopSong calls source.stop(), which fires the
       // ended event mid-playback — no waiting out the natural duration.
+      // `onended` now resolves a Promise (trackPlayback's generalized
+      // signature, #47) rather than flipping `ended` directly, so the
+      // flip lands on the next microtask — one `await` flushes it.
       sources[0]!.onended?.()
+      await Promise.resolve()
 
       const stats = getPlaybackStats(ctx)
       expect(stats.playing).toBe(false)
@@ -331,4 +344,360 @@ describe('getPlaybackStats', () => {
       duration: durationSeconds,
     } as unknown as AudioBuffer
   }
+})
+
+/**
+ * A fake Tone.js instrument class — `new Ctor(options)` returns a plain
+ * object (the explicit-object-return `new` trick, same one `sidecar.ts`
+ * uses on `web-audio-daw`'s real `AudioContext`), never touching a real
+ * `tone` import (see `player.ts`'s `ToneEngine` doc comment for why this
+ * file must not import `tone`). `extraShape` reproduces one of the
+ * per-class release-access shapes `toneReleaseSeconds` branches on
+ * (`.envelope.release` / `.voice0.envelope.release` / top-level
+ * `.release`), verified against the real installed `tone@15.1.22`
+ * package in the #47 report.
+ */
+type FakeToneInstance = {
+  options: Record<string, unknown> | undefined
+  connect: ReturnType<typeof vi.fn>
+  triggerAttackRelease: ReturnType<typeof vi.fn>
+  triggerRelease: ReturnType<typeof vi.fn>
+} & Record<string, unknown>
+
+function fakeToneSynthClass(extraShape: Record<string, unknown> = {}): {
+  Ctor: new (options?: Record<string, unknown>) => FakeToneInstance
+  instances: FakeToneInstance[]
+} {
+  const instances: FakeToneInstance[] = []
+  function Ctor(this: unknown, options?: Record<string, unknown>): FakeToneInstance {
+    const instance: FakeToneInstance = {
+      options,
+      connect: vi.fn(),
+      triggerAttackRelease: vi.fn(),
+      triggerRelease: vi.fn(),
+      ...extraShape,
+    }
+    instances.push(instance)
+    return instance
+  }
+  return {
+    Ctor: Ctor as unknown as new (options?: Record<string, unknown>) => FakeToneInstance,
+    instances,
+  }
+}
+
+function fakeToneEngine(): {
+  Tone: ToneEngine
+  synth: ReturnType<typeof fakeToneSynthClass>
+  noise: ReturnType<typeof fakeToneSynthClass>
+  duo: ReturnType<typeof fakeToneSynthClass>
+  pluck: ReturnType<typeof fakeToneSynthClass>
+  polyInstances: FakeToneInstance[]
+} {
+  const synth = fakeToneSynthClass({ envelope: { release: 1 } })
+  const amSynth = fakeToneSynthClass({ envelope: { release: 0.5 } })
+  const fmSynth = fakeToneSynthClass({ envelope: { release: 0.5 } })
+  const duo = fakeToneSynthClass({ voice0: { envelope: { release: 0.3 } } })
+  const membrane = fakeToneSynthClass({ envelope: { release: 1.4 } })
+  const metal = fakeToneSynthClass({ envelope: { release: 0.2 } })
+  const pluck = fakeToneSynthClass({ release: 0.8 })
+  const noise = fakeToneSynthClass({ envelope: { release: 1 } })
+
+  const polyInstances: FakeToneInstance[] = []
+  function PolyCtor(
+    this: unknown,
+    voice?: new (options?: Record<string, unknown>) => FakeToneInstance,
+    options?: Record<string, unknown>
+  ): FakeToneInstance {
+    const instance: FakeToneInstance = {
+      options,
+      connect: vi.fn(),
+      triggerAttackRelease: vi.fn(),
+      triggerRelease: vi.fn(),
+      releaseAll: vi.fn(),
+      _dummyVoice: voice ? new voice() : undefined,
+    }
+    polyInstances.push(instance)
+    return instance
+  }
+
+  const Tone: ToneEngine = {
+    classes: {
+      Synth: synth.Ctor,
+      AMSynth: amSynth.Ctor,
+      FMSynth: fmSynth.Ctor,
+      DuoSynth: duo.Ctor,
+      MembraneSynth: membrane.Ctor,
+      MetalSynth: metal.Ctor,
+      PluckSynth: pluck.Ctor,
+      NoiseSynth: noise.Ctor,
+      PolySynth: PolyCtor as unknown as ToneEngine['classes']['PolySynth'],
+    },
+    Time: (value) => ({
+      toSeconds: () => (typeof value === 'number' ? value : Number.parseFloat(value)),
+    }),
+  }
+
+  return { Tone, synth, noise, duo, pluck, polyInstances }
+}
+
+describe('playToneSynth', () => {
+  it('constructs the allowlisted class, connects to a gain routed through the shared analyser — never .toDestination()', () => {
+    const { ctx, gains, analysers } = fakeAudioContext()
+    const { Tone, synth } = fakeToneEngine()
+
+    playToneSynth(ctx, Tone, { synthType: 'Synth', note: 'C4', duration: '8n' }, 0.5)
+
+    expect(synth.instances).toHaveLength(1)
+    expect(synth.instances[0]!.connect).toHaveBeenCalledWith(gains[0])
+    expect(gains[0]!.gain.value).toBe(0.5)
+    expect(gains[0]!.connect).toHaveBeenCalledWith(analysers[0])
+  })
+
+  it('calls triggerAttackRelease(note, duration) for a standard monophonic class', () => {
+    const { ctx } = fakeAudioContext()
+    const { Tone, synth } = fakeToneEngine()
+
+    playToneSynth(ctx, Tone, { synthType: 'Synth', note: 'C4', duration: '8n' }, 1)
+
+    const instance = synth.instances[0]!
+    expect(instance.triggerAttackRelease).toHaveBeenCalledWith('C4', '8n')
+  })
+
+  it('calls triggerAttackRelease(duration) for NoiseSynth — no note argument', () => {
+    const { ctx } = fakeAudioContext()
+    const { Tone, noise } = fakeToneEngine()
+
+    playToneSynth(ctx, Tone, { synthType: 'NoiseSynth', duration: 0.05 }, 1)
+
+    expect(noise.instances[0]!.triggerAttackRelease).toHaveBeenCalledWith(0.05)
+  })
+
+  it("requires a note for every class except NoiseSynth — throws (becomes a Nack via commandHandler's try/catch)", () => {
+    const { ctx } = fakeAudioContext()
+    const { Tone } = fakeToneEngine()
+
+    expect(() => playToneSynth(ctx, Tone, { synthType: 'Synth', duration: '8n' }, 1)).toThrow(
+      /requires a note/
+    )
+  })
+
+  it('computes durationSeconds from duration + the CONSTRUCTED instance envelope.release (Synth)', () => {
+    const { ctx } = fakeAudioContext()
+    const { Tone } = fakeToneEngine()
+
+    playToneSynth(ctx, Tone, { synthType: 'Synth', note: 'C4', duration: 0.25 }, 1)
+
+    expect(getPlaybackStats(ctx).durationSeconds).toBeCloseTo(0.25 + 1) // duration + envelope.release
+  })
+
+  it("reads DuoSynth's release off .voice0.envelope.release, not a top-level .envelope", () => {
+    const { ctx } = fakeAudioContext()
+    const { Tone } = fakeToneEngine()
+
+    playToneSynth(ctx, Tone, { synthType: 'DuoSynth', note: 'C4', duration: 0.5 }, 1)
+
+    expect(getPlaybackStats(ctx).durationSeconds).toBeCloseTo(0.5 + 0.3)
+  })
+
+  it("reads PluckSynth's release off its own top-level .release — it has no .envelope at all", () => {
+    const { ctx } = fakeAudioContext()
+    const { Tone } = fakeToneEngine()
+
+    playToneSynth(ctx, Tone, { synthType: 'PluckSynth', note: 'C4', duration: 0.5 }, 1)
+
+    expect(getPlaybackStats(ctx).durationSeconds).toBeCloseTo(0.5 + 0.8)
+  })
+
+  it('stop() calls triggerRelease() for a standard monophonic class and flips playing:false', async () => {
+    const { ctx } = fakeAudioContext()
+    const { Tone, synth } = fakeToneEngine()
+
+    const handle = playToneSynth(ctx, Tone, { synthType: 'Synth', note: 'C4', duration: 5 }, 1)
+    expect(getPlaybackStats(ctx).playing).toBe(true)
+
+    handle.stop()
+    expect(synth.instances[0]!.triggerRelease).toHaveBeenCalledTimes(1)
+
+    await Promise.resolve()
+    expect(getPlaybackStats(ctx).playing).toBe(false)
+  })
+
+  describe('PolySynth', () => {
+    it('constructs with the voice class from voiceType (default Synth) and passes config through', () => {
+      const { ctx } = fakeAudioContext()
+      const { Tone, polyInstances } = fakeToneEngine()
+
+      playToneSynth(ctx, Tone, { synthType: 'PolySynth', note: ['C4', 'E4'], duration: '4n' }, 1)
+
+      expect(polyInstances).toHaveLength(1)
+      expect(polyInstances[0]!.triggerAttackRelease).toHaveBeenCalledWith(['C4', 'E4'], '4n')
+    })
+
+    it('rejects a non-Monophonic voiceType (NoiseSynth) rather than letting Tone throw internally', () => {
+      const { ctx } = fakeAudioContext()
+      const { Tone } = fakeToneEngine()
+
+      expect(() =>
+        playToneSynth(
+          ctx,
+          Tone,
+          { synthType: 'PolySynth', voiceType: 'NoiseSynth', note: ['C4'], duration: '4n' },
+          1
+        )
+      ).toThrow(/can't be a PolySynth voice/)
+    })
+
+    it('rejects PluckSynth and PolySynth itself as voice types too', () => {
+      const { ctx } = fakeAudioContext()
+      const { Tone } = fakeToneEngine()
+
+      expect(() =>
+        playToneSynth(
+          ctx,
+          Tone,
+          { synthType: 'PolySynth', voiceType: 'PluckSynth', note: ['C4'], duration: 1 },
+          1
+        )
+      ).toThrow(/can't be a PolySynth voice/)
+      expect(() =>
+        playToneSynth(
+          ctx,
+          Tone,
+          { synthType: 'PolySynth', voiceType: 'PolySynth', note: ['C4'], duration: 1 },
+          1
+        )
+      ).toThrow(/can't be a PolySynth voice/)
+    })
+
+    it('reads its release off the constructed _dummyVoice, recursing through the voice type', () => {
+      const { ctx } = fakeAudioContext()
+      const { Tone } = fakeToneEngine() // default voice Synth, envelope.release = 1
+
+      playToneSynth(ctx, Tone, { synthType: 'PolySynth', note: ['C4'], duration: 0.4 }, 1)
+
+      expect(getPlaybackStats(ctx).durationSeconds).toBeCloseTo(0.4 + 1)
+    })
+
+    it('stop() calls releaseAll(), not triggerRelease()', async () => {
+      const { ctx } = fakeAudioContext()
+      const { Tone, polyInstances } = fakeToneEngine()
+
+      const handle = playToneSynth(
+        ctx,
+        Tone,
+        { synthType: 'PolySynth', note: ['C4'], duration: 5 },
+        1
+      )
+      handle.stop()
+
+      expect(polyInstances[0]!.releaseAll).toHaveBeenCalledTimes(1)
+      expect(polyInstances[0]!.triggerRelease).not.toHaveBeenCalled()
+      await Promise.resolve()
+      expect(getPlaybackStats(ctx).playing).toBe(false)
+    })
+  })
+})
+
+/** A controllable fake Wad instance — `play()` returns a promise the
+ * test resolves manually (mirroring the real `Wad.play()`'s "resolves on
+ * `onended`, fired by either natural completion or `.stop()`"
+ * contract), never touching a real `web-audio-daw` import. */
+function fakeWadInstance(): {
+  Wad: WadConstructor
+  instance: WadInstance & { config: Record<string, unknown> }
+  resolvePlay: () => void
+} {
+  let resolvePlay: () => void = () => {}
+  const playPromise = new Promise<void>((resolve) => {
+    resolvePlay = resolve
+  })
+  const instance = {
+    config: {} as Record<string, unknown>,
+    play: vi.fn(() => playPromise),
+    stop: vi.fn(),
+  }
+  function Wad(this: unknown, config: Record<string, unknown>): WadInstance {
+    instance.config = config
+    return instance
+  }
+  return { Wad: Wad as unknown as WadConstructor, instance, resolvePlay }
+}
+
+describe('playWadSynth', () => {
+  it("passes the shared gain node through as Wad's `destination` config field", () => {
+    const { ctx, gains, analysers } = fakeAudioContext()
+    const { Wad, instance } = fakeWadInstance()
+
+    playWadSynth(ctx, Wad, { source: 'square' }, 0.6)
+
+    expect(instance.config).toEqual({ source: 'square', destination: gains[0] })
+    expect(gains[0]!.gain.value).toBe(0.6)
+    expect(gains[0]!.connect).toHaveBeenCalledWith(analysers[0])
+    expect(instance.play).toHaveBeenCalledTimes(1)
+  })
+
+  it('stop() calls wad.stop()', () => {
+    const { ctx } = fakeAudioContext()
+    const { Wad, instance } = fakeWadInstance()
+
+    const handle = playWadSynth(ctx, Wad, { source: 'noise' }, 1)
+    handle.stop()
+
+    expect(instance.stop).toHaveBeenCalledTimes(1)
+  })
+
+  // The trickiest part of the #47 generalization: durationSeconds is
+  // always Infinity for a Wad synth (see playWadSynth's doc comment) —
+  // this proves getPlaybackStats' math handles that sentinel correctly,
+  // not just that it doesn't crash.
+  describe('durationSeconds: Infinity (#47)', () => {
+    it('reports playing:true indefinitely — elapsed never reaches Infinity', () => {
+      const { ctx } = fakeAudioContext()
+      const { Wad } = fakeWadInstance()
+
+      playWadSynth(ctx, Wad, { source: 'sine' }, 1)
+      ctx.currentTime = 0
+      expect(getPlaybackStats(ctx).playing).toBe(true)
+
+      // Advance the clock far past any real synth's plausible duration —
+      // still playing, because nothing clamps against Infinity.
+      ctx.currentTime = 10_000
+      const stats = getPlaybackStats(ctx)
+      expect(stats.playing).toBe(true)
+      expect(stats.durationSeconds).toBe(Infinity)
+      expect(stats.elapsedSeconds).toBe(10_000)
+    })
+
+    it('flips playing:false only when the real play() promise resolves — natural end or stop()', async () => {
+      const { ctx } = fakeAudioContext()
+      const { Wad, resolvePlay } = fakeWadInstance()
+
+      playWadSynth(ctx, Wad, { source: 'sine' }, 1)
+      expect(getPlaybackStats(ctx).playing).toBe(true)
+
+      resolvePlay()
+      await Promise.resolve()
+
+      expect(getPlaybackStats(ctx).playing).toBe(false)
+    })
+
+    it('stop() does not itself flip `ended` — only the promise resolving does, matching Wad.stop() firing onended for real', async () => {
+      const { ctx } = fakeAudioContext()
+      const { Wad, instance, resolvePlay } = fakeWadInstance()
+
+      const handle = playWadSynth(ctx, Wad, { source: 'sine' }, 1)
+      handle.stop()
+      expect(instance.stop).toHaveBeenCalledTimes(1)
+      // stop() alone doesn't resolve the fake's play() promise — a real
+      // Wad's stop() DOES trigger its own onended, but that's Wad's
+      // responsibility, not playWadSynth's; this proves playWadSynth
+      // doesn't double-resolve or short-circuit it itself.
+      expect(getPlaybackStats(ctx).playing).toBe(true)
+
+      resolvePlay()
+      await Promise.resolve()
+      expect(getPlaybackStats(ctx).playing).toBe(false)
+    })
+  })
 })

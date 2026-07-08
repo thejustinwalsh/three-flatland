@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createCommandHandler, type AudioBackend } from './commandHandler.js'
-import type { PlaybackStats, Song } from './protocol.js'
+import type { PlaybackStats, PlayToneSynthCommand, PlayWadSynthCommand, Song } from './protocol.js'
 
 const SONG: Song = {
   instruments: [[1, 0, 220]],
@@ -35,6 +35,10 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
    * can't reach directly (it has no `send`), but must still prove is
    * reachable and never swallowed. */
   asyncPlayFileErrors: string[]
+  playToneSynthCalls: { cmd: Omit<PlayToneSynthCommand, 'cmd'>; volume: number }[]
+  toneSynthHandles: { stop: ReturnType<typeof vi.fn> }[]
+  playWadSynthCalls: { config: PlayWadSynthCommand['config']; volume: number }[]
+  wadSynthHandles: { stop: ReturnType<typeof vi.fn> }[]
 } {
   const playCalls: { params: number[]; volume: number }[] = []
   const playSongCalls: { song: Song; volume: number }[] = []
@@ -43,6 +47,10 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
   const fileHandles: { stop: ReturnType<typeof vi.fn> }[] = []
   const playFileStarts: ((handle: { stop(): void }) => void)[] = []
   const asyncPlayFileErrors: string[] = []
+  const playToneSynthCalls: { cmd: Omit<PlayToneSynthCommand, 'cmd'>; volume: number }[] = []
+  const toneSynthHandles: { stop: ReturnType<typeof vi.fn> }[] = []
+  const playWadSynthCalls: { config: PlayWadSynthCommand['config']; volume: number }[] = []
+  const wadSynthHandles: { stop: ReturnType<typeof vi.fn> }[] = []
   return {
     playCalls,
     playSongCalls,
@@ -56,6 +64,10 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
       return handle
     },
     asyncPlayFileErrors,
+    playToneSynthCalls,
+    toneSynthHandles,
+    playWadSynthCalls,
+    wadSynthHandles,
     play: (params, volume) => {
       playCalls.push({ params, volume })
     },
@@ -74,6 +86,18 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
         // with a microtask rather than resolving inline.
         queueMicrotask(() => asyncPlayFileErrors.push('decode failed: bad header'))
       }
+    },
+    playToneSynth: (cmd, volume) => {
+      playToneSynthCalls.push({ cmd, volume })
+      const handle = { stop: vi.fn() }
+      toneSynthHandles.push(handle)
+      return handle
+    },
+    playWadSynth: (config, volume) => {
+      playWadSynthCalls.push({ config, volume })
+      const handle = { stop: vi.fn() }
+      wadSynthHandles.push(handle)
+      return handle
     },
     getStats: () => stats,
   }
@@ -267,6 +291,162 @@ describe('createCommandHandler', () => {
     })
   })
 
+  // #47 — Tone.js/Wad synth findings join the same one-current-source
+  // lifecycle as playSong/playFile: synchronous construction (mirrors
+  // playSong exactly, neither backend call involves an async decode
+  // step), replace-never-stack, stoppable via stopSong/stop.
+  describe('playToneSynth', () => {
+    it('forwards the command to the backend, defaulting volume to 1, and acks', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      const response = handler.handleCommand({
+        cmd: 'playToneSynth',
+        synthType: 'Synth',
+        note: 'C4',
+        duration: '8n',
+      })
+      expect(response).toEqual({ ok: true, cmd: 'playToneSynth' })
+      // The handler passes the whole command through (mirroring
+      // playSong's case, per commandHandler.ts) rather than stripping
+      // `cmd` — harmless since AudioBackend.playToneSynth's param type
+      // only requires the payload fields, not exactly those fields.
+      expect(backend.playToneSynthCalls).toEqual([
+        {
+          cmd: { cmd: 'playToneSynth', synthType: 'Synth', note: 'C4', duration: '8n' },
+          volume: 1,
+        },
+      ])
+    })
+
+    it('passes an explicit volume multiplier through unchanged', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({
+        cmd: 'playToneSynth',
+        synthType: 'NoiseSynth',
+        duration: 0.05,
+        volume: 0.4,
+      })
+      expect(backend.playToneSynthCalls[0]!.volume).toBe(0.4)
+    })
+
+    it('a second playToneSynth stops the first — never stacks', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({
+        cmd: 'playToneSynth',
+        synthType: 'Synth',
+        note: 'C4',
+        duration: '8n',
+      })
+      const firstHandle = backend.toneSynthHandles[0]!
+      handler.handleCommand({
+        cmd: 'playToneSynth',
+        synthType: 'Synth',
+        note: 'E4',
+        duration: '8n',
+      })
+
+      expect(firstHandle.stop).toHaveBeenCalledTimes(1)
+      expect(backend.toneSynthHandles[1]!.stop).not.toHaveBeenCalled()
+    })
+
+    it('stopSong stops the current tone synth', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({
+        cmd: 'playToneSynth',
+        synthType: 'Synth',
+        note: 'C4',
+        duration: '8n',
+      })
+      const response = handler.handleCommand({ cmd: 'stopSong' })
+      expect(response).toEqual({ ok: true, cmd: 'stopSong' })
+      expect(backend.toneSynthHandles[0]!.stop).toHaveBeenCalledTimes(1)
+    })
+
+    it('a backend that throws produces a Nack, not an uncaught exception', () => {
+      const handler = createCommandHandler({
+        play: vi.fn(),
+        playSong: () => ({ stop: vi.fn() }),
+        playFile: vi.fn(),
+        playToneSynth: () => {
+          throw new Error("'PluckSynth' can't be a PolySynth voice")
+        },
+        playWadSynth: () => ({ stop: vi.fn() }),
+        getStats: () => SILENT_STATS,
+      })
+      const response = handler.handleCommand({
+        cmd: 'playToneSynth',
+        synthType: 'PolySynth',
+        voiceType: 'PluckSynth',
+        note: ['C4'],
+        duration: 1,
+      })
+      expect(response).toEqual({
+        ok: false,
+        cmd: 'playToneSynth',
+        error: "'PluckSynth' can't be a PolySynth voice",
+      })
+    })
+  })
+
+  describe('playWadSynth', () => {
+    it('forwards the config to the backend, defaulting volume to 1, and acks', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      const response = handler.handleCommand({
+        cmd: 'playWadSynth',
+        config: { source: 'square' },
+      })
+      expect(response).toEqual({ ok: true, cmd: 'playWadSynth' })
+      expect(backend.playWadSynthCalls).toEqual([{ config: { source: 'square' }, volume: 1 }])
+    })
+
+    it('passes an explicit volume multiplier through unchanged', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'noise' }, volume: 0.7 })
+      expect(backend.playWadSynthCalls[0]!.volume).toBe(0.7)
+    })
+
+    it('a second playWadSynth stops the first — never stacks', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'square' } })
+      const firstHandle = backend.wadSynthHandles[0]!
+      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'sawtooth' } })
+
+      expect(firstHandle.stop).toHaveBeenCalledTimes(1)
+      expect(backend.wadSynthHandles[1]!.stop).not.toHaveBeenCalled()
+    })
+
+    it('stop stops the current wad synth the same way stopSong does', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'triangle' } })
+      const response = handler.handleCommand({ cmd: 'stop' })
+      expect(response).toEqual({ ok: true, cmd: 'stop' })
+      expect(backend.wadSynthHandles[0]!.stop).toHaveBeenCalledTimes(1)
+    })
+
+    it('playToneSynth replaces a playing wad synth and vice versa — one current source across both engines', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'square' } })
+      const wadHandle = backend.wadSynthHandles[0]!
+
+      handler.handleCommand({
+        cmd: 'playToneSynth',
+        synthType: 'Synth',
+        note: 'C4',
+        duration: '8n',
+      })
+      expect(wadHandle.stop).toHaveBeenCalledTimes(1)
+      expect(backend.toneSynthHandles[0]!.stop).not.toHaveBeenCalled()
+    })
+  })
+
   it("shutdown just acks — process teardown is the wiring layer's job, not the handler's", () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
@@ -281,6 +461,8 @@ describe('createCommandHandler', () => {
       },
       playSong: () => ({ stop: vi.fn() }),
       playFile: vi.fn(),
+      playToneSynth: () => ({ stop: vi.fn() }),
+      playWadSynth: () => ({ stop: vi.fn() }),
       getStats: () => SILENT_STATS,
     })
     const response = handler.handleCommand({ cmd: 'play', params: [1] })
@@ -292,11 +474,13 @@ describe('createCommandHandler', () => {
     let shouldThrow = false
     const throwing: AudioBackend = {
       play: backend.play,
-      playSong: (song) => {
+      playSong: (song, volume) => {
         if (shouldThrow) throw new Error('song failed')
-        return backend.playSong(song)
+        return backend.playSong(song, volume)
       },
       playFile: backend.playFile,
+      playToneSynth: backend.playToneSynth,
+      playWadSynth: backend.playWadSynth,
       getStats: backend.getStats,
     }
     const handler = createCommandHandler(throwing)
@@ -341,6 +525,8 @@ describe('createCommandHandler', () => {
       play: vi.fn(),
       playSong: () => ({ stop: vi.fn() }),
       playFile: vi.fn(),
+      playToneSynth: () => ({ stop: vi.fn() }),
+      playWadSynth: () => ({ stop: vi.fn() }),
       getStats: () => {
         throw new Error('analyser unavailable')
       },

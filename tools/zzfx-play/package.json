@@ -28,6 +28,8 @@
   "dependencies": {
     "@zzfx-studio/zzfxm": "catalog:",
     "node-web-audio-api": "catalog:",
+    "tone": "catalog:",
+    "web-audio-daw": "catalog:",
     "zzfx": "catalog:"
   },
   "devDependencies": {

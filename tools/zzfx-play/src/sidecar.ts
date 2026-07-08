@@ -34,12 +34,21 @@
  */
 import 'node-web-audio-api/polyfill.js'
 import * as fs from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import * as readline from 'node:readline'
 import { ZZFX } from 'zzfx'
 import { ZZFXM } from '@zzfx-studio/zzfxm'
 import type { Command, Response } from './protocol.js'
 import { createCommandHandler } from './commandHandler.js'
-import { getPlaybackStats, playBuffer, playSampleChannels } from './player.js'
+import {
+  getPlaybackStats,
+  playBuffer,
+  playSampleChannels,
+  playToneSynth,
+  playWadSynth,
+  type ToneEngine,
+  type WadConstructor,
+} from './player.js'
 
 // Defined before `handler` — the real `playFile` backend below closes
 // over this directly to report an async decode/read failure, since
@@ -48,6 +57,105 @@ import { getPlaybackStats, playBuffer, playSampleChannels } from './player.js'
 // `AudioBackend.playFile` doc comment).
 function send(response: Response): void {
   process.stdout.write(`${JSON.stringify(response)}\n`)
+}
+
+// --- Tone.js: lazy, dynamic import (#47). `tone` is pure ESM (no
+// synchronous CJS load path — see `loadWadConstructor` below for the
+// contrast), so a genuinely lazy "only import on first use" load is
+// inherently asynchronous, which collides with `AudioBackend.playToneSynth`'s
+// synchronous `{stop():void}` contract. Resolved by: a cache that's
+// synchronous once warm, and — on the very first `playToneSynth` command
+// against a cold sidecar, before the import has resolved — a clean Nack
+// ("still loading") rather than blocking `handleCommand` or crashing the
+// process. The import itself is wrapped so a genuine failure (not just
+// slow) Nacks the same way, never taking down zzfx/zzfxm/file playback.
+let toneEngine: ToneEngine | undefined
+let toneEnginePromise: Promise<ToneEngine> | undefined
+
+function loadToneEngine(): Promise<ToneEngine> {
+  if (!toneEnginePromise) {
+    toneEnginePromise = import('tone').then((Tone) => {
+      // Tone.Context runs a lookAhead ticker — set the real context ONCE,
+      // the moment Tone is first actually needed, never per-play (a
+      // fresh context per play would leak native resources).
+      Tone.setContext(ZZFX.audioContext)
+      const engine: ToneEngine = {
+        classes: {
+          Synth: Tone.Synth,
+          AMSynth: Tone.AMSynth,
+          FMSynth: Tone.FMSynth,
+          DuoSynth: Tone.DuoSynth,
+          MembraneSynth: Tone.MembraneSynth,
+          MetalSynth: Tone.MetalSynth,
+          PluckSynth: Tone.PluckSynth,
+          NoiseSynth: Tone.NoiseSynth,
+          // `Tone.PolySynth`'s real type is generic over its voice class
+          // (`VoiceConstructor<Voice>`, which itself requires a static
+          // `getDefaults()`) — `ToneEngine`'s simplified `voice?: unknown`
+          // signature doesn't model that precision (see player.ts's
+          // `ToneEngine` doc comment); this is the one point they meet.
+          PolySynth: Tone.PolySynth as unknown as ToneEngine['classes']['PolySynth'],
+        },
+        Time: (value) => Tone.Time(value),
+      }
+      toneEngine = engine
+      return engine
+    })
+  }
+  return toneEnginePromise
+}
+
+// --- Wad: `web-audio-daw` is a plain CJS/UMD bundle (no `"type"` field
+// in its package.json), so — unlike `tone` — a synchronous `require()`
+// via `createRequire` (this file is ESM) keeps `playWadSynth`'s backend
+// genuinely synchronous on every call, including the first: no cold-
+// start race to Nack around. The `AudioContext`/`webkitAudioContext`
+// monkey-patch MUST be in place before this very first `require()` —
+// `require()` caches the module, so a second require after patching
+// would be a no-op reusing whatever context the first require captured
+// (verified: `tools/zzfx-play/CLAUDE.md` #47 report). The 3 additional
+// shims (`document.querySelector`, no-op `window.addEventListener`/
+// `removeEventListener`, `window.navigator`) are Wad's own import-time
+// touches — `window.navigator` needs `Object.defineProperty`, not plain
+// assignment: Node >=21 ships a built-in read-only `navigator` global.
+let wadCtor: WadConstructor | undefined
+
+function loadWadConstructor(): WadConstructor {
+  if (wadCtor) return wadCtor
+
+  const realAudioContext = globalThis.AudioContext
+  const realWebkitAudioContext = (globalThis as { webkitAudioContext?: unknown }).webkitAudioContext
+  // The explicit-object-return `new` trick: a constructor that returns
+  // an object explicitly makes `new Ctor()` use that object instead of
+  // the newly allocated one — Wad has no constructor-injection point for
+  // its `AudioContext`, so this is the only way to make it adopt ours.
+  function FakeAudioContext(): AudioContext {
+    return ZZFX.audioContext
+  }
+
+  globalThis.document ??= { querySelector: () => null } as unknown as Document
+  globalThis.window.addEventListener ??= () => {}
+  globalThis.window.removeEventListener ??= () => {}
+  Object.defineProperty(globalThis.window, 'navigator', {
+    value: {},
+    configurable: true,
+    writable: true,
+  })
+  globalThis.AudioContext = FakeAudioContext as unknown as typeof AudioContext
+  ;(globalThis as { webkitAudioContext?: unknown }).webkitAudioContext = FakeAudioContext
+
+  const require = createRequire(import.meta.url)
+  wadCtor = require('web-audio-daw') as WadConstructor
+
+  // Restore the real constructor for hygiene — Wad's own module-scope
+  // `context` reference is already captured permanently by this point
+  // (its bundle reads `window.AudioContext` once, at its own
+  // module-load time), so this isn't load-bearing, just avoids leaving
+  // a surprising global patch in place for any unrelated future code.
+  globalThis.AudioContext = realAudioContext
+  ;(globalThis as { webkitAudioContext?: unknown }).webkitAudioContext = realWebkitAudioContext
+
+  return wadCtor
 }
 
 const handler = createCommandHandler({
@@ -96,6 +204,25 @@ const handler = createCommandHandler({
         })
       }
     })()
+  },
+  playToneSynth: (cmd, volume) => {
+    if (!toneEngine) {
+      // Kick off the load (idempotent — see loadToneEngine's cache) and
+      // Nack this attempt rather than blocking handleCommand on an
+      // inherently-async dynamic import. A genuine import failure lands
+      // here too, on stderr only — never crashes the sidecar.
+      void loadToneEngine().catch((err) => {
+        process.stderr.write(
+          `zzfx-play: tone failed to load: ${err instanceof Error ? err.message : String(err)}\n`
+        )
+      })
+      throw new Error('Tone.js is still loading — try again in a moment')
+    }
+    return playToneSynth(ZZFX.audioContext, toneEngine, cmd, ZZFX.volume * volume)
+  },
+  playWadSynth: (config, volume) => {
+    const WadCtor = loadWadConstructor()
+    return playWadSynth(ZZFX.audioContext, WadCtor, config, ZZFX.volume * volume)
   },
   getStats: () => getPlaybackStats(ZZFX.audioContext),
 })

@@ -28,6 +28,13 @@ catalog:
   # the same install). Ships ALL platform .node binaries in the one
   # package (5-7MB each); VSIX packaging strips unused platforms (#24).
   node-web-audio-api: ^2.0.0
+  # tools/zzfx-play's Tone/Wad synth findings (#47) — versions pinned
+  # exactly (no caret) to the prototype-gate-validated versions, not a
+  # semver range, since the gate's findings (Tone.setContext behavior,
+  # Wad's private-AudioContext monkey-patch ordering) were verified
+  # against these specific builds.
+  tone: 15.1.22
+  web-audio-daw: 4.13.4
   # Pinned (no caret) — `^10.0.0-alpha.2` semver-matches `10.0.0-canary.X`
   # because canary > alpha alphabetically on the same 10.0.0 base. Our
   # local pnpm lockfile holds alpha.2, but a fresh `npm install` (e.g. in

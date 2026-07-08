@@ -49,6 +49,14 @@ rl.on('line', (line) => {
       // there's nothing to actually decode here (see client.test.ts).
       send({ ok: true, cmd: 'playFile' })
       return
+    case 'playToneSynth':
+      // No-op ack — this fixture never touches tone/web-audio-daw (see
+      // client.test.ts); it only proves the wire message reaches here.
+      send({ ok: true, cmd: 'playToneSynth' })
+      return
+    case 'playWadSynth':
+      send({ ok: true, cmd: 'playWadSynth' })
+      return
     case 'stopSong':
       send({ ok: true, cmd: 'stopSong' })
       return

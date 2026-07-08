@@ -1,4 +1,11 @@
-import type { Command, PlaybackStats, Response, Song } from './protocol.js'
+import type {
+  Command,
+  PlaybackStats,
+  PlayToneSynthCommand,
+  PlayWadSynthCommand,
+  Response,
+  Song,
+} from './protocol.js'
 
 /**
  * The audio-producing half of a command, injected so the state machine
@@ -36,6 +43,11 @@ export type AudioBackend = {
    * a superseded play). Never called on a read/decode failure.
    */
   playFile(path: string, volume: number, onStarted: (handle: { stop(): void }) => void): void
+  /** Synchronous construction like `playSong`, not async like `playFile`
+   * — neither Tone's nor Wad's constructors involve an async decode
+   * step. */
+  playToneSynth(cmd: Omit<PlayToneSynthCommand, 'cmd'>, volume: number): { stop(): void }
+  playWadSynth(config: PlayWadSynthCommand['config'], volume: number): { stop(): void }
   getStats(): PlaybackStats
 }
 
@@ -106,6 +118,16 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
             else handle.stop()
           })
           return { ok: true, cmd: 'playFile' }
+        }
+        case 'playToneSynth': {
+          replaceCurrentSource()
+          currentSource = backend.playToneSynth(command, command.volume ?? 1)
+          return { ok: true, cmd: 'playToneSynth' }
+        }
+        case 'playWadSynth': {
+          replaceCurrentSource()
+          currentSource = backend.playWadSynth(command.config, command.volume ?? 1)
+          return { ok: true, cmd: 'playWadSynth' }
         }
         case 'stopSong':
           replaceCurrentSource()

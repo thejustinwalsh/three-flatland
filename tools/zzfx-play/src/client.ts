@@ -1,6 +1,15 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import * as readline from 'node:readline'
-import type { Command, Nack, PlaybackStats, Response, Song, StatsAck } from './protocol.js'
+import type {
+  Command,
+  Nack,
+  PlaybackStats,
+  PlayToneSynthCommand,
+  PlayWadSynthCommand,
+  Response,
+  Song,
+  StatsAck,
+} from './protocol.js'
 
 export type PlaySidecarOptions = {
   /** `process.execPath`, read from *inside* the extension host — see `sidecar.ts`'s header comment for why this must come from there, not be computed independently. */
@@ -99,6 +108,22 @@ export class PlaySidecarClient {
    * `onError`, not as a rejection of this call. */
   playFile(path: string, volume?: number): void {
     this.send({ cmd: 'playFile', path, ...(volume !== undefined ? { volume } : {}) })
+  }
+
+  /** Plays a Tone.js instrument finding (#47). Spawns the sidecar on
+   * first call, mirroring `play`/`playSong`. */
+  playToneSynth(cmd: Omit<PlayToneSynthCommand, 'cmd'>, volume?: number): void {
+    this.send({
+      cmd: 'playToneSynth',
+      ...cmd,
+      ...(volume !== undefined ? { volume } : {}),
+    })
+  }
+
+  /** Plays a Wad oscillator/noise synth finding (#47). Spawns the
+   * sidecar on first call, mirroring `play`/`playSong`. */
+  playWadSynth(config: PlayWadSynthCommand['config'], volume?: number): void {
+    this.send({ cmd: 'playWadSynth', config, ...(volume !== undefined ? { volume } : {}) })
   }
 
   /** Stops the current stoppable source — a song or a decoded file (#46)

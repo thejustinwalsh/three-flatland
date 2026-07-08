@@ -43,7 +43,12 @@
  * surface for a `node-web-audio-api`/browser behavioral difference to
  * hide in.
  */
-import type { PlaybackStats } from './protocol.js'
+import type {
+  PlaybackStats,
+  PlayToneSynthCommand,
+  ToneSynthType,
+  WadSynthSource,
+} from './protocol.js'
 
 export type PlaySampleChannelsOptions = {
   rate?: number
@@ -61,25 +66,37 @@ const analysers = new WeakMap<AudioContext, AnalyserNode>()
 type CurrentPlayback = {
   startedAt: number
   durationSeconds: number
-  /** Set by the source's own `ended` event — fires on BOTH natural
-   * completion and an explicit `.stop()` (the commandHandler's stopSong
-   * path), so `playing` flips false immediately on a mid-playback stop
-   * rather than waiting out the natural duration. */
+  /** Flipped by `ended` resolving — fires on BOTH natural completion and
+   * an explicit `.stop()` (the commandHandler's stopSong path, or a
+   * synth's `triggerRelease`/`releaseAll`), so `playing` flips false
+   * immediately on a mid-playback stop rather than waiting out the
+   * natural duration. */
   ended: boolean
 }
 
 const playbacks = new WeakMap<AudioContext, CurrentPlayback>()
 
-function trackPlayback(
-  ctx: AudioContext,
-  source: AudioBufferSourceNode,
-  durationSeconds: number
-): void {
+/**
+ * Registers the most-recently-started source's timing against `ctx`.
+ * `ended` is a completion signal rather than an `AudioBufferSourceNode`
+ * directly — `playSampleChannels`/`playBuffer` wrap their node's
+ * `onended` event in a `Promise`, `playToneSynth`/`playWadSynth` have no
+ * node with an `onended` property at all (a Tone synth's own scheduled
+ * release, or a `Wad` instance's own `play()`-returned promise) and
+ * construct one to match. A rejected/erroring `ended` still counts as
+ * "ended" — never leave the record permanently stuck `playing`.
+ */
+function trackPlayback(ctx: AudioContext, ended: Promise<unknown>, durationSeconds: number): void {
   const record: CurrentPlayback = { startedAt: ctx.currentTime, durationSeconds, ended: false }
   playbacks.set(ctx, record)
-  source.onended = () => {
-    record.ended = true
-  }
+  ended.then(
+    () => {
+      record.ended = true
+    },
+    () => {
+      record.ended = true
+    }
+  )
 }
 
 /** The shared master-output tap for a given context, created lazily on
@@ -140,11 +157,14 @@ export function playSampleChannels(
   gainNode.gain.value = masterVolume
   source.connect(gainNode)
   gainNode.connect(getAnalyser(ctx))
+  const ended = new Promise<void>((resolve) => {
+    source.onended = () => resolve()
+  })
   // Duration from the synthesis inputs directly (sample count ÷ declared
   // rate, playback-rate-adjusted) rather than trusting a buffer.duration
   // getter — identical math, but it keeps the fake-AudioContext unit
   // tests honest about where the number comes from.
-  trackPlayback(ctx, source, sampleLength / sampleRate / rate)
+  trackPlayback(ctx, ended, sampleLength / sampleRate / rate)
   source.start()
 
   return source
@@ -178,8 +198,11 @@ export function playBuffer(
   gainNode.gain.value = masterVolume
   source.connect(gainNode)
   gainNode.connect(getAnalyser(ctx))
+  const ended = new Promise<void>((resolve) => {
+    source.onended = () => resolve()
+  })
   // `decodeAudioData`'s buffer knows its own exact duration.
-  trackPlayback(ctx, source, audioBuffer.duration)
+  trackPlayback(ctx, ended, audioBuffer.duration)
   source.start()
 
   return source
@@ -215,4 +238,249 @@ export function getPlaybackStats(ctx: AudioContext): PlaybackStats {
   // pre-fix bug produced EXACT zeros (an untouched, never-written
   // buffer), not merely quiet ones.
   return { peak, silent: peak < 1e-6, playing, durationSeconds, elapsedSeconds }
+}
+
+/**
+ * The minimal Tone.js surface `playToneSynth` needs, referenced
+ * structurally rather than via a static `import 'tone'` — this file
+ * deliberately imports neither `tone` nor `web-audio-daw` (see the file
+ * doc comment's "imports nothing from zzfx" reasoning; the same logic
+ * extends to both synth engines, and for `tone` specifically it's also
+ * what makes the sidecar's lazy/try-catch-contained import possible —
+ * see `sidecar.ts`). `sidecar.ts` lazily imports the real module and
+ * builds this shape from it; `player.test.ts` passes a hand-built fake
+ * matching the same shape, never a real `tone` import.
+ */
+export type ToneSynthInstance = {
+  connect(destination: AudioNode): unknown
+  triggerAttackRelease(...args: never[]): unknown
+  triggerRelease(...args: never[]): unknown
+}
+export type ToneSynthClass = new (options?: Record<string, unknown>) => ToneSynthInstance
+export type TonePolySynthInstance = ToneSynthInstance & {
+  releaseAll(): unknown
+}
+export type ToneEngine = {
+  /** One entry per `ToneSynthType` — a real, explicit, hand-built table,
+   * never `Tone[synthType]` indexed dynamically off the wire string
+   * (defense in depth: the union type already constrains `synthType`,
+   * but indexing into an explicit table closes off any surface where a
+   * wire value could resolve to something other than one of these nine
+   * classes). `PolySynth`'s constructor shape (`voice, options`) differs
+   * from the other eight (`options` only), hence the separate field. */
+  classes: Record<Exclude<ToneSynthType, 'PolySynth'>, ToneSynthClass> & {
+    // `voice` typed as `unknown` rather than `ToneSynthClass` — Tone's
+    // REAL `PolySynth<Voice>` constructor requires its voice class to
+    // also carry a static `getDefaults()` (`VoiceConstructor<Voice>`),
+    // which `ToneSynthClass` doesn't model; reconciling that generic
+    // precision structurally isn't worth it for a lookup table this
+    // narrow. `sidecar.ts` bridges the real `Tone.PolySynth` in with one
+    // explicit, commented cast at the one point they meet.
+    PolySynth: new (voice?: unknown, options?: Record<string, unknown>) => TonePolySynthInstance
+  }
+  Time(value: string | number): { toSeconds(): number }
+}
+
+/** Only `Monophonic`-derived Tone classes are valid `PolySynth` voices —
+ * matches Tone's own `PolySynth<Voice extends Monophonic<any>>`
+ * constraint. `NoiseSynth`/`PluckSynth` extend `Instrument` directly
+ * (verified against the installed `tone@15.1.22` `.d.ts`s), and
+ * `PolySynth` as its own voice is nonsensical — all three are rejected
+ * with a Nack rather than left to throw inside Tone's own constructor. */
+const POLY_VOICE_TYPES = new Set<Exclude<ToneSynthType, 'PolySynth'>>([
+  'Synth',
+  'AMSynth',
+  'FMSynth',
+  'DuoSynth',
+  'MembraneSynth',
+  'MetalSynth',
+])
+
+function isPolyVoiceType(type: ToneSynthType): type is Exclude<ToneSynthType, 'PolySynth'> {
+  return (POLY_VOICE_TYPES as ReadonlySet<ToneSynthType>).has(type)
+}
+
+/**
+ * Reads the release time (seconds) off an already-constructed synth
+ * instance — NOT off `cmd.config`, so it reflects whatever envelope
+ * config actually landed (default or overridden). Three access shapes,
+ * verified empirically against the real `tone@15.1.22` package rather
+ * than assumed (see the #47 report): `Synth`/`AMSynth`/`FMSynth`/
+ * `MembraneSynth`/`MetalSynth`/`NoiseSynth` expose `.envelope.release`
+ * directly; `DuoSynth` does not — its envelope lives on `.voice0`
+ * (`.voice1` mirrors it); `PluckSynth` has no `.envelope` at all, only a
+ * top-level `.release`. `PolySynth` has none of these directly — `
+ * ._dummyVoice` (private in the `.d.ts`, a real constructed voice
+ * instance at runtime — Tone's own doc comment: "A voice used for
+ * holding the get/set values") recurses through the same rules keyed by
+ * `voiceType`.
+ */
+function toneReleaseSeconds(
+  Tone: ToneEngine,
+  synthType: ToneSynthType,
+  synth: ToneSynthInstance,
+  voiceType?: ToneSynthType
+): number {
+  const s = synth as unknown as Record<string, unknown>
+  if (synthType === 'PolySynth') {
+    const dummyVoice = s._dummyVoice as Record<string, unknown> | undefined
+    if (!dummyVoice) return 0
+    return toneReleaseSeconds(
+      Tone,
+      voiceType ?? 'Synth',
+      dummyVoice as unknown as ToneSynthInstance
+    )
+  }
+  if (synthType === 'DuoSynth') {
+    const voice0 = s.voice0 as { envelope?: { release?: unknown } } | undefined
+    const release = voice0?.envelope?.release
+    return release === undefined ? 0 : Tone.Time(release as string | number).toSeconds()
+  }
+  if (synthType === 'PluckSynth') {
+    const release = s.release
+    return release === undefined ? 0 : Tone.Time(release as string | number).toSeconds()
+  }
+  const envelope = s.envelope as { release?: unknown } | undefined
+  const release = envelope?.release
+  return release === undefined ? 0 : Tone.Time(release as string | number).toSeconds()
+}
+
+/**
+ * Constructs and plays one of the nine allowlisted Tone.js instrument
+ * shapes (#47) — a fixed, statically-parseable subset, never arbitrary
+ * user code execution. Routes through a fresh `GainNode` into the SAME
+ * shared analyser tap `playSampleChannels`/`playBuffer` use
+ * (`getAnalyser(ctx)`) via an explicit `.connect(gainNode)` —
+ * NEVER `.toDestination()`, which would bypass the analyser and silently
+ * break the audibility/duration stats this whole package's toggle UI
+ * depends on.
+ *
+ * `Tone.setContext(...)` is the CALLER's responsibility (`sidecar.ts`,
+ * once, lazily, the first time any Tone command arrives) — this function
+ * assumes it has already happened and never touches context wiring
+ * itself, so a caller that forgets it gets Tone's own default context
+ * instead of a confusing failure here.
+ */
+export function playToneSynth(
+  ctx: AudioContext,
+  Tone: ToneEngine,
+  cmd: Omit<PlayToneSynthCommand, 'cmd'>,
+  masterVolume: number
+): { stop(): void } {
+  if (cmd.synthType !== 'NoiseSynth' && cmd.note === undefined) {
+    throw new Error(`playToneSynth: '${cmd.synthType}' requires a note`)
+  }
+
+  const gainNode = ctx.createGain()
+  gainNode.gain.value = masterVolume
+  gainNode.connect(getAnalyser(ctx))
+
+  let synth: ToneSynthInstance
+  let releaseSeconds: number
+
+  if (cmd.synthType === 'PolySynth') {
+    const voiceType = cmd.voiceType ?? 'Synth'
+    if (!isPolyVoiceType(voiceType)) {
+      throw new Error(`playToneSynth: '${voiceType}' can't be a PolySynth voice`)
+    }
+    const poly = new Tone.classes.PolySynth(Tone.classes[voiceType], cmd.config)
+    synth = poly
+    releaseSeconds = toneReleaseSeconds(Tone, 'PolySynth', poly, voiceType)
+  } else {
+    synth = new Tone.classes[cmd.synthType](cmd.config)
+    releaseSeconds = toneReleaseSeconds(Tone, cmd.synthType, synth)
+  }
+
+  synth.connect(gainNode)
+
+  const durationSeconds = Tone.Time(cmd.duration).toSeconds() + releaseSeconds
+  let resolveEnded: () => void = () => {}
+  const ended = new Promise<void>((resolve) => {
+    resolveEnded = resolve
+  })
+  // A synthetic timer, not a native event — Tone has no completion event
+  // of its own, so this mirrors the ACTUAL scheduled attack+release
+  // window computed above. `stop()` below resolves `ended` immediately
+  // too, matching `AudioBufferSourceNode.onended`'s "fires on both
+  // natural completion and an explicit stop()" contract (see
+  // `trackPlayback`'s doc comment) rather than waiting out this timer.
+  const timer = setTimeout(() => resolveEnded(), durationSeconds * 1000)
+  trackPlayback(ctx, ended, durationSeconds)
+
+  if (cmd.synthType === 'NoiseSynth') {
+    ;(
+      synth as unknown as { triggerAttackRelease(duration: string | number): unknown }
+    ).triggerAttackRelease(cmd.duration)
+  } else if (cmd.synthType === 'PolySynth') {
+    ;(
+      synth as unknown as {
+        triggerAttackRelease(
+          notes: string | number | (string | number)[],
+          duration: string | number
+        ): unknown
+      }
+    ).triggerAttackRelease(cmd.note as string | number | (string | number)[], cmd.duration)
+  } else {
+    ;(
+      synth as unknown as {
+        triggerAttackRelease(note: string | number, duration: string | number): unknown
+      }
+    ).triggerAttackRelease(cmd.note as string | number, cmd.duration)
+  }
+
+  return {
+    stop: () => {
+      clearTimeout(timer)
+      if (cmd.synthType === 'PolySynth') (synth as unknown as TonePolySynthInstance).releaseAll()
+      else synth.triggerRelease()
+      resolveEnded()
+    },
+  }
+}
+
+/** The minimal `Wad` surface `playWadSynth` needs — see `ToneEngine`'s
+ * doc comment for why this is structural rather than a static
+ * `import 'web-audio-daw'`. `sidecar.ts` lazily imports the real default
+ * export (after applying the module-scope `AudioContext` monkey-patch —
+ * see that file), `player.test.ts` passes a hand-built fake. */
+export type WadInstance = { play(): Promise<unknown>; stop(): void }
+export type WadConstructor = new (config: Record<string, unknown>) => WadInstance
+
+/**
+ * Constructs and plays a Wad oscillator/noise synth (#47) from a
+ * declarative config — parse-don't-eval, same posture as the zzfxm song
+ * parser. Wad's constructor accepts a `destination` option directly
+ * (verified against the installed `web-audio-daw@4.13.4` bundle source:
+ * `this.destination = arg.destination || context.destination`), so this
+ * routes to the shared analyser tap by passing `gainNode` straight
+ * through the config rather than hunting for an internal output-node
+ * property to `.connect()` after the fact.
+ *
+ * `durationSeconds` is always `Infinity`: `wadSynthResolver.ts` only
+ * ever parses top-level scalar literals out of the source text, so a
+ * wire `config` never carries a nested `env` object, which means Wad
+ * always falls back to its own default envelope — bounded, not
+ * literally endless, but `Infinity` is still the correct sentinel here
+ * (see `trackPlayback`'s math: it never clamps `elapsedSeconds` against
+ * it, so `playing` is governed purely by the `ended` flag, which
+ * `wad.play()`'s own promise flips at whatever moment playback actually
+ * stops, natural or explicit).
+ */
+export function playWadSynth(
+  ctx: AudioContext,
+  Wad: WadConstructor,
+  config: { source: WadSynthSource } & Record<string, number | string | boolean>,
+  masterVolume: number
+): { stop(): void } {
+  const gainNode = ctx.createGain()
+  gainNode.gain.value = masterVolume
+  gainNode.connect(getAnalyser(ctx))
+
+  const wad = new Wad({ ...config, destination: gainNode })
+  const ended = wad.play()
+  trackPlayback(ctx, ended, Infinity)
+
+  return {
+    stop: () => wad.stop(),
+  }
 }

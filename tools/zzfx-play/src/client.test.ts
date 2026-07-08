@@ -60,6 +60,26 @@ describe('PlaySidecarClient', () => {
     expect(client.pid).toBe(firstPid)
   })
 
+  it('playToneSynth() spawns the sidecar lazily and reuses the same process on repeated calls', async () => {
+    client = spawnFake()
+    client.playToneSynth({ synthType: 'Synth', note: 'C4', duration: '8n' })
+    await vi.waitFor(() => expect(client!.isRunning).toBe(true))
+    const firstPid = client.pid
+
+    client.playToneSynth({ synthType: 'NoiseSynth', duration: 0.05 }, 0.5)
+    expect(client.pid).toBe(firstPid)
+  })
+
+  it('playWadSynth() spawns the sidecar lazily and reuses the same process on repeated calls', async () => {
+    client = spawnFake()
+    client.playWadSynth({ source: 'square' })
+    await vi.waitFor(() => expect(client!.isRunning).toBe(true))
+    const firstPid = client.pid
+
+    client.playWadSynth({ source: 'noise' }, 0.5)
+    expect(client.pid).toBe(firstPid)
+  })
+
   it('playSong()/stopSong()/stop() also lazily spawn and reuse the same process', async () => {
     client = spawnFake()
     const song = { instruments: [[1, 0, 220]], patterns: [[[0, 0, 12]]], sequence: [0] }

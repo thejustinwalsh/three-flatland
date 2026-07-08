@@ -57,6 +57,52 @@ export type ShutdownCommand = { cmd: 'shutdown' }
 /** Audibility regression guard — see `PlaybackStats`. */
 export type StatsCommand = { cmd: 'stats' }
 
+/** The narrow, statically-parseable Tone.js instrument subset this sidecar
+ * supports — see `tools/zzfx-play/CLAUDE.md`/#47 for why Tone's imperative
+ * method-chain API only gets a fixed allowlist rather than arbitrary
+ * construction. `MonoSynth` is deliberately excluded — not part of the v1
+ * scanner's detected shapes. */
+export type ToneSynthType =
+  | 'Synth'
+  | 'AMSynth'
+  | 'FMSynth'
+  | 'DuoSynth'
+  | 'MembraneSynth'
+  | 'MetalSynth'
+  | 'PluckSynth'
+  | 'NoiseSynth'
+  | 'PolySynth'
+
+export type PlayToneSynthCommand = {
+  cmd: 'playToneSynth'
+  synthType: ToneSynthType
+  /** `PolySynth` only — the voice class. `Tone.PolySynth()`'s own default
+   * is `Synth` if omitted. Must be one of the `Monophonic`-derived types
+   * (not `NoiseSynth`/`PluckSynth`/`PolySynth` itself) — the sidecar
+   * backend rejects an invalid voice type with a Nack rather than letting
+   * Tone's own constructor throw uncaught. */
+  voiceType?: ToneSynthType
+  /** Static constructor options, flat scalars only — the same "parse
+   * top-level literals, skip nested objects" posture as `wad.synth`'s
+   * config (see `wadSynthResolver.ts`), so this never carries a nested
+   * `envelope`/`oscillator` sub-object even though Tone's real
+   * constructor options do nest those. */
+  config?: Record<string, number | string | boolean>
+  /** Absent ONLY for `NoiseSynth` (its `triggerAttackRelease` takes no
+   * note). A `string[]`/`number[]` ONLY for `PolySynth` chords — every
+   * other class takes a single `string | number`. */
+  note?: string | number | (string | number)[]
+  duration: string | number
+  volume?: number
+}
+
+export type WadSynthSource = 'sine' | 'square' | 'sawtooth' | 'triangle' | 'noise'
+export type PlayWadSynthCommand = {
+  cmd: 'playWadSynth'
+  config: { source: WadSynthSource } & Record<string, number | string | boolean>
+  volume?: number
+}
+
 export type Command =
   | PlayCommand
   | PlaySongCommand
@@ -65,6 +111,8 @@ export type Command =
   | StopCommand
   | ShutdownCommand
   | StatsCommand
+  | PlayToneSynthCommand
+  | PlayWadSynthCommand
 
 /**
  * A snapshot of what the master output's `AnalyserNode` tap is seeing
