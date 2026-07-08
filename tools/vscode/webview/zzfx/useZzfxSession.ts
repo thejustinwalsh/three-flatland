@@ -14,6 +14,10 @@ import type {
   ZzfxGeneratePayload,
   ZzfxGenerateProgressEvent,
   ZzfxGenerateResultEvent,
+  ZzfxHistoryBatch,
+  ZzfxHistoryChangedEvent,
+  ZzfxHistoryDeletePayload,
+  ZzfxHistoryDeleteResult,
   ZzfxInitPayload,
   ZzfxPlayEvent,
   ZzfxSavePayload,
@@ -95,6 +99,24 @@ export type ZzfxSessionState = {
    * generate result or the preset browser) and marks the session dirty. */
   applyCandidate: (candidate: { params: number[] }) => void
 
+  /** This source's persisted AI candidate history, newest batch first —
+   * loaded from the init payload, then replaced wholesale by every
+   * `zzfx/historyChanged` push. Durability is host-owned; the webview
+   * never writes it, only asks the host to (the two calls below). */
+  history: ZzfxHistoryBatch[]
+  /** Deletes one persisted candidate (its batch's `ts` + index). The
+   * updated list arrives via the `zzfx/historyChanged` push, not as a
+   * return value. */
+  deleteHistoryCandidate: (batchTs: number, index: number) => void
+  /** Clears ALL persisted history for this source. The confirm affordance
+   * is the caller's job (AiGeneratePanel's inline two-step). */
+  clearHistory: () => void
+  /** Transport-level failure from the last delete/clear request — without
+   * it, a request that never reached the host would be indistinguishable
+   * from a slow `zzfx/historyChanged` push. Cleared when the next history
+   * change (or request) succeeds. */
+  historyError: string | null
+
   /** The most recent `zzfx/play` push event from the host (CodeLens
    * `▶ Play` / `playAtCursor` — #148 Z3) — App.tsx watches this by
    * `requestId` identity to trigger playback through the same Web Audio
@@ -132,6 +154,8 @@ export function useZzfxSession(): ZzfxSessionState {
     requestId: number
   } | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [history, setHistory] = useState<ZzfxHistoryBatch[]>([])
+  const [historyError, setHistoryError] = useState<string | null>(null)
   const bridgeRef = useRef<ClientBridge | null>(null)
   const playRequestIdRef = useRef(0)
 
@@ -160,6 +184,14 @@ export function useZzfxSession(): ZzfxSessionState {
       setLoadError(p.loadError ?? null)
       setLmAvailable(p.lmAvailable)
       setPresets(p.presets)
+      setHistory(p.history)
+      setHistoryError(null)
+    })
+    // Full newest-first replacement — the host store owns durability; see
+    // the `history` doc comment above.
+    const offHistory = bridge.on<ZzfxHistoryChangedEvent>('zzfx/historyChanged', (p) => {
+      setHistory(p.history)
+      setHistoryError(null)
     })
     const offProgress = bridge.on<ZzfxGenerateProgressEvent>('zzfx/generateProgress', (p) => {
       setGenerateStream((prev) => prev + p.chunk)
@@ -180,6 +212,7 @@ export function useZzfxSession(): ZzfxSessionState {
     void bridge.request('zzfx/ready')
     return () => {
       offInit()
+      offHistory()
       offProgress()
       offResult()
       offPlay()
@@ -249,6 +282,25 @@ export function useZzfxSession(): ZzfxSessionState {
     setDirty(true)
   }, [])
 
+  const deleteHistoryCandidate = useCallback((batchTs: number, index: number) => {
+    const bridge = bridgeRef.current
+    if (!bridge) return
+    setHistoryError(null)
+    const payload: ZzfxHistoryDeletePayload = { batchTs, index }
+    bridge.request<ZzfxHistoryDeleteResult>('zzfx/history/delete', payload).catch((err) => {
+      setHistoryError(err instanceof Error ? err.message : String(err))
+    })
+  }, [])
+
+  const clearHistory = useCallback(() => {
+    const bridge = bridgeRef.current
+    if (!bridge) return
+    setHistoryError(null)
+    bridge.request('zzfx/history/clear', {}).catch((err) => {
+      setHistoryError(err instanceof Error ? err.message : String(err))
+    })
+  }, [])
+
   const revealSource = useCallback(() => {
     const bridge = bridgeRef.current
     if (!bridge) return
@@ -288,6 +340,10 @@ export function useZzfxSession(): ZzfxSessionState {
     candidates,
     lastGenerateSource,
     applyCandidate,
+    history,
+    deleteHistoryCandidate,
+    clearHistory,
+    historyError,
     playRequest,
   }
 }

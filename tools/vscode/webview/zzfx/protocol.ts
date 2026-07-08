@@ -13,6 +13,20 @@ export type ZzfxCandidate = {
   rationale: string
 }
 
+/** One persisted AI-generate batch for a source — the unit the candidate
+ * history grows by. `ts` (ms epoch, unique within a source — the store
+ * nudges collisions) doubles as the batch's address for
+ * `zzfx/history/delete`. Only `lm` and `cache` results are persisted:
+ * presets are free and deterministic (the library ships in every init
+ * payload), so storing them would only dilute the paid-for LM history. */
+export type ZzfxHistoryBatch = {
+  ts: number
+  category: string
+  styles: string[]
+  source: 'lm' | 'cache'
+  candidates: ZzfxCandidate[]
+}
+
 /** host -> webview, sent in response to `zzfx/ready`. */
 export type ZzfxInitPayload = {
   /** Stable id for the CodeLens finding this panel edits — echoed back on save. */
@@ -62,6 +76,13 @@ export type ZzfxInitPayload = {
    * preset-browsing fallback needs no round trip and works identically
    * whether or not `lmAvailable`. */
   presets: Record<string, { label: string; params: number[] }[]>
+  /** This source's persisted AI candidate history, newest batch first —
+   * host-side storage (globalStorageUri, next to the LM cache), so it
+   * survives panel moves/reloads/restarts by construction rather than
+   * depending on the webview's own lifecycle. Keyed by the same source
+   * identity the header link shows — see
+   * `extension/tools/zzfx/history/core.ts`'s `historyKeyFor`. */
+  history: ZzfxHistoryBatch[]
 }
 
 /** webview -> host, requests the init payload (register the `zzfx/init`
@@ -129,6 +150,35 @@ export type ZzfxGenerateResultEvent = {
 export type ZzfxRevealSourcePayload = Record<string, never>
 
 export type ZzfxRevealSourceResult = { ok: true }
+
+/** host -> webview, pushed whenever this source's persisted history
+ * changes (a generate result was persisted, a candidate was deleted, the
+ * source was cleared) — the full newest-first list, replacing the
+ * webview's copy wholesale. One idempotent event instead of per-op
+ * deltas: the host store is the single owner of durability; the webview
+ * only ever renders what the host says survived. */
+export type ZzfxHistoryChangedEvent = {
+  history: ZzfxHistoryBatch[]
+}
+
+/** webview -> host, deletes one persisted candidate, addressed by its
+ * batch's `ts` + its index within that batch. Deleting something already
+ * gone (e.g. removed by another window) is a silent no-op — the
+ * follow-up `zzfx/historyChanged` push carries whatever actually
+ * survived. */
+export type ZzfxHistoryDeletePayload = {
+  batchTs: number
+  index: number
+}
+
+export type ZzfxHistoryDeleteResult = { ok: true }
+
+/** webview -> host, clears ALL persisted history for this panel's source
+ * (other sources untouched). The webview owns the confirm affordance
+ * (inline two-step); the host just executes. */
+export type ZzfxHistoryClearPayload = Record<string, never>
+
+export type ZzfxHistoryClearResult = { ok: true }
 
 /** host -> webview, plays `params` immediately through the existing Web
  * Audio path — the CodeLens `▶ Play` / `playAtCursor` route (#148 Z3).

@@ -577,4 +577,201 @@ test.describe('FL ZzFX Studio', () => {
       .join('\n')
     expect(text).toBe(expectedText)
   })
+
+  // ── AI candidate history (Z14) ────────────────────────────────────────
+  //
+  // These two tests are deliberately LAST in the file: the history store
+  // lives under globalStorageUri, which persists across tests within this
+  // spec file's shared VS Code window (resetWindowWorkspace only resets
+  // the workspace folder) — seeding here must not be able to leak into
+  // the tests above.
+  //
+  // Seeding goes through the ExtensionApi seam (extension/index.ts) —
+  // the SAME singleton store instance the panel reads, so "the seeded
+  // batch renders" proves the real init path end-to-end. The
+  // generate→persist route itself is NOT driven here (disclosed seam:
+  // this test host has no vscode.lm model, so generate degrades to the
+  // preset fallback, which is by design never persisted) — that branch
+  // is covered by history/core.test.ts's batchFromOutcome + append tests.
+
+  test('seeded AI history renders for the LASER finding, and a deleted candidate stays gone across panel close + reopen', async ({
+    evaluateInVSCode,
+    webviewFrame,
+  }) => {
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+        const api = ext!.exports as {
+          zzfxHistory: {
+            keyFor: (source: {
+              uri: string
+              line: number
+              varRef?: { name: string; defUri?: string }
+            }) => string
+            append: (key: string, batch: unknown) => Promise<unknown>
+          }
+        }
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file).toString()
+        // LASER is a variable finding — the key is defUri + name, exactly
+        // what host.ts computes from the sidecar's varRef (defUri equals
+        // the parse uri for a same-file declaration).
+        const key = api.zzfxHistory.keyFor({
+          uri,
+          line: arg.callLine,
+          varRef: { name: 'LASER', defUri: uri },
+        })
+        await api.zzfxHistory.append(key, {
+          ts: 1_000_000,
+          category: 'Laser',
+          styles: ['punchy'],
+          source: 'lm',
+          candidates: [
+            { label: 'Seeded Zap A', params: [0.6, 0, 900, 0, 0.03, 0.05, 4, 2], rationale: 'a' },
+            { label: 'Seeded Zap B', params: [0.6, 0, 1400, 0, 0.03, 0.05, 4, 2], rationale: 'b' },
+          ],
+        })
+      },
+      { file: SOUNDS_FILE, callLine: VARIABLE_CALL_LINE }
+    )
+
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const editor = await vscode.window.showTextDocument(doc)
+        editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
+        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+      },
+      { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
+    )
+
+    const frame = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
+    await expect(frame.getByText('Seeded Zap A')).toBeVisible()
+    await expect(frame.getByText('Seeded Zap B')).toBeVisible()
+
+    // Per-candidate delete — the quiet trash button titled with the label.
+    await frame.locator('vscode-toolbar-button[title=\'Delete "Seeded Zap A"\']').click()
+    await expect(frame.getByText('Seeded Zap A')).toHaveCount(0)
+    await expect(frame.getByText('Seeded Zap B')).toBeVisible()
+
+    // Kill the webview entirely (retainContextWhenHidden is false and the
+    // panel disposes on close) and reopen — the surviving candidate must
+    // come back from HOST storage, the deleted one must not.
+    await evaluateInVSCode(async (vscode) => {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors')
+    })
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const editor = await vscode.window.showTextDocument(doc)
+        editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
+        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+      },
+      { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
+    )
+    const reopened = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
+    await expect(reopened.getByText('Seeded Zap B')).toBeVisible()
+    await expect(reopened.getByText('Seeded Zap A')).toHaveCount(0)
+  })
+
+  test('clear-all requires the two-step confirm, empties the history, and it stays empty after reopen', async ({
+    evaluateInVSCode,
+    webviewFrame,
+  }) => {
+    // Seed a fresh batch. NOTE: 'Seeded Zap B' from the previous test may
+    // still be in the store (globalStorage persists across tests in this
+    // window) — that's fine, clear-all must wipe it too, which makes the
+    // final emptiness assertion a stronger proof.
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+        const api = ext!.exports as {
+          zzfxHistory: {
+            keyFor: (source: {
+              uri: string
+              line: number
+              varRef?: { name: string; defUri?: string }
+            }) => string
+            append: (key: string, batch: unknown) => Promise<unknown>
+          }
+        }
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file).toString()
+        const key = api.zzfxHistory.keyFor({
+          uri,
+          line: arg.callLine,
+          varRef: { name: 'LASER', defUri: uri },
+        })
+        await api.zzfxHistory.append(key, {
+          ts: 2_000_000,
+          category: 'Laser',
+          styles: [],
+          source: 'cache',
+          candidates: [
+            { label: 'Seeded Zap C', params: [0.6, 0, 700, 0, 0.03, 0.05, 4, 2], rationale: 'c' },
+          ],
+        })
+      },
+      { file: SOUNDS_FILE, callLine: VARIABLE_CALL_LINE }
+    )
+
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const editor = await vscode.window.showTextDocument(doc)
+        editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
+        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+      },
+      { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
+    )
+
+    const frame = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
+    await expect(frame.getByText('Seeded Zap C')).toBeVisible()
+
+    // First click only ARMS the button (title flips to the explicit
+    // confirm wording); the history must still be intact.
+    await frame.locator('vscode-toolbar-button[title="Clear history for this sound"]').click()
+    const confirm = frame.locator(
+      'vscode-toolbar-button[title="Click again to clear all history for this sound"]'
+    )
+    await expect(confirm).toBeVisible()
+    await expect(frame.getByText('Seeded Zap C')).toBeVisible()
+
+    await confirm.click()
+    await expect(frame.getByText('Seeded Zap C')).toHaveCount(0)
+
+    // Survives the webview's death: reopen and the history is still empty.
+    await evaluateInVSCode(async (vscode) => {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors')
+    })
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const editor = await vscode.window.showTextDocument(doc)
+        editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
+        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+      },
+      { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
+    )
+    const reopened = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
+    // Init landed (real param value) BEFORE asserting absence — otherwise
+    // an empty pre-init panel would vacuously pass.
+    await expect(reopened.getByLabel('Frequency value')).toHaveValue('1500')
+    await expect(reopened.getByText('Seeded Zap C')).toHaveCount(0)
+    await expect(reopened.getByText('Seeded Zap B')).toHaveCount(0)
+  })
 })
