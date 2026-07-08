@@ -5,6 +5,18 @@
  * this file (`ZZFX.buildSamples`, `ZZFXM.build`) stays 100% real,
  * unmodified zzfx/zzfxm — pure synthesis, no AudioContext touch at all.
  *
+ * Deliberately imports nothing from `zzfx` — `sidecar.ts` passes in the
+ * `AudioContext`, sample rate, and master volume it reads off `ZZFX.*`
+ * explicitly. Two reasons: it keeps this file a plain Web Audio graph
+ * builder with no implicit coupling to a global mutable object, and —
+ * load-bearing for testing — `zzfx`'s `ZZFX.audioContext = new
+ * AudioContext` runs at *module load time*, which throws
+ * (`AudioContext is not defined`) outside `sidecar.ts`'s real
+ * `node-web-audio-api/polyfill.js`-first import order. `player.test.ts`
+ * unit-tests this file with a fake `AudioContext` under plain `vitest`
+ * (plain-Node `environment: 'node'`, no such polyfill) — importing
+ * `zzfx` here would break that.
+ *
  * WHY this file exists (root cause, proven by an A/B listening test):
  * `ZZFX.playSamples` (node_modules/zzfx/ZzFX.js) writes samples via
  * `buffer.getChannelData(i).set(channel)`. In a real browser,
@@ -22,54 +34,70 @@
  * operation, not a get-then-mutate one, so it works correctly.
  *
  * `playSampleChannels` below is `ZZFX.playSamples`'s graph (buffer,
- * source, gain, stereo pan, connect, start) rebuilt with that one
- * substitution, plus a persistent `AnalyserNode` tap in the master
- * signal path (see `getPlaybackStats`) so a caller can verify real audio
- * is actually flowing, not just that nothing threw.
+ * source, gain, connect, start) rebuilt with that one substitution, plus
+ * a persistent `AnalyserNode` tap in the master signal path (see
+ * `getPlaybackStats`) so a caller can verify real audio is actually
+ * flowing, not just that nothing threw. It drops `ZZFX.playSamples`'
+ * `StereoPannerNode` — this package never passes a non-default pan
+ * through the wire protocol, and one fewer node type is one fewer
+ * surface for a `node-web-audio-api`/browser behavioral difference to
+ * hide in.
  */
-import { ZZFX } from 'zzfx'
 import type { PlaybackStats } from './protocol.js'
 
 export type PlaySampleChannelsOptions = {
-  volumeScale?: number
   rate?: number
-  pan?: number
   loop?: boolean
 }
 
-let analyser: AnalyserNode | undefined
+const analysers = new WeakMap<AudioContext, AnalyserNode>()
 
-/** The shared master-output tap, created lazily on first use (the real
- * `AudioContext` only exists once `sidecar.ts`'s polyfill import has
- * run). Every `playSampleChannels` call's gain node routes through this
- * SAME analyser on its way to `destination`, so `getPlaybackStats()`
- * reflects whatever is currently audible regardless of which call
- * produced it. */
-function getAnalyser(): AnalyserNode {
+/** The shared master-output tap for a given context, created lazily on
+ * first use. Every `playSampleChannels` call against the same `ctx`
+ * routes its gain node through this SAME analyser on its way to
+ * `destination`, so `getPlaybackStats(ctx)` reflects whatever is
+ * currently audible on that context regardless of which call produced
+ * it. Keyed per-`ctx` (rather than one module-level singleton) so unit
+ * tests can spin up independent fake contexts without cross-talk. */
+function getAnalyser(ctx: AudioContext): AnalyserNode {
+  let analyser = analysers.get(ctx)
   if (!analyser) {
-    analyser = ZZFX.audioContext.createAnalyser()
+    analyser = ctx.createAnalyser()
     // Default fftSize (2048) is plenty for a peak/silence check — this
     // isn't rendering a spectrum, just sampling "is anything nonzero."
-    analyser.connect(ZZFX.audioContext.destination)
+    analyser.connect(ctx.destination)
+    analysers.set(ctx, analyser)
   }
   return analyser
 }
 
 /**
- * `ZZFX.playSamples`'s exact graph, with `copyToChannel` in place of
- * `getChannelData().set()` and the output routed through the shared
- * analyser tap instead of straight to `destination`. Returns the
- * `AudioBufferSourceNode`, same as the original — `commandHandler.ts`'s
- * `currentSong` handle is this return value's `.stop()`.
+ * `ZZFX.playSamples`'s graph (buffer, source, gain, connect, start),
+ * with `copyToChannel` in place of `getChannelData().set()`, no
+ * `StereoPannerNode` (see the file doc comment), and the output routed
+ * through the shared analyser tap instead of straight to `destination`.
+ * Returns the `AudioBufferSourceNode`, same as the original —
+ * `commandHandler.ts`'s `currentSong` handle is this return value's
+ * `.stop()`.
+ *
+ * `sampleRate` must match whatever rate the caller's synthesis assumed
+ * (`ZZFX.sampleRate`, not necessarily `ctx.sampleRate`) — `AudioBuffer`
+ * playback resamples to the context's actual rate automatically, but
+ * only if the buffer's declared rate correctly describes the samples it
+ * holds; declaring the wrong rate here would shift pitch and duration,
+ * not just efficiency.
  */
 export function playSampleChannels(
+  ctx: AudioContext,
   sampleChannels: (number[] | Float32Array)[],
-  { volumeScale = 1, rate = 1, pan = 0, loop = false }: PlaySampleChannelsOptions = {}
+  sampleRate: number,
+  masterVolume: number,
+  { rate = 1, loop = false }: PlaySampleChannelsOptions = {}
 ): AudioBufferSourceNode {
   const channelCount = sampleChannels.length
   const sampleLength = sampleChannels[0]?.length ?? 0
-  const buffer = ZZFX.audioContext.createBuffer(channelCount, sampleLength, ZZFX.sampleRate)
-  const source = ZZFX.audioContext.createBufferSource()
+  const buffer = ctx.createBuffer(channelCount, sampleLength, sampleRate)
+  const source = ctx.createBufferSource()
 
   sampleChannels.forEach((channel, i) => {
     buffer.copyToChannel(Float32Array.from(channel), i)
@@ -78,12 +106,10 @@ export function playSampleChannels(
   source.playbackRate.value = rate
   source.loop = loop
 
-  const gainNode = ZZFX.audioContext.createGain()
-  gainNode.gain.value = ZZFX.volume * volumeScale
-  gainNode.connect(getAnalyser())
-
-  const pannerNode = new StereoPannerNode(ZZFX.audioContext, { pan })
-  source.connect(pannerNode).connect(gainNode)
+  const gainNode = ctx.createGain()
+  gainNode.gain.value = masterVolume
+  source.connect(gainNode)
+  gainNode.connect(getAnalyser(ctx))
   source.start()
 
   return source
@@ -94,8 +120,8 @@ export function playSampleChannels(
  * peak/silent verdict. Meaningful only while something is actually
  * playing — see `PlaybackStats`'s doc comment.
  */
-export function getPlaybackStats(): PlaybackStats {
-  const node = getAnalyser()
+export function getPlaybackStats(ctx: AudioContext): PlaybackStats {
+  const node = getAnalyser(ctx)
   const buffer = new Float32Array(node.fftSize)
   node.getFloatTimeDomainData(buffer)
 

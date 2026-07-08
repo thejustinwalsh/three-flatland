@@ -132,39 +132,54 @@ backend.
 
 ## Why synthesis is unmodified but output isn't
 
-**Root cause (proven by an A/B listening test):** `zzfx()`/`zzfxm()`'s
-internal output step, `ZZFX.playSamples` (`node_modules/zzfx/ZzFX.js`),
-writes samples via `buffer.getChannelData(i).set(channel)`. In a real
-browser, `getChannelData()` returns a **live view** into the
-`AudioBuffer`'s underlying storage — mutating it is exactly how the spec
-expects you to fill a buffer. `node-web-audio-api`'s `AudioBuffer`
-(`node_modules/node-web-audio-api/js/AudioBuffer.js`) returns whatever its
-native binding's `getChannelData()` hands back — a **detached copy**, not
-a live view. Writing samples into that copy never reaches the buffer that
-actually gets played: every sound "plays" cleanly (no error,
-`source.start()` runs, the sidecar acks) but is **dead silent**. Calling
-`zzfx()`/`zzfxm()` directly — the original Z9 implementation — hit this
-exactly, silently, with nothing in the process/lifecycle e2e specs able
-to detect it.
+**Root cause (proven by an A/B listening test, then reproduced instrumentally):**
+`zzfx()`/`zzfxm()`'s internal output step, `ZZFX.playSamples`
+(`node_modules/zzfx/ZzFX.js`), writes samples via
+`buffer.getChannelData(i).set(channel)`. In a real browser,
+`getChannelData()` returns a **live view** into the `AudioBuffer`'s
+underlying storage — mutating it is exactly how the spec expects you to
+fill a buffer. Under `node-web-audio-api`
+(`node_modules/node-web-audio-api/js/AudioBuffer.js`, `getChannelData`
+just returns `this[kNapiObj].getChannelData(channel)` — whatever the
+native binding hands back), writing into that result **only reaches the
+buffer that actually gets played when the process is running as
+Electron's `ELECTRON_RUN_AS_NODE` Node integration — it silently does
+nothing under stock Node.js.** This is a genuinely Electron-specific
+native-binding quirk, not a universal `node-web-audio-api` limitation —
+see "This bug is Electron-specific — it will NOT reproduce under plain
+Node" below, because it changes what you're allowed to conclude from any
+future test of this code.
+
+Calling `zzfx()`/`zzfxm()` directly — the original Z9 implementation —
+hit this exactly, silently (in the one environment that matters,
+production, i.e. spawned as `Code Helper (Plugin)`), with nothing in the
+process/lifecycle e2e specs able to detect it.
 
 **The fix (`src/player.ts`):** `AudioBuffer.copyToChannel(source,
 channelNumber, bufferOffset)` (same file) calls straight through to a
 native write-into-buffer call, not a get-then-mutate one, so it works
-correctly under `node-web-audio-api`. `player.ts`'s `playSampleChannels`
-is `ZZFX.playSamples`'s exact graph (buffer, source, gain, stereo pan,
-connect, start) rebuilt with `copyToChannel` in place of
-`getChannelData().set()`.
+correctly under `node-web-audio-api` in every environment tested,
+Electron-hosted or not. `player.ts`'s `playSampleChannels` is
+`ZZFX.playSamples`'s graph (buffer, source, gain, connect, start) rebuilt
+with `copyToChannel` in place of `getChannelData().set()` — and with no
+`StereoPannerNode`, since this package never passes a non-default pan
+through the wire protocol and one fewer node type is one fewer surface
+for another such Electron/browser behavioral difference to hide in.
 
 **What stays unmodified:** everything upstream of that one substitution.
 `sidecar.ts` calls `ZZFX.buildSamples(...params)` (one-shots) and
 `ZZFXM.build(instruments, patterns, sequence, bpm)` (songs) directly —
 both are pure numeric waveform synthesis, no `AudioContext` touch at all,
 unmodified real `zzfx`/`@zzfx-studio/zzfxm` — then hands the resulting
-sample arrays to `player.ts`'s `playSampleChannels` for output. Zero
-fidelity drift from what those packages produce; only the "get already-
-synthesized samples into the actual audio output" step is owned locally,
-because it's the one step `node-web-audio-api` doesn't support the way
-`zzfx`/`zzfxm` expect.
+sample arrays, plus `ZZFX.audioContext`/`ZZFX.sampleRate`/`ZZFX.volume`
+read explicitly at the call site, to `player.ts`'s `playSampleChannels`
+for output. Zero fidelity drift from what those packages produce; only
+the "get already-synthesized samples into the actual audio output" step
+is owned locally, because it's the one step `node-web-audio-api` doesn't
+support the way `zzfx`/`zzfxm` expect. `player.ts` itself deliberately
+imports nothing from `zzfx` — see its file doc comment — which is also
+what makes `player.test.ts`'s fake-`AudioContext` unit tests possible
+under plain-Node `vitest`.
 
 `sidecar.ts` still imports `node-web-audio-api/polyfill.js` **before**
 `zzfx` — `zzfx`'s `ZZFX.audioContext = new AudioContext` runs at _module
@@ -174,21 +189,70 @@ this via `Object.assign(globalThis, webaudio)`). `player.ts` reuses that
 same `ZZFX.audioContext` for both one-shots and songs — no dual-context
 juggling needed.
 
-## Audibility regression guard (`stats`, `src/player.ts`)
+## This bug is Electron-specific — it will NOT reproduce under plain Node
+
+**Load-bearing finding, verified twice independently — read this before
+trusting or writing any test that claims to prove or disprove this bug:**
+`getChannelData().set()` writes samples correctly and audibly when the
+sidecar runs under plain, stock Node.js. It is **silent only when the
+exact same code runs under Electron's Node integration**
+(`ELECTRON_RUN_AS_NODE=1` inside `Code Helper (Plugin)` — the sidecar's
+real, only production execution path). Verified via a controlled
+waveform-shape comparison (not just a peak check — see why below), run
+both ways against the identical code:
+
+- **Plain Node** (`node dist/sidecar.js`, no Electron involved): a known
+  440 Hz sine written via `getChannelData(i).set(...)` plays back as a
+  coherent 440 Hz tone — correct peak, correct zero-crossing rate,
+  correct sample-by-sample shape. Indistinguishable from `copyToChannel`.
+- **Real `Code Helper (Plugin)`** (`ELECTRON_RUN_AS_NODE=1`, the actual
+  production path): the identical code, identical samples, written via
+  `getChannelData(i).set(...)`, plays back as **exact silence** — peak
+  `0`, zero crossings `0`, every sample `0`. `copyToChannel` on the same
+  binary/environment plays the correct tone.
+
+**Why the peak-only check matters less than it sounds — and why a naive
+"spawn the real sidecar and check peak" test can lie:** a first attempt
+at this check used only `peak > threshold` under **plain Node** (the
+natural choice for a `vitest`-tier test, since `vitest` itself runs under
+plain Node) and — reproducibly — **passed with the bug still present**,
+because plain Node never exhibits the bug in the first place. A regression
+guard that can't fail when the regression is present is worse than no
+guard: it looks like protection while providing none. **Do not add a
+vitest-level test in this package that spawns `dist/sidecar.js` via plain
+`process.execPath` and claims to prove audibility** — it structurally
+cannot, regardless of how the assertion is tuned. The only valid
+audibility proof is `tools/vscode/e2e/specs/zzfx-play.spec.ts`, which
+drives the real sidecar through a real running extension host, and
+therefore through the real `Code Helper (Plugin)` binary. That spec has
+been verified in both directions: it passes with `copyToChannel` in place
+and **fails** (`stats.silent === true`) when `getChannelData().set()` is
+reintroduced — that's what makes it a real guard, not a decorative one.
+
+If this gate is ever in doubt again, re-run the waveform-shape comparison
+above (a known sine, zero-crossing count, not just peak) under both a
+plain `node` invocation and the real `Code Helper (Plugin)` binary
+(`ELECTRON_RUN_AS_NODE=1`) — a peak-only check on either alone is not
+sufficient evidence either way.
+
+## Audibility regression guard (`stats`, `src/player.ts`, e2e-only)
 
 `player.ts` keeps a persistent `AnalyserNode` tap in the master output
 path (every `playSampleChannels` call's gain node routes through it on
-its way to `destination`). `getPlaybackStats()` reads the analyser's
-current time-domain window via `getFloatTimeDomainData` — an out-param
-"write real-time data into this array" call, the same reliable category
-as `copyToChannel`, not the buggy `getChannelData` pattern — and reduces
-it to `{ peak, silent }`. This is wired through the `stats` protocol
+its way to `destination`), keyed per-`AudioContext` via a `WeakMap` so
+`sidecar.ts`'s single long-lived `ZZFX.audioContext` gets one shared
+analyser while unit tests can use independent fake contexts without
+cross-talk. `getPlaybackStats()` reads the analyser's current
+time-domain window via `getFloatTimeDomainData` — an out-param "write
+real-time data into this array" call, the same reliable category as
+`copyToChannel`, not the buggy `getChannelData` pattern — and reduces it
+to `{ peak, silent }`. This is wired through the `stats` protocol
 command, `PlaySidecarClient.getStats()`, `playSidecarManager.ts`'s
 `getPlaySidecarStats()`, and `extension/index.ts`'s `ExtensionApi` so
 `tools/vscode/e2e/specs/zzfx-play.spec.ts` can play a sound through the
-real sidecar and assert real, nonzero output — the exact check that would
-have caught the `getChannelData()` silent-playback bug instead of letting
-it ship acking clean.
+real sidecar and assert real, nonzero output. **This proof only holds at
+the e2e tier** — see "This bug is Electron-specific" above for why a
+vitest-level real-sidecar test cannot substitute for it.
 
 ## Lifecycle — mirrors `sidecarManager.ts`
 
@@ -209,7 +273,7 @@ follow imports to inline them). `dist/sidecar.js` is the file actually
 passed to `child_process.spawn()` — it must exist as a real file on disk,
 it's never imported as a module by the extension host itself.
 
-## Tests — two tiers, no real audio in either
+## Tests — three tiers, no real audio in any of them
 
 - **`src/commandHandler.test.ts`** — the state machine (song replacement,
   stop semantics, error-to-Nack) against a fake `AudioBackend`. No
@@ -227,13 +291,26 @@ it's never imported as a module by the extension host itself.
   `FAKE_PLAY_SIDECAR_HANG_ON_SHUTDOWN` env var — `PlaySidecarOptions` has
   no CLI-args passthrough, unlike codelens-service's client, so the
   fixture's hang-mode switch goes through `env` instead of an arg).
+- **`src/player.test.ts`** — `playSampleChannels`/`getPlaybackStats`
+  against a fake `AudioContext` (plain object literals + `vi.fn()`, no
+  real Web Audio anywhere). Proves the **code path** — every channel goes
+  through `copyToChannel`, `getChannelData` is never called (the fake's
+  `getChannelData` throws if invoked, so a regression fails loudly here
+  too), gain is set from the passed-in `masterVolume`, no
+  `StereoPannerNode` gets created, one shared analyser per `ctx`. This is
+  a legitimate, platform-independent regression guard for "does the code
+  still call the right API" — it does **not** and cannot prove audio
+  actually plays; see the next section for why that distinction is load-
+  bearing here specifically.
 
-Neither tier proves the _real_ `sidecar.ts` + real `node-web-audio-api`
-combination works — that's what the hard prototype gate above and
-`tools/vscode/e2e/specs/zzfx-play.spec.ts` (driven against the real
-built extension) are for. Unit tests here are deliberately scoped to
-"does the state machine / process plumbing behave correctly," not "does
-audio actually play."
+None of these three tiers prove the _real_ `sidecar.ts` + real
+`node-web-audio-api` combination is actually audible — that's what the
+hard prototype gate above and `tools/vscode/e2e/specs/zzfx-play.spec.ts`
+(driven against the real built extension, through the real `Code Helper
+(Plugin)` binary) are for, and per "This bug is Electron-specific" above,
+**that e2e tier is not optional or redundant with a vitest-level
+real-process test** — it's the only tier capable of catching this
+specific class of regression at all.
 
 ## Common pitfalls
 
@@ -273,6 +350,18 @@ Contents/MacOS/Code Helper (Plugin)` (macOS) or the equivalent utility
   module load) or before the sound has started rendering will correctly,
   and unhelpfully, report silence. Poll for a bit rather than a single
   fixed-delay check — see the Z12 e2e spec's polling loop.
+- **Adding a vitest-level test that spawns `dist/sidecar.js` via plain
+  `process.execPath` and asserts on `stats.peak`/`stats.silent` to "prove
+  audibility."** It cannot — `getChannelData().set()` plays back
+  correctly under plain Node and only breaks under Electron's Node
+  integration, so a plain-Node test passes identically whether the bug is
+  present or fixed (verified both ways, see "This bug is
+  Electron-specific" above). This looks like a regression guard and
+  isn't one. `src/player.test.ts`'s fake-`AudioContext` unit tests are
+  the right vitest-tier check (proves the _code_ calls the right API);
+  `tools/vscode/e2e/specs/zzfx-play.spec.ts` is the right audibility
+  check (proves the _output_ is real, through the real `Code Helper
+(Plugin)` path).
 
 ## Reference
 

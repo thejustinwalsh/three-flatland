@@ -42,11 +42,21 @@ import { getPlaybackStats, playSampleChannels } from './player.js'
 
 const handler = createCommandHandler({
   play: (params) => {
-    playSampleChannels([ZZFX.buildSamples(...params)])
+    playSampleChannels(
+      ZZFX.audioContext,
+      [ZZFX.buildSamples(...params)],
+      ZZFX.sampleRate,
+      ZZFX.volume
+    )
   },
   playSong: (song) =>
-    playSampleChannels(ZZFXM.build(song.instruments, song.patterns, song.sequence, song.bpm)),
-  getStats: () => getPlaybackStats(),
+    playSampleChannels(
+      ZZFX.audioContext,
+      ZZFXM.build(song.instruments, song.patterns, song.sequence, song.bpm),
+      ZZFX.sampleRate,
+      ZZFX.volume
+    ),
+  getStats: () => getPlaybackStats(ZZFX.audioContext),
 })
 
 function send(response: Response): void {
