@@ -11,6 +11,7 @@ import { HeaderStats } from './panels/header-stats.js'
 import { ProducerSelect } from './panels/producer-select.js'
 import { ProtocolLog } from './panels/protocol-log.js'
 import { RegistryPanel } from './panels/registry.js'
+import { Scrubber } from './panels/scrubber.js'
 import { StatsStrip } from './panels/stats.js'
 
 export function App() {
@@ -25,6 +26,7 @@ export function App() {
       <main class="dashboard-main">
         <section class="dashboard-content">
           <StatsStrip />
+          <Scrubber />
           <div class="dashboard-split">
             <div class="dashboard-split-col">
               <BuffersPanel />

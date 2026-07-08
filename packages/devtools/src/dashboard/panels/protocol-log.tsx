@@ -28,6 +28,7 @@ import type { DebugMessage } from 'three-flatland/debug-protocol'
 import { getClient } from '../client.js'
 import { exportSession } from '../export.js'
 import { useDevtoolsState } from '../hooks.js'
+import { getFrameCursor, setFrameCursor } from '../frame-cursor.js'
 import { getProtocolStore, type LogEntry } from '../protocol-store.js'
 
 const ROW_HEIGHT = 22
@@ -64,8 +65,12 @@ export function ProtocolLog() {
   const [hoveredId, setHoveredId] = useState<number | null>(null)
 
   const [tail, setTail] = useState(true)
+  // Time-travel cursor (#29 Phase A): parked wins over tail — the log
+  // stops following new entries while the user inspects a past frame.
+  const frameCursor = getFrameCursor()
+  const effectiveTail = tail && frameCursor === null
   const tailRef = useRef(true)
-  tailRef.current = tail
+  tailRef.current = effectiveTail
 
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const filterInputRef = useRef<HTMLInputElement | null>(null)
@@ -74,6 +79,67 @@ export function ProtocolLog() {
   // post-render effect to compensate scrollTop when tail is off.
   const pendingBumpRef = useRef(0)
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 })
+
+  // Parked cursor → scroll to the row whose frame is closest ≤ the
+  // cursor (nearest-frame semantics: data batches at ~4 Hz, engine
+  // frames at 60 Hz — most frames have no exact row). Only rows in the
+  // tail cache are scanned; deeper history scrolls in as it hydrates.
+  const parkedCursorRef = useRef<{ providerId: string | null; frame: number | null }>({
+    providerId: null,
+    frame: null,
+  })
+  useEffect(() => {
+    // Key the parked cursor by provider AND frame: switching producers while
+    // both are parked on the same frame number must still re-scroll.
+    const sameCursor =
+      parkedCursorRef.current.providerId === activeProviderId &&
+      parkedCursorRef.current.frame === frameCursor
+    if (frameCursor === null || sameCursor) {
+      parkedCursorRef.current = { providerId: activeProviderId, frame: frameCursor }
+      return
+    }
+    parkedCursorRef.current = { providerId: activeProviderId, frame: frameCursor }
+    if (activeProviderId === null) return
+    const { total, ids } = store.statsFor(activeProviderId)
+    let matched = false
+    for (let i = 0; i < total; i++) {
+      const id = ids[total - 1 - i]
+      if (id === undefined) continue
+      const entry = store.peek(activeProviderId, id)
+      if (entry?.frame !== undefined && entry.frame <= frameCursor) {
+        const el = scrollerRef.current
+        if (el !== null) el.scrollTop = i * ROW_HEIGHT
+        matched = true
+        break
+      }
+    }
+    if (!matched) {
+      // Older than the tail cache — locate the row through IDB, then
+      // scroll if the cursor hasn't moved on while we were reading.
+      const target = frameCursor
+      const provider = activeProviderId
+      void store
+        .queryFiltered(provider, (entry) => entry.frame !== undefined && entry.frame <= target)
+        .then((matchedIds) => {
+          if (
+            parkedCursorRef.current.providerId !== provider ||
+            parkedCursorRef.current.frame !== target
+          )
+            return
+          const lastId = matchedIds[matchedIds.length - 1]
+          if (lastId === undefined) return
+          const { total: t, ids: allIds } = store.statsFor(provider)
+          for (let i = 0; i < t; i++) {
+            if (allIds[t - 1 - i] === lastId) {
+              const el = scrollerRef.current
+              if (el !== null) el.scrollTop = i * ROW_HEIGHT
+              break
+            }
+          }
+        })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameCursor, activeProviderId])
 
   // Wire the raw-message tap → store. The store owns IDB persistence,
   // counters, cache + eviction; this listener translates raw messages
@@ -510,7 +576,17 @@ export function ProtocolLog() {
                     type="button"
                     class={cls}
                     style={{ transform: `translateY(${offsetTop}px)`, height: `${ROW_HEIGHT}px` }}
-                    onClick={isPlaceholder ? undefined : () => setSelectedId((x) => (x === id ? null : id))}
+                    onClick={
+                      isPlaceholder
+                        ? undefined
+                        : () => {
+                            setSelectedId((x) => (x === id ? null : id))
+                            // Entry point per the time-travel design:
+                            // clicking a row parks the cursor at its frame.
+                            const frame = e!.frame
+                            if (frame !== undefined) setFrameCursor(frame)
+                          }
+                    }
                     onMouseEnter={isPlaceholder ? undefined : () => setHoveredId(id)}
                     onMouseLeave={isPlaceholder ? undefined : () => setHoveredId((h) => (h === id ? null : h))}
                     title={isPlaceholder ? undefined : new Date(e!.at).toISOString()}
