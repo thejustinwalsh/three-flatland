@@ -14,11 +14,18 @@
       "source": "./src/canvas.ts",
       "types": "./src/canvas.ts",
       "default": "./src/canvas.ts"
+    },
+    "./grid": {
+      "source": "./src/gridSpec.ts",
+      "types": "./src/gridSpec.ts",
+      "default": "./src/gridSpec.ts"
     }
   },
   "module": "./src/index.ts",
   "types": "./src/index.ts",
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "sideEffects": false,
   "scripts": {
     "typecheck": "tsc --noEmit"
