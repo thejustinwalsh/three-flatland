@@ -13,12 +13,13 @@
 // spread-of-identifier call resolving the same varRef — see
 // songResolver.ts's file doc comment), and
 // audio.file (three.js/Howler/Wad, one real file per audioFileResolver.ts
-// resolution tier, one unresolvable path, and commented-out decoys of
-// every positive case).
+// FAST resolution tier, one slow-search-only file, one unresolvable path,
+// and commented-out decoys of every positive case).
 //
 // Real .wav/.ogg files: sounds/jump.wav (workspace root),
 // public/explosion.ogg (public/), src/click.wav (this file's own
-// directory, since this file also lives in src/).
+// directory, since this file also lives in src/), media/deep/thunder.ogg
+// (no fast tier — resolves only via the workspace-wide fallback search).
 
 type ZzFXParams = [
   number,
@@ -133,9 +134,19 @@ export function playExplosionSfx() {
   new Wad({ source: 'explosion.ogg' }).play()
 }
 
-// Negative case: audio.file via bare Audio, an UNRESOLVABLE path — the
-// lens must be ABSENT (no copy of this file exists anywhere the resolver
-// looks).
+// Positive case (slow tier): audio.file via bare Audio whose path misses
+// every FAST tier — thunder.ogg lives only at media/deep/thunder.ogg, so
+// the lens resolves via the workspace-wide basename fallback search
+// (`$(search) …` → ▶ Play). Also the lazy-repair cycle's subject: the
+// e2e deletes/re-adds the file around Play attempts.
+export function playThunderSfx() {
+  new Audio('thunder.ogg').play()
+}
+
+// Not-found case: audio.file via bare Audio, an UNRESOLVABLE path — no
+// copy exists anywhere, so the fallback search settles to a
+// `$(search) not found` lens (an informational signal, not silent
+// absence — see #41).
 export function playMissingSfx() {
   new Audio('nonexistent-sound.mp3').play()
 }

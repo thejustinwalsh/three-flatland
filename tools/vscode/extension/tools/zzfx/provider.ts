@@ -5,16 +5,20 @@
 // on every keystroke-adjacent scroll/edit); `resolveCodeLens` computes the
 // title + command lazily, only for lenses actually scrolled into view.
 //
-// `audio.file` is the one kind whose LENS EXISTENCE (not just its command)
-// depends on work done in `provideCodeLenses` — an unresolvable path means
-// no lens at all, which can't be deferred to `resolveCodeLens` (that only
-// fills in an already-emitted lens's command). See `audioFileResolver.ts`.
+// `audio.file` is the one kind whose LENS SHAPE (not just its command)
+// depends on work done in `provideCodeLenses` — the fast/slow resolution
+// state decides between `▶ Play`, a `$(search) …` resolving lens, a
+// `$(search) not found` lens, and (for URLs/absolute paths the workspace
+// search can't meaningfully hunt for) no lens at all, which can't be
+// deferred to `resolveCodeLens` (that only fills in an already-emitted
+// lens's command). See `audioFileResolver.ts` for the whole fast→slow →
+// per-session cache → lazy-repair design.
 import * as path from 'node:path'
 import * as vscode from 'vscode'
 import type { CodelensServiceClient, Finding } from '@three-flatland/codelens-service'
 import { log } from '../../log'
 import { resolveParams } from './resolveParams'
-import { resolveAudioFilePath } from './audioFileResolver'
+import type { AudioFileLensState, AudioFileResolver } from './audioFileResolver'
 
 /** Tier 1 glob equivalent as a VS Code language selector — the sidecar
  * scans `**\/*.{ts,tsx,js,jsx,mjs,cjs}`; .mjs/.cjs both register under the
@@ -44,16 +48,23 @@ function toVscodeRange(range: Finding['range']): vscode.Range {
  * gets play only. */
 type LensVariant = 'play' | 'edit' | 'stop'
 
+/** `audio.file` only — everything `resolveCodeLens` needs to bake the
+ * lens's command without re-touching the filesystem: the resolution
+ * state computed once in `provideCodeLenses`, plus the reference triple
+ * the playFile command hands back to the resolver for its play-time
+ * verify/repair. */
+type AudioFileLensInfo = {
+  resolution: AudioFileLensState
+  ref: { path: string; sourceDir: string; workspaceRoot: string }
+}
+
 class ZzfxCodeLens extends vscode.CodeLens {
   constructor(
     range: vscode.Range,
     readonly finding: Finding,
     readonly variant: LensVariant,
     readonly docUri: vscode.Uri,
-    /** `audio.file` only — the path resolved (and existence-checked) once
-     * in `provideCodeLenses`, so `resolveCodeLens` never re-touches the
-     * filesystem. */
-    readonly resolvedPath?: string
+    readonly audioFile?: AudioFileLensInfo
   ) {
     super(range)
   }
@@ -66,7 +77,10 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
   private readonly notifyTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private readonly refreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-  constructor(private readonly getClient: () => Promise<CodelensServiceClient | null>) {}
+  constructor(
+    private readonly getClient: () => Promise<CodelensServiceClient | null>,
+    private readonly audioResolver: AudioFileResolver
+  ) {}
 
   dispose(): void {
     this._onDidChangeCodeLenses.dispose()
@@ -74,6 +88,12 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
     for (const timer of this.refreshTimers.values()) clearTimeout(timer)
     this.notifyTimers.clear()
     this.refreshTimers.clear()
+  }
+
+  /** Re-render every lens now — the audio resolver fires this when an
+   * async search settles or a play-time repair changes an answer. */
+  refresh(): void {
+    this._onDidChangeCodeLenses.fire()
   }
 
   async provideCodeLenses(
@@ -110,13 +130,24 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
           lenses.push(new ZzfxCodeLens(range, finding, 'stop', document.uri))
           break
         case 'audio.file': {
-          // Existence-gated: an audio.file lens must be ABSENT when the
-          // referenced path doesn't resolve to a real file — there's
-          // nothing playable to offer, and resolveCodeLens can't retract
-          // an already-emitted lens.
-          const resolved = resolveAudioFilePath(finding.payload.path, sourceDir, workspaceRoot)
-          if (!resolved) break
-          lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri, resolved))
+          // Progressive resolution (#41): fast tiers give `▶ Play`
+          // immediately; a fast miss on a searchable (plainly-relative)
+          // path shows `$(search) …` while the workspace-wide fallback
+          // runs, then `▶ Play` or `$(search) not found` once it
+          // settles. Only an INELIGIBLE reference (URL/absolute — the
+          // search couldn't mean anything) gets no lens at all.
+          const resolution = this.audioResolver.getLensState(
+            finding.payload.path,
+            sourceDir,
+            workspaceRoot
+          )
+          if (resolution.state === 'ineligible') break
+          lenses.push(
+            new ZzfxCodeLens(range, finding, 'play', document.uri, {
+              resolution,
+              ref: { path: finding.payload.path, sourceDir, workspaceRoot },
+            })
+          )
           break
         }
       }
@@ -170,12 +201,31 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
           ? { title: '▶ Play', command: 'threeFlatland.zzfx.playSong', arguments: [source] }
           : { title: '⏹ Stop', command: 'threeFlatland.zzfx.stopSong', arguments: [] }
     } else {
-      // audio.file — resolvedPath was already existence-checked in
-      // provideCodeLenses; this lens wouldn't exist otherwise.
-      codeLens.command = {
-        title: '▶ Play',
-        command: 'threeFlatland.zzfx.playFile',
-        arguments: [codeLens.resolvedPath],
+      // audio.file — the resolution state was computed once in
+      // provideCodeLenses. Both actionable states route to playFile with
+      // the reference triple as the second argument: the command hands it
+      // back to the resolver, whose play-time verify/repair covers a
+      // cached path that has since vanished (resolved state) and a
+      // re-added asset behind a settled not-found (retry click). VS Code
+      // renders `$(search)` as a codicon in lens titles.
+      const { resolution, ref } = codeLens.audioFile!
+      if (resolution.state === 'resolved') {
+        codeLens.command = {
+          title: '▶ Play',
+          command: 'threeFlatland.zzfx.playFile',
+          arguments: [resolution.path, ref],
+        }
+      } else if (resolution.state === 'searching') {
+        // Not clickable while the fallback search is in flight — the
+        // empty command id renders an inert lens; onDidChangeCodeLenses
+        // fires when it settles.
+        codeLens.command = { title: '$(search) …', command: '' }
+      } else {
+        codeLens.command = {
+          title: '$(search) not found',
+          command: 'threeFlatland.zzfx.playFile',
+          arguments: [undefined, ref],
+        }
       }
     }
     return codeLens

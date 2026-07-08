@@ -4,6 +4,7 @@ import type { PlaySidecarClient } from '@three-flatland/zzfx-play'
 import { getSidecarClient, shutdownSidecar } from './sidecarManager'
 import { getPlaySidecarClient, shutdownPlaySidecar } from './playSidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
+import { AudioFileResolver } from './audioFileResolver'
 import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
 import { resolveSong } from './resolveSong'
@@ -12,6 +13,11 @@ import { isToolEnabled } from '../../toolRegistry'
 import { log } from '../../log'
 
 const INLINE_PLAYBACK_SETTING = 'threeFlatland.zzfx.inlinePlayback.enabled'
+
+/** Cap on the slow audio.file basename search — the resolver only plays
+ * one match, and an uncapped findFiles over a huge workspace buys nothing
+ * past "enough candidates to rank" (see pickBestMatch). */
+const MAX_AUDIO_SEARCH_RESULTS = 32
 
 type ZzfxCallFinding = Extract<Finding, { kind: 'zzfx.call' }>
 type ZzfxmSongFinding = Extract<Finding, { kind: 'zzfxm.song' }>
@@ -134,7 +140,23 @@ function tryPlayInline(context: vscode.ExtensionContext, params: number[]): bool
 export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Disposable {
   const disposables: vscode.Disposable[] = []
 
-  const provider = new ZzfxCodeLensProvider(() => getSidecarClient(context))
+  // Per-session (per-activation) audio.file resolution cache + slow
+  // workspace-search fallback — see audioFileResolver.ts's file doc
+  // comment for the whole design. `onDidUpdate` re-renders lenses when an
+  // async search settles; `provider` is assigned right below, and no
+  // search can settle before registration completes.
+  const audioResolver = new AudioFileResolver({
+    findByBasename: async (basename) => {
+      const uris = await vscode.workspace.findFiles(
+        `**/${basename}`,
+        '**/node_modules/**',
+        MAX_AUDIO_SEARCH_RESULTS
+      )
+      return uris.map((uri) => uri.fsPath)
+    },
+    onDidUpdate: () => provider.refresh(),
+  })
+  const provider = new ZzfxCodeLensProvider(() => getSidecarClient(context), audioResolver)
   disposables.push(
     vscode.languages.registerCodeLensProvider(ZZFX_DOCUMENT_SELECTOR, provider),
     provider
@@ -316,21 +338,41 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
     })
   )
 
-  // CodeLens-only — arg is the already-resolved, existence-checked
-  // absolute path from provider.ts's audioFileResolver.ts call (the lens
-  // itself doesn't exist for an unresolvable path, so this command never
-  // has to re-resolve or re-check existence).
+  // CodeLens-only — `absolutePath` is the resolver's answer baked into
+  // the lens (undefined for a `$(search) not found` lens's retry click);
+  // `ref` is the reference triple handed back to the resolver so it can
+  // trust-but-verify on use: re-stat the cached path, and if the file has
+  // since been deleted/moved (or a re-added asset sits behind a settled
+  // not-found), re-run the full fast→slow resolution before playing —
+  // the lazy self-repair from #41. A legacy direct invocation with only a
+  // path skips the repair and plays it as-is.
   disposables.push(
-    vscode.commands.registerCommand('threeFlatland.zzfx.playFile', async (absolutePath: string) => {
-      // Defense in depth — see atlas/register.ts's identical guard comment.
-      if (!isToolEnabled('zzfxStudio')) {
-        void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
-        return
+    vscode.commands.registerCommand(
+      'threeFlatland.zzfx.playFile',
+      async (
+        absolutePath: string | undefined,
+        ref?: { path: string; sourceDir: string; workspaceRoot: string }
+      ) => {
+        // Defense in depth — see atlas/register.ts's identical guard comment.
+        if (!isToolEnabled('zzfxStudio')) {
+          void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
+          return
+        }
+        const playClient = getInlinePlayClientOrNotify(context)
+        if (!playClient) return
+
+        const resolved = ref
+          ? await audioResolver.resolveForPlay(ref.path, ref.sourceDir, ref.workspaceRoot)
+          : absolutePath
+        if (!resolved) {
+          void vscode.window.showInformationMessage(
+            `FL Audio: "${ref?.path ?? absolutePath}" was not found anywhere in this workspace.`
+          )
+          return
+        }
+        playClient.playFile(resolved, getPlaybackVolumeMultiplier())
       }
-      const playClient = getInlinePlayClientOrNotify(context)
-      if (!playClient) return
-      playClient.playFile(absolutePath, getPlaybackVolumeMultiplier())
-    })
+    )
   )
 
   // Turning inline playback off mid-session shouldn't leave an already-

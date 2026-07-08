@@ -13,18 +13,35 @@
 // `e2e/host-bridge/client.ts`'s doc comment), so it can only see its own
 // `(vscode, arg)` parameters, never anything from this file's outer
 // module scope.
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { expect, test } from '../fixtures'
 
 const SOUNDS_FILE = 'src/audio-sources.ts'
 
-// 0-indexed lines — see src/audio-sources.ts.
-const FANFARE_CALL_LINE = 94 // zzfxm(fanfareSong) — bare-identifier varRef
-const CHIPTUNE_CALL_LINE = 100 // zzfxm([...], [...], [...]) — positional literal
-const FANFARE_SPREAD_CALL_LINE = 109 // zzfxM(...fanfareSong) — spread varRef, plays
-const JUMP_SFX_LINE = 120 // audioLoader.load('sounds/jump.wav') — workspace-root tier
-const CLICK_SFX_LINE = 126 // new Howl({ src: ['click.wav'] }) — source-dir tier
-const EXPLOSION_SFX_LINE = 132 // new Wad({ source: 'explosion.ogg' }) — public/ tier
-const MISSING_SFX_LINE = 139 // new Audio('nonexistent-sound.mp3') — unresolvable, no lens
+// Line anchors derived from the fixture's actual content, not hardcoded —
+// hardcoded 0-indexed constants silently went stale twice when comment
+// edits shifted the file. `lineOf` throws loudly if a call site vanishes.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const SOUNDS_FIXTURE_LINES = fs
+  .readFileSync(path.join(__dirname, '..', 'fixtures', 'workspace', SOUNDS_FILE), 'utf8')
+  .split('\n')
+
+function lineOf(needle: string): number {
+  const line = SOUNDS_FIXTURE_LINES.findIndex((l) => l.includes(needle))
+  if (line === -1) throw new Error(`audio-sources.ts no longer contains: ${needle}`)
+  return line
+}
+
+const FANFARE_CALL_LINE = lineOf('zzfxm(fanfareSong)') // bare-identifier varRef
+const CHIPTUNE_CALL_LINE = lineOf('zzfxm([[0.5, 0, 300]]') // positional literal
+const FANFARE_SPREAD_CALL_LINE = lineOf('zzfxM(...fanfareSong)') // spread varRef, plays
+const JUMP_SFX_LINE = lineOf("audioLoader.load('sounds/jump.wav')") // workspace-root tier
+const CLICK_SFX_LINE = lineOf("new Howl({ src: ['click.wav'] })") // source-dir tier
+const EXPLOSION_SFX_LINE = lineOf("new Wad({ source: 'explosion.ogg' })") // public/ tier
+const THUNDER_SFX_LINE = lineOf("new Audio('thunder.ogg')") // slow-search tier only
+const MISSING_SFX_LINE = lineOf("new Audio('nonexistent-sound.mp3')") // → $(search) not found
 
 type LensCommand = { command: string; title: string; arguments?: unknown[] }
 type ResolvedLens = { range: { start: { line: number } }; command?: LensCommand }
@@ -69,6 +86,26 @@ async function fetchLenses(
 
 function lensAt(lenses: ResolvedLens[], line: number, title: string): ResolvedLens | undefined {
   return lenses.find((l) => l.range.start.line === line && l.command?.title === title)
+}
+
+/** Polls {@link fetchLenses} until no `$(search) …` resolving lens
+ * remains — i.e. every slow fallback search kicked off by this render has
+ * settled to `▶ Play` or `$(search) not found` — then returns the settled
+ * set. The searches are per-session-cached, so only the first render after
+ * activation actually waits. */
+async function fetchSettledLenses(
+  evaluateInVSCode: <R, Arg = undefined>(
+    fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
+    arg?: Arg
+  ) => Promise<R>
+): Promise<ResolvedLens[]> {
+  const deadline = Date.now() + 15_000
+  let lenses = await fetchLenses(evaluateInVSCode)
+  while (lenses.some((l) => l.command?.title === '$(search) …') && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    lenses = await fetchLenses(evaluateInVSCode)
+  }
+  return lenses
 }
 
 /** Executes `command`/`args` (a resolved lens's own command), then polls
@@ -132,24 +169,26 @@ async function executeAndPollSilent(
 }
 
 test.describe('FL Audio: multi-library Play/Stop lenses', () => {
-  test('lens set covers zzfx.call, zzfxm.song (varRef + positional + spread), and audio.file (resolvable + unresolvable) correctly', async ({
+  test('lens set covers zzfx.call, zzfxm.song (varRef + positional + spread), and audio.file (fast tiers + slow tier + not-found) correctly', async ({
     evaluateInVSCode,
   }) => {
-    const lenses = await fetchLenses(evaluateInVSCode)
+    const lenses = await fetchSettledLenses(evaluateInVSCode)
     const titles = lenses
       .map((l) => l.command?.title ?? null)
       .filter((t): t is string => t !== null)
 
     // 2 zzfx.call findings (Play+Edit each) + 3 zzfxm.song findings
-    // (Play+Stop each) + 3 RESOLVABLE audio.file findings (Play each).
-    // playMissingSfx's unresolvable path and every commented-out decoy
+    // (Play+Stop each) + 4 RESOLVABLE audio.file findings (Play each — 3
+    // fast tiers + thunder.ogg via the slow search) + playMissingSfx's
+    // `$(search) not found` informational lens. Every commented-out decoy
     // must contribute ZERO lenses — proven by the exact total below, not
     // just presence of the positive cases.
-    expect(lenses).toHaveLength(13)
-    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(8)
+    expect(lenses).toHaveLength(15)
+    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(9)
     expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(3)
     expect(titles.filter((t) => t === '⚙ Edit')).toHaveLength(1)
     expect(titles.filter((t) => t === '⚙ Edit (variable)')).toHaveLength(1)
+    expect(titles.filter((t) => t === '$(search) not found')).toHaveLength(1)
 
     // Every zzfxm.song and audio.file lens routes to the new commands,
     // proving provider.ts's per-kind dispatch (not just zzfx.call's
@@ -169,8 +208,82 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const jumpArgs = lensAt(lenses, JUMP_SFX_LINE, '▶ Play')?.command?.arguments
     expect(String(jumpArgs?.[0])).toMatch(/sounds[/\\]jump\.wav$/)
 
-    // Unresolvable path (playMissingSfx) — no lens at that line at all.
-    expect(lenses.some((l) => l.range.start.line === MISSING_SFX_LINE)).toBe(false)
+    // Unresolvable path (playMissingSfx) — an informational
+    // `$(search) not found` lens, not silent absence (#41).
+    expect(lensAt(lenses, MISSING_SFX_LINE, '$(search) not found')?.command?.command).toBe(
+      'threeFlatland.zzfx.playFile'
+    )
+  })
+
+  // #41 slow tier: thunder.ogg misses every fast tier (it lives only at
+  // media/deep/thunder.ogg), so its ▶ Play lens existing AT ALL — with
+  // the deep path baked into its arguments — proves the workspace-wide
+  // basename fallback search ran, settled, and re-rendered the lens via
+  // onDidChangeCodeLenses.
+  test('a fast-tier miss resolves through the slow workspace search to ▶ Play with the found path', async ({
+    evaluateInVSCode,
+  }) => {
+    const lenses = await fetchSettledLenses(evaluateInVSCode)
+    const playLens = lensAt(lenses, THUNDER_SFX_LINE, '▶ Play')
+    expect(playLens?.command?.command).toBe('threeFlatland.zzfx.playFile')
+    expect(String(playLens?.command?.arguments?.[0])).toMatch(/media[/\\]deep[/\\]thunder\.ogg$/)
+  })
+
+  // #41 lazy repair, the full cycle: found → cached → file deleted → Play
+  // re-stats, re-searches, comes up empty → lens flips to
+  // `$(search) not found` → file re-added → clicking the not-found lens
+  // (the retry-shaped play attempt) re-searches, finds it, plays real
+  // audio, and the lens heals back to ▶ Play.
+  test('lazy repair: delete → Play flips to not-found; re-add → Play finds and plays again', async ({
+    evaluateInVSCode,
+    baseDir,
+  }) => {
+    const thunderPath = path.join(baseDir, 'media', 'deep', 'thunder.ogg')
+    const thunderBytes = fs.readFileSync(thunderPath)
+
+    // Found + cached (possibly already cached by a previous test's search
+    // — same session, that's the point of the per-session cache).
+    let lenses = await fetchSettledLenses(evaluateInVSCode)
+    let playLens = lensAt(lenses, THUNDER_SFX_LINE, '▶ Play')
+    expect(playLens?.command?.command).toBe('threeFlatland.zzfx.playFile')
+
+    // Delete the asset, then attempt Play with the (now stale) cached
+    // path — the command must re-stat, re-search, and settle not-found
+    // rather than erroring or playing nothing silently.
+    fs.rmSync(thunderPath)
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+        await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
+      },
+      { command: playLens!.command!.command, args: playLens!.command!.arguments }
+    )
+    lenses = await fetchSettledLenses(evaluateInVSCode)
+    expect(lensAt(lenses, THUNDER_SFX_LINE, '$(search) not found')).toBeDefined()
+    expect(lensAt(lenses, THUNDER_SFX_LINE, '▶ Play')).toBeUndefined()
+
+    // Re-add the asset and click the not-found lens — the lazy repair's
+    // retry: it re-searches, finds the re-added file, and plays it for
+    // real (audibility via the same stats tap as every other route).
+    fs.mkdirSync(path.dirname(thunderPath), { recursive: true })
+    fs.writeFileSync(thunderPath, thunderBytes)
+    const notFoundLens = lensAt(lenses, THUNDER_SFX_LINE, '$(search) not found')!
+    const stats = await executeAndPollAudible(
+      evaluateInVSCode,
+      notFoundLens.command!.command,
+      notFoundLens.command!.arguments
+    )
+    expect(stats).toBeDefined()
+    expect(stats!.silent).toBe(false)
+    expect(stats!.peak).toBeGreaterThan(0)
+
+    // And the lens healed back to ▶ Play at the found path.
+    lenses = await fetchSettledLenses(evaluateInVSCode)
+    playLens = lensAt(lenses, THUNDER_SFX_LINE, '▶ Play')
+    expect(String(playLens?.command?.arguments?.[0])).toMatch(/media[/\\]deep[/\\]thunder\.ogg$/)
   })
 
   test('playSong (bare-identifier varRef route) produces real audio via the stats tap, and stopSong actually stops it', async ({
