@@ -34,21 +34,58 @@ export interface VarRef {
   defRange?: Range
 }
 
-export interface FindingPayload {
+export const ZZFX_CALL_KIND = 'zzfx.call' as const
+export const ZZFXM_SONG_KIND = 'zzfxm.song' as const
+export const AUDIO_FILE_KIND = 'audio.file' as const
+
+export interface ZzfxCallPayload {
   params: number[]
   argRange: Range
   varRef?: VarRef
 }
 
-export const ZZFX_CALL_KIND = 'zzfx.call' as const
+/**
+ * No `params`: a ZzFXM song is a deeply nested array, not a flat numeric
+ * list — the client reads the text at `argRange` itself, the same posture
+ * `varRef.defRange` already takes for an unresolved zzfx preset.
+ */
+export interface ZzfxmSongPayload {
+  argRange: Range
+  varRef?: VarRef
+}
 
-export interface Finding {
-  kind: typeof ZZFX_CALL_KIND
+/** `pathRange` is the string literal's interior — no surrounding quotes/backticks. */
+export interface AudioFilePayload {
+  path: string
+  pathRange: Range
+}
+
+interface FindingBase {
   id: string
   range: Range
   byteRange: ByteRange
-  payload: FindingPayload
 }
+
+export interface ZzfxCallFinding extends FindingBase {
+  kind: typeof ZZFX_CALL_KIND
+  payload: ZzfxCallPayload
+}
+
+export interface ZzfxmSongFinding extends FindingBase {
+  kind: typeof ZZFXM_SONG_KIND
+  payload: ZzfxmSongPayload
+}
+
+export interface AudioFileFinding extends FindingBase {
+  kind: typeof AUDIO_FILE_KIND
+  payload: AudioFilePayload
+}
+
+/**
+ * A discriminated union on `kind` — narrow with `finding.kind === ZZFX_CALL_KIND`
+ * (etc.) before accessing `finding.payload`'s kind-specific fields.
+ */
+export type Finding = ZzfxCallFinding | ZzfxmSongFinding | AudioFileFinding
 
 export interface Capabilities {
   scan: boolean

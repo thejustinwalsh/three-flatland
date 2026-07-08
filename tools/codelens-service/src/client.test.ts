@@ -68,8 +68,10 @@ describe('CodelensServiceClient', () => {
     const result = await client.parse({ uri: 'file:///a.ts', text: 'zzfx(1,.05,220);' })
     expect(result.uri).toBe('file:///a.ts')
     expect(result.findings).toHaveLength(1)
-    expect(result.findings[0]!.kind).toBe('zzfx.call')
-    expect(result.findings[0]!.payload.params).toEqual([1, 0.05, 220])
+    const finding = result.findings[0]!
+    expect(finding.kind).toBe('zzfx.call')
+    if (finding.kind !== 'zzfx.call') throw new Error('expected a zzfx.call finding')
+    expect(finding.payload.params).toEqual([1, 0.05, 220])
   })
 
   it('didChange is fire-and-forget and reaches the sidecar', async () => {

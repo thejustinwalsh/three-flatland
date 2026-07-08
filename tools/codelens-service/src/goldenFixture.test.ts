@@ -96,14 +96,54 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     // whole-declarator bug is back (it would have deleted the variable's
     // name and type annotation on a write-back).
     const explosionFinding = result.findings.find(
-      (f) => f.payload.varRef?.name === 'explosionPreset'
+      (f) => f.kind === 'zzfx.call' && f.payload.varRef?.name === 'explosionPreset'
     )
     expect(
       explosionFinding,
       'golden.ts must still declare and reference explosionPreset'
     ).toBeDefined()
-    const defRange = explosionFinding!.payload.varRef!.defRange
+    if (explosionFinding?.kind !== 'zzfx.call') throw new Error('expected zzfx.call')
+    const defRange = explosionFinding.payload.varRef!.defRange
     expect(defRange, 'explosionPreset has an initializer; defRange must be present').toBeDefined()
     expect(defRange!.start.character).toBeGreaterThan(32)
+
+    // zzfxm.song var-form: same "past the `=`" contract, same
+    // resolve_var_ref path as zzfx's varRef.defRange above.
+    const laserSongFinding = result.findings.find(
+      (f) => f.kind === 'zzfxm.song' && f.payload.varRef?.name === 'laserSong'
+    )
+    expect(laserSongFinding, 'golden.ts must still declare and reference laserSong').toBeDefined()
+    if (laserSongFinding?.kind !== 'zzfxm.song') throw new Error('expected zzfxm.song')
+    const songDefRange = laserSongFinding.payload.varRef!.defRange
+    expect(songDefRange, 'laserSong has an initializer; defRange must be present').toBeDefined()
+    expect(songDefRange!.start.character).toBeGreaterThan(16)
+
+    // zzfxm.song literal form: no varRef key present at all (not `null`).
+    const inlineSongFinding = result.findings.find(
+      (f) => f.kind === 'zzfxm.song' && f.payload.argRange.start.character === 8
+    )
+    expect(
+      inlineSongFinding,
+      'golden.ts must still contain the inline-literal zzfxm call'
+    ).toBeDefined()
+    if (inlineSongFinding?.kind !== 'zzfxm.song') throw new Error('expected zzfxm.song')
+    expect(inlineSongFinding.payload.varRef).toBeUndefined()
+
+    // audio.file: pathRange must slice to exactly the path out of the real
+    // golden.ts source text — the TS-side twin of golden.rs's same check.
+    const ambientFindings = result.findings.filter(
+      (f) => f.kind === 'audio.file' && f.payload.path.startsWith('ambient.')
+    )
+    expect(ambientFindings).toHaveLength(2)
+    for (const finding of ambientFindings) {
+      if (finding.kind !== 'audio.file') throw new Error('expected audio.file')
+      const lines = goldenText.split('\n')
+      const line = lines[finding.payload.pathRange.start.line]!
+      const sliced = line.slice(
+        finding.payload.pathRange.start.character,
+        finding.payload.pathRange.end.character
+      )
+      expect(sliced).toBe(finding.payload.path)
+    }
   })
 })

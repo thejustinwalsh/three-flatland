@@ -37,3 +37,26 @@ export function playUnresolvedPreset(myPreset: number[]) {
 export function silence() {
   zzfx()
 }
+
+// zzfxm.song — literal array form (first arg isn't an identifier, so no
+// varRef) and named-variable form (varRef resolves to laserSong below).
+const laserSong = [[[1.5, 0, 220]], [[0, 0, 0, 1]], [1]]
+
+export function playInlineSong() {
+  zzfxm([[[1, 0, 440]], [[0, 0, 0, 1]], [1]])
+}
+
+export function playLaserSong() {
+  zzfxm(laserSong)
+}
+
+// audio.file — direct string argument.
+export function playExplosionSfx() {
+  new Audio('explosion.mp3').play()
+}
+
+// audio.file — Howler-style nested strings (array inside object inside a
+// call): two findings sharing this one call's range, one per source file.
+export function playAmbient() {
+  new Howl({ src: ['ambient.ogg', 'ambient.mp3'] }).play()
+}

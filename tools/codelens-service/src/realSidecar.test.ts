@@ -16,8 +16,14 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { CodelensServiceClient } from './client.js'
-import type { Range } from './protocol.js'
+import type { Finding, Range, ZzfxCallFinding } from './protocol.js'
 import { resolveBinary } from './resolveBinary.js'
+
+/** Narrows a `Finding` to `zzfx.call`, throwing (not silently `undefined`ing) otherwise. */
+function asZzfxCall(finding: Finding): ZzfxCallFinding {
+  if (finding.kind !== 'zzfx.call') throw new Error(`expected zzfx.call, got ${finding.kind}`)
+  return finding
+}
 
 /**
  * Slices `text` at an LSP `Range` (0-based line, UTF-16-code-unit
@@ -94,12 +100,11 @@ describe.skipIf(!CARGO_AVAILABLE)('CodelensServiceClient against the real sideca
 
     const parsed = await client.parse({ uri: fileUri, text: srcText })
     expect(parsed.findings).toHaveLength(1)
-    expect(parsed.findings[0]!.kind).toBe('zzfx.call')
-    expect(parsed.findings[0]!.payload.params).toEqual([1, 0.05, 220, 0, 0.02])
+    const finding = asZzfxCall(parsed.findings[0]!)
+    expect(finding.payload.params).toEqual([1, 0.05, 220, 0, 0.02])
     // argRange must cover only the interior of the parens, per the sidecar
     // contract this client was built against (line 1: the "zzfx(...)" call).
-    const argRange = parsed.findings[0]!.payload.argRange
-    expect(argRange.start.line).toBe(1)
+    expect(finding.payload.argRange.start.line).toBe(1)
 
     await client.shutdown()
     expect(client.isExited).toBe(true)
@@ -116,7 +121,7 @@ describe.skipIf(!CARGO_AVAILABLE)('CodelensServiceClient against the real sideca
     const uri = 'file:///virtual/a.ts'
     const original = await client.parse({ uri, text: 'zzfx(1,2,3);' })
     expect(original.findings).toHaveLength(1)
-    expect(original.findings[0]!.payload.params).toEqual([1, 2, 3])
+    expect(asZzfxCall(original.findings[0]!).payload.params).toEqual([1, 2, 3])
 
     // Notify a content change, then re-parse with the NEW text — the
     // sidecar must reflect the updated call, not silently serve a cached
@@ -124,8 +129,8 @@ describe.skipIf(!CARGO_AVAILABLE)('CodelensServiceClient against the real sideca
     client.didChange({ uri, text: 'zzfx(4,5,6);zzfx(7,8,9);' })
     const reparsed = await client.parse({ uri, text: 'zzfx(4,5,6);zzfx(7,8,9);' })
     expect(reparsed.findings).toHaveLength(2)
-    expect(reparsed.findings[0]!.payload.params).toEqual([4, 5, 6])
-    expect(reparsed.findings[1]!.payload.params).toEqual([7, 8, 9])
+    expect(asZzfxCall(reparsed.findings[0]!).payload.params).toEqual([4, 5, 6])
+    expect(asZzfxCall(reparsed.findings[1]!).payload.params).toEqual([7, 8, 9])
 
     await client.shutdown()
   })
@@ -144,7 +149,7 @@ describe.skipIf(!CARGO_AVAILABLE)('CodelensServiceClient against the real sideca
     // still one finding (empty params), per the sidecar's own contract.
     const parsed = await client.parse({ uri: 'file:///a.ts', text: 'zzfx();' })
     expect(parsed.findings).toHaveLength(1)
-    expect(parsed.findings[0]!.payload.params).toEqual([])
+    expect(asZzfxCall(parsed.findings[0]!).payload.params).toEqual([])
     await client.shutdown()
   })
 
@@ -168,10 +173,60 @@ describe.skipIf(!CARGO_AVAILABLE)('CodelensServiceClient against the real sideca
     const parsed = await client.parse({ uri, text })
     expect(parsed.findings).toHaveLength(1)
 
-    const varRef = parsed.findings[0]!.payload.varRef
+    const varRef = asZzfxCall(parsed.findings[0]!).payload.varRef
     expect(varRef?.name).toBe('LASER')
     expect(varRef?.defRange).toBeDefined()
     expect(sliceRange(text, varRef!.defRange!)).toBe('[0.6, 0, 100, 0.02, 0.15]')
+
+    await client.shutdown()
+  })
+
+  it("a zzfxm song variable's defRange slices out exactly the initializer array", async () => {
+    client = new CodelensServiceClient({
+      binaryPath,
+      workspaceRoot: workDir,
+      storageUri: join(workDir, 'storage5'),
+    })
+    await client.start()
+
+    const uri = 'file:///virtual/song.ts'
+    const text = 'const mySong = [[[1,0,220]],[[0,0,0,1]],[1]];\nzzfxm(mySong);\n'
+    const parsed = await client.parse({ uri, text })
+    expect(parsed.findings).toHaveLength(1)
+
+    const finding = parsed.findings[0]!
+    expect(finding.kind).toBe('zzfxm.song')
+    if (finding.kind !== 'zzfxm.song') throw new Error('expected zzfxm.song')
+    expect(finding.payload.varRef?.name).toBe('mySong')
+    expect(sliceRange(text, finding.payload.varRef!.defRange!)).toBe(
+      '[[[1,0,220]],[[0,0,0,1]],[1]]'
+    )
+
+    await client.shutdown()
+  })
+
+  it("an audio.file finding's pathRange slices out exactly the path, no quotes", async () => {
+    // The cross-kind sibling of the defRange slice-equality test above: the
+    // same "can't lie about semantics" proof, this time for audio.file's
+    // pathRange — sliced text must be the bare filename, with no leading/
+    // trailing quote character from the source string literal.
+    client = new CodelensServiceClient({
+      binaryPath,
+      workspaceRoot: workDir,
+      storageUri: join(workDir, 'storage6'),
+    })
+    await client.start()
+
+    const uri = 'file:///virtual/sfx.ts'
+    const text = "new Audio('explosion.mp3');\n"
+    const parsed = await client.parse({ uri, text })
+    expect(parsed.findings).toHaveLength(1)
+
+    const finding = parsed.findings[0]!
+    expect(finding.kind).toBe('audio.file')
+    if (finding.kind !== 'audio.file') throw new Error('expected audio.file')
+    expect(finding.payload.path).toBe('explosion.mp3')
+    expect(sliceRange(text, finding.payload.pathRange)).toBe('explosion.mp3')
 
     await client.shutdown()
   })

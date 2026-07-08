@@ -12,8 +12,8 @@ use crate::fsutil::{DEFAULT_MAX_FILES, file_mtime_secs, path_to_uri, uri_to_path
 use crate::hash::content_hash;
 use crate::id::fnv1a64;
 use crate::model::Finding;
-use crate::parse::find_zzfx_calls;
-use crate::scan::has_zzfx_candidate;
+use crate::parse::find_audio_findings;
+use crate::scan::has_audio_candidate;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -153,7 +153,7 @@ impl AppState {
             let Ok(bytes) = std::fs::read(&path) else {
                 continue;
             };
-            let has_candidate = has_zzfx_candidate(&bytes);
+            let has_candidate = has_audio_candidate(&bytes);
             let hash = content_hash(&bytes);
             let disk_meta = std::fs::metadata(&path).ok();
             let meta = FileMeta {
@@ -206,7 +206,7 @@ impl AppState {
             return self.db.cached_findings(&path);
         }
 
-        let findings = find_zzfx_calls(uri, text);
+        let findings = find_audio_findings(uri, text);
         let disk_mtime = std::fs::metadata(&path)
             .ok()
             .as_ref()
@@ -216,7 +216,7 @@ impl AppState {
             mtime: disk_mtime,
             size: text.len() as i64,
             content_hash: text_hash,
-            has_candidate: has_zzfx_candidate(text.as_bytes()),
+            has_candidate: has_audio_candidate(text.as_bytes()),
         };
         self.db.write_through(&path, meta, &findings);
         findings
@@ -264,7 +264,10 @@ mod tests {
         };
         let result = state.handle_parse(params);
         assert_eq!(result.findings.len(), 1);
-        assert_eq!(result.findings[0].payload.params, vec![1.0, 0.05, 220.0]);
+        assert_eq!(
+            result.findings[0].as_zzfx_call().unwrap().params,
+            vec![1.0, 0.05, 220.0]
+        );
     }
 
     #[test]
@@ -313,7 +316,10 @@ mod tests {
             uri,
             text: "zzfx(2,.1,440);".to_string(),
         });
-        assert_eq!(edited.findings[0].payload.params, vec![2.0, 0.1, 440.0]);
+        assert_eq!(
+            edited.findings[0].as_zzfx_call().unwrap().params,
+            vec![2.0, 0.1, 440.0]
+        );
     }
 
     #[test]

@@ -4,10 +4,32 @@
 
 ## Two halves of this directory
 
-- **`sidecar/`** — the Rust binary (`cargo build`). Standalone stdio JSON-RPC process; scans a workspace for `zzfx(...)` calls via tree-sitter, caches results in SQLite. See `sidecar/src/` — `model.rs` (wire types), `handlers.rs` (the five methods), `rpc.rs` (JSON-RPC envelope), `framing.rs` (LSP framing).
+- **`sidecar/`** — the Rust binary (`cargo build`). Standalone stdio JSON-RPC process; scans a workspace for three kinds of audio references via tree-sitter (see "Finding is a discriminated union" below), caches results in SQLite. See `sidecar/src/` — `model.rs` (wire types), `parse.rs` (the three scanners, one AST walk), `scan.rs` (byte-level candidate pre-filter), `handlers.rs` (the five methods), `rpc.rs` (JSON-RPC envelope), `framing.rs` (LSP framing).
 - **This package (`tools/codelens-service/`)** — the TypeScript client that spawns that binary and speaks its protocol. `import { CodelensServiceClient } from '@three-flatland/codelens-service'`.
 
-The two are protocol-compatible by hand, not by a shared schema — `src/protocol.ts` mirrors `sidecar/src/model.rs`/`handlers.rs` field-for-field (with one intentional rename: the sidecar's `payload` field type is called `FindingPayload` here, not `Payload`). If you change one side's wire shape, update the other and both test suites.
+The two are protocol-compatible by hand, not by a shared schema — `src/protocol.ts` mirrors `sidecar/src/model.rs`/`handlers.rs` field-for-field. If you change one side's wire shape, update the other and both test suites.
+
+## Finding is a discriminated union, not one loose payload shape
+
+`Finding` covers three kinds, each with its own payload — narrow on `kind` before touching `payload`'s fields, both sides:
+
+| Kind | Detects | Payload | `varRef`? |
+|---|---|---|---|
+| `zzfx.call` (`ZZFX_CALL_KIND`) | `zzfx(...)` / `a.b.zzfx(...)` | `{ params: number[], argRange, varRef? }` | first arg spread/bare identifier resolves one |
+| `zzfxm.song` (`ZZFXM_SONG_KIND`) | `zzfxm(...)` / `zzfxM(...)`, any callee position | `{ argRange, varRef? }` — **no `params`** | first arg bare identifier resolves one; anything else (inline array, call expression, ...) doesn't |
+| `audio.file` (`AUDIO_FILE_KIND`) | any string/zero-substitution-template literal, at any depth in a call's or `new` expression's arguments, whose value ends in a recognized extension | `{ path: string, pathRange }` | never |
+
+**Rust side** (`sidecar/src/model.rs`): `Finding` is `{id, range, byteRange, #[serde(flatten)] payload: FindingPayload}`, and `FindingPayload` is `#[serde(tag = "kind", content = "payload")]` — the flatten keeps the wire shape exactly `{id, range, byteRange, kind, payload}`, but `kind` and `payload` are now genuinely tied together in the type system instead of independently settable. Match on `Finding::as_zzfx_call()`/`as_zzfxm_song()`/`as_audio_file()` (each returns `Option<&XPayload>`) rather than reaching into `.payload` directly; `Finding::kind()` gives the wire tag string when you just need that.
+
+**TypeScript side** (`src/protocol.ts`): `Finding = ZzfxCallFinding | ZzfxmSongFinding | AudioFileFinding`, discriminated on the shared `kind` literal field. `if (finding.kind !== 'zzfx.call') throw ...` (or an `switch`) before touching `finding.payload`'s zzfx-specific fields — TypeScript won't let you access `payload.params` on the un-narrowed union at all.
+
+**`zzfxm.song` never has a `params` key** — not an empty array, structurally absent — a ZzFXM song is a deeply nested array of arrays, not a flat numeric list; extracting it would just duplicate what the client can already read out of the source text at `argRange`.
+
+**`audio.file`'s "nearest enclosing call" attribution**: a matching string is attributed to the closest ancestor `call_expression`/`new_expression` that owns the `arguments` list it sits in (`enclosing_call_via_arguments` in `parse.rs`), walking through arrays/objects/pairs at any depth but stopping at the FIRST such ancestor. For `foo(bar('x.wav'))` this attributes to `bar(...)`, not the outer `foo(...)` — the closer call is the more useful lens anchor, and stopping at the nearest one avoids re-reporting the same string against every level of call nesting. Multiple audio.file findings can share one `range`/`byteRange` (e.g. Howler's `src: ['a.mp3', 'b.mp3']` produces two findings, both anchored to the same `new Howl(...)` call) — each still gets its own distinct, stable `id` (keyed on the string's own byte range, not the call's).
+
+**Candidate pre-filter** (`sidecar/src/scan.rs::has_audio_candidate`, replacing the old `has_zzfx_candidate`): one combined needle scan for `zzfx` (covers `zzfxm`/`zzfxM` too, since both start with `zzfx` — verified by a dedicated test, not just assumed) and any of `AUDIO_EXTENSIONS` (case-insensitive). `workspace/scan`'s `hasCandidate` boolean stays a single flag — it doesn't report which scanner(s) matched, just "worth a real parse."
+
+**Scanner dispatch** (`parse.rs::walk`): one AST walk produces all three kinds. `call_expression` nodes go through `extract_callee_call`, which looks up the callee name against each callee-based scanner (`zzfx` → `extract_zzfx_call`, `zzfxm`/`zzfxM` → `extract_zzfxm_call`) — adding a fourth callee-based library scanner means adding one more name check there. `string`/qualifying `template_string` nodes go through `extract_audio_file` directly (not callee-driven at all, since audio.file doesn't care what function is being called).
 
 ## `varRef.defRange` covers only the value, never the whole declarator
 
@@ -84,6 +106,8 @@ Both sides treat a broken cache as a persistence problem, never a crash:
 
 `fixtures/golden/golden.ts` + `fixtures/golden/golden.findings.json` are loaded by **both** `sidecar/tests/golden.rs` and `src/goldenFixture.test.ts`, each driving the real compiled binary through the real wire protocol and asserting the exact same expected findings. This is the only test that can catch a `protocol.ts` / `model.rs` drift — `client.test.ts`'s fake-sidecar fixture hand-copies the same shapes this client expects, so it structurally cannot notice a mismatch against what the Rust side actually produces.
 
+`golden.ts` exercises all three kinds: `zzfx.call` (literal + var forms, a type-annotated declarator, an unresolved preset, a member-expression call), `zzfxm.song` (an inline-literal song with no `varRef`, and a named `laserSong` variable that resolves one), and `audio.file` (a direct `new Audio('explosion.mp3')` arg, and a Howler-style `new Howl({src: ['ambient.ogg', 'ambient.mp3']})` producing two findings sharing one call's range). Both golden tests slice the *real* fixture source text at the reported `pathRange`/`defRange` and assert byte-equality against the expected value — not just position numbers in isolation — the same discipline `varRef.defRange` already uses.
+
 **Regenerating the golden JSON** (only do this for an intentional protocol/extraction change, and update the expectations in both test files together): drive the built binary over the real wire protocol with a fixed synthetic URI (`file:///golden.ts` — **not** a real disk path; `document/parse`'s `uri` is caller-supplied and doesn't need to correspond to an actual file, and a real path would bake a machine-specific absolute path into `varRef.defUri`, making the fixture non-portable across checkouts/CI). Comparisons on the Rust side deserialize into the typed `Finding` struct, not a generic `serde_json::Value` — `Value`'s equality is JSON-text-format-sensitive (a `Number` parsed from `"1.0"` does not equal one parsed from `"1"`, even though both are the same `f64`), so a naive `Value`-vs-`Value` comparison would spuriously fail depending on incidental number formatting in whatever generated the golden file.
 
 ## Tests — five tiers, know which one you're changing
@@ -105,10 +129,13 @@ Both sides treat a broken cache as a persistence problem, never a crash:
 - Removing `ORDER BY rowid` from `cached_findings`'s query, or adding a new findings-read query without it, because "it looks like it works" in a quick local check — the ordering bug it fixes only manifests through the real compiled binary with an on-disk cache and a delete-then-reinsert cycle, not in a naive in-memory unit test.
 - Generating a new golden fixture by hand-editing JSON, or by round-tripping through a language/tool that reformats numbers (e.g. `JSON.stringify` in Node, which collapses `1.0` to `1`) — regenerate it by actually running the built binary, and compare via typed structs (Rust) / plain `JSON.parse` (TS), not raw JSON-text diffing.
 - Regenerating the golden fixture with a real disk path instead of the fixed `file:///golden.ts` synthetic URI — bakes a machine-specific absolute path into `varRef.defUri`, breaking the fixture on any other checkout.
+- Reaching into `finding.payload.X` without narrowing on `finding.kind` first (TS) or matching on `FindingPayload`/using `Finding::as_*` (Rust) — `payload`'s shape genuinely differs per kind now; there is no field that exists on all three.
+- Adding a fifth string-bearing scanner case and forgetting `enclosing_call_via_arguments` stops at the NEAREST `arguments` ancestor by design — don't "fix" it to walk to the outermost call, that reintroduces double-reporting for nested calls.
 
 ## Reference
 
 - Sidecar protocol source of truth: `sidecar/src/model.rs`, `sidecar/src/handlers.rs`, `sidecar/src/rpc.rs`.
+- Scanners: `sidecar/src/parse.rs` (all three kinds, one AST walk), `sidecar/src/scan.rs` (candidate pre-filter, `AUDIO_EXTENSIONS`).
 - Client: `src/client.ts`. Protocol types: `src/protocol.ts`. Framing: `src/framing.ts`. Binary resolution: `src/resolveBinary.ts`.
 - Rust cache: `sidecar/src/db.rs` (degrade-not-panic, content-hash trust, `ORDER BY rowid`). Rust content hashing: `sidecar/src/hash.rs`. Rust exit-code policy: `sidecar/src/main.rs`.
 - Golden fixture: `fixtures/golden/golden.ts`, `fixtures/golden/golden.findings.json`, `sidecar/tests/golden.rs`, `src/goldenFixture.test.ts`.
