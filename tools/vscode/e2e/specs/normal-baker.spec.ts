@@ -148,3 +148,80 @@ test('Save re-bakes .normal.png and re-stamps its content-hash', async ({
   ).toBe(true)
   expect(b).toBe(Math.round(tiltedRegion!.elevation! * 255))
 })
+
+// ── Grid slice + split (C3) ───────────────────────────────────────────────
+
+test('grid slice: Generate creates one region per aligned tile on Dungeon_Tileset', async ({
+  openCommand,
+  webviewFrame,
+}) => {
+  await openCommand('threeFlatland.normalBaker.open', ['sprites/Dungeon_Tileset.png'])
+  const frame = await webviewFrame('Normal Baker: Dungeon_Tileset.png')
+
+  // Document loaded (the fixture's 122 regions) before driving anything —
+  // same init-landed discipline as the zzfx suite's Save tests.
+  await expect(frame.getByText('Regions (122)')).toBeVisible()
+
+  await frame.getByTitle('Grid Slice').click()
+
+  // Default 16px tiles on the 160×160 tileset = a full 10×10 grid. The
+  // button label carries the exact count (the count-confirm), and only
+  // reads 100 once the image has decoded and the grid materialized — so
+  // this locator doubles as the image-ready wait.
+  const generate = frame.getByText('Generate 100 regions', { exact: true })
+  await expect(generate).toBeVisible()
+  await generate.click()
+
+  await expect(frame.getByText('Regions (222)')).toBeVisible()
+})
+
+test('split: 2×2 on a tilted region replaces it with 4 children inheriting exactly its explicit fields', async ({
+  baseDir,
+  openCommand,
+  webviewFrame,
+}) => {
+  await openCommand('threeFlatland.normalBaker.open', ['sprites/Dungeon_Tileset.png'])
+  const frame = await webviewFrame('Normal Baker: Dungeon_Tileset.png')
+  await expect(frame.getByText('Regions (122)')).toBeVisible()
+
+  // Select the fixture's {x:16, y:4, w:16, h:12, direction:'south',
+  // elevation:0.5} region via its (unique) coords text in the list.
+  await frame.getByText('16,4 16×12', { exact: true }).click()
+
+  // Split section defaults to 2×2 → 4 pieces for this 16×12 region.
+  await frame.getByText('Split into 4 regions', { exact: true }).click()
+  await expect(frame.getByText('Regions (125)')).toBeVisible()
+
+  // Persist and assert the fidelity semantics on the actual sidecar JSON:
+  // children carry what the parent EXPLICITLY had (direction, elevation)
+  // and nothing it merely inherited (pitch/bump/strength stay omitted so
+  // they keep tracking the descriptor default live).
+  await frame.getByTitle('Save (.normal.png + .normal.json)').click()
+  const jsonOut = path.join(baseDir, 'sprites', 'Dungeon_Tileset.normal.json')
+  await expect
+    .poll(async () => {
+      try {
+        const d = JSON.parse(await fs.readFile(jsonOut, 'utf8')) as NormalSourceDescriptor
+        return d.regions?.length ?? 0
+      } catch {
+        return 0
+      }
+    })
+    .toBe(125)
+
+  const descriptor = JSON.parse(await fs.readFile(jsonOut, 'utf8')) as NormalSourceDescriptor
+  const children = descriptor.regions!.filter((r) => r.w === 8 && r.h === 6)
+  expect(children).toHaveLength(4)
+  expect(children.map((r) => `${r.x},${r.y}`).sort()).toEqual(['16,10', '16,4', '24,10', '24,4'])
+  for (const child of children) {
+    expect(child.direction).toBe('south')
+    expect(child.elevation).toBe(0.5)
+    expect('pitch' in child).toBe(false)
+    expect('bump' in child).toBe(false)
+    expect('strength' in child).toBe(false)
+  }
+  // The parent is gone — replaced, not duplicated.
+  expect(descriptor.regions!.some((r) => r.x === 16 && r.y === 4 && r.w === 16 && r.h === 12)).toBe(
+    false
+  )
+})

@@ -10,7 +10,14 @@ import {
 } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
-import { DragProvider, RectOverlay, useImageData, type Rect } from '@three-flatland/preview'
+import {
+  DragProvider,
+  GridSliceOverlay,
+  RectOverlay,
+  useImageData,
+  type Rect,
+} from '@three-flatland/preview'
+import { cellKey, gridFromCellSize, type GridSpec } from '@three-flatland/preview/grid'
 import type { NormalSourceDescriptor } from '@three-flatland/normals'
 
 // Code-split the R3F + three.js + three-flatland chunk out of the initial
@@ -31,6 +38,14 @@ import {
 } from './normalBakerStore'
 import { descriptorToState, stateToDescriptor } from './descriptorIO'
 import { resolveDirection } from './fieldResolution'
+import {
+  childrenFromSplit,
+  splitRegionByGrid,
+  splitRegionRowsCols,
+  tilesFromGrid,
+  tilesFromPicked,
+} from './gridOps'
+import { GridSlicePanel, type GridSettings } from './GridSlicePanel'
 import { RegionColorOverlay } from './RegionColorOverlay'
 import { RegionListPanel } from './RegionListPanel'
 import { RegionPropertiesPanel } from './RegionPropertiesPanel'
@@ -143,6 +158,42 @@ export function App() {
   const canUndo = historyState.pastStates.length > 0
   const canRedo = historyState.futureStates.length > 0
   const sidebarPx = useNormalBakerStore((store) => store.regionListPx)
+
+  // ── Grid slice (C3) — session UI state, not undoable, not persisted:
+  // the grid is an ALIGNMENT AID; only the regions it generates are
+  // document content. `grid` materializes the numeric settings plus any
+  // hand-dragged edge tweaks; a settings/image change rebuilds it (and
+  // clears picks — cell keys are grid-shape-relative).
+  const [gridMode, setGridMode] = useState(false)
+  const [gridSettings, setGridSettings] = useState<GridSettings>({
+    tileW: 16,
+    tileH: 16,
+    offsetX: 0,
+    offsetY: 0,
+  })
+  const [grid, setGrid] = useState<GridSpec | null>(null)
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set())
+  const [splitRows, setSplitRows] = useState(2)
+  const [splitCols, setSplitCols] = useState(2)
+
+  useEffect(() => {
+    if (!imageSize) {
+      setGrid(null)
+      setPicked(new Set())
+      return
+    }
+    setGrid(
+      gridFromCellSize(
+        imageSize.w,
+        imageSize.h,
+        gridSettings.tileW,
+        gridSettings.tileH,
+        gridSettings.offsetX,
+        gridSettings.offsetY
+      )
+    )
+    setPicked(new Set())
+  }, [imageSize, gridSettings])
 
   const bridgeRef = useRef<ReturnType<typeof createClientBridge> | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -261,6 +312,27 @@ export function App() {
     normalBakerActions.addRegion({ id: crypto.randomUUID(), x, y, w, h })
   }, [imageSize])
 
+  const handleCellSet = useCallback((row: number, col: number, isPicked: boolean) => {
+    setPicked((prev) => {
+      const next = new Set(prev)
+      const key = cellKey(row, col)
+      if (isPicked) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }, [])
+
+  const handleGenerate = useCallback(() => {
+    if (!grid) return
+    const tiles = picked.size > 0 ? tilesFromPicked(grid, picked) : tilesFromGrid(grid)
+    if (tiles.length === 0) return
+    // ONE undo step for the whole batch (addRegionsAction is a single
+    // set()); the generated regions come back selected, so a mass delete
+    // is the immediate escape hatch alongside undo.
+    normalBakerActions.addRegions(tiles.map((t) => ({ id: crypto.randomUUID(), ...t })))
+    setPicked(new Set())
+  }, [grid, picked])
+
   const selectedRegion = useMemo(
     () =>
       selectedIds.size === 1 ? (regions.find((r) => r.id === [...selectedIds][0]) ?? null) : null,
@@ -281,6 +353,29 @@ export function App() {
   )
 
   const previewDescriptor = useMemo(() => stateToDescriptor(regions, defaults), [regions, defaults])
+
+  // Split — Photoshop-slice style: children replace the parent at its
+  // paint-order position and inherit its EXPLICIT fields (N4 fidelity
+  // semantics — see gridOps.ts's childrenFromSplit). One undo step.
+  const handleSplitByGrid = useCallback(() => {
+    if (!grid || !selectedRegion) return
+    const tiles = splitRegionByGrid(selectedRegion, grid)
+    if (tiles.length < 2) return
+    normalBakerActions.splitRegion(
+      selectedRegion.id,
+      childrenFromSplit(selectedRegion, tiles, () => crypto.randomUUID())
+    )
+  }, [grid, selectedRegion])
+
+  const handleSplitRowsCols = useCallback(() => {
+    if (!selectedRegion) return
+    const tiles = splitRegionRowsCols(selectedRegion, splitRows, splitCols)
+    if (tiles.length < 2) return
+    normalBakerActions.splitRegion(
+      selectedRegion.id,
+      childrenFromSplit(selectedRegion, tiles, () => crypto.randomUUID())
+    )
+  }, [selectedRegion, splitRows, splitCols])
 
   // Undo / redo hotkeys.
   useEffect(() => {
@@ -322,6 +417,13 @@ export function App() {
           onClick={normalBakerHistory.redo}
           disabled={!canRedo}
         />
+        <ToolbarButton
+          icon="symbol-ruler"
+          title="Grid Slice"
+          toggleable
+          checked={gridMode}
+          onClick={() => setGridMode((v) => !v)}
+        />
         <span {...stylex.props(s.toolbarSpacer)} />
         <ToolbarButton
           icon="save"
@@ -344,14 +446,28 @@ export function App() {
               >
                 <ImageDataSink onChange={setImageData} />
                 <RegionColorOverlay regions={colorRegions} />
+                {/* Grid mode: the grid overlay owns the canvas pointer
+                    surface (line drags + cell picking), so rect drawing/
+                    editing pauses — regions stay visible underneath, and
+                    the LIST still selects (split-by-grid works from a
+                    list selection while the grid is up). */}
                 <RectOverlay
                   rects={regions}
-                  drawEnabled
+                  drawEnabled={!gridMode}
+                  interactive={!gridMode}
                   onRectCreate={handleRectCreate}
                   selectedIds={selectedIds}
                   onSelectionChange={normalBakerActions.setSelectedIds}
                   onRectChange={handleRectChange}
                 />
+                {gridMode && grid ? (
+                  <GridSliceOverlay
+                    grid={grid}
+                    picked={picked}
+                    onGridChange={setGrid}
+                    onCellSet={handleCellSet}
+                  />
+                ) : null}
               </CanvasStage>
             </DragProvider>
           </Panel>
@@ -374,6 +490,22 @@ export function App() {
             onAdd={handleAddRegionFromPanel}
             onDelete={normalBakerActions.removeSelected}
             onMove={normalBakerActions.reorderRegion}
+          />
+          <GridSlicePanel
+            gridMode={gridMode}
+            grid={grid}
+            picked={picked}
+            settings={gridSettings}
+            onSettingsChange={(patch) => setGridSettings((prev) => ({ ...prev, ...patch }))}
+            selectedRegion={selectedRegion}
+            selectionCount={selectedIds.size}
+            splitRows={splitRows}
+            splitCols={splitCols}
+            onSplitRowsChange={setSplitRows}
+            onSplitColsChange={setSplitCols}
+            onGenerate={handleGenerate}
+            onSplitByGrid={handleSplitByGrid}
+            onSplitRowsCols={handleSplitRowsCols}
           />
           <RegionPropertiesPanel
             region={selectedRegion}

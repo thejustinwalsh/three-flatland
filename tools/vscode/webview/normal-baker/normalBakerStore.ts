@@ -41,6 +41,13 @@ export type NormalBakerStoreState = {
   setRegionListPx: (px: number) => void
 
   addRegionAction: (region: EditableRegion, index?: number) => void
+  /** Bulk append (grid-generate) in ONE set() — one undo step for the
+   * whole batch, with the new regions selected so a mass delete is the
+   * immediate escape hatch. */
+  addRegionsAction: (regions: EditableRegion[]) => void
+  /** Replace one region with its split children at the same paint-order
+   * position, in ONE set() — one undo step, children selected. */
+  splitRegionAction: (id: string, children: EditableRegion[]) => void
   removeSelected: () => void
   reorderRegionAction: (fromIndex: number, toIndex: number) => void
   updateRegionAction: (id: string, patch: Partial<EditableRegion>) => void
@@ -104,6 +111,22 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
               regions: addRegion(s.regions, region, index),
               selectedIds: new Set([region.id]),
             })),
+
+          addRegionsAction: (regions) =>
+            set((s) => ({
+              ...s,
+              regions: [...s.regions, ...regions],
+              selectedIds: new Set(regions.map((r) => r.id)),
+            })),
+
+          splitRegionAction: (id, children) =>
+            set((s) => {
+              const index = s.regions.findIndex((r) => r.id === id)
+              if (index < 0 || children.length === 0) return s
+              const next = s.regions.slice()
+              next.splice(index, 1, ...children)
+              return { ...s, regions: next, selectedIds: new Set(children.map((r) => r.id)) }
+            }),
 
           removeSelected: () =>
             set((s) => ({
@@ -196,6 +219,10 @@ export const normalBakerActions = {
   setRegionListPx: (px: number) => useNormalBakerStore.getState().setRegionListPx(px),
   addRegion: (region: EditableRegion, index?: number) =>
     useNormalBakerStore.getState().addRegionAction(region, index),
+  addRegions: (regions: EditableRegion[]) =>
+    useNormalBakerStore.getState().addRegionsAction(regions),
+  splitRegion: (id: string, children: EditableRegion[]) =>
+    useNormalBakerStore.getState().splitRegionAction(id, children),
   removeSelected: () => useNormalBakerStore.getState().removeSelected(),
   reorderRegion: (fromIndex: number, toIndex: number) =>
     useNormalBakerStore.getState().reorderRegionAction(fromIndex, toIndex),
