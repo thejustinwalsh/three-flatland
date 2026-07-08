@@ -77,7 +77,7 @@
       }
     ],
     "configuration": {
-      "title": "Flatland Tools",
+      "title": "FL Tools",
       "properties": {
         "threeFlatland.tools.spriteAtlas.enabled": {
           "type": "boolean",
