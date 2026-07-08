@@ -28,8 +28,14 @@ export type AudioBackend = {
    * directly over `send` rather than routing back through this
    * synchronous return value, since there is no longer a live caller by
    * the time an async failure is known.
+   *
+   * `onStarted` (#46) hands the decoded-and-started source's stop handle
+   * back once the async decode completes — the handler's only window
+   * into making a file the current STOPPABLE source (see `handleCommand`'s
+   * generation guard for how a late decode is prevented from resurrecting
+   * a superseded play). Never called on a read/decode failure.
    */
-  playFile(path: string, volume: number): void
+  playFile(path: string, volume: number, onStarted: (handle: { stop(): void }) => void): void
   getStats(): PlaybackStats
 }
 
@@ -40,18 +46,31 @@ export type CommandHandler = {
 
 /**
  * The state machine `sidecar.ts` wires directly to stdin/stdout: tracks
- * at most one currently-playing song, replacing (stopping) it on a new
- * `playSong`, per the "zero fidelity drift" contract — `zzfxm()`'s song
- * and `zzfx()`'s one-shots share the backend's own `AudioContext`
- * already (see `tools/zzfx-play/CLAUDE.md`), this layer only owns *which*
- * song handle is currently live.
+ * at most one currently-playing stoppable source — a song OR a decoded
+ * file (#46) — replacing (stopping) it on any new `playSong`/`playFile`,
+ * per the "zero fidelity drift" contract — `zzfxm()`'s song and
+ * `zzfx()`'s one-shots share the backend's own `AudioContext` already
+ * (see `tools/zzfx-play/CLAUDE.md`), this layer only owns *which* source
+ * handle is currently live.
  */
 export function createCommandHandler(backend: AudioBackend): CommandHandler {
-  let currentSong: { stop(): void } | undefined
+  let currentSource: { stop(): void } | undefined
+  // Bumped by every command that changes what "current" means. A
+  // playFile's decode completes asynchronously — if anything newer
+  // happened in between (another play, an explicit stop), the late
+  // source must be stopped on arrival, not registered (or worse,
+  // layered) — see the onStarted callback in handlePlayFile.
+  let playGeneration = 0
 
-  function handleStopSong(): void {
-    currentSong?.stop()
-    currentSong = undefined
+  function replaceCurrentSource(): void {
+    playGeneration++
+    // Clear the field BEFORE calling stop(), not after: if the caller's
+    // subsequent backend call throws, leaving currentSource pointing at
+    // the just-stopped handle means a later stopSong/stop calls .stop()
+    // on it a second time.
+    const old = currentSource
+    currentSource = undefined
+    old?.stop()
   }
 
   // Distinct from stopSong in the protocol so a future "stop everything"
@@ -60,7 +79,7 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
   // with their own release envelope and have no persistent handle to
   // interrupt today, so this is presently identical to stopSong.
   function handleStop(): void {
-    handleStopSong()
+    replaceCurrentSource()
   }
 
   function handleCommand(command: Command): Response {
@@ -71,23 +90,25 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
           return { ok: true, cmd: 'play' }
         case 'playSong': {
           // Replace, never stack — a new playSong stops whatever's
-          // currently playing before starting the new one. Clear the
-          // field BEFORE calling stop()/playSong(), not after: if
-          // backend.playSong throws, the old assignment below never
-          // runs, and leaving currentSong pointing at the just-stopped
-          // handle means a later stopSong/stop calls .stop() on it a
-          // second time.
-          const old = currentSong
-          currentSong = undefined
-          old?.stop()
-          currentSong = backend.playSong(command.song, command.volume ?? 1)
+          // currently playing before starting the new one.
+          replaceCurrentSource()
+          currentSource = backend.playSong(command.song, command.volume ?? 1)
           return { ok: true, cmd: 'playSong' }
         }
-        case 'playFile':
-          backend.playFile(command.path, command.volume ?? 1)
+        case 'playFile': {
+          replaceCurrentSource()
+          const generation = playGeneration
+          backend.playFile(command.path, command.volume ?? 1, (handle) => {
+            // Still the newest play when the decode landed → this source
+            // is the current stoppable one (#46). Superseded → it just
+            // started playing over whatever replaced it; stop it now.
+            if (generation === playGeneration) currentSource = handle
+            else handle.stop()
+          })
           return { ok: true, cmd: 'playFile' }
+        }
         case 'stopSong':
-          handleStopSong()
+          replaceCurrentSource()
           return { ok: true, cmd: 'stopSong' }
         case 'stop':
           handleStop()

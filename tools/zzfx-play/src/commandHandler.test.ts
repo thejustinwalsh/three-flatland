@@ -22,6 +22,12 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
   playSongCalls: { song: Song; volume: number }[]
   songHandles: { stop: ReturnType<typeof vi.fn> }[]
   playFileCalls: { path: string; volume: number }[]
+  fileHandles: { stop: ReturnType<typeof vi.fn> }[]
+  /** Fires the pending `onStarted` for the i-th playFile call with a
+   * fresh handle — the test's stand-in for "the async decode finished
+   * and the source started" (#46), controllable so ordering races
+   * against later commands can be exercised deterministically. */
+  startFile: (index: number) => { stop: ReturnType<typeof vi.fn> }
   /** Populated asynchronously (after `handleCommand` has already
    * returned) when `playFile` is called with the `'FAIL_ASYNC'` sentinel
    * path — stands in for the real sidecar.ts backend's `send({ok:false,
@@ -34,12 +40,21 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
   const playSongCalls: { song: Song; volume: number }[] = []
   const songHandles: { stop: ReturnType<typeof vi.fn> }[] = []
   const playFileCalls: { path: string; volume: number }[] = []
+  const fileHandles: { stop: ReturnType<typeof vi.fn> }[] = []
+  const playFileStarts: ((handle: { stop(): void }) => void)[] = []
   const asyncPlayFileErrors: string[] = []
   return {
     playCalls,
     playSongCalls,
     songHandles,
     playFileCalls,
+    fileHandles,
+    startFile: (index) => {
+      const handle = { stop: vi.fn() }
+      fileHandles.push(handle)
+      playFileStarts[index]!(handle)
+      return handle
+    },
     asyncPlayFileErrors,
     play: (params, volume) => {
       playCalls.push({ params, volume })
@@ -50,8 +65,9 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
       songHandles.push(handle)
       return handle
     },
-    playFile: (path, volume) => {
+    playFile: (path, volume, onStarted) => {
       playFileCalls.push({ path, volume })
+      playFileStarts.push(onStarted)
       if (path === 'FAIL_ASYNC') {
         // Real decode failures land after handleCommand has already
         // returned its synchronous "accepted" ack — simulate that here
@@ -170,6 +186,85 @@ describe('createCommandHandler', () => {
 
     await vi.waitFor(() => expect(backend.asyncPlayFileErrors).toHaveLength(1))
     expect(backend.asyncPlayFileErrors[0]).toMatch(/decode failed/)
+  })
+
+  // #46 — files join the one-current-source lifecycle: a decoded file's
+  // source registers as THE stoppable source (so the Play⇄Stop toggle's
+  // stop actually stops it), every play route replaces the previous
+  // source, and the async decode can't resurrect a superseded play.
+  describe('playFile as the current stoppable source (#46)', () => {
+    it("a decoded file's source registers as current — stopSong stops it", () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
+      const handle = backend.startFile(0)
+
+      handler.handleCommand({ cmd: 'stopSong' })
+      expect(handle.stop).toHaveBeenCalledTimes(1)
+    })
+
+    it('stop stops a playing file the same way stopSong does', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
+      const handle = backend.startFile(0)
+
+      handler.handleCommand({ cmd: 'stop' })
+      expect(handle.stop).toHaveBeenCalledTimes(1)
+    })
+
+    it('playFile replaces the current song — one sound at a time, never stacked', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({ cmd: 'playSong', song: SONG })
+      const songHandle = backend.songHandles[0]!
+
+      handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
+      expect(songHandle.stop).toHaveBeenCalledTimes(1)
+
+      // The decoded file is now the current source, not the (stopped) song.
+      const fileHandle = backend.startFile(0)
+      handler.handleCommand({ cmd: 'stopSong' })
+      expect(fileHandle.stop).toHaveBeenCalledTimes(1)
+      expect(songHandle.stop).toHaveBeenCalledTimes(1)
+    })
+
+    it('playSong replaces a playing file', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
+      const fileHandle = backend.startFile(0)
+
+      handler.handleCommand({ cmd: 'playSong', song: SONG })
+      expect(fileHandle.stop).toHaveBeenCalledTimes(1)
+      expect(backend.songHandles[0]!.stop).not.toHaveBeenCalled()
+    })
+
+    it('a decode that lands AFTER a newer play stops its own late source and never clobbers the current one', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({ cmd: 'playFile', path: '/tmp/slow.wav' })
+      handler.handleCommand({ cmd: 'playSong', song: SONG })
+
+      // The slow decode finishes now — its source would layer over the
+      // song if it started; the handler must stop it on arrival instead.
+      const lateHandle = backend.startFile(0)
+      expect(lateHandle.stop).toHaveBeenCalledTimes(1)
+
+      // And the song is still the current source.
+      handler.handleCommand({ cmd: 'stopSong' })
+      expect(backend.songHandles[0]!.stop).toHaveBeenCalledTimes(1)
+    })
+
+    it('a decode that lands after an explicit stop is stopped on arrival too', () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler(backend)
+      handler.handleCommand({ cmd: 'playFile', path: '/tmp/slow.wav' })
+      handler.handleCommand({ cmd: 'stopSong' })
+
+      const lateHandle = backend.startFile(0)
+      expect(lateHandle.stop).toHaveBeenCalledTimes(1)
+    })
   })
 
   it("shutdown just acks — process teardown is the wiring layer's job, not the handler's", () => {

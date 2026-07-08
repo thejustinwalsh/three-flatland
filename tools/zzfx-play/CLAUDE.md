@@ -121,9 +121,13 @@ to the commands that produced them.
 Commands: `play {params}` (one-shot), `playSong {song}` / `stopSong`
 (ZzFXM), `stop` (currently identical to `stopSong` — see the comment on
 `handleStop` in `commandHandler.ts` for why it's a separate command
-anyway), `shutdown`, `stats` (audibility snapshot).
+anyway), `shutdown`, `stats` (audibility snapshot). `stopSong`/`stop`
+stop the CURRENT SOURCE — a song or a decoded file (#46): `playFile`'s
+decoded source registers via an `onStarted` callback, generation-guarded
+so a decode landing after a newer play is stopped on arrival instead of
+layering.
 
-The command state machine (song replacement, stop semantics, catching a
+The command state machine (source replacement, stop semantics, catching a
 backend error into a `Nack`) lives in `src/commandHandler.ts`, injected
 with an `AudioBackend` — `sidecar.ts` supplies the real zzfx/zzfxm-backed
 one, `commandHandler.test.ts` supplies a fake one with no real audio at

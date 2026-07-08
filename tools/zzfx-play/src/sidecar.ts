@@ -74,8 +74,11 @@ const handler = createCommandHandler({
   // inside) must never block on them — see `tools/zzfx-play/CLAUDE.md`'s
   // "the async wrinkle". A read/decode failure is reported directly via
   // `send`, not thrown — there is no longer a live `handleCommand` call
-  // stack to throw into by the time this `catch` runs.
-  playFile: (filePath, volume) => {
+  // stack to throw into by the time this `catch` runs. `onStarted` hands
+  // the started source back to the command handler so the file becomes
+  // the current STOPPABLE source (#46) — the handler's generation guard
+  // owns the "decode landed after a newer play" race.
+  playFile: (filePath, volume, onStarted) => {
     void (async () => {
       try {
         const bytes = await fs.readFile(filePath)
@@ -84,7 +87,7 @@ const handler = createCommandHandler({
           bytes.byteOffset + bytes.byteLength
         )
         const audioBuffer = await ZZFX.audioContext.decodeAudioData(arrayBuffer)
-        playBuffer(ZZFX.audioContext, audioBuffer, ZZFX.volume * volume)
+        onStarted(playBuffer(ZZFX.audioContext, audioBuffer, ZZFX.volume * volume))
       } catch (err) {
         send({
           ok: false,

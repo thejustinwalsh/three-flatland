@@ -101,7 +101,8 @@ export class PlaySidecarClient {
     this.send({ cmd: 'playFile', path, ...(volume !== undefined ? { volume } : {}) })
   }
 
-  /** Stops the currently playing song, if any. No-op if the sidecar isn't running. */
+  /** Stops the current stoppable source — a song or a decoded file (#46)
+   * — if any. No-op if the sidecar isn't running. */
   stopSong(): void {
     if (!this.isRunning) return
     this.send({ cmd: 'stopSong' })

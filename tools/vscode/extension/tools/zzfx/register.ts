@@ -4,6 +4,7 @@ import type { PlaySidecarClient } from '@three-flatland/zzfx-play'
 import { getSidecarClient, shutdownSidecar } from './sidecarManager'
 import { getPlaySidecarClient, shutdownPlaySidecar } from './playSidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
+import { ActivePlayback, watchPlaybackEnd } from './activePlayback'
 import { AudioFileResolver } from './audioFileResolver'
 import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
@@ -156,10 +157,77 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
     },
     onDidUpdate: () => provider.refresh(),
   })
-  const provider = new ZzfxCodeLensProvider(() => getSidecarClient(context), audioResolver)
+  // Which finding's sound is playing right now (#46) — drives the single
+  // Play⇄Stop toggle lens. Every transition re-renders the lenses (same
+  // deferred-`provider` closure pattern as `onDidUpdate` above).
+  const activePlayback = new ActivePlayback(() => provider.refresh())
+  const provider = new ZzfxCodeLensProvider(
+    () => getSidecarClient(context),
+    audioResolver,
+    (findingId, sourceUri) => activePlayback.isActive(findingId, sourceUri)
+  )
   disposables.push(
     vscode.languages.registerCodeLensProvider(ZZFX_DOCUMENT_SELECTOR, provider),
     provider
+  )
+
+  /** Marks `source` as the active playback and watches the sidecar's
+   * exact timing (#43) so the lens auto-reverts to ▶ Play at the natural
+   * end — a manual stop or a replacement play supersedes the watcher via
+   * its token. */
+  function trackPlayback(
+    playClient: PlaySidecarClient,
+    source: { uri: string; findingId: string }
+  ): void {
+    const token = activePlayback.set({ findingId: source.findingId, sourceUri: source.uri })
+    void watchPlaybackEnd(activePlayback, token, () => playClient.getStats())
+  }
+
+  /** The one stop path (#46): manual ⏹ Stop clicks and the source-editor
+   * binding both land here — sidecar stop + clear active (which fires the
+   * lens refresh through ActivePlayback's onDidChange). */
+  function stopActivePlayback(): void {
+    getPlaySidecarClient(context)?.stopSong()
+    activePlayback.clear()
+  }
+
+  /** Whether any tab in any group still shows `uri` — the reliable
+   * "source document is still open" signal. `onDidCloseTextDocument`
+   * alone can't carry the close half of the binding: VS Code disposes
+   * TextDocuments lazily, so closing a tab is NOT guaranteed to fire it
+   * (per its own API docs) — proven live by the e2e close test, where
+   * the event never arrived inside the playback window. */
+  function isDocumentOpenInSomeTab(uri: string): boolean {
+    return vscode.window.tabGroups.all.some((group) =>
+      group.tabs.some(
+        (tab) => tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === uri
+      )
+    )
+  }
+
+  // Source-editor binding (#46): a playing sound belongs to its source
+  // document. Switching the active editor to a DIFFERENT document, or
+  // closing the source document's tab, stops it. An `undefined` active
+  // editor (focus moved to a terminal/panel/webview) is deliberately not
+  // a switch — the sound keeps playing; the tab check is what
+  // distinguishes "focus left the editor area" from "the source tab is
+  // actually gone."
+  disposables.push(
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      const current = activePlayback.current
+      if (!current || !editor) return
+      if (editor.document.uri.toString() === current.sourceUri) return
+      stopActivePlayback()
+    }),
+    vscode.window.tabGroups.onDidChangeTabs(() => {
+      const current = activePlayback.current
+      if (!current || isDocumentOpenInSomeTab(current.sourceUri)) return
+      stopActivePlayback()
+    }),
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      if (document.uri.toString() !== activePlayback.current?.sourceUri) return
+      stopActivePlayback()
+    })
   )
 
   // Tier 1 (shallow workspace scan): warm the sidecar's SQLite cache on
@@ -321,6 +389,9 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
           return
         }
         playClient.playSong(resolved.song, getPlaybackVolumeMultiplier())
+        // The lens toggle (#46): this finding is now the active playback
+        // — its lens re-renders as ⏹ Stop, every other one as ▶ Play.
+        trackPlayback(playClient, source)
       }
     )
   )
@@ -332,9 +403,9 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
         void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
         return
       }
-      // stopSong() itself no-ops if nothing is running — no need to gate
-      // on remote/setting here beyond getting a client handle at all.
-      getPlaySidecarClient(context)?.stopSong()
+      // The sidecar stop itself no-ops if nothing is running — no need to
+      // gate on remote/setting here beyond getting a client handle at all.
+      stopActivePlayback()
     })
   )
 
@@ -351,7 +422,8 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
       'threeFlatland.zzfx.playFile',
       async (
         absolutePath: string | undefined,
-        ref?: { path: string; sourceDir: string; workspaceRoot: string }
+        ref?: { path: string; sourceDir: string; workspaceRoot: string },
+        source?: { uri: string; findingId: string }
       ) => {
         // Defense in depth — see atlas/register.ts's identical guard comment.
         if (!isToolEnabled('zzfxStudio')) {
@@ -371,6 +443,10 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
           return
         }
         playClient.playFile(resolved, getPlaybackVolumeMultiplier())
+        // Same toggle lifecycle as playSong (#46). `source` is additive —
+        // the lens always supplies it; a legacy direct invocation without
+        // one just plays with no lens state to track.
+        if (source) trackPlayback(playClient, source)
       }
     )
   )
