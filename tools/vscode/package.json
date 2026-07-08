@@ -20,12 +20,12 @@
     "commands": [
       {
         "command": "threeFlatland.atlas.openEditor",
-        "title": "Open in FL Sprite Atlas",
+        "title": "Open in Sprite Atlas",
         "category": "FL"
       },
       {
         "command": "threeFlatland.merge.openMergeTool",
-        "title": "Merge atlases…",
+        "title": "Merge Atlases…",
         "category": "FL"
       },
       {
@@ -35,7 +35,7 @@
       },
       {
         "command": "threeFlatland.encode.open",
-        "title": "Open in FL Image Encoder",
+        "title": "Open in Image Encoder",
         "category": "FL"
       },
       {
@@ -50,7 +50,7 @@
       },
       {
         "command": "threeFlatland.normalBaker.open",
-        "title": "Open in FL Normal Baker",
+        "title": "Open in Normal Baker",
         "category": "FL"
       }
     ],
@@ -121,7 +121,7 @@
     "submenus": [
       {
         "id": "threeFlatland.flatlandMenu",
-        "label": "Flatland",
+        "label": "FL Tools",
         "icon": "$(package)"
       }
     ],
