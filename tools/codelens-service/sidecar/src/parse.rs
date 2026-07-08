@@ -774,21 +774,46 @@ fn resolve_var_ref(name: String, from: Node, text: &str, uri: &str) -> VarRef {
     }
 }
 
-fn find_declarator<'a>(node: Node<'a>, name: &str, text: &str) -> Option<Node<'a>> {
-    if node.kind() == "variable_declarator"
-        && let Some(id) = node.child_by_field_name("name")
-        && id.kind() == "identifier"
-        && node_text(id, text) == name
-    {
-        return Some(node);
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if let Some(found) = find_declarator(child, name, text) {
+/// Scans `root` (the Program node) for a top-level declarator named `name` —
+/// deliberately NOT a recursive descent into every node. Only
+/// `variable_declarator`s that are direct children of a top-level
+/// `variable_declaration`/`lexical_declaration` statement count, whether that
+/// statement sits directly under `root` or is wrapped in a top-level
+/// `export_statement` (`export const preset = ...`). A same-named declarator
+/// nested inside a function/block is a different binding in a different
+/// scope and must never match — see `resolve_var_ref`'s doc comment for why
+/// this intentionally stops short of real lexical scoping.
+fn find_declarator<'a>(root: Node<'a>, name: &str, text: &str) -> Option<Node<'a>> {
+    let mut cursor = root.walk();
+    for child in root.children(&mut cursor) {
+        if let Some(found) = find_declarator_in_statement(child, name, text) {
+            return Some(found);
+        }
+        if child.kind() == "export_statement"
+            && let Some(declaration) = child.child_by_field_name("declaration")
+            && let Some(found) = find_declarator_in_statement(declaration, name, text)
+        {
             return Some(found);
         }
     }
     None
+}
+
+/// Matches `name` against the `variable_declarator` children of a single
+/// `variable_declaration`/`lexical_declaration` statement (covers `const a =
+/// 1, preset = [...]`-style multi-declarator statements). Not recursive —
+/// callers are expected to only hand this top-level declaration statements.
+fn find_declarator_in_statement<'a>(node: Node<'a>, name: &str, text: &str) -> Option<Node<'a>> {
+    if node.kind() != "variable_declaration" && node.kind() != "lexical_declaration" {
+        return None;
+    }
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor).find(|declarator| {
+        declarator.kind() == "variable_declarator"
+            && declarator
+                .child_by_field_name("name")
+                .is_some_and(|id| id.kind() == "identifier" && node_text(id, text) == name)
+    })
 }
 
 #[cfg(test)]
@@ -961,6 +986,38 @@ mod tests {
         // job, not this layer's.
         let prefix = "const myPreset = ";
         let value = "getPreset()";
+        let src = format!("{prefix}{value};\nzzfx(myPreset);");
+        assert_def_range_covers_value(prefix, value, &src);
+    }
+
+    #[test]
+    fn var_ref_ignores_a_same_named_declarator_nested_in_an_unrelated_function() {
+        // Regression for a real corruption bug: a nested `preset` inside an
+        // unrelated function must never shadow the real top-level `preset`
+        // that `zzfx(preset)` actually references — resolving to the wrong
+        // one would make a client's write-back (`edit.replace` at
+        // `defRange`) silently clobber unrelated source.
+        let src = "function unrelated() { const preset = [9,9,9,9] }\nconst preset = [1,.05,220];\nzzfx(preset);";
+        let f = zzfx("a.ts", src);
+        let var_ref = f.var_ref.expect("expected varRef");
+        assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
+        let def_range = var_ref.def_range.expect("expected defRange");
+        // `def_range.start.character` is relative to its own line (line 1,
+        // the second line) — "const preset = " is 15 UTF-16 units.
+        let start = "const preset = ".encode_utf16().count() as u32;
+        assert_eq!(
+            def_range.start.character, start,
+            "must resolve to the top-level preset's value, not the nested one"
+        );
+        assert_eq!(def_range.start.line, 1);
+    }
+
+    #[test]
+    fn var_ref_resolves_a_top_level_exported_declaration() {
+        // `export const` is still a top-level declaration statement — the
+        // `export_statement` wrapper must not defeat resolution.
+        let prefix = "export const myPreset = ";
+        let value = "[1,.05,220]";
         let src = format!("{prefix}{value};\nzzfx(myPreset);");
         assert_def_range_covers_value(prefix, value, &src);
     }
