@@ -271,7 +271,10 @@ export function RegionListPanel({
                     disabled={i === presentation.length - 1}
                     onClick={(e) => {
                       e.stopPropagation()
-                      const { fromIndex, toIndex } = presentationStepMoveArgs(descriptorIndex, 'down')
+                      const { fromIndex, toIndex } = presentationStepMoveArgs(
+                        descriptorIndex,
+                        'down'
+                      )
                       onMove(fromIndex, toIndex)
                     }}
                   />
@@ -280,7 +283,11 @@ export function RegionListPanel({
             )
           })}
           {drag ? (
-            <DropIndicator dropBeforeIndex={drag.dropBeforeIndex} rowRefs={rowRefs} presentation={presentation} />
+            <DropIndicator
+              dropBeforeIndex={drag.dropBeforeIndex}
+              rowRefs={rowRefs}
+              presentation={presentation}
+            />
           ) : null}
         </ul>
       )}

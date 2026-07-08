@@ -62,10 +62,10 @@ import {
 // roundtrip; React.lazy()'s internal use(promise) keeps the resolution
 // stable across renders (no double-fetch under StrictMode).
 const CanvasStage = lazy(() =>
-  import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage })),
+  import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage }))
 )
 const AnimationPreviewPip = lazy(() =>
-  import('@three-flatland/preview/canvas').then((m) => ({ default: m.AnimationPreviewPip })),
+  import('@three-flatland/preview/canvas').then((m) => ({ default: m.AnimationPreviewPip }))
 )
 import {
   atlasActions,
@@ -182,7 +182,7 @@ function isEditableTarget(t: EventTarget | null): boolean {
  */
 function trimAlphaBbox(
   rect: { x: number; y: number; w: number; h: number },
-  imageData: ImageData,
+  imageData: ImageData
 ): { x: number; y: number; w: number; h: number } | null {
   const { data, width } = imageData
   let minX = rect.x + rect.w
@@ -426,12 +426,7 @@ const s = stylex.create({
     transform: 'scale(0.85)',
     transformOrigin: 'center right',
   },
-  thumbBg: (
-    bgImage: string,
-    bgSize: string,
-    bgPos: string,
-    clip: string,
-  ) => ({
+  thumbBg: (bgImage: string, bgSize: string, bgPos: string, clip: string) => ({
     backgroundImage: bgImage,
     backgroundSize: bgSize,
     backgroundPosition: bgPos,
@@ -794,7 +789,9 @@ export function App() {
   // the user wouldn't expect to carry over: switching the active
   // animation, or entering a tool mode (slice / auto-detect) where
   // the canvas is doing something else entirely.
-  useEffect(() => { setManualAnimHighlight(false) }, [activeAnimation])
+  useEffect(() => {
+    setManualAnimHighlight(false)
+  }, [activeAnimation])
   useEffect(() => {
     if (mode.kind !== 'normal') setManualAnimHighlight(false)
   }, [mode.kind])
@@ -812,7 +809,8 @@ export function App() {
     if (isEditableTarget(e.target)) return
     if (!(e.target instanceof Element)) return
     // Let toolbar buttons / custom elements keep their own focus semantics.
-    if (e.target.closest('vscode-toolbar-button, button, a, [tabindex]:not([tabindex="-1"])')) return
+    if (e.target.closest('vscode-toolbar-button, button, a, [tabindex]:not([tabindex="-1"])'))
+      return
     rootRef.current?.focus()
   }, [])
 
@@ -825,9 +823,7 @@ export function App() {
       const target = e.target as HTMLElement | null
       if (
         target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable)
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
       ) {
         return
       }
@@ -869,7 +865,7 @@ export function App() {
         didLoadRef.current = true
         atlasActions.loadFromInit(
           p.rects ? [...p.rects] : [],
-          p.animations ? { ...p.animations } : {},
+          p.animations ? { ...p.animations } : {}
         )
       }
       if (p.loadError) {
@@ -929,12 +925,12 @@ export function App() {
     (id: string, next: { x: number; y: number; w: number; h: number }) => {
       setRects((prev) => prev.map((r) => (r.id === id ? { ...r, ...next } : r)))
     },
-    [],
+    []
   )
 
   // ── Animation handlers ──────────────────────────────────────────────────
   const animationNames = useMemo(() => Object.keys(animations).sort(), [animations])
-  const activeAnim = activeAnimation ? animations[activeAnimation] ?? null : null
+  const activeAnim = activeAnimation ? (animations[activeAnimation] ?? null) : null
 
   /**
    * Pick a default name for a new animation from the seed frames'
@@ -965,7 +961,7 @@ export function App() {
       }
       return name
     },
-    [],
+    []
   )
 
   /**
@@ -975,21 +971,24 @@ export function App() {
    * Switches the dropdown to the new animation and auto-expands the
    * drawer. Returns the name that was created.
    */
-  const handleCreateAnimationFromFrames = useCallback((frameNames: readonly string[]): string => {
-    // Compute the name from the render-time `animations` snapshot first,
-    // then queue both state updates with the resolved name. The previous
-    // pattern mutated `createdName` inside the setAnimations updater
-    // closure, which is fragile under React's batched dispatch — the
-    // outer setActiveAnimation call could fire before the updater ran.
-    const name = deduceAnimationName(frameNames, animations)
-    setAnimations((prev) => ({
-      ...prev,
-      [name]: { frames: [...frameNames], fps: 12, loop: true, pingPong: false },
-    }))
-    setActiveAnimation(name)
-    if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
-    return name
-  }, [animations, deduceAnimationName, prefs.animDrawerExpanded])
+  const handleCreateAnimationFromFrames = useCallback(
+    (frameNames: readonly string[]): string => {
+      // Compute the name from the render-time `animations` snapshot first,
+      // then queue both state updates with the resolved name. The previous
+      // pattern mutated `createdName` inside the setAnimations updater
+      // closure, which is fragile under React's batched dispatch — the
+      // outer setActiveAnimation call could fire before the updater ran.
+      const name = deduceAnimationName(frameNames, animations)
+      setAnimations((prev) => ({
+        ...prev,
+        [name]: { frames: [...frameNames], fps: 12, loop: true, pingPong: false },
+      }))
+      setActiveAnimation(name)
+      if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
+      return name
+    },
+    [animations, deduceAnimationName, prefs.animDrawerExpanded]
+  )
 
   const handleCreateAnimation = useCallback(() => {
     // Header `+` seeds from the current Frames-panel selection (in
@@ -1002,24 +1001,27 @@ export function App() {
     handleCreateAnimationFromFrames(seedFrames)
   }, [rects, selectedIds, handleCreateAnimationFromFrames])
 
-  const handleDeleteAnimation = useCallback((name: string) => {
-    // Cascade: when deleting the active animation, switch to the next
-    // one in name order (or null when removing the last). Without this
-    // the dropdown lands on a stale empty value and the user has to
-    // re-pick manually after every delete.
-    setAnimations((prev) => {
-      const next = { ...prev }
-      delete next[name]
-      return next
-    })
-    setActiveAnimation((cur) => {
-      if (cur !== name) return cur
-      const remaining = Object.keys(animations)
-        .filter((n) => n !== name)
-        .sort()
-      return remaining[0] ?? null
-    })
-  }, [animations])
+  const handleDeleteAnimation = useCallback(
+    (name: string) => {
+      // Cascade: when deleting the active animation, switch to the next
+      // one in name order (or null when removing the last). Without this
+      // the dropdown lands on a stale empty value and the user has to
+      // re-pick manually after every delete.
+      setAnimations((prev) => {
+        const next = { ...prev }
+        delete next[name]
+        return next
+      })
+      setActiveAnimation((cur) => {
+        if (cur !== name) return cur
+        const remaining = Object.keys(animations)
+          .filter((n) => n !== name)
+          .sort()
+        return remaining[0] ?? null
+      })
+    },
+    [animations]
+  )
 
   const handleRenameAnimation = useCallback((oldName: string, newName: string) => {
     setAnimations((prev) => {
@@ -1033,12 +1035,15 @@ export function App() {
     setActiveAnimation((cur) => (cur === oldName ? newName : cur))
   }, [])
 
-  const updateActiveAnimation = useCallback((patch: Partial<Animation>) => {
-    setAnimations((prev) => {
-      if (!activeAnimation || !prev[activeAnimation]) return prev
-      return { ...prev, [activeAnimation]: { ...prev[activeAnimation]!, ...patch } }
-    })
-  }, [activeAnimation])
+  const updateActiveAnimation = useCallback(
+    (patch: Partial<Animation>) => {
+      setAnimations((prev) => {
+        if (!activeAnimation || !prev[activeAnimation]) return prev
+        return { ...prev, [activeAnimation]: { ...prev[activeAnimation]!, ...patch } }
+      })
+    },
+    [activeAnimation]
+  )
 
   // ── Animation playback ──────────────────────────────────────────────────
   const animationStore = useMemo(() => createAnimationStore(), [])
@@ -1060,7 +1065,13 @@ export function App() {
     const loop = (t: number) => {
       const dt = t - last
       last = t
-      animationStore.tick(dt, activeAnim.frames.length, activeAnim.fps, activeAnim.loop, activeAnim.pingPong)
+      animationStore.tick(
+        dt,
+        activeAnim.frames.length,
+        activeAnim.fps,
+        activeAnim.loop,
+        activeAnim.pingPong
+      )
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
@@ -1084,54 +1095,58 @@ export function App() {
   // Without this the store's integer index drifts: a frame that
   // logically still pointed at "b" would suddenly point inside a
   // re-extended "a" group, and the user would see the playhead jump.
-  const handleChangeHold = useCallback((groupIndex: number, nextCount: number) => {
-    if (!activeAnimation) return
-    const anim = animations[activeAnimation]
-    if (!anim) return
-    const oldGroups = groupCells(anim.frames)
-    if (groupIndex < 0 || groupIndex >= oldGroups.length) return
-    const oldCount = oldGroups[groupIndex]!.count
-    const groupStart = oldGroups[groupIndex]!.startIndex
+  const handleChangeHold = useCallback(
+    (groupIndex: number, nextCount: number) => {
+      if (!activeAnimation) return
+      const anim = animations[activeAnimation]
+      if (!anim) return
+      const oldGroups = groupCells(anim.frames)
+      if (groupIndex < 0 || groupIndex >= oldGroups.length) return
+      const oldCount = oldGroups[groupIndex]!.count
+      const groupStart = oldGroups[groupIndex]!.startIndex
 
-    const newGroups = oldGroups.map((g, i) =>
-      i === groupIndex ? { ...g, count: nextCount } : g,
-    )
-    const nextFrames: string[] = []
-    for (const g of newGroups) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
+      const newGroups = oldGroups.map((g, i) => (i === groupIndex ? { ...g, count: nextCount } : g))
+      const nextFrames: string[] = []
+      for (const g of newGroups) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
 
-    const oldPlayhead = animationStore.get().playhead
-    let newPlayhead = oldPlayhead
-    if (oldPlayhead >= groupStart && oldPlayhead < groupStart + oldCount) {
-      const posInGroup = oldPlayhead - groupStart
-      newPlayhead = groupStart + Math.min(posInGroup, nextCount - 1)
-    } else if (oldPlayhead >= groupStart + oldCount) {
-      newPlayhead = oldPlayhead + (nextCount - oldCount)
-    }
-    newPlayhead = Math.max(0, Math.min(nextFrames.length - 1, newPlayhead))
+      const oldPlayhead = animationStore.get().playhead
+      let newPlayhead = oldPlayhead
+      if (oldPlayhead >= groupStart && oldPlayhead < groupStart + oldCount) {
+        const posInGroup = oldPlayhead - groupStart
+        newPlayhead = groupStart + Math.min(posInGroup, nextCount - 1)
+      } else if (oldPlayhead >= groupStart + oldCount) {
+        newPlayhead = oldPlayhead + (nextCount - oldCount)
+      }
+      newPlayhead = Math.max(0, Math.min(nextFrames.length - 1, newPlayhead))
 
-    setAnimations((prev) => ({
-      ...prev,
-      [activeAnimation]: { ...prev[activeAnimation]!, frames: nextFrames },
-    }))
-    if (newPlayhead !== oldPlayhead) animationStore.seek(newPlayhead)
-  }, [activeAnimation, animations, animationStore])
+      setAnimations((prev) => ({
+        ...prev,
+        [activeAnimation]: { ...prev[activeAnimation]!, frames: nextFrames },
+      }))
+      if (newPlayhead !== oldPlayhead) animationStore.seek(newPlayhead)
+    },
+    [activeAnimation, animations, animationStore]
+  )
 
   // Remove a group from the active animation (cell-level delete via
   // Backspace at the playhead). Strips every duplicate of that frame
   // name belonging to the group.
-  const handleRemoveGroup = useCallback((groupIndex: number) => {
-    if (!activeAnimation) return
-    setAnimations((prev) => {
-      const anim = prev[activeAnimation]
-      if (!anim) return prev
-      const groups = groupCells(anim.frames)
-      if (groupIndex < 0 || groupIndex >= groups.length) return prev
-      groups.splice(groupIndex, 1)
-      const nextFrames: string[] = []
-      for (const g of groups) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
-      return { ...prev, [activeAnimation]: { ...anim, frames: nextFrames } }
-    })
-  }, [activeAnimation])
+  const handleRemoveGroup = useCallback(
+    (groupIndex: number) => {
+      if (!activeAnimation) return
+      setAnimations((prev) => {
+        const anim = prev[activeAnimation]
+        if (!anim) return prev
+        const groups = groupCells(anim.frames)
+        if (groupIndex < 0 || groupIndex >= groups.length) return prev
+        groups.splice(groupIndex, 1)
+        const nextFrames: string[] = []
+        for (const g of groups) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
+        return { ...prev, [activeAnimation]: { ...anim, frames: nextFrames } }
+      })
+    },
+    [activeAnimation]
+  )
 
   // Wraps the store's togglePlay with two ergonomic side effects:
   //  1. If we're transitioning paused→playing AND the playhead is
@@ -1175,55 +1190,64 @@ export function App() {
         return { ...prev, [activeAnimation]: { ...anim, frames: next } }
       })
     },
-    [activeAnimation],
+    [activeAnimation]
   )
 
   // Set or clear an event tag at a specific post-duplication frame
   // index of the active animation. Empty / null tag removes the
   // entry. Persists into the sidecar's `meta.animations[name].events`.
-  const handleSetEvent = useCallback((frameIndex: number, tag: string | null) => {
-    if (!activeAnimation) return
-    setAnimations((prev) => {
-      const anim = prev[activeAnimation]
-      if (!anim) return prev
-      const key = String(frameIndex)
-      const nextEvents: Record<string, string> = { ...(anim.events ?? {}) }
-      if (tag == null || tag === '') delete nextEvents[key]
-      else nextEvents[key] = tag
-      const cleaned = Object.keys(nextEvents).length > 0 ? nextEvents : undefined
-      return { ...prev, [activeAnimation]: { ...anim, events: cleaned } }
-    })
-  }, [activeAnimation])
+  const handleSetEvent = useCallback(
+    (frameIndex: number, tag: string | null) => {
+      if (!activeAnimation) return
+      setAnimations((prev) => {
+        const anim = prev[activeAnimation]
+        if (!anim) return prev
+        const key = String(frameIndex)
+        const nextEvents: Record<string, string> = { ...(anim.events ?? {}) }
+        if (tag == null || tag === '') delete nextEvents[key]
+        else nextEvents[key] = tag
+        const cleaned = Object.keys(nextEvents).length > 0 ? nextEvents : undefined
+        return { ...prev, [activeAnimation]: { ...anim, events: cleaned } }
+      })
+    },
+    [activeAnimation]
+  )
 
   // Reorder a group within the active animation: remove the group
   // at `fromGroupIndex` and re-insert it before `toGap`. The
   // adjustment `toGap > fromGroupIndex ? toGap - 1 : toGap` handles
   // the index shift caused by the removal so the dragged group
   // lands in the visual slot the user actually targeted.
-  const handleReorderGroup = useCallback((fromGroupIndex: number, toGap: number) => {
-    if (!activeAnimation) return
-    setAnimations((prev) => {
-      const anim = prev[activeAnimation]
-      if (!anim) return prev
-      const next = groupCells(anim.frames)
-      if (fromGroupIndex < 0 || fromGroupIndex >= next.length) return prev
-      const moved = next.splice(fromGroupIndex, 1)[0]!
-      const adjusted = toGap > fromGroupIndex ? toGap - 1 : toGap
-      const clampedGap = Math.max(0, Math.min(next.length, adjusted))
-      next.splice(clampedGap, 0, moved)
-      const nextFrames: string[] = []
-      for (const g of next) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
-      return { ...prev, [activeAnimation]: { ...anim, frames: nextFrames } }
-    })
-  }, [activeAnimation])
+  const handleReorderGroup = useCallback(
+    (fromGroupIndex: number, toGap: number) => {
+      if (!activeAnimation) return
+      setAnimations((prev) => {
+        const anim = prev[activeAnimation]
+        if (!anim) return prev
+        const next = groupCells(anim.frames)
+        if (fromGroupIndex < 0 || fromGroupIndex >= next.length) return prev
+        const moved = next.splice(fromGroupIndex, 1)[0]!
+        const adjusted = toGap > fromGroupIndex ? toGap - 1 : toGap
+        const clampedGap = Math.max(0, Math.min(next.length, adjusted))
+        next.splice(clampedGap, 0, moved)
+        const nextFrames: string[] = []
+        for (const g of next) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
+        return { ...prev, [activeAnimation]: { ...anim, frames: nextFrames } }
+      })
+    },
+    [activeAnimation]
+  )
 
   // Convenience: append (Add-to-anim button). Equivalent to
   // handleInsertFramesIntoActiveAnim(end, names).
-  const handleAppendFramesToActiveAnim = useCallback((frameNames: readonly string[]) => {
-    if (!activeAnimation) return
-    const anim = animations[activeAnimation]
-    handleInsertFramesIntoActiveAnim(anim?.frames.length ?? 0, frameNames)
-  }, [activeAnimation, animations, handleInsertFramesIntoActiveAnim])
+  const handleAppendFramesToActiveAnim = useCallback(
+    (frameNames: readonly string[]) => {
+      if (!activeAnimation) return
+      const anim = animations[activeAnimation]
+      handleInsertFramesIntoActiveAnim(anim?.frames.length ?? 0, frameNames)
+    },
+    [activeAnimation, animations, handleInsertFramesIntoActiveAnim]
+  )
 
   // Append the current Frames-panel selection (in selection-insertion
   // order) to the active animation. No-op when no anim is active or
@@ -1256,19 +1280,22 @@ export function App() {
   // tool is restored on release. The toolbar Move button reflects 'move'
   // for the duration so the user has consistent feedback.
   const toolBeforeSpaceRef = useRef<Tool | null>(null)
-  const handleSpaceHold = useCallback((down: boolean) => {
-    if (down) {
-      if (toolBeforeSpaceRef.current !== null) return // already held
-      toolBeforeSpaceRef.current = tool
-      setTool('move')
-    } else {
-      const prev = toolBeforeSpaceRef.current
-      if (prev !== null) {
-        setTool(prev)
-        toolBeforeSpaceRef.current = null
+  const handleSpaceHold = useCallback(
+    (down: boolean) => {
+      if (down) {
+        if (toolBeforeSpaceRef.current !== null) return // already held
+        toolBeforeSpaceRef.current = tool
+        setTool('move')
+      } else {
+        const prev = toolBeforeSpaceRef.current
+        if (prev !== null) {
+          setTool(prev)
+          toolBeforeSpaceRef.current = null
+        }
       }
-    }
-  }, [tool])
+    },
+    [tool]
+  )
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
@@ -1292,7 +1319,7 @@ export function App() {
               next[k] = { ...anim, frames: anim.frames.filter((f) => !removedNames.has(f)) }
             }
             return next
-          },
+          }
     )
     setSelectedIds(new Set())
   }, [rects, selectedIds])
@@ -1301,33 +1328,36 @@ export function App() {
     setSelectedIds(new Set(rects.map((r) => r.id)))
   }, [rects])
 
-  const renameRect = useCallback((id: string, name: string) => {
-    const trimmed = name.trim()
-    const oldName = rects.find((r) => r.id === id)?.name
-    const newName = trimmed === '' ? undefined : trimmed
-    // Propagate rename into every animation that references this frame.
-    // If the rect lost its name (newName === undefined), strip the
-    // entries — an unnamed rect can't appear in the `meta.animations` map.
-    const needsAnimUpdate = oldName && oldName !== newName
-    const rectsUpdater = (prev: Rect[]): Rect[] =>
-      prev.map((r) => (r.id === id ? { ...r, name: newName } : r))
-    const animsUpdater = needsAnimUpdate
-      ? (prev: Record<string, Animation>): Record<string, Animation> => {
-          const next: Record<string, Animation> = {}
-          for (const [k, anim] of Object.entries(prev)) {
-            next[k] = {
-              ...anim,
-              frames:
-                newName == null
-                  ? anim.frames.filter((f) => f !== oldName)
-                  : anim.frames.map((f) => (f === oldName ? newName : f)),
+  const renameRect = useCallback(
+    (id: string, name: string) => {
+      const trimmed = name.trim()
+      const oldName = rects.find((r) => r.id === id)?.name
+      const newName = trimmed === '' ? undefined : trimmed
+      // Propagate rename into every animation that references this frame.
+      // If the rect lost its name (newName === undefined), strip the
+      // entries — an unnamed rect can't appear in the `meta.animations` map.
+      const needsAnimUpdate = oldName && oldName !== newName
+      const rectsUpdater = (prev: Rect[]): Rect[] =>
+        prev.map((r) => (r.id === id ? { ...r, name: newName } : r))
+      const animsUpdater = needsAnimUpdate
+        ? (prev: Record<string, Animation>): Record<string, Animation> => {
+            const next: Record<string, Animation> = {}
+            for (const [k, anim] of Object.entries(prev)) {
+              next[k] = {
+                ...anim,
+                frames:
+                  newName == null
+                    ? anim.frames.filter((f) => f !== oldName)
+                    : anim.frames.map((f) => (f === oldName ? newName : f)),
+              }
             }
+            return next
           }
-          return next
-        }
-      : (prev: Record<string, Animation>) => prev
-    atlasActions.applyMulti(rectsUpdater, animsUpdater)
-  }, [rects])
+        : (prev: Record<string, Animation>) => prev
+      atlasActions.applyMulti(rectsUpdater, animsUpdater)
+    },
+    [rects]
+  )
 
   const applyPrefixToSelection = useCallback(
     (prefix: string) => {
@@ -1356,7 +1386,7 @@ export function App() {
                 }
               }
               return next
-            },
+            }
       )
     },
     [rects, selectedIds]
@@ -1384,11 +1414,29 @@ export function App() {
       if (w <= 0 || h <= 0) return next
       const grid =
         next.inputMode === 'pixels'
-          ? gridFromCellSize(w, h, next.cellW, next.cellH, next.offsetX, next.offsetY, next.gutterX, next.gutterY)
-          : gridFromRowCol(w, h, next.cols, next.rows, next.offsetX, next.offsetY, next.gutterX, next.gutterY)
+          ? gridFromCellSize(
+              w,
+              h,
+              next.cellW,
+              next.cellH,
+              next.offsetX,
+              next.offsetY,
+              next.gutterX,
+              next.gutterY
+            )
+          : gridFromRowCol(
+              w,
+              h,
+              next.cols,
+              next.rows,
+              next.offsetX,
+              next.offsetY,
+              next.gutterX,
+              next.gutterY
+            )
       return { ...next, grid, picked: new Set() }
     },
-    [imageSize],
+    [imageSize]
   )
 
   const enterSlice = useCallback(() => {
@@ -1434,27 +1482,27 @@ export function App() {
           if (patch.inputMode === 'cells') {
             merged.cols = Math.max(
               1,
-              Math.floor((w - merged.offsetX + merged.gutterX) / (merged.cellW + merged.gutterX)),
+              Math.floor((w - merged.offsetX + merged.gutterX) / (merged.cellW + merged.gutterX))
             )
             merged.rows = Math.max(
               1,
-              Math.floor((h - merged.offsetY + merged.gutterY) / (merged.cellH + merged.gutterY)),
+              Math.floor((h - merged.offsetY + merged.gutterY) / (merged.cellH + merged.gutterY))
             )
           } else {
             merged.cellW = Math.max(
               1,
-              Math.floor((w - merged.offsetX - (merged.cols - 1) * merged.gutterX) / merged.cols),
+              Math.floor((w - merged.offsetX - (merged.cols - 1) * merged.gutterX) / merged.cols)
             )
             merged.cellH = Math.max(
               1,
-              Math.floor((h - merged.offsetY - (merged.rows - 1) * merged.gutterY) / merged.rows),
+              Math.floor((h - merged.offsetY - (merged.rows - 1) * merged.gutterY) / merged.rows)
             )
           }
         }
         return regenerateGrid(merged)
       })
     },
-    [updateSlice, regenerateGrid, imageSize],
+    [updateSlice, regenerateGrid, imageSize]
   )
 
   const setCellPicked = useCallback(
@@ -1475,14 +1523,14 @@ export function App() {
         return { ...prev, picked: next }
       })
     },
-    [updateSlice, mode, selectedIds],
+    [updateSlice, mode, selectedIds]
   )
 
   const setSliceGrid = useCallback(
     (next: GridSpec) => {
       updateSlice((prev) => ({ ...prev, grid: next }))
     },
-    [updateSlice],
+    [updateSlice]
   )
 
   // Commit picked cells as named rects but STAY in slice mode so the user
@@ -1502,7 +1550,14 @@ export function App() {
     const newRects: Rect[] = [...state.picked].map((k, i) => {
       const [r, c] = k.split(',').map(Number) as [number, number]
       const ext = cellExtent(state.grid, r, c)
-      return { id: crypto.randomUUID(), x: ext.x, y: ext.y, w: ext.w, h: ext.h, name: `${prefix}_${i}` }
+      return {
+        id: crypto.randomUUID(),
+        x: ext.x,
+        y: ext.y,
+        w: ext.w,
+        h: ext.h,
+        name: `${prefix}_${i}`,
+      }
     })
     setRects((prev) => [...prev, ...newRects])
     setSelectedIds(new Set(newRects.map((r) => r.id)))
@@ -1511,20 +1566,15 @@ export function App() {
 
   const slicing = mode.kind === 'slicing'
   const sliceCanCommit =
-    mode.kind === 'slicing' &&
-    mode.state.picked.size > 0 &&
-    mode.state.prefix.trim() !== ''
+    mode.kind === 'slicing' && mode.state.picked.size > 0 && mode.state.prefix.trim() !== ''
 
   // ─── Autodetect (CCL) ──────────────────────────────────────────────────────
 
   const autodetect = mode.kind === 'autodetect'
 
-  const updateAutoDetect = useCallback(
-    (updater: (prev: AutoDetectState) => AutoDetectState) => {
-      setMode((m) => (m.kind === 'autodetect' ? { kind: 'autodetect', state: updater(m.state) } : m))
-    },
-    [],
-  )
+  const updateAutoDetect = useCallback((updater: (prev: AutoDetectState) => AutoDetectState) => {
+    setMode((m) => (m.kind === 'autodetect' ? { kind: 'autodetect', state: updater(m.state) } : m))
+  }, [])
 
   const enterAutoDetect = useCallback(() => {
     if (!imageSize) return
@@ -1549,12 +1599,12 @@ export function App() {
     <K extends keyof Required<CCLOptions>>(key: K, value: Required<CCLOptions>[K]) => {
       updateAutoDetect((prev) => ({ ...prev, options: { ...prev.options, [key]: value } }))
     },
-    [updateAutoDetect],
+    [updateAutoDetect]
   )
 
   const setAutoDetectPrefix = useCallback(
     (prefix: string) => updateAutoDetect((prev) => ({ ...prev, prefix })),
-    [updateAutoDetect],
+    [updateAutoDetect]
   )
 
   const toggleAutoDetectPick = useCallback(
@@ -1571,12 +1621,12 @@ export function App() {
         return { ...prev, picked: next }
       })
     },
-    [updateAutoDetect],
+    [updateAutoDetect]
   )
 
   const setAutoDetectPicked = useCallback(
     (picked: Set<number>) => updateAutoDetect((prev) => ({ ...prev, picked })),
-    [updateAutoDetect],
+    [updateAutoDetect]
   )
 
   const commitAutoDetect = useCallback(() => {
@@ -1597,9 +1647,7 @@ export function App() {
   }, [mode, updateAutoDetect])
 
   const autoDetectCanCommit =
-    mode.kind === 'autodetect' &&
-    mode.state.picked.size > 0 &&
-    mode.state.prefix.trim() !== ''
+    mode.kind === 'autodetect' && mode.state.picked.size > 0 && mode.state.prefix.trim() !== ''
 
   const inTool = slicing || autodetect
 
@@ -1616,12 +1664,30 @@ export function App() {
         // normal-mode, no-selection state regardless of how many
         // things were active.
         let consumed = false
-        if (mode.kind === 'slicing') { exitSlice(); consumed = true }
-        if (mode.kind === 'autodetect') { exitAutoDetect(); consumed = true }
-        if (renameMode.kind !== 'none') { setRenameMode({ kind: 'none' }); consumed = true }
-        if (selectedIds.size > 0) { clearSelection(); consumed = true }
-        if (folderSelectionPrefix !== null) { setFolderSelectionPrefix(null); consumed = true }
-        if (manualAnimHighlight) { setManualAnimHighlight(false); consumed = true }
+        if (mode.kind === 'slicing') {
+          exitSlice()
+          consumed = true
+        }
+        if (mode.kind === 'autodetect') {
+          exitAutoDetect()
+          consumed = true
+        }
+        if (renameMode.kind !== 'none') {
+          setRenameMode({ kind: 'none' })
+          consumed = true
+        }
+        if (selectedIds.size > 0) {
+          clearSelection()
+          consumed = true
+        }
+        if (folderSelectionPrefix !== null) {
+          setFolderSelectionPrefix(null)
+          consumed = true
+        }
+        if (manualAnimHighlight) {
+          setManualAnimHighlight(false)
+          consumed = true
+        }
         if (consumed) e.preventDefault()
         return
       }
@@ -1699,8 +1765,10 @@ export function App() {
       // bailed out below so e.g. Cmd+Arrow stays available for future
       // word-jump-style shortcuts.
       const isArrow =
-        e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
-        e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown' ||
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight'
       if (isArrow && !mod && !e.altKey) {
         if (selectedIds.size === 0 || !imageSize) return
         const step = e.shiftKey ? 10 : 1
@@ -1722,9 +1790,7 @@ export function App() {
             if (dy > maxDy) dy = maxDy
           }
           if (dx === 0 && dy === 0) return prev
-          return prev.map((r) =>
-            selectedIds.has(r.id) ? { ...r, x: r.x + dx, y: r.y + dy } : r,
-          )
+          return prev.map((r) => (selectedIds.has(r.id) ? { ...r, x: r.x + dx, y: r.y + dy } : r))
         })
         return
       }
@@ -1774,502 +1840,508 @@ export function App() {
 
   return (
     <DragProvider>
-    <div
-      ref={rootRef}
-      tabIndex={-1}
-      onPointerDown={handleRootPointerDown}
-      {...stylex.props(s.root)}
-    >
-      <Toolbar>
-        <ToolbarButton
-          icon="symbol-ruler"
-          title="Grid Slice"
-          toggleable
-          checked={slicing}
-          disabled={autodetect}
-          onClick={() => (slicing ? exitSlice() : enterSlice())}
-        />
-        <ToolbarButton
-          icon="wand"
-          title="Auto Detect Sprites"
-          toggleable
-          checked={autodetect}
-          disabled={slicing}
-          onClick={() => (autodetect ? exitAutoDetect() : enterAutoDetect())}
-        />
-        <Divider />
-        <ToolbarButton
-          icon="add"
-          title="Draw Rect  (R)"
-          toggleable
-          checked={tool === 'rect' && !inTool}
-          disabled={inTool}
-          onClick={() => setTool('rect')}
-        />
-        <ToolbarButton
-          icon="selection"
-          title="Select  (S)"
-          toggleable
-          checked={tool === 'select' && !inTool}
-          disabled={inTool}
-          onClick={() => setTool('select')}
-        />
-        <ToolbarButton
-          icon="move"
-          title="Move  (M)"
-          toggleable
-          checked={tool === 'move' && !inTool}
-          disabled={inTool}
-          onClick={() => setTool('move')}
-        />
-        <Divider />
-        <ToolbarButton
-          icon="symbol-string"
-          title="Rename / Auto-name  (N)"
-          disabled={inTool}
-          onClick={startRename}
-        />
-        <ToolbarButton icon="run-all" title="Animations" disabled={inTool} />
-        <div {...stylex.props(s.toolbarSpacer)} />
-        <ToolbarButton
-          icon="zoom-in"
-          title="Zoom In"
-          onClick={() => viewportControllerRef.current?.zoomIn()}
-        />
-        <ToolbarButton
-          icon="zoom-out"
-          title="Zoom Out"
-          onClick={() => viewportControllerRef.current?.zoomOut()}
-        />
-        <ToolbarButton
-          icon="screen-full"
-          title="Fit"
-          onClick={() => viewportControllerRef.current?.fitToView()}
-        />
-        <Divider />
-        <ToolbarButton
-          icon="discard"
-          title="Undo  (⌘Z)"
-          disabled={!canUndo}
-          onClick={() => atlasHistory.undo()}
-        />
-        <ToolbarButton
-          icon="redo"
-          title="Redo  (⌘⇧Z)"
-          disabled={!canRedo}
-          onClick={() => atlasHistory.redo()}
-        />
-        <Divider />
-        <ToolbarButton
-          icon="trash"
-          title="Delete Selected  (Del)"
-          disabled={inTool}
-          onClick={deleteSelected}
-        />
-        <ToolbarButton
-          icon="clear-all"
-          title="Clear All Rects"
-          disabled={inTool}
-          onClick={() => {
-            setRects([])
-            setSelectedIds(new Set())
-          }}
-        />
-        <ToolbarButton
-          icon={saveStatus.kind === 'saving' ? 'loading' : 'save'}
-          title="Save Atlas  (⌘S)"
-          disabled={inTool}
-          onClick={() => void handleSave()}
-        />
-      </Toolbar>
-
       <div
-        ref={workAreaRef}
-        {...stylex.props(s.workArea, s.workAreaCols(framesPx))}
+        ref={rootRef}
+        tabIndex={-1}
+        onPointerDown={handleRootPointerDown}
+        {...stylex.props(s.root)}
       >
-        <Panel title="Atlas" headerActions={<AtlasMenu prefs={prefs} />} bodyPadding="none">
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          <div {...stylex.props(s.previewWrap)} style={{ flex: 1, minHeight: 0 }}>
-            <Suspense
-              // Mirrors CanvasStage's wrapper bg exactly (via the shared
-              // canvasBackgroundStyle helper) so there's no bg transition
-              // when the lazy-loaded canvas chunk resolves and CanvasStage
-              // takes over rendering — without this, a user in checker
-              // mode would see solid → checker → image as the fallback
-              // hands off to the mounted stage.
-              fallback={
-                <div
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    ...canvasBackgroundStyle(
+        <Toolbar>
+          <ToolbarButton
+            icon="symbol-ruler"
+            title="Grid Slice"
+            toggleable
+            checked={slicing}
+            disabled={autodetect}
+            onClick={() => (slicing ? exitSlice() : enterSlice())}
+          />
+          <ToolbarButton
+            icon="wand"
+            title="Auto Detect Sprites"
+            toggleable
+            checked={autodetect}
+            disabled={slicing}
+            onClick={() => (autodetect ? exitAutoDetect() : enterAutoDetect())}
+          />
+          <Divider />
+          <ToolbarButton
+            icon="add"
+            title="Draw Rect  (R)"
+            toggleable
+            checked={tool === 'rect' && !inTool}
+            disabled={inTool}
+            onClick={() => setTool('rect')}
+          />
+          <ToolbarButton
+            icon="selection"
+            title="Select  (S)"
+            toggleable
+            checked={tool === 'select' && !inTool}
+            disabled={inTool}
+            onClick={() => setTool('select')}
+          />
+          <ToolbarButton
+            icon="move"
+            title="Move  (M)"
+            toggleable
+            checked={tool === 'move' && !inTool}
+            disabled={inTool}
+            onClick={() => setTool('move')}
+          />
+          <Divider />
+          <ToolbarButton
+            icon="symbol-string"
+            title="Rename / Auto-name  (N)"
+            disabled={inTool}
+            onClick={startRename}
+          />
+          <ToolbarButton icon="run-all" title="Animations" disabled={inTool} />
+          <div {...stylex.props(s.toolbarSpacer)} />
+          <ToolbarButton
+            icon="zoom-in"
+            title="Zoom In"
+            onClick={() => viewportControllerRef.current?.zoomIn()}
+          />
+          <ToolbarButton
+            icon="zoom-out"
+            title="Zoom Out"
+            onClick={() => viewportControllerRef.current?.zoomOut()}
+          />
+          <ToolbarButton
+            icon="screen-full"
+            title="Fit"
+            onClick={() => viewportControllerRef.current?.fitToView()}
+          />
+          <Divider />
+          <ToolbarButton
+            icon="discard"
+            title="Undo  (⌘Z)"
+            disabled={!canUndo}
+            onClick={() => atlasHistory.undo()}
+          />
+          <ToolbarButton
+            icon="redo"
+            title="Redo  (⌘⇧Z)"
+            disabled={!canRedo}
+            onClick={() => atlasHistory.redo()}
+          />
+          <Divider />
+          <ToolbarButton
+            icon="trash"
+            title="Delete Selected  (Del)"
+            disabled={inTool}
+            onClick={deleteSelected}
+          />
+          <ToolbarButton
+            icon="clear-all"
+            title="Clear All Rects"
+            disabled={inTool}
+            onClick={() => {
+              setRects([])
+              setSelectedIds(new Set())
+            }}
+          />
+          <ToolbarButton
+            icon={saveStatus.kind === 'saving' ? 'loading' : 'save'}
+            title="Save Atlas  (⌘S)"
+            disabled={inTool}
+            onClick={() => void handleSave()}
+          />
+        </Toolbar>
+
+        <div ref={workAreaRef} {...stylex.props(s.workArea, s.workAreaCols(framesPx))}>
+          <Panel title="Atlas" headerActions={<AtlasMenu prefs={prefs} />} bodyPadding="none">
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              <div {...stylex.props(s.previewWrap)} style={{ flex: 1, minHeight: 0 }}>
+                <Suspense
+                  // Mirrors CanvasStage's wrapper bg exactly (via the shared
+                  // canvasBackgroundStyle helper) so there's no bg transition
+                  // when the lazy-loaded canvas chunk resolves and CanvasStage
+                  // takes over rendering — without this, a user in checker
+                  // mode would see solid → checker → image as the fallback
+                  // hands off to the mounted stage.
+                  fallback={
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        ...canvasBackgroundStyle(
+                          prefs.background === 'checker'
+                            ? 'checker'
+                            : prefs.background === 'gradient'
+                              ? 'gradient'
+                              : 'solid',
+                          editorBg
+                        ),
+                      }}
+                    />
+                  }
+                >
+                  <CanvasStage
+                    imageUri={payload?.imageUri ?? null}
+                    background={editorBg}
+                    backgroundStyle={
                       prefs.background === 'checker'
                         ? 'checker'
                         : prefs.background === 'gradient'
-                        ? 'gradient'
-                        : 'solid',
-                      editorBg,
-                    ),
-                  }}
-                />
-              }
-            >
-            <CanvasStage
-              imageUri={payload?.imageUri ?? null}
-              background={editorBg}
-              backgroundStyle={
-                prefs.background === 'checker'
-                  ? 'checker'
-                  : prefs.background === 'gradient'
-                  ? 'gradient'
-                  : 'solid'
-              }
-              dimOutOfBounds={prefs.dimOutOfBounds}
-              pixelSnapZoom={prefs.pixelSnapZoom}
-              pixelArt={prefs.pixelArt}
-              onImageReady={setImageSize}
-              panMode={tool === 'move' && !inTool}
-              onSpaceHold={handleSpaceHold}
-              onBackgroundPointerDown={inTool ? undefined : () => setSelectedIds(new Set())}
-            >
-              <RectOverlay
-                rects={rects}
-                drawEnabled={tool === 'rect' && !inTool}
-                interactive={!inTool}
-                onRectCreate={handleRectCreate}
-                onRectChange={inTool ? undefined : handleRectChange}
-                selectedIds={selectedIds}
-                onSelectionChange={inTool ? undefined : setSelectedIds}
-                onHoverChange={setHoveredRect}
-                showLabels={prefs.showFrameNumbers}
-                atlasImageUri={payload?.imageUri ?? null}
-                atlasSize={imageSize}
-              />
-              {mode.kind === 'slicing' ? (
-                <GridSliceOverlay
-                  grid={mode.state.grid}
-                  picked={mode.state.picked}
-                  onGridChange={setSliceGrid}
-                  onCellSet={setCellPicked}
-                  frameOffset={rects.length}
-                />
-              ) : null}
-              {mode.kind === 'autodetect' ? (
-                <AutoDetectOverlay
-                  detected={mode.state.detected}
-                  picked={mode.state.picked}
-                  onToggle={toggleAutoDetectPick}
-                  onSetPicked={setAutoDetectPicked}
-                />
-              ) : null}
-              <ViewportControllerSink controllerRef={viewportControllerRef} />
-              <ImageDataSink onChange={setImageData} />
-              {prefs.showHoverChip ? (
-                <HoverFrameChip
-                  rect={hoveredRect}
-                  // findIndex by id, not indexOf by reference: during a
-                  // resize/move drag RectOverlay surfaces a synthesized
-                  // rect carrying the live preview geometry, which won't
-                  // be reference-equal to anything in the rects array.
-                  index={hoveredRect ? rects.findIndex((r) => r.id === hoveredRect.id) : null}
-                />
-              ) : null}
-              {prefs.showInfoPanel ? (
-                <InfoPanel
-                  colorMode={prefs.colorMode}
-                  onColorModeChange={(v) => prefsStore.set({ colorMode: v })}
-                  coordMode={prefs.coordMode}
-                  onCoordModeChange={(v) => prefsStore.set({ coordMode: v })}
-                />
-              ) : null}
-              {(playback.isPlaying || manualAnimHighlight) && activeAnim && activeAnim.frames.length > 0 ? (
-                <AnimationRectHighlight
-                  rect={(() => {
-                    const name = activeAnim.frames[Math.min(playback.playhead, activeAnim.frames.length - 1)]
-                    if (!name) return null
-                    const r = rectsByName[name]
-                    return r ? { x: r.x, y: r.y, w: r.w, h: r.h } : null
-                  })()}
-                />
-              ) : null}
-              {prefs.animPipVisible ? (
-                <AnimationPreviewPip
-                  animationName={activeAnimation}
-                  frames={activeAnim?.frames ?? []}
-                  rectsByName={rectsByName}
-                  atlasImageUri={payload?.imageUri ?? null}
-                  atlasSize={imageSize}
-                  playhead={playback.playhead}
-                  isPlaying={playback.isPlaying}
-                  onTogglePlay={handleTogglePlay}
-                  pixelArt={prefs.pixelArt}
-                  panMode={tool === 'move' && !inTool}
-                  pipScale={prefs.animPipScale}
-                  // Cycle 1× → 2× → 4× → 1×. Persisted via prefs so the
-                  // user's choice survives panel reload.
-                  onCycleScale={() => {
-                    const next = ({ 1: 2, 2: 4, 4: 1 } as const)[prefs.animPipScale]
-                    prefsStore.set({ animPipScale: next })
-                  }}
-                  events={activeAnim?.events}
-                />
-              ) : null}
-            </CanvasStage>
-            </Suspense>
-          </div>
-          <AnimationDrawer
-            expanded={prefs.animDrawerExpanded}
-            header={
-              <AnimationDrawerHeader
+                          ? 'gradient'
+                          : 'solid'
+                    }
+                    dimOutOfBounds={prefs.dimOutOfBounds}
+                    pixelSnapZoom={prefs.pixelSnapZoom}
+                    pixelArt={prefs.pixelArt}
+                    onImageReady={setImageSize}
+                    panMode={tool === 'move' && !inTool}
+                    onSpaceHold={handleSpaceHold}
+                    onBackgroundPointerDown={inTool ? undefined : () => setSelectedIds(new Set())}
+                  >
+                    <RectOverlay
+                      rects={rects}
+                      drawEnabled={tool === 'rect' && !inTool}
+                      interactive={!inTool}
+                      onRectCreate={handleRectCreate}
+                      onRectChange={inTool ? undefined : handleRectChange}
+                      selectedIds={selectedIds}
+                      onSelectionChange={inTool ? undefined : setSelectedIds}
+                      onHoverChange={setHoveredRect}
+                      showLabels={prefs.showFrameNumbers}
+                      atlasImageUri={payload?.imageUri ?? null}
+                      atlasSize={imageSize}
+                    />
+                    {mode.kind === 'slicing' ? (
+                      <GridSliceOverlay
+                        grid={mode.state.grid}
+                        picked={mode.state.picked}
+                        onGridChange={setSliceGrid}
+                        onCellSet={setCellPicked}
+                        frameOffset={rects.length}
+                      />
+                    ) : null}
+                    {mode.kind === 'autodetect' ? (
+                      <AutoDetectOverlay
+                        detected={mode.state.detected}
+                        picked={mode.state.picked}
+                        onToggle={toggleAutoDetectPick}
+                        onSetPicked={setAutoDetectPicked}
+                      />
+                    ) : null}
+                    <ViewportControllerSink controllerRef={viewportControllerRef} />
+                    <ImageDataSink onChange={setImageData} />
+                    {prefs.showHoverChip ? (
+                      <HoverFrameChip
+                        rect={hoveredRect}
+                        // findIndex by id, not indexOf by reference: during a
+                        // resize/move drag RectOverlay surfaces a synthesized
+                        // rect carrying the live preview geometry, which won't
+                        // be reference-equal to anything in the rects array.
+                        index={hoveredRect ? rects.findIndex((r) => r.id === hoveredRect.id) : null}
+                      />
+                    ) : null}
+                    {prefs.showInfoPanel ? (
+                      <InfoPanel
+                        colorMode={prefs.colorMode}
+                        onColorModeChange={(v) => prefsStore.set({ colorMode: v })}
+                        coordMode={prefs.coordMode}
+                        onCoordModeChange={(v) => prefsStore.set({ coordMode: v })}
+                      />
+                    ) : null}
+                    {(playback.isPlaying || manualAnimHighlight) &&
+                    activeAnim &&
+                    activeAnim.frames.length > 0 ? (
+                      <AnimationRectHighlight
+                        rect={(() => {
+                          const name =
+                            activeAnim.frames[
+                              Math.min(playback.playhead, activeAnim.frames.length - 1)
+                            ]
+                          if (!name) return null
+                          const r = rectsByName[name]
+                          return r ? { x: r.x, y: r.y, w: r.w, h: r.h } : null
+                        })()}
+                      />
+                    ) : null}
+                    {prefs.animPipVisible ? (
+                      <AnimationPreviewPip
+                        animationName={activeAnimation}
+                        frames={activeAnim?.frames ?? []}
+                        rectsByName={rectsByName}
+                        atlasImageUri={payload?.imageUri ?? null}
+                        atlasSize={imageSize}
+                        playhead={playback.playhead}
+                        isPlaying={playback.isPlaying}
+                        onTogglePlay={handleTogglePlay}
+                        pixelArt={prefs.pixelArt}
+                        panMode={tool === 'move' && !inTool}
+                        pipScale={prefs.animPipScale}
+                        // Cycle 1× → 2× → 4× → 1×. Persisted via prefs so the
+                        // user's choice survives panel reload.
+                        onCycleScale={() => {
+                          const next = ({ 1: 2, 2: 4, 4: 1 } as const)[prefs.animPipScale]
+                          prefsStore.set({ animPipScale: next })
+                        }}
+                        events={activeAnim?.events}
+                      />
+                    ) : null}
+                  </CanvasStage>
+                </Suspense>
+              </div>
+              <AnimationDrawer
                 expanded={prefs.animDrawerExpanded}
-                onToggleExpanded={() => prefsStore.set({ animDrawerExpanded: !prefs.animDrawerExpanded })}
-                animationNames={animationNames}
-                activeAnimation={activeAnimation}
-                onSelectAnimation={setActiveAnimation}
-                onCreateAnimation={handleCreateAnimation}
-                onDeleteAnimation={handleDeleteAnimation}
-                onRenameAnimation={handleRenameAnimation}
-                isPlaying={playback.isPlaying}
-                onTogglePlay={handleTogglePlay}
-                fps={activeAnim?.fps ?? 12}
-                loop={activeAnim?.loop ?? true}
-                pingPong={activeAnim?.pingPong ?? false}
-                onChangeFps={(v) => updateActiveAnimation({ fps: v })}
-                onChangeLoop={(v) => updateActiveAnimation({ loop: v })}
-                onChangePingPong={(v) => updateActiveAnimation({ pingPong: v })}
-                pipVisible={prefs.animPipVisible}
-                onTogglePipVisible={() => prefsStore.set({ animPipVisible: !prefs.animPipVisible })}
-                activeIsEmpty={activeAnim != null && activeAnim.frames.length === 0}
-              />
-            }
-            body={(density) => (
-              <AnimationTimeline
-                frames={activeAnim?.frames ?? []}
-                rectsByName={rectsByName}
-                atlasImageUri={payload?.imageUri ?? null}
-                atlasSize={imageSize}
-                density={density}
-                playheadGroupIndex={
-                  activeAnim ? frameIndexToGroupIndex(activeAnim.frames, playback.playhead) : 0
+                header={
+                  <AnimationDrawerHeader
+                    expanded={prefs.animDrawerExpanded}
+                    onToggleExpanded={() =>
+                      prefsStore.set({ animDrawerExpanded: !prefs.animDrawerExpanded })
+                    }
+                    animationNames={animationNames}
+                    activeAnimation={activeAnimation}
+                    onSelectAnimation={setActiveAnimation}
+                    onCreateAnimation={handleCreateAnimation}
+                    onDeleteAnimation={handleDeleteAnimation}
+                    onRenameAnimation={handleRenameAnimation}
+                    isPlaying={playback.isPlaying}
+                    onTogglePlay={handleTogglePlay}
+                    fps={activeAnim?.fps ?? 12}
+                    loop={activeAnim?.loop ?? true}
+                    pingPong={activeAnim?.pingPong ?? false}
+                    onChangeFps={(v) => updateActiveAnimation({ fps: v })}
+                    onChangeLoop={(v) => updateActiveAnimation({ loop: v })}
+                    onChangePingPong={(v) => updateActiveAnimation({ pingPong: v })}
+                    pipVisible={prefs.animPipVisible}
+                    onTogglePipVisible={() =>
+                      prefsStore.set({ animPipVisible: !prefs.animPipVisible })
+                    }
+                    activeIsEmpty={activeAnim != null && activeAnim.frames.length === 0}
+                  />
                 }
-                playhead={playback.playhead}
-                isPlaying={playback.isPlaying}
-                getSmoothPlayhead={() => animationStore.getSmoothPlayhead()}
-                onSeekGroup={(g) => {
-                  if (!activeAnim) return
-                  const groups = groupCells(activeAnim.frames)
-                  const target = groups[g]
-                  if (target) animationStore.seek(target.startIndex)
-                  // Clicking a timeline cell shifts focus to the
-                  // timeline; clear any lingering rect/folder
-                  // selection so a follow-up Backspace targets the
-                  // cell (handleRemoveGroup) instead of the
-                  // previously-selected rects (deleteSelected).
-                  if (selectedIds.size > 0) setSelectedIds(new Set())
-                  setFolderSelectionPrefix(null)
-                  // Light up the active-frame highlight overlay so
-                  // the user can see which atlas rect this cell is
-                  // pointing at.
-                  setManualAnimHighlight(true)
-                }}
-                onClearHighlight={() => setManualAnimHighlight(false)}
-                onChangeHold={handleChangeHold}
-                onDropFrames={(insertIndex, names) => {
-                  // Insert into the active anim at the cursor's projected
-                  // gap if there is one. Otherwise (or if activeAnimation
-                  // points at a name that no longer exists in the current
-                  // animations map — e.g. a stale value persisted from a
-                  // previous panel session), create a new animation.
-                  if (activeAnimation && animations[activeAnimation]) {
-                    handleInsertFramesIntoActiveAnim(insertIndex, names)
-                  } else {
-                    handleCreateAnimationFromFrames(names)
-                  }
-                }}
-                onReorderGroup={handleReorderGroup}
-                events={activeAnim?.events}
-                onSetEvent={handleSetEvent}
-              />
-            )}
-          />
-          </div>
-        </Panel>
-
-        <Splitter
-          axis="vertical"
-          onDrag={(clientX) => {
-            const el = workAreaRef.current
-            if (!el) return
-            const rect = el.getBoundingClientRect()
-            // Frames width = the distance from the cursor to the right
-            // edge of the work area. Clamped so neither column drops
-            // below 200px (the splitter itself is 4px + 2× space.lg
-            // padding ≈ 20px, so we leave a small margin).
-            const next = rect.right - clientX
-            const min = 200
-            // Splitter (4px) is the only inter-column gap now — leave just
-            // a tiny margin so the user can't overlap the columns.
-            const max = Math.max(min, rect.width - 200 - 4)
-            setFramesPx(Math.max(min, Math.min(max, next)))
-          }}
-        />
-
-        <div
-          ref={sidebarRef}
-          {...stylex.props(
-            s.sidebarStack,
-            s.sidebarRows(inTool ? 'minmax(0, 1fr) max-content' : '1fr'),
-          )}
-        >
-        <Panel
-          title={`Frames (${rects.length}${selectedIds.size > 0 ? ` · ${selectedIds.size} sel` : ''})`}
-          bodyPadding="none"
-          headerActions={
-            <button
-              type="button"
-              onClick={handleAddSelectionToActiveAnim}
-              disabled={selectedIds.size === 0 || !activeAnimation}
-              title={
-                !activeAnimation
-                  ? 'Select an animation first'
-                  : selectedIds.size === 0
-                  ? 'Select frames to add'
-                  : `Add ${selectedIds.size} frame(s) to "${activeAnimation}"`
-              }
-              aria-label="Add selection to active animation"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 16,
-                height: 16,
-                padding: 0,
-                border: 0,
-                borderRadius: 2,
-                background: 'transparent',
-                color:
-                  selectedIds.size > 0 && activeAnimation
-                    ? 'var(--vscode-panelTitle-activeForeground)'
-                    : 'var(--vscode-descriptionForeground)',
-                opacity: selectedIds.size > 0 && activeAnimation ? 1 : 0.4,
-                cursor: selectedIds.size > 0 && activeAnimation ? 'pointer' : 'not-allowed',
-              }}
-            >
-              <Icon name="add" />
-            </button>
-          }
-        >
-          {renameMode.kind === 'prefix' ? (
-            <PrefixRenameBar
-              initial={prefixDraft}
-              count={renameMode.ids.length}
-              onCommit={(prefix) => {
-                applyPrefixToSelection(prefix)
-                setRenameMode({ kind: 'none' })
-              }}
-              onCancel={() => setRenameMode({ kind: 'none' })}
-            />
-          ) : null}
-
-          {rects.length === 0 ? (
-            <div {...stylex.props(s.emptyState)}>
-              {inTool
-                ? 'No frames yet. Pick cells in the active tool panel and Commit to add them.'
-                : (
-                  <>
-                    Draw rects with the <i className="codicon codicon-add" /> tool{' '}
-                    <span {...stylex.props(s.hintDim)}>(R)</span>.
-                  </>
+                body={(density) => (
+                  <AnimationTimeline
+                    frames={activeAnim?.frames ?? []}
+                    rectsByName={rectsByName}
+                    atlasImageUri={payload?.imageUri ?? null}
+                    atlasSize={imageSize}
+                    density={density}
+                    playheadGroupIndex={
+                      activeAnim ? frameIndexToGroupIndex(activeAnim.frames, playback.playhead) : 0
+                    }
+                    playhead={playback.playhead}
+                    isPlaying={playback.isPlaying}
+                    getSmoothPlayhead={() => animationStore.getSmoothPlayhead()}
+                    onSeekGroup={(g) => {
+                      if (!activeAnim) return
+                      const groups = groupCells(activeAnim.frames)
+                      const target = groups[g]
+                      if (target) animationStore.seek(target.startIndex)
+                      // Clicking a timeline cell shifts focus to the
+                      // timeline; clear any lingering rect/folder
+                      // selection so a follow-up Backspace targets the
+                      // cell (handleRemoveGroup) instead of the
+                      // previously-selected rects (deleteSelected).
+                      if (selectedIds.size > 0) setSelectedIds(new Set())
+                      setFolderSelectionPrefix(null)
+                      // Light up the active-frame highlight overlay so
+                      // the user can see which atlas rect this cell is
+                      // pointing at.
+                      setManualAnimHighlight(true)
+                    }}
+                    onClearHighlight={() => setManualAnimHighlight(false)}
+                    onChangeHold={handleChangeHold}
+                    onDropFrames={(insertIndex, names) => {
+                      // Insert into the active anim at the cursor's projected
+                      // gap if there is one. Otherwise (or if activeAnimation
+                      // points at a name that no longer exists in the current
+                      // animations map — e.g. a stale value persisted from a
+                      // previous panel session), create a new animation.
+                      if (activeAnimation && animations[activeAnimation]) {
+                        handleInsertFramesIntoActiveAnim(insertIndex, names)
+                      } else {
+                        handleCreateAnimationFromFrames(names)
+                      }
+                    }}
+                    onReorderGroup={handleReorderGroup}
+                    events={activeAnim?.events}
+                    onSetEvent={handleSetEvent}
+                  />
                 )}
+              />
             </div>
-          ) : (
-            <FramesView
-              rects={rects}
-              imageUri={payload?.imageUri ?? null}
-              imageData={imageData}
-              imageSize={imageSize}
-              selectedIds={selectedIds}
-              folderSelectionPrefix={folderSelectionPrefix}
-              renameMode={renameMode}
-              onSelectRect={(id, additive) => {
-                const next = new Set(selectedIds)
-                if (additive) {
-                  if (next.has(id)) next.delete(id)
-                  else next.add(id)
-                } else {
-                  next.clear()
-                  next.add(id)
-                }
-                setSelectedIds(next)
-                setFolderSelectionPrefix(null)
-              }}
-              onSelectGroup={(ids, additive) => {
-                const next = additive ? new Set(selectedIds) : new Set<string>()
-                for (const id of ids) next.add(id)
-                setSelectedIds(next)
-                setFolderSelectionPrefix(null)
-              }}
-              onSelectFolder={(prefix, ids) => {
-                setSelectedIds(new Set(ids))
-                setFolderSelectionPrefix(prefix)
-              }}
-              onStartInlineRename={(id) => {
-                setSelectedIds(new Set([id]))
-                setRenameMode({ kind: 'inline', id })
-              }}
-              onCommitInlineRename={(id, name) => {
-                renameRect(id, name)
-                setRenameMode({ kind: 'none' })
-              }}
-              onCancelInlineRename={() => setRenameMode({ kind: 'none' })}
-            />
-          )}
-        </Panel>
+          </Panel>
 
-        {inTool ? (
-          <>
-            {mode.kind === 'slicing' ? (
-              <Panel title={`Slice (${mode.state.picked.size} picked)`} bodyOverflow="visible">
-                <SliceConfigPanel
-                  state={mode.state}
-                  onParamsChange={updateSliceParams}
-                  onPrefixChange={(prefix) => updateSlice((p) => ({ ...p, prefix }))}
-                  canCommit={sliceCanCommit}
-                  onCommit={commitSlice}
-                  onCancel={exitSlice}
-                />
-              </Panel>
-            ) : null}
-            {mode.kind === 'autodetect' ? (
-              <Panel
-                title={`Auto Detect (${mode.state.picked.size}/${mode.state.detected.length} picked)`}
-                bodyOverflow="visible"
-              >
-                <AutoDetectConfigPanel
-                  state={mode.state}
-                  imageData={imageData}
-                  onOptionChange={setAutoDetectOption}
-                  onPrefixChange={setAutoDetectPrefix}
-                  onDetect={(detected) =>
-                    updateAutoDetect((prev) => ({
-                      ...prev,
-                      detected,
-                      picked: new Set(detected.map((_, i) => i)),
-                    }))
+          <Splitter
+            axis="vertical"
+            onDrag={(clientX) => {
+              const el = workAreaRef.current
+              if (!el) return
+              const rect = el.getBoundingClientRect()
+              // Frames width = the distance from the cursor to the right
+              // edge of the work area. Clamped so neither column drops
+              // below 200px (the splitter itself is 4px + 2× space.lg
+              // padding ≈ 20px, so we leave a small margin).
+              const next = rect.right - clientX
+              const min = 200
+              // Splitter (4px) is the only inter-column gap now — leave just
+              // a tiny margin so the user can't overlap the columns.
+              const max = Math.max(min, rect.width - 200 - 4)
+              setFramesPx(Math.max(min, Math.min(max, next)))
+            }}
+          />
+
+          <div
+            ref={sidebarRef}
+            {...stylex.props(
+              s.sidebarStack,
+              s.sidebarRows(inTool ? 'minmax(0, 1fr) max-content' : '1fr')
+            )}
+          >
+            <Panel
+              title={`Frames (${rects.length}${selectedIds.size > 0 ? ` · ${selectedIds.size} sel` : ''})`}
+              bodyPadding="none"
+              headerActions={
+                <button
+                  type="button"
+                  onClick={handleAddSelectionToActiveAnim}
+                  disabled={selectedIds.size === 0 || !activeAnimation}
+                  title={
+                    !activeAnimation
+                      ? 'Select an animation first'
+                      : selectedIds.size === 0
+                        ? 'Select frames to add'
+                        : `Add ${selectedIds.size} frame(s) to "${activeAnimation}"`
                   }
-                  canCommit={autoDetectCanCommit}
-                  onCommit={commitAutoDetect}
-                  onCancel={exitAutoDetect}
+                  aria-label="Add selection to active animation"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 16,
+                    height: 16,
+                    padding: 0,
+                    border: 0,
+                    borderRadius: 2,
+                    background: 'transparent',
+                    color:
+                      selectedIds.size > 0 && activeAnimation
+                        ? 'var(--vscode-panelTitle-activeForeground)'
+                        : 'var(--vscode-descriptionForeground)',
+                    opacity: selectedIds.size > 0 && activeAnimation ? 1 : 0.4,
+                    cursor: selectedIds.size > 0 && activeAnimation ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  <Icon name="add" />
+                </button>
+              }
+            >
+              {renameMode.kind === 'prefix' ? (
+                <PrefixRenameBar
+                  initial={prefixDraft}
+                  count={renameMode.ids.length}
+                  onCommit={(prefix) => {
+                    applyPrefixToSelection(prefix)
+                    setRenameMode({ kind: 'none' })
+                  }}
+                  onCancel={() => setRenameMode({ kind: 'none' })}
                 />
-              </Panel>
+              ) : null}
+
+              {rects.length === 0 ? (
+                <div {...stylex.props(s.emptyState)}>
+                  {inTool ? (
+                    'No frames yet. Pick cells in the active tool panel and Commit to add them.'
+                  ) : (
+                    <>
+                      Draw rects with the <i className="codicon codicon-add" /> tool{' '}
+                      <span {...stylex.props(s.hintDim)}>(R)</span>.
+                    </>
+                  )}
+                </div>
+              ) : (
+                <FramesView
+                  rects={rects}
+                  imageUri={payload?.imageUri ?? null}
+                  imageData={imageData}
+                  imageSize={imageSize}
+                  selectedIds={selectedIds}
+                  folderSelectionPrefix={folderSelectionPrefix}
+                  renameMode={renameMode}
+                  onSelectRect={(id, additive) => {
+                    const next = new Set(selectedIds)
+                    if (additive) {
+                      if (next.has(id)) next.delete(id)
+                      else next.add(id)
+                    } else {
+                      next.clear()
+                      next.add(id)
+                    }
+                    setSelectedIds(next)
+                    setFolderSelectionPrefix(null)
+                  }}
+                  onSelectGroup={(ids, additive) => {
+                    const next = additive ? new Set(selectedIds) : new Set<string>()
+                    for (const id of ids) next.add(id)
+                    setSelectedIds(next)
+                    setFolderSelectionPrefix(null)
+                  }}
+                  onSelectFolder={(prefix, ids) => {
+                    setSelectedIds(new Set(ids))
+                    setFolderSelectionPrefix(prefix)
+                  }}
+                  onStartInlineRename={(id) => {
+                    setSelectedIds(new Set([id]))
+                    setRenameMode({ kind: 'inline', id })
+                  }}
+                  onCommitInlineRename={(id, name) => {
+                    renameRect(id, name)
+                    setRenameMode({ kind: 'none' })
+                  }}
+                  onCancelInlineRename={() => setRenameMode({ kind: 'none' })}
+                />
+              )}
+            </Panel>
+
+            {inTool ? (
+              <>
+                {mode.kind === 'slicing' ? (
+                  <Panel title={`Slice (${mode.state.picked.size} picked)`} bodyOverflow="visible">
+                    <SliceConfigPanel
+                      state={mode.state}
+                      onParamsChange={updateSliceParams}
+                      onPrefixChange={(prefix) => updateSlice((p) => ({ ...p, prefix }))}
+                      canCommit={sliceCanCommit}
+                      onCommit={commitSlice}
+                      onCancel={exitSlice}
+                    />
+                  </Panel>
+                ) : null}
+                {mode.kind === 'autodetect' ? (
+                  <Panel
+                    title={`Auto Detect (${mode.state.picked.size}/${mode.state.detected.length} picked)`}
+                    bodyOverflow="visible"
+                  >
+                    <AutoDetectConfigPanel
+                      state={mode.state}
+                      imageData={imageData}
+                      onOptionChange={setAutoDetectOption}
+                      onPrefixChange={setAutoDetectPrefix}
+                      onDetect={(detected) =>
+                        updateAutoDetect((prev) => ({
+                          ...prev,
+                          detected,
+                          picked: new Set(detected.map((_, i) => i)),
+                        }))
+                      }
+                      canCommit={autoDetectCanCommit}
+                      onCommit={commitAutoDetect}
+                      onCancel={exitAutoDetect}
+                    />
+                  </Panel>
+                ) : null}
+              </>
             ) : null}
-          </>
-        ) : null}
+          </div>
         </div>
+        <SaveStatusLine status={saveStatus} onDismiss={() => setSaveStatus({ kind: 'idle' })} />
+        <DevReloadToast />
       </div>
-      <SaveStatusLine status={saveStatus} onDismiss={() => setSaveStatus({ kind: 'idle' })} />
-      <DevReloadToast />
-    </div>
     </DragProvider>
   )
 
@@ -2428,9 +2500,7 @@ function PrefixRenameBar({
 
   return (
     <div {...stylex.props(s.prefixBar)}>
-      <span {...stylex.props(s.prefixLabel)}>
-        Name {count} as:
-      </span>
+      <span {...stylex.props(s.prefixLabel)}>Name {count} as:</span>
       <input
         ref={ref}
         value={value}
@@ -2513,7 +2583,9 @@ function FrameRow({
   selectionOrder: number | null
 }) {
   const displayName = rect.name ?? `#${globalIndex}`
-  const hue = folderHighlight ? folderHueForIndex(folderHighlight.index, folderHighlight.count) : null
+  const hue = folderHighlight
+    ? folderHueForIndex(folderHighlight.index, folderHighlight.count)
+    : null
   const folderStyle = hue
     ? {
         backgroundColor: hue.bg,
@@ -2549,7 +2621,7 @@ function FrameRow({
                 aria-hidden="true"
                 {...stylex.props(
                   s.thumbInner,
-                  s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos, thumbBg.clip),
+                  s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos, thumbBg.clip)
                 )}
               />
             </span>
@@ -2732,9 +2804,10 @@ function FramesView({
         // pill on each row. Folder-mode selection orders are seeded
         // from the folder's render order, so this naturally gives the
         // same green→violet sweep there too.
-        const gradient = sel && order != null && selectedIds.size > 1
-          ? { index: order - 1, count: selectedIds.size }
-          : null
+        const gradient =
+          sel && order != null && selectedIds.size > 1
+            ? { index: order - 1, count: selectedIds.size }
+            : null
         // Dim others ONLY in folder mode — explicit "this is THE
         // folder" intent. Plain multi-select keeps every other row at
         // full opacity so you can keep extending the selection.
@@ -2754,7 +2827,7 @@ function FramesView({
             selectionOrder={
               // Only render the order pill when there's a multi-select
               // — a lone selection's "1" is noise.
-              sel && selectedIds.size > 1 ? order ?? null : null
+              sel && selectedIds.size > 1 ? (order ?? null) : null
             }
           />
         )
@@ -2767,11 +2840,7 @@ function FramesView({
         const groupIds = g.rects.map((r) => r.id)
         const isActiveFolder = folderSelectionPrefix === g.prefix
         return (
-          <Collapsible
-            key={g.prefix}
-            heading={g.prefix}
-            open
-          >
+          <Collapsible key={g.prefix} heading={g.prefix} open>
             <span
               slot="decorations"
               role="button"
@@ -2800,7 +2869,9 @@ function FramesView({
                 height: 16,
                 borderRadius: 2,
                 cursor: 'pointer',
-                color: isActiveFolder ? 'var(--vscode-focusBorder)' : 'var(--vscode-descriptionForeground)',
+                color: isActiveFolder
+                  ? 'var(--vscode-focusBorder)'
+                  : 'var(--vscode-descriptionForeground)',
               }}
             >
               <Icon name="check-all" />
@@ -2877,7 +2948,7 @@ function AutoDetectConfigPanel({
   imageData: ImageData | null
   onOptionChange: <K extends keyof Required<CCLOptions>>(
     key: K,
-    value: Required<CCLOptions>[K],
+    value: Required<CCLOptions>[K]
   ) => void
   onPrefixChange: (prefix: string) => void
   onDetect: (detected: DetectedRect[]) => void
@@ -2964,7 +3035,11 @@ function AutoDetectConfigPanel({
           {...stylex.props(s.sliceBtn)}
           disabled={!canCommit}
           onClick={onCommit}
-          title={canCommit ? 'Commit picked rects as atlas frames (Enter)' : 'Detect, pick rects, and set a name to commit'}
+          title={
+            canCommit
+              ? 'Commit picked rects as atlas frames (Enter)'
+              : 'Detect, pick rects, and set a name to commit'
+          }
         >
           Commit
         </button>
@@ -3077,9 +3152,17 @@ function SliceConfigPanel({
         {state.inputMode === 'pixels' ? (
           <>
             <span {...stylex.props(s.sliceLabel)}>Cell W</span>
-            <SliceNumField value={state.cellW} min={1} onChange={(n) => onParamsChange({ cellW: n })} />
+            <SliceNumField
+              value={state.cellW}
+              min={1}
+              onChange={(n) => onParamsChange({ cellW: n })}
+            />
             <span {...stylex.props(s.sliceLabel)}>Cell H</span>
-            <SliceNumField value={state.cellH} min={1} onChange={(n) => onParamsChange({ cellH: n })} />
+            <SliceNumField
+              value={state.cellH}
+              min={1}
+              onChange={(n) => onParamsChange({ cellH: n })}
+            />
           </>
         ) : (
           <>
@@ -3098,13 +3181,29 @@ function SliceConfigPanel({
           </>
         )}
         <span {...stylex.props(s.sliceLabel)}>Offset X</span>
-        <SliceNumField value={state.offsetX} min={0} onChange={(n) => onParamsChange({ offsetX: n })} />
+        <SliceNumField
+          value={state.offsetX}
+          min={0}
+          onChange={(n) => onParamsChange({ offsetX: n })}
+        />
         <span {...stylex.props(s.sliceLabel)}>Offset Y</span>
-        <SliceNumField value={state.offsetY} min={0} onChange={(n) => onParamsChange({ offsetY: n })} />
+        <SliceNumField
+          value={state.offsetY}
+          min={0}
+          onChange={(n) => onParamsChange({ offsetY: n })}
+        />
         <span {...stylex.props(s.sliceLabel)}>Gutter X</span>
-        <SliceNumField value={state.gutterX} min={0} onChange={(n) => onParamsChange({ gutterX: n })} />
+        <SliceNumField
+          value={state.gutterX}
+          min={0}
+          onChange={(n) => onParamsChange({ gutterX: n })}
+        />
         <span {...stylex.props(s.sliceLabel)}>Gutter Y</span>
-        <SliceNumField value={state.gutterY} min={0} onChange={(n) => onParamsChange({ gutterY: n })} />
+        <SliceNumField
+          value={state.gutterY}
+          min={0}
+          onChange={(n) => onParamsChange({ gutterY: n })}
+        />
       </div>
 
       <div {...stylex.props(s.sliceDivider)} />
@@ -3131,7 +3230,11 @@ function SliceConfigPanel({
           {...stylex.props(s.sliceBtn)}
           disabled={!canCommit}
           onClick={onCommit}
-          title={canCommit ? 'Commit picked cells as atlas frames (Enter)' : 'Pick cells and set a name prefix to commit'}
+          title={
+            canCommit
+              ? 'Commit picked cells as atlas frames (Enter)'
+              : 'Pick cells and set a name prefix to commit'
+          }
         >
           Commit
         </button>

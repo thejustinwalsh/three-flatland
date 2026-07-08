@@ -175,7 +175,12 @@ const HANDLE_HIT_SCREEN_PX = 12
 const RESIZE_SNAP_PX = 4
 
 /** Edges that a given handle direction modifies. */
-function movedEdges(dir: HandleDir): { left: boolean; right: boolean; top: boolean; bottom: boolean } {
+function movedEdges(dir: HandleDir): {
+  left: boolean
+  right: boolean
+  top: boolean
+  bottom: boolean
+} {
   return {
     left: dir === 'nw' || dir === 'w' || dir === 'sw',
     right: dir === 'ne' || dir === 'e' || dir === 'se',
@@ -193,7 +198,7 @@ function snapResizeToRectEdges(
   next: { x: number; y: number; w: number; h: number },
   dir: HandleDir,
   others: readonly Rect[],
-  threshold: number,
+  threshold: number
 ): { x: number; y: number; w: number; h: number } {
   if (others.length === 0) return next
   const moved = movedEdges(dir)
@@ -295,19 +300,27 @@ function CornerIndex({
 /** Returns the center point for a given handle direction on a rect. */
 function handleCenter(
   r: { x: number; y: number; w: number; h: number },
-  dir: HandleDir,
+  dir: HandleDir
 ): { x: number; y: number } {
   const cx = r.x + r.w / 2
   const cy = r.y + r.h / 2
   switch (dir) {
-    case 'nw': return { x: r.x, y: r.y }
-    case 'n':  return { x: cx, y: r.y }
-    case 'ne': return { x: r.x + r.w, y: r.y }
-    case 'e':  return { x: r.x + r.w, y: cy }
-    case 'se': return { x: r.x + r.w, y: r.y + r.h }
-    case 's':  return { x: cx, y: r.y + r.h }
-    case 'sw': return { x: r.x, y: r.y + r.h }
-    case 'w':  return { x: r.x, y: cy }
+    case 'nw':
+      return { x: r.x, y: r.y }
+    case 'n':
+      return { x: cx, y: r.y }
+    case 'ne':
+      return { x: r.x + r.w, y: r.y }
+    case 'e':
+      return { x: r.x + r.w, y: cy }
+    case 'se':
+      return { x: r.x + r.w, y: r.y + r.h }
+    case 's':
+      return { x: cx, y: r.y + r.h }
+    case 'sw':
+      return { x: r.x, y: r.y + r.h }
+    case 'w':
+      return { x: r.x, y: cy }
   }
 }
 
@@ -323,7 +336,7 @@ function applyResizeDelta(
   current: { x: number; y: number },
   handle: HandleDir,
   imageW: number,
-  imageH: number,
+  imageH: number
 ): { x: number; y: number; w: number; h: number } {
   const dx = current.x - start.x
   const dy = current.y - start.y
@@ -400,7 +413,8 @@ export function RectOverlay({
   // Round a number to the nearest multiple of `step`, with a 0/Shift-key
   // pass-through. The Shift check happens at call sites that have the
   // event in scope; this helper just does the arithmetic.
-  const snap = (v: number): number => (snapStep > 0 ? Math.round(v / snapStep) * snapStep : Math.round(v))
+  const snap = (v: number): number =>
+    snapStep > 0 ? Math.round(v / snapStep) * snapStep : Math.round(v)
   const snapRect = (r: { x: number; y: number; w: number; h: number }) => ({
     x: snap(r.x),
     y: snap(r.y),
@@ -562,9 +576,8 @@ export function RectOverlay({
       // positions for all so subsequent pointermoves can recompute
       // from anchor rather than accumulate (avoids drift under the
       // image-bounds clamp when one rect hits an edge).
-      const entries: MoveDragEntry[] = (selectedIds.size > 1
-        ? rects.filter((rr) => selectedIds.has(rr.id))
-        : [r]
+      const entries: MoveDragEntry[] = (
+        selectedIds.size > 1 ? rects.filter((rr) => selectedIds.has(rr.id)) : [r]
       ).map((rr) => ({
         id: rr.id,
         startRect: { x: rr.x, y: rr.y, w: rr.w, h: rr.h },
@@ -693,7 +706,7 @@ export function RectOverlay({
   const handleResizePointerDown = (
     r: Rect,
     dir: HandleDir,
-    e: ReactPointerEvent<SVGRectElement>,
+    e: ReactPointerEvent<SVGRectElement>
   ) => {
     // Stop propagation so the rect body move handler doesn't also fire.
     e.stopPropagation()
@@ -723,7 +736,12 @@ export function RectOverlay({
     // convention as the existing grid snap).
     const next = e.shiftKey
       ? raw
-      : snapResizeToRectEdges(raw, rd.handle, rects.filter((x) => x.id !== r.id), RESIZE_SNAP_PX)
+      : snapResizeToRectEdges(
+          raw,
+          rd.handle,
+          rects.filter((x) => x.id !== r.id),
+          RESIZE_SNAP_PX
+        )
     rd.preview = next
     setResizeDragPreview({ id: r.id, ...next })
   }
@@ -888,12 +906,16 @@ export function RectOverlay({
           marquee-move a multi-selection (handled separately) and pick
           a single rect to resize. Only when onRectChange is provided
           and the overlay is interactive. */}
-      {interactive && onRectChange && selectedIds.size === 1 &&
+      {interactive &&
+        onRectChange &&
+        selectedIds.size === 1 &&
         rects.map((r) => {
           if (!selectedIds.has(r.id)) return null
 
           const isResizing = resizeDragPreview?.id === r.id
-          const movePreview = moveDragRef.current?.committed ? moveDragPreview?.get(r.id) : undefined
+          const movePreview = moveDragRef.current?.committed
+            ? moveDragPreview?.get(r.id)
+            : undefined
           const gx = movePreview ? movePreview.x : isResizing ? resizeDragPreview!.x : r.x
           const gy = movePreview ? movePreview.y : isResizing ? resizeDragPreview!.y : r.y
           const gw = isResizing ? resizeDragPreview!.w : r.w
@@ -930,6 +952,7 @@ export function RectOverlay({
                       onPointerCancel={() => handleResizePointerCancel(r)}
                     />
                     <rect
+                      data-testid="rect-handle"
                       x={visX}
                       y={visY}
                       width={HANDLE_SIZE}

@@ -65,8 +65,7 @@ export function presentationStepMoveArgs(
   descriptorIndex: number,
   direction: 'up' | 'down'
 ): { fromIndex: number; toIndex: number } {
-  const toDescriptorIndexFinal =
-    direction === 'up' ? descriptorIndex + 1 : descriptorIndex - 1
+  const toDescriptorIndexFinal = direction === 'up' ? descriptorIndex + 1 : descriptorIndex - 1
   return descriptorMoveArgs(descriptorIndex, toDescriptorIndexFinal)
 }
 

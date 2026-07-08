@@ -10,10 +10,7 @@ export {
   useViewportController,
   type ViewportController,
 } from './CanvasContext'
-export {
-  canvasBackgroundStyle,
-  type CanvasBackgroundStyle,
-} from './canvasBackground'
+export { canvasBackgroundStyle, type CanvasBackgroundStyle } from './canvasBackground'
 export { RectOverlay, type RectOverlayProps, type Rect } from './RectOverlay'
 export { fitLabelFontSize, type LabelFitOptions } from './labelFit'
 export {
@@ -37,10 +34,7 @@ export {
 export { createCursorStore, useCursor, type CursorReading, type CursorStore } from './cursorStore'
 export { connectedComponents, type DetectedRect, type CCLOptions } from './ccl'
 export { computeThumbStyle, type ThumbStyle } from './thumbStyle'
-export {
-  AutoDetectOverlay,
-  type AutoDetectOverlayProps,
-} from './AutoDetectOverlay'
+export { AutoDetectOverlay, type AutoDetectOverlayProps } from './AutoDetectOverlay'
 export { HoverFrameChip, type HoverFrameChipProps } from './HoverFrameChip'
 export {
   createAnimationStore,
@@ -71,7 +65,4 @@ export {
   frameIndexToGroupIndex,
   type AnimationTimelineProps,
 } from './AnimationTimeline'
-export {
-  AnimationRectHighlight,
-  type AnimationRectHighlightProps,
-} from './AnimationRectHighlight'
+export { AnimationRectHighlight, type AnimationRectHighlightProps } from './AnimationRectHighlight'
