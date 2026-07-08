@@ -15,7 +15,7 @@
 use std::io::{BufReader, Read, Write};
 use std::process::{Command, Stdio};
 
-use codelens_service::model::Finding;
+use codelens_service::model::{Finding, WAD_SYNTH_KIND};
 use serde_json::{Value, json};
 
 const GOLDEN_URI: &str = "file:///golden.ts";
@@ -135,6 +135,12 @@ fn document_parse_matches_the_golden_fixture_exactly() {
          If this is an intentional protocol/extraction change, regenerate the golden file \
          (see tools/codelens-service/CLAUDE.md) and update BOTH this test and \
          src/goldenFixture.test.ts's expectations together."
+    );
+    assert_eq!(
+        actual_findings.len(),
+        22,
+        "golden.ts's total finding count changed — update this expectation (and \
+         src/goldenFixture.test.ts's matching one) together with any fixture edit"
     );
 
     // Same "typed comparison can't see this" gap as the degraded check
@@ -313,9 +319,94 @@ fn document_parse_matches_the_golden_fixture_exactly() {
             !actual_findings
                 .iter()
                 .any(|f| f.as_audio_file().is_some_and(|p| p.path == synth)),
-            "new Wad({{source: '{synth}'}}) is synthesis mode — must NOT be a finding"
+            "new Wad({{source: '{synth}'}}) is synthesis mode — must NOT be an audio.file finding"
         );
     }
+
+    // wad.synth: every oscillator/noise keyword IS a wad.synth finding now
+    // (a dedicated kind — see tools/codelens-service/CLAUDE.md), proven by
+    // arg_range slice-equality against the real source text, same
+    // discipline as the audio.file positives above. 'mic' remains the one
+    // keyword that is a finding of NEITHER kind.
+    let wad_synth_findings: Vec<_> = actual_findings
+        .iter()
+        .filter(|f| f.kind() == WAD_SYNTH_KIND)
+        .collect();
+    assert_eq!(
+        wad_synth_findings.len(),
+        7,
+        "expected sine (beep), sawtooth/triangle/noise (synthVoices), the inline square \
+         inside playIterated's SoundIterator, playSquareSynth's square, and playLaserOsc's \
+         var-ref noise — 7 total wad.synth findings"
+    );
+    for oscillator in ["sine", "square", "sawtooth", "triangle", "noise"] {
+        let object_text = format!("{{ source: '{oscillator}' }}");
+        let found = wad_synth_findings.iter().any(|f| {
+            let payload = f.as_wad_synth().unwrap();
+            let lines: Vec<&str> = golden_ts.lines().collect();
+            let line = lines[payload.arg_range.start.line as usize];
+            let sliced = &line[payload.arg_range.start.character as usize
+                ..payload.arg_range.end.character as usize];
+            sliced == object_text
+        });
+        assert!(
+            found,
+            "expected a wad.synth finding whose arg_range slices to exactly {object_text:?}"
+        );
+    }
+    // Wad's file-mode source must never ALSO produce a wad.synth finding —
+    // the #1 partition risk this feature introduces.
+    assert!(
+        !wad_synth_findings.iter().any(|f| {
+            let lines: Vec<&str> = golden_ts.lines().collect();
+            let line = lines[f.range.start.line as usize];
+            line.contains("sounds/jump.wav")
+        }),
+        "new Wad({{source: 'sounds/jump.wav'}}) is file mode — must NOT be a wad.synth finding"
+    );
+
+    // wad.synth bare-identifier var-ref form (playLaserOsc): varRef.defRange
+    // must slice to exactly laserOsc's initializer text, same "past the
+    // declarator, value only" contract zzfx/zzfxm's varRef.defRange already
+    // has.
+    let laser_osc = actual_findings
+        .iter()
+        .find(|f| {
+            f.as_wad_synth()
+                .and_then(|p| p.var_ref.as_ref())
+                .is_some_and(|v| v.name == "laserOsc")
+        })
+        .expect("golden.ts must still declare and reference laserOsc via new Wad(laserOsc)");
+    let laser_var_ref = laser_osc.as_wad_synth().unwrap().var_ref.as_ref().unwrap();
+    let laser_def_range = laser_var_ref
+        .def_range
+        .expect("laserOsc has an initializer; defRange must be Some");
+    let lines: Vec<&str> = golden_ts.lines().collect();
+    let laser_line = lines[laser_def_range.start.line as usize];
+    let laser_sliced = &laser_line
+        [laser_def_range.start.character as usize..laser_def_range.end.character as usize];
+    assert_eq!(laser_sliced, "{ source: 'noise' }");
+
+    // wad.synth + audio.file coexisting from the SAME source line
+    // (playIterated): the SoundIterator's own audio.file 'riff.mp3' finding
+    // and the inner new Wad({source:'square'})'s wad.synth finding are two
+    // DISTINCT findings with two DISTINCT ranges, not a collision.
+    let iterated_synth = wad_synth_findings
+        .iter()
+        .find(|f| {
+            let lines: Vec<&str> = golden_ts.lines().collect();
+            let line = lines[f.range.start.line as usize];
+            line.contains("SoundIterator")
+        })
+        .expect("expected the wad.synth finding nested inside playIterated's SoundIterator call");
+    assert_ne!(
+        iterated_synth.range, wad_jump.range,
+        "sanity: distinct source lines shouldn't share a range"
+    );
+    assert!(
+        iterated_synth.byte_range.start > 0,
+        "the inner new Wad(...)'s byte_range must start after the outer SoundIterator call's opening"
+    );
 
     write_frame(
         &mut stdin,

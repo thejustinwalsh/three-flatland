@@ -37,6 +37,7 @@ export interface VarRef {
 export const ZZFX_CALL_KIND = 'zzfx.call' as const
 export const ZZFXM_SONG_KIND = 'zzfxm.song' as const
 export const AUDIO_FILE_KIND = 'audio.file' as const
+export const WAD_SYNTH_KIND = 'wad.synth' as const
 
 export interface ZzfxCallPayload {
   params: number[]
@@ -60,6 +61,19 @@ export interface AudioFilePayload {
   pathRange: Range
 }
 
+/**
+ * No pre-extracted config: `new Wad(...)`'s synthesis mode config is a
+ * plain object literal (`{ source: 'sine' | 'square' | 'sawtooth' |
+ * 'triangle' | 'noise', ... }`), not a flat numeric list — the client reads
+ * the source text at `argRange` (or `varRef.defRange` for a bare-identifier
+ * call) itself and parses it, the same posture `ZzfxmSongPayload` already
+ * takes for a song.
+ */
+export interface WadSynthPayload {
+  argRange: Range
+  varRef?: VarRef
+}
+
 interface FindingBase {
   id: string
   range: Range
@@ -81,11 +95,16 @@ export interface AudioFileFinding extends FindingBase {
   payload: AudioFilePayload
 }
 
+export interface WadSynthFinding extends FindingBase {
+  kind: typeof WAD_SYNTH_KIND
+  payload: WadSynthPayload
+}
+
 /**
  * A discriminated union on `kind` — narrow with `finding.kind === ZZFX_CALL_KIND`
  * (etc.) before accessing `finding.payload`'s kind-specific fields.
  */
-export type Finding = ZzfxCallFinding | ZzfxmSongFinding | AudioFileFinding
+export type Finding = ZzfxCallFinding | ZzfxmSongFinding | AudioFileFinding | WadSynthFinding
 
 export interface Capabilities {
   scan: boolean

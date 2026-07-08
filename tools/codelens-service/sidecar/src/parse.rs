@@ -1,21 +1,23 @@
 //! tree-sitter-driven extraction of audio-reference findings from a source
-//! file's text: `zzfx(...)` calls, `zzfxm(...)`/`zzfxM(...)` song calls, and
+//! file's text: `zzfx(...)` calls, `zzfxm(...)`/`zzfxM(...)` song calls,
 //! generic audio-file string-literal references (three.js/Howler/`Audio`/
-//! `fetch`/etc.). One AST walk produces all three kinds — see
-//! [`find_audio_findings`].
+//! `fetch`/etc.), and `new Wad({source: ...})` synthesis-mode calls. One AST
+//! walk produces all four kinds — see [`find_audio_findings`].
 
 use tree_sitter::{Node, Parser};
 
 use crate::id::finding_id;
 use crate::model::{
     AUDIO_FILE_KIND, AudioFilePayload, ByteRange, Finding, FindingPayload, Range, VarRef,
-    ZZFX_CALL_KIND, ZZFXM_SONG_KIND, ZzfxPayload, ZzfxmPayload,
+    WAD_SYNTH_KIND, WadSynthPayload, ZZFX_CALL_KIND, ZZFXM_SONG_KIND, ZzfxPayload, ZzfxmPayload,
 };
 use crate::position::LineIndex;
 use crate::scan::AUDIO_EXTENSIONS;
 
 const ZZFX_NAME: &str = "zzfx";
 const ZZFXM_NAMES: [&str; 2] = ["zzfxm", "zzfxM"];
+const WAD_NAME: &str = "Wad";
+const WAD_OSCILLATOR_SOURCES: [&str; 5] = ["sine", "square", "sawtooth", "triangle", "noise"];
 
 /// Picks the tree-sitter grammar by file extension: `.tsx`/`.jsx` need the
 /// JSX-aware TSX grammar (plain TS/JS grammar rejects JSX syntax), everything
@@ -31,9 +33,9 @@ fn language_for_uri(uri: &str) -> tree_sitter::Language {
 }
 
 /// Parses `text` (the contents of `uri`) and returns every recognized
-/// finding: `zzfx.call`, `zzfxm.song`, and `audio.file`. Malformed source
-/// does not error — findings are best-effort extracted from whatever the
-/// parser could recover.
+/// finding: `zzfx.call`, `zzfxm.song`, `audio.file`, and `wad.synth`.
+/// Malformed source does not error — findings are best-effort extracted
+/// from whatever the parser could recover.
 pub fn find_audio_findings(uri: &str, text: &str) -> Vec<Finding> {
     let mut parser = Parser::new();
     parser
@@ -53,6 +55,11 @@ fn walk(node: Node, text: &str, line_index: &LineIndex, uri: &str, out: &mut Vec
     match node.kind() {
         "call_expression" => {
             if let Some(finding) = extract_callee_call(node, text, line_index, uri) {
+                out.push(finding);
+            }
+        }
+        "new_expression" => {
+            if let Some(finding) = extract_wad_synth(node, text, line_index, uri) {
                 out.push(finding);
             }
         }
@@ -203,6 +210,127 @@ fn extract_zzfxm_call(
         byte_range,
         payload: FindingPayload::ZzfxmSong(ZzfxmPayload { arg_range, var_ref }),
     })
+}
+
+/// Extracts a `new Wad(...)` synthesis-mode finding. Only claims the finding
+/// for a BARE `Wad` constructor (not `Wad.SoundIterator(...)` or any other
+/// member-expression constructor — a member expression is out of scope even
+/// if its property happens to be named `Wad`) called with EXACTLY one
+/// argument that is either:
+///   - an object literal with a `source` key whose value is a string
+///     literal exactly one of `sine`/`square`/`sawtooth`/`triangle`/`noise`
+///     ([`object_has_oscillator_source`]) — `mic`, a file-path source, an
+///     absent `source` key, or any other shape yields `None` here, leaving
+///     that case entirely to whatever already handles it (the generic
+///     `audio.file` string scanner reaches a file-path source on its own
+///     via the ordinary recursive walk; a `mic`/absent source keeps
+///     producing no finding at all, same as before this scanner existed).
+///   - a bare identifier (`new Wad(cfg)`). The scanner has no way to know
+///     whether `cfg`'s declaration IS an oscillator config without
+///     resolving it — mirroring `extract_zzfxm_call`'s bare-identifier
+///     `varRef` resolution, this ALWAYS emits a finding with `var_ref` set,
+///     deferring the "is this actually valid" decision entirely to the
+///     TS-side static parser (`wadSynthResolver.ts`), which reads the
+///     resolved declaration's text and refuses gracefully if it isn't a
+///     real oscillator config. This keeps the same permissive-scanner /
+///     validating-client division of labor `resolveParams.ts` already
+///     documents for `zzfx`.
+fn extract_wad_synth(node: Node, text: &str, line_index: &LineIndex, uri: &str) -> Option<Finding> {
+    let constructor = node.child_by_field_name("constructor")?;
+    // Bare identifier only: callee_name()'s member-expression branch
+    // resolves to the LAST segment's name, which would otherwise wrongly
+    // match "Wad" for a hypothetical `Foo.Wad(...)` too, not just correctly
+    // reject `Wad.SoundIterator(...)` (whose last segment is
+    // "SoundIterator", already excluded by the name check below on its
+    // own).
+    if constructor.kind() != "identifier" {
+        return None;
+    }
+    if callee_name(constructor, text)? != WAD_NAME {
+        return None;
+    }
+
+    let arguments = node.child_by_field_name("arguments")?;
+    let named: Vec<Node> = {
+        let mut cursor = arguments.walk();
+        arguments.named_children(&mut cursor).collect()
+    };
+    if named.len() != 1 {
+        return None;
+    }
+    let arg = named[0];
+
+    let var_ref = match arg.kind() {
+        "object" => {
+            if !object_has_oscillator_source(arg, text) {
+                return None;
+            }
+            None
+        }
+        "identifier" => {
+            let name = node_text(arg, text).to_string();
+            Some(resolve_var_ref(name, arguments, text, uri))
+        }
+        _ => return None,
+    };
+
+    let arg_range = Range {
+        start: line_index.position(text, arg.start_byte()),
+        end: line_index.position(text, arg.end_byte()),
+    };
+
+    let byte_range = ByteRange {
+        start: node.start_byte(),
+        end: node.end_byte(),
+    };
+    let range = Range {
+        start: line_index.position(text, node.start_byte()),
+        end: line_index.position(text, node.end_byte()),
+    };
+    let id = finding_id(WAD_SYNTH_KIND, byte_range.start, byte_range.end, &[]);
+
+    Some(Finding {
+        id,
+        range,
+        byte_range,
+        payload: FindingPayload::WadSynth(WadSynthPayload { arg_range, var_ref }),
+    })
+}
+
+/// True only when `object` (a `new Wad(...)`'s sole object-literal argument)
+/// has a `source` key whose value is a string literal exactly matching one
+/// of [`WAD_OSCILLATOR_SOURCES`]. Any other shape — no `source` key at all,
+/// `source: 'mic'`, a file-path source, a non-string value — returns
+/// `false`, deliberately leaving that case to whatever already handles it
+/// rather than producing a competing finding (see the partition rule in
+/// [`extract_wad_synth`]'s doc comment).
+fn object_has_oscillator_source(object: Node, text: &str) -> bool {
+    let mut cursor = object.walk();
+    for pair in object.named_children(&mut cursor) {
+        if pair.kind() != "pair" {
+            continue;
+        }
+        let Some(key) = pair.child_by_field_name("key") else {
+            continue;
+        };
+        let key_text = match key.kind() {
+            "property_identifier" => node_text(key, text).to_string(),
+            "string" => string_literal_interior(key, text).0,
+            _ => continue,
+        };
+        if key_text != "source" {
+            continue;
+        }
+        let Some(value) = pair.child_by_field_name("value") else {
+            return false;
+        };
+        if value.kind() != "string" {
+            return false;
+        }
+        let (interior, _, _) = string_literal_interior(value, text);
+        return WAD_OSCILLATOR_SOURCES.contains(&interior.as_str());
+    }
+    false
 }
 
 /// True only for a template literal with NO `${}` substitutions — its value
@@ -919,13 +1047,16 @@ mod tests {
     }
 
     #[test]
-    fn wad_synthesis_mode_source_has_no_audio_extension_and_is_correctly_not_a_finding() {
+    fn wad_synthesis_mode_source_has_no_audio_extension_and_is_not_an_audio_file_finding() {
         // Wad's OTHER mode: `source: 'sine'`/'square'/etc. synthesizes a
         // tone instead of loading a file — no audio extension, so this
-        // must NOT be a finding. Pins the boundary explicitly rather than
-        // leaving it an accidental consequence of the extension check.
-        let f = findings("a.ts", "new Wad({source:'sine'});");
-        assert!(f.is_empty());
+        // must NOT be an audio.file finding. Pins the audio.file boundary
+        // explicitly rather than leaving it an accidental consequence of
+        // the extension check. It IS a dedicated wad.synth finding now
+        // (see the "---- wad.synth ----" test section below), a separate
+        // kind that didn't exist when this test was first written.
+        let f = call("a.ts", "new Wad({source:'sine'});");
+        assert_eq!(f.kind(), WAD_SYNTH_KIND);
     }
 
     #[test]
@@ -940,31 +1071,61 @@ mod tests {
     }
 
     #[test]
-    fn wad_sound_iterator_files_array_reports_only_the_file_string() {
-        // `new Wad.SoundIterator({files:[...]})` mixes real file paths with
-        // inline `new Wad(...)` synthesis objects in one array. Exactly ONE
-        // finding: 'riff.mp3'. The inner `new Wad({source:'square'})` is
-        // synthesis (no audio extension) — its presence must not produce a
-        // finding nor swallow the sibling path's.
+    fn wad_sound_iterator_files_array_reports_the_file_string_and_the_inline_synth() {
+        // `new Wad.SoundIterator({files:[...]})` mixes a real file path
+        // with an inline `new Wad(...)` synthesis object in one array. TWO
+        // findings: audio.file 'riff.mp3' and wad.synth for the inner
+        // `new Wad({source:'square'})` — wad.synth's scanner arm fires on
+        // any matching `new Wad(...)`, however deeply nested, the same
+        // depth-agnostic posture audio.file's string walk already has.
+        // (Before wad.synth existed, the inline synthesis object correctly
+        // produced no finding at all, since there was no kind that could
+        // represent it — this test used to pin exactly that. Now that
+        // wad.synth exists, it correctly does produce one.)
         let src = "new Wad.SoundIterator({files:['riff.mp3', new Wad({source:'square'})]});";
-        let f = call("a.ts", src);
-        assert_eq!(f.kind(), AUDIO_FILE_KIND);
-        assert_eq!(f.as_audio_file().unwrap().path, "riff.mp3");
+        let all = findings("a.ts", src);
+        assert_eq!(all.len(), 2);
+
+        let audio = all
+            .iter()
+            .find(|f| f.kind() == AUDIO_FILE_KIND)
+            .expect("expected the audio.file finding");
+        assert_eq!(audio.as_audio_file().unwrap().path, "riff.mp3");
         // Attribution: 'riff.mp3''s nearest enclosing call is the
         // SoundIterator new-expression itself, not the inner new Wad.
-        assert_eq!(f.range.start.character, 0);
-        assert_eq!(f.range.end.character, (src.len() - 1) as u32);
+        assert_eq!(audio.range.start.character, 0);
+        assert_eq!(audio.range.end.character, (src.len() - 1) as u32);
+
+        let synth = all
+            .iter()
+            .find(|f| f.kind() == WAD_SYNTH_KIND)
+            .expect("expected the wad.synth finding");
+        let inner = "new Wad({source:'square'})";
+        let inner_start = src.find(inner).unwrap();
+        assert_eq!(synth.byte_range.start, inner_start);
+        assert_eq!(synth.byte_range.end, inner_start + inner.len());
     }
 
     #[test]
-    fn wad_every_synthesis_mode_source_is_not_a_finding() {
+    fn wad_every_synthesis_mode_source_is_not_an_audio_file_finding() {
         // The full synthesis vocabulary, not just 'sine' (pinned above):
-        // oscillator shapes, noise, and live mic input all name NO file.
-        for source in ["square", "sawtooth", "triangle", "noise", "mic"] {
+        // oscillator shapes and noise are wad.synth findings, never
+        // audio.file (no file is loaded); live mic input is the one
+        // keyword that produces no finding of EITHER kind.
+        for source in ["square", "sawtooth", "triangle", "noise"] {
             let src = format!("new Wad({{source:'{source}'}});");
-            let f = findings("a.ts", &src);
-            assert!(f.is_empty(), "source:'{source}' must not be a finding");
+            let f = call("a.ts", &src);
+            assert_eq!(
+                f.kind(),
+                WAD_SYNTH_KIND,
+                "source:'{source}' must be a wad.synth finding"
+            );
         }
+        let mic = findings("a.ts", "new Wad({source:'mic'});");
+        assert!(
+            mic.is_empty(),
+            "source:'mic' must not be a finding of either kind"
+        );
     }
 
     #[test]
@@ -1053,5 +1214,161 @@ export function sfx() { new Audio('explosion.mp3'); }
             kinds,
             vec![ZZFX_CALL_KIND, ZZFXM_SONG_KIND, AUDIO_FILE_KIND]
         );
+    }
+
+    // ---- wad.synth ----
+
+    fn wad_synth(uri: &str, text: &str) -> WadSynthPayload {
+        call(uri, text)
+            .as_wad_synth()
+            .expect("expected wad.synth payload")
+            .clone()
+    }
+
+    #[test]
+    fn every_oscillator_keyword_produces_a_wad_synth_finding() {
+        for source in WAD_OSCILLATOR_SOURCES {
+            let src = format!("new Wad({{source:'{source}'}}).play();");
+            let p = wad_synth("a.ts", &src);
+            assert!(
+                p.var_ref.is_none(),
+                "source:'{source}' is a direct object literal, no varRef expected"
+            );
+        }
+    }
+
+    #[test]
+    fn wad_synth_arg_range_covers_exactly_the_object_literals_own_text() {
+        let src = "new Wad({source:'square'}).play();";
+        let f = call("a.ts", src);
+        assert_eq!(f.kind(), WAD_SYNTH_KIND);
+        let p = f.as_wad_synth().unwrap();
+        let object_text = "{source:'square'}";
+        // "new Wad(" is 8 chars, so the object literal starts at byte 8.
+        assert_eq!(&src[8..8 + object_text.len()], object_text);
+        assert_eq!(p.arg_range.start.character, 8);
+        assert_eq!(
+            p.arg_range.end.character,
+            8 + object_text.encode_utf16().count() as u32
+        );
+    }
+
+    #[test]
+    fn wad_synth_findings_range_covers_the_whole_new_expression() {
+        let src = "new Wad({source:'square'}).play();";
+        let f = call("a.ts", src);
+        let new_expr = "new Wad({source:'square'})";
+        assert_eq!(f.byte_range.start, 0);
+        assert_eq!(f.byte_range.end, new_expr.len());
+    }
+
+    #[test]
+    fn mic_source_produces_no_wad_synth_finding() {
+        // Live mic input names no file and is not synthesizable statically
+        // — the one oscillator-adjacent keyword that produces NO finding of
+        // either kind.
+        let f = findings("a.ts", "new Wad({source:'mic'}).play();");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn file_path_source_produces_the_existing_audio_file_finding_not_wad_synth() {
+        // The #1 partition risk: a file-mode source must keep producing the
+        // pre-existing audio.file finding and must NOT also produce a
+        // competing wad.synth one.
+        let f = call("a.ts", "new Wad({source:'sounds/jump.wav'}).play();");
+        assert_eq!(f.kind(), AUDIO_FILE_KIND);
+        assert_eq!(f.as_audio_file().unwrap().path, "sounds/jump.wav");
+    }
+
+    #[test]
+    fn reverb_only_config_produces_no_wad_synth_finding() {
+        // No `source` key at all — the reverb impulse still produces its
+        // existing audio.file finding (unrelated, depth-agnostic scanner),
+        // but there must be no competing wad.synth finding for the call.
+        let f = findings("a.ts", "new Wad({reverb:{impulse:'x.wav'}}).play();");
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].kind(), AUDIO_FILE_KIND);
+    }
+
+    #[test]
+    fn sprite_only_config_produces_no_wad_synth_finding() {
+        let f = findings("a.ts", "new Wad({sprite:{hello:[0,0.4]}}).play();");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn wad_presets_member_expression_produces_no_wad_synth_finding() {
+        let f = findings("a.ts", "new Wad(Wad.presets.hiHatClosed).play();");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn wad_sound_iterator_member_expression_constructor_is_not_wad_synth() {
+        // Wad.SoundIterator(...) itself must never be a wad.synth finding —
+        // its constructor is a member expression, not a bare `Wad`
+        // identifier, regardless of what its last segment is named.
+        let f = findings("a.ts", "new Wad.SoundIterator({files:['a.wav']}).play();");
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].kind(), AUDIO_FILE_KIND);
+    }
+
+    #[test]
+    fn bare_identifier_argument_always_emits_a_wad_synth_finding_with_var_ref() {
+        // Design choice (see extract_wad_synth's doc comment): the scanner
+        // can't know whether an identifier's declaration IS an oscillator
+        // config without resolving it, so it ALWAYS emits a wad.synth
+        // finding with varRef set for a bare-identifier Wad argument,
+        // deferring the "is this actually valid" decision to the TS-side
+        // static parser. This test pins that this is genuinely the
+        // scanner's behavior for a declaration that DOES resolve to a real
+        // oscillator config.
+        let src = "const cfg = {source:'square'};\nnew Wad(cfg).play();";
+        let f = call("a.ts", src);
+        assert_eq!(f.kind(), WAD_SYNTH_KIND);
+        let var_ref = f
+            .as_wad_synth()
+            .unwrap()
+            .var_ref
+            .as_ref()
+            .expect("expected varRef");
+        assert_eq!(var_ref.name, "cfg");
+        assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
+        assert!(var_ref.def_range.is_some());
+    }
+
+    #[test]
+    fn bare_identifier_argument_emits_a_wad_synth_finding_even_when_unresolvable_to_an_oscillator()
+    {
+        // Same permissive-scanner posture, proven against a declaration
+        // that is NOT a valid oscillator config (a plain file path) — the
+        // scanner still emits wad.synth with varRef; only the TS-side
+        // resolver refuses.
+        let src = "const cfg = {source:'jump.wav'};\nnew Wad(cfg).play();";
+        let f = call("a.ts", src);
+        assert_eq!(f.kind(), WAD_SYNTH_KIND);
+        assert!(f.as_wad_synth().unwrap().var_ref.is_some());
+    }
+
+    #[test]
+    fn bare_identifier_argument_with_unresolved_declaration_still_emits_a_finding() {
+        let f = call("a.ts", "function make(cfg) { new Wad(cfg).play(); }");
+        assert_eq!(f.kind(), WAD_SYNTH_KIND);
+        let var_ref = f.as_wad_synth().unwrap().var_ref.as_ref().unwrap();
+        assert_eq!(var_ref.name, "cfg");
+        assert!(var_ref.def_uri.is_none());
+    }
+
+    #[test]
+    fn two_argument_new_wad_call_is_not_a_wad_synth_finding() {
+        // Partition rule requires EXACTLY one argument.
+        let f = findings("a.ts", "new Wad({source:'square'}, 'extra').play();");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn zero_argument_new_wad_call_is_not_a_wad_synth_finding() {
+        let f = findings("a.ts", "new Wad().play();");
+        assert!(f.is_empty());
     }
 }

@@ -75,10 +75,13 @@ export function playJump() {
   new Wad({ source: 'sounds/jump.wav' }).play()
 }
 
-// Wad synthesis-mode source ('sine', 'square', ...) has no audio extension
-// — correctly NOT a finding. Kept uncommented (not a comment-exclusion
-// case) so the golden fixture's full-array equality proves the negative,
-// not just implies it.
+// Wad synthesis-mode source ('sine', 'square', ...) has no audio extension,
+// so it's correctly NOT an audio.file finding — but it IS a wad.synth
+// finding now (a separate kind: no file is loaded, so the string itself
+// never gets an audio.file entry either way). Kept uncommented (not a
+// comment-exclusion case) so the golden fixture's full-array equality
+// proves both the audio.file negative and the wad.synth positive, not just
+// implies either.
 export function beep() {
   new Wad({ source: 'sine' }).play()
 }
@@ -91,16 +94,21 @@ export function playWithReverb() {
 }
 
 // audio.file — Wad.SoundIterator's files array mixes a real path with an
-// inline synthesis Wad. Exactly ONE finding ('riff.mp3'), attributed to
-// the SoundIterator new-expression; the inner new Wad({source:'square'})
-// is synthesis and contributes nothing.
+// inline synthesis Wad. ONE audio.file finding ('riff.mp3'), attributed to
+// the SoundIterator new-expression — plus ONE wad.synth finding for the
+// inner new Wad({source:'square'}), attributed to ITS OWN new-expression
+// (wad.synth's scanner fires on any matching new Wad(...) wherever it
+// appears, however deeply nested, the same depth-agnostic posture
+// audio.file's string walk already has).
 export function playIterated() {
   new Wad.SoundIterator({ files: ['riff.mp3', new Wad({ source: 'square' })] }).play()
 }
 
 // The REST of Wad's synthesis vocabulary — oscillator shapes, noise, live
-// mic input — all name no file; NOT findings, proven by the golden
-// full-array equality (same treatment as 'sine' above).
+// mic input. sawtooth/triangle/noise are wad.synth findings (same as
+// 'sine' above); NONE of the four are audio.file findings (no file is
+// loaded); 'mic' is live input and is the one keyword that produces NO
+// finding of EITHER kind — proven by the golden full-array equality.
 export function synthVoices() {
   new Wad({ source: 'sawtooth' }).play()
   new Wad({ source: 'triangle' }).play()
@@ -118,4 +126,21 @@ export function spriteOnly() {
 // arguments at all. NOT a finding.
 export function hiHat() {
   new Wad(Wad.presets.hiHatClosed).play()
+}
+
+// wad.synth — a fresh oscillator keyword not otherwise exercised above
+// ('square', vs. sine/sawtooth/triangle/noise covered by beep/synthVoices).
+export function playSquareSynth() {
+  new Wad({ source: 'square' }).play()
+}
+
+// wad.synth — bare-identifier var-ref form. The sidecar can't know
+// statically whether an identifier's declaration IS an oscillator config
+// without resolving it, so (mirroring zzfx/zzfxm's varRef division of
+// labor) it always emits a wad.synth finding with varRef set for a
+// bare-identifier Wad argument; validating the resolved text is the TS
+// client's job (see wadSynthResolver.ts).
+const laserOsc = { source: 'noise' }
+export function playLaserOsc() {
+  new Wad(laserOsc).play()
 }

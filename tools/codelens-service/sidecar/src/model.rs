@@ -83,9 +83,29 @@ pub struct AudioFilePayload {
     pub path_range: Range,
 }
 
+/// Payload for a `new Wad({ source: 'sine' | 'square' | 'sawtooth' |
+/// 'triangle' | 'noise' })` synthesis-mode finding. Deliberately has no
+/// pre-extracted config: Wad's synthesis config is a plain object literal,
+/// not a flat numeric list, so extracting it here would just duplicate what
+/// the client can already read out of the source text at `arg_range` — the
+/// same posture `ZzfxmPayload` already takes for a song. `arg_range` is the
+/// sole argument's own text range (the object literal's own range for a
+/// direct-object-literal call, or the bare identifier's own range for a
+/// var-ref call — see [`crate::parse::extract_wad_synth`]'s doc comment for
+/// why the var-ref case still sets it despite `var_ref.def_range` being the
+/// more useful range there).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WadSynthPayload {
+    pub arg_range: Range,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub var_ref: Option<VarRef>,
+}
+
 pub const ZZFX_CALL_KIND: &str = "zzfx.call";
 pub const ZZFXM_SONG_KIND: &str = "zzfxm.song";
 pub const AUDIO_FILE_KIND: &str = "audio.file";
+pub const WAD_SYNTH_KIND: &str = "wad.synth";
 
 /// The kind-specific half of a [`Finding`] — see the module doc comment for
 /// why this is `#[serde(flatten)]`ed rather than nested under a `payload`
@@ -99,6 +119,8 @@ pub enum FindingPayload {
     ZzfxmSong(ZzfxmPayload),
     #[serde(rename = "audio.file")]
     AudioFile(AudioFilePayload),
+    #[serde(rename = "wad.synth")]
+    WadSynth(WadSynthPayload),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -120,6 +142,7 @@ impl Finding {
             FindingPayload::ZzfxCall(_) => ZZFX_CALL_KIND,
             FindingPayload::ZzfxmSong(_) => ZZFXM_SONG_KIND,
             FindingPayload::AudioFile(_) => AUDIO_FILE_KIND,
+            FindingPayload::WadSynth(_) => WAD_SYNTH_KIND,
         }
     }
 
@@ -140,6 +163,13 @@ impl Finding {
     pub fn as_audio_file(&self) -> Option<&AudioFilePayload> {
         match &self.payload {
             FindingPayload::AudioFile(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn as_wad_synth(&self) -> Option<&WadSynthPayload> {
+        match &self.payload {
+            FindingPayload::WadSynth(p) => Some(p),
             _ => None,
         }
     }
@@ -266,6 +296,76 @@ mod tests {
     }
 
     #[test]
+    fn wad_synth_finding_round_trips_with_no_pre_extracted_config_field() {
+        let finding = Finding {
+            id: "22334455667788aa".to_string(),
+            range: Range {
+                start: pos(0, 0),
+                end: pos(0, 27),
+            },
+            byte_range: ByteRange { start: 0, end: 27 },
+            payload: FindingPayload::WadSynth(WadSynthPayload {
+                arg_range: Range {
+                    start: pos(0, 8),
+                    end: pos(0, 26),
+                },
+                var_ref: None,
+            }),
+        };
+        let json = serde_json::to_value(&finding).unwrap();
+        assert_eq!(json["kind"], "wad.synth");
+        assert_eq!(json["payload"]["argRange"]["start"]["character"], 8);
+        assert!(json["payload"].get("varRef").is_none());
+        assert!(
+            json["payload"].get("params").is_none(),
+            "wad.synth payload must never have a params key — the config is a plain object, not a flat numeric list"
+        );
+
+        let back: Finding = serde_json::from_value(json).unwrap();
+        assert_eq!(back, finding);
+        assert_eq!(finding.kind(), WAD_SYNTH_KIND);
+        assert_eq!(finding.as_wad_synth().unwrap().arg_range.start.character, 8);
+    }
+
+    #[test]
+    fn wad_synth_finding_with_var_ref_round_trips() {
+        let finding = Finding {
+            id: "9988776655443322".to_string(),
+            range: Range {
+                start: pos(1, 0),
+                end: pos(1, 15),
+            },
+            byte_range: ByteRange { start: 30, end: 45 },
+            payload: FindingPayload::WadSynth(WadSynthPayload {
+                arg_range: Range {
+                    start: pos(1, 8),
+                    end: pos(1, 11),
+                },
+                var_ref: Some(VarRef {
+                    name: "cfg".to_string(),
+                    def_uri: Some("a.ts".to_string()),
+                    def_range: None,
+                }),
+            }),
+        };
+        let json = serde_json::to_value(&finding).unwrap();
+        assert_eq!(json["payload"]["varRef"]["name"], "cfg");
+
+        let back: Finding = serde_json::from_value(json).unwrap();
+        assert_eq!(back, finding);
+        assert_eq!(
+            finding
+                .as_wad_synth()
+                .unwrap()
+                .var_ref
+                .as_ref()
+                .unwrap()
+                .name,
+            "cfg"
+        );
+    }
+
+    #[test]
     fn a_finding_of_one_kind_has_no_accessor_hit_for_the_others() {
         let finding = Finding {
             id: "id".to_string(),
@@ -285,6 +385,7 @@ mod tests {
         assert!(finding.as_zzfx_call().is_none());
         assert!(finding.as_zzfxm_song().is_none());
         assert!(finding.as_audio_file().is_some());
+        assert!(finding.as_wad_synth().is_none());
     }
 
     #[test]

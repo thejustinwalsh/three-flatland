@@ -86,6 +86,10 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     // to sidestep serde_json::Value's format-sensitive equality), this
     // straightforward JSON round-trip comparison is already correct.
     expect(result.findings).toEqual(goldenFindings)
+    expect(
+      result.findings,
+      "golden.ts's total finding count changed — update this expectation (and sidecar/tests/golden.rs's matching one) together with any fixture edit"
+    ).toHaveLength(22)
 
     // The specific regression this fixture exists to prevent: a
     // type-annotated declarator's defRange must land INSIDE the
@@ -199,8 +203,65 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     for (const synth of ['square', 'sawtooth', 'triangle', 'noise', 'mic']) {
       expect(
         result.findings.find((f) => f.kind === 'audio.file' && f.payload.path === synth),
-        `new Wad({source: '${synth}'}) is synthesis mode — must NOT be a finding`
+        `new Wad({source: '${synth}'}) is synthesis mode — must NOT be an audio.file finding`
       ).toBeUndefined()
     }
+
+    // wad.synth: every oscillator/noise keyword IS a wad.synth finding now
+    // (a dedicated kind — see tools/codelens-service/CLAUDE.md), proven by
+    // argRange slice-equality against the real source text, the TS twin of
+    // golden.rs's same block. 'mic' remains the one keyword that is a
+    // finding of NEITHER kind.
+    const wadSynthFindings = result.findings.filter((f) => f.kind === 'wad.synth')
+    expect(
+      wadSynthFindings,
+      "expected sine (beep), sawtooth/triangle/noise (synthVoices), the inline square inside playIterated's SoundIterator, playSquareSynth's square, and playLaserOsc's var-ref noise — 7 total wad.synth findings"
+    ).toHaveLength(7)
+    for (const oscillator of ['sine', 'square', 'sawtooth', 'triangle', 'noise']) {
+      const objectText = `{ source: '${oscillator}' }`
+      const found = wadSynthFindings.some((f) => {
+        if (f.kind !== 'wad.synth') return false
+        const lines = goldenText.split('\n')
+        const line = lines[f.payload.argRange.start.line]!
+        const sliced = line.slice(
+          f.payload.argRange.start.character,
+          f.payload.argRange.end.character
+        )
+        return sliced === objectText
+      })
+      expect(
+        found,
+        `expected a wad.synth finding whose argRange slices to exactly ${objectText}`
+      ).toBe(true)
+    }
+
+    // The #1 partition risk: Wad's file-mode source must never ALSO
+    // produce a wad.synth finding.
+    expect(
+      result.findings.find(
+        (f) => f.kind === 'wad.synth' && f.range.start.line === wadFinding.range.start.line
+      ),
+      "new Wad({source: 'sounds/jump.wav'}) is file mode — must NOT be a wad.synth finding"
+    ).toBeUndefined()
+
+    // wad.synth bare-identifier var-ref form (playLaserOsc): varRef.defRange
+    // must slice to exactly laserOsc's initializer text, same "past the
+    // declarator, value only" contract zzfx/zzfxm's varRef.defRange
+    // already has.
+    const laserOscFinding = result.findings.find(
+      (f) => f.kind === 'wad.synth' && f.payload.varRef?.name === 'laserOsc'
+    )
+    expect(
+      laserOscFinding,
+      'golden.ts must still declare and reference laserOsc via new Wad(laserOsc)'
+    ).toBeDefined()
+    if (laserOscFinding?.kind !== 'wad.synth') throw new Error('expected wad.synth')
+    const laserDefRange = laserOscFinding.payload.varRef!.defRange
+    expect(laserDefRange, 'laserOsc has an initializer; defRange must be present').toBeDefined()
+    const laserLines = goldenText.split('\n')
+    const laserLine = laserLines[laserDefRange!.start.line]!
+    expect(laserLine.slice(laserDefRange!.start.character, laserDefRange!.end.character)).toBe(
+      "{ source: 'noise' }"
+    )
   })
 })
