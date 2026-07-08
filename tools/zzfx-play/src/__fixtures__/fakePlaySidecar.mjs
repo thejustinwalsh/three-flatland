@@ -42,6 +42,11 @@ rl.on('line', (line) => {
     case 'playSong':
       send({ ok: true, cmd: 'playSong' })
       return
+    case 'playFile':
+      // No-op ack — this fixture never touches audio/decodeAudioData, so
+      // there's nothing to actually decode here (see client.test.ts).
+      send({ ok: true, cmd: 'playFile' })
+      return
     case 'stopSong':
       send({ ok: true, cmd: 'stopSong' })
       return

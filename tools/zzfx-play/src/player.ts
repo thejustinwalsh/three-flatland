@@ -116,6 +116,39 @@ export function playSampleChannels(
 }
 
 /**
+ * Plays an already-decoded `AudioBuffer` — the sibling output path for
+ * `audio.file` findings (three.js/Howler/Wad/bare-Audio/Tone.js file
+ * refs), as opposed to `playSampleChannels`' synthesized zzfx/zzfxm
+ * samples. `audioBuffer` (whatever `AudioContext.decodeAudioData`
+ * returns) is NATIVELY filled by the decoder — this deliberately never
+ * touches `copyToChannel`/`getChannelData` at all, sidestepping the
+ * get-then-mutate trap entirely rather than working around it (see the
+ * file doc comment): there is no sample data to write in the first
+ * place, only an already-playable buffer to route to the output.
+ *
+ * Routes through the SAME shared analyser tap `playSampleChannels` uses
+ * (`getAnalyser(ctx)`), so `getPlaybackStats`/the `stats` wire command
+ * covers file playback too — one audibility regression guard for both
+ * output paths, not two.
+ */
+export function playBuffer(
+  ctx: AudioContext,
+  audioBuffer: AudioBuffer,
+  masterVolume: number
+): AudioBufferSourceNode {
+  const source = ctx.createBufferSource()
+  source.buffer = audioBuffer
+
+  const gainNode = ctx.createGain()
+  gainNode.gain.value = masterVolume
+  source.connect(gainNode)
+  gainNode.connect(getAnalyser(ctx))
+  source.start()
+
+  return source
+}
+
+/**
  * Reads the analyser's current time-domain window and reduces it to a
  * peak/silent verdict. Meaningful only while something is actually
  * playing — see `PlaybackStats`'s doc comment.

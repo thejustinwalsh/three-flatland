@@ -16,6 +16,20 @@ export type AudioBackend = {
   /** `volume` is the wire command's gain multiplier, already defaulted to 1 by the handler. */
   play(params: number[], volume: number): void
   playSong(song: Song, volume: number): { stop(): void }
+  /**
+   * Fire-and-forget: kicks off an async read+decode+play and returns
+   * immediately — `handleCommand` acks "accepted" synchronously right
+   * after this returns, since decoding is inherently async and the
+   * stdin/stdout wiring must never block waiting for it (see
+   * `tools/zzfx-play/CLAUDE.md`'s "the async wrinkle"). A read/decode
+   * failure is the implementation's own responsibility to report through
+   * whatever async channel it has — the real `sidecar.ts` backend
+   * reports it via a `{ok:false, cmd:'playFile'}` line on stdout, closing
+   * directly over `send` rather than routing back through this
+   * synchronous return value, since there is no longer a live caller by
+   * the time an async failure is known.
+   */
+  playFile(path: string, volume: number): void
   getStats(): PlaybackStats
 }
 
@@ -69,6 +83,9 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
           currentSong = backend.playSong(command.song, command.volume ?? 1)
           return { ok: true, cmd: 'playSong' }
         }
+        case 'playFile':
+          backend.playFile(command.path, command.volume ?? 1)
+          return { ok: true, cmd: 'playFile' }
         case 'stopSong':
           handleStopSong()
           return { ok: true, cmd: 'stopSong' }

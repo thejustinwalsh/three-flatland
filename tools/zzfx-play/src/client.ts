@@ -93,6 +93,14 @@ export class PlaySidecarClient {
     this.send({ cmd: 'playSong', song, ...(volume !== undefined ? { volume } : {}) })
   }
 
+  /** Plays an audio file by ABSOLUTE path (the caller resolves it — see
+   * `PlayFileCommand`). Spawns the sidecar on first call, mirroring
+   * `play`/`playSong`. A read/decode failure surfaces asynchronously via
+   * `onError`, not as a rejection of this call. */
+  playFile(path: string, volume?: number): void {
+    this.send({ cmd: 'playFile', path, ...(volume !== undefined ? { volume } : {}) })
+  }
+
   /** Stops the currently playing song, if any. No-op if the sidecar isn't running. */
   stopSong(): void {
     if (!this.isRunning) return

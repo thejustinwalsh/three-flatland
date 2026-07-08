@@ -42,6 +42,14 @@ export type Song = {
  * set-then-play ordering to get wrong. */
 export type PlayCommand = { cmd: 'play'; params: number[]; volume?: number }
 export type PlaySongCommand = { cmd: 'playSong'; song: Song; volume?: number }
+/** `path` is an ABSOLUTE path — the extension host resolves it (source
+ * file's own directory, workspace root, then `public/`) before sending;
+ * the sidecar never does its own path resolution. Fire-and-forget like
+ * `play`/`playSong`, but the underlying decode is genuinely async — a
+ * read/decode failure surfaces later via a `{ok:false, cmd:'playFile'}`
+ * line on stdout, not as a rejection of this command's own (synchronous,
+ * "accepted") ack. See `commandHandler.ts`'s `AudioBackend.playFile`. */
+export type PlayFileCommand = { cmd: 'playFile'; path: string; volume?: number }
 export type StopSongCommand = { cmd: 'stopSong' }
 /** Stops everything currently audible (today: equivalent to `stopSong` — one-shots have no persistent handle to interrupt mid-flight, see commandHandler.ts). */
 export type StopCommand = { cmd: 'stop' }
@@ -52,6 +60,7 @@ export type StatsCommand = { cmd: 'stats' }
 export type Command =
   | PlayCommand
   | PlaySongCommand
+  | PlayFileCommand
   | StopSongCommand
   | StopCommand
   | ShutdownCommand

@@ -15,14 +15,26 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
   playCalls: { params: number[]; volume: number }[]
   playSongCalls: { song: Song; volume: number }[]
   songHandles: { stop: ReturnType<typeof vi.fn> }[]
+  playFileCalls: { path: string; volume: number }[]
+  /** Populated asynchronously (after `handleCommand` has already
+   * returned) when `playFile` is called with the `'FAIL_ASYNC'` sentinel
+   * path — stands in for the real sidecar.ts backend's `send({ok:false,
+   * cmd:'playFile', ...})` call on a decode failure, which this fake
+   * can't reach directly (it has no `send`), but must still prove is
+   * reachable and never swallowed. */
+  asyncPlayFileErrors: string[]
 } {
   const playCalls: { params: number[]; volume: number }[] = []
   const playSongCalls: { song: Song; volume: number }[] = []
   const songHandles: { stop: ReturnType<typeof vi.fn> }[] = []
+  const playFileCalls: { path: string; volume: number }[] = []
+  const asyncPlayFileErrors: string[] = []
   return {
     playCalls,
     playSongCalls,
     songHandles,
+    playFileCalls,
+    asyncPlayFileErrors,
     play: (params, volume) => {
       playCalls.push({ params, volume })
     },
@@ -31,6 +43,15 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
       const handle = { stop: vi.fn() }
       songHandles.push(handle)
       return handle
+    },
+    playFile: (path, volume) => {
+      playFileCalls.push({ path, volume })
+      if (path === 'FAIL_ASYNC') {
+        // Real decode failures land after handleCommand has already
+        // returned its synchronous "accepted" ack — simulate that here
+        // with a microtask rather than resolving inline.
+        queueMicrotask(() => asyncPlayFileErrors.push('decode failed: bad header'))
+      }
     },
     getStats: () => stats,
   }
@@ -116,6 +137,35 @@ describe('createCommandHandler', () => {
     expect(backend.songHandles[0]!.stop).toHaveBeenCalledTimes(1)
   })
 
+  it('playFile forwards path/volume to the backend, defaulting volume to 1, and acks synchronously — it never blocks/awaits the decode', () => {
+    const backend = fakeBackend()
+    const handler = createCommandHandler(backend)
+    const response = handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
+    expect(response).toEqual({ ok: true, cmd: 'playFile' })
+    expect(backend.playFileCalls).toEqual([{ path: '/tmp/x.wav', volume: 1 }])
+  })
+
+  it('playFile passes an explicit volume multiplier through unchanged', () => {
+    const backend = fakeBackend()
+    const handler = createCommandHandler(backend)
+    handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav', volume: 0.5 })
+    expect(backend.playFileCalls).toEqual([{ path: '/tmp/x.wav', volume: 0.5 }])
+  })
+
+  it("an async decode failure surfaces through the backend's own async-error channel, not swallowed — and handleCommand already returned before it fires", async () => {
+    const backend = fakeBackend()
+    const handler = createCommandHandler(backend)
+    const response = handler.handleCommand({ cmd: 'playFile', path: 'FAIL_ASYNC' })
+    expect(response).toEqual({ ok: true, cmd: 'playFile' })
+    // Nothing async has had a chance to run yet at this point — proves
+    // handleCommand returned before the microtask playFile() queued
+    // could flush.
+    expect(backend.asyncPlayFileErrors).toEqual([])
+
+    await vi.waitFor(() => expect(backend.asyncPlayFileErrors).toHaveLength(1))
+    expect(backend.asyncPlayFileErrors[0]).toMatch(/decode failed/)
+  })
+
   it("shutdown just acks — process teardown is the wiring layer's job, not the handler's", () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
@@ -129,6 +179,7 @@ describe('createCommandHandler', () => {
         throw new Error('boom')
       },
       playSong: () => ({ stop: vi.fn() }),
+      playFile: vi.fn(),
       getStats: () => SILENT_STATS,
     })
     const response = handler.handleCommand({ cmd: 'play', params: [1] })
@@ -144,6 +195,7 @@ describe('createCommandHandler', () => {
         if (shouldThrow) throw new Error('song failed')
         return backend.playSong(song)
       },
+      playFile: backend.playFile,
       getStats: backend.getStats,
     }
     const handler = createCommandHandler(throwing)
@@ -181,6 +233,7 @@ describe('createCommandHandler', () => {
     const handler = createCommandHandler({
       play: vi.fn(),
       playSong: () => ({ stop: vi.fn() }),
+      playFile: vi.fn(),
       getStats: () => {
         throw new Error('analyser unavailable')
       },

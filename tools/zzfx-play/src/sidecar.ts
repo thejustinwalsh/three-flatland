@@ -33,12 +33,22 @@
  * wiring + the one real backend implementation.
  */
 import 'node-web-audio-api/polyfill.js'
+import * as fs from 'node:fs/promises'
 import * as readline from 'node:readline'
 import { ZZFX } from 'zzfx'
 import { ZZFXM } from '@zzfx-studio/zzfxm'
 import type { Command, Response } from './protocol.js'
 import { createCommandHandler } from './commandHandler.js'
-import { getPlaybackStats, playSampleChannels } from './player.js'
+import { getPlaybackStats, playBuffer, playSampleChannels } from './player.js'
+
+// Defined before `handler` — the real `playFile` backend below closes
+// over this directly to report an async decode/read failure, since
+// `handleCommand` has already returned its synchronous "accepted" ack by
+// the time that failure is known (see `commandHandler.ts`'s
+// `AudioBackend.playFile` doc comment).
+function send(response: Response): void {
+  process.stdout.write(`${JSON.stringify(response)}\n`)
+}
 
 const handler = createCommandHandler({
   // `volume` is the wire command's user-trim multiplier (handler defaults
@@ -59,12 +69,33 @@ const handler = createCommandHandler({
       ZZFX.sampleRate,
       ZZFX.volume * volume
     ),
+  // Fire-and-forget: `fs.readFile` + `decodeAudioData` are both async,
+  // but `handleCommand` (and the `rl.on('line', ...)` loop it runs
+  // inside) must never block on them — see `tools/zzfx-play/CLAUDE.md`'s
+  // "the async wrinkle". A read/decode failure is reported directly via
+  // `send`, not thrown — there is no longer a live `handleCommand` call
+  // stack to throw into by the time this `catch` runs.
+  playFile: (filePath, volume) => {
+    void (async () => {
+      try {
+        const bytes = await fs.readFile(filePath)
+        const arrayBuffer = bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength
+        )
+        const audioBuffer = await ZZFX.audioContext.decodeAudioData(arrayBuffer)
+        playBuffer(ZZFX.audioContext, audioBuffer, ZZFX.volume * volume)
+      } catch (err) {
+        send({
+          ok: false,
+          cmd: 'playFile',
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    })()
+  },
   getStats: () => getPlaybackStats(ZZFX.audioContext),
 })
-
-function send(response: Response): void {
-  process.stdout.write(`${JSON.stringify(response)}\n`)
-}
 
 const rl = readline.createInterface({ input: process.stdin })
 

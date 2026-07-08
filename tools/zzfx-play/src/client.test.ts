@@ -50,6 +50,16 @@ describe('PlaySidecarClient', () => {
     expect(client.pid).toBe(firstPid)
   })
 
+  it('playFile() spawns the sidecar lazily and reuses the same process on repeated calls', async () => {
+    client = spawnFake()
+    client.playFile('/tmp/explosion.wav')
+    await vi.waitFor(() => expect(client!.isRunning).toBe(true))
+    const firstPid = client.pid
+
+    client.playFile('/tmp/jump.ogg', 0.5)
+    expect(client.pid).toBe(firstPid)
+  })
+
   it('playSong()/stopSong()/stop() also lazily spawn and reuse the same process', async () => {
     client = spawnFake()
     const song = { instruments: [[1, 0, 220]], patterns: [[[0, 0, 12]]], sequence: [0] }

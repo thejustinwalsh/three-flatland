@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getPlaybackStats, playSampleChannels } from './player.js'
+import { getPlaybackStats, playBuffer, playSampleChannels } from './player.js'
 
 /**
  * A minimal fake `AudioContext` — no `node-web-audio-api`, no real
@@ -142,6 +142,52 @@ describe('playSampleChannels', () => {
 
     expect(analysers).toHaveLength(1)
     expect(gains[0]!.connect).toHaveBeenCalledWith(analysers[0])
+    expect(gains[1]!.connect).toHaveBeenCalledWith(analysers[0])
+  })
+})
+
+describe('playBuffer', () => {
+  /** A stand-in for the `AudioBuffer` `decodeAudioData` hands back —
+   * natively filled by the decoder, never touched via `copyToChannel`
+   * or `getChannelData` (that's `playSampleChannels`' job for
+   * synthesized zzfx/zzfxm samples, not this function's). No
+   * `copyToChannel`/`getChannelData` methods at all — calling either
+   * would throw a TypeError, which the "sets source.buffer directly"
+   * assertion below would surface. */
+  function fakeDecodedBuffer(): AudioBuffer {
+    return { length: 4410, numberOfChannels: 2, sampleRate: 44100 } as unknown as AudioBuffer
+  }
+
+  it('sets source.buffer directly to the decoded buffer — no copyToChannel, no getChannelData', () => {
+    const { ctx, sources, buffers } = fakeAudioContext()
+    const decoded = fakeDecodedBuffer()
+
+    const result = playBuffer(ctx, decoded, 0.3)
+
+    expect(result).toBe(sources[0])
+    expect(sources[0]!.buffer).toBe(decoded)
+    // playBuffer never calls ctx.createBuffer at all — it plays the
+    // buffer decodeAudioData already produced, not a synthesized one.
+    expect(buffers).toHaveLength(0)
+  })
+
+  it('sets gain to the masterVolume passed in and starts playback', () => {
+    const { ctx, sources, gains } = fakeAudioContext()
+
+    playBuffer(ctx, fakeDecodedBuffer(), 0.6)
+
+    expect(gains[0]!.gain.value).toBe(0.6)
+    expect(sources[0]!.connect).toHaveBeenCalledWith(gains[0])
+    expect(sources[0]!.start).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes through the SAME shared analyser tap playSampleChannels uses — files and synth share one audibility guard', () => {
+    const { ctx, gains, analysers } = fakeAudioContext()
+
+    playSampleChannels(ctx, [[1]], 44100, 0.3)
+    playBuffer(ctx, fakeDecodedBuffer(), 0.3)
+
+    expect(analysers).toHaveLength(1)
     expect(gains[1]!.connect).toHaveBeenCalledWith(analysers[0])
   })
 })
