@@ -150,10 +150,12 @@ fn extract_zzfx_call(call: Node, text: &str, line_index: &LineIndex, uri: &str) 
 }
 
 /// Extracts a `zzfxm(...)`/`zzfxM(...)` song call. Only the FIRST argument
-/// matters for detection — a bare identifier there resolves to a `varRef`
-/// exactly like `zzfx`'s preset resolution (same `resolve_var_ref` path);
-/// anything else (an inline array literal, a call expression, ...) yields no
-/// `varRef`. Trailing args (playback position, speed) are irrelevant here.
+/// matters for detection — a bare identifier there, or a spread of one
+/// (`zzfxM(...songVar)`, the canonical zzfxm-tool output shape), resolves to
+/// a `varRef` exactly like `zzfx`'s preset resolution (same
+/// `resolve_var_ref` path); anything else (an inline array literal, a call
+/// expression, a spread of a non-identifier, ...) yields no `varRef`.
+/// Trailing args (playback position, speed) are irrelevant here.
 fn extract_zzfxm_call(
     call: Node,
     text: &str,
@@ -175,6 +177,13 @@ fn extract_zzfxm_call(
             let name = node_text(n, text).to_string();
             Some(resolve_var_ref(name, arguments, text, uri))
         }
+        Some(n) if n.kind() == "spread_element" => match n.named_child(0) {
+            Some(inner) if inner.kind() == "identifier" => {
+                let name = node_text(inner, text).to_string();
+                Some(resolve_var_ref(name, arguments, text, uri))
+            }
+            _ => None,
+        },
         _ => None,
     };
 
@@ -760,6 +769,31 @@ mod tests {
             var_ref.def_range.is_some(),
             "song has an initializer, defRange must be Some"
         );
+    }
+
+    #[test]
+    fn zzfxm_spread_identifier_resolves_a_var_ref_like_a_bare_one() {
+        // `zzfxM(...songVar)` is the canonical zzfxm-tool output shape —
+        // the spread must resolve the SAME varRef a bare `zzfxm(songVar)`
+        // does, not fall through to "no varRef" (the old graceful-refusal
+        // path, which read as a bug: the bare form of the same variable
+        // played while the spread form refused).
+        let src = "const mySong = [[[1,0,220]],[[0,0,0,1]],[1]];\nzzfxM(...mySong);";
+        let f = call("a.ts", src);
+        let p = f.as_zzfxm_song().expect("expected zzfxm.song payload");
+        let var_ref = p.var_ref.as_ref().expect("expected varRef from spread");
+        assert_eq!(var_ref.name, "mySong");
+        assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
+        assert!(var_ref.def_range.is_some());
+    }
+
+    #[test]
+    fn zzfxm_spread_of_array_literal_still_has_no_var_ref() {
+        // Only a spread OF AN IDENTIFIER resolves — spreading an inline
+        // array literal has no declaration to point at.
+        let f = call("a.ts", "zzfxm(...[[[1,0,220]],[[0,0,0,1]],[1]]);");
+        let p = f.as_zzfxm_song().unwrap();
+        assert!(p.var_ref.is_none());
     }
 
     #[test]

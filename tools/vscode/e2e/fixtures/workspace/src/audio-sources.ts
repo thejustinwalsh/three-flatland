@@ -9,9 +9,9 @@
 // Covers all three Finding kinds tools/codelens-service/CLAUDE.md
 // documents: zzfx.call (literal + named-const, mirroring sounds.ts's own
 // positive cases so this file's own zzfx.call lenses are pinned too),
-// zzfxm.song (bare-identifier varRef, positional literal, and a spread
-// call demonstrating the graceful-refusal path — see songResolver.ts's
-// file doc comment for why spread never resolves a varRef), and
+// zzfxm.song (bare-identifier varRef, positional literal, and a
+// spread-of-identifier call resolving the same varRef — see
+// songResolver.ts's file doc comment), and
 // audio.file (three.js/Howler/Wad, one real file per audioFileResolver.ts
 // resolution tier, one unresolvable path, and commented-out decoys of
 // every positive case).
@@ -83,9 +83,9 @@ export function playChime() {
 
 // --- zzfxm.song: bare-identifier varRef, positional literal, spread ----
 
-// A combined [instruments, patterns, sequence, bpm] tuple — the shape a
-// bare-identifier zzfxm(NAME) call resolves via varRef (a SPREAD first
-// argument does NOT, see songResolver.ts's file doc comment).
+// A combined [instruments, patterns, sequence, bpm] tuple — the shape
+// both a bare-identifier zzfxm(NAME) call and a spread zzfxM(...NAME)
+// call resolve via varRef (see songResolver.ts's file doc comment).
 const fanfareSong = [[[0.6, 0, 220, 0, 0.05, 0.2, 1]], [[[0, 0, 12, 12]]], [0, 0], 140]
 
 // Positive case: zzfxm.song, named-const bare-identifier call site —
@@ -101,13 +101,11 @@ export function playChiptune() {
   zzfxm([[0.5, 0, 300]], [[[0, 0, 12, 12]]], [0])
 }
 
-// Positive case (the CodeLens still appears — the sidecar doesn't
-// validate call shape) but a graceful-refusal case at Play time: a
-// SPREAD first argument does not resolve a varRef the way a bare
-// identifier does (see sidecar/src/parse.rs::extract_zzfxm_call's doc
-// comment), so its raw `...fanfareSong` argument text is not a parseable
-// song literal — Play surfaces a loadError rather than throwing or
-// silently no-op'ing.
+// Positive case: zzfxm.song, SPREAD-of-identifier call site — the
+// canonical zzfxm-tool output shape. Resolves the SAME fanfareSong varRef
+// the bare-identifier call above does (see
+// sidecar/src/parse.rs::extract_zzfxm_call's doc comment), so Play
+// produces real audio, exactly like playFanfare.
 export function playFanfareSpread() {
   zzfxM(...fanfareSong)
 }

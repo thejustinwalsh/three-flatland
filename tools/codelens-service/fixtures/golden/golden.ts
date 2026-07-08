@@ -50,6 +50,13 @@ export function playLaserSong() {
   zzfxm(laserSong)
 }
 
+// zzfxm.song — spread-of-identifier form, `zzfxM(...laserSong)`: the
+// canonical zzfxm-tool output shape. Resolves the SAME varRef as the bare
+// identifier call above (sidecar/src/parse.rs::extract_zzfxm_call).
+export function playLaserSongSpread() {
+  zzfxM(...laserSong)
+}
+
 // audio.file — direct string argument.
 export function playExplosionSfx() {
   new Audio('explosion.mp3').play()

@@ -11,13 +11,13 @@
 // call site is a literal or a variable reference.
 //
 // Two real call shapes this must handle (see `tools/codelens-service/
-// fixtures/golden/golden.ts` for the syntactic forms; the Rust scanner only
-// resolves `varRef` for a BARE identifier first argument — a SPREAD first
-// argument, `zzfxM(...songVar)`, does NOT resolve one, see
-// `sidecar/src/parse.rs::extract_zzfxm_call`'s doc comment — so a spread
-// call's `argRange` text is parsed as-is and, being spread syntax, always
-// fails the nested-array-literal grammar, producing a graceful `loadError`
-// rather than a crash):
+// fixtures/golden/golden.ts` for the syntactic forms; the Rust scanner
+// resolves `varRef` for both a BARE identifier first argument and a SPREAD
+// of one — `zzfxM(...songVar)`, the canonical zzfxm-tool output shape —
+// see `sidecar/src/parse.rs::extract_zzfxm_call`'s doc comment, so both
+// land on shape 2 below. A spread of anything else never resolves a
+// varRef, and its raw `argRange` text fails the nested-array-literal
+// grammar, producing a graceful `loadError` rather than a crash):
 //
 //   1. Positional literal call — `zzfxm(instrumentsLit, patternsLit,
 //      sequenceLit, bpmLit?)`. `argRange` covers the raw, comma-separated

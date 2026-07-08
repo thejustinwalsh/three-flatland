@@ -20,11 +20,11 @@ const SOUNDS_FILE = 'src/audio-sources.ts'
 // 0-indexed lines — see src/audio-sources.ts.
 const FANFARE_CALL_LINE = 94 // zzfxm(fanfareSong) — bare-identifier varRef
 const CHIPTUNE_CALL_LINE = 100 // zzfxm([...], [...], [...]) — positional literal
-const FANFARE_SPREAD_CALL_LINE = 111 // zzfxM(...fanfareSong) — graceful refusal
-const JUMP_SFX_LINE = 122 // audioLoader.load('sounds/jump.wav') — workspace-root tier
-const CLICK_SFX_LINE = 128 // new Howl({ src: ['click.wav'] }) — source-dir tier
-const EXPLOSION_SFX_LINE = 134 // new Wad({ source: 'explosion.ogg' }) — public/ tier
-const MISSING_SFX_LINE = 141 // new Audio('nonexistent-sound.mp3') — unresolvable, no lens
+const FANFARE_SPREAD_CALL_LINE = 109 // zzfxM(...fanfareSong) — spread varRef, plays
+const JUMP_SFX_LINE = 120 // audioLoader.load('sounds/jump.wav') — workspace-root tier
+const CLICK_SFX_LINE = 126 // new Howl({ src: ['click.wav'] }) — source-dir tier
+const EXPLOSION_SFX_LINE = 132 // new Wad({ source: 'explosion.ogg' }) — public/ tier
+const MISSING_SFX_LINE = 139 // new Audio('nonexistent-sound.mp3') — unresolvable, no lens
 
 type LensCommand = { command: string; title: string; arguments?: unknown[] }
 type ResolvedLens = { range: { start: { line: number } }; command?: LensCommand }
@@ -250,41 +250,27 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(String(playLens?.command?.arguments?.[0])).toMatch(/public[/\\]explosion\.ogg$/)
   })
 
-  // Graceful-refusal UX: a spread first argument (`zzfxM(...songVar)`)
-  // does not resolve a varRef (see sidecar/src/parse.rs's
-  // extract_zzfxm_call doc comment) and its raw argRange text isn't a
-  // parseable song literal either — Play must not crash the extension
-  // host and must not produce audio, only a loadError message.
-  test('a spread zzfxm call (no varRef, unparseable argRange) refuses gracefully — no crash, no audio', async ({
+  // A spread first argument (`zzfxM(...songVar)`) — the canonical
+  // zzfxm-tool output shape — resolves the SAME varRef as the bare
+  // identifier form (see sidecar/src/parse.rs's extract_zzfxm_call doc
+  // comment), so Play produces real audio through the same songResolver
+  // defRange path. This was a graceful-refusal case before the scanner
+  // learned spreads; it reads as a bug for the spread form of a variable
+  // to refuse while the bare form of the SAME variable plays.
+  test('a spread zzfxm call (spread-of-identifier varRef) resolves and plays real audio', async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, FANFARE_SPREAD_CALL_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.zzfx.playSong')
 
-    const result = await evaluateInVSCode(
-      async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
-        if (ext && !ext.isActive) await ext.activate()
-        const api = ext!.exports as ExtensionApi
-
-        let threw = false
-        try {
-          await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-        } catch {
-          threw = true
-        }
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        const stats = await api.zzfxPlay.getStats()
-        return { threw, stats }
-      },
-      { command: playLens.command!.command, args: playLens.command!.arguments }
+    const stats = await executeAndPollAudible(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
     )
-    expect(result.threw).toBe(false)
-    // Silent (or undefined if no sidecar ever spawned this test run) —
-    // either way, nothing audible played from the refused call.
-    if (result.stats) expect(result.stats.silent).toBe(true)
+    expect(stats).toBeDefined()
+    expect(stats!.silent).toBe(false)
+    expect(stats!.peak).toBeGreaterThan(0)
   })
 })
