@@ -32,6 +32,26 @@ test('FL Normal Baker opens from the .normal.json sidecar, resolving to its pair
   await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
 })
 
+// #38 pair-open safety: a baked X.normal.png ends in .png, so before the
+// fix it fell into the generic image branch and opened AS the source —
+// the wrong half of the pair. resolveImageForCommand now checks
+// .normal.png before plain .png and hot-swaps to the source tileset
+// (sourcePngFromNormalPng, verified on disk). The panel title is the
+// HOST-level proof: it reads the resolved image's filename, so
+// `Dungeon_Tileset.png` (not `…normal.png`) means the resolution ran —
+// deliberately no webview-internals assertions here, so this survives
+// the baker webview redesign.
+test('FL Normal Baker opens from the baked .normal.png, resolving to its SOURCE tileset', async ({
+  openCommand,
+  webviewFrame,
+}) => {
+  await openCommand('threeFlatland.normalBaker.open', ['sprites/Dungeon_Tileset.normal.png'])
+
+  const frame = await webviewFrame('Normal Baker: Dungeon_Tileset.png')
+
+  await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
+})
+
 test('Save re-bakes .normal.png and re-stamps its content-hash', async ({
   baseDir,
   openCommand,
