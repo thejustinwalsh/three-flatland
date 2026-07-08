@@ -47,6 +47,11 @@
         "command": "threeFlatland.zzfx.openEditor",
         "title": "Open ZzFX Editor",
         "category": "FL"
+      },
+      {
+        "command": "threeFlatland.normalBaker.open",
+        "title": "Open in FL Normal Baker",
+        "category": "FL"
       }
     ],
     "customEditors": [
@@ -89,6 +94,11 @@
           "default": true,
           "description": "Enable FL Atlas Merge (combine multiple .atlas.json sprite sheets)."
         },
+        "threeFlatland.tools.normalBaker.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable FL Normal Baker (region editor for baking normal maps from PNG source art)."
+        },
         "threeFlatland.tools.zzfxStudio.enabled": {
           "type": "boolean",
           "default": true,
@@ -113,7 +123,7 @@
         {
           "submenu": "threeFlatland.flatlandMenu",
           "group": "navigation@10",
-          "when": "(threeFlatland.tool.spriteAtlas.enabled && (resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/)) || (threeFlatland.tool.imageEncoder.enabled && (resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2)) || (threeFlatland.tool.atlasMerge.enabled && resourceFilename =~ /\\.atlas\\.json$/)"
+          "when": "(threeFlatland.tool.spriteAtlas.enabled && (resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/)) || (threeFlatland.tool.imageEncoder.enabled && (resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2)) || (threeFlatland.tool.atlasMerge.enabled && resourceFilename =~ /\\.atlas\\.json$/) || (threeFlatland.tool.normalBaker.enabled && (resourceExtname == .png || resourceFilename =~ /\\.normal\\.json$/))"
         }
       ],
       "threeFlatland.flatlandMenu": [
@@ -121,6 +131,11 @@
           "command": "threeFlatland.atlas.openEditor",
           "when": "threeFlatland.tool.spriteAtlas.enabled && (resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/)",
           "group": "1_authoring@1"
+        },
+        {
+          "command": "threeFlatland.normalBaker.open",
+          "when": "threeFlatland.tool.normalBaker.enabled && (resourceExtname == .png || resourceFilename =~ /\\.normal\\.json$/)",
+          "group": "1_authoring@2"
         },
         {
           "command": "threeFlatland.encode.open",
@@ -145,6 +160,10 @@
         {
           "command": "threeFlatland.encode.open",
           "when": "threeFlatland.tool.imageEncoder.enabled && (resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2)"
+        },
+        {
+          "command": "threeFlatland.normalBaker.open",
+          "when": "threeFlatland.tool.normalBaker.enabled && (resourceExtname == .png || resourceFilename =~ /\\.normal\\.json$/)"
         },
         {
           "command": "threeFlatland.zzfx.playAtCursor",
@@ -194,11 +213,13 @@
   "dependencies": {
     "@jsquash/webp": "catalog:",
     "@stylexjs/stylex": "catalog:",
+    "@three-flatland/bake": "workspace:*",
     "@three-flatland/bridge": "workspace:*",
     "@three-flatland/codelens-service": "workspace:*",
     "@three-flatland/image": "workspace:*",
     "@three-flatland/design-system": "workspace:*",
     "@three-flatland/io": "workspace:*",
+    "@three-flatland/normals": "workspace:*",
     "@three-flatland/preview": "workspace:*",
     "@three-flatland/schemas": "workspace:*",
     "@three-flatland/zzfx-play": "workspace:*",
@@ -218,6 +239,7 @@
     "@playwright/test": "^1.60.0",
     "@stylexjs/unplugin": "catalog:",
     "@types/node": "^22.10.0",
+    "@types/pngjs": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/three": "catalog:",
@@ -227,6 +249,7 @@
     "@vscode/test-electron": "^3.0.0",
     "concurrently": "^9.1.0",
     "esbuild": "^0.25.0",
+    "pngjs": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "ws": "^8.21.0"

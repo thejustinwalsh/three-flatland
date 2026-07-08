@@ -11,6 +11,13 @@
         "types": "./dist/atlas/index.d.ts",
         "default": "./dist/atlas/index.js"
       }
+    },
+    "./normal-descriptor": {
+      "source": "./src/normal-descriptor/index.ts",
+      "import": {
+        "types": "./dist/normal-descriptor/index.d.ts",
+        "default": "./dist/normal-descriptor/index.js"
+      }
     }
   },
   "files": [

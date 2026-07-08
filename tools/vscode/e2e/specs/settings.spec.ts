@@ -98,6 +98,66 @@ test.describe('FL tool settings', () => {
     await frame.locator('#root').waitFor({ state: 'visible' })
   })
 
+  // C1: proves normalBaker's ToolDescriptor entry (liveToggle: true, same
+  // shape as imageEncoder above) actually participates in the registry —
+  // not just that it's declared in TOOL_DESCRIPTORS/package.json, but that
+  // toggling its setting live registers/deregisters the real command.
+  test('disabling FL Normal Baker live: command deregisters; re-enabling restores it', async ({
+    evaluateInVSCode,
+    openCommand,
+    webviewFrame,
+  }) => {
+    const SETTING = 'threeFlatland.tools.normalBaker.enabled'
+
+    await evaluateInVSCode(async (vscode) => {
+      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
+      if (ext && !ext.isActive) await ext.activate()
+    })
+
+    const before = await evaluateInVSCode(async (vscode) => {
+      const cmds = await vscode.commands.getCommands(true)
+      return cmds.includes('threeFlatland.normalBaker.open')
+    })
+    expect(before).toBe(true)
+
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        await vscode.workspace
+          .getConfiguration()
+          .update(arg.setting, false, vscode.ConfigurationTarget.Workspace)
+      },
+      { setting: SETTING }
+    )
+
+    const afterDisable = await evaluateInVSCode(async (vscode) => {
+      const cmds = await vscode.commands.getCommands(true)
+      return cmds.includes('threeFlatland.normalBaker.open')
+    })
+    expect(afterDisable).toBe(false)
+
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        await vscode.workspace
+          .getConfiguration()
+          .update(arg.setting, true, vscode.ConfigurationTarget.Workspace)
+      },
+      { setting: SETTING }
+    )
+
+    const afterReenable = await evaluateInVSCode(async (vscode) => {
+      const cmds = await vscode.commands.getCommands(true)
+      return cmds.includes('threeFlatland.normalBaker.open')
+    })
+    expect(afterReenable).toBe(true)
+
+    // Re-registered command actually opens the panel, not just "exists" —
+    // and drives it via the .png source (the .normal.json sidecar-opens-
+    // its-paired-image path is covered separately in normal-baker.spec.ts).
+    await openCommand('threeFlatland.normalBaker.open', ['sprites/Dungeon_Tileset.png'])
+    const frame = await webviewFrame('Normal Baker: Dungeon_Tileset.png')
+    await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
+  })
+
   test('FL ZzFX Studio disabled at startup: CodeLens provider never registers, no FL lenses', async ({
     vscodeInstallPath,
   }) => {

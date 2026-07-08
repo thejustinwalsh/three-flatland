@@ -31,10 +31,7 @@ export default defineConfig({
       exclude: ['**/*.test.ts', '**/*.test.tsx', '**/index.ts'],
     },
     typecheck: {
-      include: [
-        'packages/*/src/**/*.test-d.ts',
-        'packages/*/src/**/*.test-d.tsx',
-      ],
+      include: ['packages/*/src/**/*.test-d.ts', 'packages/*/src/**/*.test-d.tsx'],
       exclude: ['packages/skia/**', 'packages/tweakpane/**', '**/node_modules/**'],
       tsconfig: './packages/three-flatland/tsconfig.json',
     },

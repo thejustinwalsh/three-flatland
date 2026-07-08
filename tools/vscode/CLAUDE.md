@@ -127,14 +127,14 @@ reload-window prompt).
 
 ## Two patterns: custom editor vs ad-hoc command
 
-| | Custom editor (atlas) | Ad-hoc command (merge) |
-|---|---|---|
-| Activation | User opens a file (e.g. `*.png`) via "Reopen With…" | Command palette / explorer context menu |
-| Registration | `vscode.window.registerCustomEditorProvider` | `vscode.commands.registerCommand` |
-| Panel creation | VSCode calls `resolveCustomEditor(document, panel)` | You call `vscode.window.createWebviewPanel(…)` |
-| Multi-select | Not applicable | Handler signature `(clicked?, allSelected?)` — filter by `allSelected` first |
-| `package.json` | `customEditors` + `commands` + `menus` | `commands` + `menus` only |
-| Reference | `extension/tools/atlas/{register,provider}.ts` | `extension/tools/merge/{register,host}.ts` |
+|                | Custom editor (atlas)                               | Ad-hoc command (merge)                                                       |
+| -------------- | --------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Activation     | User opens a file (e.g. `*.png`) via "Reopen With…" | Command palette / explorer context menu                                      |
+| Registration   | `vscode.window.registerCustomEditorProvider`        | `vscode.commands.registerCommand`                                            |
+| Panel creation | VSCode calls `resolveCustomEditor(document, panel)` | You call `vscode.window.createWebviewPanel(…)`                               |
+| Multi-select   | Not applicable                                      | Handler signature `(clicked?, allSelected?)` — filter by `allSelected` first |
+| `package.json` | `customEditors` + `commands` + `menus`              | `commands` + `menus` only                                                    |
+| Reference      | `extension/tools/atlas/{register,provider}.ts`      | `extension/tools/merge/{register,host}.ts`                                   |
 
 **Pick custom editor** when the tool is the primary viewer for a file type. Pick **ad-hoc command** for everything else.
 
@@ -145,14 +145,14 @@ is a `ToolDescriptor` in `TOOL_DESCRIPTORS`: `id`, `settingKey`
 (`threeFlatland.tools.<id>.enabled`), `contextKey` (`threeFlatland.tool.<id>.enabled`, mirrored via
 `setContext` for `when` clauses), `label`, `liveToggle`, `register`. Adding a tool means one entry
 here + one `package.json` `contributes.configuration` property + the menu items gated on
-`contextKey` — normal-baker's future PR is exactly this shape (see the commented-out slot in
-`TOOL_DESCRIPTORS`).
+`contextKey` — `normalBaker`'s entry (`1_authoring@2`, right after atlas) is a real example of this
+shape, not just a template.
 
-- **`liveToggle: true`** (atlas, encode, merge — plain commands/custom-editor providers, no
-  background listeners or external processes): flipping the setting mid-session registers or
-  disposes the tool immediately. `register*Tool` must return ONE aggregate `vscode.Disposable`
-  (see "Adding a new tool" step 1) so the registry can dispose exactly that tool without touching
-  the others.
+- **`liveToggle: true`** (atlas, encode, merge, normal-baker — plain commands/custom-editor
+  providers, no background listeners or external processes): flipping the setting mid-session
+  registers or disposes the tool immediately. `register*Tool` must return ONE aggregate
+  `vscode.Disposable` (see "Adding a new tool" step 1) so the registry can dispose exactly that
+  tool without touching the others.
 - **`liveToggle: false`** (zzfx — a CodeLens provider with a debounced document-change listener,
   plus two external sidecar processes with async spawn/shutdown lifecycles): flipping the setting
   still updates the context key immediately (menus/palette react right away), but the actual
@@ -195,6 +195,7 @@ host responds → bridge.emit('<tool>/init', { …payload… })
 Subsequent messages follow `<tool>/<verb>` naming. Webview sends requests; host responds with `{ ok: true }` or throws to surface an error.
 
 Key rules (see `tools/bridge/` source):
+
 - `createHostBridge(webview)` — host side. `bridge.on(method, handler)` where handler returns a value or throws.
 - `createClientBridge()` — webview side. `bridge.request(method, params?)` returns a Promise.
 - `bridge.on(event, handler)` returns an **unsubscribe function** — there is no `dispose()` on `on()`. Capture it if you need to cancel a specific listener.
@@ -206,19 +207,19 @@ Key rules (see `tools/bridge/` source):
 
 Do NOT write raw `<button>`, `<select>`, `<input>`, `<details>` for VSCode chrome. Every interactive element must come from `@three-flatland/design-system`.
 
-| Need | Primitive |
-|---|---|
-| Top toolbar | `Toolbar` + `ToolbarButton` (icon + title) |
-| Titled section / card | `Panel` (props: `title`, `headerActions`, `bodyPadding`) |
-| Resizable splits | `Splitter` (props: `axis`, `onDrag(clientPx)`) — parent owns the size state |
-| Tabs | `Tabs` + `TabHeader` + `TabPanel` |
-| Dropdown | `CompactSelect` or `SingleSelect` + `Option` |
-| Number input | `NumberField` |
-| Checkbox | `Checkbox` |
-| Text input | `TextField` |
-| Collapsible section | `Collapsible` |
-| Icon | `Icon` (codicon name string) |
-| Inline error | StyleX with `vscode.errorBg` / `vscode.errorFg` / `vscode.errorBorder` tokens |
+| Need                  | Primitive                                                                     |
+| --------------------- | ----------------------------------------------------------------------------- |
+| Top toolbar           | `Toolbar` + `ToolbarButton` (icon + title)                                    |
+| Titled section / card | `Panel` (props: `title`, `headerActions`, `bodyPadding`)                      |
+| Resizable splits      | `Splitter` (props: `axis`, `onDrag(clientPx)`) — parent owns the size state   |
+| Tabs                  | `Tabs` + `TabHeader` + `TabPanel`                                             |
+| Dropdown              | `CompactSelect` or `SingleSelect` + `Option`                                  |
+| Number input          | `NumberField`                                                                 |
+| Checkbox              | `Checkbox`                                                                    |
+| Text input            | `TextField`                                                                   |
+| Collapsible section   | `Collapsible`                                                                 |
+| Icon                  | `Icon` (codicon name string)                                                  |
+| Inline error          | StyleX with `vscode.errorBg` / `vscode.errorFg` / `vscode.errorBorder` tokens |
 
 For an artboard / canvas surface (custom rendering, SVG, Three.js canvas) — handcraft the surface, but wrap it in `<Panel bodyPadding="none">`.
 
@@ -264,10 +265,10 @@ The atlas tool is the reference. Apply the same patterns to any tool that pulls 
 
 ```tsx
 const CanvasStage = lazy(() =>
-  import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage })),
+  import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage }))
 )
 const AnimationPreviewPip = lazy(() =>
-  import('@three-flatland/preview/canvas').then((m) => ({ default: m.AnimationPreviewPip })),
+  import('@three-flatland/preview/canvas').then((m) => ({ default: m.AnimationPreviewPip }))
 )
 ```
 
@@ -280,7 +281,7 @@ So the canvas chunk fetch overlaps with the initial shell render rather than wai
 ```ts
 // tools/vscode/webview/<tool>/main.tsx
 import { App } from './App'
-void import('@three-flatland/preview/canvas')   // warm the lazy chunk
+void import('@three-flatland/preview/canvas') // warm the lazy chunk
 ```
 
 This is purely a performance prefetch. `React.lazy()` inside `App` resolves from the same in-flight promise.
@@ -307,7 +308,14 @@ The webview's `index.html` paints a themed background **before** the JS bundle p
 
 ```html
 <style>
-  html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  html,
+  body,
+  #root {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+  }
   body {
     background: var(--vscode-editor-background);
     color: var(--vscode-foreground);
@@ -417,10 +425,10 @@ Layer two `persist` middlewares in one Zustand store with different `name` + `st
 
 ## Reference tools
 
-| Tool | Pattern | Location | When to reference |
-|---|---|---|---|
-| **atlas** | Custom editor on `*.png` | `extension/tools/atlas/` + `webview/atlas/` | Complex UI: sidebar + canvas + animation drawer; sidecar read/write |
-| **merge** | Ad-hoc command + multi-select | `extension/tools/merge/` + `webview/merge/` | Starting point for any new tool — simpler, cleaner scaffolding |
+| Tool      | Pattern                       | Location                                    | When to reference                                                   |
+| --------- | ----------------------------- | ------------------------------------------- | ------------------------------------------------------------------- |
+| **atlas** | Custom editor on `*.png`      | `extension/tools/atlas/` + `webview/atlas/` | Complex UI: sidebar + canvas + animation drawer; sidecar read/write |
+| **merge** | Ad-hoc command + multi-select | `extension/tools/merge/` + `webview/merge/` | Starting point for any new tool — simpler, cleaner scaffolding      |
 
 For bridge API contracts see `tools/bridge/src/`.
 For design-system primitive inventory see `tools/design-system/src/index.ts`.

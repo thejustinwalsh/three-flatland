@@ -2,16 +2,17 @@ import * as vscode from 'vscode'
 import { registerAtlasTool } from './tools/atlas/register'
 import { registerMergeTool } from './tools/merge/register'
 import { registerEncodeTool } from './tools/encode/register'
+import { registerNormalBakerTool } from './tools/normal-baker/register'
 import { registerZzfxTool } from './tools/zzfx/register'
 import { decideToolConfigAction } from './toolRegistryDecisions'
 import { log } from './log'
 
 /**
  * Single point of extension for "which tools does this extension ship,
- * and can each be turned off." Adding a tool (normal-baker's future PR
- * included) means ONE new entry here — its own `contributes.configuration`
- * property in package.json, and any menu items gated on `contextKey` — not
- * scattered edits across `extension/index.ts`.
+ * and can each be turned off." Adding a tool means ONE new entry here —
+ * its own `contributes.configuration` property in package.json, and any
+ * menu items gated on `contextKey` — not scattered edits across
+ * `extension/index.ts`.
  */
 export type ToolDescriptor = {
   /** Short id — the `tools.<id>.enabled` segment of `settingKey`. */
@@ -77,12 +78,18 @@ export const TOOL_DESCRIPTORS: ToolDescriptor[] = [
     liveToggle: false,
     register: registerZzfxTool,
   },
-  // normal-baker (feat/normal-baker-gui, not yet merged): add one entry
-  // here — id 'normalBaker', settingKey
-  // 'threeFlatland.tools.normalBaker.enabled' — plus the matching
-  // package.json `contributes.configuration` property and
-  // `1_authoring@2` explorer/context menu slot (see package.json's
-  // comment-equivalent in tools/vscode/CLAUDE.md once that PR lands).
+  {
+    id: 'normalBaker',
+    settingKey: 'threeFlatland.tools.normalBaker.enabled',
+    contextKey: 'threeFlatland.tool.normalBaker.enabled',
+    label: 'FL Normal Baker',
+    // Ad-hoc webview panel + in-process Node bake calls (imports
+    // @three-flatland/normals/@three-flatland/bake directly) — no
+    // CodeLens provider, no external sidecar process, same shape as
+    // atlas/encode/merge. Safe to register/dispose live.
+    liveToggle: true,
+    register: registerNormalBakerTool,
+  },
 ]
 
 function isEnabled(descriptor: ToolDescriptor): boolean {
