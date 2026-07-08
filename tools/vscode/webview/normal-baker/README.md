@@ -118,17 +118,24 @@ patterns: custom editor vs ad-hoc command" for that decision).
   `CanvasStage`/`Viewport` (`@three-flatland/preview/canvas`, lazy-loaded)
   with two overlay layers: `RegionColorOverlay.tsx` (non-interactive SVG
   fill per region, tinted by resolved `direction` via `direction.ts`'s
-  `directionColor()`) underneath the shared `RectOverlay` (all pointer
-  interaction — select / drag-move / resize-handles / draw-new-rect /
-  grid-snap via `snapStep`). See "Reused as-is vs. composed locally"
-  below for exactly what `RectOverlay` does and doesn't provide.
-- **Sidebar layout** — Regions (list, top) / Info (inspector + preview,
+  `directionColor()`, plus the region index labels — the baker passes
+  `showLabels={false}` to `RectOverlay` and draws its own labels with the
+  fit-ALWAYS policy in `regionLabelFit.ts`, not preview's fit-or-hide)
+  underneath the shared `RectOverlay` (all pointer interaction — select /
+  drag-move / resize-handles / draw-new-rect / grid-snap via `snapStep`).
+  See "Reused as-is vs. composed locally" below for exactly what
+  `RectOverlay` does and doesn't provide.
+- **Sidebar layout** — Regions (list, top) / Info (inspector + previews,
   bottom) split with a draggable, persisted `Splitter` (encode's
-  adjustable Compare|Info idiom). The Info sub-areas are store-controlled
-  `Collapsible`s (`InfoSection.tsx`, encode's InfoSection shape). While
-  grid mode is active (toolbar "Grid Slice" toggle) the Info panel swaps
-  to the Grid & Split tool panel (Atlas's mode-driven sub-tool idiom) and
-  returns to the inspector on exit.
+  adjustable Compare|Info idiom). The Info height is clamped live against
+  the sidebar's rendered bounds (not just the store's 160–640 backstop)
+  and re-clamped on resize, so the stored height always equals the
+  rendered height. The Info sub-areas — Inspector, Normal, Lit — are
+  store-controlled `Collapsible`s (`InfoSection.tsx`, encode's
+  InfoSection shape), each independently collapsible with persisted open
+  state. While grid mode is active (toolbar "Grid Slice" toggle) the Info
+  panel swaps to the Grid & Split tool panel (Atlas's mode-driven
+  sub-tool idiom) and returns to the inspector on exit.
 - **Region list** — `RegionListPanel.tsx`. Selection is bidirectional
   with the canvas (`selectedIds` lives in the Zustand store); reorder is
   ▲/▼ buttons per row (not drag-and-drop — see note below).
@@ -148,7 +155,8 @@ patterns: custom editor vs ad-hoc command" for that decision).
   `descriptor.elevation` is a real inheritable field per `descriptor.ts`,
   so it's included). Multi-selection edits neither (bulk region edit and
   defaults edit would look identical — a hint says how to disambiguate).
-- **Live preview** — `LivePreviewPanel.tsx`. Two canvases: the baked
+- **Live preview** — `LivePreviewPanel.tsx`. Two independently
+  collapsible sections sharing ONE bake: the baked
   normal map (direct `bakeNormalMap()` call from `@three-flatland/normals`
   — see "Browser-safe bake math" below) and a lit composite driven by a
   continuous rAF loop with an orbiting light (`preview.ts`'s
@@ -160,7 +168,8 @@ patterns: custom editor vs ad-hoc command" for that decision).
   applying one flat light vector across every elevation. Debounced 200ms
   on descriptor/pixel change so a fast drag doesn't re-bake every frame.
   `prefers-reduced-motion` pins the light instead of orbiting it
-  (`usePrefersReducedMotion` local hook in `LivePreviewPanel.tsx`).
+  (`usePrefersReducedMotion` local hook in `LivePreviewPanel.tsx`), and
+  the loop pauses entirely while the Lit section is collapsed.
 - **Standalone dev mode** — `main.tsx`/`App.tsx` detect a missing
   `acquireVsCodeApi()` and load `fixtures.ts` (the Dungeon_Tileset fixture
   from `examples/react/lighting/public/sprites/`, inlined as a base64
@@ -235,7 +244,8 @@ What that actually gets you, precisely (see `tools/preview/CLAUDE.md`):
 | `sliderMath.ts` / `sliderMath.test.ts`                                                  | Slider drag/click/step math (pure — split out so importing it doesn't need the StyleX transform) |
 | `DirectionCompass.tsx`                                                                  | 9-way + flat direction picker                                                                    |
 | `Slider.tsx`                                                                            | Horizontal drag-track numeric input                                                              |
-| `RegionColorOverlay.tsx`                                                                | Non-interactive direction-tinted region fills                                                    |
+| `RegionColorOverlay.tsx`                                                                | Non-interactive direction-tinted region fills + fit-ALWAYS index labels                          |
+| `regionLabelFit.ts` / `regionLabelFit.test.ts`                                          | Label fit math — fit-ALWAYS policy vs preview's fit-or-hide (pure)                               |
 | `RegionListPanel.tsx` / `Inspector.tsx` / `LivePreviewPanel.tsx` / `GridSlicePanel.tsx` | Sidebar panels — Regions list, selection-aware inspector, live preview, grid-mode tool panel     |
 | `InfoSection.tsx`                                                                       | Store-controlled `Collapsible` wrapper for the Info sub-areas                                    |
 | `fixtures.ts`                                                                           | Standalone dev-mode fixture (embedded, not imported by path)                                     |
