@@ -223,5 +223,203 @@
         "line": 37
       }
     }
+  },
+  {
+    "byteRange": {
+      "end": 1504,
+      "start": 1461
+    },
+    "id": "c569c54afccc30df",
+    "kind": "zzfxm.song",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 44,
+          "line": 45
+        },
+        "start": {
+          "character": 8,
+          "line": 45
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 45,
+        "line": 45
+      },
+      "start": {
+        "character": 2,
+        "line": 45
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1560,
+      "start": 1544
+    },
+    "id": "9d85f4dd14822a73",
+    "kind": "zzfxm.song",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 17,
+          "line": 49
+        },
+        "start": {
+          "character": 8,
+          "line": 49
+        }
+      },
+      "varRef": {
+        "defRange": {
+          "end": {
+            "character": 56,
+            "line": 42
+          },
+          "start": {
+            "character": 18,
+            "line": 42
+          }
+        },
+        "defUri": "file:///golden.ts",
+        "name": "laserSong"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 18,
+        "line": 49
+      },
+      "start": {
+        "character": 2,
+        "line": 49
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1671,
+      "start": 1645
+    },
+    "id": "ededa1785371a829",
+    "kind": "audio.file",
+    "payload": {
+      "path": "explosion.mp3",
+      "pathRange": {
+        "end": {
+          "character": 26,
+          "line": 54
+        },
+        "start": {
+          "character": 13,
+          "line": 54
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 28,
+        "line": 54
+      },
+      "start": {
+        "character": 2,
+        "line": 54
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1916,
+      "start": 1867
+    },
+    "id": "1699d93a20c8988b",
+    "kind": "audio.file",
+    "payload": {
+      "path": "ambient.ogg",
+      "pathRange": {
+        "end": {
+          "character": 31,
+          "line": 60
+        },
+        "start": {
+          "character": 20,
+          "line": 60
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 51,
+        "line": 60
+      },
+      "start": {
+        "character": 2,
+        "line": 60
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1916,
+      "start": 1867
+    },
+    "id": "a599d78f05f52fd1",
+    "kind": "audio.file",
+    "payload": {
+      "path": "ambient.mp3",
+      "pathRange": {
+        "end": {
+          "character": 46,
+          "line": 60
+        },
+        "start": {
+          "character": 35,
+          "line": 60
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 51,
+        "line": 60
+      },
+      "start": {
+        "character": 2,
+        "line": 60
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 2209,
+      "start": 2171
+    },
+    "id": "19288a1e0dcab174",
+    "kind": "audio.file",
+    "payload": {
+      "path": "sounds/jump.wav",
+      "pathRange": {
+        "end": {
+          "character": 36,
+          "line": 67
+        },
+        "start": {
+          "character": 21,
+          "line": 67
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 40,
+        "line": 67
+      },
+      "start": {
+        "character": 2,
+        "line": 67
+      }
+    }
   }
 ]

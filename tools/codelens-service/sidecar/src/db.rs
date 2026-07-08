@@ -342,11 +342,10 @@ impl Db {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ByteRange, Payload, Pos, Range, ZZFX_CALL_KIND};
+    use crate::model::{ByteRange, FindingPayload, Pos, Range, ZzfxPayload};
 
     fn sample_finding(id: &str) -> Finding {
         Finding {
-            kind: ZZFX_CALL_KIND.to_string(),
             id: id.to_string(),
             range: Range {
                 start: Pos {
@@ -359,7 +358,7 @@ mod tests {
                 },
             },
             byte_range: ByteRange { start: 0, end: 5 },
-            payload: Payload {
+            payload: FindingPayload::ZzfxCall(ZzfxPayload {
                 params: vec![1.0],
                 arg_range: Range {
                     start: Pos {
@@ -372,7 +371,7 @@ mod tests {
                     },
                 },
                 var_ref: None,
-            },
+            }),
         }
     }
 

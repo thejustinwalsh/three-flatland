@@ -37,3 +37,41 @@ export function playUnresolvedPreset(myPreset: number[]) {
 export function silence() {
   zzfx()
 }
+
+// zzfxm.song — literal array form (first arg isn't an identifier, so no
+// varRef) and named-variable form (varRef resolves to laserSong below).
+const laserSong = [[[1.5, 0, 220]], [[0, 0, 0, 1]], [1]]
+
+export function playInlineSong() {
+  zzfxm([[[1, 0, 440]], [[0, 0, 0, 1]], [1]])
+}
+
+export function playLaserSong() {
+  zzfxm(laserSong)
+}
+
+// audio.file — direct string argument.
+export function playExplosionSfx() {
+  new Audio('explosion.mp3').play()
+}
+
+// audio.file — Howler-style nested strings (array inside object inside a
+// call): two findings sharing this one call's range, one per source file.
+export function playAmbient() {
+  new Howl({ src: ['ambient.ogg', 'ambient.mp3'] }).play()
+}
+
+// audio.file — Wad (github.com/rserota/wad) file-mode source: a string
+// nested in a new-expression's object arg, the same generic shape as the
+// Howler case above. No dedicated scanner, pinned here by name.
+export function playJump() {
+  new Wad({ source: 'sounds/jump.wav' }).play()
+}
+
+// Wad synthesis-mode source ('sine', 'square', ...) has no audio extension
+// — correctly NOT a finding. Kept uncommented (not a comment-exclusion
+// case) so the golden fixture's full-array equality proves the negative,
+// not just implies it.
+export function beep() {
+  new Wad({ source: 'sine' }).play()
+}

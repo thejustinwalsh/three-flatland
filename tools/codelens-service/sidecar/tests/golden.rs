@@ -165,14 +165,14 @@ fn document_parse_matches_the_golden_fixture_exactly() {
     let explosion_finding = actual_findings
         .iter()
         .find(|f| {
-            f.payload
-                .var_ref
-                .as_ref()
+            f.as_zzfx_call()
+                .and_then(|p| p.var_ref.as_ref())
                 .is_some_and(|v| v.name == "explosionPreset")
         })
         .expect("golden.ts must still declare and reference explosionPreset");
     let def_range = explosion_finding
-        .payload
+        .as_zzfx_call()
+        .unwrap()
         .var_ref
         .as_ref()
         .unwrap()
@@ -183,6 +183,106 @@ fn document_parse_matches_the_golden_fixture_exactly() {
         "defRange must start past the '=' (character 32 on this fixture's declarator line), \
          got character {} — this is exactly the whole-declarator regression this test guards against",
         def_range.start.character
+    );
+
+    // zzfxm.song: the var-form entry (laserSong) must resolve a varRef whose
+    // defRange lands inside the initializer, same "past the `=`" contract as
+    // zzfx's varRef.defRange — it's the identical resolve_var_ref path.
+    let laser_song = actual_findings
+        .iter()
+        .find(|f| {
+            f.as_zzfxm_song()
+                .and_then(|p| p.var_ref.as_ref())
+                .is_some_and(|v| v.name == "laserSong")
+        })
+        .expect("golden.ts must still declare and reference laserSong via zzfxm");
+    let song_def_range = laser_song
+        .as_zzfxm_song()
+        .unwrap()
+        .var_ref
+        .as_ref()
+        .unwrap()
+        .def_range
+        .expect("laserSong has an initializer; defRange must be Some");
+    assert!(
+        song_def_range.start.character > 16,
+        "laserSong's defRange must start past the '=' (character 16 on \
+         \"const laserSong = ...\"'s declarator line), got character {}",
+        song_def_range.start.character
+    );
+
+    // zzfxm.song literal form (playInlineSong) must have NO varRef at all —
+    // raw JSON check, not the typed comparison, for the same
+    // present-vs-omitted reason as the literal zzfx call check above.
+    let inline_song = raw_findings
+        .iter()
+        .find(|f| {
+            f["kind"] == "zzfxm.song"
+                && f["payload"]["argRange"]["start"]["character"] == 8
+                && f["range"]["start"]["line"] == 45
+        })
+        .expect("golden.ts must still contain the inline-literal zzfxm song call");
+    assert!(
+        inline_song["payload"].get("varRef").is_none(),
+        "a literal-array zzfxm call's payload must OMIT the varRef key; got {inline_song}"
+    );
+
+    // audio.file: pathRange must slice to exactly the path text, no quotes —
+    // the same slice-equality proof the TS side pins in
+    // src/goldenFixture.test.ts, run here against the Rust-computed range
+    // and the ACTUAL golden.ts source text (not the golden JSON's own
+    // "path" field, which would make this circular).
+    let ambient_ogg = actual_findings
+        .iter()
+        .find(|f| f.as_audio_file().is_some_and(|p| p.path == "ambient.ogg"))
+        .expect("golden.ts must still reference ambient.ogg");
+    let ambient_mp3 = actual_findings
+        .iter()
+        .find(|f| f.as_audio_file().is_some_and(|p| p.path == "ambient.mp3"))
+        .expect("golden.ts must still reference ambient.mp3");
+    assert_eq!(
+        ambient_ogg.range, ambient_mp3.range,
+        "both strings in the Howler src array must share the enclosing new Howl(...) call's range"
+    );
+    for finding in [ambient_ogg, ambient_mp3] {
+        let payload = finding.as_audio_file().unwrap();
+        let lines: Vec<&str> = golden_ts.lines().collect();
+        let line = lines[payload.path_range.start.line as usize];
+        let sliced = &line[payload.path_range.start.character as usize
+            ..payload.path_range.end.character as usize];
+        assert_eq!(
+            sliced, payload.path,
+            "pathRange must slice to exactly the path text out of the real source, no quotes"
+        );
+    }
+
+    // Wad (github.com/rserota/wad) coverage, pinned by name rather than
+    // implied by the generic nested-object case above: file-mode source
+    // (a string nested in `new Wad({...})`'s object arg) IS a finding,
+    // slice-equality-proven same as the Howler case; synthesis-mode source
+    // ('sine', no audio extension) is NOT — both directions asserted
+    // explicitly, not just left to the full-array equality above to catch.
+    let wad_jump = actual_findings
+        .iter()
+        .find(|f| {
+            f.as_audio_file()
+                .is_some_and(|p| p.path == "sounds/jump.wav")
+        })
+        .expect("golden.ts must still reference sounds/jump.wav via new Wad({...})");
+    let wad_payload = wad_jump.as_audio_file().unwrap();
+    let wad_lines: Vec<&str> = golden_ts.lines().collect();
+    let wad_line = wad_lines[wad_payload.path_range.start.line as usize];
+    let wad_sliced = &wad_line[wad_payload.path_range.start.character as usize
+        ..wad_payload.path_range.end.character as usize];
+    assert_eq!(
+        wad_sliced, wad_payload.path,
+        "Wad's pathRange must slice to exactly the path text, no quotes"
+    );
+    assert!(
+        !actual_findings
+            .iter()
+            .any(|f| f.as_audio_file().is_some_and(|p| p.path == "sine")),
+        "new Wad({{source: 'sine'}}) is synthesis mode, not a file reference — must NOT be a finding"
     );
 
     write_frame(

@@ -1,13 +1,21 @@
-//! tree-sitter-driven extraction of `zzfx(...)` call findings from a source
-//! file's text.
+//! tree-sitter-driven extraction of audio-reference findings from a source
+//! file's text: `zzfx(...)` calls, `zzfxm(...)`/`zzfxM(...)` song calls, and
+//! generic audio-file string-literal references (three.js/Howler/`Audio`/
+//! `fetch`/etc.). One AST walk produces all three kinds — see
+//! [`find_audio_findings`].
 
 use tree_sitter::{Node, Parser};
 
 use crate::id::finding_id;
-use crate::model::{ByteRange, Finding, Payload, Range, VarRef, ZZFX_CALL_KIND};
+use crate::model::{
+    AUDIO_FILE_KIND, AudioFilePayload, ByteRange, Finding, FindingPayload, Range, VarRef,
+    ZZFX_CALL_KIND, ZZFXM_SONG_KIND, ZzfxPayload, ZzfxmPayload,
+};
 use crate::position::LineIndex;
+use crate::scan::AUDIO_EXTENSIONS;
 
 const ZZFX_NAME: &str = "zzfx";
+const ZZFXM_NAMES: [&str; 2] = ["zzfxm", "zzfxM"];
 
 /// Picks the tree-sitter grammar by file extension: `.tsx`/`.jsx` need the
 /// JSX-aware TSX grammar (plain TS/JS grammar rejects JSX syntax), everything
@@ -22,10 +30,11 @@ fn language_for_uri(uri: &str) -> tree_sitter::Language {
     }
 }
 
-/// Parses `text` (the contents of `uri`) and returns every `zzfx(...)` /
-/// `*.zzfx(...)` call site found. Malformed source does not error — findings
-/// are best-effort extracted from whatever the parser could recover.
-pub fn find_zzfx_calls(uri: &str, text: &str) -> Vec<Finding> {
+/// Parses `text` (the contents of `uri`) and returns every recognized
+/// finding: `zzfx.call`, `zzfxm.song`, and `audio.file`. Malformed source
+/// does not error — findings are best-effort extracted from whatever the
+/// parser could recover.
+pub fn find_audio_findings(uri: &str, text: &str) -> Vec<Finding> {
     let mut parser = Parser::new();
     parser
         .set_language(&language_for_uri(uri))
@@ -41,10 +50,23 @@ pub fn find_zzfx_calls(uri: &str, text: &str) -> Vec<Finding> {
 }
 
 fn walk(node: Node, text: &str, line_index: &LineIndex, uri: &str, out: &mut Vec<Finding>) {
-    if node.kind() == "call_expression"
-        && let Some(finding) = extract_call(node, text, line_index, uri)
-    {
-        out.push(finding);
+    match node.kind() {
+        "call_expression" => {
+            if let Some(finding) = extract_callee_call(node, text, line_index, uri) {
+                out.push(finding);
+            }
+        }
+        "string" => {
+            if let Some(finding) = extract_audio_file(node, text, line_index) {
+                out.push(finding);
+            }
+        }
+        "template_string" if is_zero_substitution_template(node) => {
+            if let Some(finding) = extract_audio_file(node, text, line_index) {
+                out.push(finding);
+            }
+        }
+        _ => {}
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -74,11 +96,27 @@ fn callee_name<'a>(function: Node, text: &'a str) -> Option<&'a str> {
     }
 }
 
-fn extract_call(call: Node, text: &str, line_index: &LineIndex, uri: &str) -> Option<Finding> {
+/// Dispatches a `call_expression` node to whichever callee-named scanner (if
+/// any) claims it. Adding a fourth callee-based scanner means adding one
+/// more arm here.
+fn extract_callee_call(
+    call: Node,
+    text: &str,
+    line_index: &LineIndex,
+    uri: &str,
+) -> Option<Finding> {
     let function = call.child_by_field_name("function")?;
-    if callee_name(function, text)? != ZZFX_NAME {
-        return None;
+    let name = callee_name(function, text)?;
+    if name == ZZFX_NAME {
+        return extract_zzfx_call(call, text, line_index, uri);
     }
+    if ZZFXM_NAMES.contains(&name) {
+        return extract_zzfxm_call(call, text, line_index, uri);
+    }
+    None
+}
+
+fn extract_zzfx_call(call: Node, text: &str, line_index: &LineIndex, uri: &str) -> Option<Finding> {
     let arguments = call.child_by_field_name("arguments")?;
 
     let (arg_start, arg_end) = argument_interior_range(arguments);
@@ -100,15 +138,148 @@ fn extract_call(call: Node, text: &str, line_index: &LineIndex, uri: &str) -> Op
     let id = finding_id(ZZFX_CALL_KIND, byte_range.start, byte_range.end, &params);
 
     Some(Finding {
-        kind: ZZFX_CALL_KIND.to_string(),
         id,
         range,
         byte_range,
-        payload: Payload {
+        payload: FindingPayload::ZzfxCall(ZzfxPayload {
             params,
             arg_range,
             var_ref,
-        },
+        }),
+    })
+}
+
+/// Extracts a `zzfxm(...)`/`zzfxM(...)` song call. Only the FIRST argument
+/// matters for detection — a bare identifier there resolves to a `varRef`
+/// exactly like `zzfx`'s preset resolution (same `resolve_var_ref` path);
+/// anything else (an inline array literal, a call expression, ...) yields no
+/// `varRef`. Trailing args (playback position, speed) are irrelevant here.
+fn extract_zzfxm_call(
+    call: Node,
+    text: &str,
+    line_index: &LineIndex,
+    uri: &str,
+) -> Option<Finding> {
+    let arguments = call.child_by_field_name("arguments")?;
+
+    let (arg_start, arg_end) = argument_interior_range(arguments);
+    let arg_range = Range {
+        start: line_index.position(text, arg_start),
+        end: line_index.position(text, arg_end),
+    };
+
+    let mut cursor = arguments.walk();
+    let first = arguments.named_children(&mut cursor).next();
+    let var_ref = match first {
+        Some(n) if n.kind() == "identifier" => {
+            let name = node_text(n, text).to_string();
+            Some(resolve_var_ref(name, arguments, text, uri))
+        }
+        _ => None,
+    };
+
+    let byte_range = ByteRange {
+        start: call.start_byte(),
+        end: call.end_byte(),
+    };
+    let range = Range {
+        start: line_index.position(text, call.start_byte()),
+        end: line_index.position(text, call.end_byte()),
+    };
+    let id = finding_id(ZZFXM_SONG_KIND, byte_range.start, byte_range.end, &[]);
+
+    Some(Finding {
+        id,
+        range,
+        byte_range,
+        payload: FindingPayload::ZzfxmSong(ZzfxmPayload { arg_range, var_ref }),
+    })
+}
+
+/// True only for a template literal with NO `${}` substitutions — its value
+/// is then statically knowable from source text alone, same as a plain
+/// string literal. A template with any substitution is unresolvable
+/// statically and must be skipped (per the audio.file contract).
+fn is_zero_substitution_template(node: Node) -> bool {
+    let mut cursor = node.walk();
+    !node
+        .children(&mut cursor)
+        .any(|c| c.kind() == "template_substitution")
+}
+
+/// A `string`/zero-substitution `template_string` node's interior text and
+/// byte range, with the surrounding quote/backtick trimmed off. Both are
+/// delimited by a single 1-byte token on each side, so a plain byte trim
+/// is exact — verified empirically against tree-sitter-typescript's actual
+/// node boundaries (no leading/trailing trivia inside the node).
+fn string_literal_interior(node: Node, text: &str) -> (String, usize, usize) {
+    let start = node.start_byte() + 1;
+    let end = node.end_byte() - 1;
+    (text[start..end].to_string(), start, end)
+}
+
+fn has_audio_extension(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    AUDIO_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
+}
+
+/// Walks up from `node` to the nearest enclosing `arguments` node and
+/// returns that node's parent (the `call_expression`/`new_expression` that
+/// owns it) — i.e. the closest call this node is an argument of, at any
+/// depth (through arrays/objects/pairs). Returns `None` if `node` isn't
+/// inside any call's argument list at all. Deliberately stops at the
+/// NEAREST `arguments` ancestor, not the outermost: for `foo(bar('x.wav'))`
+/// this attributes `'x.wav'` to `bar(...)`, not `foo(...)` — the closer,
+/// more specific call is the more useful lens anchor, and it avoids
+/// double-reporting the same string against every level of call nesting.
+fn enclosing_call_via_arguments(node: Node) -> Option<Node> {
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        if parent.kind() == "arguments" {
+            return parent.parent();
+        }
+        current = parent;
+    }
+    None
+}
+
+/// Extracts an `audio.file` finding from a `string`/zero-substitution
+/// `template_string` node whose value ends in a recognized audio extension
+/// AND sits somewhere inside a call's argument list. Returns `None` for
+/// everything else: wrong extension, or not inside any call at all (a bare
+/// top-level string literal doesn't count).
+fn extract_audio_file(node: Node, text: &str, line_index: &LineIndex) -> Option<Finding> {
+    let (path, path_start, path_end) = string_literal_interior(node, text);
+    if !has_audio_extension(&path) {
+        return None;
+    }
+    let call = enclosing_call_via_arguments(node)?;
+    if call.kind() != "call_expression" && call.kind() != "new_expression" {
+        return None;
+    }
+
+    let path_range = Range {
+        start: line_index.position(text, path_start),
+        end: line_index.position(text, path_end),
+    };
+    let byte_range = ByteRange {
+        start: call.start_byte(),
+        end: call.end_byte(),
+    };
+    let range = Range {
+        start: line_index.position(text, call.start_byte()),
+        end: line_index.position(text, call.end_byte()),
+    };
+    // Keyed on the STRING's own byte range, not the call's — multiple audio
+    // files can share one enclosing call (e.g. Howler's `src: [...]` array),
+    // and each needs a distinct, stable id.
+    let id = finding_id(AUDIO_FILE_KIND, path_start, path_end, &[]);
+
+    Some(Finding {
+        id,
+        range,
+        byte_range,
+        payload: FindingPayload::AudioFile(AudioFilePayload { path, path_range }),
     })
 }
 
@@ -266,63 +437,74 @@ fn find_declarator<'a>(node: Node<'a>, name: &str, text: &str) -> Option<Node<'a
 mod tests {
     use super::*;
 
+    fn findings(uri: &str, text: &str) -> Vec<Finding> {
+        find_audio_findings(uri, text)
+    }
+
     fn call(uri: &str, text: &str) -> Finding {
-        let mut findings = find_zzfx_calls(uri, text);
+        let mut findings = find_audio_findings(uri, text);
         assert_eq!(
             findings.len(),
             1,
-            "expected exactly one finding in {text:?}"
+            "expected exactly one finding in {text:?}, got {findings:?}"
         );
         findings.remove(0)
     }
 
+    fn zzfx(uri: &str, text: &str) -> ZzfxPayload {
+        call(uri, text)
+            .as_zzfx_call()
+            .expect("expected zzfx.call payload")
+            .clone()
+    }
+
     #[test]
     fn spread_of_array_literal_is_the_common_idiom() {
-        let f = call("a.ts", "zzfx(...[1,.05,220,0,.02]);");
-        assert_eq!(f.payload.params, vec![1.0, 0.05, 220.0, 0.0, 0.02]);
-        assert!(f.payload.var_ref.is_none());
+        let f = zzfx("a.ts", "zzfx(...[1,.05,220,0,.02]);");
+        assert_eq!(f.params, vec![1.0, 0.05, 220.0, 0.0, 0.02]);
+        assert!(f.var_ref.is_none());
     }
 
     #[test]
     fn direct_args() {
-        let f = call("a.ts", "zzfx(1,.05,220);");
-        assert_eq!(f.payload.params, vec![1.0, 0.05, 220.0]);
+        let f = zzfx("a.ts", "zzfx(1,.05,220);");
+        assert_eq!(f.params, vec![1.0, 0.05, 220.0]);
     }
 
     #[test]
     fn trailing_zeros_omitted() {
-        let f = call("a.ts", "zzfx(1,.05,220,0,0,0);");
-        assert_eq!(f.payload.params, vec![1.0, 0.05, 220.0, 0.0, 0.0, 0.0]);
+        let f = zzfx("a.ts", "zzfx(1,.05,220,0,0,0);");
+        assert_eq!(f.params, vec![1.0, 0.05, 220.0, 0.0, 0.0, 0.0]);
     }
 
     #[test]
     fn negative_and_float_params() {
-        let f = call("a.ts", "zzfx(1,-0.5,.2,-.75);");
-        assert_eq!(f.payload.params, vec![1.0, -0.5, 0.2, -0.75]);
+        let f = zzfx("a.ts", "zzfx(1,-0.5,.2,-.75);");
+        assert_eq!(f.params, vec![1.0, -0.5, 0.2, -0.75]);
     }
 
     #[test]
     fn spread_var_reference() {
-        let f = call("a.ts", "zzfx(...LASER);");
-        assert_eq!(f.payload.params, Vec::<f64>::new());
-        let var_ref = f.payload.var_ref.expect("expected varRef");
+        let f = zzfx("a.ts", "zzfx(...LASER);");
+        assert_eq!(f.params, Vec::<f64>::new());
+        let var_ref = f.var_ref.expect("expected varRef");
         assert_eq!(var_ref.name, "LASER");
         assert!(var_ref.def_uri.is_none());
     }
 
     #[test]
     fn bare_preset_variable() {
-        let f = call("a.ts", "zzfx(myPreset);");
-        assert_eq!(f.payload.params, Vec::<f64>::new());
-        let var_ref = f.payload.var_ref.expect("expected varRef");
+        let f = zzfx("a.ts", "zzfx(myPreset);");
+        assert_eq!(f.params, Vec::<f64>::new());
+        let var_ref = f.var_ref.expect("expected varRef");
         assert_eq!(var_ref.name, "myPreset");
     }
 
     #[test]
     fn var_ref_resolves_same_file_declaration() {
         let src = "const myPreset = [1,.05,220];\nzzfx(myPreset);";
-        let f = call("a.ts", src);
-        let var_ref = f.payload.var_ref.expect("expected varRef");
+        let f = zzfx("a.ts", src);
+        let var_ref = f.var_ref.expect("expected varRef");
         assert_eq!(var_ref.name, "myPreset");
         assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
         assert!(var_ref.def_range.is_some());
@@ -331,10 +513,10 @@ mod tests {
     /// Computes the expected defRange for a `{prefix}{value};` declarator
     /// line (both plain-ASCII in these tests, so byte/UTF-16 counts agree)
     /// and asserts it against the actual resolved varRef — shared by the
-    /// const/let/type-annotation cases below, which only vary the prefix.
+    /// const/let/var/type-annotation cases below, which only vary the prefix.
     fn assert_def_range_covers_value(prefix: &str, value: &str, src: &str) {
-        let f = call("a.ts", src);
-        let var_ref = f.payload.var_ref.expect("expected varRef");
+        let f = zzfx("a.ts", src);
+        let var_ref = f.var_ref.expect("expected varRef");
         let def_range = var_ref.def_range.expect("expected defRange");
         assert_eq!(def_range.start.line, 0);
         assert_eq!(
@@ -383,8 +565,8 @@ mod tests {
         // but defUri stays Some, since there genuinely IS a declaration
         // site, just not one with a value worth previewing.
         let src = "let myPreset;\nzzfx(myPreset);";
-        let f = call("a.ts", src);
-        let var_ref = f.payload.var_ref.expect("expected varRef");
+        let f = zzfx("a.ts", src);
+        let var_ref = f.var_ref.expect("expected varRef");
         assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
         assert!(var_ref.def_range.is_none());
     }
@@ -395,8 +577,8 @@ mod tests {
         // proves the "no value field" detection doesn't get confused by a
         // present `type` field when `value` is absent.
         let src = "let myPreset: number[];\nzzfx(myPreset);";
-        let f = call("a.ts", src);
-        let var_ref = f.payload.var_ref.expect("expected varRef");
+        let f = zzfx("a.ts", src);
+        let var_ref = f.var_ref.expect("expected varRef");
         assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
         assert!(var_ref.def_range.is_none());
     }
@@ -427,26 +609,26 @@ mod tests {
 
     #[test]
     fn calls_inside_line_comments_do_not_match() {
-        let findings = find_zzfx_calls("a.ts", "// zzfx(1,2,3) commented out\n");
-        assert!(findings.is_empty());
+        let f = findings("a.ts", "// zzfx(1,2,3) commented out\n");
+        assert!(f.is_empty());
     }
 
     #[test]
     fn calls_inside_block_comments_do_not_match() {
-        let findings = find_zzfx_calls("a.ts", "/* zzfx(4,5,6) block comment */\n");
-        assert!(findings.is_empty());
+        let f = findings("a.ts", "/* zzfx(4,5,6) block comment */\n");
+        assert!(f.is_empty());
     }
 
     #[test]
     fn member_expression_call() {
-        let f = call("a.ts", "foo.zzfx(1,-0.5,.2);");
-        assert_eq!(f.payload.params, vec![1.0, -0.5, 0.2]);
+        let f = zzfx("a.ts", "foo.zzfx(1,-0.5,.2);");
+        assert_eq!(f.params, vec![1.0, -0.5, 0.2]);
     }
 
     #[test]
     fn zero_calls_file() {
-        let findings = find_zzfx_calls("a.ts", "const x = 1;\nfunction foo() { return x; }\n");
-        assert!(findings.is_empty());
+        let f = findings("a.ts", "const x = 1;\nfunction foo() { return x; }\n");
+        assert!(f.is_empty());
     }
 
     #[test]
@@ -474,7 +656,8 @@ mod tests {
         // Full-pipeline version of position.rs's LineIndex-level test: an
         // astral character (outside the BMP, so a UTF-16 surrogate pair —
         // 2 code units) sharing a line with the call, run through the real
-        // tree-sitter parse + find_zzfx_calls, not just LineIndex directly.
+        // tree-sitter parse + find_audio_findings, not just LineIndex
+        // directly.
         let prefix = "const s = \"😀\"; ";
         let src = format!("{prefix}zzfx(1,2,3);");
         let f = call("a.ts", &src);
@@ -491,10 +674,11 @@ mod tests {
         // isolation) — proves tree-sitter's own byte offsets plus our
         // position conversion agree on where the call actually is.
         let src = "const a = 1;\r\nzzfx(1,2,3);\r\n";
-        let f = call("a.ts", src);
-        assert_eq!(f.range.start.line, 1);
-        assert_eq!(f.range.start.character, 0);
-        assert_eq!(f.payload.params, vec![1.0, 2.0, 3.0]);
+        let f = zzfx("a.ts", src);
+        let full = call("a.ts", src);
+        assert_eq!(full.range.start.line, 1);
+        assert_eq!(full.range.start.character, 0);
+        assert_eq!(f.params, vec![1.0, 2.0, 3.0]);
     }
 
     #[test]
@@ -504,29 +688,31 @@ mod tests {
         // "(" at byte 4..5, ")" at byte 14..15 -> interior is [5, 14).
         assert_eq!(f.byte_range.start, 0);
         assert_eq!(f.byte_range.end, 15);
-        assert_eq!(f.payload.arg_range.start.character, 5);
-        assert_eq!(f.payload.arg_range.end.character, 14);
+        let p = f.as_zzfx_call().unwrap();
+        assert_eq!(p.arg_range.start.character, 5);
+        assert_eq!(p.arg_range.end.character, 14);
     }
 
     #[test]
     fn arg_range_is_empty_range_for_zero_args() {
         let src = "zzfx();";
         let f = call("a.ts", src);
-        assert_eq!(f.payload.arg_range.start, f.payload.arg_range.end);
-        assert_eq!(f.payload.arg_range.start.character, 5);
+        let p = f.as_zzfx_call().unwrap();
+        assert_eq!(p.arg_range.start, p.arg_range.end);
+        assert_eq!(p.arg_range.start.character, 5);
     }
 
     #[test]
     fn tsx_extension_parses_jsx_without_error() {
         let src = "const el = <div>{zzfx(1,.05,220)}</div>;";
-        let findings = find_zzfx_calls("component.tsx", src);
-        assert_eq!(findings.len(), 1);
+        let f = findings("component.tsx", src);
+        assert_eq!(f.len(), 1);
     }
 
     #[test]
     fn plain_js_file_parses_under_typescript_grammar() {
-        let f = call("plain.js", "zzfx(...[1,.05,220]);");
-        assert_eq!(f.payload.params, vec![1.0, 0.05, 220.0]);
+        let f = zzfx("plain.js", "zzfx(...[1,.05,220]);");
+        assert_eq!(f.params, vec![1.0, 0.05, 220.0]);
     }
 
     #[test]
@@ -535,5 +721,247 @@ mod tests {
         let a = call("a.ts", src);
         let b = call("a.ts", src);
         assert_eq!(a.id, b.id);
+    }
+
+    // ---- zzfxm.song ----
+
+    #[test]
+    fn zzfxm_lowercase_literal_song_has_no_var_ref() {
+        let f = call("a.ts", "zzfxm([[[1,0,220]],[[0,0,0,1]],[1]]);");
+        assert_eq!(f.kind(), ZZFXM_SONG_KIND);
+        let p = f.as_zzfxm_song().expect("expected zzfxm.song payload");
+        assert!(p.var_ref.is_none());
+    }
+
+    #[test]
+    fn zzfxm_uppercase_m_is_recognized_too() {
+        let f = call("a.ts", "zzfxM([[[1,0,220]],[[0,0,0,1]],[1]]);");
+        assert_eq!(f.kind(), ZZFXM_SONG_KIND);
+    }
+
+    #[test]
+    fn zzfxm_has_no_params_field_ever() {
+        // Payload-level contract: zzfxm.song never carries a params array —
+        // it's structurally absent, not just empty.
+        let f = call("a.ts", "zzfxm(mySong);");
+        let json = serde_json::to_value(&f).unwrap();
+        assert!(json["payload"].get("params").is_none());
+    }
+
+    #[test]
+    fn zzfxm_bare_identifier_resolves_a_var_ref() {
+        let src = "const mySong = [[[1,0,220]],[[0,0,0,1]],[1]];\nzzfxm(mySong);";
+        let f = call("a.ts", src);
+        let p = f.as_zzfxm_song().expect("expected zzfxm.song payload");
+        let var_ref = p.var_ref.as_ref().expect("expected varRef");
+        assert_eq!(var_ref.name, "mySong");
+        assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
+        assert!(
+            var_ref.def_range.is_some(),
+            "song has an initializer, defRange must be Some"
+        );
+    }
+
+    #[test]
+    fn zzfxm_trailing_position_and_speed_args_are_irrelevant_to_detection() {
+        let f = call("a.ts", "zzfxm(mySong, 1, 0.5);");
+        assert_eq!(f.kind(), ZZFXM_SONG_KIND);
+        let p = f.as_zzfxm_song().unwrap();
+        assert_eq!(p.var_ref.as_ref().unwrap().name, "mySong");
+    }
+
+    #[test]
+    fn zzfxm_arg_range_covers_interior_only() {
+        let src = "zzfxm(mySong);";
+        let f = call("a.ts", src);
+        let p = f.as_zzfxm_song().unwrap();
+        // "(" at byte 5..6, ")" at byte 12..13 -> interior [6, 12).
+        assert_eq!(p.arg_range.start.character, 6);
+        assert_eq!(p.arg_range.end.character, 12);
+    }
+
+    #[test]
+    fn zzfxm_call_inside_a_comment_does_not_match() {
+        let f = findings("a.ts", "// zzfxm(song) commented out\n");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn zzfxm_member_expression_call_is_recognized() {
+        let f = call("a.ts", "audio.zzfxm(mySong);");
+        assert_eq!(f.kind(), ZZFXM_SONG_KIND);
+    }
+
+    // ---- audio.file ----
+
+    #[test]
+    fn direct_string_argument_is_an_audio_file_finding() {
+        let f = call("a.ts", "new Audio('explosion.mp3');");
+        assert_eq!(f.kind(), AUDIO_FILE_KIND);
+        let p = f.as_audio_file().unwrap();
+        assert_eq!(p.path, "explosion.mp3");
+    }
+
+    #[test]
+    fn path_range_excludes_the_surrounding_quotes() {
+        let src = "new Audio('explosion.mp3');";
+        let f = call("a.ts", src);
+        let p = f.as_audio_file().unwrap();
+        // "new Audio(" is 10 chars, then the quote, then the path.
+        assert_eq!(p.path_range.start.character, 11);
+        assert_eq!(p.path_range.end.character, 24); // 11 + len("explosion.mp3")
+        assert_eq!(&src[11..24], "explosion.mp3");
+    }
+
+    #[test]
+    fn call_expression_direct_arg_is_recognized_not_just_new_expression() {
+        let f = call("a.ts", "audioLoader.load('jump.ogg');");
+        let p = f.as_audio_file().unwrap();
+        assert_eq!(p.path, "jump.ogg");
+    }
+
+    #[test]
+    fn fetch_call_is_recognized() {
+        let f = call("a.ts", "fetch('boom.wav');");
+        assert_eq!(f.as_audio_file().unwrap().path, "boom.wav");
+    }
+
+    #[test]
+    fn chained_call_attributes_to_the_nearest_inner_call_not_the_outer_one() {
+        // Tone.Player('riff.mp3').toDestination() — the enclosing call for
+        // the string is Tone.Player(...), the nearest arguments ancestor,
+        // not the outer .toDestination() call.
+        let src = "Tone.Player('riff.mp3').toDestination();";
+        let f = call("a.ts", src);
+        let p = f.as_audio_file().unwrap();
+        assert_eq!(p.path, "riff.mp3");
+        assert_eq!(f.range.start.character, 0);
+        assert_eq!(
+            f.range.end.character,
+            "Tone.Player('riff.mp3')".encode_utf16().count() as u32
+        );
+    }
+
+    #[test]
+    fn howler_style_nested_strings_produce_one_finding_per_string() {
+        // new Howl({ src: ['ambient.ogg', 'ambient.mp3'] }) — two audio.file
+        // findings, both sharing the SAME enclosing call range but each with
+        // its own distinct path/pathRange/id.
+        let src = "new Howl({src:['ambient.ogg','ambient.mp3']});";
+        let all = findings("a.ts", src);
+        assert_eq!(all.len(), 2, "expected one finding per string literal");
+        let paths: Vec<&str> = all
+            .iter()
+            .map(|f| f.as_audio_file().unwrap().path.as_str())
+            .collect();
+        assert_eq!(paths, vec!["ambient.ogg", "ambient.mp3"]);
+        assert_eq!(
+            all[0].range, all[1].range,
+            "both share the enclosing new Howl(...) call's range"
+        );
+        assert_ne!(
+            all[0].id, all[1].id,
+            "each string gets a distinct, stable id"
+        );
+    }
+
+    #[test]
+    fn nested_array_of_objects_still_reaches_the_string_at_any_depth() {
+        let src = "player.load([{path:'x.wav'}]);";
+        let f = call("a.ts", src);
+        assert_eq!(f.as_audio_file().unwrap().path, "x.wav");
+    }
+
+    #[test]
+    fn wad_file_mode_source_nested_in_a_new_expressions_object_arg_is_recognized() {
+        // Wad (github.com/rserota/wad): `new Wad({ source: 'jump.wav' })` —
+        // no dedicated scanner needed, it's exactly the generic audio.file
+        // shape (a string at depth 1 inside a new-expression's object arg),
+        // pinned here by name so the coverage claim isn't just implied by
+        // the more generic nested-object test above.
+        let f = call("a.ts", "new Wad({source:'sounds/jump.wav'});");
+        assert_eq!(f.kind(), AUDIO_FILE_KIND);
+        assert_eq!(f.as_audio_file().unwrap().path, "sounds/jump.wav");
+    }
+
+    #[test]
+    fn wad_synthesis_mode_source_has_no_audio_extension_and_is_correctly_not_a_finding() {
+        // Wad's OTHER mode: `source: 'sine'`/'square'/etc. synthesizes a
+        // tone instead of loading a file — no audio extension, so this
+        // must NOT be a finding. Pins the boundary explicitly rather than
+        // leaving it an accidental consequence of the extension check.
+        let f = findings("a.ts", "new Wad({source:'sine'});");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn extension_matching_is_case_insensitive() {
+        let f = call("a.ts", "new Audio('BOOM.MP3');");
+        assert_eq!(f.as_audio_file().unwrap().path, "BOOM.MP3");
+    }
+
+    #[test]
+    fn every_recognized_extension_is_detected() {
+        for ext in AUDIO_EXTENSIONS {
+            let src = format!("new Audio('clip{ext}');");
+            let f = findings("a.ts", &src);
+            assert_eq!(f.len(), 1, "{ext} must be recognized");
+        }
+    }
+
+    #[test]
+    fn a_non_audio_string_argument_is_not_a_finding() {
+        let f = findings("a.ts", "console.log('hello world');");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn a_bare_top_level_string_not_inside_any_call_is_not_a_finding() {
+        let f = findings("a.ts", "const path = 'jump.ogg';");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn zero_substitution_template_literal_is_recognized() {
+        let f = call("a.ts", "new Audio(`jump.ogg`);");
+        assert_eq!(f.as_audio_file().unwrap().path, "jump.ogg");
+    }
+
+    #[test]
+    fn template_literal_with_a_substitution_is_skipped_unresolvable_statically() {
+        let f = findings("a.ts", "new Audio(`jump-${id}.ogg`);");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn audio_file_string_inside_a_comment_does_not_match() {
+        let f = findings("a.ts", "// new Audio('jump.ogg');\n");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn zzfx_call_with_no_string_args_never_produces_an_audio_file_finding() {
+        // zzfx's own args are numeric; make sure the audio.file scanner
+        // doesn't somehow misfire against a zzfx call's own finding.
+        let f = findings("a.ts", "zzfx(1,.05,220);");
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].kind(), ZZFX_CALL_KIND);
+    }
+
+    #[test]
+    fn a_file_can_mix_all_three_kinds() {
+        let src = "\
+const preset = [1,.05,220];
+export function boom() { zzfx(...preset); }
+export function song() { zzfxm(mySong); }
+export function sfx() { new Audio('explosion.mp3'); }
+";
+        let all = findings("a.ts", src);
+        assert_eq!(all.len(), 3);
+        let kinds: Vec<&str> = all.iter().map(Finding::kind).collect();
+        assert_eq!(
+            kinds,
+            vec![ZZFX_CALL_KIND, ZZFXM_SONG_KIND, AUDIO_FILE_KIND]
+        );
     }
 }
