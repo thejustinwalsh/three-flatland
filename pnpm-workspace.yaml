@@ -1,6 +1,7 @@
 packages:
   - packages/*
   - examples/**
+  - benchmarks/*
   - minis/*
   - docs
   - skills
@@ -57,7 +58,7 @@ catalog:
   three: ^0.183.1
   typescript: ^5.7.3
   uwasi: ^1.4.1
-  vite: ^6.4.1
+  vite: ^6.4.3
   '@gltf-transform/core': ^4.3.0
   zundo: ^2.3.0
   zustand: ^5.0.0

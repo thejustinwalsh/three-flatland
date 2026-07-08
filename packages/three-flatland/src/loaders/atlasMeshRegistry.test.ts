@@ -1,8 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import { Texture } from 'three'
-import { registerAtlasMesh, getAtlasMesh } from './atlasMeshRegistry'
+import { registerAtlasMesh, degradeAtlasMesh, getAtlasMesh } from './atlasMeshRegistry'
 import { buildEnvelopeGeometry } from '../pipeline/envelopeGeometry'
 import type { SpriteFrame, SpriteFrameMesh } from '../sprites/types'
+
+function makeMeshlessFrame(name: string): SpriteFrame {
+  return {
+    name,
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1,
+    sourceWidth: 64,
+    sourceHeight: 64,
+  }
+}
 
 function makeFrame(name: string, points: [number, number][]): SpriteFrame {
   const verts = new Float32Array(points.length * 4)
@@ -53,18 +65,72 @@ describe('registerAtlasMesh merge semantics', () => {
 
   it('stays complete only when both registrations are complete', () => {
     const bothComplete = new Texture()
-    registerAtlasMesh(bothComplete, { frames: [makeFrame('a', [[0, 0], [1, 0], [0, 1]])], complete: true })
-    registerAtlasMesh(bothComplete, { frames: [makeFrame('b', [[0, 0], [1, 0], [0, 1]])], complete: true })
+    registerAtlasMesh(bothComplete, {
+      frames: [
+        makeFrame('a', [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+        ]),
+      ],
+      complete: true,
+    })
+    registerAtlasMesh(bothComplete, {
+      frames: [
+        makeFrame('b', [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+        ]),
+      ],
+      complete: true,
+    })
     expect(getAtlasMesh(bothComplete)!.complete).toBe(true)
 
     const oneIncomplete = new Texture()
-    registerAtlasMesh(oneIncomplete, { frames: [makeFrame('a', [[0, 0], [1, 0], [0, 1]])], complete: true })
-    registerAtlasMesh(oneIncomplete, { frames: [makeFrame('b', [[0, 0], [1, 0], [0, 1]])], complete: false })
+    registerAtlasMesh(oneIncomplete, {
+      frames: [
+        makeFrame('a', [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+        ]),
+      ],
+      complete: true,
+    })
+    registerAtlasMesh(oneIncomplete, {
+      frames: [
+        makeFrame('b', [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+        ]),
+      ],
+      complete: false,
+    })
     expect(getAtlasMesh(oneIncomplete)!.complete).toBe(false)
 
     const bothIncomplete = new Texture()
-    registerAtlasMesh(bothIncomplete, { frames: [makeFrame('a', [[0, 0], [1, 0], [0, 1]])], complete: false })
-    registerAtlasMesh(bothIncomplete, { frames: [makeFrame('b', [[0, 0], [1, 0], [0, 1]])], complete: false })
+    registerAtlasMesh(bothIncomplete, {
+      frames: [
+        makeFrame('a', [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+        ]),
+      ],
+      complete: false,
+    })
+    registerAtlasMesh(bothIncomplete, {
+      frames: [
+        makeFrame('b', [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+        ]),
+      ],
+      complete: false,
+    })
     expect(getAtlasMesh(bothIncomplete)!.complete).toBe(false)
   })
 })
@@ -101,5 +167,54 @@ describe('buildEnvelopeGeometry over a merged multi-sheet registration', () => {
 
     expect(xs.some((x) => x < -0.4)).toBe(true) // frame A's extreme survives
     expect(xs.some((x) => x > 0.4)).toBe(true) // frame B's extreme survives
+  })
+})
+
+describe('degradeAtlasMesh with no prior registration', () => {
+  it('reads as null publicly (no frames yet) but still records the marker internally', () => {
+    const texture = new Texture()
+    degradeAtlasMesh(texture)
+    // Zero frames — nothing for buildEnvelopeGeometry to hull, so the
+    // public accessor treats it the same as "never registered."
+    expect(getAtlasMesh(texture)).toBeNull()
+  })
+
+  it('reverse load order (degrade THEN register) leaves the texture incomplete', () => {
+    const texture = new Texture()
+    // Meshless sheet A loads first over a texture with no prior entry.
+    degradeAtlasMesh(texture)
+
+    // Meshed, complete sheet B loads over the same texture afterward.
+    const frameB = makeFrame('b', [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+    ])
+    registerAtlasMesh(texture, { frames: [frameB], complete: true })
+
+    // Sheet A's meshless state must survive the merge — `existing.complete`
+    // (false, from the degrade) ANDs with sheet B's `true` to stay false,
+    // so the envelope still includes the full quad corners for A's frames.
+    expect(getAtlasMesh(texture)!.complete).toBe(false)
+    expect(getAtlasMesh(texture)!.frames).toEqual([frameB])
+  })
+})
+
+describe('buildEnvelopeGeometry with a meshless frame in the registry', () => {
+  it('skips meshless frames and still builds a hull from the mesh-bearing ones', () => {
+    const texture = new Texture()
+    const meshed = makeFrame('a', [
+      [-0.3, -0.3],
+      [0.3, -0.3],
+      [0, 0.3],
+    ])
+    const meshless = makeMeshlessFrame('b')
+
+    registerAtlasMesh(texture, { frames: [meshed, meshless], complete: true })
+
+    expect(() => buildEnvelopeGeometry(texture)).not.toThrow()
+    const geometry = buildEnvelopeGeometry(texture)!
+    expect(geometry).not.toBeNull()
+    expect(geometry.getAttribute('position').count).toBeGreaterThanOrEqual(3)
   })
 })

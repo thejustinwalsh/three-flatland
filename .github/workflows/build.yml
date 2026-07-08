@@ -76,6 +76,10 @@ jobs:
         run: pnpm typecheck
 
       - name: Build
+        # Authenticate the skia WASM toolchain downloads (setup.mjs) so a cold
+        # .tools cache doesn't hit the unauthenticated GitHub API rate limit.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm build
 
       - name: Test
