@@ -9,6 +9,7 @@ import {
   getPlaySidecarStats,
   shutdownPlaySidecar,
 } from './tools/zzfx/playSidecarManager'
+import { shutdownSidecar } from './tools/zzfx/sidecarManager'
 import { activateTools, watchToolConfiguration } from './toolRegistry'
 import { getChannel, log } from './log'
 
@@ -72,6 +73,16 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
   }
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
   log('deactivate')
+  // Await the sidecar shutdowns rather than firing them and returning.
+  // Both are idempotent and each bounds itself with a SIGKILL fallback
+  // (see sidecarManager/playSidecarManager), so this can't hang — but it
+  // MUST be awaited: otherwise the extension host tears down while the
+  // codelens-service / zzfx-play child processes are still alive, orphans
+  // them, and (under the single-session e2e's one final teardown) leaves
+  // app.close() waiting forever. The dispose handlers in zzfx/register.ts
+  // still call these too; the idempotent guard makes the double-call a
+  // no-op. A real user closing VS Code gets the same clean cleanup.
+  await Promise.allSettled([shutdownSidecar(), shutdownPlaySidecar()])
 }

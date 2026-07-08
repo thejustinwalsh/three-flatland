@@ -123,7 +123,18 @@ async function launchWindow(vscodeInstallPath: string): Promise<CachedWindow> {
 async function teardownWindow(win: CachedWindow | undefined): Promise<void> {
   if (!win) return
   win.bridge.close()
-  await win.app.close()
+  // The extension's deactivate() awaits its sidecar shutdowns, so a clean
+  // app.close() is expected. Defense-in-depth regardless: never let a
+  // misbehaving shutdown hang the whole run (a real teardown hang once ran
+  // 80+ minutes at 0% CPU with orphaned sidecars). Bound the graceful
+  // close, then force-kill the process unconditionally — the window is
+  // being discarded, so a SIGKILL after the grace window costs nothing.
+  await Promise.race([win.app.close(), new Promise((resolve) => setTimeout(resolve, 5000))])
+  try {
+    win.app.process().kill('SIGKILL')
+  } catch {
+    // already exited — nothing to kill
+  }
   await Promise.all([
     fs.rm(win.baseDir, { recursive: true, force: true }),
     fs.rm(win.extensionsDir, { recursive: true, force: true }),
