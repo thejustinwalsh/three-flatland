@@ -1,35 +1,41 @@
 // A-series: multi-library audio Play/Stop lenses — zzfxm.song and
 // audio.file findings surface real, working ▶ Play / ⏹ Stop CodeLenses,
-// not just zzfx.call (Z9's original scope). See src/sounds.ts's "A-series
-// fixtures" section for the exact positive/negative cases this drives.
+// not just zzfx.call (Z9's original scope). See src/audio-sources.ts's
+// own file doc comment for the exact positive/negative cases this drives
+// — a SELF-CONTAINED fixture file, not appended to the Z9-era sounds.ts,
+// so zzfx.spec.ts's pre-existing "exactly these 4 lenses for the whole
+// document" assertion against sounds.ts stays untouched.
+//
+// Every `evaluateInVSCode` callback below inlines its own extension
+// lookup/activation rather than calling a shared top-level helper — `fn`
+// is shipped as source text (`Function.prototype.toString()`) and
+// reconstructed via `new Function(...)` on the extension-host side (see
+// `e2e/host-bridge/client.ts`'s doc comment), so it can only see its own
+// `(vscode, arg)` parameters, never anything from this file's outer
+// module scope.
 import { expect, test } from '../fixtures'
 
-const SOUNDS_FILE = 'src/sounds.ts'
+const SOUNDS_FILE = 'src/audio-sources.ts'
 
-// 0-indexed lines — see src/sounds.ts's "A-series fixtures" section.
-const FANFARE_CALL_LINE = 111 // zzfxm(fanfareSong) — bare-identifier varRef
-const CHIPTUNE_CALL_LINE = 117 // zzfxm([...], [...], [...]) — positional literal
-const FANFARE_SPREAD_CALL_LINE = 128 // zzfxM(...fanfareSong) — graceful refusal
-const JUMP_SFX_LINE = 137 // audioLoader.load('sounds/jump.wav') — workspace-root tier
-const CLICK_SFX_LINE = 143 // new Howl({ src: ['click.wav'] }) — source-dir tier
-const EXPLOSION_SFX_LINE = 149 // new Wad({ source: 'explosion.ogg' }) — public/ tier
+// 0-indexed lines — see src/audio-sources.ts.
+const FANFARE_CALL_LINE = 94 // zzfxm(fanfareSong) — bare-identifier varRef
+const CHIPTUNE_CALL_LINE = 100 // zzfxm([...], [...], [...]) — positional literal
+const FANFARE_SPREAD_CALL_LINE = 111 // zzfxM(...fanfareSong) — graceful refusal
+const JUMP_SFX_LINE = 122 // audioLoader.load('sounds/jump.wav') — workspace-root tier
+const CLICK_SFX_LINE = 128 // new Howl({ src: ['click.wav'] }) — source-dir tier
+const EXPLOSION_SFX_LINE = 134 // new Wad({ source: 'explosion.ogg' }) — public/ tier
+const MISSING_SFX_LINE = 141 // new Audio('nonexistent-sound.mp3') — unresolvable, no lens
 
 type LensCommand = { command: string; title: string; arguments?: unknown[] }
 type ResolvedLens = { range: { start: { line: number } }; command?: LensCommand }
 
+type PlaybackStats = { peak: number; silent: boolean }
 type ExtensionApi = {
   zzfxPlay: {
     getActivePid: () => number | undefined
     shutdown: () => Promise<void>
-    getStats: () => Promise<{ peak: number; silent: boolean } | undefined>
+    getStats: () => Promise<PlaybackStats | undefined>
   }
-}
-
-async function activateExtension(vscode: typeof import('vscode')): Promise<ExtensionApi> {
-  const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
-  if (!ext) throw new Error('extension not found')
-  if (!ext.isActive) await ext.activate()
-  return ext.exports as ExtensionApi
 }
 
 async function fetchLenses(
@@ -40,7 +46,9 @@ async function fetchLenses(
 ): Promise<ResolvedLens[]> {
   return evaluateInVSCode(
     async (vscode, arg) => {
-      await activateExtension(vscode)
+      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
+      if (ext && !ext.isActive) await ext.activate()
+
       const [folder] = vscode.workspace.workspaceFolders ?? []
       const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
       const doc = await vscode.workspace.openTextDocument(uri)
@@ -61,6 +69,66 @@ async function fetchLenses(
 
 function lensAt(lenses: ResolvedLens[], line: number, title: string): ResolvedLens | undefined {
   return lenses.find((l) => l.range.start.line === line && l.command?.title === title)
+}
+
+/** Executes `command`/`args` (a resolved lens's own command), then polls
+ * `zzfxPlay.getStats()` until it reports audible (`!silent`) or the
+ * deadline passes. Self-contained — see the file doc comment. */
+async function executeAndPollAudible(
+  evaluateInVSCode: <R, Arg = undefined>(
+    fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
+    arg?: Arg
+  ) => Promise<R>,
+  command: string,
+  args: unknown[] | undefined
+): Promise<PlaybackStats | undefined> {
+  return evaluateInVSCode(
+    async (vscode, arg) => {
+      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
+      if (ext && !ext.isActive) await ext.activate()
+      const api = ext!.exports as ExtensionApi
+
+      await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
+      const deadline = Date.now() + 5000
+      let last: PlaybackStats | undefined
+      while (Date.now() < deadline) {
+        last = await api.zzfxPlay.getStats()
+        if (last && !last.silent) return last
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      return last
+    },
+    { command, args }
+  )
+}
+
+/** Same shape as {@link executeAndPollAudible} but polls for `silent`
+ * instead — the stopSong verification. */
+async function executeAndPollSilent(
+  evaluateInVSCode: <R, Arg = undefined>(
+    fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
+    arg?: Arg
+  ) => Promise<R>,
+  command: string,
+  args: unknown[] | undefined
+): Promise<boolean> {
+  return evaluateInVSCode(
+    async (vscode, arg) => {
+      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
+      if (ext && !ext.isActive) await ext.activate()
+      const api = ext!.exports as ExtensionApi
+
+      await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
+      const deadline = Date.now() + 5000
+      while (Date.now() < deadline) {
+        const stats = await api.zzfxPlay.getStats()
+        if (stats && stats.silent) return true
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      return false
+    },
+    { command, args }
+  )
 }
 
 test.describe('FL Audio: multi-library Play/Stop lenses', () => {
@@ -102,7 +170,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(String(jumpArgs?.[0])).toMatch(/sounds[/\\]jump\.wav$/)
 
     // Unresolvable path (playMissingSfx) — no lens at that line at all.
-    expect(lenses.some((l) => l.range.start.line === 156)).toBe(false)
+    expect(lenses.some((l) => l.range.start.line === MISSING_SFX_LINE)).toBe(false)
   })
 
   test('playSong (bare-identifier varRef route) produces real audio via the stats tap, and stopSong actually stops it', async ({
@@ -112,39 +180,19 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const playLens = lensAt(lenses, FANFARE_CALL_LINE, '▶ Play')!
     const stopLens = lensAt(lenses, FANFARE_CALL_LINE, '⏹ Stop')!
 
-    const playStats = await evaluateInVSCode(
-      async (vscode, arg) => {
-        const api = await activateExtension(vscode)
-        await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-        const deadline = Date.now() + 5000
-        let last: Awaited<ReturnType<typeof api.zzfxPlay.getStats>>
-        while (Date.now() < deadline) {
-          last = await api.zzfxPlay.getStats()
-          if (last && !last.silent) return last
-          await new Promise((resolve) => setTimeout(resolve, 100))
-        }
-        return last
-      },
-      { command: playLens.command!.command, args: playLens.command!.arguments }
+    const playStats = await executeAndPollAudible(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
     )
     expect(playStats).toBeDefined()
     expect(playStats!.silent).toBe(false)
     expect(playStats!.peak).toBeGreaterThan(0)
 
-    const silentAfterStop = await evaluateInVSCode(
-      async (vscode, arg) => {
-        const api = await activateExtension(vscode)
-        await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-        const deadline = Date.now() + 5000
-        let last: Awaited<ReturnType<typeof api.zzfxPlay.getStats>>
-        while (Date.now() < deadline) {
-          last = await api.zzfxPlay.getStats()
-          if (last && last.silent) return true
-          await new Promise((resolve) => setTimeout(resolve, 100))
-        }
-        return false
-      },
-      { command: stopLens.command!.command, args: stopLens.command!.arguments }
+    const silentAfterStop = await executeAndPollSilent(
+      evaluateInVSCode,
+      stopLens.command!.command,
+      stopLens.command!.arguments
     )
     expect(silentAfterStop).toBe(true)
   })
@@ -155,20 +203,10 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, CHIPTUNE_CALL_LINE, '▶ Play')!
 
-    const stats = await evaluateInVSCode(
-      async (vscode, arg) => {
-        const api = await activateExtension(vscode)
-        await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-        const deadline = Date.now() + 5000
-        let last: Awaited<ReturnType<typeof api.zzfxPlay.getStats>>
-        while (Date.now() < deadline) {
-          last = await api.zzfxPlay.getStats()
-          if (last && !last.silent) return last
-          await new Promise((resolve) => setTimeout(resolve, 100))
-        }
-        return last
-      },
-      { command: playLens.command!.command, args: playLens.command!.arguments }
+    const stats = await executeAndPollAudible(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
     )
     expect(stats).toBeDefined()
     expect(stats!.silent).toBe(false)
@@ -187,20 +225,10 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const playLens = lensAt(lenses, CLICK_SFX_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.zzfx.playFile')
 
-    const stats = await evaluateInVSCode(
-      async (vscode, arg) => {
-        const api = await activateExtension(vscode)
-        await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-        const deadline = Date.now() + 5000
-        let last: Awaited<ReturnType<typeof api.zzfxPlay.getStats>>
-        while (Date.now() < deadline) {
-          last = await api.zzfxPlay.getStats()
-          if (last && !last.silent) return last
-          await new Promise((resolve) => setTimeout(resolve, 100))
-        }
-        return last
-      },
-      { command: playLens.command!.command, args: playLens.command!.arguments }
+    const stats = await executeAndPollAudible(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
     )
     expect(stats).toBeDefined()
     expect(stats!.silent).toBe(false)
@@ -236,7 +264,12 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     const result = await evaluateInVSCode(
       async (vscode, arg) => {
-        const api = await activateExtension(vscode)
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+        const api = ext!.exports as ExtensionApi
+
         let threw = false
         try {
           await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
