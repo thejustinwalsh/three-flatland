@@ -60,3 +60,18 @@ export function playExplosionSfx() {
 export function playAmbient() {
   new Howl({ src: ['ambient.ogg', 'ambient.mp3'] }).play()
 }
+
+// audio.file — Wad (github.com/rserota/wad) file-mode source: a string
+// nested in a new-expression's object arg, the same generic shape as the
+// Howler case above. No dedicated scanner, pinned here by name.
+export function playJump() {
+  new Wad({ source: 'sounds/jump.wav' }).play()
+}
+
+// Wad synthesis-mode source ('sine', 'square', ...) has no audio extension
+// — correctly NOT a finding. Kept uncommented (not a comment-exclusion
+// case) so the golden fixture's full-array equality proves the negative,
+// not just implies it.
+export function beep() {
+  new Wad({ source: 'sine' }).play()
+}

@@ -390,5 +390,36 @@
         "line": 60
       }
     }
+  },
+  {
+    "byteRange": {
+      "end": 2209,
+      "start": 2171
+    },
+    "id": "19288a1e0dcab174",
+    "kind": "audio.file",
+    "payload": {
+      "path": "sounds/jump.wav",
+      "pathRange": {
+        "end": {
+          "character": 36,
+          "line": 67
+        },
+        "start": {
+          "character": 21,
+          "line": 67
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 40,
+        "line": 67
+      },
+      "start": {
+        "character": 2,
+        "line": 67
+      }
+    }
   }
 ]

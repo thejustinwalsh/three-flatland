@@ -873,6 +873,28 @@ mod tests {
     }
 
     #[test]
+    fn wad_file_mode_source_nested_in_a_new_expressions_object_arg_is_recognized() {
+        // Wad (github.com/rserota/wad): `new Wad({ source: 'jump.wav' })` —
+        // no dedicated scanner needed, it's exactly the generic audio.file
+        // shape (a string at depth 1 inside a new-expression's object arg),
+        // pinned here by name so the coverage claim isn't just implied by
+        // the more generic nested-object test above.
+        let f = call("a.ts", "new Wad({source:'sounds/jump.wav'});");
+        assert_eq!(f.kind(), AUDIO_FILE_KIND);
+        assert_eq!(f.as_audio_file().unwrap().path, "sounds/jump.wav");
+    }
+
+    #[test]
+    fn wad_synthesis_mode_source_has_no_audio_extension_and_is_correctly_not_a_finding() {
+        // Wad's OTHER mode: `source: 'sine'`/'square'/etc. synthesizes a
+        // tone instead of loading a file — no audio extension, so this
+        // must NOT be a finding. Pins the boundary explicitly rather than
+        // leaving it an accidental consequence of the extension check.
+        let f = findings("a.ts", "new Wad({source:'sine'});");
+        assert!(f.is_empty());
+    }
+
+    #[test]
     fn extension_matching_is_case_insensitive() {
         let f = call("a.ts", "new Audio('BOOM.MP3');");
         assert_eq!(f.as_audio_file().unwrap().path, "BOOM.MP3");

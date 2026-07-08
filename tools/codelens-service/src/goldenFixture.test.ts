@@ -145,5 +145,34 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
       )
       expect(sliced).toBe(finding.payload.path)
     }
+
+    // Wad (github.com/rserota/wad) coverage, pinned by name rather than
+    // implied by the more generic nested-object case above: file-mode
+    // source IS a finding (slice-equality-proven, same discipline as the
+    // Howler case), synthesis-mode source ('sine', no audio extension)
+    // is NOT — both directions asserted explicitly.
+    const wadFinding = result.findings.find(
+      (f) => f.kind === 'audio.file' && f.payload.path === 'sounds/jump.wav'
+    )
+    expect(
+      wadFinding,
+      'golden.ts must still reference sounds/jump.wav via new Wad({...})'
+    ).toBeDefined()
+    if (wadFinding?.kind !== 'audio.file') throw new Error('expected audio.file')
+    const wadLines = goldenText.split('\n')
+    const wadLine = wadLines[wadFinding.payload.pathRange.start.line]!
+    const wadSliced = wadLine.slice(
+      wadFinding.payload.pathRange.start.character,
+      wadFinding.payload.pathRange.end.character
+    )
+    expect(wadSliced).toBe(wadFinding.payload.path)
+
+    const sineFinding = result.findings.find(
+      (f) => f.kind === 'audio.file' && f.payload.path === 'sine'
+    )
+    expect(
+      sineFinding,
+      "new Wad({source: 'sine'}) is synthesis mode, not a file reference — must NOT be a finding"
+    ).toBeUndefined()
   })
 })
