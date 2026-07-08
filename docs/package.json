@@ -34,7 +34,7 @@
     "@three-flatland/presets": "workspace:*",
     "@zzfx-studio/zzfxm": "catalog:",
     "animejs": "^4.5.0",
-    "astro": "^6.2.1",
+    "astro": "^6.4.6",
     "reveal.js": "^5.1.0",
     "koota": "catalog:",
     "qr-code-styling": "^1.9.2",
@@ -61,6 +61,6 @@
     "@types/react-dom": "catalog:",
     "@types/three": "catalog:",
     "typescript": "catalog:",
-    "vite": "^7.3.2"
+    "vite": "^7.3.5"
   }
 }
