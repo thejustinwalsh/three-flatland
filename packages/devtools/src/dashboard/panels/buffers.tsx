@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { BufferChunkPayload } from '../../devtools-client.js'
 import { getClient } from '../client.js'
+import { getFrameCursor } from '../frame-cursor.js'
 import { useDevtoolsState } from '../hooks.js'
 
 const VP9_CODEC = 'vp09.00.10.08'
@@ -139,6 +140,12 @@ export function BuffersPanel() {
     waitingForKeyFrameRef.current = true
     const decoder = new globalThis.VideoDecoder({
       output: (frame) => {
+        // Parked cursor freezes the canvas (decode continues so the
+        // delta chain stays valid; we just don't paint).
+        if (getFrameCursor() !== null) {
+          frame.close()
+          return
+        }
         if (canvas.width !== frame.codedWidth || canvas.height !== frame.codedHeight) {
           canvas.width = frame.codedWidth
           canvas.height = frame.codedHeight
@@ -201,6 +208,9 @@ export function BuffersPanel() {
   // Paint those when the stream path isn't decoding.
   useEffect(() => {
     if (CODEC_AVAILABLE) return
+    // Parked cursor freezes the canvas — the last-drawn pixels stay put
+    // until the user returns to live (historical playback is Phase C).
+    if (getFrameCursor() !== null) return
     if (effectiveSelected === null) return
     const snap = state.buffers.get(effectiveSelected)
     if (snap === undefined || snap.pixels === null) return
@@ -383,6 +393,12 @@ export function BuffersPanel() {
                 onMouseMove={onCanvasMove}
                 onMouseLeave={onCanvasLeave}
               />
+              {getFrameCursor() !== null ? (
+                <div class="buffers-parked-note">
+                  parked at frame {getFrameCursor()} — no playback yet (flight
+                  recorder lands in Phase C); canvas frozen
+                </div>
+              ) : null}
               <div class="buffers-info">
                 <span>{selectedSnap.name}</span>
                 <span>

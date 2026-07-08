@@ -58,9 +58,15 @@ export {
   LIT_FLAG_MASK,
   RECEIVE_SHADOWS_MASK,
   CAST_SHADOW_MASK,
+  ROTATED_FRAME_MASK,
   EFFECT_BIT_OFFSET,
 } from '../materials/effectFlagBits'
-import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK } from '../materials/effectFlagBits'
+import {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+  ROTATED_FRAME_MASK,
+} from '../materials/effectFlagBits'
 
 /** Size in floats for each attribute type. */
 const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
@@ -480,6 +486,19 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _autoBatched = false
+
+  /**
+   * Trimmed-frame placement, baked into the matrix by `updateMatrix`
+   * and `transformSyncSystem`: the quad shrinks to the trimmed rect
+   * (scale factors) and shifts to its position within the source
+   * bounds (offsets, unit-quad space, y-up). Identity for untrimmed
+   * frames.
+   * @internal
+   */
+  _trimSX = 1
+  /** @internal */ _trimSY = 1
+  /** @internal */ _trimOX = 0
+  /** @internal */ _trimOY = 0
 
   // ZIndex (SpriteZIndex) — raw array writes, no Changed() needed
   /** @internal */ _zIndexArr: number[] = [0]
@@ -992,6 +1011,36 @@ export class Sprite2D extends Mesh {
     this._uvY[i] = frame.y
     this._uvW[i] = frame.width
     this._uvH[i] = frame.height
+
+    // Rotated-frame flag (TexturePacker 90° CW packing) — the shader
+    // unrotates its frame-local sampling per instance.
+    const wasRotated = (this._systemFlags & ROTATED_FRAME_MASK) !== 0
+    const isRotated = frame.rotated === true
+    if (wasRotated !== isRotated) {
+      if (isRotated) this._systemFlags |= ROTATED_FRAME_MASK
+      else this._systemFlags &= ~ROTATED_FRAME_MASK
+      if (this._batchMesh) {
+        this._batchMesh.writeSystemFlags(this._batchSlot, this._systemFlags)
+      } else if (!this._entity) {
+        this._writeEffectDataOwn()
+      }
+    }
+
+    // Trimmed-frame placement: the packed rect renders at its true
+    // position within the source bounds instead of stretching over
+    // them. Baked into the matrix (both matrix writers read these).
+    if (frame.trimmed && frame.trimOffset) {
+      const trim = frame.trimOffset
+      this._trimSX = trim.width / frame.sourceWidth
+      this._trimSY = trim.height / frame.sourceHeight
+      this._trimOX = (trim.x + trim.width / 2) / frame.sourceWidth - 0.5
+      this._trimOY = 0.5 - (trim.y + trim.height / 2) / frame.sourceHeight
+    } else if (this._trimSX !== 1 || this._trimSY !== 1) {
+      this._trimSX = 1
+      this._trimSY = 1
+      this._trimOX = 0
+      this._trimOY = 0
+    }
     // Direct-write to the batch buffer when batched — transformSyncSystem
     // no longer rewrites UV every frame (only AnimatedSprite2D and explicit
     // setFrame calls change it, and they all route through here). Enrolled-
@@ -1915,15 +1964,18 @@ export class Sprite2D extends Mesh {
    */
   override updateMatrix(): void {
     const te = this.matrix.elements
-    const sx = this.scale.x
-    const sy = this.scale.y
+    // Trim bake: the quad covers only the trimmed rect, positioned
+    // where it sits inside the source bounds (offsets combine with the
+    // anchor term, unrotated — same convention as the anchor bake).
+    const sx = this.scale.x * this._trimSX
+    const sy = this.scale.y * this._trimSY
 
     // Anchor offset baked into translation. Anchor (0.5, 0.5) ⇒
     // center ⇒ zero offset. Anchor (0, 1) ⇒ top-left ⇒ shifts the
     // quad +0.5*sx, -0.5*sy. Removes the per-anchor-change geometry
     // rebuild entirely; the unit quad never changes.
-    const ax = (0.5 - this._anchor.x) * sx
-    const ay = (0.5 - this._anchor.y) * sy
+    const ax = (0.5 - this._anchor.x + this._trimOX) * this.scale.x
+    const ay = (0.5 - this._anchor.y + this._trimOY) * this.scale.y
     const px = this.position.x + ax
     const py = this.position.y + ay
     const pz = this.position.z + this.sortLayerValue * 10 + this.zIndex * 0.001

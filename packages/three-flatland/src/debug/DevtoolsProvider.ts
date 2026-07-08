@@ -37,6 +37,11 @@ import { PERF_TRACK, perfMeasure } from './perf-track'
 import type { BufferCursor } from './bus-pool'
 import type { BusTransport } from './bus-transport'
 import { createBusTransport } from './bus-transport'
+import {
+  createProviderRemoteBridge,
+  type RemoteBridgeHandle,
+  type WebSocketLike,
+} from './bus-websocket'
 
 export interface DevtoolsProviderOptions {
   /** Human-readable name shown in the consumer UI. */
@@ -52,6 +57,14 @@ export interface DevtoolsProviderOptions {
   discoveryChannelName?: string
   /** Provider kind. Default: `'user'`. */
   kind?: ProviderKind
+  /**
+   * Remote-debugging endpoint (#114): a WebSocket URL (usually a
+   * `flatland-devtools-relay`) or an already-open WebSocket. When set,
+   * `start()` bridges this provider's bus traffic over the socket so a
+   * desktop dashboard can attach from another device. The in-process
+   * BroadcastChannel bus is untouched — the bridge only taps it.
+   */
+  remote?: string | WebSocketLike
 }
 
 /**
@@ -115,7 +128,14 @@ export class DevtoolsProvider {
    * speculatively (e.g. inside `Flatland`'s constructor, which R3F may
    * call for renders that get discarded).
    */
-  private readonly _opts: { discoveryChannelName: string; dataChannelName: string }
+  private readonly _opts: {
+    discoveryChannelName: string
+    dataChannelName: string
+    remote: string | WebSocketLike | null
+  }
+
+  /** Remote WS bridge (null unless `options.remote` was provided). */
+  private _remoteBridge: RemoteBridgeHandle | null = null
 
   /** Bonjour channel — discovery traffic only (query/announce/gone). Lazy. */
   private _discoveryBus: BroadcastChannel | null = null
@@ -186,6 +206,7 @@ export class DevtoolsProvider {
     this._opts = {
       discoveryChannelName: options.discoveryChannelName ?? DISCOVERY_CHANNEL,
       dataChannelName: providerChannelName(this.identity.id),
+      remote: options.remote ?? null,
     }
 
     this._dataScratch = {
@@ -219,6 +240,26 @@ export class DevtoolsProvider {
     this._discoveryBus = new BroadcastChannel(this._opts.discoveryChannelName)
     this._dataBus = new BroadcastChannel(this._opts.dataChannelName)
     this._dataTransport = createBusTransport({ channelName: this._opts.dataChannelName })
+
+    if (this._opts.remote !== null) {
+      // An injected socket is caller-owned and reused across start()/dispose()
+      // cycles. If the caller closed it before this (re)start, the bridge comes
+      // back against a dead connection and silently drops every send — surface
+      // it rather than fail quietly. (readyState 2 = CLOSING, 3 = CLOSED.)
+      if (typeof this._opts.remote !== 'string' && this._opts.remote.readyState >= 2) {
+        console.warn(
+          '[flatland-devtools] injected remote socket is closed on start(); remote ' +
+            'debugging will not connect. Provide an open socket (or a URL) that stays ' +
+            'open for the provider lifetime.'
+        )
+      }
+      this._remoteBridge = createProviderRemoteBridge({
+        remote: this._opts.remote,
+        dataChannelName: this._opts.dataChannelName,
+        discoveryChannelName: this._opts.discoveryChannelName,
+        providerId: this.identity.id,
+      })
+    }
 
     // Discovery bus: only query traffic reaches us here. Everything
     // else we send/receive on our own data channel.
@@ -529,7 +570,8 @@ export class DevtoolsProvider {
       this._flushTimer = null
     }
     // Tell consumers we're leaving so they can drop us from their
-    // known-provider map and fall back to another option.
+    // known-provider map and fall back to another option. Posted before
+    // the remote bridge closes so the goodbye crosses the wire too.
     try {
       this._discoveryBus?.postMessage(
         stampMessage({
@@ -539,6 +581,10 @@ export class DevtoolsProvider {
       )
     } catch {
       /* bus may already be closing */
+    }
+    if (this._remoteBridge !== null) {
+      this._remoteBridge.dispose()
+      this._remoteBridge = null
     }
     if (this._discoveryBus !== null && this._onDiscovery !== null) {
       this._discoveryBus.removeEventListener('message', this._onDiscovery)

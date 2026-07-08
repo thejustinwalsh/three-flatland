@@ -235,6 +235,67 @@ describe('transformSyncSystem — matrix Z monotonic in zIndex', () => {
 })
 
 // ============================================
+// Part 2b: anchor + trim parity between the batch path and the
+// standalone bake (#143 review — batch path was missing the anchor
+// term entirely, only visible once trimmed-frame placement started
+// relying on the anchor-corrected center).
+// ============================================
+
+describe('transformSyncSystem — anchor + trim parity with Sprite2D.updateMatrix', () => {
+  let texture: Texture
+  let material: Sprite2DMaterial
+  let group: SpriteGroup
+
+  beforeEach(() => {
+    texture = makeTexture()
+    material = new Sprite2DMaterial({ map: texture })
+    group = new SpriteGroup()
+  })
+
+  afterEach(() => {
+    group.dispose()
+    universe.reset()
+  })
+
+  it('matches the standalone bake for a non-center anchor + trimmed + rotated sprite', () => {
+    const sprite = new Sprite2D({ texture, material })
+    sprite.setAnchor(0, 1) // top-left — exercises the anchor term (center is the no-op case)
+    sprite.setFrame({
+      name: 'trimmed',
+      x: 0,
+      y: 0,
+      width: 40 / 64,
+      height: 20 / 32,
+      sourceWidth: 64,
+      sourceHeight: 32,
+      trimmed: true,
+      trimOffset: { x: 10, y: 4, width: 40, height: 20 },
+    })
+    sprite.position.set(12, -7, 0)
+    sprite.scale.set(64, 32, 1)
+    sprite.rotation.z = Math.PI / 5
+
+    group.add(sprite)
+    runSystems(group)
+
+    const batch = getBatchForSprite(group, sprite)!
+    const slot = sprite.entity!.get(BatchSlot)!.slot
+    const buf = batch.instanceMatrix.array as Float32Array
+    const o = slot * 16
+
+    // Standalone bake — same sprite, independent code path (Sprite2D.updateMatrix).
+    sprite.updateMatrix()
+    const te = sprite.matrix.elements
+
+    // Compare basis (rotation × scale) and translation — the batch
+    // instance matrix and the standalone matrix must agree exactly.
+    for (const i of [0, 1, 4, 5, 12, 13]) {
+      expect(buf[o + i]).toBeCloseTo(te[i]!, 5)
+    }
+  })
+})
+
+// ============================================
 // Part 3: Sort-correctness regression guards.
 //
 // Each test here exists to lock in a previously-broken invariant or
