@@ -169,6 +169,40 @@ test('Save re-bakes .normal.png and re-stamps its content-hash', async ({
   expect(b).toBe(Math.round(tiltedRegion!.elevation! * 255))
 })
 
+// ── Merged inspector + grid mode (redesign, #42) ──────────────────────────
+
+test('inspector is selection-aware and grid mode swaps the Info panel', async ({
+  openCommand,
+  webviewFrame,
+}) => {
+  await openCommand('threeFlatland.normalBaker.open', ['sprites/Dungeon_Tileset.png'])
+  const frame = await webviewFrame('Normal Baker: Dungeon_Tileset.png')
+  await expect(frame.getByText('Regions (122)')).toBeVisible()
+
+  // Nothing selected → the Info panel's inspector edits the descriptor
+  // defaults (the inherited base) under a "Defaults" collapsible heading.
+  await expect(frame.getByText('Info', { exact: true })).toBeVisible()
+  await expect(frame.getByText('Defaults', { exact: true })).toBeVisible()
+  await expect(frame.getByLabel('Default strength')).toBeVisible()
+
+  // Select a region in the list → the same inspector swaps to editing
+  // THAT region: heading flips to "Region", geometry fields appear, and
+  // the region-scoped (not Default-labeled) strength editor shows.
+  await frame.getByText('16,4 16×12', { exact: true }).click()
+  await expect(frame.getByText('Region', { exact: true })).toBeVisible()
+  await expect(frame.getByLabel('Strength', { exact: true })).toBeVisible()
+  await expect(frame.getByLabel('Default strength')).toHaveCount(0)
+
+  // Grid mode (toolbar toggle) swaps the Info panel content for the
+  // Grid & Split tool panel; exiting restores the inspector.
+  await frame.getByTitle('Grid Slice').click()
+  await expect(frame.getByText('Grid & Split')).toBeVisible()
+  await expect(frame.getByText('Info', { exact: true })).toHaveCount(0)
+  await frame.getByTitle('Grid Slice').click()
+  await expect(frame.getByText('Info', { exact: true })).toBeVisible()
+  await expect(frame.getByText('Grid & Split')).toHaveCount(0)
+})
+
 // ── Grid slice + split (C3) ───────────────────────────────────────────────
 
 test('grid slice: Generate creates one region per aligned tile on Dungeon_Tileset', async ({
@@ -203,6 +237,11 @@ test('split: 2×2 on a tilted region replaces it with 4 children inheriting exac
   await openCommand('threeFlatland.normalBaker.open', ['sprites/Dungeon_Tileset.png'])
   const frame = await webviewFrame('Normal Baker: Dungeon_Tileset.png')
   await expect(frame.getByText('Regions (122)')).toBeVisible()
+
+  // Split lives in the Grid & Split panel, which only shows while grid
+  // mode is active (the redesign made Grid Slice a MODE that swaps the
+  // Info panel, per Atlas's idiom). The list still selects in grid mode.
+  await frame.getByTitle('Grid Slice').click()
 
   // Select the fixture's {x:16, y:4, w:16, h:12, direction:'south',
   // elevation:0.5} region via its (unique) coords text in the list.
