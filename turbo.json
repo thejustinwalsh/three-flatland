@@ -66,6 +66,10 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "@three-flatland/schemas#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
     "@three-flatland/devtools#build:bundle": {
       "dependsOn": ["^build"],
       "outputs": ["bundle/**"],
