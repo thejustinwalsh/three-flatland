@@ -5,24 +5,32 @@
 > Branch: feat/devtools-texturepacker
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/143
 
-## Features
+## Remote debugging
+- New WebSocket transport wires the dashboard to a game running on a separate device — `connectRemoteDevtools(url)` on the dashboard side, `createDevtoolsProvider({ remote: 'ws://…' })` on the game side.
+- New `flatland-devtools-relay` CLI: a zero-dependency RFC 6455 broadcast relay for bridging provider and consumer connections. Dev tool only — no auth/TLS.
+- Frames queued while the socket is still connecting now flush once it opens instead of being dropped.
 
-- WebSocket transport for remote/mobile debugging: `connectRemoteDevtools(url)` connects the dashboard to a device running the game, and a new zero-dependency `flatland-devtools-relay` bin relays frames between them (dev tool only — no auth/TLS)
-- Time-travel debugging Phase A: frame-link scrubber lets you park the dashboard at a past engine frame and have every panel (stats, protocol log, buffers, registry) snap to that moment
-  - Scrubber UI with drag/step controls, per-provider parked position memory, and a LIVE button/Esc to resume
-  - Stat cards, protocol log, and buffers panel all respect the parked frame cursor
+## Time-travel debugging (Phase A)
+- New frame-link scrubber: park the dashboard at a past engine frame and every panel (stats, protocol log, buffers, registry) snaps to that moment.
+  - Scrubber UI: play/pause, step, slider, live indicator; per-provider parked position is remembered when switching producers.
+  - Click a protocol-log row to park at that frame; return to live via the LIVE button, double-click, or Esc.
+  - Stat cards and protocol log render the nearest sample at or before the parked frame.
+  - Buffers panel freezes canvas playback while parked (video decode continues so the delta chain stays valid).
+  - Full historical playback remains a future phase.
 
-## Fixes
+## Relay hardening
+- Fixed multiple RFC 6455 spec-compliance and robustness issues in the WebSocket relay found during review:
+  - Unmasked client frames are now rejected instead of relayed (spec requires masked client frames).
+  - Oversized or fragmented control frames (ping/pong/close) are rejected instead of producing invalid oversized pongs.
+  - A new frame can no longer interrupt an in-progress fragmented message.
+  - HTTP error responses now flush before the socket closes, avoiding dropped responses under backpressure.
+  - Reassembled fragment size is now bounded (previously only per-frame size was capped), closing a memory-growth DoS via drip-fed continuation frames.
+  - `Sec-WebSocket-Version` is validated; mismatched versions are rejected instead of silently accepted.
+  - Broadcast now preserves the originating opcode (text frames stay text) instead of always sending binary.
+  - Close is now acknowledged with a close frame per spec before ending the connection.
+  - Broadcast writes are guarded against writing to a closed/closing socket.
+  - `startRelay` now returns `{ close, server }` instead of a bare stop function, exposing the bound server (useful for ephemeral-port setups).
+- Fixed a same-context echo loop, binary payload corruption, and stale-frame delivery after bridge disposal on the remote-debug transport (shared with `three-flatland`).
 
-- WebSocket relay hardened against multiple RFC 6455 spec violations found in adversarial review:
-  - Unmasked client frames are now rejected instead of relayed
-  - Oversized/fragmented control frames (ping/pong/close) are rejected per spec
-  - Data frames can no longer interrupt an in-progress fragmented message
-  - Version mismatch (`Sec-WebSocket-Version !== 13`) is rejected instead of silently accepted
-  - Reassembled-fragment size is now bounded, closing a fragment-based DoS vector
-  - Broadcast now preserves the originating opcode (text stays text) and guards writes against closed/closing sockets
-  - 426 handshake-rejection responses now flush reliably before closing the socket
-- Fixed same-context echo loops when a provider and consumer bridge run in the same page, binary payloads that resembled internal markers, and stale frames sent from disposed bridges
-- Scrubber cursor restoration moved out of render into an effect; parking at a frame older than the protocol log's cache now falls back to an IndexedDB query instead of silently failing
-
-This release adds a WebSocket-based remote/mobile debugging transport and a time-travel frame scrubber, backed by a hardened, spec-compliant relay implementation.
+## Summary
+This release adds a WebSocket-based remote debugging transport with a companion relay CLI, introduces Phase A of time-travel debugging (a frame-link scrubber across dashboard panels), and closes out a series of RFC 6455 compliance and hardening fixes in the relay found during review.

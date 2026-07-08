@@ -5,19 +5,21 @@
 > Branch: feat/devtools-texturepacker
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/143
 
-## Features
+## Sprites
+- Fixed batched sprites not baking anchor offset into the instance matrix — sprites with a non-center anchor (e.g. `[0, 1]`) rendered in the wrong position when batched, even though the standalone (non-batched) path was correct. Trimmed + rotated frames are also covered by the fix.
 
-- Full TexturePacker support: rotated frames and trimmed frames now render correctly without disabling rotation/trim at export
-  - Rotated-frame atlas rects are unrotated in-shader (batched and standalone paths, plus `OcclusionPass`)
-  - Trimmed frames render at their true offset/size instead of stretching to the source bounds; trim is baked into the matrix for both batched and standalone sprites, fixing wobble in trimmed-frame animations
-  - Docs: loaders guide documents supported TexturePacker features (rotation, trim, polygon trim)
-- WebSocket transport for remote/mobile debugging: run the game on a device and attach the desktop dashboard over `ws://`
-  - New `bus-websocket` wire codec (JSON + binary TLV framing) for `DevtoolsProvider`, with `remote: 'ws://…'` option
-  - Pairs with `@three-flatland/devtools`' new `connectRemoteDevtools()` and `flatland-devtools-relay` bin
+## Loaders
+- TexturePacker atlases now fully support "Allow rotation" and "Trim mode" export options — previously these had to be disabled at export time or sprites rendered incorrectly.
+  - Rotated frames: shader unrotates frame-local UV sampling to match the packed atlas rect.
+  - Trimmed frames: quads render at the trimmed size/offset instead of stretching to the full source bounds; trim scale/offset bake correctly into per-frame animations.
+  - Docs updated with the supported TexturePacker feature set (rotation, trim, polygon trim).
 
-## Fixes
+## Remote debugging
+- New WebSocket transport lets the devtools dashboard attach to a game running on a separate device (e.g. mobile) instead of only same-page `BroadcastChannel`.
+  - `createDevtoolsProvider({ remote: 'ws://…' })` to opt in on the game side.
+  - Binary and JSON payloads (including typed arrays) round-trip correctly over the wire.
+  - Provider disconnect is reported to the dashboard promptly on page unload.
+- Fixed several correctness and robustness issues found in review of the remote-debug track: WebSocket frame fragmentation handling, an echo loop when a page runs both provider and consumer bridges, binary payload corruption for payloads containing marker-shaped objects, stale frames being sent after a bridge is disposed, and a scrubber state bug during render.
 
-- Batched sprites now bake anchor + trim offsets identically to standalone sprites — previously the batch path dropped the anchor term, causing incorrect placement for any batched sprite with `anchor != (0.5, 0.5)`
-- Remote-debug hardening: WebSocket bus frames now handle RFC 6455 fragmentation correctly, avoid echo/relay loops when a provider and consumer bridge share a page, keep binary payloads intact, and stop emitting stale frames from disposed bridges
-
-This release completes TexturePacker compatibility (rotated + trimmed atlas frames) and ships a WebSocket-based remote debugging transport, alongside a batching correctness fix for anchored sprites.
+## Summary
+This release lands full TexturePacker rotation/trim support, fixes an anchor-offset rendering bug in batched sprites, and adds a WebSocket-based remote debugging transport for the devtools dashboard, along with several stability fixes found during review of that transport.
