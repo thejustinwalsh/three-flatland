@@ -9,7 +9,13 @@ const SONG: Song = {
   bpm: 120,
 }
 
-const SILENT_STATS: PlaybackStats = { peak: 0, silent: true }
+const SILENT_STATS: PlaybackStats = {
+  peak: 0,
+  silent: true,
+  playing: false,
+  durationSeconds: 0,
+  elapsedSeconds: 0,
+}
 
 function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
   playCalls: { params: number[]; volume: number }[]
@@ -217,7 +223,13 @@ describe('createCommandHandler', () => {
   })
 
   it('stats returns the backend-reported PlaybackStats verbatim', () => {
-    const audible: PlaybackStats = { peak: 0.42, silent: false }
+    const audible: PlaybackStats = {
+      peak: 0.42,
+      silent: false,
+      playing: true,
+      durationSeconds: 2,
+      elapsedSeconds: 0.5,
+    }
     const handler = createCommandHandler(fakeBackend(audible))
     const response = handler.handleCommand({ cmd: 'stats' })
     expect(response).toEqual({ ok: true, cmd: 'stats', stats: audible })

@@ -52,6 +52,36 @@ export type PlaySampleChannelsOptions = {
 
 const analysers = new WeakMap<AudioContext, AnalyserNode>()
 
+/** The most recently started source's timing, per context — what lets
+ * `getPlaybackStats` report exact `playing`/`durationSeconds`/
+ * `elapsedSeconds` (#43) instead of callers guessing with magic
+ * timeouts. One record, last-started-wins: the wire protocol's own
+ * semantics already replace rather than stack songs, and a one-shot
+ * layered over a song is a sub-second blip against the song's window. */
+type CurrentPlayback = {
+  startedAt: number
+  durationSeconds: number
+  /** Set by the source's own `ended` event — fires on BOTH natural
+   * completion and an explicit `.stop()` (the commandHandler's stopSong
+   * path), so `playing` flips false immediately on a mid-playback stop
+   * rather than waiting out the natural duration. */
+  ended: boolean
+}
+
+const playbacks = new WeakMap<AudioContext, CurrentPlayback>()
+
+function trackPlayback(
+  ctx: AudioContext,
+  source: AudioBufferSourceNode,
+  durationSeconds: number
+): void {
+  const record: CurrentPlayback = { startedAt: ctx.currentTime, durationSeconds, ended: false }
+  playbacks.set(ctx, record)
+  source.onended = () => {
+    record.ended = true
+  }
+}
+
 /** The shared master-output tap for a given context, created lazily on
  * first use. Every `playSampleChannels` call against the same `ctx`
  * routes its gain node through this SAME analyser on its way to
@@ -110,6 +140,11 @@ export function playSampleChannels(
   gainNode.gain.value = masterVolume
   source.connect(gainNode)
   gainNode.connect(getAnalyser(ctx))
+  // Duration from the synthesis inputs directly (sample count ÷ declared
+  // rate, playback-rate-adjusted) rather than trusting a buffer.duration
+  // getter — identical math, but it keeps the fake-AudioContext unit
+  // tests honest about where the number comes from.
+  trackPlayback(ctx, source, sampleLength / sampleRate / rate)
   source.start()
 
   return source
@@ -143,6 +178,8 @@ export function playBuffer(
   gainNode.gain.value = masterVolume
   source.connect(gainNode)
   gainNode.connect(getAnalyser(ctx))
+  // `decodeAudioData`'s buffer knows its own exact duration.
+  trackPlayback(ctx, source, audioBuffer.duration)
   source.start()
 
   return source
@@ -150,8 +187,10 @@ export function playBuffer(
 
 /**
  * Reads the analyser's current time-domain window and reduces it to a
- * peak/silent verdict. Meaningful only while something is actually
- * playing — see `PlaybackStats`'s doc comment.
+ * peak/silent verdict, plus the current source's exact timing from the
+ * `trackPlayback` record (#43). `peak`/`silent` are meaningful only
+ * while something is actually playing — see `PlaybackStats`'s doc
+ * comment.
  */
 export function getPlaybackStats(ctx: AudioContext): PlaybackStats {
   const node = getAnalyser(ctx)
@@ -163,9 +202,17 @@ export function getPlaybackStats(ctx: AudioContext): PlaybackStats {
     const abs = Math.abs(sample)
     if (abs > peak) peak = abs
   }
+
+  const current = playbacks.get(ctx)
+  const durationSeconds = current?.durationSeconds ?? 0
+  const elapsedSeconds = current
+    ? Math.min(Math.max(ctx.currentTime - current.startedAt, 0), durationSeconds)
+    : 0
+  const playing = !!current && !current.ended && elapsedSeconds < durationSeconds
+
   // Floating-point noise floor, not a perceptual threshold — real audio
   // (even a quiet one-shot) clears this by orders of magnitude; the
   // pre-fix bug produced EXACT zeros (an untouched, never-written
   // buffer), not merely quiet ones.
-  return { peak, silent: peak < 1e-6 }
+  return { peak, silent: peak < 1e-6, playing, durationSeconds, elapsedSeconds }
 }

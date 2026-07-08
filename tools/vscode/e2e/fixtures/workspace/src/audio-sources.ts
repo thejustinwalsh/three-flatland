@@ -111,6 +111,25 @@ export function playFanfareSpread() {
   zzfxM(...fanfareSong)
 }
 
+// A LONG song (#43): one instrument, one 16-row pattern, sequence
+// repeated 4 times at 125 BPM. True duration MEASURED (not eyeballed) by
+// running ZZFXM.build over exactly this data and dividing the sample
+// count by the sample rate: 338688 samples @ 44100 Hz = 7.680s. Long
+// enough to prove sustained playback past the old magic 5s mark and a
+// clean mid-playback stop with room to spare on both sides.
+const longMarchSong = [
+  [[0.5, 0, 220, 0.01, 0.1, 0.3, 1]],
+  [[[0, 0, 12, 0, 15, 0, 17, 0, 12, 0, 15, 0, 19, 0, 17, 0, 15, 0]]],
+  [0, 0, 0, 0],
+  125,
+]
+
+// Positive case: the long-song play/stop subject — bare-identifier
+// varRef, same resolution shape as playFanfare.
+export function playLongMarch() {
+  zzfxm(longMarchSong)
+}
+
 // Negative case: commented out — must NOT surface a CodeLens.
 // zzfxm([[0.1, 0, 100]], [[[0, 0, 4]]], [0])
 

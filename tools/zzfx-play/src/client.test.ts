@@ -82,7 +82,13 @@ describe('PlaySidecarClient', () => {
   it('getStats() spawns lazily and resolves with the sidecar-reported PlaybackStats', async () => {
     client = spawnFake()
     const stats = await client.getStats()
-    expect(stats).toEqual({ peak: 0.5, silent: false })
+    expect(stats).toEqual({
+      peak: 0.5,
+      silent: false,
+      playing: true,
+      durationSeconds: 2,
+      elapsedSeconds: 0.5,
+    })
     expect(client.isRunning).toBe(true)
   })
 

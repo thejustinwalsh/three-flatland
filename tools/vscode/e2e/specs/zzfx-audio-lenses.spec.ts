@@ -37,6 +37,7 @@ function lineOf(needle: string): number {
 const FANFARE_CALL_LINE = lineOf('zzfxm(fanfareSong)') // bare-identifier varRef
 const CHIPTUNE_CALL_LINE = lineOf('zzfxm([[0.5, 0, 300]]') // positional literal
 const FANFARE_SPREAD_CALL_LINE = lineOf('zzfxM(...fanfareSong)') // spread varRef, plays
+const LONG_MARCH_CALL_LINE = lineOf('zzfxm(longMarchSong)') // #43 long song, play/stop subject
 const JUMP_SFX_LINE = lineOf("audioLoader.load('sounds/jump.wav')") // workspace-root tier
 const CLICK_SFX_LINE = lineOf("new Howl({ src: ['click.wav'] })") // source-dir tier
 const EXPLOSION_SFX_LINE = lineOf("new Wad({ source: 'explosion.ogg' })") // public/ tier
@@ -46,7 +47,13 @@ const MISSING_SFX_LINE = lineOf("new Audio('nonexistent-sound.mp3')") // → $(s
 type LensCommand = { command: string; title: string; arguments?: unknown[] }
 type ResolvedLens = { range: { start: { line: number } }; command?: LensCommand }
 
-type PlaybackStats = { peak: number; silent: boolean }
+type PlaybackStats = {
+  peak: number
+  silent: boolean
+  playing: boolean
+  durationSeconds: number
+  elapsedSeconds: number
+}
 type ExtensionApi = {
   zzfxPlay: {
     getActivePid: () => number | undefined
@@ -109,8 +116,12 @@ async function fetchSettledLenses(
 }
 
 /** Executes `command`/`args` (a resolved lens's own command), then polls
- * `zzfxPlay.getStats()` until it reports audible (`!silent`) or the
- * deadline passes. Self-contained — see the file doc comment. */
+ * `zzfxPlay.getStats()` until it reports audible (`!silent`). The initial
+ * deadline is only a spawn allowance (a cold sidecar loads a native
+ * module before any source can start); the moment the sidecar reports the
+ * source's own exact timing (#43), the deadline re-derives from the REAL
+ * remaining play window instead of a magic constant. Self-contained — see
+ * the file doc comment. */
 async function executeAndPollAudible(
   evaluateInVSCode: <R, Arg = undefined>(
     fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
@@ -126,11 +137,16 @@ async function executeAndPollAudible(
       const api = ext!.exports as ExtensionApi
 
       await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-      const deadline = Date.now() + 5000
+      let deadline = Date.now() + 10_000
+      let derived = false
       let last: PlaybackStats | undefined
       while (Date.now() < deadline) {
         last = await api.zzfxPlay.getStats()
         if (last && !last.silent) return last
+        if (!derived && last?.playing) {
+          derived = true
+          deadline = Date.now() + (last.durationSeconds - last.elapsedSeconds) * 1000 + 1000
+        }
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
       return last
@@ -140,7 +156,11 @@ async function executeAndPollAudible(
 }
 
 /** Same shape as {@link executeAndPollAudible} but polls for `silent`
- * instead — the stopSong verification. */
+ * instead — the stopSong verification. The deadline derives from the
+ * current source's reported remaining window (#43): even a no-op stop
+ * goes silent at the natural end, so this alone can't prove a
+ * MID-playback stop — the long-song spec below adds the
+ * `elapsed < duration` proof for that. */
 async function executeAndPollSilent(
   evaluateInVSCode: <R, Arg = undefined>(
     fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
@@ -156,7 +176,11 @@ async function executeAndPollSilent(
       const api = ext!.exports as ExtensionApi
 
       await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-      const deadline = Date.now() + 5000
+      const current = await api.zzfxPlay.getStats()
+      const remainingMs = current
+        ? Math.max(0, (current.durationSeconds - current.elapsedSeconds) * 1000)
+        : 0
+      const deadline = Date.now() + remainingMs + 2000
       while (Date.now() < deadline) {
         const stats = await api.zzfxPlay.getStats()
         if (stats && stats.silent) return true
@@ -177,15 +201,16 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       .map((l) => l.command?.title ?? null)
       .filter((t): t is string => t !== null)
 
-    // 2 zzfx.call findings (Play+Edit each) + 3 zzfxm.song findings
-    // (Play+Stop each) + 4 RESOLVABLE audio.file findings (Play each — 3
-    // fast tiers + thunder.ogg via the slow search) + playMissingSfx's
-    // `$(search) not found` informational lens. Every commented-out decoy
-    // must contribute ZERO lenses — proven by the exact total below, not
-    // just presence of the positive cases.
-    expect(lenses).toHaveLength(15)
-    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(9)
-    expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(3)
+    // 2 zzfx.call findings (Play+Edit each) + 4 zzfxm.song findings
+    // (Play+Stop each — incl. #43's long song) + 4 RESOLVABLE audio.file
+    // findings (Play each — 3 fast tiers + thunder.ogg via the slow
+    // search) + playMissingSfx's `$(search) not found` informational
+    // lens. Every commented-out decoy must contribute ZERO lenses —
+    // proven by the exact total below, not just presence of the positive
+    // cases.
+    expect(lenses).toHaveLength(17)
+    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(10)
+    expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(4)
     expect(titles.filter((t) => t === '⚙ Edit')).toHaveLength(1)
     expect(titles.filter((t) => t === '⚙ Edit (variable)')).toHaveLength(1)
     expect(titles.filter((t) => t === '$(search) not found')).toHaveLength(1)
@@ -361,6 +386,152 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const playLens = lensAt(lenses, EXPLOSION_SFX_LINE, '▶ Play')
     expect(playLens?.command?.command).toBe('threeFlatland.zzfx.playFile')
     expect(String(playLens?.command?.arguments?.[0])).toMatch(/public[/\\]explosion\.ogg$/)
+  })
+
+  // #43: the long song (7.680s — MEASURED from ZZFXM.build's sample
+  // count, see the fixture's own comment) proves three things the short
+  // songs structurally can't:
+  //   1. the sidecar reports the current source's EXACT timing —
+  //      durationSeconds comes from the synthesized sample count, not a
+  //      caller-side guess;
+  //   2. playback SUSTAINS past the old magic 5s poll deadline;
+  //   3. ⏹ Stop lands MID-playback — silence observed while
+  //      elapsed < duration, which a natural finish cannot fake (the
+  //      fanfare song is 0.43s; its stop test can't distinguish a real
+  //      stop from the song simply ending).
+  // One evaluateInVSCode block for the whole sequence: the phases are
+  // wall-clock-coupled (elapsed keeps ticking between host-bridge round
+  // trips), so polling from inside the extension host keeps the timing
+  // observations honest.
+  test('long song (#43): exact duration reported, playback sustains past 5s, and ⏹ Stop silences it mid-playback — before the natural end', async ({
+    evaluateInVSCode,
+  }) => {
+    const lenses = await fetchLenses(evaluateInVSCode)
+    const playLens = lensAt(lenses, LONG_MARCH_CALL_LINE, '▶ Play')!
+    const stopLens = lensAt(lenses, LONG_MARCH_CALL_LINE, '⏹ Stop')!
+    expect(playLens.command?.command).toBe('threeFlatland.zzfx.playSong')
+    expect(stopLens.command?.command).toBe('threeFlatland.zzfx.stopSong')
+
+    const result = await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+        const api = ext!.exports as ExtensionApi
+        const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+        const report: {
+          failedAt?: 'start' | 'sustain' | 'restart' | 'stop'
+          durationSeconds?: number
+          sustainedElapsedSeconds?: number
+          sustainedPeak?: number
+          stoppedAtSeconds?: number
+        } = {}
+
+        // Phase 1 — play; wait for the source to actually start. This is
+        // the only non-derived wait (a cold sidecar loads a native module
+        // before any source can exist); every wait after it derives from
+        // the sidecar's own reported timing.
+        await vscode.commands.executeCommand(arg.playCommand, ...(arg.playArgs ?? []))
+        let started: Awaited<ReturnType<typeof api.zzfxPlay.getStats>>
+        const spawnDeadline = Date.now() + 15_000
+        while (Date.now() < spawnDeadline) {
+          const stats = await api.zzfxPlay.getStats()
+          if (stats?.playing) {
+            started = stats
+            break
+          }
+          await sleep(100)
+        }
+        if (!started) {
+          report.failedAt = 'start'
+          return report
+        }
+        const durationSeconds = started.durationSeconds
+        report.durationSeconds = durationSeconds
+
+        // Phase 2 — sustain: keep polling until the source's own clock
+        // passes the old magic 5s mark AND the analyser still hears it.
+        // Wait cap = the source's reported remaining window, not a guess.
+        const sustainDeadline =
+          Date.now() + (durationSeconds - started.elapsedSeconds) * 1000 + 2000
+        let sustained: PlaybackStats | undefined
+        while (Date.now() < sustainDeadline) {
+          const stats = await api.zzfxPlay.getStats()
+          if (stats && stats.playing && !stats.silent && stats.elapsedSeconds > 5) {
+            sustained = stats
+            break
+          }
+          await sleep(150)
+        }
+        if (!sustained) {
+          report.failedAt = 'sustain'
+          return report
+        }
+        report.sustainedElapsedSeconds = sustained.elapsedSeconds
+        report.sustainedPeak = sustained.peak
+
+        // Phase 3 — restart (playSong replaces the current song), let it
+        // run to the ~1s mark, then stop.
+        await vscode.commands.executeCommand(arg.playCommand, ...(arg.playArgs ?? []))
+        let atStop: PlaybackStats | undefined
+        const restartDeadline = Date.now() + 5000
+        while (Date.now() < restartDeadline) {
+          const stats = await api.zzfxPlay.getStats()
+          // playing + a small elapsed = the NEW source (the phase-2 one
+          // was already past 5s and gets stopped by the replacement).
+          if (stats && stats.playing && stats.elapsedSeconds >= 1 && stats.elapsedSeconds < 4) {
+            atStop = stats
+            break
+          }
+          await sleep(100)
+        }
+        if (!atStop) {
+          report.failedAt = 'restart'
+          return report
+        }
+        await vscode.commands.executeCommand(arg.stopCommand, ...(arg.stopArgs ?? []))
+
+        // Phase 4 — silence must be OBSERVED while elapsed < duration.
+        // The poll cap is the natural end itself: past it, silence proves
+        // nothing (a no-op stop also goes silent at the natural end).
+        let stopped: PlaybackStats | undefined
+        const naturalEndDeadline = Date.now() + (durationSeconds - atStop.elapsedSeconds) * 1000
+        while (Date.now() < naturalEndDeadline) {
+          const stats = await api.zzfxPlay.getStats()
+          if (stats && stats.silent && !stats.playing) {
+            stopped = stats
+            break
+          }
+          await sleep(100)
+        }
+        if (!stopped) {
+          report.failedAt = 'stop'
+          return report
+        }
+        report.stoppedAtSeconds = stopped.elapsedSeconds
+        return report
+      },
+      {
+        playCommand: playLens.command!.command,
+        playArgs: playLens.command!.arguments,
+        stopCommand: stopLens.command!.command,
+        stopArgs: stopLens.command!.arguments,
+      }
+    )
+
+    expect(result.failedAt).toBeUndefined()
+    // Exact duration from the synthesized sample count: 338688 / 44100.
+    expect(result.durationSeconds).toBeGreaterThan(5)
+    expect(result.durationSeconds!).toBeCloseTo(7.68, 2)
+    // Sustained playback past the old magic 5s deadline, still audible.
+    expect(result.sustainedElapsedSeconds!).toBeGreaterThan(5)
+    expect(result.sustainedPeak!).toBeGreaterThan(0)
+    // The stop landed mid-playback: silence observed well before the
+    // 7.68s natural end (elapsed keeps ticking after a stop, so this
+    // bounds the OBSERVATION time, not just the stop time).
+    expect(result.stoppedAtSeconds!).toBeLessThan(result.durationSeconds! - 1)
   })
 
   // A spread first argument (`zzfxM(...songVar)`) — the canonical

@@ -70,9 +70,14 @@ export type Command =
  * A snapshot of what the master output's `AnalyserNode` tap is seeing
  * RIGHT NOW — the regression guard for the "everything acks clean but
  * the buffer never actually reached the output" failure mode (see
- * `player.ts`'s doc comment). Meaningful only while something is
- * actually playing; query it shortly after a `play`/`playSong`, while
- * the sound's release/sustain window is still open.
+ * `player.ts`'s doc comment) — plus the CURRENT SOURCE's exact timing
+ * (#43): the sidecar knows precisely how long what it's playing lasts
+ * (synthesized sample count ÷ sample rate for zzfx/zzfxm,
+ * `AudioBuffer.duration` for decoded files), so callers derive their
+ * waits from `durationSeconds` instead of guessing with magic timeouts.
+ * `peak`/`silent` are meaningful only while something is actually
+ * playing; query shortly after a `play`/`playSong`, while the sound's
+ * release/sustain window is still open.
  */
 export type PlaybackStats = {
   /** Peak absolute sample value across the analyser's current
@@ -81,6 +86,17 @@ export type PlaybackStats = {
   /** `true` when `peak` is at-or-below floating-point noise — i.e.
    * nothing audible is actually reaching the output right now. */
   silent: boolean
+  /** `true` while the most recently started source is still inside its
+   * buffer's play window and hasn't been stopped (`onended` not fired,
+   * elapsed < duration). `false` before anything ever played. */
+  playing: boolean
+  /** The current (most recently started) source's exact buffer duration
+   * in seconds, playback-rate-adjusted. `0` before anything ever played —
+   * it describes the source, it does not decay when playback ends. */
+  durationSeconds: number
+  /** Seconds since the current source started, clamped to
+   * `durationSeconds`. */
+  elapsedSeconds: number
 }
 
 export type Ack = { ok: true; cmd: Exclude<Command['cmd'], 'stats'> }

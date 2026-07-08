@@ -62,7 +62,11 @@ rl.on('line', (line) => {
         send({ ok: false, cmd: 'stats', error: 'analyser unavailable' })
         return
       }
-      send({ ok: true, cmd: 'stats', stats: { peak: 0.5, silent: false } })
+      send({
+        ok: true,
+        cmd: 'stats',
+        stats: { peak: 0.5, silent: false, playing: true, durationSeconds: 2, elapsedSeconds: 0.5 },
+      })
       return
     default:
       process.stderr.write(`fakePlaySidecar: unknown cmd ${command.cmd}\n`)

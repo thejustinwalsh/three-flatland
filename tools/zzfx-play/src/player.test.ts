@@ -11,12 +11,13 @@ import { getPlaybackStats, playBuffer, playSampleChannels } from './player.js'
  * e2e spec.
  */
 function fakeAudioContext(): {
-  ctx: AudioContext
+  ctx: AudioContext & { currentTime: number }
   buffers: { copyToChannel: ReturnType<typeof vi.fn>; getChannelData: ReturnType<typeof vi.fn> }[]
   sources: {
     buffer: unknown
     playbackRate: { value: number }
     loop: boolean
+    onended: (() => void) | null
     connect: ReturnType<typeof vi.fn>
     start: ReturnType<typeof vi.fn>
   }[]
@@ -34,6 +35,9 @@ function fakeAudioContext(): {
 
   const ctx = {
     destination: {},
+    // Mutable so tests can advance the clock — trackPlayback stamps
+    // startedAt from it and getPlaybackStats derives elapsed against it.
+    currentTime: 0,
     createBuffer: vi.fn(() => {
       const buffer = {
         copyToChannel: vi.fn(),
@@ -51,6 +55,7 @@ function fakeAudioContext(): {
         buffer: undefined as unknown,
         playbackRate: { value: 1 },
         loop: false,
+        onended: null as (() => void) | null,
         connect: vi.fn((target: unknown) => target),
         start: vi.fn(),
       }
@@ -73,7 +78,13 @@ function fakeAudioContext(): {
     }),
   }
 
-  return { ctx: ctx as unknown as AudioContext, buffers, sources, gains, analysers }
+  return {
+    ctx: ctx as unknown as AudioContext & { currentTime: number },
+    buffers,
+    sources,
+    gains,
+    analysers,
+  }
 }
 
 describe('playSampleChannels', () => {
@@ -155,7 +166,12 @@ describe('playBuffer', () => {
    * would throw a TypeError, which the "sets source.buffer directly"
    * assertion below would surface. */
   function fakeDecodedBuffer(): AudioBuffer {
-    return { length: 4410, numberOfChannels: 2, sampleRate: 44100 } as unknown as AudioBuffer
+    return {
+      length: 4410,
+      numberOfChannels: 2,
+      sampleRate: 44100,
+      duration: 4410 / 44100,
+    } as unknown as AudioBuffer
   }
 
   it('sets source.buffer directly to the decoded buffer — no copyToChannel, no getChannelData', () => {
@@ -207,12 +223,18 @@ describe('getPlaybackStats', () => {
     expect(stats.silent).toBe(false)
   })
 
-  it('reports silent:true, peak:0 when the analyser window is untouched', () => {
+  it('reports silent:true, peak:0, and no playback timing when nothing has ever played', () => {
     const { ctx } = fakeAudioContext()
 
     const stats = getPlaybackStats(ctx)
 
-    expect(stats).toEqual({ peak: 0, silent: true })
+    expect(stats).toEqual({
+      peak: 0,
+      silent: true,
+      playing: false,
+      durationSeconds: 0,
+      elapsedSeconds: 0,
+    })
   })
 
   it('a different ctx gets its own analyser — no cross-context leakage', () => {
@@ -225,4 +247,88 @@ describe('getPlaybackStats', () => {
     expect(b.analysers).toHaveLength(1)
     expect(a.analysers[0]).not.toBe(b.analysers[0])
   })
+
+  // #43 — the exact-duration reporting that kills the magic 5000ms e2e
+  // timeouts: the sidecar KNOWS how long the current source lasts.
+  describe('playback timing (#43)', () => {
+    it('reports playing + exact duration/elapsed from the synthesis inputs while a source runs', () => {
+      const { ctx } = fakeAudioContext()
+      ctx.currentTime = 10
+      playSampleChannels(ctx, [new Array(88200).fill(0.1)], 44100, 0.3) // exactly 2s
+
+      ctx.currentTime = 10.5
+      const stats = getPlaybackStats(ctx)
+
+      expect(stats.playing).toBe(true)
+      expect(stats.durationSeconds).toBeCloseTo(2)
+      expect(stats.elapsedSeconds).toBeCloseTo(0.5)
+    })
+
+    it('adjusts duration for a non-default playback rate', () => {
+      const { ctx } = fakeAudioContext()
+      playSampleChannels(ctx, [new Array(88200).fill(0.1)], 44100, 0.3, { rate: 2 })
+
+      expect(getPlaybackStats(ctx).durationSeconds).toBeCloseTo(1)
+    })
+
+    it("playBuffer reports the decoded buffer's own duration", () => {
+      const { ctx } = fakeAudioContext()
+      playBuffer(ctx, fakeDecodedBufferOfDuration(0.1), 0.3)
+
+      const stats = getPlaybackStats(ctx)
+      expect(stats.playing).toBe(true)
+      expect(stats.durationSeconds).toBeCloseTo(0.1)
+    })
+
+    it('flips playing:false the moment the source ends — natural completion or an explicit stop()', () => {
+      const { ctx, sources } = fakeAudioContext()
+      playSampleChannels(ctx, [new Array(88200).fill(0.1)], 44100, 0.3)
+      expect(getPlaybackStats(ctx).playing).toBe(true)
+
+      // commandHandler's stopSong calls source.stop(), which fires the
+      // ended event mid-playback — no waiting out the natural duration.
+      sources[0]!.onended?.()
+
+      const stats = getPlaybackStats(ctx)
+      expect(stats.playing).toBe(false)
+      expect(stats.durationSeconds).toBeCloseTo(2) // still describes the source
+    })
+
+    it('clamps elapsed to the duration and reports playing:false past the natural end', () => {
+      const { ctx } = fakeAudioContext()
+      ctx.currentTime = 0
+      playSampleChannels(ctx, [new Array(44100).fill(0.1)], 44100, 0.3) // 1s
+
+      ctx.currentTime = 5
+      const stats = getPlaybackStats(ctx)
+
+      expect(stats.playing).toBe(false)
+      expect(stats.elapsedSeconds).toBeCloseTo(1)
+      expect(stats.durationSeconds).toBeCloseTo(1)
+    })
+
+    it('a new source replaces the previous timing record — last started wins', () => {
+      const { ctx } = fakeAudioContext()
+      ctx.currentTime = 0
+      playSampleChannels(ctx, [new Array(44100).fill(0.1)], 44100, 0.3) // 1s
+      ctx.currentTime = 0.25
+      playSampleChannels(ctx, [new Array(132300).fill(0.1)], 44100, 0.3) // 3s
+
+      ctx.currentTime = 0.75
+      const stats = getPlaybackStats(ctx)
+
+      expect(stats.durationSeconds).toBeCloseTo(3)
+      expect(stats.elapsedSeconds).toBeCloseTo(0.5)
+      expect(stats.playing).toBe(true)
+    })
+  })
+
+  function fakeDecodedBufferOfDuration(durationSeconds: number): AudioBuffer {
+    return {
+      length: Math.round(durationSeconds * 44100),
+      numberOfChannels: 1,
+      sampleRate: 44100,
+      duration: durationSeconds,
+    } as unknown as AudioBuffer
+  }
 })

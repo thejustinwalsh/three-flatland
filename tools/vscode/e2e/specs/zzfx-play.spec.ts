@@ -18,6 +18,9 @@ const SUSTAINED_PARAMS = [0.5, 0, 300, 0, 1, 1, 1]
 type PlaybackStats = {
   peak: number
   silent: boolean
+  playing: boolean
+  durationSeconds: number
+  elapsedSeconds: number
 }
 
 type ExtensionApi = {
@@ -146,11 +149,19 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
 
         await vscode.commands.executeCommand('threeFlatland.zzfx.playParams', arg.params)
 
-        const deadline = Date.now() + 5000
+        // Spawn allowance only — the moment the sidecar reports the
+        // source's own exact timing (#43), the deadline re-derives from
+        // the REAL remaining play window instead of a magic constant.
+        let deadline = Date.now() + 10_000
+        let derived = false
         let last: Awaited<ReturnType<typeof api.zzfxPlay.getStats>>
         while (Date.now() < deadline) {
           last = await api.zzfxPlay.getStats()
           if (last && !last.silent) return last
+          if (!derived && last?.playing) {
+            derived = true
+            deadline = Date.now() + (last.durationSeconds - last.elapsedSeconds) * 1000 + 1000
+          }
           await new Promise((resolve) => setTimeout(resolve, 100))
         }
         return last

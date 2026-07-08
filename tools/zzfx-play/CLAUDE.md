@@ -246,7 +246,10 @@ cross-talk. `getPlaybackStats()` reads the analyser's current
 time-domain window via `getFloatTimeDomainData` — an out-param "write
 real-time data into this array" call, the same reliable category as
 `copyToChannel`, not the buggy `getChannelData` pattern — and reduces it
-to `{ peak, silent }`. This is wired through the `stats` protocol
+to `{ peak, silent }`, plus the current source's exact timing
+(`playing`/`durationSeconds`/`elapsedSeconds`, from a per-context
+last-started-wins playback record — #43) so e2e waits derive from the
+real play window instead of magic timeouts. This is wired through the `stats` protocol
 command, `PlaySidecarClient.getStats()`, `playSidecarManager.ts`'s
 `getPlaySidecarStats()`, and `extension/index.ts`'s `ExtensionApi` so
 `tools/vscode/e2e/specs/zzfx-play.spec.ts` can play a sound through the
