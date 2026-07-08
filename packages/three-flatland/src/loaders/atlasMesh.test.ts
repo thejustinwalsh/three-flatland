@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { Texture } from 'three'
 import { SpriteSheetLoader } from './SpriteSheetLoader'
 import { getAtlasMesh } from './atlasMeshRegistry'
+import { buildEnvelopeGeometry } from '../pipeline/envelopeGeometry'
 import type { SpriteSheet } from '../sprites/types'
 
 // Drive the loader's private static parse + createSpriteSheet through the
@@ -126,7 +127,7 @@ describe('atlas mesh format extension', () => {
     expect([...mesh.indices]).toEqual([0, 2, 1])
   })
 
-  it('a rotated TexturePacker frame rejects the polygon mesh (quad fallback)', async () => {
+  it('a rotated TexturePacker frame parses the same unrotated-space mesh as an unrotated one', async () => {
     const sheet = await mockLoad({
       frames: [
         {
@@ -143,7 +144,95 @@ describe('atlas mesh format extension', () => {
       ],
       meta: { image: 'test.png', size: { w: 128, h: 128 }, scale: '1' },
     })
-    expect(sheet.getFrame('rot').mesh).toBeNull()
+
+    // Mesh positions/UVs are derived from sourceWidth/sourceHeight and the
+    // trim rect, neither of which vary with `rotated` — so this matches the
+    // unrotated 'poly' case above verbatim. Atlas rotation is a sampling-time
+    // concern (ROTATED_FRAME_MASK unrotation in the shader), not a mesh one.
+    const mesh = sheet.getFrame('rot').mesh!
+    expect(mesh.vertexCount).toBe(3)
+    expect(mesh.verts[0]).toBeCloseTo(-0.5)
+    expect(mesh.verts[1]).toBeCloseTo(0.5)
+    expect(mesh.verts[2]).toBeCloseTo(0)
+    expect(mesh.verts[3]).toBeCloseTo(1)
+    expect(mesh.verts[8]).toBeCloseTo(0)
+    expect(mesh.verts[9]).toBeCloseTo(-0.5)
+    expect(mesh.verts[10]).toBeCloseTo(0.5)
+    expect(mesh.verts[11]).toBeCloseTo(0)
+    expect([...mesh.indices]).toEqual([0, 2, 1])
+  })
+
+  it('a rotated ASYMMETRIC trimmed frame keeps unrotated-space positions and trim-relative UVs', async () => {
+    // 64×32 source, trimmed to a 40×20 rect at (8, 6), packed rotated.
+    // Asymmetric dims would expose any accidental w/h swap in the mesh
+    // math (a square frame cannot); trim exposes the UV denominators.
+    const sheet = await mockLoad({
+      frames: [
+        {
+          filename: 'asym',
+          frame: { x: 0, y: 0, w: 40, h: 20 },
+          rotated: true,
+          trimmed: true,
+          spriteSourceSize: { x: 8, y: 6, w: 40, h: 20 },
+          sourceSize: { w: 64, h: 32 },
+          vertices: [
+            [8, 6], // trim-rect top-left in source pixels
+            [48, 6], // trim-rect top-right
+            [28, 26], // trim-rect bottom-center
+          ],
+          triangles: [[0, 1, 2]],
+        },
+      ],
+      meta: { image: 'test.png', size: { w: 128, h: 128 }, scale: '1' },
+    })
+
+    const mesh = sheet.getFrame('asym').mesh!
+    expect(mesh.vertexCount).toBe(3)
+    // (8,6) source px → local ((8/64)-0.5, 0.5-(6/32)) = (-0.375, 0.3125),
+    // trim-relative uv ((8-8)/40, 1-(6-6)/20) = (0, 1)
+    expect(mesh.verts[0]).toBeCloseTo(-0.375)
+    expect(mesh.verts[1]).toBeCloseTo(0.3125)
+    expect(mesh.verts[2]).toBeCloseTo(0)
+    expect(mesh.verts[3]).toBeCloseTo(1)
+    // (28,26) → local ((28/64)-0.5, 0.5-(26/32)) = (-0.0625, -0.3125),
+    // uv ((28-8)/40, 1-(26-6)/20) = (0.5, 0)
+    expect(mesh.verts[8]).toBeCloseTo(-0.0625)
+    expect(mesh.verts[9]).toBeCloseTo(-0.3125)
+    expect(mesh.verts[10]).toBeCloseTo(0.5)
+    expect(mesh.verts[11]).toBeCloseTo(0)
+    expect([...mesh.indices]).toEqual([0, 2, 1])
+  })
+
+  it('a rotated polygon frame contributes its hull to buildEnvelopeGeometry (previously excluded)', async () => {
+    const sheet = await mockLoad({
+      frames: [
+        {
+          filename: 'rot',
+          ...baseFrame,
+          rotated: true,
+          vertices: [
+            [0, 0],
+            [64, 0],
+            [32, 64],
+          ],
+          triangles: [[0, 1, 2]],
+        },
+      ],
+      meta: { image: 'test.png', size: { w: 128, h: 128 }, scale: '1' },
+    })
+
+    // Single rotated frame, mesh present → registry sees it as `complete`,
+    // and the envelope hull is the triangle itself, not the 4-corner quad
+    // fallback a null mesh would have degraded to.
+    expect(getAtlasMesh(sheet.texture)!.complete).toBe(true)
+    const geometry = buildEnvelopeGeometry(sheet.texture)!
+    const position = geometry.getAttribute('position')
+    expect(position.count).toBe(3)
+    const points = new Set<string>()
+    for (let i = 0; i < position.count; i++) {
+      points.add(`${position.getX(i).toFixed(1)},${position.getY(i).toFixed(1)}`)
+    }
+    expect(points).toEqual(new Set(['-0.5,0.5', '0.5,0.5', '0.0,-0.5']))
   })
 
   it('a meshless sheet over a meshed texture degrades the envelope (no clipping)', async () => {
