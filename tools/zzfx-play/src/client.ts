@@ -65,7 +65,15 @@ export class PlaySidecarClient {
         return
       }
       if (!response.ok) {
-        this.emitError(new Error(`zzfx-play: ${response.cmd} failed: ${response.error}`))
+        // `response.code` (e.g. `'TONE_LOADING'`) rides along on the
+        // emitted Error as a `.code` property, not parsed back out of the
+        // message — lets a caller (register.ts's cold-start retry)
+        // correlate a specific failure mode without a formal request id.
+        this.emitError(
+          Object.assign(new Error(`zzfx-play: ${response.cmd} failed: ${response.error}`), {
+            ...(response.code !== undefined ? { code: response.code } : {}),
+          })
+        )
       }
     })
 

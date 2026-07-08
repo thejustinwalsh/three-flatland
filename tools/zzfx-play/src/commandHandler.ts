@@ -141,10 +141,17 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
           return { ok: true, cmd: 'stats', stats: backend.getStats() }
       }
     } catch (err) {
+      // Generic — never special-cased to a particular backend method. Any
+      // thrown error carrying a `.code` (currently only playToneSynth's
+      // cold-start Nack, see sidecar.ts) propagates it onto the Nack;
+      // every other failure just omits the field.
+      const code =
+        err instanceof Error && 'code' in err ? String((err as { code?: unknown }).code) : undefined
       return {
         ok: false,
         cmd: command.cmd,
         error: err instanceof Error ? err.message : String(err),
+        ...(code !== undefined ? { code } : {}),
       }
     }
   }

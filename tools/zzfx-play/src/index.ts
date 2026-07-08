@@ -10,6 +10,8 @@ export type {
   PlayCommand,
   PlayFileCommand,
   PlaySongCommand,
+  PlayToneSynthCommand,
+  PlayWadSynthCommand,
   Response,
   ShutdownCommand,
   Song,
@@ -17,4 +19,6 @@ export type {
   StatsCommand,
   StopCommand,
   StopSongCommand,
+  ToneSynthType,
+  WadSynthSource,
 } from './protocol.js'

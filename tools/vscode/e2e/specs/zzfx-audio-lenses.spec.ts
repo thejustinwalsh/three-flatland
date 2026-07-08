@@ -45,18 +45,44 @@ const REVERB_SFX_LINE = lineOf("reverb: { impulse: 'click.wav' }") // #44, 2-lev
 const THUNDER_SFX_LINE = lineOf("new Audio('thunder.ogg')") // slow-search tier only
 const MISSING_SFX_LINE = lineOf("new Audio('nonexistent-sound.mp3')") // → $(search) Not Found
 
-// #44's synthesis-vocabulary decoy block — every line must surface ZERO
-// lenses (no file involved: oscillator shapes, noise, mic, sprite
-// segments, a stock preset).
+// #47: Wad's 5 allowlisted oscillator/noise keywords — each now a real,
+// toggling, audible wad.synth lens (previously audio.file NEGATIVES —
+// see audio-sources.ts's own file doc comment).
+const WAD_SINE_LINE = lineOf("new Wad({ source: 'sine' })")
+const WAD_SQUARE_LINE = lineOf("new Wad({ source: 'square' })")
+const WAD_SAWTOOTH_LINE = lineOf("new Wad({ source: 'sawtooth' })")
+const WAD_TRIANGLE_LINE = lineOf("new Wad({ source: 'triangle' })")
+const WAD_NOISE_LINE = lineOf("new Wad({ source: 'noise' })")
+const WAD_OSCILLATOR_LINES = [
+  WAD_SINE_LINE,
+  WAD_SQUARE_LINE,
+  WAD_SAWTOOTH_LINE,
+  WAD_TRIANGLE_LINE,
+  WAD_NOISE_LINE,
+]
+
+// #47: wad.synth bare-identifier var-ref — one resolvable, one whose
+// declaration isn't a valid oscillator config (a lens exists either way —
+// the scanner always emits for a bare identifier — but only the first
+// actually plays).
+const WAD_VAR_RESOLVABLE_LINE = lineOf('new Wad(wadOscillatorConfig)')
+const WAD_VAR_UNRESOLVABLE_LINE = lineOf('new Wad(invalidWadConfig)')
+
+// #44's TRUE decoy block — every line must surface ZERO lenses (mic, a
+// stock preset, sprite segments — none of these are files OR a valid
+// wad.synth oscillator config).
 const SYNTH_DECOY_LINES = [
-  "new Wad({ source: 'square' })",
-  "new Wad({ source: 'sawtooth' })",
-  "new Wad({ source: 'triangle' })",
-  "new Wad({ source: 'noise' })",
   "new Wad({ source: 'mic' })",
   'new Wad({ sprite: { hello: [0, 0.4] } })',
   'new Wad(Wad.presets.hiHatClosed)',
 ].map(lineOf)
+
+// #47: Tone.js triggerAttackRelease positives (pitched, no-note,
+// chord-with-explicit-voice) and the one fully-static-or-nothing negative.
+const TONE_NOTE_LINE = lineOf("triggerAttackRelease('C4', '8n')")
+const TONE_NOISE_LINE = lineOf("new Tone.NoiseSynth().toDestination().triggerAttackRelease('8n')")
+const TONE_CHORD_LINE = lineOf('new Tone.PolySynth(Tone.FMSynth)')
+const TONE_DYNAMIC_NOTE_LINE = lineOf("triggerAttackRelease(dynamicNote, '8n')")
 
 type LensCommand = { command: string; title: string; arguments?: unknown[] }
 type ResolvedLens = { range: { start: { line: number } }; command?: LensCommand }
@@ -226,25 +252,12 @@ async function executeVSCodeCommand(
   )
 }
 
-/** One stats snapshot — used to derive lens-poll deadlines from the
- * current source's own reported timing (#43). */
-async function getStatsOnce(
-  evaluateInVSCode: <R, Arg = undefined>(
-    fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
-    arg?: Arg
-  ) => Promise<R>
-): Promise<PlaybackStats | undefined> {
-  return evaluateInVSCode(async (vscode) => {
-    const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
-    if (ext && !ext.isActive) await ext.activate()
-    return (ext!.exports as ExtensionApi).zzfxPlay.getStats()
-  })
-}
-
 /** Polls {@link fetchLenses} until a lens titled `title` exists at
- * `line` — the #46 toggle's face changes land via onDidChangeCodeLenses,
- * asynchronously to the command that caused them. Returns `undefined`
- * once `timeoutMs` passes without one. */
+ * `line` — still needed for the async resolution states that DO change a
+ * lens's presence/arguments (audio.file's searching→resolved/not-found
+ * settling, #41), even though playback state no longer does (Play/Stop
+ * are now static — see provider.ts's file doc comment). Returns
+ * `undefined` once `timeoutMs` passes without one. */
 async function pollLensAt(
   evaluateInVSCode: <R, Arg = undefined>(
     fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
@@ -273,30 +286,47 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       .map((l) => l.command?.title ?? null)
       .filter((t): t is string => t !== null)
 
-    // 2 zzfx.call findings (Play+Edit each) + 4 zzfxm.song findings (ONE
-    // toggling Play⇄Stop lens each — #46 collapsed the old Play+Stop
-    // pair; incl. #43's long song) + 5 RESOLVABLE audio.file findings
-    // (Play each — 3 fast tiers + #44's reverb impulse + thunder.ogg via
-    // the slow search) + playMissingSfx's `$(search) Not Found`
-    // informational lens. Every decoy — the commented-out ones AND #44's
-    // uncommented synthesis block — must contribute ZERO lenses, proven
-    // by the exact total below, not just presence of the positive cases.
-    expect(lenses).toHaveLength(14)
-    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(11)
-    // Nothing is playing — the toggle renders ⏹ Stop nowhere at rest.
-    expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(0)
+    // Stakeholder reversal of #46's toggle: every playable kind besides
+    // zzfx.call now carries a STATIC Play+Stop pair, both always present
+    // regardless of playback state (no more single toggling lens). So
+    // each of the counts below is DOUBLED relative to the toggle era:
+    // 2 zzfx.call findings (Play+Edit each, unaffected) + 4 zzfxm.song
+    // findings (Play+Stop each; incl. #43's long song) + 5 RESOLVABLE
+    // audio.file findings (Play+Stop each — 3 fast tiers + #44's reverb
+    // impulse + thunder.ogg via the slow search) + playMissingSfx's
+    // `$(search) Not Found` informational lens (unaffected — no Stop
+    // pairs with a not-found state) + #47's 5 wad.synth oscillator/noise
+    // findings + 2 wad.synth var-ref findings (Play+Stop each — the
+    // scanner always emits for a bare identifier, so BOTH var-ref lines
+    // get a pair even though only one actually plays) + 3 tone.synth
+    // findings (Play+Stop each). Every decoy — the commented-out ones,
+    // #44's TRUE decoy block (mic/sprite/preset), and tone.synth's
+    // non-static-note negative — must contribute ZERO lenses, proven by
+    // the exact total below, not just presence of the positive cases.
+    expect(lenses).toHaveLength(43)
+    // Play count is unchanged from the toggle era — exactly one Play per
+    // playable finding, same as before; what's new is Stop now
+    // accompanying every one of them unconditionally.
+    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(21)
+    expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(19)
     expect(titles.filter((t) => t === '⚙ Edit')).toHaveLength(1)
     expect(titles.filter((t) => t === '⚙ Edit (variable)')).toHaveLength(1)
     expect(titles.filter((t) => t === '$(search) Not Found')).toHaveLength(1)
 
-    // Every zzfxm.song and audio.file lens routes to the new commands,
-    // proving provider.ts's per-kind dispatch (not just zzfx.call's
-    // pre-existing playParams/openEditor).
+    // Every zzfxm.song and audio.file Play/Stop pair routes to the right
+    // commands, proving provider.ts's per-kind dispatch (not just
+    // zzfx.call's pre-existing playParams/openEditor).
     expect(lensAt(lenses, FANFARE_CALL_LINE, '▶ Play')?.command?.command).toBe(
       'threeFlatland.zzfx.playSong'
     )
+    expect(lensAt(lenses, FANFARE_CALL_LINE, '⏹ Stop')?.command?.command).toBe(
+      'threeFlatland.zzfx.stopSong'
+    )
     expect(lensAt(lenses, JUMP_SFX_LINE, '▶ Play')?.command?.command).toBe(
       'threeFlatland.zzfx.playFile'
+    )
+    expect(lensAt(lenses, JUMP_SFX_LINE, '⏹ Stop')?.command?.command).toBe(
+      'threeFlatland.zzfx.stopSong'
     )
     // The resolved absolute path is baked into the lens's own command
     // arguments — proving audioFileResolver.ts's workspace-root tier
@@ -305,10 +335,35 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(String(jumpArgs?.[0])).toMatch(/sounds[/\\]jump\.wav$/)
 
     // Unresolvable path (playMissingSfx) — an informational
-    // `$(search) Not Found` lens, not silent absence (#41).
+    // `$(search) Not Found` lens, not silent absence (#41). No Stop
+    // pair for an unresolved path (provider.ts only adds Stop for
+    // audio.file's 'resolved' state).
     expect(lensAt(lenses, MISSING_SFX_LINE, '$(search) Not Found')?.command?.command).toBe(
       'threeFlatland.zzfx.playFile'
     )
+    expect(lensAt(lenses, MISSING_SFX_LINE, '⏹ Stop')).toBeUndefined()
+
+    // #47: every wad.synth and tone.synth Play/Stop pair routes to its
+    // own new command, proving provider.ts's dispatch covers all 5
+    // finding kinds now, not just the original 3.
+    for (const line of [
+      ...WAD_OSCILLATOR_LINES,
+      WAD_VAR_RESOLVABLE_LINE,
+      WAD_VAR_UNRESOLVABLE_LINE,
+    ]) {
+      expect(lensAt(lenses, line, '▶ Play')?.command?.command).toBe(
+        'threeFlatland.zzfx.playWadSynth'
+      )
+      expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.zzfx.stopSong')
+    }
+    for (const line of [TONE_NOTE_LINE, TONE_NOISE_LINE, TONE_CHORD_LINE]) {
+      expect(lensAt(lenses, line, '▶ Play')?.command?.command).toBe(
+        'threeFlatland.zzfx.playToneSynth'
+      )
+      expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.zzfx.stopSong')
+    }
+    // The fully-static-or-nothing tone.synth negative surfaces no lens.
+    expect(lenses.filter((l) => l.range.start.line === TONE_DYNAMIC_NOTE_LINE)).toHaveLength(0)
   })
 
   // #41 slow tier: thunder.ogg misses every fast tier (it lives only at
@@ -377,9 +432,9 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(stats!.peak).toBeGreaterThan(0)
 
     // And the lens healed back to ▶ Play at the found path. Stop the
-    // still-running playback first — since #46's toggle the finding's
-    // lens face reads ⏹ Stop WHILE its sound plays, and this assertion
-    // is about the resolver's healed path, not the playback state.
+    // still-running playback for test hygiene before the next spec —
+    // Play/Stop are static now, so this isn't about hiding a toggled
+    // face, just not leaving audio running into the next test.
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.zzfx.stopSong', [])
     playLens = await pollLensAt(evaluateInVSCode, THUNDER_SFX_LINE, '▶ Play')
     expect(String(playLens?.command?.arguments?.[0])).toMatch(/media[/\\]deep[/\\]thunder\.ogg$/)
@@ -400,9 +455,9 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(playStats!.silent).toBe(false)
     expect(playStats!.peak).toBeGreaterThan(0)
 
-    // Since #46's toggle there is no at-rest ⏹ Stop lens to grab — this
-    // executes the exact command the toggled lens carries while playing
-    // (see the toggle spec below for the lens-face assertions).
+    // Executes stopSong directly rather than discovering the Stop lens —
+    // see the static-lens-pair spec below for the lens/command assertion
+    // itself.
     const silentAfterStop = await executeAndPollSilent(
       evaluateInVSCode,
       'threeFlatland.zzfx.stopSong',
@@ -466,14 +521,14 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
   // #44 expanded Wad coverage: the convolution-reverb impulse (a file
   // reference TWO object levels down — {reverb:{impulse}}) gets a ▶ Play
-  // lens with the resolved real path baked into its arguments, while the
-  // full synthesis vocabulary (square/sawtooth/triangle/noise/mic),
-  // sprite segments, and a stock preset — all uncommented, all live code
-  // — surface ZERO lenses, asserted per line, not just via the exact
-  // total above. Audibility for the click.wav path is already proven by
-  // the .wav playFile test (e2e rationing — one audibility proof per
-  // output path).
-  test("Wad reverb impulse (nested 2 levels) gets a resolved ▶ Play lens; Wad's synthesis modes get none", async ({
+  // lens with the resolved real path baked into its arguments. Since #47
+  // gave Wad's oscillator/noise keywords their OWN wad.synth finding
+  // kind, only the TRUE decoy block — mic (live input), sprite segments,
+  // and a stock preset — surfaces ZERO lenses now; asserted per line, not
+  // just via the exact total above. Audibility for the click.wav path is
+  // already proven by the .wav playFile test (e2e rationing — one
+  // audibility proof per output path).
+  test("Wad reverb impulse (nested 2 levels) gets a resolved ▶ Play lens; Wad's mic/sprite/preset decoys get none", async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchSettledLenses(evaluateInVSCode)
@@ -511,9 +566,9 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, LONG_MARCH_CALL_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.zzfx.playSong')
-    // Since #46's toggle, ⏹ Stop only exists WHILE playing — this test's
-    // stop phase executes the command the toggled lens carries (the
-    // toggle spec below asserts the lens faces themselves).
+    // This test's stop phase executes stopSong directly rather than
+    // discovering the (now-always-present) Stop lens — see the
+    // static-lens-pair spec below for the lens/command assertion itself.
 
     const result = await evaluateInVSCode(
       async (vscode, arg) => {
@@ -637,90 +692,176 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(result.stoppedAtSeconds!).toBeLessThan(result.durationSeconds! - 1)
   })
 
-  // #46 TOGGLE: song and file findings carry ONE lens whose face follows
-  // the active playback — ▶ Play at rest, ⏹ Stop while THAT finding's
-  // sound plays, back to ▶ Play on a manual stop (immediately), on a
-  // replacement play (the new sound steals the active slot), or at the
-  // natural end (the stats.playing watcher — no click anywhere).
-  test('Play⇄Stop toggle (#46): ⏹ Stop while playing, steals to a new sound, immediate revert on stop, auto-revert at the natural end', async ({
+  // STATIC Play+Stop PAIR (stakeholder reversal of #46's toggle — see
+  // provider.ts's file doc comment for the full rationale): both lenses
+  // are always present, at rest AND while playing, and neither one's
+  // title/command ever changes. This is the direct proof of the reverted
+  // design — the old toggle spec asserted the OPPOSITE (one lens whose
+  // face flips); this asserts the lens SET itself never changes shape.
+  test('Play+Stop static pair: both lenses are always present, at rest and while playing, byte-identical throughout', async ({
     evaluateInVSCode,
   }) => {
-    // At rest: exactly ONE lens on the long-song line, and it's ▶ Play.
     let lenses = await fetchLenses(evaluateInVSCode)
-    const atRest = lenses.filter((l) => l.range.start.line === LONG_MARCH_CALL_LINE)
-    expect(atRest).toHaveLength(1)
-    expect(atRest[0]!.command?.title).toBe('▶ Play')
-    const playLens = atRest[0]!
+    const atRest = lenses
+      .filter((l) => l.range.start.line === LONG_MARCH_CALL_LINE)
+      .sort((a, b) => (a.command?.title ?? '').localeCompare(b.command?.title ?? ''))
+    expect(atRest).toHaveLength(2)
+    const playLens = atRest.find((l) => l.command?.title === '▶ Play')!
+    const stopLens = atRest.find((l) => l.command?.title === '⏹ Stop')!
+    expect(playLens.command?.command).toBe('threeFlatland.zzfx.playSong')
+    expect(stopLens.command?.command).toBe('threeFlatland.zzfx.stopSong')
 
-    // Play → THIS finding's lens toggles to ⏹ Stop; every other song
-    // lens stays ▶ Play; the line's ▶ Play face is gone (one lens, one
-    // face — not a second lens appearing).
+    // Play — the lens SET doesn't change at all: same two lenses, same
+    // titles, same commands. No refresh-triggered recompute, no face flip.
     await executeAndPollAudible(
       evaluateInVSCode,
       playLens.command!.command,
       playLens.command!.arguments
     )
-    const stopLens = await pollLensAt(evaluateInVSCode, LONG_MARCH_CALL_LINE, '⏹ Stop')
-    expect(stopLens?.command?.command).toBe('threeFlatland.zzfx.stopSong')
     lenses = await fetchLenses(evaluateInVSCode)
-    expect(lensAt(lenses, LONG_MARCH_CALL_LINE, '▶ Play')).toBeUndefined()
-    expect(lensAt(lenses, FANFARE_CALL_LINE, '▶ Play')).toBeDefined()
-    expect(lensAt(lenses, FANFARE_CALL_LINE, '⏹ Stop')).toBeUndefined()
+    const whilePlaying = lenses
+      .filter((l) => l.range.start.line === LONG_MARCH_CALL_LINE)
+      .sort((a, b) => (a.command?.title ?? '').localeCompare(b.command?.title ?? ''))
+    expect(whilePlaying).toEqual(atRest)
 
-    // A NEW sound — the click.wav audio.file lens — steals the active
-    // slot: the song's lens reverts without anyone clicking its stop
-    // (and proves playFile marks its own finding active, cross-kind).
+    // Stop actually silences it (commandHandler.ts's existing behavior,
+    // unchanged) — and the lens set is STILL exactly the same afterward.
+    const silentAfterStop = await executeAndPollSilent(
+      evaluateInVSCode,
+      'threeFlatland.zzfx.stopSong',
+      []
+    )
+    expect(silentAfterStop).toBe(true)
+    lenses = await fetchLenses(evaluateInVSCode)
+    const afterStop = lenses
+      .filter((l) => l.range.start.line === LONG_MARCH_CALL_LINE)
+      .sort((a, b) => (a.command?.title ?? '').localeCompare(b.command?.title ?? ''))
+    expect(afterStop).toEqual(atRest)
+
+    // Clicking Stop when nothing is playing is a harmless no-op — the
+    // lens is present and clickable regardless of playback state.
+    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.zzfx.stopSong', [])
+  })
+
+  // THE regression guard for the exact bug that motivated reverting
+  // #46's toggle: with a single toggling lens, Play's own command/title
+  // changed to Stop after one click, so a second rapid click couldn't
+  // even find a Play lens to click until onDidChangeCodeLenses's async
+  // round trip settled. With a static pair, Play's command/title never
+  // changes — 5 back-to-back invocations, no delay, no intervening lens
+  // re-fetch between calls, must all succeed, and the lens pair must
+  // read byte-identical before, immediately after all 5, and after an
+  // explicit stop.
+  test('rapid-fire Play: 5 back-to-back plays with zero refresh-wait between them succeed, lens pair never changes', async ({
+    evaluateInVSCode,
+  }) => {
+    const lenses = await fetchLenses(evaluateInVSCode)
+    const playLens = lensAt(lenses, LONG_MARCH_CALL_LINE, '▶ Play')!
+    expect(playLens.command?.command).toBe('threeFlatland.zzfx.playSong')
+
+    const result = await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+
+        async function lensPairAt(line: number) {
+          const resolved = (await vscode.commands.executeCommand(
+            'vscode.executeCodeLensProvider',
+            uri,
+            100
+          )) as Array<{
+            range: { start: { line: number } }
+            command?: { title: string; command: string }
+          }>
+          return resolved
+            .filter((l) => l.range.start.line === line)
+            .map((l) => ({ title: l.command?.title, command: l.command?.command }))
+            .sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''))
+        }
+
+        const before = await lensPairAt(arg.line)
+
+        // 5 rapid, back-to-back Play invocations — exactly the scenario
+        // the toggle broke.
+        for (let i = 0; i < 5; i++) {
+          await vscode.commands.executeCommand(arg.playCommand, ...(arg.playArgs ?? []))
+        }
+        const afterRapidFire = await lensPairAt(arg.line)
+
+        await vscode.commands.executeCommand('threeFlatland.zzfx.stopSong')
+        const afterStop = await lensPairAt(arg.line)
+
+        return { before, afterRapidFire, afterStop }
+      },
+      {
+        file: SOUNDS_FILE,
+        line: LONG_MARCH_CALL_LINE,
+        playCommand: playLens.command!.command,
+        playArgs: playLens.command!.arguments,
+      }
+    )
+
+    const expectedPair = [
+      { title: '⏹ Stop', command: 'threeFlatland.zzfx.stopSong' },
+      { title: '▶ Play', command: 'threeFlatland.zzfx.playSong' },
+    ]
+    expect(result.before).toEqual(expectedPair)
+    expect(result.afterRapidFire).toEqual(expectedPair)
+    expect(result.afterStop).toEqual(expectedPair)
+  })
+
+  // The sidecar's single currentSource slot still means only ONE sound
+  // plays at a time even though the LENS no longer visualizes which one
+  // — this proves that mechanism still works: starting a NEW sound
+  // supersedes whatever was playing before it, cross-kind, exactly as it
+  // did under the toggle (just observed via audio state now, not a lens
+  // face flip, since there's no lens face to flip anymore).
+  test('starting a new sound supersedes whatever was playing before it (single current-source slot, cross-kind)', async ({
+    evaluateInVSCode,
+  }) => {
+    const lenses = await fetchLenses(evaluateInVSCode)
+    const songLens = lensAt(lenses, LONG_MARCH_CALL_LINE, '▶ Play')!
     const clickLens = lensAt(lenses, CLICK_SFX_LINE, '▶ Play')!
-    await executeVSCodeCommand(
+
+    const songStats = await executeAndPollAudible(
+      evaluateInVSCode,
+      songLens.command!.command,
+      songLens.command!.arguments
+    )
+    expect(songStats?.playing).toBe(true)
+
+    // A NEW sound steals the single current-source slot — playFile marks
+    // its own finding active the same way playSong does, cross-kind.
+    const clickStats = await executeAndPollAudible(
       evaluateInVSCode,
       clickLens.command!.command,
       clickLens.command!.arguments
     )
-    expect(await pollLensAt(evaluateInVSCode, LONG_MARCH_CALL_LINE, '▶ Play')).toBeDefined()
+    expect(clickStats).toBeDefined()
+    expect(clickStats!.silent).toBe(false)
+    expect(clickStats!.peak).toBeGreaterThan(0)
 
-    // Stop mid-play reverts immediately: play again, click the toggled
-    // ⏹ Stop, the lens is ▶ Play again well before the 7.68s natural end.
-    await executeAndPollAudible(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
-    const stopAgain = await pollLensAt(evaluateInVSCode, LONG_MARCH_CALL_LINE, '⏹ Stop')
-    expect(stopAgain).toBeDefined()
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      stopAgain!.command!.command,
-      stopAgain!.command!.arguments
-    )
-    expect(await pollLensAt(evaluateInVSCode, LONG_MARCH_CALL_LINE, '▶ Play')).toBeDefined()
-
-    // Auto-revert: play once more and let it END NATURALLY — no stop
-    // click anywhere; the watcher clears off #43's stats.playing. The
-    // wait cap derives from the source's own reported remaining window.
-    await executeAndPollAudible(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
-    expect(await pollLensAt(evaluateInVSCode, LONG_MARCH_CALL_LINE, '⏹ Stop')).toBeDefined()
-    const stats = await getStatsOnce(evaluateInVSCode)
-    const remainingMs = stats
-      ? Math.max(0, (stats.durationSeconds - stats.elapsedSeconds) * 1000)
-      : 10_000
-    expect(
-      await pollLensAt(evaluateInVSCode, LONG_MARCH_CALL_LINE, '▶ Play', remainingMs + 3000)
-    ).toBeDefined()
+    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.zzfx.stopSong', [])
   })
 
-  // #46 SOURCE-EDITOR BINDING: a playing sound belongs to its source
-  // document. Phase 1 exercises the switch listener (a DIFFERENT doc
-  // becomes the active editor); phase 2 makes the source the ONLY open
-  // editor and closes it, which routes through onDidCloseTextDocument —
-  // the switch listener sees `undefined` then and deliberately ignores
-  // it (a terminal/panel focus must never false-stop). Both phases prove
-  // the stop landed MID-playback (silence observed while
-  // elapsed < duration), same discipline as the #43 spec.
-  test('source binding (#46): switching to another document stops the sound; closing the source document stops it too', async ({
+  // SOURCE-EDITOR BINDING (kept working across the #46 toggle reversal —
+  // see provider.ts's file doc comment): a playing sound belongs to its
+  // source document. Phase 1 exercises the switch listener (a DIFFERENT
+  // doc becomes the active editor); phase 2 makes the source the ONLY
+  // open editor and closes it, which routes through
+  // onDidCloseTextDocument — the switch listener sees `undefined` then
+  // and deliberately ignores it (a terminal/panel focus must never
+  // false-stop). Both phases prove the stop landed MID-playback (silence
+  // observed while elapsed < duration), same discipline as the #43 spec.
+  // Unlike the toggle era, there's no lens face to confirm reverted —
+  // Play/Stop are static now, so audibility is the only signal that
+  // matters here.
+  test('source binding: switching to another document stops the sound; closing the source document stops it too', async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode) // audio-sources.ts is now the active editor
@@ -769,9 +910,6 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       { otherFile: 'src/sounds.ts' }
     )
     expect(stoppedBySwitch.stopped).toBe(true)
-    // And the lens reverted (pollLensAt re-shows the source doc — fine,
-    // the sound is already stopped).
-    expect(await pollLensAt(evaluateInVSCode, LONG_MARCH_CALL_LINE, '▶ Play')).toBeDefined()
 
     // Phase 2 — make the source doc the ONLY editor, play, close it.
     await evaluateInVSCode(async (vscode) => {

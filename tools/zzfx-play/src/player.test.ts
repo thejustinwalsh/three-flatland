@@ -30,7 +30,15 @@ function fakeAudioContext(): {
     connect: ReturnType<typeof vi.fn>
     start: ReturnType<typeof vi.fn>
   }[]
-  gains: { gain: { value: number }; connect: ReturnType<typeof vi.fn> }[]
+  gains: {
+    gain: {
+      value: number
+      cancelScheduledValues: ReturnType<typeof vi.fn>
+      setValueAtTime: ReturnType<typeof vi.fn>
+    }
+    connect: ReturnType<typeof vi.fn>
+    disconnect: ReturnType<typeof vi.fn>
+  }[]
   analysers: {
     fftSize: number
     connect: ReturnType<typeof vi.fn>
@@ -72,7 +80,11 @@ function fakeAudioContext(): {
       return source
     }),
     createGain: vi.fn(() => {
-      const gain = { gain: { value: 0 }, connect: vi.fn() }
+      const gain = {
+        gain: { value: 0, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn() },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }
       gains.push(gain)
       return gain
     }),
@@ -669,7 +681,7 @@ describe('playWadSynth', () => {
       expect(stats.elapsedSeconds).toBe(10_000)
     })
 
-    it('flips playing:false only when the real play() promise resolves — natural end or stop()', async () => {
+    it('flips playing:false when the real play() promise resolves (natural end) — chained through an extra microtask hop', async () => {
       const { ctx } = fakeAudioContext()
       const { Wad, resolvePlay } = fakeWadInstance()
 
@@ -677,25 +689,27 @@ describe('playWadSynth', () => {
       expect(getPlaybackStats(ctx).playing).toBe(true)
 
       resolvePlay()
+      // Two microtask hops: wad.play()'s promise resolving -> our own
+      // `ended`'s .then (resolveEnded) -> trackPlayback's `ended.then`
+      // that flips `record.ended`.
+      await Promise.resolve()
       await Promise.resolve()
 
       expect(getPlaybackStats(ctx).playing).toBe(false)
     })
 
-    it('stop() does not itself flip `ended` — only the promise resolving does, matching Wad.stop() firing onended for real', async () => {
+    it("stop() flips `ended` immediately — doesn't wait on Wad's own onended/stop-ramp timing (#47 hardening)", async () => {
       const { ctx } = fakeAudioContext()
-      const { Wad, instance, resolvePlay } = fakeWadInstance()
+      const { Wad, instance } = fakeWadInstance()
 
       const handle = playWadSynth(ctx, Wad, { source: 'sine' }, 1)
       handle.stop()
       expect(instance.stop).toHaveBeenCalledTimes(1)
-      // stop() alone doesn't resolve the fake's play() promise — a real
-      // Wad's stop() DOES trigger its own onended, but that's Wad's
-      // responsibility, not playWadSynth's; this proves playWadSynth
-      // doesn't double-resolve or short-circuit it itself.
-      expect(getPlaybackStats(ctx).playing).toBe(true)
-
-      resolvePlay()
+      // `ended` is OUR OWN manually-resolvable promise — stop() resolves
+      // it directly, one microtask hop through trackPlayback's `.then`,
+      // never waiting on the fake's play() promise (which is NEVER
+      // resolved in this test) the way the real Wad.stop()'s onended
+      // eventually would be.
       await Promise.resolve()
       expect(getPlaybackStats(ctx).playing).toBe(false)
     })

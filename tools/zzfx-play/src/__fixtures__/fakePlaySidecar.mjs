@@ -50,6 +50,19 @@ rl.on('line', (line) => {
       send({ ok: true, cmd: 'playFile' })
       return
     case 'playToneSynth':
+      // Sentinel note, same reasoning as `play`'s -999 above — a real
+      // client can only send well-formed commands, so a coded-Nack path
+      // needs a trigger reachable through the real public
+      // playToneSynth() method (#47 cold-start retry correlation).
+      if (command.note === '__COLD_START_TEST__') {
+        send({
+          ok: false,
+          cmd: 'playToneSynth',
+          error: 'Tone.js is still loading — try again in a moment',
+          code: 'TONE_LOADING',
+        })
+        return
+      }
       // No-op ack — this fixture never touches tone/web-audio-daw (see
       // client.test.ts); it only proves the wire message reaches here.
       send({ ok: true, cmd: 'playToneSynth' })

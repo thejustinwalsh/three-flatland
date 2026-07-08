@@ -148,6 +148,11 @@ export type PlaybackStats = {
 }
 
 export type Ack = { ok: true; cmd: Exclude<Command['cmd'], 'stats'> }
-export type Nack = { ok: false; cmd: Command['cmd']; error: string }
+/** `code` is a machine-readable tag for a specific, callers-may-need-to-
+ * react-to failure mode — currently only `'TONE_LOADING'` (see
+ * `sidecar.ts`'s `playToneSynth` cold-start Nack). Absent for every other
+ * failure; never parsed out of `error`'s message text — the code IS the
+ * contract, the message is for humans. */
+export type Nack = { ok: false; cmd: Command['cmd']; error: string; code?: string }
 export type StatsAck = { ok: true; cmd: 'stats'; stats: PlaybackStats }
 export type Response = Ack | Nack | StatsAck

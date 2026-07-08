@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import type { CodelensServiceClient, Finding } from '@three-flatland/codelens-service'
-import type { PlaySidecarClient } from '@three-flatland/zzfx-play'
+import type { PlaySidecarClient, ToneSynthType } from '@three-flatland/zzfx-play'
 import { getSidecarClient, shutdownSidecar } from './sidecarManager'
 import { getPlaySidecarClient, shutdownPlaySidecar } from './playSidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
@@ -9,6 +9,9 @@ import { AudioFileResolver } from './audioFileResolver'
 import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
 import { resolveSong } from './resolveSong'
+import { resolveWadSynth } from './resolveWadSynth'
+import { resolveToneSynth } from './resolveToneSynth'
+import { playToneSynthWithColdStartRetry } from './toneColdStartRetry'
 import { getPlaybackVolumeMultiplier } from './playbackVolume'
 import { isToolEnabled } from '../../toolRegistry'
 import { log } from '../../log'
@@ -22,6 +25,8 @@ const MAX_AUDIO_SEARCH_RESULTS = 32
 
 type ZzfxCallFinding = Extract<Finding, { kind: 'zzfx.call' }>
 type ZzfxmSongFinding = Extract<Finding, { kind: 'zzfxm.song' }>
+type WadSynthFinding = Extract<Finding, { kind: 'wad.synth' }>
+type ToneSynthFinding = Extract<Finding, { kind: 'tone.synth' }>
 
 function findFindingAtPosition(
   findings: readonly Finding[],
@@ -77,6 +82,30 @@ async function resolveZzfxmSongFinding(
   const document = await vscode.workspace.openTextDocument(uri)
   const { findings } = await client.parse({ uri: uri.toString(), text: document.getText() })
   return findings.find((f): f is ZzfxmSongFinding => f.kind === 'zzfxm.song' && f.id === findingId)
+}
+
+/** Re-parses `uri` fresh and returns the `wad.synth` finding matching
+ * `findingId` — mirrors `resolveZzfxmSongFinding`. */
+async function resolveWadSynthFindingById(
+  client: CodelensServiceClient,
+  uri: vscode.Uri,
+  findingId: string
+): Promise<WadSynthFinding | undefined> {
+  const document = await vscode.workspace.openTextDocument(uri)
+  const { findings } = await client.parse({ uri: uri.toString(), text: document.getText() })
+  return findings.find((f): f is WadSynthFinding => f.kind === 'wad.synth' && f.id === findingId)
+}
+
+/** Re-parses `uri` fresh and returns the `tone.synth` finding matching
+ * `findingId` — mirrors `resolveZzfxmSongFinding`. */
+async function resolveToneSynthFindingById(
+  client: CodelensServiceClient,
+  uri: vscode.Uri,
+  findingId: string
+): Promise<ToneSynthFinding | undefined> {
+  const document = await vscode.workspace.openTextDocument(uri)
+  const { findings } = await client.parse({ uri: uri.toString(), text: document.getText() })
+  return findings.find((f): f is ToneSynthFinding => f.kind === 'tone.synth' && f.id === findingId)
 }
 
 /**
@@ -157,24 +186,30 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
     },
     onDidUpdate: () => provider.refresh(),
   })
-  // Which finding's sound is playing right now (#46) — drives the single
-  // Play⇄Stop toggle lens. Every transition re-renders the lenses (same
-  // deferred-`provider` closure pattern as `onDidUpdate` above).
-  const activePlayback = new ActivePlayback(() => provider.refresh())
-  const provider = new ZzfxCodeLensProvider(
-    () => getSidecarClient(context),
-    audioResolver,
-    (findingId, sourceUri) => activePlayback.isActive(findingId, sourceUri)
-  )
+  // Which finding's sound is playing right now — NOT used to drive lens
+  // rendering anymore (stakeholder reversal of #46's toggle: every
+  // playable kind now shows a static Play+Stop pair, so lens content
+  // never depends on active-playback state at all). Still needed for the
+  // source-editor-tab-binding feature below (stop a sound when its
+  // source document loses focus/closes), which is why `ActivePlayback`
+  // itself — and `trackPlayback`'s calls into it — stay. `onDidChange` is
+  // a no-op: re-rendering lenses on every play/stop would reintroduce the
+  // exact refresh-round-trip churn the toggle removal exists to avoid,
+  // for a state no lens face reads.
+  const activePlayback = new ActivePlayback(() => {})
+  const provider = new ZzfxCodeLensProvider(() => getSidecarClient(context), audioResolver)
   disposables.push(
     vscode.languages.registerCodeLensProvider(ZZFX_DOCUMENT_SELECTOR, provider),
     provider
   )
 
-  /** Marks `source` as the active playback and watches the sidecar's
-   * exact timing (#43) so the lens auto-reverts to ▶ Play at the natural
-   * end — a manual stop or a replacement play supersedes the watcher via
-   * its token. */
+  /** Marks `source` as the active playback (for the source-editor-tab-
+   * binding listeners below) and watches the sidecar's exact timing (#43)
+   * so `activePlayback` clears itself at the natural end too, not just on
+   * an explicit stop or a replacement play — keeps tab-binding's "is
+   * anything currently playing for this document" state accurate even
+   * when nothing ever clicks Stop. Superseded by a manual stop or a
+   * replacement play via the watcher's token. */
   function trackPlayback(
     playClient: PlaySidecarClient,
     source: { uri: string; findingId: string }
@@ -183,9 +218,8 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
     void watchPlaybackEnd(activePlayback, token, () => playClient.getStats())
   }
 
-  /** The one stop path (#46): manual ⏹ Stop clicks and the source-editor
-   * binding both land here — sidecar stop + clear active (which fires the
-   * lens refresh through ActivePlayback's onDidChange). */
+  /** The one stop path: manual ⏹ Stop clicks and the source-editor
+   * binding both land here — sidecar stop + clear active. */
   function stopActivePlayback(): void {
     getPlaySidecarClient(context)?.stopSong()
     activePlayback.clear()
@@ -389,8 +423,114 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
           return
         }
         playClient.playSong(resolved.song, getPlaybackVolumeMultiplier())
-        // The lens toggle (#46): this finding is now the active playback
-        // — its lens re-renders as ⏹ Stop, every other one as ▶ Play.
+        // Marks this finding as the active playback for the source-editor
+        // tab-binding listeners — no lens state to update anymore.
+        trackPlayback(playClient, source)
+      }
+    )
+  )
+
+  // CodeLens-only, like playSong — re-parses fresh, resolves the Wad
+  // synthesis config via wadSynthResolver.ts (parse-don't-eval, same
+  // posture as songResolver.ts), then plays it. Wad's constructor loads
+  // synchronously (createRequire, see zzfx-play's sidecar.ts) — no
+  // cold-start race to retry around, unlike playToneSynth below.
+  disposables.push(
+    vscode.commands.registerCommand(
+      'threeFlatland.zzfx.playWadSynth',
+      async (source: { uri: string; findingId: string }) => {
+        // Defense in depth — see atlas/register.ts's identical guard comment.
+        if (!isToolEnabled('zzfxStudio')) {
+          void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
+          return
+        }
+        const playClient = getInlinePlayClientOrNotify(context)
+        if (!playClient) return
+
+        const uri = vscode.Uri.parse(source.uri)
+        const client = await getSidecarClient(context)
+        if (!client) {
+          void vscode.window.showErrorMessage('FL ZzFX: sidecar unavailable.')
+          return
+        }
+        const finding = await resolveWadSynthFindingById(client, uri, source.findingId)
+        if (!finding) {
+          void vscode.window.showErrorMessage(
+            'FL ZzFX: this Wad() call could not be found — the source may have changed.'
+          )
+          return
+        }
+        const resolved = await resolveWadSynth(uri, finding)
+        if ('loadError' in resolved) {
+          void vscode.window.showErrorMessage(`FL ZzFX: ${resolved.loadError}`)
+          return
+        }
+        playClient.playWadSynth(resolved.config, getPlaybackVolumeMultiplier())
+        // Marks this finding as the active playback for the source-editor
+        // tab-binding listeners — no lens state to update anymore.
+        trackPlayback(playClient, source)
+      }
+    )
+  )
+
+  // CodeLens-only, like playSong — re-parses fresh, resolves the Tone.js
+  // playback args via toneSynthResolver.ts, then plays it THROUGH the
+  // Part-A cold-start retry (see toneColdStartRetry.ts): the sidecar's
+  // Tone engine loads lazily on the session's first Tone play, so the
+  // very first click deterministically Nacks once without the retry.
+  // `trackPlayback` fires exactly once, only after a successful send.
+  disposables.push(
+    vscode.commands.registerCommand(
+      'threeFlatland.zzfx.playToneSynth',
+      async (source: { uri: string; findingId: string }) => {
+        // Defense in depth — see atlas/register.ts's identical guard comment.
+        if (!isToolEnabled('zzfxStudio')) {
+          void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
+          return
+        }
+        const playClient = getInlinePlayClientOrNotify(context)
+        if (!playClient) return
+
+        const uri = vscode.Uri.parse(source.uri)
+        const client = await getSidecarClient(context)
+        if (!client) {
+          void vscode.window.showErrorMessage('FL ZzFX: sidecar unavailable.')
+          return
+        }
+        const finding = await resolveToneSynthFindingById(client, uri, source.findingId)
+        if (!finding) {
+          void vscode.window.showErrorMessage(
+            'FL ZzFX: this Tone.js call could not be found — the source may have changed.'
+          )
+          return
+        }
+        const resolved = await resolveToneSynth(uri, finding)
+        if ('loadError' in resolved) {
+          void vscode.window.showErrorMessage(`FL ZzFX: ${resolved.loadError}`)
+          return
+        }
+        // synthType/voiceType were already validated against the 9-name
+        // allowlist sidecar-side (tone.synth's fully-static-or-nothing
+        // detection) — safe to narrow the resolver's plain `string` back
+        // to the wire's ToneSynthType here.
+        const ok = await playToneSynthWithColdStartRetry(
+          playClient,
+          {
+            synthType: resolved.synthType as ToneSynthType,
+            voiceType: resolved.voiceType as ToneSynthType | undefined,
+            note: resolved.note,
+            duration: resolved.duration,
+          },
+          getPlaybackVolumeMultiplier()
+        )
+        if (!ok) {
+          void vscode.window.showErrorMessage(
+            'FL Audio: Tone.js failed to load in time — try Play again.'
+          )
+          return
+        }
+        // Marks this finding as the active playback for the source-editor
+        // tab-binding listeners — no lens state to update anymore.
         trackPlayback(playClient, source)
       }
     )
@@ -443,9 +583,9 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
           return
         }
         playClient.playFile(resolved, getPlaybackVolumeMultiplier())
-        // Same toggle lifecycle as playSong (#46). `source` is additive —
+        // Same tab-binding tracking as playSong. `source` is additive —
         // the lens always supplies it; a legacy direct invocation without
-        // one just plays with no lens state to track.
+        // one just plays with no active-playback state to track.
         if (source) trackPlayback(playClient, source)
       }
     )

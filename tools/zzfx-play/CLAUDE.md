@@ -345,6 +345,30 @@ Contents/MacOS/Code Helper (Plugin)` (macOS) or the equivalent utility
 - Adding a new file under `src/` without adding it to `tsup.config.ts`'s
   `entry` array — same `bundle: false` gotcha as `codelens-service`, see
   its `CLAUDE.md`.
+- **Patching only the bare `globalThis.AudioContext`/`globalThis.webkitAudioContext`
+  when shimming a browser-targeting package (e.g. `loadWadConstructor` for
+  `web-audio-daw`), not also `globalThis.window.AudioContext`/
+  `.webkitAudioContext`.** `node-web-audio-api/polyfill.js` creates
+  `globalThis.window` as a SEPARATE plain object (`globalThis.window = {}`,
+  then copies each export onto it once) — `globalThis.window !==
+  globalThis`. A package whose own bundle reads `window.AudioContext ||
+  window.webkitAudioContext` (as `web-audio-daw`'s `src/common.js` does)
+  never sees a bare-`globalThis` patch at all, so it silently constructs
+  its own second, genuinely separate real `AudioContext` instead of
+  adopting the shared one. The symptom is exactly the "acks clean, plays
+  nothing" failure mode this whole file is about, but louder: every
+  `wad.play()` call threw `Attempting to connect nodes from different
+  contexts` (a native `InvalidAccessError`) the instant `plugEmIn` tried
+  to connect Wad's own internal chain to `player.ts`'s shared `gainNode`
+  — caught by `commandHandler.ts`'s generic try/catch into a Nack nothing
+  was listening for. This went undetected by e2e for a while because the
+  existing audibility check polled the SAME shared analyser tap for "is
+  anything audible," which can read `true` off an adjacent, still-fading
+  sound from a preceding command — not proof the sound under test
+  actually played. Verify a fix like this the same way: assert
+  `stats.playing === true` (not just `!stats.silent`) immediately after
+  issuing the play, as the very FIRST command of a freshly spawned
+  sidecar (no adjacent sound to produce a false positive).
 - **Never call `zzfx()`/`zzfxm()` (or `ZZFX.play`/`ZZFX.playSamples`)
   directly in `sidecar.ts`** — they end in `getChannelData().set()`,
   which is a detached copy under `node-web-audio-api` and produces silent

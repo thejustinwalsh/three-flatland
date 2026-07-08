@@ -118,6 +118,29 @@ function loadToneEngine(): Promise<ToneEngine> {
 // `removeEventListener`, `window.navigator`) are Wad's own import-time
 // touches — `window.navigator` needs `Object.defineProperty`, not plain
 // assignment: Node >=21 ships a built-in read-only `navigator` global.
+//
+// MUST patch `globalThis.window.AudioContext`/`.webkitAudioContext`, NOT
+// just the bare `globalThis.AudioContext`/`globalThis.webkitAudioContext`
+// — `node-web-audio-api/polyfill.js` creates `globalThis.window` as a
+// SEPARATE plain object (`globalThis.window = {}`, then copies each
+// export onto it once) rather than aliasing it to `globalThis` itself, so
+// `globalThis.window !== globalThis`. `web-audio-daw`'s own
+// `src/common.js` reads `window.AudioContext || window.webkitAudioContext`
+// (confirmed against the installed `web-audio-daw@4.13.4` bundle source)
+// — patching only the bare globals left `window.AudioContext` pointing at
+// its ORIGINAL real-context snapshot the whole time, so every `new
+// Wad(...)` silently built its OWN, genuinely separate, second real
+// `AudioContext` instead of adopting `ZZFX.audioContext`. That produced a
+// real, always-reproducing bug: every `wad.play()` threw "Attempting to
+// connect nodes from different contexts" (a native Web Audio
+// InvalidAccessError) the moment `plugEmIn` tried to connect Wad's own
+// internal chain to `player.ts`'s shared `gainNode` — caught by
+// `commandHandler.ts`'s try/catch into a silent Nack no caller observed,
+// so wad.synth playback never actually reached the output at all. Prior
+// e2e coverage never caught this because it polled the SHARED analyser
+// for "is anything audible," which could read `true` from an adjacent,
+// still-fading-out sound from a preceding command — never proof that
+// wad.synth's OWN sound was what it heard.
 let wadCtor: WadConstructor | undefined
 
 function loadWadConstructor(): WadConstructor {
@@ -125,6 +148,9 @@ function loadWadConstructor(): WadConstructor {
 
   const realAudioContext = globalThis.AudioContext
   const realWebkitAudioContext = (globalThis as { webkitAudioContext?: unknown }).webkitAudioContext
+  const realWindowAudioContext = globalThis.window.AudioContext
+  const realWindowWebkitAudioContext = (globalThis.window as { webkitAudioContext?: unknown })
+    .webkitAudioContext
   // The explicit-object-return `new` trick: a constructor that returns
   // an object explicitly makes `new Ctor()` use that object instead of
   // the newly allocated one — Wad has no constructor-injection point for
@@ -143,17 +169,22 @@ function loadWadConstructor(): WadConstructor {
   })
   globalThis.AudioContext = FakeAudioContext as unknown as typeof AudioContext
   ;(globalThis as { webkitAudioContext?: unknown }).webkitAudioContext = FakeAudioContext
+  globalThis.window.AudioContext = FakeAudioContext as unknown as typeof AudioContext
+  ;(globalThis.window as { webkitAudioContext?: unknown }).webkitAudioContext = FakeAudioContext
 
   const require = createRequire(import.meta.url)
   wadCtor = require('web-audio-daw') as WadConstructor
 
-  // Restore the real constructor for hygiene — Wad's own module-scope
+  // Restore the real constructors for hygiene — Wad's own module-scope
   // `context` reference is already captured permanently by this point
   // (its bundle reads `window.AudioContext` once, at its own
   // module-load time), so this isn't load-bearing, just avoids leaving
   // a surprising global patch in place for any unrelated future code.
   globalThis.AudioContext = realAudioContext
   ;(globalThis as { webkitAudioContext?: unknown }).webkitAudioContext = realWebkitAudioContext
+  globalThis.window.AudioContext = realWindowAudioContext
+  ;(globalThis.window as { webkitAudioContext?: unknown }).webkitAudioContext =
+    realWindowWebkitAudioContext
 
   return wadCtor
 }
@@ -216,7 +247,9 @@ const handler = createCommandHandler({
           `zzfx-play: tone failed to load: ${err instanceof Error ? err.message : String(err)}\n`
         )
       })
-      throw new Error('Tone.js is still loading — try again in a moment')
+      throw Object.assign(new Error('Tone.js is still loading — try again in a moment'), {
+        code: 'TONE_LOADING',
+      })
     }
     return playToneSynth(ZZFX.audioContext, toneEngine, cmd, ZZFX.volume * volume)
   },

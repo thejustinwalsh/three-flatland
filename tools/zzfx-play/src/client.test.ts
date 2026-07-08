@@ -148,6 +148,15 @@ describe('PlaySidecarClient', () => {
     expect(errors[0]!.message).toMatch(/boom requested/)
   })
 
+  it('onError carries the Nack code when the sidecar includes one (#47 cold-start retry correlation)', async () => {
+    client = spawnFake()
+    const errors: Error[] = []
+    client.onError((err) => errors.push(err))
+    client.playToneSynth({ synthType: 'Synth', note: '__COLD_START_TEST__', duration: '8n' })
+    await vi.waitFor(() => expect(errors).toHaveLength(1))
+    expect((errors[0] as Error & { code?: string }).code).toBe('TONE_LOADING')
+  })
+
   it('onExit fires with the exit code/signal, and returns an unsubscribe function', async () => {
     client = spawnFake()
     const exits: Array<{ code: number | null; signal: NodeJS.Signals | null }> = []

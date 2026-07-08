@@ -6,17 +6,21 @@
 // coverage grows to — one fixture file per spec file's "whole document"
 // scope, not a shared grab-bag every test has to filter around.
 //
-// Covers all three Finding kinds tools/codelens-service/CLAUDE.md
+// Covers all five Finding kinds tools/codelens-service/CLAUDE.md
 // documents: zzfx.call (literal + named-const, mirroring sounds.ts's own
 // positive cases so this file's own zzfx.call lenses are pinned too),
 // zzfxm.song (bare-identifier varRef, positional literal, and a
 // spread-of-identifier call resolving the same varRef — see
-// songResolver.ts's file doc comment), and
-// audio.file (three.js/Howler/Wad, one real file per audioFileResolver.ts
-// FAST resolution tier, one slow-search-only file, one unresolvable path,
-// commented-out decoys of every positive case, plus #44's expanded Wad
-// coverage: a convolution-reverb impulse positive and the full
-// synthesis-vocabulary decoy block that must surface ZERO lenses).
+// songResolver.ts's file doc comment), audio.file (three.js/Howler/Wad,
+// one real file per audioFileResolver.ts FAST resolution tier, one
+// slow-search-only file, one unresolvable path, commented-out decoys of
+// every positive case, plus #44's expanded Wad coverage: a
+// convolution-reverb impulse positive and a TRUE decoy block — mic/
+// sprite/preset — that must surface ZERO lenses), wad.synth (#47: all 5
+// oscillator/noise keywords as real toggling lenses, plus a resolvable
+// and an unresolvable bare-identifier var-ref case), and tone.synth (#47:
+// pitched/no-note/chord-with-explicit-voice positives, one fully-static-
+// or-nothing negative).
 //
 // Real .wav/.ogg files: sounds/jump.wav (workspace root),
 // public/explosion.ogg (public/), src/click.wav (this file's own
@@ -68,6 +72,24 @@ declare class Wad {
   static presets: Record<string, ConstructorParameters<typeof Wad>[0]>
 }
 declare const audioLoader: { load: (path: string, onLoad?: () => void) => void }
+declare namespace Tone {
+  class Instrument {
+    toDestination(): this
+    connect(node: unknown): this
+    triggerAttackRelease(...args: unknown[]): this
+  }
+  class Synth extends Instrument {}
+  class AMSynth extends Instrument {}
+  class FMSynth extends Instrument {}
+  class DuoSynth extends Instrument {}
+  class MembraneSynth extends Instrument {}
+  class MetalSynth extends Instrument {}
+  class PluckSynth extends Instrument {}
+  class NoiseSynth extends Instrument {}
+  class PolySynth extends Instrument {
+    constructor(voice?: new (...args: unknown[]) => Instrument)
+  }
+}
 
 // --- zzfx.call: literal + named-const, own positive/negative cases -----
 
@@ -169,19 +191,80 @@ export function playWithReverb() {
   new Wad({ reverb: { impulse: 'click.wav' } }).play()
 }
 
-// Negative cases (#44): Wad's full synthesis vocabulary — oscillator
-// shapes, noise, live mic input — plus sprite segments (numbers, not
-// files) and a stock preset (member expression, no string). ZERO lenses
-// for this entire block, proven by the spec's exact-total assertion and
-// per-line checks.
-export function synthDecoys() {
+// Positive cases (#47): Wad's oscillator/noise synthesis keywords are
+// now first-class wad.synth findings — before #47 gave synthesis mode
+// its own finding kind, these were pinned as audio.file NEGATIVES
+// instead; now each gets a real, toggling, audible ▶ Play lens. All 5
+// allowlisted keywords covered (`sine` was previously missing from this
+// fixture entirely — square/sawtooth/triangle/noise were the only 4).
+export function wadOscillators() {
+  new Wad({ source: 'sine' }).play()
   new Wad({ source: 'square' }).play()
   new Wad({ source: 'sawtooth' }).play()
   new Wad({ source: 'triangle' }).play()
   new Wad({ source: 'noise' }).play()
+}
+
+// Positive case (#47): wad.synth via a resolvable bare-identifier
+// var-ref — the scanner always emits a finding for a bare identifier
+// (permissive posture, deferring "is this valid" to the client), and
+// this declaration genuinely resolves to a valid oscillator config, so
+// Play produces real audio via wadSynthResolver.ts.
+const wadOscillatorConfig = { source: 'square' }
+export function playWadFromVar() {
+  new Wad(wadOscillatorConfig).play()
+}
+
+// Not-a-valid-config case (#47): wad.synth via a bare-identifier var-ref
+// whose declaration does NOT resolve to a valid oscillator config — the
+// scanner still always emits a finding (it can't know the declaration is
+// invalid without resolving it), so a ▶ Play lens exists, but clicking
+// Play must gracefully surface an error (wadSynthResolver.ts's
+// loadError path) rather than throw or hang.
+const invalidWadConfig = { source: 'jump.wav' }
+export function playWadUnresolvable() {
+  new Wad(invalidWadConfig).play()
+}
+
+// Negative cases: live mic input (not statically playable), sprite
+// segments (numbers, not a source keyword), and a stock preset (member
+// expression, no object literal for the scanner to read) — none match
+// wad.synth's `{source: <oscillator keyword>}` shape, and none end in a
+// recognized audio extension either. ZERO lenses for this entire block,
+// proven by the spec's exact-total assertion and per-line checks.
+export function synthDecoys() {
   new Wad({ source: 'mic' }).play()
   new Wad({ sprite: { hello: [0, 0.4] } }).play()
   new Wad(Wad.presets.hiHatClosed).play()
+}
+
+// --- tone.synth: Tone.js triggerAttackRelease call chains (#47) --------
+
+// Positive case: pitched synth, direct triggerAttackRelease(note, duration).
+export function playToneNote() {
+  new Tone.Synth().toDestination().triggerAttackRelease('C4', '8n')
+}
+
+// Positive case: NoiseSynth's triggerAttackRelease takes no note —
+// duration only.
+export function playToneNoise() {
+  new Tone.NoiseSynth().toDestination().triggerAttackRelease('8n')
+}
+
+// Positive case: PolySynth with an explicit voice type (its own
+// constructor's own first argument, a bare class reference) — a chord
+// (array of notes) + duration.
+export function playToneChord() {
+  new Tone.PolySynth(Tone.FMSynth).toDestination().triggerAttackRelease(['C4', 'E4', 'G4'], '4n')
+}
+
+// Negative case: a non-static note (a local variable, not a literal) —
+// tone.synth's detection is fully-static-or-nothing; a non-literal
+// note/duration/chord argument refuses the WHOLE finding, not a partial
+// resolve. Must NOT surface a CodeLens.
+const dynamicNote = 'C4'
+export function playToneDynamicNote() {
+  new Tone.Synth().toDestination().triggerAttackRelease(dynamicNote, '8n')
 }
 
 // Positive case (slow tier): audio.file via bare Audio whose path misses

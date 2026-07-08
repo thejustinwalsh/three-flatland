@@ -1,7 +1,21 @@
 // Inline CodeLens above every zzfx.call (`▶ Play` + `⚙ Edit`),
-// zzfxm.song, and audio.file finding (ONE `▶ Play`⇄`⏹ Stop` toggle each,
-// #46) — see planning/vscode-tools/tool-zzfx-studio.md's "CodeLens
-// provider" section.
+// zzfxm.song, audio.file, wad.synth, and tone.synth finding — see
+// planning/vscode-tools/tool-zzfx-studio.md's "CodeLens provider" section.
+//
+// STATIC two-lens pair (`▶ Play` + `⏹ Stop`, both always present, neither
+// conditioned on playback state) for every kind except zzfx.call — a
+// deliberate reversal of #46's single toggling lens, per stakeholder
+// directive: the toggle's lens-refresh round trip (wait for
+// onDidChangeCodeLenses → VS Code re-invokes provideCodeLenses/
+// resolveCodeLens → async recompute of which face to show) made
+// rapid-fire re-clicking Play impossible, since after one click the lens
+// became Stop and you had to wait for it to settle back. Static lenses
+// eliminate that structurally: Play's command/title never changes, so N
+// rapid clicks just send N play commands with zero refresh-wait between
+// them — the same way zzfx.call's Play already worked. `ActivePlayback`
+// still exists (register.ts) for the source-editor-tab-binding feature
+// (stop the sound when its source document loses focus/closes), it just
+// no longer drives lens rendering here.
 // `provideCodeLenses` returns range-only lenses (fast — VS Code calls this
 // on every keystroke-adjacent scroll/edit); `resolveCodeLens` computes the
 // title + command lazily, only for lenses actually scrolled into view.
@@ -44,11 +58,10 @@ function toVscodeRange(range: Finding['range']): vscode.Range {
 }
 
 /** Carries the finding + which lens variant this is — resolveCodeLens reads
- * these back off the instance VS Code hands it. `variant` spans all three
- * kinds: zzfx.call gets play/edit; zzfxm.song and audio.file get a single
- * `play` lens that TOGGLES to ⏹ Stop while that finding's sound is the
- * active playback (#46). */
-type LensVariant = 'play' | 'edit'
+ * these back off the instance VS Code hands it. zzfx.call gets play/edit;
+ * every other playable kind gets a static play/stop PAIR (both always
+ * present, neither conditioned on playback state). */
+type LensVariant = 'play' | 'edit' | 'stop'
 
 /** `audio.file` only — everything `resolveCodeLens` needs to bake the
  * lens's command without re-touching the filesystem: the resolution
@@ -81,13 +94,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
 
   constructor(
     private readonly getClient: () => Promise<CodelensServiceClient | null>,
-    private readonly audioResolver: AudioFileResolver,
-    /** Whether this exact finding's sound is the active playback right
-     * now (#46) — decides ▶ Play vs ⏹ Stop at resolve time. register.ts
-     * supplies the ActivePlayback-backed implementation and fires
-     * `refresh()` on every transition, so a re-resolve always follows a
-     * state change. */
-    private readonly isActivePlaying: (findingId: string, sourceUri: string) => boolean
+    private readonly audioResolver: AudioFileResolver
   ) {}
 
   dispose(): void {
@@ -134,17 +141,26 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
           lenses.push(new ZzfxCodeLens(range, finding, 'edit', document.uri))
           break
         case 'zzfxm.song':
-          // ONE toggling lens (#46), not a Play+Stop pair — resolveCodeLens
-          // picks the face from the active-playback state.
+        case 'wad.synth':
+        case 'tone.synth':
+          // A static Play+Stop pair, both always present — see the file
+          // doc comment for why this reverses #46's single toggling
+          // lens. Always emitted immediately, unlike audio.file's
+          // fast/slow resolution states — a wad.synth var-ref that
+          // doesn't resolve to a valid oscillator config, or any other
+          // resolver refusal, surfaces as an error message at Play-click
+          // time (register.ts), not as a conditional lens here.
           lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri))
+          lenses.push(new ZzfxCodeLens(range, finding, 'stop', document.uri))
           break
         case 'audio.file': {
-          // Progressive resolution (#41): fast tiers give `▶ Play`
-          // immediately; a fast miss on a searchable (plainly-relative)
-          // path shows `$(search) Searching…` while the workspace-wide fallback
-          // runs, then `▶ Play` or `$(search) Not Found` once it
-          // settles. Only an INELIGIBLE reference (URL/absolute — the
-          // search couldn't mean anything) gets no lens at all.
+          // Progressive resolution (#41): fast tiers give a static
+          // `▶ Play` + `⏹ Stop` pair immediately; a fast miss on a
+          // searchable (plainly-relative) path shows `$(search)
+          // Searching…` while the workspace-wide fallback runs, then the
+          // Play+Stop pair or `$(search) Not Found` once it settles. Only
+          // an INELIGIBLE reference (URL/absolute — the search couldn't
+          // mean anything) gets no lens at all.
           const resolution = this.audioResolver.getLensState(
             finding.payload.path,
             sourceDir,
@@ -157,6 +173,14 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
               ref: { path: finding.payload.path, sourceDir, workspaceRoot },
             })
           )
+          // Stop doesn't need the resolution/ref payload — it's a static
+          // stopSong call regardless of resolution state — but only
+          // makes sense once there's a real path to have played, so it's
+          // withheld for 'searching'/'not-found' the same as 'resolved'
+          // is the only state that gets a Play lens that can actually play.
+          if (resolution.state === 'resolved') {
+            lenses.push(new ZzfxCodeLens(range, finding, 'stop', document.uri))
+          }
           break
         }
       }
@@ -205,30 +229,51 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
       // async/error-prone part) is deferred to the command handler in
       // register.ts — this only needs the finding's identity, mirroring
       // playParams'/openEditor's `{uri, findingId}` re-parse-fresh pattern.
-      // ONE lens that toggles (#46): ⏹ Stop while THIS finding's sound is
-      // the active playback, ▶ Play otherwise.
-      codeLens.command = this.isActivePlaying(finding.id, source.uri)
-        ? { title: '⏹ Stop', command: 'threeFlatland.zzfx.stopSong', arguments: [] }
-        : { title: '▶ Play', command: 'threeFlatland.zzfx.playSong', arguments: [source] }
+      // Static Play+Stop pair — see the file doc comment for why (reverses
+      // #46's toggle).
+      codeLens.command =
+        variant === 'stop'
+          ? { title: '⏹ Stop', command: 'threeFlatland.zzfx.stopSong', arguments: [] }
+          : { title: '▶ Play', command: 'threeFlatland.zzfx.playSong', arguments: [source] }
+    } else if (finding.kind === 'wad.synth') {
+      // Same static pair shape as zzfxm.song — the resolver
+      // (wadSynthResolver.ts, via register.ts's playWadSynth command) does
+      // the actual config parsing/validation at click time; a var-ref that
+      // doesn't resolve to a valid oscillator config surfaces as an error
+      // message there, not as a different lens face here.
+      codeLens.command =
+        variant === 'stop'
+          ? { title: '⏹ Stop', command: 'threeFlatland.zzfx.stopSong', arguments: [] }
+          : { title: '▶ Play', command: 'threeFlatland.zzfx.playWadSynth', arguments: [source] }
+    } else if (finding.kind === 'tone.synth') {
+      // Same static pair shape again — reuses the EXISTING generic
+      // stopSong command (commandHandler.ts already routes every kind's
+      // stop handle into the same currentSource slot stopSong/stop operate
+      // on), no new stop command needed.
+      codeLens.command =
+        variant === 'stop'
+          ? { title: '⏹ Stop', command: 'threeFlatland.zzfx.stopSong', arguments: [] }
+          : { title: '▶ Play', command: 'threeFlatland.zzfx.playToneSynth', arguments: [source] }
+    } else if (variant === 'stop') {
+      // audio.file's Stop lens — only ever emitted for the 'resolved'
+      // state (provideCodeLenses), so it's unconditionally static; no
+      // resolution/ref payload needed for a plain stopSong call.
+      codeLens.command = { title: '⏹ Stop', command: 'threeFlatland.zzfx.stopSong', arguments: [] }
     } else {
-      // audio.file — the resolution state was computed once in
-      // provideCodeLenses. Both actionable states route to playFile with
-      // the reference triple as the second argument: the command hands it
-      // back to the resolver, whose play-time verify/repair covers a
-      // cached path that has since vanished (resolved state) and a
-      // re-added asset behind a settled not-found (retry click). VS Code
-      // renders `$(search)` as a codicon in lens titles.
+      // audio.file's Play lens — the resolution state was computed once
+      // in provideCodeLenses. Both actionable states route to playFile
+      // with the reference triple as the second argument: the command
+      // hands it back to the resolver, whose play-time verify/repair
+      // covers a cached path that has since vanished (resolved state) and
+      // a re-added asset behind a settled not-found (retry click). VS
+      // Code renders `$(search)` as a codicon in lens titles.
       const { resolution, ref } = codeLens.audioFile!
       if (resolution.state === 'resolved') {
-        // Same Play⇄Stop toggle as zzfxm.song (#46) — the third argument
-        // carries the finding's identity so playFile can mark it active.
-        codeLens.command = this.isActivePlaying(finding.id, source.uri)
-          ? { title: '⏹ Stop', command: 'threeFlatland.zzfx.stopSong', arguments: [] }
-          : {
-              title: '▶ Play',
-              command: 'threeFlatland.zzfx.playFile',
-              arguments: [resolution.path, ref, source],
-            }
+        codeLens.command = {
+          title: '▶ Play',
+          command: 'threeFlatland.zzfx.playFile',
+          arguments: [resolution.path, ref, source],
+        }
       } else if (resolution.state === 'searching') {
         // Not clickable while the fallback search is in flight — the
         // empty command id renders an inert lens; onDidChangeCodeLenses

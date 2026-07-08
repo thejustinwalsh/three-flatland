@@ -389,6 +389,33 @@ describe('createCommandHandler', () => {
         error: "'PluckSynth' can't be a PolySynth voice",
       })
     })
+
+    it('a backend error carrying a .code property propagates it onto the Nack (#47 cold-start retry correlation) — generic, not special-cased to playToneSynth', () => {
+      const handler = createCommandHandler({
+        play: vi.fn(),
+        playSong: () => ({ stop: vi.fn() }),
+        playFile: vi.fn(),
+        playToneSynth: () => {
+          throw Object.assign(new Error('Tone.js is still loading — try again in a moment'), {
+            code: 'TONE_LOADING',
+          })
+        },
+        playWadSynth: () => ({ stop: vi.fn() }),
+        getStats: () => SILENT_STATS,
+      })
+      const response = handler.handleCommand({
+        cmd: 'playToneSynth',
+        synthType: 'Synth',
+        note: 'C4',
+        duration: '8n',
+      })
+      expect(response).toEqual({
+        ok: false,
+        cmd: 'playToneSynth',
+        error: 'Tone.js is still loading — try again in a moment',
+        code: 'TONE_LOADING',
+      })
+    })
   })
 
   describe('playWadSynth', () => {

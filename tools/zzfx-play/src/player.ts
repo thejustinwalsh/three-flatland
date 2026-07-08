@@ -431,9 +431,19 @@ export function playToneSynth(
   return {
     stop: () => {
       clearTimeout(timer)
-      if (cmd.synthType === 'PolySynth') (synth as unknown as TonePolySynthInstance).releaseAll()
-      else synth.triggerRelease()
-      resolveEnded()
+      try {
+        if (cmd.synthType === 'PolySynth') (synth as unknown as TonePolySynthInstance).releaseAll()
+        else synth.triggerRelease()
+      } finally {
+        // Hard-mute the shared analyser tap immediately, rather than
+        // trusting Tone's own release ramp to land before the next stats
+        // poll — `gainNode` sits downstream of `synth`, so zeroing it
+        // silences the analyser regardless of Tone's internal timing.
+        gainNode.gain.cancelScheduledValues(ctx.currentTime)
+        gainNode.gain.setValueAtTime(0, ctx.currentTime)
+        gainNode.disconnect()
+        resolveEnded()
+      }
     },
   }
 }
@@ -462,9 +472,17 @@ export type WadConstructor = new (config: Record<string, unknown>) => WadInstanc
  * always falls back to its own default envelope — bounded, not
  * literally endless, but `Infinity` is still the correct sentinel here
  * (see `trackPlayback`'s math: it never clamps `elapsedSeconds` against
- * it, so `playing` is governed purely by the `ended` flag, which
- * `wad.play()`'s own promise flips at whatever moment playback actually
- * stops, natural or explicit).
+ * it, so `playing` is governed purely by the `ended` flag).
+ *
+ * `ended` is OUR OWN manually-resolvable promise, not `wad.play()`'s
+ * directly — `wad.play()`'s promise still resolves it on a NATURAL
+ * completion (chained below), but `stop()` also resolves it immediately,
+ * same "fires on both natural completion and an explicit stop()"
+ * contract `trackPlayback`'s doc comment describes for
+ * `AudioBufferSourceNode.onended`, rather than waiting on Wad's own
+ * `soundSource.onended` (which only fires after Wad's internal stop-ramp,
+ * scheduled `env.release` seconds out — 0 by default, but not
+ * guaranteed).
  */
 export function playWadSynth(
   ctx: AudioContext,
@@ -477,10 +495,26 @@ export function playWadSynth(
   gainNode.connect(getAnalyser(ctx))
 
   const wad = new Wad({ ...config, destination: gainNode })
-  const ended = wad.play()
+  let resolveEnded: () => void = () => {}
+  const ended = new Promise<void>((resolve) => {
+    resolveEnded = resolve
+  })
+  wad.play().then(resolveEnded, resolveEnded)
   trackPlayback(ctx, ended, Infinity)
 
   return {
-    stop: () => wad.stop(),
+    stop: () => {
+      try {
+        wad.stop()
+      } finally {
+        // Hard-mute the shared analyser tap immediately — don't rely on
+        // Wad's own stop ramp (to 1e-4, not exact 0, over `env.release`)
+        // actually landing before the next stats poll.
+        gainNode.gain.cancelScheduledValues(ctx.currentTime)
+        gainNode.gain.setValueAtTime(0, ctx.currentTime)
+        gainNode.disconnect()
+        resolveEnded()
+      }
+    },
   }
 }
