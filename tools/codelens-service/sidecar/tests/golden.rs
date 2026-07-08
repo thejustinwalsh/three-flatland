@@ -15,7 +15,7 @@
 use std::io::{BufReader, Read, Write};
 use std::process::{Command, Stdio};
 
-use codelens_service::model::{Finding, WAD_SYNTH_KIND};
+use codelens_service::model::{Finding, TONE_SYNTH_KIND, WAD_SYNTH_KIND};
 use serde_json::{Value, json};
 
 const GOLDEN_URI: &str = "file:///golden.ts";
@@ -138,7 +138,7 @@ fn document_parse_matches_the_golden_fixture_exactly() {
     );
     assert_eq!(
         actual_findings.len(),
-        22,
+        25,
         "golden.ts's total finding count changed — update this expectation (and \
          src/goldenFixture.test.ts's matching one) together with any fixture edit"
     );
@@ -406,6 +406,76 @@ fn document_parse_matches_the_golden_fixture_exactly() {
     assert!(
         iterated_synth.byte_range.start > 0,
         "the inner new Wad(...)'s byte_range must start after the outer SoundIterator call's opening"
+    );
+
+    // tone.synth: three positives (playTone/Synth, playNoise/NoiseSynth,
+    // playChord/PolySynth+voiceType) and one negative (playDynamicNote's
+    // note comes from a parameter, not a literal — no varRef indirection
+    // here at all, unlike wad.synth, so an unresolvable note just means no
+    // finding). argRange slice-equality proven against the real source
+    // text, same discipline as every other kind above.
+    let tone_synth_findings: Vec<_> = actual_findings
+        .iter()
+        .filter(|f| f.kind() == TONE_SYNTH_KIND)
+        .collect();
+    assert_eq!(
+        tone_synth_findings.len(),
+        3,
+        "expected playTone (Synth), playNoise (NoiseSynth), and playChord (PolySynth+FMSynth \
+         voice) — 3 total tone.synth findings; playDynamicNote's non-static note must NOT \
+         produce a finding"
+    );
+
+    let lines: Vec<&str> = golden_ts.lines().collect();
+    let slice = |range: codelens_service::model::Range| {
+        let line = lines[range.start.line as usize];
+        &line[range.start.character as usize..range.end.character as usize]
+    };
+
+    let tone_finding = tone_synth_findings
+        .iter()
+        .find(|f| f.as_tone_synth().unwrap().synth_type == "Synth")
+        .expect("golden.ts must still declare playTone's new Tone.Synth() call");
+    let tone_payload = tone_finding.as_tone_synth().unwrap();
+    assert!(tone_payload.voice_type.is_none());
+    assert_eq!(slice(tone_payload.arg_range), "'C4', '8n'");
+
+    let noise_finding = tone_synth_findings
+        .iter()
+        .find(|f| f.as_tone_synth().unwrap().synth_type == "NoiseSynth")
+        .expect("golden.ts must still declare playNoise's new Tone.NoiseSynth() call");
+    let noise_payload = noise_finding.as_tone_synth().unwrap();
+    assert_eq!(slice(noise_payload.arg_range), "'8n'");
+
+    let chord_finding = tone_synth_findings
+        .iter()
+        .find(|f| f.as_tone_synth().unwrap().synth_type == "PolySynth")
+        .expect("golden.ts must still declare playChord's new Tone.PolySynth(Tone.FMSynth) call");
+    let chord_payload = chord_finding.as_tone_synth().unwrap();
+    assert_eq!(chord_payload.voice_type.as_deref(), Some("FMSynth"));
+    assert_eq!(slice(chord_payload.arg_range), "['C4', 'E4', 'G4'], '4n'");
+
+    // playDynamicNote's finding range covers the whole chain (constructor
+    // through the trigger call), same "whole expression" precedent
+    // wad.synth's own range test pins.
+    assert_eq!(
+        slice(tone_finding.range),
+        "new Tone.Synth().toDestination().triggerAttackRelease('C4', '8n')"
+    );
+
+    // playDynamicNote's `new Tone.Synth()...triggerAttackRelease(note, '8n')`
+    // has the identical shape to playTone's Synth call, differing only in
+    // its non-static note — the fixed count above already proves it isn't
+    // a 4th finding, but assert this directly too: exactly ONE Synth-typed
+    // finding total (playTone's), not two.
+    assert_eq!(
+        tone_synth_findings
+            .iter()
+            .filter(|f| f.as_tone_synth().unwrap().synth_type == "Synth")
+            .count(),
+        1,
+        "expected exactly one Synth-typed tone.synth finding (playTone) — playDynamicNote's \
+         non-static note must not produce a second one"
     );
 
     write_frame(

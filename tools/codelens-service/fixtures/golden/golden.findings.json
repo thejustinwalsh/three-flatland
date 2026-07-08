@@ -743,5 +743,99 @@
         "line": 144
       }
     }
+  },
+  {
+    "byteRange": {
+      "end": 6012,
+      "start": 5947
+    },
+    "id": "8516ea5e9ad500fd",
+    "kind": "tone.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 66,
+          "line": 153
+        },
+        "start": {
+          "character": 56,
+          "line": 153
+        }
+      },
+      "synthType": "Synth"
+    },
+    "range": {
+      "end": {
+        "character": 67,
+        "line": 153
+      },
+      "start": {
+        "character": 2,
+        "line": 153
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 6304,
+      "start": 6240
+    },
+    "id": "b19eeb549a962216",
+    "kind": "tone.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 65,
+          "line": 160
+        },
+        "start": {
+          "character": 61,
+          "line": 160
+        }
+      },
+      "synthType": "NoiseSynth"
+    },
+    "range": {
+      "end": {
+        "character": 66,
+        "line": 160
+      },
+      "start": {
+        "character": 2,
+        "line": 160
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 6688,
+      "start": 6593
+    },
+    "id": "038b944c1fa33772",
+    "kind": "tone.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 96,
+          "line": 168
+        },
+        "start": {
+          "character": 72,
+          "line": 168
+        }
+      },
+      "synthType": "PolySynth",
+      "voiceType": "FMSynth"
+    },
+    "range": {
+      "end": {
+        "character": 97,
+        "line": 168
+      },
+      "start": {
+        "character": 2,
+        "line": 168
+      }
+    }
   }
 ]

@@ -1,15 +1,17 @@
 //! tree-sitter-driven extraction of audio-reference findings from a source
 //! file's text: `zzfx(...)` calls, `zzfxm(...)`/`zzfxM(...)` song calls,
 //! generic audio-file string-literal references (three.js/Howler/`Audio`/
-//! `fetch`/etc.), and `new Wad({source: ...})` synthesis-mode calls. One AST
-//! walk produces all four kinds — see [`find_audio_findings`].
+//! `fetch`/etc.), `new Wad({source: ...})` synthesis-mode calls, and Tone.js
+//! `new Tone.<Class>(...).triggerAttackRelease(...)` calls. One AST walk
+//! produces all five kinds — see [`find_audio_findings`].
 
 use tree_sitter::{Node, Parser};
 
 use crate::id::finding_id;
 use crate::model::{
-    AUDIO_FILE_KIND, AudioFilePayload, ByteRange, Finding, FindingPayload, Range, VarRef,
-    WAD_SYNTH_KIND, WadSynthPayload, ZZFX_CALL_KIND, ZZFXM_SONG_KIND, ZzfxPayload, ZzfxmPayload,
+    AUDIO_FILE_KIND, AudioFilePayload, ByteRange, Finding, FindingPayload, Range, TONE_SYNTH_KIND,
+    ToneSynthPayload, VarRef, WAD_SYNTH_KIND, WadSynthPayload, ZZFX_CALL_KIND, ZZFXM_SONG_KIND,
+    ZzfxPayload, ZzfxmPayload,
 };
 use crate::position::LineIndex;
 use crate::scan::AUDIO_EXTENSIONS;
@@ -18,6 +20,23 @@ const ZZFX_NAME: &str = "zzfx";
 const ZZFXM_NAMES: [&str; 2] = ["zzfxm", "zzfxM"];
 const WAD_NAME: &str = "Wad";
 const WAD_OSCILLATOR_SOURCES: [&str; 5] = ["sine", "square", "sawtooth", "triangle", "noise"];
+const TONE_NAME: &str = "Tone";
+const TRIGGER_ATTACK_RELEASE_NAME: &str = "triggerAttackRelease";
+/// The closed set of Tone.js synth constructors this scanner recognizes —
+/// mirrors the fixed `Record<ToneSynthType, Class>` lookup the sidecar
+/// (playback) side reconstructs against; reporting any other `Tone.X` name
+/// would produce a finding the playback side can't actually construct.
+const TONE_SYNTH_TYPES: [&str; 9] = [
+    "Synth",
+    "AMSynth",
+    "FMSynth",
+    "DuoSynth",
+    "MembraneSynth",
+    "MetalSynth",
+    "PluckSynth",
+    "NoiseSynth",
+    "PolySynth",
+];
 
 /// Picks the tree-sitter grammar by file extension: `.tsx`/`.jsx` need the
 /// JSX-aware TSX grammar (plain TS/JS grammar rejects JSX syntax), everything
@@ -33,9 +52,9 @@ fn language_for_uri(uri: &str) -> tree_sitter::Language {
 }
 
 /// Parses `text` (the contents of `uri`) and returns every recognized
-/// finding: `zzfx.call`, `zzfxm.song`, `audio.file`, and `wad.synth`.
-/// Malformed source does not error — findings are best-effort extracted
-/// from whatever the parser could recover.
+/// finding: `zzfx.call`, `zzfxm.song`, `audio.file`, `wad.synth`, and
+/// `tone.synth`. Malformed source does not error — findings are best-effort
+/// extracted from whatever the parser could recover.
 pub fn find_audio_findings(uri: &str, text: &str) -> Vec<Finding> {
     let mut parser = Parser::new();
     parser
@@ -55,6 +74,9 @@ fn walk(node: Node, text: &str, line_index: &LineIndex, uri: &str, out: &mut Vec
     match node.kind() {
         "call_expression" => {
             if let Some(finding) = extract_callee_call(node, text, line_index, uri) {
+                out.push(finding);
+            }
+            if let Some(finding) = extract_tone_synth(node, text, line_index) {
                 out.push(finding);
             }
         }
@@ -331,6 +353,205 @@ fn object_has_oscillator_source(object: Node, text: &str) -> bool {
         return WAD_OSCILLATOR_SOURCES.contains(&interior.as_str());
     }
     false
+}
+
+/// Walks DOWN from `node` (a `triggerAttackRelease` call's `function`
+/// field's `object`) through any number of intervening chain calls to the
+/// `new_expression` at the root of the chain — the mirror image of
+/// `enclosing_call_via_arguments`'s walk UP to the nearest enclosing call.
+/// Base case: `node` IS a `new_expression` (no chain calls at all, e.g.
+/// `new Tone.Synth().triggerAttackRelease(...)` with no `.toDestination()`)
+/// — returns it directly. Recursive case: `node` is a `call_expression`
+/// whose `function` is a `member_expression` (`.toDestination()`,
+/// `.connect(x)`, `.set({...})`, any method name at all — NOT individually
+/// validated, only structurally matched-through) — recurse into that
+/// `member_expression`'s `object` field. Anything else (the chain doesn't
+/// bottom out in a `new_expression` at all — e.g. a plain member-expression
+/// reference with no constructor call anywhere in it) returns `None`.
+fn descend_to_constructor(node: Node) -> Option<Node> {
+    match node.kind() {
+        "new_expression" => Some(node),
+        "call_expression" => {
+            let function = node.child_by_field_name("function")?;
+            if function.kind() != "member_expression" {
+                return None;
+            }
+            let object = function.child_by_field_name("object")?;
+            descend_to_constructor(object)
+        }
+        _ => None,
+    }
+}
+
+/// `true` only for a `string`/`number` literal node — the narrow "fully
+/// static or refuse" test [`extract_tone_synth`] applies to every
+/// note/duration/chord-element argument. Deliberately does NOT accept a
+/// zero-substitution template literal (unlike `audio.file`'s path
+/// matching) or a unary-negated number: Tone.js note/duration values in
+/// practice are always a plain string (`'C4'`, `'8n'`) or plain number
+/// (a raw frequency/seconds value), and staying this narrow keeps the
+/// detection decisive rather than guessing at exotic-but-technically-valid
+/// shapes.
+fn is_string_or_number_literal(node: Node) -> bool {
+    matches!(node.kind(), "string" | "number")
+}
+
+/// Returns `name`'s Tone.js synth type if `member` is a `member_expression`
+/// of the exact shape `Tone.<AllowlistedClass>` — `object` a bare
+/// identifier literally `"Tone"`, `property` one of [`TONE_SYNTH_TYPES`].
+/// Used both for the outermost constructor (`new Tone.Synth(...)`) and for
+/// `PolySynth`'s optional explicit voice-type argument (`Tone.FMSynth`, a
+/// bare reference with no `new`/call at all).
+fn tone_synth_type_name(member: Node, text: &str) -> Option<&'static str> {
+    if member.kind() != "member_expression" {
+        return None;
+    }
+    let object = member.child_by_field_name("object")?;
+    if object.kind() != "identifier" || node_text(object, text) != TONE_NAME {
+        return None;
+    }
+    let property = member.child_by_field_name("property")?;
+    if property.kind() != "property_identifier" {
+        return None;
+    }
+    let name = node_text(property, text);
+    TONE_SYNTH_TYPES.iter().find(|&&n| n == name).copied()
+}
+
+/// Extracts a Tone.js (tonejs.github.io) `new Tone.<Class>(...)
+/// .triggerAttackRelease(...)` finding. Entry point is the OUTERMOST call
+/// in the chain — `node` here is checked for being a call whose `function`
+/// is a `member_expression` with property `triggerAttackRelease`; every
+/// other call shape returns `None` immediately, cheaply, before any of the
+/// more expensive matching below runs.
+///
+/// From there: [`descend_to_constructor`] walks down through zero or more
+/// intervening chain calls (`.toDestination()`, `.set({...})`, any method
+/// name — matched-through structurally, never individually validated) to
+/// the `new_expression`; [`tone_synth_type_name`] validates its
+/// `constructor` field is `Tone.<AllowlistedClass>`. For `PolySynth`
+/// specifically, an optional explicit voice type is read off the
+/// constructor's own FIRST argument if present — it must itself be a bare
+/// `Tone.<AllowlistedClass>` member-expression reference (not a `new` call,
+/// not an object literal); anything else there (an unrecognized class, a
+/// bare config object with no voice type) is treated as an unsupported
+/// shape and the WHOLE finding is refused, rather than guessing a default
+/// voice. `PolySynth`'s constructor's SECOND argument (a voice config
+/// object) and every other class's sole constructor argument (an instance
+/// config object) are never inspected at all — config isn't load-bearing
+/// for playability the way note/duration are, and is out of scope for v1
+/// (see `tools/vscode/extension/tools/zzfx/toneSynthResolver.ts`'s file
+/// doc comment for the client-side half of this decision).
+///
+/// Finally, `triggerAttackRelease`'s OWN argument list is validated
+/// per-class, fully-static-or-nothing (no `varRef` permissiveness here,
+/// unlike zzfx/wad.synth — there's nothing for a client to resolve, since a
+/// non-literal argument just means no finding at all):
+///   - `NoiseSynth` — signature `(duration, time?, velocity?)`, no note.
+///     Requires >= 1 argument; argument 0 (duration) must be a
+///     [`is_string_or_number_literal`]. Arguments 1+ are ignored entirely.
+///   - `PolySynth` — signature `(notes[], duration, time?)`. Requires >= 2
+///     arguments; argument 0 must be a non-empty `array` node whose every
+///     element is a string/number literal (a chord — nothing to play if
+///     empty); argument 1 (duration) must be a literal. Arguments 2+
+///     ignored.
+///   - every other class — signature `(note, duration, time?)`. Requires
+///     >= 2 arguments; arguments 0 (note) and 1 (duration) must both be
+///     literals. Arguments 2+ ignored.
+///
+/// `arg_range` is `triggerAttackRelease`'s OWN argument-list interior
+/// range (via the existing [`argument_interior_range`] helper, shared with
+/// `zzfx`/`zzfxm`) — NOT the whole chain's range. The finding's own
+/// `range`/`byte_range` cover the WHOLE chain: the outermost
+/// `call_expression` node's own span already starts at the innermost
+/// `new_expression`'s `new` keyword (its `function` field recursively
+/// contains the entire chain) and ends at `triggerAttackRelease(...)`'s
+/// closing paren, so no separate computation is needed — same "whole
+/// expression" range `wad.synth` already reports.
+fn extract_tone_synth(call: Node, text: &str, line_index: &LineIndex) -> Option<Finding> {
+    let function = call.child_by_field_name("function")?;
+    if function.kind() != "member_expression" {
+        return None;
+    }
+    let property = function.child_by_field_name("property")?;
+    if property.kind() != "property_identifier"
+        || node_text(property, text) != TRIGGER_ATTACK_RELEASE_NAME
+    {
+        return None;
+    }
+    let object = function.child_by_field_name("object")?;
+    let constructor_call = descend_to_constructor(object)?;
+    let constructor = constructor_call.child_by_field_name("constructor")?;
+    let synth_type = tone_synth_type_name(constructor, text)?;
+
+    let voice_type: Option<&'static str> = if synth_type == "PolySynth" {
+        let ctor_args = constructor_call.child_by_field_name("arguments")?;
+        let mut cursor = ctor_args.walk();
+        match ctor_args.named_children(&mut cursor).next() {
+            None => None,
+            Some(first) => Some(tone_synth_type_name(first, text)?),
+        }
+    } else {
+        None
+    };
+
+    let arguments = call.child_by_field_name("arguments")?;
+    let named: Vec<Node> = {
+        let mut cursor = arguments.walk();
+        arguments.named_children(&mut cursor).collect()
+    };
+
+    let required = if synth_type == "NoiseSynth" { 1 } else { 2 };
+    if named.len() < required {
+        return None;
+    }
+
+    if synth_type == "PolySynth" {
+        if named[0].kind() != "array" {
+            return None;
+        }
+        let mut cursor = named[0].walk();
+        let chord: Vec<Node> = named[0].named_children(&mut cursor).collect();
+        if chord.is_empty() || !chord.iter().all(|n| is_string_or_number_literal(*n)) {
+            return None;
+        }
+        if !is_string_or_number_literal(named[1]) {
+            return None;
+        }
+    } else if synth_type == "NoiseSynth" {
+        if !is_string_or_number_literal(named[0]) {
+            return None;
+        }
+    } else if !is_string_or_number_literal(named[0]) || !is_string_or_number_literal(named[1]) {
+        return None;
+    }
+
+    let (arg_start, arg_end) = argument_interior_range(arguments);
+    let arg_range = Range {
+        start: line_index.position(text, arg_start),
+        end: line_index.position(text, arg_end),
+    };
+
+    let byte_range = ByteRange {
+        start: call.start_byte(),
+        end: call.end_byte(),
+    };
+    let range = Range {
+        start: line_index.position(text, call.start_byte()),
+        end: line_index.position(text, call.end_byte()),
+    };
+    let id = finding_id(TONE_SYNTH_KIND, byte_range.start, byte_range.end, &[]);
+
+    Some(Finding {
+        id,
+        range,
+        byte_range,
+        payload: FindingPayload::ToneSynth(ToneSynthPayload {
+            synth_type: synth_type.to_string(),
+            voice_type: voice_type.map(|s| s.to_string()),
+            arg_range,
+        }),
+    })
 }
 
 /// True only for a template literal with NO `${}` substitutions — its value
@@ -1369,6 +1590,227 @@ export function sfx() { new Audio('explosion.mp3'); }
     #[test]
     fn zero_argument_new_wad_call_is_not_a_wad_synth_finding() {
         let f = findings("a.ts", "new Wad().play();");
+        assert!(f.is_empty());
+    }
+
+    // ---- tone.synth ----
+
+    const TONE_PITCHED_TYPES: [&str; 7] = [
+        "Synth",
+        "AMSynth",
+        "FMSynth",
+        "DuoSynth",
+        "MembraneSynth",
+        "MetalSynth",
+        "PluckSynth",
+    ];
+
+    fn tone_synth(uri: &str, text: &str) -> ToneSynthPayload {
+        call(uri, text)
+            .as_tone_synth()
+            .expect("expected tone.synth payload")
+            .clone()
+    }
+
+    #[test]
+    fn every_pitched_synth_class_produces_a_tone_synth_finding() {
+        for class in TONE_PITCHED_TYPES {
+            let src =
+                format!("new Tone.{class}().toDestination().triggerAttackRelease('C4', '8n');");
+            let p = tone_synth("a.ts", &src);
+            assert_eq!(p.synth_type, class, "class {class}");
+            assert!(p.voice_type.is_none());
+        }
+    }
+
+    #[test]
+    fn noise_synth_has_no_note_just_duration() {
+        let src = "new Tone.NoiseSynth().toDestination().triggerAttackRelease('8n');";
+        let p = tone_synth("a.ts", src);
+        assert_eq!(p.synth_type, "NoiseSynth");
+        assert!(p.voice_type.is_none());
+    }
+
+    #[test]
+    fn noise_synth_with_zero_args_is_not_a_finding() {
+        // NoiseSynth still requires its one argument (duration) — the
+        // "NO note" carve-out only drops the note requirement, not every
+        // requirement.
+        let f = findings(
+            "a.ts",
+            "new Tone.NoiseSynth().toDestination().triggerAttackRelease();",
+        );
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn poly_synth_with_explicit_voice_type_and_chord() {
+        let src = "new Tone.PolySynth(Tone.FMSynth).toDestination().triggerAttackRelease(['C4','E4','G4'], '4n');";
+        let p = tone_synth("a.ts", src);
+        assert_eq!(p.synth_type, "PolySynth");
+        assert_eq!(p.voice_type.as_deref(), Some("FMSynth"));
+    }
+
+    #[test]
+    fn poly_synth_with_no_constructor_args_defaults_to_no_voice_type() {
+        let src = "new Tone.PolySynth().toDestination().triggerAttackRelease(['C4','E4'], '4n');";
+        let p = tone_synth("a.ts", src);
+        assert_eq!(p.synth_type, "PolySynth");
+        assert!(p.voice_type.is_none());
+    }
+
+    #[test]
+    fn poly_synth_with_unsupported_bare_object_first_constructor_arg_is_not_a_finding() {
+        // Judgment call (see extract_tone_synth's doc comment): a bare
+        // config-object-only PolySynth call (`new Tone.PolySynth({...})`,
+        // no explicit voice class) is treated as unsupported rather than
+        // guessed at — only the documented `new Tone.PolySynth(VoiceClass,
+        // config?)` shape resolves a voice type.
+        let f = findings(
+            "a.ts",
+            "new Tone.PolySynth({volume:-6}).toDestination().triggerAttackRelease(['C4'], '4n');",
+        );
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn poly_synth_with_unrecognized_voice_class_is_not_a_finding() {
+        let f = findings(
+            "a.ts",
+            "new Tone.PolySynth(Tone.Frequency).toDestination().triggerAttackRelease(['C4'], '4n');",
+        );
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn positive_without_todestination_direct_new_expression_chain() {
+        // No intervening chain call at all — descend_to_constructor's base
+        // case fires immediately.
+        let src = "new Tone.Synth().triggerAttackRelease('C4', '8n');";
+        let p = tone_synth("a.ts", src);
+        assert_eq!(p.synth_type, "Synth");
+    }
+
+    #[test]
+    fn positive_with_multiple_intervening_chain_calls() {
+        let src = "new Tone.Synth().set({portamento:0.05}).toDestination().triggerAttackRelease('C4', '8n');";
+        let p = tone_synth("a.ts", src);
+        assert_eq!(p.synth_type, "Synth");
+    }
+
+    #[test]
+    fn non_static_note_is_not_a_finding() {
+        let f = findings(
+            "a.ts",
+            "new Tone.Synth().toDestination().triggerAttackRelease(note, '8n');",
+        );
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn non_static_duration_is_not_a_finding() {
+        let f = findings(
+            "a.ts",
+            "new Tone.Synth().toDestination().triggerAttackRelease('C4', dur);",
+        );
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn non_allowlisted_tone_class_is_not_a_finding() {
+        for expr in [
+            "new Tone.Frequency('C4').toDestination().triggerAttackRelease('C4', '8n');",
+            "new Tone.Gain(1).toDestination().triggerAttackRelease('C4', '8n');",
+        ] {
+            let f = findings("a.ts", expr);
+            assert!(f.is_empty(), "{expr}");
+        }
+    }
+
+    #[test]
+    fn constructor_object_that_isnt_named_tone_is_not_a_finding() {
+        let f = findings(
+            "a.ts",
+            "new Foo.Synth().toDestination().triggerAttackRelease('C4', '8n');",
+        );
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn chain_not_ending_in_a_new_expression_is_not_a_finding() {
+        let f = findings("a.ts", "foo.bar.triggerAttackRelease('C4', '8n');");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn zero_argument_trigger_attack_release_is_not_a_finding() {
+        let f = findings(
+            "a.ts",
+            "new Tone.Synth().toDestination().triggerAttackRelease();",
+        );
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn finding_range_covers_the_whole_chain_constructor_through_trigger_call() {
+        let src = "new Tone.Synth().toDestination().triggerAttackRelease('C4', '8n');";
+        let f = call("a.ts", src);
+        let whole = "new Tone.Synth().toDestination().triggerAttackRelease('C4', '8n')";
+        assert_eq!(f.byte_range.start, 0);
+        assert_eq!(f.byte_range.end, whole.len());
+    }
+
+    #[test]
+    fn arg_range_covers_only_trigger_attack_releases_own_arguments_not_the_chain() {
+        let src = "new Tone.Synth().toDestination().triggerAttackRelease('C4', '8n');";
+        let f = call("a.ts", src);
+        let p = f.as_tone_synth().unwrap();
+        let prefix = "new Tone.Synth().toDestination().triggerAttackRelease(";
+        let interior = "'C4', '8n'";
+        assert_eq!(&src[prefix.len()..prefix.len() + interior.len()], interior);
+        assert_eq!(p.arg_range.start.character, prefix.len() as u32);
+        assert_eq!(
+            p.arg_range.end.character,
+            (prefix.len() + interior.len()) as u32
+        );
+    }
+
+    #[test]
+    fn chord_array_literal_with_number_note_elements_is_also_accepted() {
+        // Notes as raw numbers (e.g. frequency values) are valid literals
+        // too, not just note-name strings.
+        let src = "new Tone.PolySynth(Tone.Synth).toDestination().triggerAttackRelease([261.6, 329.6], '4n');";
+        let p = tone_synth("a.ts", src);
+        assert_eq!(p.synth_type, "PolySynth");
+    }
+
+    #[test]
+    fn poly_synth_chord_with_a_non_static_element_is_not_a_finding() {
+        let f = findings(
+            "a.ts",
+            "new Tone.PolySynth(Tone.Synth).toDestination().triggerAttackRelease(['C4', note], '4n');",
+        );
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn poly_synth_empty_chord_is_not_a_finding() {
+        let f = findings(
+            "a.ts",
+            "new Tone.PolySynth(Tone.Synth).toDestination().triggerAttackRelease([], '4n');",
+        );
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn poly_synth_non_array_first_arg_is_not_a_finding() {
+        // PolySynth's first triggerAttackRelease argument must be an array
+        // (a chord) — a single bare note string is the pitched-class shape,
+        // not PolySynth's.
+        let f = findings(
+            "a.ts",
+            "new Tone.PolySynth(Tone.Synth).toDestination().triggerAttackRelease('C4', '4n');",
+        );
         assert!(f.is_empty());
     }
 }

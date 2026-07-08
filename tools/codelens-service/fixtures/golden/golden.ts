@@ -144,3 +144,35 @@ const laserOsc = { source: 'noise' }
 export function playLaserOsc() {
   new Wad(laserOsc).play()
 }
+
+// tone.synth — Tone.js (tonejs.github.io): detected by DESCENDING from the
+// outermost triggerAttackRelease call through any number of intervening
+// chain calls (here, one .toDestination()) down to the `new Tone.<Class>`
+// constructor — the mirror image of audio.file's walk UP to the nearest
+// enclosing call.
+export function playTone() {
+  new Tone.Synth().toDestination().triggerAttackRelease('C4', '8n')
+}
+
+// tone.synth — NoiseSynth has no note, just (duration, time?, velocity?).
+// The finding's argRange still covers the whole triggerAttackRelease
+// argument list, same as every other class.
+export function playNoise() {
+  new Tone.NoiseSynth().toDestination().triggerAttackRelease('8n')
+}
+
+// tone.synth — PolySynth with an explicit allowlisted voice type
+// (Tone.FMSynth, a bare member-expression reference, not a `new` call) and
+// a chord: triggerAttackRelease's first argument is an ARRAY of note
+// literals rather than a single note.
+export function playChord() {
+  new Tone.PolySynth(Tone.FMSynth).toDestination().triggerAttackRelease(['C4', 'E4', 'G4'], '4n')
+}
+
+// tone.synth negative — the note comes from a parameter, not a static
+// literal. Detection here is fully-static-or-nothing (no varRef
+// indirection at all, unlike wad.synth's permissive posture) — an
+// unresolvable note just means no finding, full stop.
+export function playDynamicNote(note: string) {
+  new Tone.Synth().toDestination().triggerAttackRelease(note, '8n')
+}

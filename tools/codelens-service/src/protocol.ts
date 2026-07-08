@@ -38,6 +38,7 @@ export const ZZFX_CALL_KIND = 'zzfx.call' as const
 export const ZZFXM_SONG_KIND = 'zzfxm.song' as const
 export const AUDIO_FILE_KIND = 'audio.file' as const
 export const WAD_SYNTH_KIND = 'wad.synth' as const
+export const TONE_SYNTH_KIND = 'tone.synth' as const
 
 export interface ZzfxCallPayload {
   params: number[]
@@ -74,6 +75,25 @@ export interface WadSynthPayload {
   varRef?: VarRef
 }
 
+/**
+ * No pre-extracted note/duration, and no `varRef` field at all: unlike
+ * `WadSynthPayload`'s permissive bare-identifier posture, a non-literal
+ * note/duration/chord argument to `triggerAttackRelease` means the WHOLE
+ * finding is refused at the sidecar level (no finding), so there is never
+ * an unresolved reference for a client to chase — the client only ever
+ * reads `argRange`'s text for an already-static call. `synthType`/
+ * `voiceType` ARE pre-classified (unlike `params`/config elsewhere) since
+ * validating the constructor chain requires descending through the whole
+ * call chain, which is naturally the sidecar's job, not the client's.
+ */
+export interface ToneSynthPayload {
+  /** One of 9 allowlisted Tone.js synth constructor names. */
+  synthType: string
+  /** `PolySynth`'s explicit voice class, itself one of the 9 allowlisted names. */
+  voiceType?: string
+  argRange: Range
+}
+
 interface FindingBase {
   id: string
   range: Range
@@ -100,11 +120,21 @@ export interface WadSynthFinding extends FindingBase {
   payload: WadSynthPayload
 }
 
+export interface ToneSynthFinding extends FindingBase {
+  kind: typeof TONE_SYNTH_KIND
+  payload: ToneSynthPayload
+}
+
 /**
  * A discriminated union on `kind` — narrow with `finding.kind === ZZFX_CALL_KIND`
  * (etc.) before accessing `finding.payload`'s kind-specific fields.
  */
-export type Finding = ZzfxCallFinding | ZzfxmSongFinding | AudioFileFinding | WadSynthFinding
+export type Finding =
+  | ZzfxCallFinding
+  | ZzfxmSongFinding
+  | AudioFileFinding
+  | WadSynthFinding
+  | ToneSynthFinding
 
 export interface Capabilities {
   scan: boolean

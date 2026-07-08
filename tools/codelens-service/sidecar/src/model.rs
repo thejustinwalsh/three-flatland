@@ -102,10 +102,42 @@ pub struct WadSynthPayload {
     pub var_ref: Option<VarRef>,
 }
 
+/// Payload for a Tone.js (tonejs.github.io) `new Tone.<Class>(...)
+/// .triggerAttackRelease(...)` finding — detected by descending from the
+/// OUTERMOST `triggerAttackRelease` call through any number of intervening
+/// chain calls (`.toDestination()`, `.connect(...)`, etc.) down to the
+/// `new_expression` (see [`crate::parse::descend_to_constructor`]).
+/// Deliberately has no pre-extracted note/duration: same posture
+/// `ZzfxmPayload`/`WadSynthPayload` already take — the client reads the
+/// source text at `arg_range` (the `triggerAttackRelease(...)` call's OWN
+/// argument-list text, not the whole chain's) and parses it itself. There
+/// is no `var_ref` here at all (unlike zzfx/wad.synth's permissive
+/// bare-identifier posture): a non-literal note/duration/chord argument
+/// means the whole finding is refused at the scanner level, so there is
+/// never an unresolved reference left for a client to chase — see
+/// [`crate::parse::extract_tone_synth`]'s doc comment for the full
+/// static-or-nothing detection rule.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToneSynthPayload {
+    /// One of the 9 allowlisted Tone.js synth constructor names (`Synth`,
+    /// `AMSynth`, `FMSynth`, `DuoSynth`, `MembraneSynth`, `MetalSynth`,
+    /// `PluckSynth`, `NoiseSynth`, `PolySynth`). Always present.
+    pub synth_type: String,
+    /// `PolySynth`'s explicit voice class (`new Tone.PolySynth(Tone.FMSynth)`),
+    /// itself one of the 9 allowlisted names. Absent for every other
+    /// `synth_type`, and for a `PolySynth` call with no explicit voice
+    /// (defaults to `Synth`).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub voice_type: Option<String>,
+    pub arg_range: Range,
+}
+
 pub const ZZFX_CALL_KIND: &str = "zzfx.call";
 pub const ZZFXM_SONG_KIND: &str = "zzfxm.song";
 pub const AUDIO_FILE_KIND: &str = "audio.file";
 pub const WAD_SYNTH_KIND: &str = "wad.synth";
+pub const TONE_SYNTH_KIND: &str = "tone.synth";
 
 /// The kind-specific half of a [`Finding`] — see the module doc comment for
 /// why this is `#[serde(flatten)]`ed rather than nested under a `payload`
@@ -121,6 +153,8 @@ pub enum FindingPayload {
     AudioFile(AudioFilePayload),
     #[serde(rename = "wad.synth")]
     WadSynth(WadSynthPayload),
+    #[serde(rename = "tone.synth")]
+    ToneSynth(ToneSynthPayload),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -143,6 +177,7 @@ impl Finding {
             FindingPayload::ZzfxmSong(_) => ZZFXM_SONG_KIND,
             FindingPayload::AudioFile(_) => AUDIO_FILE_KIND,
             FindingPayload::WadSynth(_) => WAD_SYNTH_KIND,
+            FindingPayload::ToneSynth(_) => TONE_SYNTH_KIND,
         }
     }
 
@@ -170,6 +205,13 @@ impl Finding {
     pub fn as_wad_synth(&self) -> Option<&WadSynthPayload> {
         match &self.payload {
             FindingPayload::WadSynth(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn as_tone_synth(&self) -> Option<&ToneSynthPayload> {
+        match &self.payload {
+            FindingPayload::ToneSynth(p) => Some(p),
             _ => None,
         }
     }
@@ -366,6 +408,72 @@ mod tests {
     }
 
     #[test]
+    fn tone_synth_finding_round_trips_with_no_pre_extracted_note_or_duration() {
+        let finding = Finding {
+            id: "aa11bb22cc33dd44".to_string(),
+            range: Range {
+                start: pos(0, 0),
+                end: pos(0, 55),
+            },
+            byte_range: ByteRange { start: 0, end: 55 },
+            payload: FindingPayload::ToneSynth(ToneSynthPayload {
+                synth_type: "Synth".to_string(),
+                voice_type: None,
+                arg_range: Range {
+                    start: pos(0, 45),
+                    end: pos(0, 53),
+                },
+            }),
+        };
+        let json = serde_json::to_value(&finding).unwrap();
+        assert_eq!(json["kind"], "tone.synth");
+        assert_eq!(json["payload"]["synthType"], "Synth");
+        assert_eq!(json["payload"]["argRange"]["start"]["character"], 45);
+        assert!(json["payload"].get("voiceType").is_none());
+        assert!(
+            json["payload"].get("note").is_none() && json["payload"].get("duration").is_none(),
+            "tone.synth payload must never carry note/duration — the client re-reads argRange"
+        );
+
+        let back: Finding = serde_json::from_value(json).unwrap();
+        assert_eq!(back, finding);
+        assert_eq!(finding.kind(), TONE_SYNTH_KIND);
+        assert_eq!(finding.as_tone_synth().unwrap().synth_type, "Synth");
+    }
+
+    #[test]
+    fn tone_synth_finding_with_voice_type_round_trips() {
+        let finding = Finding {
+            id: "1122334455667788".to_string(),
+            range: Range {
+                start: pos(2, 0),
+                end: pos(2, 60),
+            },
+            byte_range: ByteRange {
+                start: 60,
+                end: 120,
+            },
+            payload: FindingPayload::ToneSynth(ToneSynthPayload {
+                synth_type: "PolySynth".to_string(),
+                voice_type: Some("FMSynth".to_string()),
+                arg_range: Range {
+                    start: pos(2, 50),
+                    end: pos(2, 58),
+                },
+            }),
+        };
+        let json = serde_json::to_value(&finding).unwrap();
+        assert_eq!(json["payload"]["voiceType"], "FMSynth");
+
+        let back: Finding = serde_json::from_value(json).unwrap();
+        assert_eq!(back, finding);
+        assert_eq!(
+            finding.as_tone_synth().unwrap().voice_type.as_deref(),
+            Some("FMSynth")
+        );
+    }
+
+    #[test]
     fn a_finding_of_one_kind_has_no_accessor_hit_for_the_others() {
         let finding = Finding {
             id: "id".to_string(),
@@ -386,6 +494,7 @@ mod tests {
         assert!(finding.as_zzfxm_song().is_none());
         assert!(finding.as_audio_file().is_some());
         assert!(finding.as_wad_synth().is_none());
+        assert!(finding.as_tone_synth().is_none());
     }
 
     #[test]

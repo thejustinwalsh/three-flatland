@@ -89,7 +89,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     expect(
       result.findings,
       "golden.ts's total finding count changed — update this expectation (and sidecar/tests/golden.rs's matching one) together with any fixture edit"
-    ).toHaveLength(22)
+    ).toHaveLength(25)
 
     // The specific regression this fixture exists to prevent: a
     // type-annotated declarator's defRange must land INSIDE the
@@ -263,5 +263,70 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     expect(laserLine.slice(laserDefRange!.start.character, laserDefRange!.end.character)).toBe(
       "{ source: 'noise' }"
     )
+
+    // tone.synth: three positives (playTone/Synth, playNoise/NoiseSynth,
+    // playChord/PolySynth+voiceType) and one negative (playDynamicNote's
+    // note comes from a parameter, not a literal — no varRef indirection
+    // here at all, unlike wad.synth, so an unresolvable note just means no
+    // finding). argRange slice-equality proven against the real source
+    // text, the TS twin of golden.rs's same block.
+    const toneSynthFindings = result.findings.filter((f) => f.kind === 'tone.synth')
+    expect(
+      toneSynthFindings,
+      'expected playTone (Synth), playNoise (NoiseSynth), and playChord (PolySynth+FMSynth voice) — 3 total tone.synth findings; playDynamicNote’s non-static note must NOT produce a finding'
+    ).toHaveLength(3)
+
+    const goldenLines = goldenText.split('\n')
+    const slice = (range: {
+      start: { line: number; character: number }
+      end: { line: number; character: number }
+    }) => {
+      const line = goldenLines[range.start.line]!
+      return line.slice(range.start.character, range.end.character)
+    }
+
+    const toneFinding = toneSynthFindings.find(
+      (f) => f.kind === 'tone.synth' && f.payload.synthType === 'Synth'
+    )
+    expect(
+      toneFinding,
+      "golden.ts must still declare playTone's new Tone.Synth() call"
+    ).toBeDefined()
+    if (toneFinding?.kind !== 'tone.synth') throw new Error('expected tone.synth')
+    expect(toneFinding.payload.voiceType).toBeUndefined()
+    expect(slice(toneFinding.payload.argRange)).toBe("'C4', '8n'")
+    expect(slice(toneFinding.range)).toBe(
+      "new Tone.Synth().toDestination().triggerAttackRelease('C4', '8n')"
+    )
+
+    const noiseFinding = toneSynthFindings.find(
+      (f) => f.kind === 'tone.synth' && f.payload.synthType === 'NoiseSynth'
+    )
+    expect(
+      noiseFinding,
+      "golden.ts must still declare playNoise's new Tone.NoiseSynth() call"
+    ).toBeDefined()
+    if (noiseFinding?.kind !== 'tone.synth') throw new Error('expected tone.synth')
+    expect(slice(noiseFinding.payload.argRange)).toBe("'8n'")
+
+    const chordFinding = toneSynthFindings.find(
+      (f) => f.kind === 'tone.synth' && f.payload.synthType === 'PolySynth'
+    )
+    expect(
+      chordFinding,
+      "golden.ts must still declare playChord's new Tone.PolySynth(Tone.FMSynth) call"
+    ).toBeDefined()
+    if (chordFinding?.kind !== 'tone.synth') throw new Error('expected tone.synth')
+    expect(chordFinding.payload.voiceType).toBe('FMSynth')
+    expect(slice(chordFinding.payload.argRange)).toBe("['C4', 'E4', 'G4'], '4n'")
+
+    // playDynamicNote's new Tone.Synth()...triggerAttackRelease(note, '8n')
+    // has the identical shape to playTone's Synth call, differing only in
+    // its non-static note — the fixed length(3) above already proves it
+    // isn't a 4th finding; assert this directly too.
+    expect(
+      toneSynthFindings.filter((f) => f.kind === 'tone.synth' && f.payload.synthType === 'Synth'),
+      'expected exactly one Synth-typed tone.synth finding (playTone) — playDynamicNote’s non-static note must not produce a second one'
+    ).toHaveLength(1)
   })
 })
