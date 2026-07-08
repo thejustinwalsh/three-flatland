@@ -10,6 +10,7 @@ import {
 } from 'three/tsl'
 import {
   CanvasTexture,
+  NearestFilter,
   RepeatWrapping,
   type OrthographicCamera,
 } from 'three'
@@ -203,10 +204,16 @@ function EffectSprite({ effect }: EffectSpriteProps) {
     [spriteSheet]
   )
 
-  // Create noise texture (memoized)
+  // Create noise texture (memoized). This holds raw scalar noise in its
+  // .r channel for the dissolve threshold test, not display color — the
+  // 'pixel-art' preset also tags colorSpace as sRGB, which makes WebGPU
+  // upload it as an `-srgb` GPU format and hardware-decode every sample,
+  // skewing the noise distribution toward 0 and dissolving the sprite far
+  // faster than the 0-1 progress range intends. Set nearest filtering
+  // directly instead and leave colorSpace at its raw default.
   const noiseTexture = useMemo(() => {
     const tex = createNoiseTexture()
-    applyTextureOptions(tex, 'pixel-art')
+    applyTextureOptions(tex, { minFilter: NearestFilter, magFilter: NearestFilter, generateMipmaps: false })
     return tex
   }, [])
 

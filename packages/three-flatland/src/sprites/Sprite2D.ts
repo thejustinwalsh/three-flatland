@@ -111,6 +111,41 @@ export class Sprite2D extends Mesh {
   declare material: Sprite2DMaterial
 
   /**
+   * Backing field for the `material` prototype accessor installed after
+   * this class (see the `Object.defineProperty` call at the bottom of
+   * this file — `Mesh` declares `material` as a plain data property, and
+   * TypeScript disallows shadowing that with a class accessor (TS2611),
+   * same reasoning as the `renderOrder` interception below).
+   *
+   * Declared with `declare` (ambient — no runtime class-field emission)
+   * rather than as a real field. With `target: ES2022`,
+   * `useDefineForClassFields` is on, so an uninitialized real field here
+   * would be `[[Define]]`'d back to `undefined` immediately after
+   * `super()` returns — wiping out the value the `material` setter just
+   * wrote during `Mesh`'s constructor (`super(geometry, material)` calls
+   * `this.material = material`, which runs before any of Sprite2D's own
+   * field initializers). `_setupInstanceAttributes()`, called later in
+   * this same constructor, needs the real material immediately, so it
+   * can't tolerate that wipe the way `_renderOrderValue` does (that one
+   * is gated by `_interceptionArmed` until construction finishes).
+   * @internal
+   */
+  declare _materialRef: Sprite2DMaterial
+
+  /**
+   * Internal-only material write that preserves bootstrap/registry-default
+   * bookkeeping — used by the `texture` setter's same-status default swap
+   * (new texture, still an auto-managed default). Going through the
+   * public `material` setter there would look identical to a user's
+   * explicit override and would wrongly opt the sprite out of
+   * auto-orchestration management.
+   * @internal
+   */
+  private _setMaterialInternal(value: Sprite2DMaterial): void {
+    this._materialRef = value
+  }
+
+  /**
    * Own-geometry buffers for custom attributes (unbatched rendering).
    * Each entry maps an attribute name to its Float32Array (4 vertices) and component size.
    * @internal
@@ -894,7 +929,11 @@ export class Sprite2D extends Mesh {
         if (worldDefault) {
           this._resolveDefaultMaterial(worldDefault)
         } else {
-          this.material = Sprite2DMaterial.getShared({ map: value, transparent: true })
+          // Same-status swap (still bootstrap/registry-default, just for
+          // a new texture) — `_setMaterialInternal` bypasses the public
+          // setter so it doesn't clear those flags as if this were a
+          // user-chosen material.
+          this._setMaterialInternal(Sprite2DMaterial.getShared({ map: value, transparent: true }))
           this._setupInstanceAttributes()
         }
       } else if (
@@ -2379,6 +2418,35 @@ Object.defineProperty(Sprite2D.prototype, 'renderOrder', {
   },
   set(this: Sprite2D, value: number): void {
     this._setRenderOrder(value)
+  },
+  configurable: true,
+})
+
+// Install the `material` interception as a prototype accessor. `Mesh`
+// declares `material` as a plain data property, and TypeScript disallows
+// shadowing a data property with a class accessor (ts2611) — same
+// reasoning as `renderOrder` above. This runs for every assignment,
+// including three's own `Mesh` constructor's `this.material = material`
+// via `super(geometry, material)`.
+//
+// A direct `sprite.material = ...` assignment is the only way user code
+// can set the material — there is no other setter — so it's treated as
+// an explicit, permanent choice: it clears the bootstrap/registry-default
+// bookkeeping (`_materialIsBootstrapDefault` / `_materialWasRegistryDefault`)
+// so auto-orchestration's `registerSprite` (orchestration/orchestrator.ts)
+// won't silently resolve the sprite back to a shared default material on
+// the next scene-add sweep, discarding the caller's material. Internal
+// swaps that preserve "still an auto-managed default, just for a
+// different texture" status go through `_setMaterialInternal` instead,
+// which writes `_materialRef` directly and bypasses this setter.
+Object.defineProperty(Sprite2D.prototype, 'material', {
+  get(this: Sprite2D): Sprite2DMaterial {
+    return this._materialRef
+  },
+  set(this: Sprite2D, value: Sprite2DMaterial): void {
+    this._materialRef = value
+    this._materialIsBootstrapDefault = false
+    this._materialWasRegistryDefault = false
   },
   configurable: true,
 })
