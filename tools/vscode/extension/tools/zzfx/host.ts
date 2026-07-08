@@ -8,6 +8,8 @@ import { createHostBridge, type HostBridge } from '@three-flatland/bridge/host'
 import type { CodelensServiceClient, Finding } from '@three-flatland/codelens-service'
 import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
+import { batchFromOutcome, historyKeyFor } from './history/core'
+import { getZzfxHistoryStore } from './history/store'
 import { PRESET_LIBRARY } from './lm/core'
 import { ZzfxLmService } from './lm/service'
 import { isNumberArrayLiteralText, resolveParams } from './resolveParams'
@@ -16,6 +18,7 @@ const TOOL = 'zzfx'
 
 type ZzfxGeneratePayload = { category: string; styles: string[]; n: number }
 type ZzfxSavePayload = { findingId: string; params: number[]; category?: string; styles?: string[] }
+type ZzfxHistoryDeletePayload = { batchTs: number; index: number }
 
 type OpenPanel = {
   panel: vscode.WebviewPanel
@@ -160,6 +163,18 @@ export async function openZzfxEditorPanel(
 
   const lmService = getLmService(context)
 
+  // AI candidate history — keyed to the SAME source identity the header
+  // link shows (variable → declaration, literal → call site line), so
+  // "mapped to the link we generated from" holds by construction. The
+  // key is an open-time snapshot, consistent with the panel title / the
+  // link's tolerant staleness semantics (see history/core.ts).
+  const historyStore = getZzfxHistoryStore(context)
+  const historyKey = historyKeyFor({
+    uri: uri.toString(),
+    line: finding.range.start.line,
+    varRef: finding.payload.varRef,
+  })
+
   bridge.on('zzfx/ready', async () => {
     log(`zzfx/ready for finding ${findingId}`)
     // For a variable-spread call, payload.params is genuinely empty — the
@@ -195,6 +210,7 @@ export async function openZzfxEditorPanel(
       loadError,
       lmAvailable: await lmService.isAvailable(),
       presets: PRESET_LIBRARY,
+      history: await historyStore.getBatches(historyKey),
     })
     resolveReady()
     return { ok: true }
@@ -209,6 +225,27 @@ export async function openZzfxEditorPanel(
       fromCache: outcome.source === 'cache',
       source: outcome.source,
     })
+    // Durability is host-owned: persist at the same moment the result is
+    // emitted, so a panel move/reload can never lose a paid-for batch.
+    // batchFromOutcome returns null for preset/empty outcomes (free +
+    // deterministic — deliberately not persisted).
+    const batch = batchFromOutcome(outcome, { category, styles }, Date.now())
+    if (batch) {
+      const history = await historyStore.append(historyKey, batch)
+      bridge.emit('zzfx/historyChanged', { history })
+    }
+    return { ok: true }
+  })
+
+  bridge.on<ZzfxHistoryDeletePayload>('zzfx/history/delete', async ({ batchTs, index }) => {
+    const history = await historyStore.deleteCandidate(historyKey, batchTs, index)
+    bridge.emit('zzfx/historyChanged', { history })
+    return { ok: true }
+  })
+
+  bridge.on('zzfx/history/clear', async () => {
+    const history = await historyStore.clear(historyKey)
+    bridge.emit('zzfx/historyChanged', { history })
     return { ok: true }
   })
 

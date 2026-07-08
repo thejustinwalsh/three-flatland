@@ -298,8 +298,12 @@ export function App() {
             generateStream={session.generateStream}
             candidates={session.candidates}
             lastGenerateSource={session.lastGenerateSource}
+            history={session.history}
+            historyError={session.historyError}
             onGenerate={() => void session.generate()}
             onApplyCandidate={session.applyCandidate}
+            onDeleteCandidate={session.deleteHistoryCandidate}
+            onClearHistory={session.clearHistory}
           />
         </div>
       </div>

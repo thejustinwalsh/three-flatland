@@ -80,6 +80,15 @@ type ZzfxRevealSourceResult = { ok: true }
 
 The host re-resolves the finding's **current** position by id (the same fresh re-parse the save path starts from) and calls `showTextDocument` — without `preserveFocus`, so the revealed editor takes focus (the link's whole job is "take me there", unlike the play routes). Target selection mirrors what Save writes to: a var-ref with a readable declaration reveals the **declaration** with the initializer selected; everything else reveals the **call site** with the call selected. If the finding is gone — edited away since the panel opened — it falls back to opening the open-time target file at the open-time line, cursor-collapsed and clamped (a stale range could select the wrong text), with **no error toast**: a stale-ish reveal beats an error for a navigation click. The webview side is fire-and-forget for the same reason.
 
+### AI candidate history (`zzfx/history/*`) — Z14
+
+"We pay good money for these" — generated candidates must survive the webview's lifecycle (panel moves, close/reopen, window restarts). Durability is **host-owned**: a JSON blob at `<globalStorageUri>/zzfx-lm-history.json` (sibling to the LM cache, reusing its memoized-loader + read-merge-write patterns — see `extension/tools/zzfx/history/{core,store}.ts`; the stakeholder's "should at least be using local storage" was the floor, and host storage survives all of the above by construction).
+
+- **Keyed to the source identity the header link shows**: variable case → `defUri` + variable name (the history follows the SOUND, across call-site edits); literal case → `uri` + open-time line (tolerant: if the line drifts, old entries just stop showing — the key is identity, not a live pointer).
+- **Grow, never replace**: each `lm`/`cache` generate APPENDS a `ZzfxHistoryBatch` `{ts, category, styles, source, candidates}`, persisted host-side at the same moment `zzfx/generateResult` is emitted. **Preset results are never persisted** (free + deterministic — they'd only dilute the paid-for history). Capped at the newest `HISTORY_MAX_BATCHES_PER_SOURCE` (10) batches per source, oldest pruned on append.
+- **Flow**: `ZzfxInitPayload.history` carries the source's batches (newest-first); every change pushes `zzfx/historyChanged { history }` as a full replacement — the webview renders, never owns, durability. Webview → host: `zzfx/history/delete { batchTs, index }` (per-candidate trash button) and `zzfx/history/clear {}` (panel-header clear-all behind an inline two-step confirm; the armed state auto-disarms after 3s).
+- The panel renders history in BOTH branches (`lmAvailable` and the preset browser) — sounds generated while a model was signed in must not vanish on sign-out. An `lm`/`cache` generate result appears as the newest history batch; only the never-persisted preset fallback still renders as a transient labeled result.
+
 ### Standalone / dev mode
 
 If `acquireVsCodeApi()` isn't available (e.g. `pnpm --filter @three-flatland/vscode dev:webview` opened directly in a browser, outside the extension host), `useZzfxSession` catches the throw from `createClientBridge()` and sets `standalone: true`. In that mode:

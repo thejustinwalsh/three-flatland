@@ -1,6 +1,9 @@
 import * as vscode from 'vscode'
 import type { PlaybackStats } from '@three-flatland/zzfx-play'
 import { registerWasmTest } from './tools/_wasm-test/register'
+import type { ZzfxHistoryBatch } from '../webview/zzfx/protocol'
+import { historyKeyFor } from './tools/zzfx/history/core'
+import { getZzfxHistoryStore } from './tools/zzfx/history/store'
 import {
   getActivePlaySidecarPid,
   getPlaySidecarStats,
@@ -29,6 +32,18 @@ export type ExtensionApi = {
     shutdown: () => Promise<void>
     getStats: () => Promise<PlaybackStats | undefined>
   }
+  /** e2e seeding/verification seam for the AI candidate history — the
+   * SAME singleton store instance the zzfx panels use (not a parallel
+   * path), so a seeded batch is exactly what a panel's init reads. The
+   * generate→persist route itself can't be driven e2e (the test host has
+   * no `vscode.lm` model, so generate degrades to presets, which are by
+   * design never persisted) — it's covered by history/core.test.ts's
+   * `batchFromOutcome` + append tests instead. */
+  zzfxHistory: {
+    keyFor: typeof historyKeyFor
+    getBatches: (key: string) => Promise<ZzfxHistoryBatch[]>
+    append: (key: string, batch: ZzfxHistoryBatch) => Promise<ZzfxHistoryBatch[]>
+  }
 }
 
 export function activate(context: vscode.ExtensionContext): ExtensionApi {
@@ -48,6 +63,11 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
       getActivePid: getActivePlaySidecarPid,
       shutdown: shutdownPlaySidecar,
       getStats: getPlaySidecarStats,
+    },
+    zzfxHistory: {
+      keyFor: historyKeyFor,
+      getBatches: (key) => getZzfxHistoryStore(context).getBatches(key),
+      append: (key, batch) => getZzfxHistoryStore(context).append(key, batch),
     },
   }
 }
