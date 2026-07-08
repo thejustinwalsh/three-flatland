@@ -252,6 +252,17 @@ export class DevtoolsProvider {
     this._dataTransport = createBusTransport({ channelName: this._opts.dataChannelName })
 
     if (this._opts.remote !== null) {
+      // An injected socket is caller-owned and reused across start()/dispose()
+      // cycles. If the caller closed it before this (re)start, the bridge comes
+      // back against a dead connection and silently drops every send — surface
+      // it rather than fail quietly. (readyState 2 = CLOSING, 3 = CLOSED.)
+      if (typeof this._opts.remote !== 'string' && this._opts.remote.readyState >= 2) {
+        console.warn(
+          '[flatland-devtools] injected remote socket is closed on start(); remote ' +
+            'debugging will not connect. Provide an open socket (or a URL) that stays ' +
+            'open for the provider lifetime.'
+        )
+      }
       this._remoteBridge = createProviderRemoteBridge({
         remote: this._opts.remote,
         dataChannelName: this._opts.dataChannelName,

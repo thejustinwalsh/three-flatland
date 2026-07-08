@@ -480,11 +480,13 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     }
 
     if (data.vertices && data.triangles && data.vertices.length >= 3) {
-      // Rotated frames pack 90°-turned in the atlas; the quad path
-      // doesn't rotate its sampling yet, and deriving rotated
-      // frame-local UVs here would desync from it. Fall back to the
-      // quad for rotated frames — correctness over overdraw.
-      if (frame.rotated) return null
+      // Mesh space is always the unrotated source frame — vertices are
+      // positioned from sourceWidth/sourceHeight and the trim rect,
+      // neither of which vary with `frame.rotated`. Atlas rotation
+      // (TexturePacker 90° CW packing) is a sampling-time concern the
+      // shader already handles per-instance (`ROTATED_FRAME_MASK`
+      // unrotation in `Sprite2DMaterial`/`OcclusionPass`), so it needs
+      // no transform here.
       const sourceW = frame.sourceWidth
       const sourceH = frame.sourceHeight
       const trim = frame.trimOffset ?? { x: 0, y: 0, width: sourceW, height: sourceH }

@@ -1,10 +1,14 @@
 import type { Scene, Texture } from 'three'
 import type { World } from 'koota'
 import type { Sprite2D } from '../sprites/Sprite2D'
-import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { Sprite2DMaterial, Sprite2DMaterialOptions } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { BatchRegistry } from '../ecs/traits'
-import { getWorldDefaultMaterial, type RegistryData } from '../ecs/batchUtils'
+import {
+  getWorldDefaultMaterial,
+  getWorldEffectVariant,
+  type RegistryData,
+} from '../ecs/batchUtils'
 import { buildBatchQueryView, type BatchQueryView } from '../pipeline/batchQuery'
 
 /**
@@ -105,6 +109,17 @@ export class Registry {
     const world = this.world
     const data = this._registryData()!
     return getWorldDefaultMaterial(world, data, texture)
+  }
+
+  /**
+   * Get (or create) this registry's effect-variant material for a
+   * texture + configuration — the constants-effect counterpart of
+   * `getDefaultMaterial`.
+   */
+  getEffectVariant(texture: Texture, options: Sprite2DMaterialOptions): Sprite2DMaterial {
+    const world = this.world
+    const data = this._registryData()!
+    return getWorldEffectVariant(world, data, texture, options)
   }
 
   /**

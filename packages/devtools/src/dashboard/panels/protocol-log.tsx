@@ -84,13 +84,21 @@ export function ProtocolLog() {
   // cursor (nearest-frame semantics: data batches at ~4 Hz, engine
   // frames at 60 Hz — most frames have no exact row). Only rows in the
   // tail cache are scanned; deeper history scrolls in as it hydrates.
-  const parkedFrameRef = useRef<number | null>(null)
+  const parkedCursorRef = useRef<{ providerId: string | null; frame: number | null }>({
+    providerId: null,
+    frame: null,
+  })
   useEffect(() => {
-    if (frameCursor === null || frameCursor === parkedFrameRef.current) {
-      parkedFrameRef.current = frameCursor
+    // Key the parked cursor by provider AND frame: switching producers while
+    // both are parked on the same frame number must still re-scroll.
+    const sameCursor =
+      parkedCursorRef.current.providerId === activeProviderId &&
+      parkedCursorRef.current.frame === frameCursor
+    if (frameCursor === null || sameCursor) {
+      parkedCursorRef.current = { providerId: activeProviderId, frame: frameCursor }
       return
     }
-    parkedFrameRef.current = frameCursor
+    parkedCursorRef.current = { providerId: activeProviderId, frame: frameCursor }
     if (activeProviderId === null) return
     const { total, ids } = store.statsFor(activeProviderId)
     let matched = false
@@ -113,7 +121,11 @@ export function ProtocolLog() {
       void store
         .queryFiltered(provider, (entry) => entry.frame !== undefined && entry.frame <= target)
         .then((matchedIds) => {
-          if (parkedFrameRef.current !== target) return
+          if (
+            parkedCursorRef.current.providerId !== provider ||
+            parkedCursorRef.current.frame !== target
+          )
+            return
           const lastId = matchedIds[matchedIds.length - 1]
           if (lastId === undefined) return
           const { total: t, ids: allIds } = store.statsFor(provider)

@@ -71,6 +71,29 @@ function getColorTransformId(fn: ColorTransformFn | undefined): number {
 }
 
 /**
+ * Compute the non-texture fragment of `Sprite2DMaterial`'s shared-cache
+ * key (transparent, lit, colorTransform, alphaTest, premultipliedAlpha,
+ * effectsKey). `getShared()` prefixes this with the texture id for its
+ * flat module-global cache; world-scoped variant resolution
+ * (`ecs/batchUtils.ts`'s `getWorldEffectVariant`) keys its per-world
+ * store by texture identity already, so it uses this fragment alone.
+ * Exported so both call sites build an identical key from one place.
+ */
+export function sprite2DMaterialVariantKey(options: Sprite2DMaterialOptions = {}): string {
+  const alphaTest = options.alphaTest ?? 0
+  // alphaTest > 0 implies the depth-test fast path: opaque + depthWrite=true.
+  const transparent = options.transparent ?? (alphaTest > 0 ? false : true)
+  const lit = options.lit ?? false
+  const ctId = getColorTransformId(options.colorTransform)
+  const premultiplied = options.premultipliedAlpha ?? false
+  const effectsKey = options.effectsKey ?? ''
+
+  // Every option that changes the shader or blend state must be in the
+  // key so distinct materials don't collide in the shared cache.
+  return `${transparent}:${lit}:${ctId}:${alphaTest}:${premultiplied}:${effectsKey}`
+}
+
+/**
  * TSL-based material for 2D sprites.
  *
  * UNIFIED API: This material reads from instance attributes, which works for:
@@ -95,7 +118,6 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   override type: string = 'Sprite2DMaterial'
 
-
   /**
    * Cache of shared material instances, keyed by configuration.
    * Used by `getShared()` so sprites with identical config reuse the same material.
@@ -109,17 +131,7 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   static getShared(options: Sprite2DMaterialOptions = {}): Sprite2DMaterial {
     const textureId = options.map?.id ?? -1
-    const alphaTest = options.alphaTest ?? 0
-    // alphaTest > 0 implies the depth-test fast path: opaque + depthWrite=true.
-    const transparent = options.transparent ?? (alphaTest > 0 ? false : true)
-    const lit = options.lit ?? false
-    const ctId = getColorTransformId(options.colorTransform)
-    const premultiplied = options.premultipliedAlpha ?? false
-    const effectsKey = options.effectsKey ?? ''
-
-    // Every option that changes the shader or blend state must be in the
-    // key so distinct materials don't collide in the shared cache.
-    const key = `${textureId}:${transparent}:${lit}:${ctId}:${alphaTest}:${premultiplied}:${effectsKey}`
+    const key = `${textureId}:${sprite2DMaterialVariantKey(options)}`
 
     let material = Sprite2DMaterial._cache.get(key)
     if (!material) {
@@ -356,10 +368,24 @@ export class Sprite2DMaterial extends EffectMaterial {
     }
   }
 
-  /** @internal */
-  _resolveGeometryStrategy(): void {
+  /**
+   * Re-resolve the tight-mesh/synth-quad geometry strategy.
+   *
+   * @param deferRebuild - When true, skip the `_rebuildColorNode()` call
+   * even if the strategy flipped. Set by `_beforeEffectCapCheck()`,
+   * which runs mid-`registerEffect()` before the effect buffer tier is
+   * resized — rebuilding the color node there would read `bufNodes` at
+   * the OLD (too-small) tier and crash on an out-of-range buffer index
+   * for the effect that just pushed floats past it. `registerEffect`
+   * rebuilds the color node itself once the tier is correct; this just
+   * needs `_tightMesh`/`positionNode`/`_cornerUV` updated beforehand so
+   * that later rebuild picks up the demoted strategy.
+   * @internal
+   */
+  _resolveGeometryStrategy(deferRebuild = false): void {
     const atlas = getAtlasMesh(this._spriteTexture)
-    let wantsTight = this.transparent && this.alphaTest === 0 && atlas !== null
+    let wantsTight =
+      this.transparent && this.alphaTest === 0 && atlas !== null && atlas.frames.length > 0
     if (wantsTight && this._effectTotalFloats > 16) {
       // Tight-mesh spends 2 bindings on geometry — a material already
       // carrying more than 16 effect floats can't fit under WebGPU's
@@ -403,10 +429,41 @@ export class Sprite2DMaterial extends EffectMaterial {
     // flip happens outside setTexture (late atlas registration
     // re-resolves through the version check).
     this._effectSchemaVersion++
+    if (deferRebuild) return
     if (this._spriteTexture) {
       this._rebuildColorNode()
       this.needsUpdate = true
     }
+  }
+
+  /**
+   * Effective effect-float cap for a prospective total. A tight-mesh
+   * material demotes to synth-quad (cap 24) rather than staying tight
+   * (cap 16) the moment its effect floats exceed 16, so a late effect
+   * registration that crosses 16 is measured against the synth cap it
+   * will actually run under — not thrown against the stale tight cap.
+   * Recomputes `wantsTight` from scratch (not `_tightMesh`) so it stays
+   * a pure query, safe on `registerEffect`'s throw path.
+   * @internal
+   */
+  protected override _effectFloatCap(prospectiveTotal: number): number {
+    const atlas = getAtlasMesh(this._spriteTexture)
+    const wantsTight =
+      this.transparent && this.alphaTest === 0 && atlas !== null && atlas.frames.length > 0
+    return wantsTight && prospectiveTotal <= 16 ? 16 : EffectMaterial.MAX_EFFECT_FLOATS
+  }
+
+  /**
+   * After an effect commits, re-resolve the geometry strategy so a
+   * material that crossed the 16-float tight-mesh cap actually demotes to
+   * synth-quad. Deferred rebuild: `registerEffect` resizes the buffer
+   * tier and rebuilds the color node itself right after this returns, so
+   * we only need `_tightMesh`/`positionNode`/`_cornerUV` updated here (see
+   * `_resolveGeometryStrategy`). Runs on the success path only.
+   * @internal
+   */
+  protected override _applyEffectGeometryStrategy(): void {
+    this._resolveGeometryStrategy(true)
   }
 
   /**
@@ -418,6 +475,29 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   override get maxEffectFloats(): number {
     return this._tightMesh ? 16 : EffectMaterial.MAX_EFFECT_FLOATS
+  }
+
+  /**
+   * The construction options that participate in the shared-cache /
+   * variant key (`sprite2DMaterialVariantKey`), read back from live
+   * material state. Re-resolution paths (enrollment bootstrap, dispose
+   * resurrection, texture reassignment) rebuild a variant from these so
+   * the resurrected material preserves every key-bearing flag — notably
+   * `alphaTest` (opaque + depth fast-path) and `premultipliedAlpha`
+   * (`CustomBlending`), both of which change the shader / blend state and
+   * were previously dropped on re-resolution. `effectsKey` is owned by
+   * the sprite's live effect set, so callers layer it on; `lit` is a key
+   * discriminant the constructor never consumes, so it is intentionally
+   * not reconstructable here.
+   * @internal
+   */
+  get variantOptions(): Sprite2DMaterialOptions {
+    return {
+      transparent: this.transparent,
+      colorTransform: this._colorTransform ?? undefined,
+      alphaTest: this.alphaTest,
+      premultipliedAlpha: this._premultipliedAlpha,
+    }
   }
 
   /**

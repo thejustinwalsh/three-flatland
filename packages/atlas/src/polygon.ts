@@ -173,13 +173,21 @@ function convexHullYDown(points: [number, number][]): [number, number][] {
     (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
   const lower: [number, number][] = []
   for (const point of unique) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, point) <= 0) lower.pop()
+    while (
+      lower.length >= 2 &&
+      cross(lower[lower.length - 2]!, lower[lower.length - 1]!, point) <= 0
+    )
+      lower.pop()
     lower.push(point)
   }
   const upper: [number, number][] = []
   for (let i = unique.length - 1; i >= 0; i--) {
     const point = unique[i]!
-    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, point) <= 0) upper.pop()
+    while (
+      upper.length >= 2 &&
+      cross(upper[upper.length - 2]!, upper[upper.length - 1]!, point) <= 0
+    )
+      upper.pop()
     upper.push(point)
   }
   lower.pop()
@@ -405,10 +413,9 @@ export function earClip(outline: [number, number][]): number[] {
       clipped = true
       break
     }
-    if (!clipped) break // degenerate — bail with what we have
+    if (!clipped) return [] // stalled on a degenerate/non-simple outline — fail closed
   }
-  if (remaining.length === 3) {
-    indices.push(remaining[0]!, remaining[1]!, remaining[2]!)
-  }
+  if (remaining.length !== 3) return [] // guard exhausted without finishing — fail closed
+  indices.push(remaining[0]!, remaining[1]!, remaining[2]!)
   return indices
 }

@@ -119,6 +119,23 @@ function getVersion(name) {
 
 // ── Download + verify ──
 
+// Unauthenticated api.github.com requests are capped at 60/hr per IP, a limit
+// routinely exhausted on shared CI runner IP pools — the API then answers 403
+// with `{"message":"API rate limit exceeded"}` (no `assets` key), which reads
+// downstream as "no release asset found ... Available: none". Authenticating
+// with the token CI already has raises the cap to 5,000/hr and removes the
+// flake; locally, with no token set, behaviour is unchanged (unauthenticated).
+const GH_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
+
+// Fetch a URL with curl, passing the GitHub token via argv (never the shell, so
+// it can't leak into logs or process listings) when one is available.
+function ghFetch(url) {
+  const args = ["-sL"];
+  if (GH_TOKEN) args.push("-H", `Authorization: Bearer ${GH_TOKEN}`);
+  args.push(url);
+  return execFileSync("curl", args, { stdio: "pipe" }).toString();
+}
+
 async function downloadGithubRelease(repo, version, binName, { archOverride, expectedSha256 } = {}) {
   const { platform, arch } = getPlatform();
   const effectiveArch = archOverride?.[arch] || arch;
@@ -128,22 +145,20 @@ async function downloadGithubRelease(repo, version, binName, { archOverride, exp
 
   // Get release asset URL
   const releaseUrl = `https://api.github.com/repos/${repo}/releases/tags/${version}`;
-  const releaseJson = execSync(`curl -sL "${releaseUrl}"`, { stdio: "pipe" }).toString();
+  const releaseJson = ghFetch(releaseUrl);
   let release;
   try {
     release = JSON.parse(releaseJson);
   } catch {
     // Try with 'v' prefix
     const releaseUrl2 = `https://api.github.com/repos/${repo}/releases/tags/v${version}`;
-    const releaseJson2 = execSync(`curl -sL "${releaseUrl2}"`, { stdio: "pipe" }).toString();
-    release = JSON.parse(releaseJson2);
+    release = JSON.parse(ghFetch(releaseUrl2));
   }
 
   if (!release.assets) {
     // Try version_ prefix (binaryen style)
     const releaseUrl3 = `https://api.github.com/repos/${repo}/releases/tags/version_${version}`;
-    const releaseJson3 = execSync(`curl -sL "${releaseUrl3}"`, { stdio: "pipe" }).toString();
-    release = JSON.parse(releaseJson3);
+    release = JSON.parse(ghFetch(releaseUrl3));
   }
 
   const asset = release.assets?.find(
@@ -158,6 +173,12 @@ async function downloadGithubRelease(repo, version, binName, { archOverride, exp
     console.log(
       `  Available: ${release.assets?.map((a) => a.name).join(", ") || "none"}`,
     );
+    // A message with no assets means the API rejected the request (rate limit,
+    // not found) rather than the tag genuinely lacking assets — surface it so
+    // the real cause isn't hidden behind "Available: none".
+    if (release.message) {
+      console.log(`  GitHub API: ${release.message}${GH_TOKEN ? "" : " (requests are unauthenticated — set GITHUB_TOKEN)"}`);
+    }
     return false;
   }
 

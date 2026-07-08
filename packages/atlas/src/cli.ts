@@ -11,7 +11,7 @@
  */
 import { readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { basename, dirname, extname, join, resolve } from 'node:path'
-import { bakeAtlas, decodePng, encodePng } from './bake'
+import { bakeAtlas, decodePng, encodePng } from './bake.js'
 
 interface CliArgs {
   command: string
@@ -38,12 +38,31 @@ function parseArgs(argv: string[]): CliArgs {
     spacing: 2,
     polygons: true,
   }
-  for (let i = 2; i < argv.length; i++) {
+  let i = 2
+  const requireValue = (flag: string): string => {
+    const value = argv[++i]
+    if (value === undefined) {
+      console.error(`flatland-atlas: '${flag}' requires a value`)
+      usage()
+      process.exit(1)
+    }
+    return value
+  }
+  const requireNumber = (flag: string): number => {
+    const value = Number(requireValue(flag))
+    if (!Number.isFinite(value)) {
+      console.error(`flatland-atlas: '${flag}' requires a numeric value`)
+      usage()
+      process.exit(1)
+    }
+    return value
+  }
+  for (; i < argv.length; i++) {
     const arg = argv[i]!
-    if (arg === '-o' || arg === '--out') args.out = argv[++i]!
-    else if (arg === '--verts') args.vertexBudget = Number(argv[++i])
-    else if (arg === '--threshold') args.alphaThreshold = Number(argv[++i])
-    else if (arg === '--spacing') args.spacing = Number(argv[++i])
+    if (arg === '-o' || arg === '--out') args.out = requireValue(arg)
+    else if (arg === '--verts') args.vertexBudget = requireNumber(arg)
+    else if (arg === '--threshold') args.alphaThreshold = requireNumber(arg)
+    else if (arg === '--spacing') args.spacing = requireNumber(arg)
     else if (arg === '--no-polygons') args.polygons = false
     else {
       console.error(`flatland-atlas: unknown option '${arg}'`)

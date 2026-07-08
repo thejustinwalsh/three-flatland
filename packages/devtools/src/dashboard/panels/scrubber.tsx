@@ -18,7 +18,7 @@
  * the user is never offered a frame whose protocol log rows already
  * pruned out from under it.
  */
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useState } from 'preact/hooks'
 import { useDevtoolsState, useFrameTick } from '../hooks.js'
 import {
   addFrameCursorListener,
@@ -97,10 +97,12 @@ export function Scrubber() {
     if (state.frame !== undefined) getLiveRing().pushFrame(state.frame)
   }, [state.frame])
 
-  // Per-provider cursor memory follows the producer switcher. Effect,
-  // not render: restoring a parked cursor fires listeners → setState,
-  // which must not happen mid-render.
-  useEffect(() => {
+  // Per-provider cursor memory follows the producer switcher. Layout
+  // effect, not plain effect: the sync must land before paint so panels
+  // reading getFrameCursor() during render never show one frame with the
+  // previous provider's cursor. Still post-render, so the listener →
+  // setState it triggers isn't mid-render.
+  useLayoutEffect(() => {
     setCursorProvider(state.selectedProviderId)
   }, [state.selectedProviderId])
 
