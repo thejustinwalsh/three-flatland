@@ -21,10 +21,49 @@ const DEFAULT_EXCLUDE_DIRS: &[&str] = &[
 ];
 pub const DEFAULT_MAX_FILES: usize = 20_000;
 
-/// Strips a `file://` scheme, leaving a plain filesystem path. Non-`file://`
-/// strings (including already-bare paths) pass through unchanged.
+/// Strips a `file://` scheme and percent-decodes the remainder, leaving a
+/// plain filesystem path. Non-`file://` strings (including already-bare
+/// paths) pass through unchanged — decoding only applies to the part that
+/// was actually a URI.
+///
+/// The decode step is load-bearing for cache correctness, not cosmetic: the
+/// TS client always sends `document.uri.toString()`, which percent-encodes
+/// reserved characters (a space becomes `%20`), while `path_to_uri` builds
+/// its URIs from raw, unencoded OS paths during `workspace/scan`'s
+/// directory-walk pre-warm. Without decoding here, the same real file (e.g.
+/// anything under `Application Support` or a `OneDrive - Company Name`
+/// path) would produce two different spellings of the same cache key, and
+/// the SQLite persistence cache would never hit for it.
 pub fn uri_to_path(uri: &str) -> String {
-    uri.strip_prefix("file://").unwrap_or(uri).to_string()
+    match uri.strip_prefix("file://") {
+        Some(rest) => percent_decode(rest),
+        None => uri.to_string(),
+    }
+}
+
+/// Decodes `%XX` hex-escape sequences (e.g. `%20` -> a space). Bytes that
+/// aren't part of a valid `%XX` sequence pass through unchanged. Falls back
+/// to the original string if decoding produces invalid UTF-8 (degrade, don't
+/// panic — a malformed escape shouldn't crash the sidecar over a cache-key
+/// nicety).
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hi = (bytes[i + 1] as char).to_digit(16);
+            let lo = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(hi), Some(lo)) = (hi, lo) {
+                out.push(((hi * 16) + lo) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
 }
 
 /// Builds a `file://` URI from an absolute POSIX-style path. Relative paths
@@ -136,6 +175,50 @@ mod tests {
         let uri = path_to_uri(Path::new("/a/b.ts"));
         assert_eq!(uri, "file:///a/b.ts");
         assert_eq!(uri_to_path(&uri), "/a/b.ts");
+    }
+
+    #[test]
+    fn uri_to_path_percent_decodes_the_remainder() {
+        assert_eq!(uri_to_path("file:///a/b%20c.ts"), "/a/b c.ts");
+    }
+
+    #[test]
+    fn uri_to_path_leaves_a_bare_non_file_uri_string_unchanged() {
+        // Non-`file://` strings (including already-bare paths) still pass
+        // through unchanged — decoding only applies to the part that was
+        // actually stripped off a `file://` URI.
+        assert_eq!(uri_to_path("/a/b c.ts"), "/a/b c.ts");
+    }
+
+    #[test]
+    fn round_trip_holds_both_directions_for_a_path_containing_a_space() {
+        let path = Path::new("/a/b c.ts");
+
+        // uri_to_path(path_to_uri(x)) == x
+        let uri = path_to_uri(path);
+        assert_eq!(uri_to_path(&uri), path.to_string_lossy());
+
+        // path_to_uri(uri_to_path(x)) == x
+        assert_eq!(path_to_uri(Path::new(&uri_to_path(&uri))), uri);
+    }
+
+    #[test]
+    fn percent_decoding_makes_scan_and_client_cache_keys_agree_for_a_path_with_a_space() {
+        // Regression for a real cache-defeating bug: the TS client always
+        // sends `document.uri.toString()`, which VS Code percent-encodes
+        // (a space becomes `%20`), while `workspace/scan`'s directory-walk
+        // pre-warm derives its cache key via `path_to_uri` from a raw,
+        // unencoded OS path. Before this fix, the same real file produced
+        // two different SQLite cache-key spellings for any path containing
+        // a space (extremely common — "Application Support",
+        // "OneDrive - Company Name", etc.) — the persistence cache never
+        // actually hit for such paths.
+        let from_client_uri = uri_to_path("file:///Users/dev/Application%20Support/preset.ts");
+        let from_scan_walk = uri_to_path(&path_to_uri(Path::new(
+            "/Users/dev/Application Support/preset.ts",
+        )));
+        assert_eq!(from_client_uri, from_scan_walk);
+        assert_eq!(from_client_uri, "/Users/dev/Application Support/preset.ts");
     }
 
     fn setup_tree() -> tempfile::TempDir {
