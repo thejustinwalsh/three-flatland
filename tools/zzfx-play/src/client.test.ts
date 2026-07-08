@@ -92,6 +92,26 @@ describe('PlaySidecarClient', () => {
     expect(client.isRunning).toBe(true)
   })
 
+  it('concurrent getStats() calls are serialized — each caller gets its OWN response, in order (#46)', async () => {
+    // The fake advances elapsedSeconds by 0.5 per stats request. The
+    // content-based correlation (next `cmd:'stats'` line, no request id)
+    // is only sound for one in-flight query: unserialized, all three
+    // listeners here would resolve off the FIRST response ([0.5, 0.5,
+    // 0.5]) and the orphaned later responses would make every subsequent
+    // caller a full response stale — the exact interleave #46's
+    // background auto-revert watcher produces against e2e stats polls.
+    client = spawnFake()
+    const [a, b, c] = await Promise.all([client.getStats(), client.getStats(), client.getStats()])
+    expect([a.elapsedSeconds, b.elapsedSeconds, c.elapsedSeconds]).toEqual([0.5, 1, 1.5])
+  })
+
+  it('a rejected getStats() does not poison the queue for the caller behind it', async () => {
+    client = spawnFake({ ...process.env, FAKE_PLAY_SIDECAR_STATS_ERROR: '1' })
+    const [first, second] = await Promise.allSettled([client.getStats(), client.getStats()])
+    expect(first.status).toBe('rejected')
+    expect(second.status).toBe('rejected') // still REACHED the sidecar — not stuck behind the first
+  })
+
   it('getStats() rejects when the sidecar Nacks the stats query', async () => {
     client = spawnFake({ ...process.env, FAKE_PLAY_SIDECAR_STATS_ERROR: '1' })
     await expect(client.getStats()).rejects.toThrow(/analyser unavailable/)

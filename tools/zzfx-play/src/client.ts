@@ -114,6 +114,10 @@ export class PlaySidecarClient {
     this.send({ cmd: 'stop' })
   }
 
+  /** Serializes `getStats` callers — see its doc comment for why
+   * content-based correlation makes overlap unsafe. */
+  private statsChain: Promise<unknown> = Promise.resolve()
+
   /**
    * Queries the master output's `AnalyserNode` tap for real-time
    * audibility — the regression guard for the "acks clean but never
@@ -125,8 +129,26 @@ export class PlaySidecarClient {
    * `protocol.ts`'s doc comment for why content-filtering (the next
    * `cmd: 'stats'` line) is a safe way to correlate it without a formal
    * request id.
+   *
+   * That correlation is only safe for ONE in-flight query at a time, so
+   * concurrent callers are SERIALIZED (#46): with two outstanding, both
+   * listeners resolve on the first response line and the second response
+   * arrives orphaned — to be swallowed by whichever query attaches next,
+   * leaving every later caller one full response STALE. With #46's
+   * auto-revert watcher polling in the background alongside e2e polls,
+   * that staleness (~a poll period) is wider than a short one-shot's
+   * entire audible window — a real, observed miss, not a theoretical one.
    */
   async getStats(): Promise<PlaybackStats> {
+    // statsChain is always the caught tail, so it never rejects — one
+    // fulfillment handler is enough, and one failed query can't poison
+    // the queue for the callers behind it.
+    const run = this.statsChain.then(() => this.requestStats())
+    this.statsChain = run.catch(() => undefined)
+    return run
+  }
+
+  private async requestStats(): Promise<PlaybackStats> {
     this.start()
     if (!this.rl) {
       throw new Error('zzfx-play: sidecar is not running')

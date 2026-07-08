@@ -8,8 +8,8 @@
 //
 // `audio.file` is the one kind whose LENS SHAPE (not just its command)
 // depends on work done in `provideCodeLenses` — the fast/slow resolution
-// state decides between `▶ Play`, a `$(search) …` resolving lens, a
-// `$(search) not found` lens, and (for URLs/absolute paths the workspace
+// state decides between `▶ Play`, a `$(search) Searching…` resolving lens, a
+// `$(search) Not Found` lens, and (for URLs/absolute paths the workspace
 // search can't meaningfully hunt for) no lens at all, which can't be
 // deferred to `resolveCodeLens` (that only fills in an already-emitted
 // lens's command). See `audioFileResolver.ts` for the whole fast→slow →
@@ -141,8 +141,8 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
         case 'audio.file': {
           // Progressive resolution (#41): fast tiers give `▶ Play`
           // immediately; a fast miss on a searchable (plainly-relative)
-          // path shows `$(search) …` while the workspace-wide fallback
-          // runs, then `▶ Play` or `$(search) not found` once it
+          // path shows `$(search) Searching…` while the workspace-wide fallback
+          // runs, then `▶ Play` or `$(search) Not Found` once it
           // settles. Only an INELIGIBLE reference (URL/absolute — the
           // search couldn't mean anything) gets no lens at all.
           const resolution = this.audioResolver.getLensState(
@@ -233,12 +233,12 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
         // Not clickable while the fallback search is in flight — the
         // empty command id renders an inert lens; onDidChangeCodeLenses
         // fires when it settles.
-        codeLens.command = { title: '$(search) …', command: '' }
+        codeLens.command = { title: '$(search) Searching…', command: '' }
       } else {
         // The retry click carries `source` too — a successful lazy-repair
         // play is a real playback and must mark its finding active.
         codeLens.command = {
-          title: '$(search) not found',
+          title: '$(search) Not Found',
           command: 'threeFlatland.zzfx.playFile',
           arguments: [undefined, ref, source],
         }

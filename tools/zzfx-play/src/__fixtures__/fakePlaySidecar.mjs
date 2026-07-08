@@ -22,6 +22,8 @@ function send(response) {
 
 const rl = readline.createInterface({ input: process.stdin })
 
+let statsRequests = 0
+
 rl.on('line', (line) => {
   const trimmed = line.trim()
   if (!trimmed) return
@@ -62,10 +64,21 @@ rl.on('line', (line) => {
         send({ ok: false, cmd: 'stats', error: 'analyser unavailable' })
         return
       }
+      // elapsedSeconds advances 0.5 per request — the observable that
+      // lets client.test.ts prove response PAIRING under concurrent
+      // getStats() calls (mispaired callers would all read the same
+      // first response), not just that each got A response.
+      statsRequests += 1
       send({
         ok: true,
         cmd: 'stats',
-        stats: { peak: 0.5, silent: false, playing: true, durationSeconds: 2, elapsedSeconds: 0.5 },
+        stats: {
+          peak: 0.5,
+          silent: false,
+          playing: true,
+          durationSeconds: 2,
+          elapsedSeconds: 0.5 * statsRequests,
+        },
       })
       return
     default:

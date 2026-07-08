@@ -410,7 +410,7 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
   )
 
   // CodeLens-only — `absolutePath` is the resolver's answer baked into
-  // the lens (undefined for a `$(search) not found` lens's retry click);
+  // the lens (undefined for a `$(search) Not Found` lens's retry click);
   // `ref` is the reference triple handed back to the resolver so it can
   // trust-but-verify on use: re-stat the cached path, and if the file has
   // since been deleted/moved (or a re-added asset sits behind a settled

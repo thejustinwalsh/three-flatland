@@ -43,7 +43,7 @@ const CLICK_SFX_LINE = lineOf("new Howl({ src: ['click.wav'] })") // source-dir 
 const EXPLOSION_SFX_LINE = lineOf("new Wad({ source: 'explosion.ogg' })") // public/ tier
 const REVERB_SFX_LINE = lineOf("reverb: { impulse: 'click.wav' }") // #44, 2-level nesting
 const THUNDER_SFX_LINE = lineOf("new Audio('thunder.ogg')") // slow-search tier only
-const MISSING_SFX_LINE = lineOf("new Audio('nonexistent-sound.mp3')") // → $(search) not found
+const MISSING_SFX_LINE = lineOf("new Audio('nonexistent-sound.mp3')") // → $(search) Not Found
 
 // #44's synthesis-vocabulary decoy block — every line must surface ZERO
 // lenses (no file involved: oscillator shapes, noise, mic, sprite
@@ -109,9 +109,9 @@ function lensAt(lenses: ResolvedLens[], line: number, title: string): ResolvedLe
   return lenses.find((l) => l.range.start.line === line && l.command?.title === title)
 }
 
-/** Polls {@link fetchLenses} until no `$(search) …` resolving lens
+/** Polls {@link fetchLenses} until no `$(search) Searching…` resolving lens
  * remains — i.e. every slow fallback search kicked off by this render has
- * settled to `▶ Play` or `$(search) not found` — then returns the settled
+ * settled to `▶ Play` or `$(search) Not Found` — then returns the settled
  * set. The searches are per-session-cached, so only the first render after
  * activation actually waits. */
 async function fetchSettledLenses(
@@ -122,7 +122,7 @@ async function fetchSettledLenses(
 ): Promise<ResolvedLens[]> {
   const deadline = Date.now() + 15_000
   let lenses = await fetchLenses(evaluateInVSCode)
-  while (lenses.some((l) => l.command?.title === '$(search) …') && Date.now() < deadline) {
+  while (lenses.some((l) => l.command?.title === '$(search) Searching…') && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 150))
     lenses = await fetchLenses(evaluateInVSCode)
   }
@@ -277,7 +277,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // toggling Play⇄Stop lens each — #46 collapsed the old Play+Stop
     // pair; incl. #43's long song) + 5 RESOLVABLE audio.file findings
     // (Play each — 3 fast tiers + #44's reverb impulse + thunder.ogg via
-    // the slow search) + playMissingSfx's `$(search) not found`
+    // the slow search) + playMissingSfx's `$(search) Not Found`
     // informational lens. Every decoy — the commented-out ones AND #44's
     // uncommented synthesis block — must contribute ZERO lenses, proven
     // by the exact total below, not just presence of the positive cases.
@@ -287,7 +287,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(0)
     expect(titles.filter((t) => t === '⚙ Edit')).toHaveLength(1)
     expect(titles.filter((t) => t === '⚙ Edit (variable)')).toHaveLength(1)
-    expect(titles.filter((t) => t === '$(search) not found')).toHaveLength(1)
+    expect(titles.filter((t) => t === '$(search) Not Found')).toHaveLength(1)
 
     // Every zzfxm.song and audio.file lens routes to the new commands,
     // proving provider.ts's per-kind dispatch (not just zzfx.call's
@@ -305,8 +305,8 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(String(jumpArgs?.[0])).toMatch(/sounds[/\\]jump\.wav$/)
 
     // Unresolvable path (playMissingSfx) — an informational
-    // `$(search) not found` lens, not silent absence (#41).
-    expect(lensAt(lenses, MISSING_SFX_LINE, '$(search) not found')?.command?.command).toBe(
+    // `$(search) Not Found` lens, not silent absence (#41).
+    expect(lensAt(lenses, MISSING_SFX_LINE, '$(search) Not Found')?.command?.command).toBe(
       'threeFlatland.zzfx.playFile'
     )
   })
@@ -327,7 +327,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
   // #41 lazy repair, the full cycle: found → cached → file deleted → Play
   // re-stats, re-searches, comes up empty → lens flips to
-  // `$(search) not found` → file re-added → clicking the not-found lens
+  // `$(search) Not Found` → file re-added → clicking the not-found lens
   // (the retry-shaped play attempt) re-searches, finds it, plays real
   // audio, and the lens heals back to ▶ Play.
   test('lazy repair: delete → Play flips to not-found; re-add → Play finds and plays again', async ({
@@ -358,7 +358,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       { command: playLens!.command!.command, args: playLens!.command!.arguments }
     )
     lenses = await fetchSettledLenses(evaluateInVSCode)
-    expect(lensAt(lenses, THUNDER_SFX_LINE, '$(search) not found')).toBeDefined()
+    expect(lensAt(lenses, THUNDER_SFX_LINE, '$(search) Not Found')).toBeDefined()
     expect(lensAt(lenses, THUNDER_SFX_LINE, '▶ Play')).toBeUndefined()
 
     // Re-add the asset and click the not-found lens — the lazy repair's
@@ -366,7 +366,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // real (audibility via the same stats tap as every other route).
     fs.mkdirSync(path.dirname(thunderPath), { recursive: true })
     fs.writeFileSync(thunderPath, thunderBytes)
-    const notFoundLens = lensAt(lenses, THUNDER_SFX_LINE, '$(search) not found')!
+    const notFoundLens = lensAt(lenses, THUNDER_SFX_LINE, '$(search) Not Found')!
     const stats = await executeAndPollAudible(
       evaluateInVSCode,
       notFoundLens.command!.command,

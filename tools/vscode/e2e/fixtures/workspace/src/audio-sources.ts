@@ -187,7 +187,7 @@ export function synthDecoys() {
 // Positive case (slow tier): audio.file via bare Audio whose path misses
 // every FAST tier — thunder.ogg lives only at media/deep/thunder.ogg, so
 // the lens resolves via the workspace-wide basename fallback search
-// (`$(search) …` → ▶ Play). Also the lazy-repair cycle's subject: the
+// (`$(search) Searching…` → ▶ Play). Also the lazy-repair cycle's subject: the
 // e2e deletes/re-adds the file around Play attempts.
 export function playThunderSfx() {
   new Audio('thunder.ogg').play()
@@ -195,7 +195,7 @@ export function playThunderSfx() {
 
 // Not-found case: audio.file via bare Audio, an UNRESOLVABLE path — no
 // copy exists anywhere, so the fallback search settles to a
-// `$(search) not found` lens (an informational signal, not silent
+// `$(search) Not Found` lens (an informational signal, not silent
 // absence — see #41).
 export function playMissingSfx() {
   new Audio('nonexistent-sound.mp3').play()
