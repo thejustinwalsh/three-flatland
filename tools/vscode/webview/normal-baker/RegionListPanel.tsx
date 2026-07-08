@@ -94,11 +94,12 @@ const s = stylex.create({
   // requires a definite height for the default bodyOverflow="auto" to
   // actually scroll instead of collapsing to 0 (Panel's
   // flex-1-with-no-stretching-ancestor bug — see design-system
-  // CLAUDE.md). A fixed vh cap keeps Properties/Defaults/Preview below
-  // it reachable without an enormous region list pushing them off-screen.
+  // CLAUDE.md). The sidebar's Regions/Info grid split gives this row a
+  // definite height (the user drags the splitter to trade list space
+  // against the Info panel), so fill it.
   bounded: {
-    height: 'min(40vh, 320px)',
-    flexShrink: 0,
+    height: '100%',
+    minHeight: 0,
   },
 })
 

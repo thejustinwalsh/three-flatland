@@ -46,11 +46,11 @@ import {
   tilesFromPicked,
 } from './gridOps'
 import { GridSlicePanel, type GridSettings } from './GridSlicePanel'
+import { InfoSection } from './InfoSection'
+import { Inspector, inspectorHeading } from './Inspector'
+import { LivePreview } from './LivePreviewPanel'
 import { RegionColorOverlay } from './RegionColorOverlay'
 import { RegionListPanel } from './RegionListPanel'
-import { RegionPropertiesPanel } from './RegionPropertiesPanel'
-import { DefaultsPanel } from './DefaultsPanel'
-import { LivePreviewPanel } from './LivePreviewPanel'
 import { FIXTURE_DESCRIPTOR, FIXTURE_FILE_NAME, FIXTURE_IMAGE_DATA_URL } from './fixtures'
 
 /**
@@ -70,6 +70,23 @@ declare global {
     __FL_NORMAL_BAKER__?: InitPayload
   }
 }
+
+// ── Grid slice (C3) — session UI state, not undoable, not persisted:
+// the grid is an ALIGNMENT AID; only the regions it generates are
+// document content. Modeled as an editor MODE (Atlas's slicing idiom):
+// entering swaps the Info panel for the Grid & Split panel, exiting
+// returns to the inspector. `grid` materializes the numeric settings
+// plus any hand-dragged edge tweaks; a settings/image change rebuilds
+// it (and clears picks — cell keys are grid-shape-relative).
+type GridState = {
+  settings: GridSettings
+  grid: GridSpec | null
+  picked: ReadonlySet<string>
+  splitRows: number
+  splitCols: number
+}
+
+type EditorMode = { kind: 'normal' } | { kind: 'grid'; state: GridState }
 
 const s = stylex.create({
   root: {
@@ -103,13 +120,26 @@ const s = stylex.create({
     minHeight: 0,
     height: '100%',
   },
+  // Regions (list) / splitter / Info (inspector + preview) rows — the
+  // 4px splitter is the only inter-panel gap (no grid gap on top of it,
+  // per tools/vscode/CLAUDE.md's panel-spacing rule). Both rows keep a
+  // floor so neither can be collapsed away entirely.
   sidebar: {
     minWidth: 0,
     minHeight: 0,
+    display: 'grid',
+  },
+  sidebarRows: (infoPx: number) => ({
+    gridTemplateRows: `minmax(120px, 1fr) 4px minmax(0, ${infoPx}px)`,
+  }),
+  // Fills the Info grid row; the Panel body owns the scroll.
+  infoPanel: {
+    height: '100%',
+    minHeight: 0,
+  },
+  infoBody: {
     display: 'flex',
     flexDirection: 'column',
-    gap: space.md,
-    overflow: 'auto',
   },
   errorBanner: {
     padding: space.md,
@@ -158,57 +188,95 @@ export function App() {
   const canUndo = historyState.pastStates.length > 0
   const canRedo = historyState.futureStates.length > 0
   const sidebarPx = useNormalBakerStore((store) => store.regionListPx)
+  const infoPanelPx = useNormalBakerStore((store) => store.splits.infoPanelPx)
 
-  // ── Grid slice (C3) — session UI state, not undoable, not persisted:
-  // the grid is an ALIGNMENT AID; only the regions it generates are
-  // document content. `grid` materializes the numeric settings plus any
-  // hand-dragged edge tweaks; a settings/image change rebuilds it (and
-  // clears picks — cell keys are grid-shape-relative).
-  const [gridMode, setGridMode] = useState(false)
-  const [gridSettings, setGridSettings] = useState<GridSettings>({
-    tileW: 16,
-    tileH: 16,
-    offsetX: 0,
-    offsetY: 0,
-  })
-  const [grid, setGrid] = useState<GridSpec | null>(null)
-  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set())
-  const [splitRows, setSplitRows] = useState(2)
-  const [splitCols, setSplitCols] = useState(2)
+  const [mode, setMode] = useState<EditorMode>({ kind: 'normal' })
+  const gridState = mode.kind === 'grid' ? mode.state : null
 
+  const materializeGrid = useCallback(
+    (settings: GridSettings): GridSpec | null =>
+      imageSize
+        ? gridFromCellSize(
+            imageSize.w,
+            imageSize.h,
+            settings.tileW,
+            settings.tileH,
+            settings.offsetX,
+            settings.offsetY
+          )
+        : null,
+    [imageSize]
+  )
+
+  // Unlike Atlas's enterSlice we do NOT bail before the image has
+  // decoded — grid mode can be entered immediately and the grid
+  // materializes via the imageSize effect below. Selection is kept:
+  // split-by-grid works from a list selection while the grid is up.
+  const enterGrid = useCallback(() => {
+    const settings: GridSettings = { tileW: 16, tileH: 16, offsetX: 0, offsetY: 0 }
+    setMode({
+      kind: 'grid',
+      state: {
+        settings,
+        grid: materializeGrid(settings),
+        picked: new Set(),
+        splitRows: 2,
+        splitCols: 2,
+      },
+    })
+  }, [materializeGrid])
+
+  const exitGrid = useCallback(() => {
+    setMode({ kind: 'normal' })
+  }, [])
+
+  const updateGrid = useCallback((updater: (prev: GridState) => GridState) => {
+    setMode((m) => (m.kind === 'grid' ? { kind: 'grid', state: updater(m.state) } : m))
+  }, [])
+
+  // Image (re)decode while grid mode is up → rebuild the grid from the
+  // current settings; picks are cleared (cell keys are grid-shape-relative).
   useEffect(() => {
-    if (!imageSize) {
-      setGrid(null)
-      setPicked(new Set())
-      return
-    }
-    setGrid(
-      gridFromCellSize(
-        imageSize.w,
-        imageSize.h,
-        gridSettings.tileW,
-        gridSettings.tileH,
-        gridSettings.offsetX,
-        gridSettings.offsetY
-      )
+    setMode((m) =>
+      m.kind === 'grid'
+        ? {
+            kind: 'grid',
+            state: { ...m.state, grid: materializeGrid(m.state.settings), picked: new Set() },
+          }
+        : m
     )
-    setPicked(new Set())
-  }, [imageSize, gridSettings])
+  }, [materializeGrid])
+
+  const handleGridSettingsChange = useCallback(
+    (patch: Partial<GridSettings>) => {
+      updateGrid((prev) => {
+        const settings = { ...prev.settings, ...patch }
+        return { ...prev, settings, grid: materializeGrid(settings), picked: new Set() }
+      })
+    },
+    [materializeGrid, updateGrid]
+  )
 
   const bridgeRef = useRef<ReturnType<typeof createClientBridge> | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const workAreaRef = useRef<HTMLDivElement>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
   const didLoadRef = useRef(false)
   const dirtySnapshotRef = useRef<string | null>(null)
 
-  const SIDEBAR_MIN_PX = 240
-  const SIDEBAR_MAX_PX = 480
+  // Sidebar width = distance from cursor to the work area's right edge;
+  // Info height = distance from cursor to the sidebar's bottom edge.
+  // Both setters clamp inside the store (encode's splits pattern).
   const handleSidebarDrag = useCallback((clientX: number) => {
     const el = workAreaRef.current
     if (!el) return
-    const rect = el.getBoundingClientRect()
-    const next = Math.max(SIDEBAR_MIN_PX, Math.min(SIDEBAR_MAX_PX, rect.right - clientX))
-    normalBakerActions.setRegionListPx(next)
+    normalBakerActions.setRegionListPx(el.getBoundingClientRect().right - clientX)
+  }, [])
+
+  const handleInfoDrag = useCallback((clientY: number) => {
+    const el = sidebarRef.current
+    if (!el) return
+    normalBakerActions.setInfoPanelPx(el.getBoundingClientRect().bottom - clientY)
   }, [])
 
   useEffect(() => {
@@ -312,26 +380,30 @@ export function App() {
     normalBakerActions.addRegion({ id: crypto.randomUUID(), x, y, w, h })
   }, [imageSize])
 
-  const handleCellSet = useCallback((row: number, col: number, isPicked: boolean) => {
-    setPicked((prev) => {
-      const next = new Set(prev)
-      const key = cellKey(row, col)
-      if (isPicked) next.add(key)
-      else next.delete(key)
-      return next
-    })
-  }, [])
+  const handleCellSet = useCallback(
+    (row: number, col: number, isPicked: boolean) => {
+      updateGrid((prev) => {
+        const picked = new Set(prev.picked)
+        const key = cellKey(row, col)
+        if (isPicked) picked.add(key)
+        else picked.delete(key)
+        return { ...prev, picked }
+      })
+    },
+    [updateGrid]
+  )
 
   const handleGenerate = useCallback(() => {
-    if (!grid) return
+    if (!gridState?.grid) return
+    const { grid, picked } = gridState
     const tiles = picked.size > 0 ? tilesFromPicked(grid, picked) : tilesFromGrid(grid)
     if (tiles.length === 0) return
     // ONE undo step for the whole batch (addRegionsAction is a single
     // set()); the generated regions come back selected, so a mass delete
     // is the immediate escape hatch alongside undo.
     normalBakerActions.addRegions(tiles.map((t) => ({ id: crypto.randomUUID(), ...t })))
-    setPicked(new Set())
-  }, [grid, picked])
+    updateGrid((prev) => ({ ...prev, picked: new Set() }))
+  }, [gridState, updateGrid])
 
   const selectedRegion = useMemo(
     () =>
@@ -358,6 +430,7 @@ export function App() {
   // paint-order position and inherit its EXPLICIT fields (N4 fidelity
   // semantics — see gridOps.ts's childrenFromSplit). One undo step.
   const handleSplitByGrid = useCallback(() => {
+    const grid = gridState?.grid
     if (!grid || !selectedRegion) return
     const tiles = splitRegionByGrid(selectedRegion, grid)
     if (tiles.length < 2) return
@@ -365,17 +438,17 @@ export function App() {
       selectedRegion.id,
       childrenFromSplit(selectedRegion, tiles, () => crypto.randomUUID())
     )
-  }, [grid, selectedRegion])
+  }, [gridState, selectedRegion])
 
   const handleSplitRowsCols = useCallback(() => {
-    if (!selectedRegion) return
-    const tiles = splitRegionRowsCols(selectedRegion, splitRows, splitCols)
+    if (!selectedRegion || !gridState) return
+    const tiles = splitRegionRowsCols(selectedRegion, gridState.splitRows, gridState.splitCols)
     if (tiles.length < 2) return
     normalBakerActions.splitRegion(
       selectedRegion.id,
       childrenFromSplit(selectedRegion, tiles, () => crypto.randomUUID())
     )
-  }, [selectedRegion, splitRows, splitCols])
+  }, [gridState, selectedRegion])
 
   // Undo / redo hotkeys.
   useEffect(() => {
@@ -421,8 +494,8 @@ export function App() {
           icon="symbol-ruler"
           title="Grid Slice"
           toggleable
-          checked={gridMode}
-          onClick={() => setGridMode((v) => !v)}
+          checked={mode.kind === 'grid'}
+          onClick={() => (mode.kind === 'grid' ? exitGrid() : enterGrid())}
         />
         <span {...stylex.props(s.toolbarSpacer)} />
         <ToolbarButton
@@ -453,18 +526,18 @@ export function App() {
                     list selection while the grid is up). */}
                 <RectOverlay
                   rects={regions}
-                  drawEnabled={!gridMode}
-                  interactive={!gridMode}
+                  drawEnabled={mode.kind === 'normal'}
+                  interactive={mode.kind === 'normal'}
                   onRectCreate={handleRectCreate}
                   selectedIds={selectedIds}
                   onSelectionChange={normalBakerActions.setSelectedIds}
                   onRectChange={handleRectChange}
                 />
-                {gridMode && grid ? (
+                {gridState?.grid ? (
                   <GridSliceOverlay
-                    grid={grid}
-                    picked={picked}
-                    onGridChange={setGrid}
+                    grid={gridState.grid}
+                    picked={gridState.picked}
+                    onGridChange={(grid) => updateGrid((prev) => ({ ...prev, grid }))}
                     onCellSet={handleCellSet}
                   />
                 ) : null}
@@ -473,7 +546,7 @@ export function App() {
           </Panel>
         </div>
         <Splitter axis="vertical" onDrag={handleSidebarDrag} />
-        <div {...stylex.props(s.sidebar)}>
+        <div ref={sidebarRef} {...stylex.props(s.sidebar, s.sidebarRows(infoPanelPx))}>
           <RegionListPanel
             regions={regions}
             defaults={defaults}
@@ -491,32 +564,55 @@ export function App() {
             onDelete={normalBakerActions.removeSelected}
             onMove={normalBakerActions.reorderRegion}
           />
-          <GridSlicePanel
-            gridMode={gridMode}
-            grid={grid}
-            picked={picked}
-            settings={gridSettings}
-            onSettingsChange={(patch) => setGridSettings((prev) => ({ ...prev, ...patch }))}
-            selectedRegion={selectedRegion}
-            selectionCount={selectedIds.size}
-            splitRows={splitRows}
-            splitCols={splitCols}
-            onSplitRowsChange={setSplitRows}
-            onSplitColsChange={setSplitCols}
-            onGenerate={handleGenerate}
-            onSplitByGrid={handleSplitByGrid}
-            onSplitRowsCols={handleSplitRowsCols}
-          />
-          <RegionPropertiesPanel
-            region={selectedRegion}
-            defaults={defaults}
-            onChange={(next) => normalBakerActions.replaceRegion(next)}
-          />
-          <DefaultsPanel
-            defaults={defaults}
-            onChange={(patch) => normalBakerActions.setDefaults((prev) => ({ ...prev, ...patch }))}
-          />
-          <LivePreviewPanel imageData={imageData} descriptor={previewDescriptor} />
+          <Splitter axis="horizontal" onDrag={handleInfoDrag} />
+          {/* Grid mode swaps the Info panel for the Grid & Split tool
+              panel (Atlas's mode-driven sub-tool idiom); exiting
+              returns to the inspector + preview. */}
+          {gridState ? (
+            <Panel
+              title={`Grid & Split${gridState.picked.size > 0 ? ` (${gridState.picked.size} picked)` : ''}`}
+              bodyPadding="none"
+              style={s.infoPanel}
+            >
+              <GridSlicePanel
+                grid={gridState.grid}
+                picked={gridState.picked}
+                settings={gridState.settings}
+                onSettingsChange={handleGridSettingsChange}
+                selectedRegion={selectedRegion}
+                selectionCount={selectedIds.size}
+                splitRows={gridState.splitRows}
+                splitCols={gridState.splitCols}
+                onSplitRowsChange={(rows) => updateGrid((prev) => ({ ...prev, splitRows: rows }))}
+                onSplitColsChange={(cols) => updateGrid((prev) => ({ ...prev, splitCols: cols }))}
+                onGenerate={handleGenerate}
+                onSplitByGrid={handleSplitByGrid}
+                onSplitRowsCols={handleSplitRowsCols}
+              />
+            </Panel>
+          ) : (
+            <Panel title="Info" bodyPadding="none" style={s.infoPanel}>
+              <div {...stylex.props(s.infoBody)}>
+                <InfoSection
+                  id="inspector"
+                  heading={inspectorHeading(selectedRegion, selectedIds.size)}
+                >
+                  <Inspector
+                    region={selectedRegion}
+                    selectionCount={selectedIds.size}
+                    defaults={defaults}
+                    onRegionChange={(next) => normalBakerActions.replaceRegion(next)}
+                    onDefaultsChange={(patch) =>
+                      normalBakerActions.setDefaults((prev) => ({ ...prev, ...patch }))
+                    }
+                  />
+                </InfoSection>
+                <InfoSection id="preview" heading="Preview">
+                  <LivePreview imageData={imageData} descriptor={previewDescriptor} />
+                </InfoSection>
+              </div>
+            </Panel>
+          )}
         </div>
       </div>
       <DevReloadToast />

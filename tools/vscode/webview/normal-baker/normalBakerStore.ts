@@ -22,6 +22,9 @@ export type NormalBakerDefaults = {
   elevation?: number
 }
 
+/** Collapsible sub-areas of the Info panel (see App.tsx / InfoSection.tsx). */
+export type InfoSectionKey = 'inspector' | 'preview'
+
 export type NormalBakerStoreState = {
   // Document content — tracked in undo history, persisted across panel reloads.
   regions: EditableRegion[]
@@ -30,8 +33,11 @@ export type NormalBakerStoreState = {
   // Session UI state — persisted via webviewStorage, not undoable.
   selectedIds: Set<string>
 
-  // Cross-session UI pref.
+  // Cross-session UI prefs — splitter sizes (clamped in the setters, per
+  // the encode store's splits pattern) + Info collapsible open state.
   regionListPx: number
+  splits: { infoPanelPx: number }
+  infoSections: Record<InfoSectionKey, boolean>
 
   setRegions: (next: EditableRegion[] | ((prev: EditableRegion[]) => EditableRegion[])) => void
   setDefaults: (
@@ -39,6 +45,8 @@ export type NormalBakerStoreState = {
   ) => void
   setSelectedIds: (next: Set<string> | ((prev: Set<string>) => Set<string>)) => void
   setRegionListPx: (px: number) => void
+  setInfoPanelPx: (px: number) => void
+  setInfoSection: (id: InfoSectionKey, open: boolean) => void
 
   addRegionAction: (region: EditableRegion, index?: number) => void
   /** Bulk append (grid-generate) in ONE set() — one undo step for the
@@ -90,6 +98,8 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
           defaults: {},
           selectedIds: new Set<string>(),
           regionListPx: 260,
+          splits: { infoPanelPx: 360 },
+          infoSections: { inspector: true, preview: true },
 
           setRegions: (next) =>
             set((s) => ({ ...s, regions: typeof next === 'function' ? next(s.regions) : next })),
@@ -103,7 +113,17 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
               selectedIds: typeof next === 'function' ? next(s.selectedIds) : next,
             })),
 
-          setRegionListPx: (px) => set((s) => ({ ...s, regionListPx: px })),
+          setRegionListPx: (px) =>
+            set((s) => ({ ...s, regionListPx: Math.max(240, Math.min(480, px)) })),
+
+          setInfoPanelPx: (px) =>
+            set((s) => ({
+              ...s,
+              splits: { ...s.splits, infoPanelPx: Math.max(160, Math.min(640, px)) },
+            })),
+
+          setInfoSection: (id, open) =>
+            set((s) => ({ ...s, infoSections: { ...s.infoSections, [id]: open } })),
 
           addRegionAction: (region, index) =>
             set((s) => ({
@@ -175,7 +195,11 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
       {
         name: 'fl-normal-baker-prefs',
         storage: createJSONStorage(() => localStorageStorage),
-        partialize: (s) => ({ regionListPx: s.regionListPx }),
+        partialize: (s) => ({
+          regionListPx: s.regionListPx,
+          splits: s.splits,
+          infoSections: s.infoSections,
+        }),
       }
     ),
     {
@@ -217,6 +241,9 @@ export const normalBakerActions = {
   setSelectedIds: (next: Set<string> | ((prev: Set<string>) => Set<string>)) =>
     useNormalBakerStore.getState().setSelectedIds(next),
   setRegionListPx: (px: number) => useNormalBakerStore.getState().setRegionListPx(px),
+  setInfoPanelPx: (px: number) => useNormalBakerStore.getState().setInfoPanelPx(px),
+  setInfoSection: (id: InfoSectionKey, open: boolean) =>
+    useNormalBakerStore.getState().setInfoSection(id, open),
   addRegion: (region: EditableRegion, index?: number) =>
     useNormalBakerStore.getState().addRegionAction(region, index),
   addRegions: (regions: EditableRegion[]) =>

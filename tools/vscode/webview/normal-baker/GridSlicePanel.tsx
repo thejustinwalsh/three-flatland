@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import { Button, NumberField, Panel } from '@three-flatland/design-system'
+import { Button, NumberField } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import type { GridSpec } from '@three-flatland/preview/grid'
@@ -11,6 +11,9 @@ const s = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: space.md,
+    // Own padding — the App hosts this in a bodyPadding="none" Panel so
+    // the Info area's scroll container stays edge-to-edge.
+    padding: space.lg,
   },
   fieldRow: {
     display: 'flex',
@@ -50,8 +53,6 @@ export type GridSettings = {
 }
 
 export type GridSlicePanelProps = {
-  /** Whether the canvas grid overlay is currently shown (toolbar toggle). */
-  gridMode: boolean
   /** The live grid — numeric settings materialized (plus any hand-dragged
    * edge tweaks). Null until the image has loaded. */
   grid: GridSpec | null
@@ -76,10 +77,11 @@ export type GridSlicePanelProps = {
  * — by the aligned grid or into rows × cols — Photoshop-slice style.
  * Every button label carries the exact region count it will produce (the
  * count-confirm), and generate/split are each ONE undo step (see the
- * store's addRegionsAction/splitRegionAction).
+ * store's addRegionsAction/splitRegionAction). Rendered only while grid
+ * mode is active — App swaps it into the Info panel (Atlas's mode-driven
+ * tool-panel idiom), so it renders body content only, no Panel chrome.
  */
 export function GridSlicePanel({
-  gridMode,
   grid,
   picked,
   settings,
@@ -103,130 +105,125 @@ export function GridSlicePanel({
     : 0
 
   return (
-    <Panel title="Grid & Split" bodyPadding="normal" bodyOverflow="visible">
-      <div {...stylex.props(s.body)}>
-        <div {...stylex.props(s.fieldRow)}>
-          <span {...stylex.props(s.fieldLabel)}>Tile size</span>
-          <div {...stylex.props(s.field)}>
-            <NumberField
-              value={settings.tileW}
-              min={1}
-              max={4096}
-              step={1}
-              onChange={(v) => onSettingsChange({ tileW: Math.max(1, Math.round(v)) })}
-              aria-label="Tile width"
-            />
-          </div>
-          <div {...stylex.props(s.field)}>
-            <NumberField
-              value={settings.tileH}
-              min={1}
-              max={4096}
-              step={1}
-              onChange={(v) => onSettingsChange({ tileH: Math.max(1, Math.round(v)) })}
-              aria-label="Tile height"
-            />
-          </div>
+    <div {...stylex.props(s.body)}>
+      <div {...stylex.props(s.fieldRow)}>
+        <span {...stylex.props(s.fieldLabel)}>Tile size</span>
+        <div {...stylex.props(s.field)}>
+          <NumberField
+            value={settings.tileW}
+            min={1}
+            max={4096}
+            step={1}
+            onChange={(v) => onSettingsChange({ tileW: Math.max(1, Math.round(v)) })}
+            aria-label="Tile width"
+          />
         </div>
-        <div {...stylex.props(s.fieldRow)}>
-          <span {...stylex.props(s.fieldLabel)}>Offset</span>
-          <div {...stylex.props(s.field)}>
-            <NumberField
-              value={settings.offsetX}
-              min={0}
-              max={4096}
-              step={1}
-              onChange={(v) => onSettingsChange({ offsetX: Math.max(0, Math.round(v)) })}
-              aria-label="Grid offset X"
-            />
-          </div>
-          <div {...stylex.props(s.field)}>
-            <NumberField
-              value={settings.offsetY}
-              min={0}
-              max={4096}
-              step={1}
-              onChange={(v) => onSettingsChange({ offsetY: Math.max(0, Math.round(v)) })}
-              aria-label="Grid offset Y"
-            />
-          </div>
+        <div {...stylex.props(s.field)}>
+          <NumberField
+            value={settings.tileH}
+            min={1}
+            max={4096}
+            step={1}
+            onChange={(v) => onSettingsChange({ tileH: Math.max(1, Math.round(v)) })}
+            aria-label="Tile height"
+          />
         </div>
-        {!gridMode && (
-          <p {...stylex.props(s.hint)}>
-            Toggle the grid in the toolbar to align it on the canvas — drag lines to fine-tune,
-            click cells to pick a subset.
-          </p>
-        )}
-        <Button
-          icon="layout"
-          disabled={!gridMode || generateCount === 0}
-          onClick={onGenerate}
-          title={
-            pickedCount > 0
-              ? `One region per picked grid cell (${pickedCount})`
-              : `One region per grid cell (${generateCount})`
-          }
-        >
-          Generate {generateCount} region{generateCount === 1 ? '' : 's'}
-        </Button>
-
-        <span {...stylex.props(s.sectionTitle)}>Split selected</span>
-        {selectionCount !== 1 ? (
-          <p {...stylex.props(s.hint)}>
-            {selectionCount === 0
-              ? 'Select a region (canvas or list) to split it.'
-              : 'Select exactly one region to split.'}
-          </p>
-        ) : (
-          <>
-            <Button
-              secondary
-              icon="split-horizontal"
-              disabled={splitByGridCount < 2}
-              onClick={onSplitByGrid}
-              title={
-                splitByGridCount < 2
-                  ? 'No grid line crosses this region — align the grid first'
-                  : `Cut along every grid line crossing the region (${splitByGridCount} pieces, edge remainders kept)`
-              }
-            >
-              Split by grid ({splitByGridCount})
-            </Button>
-            <div {...stylex.props(s.fieldRow)}>
-              <span {...stylex.props(s.fieldLabel)}>Rows × cols</span>
-              <div {...stylex.props(s.field)}>
-                <NumberField
-                  value={splitRows}
-                  min={1}
-                  max={64}
-                  step={1}
-                  onChange={(v) => onSplitRowsChange(Math.max(1, Math.round(v)))}
-                  aria-label="Split rows"
-                />
-              </div>
-              <div {...stylex.props(s.field)}>
-                <NumberField
-                  value={splitCols}
-                  min={1}
-                  max={64}
-                  step={1}
-                  onChange={(v) => onSplitColsChange(Math.max(1, Math.round(v)))}
-                  aria-label="Split columns"
-                />
-              </div>
-            </div>
-            <Button
-              secondary
-              icon="split-vertical"
-              disabled={splitRowsColsCount < 2}
-              onClick={onSplitRowsCols}
-              title={`Split the selected region into ${splitRows}×${splitCols} (${splitRowsColsCount} pieces; children inherit its explicit fields)`}
-            >
-              Split into {splitRowsColsCount} regions
-            </Button>
-          </>
-        )}
       </div>
-    </Panel>
+      <div {...stylex.props(s.fieldRow)}>
+        <span {...stylex.props(s.fieldLabel)}>Offset</span>
+        <div {...stylex.props(s.field)}>
+          <NumberField
+            value={settings.offsetX}
+            min={0}
+            max={4096}
+            step={1}
+            onChange={(v) => onSettingsChange({ offsetX: Math.max(0, Math.round(v)) })}
+            aria-label="Grid offset X"
+          />
+        </div>
+        <div {...stylex.props(s.field)}>
+          <NumberField
+            value={settings.offsetY}
+            min={0}
+            max={4096}
+            step={1}
+            onChange={(v) => onSettingsChange({ offsetY: Math.max(0, Math.round(v)) })}
+            aria-label="Grid offset Y"
+          />
+        </div>
+      </div>
+      <p {...stylex.props(s.hint)}>
+        Drag grid lines on the canvas to fine-tune; click cells to pick a subset.
+      </p>
+      <Button
+        icon="layout"
+        disabled={generateCount === 0}
+        onClick={onGenerate}
+        title={
+          pickedCount > 0
+            ? `One region per picked grid cell (${pickedCount})`
+            : `One region per grid cell (${generateCount})`
+        }
+      >
+        Generate {generateCount} region{generateCount === 1 ? '' : 's'}
+      </Button>
+
+      <span {...stylex.props(s.sectionTitle)}>Split selected</span>
+      {selectionCount !== 1 ? (
+        <p {...stylex.props(s.hint)}>
+          {selectionCount === 0
+            ? 'Select a region (canvas or list) to split it.'
+            : 'Select exactly one region to split.'}
+        </p>
+      ) : (
+        <>
+          <Button
+            secondary
+            icon="split-horizontal"
+            disabled={splitByGridCount < 2}
+            onClick={onSplitByGrid}
+            title={
+              splitByGridCount < 2
+                ? 'No grid line crosses this region — align the grid first'
+                : `Cut along every grid line crossing the region (${splitByGridCount} pieces, edge remainders kept)`
+            }
+          >
+            Split by grid ({splitByGridCount})
+          </Button>
+          <div {...stylex.props(s.fieldRow)}>
+            <span {...stylex.props(s.fieldLabel)}>Rows × cols</span>
+            <div {...stylex.props(s.field)}>
+              <NumberField
+                value={splitRows}
+                min={1}
+                max={64}
+                step={1}
+                onChange={(v) => onSplitRowsChange(Math.max(1, Math.round(v)))}
+                aria-label="Split rows"
+              />
+            </div>
+            <div {...stylex.props(s.field)}>
+              <NumberField
+                value={splitCols}
+                min={1}
+                max={64}
+                step={1}
+                onChange={(v) => onSplitColsChange(Math.max(1, Math.round(v)))}
+                aria-label="Split columns"
+              />
+            </div>
+          </div>
+          <Button
+            secondary
+            icon="split-vertical"
+            disabled={splitRowsColsCount < 2}
+            onClick={onSplitRowsCols}
+            title={`Split the selected region into ${splitRows}×${splitCols} (${splitRowsColsCount} pieces; children inherit its explicit fields)`}
+          >
+            Split into {splitRowsColsCount} regions
+          </Button>
+        </>
+      )}
+    </div>
   )
 }
