@@ -1,29 +1,44 @@
 import * as vscode from 'vscode'
 import { openNormalBakerPanel } from './host'
-import { pngPathFromNormalJson } from './paths'
+import { pngPathFromNormalJson, sourcePngFromNormalPng } from './paths'
 import { isToolEnabled } from '../../toolRegistry'
 
-/**
- * Maps a click target to the source PNG the baker should open. A `.png`
- * opens directly; a `.normal.json` sidecar resolves to its paired source
- * image via `pngPathFromNormalJson` (pure string derivation — normal-baker's
- * naming convention is a fixed suffix swap, no need to read the sidecar's
- * contents the way atlas's `resolveImageForCommand` has to for `meta.sources`).
- * Returns `null` — never throws — for anything else, or when the derived
- * PNG doesn't actually exist on disk (a stale/renamed sidecar).
- */
-async function resolveImageForCommand(uri: vscode.Uri): Promise<vscode.Uri | null> {
-  if (uri.path.toLowerCase().endsWith('.png')) return uri
-
-  const pngPath = pngPathFromNormalJson(uri.path)
-  if (!pngPath) return null
-  const candidate = uri.with({ path: pngPath })
+/** The derived candidate exists as a real file on disk, or `null`. */
+async function existingFileOrNull(candidate: vscode.Uri): Promise<vscode.Uri | null> {
   try {
     const stat = await vscode.workspace.fs.stat(candidate)
     return stat.type === vscode.FileType.File ? candidate : null
   } catch {
     return null
   }
+}
+
+/**
+ * Maps a click target to the SOURCE PNG the baker should bake from. Either
+ * half of a pair resolves to the same source, so opening the wrong file is
+ * hard to do:
+ * - a baked normal map `X.normal.png` (the bake OUTPUT) resolves to its
+ *   source `X.png` — opening the generated map instead of the tileset is an
+ *   easy slip, so we hot-swap rather than bake from a normal map;
+ * - a `.normal.json` sidecar resolves to its paired source image;
+ * - a plain source `X.png` opens directly.
+ * Both derived cases are pure string derivation (normal-baker's naming is a
+ * fixed suffix swap — no need to read sidecar contents the way atlas's
+ * `resolveImageForCommand` does for `meta.sources`) and are confirmed to
+ * exist on disk before use. Returns `null` — never throws — for anything
+ * else, or when the derived source doesn't exist (a stale/renamed sidecar
+ * or an orphaned normal map). The `.normal.png` check MUST precede the
+ * plain-`.png` branch, since `X.normal.png` also ends in `.png`.
+ */
+async function resolveImageForCommand(uri: vscode.Uri): Promise<vscode.Uri | null> {
+  const sourceFromNormalPng = sourcePngFromNormalPng(uri.path)
+  if (sourceFromNormalPng) return existingFileOrNull(uri.with({ path: sourceFromNormalPng }))
+
+  if (uri.path.toLowerCase().endsWith('.png')) return uri
+
+  const pngPath = pngPathFromNormalJson(uri.path)
+  if (!pngPath) return null
+  return existingFileOrNull(uri.with({ path: pngPath }))
 }
 
 export function registerNormalBakerTool(context: vscode.ExtensionContext): vscode.Disposable {
@@ -45,7 +60,7 @@ export function registerNormalBakerTool(context: vscode.ExtensionContext): vscod
       const resolved = await resolveImageForCommand(target)
       if (!resolved) {
         void vscode.window.showErrorMessage(
-          'FL Normal Baker: select a PNG file (or its .normal.json sidecar) first.'
+          'FL Normal Baker: select a source PNG (or its .normal.json / .normal.png sidecar) first.'
         )
         return
       }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { normalJsonPath, normalPngPath, pngPathFromNormalJson } from './paths'
+import {
+  normalJsonPath,
+  normalPngPath,
+  pngPathFromNormalJson,
+  sourcePngFromNormalPng,
+} from './paths'
 
 describe('normalJsonPath', () => {
   it('replaces a .png extension with .normal.json', () => {
@@ -45,5 +50,31 @@ describe('pngPathFromNormalJson', () => {
     expect(pngPathFromNormalJson('/a/b/Dungeon_Tileset.png')).toBeNull()
     expect(pngPathFromNormalJson('/a/b/Dungeon_Tileset.atlas.json')).toBeNull()
     expect(pngPathFromNormalJson('/a/b/plain.json')).toBeNull()
+  })
+})
+
+describe('sourcePngFromNormalPng', () => {
+  it('maps a baked X.normal.png back to its source X.png', () => {
+    expect(sourcePngFromNormalPng('/a/b/Dungeon_Tileset.normal.png')).toBe(
+      '/a/b/Dungeon_Tileset.png'
+    )
+  })
+
+  it('is case-insensitive on the suffix', () => {
+    expect(sourcePngFromNormalPng('/a/b/Tile.NORMAL.PNG')).toBe('/a/b/Tile.png')
+  })
+
+  it('returns null for a plain source .png — a source is not a derived normal map', () => {
+    expect(sourcePngFromNormalPng('/a/b/Dungeon_Tileset.png')).toBeNull()
+  })
+
+  it('returns null for non-normal-png paths', () => {
+    expect(sourcePngFromNormalPng('/a/b/Tile.normal.json')).toBeNull()
+    expect(sourcePngFromNormalPng('/a/b/plain.jpg')).toBeNull()
+  })
+
+  it('is the exact inverse of normalPngPath — round-trips through both directions', () => {
+    const png = '/a/b/Dungeon_Tileset.png'
+    expect(sourcePngFromNormalPng(normalPngPath(png))).toBe(png)
   })
 })

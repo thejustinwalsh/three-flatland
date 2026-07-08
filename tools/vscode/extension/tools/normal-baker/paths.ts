@@ -27,3 +27,17 @@ export function pngPathFromNormalJson(sidecarPath: string): string | null {
   if (!/\.normal\.json$/i.test(sidecarPath)) return null
   return sidecarPath.replace(/\.normal\.json$/i, '.png')
 }
+
+/**
+ * Given a baked normal-map image path (`X.normal.png` — the OUTPUT of a
+ * bake), returns the source `X.png` it was baked from. Lets `register.ts`
+ * resolve the source when the user opens the wrong half of a pair — the
+ * generated normal map instead of the tileset it came from. Returns `null`
+ * for anything that isn't a `.normal.png` path; a plain `X.png` is a source
+ * image, not a derived one, so it is deliberately NOT matched here (the
+ * caller opens a plain `.png` directly).
+ */
+export function sourcePngFromNormalPng(normalPngPath: string): string | null {
+  if (!/\.normal\.png$/i.test(normalPngPath)) return null
+  return normalPngPath.replace(/\.normal\.png$/i, '.png')
+}
