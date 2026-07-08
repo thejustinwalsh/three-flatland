@@ -255,6 +255,13 @@ export type ToneSynthInstance = {
   connect(destination: AudioNode): unknown
   triggerAttackRelease(...args: never[]): unknown
   triggerRelease(...args: never[]): unknown
+  /** Every Tone instrument class inherits this from the base `Tone`
+   * class (verified against the installed `tone@15.1.22` `.d.ts`):
+   * "disconnect and dispose" — frees the native oscillator/envelope/
+   * filter nodes the instance created. Without it, the sidecar's
+   * long-lived process accumulates one undisposed native audio graph
+   * per Play click for the life of the VS Code session. */
+  dispose(): unknown
 }
 export type ToneSynthClass = new (options?: Record<string, unknown>) => ToneSynthInstance
 export type TonePolySynthInstance = ToneSynthInstance & {
@@ -443,6 +450,14 @@ export function playToneSynth(
         gainNode.gain.setValueAtTime(0, ctx.currentTime)
         gainNode.disconnect()
         resolveEnded()
+        // Free the native oscillator/envelope/filter nodes this instance
+        // holds — without this, every Play click leaks an undisposed
+        // Tone instrument for the life of the sidecar process. Disposing
+        // synchronously here truncates any release tail Tone's own
+        // envelope might still be playing, but this stop path already
+        // hard-mutes the gain above (same truncate-on-stop tradeoff,
+        // already accepted), so this is no additional loss.
+        synth.dispose()
       }
     },
   }
@@ -454,7 +469,22 @@ export function playToneSynth(
  * export (after applying the module-scope `AudioContext` monkey-patch —
  * see that file), `player.test.ts` passes a hand-built fake. */
 export type WadInstance = { play(): Promise<unknown>; stop(): void }
-export type WadConstructor = new (config: Record<string, unknown>) => WadInstance
+export type WadConstructor = {
+  new (config: Record<string, unknown>): WadInstance
+  /**
+   * A real static array on the `Wad` class itself (verified against the
+   * installed `web-audio-daw@4.13.4` bundle: `build/wad.js`'s
+   * constructor unconditionally runs `Wad.allWads.push(this)`, and
+   * NOTHING in the package ever removes an entry — `Wad.stopAll()` is
+   * the only reader). `Wad` has no `dispose()`/`destroy()` method at
+   * all, and this array means dropping every OUR OWN reference to a
+   * stopped instance still doesn't make it garbage-collectable — the
+   * module-level array keeps it alive regardless. `playWadSynth`'s
+   * `stop()` below splices the instance out itself; that's the only way
+   * to actually free it.
+   */
+  allWads: WadInstance[]
+}
 
 /**
  * Constructs and plays a Wad oscillator/noise synth (#47) from a
@@ -514,6 +544,13 @@ export function playWadSynth(
         gainNode.gain.setValueAtTime(0, ctx.currentTime)
         gainNode.disconnect()
         resolveEnded()
+        // Wad has no dispose()/destroy() — the real fix is removing
+        // ourselves from `Wad.allWads` (see `WadConstructor`'s doc
+        // comment), the one thing that would otherwise keep this
+        // instance alive for the life of the sidecar process regardless
+        // of any reference we drop on our own side.
+        const index = Wad.allWads.indexOf(wad)
+        if (index !== -1) Wad.allWads.splice(index, 1)
       }
     },
   }

@@ -416,6 +416,47 @@ describe('createCommandHandler', () => {
         code: 'TONE_LOADING',
       })
     })
+
+    it("a cold-start TONE_LOADING throw does NOT stop a currently-playing source — the exact collateral-stop bug: every session's first Tone click must not kill a looping song", () => {
+      const backend = fakeBackend()
+      const handler = createCommandHandler({
+        play: backend.play,
+        playSong: backend.playSong,
+        playFile: backend.playFile,
+        playToneSynth: () => {
+          throw Object.assign(new Error('Tone.js is still loading — try again in a moment'), {
+            code: 'TONE_LOADING',
+          })
+        },
+        playWadSynth: backend.playWadSynth,
+        getStats: backend.getStats,
+      })
+      handler.handleCommand({ cmd: 'playSong', song: SONG })
+      const songHandle = backend.songHandles[0]!
+
+      const response = handler.handleCommand({
+        cmd: 'playToneSynth',
+        synthType: 'Synth',
+        note: 'C4',
+        duration: '8n',
+      })
+      expect(response).toEqual({
+        ok: false,
+        cmd: 'playToneSynth',
+        error: 'Tone.js is still loading — try again in a moment',
+        code: 'TONE_LOADING',
+      })
+
+      // The song must still be playing — the throw happened BEFORE any
+      // audio-graph mutation, so it never touched currentSource.
+      expect(songHandle.stop).not.toHaveBeenCalled()
+
+      // currentSource is still the song, not cleared/corrupted by the
+      // failed attempt — stopSong stops the ORIGINAL sound, not nothing.
+      const stopSongResponse = handler.handleCommand({ cmd: 'stopSong' })
+      expect(stopSongResponse).toEqual({ ok: true, cmd: 'stopSong' })
+      expect(songHandle.stop).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('playWadSynth', () => {
@@ -472,6 +513,35 @@ describe('createCommandHandler', () => {
       expect(wadHandle.stop).toHaveBeenCalledTimes(1)
       expect(backend.toneSynthHandles[0]!.stop).not.toHaveBeenCalled()
     })
+
+    it('a backend that throws on playWadSynth() produces a Nack and does NOT stop the currently-playing source — try-then-replace', () => {
+      const backend = fakeBackend()
+      let shouldThrow = false
+      const throwing: AudioBackend = {
+        play: backend.play,
+        playSong: backend.playSong,
+        playFile: backend.playFile,
+        playToneSynth: backend.playToneSynth,
+        playWadSynth: (config, volume) => {
+          if (shouldThrow) throw new Error('wad config invalid')
+          return backend.playWadSynth(config, volume)
+        },
+        getStats: backend.getStats,
+      }
+      const handler = createCommandHandler(throwing)
+      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'square' } })
+      const firstHandle = backend.wadSynthHandles[0]!
+
+      shouldThrow = true
+      const response = handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'noise' } })
+      expect(response).toEqual({ ok: false, cmd: 'playWadSynth', error: 'wad config invalid' })
+
+      expect(firstHandle.stop).not.toHaveBeenCalled()
+
+      const stopResponse = handler.handleCommand({ cmd: 'stop' })
+      expect(stopResponse).toEqual({ ok: true, cmd: 'stop' })
+      expect(firstHandle.stop).toHaveBeenCalledTimes(1)
+    })
   })
 
   it("shutdown just acks — process teardown is the wiring layer's job, not the handler's", () => {
@@ -496,7 +566,7 @@ describe('createCommandHandler', () => {
     expect(response).toEqual({ ok: false, cmd: 'play', error: 'boom' })
   })
 
-  it('a backend that throws on playSong() produces a Nack and does not corrupt the current-song state', () => {
+  it('a backend that throws on playSong() produces a Nack and does NOT stop the currently-playing song — try-then-replace', () => {
     const backend = fakeBackend()
     let shouldThrow = false
     const throwing: AudioBackend = {
@@ -518,11 +588,13 @@ describe('createCommandHandler', () => {
     const response = handler.handleCommand({ cmd: 'playSong', song: SONG })
     expect(response).toEqual({ ok: false, cmd: 'playSong', error: 'song failed' })
 
-    // The failed playSong stopped the previous song (replace-before-start
-    // semantics) but never got a new handle back — currentSong must be
-    // cleared BEFORE that stop() call, not after, or a stopSong here
-    // would find the same stale handle still referenced and call .stop()
-    // on it a second time.
+    // The backend call happens BEFORE the old source is touched — a
+    // throwing backend must never have collateral side effects on
+    // whatever is currently playing, so the original song is untouched.
+    expect(firstHandle.stop).not.toHaveBeenCalled()
+
+    // currentSource must still point at the ORIGINAL handle after the
+    // throw, so a subsequent stopSong correctly stops it, not nothing.
     const stopSongResponse = handler.handleCommand({ cmd: 'stopSong' })
     expect(stopSongResponse).toEqual({ ok: true, cmd: 'stopSong' })
     expect(firstHandle.stop).toHaveBeenCalledTimes(1)

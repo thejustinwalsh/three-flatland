@@ -374,6 +374,7 @@ type FakeToneInstance = {
   connect: ReturnType<typeof vi.fn>
   triggerAttackRelease: ReturnType<typeof vi.fn>
   triggerRelease: ReturnType<typeof vi.fn>
+  dispose: ReturnType<typeof vi.fn>
 } & Record<string, unknown>
 
 function fakeToneSynthClass(extraShape: Record<string, unknown> = {}): {
@@ -387,6 +388,7 @@ function fakeToneSynthClass(extraShape: Record<string, unknown> = {}): {
       connect: vi.fn(),
       triggerAttackRelease: vi.fn(),
       triggerRelease: vi.fn(),
+      dispose: vi.fn(),
       ...extraShape,
     }
     instances.push(instance)
@@ -426,6 +428,7 @@ function fakeToneEngine(): {
       connect: vi.fn(),
       triggerAttackRelease: vi.fn(),
       triggerRelease: vi.fn(),
+      dispose: vi.fn(),
       releaseAll: vi.fn(),
       _dummyVoice: voice ? new voice() : undefined,
     }
@@ -535,6 +538,16 @@ describe('playToneSynth', () => {
     expect(getPlaybackStats(ctx).playing).toBe(false)
   })
 
+  it("stop() disposes the synth instance — every Play click must free its native nodes, not leak them for the sidecar process's lifetime", () => {
+    const { ctx } = fakeAudioContext()
+    const { Tone, synth } = fakeToneEngine()
+
+    const handle = playToneSynth(ctx, Tone, { synthType: 'Synth', note: 'C4', duration: 5 }, 1)
+    handle.stop()
+
+    expect(synth.instances[0]!.dispose).toHaveBeenCalledTimes(1)
+  })
+
   describe('PolySynth', () => {
     it('constructs with the voice class from voiceType (default Synth) and passes config through', () => {
       const { ctx } = fakeAudioContext()
@@ -608,13 +621,35 @@ describe('playToneSynth', () => {
       await Promise.resolve()
       expect(getPlaybackStats(ctx).playing).toBe(false)
     })
+
+    it('stop() disposes the PolySynth instance too', () => {
+      const { ctx } = fakeAudioContext()
+      const { Tone, polyInstances } = fakeToneEngine()
+
+      const handle = playToneSynth(
+        ctx,
+        Tone,
+        { synthType: 'PolySynth', note: ['C4'], duration: 5 },
+        1
+      )
+      handle.stop()
+
+      expect(polyInstances[0]!.dispose).toHaveBeenCalledTimes(1)
+    })
   })
 })
 
 /** A controllable fake Wad instance — `play()` returns a promise the
  * test resolves manually (mirroring the real `Wad.play()`'s "resolves on
  * `onended`, fired by either natural completion or `.stop()`"
- * contract), never touching a real `web-audio-daw` import. */
+ * contract), never touching a real `web-audio-daw` import.
+ *
+ * `allWads` mirrors the real `Wad` class's own static array (verified
+ * against the installed `web-audio-daw@4.13.4` bundle: its constructor
+ * unconditionally runs `Wad.allWads.push(this)`, and the package never
+ * removes an entry itself) — the fake constructor pushes to it the same
+ * way, so `player.test.ts` can prove `playWadSynth`'s `stop()` actually
+ * splices the instance back out, not just that it calls `wad.stop()`. */
 function fakeWadInstance(): {
   Wad: WadConstructor
   instance: WadInstance & { config: Record<string, unknown> }
@@ -631,8 +666,10 @@ function fakeWadInstance(): {
   }
   function Wad(this: unknown, config: Record<string, unknown>): WadInstance {
     instance.config = config
+    Wad.allWads.push(instance)
     return instance
   }
+  Wad.allWads = [] as WadInstance[]
   return { Wad: Wad as unknown as WadConstructor, instance, resolvePlay }
 }
 
@@ -657,6 +694,32 @@ describe('playWadSynth', () => {
     handle.stop()
 
     expect(instance.stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('stop() removes the instance from Wad.allWads — Wad has no dispose()/destroy(), so this static array (which the constructor unconditionally pushes into and the package never prunes) is the only thing actually keeping a stopped instance alive; dropping our own reference alone would not free it', () => {
+    const { ctx } = fakeAudioContext()
+    const { Wad, instance } = fakeWadInstance()
+
+    const handle = playWadSynth(ctx, Wad, { source: 'noise' }, 1)
+    expect(Wad.allWads).toContain(instance)
+
+    handle.stop()
+    expect(Wad.allWads).not.toContain(instance)
+  })
+
+  it('stop() leaves other still-playing instances in Wad.allWads untouched — splices only its own entry', () => {
+    const { ctx } = fakeAudioContext()
+    const { Wad, instance: first } = fakeWadInstance()
+
+    const handle = playWadSynth(ctx, Wad, { source: 'square' }, 1)
+    // A second Wad instance constructed against the SAME Wad class/allWads
+    // array, the way two concurrent playWadSynth calls would share it.
+    const second = { config: {}, play: vi.fn(() => new Promise(() => {})), stop: vi.fn() }
+    Wad.allWads.push(second)
+
+    handle.stop()
+    expect(Wad.allWads).not.toContain(first)
+    expect(Wad.allWads).toContain(second)
   })
 
   // The trickiest part of the #47 generalization: durationSeconds is

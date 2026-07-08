@@ -85,6 +85,17 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
     old?.stop()
   }
 
+  // Try-then-replace: call the backend FIRST, and only stop the old
+  // source + adopt the new handle once the backend call has actually
+  // succeeded. A throwing backend call (e.g. playToneSynth's cold-start
+  // Nack, which fires on literally every session's first Tone play — see
+  // tools/zzfx-play/CLAUDE.md) must never have side effects on whatever
+  // is currently playing.
+  function playAndReplace(next: { stop(): void }): void {
+    replaceCurrentSource()
+    currentSource = next
+  }
+
   // Distinct from stopSong in the protocol so a future "stop everything"
   // affordance (e.g. on panel close, or a global hotkey) has a command to
   // grow into without a protocol change — one-shots are typically <1s
@@ -103,8 +114,7 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
         case 'playSong': {
           // Replace, never stack — a new playSong stops whatever's
           // currently playing before starting the new one.
-          replaceCurrentSource()
-          currentSource = backend.playSong(command.song, command.volume ?? 1)
+          playAndReplace(backend.playSong(command.song, command.volume ?? 1))
           return { ok: true, cmd: 'playSong' }
         }
         case 'playFile': {
@@ -120,13 +130,11 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
           return { ok: true, cmd: 'playFile' }
         }
         case 'playToneSynth': {
-          replaceCurrentSource()
-          currentSource = backend.playToneSynth(command, command.volume ?? 1)
+          playAndReplace(backend.playToneSynth(command, command.volume ?? 1))
           return { ok: true, cmd: 'playToneSynth' }
         }
         case 'playWadSynth': {
-          replaceCurrentSource()
-          currentSource = backend.playWadSynth(command.config, command.volume ?? 1)
+          playAndReplace(backend.playWadSynth(command.config, command.volume ?? 1))
           return { ok: true, cmd: 'playWadSynth' }
         }
         case 'stopSong':
