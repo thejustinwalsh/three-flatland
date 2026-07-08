@@ -32,10 +32,12 @@ function toVscodeRange(range: Finding['range']): vscode.Range {
 
 /** Carries the finding + which of the two lenses this is — resolveCodeLens
  * reads these back off the instance VS Code hands it. */
+type ZzfxCallFinding = Extract<Finding, { kind: 'zzfx.call' }>
+
 class ZzfxCodeLens extends vscode.CodeLens {
   constructor(
     range: vscode.Range,
-    readonly finding: Finding,
+    readonly finding: ZzfxCallFinding,
     readonly variant: 'play' | 'edit',
     readonly docUri: vscode.Uri
   ) {
@@ -80,6 +82,9 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
 
     const lenses: vscode.CodeLens[] = []
     for (const finding of findings) {
+      // A1 added zzfxm.song / audio.file kinds; lenses for them arrive with
+      // A3 — until then only zzfx.call findings surface in the editor.
+      if (finding.kind !== 'zzfx.call') continue
       const range = toVscodeRange(finding.range)
       lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri))
       lenses.push(new ZzfxCodeLens(range, finding, 'edit', document.uri))

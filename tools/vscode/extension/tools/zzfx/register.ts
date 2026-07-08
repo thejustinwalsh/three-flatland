@@ -11,11 +11,14 @@ import { log } from '../../log'
 
 const INLINE_PLAYBACK_SETTING = 'threeFlatland.zzfx.inlinePlayback.enabled'
 
+type ZzfxCallFinding = Extract<Finding, { kind: 'zzfx.call' }>
+
 function findFindingAtPosition(
   findings: readonly Finding[],
   position: vscode.Position
-): Finding | undefined {
-  return findings.find((f) => {
+): ZzfxCallFinding | undefined {
+  return findings.find((f): f is ZzfxCallFinding => {
+    if (f.kind !== 'zzfx.call') return false
     const range = new vscode.Range(
       f.range.start.line,
       f.range.start.character,
@@ -35,7 +38,7 @@ function findFindingAtPosition(
  */
 async function resolveFindingAtCursor(
   client: CodelensServiceClient
-): Promise<{ uri: vscode.Uri; finding: Finding } | undefined> {
+): Promise<{ uri: vscode.Uri; finding: ZzfxCallFinding } | undefined> {
   const editor = vscode.window.activeTextEditor
   if (!editor) {
     void vscode.window.showInformationMessage('FL ZzFX: no active editor.')

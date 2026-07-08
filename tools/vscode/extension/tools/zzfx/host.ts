@@ -62,10 +62,13 @@ async function resolveFinding(
   client: CodelensServiceClient,
   uri: vscode.Uri,
   findingId: string
-): Promise<{ document: vscode.TextDocument; finding: Finding } | undefined> {
+): Promise<{ document: vscode.TextDocument; finding: ZzfxCallFinding } | undefined> {
   const document = await vscode.workspace.openTextDocument(uri)
   const { findings } = await client.parse({ uri: uri.toString(), text: document.getText() })
-  const finding = findings.find((f) => f.id === findingId)
+  const finding = findings.find(
+    (f): f is Extract<typeof f, { kind: 'zzfx.call' }> =>
+      f.kind === 'zzfx.call' && f.id === findingId
+  )
   if (!finding) return undefined
   return { document, finding }
 }
@@ -97,18 +100,23 @@ async function resolveFindingForSave(
   client: CodelensServiceClient,
   uri: vscode.Uri,
   findingId: string
-): Promise<{ document: vscode.TextDocument; finding: Finding } | undefined> {
+): Promise<{ document: vscode.TextDocument; finding: ZzfxCallFinding } | undefined> {
   for (let attempt = 0; attempt < SAVE_RESOLVE_MAX_ATTEMPTS; attempt++) {
     const document = await vscode.workspace.openTextDocument(uri)
     const versionAtParse = document.version
     const { findings } = await client.parse({ uri: uri.toString(), text: document.getText() })
     if (document.version !== versionAtParse) continue
-    const finding = findings.find((f) => f.id === findingId)
+    const finding = findings.find(
+      (f): f is Extract<typeof f, { kind: 'zzfx.call' }> =>
+        f.kind === 'zzfx.call' && f.id === findingId
+    )
     if (!finding) return undefined
     return { document, finding }
   }
   return undefined
 }
+
+type ZzfxCallFinding = Extract<Finding, { kind: 'zzfx.call' }>
 
 function rangeFromWire(range: Finding['range']): vscode.Range {
   return new vscode.Range(
