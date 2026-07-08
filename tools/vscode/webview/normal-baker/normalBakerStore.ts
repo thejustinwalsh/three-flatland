@@ -23,7 +23,7 @@ export type NormalBakerDefaults = {
 }
 
 /** Collapsible sub-areas of the Info panel (see App.tsx / InfoSection.tsx). */
-export type InfoSectionKey = 'inspector' | 'preview'
+export type InfoSectionKey = 'inspector' | 'normal' | 'lit'
 
 export type NormalBakerStoreState = {
   // Document content — tracked in undo history, persisted across panel reloads.
@@ -99,7 +99,7 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
           selectedIds: new Set<string>(),
           regionListPx: 260,
           splits: { infoPanelPx: 360 },
-          infoSections: { inspector: true, preview: true },
+          infoSections: { inspector: true, normal: true, lit: true },
 
           setRegions: (next) =>
             set((s) => ({ ...s, regions: typeof next === 'function' ? next(s.regions) : next })),
@@ -200,6 +200,33 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
           splits: s.splits,
           infoSections: s.infoSections,
         }),
+        merge: (persisted, current) => {
+          const p = persisted as {
+            regionListPx?: number
+            splits?: { infoPanelPx?: number }
+            infoSections?: Partial<Record<InfoSectionKey, boolean>> & { preview?: boolean }
+          }
+          // Per-key merge so prefs persisted before a section was added
+          // (or renamed) fall back to the defaults instead of leaving the
+          // new key undefined (a Collapsible with open=undefined renders
+          // collapsed). The old single 'preview' section became
+          // 'normal' + 'lit'; seed both from it when present.
+          const legacyPreview = p.infoSections?.preview
+          return {
+            ...current,
+            ...(p.regionListPx !== undefined ? { regionListPx: p.regionListPx } : {}),
+            splits: { ...current.splits, ...(p.splits ?? {}) },
+            infoSections: {
+              ...current.infoSections,
+              ...(legacyPreview !== undefined ? { normal: legacyPreview, lit: legacyPreview } : {}),
+              ...(p.infoSections?.inspector !== undefined
+                ? { inspector: p.infoSections.inspector }
+                : {}),
+              ...(p.infoSections?.normal !== undefined ? { normal: p.infoSections.normal } : {}),
+              ...(p.infoSections?.lit !== undefined ? { lit: p.infoSections.lit } : {}),
+            },
+          }
+        },
       }
     ),
     {

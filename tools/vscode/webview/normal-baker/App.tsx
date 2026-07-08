@@ -273,11 +273,45 @@ export function App() {
     normalBakerActions.setRegionListPx(el.getBoundingClientRect().right - clientX)
   }, [])
 
-  const handleInfoDrag = useCallback((clientY: number) => {
+  // The store's 160–640 clamp alone is not enough for the Info height: a
+  // real editor panel is usually SHORTER than 640px + the Regions floor,
+  // so an unbounded-up drag parks the STORED height far above what the
+  // `minmax(0, …)` grid row can render — the splitter pins at the visual
+  // limit while the store keeps counting, then the panel snaps on the
+  // next layout change. Clamp against the sidebar's live height (Regions
+  // keeps its 120px floor + the 4px splitter row), same as the atlas
+  // width-splitter's live-bounds clamp — clamping is the parent's job
+  // per the design-system Splitter contract.
+  const infoPanelMax = useCallback((): number => {
     const el = sidebarRef.current
-    if (!el) return
-    normalBakerActions.setInfoPanelPx(el.getBoundingClientRect().bottom - clientY)
+    if (!el) return 640
+    return Math.max(160, el.getBoundingClientRect().height - 120 - 4)
   }, [])
+
+  const handleInfoDrag = useCallback(
+    (clientY: number) => {
+      const el = sidebarRef.current
+      if (!el) return
+      const next = el.getBoundingClientRect().bottom - clientY
+      normalBakerActions.setInfoPanelPx(Math.min(next, infoPanelMax()))
+    },
+    [infoPanelMax]
+  )
+
+  // Keep the stored height truthful across sidebar resizes (window
+  // resize, editor-group layout changes): re-clamp so stored === rendered
+  // and the next drag starts exactly where the splitter sits.
+  useEffect(() => {
+    const el = sidebarRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => {
+      const current = useNormalBakerStore.getState().splits.infoPanelPx
+      const max = infoPanelMax()
+      if (current > max) normalBakerActions.setInfoPanelPx(max)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [infoPanelMax])
 
   useEffect(() => {
     rootRef.current?.focus()
@@ -518,14 +552,19 @@ export function App() {
                 backgroundStyle="checker"
               >
                 <ImageDataSink onChange={setImageData} />
-                <RegionColorOverlay regions={colorRegions} />
+                <RegionColorOverlay regions={colorRegions} selectedIds={selectedIds} />
                 {/* Grid mode: the grid overlay owns the canvas pointer
                     surface (line drags + cell picking), so rect drawing/
                     editing pauses — regions stay visible underneath, and
                     the LIST still selects (split-by-grid works from a
                     list selection while the grid is up). */}
+                {/* showLabels={false}: labels are drawn by
+                    RegionColorOverlay instead, with the baker's
+                    fit-ALWAYS policy (see regionLabelFit.ts) rather than
+                    preview's fit-or-hide. */}
                 <RectOverlay
                   rects={regions}
+                  showLabels={false}
                   drawEnabled={mode.kind === 'normal'}
                   interactive={mode.kind === 'normal'}
                   onRectCreate={handleRectCreate}
@@ -607,9 +646,9 @@ export function App() {
                     }
                   />
                 </InfoSection>
-                <InfoSection id="preview" heading="Preview">
-                  <LivePreview imageData={imageData} descriptor={previewDescriptor} />
-                </InfoSection>
+                {/* Renders its own two InfoSections (Normal, Lit) —
+                    independently collapsible, one shared bake. */}
+                <LivePreview imageData={imageData} descriptor={previewDescriptor} />
               </div>
             </Panel>
           )}
