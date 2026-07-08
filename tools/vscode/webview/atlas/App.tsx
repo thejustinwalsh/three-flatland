@@ -2229,7 +2229,7 @@ export function App() {
         {inTool ? (
           <>
             {mode.kind === 'slicing' ? (
-              <Panel title={`Slice (${mode.state.picked.size} picked)`}>
+              <Panel title={`Slice (${mode.state.picked.size} picked)`} bodyOverflow="visible">
                 <SliceConfigPanel
                   state={mode.state}
                   onParamsChange={updateSliceParams}
@@ -2241,7 +2241,10 @@ export function App() {
               </Panel>
             ) : null}
             {mode.kind === 'autodetect' ? (
-              <Panel title={`Auto Detect (${mode.state.picked.size}/${mode.state.detected.length} picked)`}>
+              <Panel
+                title={`Auto Detect (${mode.state.picked.size}/${mode.state.detected.length} picked)`}
+                bodyOverflow="visible"
+              >
                 <AutoDetectConfigPanel
                   state={mode.state}
                   imageData={imageData}

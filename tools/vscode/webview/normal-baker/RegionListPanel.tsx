@@ -63,6 +63,17 @@ const s = stylex.create({
     color: vscode.descriptionFg,
     fontSize: '12px',
   },
+  // Bounded (not content-sized) — this list scrolls INTERNALLY once
+  // regions.length grows (see scrollIntoView in the list body below),
+  // which requires a definite height for the default bodyOverflow="auto"
+  // to actually scroll instead of collapsing to 0 (Panel's
+  // flex-1-with-no-stretching-ancestor bug — see design-system
+  // CLAUDE.md). A fixed vh cap keeps Properties/Defaults/Preview below
+  // it reachable without an enormous region list pushing them off-screen.
+  bounded: {
+    height: 'min(40vh, 320px)',
+    flexShrink: 0,
+  },
 })
 
 export type RegionListPanelProps = {
@@ -88,6 +99,7 @@ export function RegionListPanel({
     <Panel
       title={`Regions (${regions.length})`}
       bodyPadding="none"
+      style={s.bounded}
       headerActions={
         <>
           <ToolbarButton icon="add" title="Add region" onClick={onAdd} />

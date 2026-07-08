@@ -137,7 +137,7 @@ export function LivePreviewPanel({ imageData, descriptor }: LivePreviewPanelProp
   }, [baked, reducedMotion])
 
   return (
-    <Panel title="Preview">
+    <Panel title="Preview" bodyOverflow="visible">
       {!imageData ? (
         <div {...stylex.props(s.empty)}>Waiting for source image…</div>
       ) : (

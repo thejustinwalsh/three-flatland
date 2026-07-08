@@ -77,7 +77,7 @@ export function DefaultsPanel({ defaults, onChange }: DefaultsPanelProps) {
   const bump = defaults.bump ?? DEFAULT_BUMP
 
   return (
-    <Panel title="Defaults">
+    <Panel title="Defaults" bodyOverflow="visible">
       <div {...stylex.props(s.body)}>
         <div {...stylex.props(s.field)}>
           <span {...stylex.props(s.label)}>Direction</span>

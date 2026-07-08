@@ -136,7 +136,7 @@ export type RegionPropertiesPanelProps = {
 export function RegionPropertiesPanel({ region, defaults, onChange }: RegionPropertiesPanelProps) {
   if (!region) {
     return (
-      <Panel title="Properties">
+      <Panel title="Properties" bodyOverflow="visible">
         <div {...stylex.props(s.empty)}>Select a region to edit its properties.</div>
       </Panel>
     )
@@ -157,7 +157,7 @@ export function RegionPropertiesPanel({ region, defaults, onChange }: RegionProp
   const strength = resolveStrength(region, defaults)
 
   return (
-    <Panel title="Properties">
+    <Panel title="Properties" bodyOverflow="visible">
       <div {...stylex.props(s.body)}>
         <div {...stylex.props(s.geomGrid)}>
           <div {...stylex.props(s.field)}>
