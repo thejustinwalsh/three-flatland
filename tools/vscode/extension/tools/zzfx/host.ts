@@ -175,9 +175,21 @@ export async function openZzfxEditorPanel(
       // Header source link — call-site location (finding.range is the
       // call for var-ref findings too), snapshotted at open time like the
       // panel title; zzfx/revealSource below re-resolves the live
-      // position on click.
+      // position on click. `def` carries the DECLARATION's location for a
+      // var-ref with a readable initializer — the link shows the variable
+      // name and reveals the declaration in that case, since that's what
+      // Save writes to.
       sourcePath: vscode.workspace.asRelativePath(uri),
       sourceLine: finding.range.start.line,
+      def:
+        finding.payload.varRef?.defUri && finding.payload.varRef.defRange
+          ? {
+              path: vscode.workspace.asRelativePath(
+                vscode.Uri.parse(finding.payload.varRef.defUri)
+              ),
+              line: finding.payload.varRef.defRange.start.line,
+            }
+          : undefined,
       params,
       varRef: finding.payload.varRef,
       loadError,
@@ -277,21 +289,38 @@ export async function openZzfxEditorPanel(
 
   bridge.on('zzfx/revealSource', async () => {
     // Re-resolve the finding's CURRENT position by id — the source may
-    // have moved since the panel opened. Gone entirely (edited away)?
-    // Fall back to the file at the open-time line, clamped — a stale-ish
-    // reveal beats an error toast for a navigation click.
+    // have moved since the panel opened. showTextDocument without
+    // preserveFocus deliberately FOCUSES the revealed editor (unlike the
+    // play routes): the link's whole job is "take me there". A var-ref
+    // with a readable declaration reveals the DECLARATION with the
+    // initializer selected — that's what Save writes to; everything else
+    // reveals the call site with the call selected.
     const current = await resolveFinding(client, uri, findingId)
     if (current) {
-      await vscode.window.showTextDocument(current.document, {
-        selection: rangeFromWire(current.finding.range),
-      })
-    } else {
-      const document = await vscode.workspace.openTextDocument(uri)
-      const line = Math.min(finding.range.start.line, document.lineCount - 1)
-      await vscode.window.showTextDocument(document, {
-        selection: new vscode.Range(line, 0, line, 0),
-      })
+      const varRef = current.finding.payload.varRef
+      if (varRef?.defUri && varRef.defRange) {
+        const defDoc = await vscode.workspace.openTextDocument(vscode.Uri.parse(varRef.defUri))
+        await vscode.window.showTextDocument(defDoc, { selection: rangeFromWire(varRef.defRange) })
+      } else {
+        await vscode.window.showTextDocument(current.document, {
+          selection: rangeFromWire(current.finding.range),
+        })
+      }
+      return { ok: true }
     }
+    // Gone entirely (edited away) — fall back to the OPEN-TIME snapshot's
+    // target file at its open-time line, cursor-collapsed (a stale range
+    // could select the wrong text), clamped. A stale-ish reveal beats an
+    // error toast for a navigation click.
+    const varRef = finding.payload.varRef
+    const targetUri = varRef?.defUri && varRef.defRange ? vscode.Uri.parse(varRef.defUri) : uri
+    const storedLine =
+      varRef?.defUri && varRef.defRange ? varRef.defRange.start.line : finding.range.start.line
+    const document = await vscode.workspace.openTextDocument(targetUri)
+    const line = Math.min(storedLine, document.lineCount - 1)
+    await vscode.window.showTextDocument(document, {
+      selection: new vscode.Range(line, 0, line, 0),
+    })
     return { ok: true }
   })
 

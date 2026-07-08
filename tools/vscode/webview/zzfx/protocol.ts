@@ -28,6 +28,15 @@ export type ZzfxInitPayload = {
    * like the panel title — `zzfx/revealSource` re-resolves the live
    * position on click rather than trusting this. */
   sourceLine: number
+  /** Present for a variable-spread call whose declaration is resolvable
+   * (`varRef.defUri` + `defRange`): the DECLARATION's workspace-relative
+   * path and 0-based initializer start line. The declaration is what Save
+   * writes to, so it's what the header link reveals in that case — the
+   * link shows the variable name alone and moves this location into its
+   * tooltip (the panel tab already carries the call-site file:line).
+   * Absent for literal calls and for var-refs without a readable
+   * declaration; the link falls back to call-site file:line then. */
+  def?: { path: string; line: number }
   /** Positional zzfx args as found in source — may be shorter than 21
    * elements (trailing defaults omitted) or contain holes from a sparse
    * array literal. Run through `fromArgs` before use. */
@@ -108,12 +117,14 @@ export type ZzfxGenerateResultEvent = {
   source: 'lm' | 'cache' | 'preset'
 }
 
-/** webview -> host, reveals the finding's source location in a text
- * editor (the header source link). The host re-resolves the finding's
+/** webview -> host, reveals the finding's source in a text editor with
+ * focus (the header source link). The host re-resolves the finding's
  * CURRENT position by id (same `resolveFinding` re-parse the other
- * handlers use) and opens the document with the call selected; if the
- * finding is gone (edited away since the panel opened), it falls back to
- * opening the file at the line captured at open time — no error toast
+ * handlers use); a var-ref with a readable declaration reveals the
+ * DECLARATION with the initializer selected (what Save writes to),
+ * anything else the call site with the call selected. If the finding is
+ * gone (edited away since the panel opened), it falls back to opening
+ * the open-time target file at the open-time line — no error toast
  * either way. */
 export type ZzfxRevealSourcePayload = Record<string, never>
 

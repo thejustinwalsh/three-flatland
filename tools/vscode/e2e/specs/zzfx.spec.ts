@@ -7,6 +7,7 @@ import { expect, test } from '../fixtures'
 const SOUNDS_FILE = 'src/sounds.ts'
 const LITERAL_CALL_LINE = 48 // 0-indexed
 const VARIABLE_CALL_LINE = 52 // 0-indexed
+const LASER_DECL_LINE = 44 // 0-indexed — `const LASER: ZzFXParams = [...]`
 const LITERAL_CALL_TEXT = 'zzfx(...[0.5, 0, 300, 0, 0.02, 0.05, 1])'
 const LITERAL_CALL_CANONICAL = 'zzfx(0.5, 0, 300, 0, 0.02, 0.05, 1)'
 const LASER_ARRAY_TEXT = '[0.6, 0, 1500, 0, 0.03, 0.05, 4, 2, 0, 0, 900, 0.03]'
@@ -159,10 +160,23 @@ test.describe('FL ZzFX Studio', () => {
     const frame = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
     await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
 
+    // Init landed: the field showing LASER's real 1500 proves `zzfx/init`
+    // delivered findingId, i.e. Save is enabled — a click before that
+    // silently no-ops on the (correctly) disabled button, leaving the
+    // file untouched. Caught as a real under-load flake in a full-suite
+    // run; same pre-init-race family as follow-up #19.
+    await expect(frame.getByLabel('Frequency value')).toHaveValue('1500')
+
     // Change ONE param (frequency 1500 -> 1800) so the write-back is
     // provably real, not just a no-op round-trip that happens to
     // reproduce the original text byte-for-byte.
     await frame.getByLabel('Frequency value').fill('1800')
+    // The fill's input event commits synchronously into session state and
+    // flips `dirty`, which retitles Save — wait for that so the save
+    // request provably snapshots the 1800.
+    await expect(
+      frame.locator('vscode-toolbar-button[title="Save (unsaved changes)"]')
+    ).toBeVisible()
     await frame.locator('vscode-toolbar-button[title^="Save"]').click()
 
     const actualText = await readFile(evaluateInVSCode, SOUNDS_FILE)
@@ -200,6 +214,10 @@ test.describe('FL ZzFX Studio', () => {
 
     const frame = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
     await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
+    // Init landed (field shows LASER's real value) ⇒ Save is enabled —
+    // required before the click below can exercise the refusal path at
+    // all rather than no-op on a still-disabled button.
+    await expect(frame.getByLabel('Frequency value')).toHaveValue('1500')
 
     // Edit the DOCUMENT directly (not through the panel) — LASER's
     // initializer becomes a call expression, exactly the
@@ -267,6 +285,8 @@ test.describe('FL ZzFX Studio', () => {
 
     const frame = await webviewFrame(/^ZzFX: sounds\.ts:49$/)
     await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
+    // Init landed (field shows the call's real 300) ⇒ Save is enabled.
+    await expect(frame.getByLabel('Frequency value')).toHaveValue('300')
 
     // No slider changes — clicking Save with the panel's freshly-loaded,
     // unmodified params proves the write-back mechanism itself (argRange
@@ -320,6 +340,8 @@ test.describe('FL ZzFX Studio', () => {
 
     const frame = await webviewFrame(/^ZzFX: sounds\.ts:49$/)
     await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
+    // Init landed (field shows the call's real 300) ⇒ Save is enabled.
+    await expect(frame.getByLabel('Frequency value')).toHaveValue('300')
 
     // Shift the call's byte offset by inserting an unrelated line above
     // it, WITHOUT touching the call's own text. The sidecar's finding id
@@ -392,7 +414,7 @@ test.describe('FL ZzFX Studio', () => {
       .toBeGreaterThan(0)
   })
 
-  test('header source link shows the call-site location and clicking it reveals the call in the text editor', async ({
+  test('header source link for a variable finding shows the variable name alone and clicking it reveals + focuses the declaration', async ({
     evaluateInVSCode,
     webviewFrame,
   }) => {
@@ -414,18 +436,25 @@ test.describe('FL ZzFX Studio', () => {
     )
 
     const frame = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
-    const link = frame.getByRole('link', { name: 'sounds.ts:53' })
+    // Label is exactly the variable name — the location detail lives in
+    // the tooltip (declaration's workspace-relative path:1-based-line),
+    // because the panel tab already carries the call-site file:line and
+    // the header must not duplicate it.
+    const link = frame.getByRole('link', { name: 'LASER', exact: true })
     await expect(link).toBeVisible()
-    // Tooltip carries the full workspace-relative path.
-    await expect(link).toHaveAttribute('title', SOUNDS_FILE)
+    await expect(link).toHaveAttribute('title', `${SOUNDS_FILE}:${LASER_DECL_LINE + 1}`)
 
     await link.click()
 
-    // Assert on the SELECTED TEXT, not just the line number: the
+    // Assert on the SELECTED TEXT, not just a line number: the
     // panel-opening boilerplate above already parked an (empty) selection
-    // on this same line, so a line-only assertion could pass without the
-    // click doing anything. Only revealSource's own full-call-range
-    // selection can produce `zzfx(...LASER)`.
+    // in this file, so a location-only assertion could pass without the
+    // click doing anything. Only revealSource's own initializer-range
+    // selection can produce LASER's exact array text — and it must land
+    // on the DECLARATION line, not the call line the panel was opened
+    // from. `activeTextEditor` matching doubles as the focus assertion:
+    // it is by definition the focused editor group's editor, which a
+    // preserveFocus reveal would not have made this one.
     await expect
       .poll(() =>
         evaluateInVSCode(async (vscode) => {
@@ -438,7 +467,54 @@ test.describe('FL ZzFX Studio', () => {
           }
         })
       )
-      .toEqual({ file: 'sounds.ts', line: VARIABLE_CALL_LINE, selectedText: 'zzfx(...LASER)' })
+      .toEqual({ file: 'sounds.ts', line: LASER_DECL_LINE, selectedText: LASER_ARRAY_TEXT })
+  })
+
+  test('header source link for a literal finding shows file:line and clicking it reveals + focuses the call site', async ({
+    evaluateInVSCode,
+    webviewFrame,
+  }) => {
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const editor = await vscode.window.showTextDocument(doc)
+        editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
+        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+      },
+      { file: SOUNDS_FILE, line: LITERAL_CALL_LINE }
+    )
+
+    const frame = await webviewFrame(/^ZzFX: sounds\.ts:49$/)
+    // A literal call has no better name than its location — file:line
+    // (1-based) is the label, full workspace-relative path the tooltip.
+    const link = frame.getByRole('link', { name: 'sounds.ts:49' })
+    await expect(link).toBeVisible()
+    await expect(link).toHaveAttribute('title', SOUNDS_FILE)
+
+    await link.click()
+
+    // Same selected-text rigor as the variable case: only revealSource's
+    // full-call-range selection can produce the exact call text.
+    await expect
+      .poll(() =>
+        evaluateInVSCode(async (vscode) => {
+          const editor = vscode.window.activeTextEditor
+          if (!editor) return null
+          return {
+            file: editor.document.uri.path.split('/').pop(),
+            line: editor.selection.start.line,
+            selectedText: editor.document.getText(editor.selection),
+          }
+        })
+      )
+      .toEqual({ file: 'sounds.ts', line: LITERAL_CALL_LINE, selectedText: LITERAL_CALL_TEXT })
   })
 
   test('Save fails safely — file byte-identical — when the call has been deleted entirely since the panel opened', async ({
@@ -466,6 +542,8 @@ test.describe('FL ZzFX Studio', () => {
 
     const frame = await webviewFrame(/^ZzFX: sounds\.ts:49$/)
     await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
+    // Init landed (field shows the call's real 300) ⇒ Save is enabled.
+    await expect(frame.getByLabel('Frequency value')).toHaveValue('300')
 
     // Delete the call's entire line — there is no "new position" to
     // relocate to; re-parsing the current text simply can't produce a

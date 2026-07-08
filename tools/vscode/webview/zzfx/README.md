@@ -44,6 +44,11 @@ type ZzfxInitPayload = {
   sourceLine: number // 0-based CALL-SITE start line at open time (display 1-based);
   // the call the user opened from even for a var-ref finding — a snapshot,
   // like the panel title; zzfx/revealSource re-resolves the live position
+  def?: { path: string; line: number } // DECLARATION location for a var-ref with a
+  // readable initializer (workspace-relative path + 0-based initializer start line).
+  // Present ⇒ the header link shows the variable name alone with this location in its
+  // tooltip (the panel tab already shows the call-site file:line — don't duplicate it);
+  // absent ⇒ the link falls back to call-site `basename:line`
   params: (number | null | undefined)[] // positional zzfx args as found in source; may be
   // short (trailing defaults omitted) or have holes from a
   // sparse array literal — run through params.ts's fromArgs()
@@ -73,7 +78,7 @@ type ZzfxRevealSourcePayload = Record<string, never> // {}
 type ZzfxRevealSourceResult = { ok: true }
 ```
 
-The host re-resolves the finding's **current** position by id (the same fresh re-parse the save path starts from) and calls `showTextDocument(uri, { selection })` with the call-site range. If the finding is gone — edited away since the panel opened — it falls back to opening the file at the `sourceLine` captured at open time (clamped to the document), with **no error toast**: a stale-ish reveal beats an error for a navigation click. The webview side is fire-and-forget for the same reason.
+The host re-resolves the finding's **current** position by id (the same fresh re-parse the save path starts from) and calls `showTextDocument` — without `preserveFocus`, so the revealed editor takes focus (the link's whole job is "take me there", unlike the play routes). Target selection mirrors what Save writes to: a var-ref with a readable declaration reveals the **declaration** with the initializer selected; everything else reveals the **call site** with the call selected. If the finding is gone — edited away since the panel opened — it falls back to opening the open-time target file at the open-time line, cursor-collapsed and clamped (a stale range could select the wrong text), with **no error toast**: a stale-ish reveal beats an error for a navigation click. The webview side is fire-and-forget for the same reason.
 
 ### Standalone / dev mode
 

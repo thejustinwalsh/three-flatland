@@ -155,13 +155,24 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.playRequest])
 
-  // Header source location — `<basename>:<line+1>` (1-based for humans),
-  // full workspace-relative path in the tooltip. Null in standalone mode
-  // (no init payload), leaving the slot empty like the old subtitle did.
+  // Header source link — "the variable name when possible, or the file
+  // and line number" (the panel tab already carries the call-site
+  // file:line, so the variable case must not duplicate it):
+  //   variable w/ readable declaration → label `LASER`, tooltip the
+  //     DECLARATION's `path:line` (1-based) — clicking reveals what Save
+  //     writes to;
+  //   literal call (or unreadable declaration) → label `basename:line+1`
+  //     of the call site, tooltip the full workspace-relative path.
+  // Null in standalone mode (no init payload), leaving the slot empty.
   const sourceLabel =
-    session.sourcePath !== null && session.sourceLine !== null
-      ? `${session.sourcePath.split(/[\\/]/).pop() ?? session.sourcePath}:${session.sourceLine + 1}`
-      : null
+    session.varRefName !== null && session.def !== null
+      ? session.varRefName
+      : session.sourcePath !== null && session.sourceLine !== null
+        ? `${session.sourcePath.split(/[\\/]/).pop() ?? session.sourcePath}:${session.sourceLine + 1}`
+        : null
+  const sourceTitle = session.def
+    ? `${session.def.path}:${session.def.line + 1}`
+    : session.sourcePath
 
   return (
     <div {...stylex.props(styles.root)}>
@@ -185,18 +196,14 @@ export function App() {
           onClick={() => void session.save()}
         />
         <div {...stylex.props(styles.spacer)} />
-        {sourceLabel && session.sourcePath && (
+        {sourceLabel && sourceTitle && (
           <span {...stylex.props(styles.headerMeta)}>
             {session.dirty && (
               <span {...stylex.props(styles.dirtyDot)} title="Unsaved changes">
                 •
               </span>
             )}
-            <SourceLink
-              label={sourceLabel}
-              title={session.sourcePath}
-              onReveal={session.revealSource}
-            />
+            <SourceLink label={sourceLabel} title={sourceTitle} onReveal={session.revealSource} />
           </span>
         )}
       </Toolbar>

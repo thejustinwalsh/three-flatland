@@ -37,6 +37,10 @@ export type ZzfxSessionState = {
   /** 0-based call-site start line from the init payload — see
    * `ZzfxInitPayload.sourceLine` for the snapshot caveat. */
   sourceLine: number | null
+  /** The variable declaration's location for a var-ref finding — see
+   * `ZzfxInitPayload.def`. Null for literal calls, unreadable
+   * declarations, and standalone mode. */
+  def: { path: string; line: number } | null
   /** Asks the host to reveal the finding in its text editor (the header
    * source link's click). Fire-and-forget: the host owns the gone-finding
    * fallback, so there's nothing to surface here. */
@@ -106,6 +110,7 @@ export function useZzfxSession(): ZzfxSessionState {
   const [uri, setUri] = useState<string | null>(null)
   const [sourcePath, setSourcePath] = useState<string | null>(null)
   const [sourceLine, setSourceLine] = useState<number | null>(null)
+  const [def, setDef] = useState<{ path: string; line: number } | null>(null)
   const [varRefName, setVarRefName] = useState<string | null>(null)
   const [params, setParams] = useState<ZzfxParams>(() => defaultParams())
   const [dirty, setDirty] = useState(false)
@@ -148,6 +153,7 @@ export function useZzfxSession(): ZzfxSessionState {
       setUri(p.uri)
       setSourcePath(p.sourcePath)
       setSourceLine(p.sourceLine)
+      setDef(p.def ?? null)
       setVarRefName(p.varRef?.name ?? null)
       setParams(fromArgs(p.params))
       setDirty(false)
@@ -259,6 +265,7 @@ export function useZzfxSession(): ZzfxSessionState {
     uri,
     sourcePath,
     sourceLine,
+    def,
     revealSource,
     varRefName,
     params,
