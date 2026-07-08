@@ -14,8 +14,10 @@ import { useZzfxSession } from './useZzfxSession'
 import { ParamGroup } from './ParamGroup'
 import { PillGroup } from './PillGroup'
 import { AiGeneratePanel } from './AiGeneratePanel'
+import { SourceLink } from './SourceLink'
 import { useSidebarWidth } from './useSidebarWidth'
-import { playParams } from './audio'
+import { WaveformPreview } from './WaveformPreview'
+import { playParams, type PlaybackHandle } from './audio'
 import {
   CATEGORIES,
   fromArgs,
@@ -56,6 +58,17 @@ const styles = stylex.create({
   spacer: {
     flex: 1,
   },
+  // Right toolbar slot: unsaved-changes dot + source-location link.
+  headerMeta: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingInline: space.sm,
+  },
+  dirtyDot: {
+    color: vscode.descriptionFg,
+    fontSize: '11px',
+  },
   // Params (main) | Splitter | Category+Style+Generate (sidebar) — the
   // same shell shape atlas/merge use (Toolbar header, resizable side
   // column), so params are always visible without collapsing anything,
@@ -68,6 +81,16 @@ const styles = stylex.create({
     display: 'flex',
     padding: space.lg,
     gap: 0,
+  },
+  // Waveform strip stacked above the params panel — same `space.sm`
+  // rhythm the sidebar uses between its panels.
+  mainColumn: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.sm,
   },
   paramsPanel: {
     flex: 1,
@@ -97,14 +120,20 @@ const styles = stylex.create({
 export function App() {
   const session = useZzfxSession()
   const [playError, setPlayError] = useState<string | null>(null)
+  const [playback, setPlayback] = useState<PlaybackHandle | null>(null)
   const [sidebarPx, setSidebarPx] = useSidebarWidth()
   const workAreaRef = useRef<HTMLDivElement>(null)
 
   const handlePlay = () => {
     setPlayError(null)
-    playParams(session.params).catch((err) => {
-      setPlayError(err instanceof Error ? err.message : String(err))
-    })
+    playParams(session.params).then(
+      // Feeds the waveform's playhead sweep — only this toolbar route, so
+      // the sweep always tracks the params the trace was drawn from.
+      (handle) => setPlayback(handle),
+      (err: unknown) => {
+        setPlayError(err instanceof Error ? err.message : String(err))
+      }
+    )
   }
 
   // CodeLens ▶ Play / playAtCursor route (#148 Z3) — host.ts opens/reuses
@@ -126,10 +155,12 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.playRequest])
 
-  const subtitle = session.varRefName
-    ? `Editing "${session.varRefName}"`
-    : session.uri
-      ? 'Editing an inline zzfx() call'
+  // Header source location — `<basename>:<line+1>` (1-based for humans),
+  // full workspace-relative path in the tooltip. Null in standalone mode
+  // (no init payload), leaving the slot empty like the old subtitle did.
+  const sourceLabel =
+    session.sourcePath !== null && session.sourceLine !== null
+      ? `${session.sourcePath.split(/[\\/]/).pop() ?? session.sourcePath}:${session.sourceLine + 1}`
       : null
 
   return (
@@ -154,10 +185,18 @@ export function App() {
           onClick={() => void session.save()}
         />
         <div {...stylex.props(styles.spacer)} />
-        {subtitle && (
-          <span {...stylex.props(styles.banner)}>
-            {subtitle}
-            {session.dirty ? ' •' : ''}
+        {sourceLabel && session.sourcePath && (
+          <span {...stylex.props(styles.headerMeta)}>
+            {session.dirty && (
+              <span {...stylex.props(styles.dirtyDot)} title="Unsaved changes">
+                •
+              </span>
+            )}
+            <SourceLink
+              label={sourceLabel}
+              title={session.sourcePath}
+              onReveal={session.revealSource}
+            />
           </span>
         )}
       </Toolbar>
@@ -183,18 +222,21 @@ export function App() {
       )}
 
       <div ref={workAreaRef} {...stylex.props(styles.workArea)}>
-        <Panel title="Parameters" bodyPadding="normal" style={styles.paramsPanel}>
-          <div {...stylex.props(styles.paramsBody)}>
-            {PARAM_GROUPS.map((g) => (
-              <ParamGroup
-                key={g.key}
-                groupKey={g.key}
-                params={session.params}
-                onChangeParam={session.setParam}
-              />
-            ))}
-          </div>
-        </Panel>
+        <div {...stylex.props(styles.mainColumn)}>
+          <WaveformPreview params={session.params} playback={playback} />
+          <Panel title="Parameters" bodyPadding="normal" style={styles.paramsPanel}>
+            <div {...stylex.props(styles.paramsBody)}>
+              {PARAM_GROUPS.map((g) => (
+                <ParamGroup
+                  key={g.key}
+                  groupKey={g.key}
+                  params={session.params}
+                  onChangeParam={session.setParam}
+                />
+              ))}
+            </div>
+          </Panel>
+        </div>
 
         <Splitter
           axis="vertical"

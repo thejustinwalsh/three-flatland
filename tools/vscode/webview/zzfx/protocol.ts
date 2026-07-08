@@ -19,6 +19,15 @@ export type ZzfxInitPayload = {
   findingId: string
   /** Document URI the finding lives in. */
   uri: string
+  /** Workspace-relative path of `uri` (`vscode.workspace.asRelativePath`)
+   * — display-only; the source-link label and tooltip derive from it. */
+  sourcePath: string
+  /** 0-based start line of the finding's CALL-SITE range at panel-open
+   * time (display 1-based). For a variable-spread call this is the call
+   * the user opened from, not the variable's declaration. A snapshot,
+   * like the panel title — `zzfx/revealSource` re-resolves the live
+   * position on click rather than trusting this. */
+  sourceLine: number
   /** Positional zzfx args as found in source — may be shorter than 21
    * elements (trailing defaults omitted) or contain holes from a sparse
    * array literal. Run through `fromArgs` before use. */
@@ -98,6 +107,17 @@ export type ZzfxGenerateResultEvent = {
    * lies about having used AI. */
   source: 'lm' | 'cache' | 'preset'
 }
+
+/** webview -> host, reveals the finding's source location in a text
+ * editor (the header source link). The host re-resolves the finding's
+ * CURRENT position by id (same `resolveFinding` re-parse the other
+ * handlers use) and opens the document with the call selected; if the
+ * finding is gone (edited away since the panel opened), it falls back to
+ * opening the file at the line captured at open time — no error toast
+ * either way. */
+export type ZzfxRevealSourcePayload = Record<string, never>
+
+export type ZzfxRevealSourceResult = { ok: true }
 
 /** host -> webview, plays `params` immediately through the existing Web
  * Audio path — the CodeLens `▶ Play` / `playAtCursor` route (#148 Z3).

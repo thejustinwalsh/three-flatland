@@ -353,6 +353,94 @@ test.describe('FL ZzFX Studio', () => {
     expect(text).toContain(LITERAL_CALL_TEXT)
   })
 
+  test('waveform preview draws a real trace for the LASER finding', async ({
+    evaluateInVSCode,
+    webviewFrame,
+  }) => {
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const editor = await vscode.window.showTextDocument(doc)
+        editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
+        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+      },
+      { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
+    )
+
+    const frame = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
+    const canvas = frame.locator('canvas[aria-label="Waveform preview"]')
+    await expect(canvas).toBeVisible()
+
+    // `data-waveform-peak` is written imperatively at the END of the draw
+    // routine (WaveformPreview.tsx), so a nonzero value means real samples
+    // were synthesized AND rendered — LASER's volume is 0.6, nowhere near
+    // an all-defaults silent buffer. Chosen over comparing the canvas's
+    // dataURL against a blank-canvas reference because the backing store
+    // is sized in DEVICE pixels: the "blank" reference itself would vary
+    // with the runner's DPR and window size, while this attribute poll is
+    // deterministic and auto-retries across the ~100ms debounced
+    // synth+draw window.
+    await expect
+      .poll(async () => Number(await canvas.getAttribute('data-waveform-peak')))
+      .toBeGreaterThan(0)
+  })
+
+  test('header source link shows the call-site location and clicking it reveals the call in the text editor', async ({
+    evaluateInVSCode,
+    webviewFrame,
+  }) => {
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+
+        const [folder] = vscode.workspace.workspaceFolders ?? []
+        const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+        const doc = await vscode.workspace.openTextDocument(uri)
+        const editor = await vscode.window.showTextDocument(doc)
+        editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
+        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+      },
+      { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
+    )
+
+    const frame = await webviewFrame(/^ZzFX: sounds\.ts:53$/)
+    const link = frame.getByRole('link', { name: 'sounds.ts:53' })
+    await expect(link).toBeVisible()
+    // Tooltip carries the full workspace-relative path.
+    await expect(link).toHaveAttribute('title', SOUNDS_FILE)
+
+    await link.click()
+
+    // Assert on the SELECTED TEXT, not just the line number: the
+    // panel-opening boilerplate above already parked an (empty) selection
+    // on this same line, so a line-only assertion could pass without the
+    // click doing anything. Only revealSource's own full-call-range
+    // selection can produce `zzfx(...LASER)`.
+    await expect
+      .poll(() =>
+        evaluateInVSCode(async (vscode) => {
+          const editor = vscode.window.activeTextEditor
+          if (!editor) return null
+          return {
+            file: editor.document.uri.path.split('/').pop(),
+            line: editor.selection.start.line,
+            selectedText: editor.document.getText(editor.selection),
+          }
+        })
+      )
+      .toEqual({ file: 'sounds.ts', line: VARIABLE_CALL_LINE, selectedText: 'zzfx(...LASER)' })
+  })
+
   test('Save fails safely — file byte-identical — when the call has been deleted entirely since the panel opened', async ({
     evaluateInVSCode,
     webviewFrame,

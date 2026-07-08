@@ -172,6 +172,12 @@ export async function openZzfxEditorPanel(
     bridge.emit('zzfx/init', {
       findingId,
       uri: uri.toString(),
+      // Header source link — call-site location (finding.range is the
+      // call for var-ref findings too), snapshotted at open time like the
+      // panel title; zzfx/revealSource below re-resolves the live
+      // position on click.
+      sourcePath: vscode.workspace.asRelativePath(uri),
+      sourceLine: finding.range.start.line,
       params,
       varRef: finding.payload.varRef,
       loadError,
@@ -266,6 +272,26 @@ export async function openZzfxEditorPanel(
     }
     const applied = await vscode.workspace.applyEdit(edit)
     if (!applied) throw new Error('Failed to apply the edit — the document may be read-only.')
+    return { ok: true }
+  })
+
+  bridge.on('zzfx/revealSource', async () => {
+    // Re-resolve the finding's CURRENT position by id — the source may
+    // have moved since the panel opened. Gone entirely (edited away)?
+    // Fall back to the file at the open-time line, clamped — a stale-ish
+    // reveal beats an error toast for a navigation click.
+    const current = await resolveFinding(client, uri, findingId)
+    if (current) {
+      await vscode.window.showTextDocument(current.document, {
+        selection: rangeFromWire(current.finding.range),
+      })
+    } else {
+      const document = await vscode.workspace.openTextDocument(uri)
+      const line = Math.min(finding.range.start.line, document.lineCount - 1)
+      await vscode.window.showTextDocument(document, {
+        selection: new vscode.Range(line, 0, line, 0),
+      })
+    }
     return { ok: true }
   })
 

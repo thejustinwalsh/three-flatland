@@ -31,6 +31,16 @@ export type ZzfxSessionState = {
   standalone: boolean
   findingId: string | null
   uri: string | null
+  /** Workspace-relative path of `uri` from the init payload — null until
+   * init (or forever, in standalone mode). Drives the header source link. */
+  sourcePath: string | null
+  /** 0-based call-site start line from the init payload — see
+   * `ZzfxInitPayload.sourceLine` for the snapshot caveat. */
+  sourceLine: number | null
+  /** Asks the host to reveal the finding in its text editor (the header
+   * source link's click). Fire-and-forget: the host owns the gone-finding
+   * fallback, so there's nothing to surface here. */
+  revealSource: () => void
   varRefName: string | null
   params: ZzfxParams
   /** True once any param/candidate has been applied since the last
@@ -94,6 +104,8 @@ export function useZzfxSession(): ZzfxSessionState {
   const [standalone, setStandalone] = useState(false)
   const [findingId, setFindingId] = useState<string | null>(null)
   const [uri, setUri] = useState<string | null>(null)
+  const [sourcePath, setSourcePath] = useState<string | null>(null)
+  const [sourceLine, setSourceLine] = useState<number | null>(null)
   const [varRefName, setVarRefName] = useState<string | null>(null)
   const [params, setParams] = useState<ZzfxParams>(() => defaultParams())
   const [dirty, setDirty] = useState(false)
@@ -134,6 +146,8 @@ export function useZzfxSession(): ZzfxSessionState {
     const offInit = bridge.on<ZzfxInitPayload>('zzfx/init', (p) => {
       setFindingId(p.findingId)
       setUri(p.uri)
+      setSourcePath(p.sourcePath)
+      setSourceLine(p.sourceLine)
       setVarRefName(p.varRef?.name ?? null)
       setParams(fromArgs(p.params))
       setDirty(false)
@@ -229,10 +243,23 @@ export function useZzfxSession(): ZzfxSessionState {
     setDirty(true)
   }, [])
 
+  const revealSource = useCallback(() => {
+    const bridge = bridgeRef.current
+    if (!bridge) return
+    // Fire-and-forget: the host owns the gone-finding fallback (open the
+    // file at the open-time line, no toast), so a rejection here has
+    // nothing actionable to show — swallow it rather than surface a
+    // banner for a navigation click.
+    void bridge.request('zzfx/revealSource', {}).catch(() => {})
+  }, [])
+
   return {
     standalone,
     findingId,
     uri,
+    sourcePath,
+    sourceLine,
+    revealSource,
     varRefName,
     params,
     dirty,

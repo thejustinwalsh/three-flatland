@@ -6,18 +6,20 @@ Full tool spec, including the AI-generation prompt template verbatim: `planning/
 
 ## Files
 
-| File                                      | What                                                                                                                                                                                                                                                                                                                                     |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `params.ts`                               | The 21-param model: `ParamKey`, `PARAM_SPECS` (label/default/min/max/step), `PARAM_GROUPS` (UI grouping), `defaultParams`/`clampParam`/`toArgs`/`fromArgs`/`fromPartial`. Also `CATEGORIES`/`STYLES`/`MAX_STYLES`.                                                                                                                       |
-| `sliderMath.ts`                           | Pure drag math for `Slider.tsx` (`computeDragValue`, `snapToStep`, `ratioForValue`) — unit-tested without a DOM.                                                                                                                                                                                                                         |
-| `protocol.ts`                             | Bridge message types — `ZzfxInitPayload`, `ZzfxSavePayload`, `ZzfxGeneratePayload`/`ZzfxGenerateProgressEvent`/`ZzfxGenerateResultEvent`, `ZzfxCandidate`. Source of truth for the host-wiring unit.                                                                                                                                     |
-| `audio.ts`                                | Lazy zzfx playback — dynamic-imports `zzfx` and resumes its `AudioContext` from inside a user-gesture handler.                                                                                                                                                                                                                           |
-| `zzfx.d.ts`                               | Ambient module declaration — the `zzfx` npm package ships no `.d.ts`. Mirrors `minis/breakout/src/zzfx.d.ts`; keep in sync if the pinned version changes.                                                                                                                                                                                |
-| `Slider.tsx`, `Pill.tsx`, `PillGroup.tsx` | Locally-composed primitives (see "Local primitives" below).                                                                                                                                                                                                                                                                              |
-| `ParamRow.tsx`, `ParamGroup.tsx`          | One param row (slider + NumberField, or a dropdown for `shape`); one collapsible group of rows.                                                                                                                                                                                                                                          |
-| `AiGeneratePanel.tsx`                     | AI Generate UI — Generate button, live stream readout, N candidate cards (label/rationale/Play/"Use this"), source badge (`lm`/`cache`/`preset`). Falls back to a static preset-browsing card list when `lmAvailable` is false. Feature-flagged (`AI_GENERATE_ENABLED`, currently `true`) — a ship kill-switch. See "AI Generate" below. |
-| `useZzfxSession.ts`                       | Bridge handshake + all editable state (params, dirty flag, category, styles, save, generate, candidates, presets).                                                                                                                                                                                                                       |
-| `App.tsx`, `main.tsx`, `index.html`       | Standard tool boot — see `tools/vscode/CLAUDE.md`.                                                                                                                                                                                                                                                                                       |
+| File                                                                          | What                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `params.ts`                                                                   | The 21-param model: `ParamKey`, `PARAM_SPECS` (label/default/min/max/step), `PARAM_GROUPS` (UI grouping), `defaultParams`/`clampParam`/`toArgs`/`fromArgs`/`fromPartial`. Also `CATEGORIES`/`STYLES`/`MAX_STYLES`.                                                                                                                       |
+| `sliderMath.ts`                                                               | Pure drag math for `Slider.tsx` (`computeDragValue`, `snapToStep`, `ratioForValue`) — unit-tested without a DOM.                                                                                                                                                                                                                         |
+| `protocol.ts`                                                                 | Bridge message types — `ZzfxInitPayload`, `ZzfxSavePayload`, `ZzfxGeneratePayload`/`ZzfxGenerateProgressEvent`/`ZzfxGenerateResultEvent`, `ZzfxCandidate`. Source of truth for the host-wiring unit.                                                                                                                                     |
+| `audio.ts`                                                                    | Lazy zzfx playback + synthesis — dynamic-imports `zzfx`, resumes its `AudioContext` from inside a user-gesture handler, returns a `PlaybackHandle` (context/start/duration) for the waveform's playhead sweep. `synthesizeSamples` exposes `buildSamples` for the waveform preview without touching audio output.                        |
+| `waveformPath.ts`                                                             | Pure min/max-per-pixel-bucket downsampling + peak normalization for the waveform preview — unit-tested in `waveformPath.test.ts`, no DOM.                                                                                                                                                                                                |
+| `WaveformPreview.tsx`                                                         | The waveform strip above the params panel — DPR-aware canvas trace of the current params' `buildSamples` buffer, debounced ~100ms, gain/duration readout in the panel header, `AudioContext`-timed playhead sweep on toolbar Play (skipped under `prefers-reduced-motion`).                                                              |
+| `zzfx.d.ts`                                                                   | Ambient module declaration — the `zzfx` npm package ships no `.d.ts`. Mirrors `minis/breakout/src/zzfx.d.ts`; keep in sync if the pinned version changes.                                                                                                                                                                                |
+| `Slider.tsx`, `Pill.tsx`, `PillGroup.tsx`, `SourceLink.tsx`, `link.stylex.ts` | Locally-composed primitives (see "Local primitives" below).                                                                                                                                                                                                                                                                              |
+| `ParamRow.tsx`, `ParamGroup.tsx`                                              | One param row (slider + NumberField, or a dropdown for `shape`); one collapsible group of rows.                                                                                                                                                                                                                                          |
+| `AiGeneratePanel.tsx`                                                         | AI Generate UI — Generate button, live stream readout, N candidate cards (label/rationale/Play/"Use this"), source badge (`lm`/`cache`/`preset`). Falls back to a static preset-browsing card list when `lmAvailable` is false. Feature-flagged (`AI_GENERATE_ENABLED`, currently `true`) — a ship kill-switch. See "AI Generate" below. |
+| `useZzfxSession.ts`                                                           | Bridge handshake + all editable state (params, dirty flag, category, styles, save, generate, candidates, presets).                                                                                                                                                                                                                       |
+| `App.tsx`, `main.tsx`, `index.html`                                           | Standard tool boot — see `tools/vscode/CLAUDE.md`.                                                                                                                                                                                                                                                                                       |
 
 ## Bridge contract (`protocol.ts`)
 
@@ -38,6 +40,10 @@ Host (in 'zzfx/ready' handler):
 type ZzfxInitPayload = {
   findingId: string // stable id for the CodeLens finding — echo back on save
   uri: string // document URI the finding lives in
+  sourcePath: string // workspace-relative path of `uri` — header source-link display only
+  sourceLine: number // 0-based CALL-SITE start line at open time (display 1-based);
+  // the call the user opened from even for a var-ref finding — a snapshot,
+  // like the panel title; zzfx/revealSource re-resolves the live position
   params: (number | null | undefined)[] // positional zzfx args as found in source; may be
   // short (trailing defaults omitted) or have holes from a
   // sparse array literal — run through params.ts's fromArgs()
@@ -57,6 +63,17 @@ type ZzfxSaveResult = { ok: true }
 ```
 
 `zzfx/ready` resolves with `{ ok: true }`. `zzfx/save` throwing on the host side rejects the webview's `save()` promise — `useZzfxSession` surfaces the message as `saveError`, rendered as a banner in `App.tsx`. A successful save clears `dirty`.
+
+### Reveal source (`zzfx/revealSource`)
+
+```ts
+// webview -> host — the header source link's click. Empty payload; the
+// host already knows the finding.
+type ZzfxRevealSourcePayload = Record<string, never> // {}
+type ZzfxRevealSourceResult = { ok: true }
+```
+
+The host re-resolves the finding's **current** position by id (the same fresh re-parse the save path starts from) and calls `showTextDocument(uri, { selection })` with the call-site range. If the finding is gone — edited away since the panel opened — it falls back to opening the file at the `sourceLine` captured at open time (clamped to the document), with **no error toast**: a stale-ish reveal beats an error for a navigation click. The webview side is fire-and-forget for the same reason.
 
 ### Standalone / dev mode
 
@@ -189,6 +206,7 @@ Nothing in the design system covers a pill/chip toggle or a horizontal scrub sli
 
 - **`Pill`** (`Pill.tsx`) — toggleable chip, `active`/`disabled`/`onToggle` props, styled with `vscode.*` tokens. `PillGroup.tsx` layers single-select and multi-select-with-max on top.
 - **`Slider`** (`Slider.tsx`) — horizontal scrub control described above.
+- **`SourceLink`** (`SourceLink.tsx`) — text link in VS Code's `textLink` colors (mono, hover underline) for the header's source location. Its colors come from `link.stylex.ts`, a local `defineVars` bridge for `--vscode-textLink-*` — the design system's `vscode-theme.stylex` has no link tokens yet; both are promotion candidates together.
 
 If a future tool needs either, promote them into `tools/design-system/src/primitives/` following that package's "Adding a primitive" steps.
 
