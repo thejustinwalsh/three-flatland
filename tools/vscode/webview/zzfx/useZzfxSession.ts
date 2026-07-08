@@ -10,6 +10,7 @@ import {
 } from './params'
 import type {
   ZzfxCandidate,
+  ZzfxConfigEvent,
   ZzfxGenerateAck,
   ZzfxGeneratePayload,
   ZzfxGenerateProgressEvent,
@@ -117,6 +118,12 @@ export type ZzfxSessionState = {
    * change (or request) succeeds. */
   historyError: string | null
 
+  /** The user's playback-volume trim as a resolved gain multiplier (1 =
+   * baseline) — from the init payload, live-updated by `zzfx/config`
+   * pushes. App.tsx wires it into audio.ts's module-level trim so every
+   * play entry point picks it up. Standalone mode stays at 1. */
+  playbackVolume: number
+
   /** The most recent `zzfx/play` push event from the host (CodeLens
    * `▶ Play` / `playAtCursor` — #148 Z3) — App.tsx watches this by
    * `requestId` identity to trigger playback through the same Web Audio
@@ -156,6 +163,7 @@ export function useZzfxSession(): ZzfxSessionState {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [history, setHistory] = useState<ZzfxHistoryBatch[]>([])
   const [historyError, setHistoryError] = useState<string | null>(null)
+  const [playbackVolume, setPlaybackVolume] = useState(1)
   const bridgeRef = useRef<ClientBridge | null>(null)
   const playRequestIdRef = useRef(0)
 
@@ -186,6 +194,12 @@ export function useZzfxSession(): ZzfxSessionState {
       setPresets(p.presets)
       setHistory(p.history)
       setHistoryError(null)
+      setPlaybackVolume(p.playbackVolume)
+    })
+    // Live playback-volume trim — the host pushes the already-resolved
+    // multiplier whenever the setting changes.
+    const offConfig = bridge.on<ZzfxConfigEvent>('zzfx/config', (p) => {
+      setPlaybackVolume(p.playbackVolume)
     })
     // Full newest-first replacement — the host store owns durability; see
     // the `history` doc comment above.
@@ -212,6 +226,7 @@ export function useZzfxSession(): ZzfxSessionState {
     void bridge.request('zzfx/ready')
     return () => {
       offInit()
+      offConfig()
       offHistory()
       offProgress()
       offResult()
@@ -344,6 +359,7 @@ export function useZzfxSession(): ZzfxSessionState {
     deleteHistoryCandidate,
     clearHistory,
     historyError,
+    playbackVolume,
     playRequest,
   }
 }

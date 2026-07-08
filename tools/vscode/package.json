@@ -108,6 +108,13 @@
           "type": "boolean",
           "default": true,
           "description": "Play ZzFX one-shots via a lightweight background process instead of opening the editor panel. Disable to always route ▶ Play through the panel."
+        },
+        "threeFlatland.zzfx.playbackVolume": {
+          "type": "number",
+          "default": 0,
+          "minimum": -12,
+          "maximum": 12,
+          "description": "Playback volume adjustment for ZzFX preview sounds, in dB relative to the default loudness. 0 keeps the built-in baseline; positive is louder, negative quieter (±12 dB ≈ ×4 / ×0.25). Applies to both the inline ▶ Play route and the tuner panel."
         }
       }
     },

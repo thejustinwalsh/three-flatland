@@ -10,6 +10,7 @@ import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
 import { batchFromOutcome, historyKeyFor } from './history/core'
 import { getZzfxHistoryStore } from './history/store'
+import { getPlaybackVolumeMultiplier, PLAYBACK_VOLUME_SETTING } from './playbackVolume'
 import { PRESET_LIBRARY } from './lm/core'
 import { ZzfxLmService } from './lm/service'
 import { isNumberArrayLiteralText, resolveParams } from './resolveParams'
@@ -211,9 +212,22 @@ export async function openZzfxEditorPanel(
       lmAvailable: await lmService.isAvailable(),
       presets: PRESET_LIBRARY,
       history: await historyStore.getBatches(historyKey),
+      // User playback-volume trim, already resolved to a gain multiplier
+      // (the webview stays mapping-agnostic; one dB→gain mapping lives in
+      // volumeTrim.ts, shared with the inline sidecar route so both play
+      // paths stay matched). Live changes push via zzfx/config below.
+      playbackVolume: getPlaybackVolumeMultiplier(),
     })
     resolveReady()
     return { ok: true }
+  })
+
+  // Live-push the playback-volume trim so the panel's gain tracks the
+  // setting without a reload — same multiplier the inline route reads
+  // per play.
+  const disposeConfigListener = vscode.workspace.onDidChangeConfiguration((e) => {
+    if (!e.affectsConfiguration(PLAYBACK_VOLUME_SETTING)) return
+    bridge.emit('zzfx/config', { playbackVolume: getPlaybackVolumeMultiplier() })
   })
 
   bridge.on<ZzfxGeneratePayload>('zzfx/generate', async ({ category, styles, n }) => {
@@ -375,6 +389,7 @@ export async function openZzfxEditorPanel(
   })
 
   panel.onDidDispose(() => {
+    disposeConfigListener.dispose()
     disposeReload.dispose()
     bridge.dispose()
     openPanels.delete(findingId)

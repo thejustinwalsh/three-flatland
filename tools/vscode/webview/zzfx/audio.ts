@@ -19,6 +19,21 @@ function loadZzfx() {
   return modulePromise
 }
 
+// User playback-volume trim (a linear gain multiplier, 1 = the untouched
+// baseline) — module state rather than a per-call argument so EVERY play
+// entry point (toolbar Play, the host-pushed CodeLens route, candidate/
+// preset cards) picks it up from the one place App.tsx wires it
+// (session.playbackVolume → setPlaybackVolume). Applied by scaling
+// ZZFX.volume against its captured baseline right before each play — the
+// same "master gain × trim" math the inline sidecar route applies, so
+// the two paths sound identical for the same setting.
+let playbackMultiplier = 1
+let baselineVolume: number | null = null
+
+export function setPlaybackVolume(multiplier: number): void {
+  playbackMultiplier = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
+}
+
 /** A just-started playback, timed against zzfx's own AudioContext clock —
  * enough for the waveform preview to sweep a playhead without touching
  * Web Audio itself. */
@@ -39,6 +54,11 @@ export async function playParams(params: ZzfxParams): Promise<PlaybackHandle> {
   if (ZZFX.audioContext.state === 'suspended') {
     await ZZFX.audioContext.resume()
   }
+  // Capture zzfx's shipped master volume ONCE, then scale from that
+  // baseline — never from the current (possibly already-scaled) value,
+  // which would compound the trim across plays.
+  baselineVolume ??= ZZFX.volume
+  ZZFX.volume = baselineVolume * playbackMultiplier
   const node = zzfx(...toDenseArgs(params))
   return {
     context: ZZFX.audioContext,

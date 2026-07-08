@@ -69,6 +69,10 @@ type ZzfxSaveResult = { ok: true }
 
 `zzfx/ready` resolves with `{ ok: true }`. `zzfx/save` throwing on the host side rejects the webview's `save()` promise — `useZzfxSession` surfaces the message as `saveError`, rendered as a banner in `App.tsx`. A successful save clears `dirty`.
 
+### Playback volume trim (`playbackVolume` + `zzfx/config`)
+
+The `threeFlatland.zzfx.playbackVolume` setting is a dB trim (±12, default 0 = today's exact baseline loudness). The HOST resolves it to a linear gain multiplier through `volumeTrim.ts`'s `trimToMultiplier` — the SAME mapping the inline sidecar route reads per play (`extension/tools/zzfx/playbackVolume.ts` → zzfx-play's `volume` command field), so the panel and the no-panel route always sound identical for the same setting. The webview receives the multiplier in `ZzfxInitPayload.playbackVolume` and live updates via the `zzfx/config { playbackVolume }` push; `App.tsx` wires it into `audio.ts`'s `setPlaybackVolume`, which scales `ZZFX.volume` against its once-captured baseline right before each play (never against the current value — that would compound the trim). Waveform synthesis (`buildSamples`) is pre-gain and deliberately unaffected, matching the sidecar where the trim applies at the output gain node.
+
 ### Reveal source (`zzfx/revealSource`)
 
 ```ts

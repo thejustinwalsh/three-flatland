@@ -83,6 +83,19 @@ export type ZzfxInitPayload = {
    * identity the header link shows — see
    * `extension/tools/zzfx/history/core.ts`'s `historyKeyFor`. */
   history: ZzfxHistoryBatch[]
+  /** The user's playback-volume trim, already resolved to a LINEAR GAIN
+   * MULTIPLIER (1 = the untouched baseline loudness) — the dB→gain
+   * mapping lives host-side in webview/zzfx/volumeTrim.ts, shared with
+   * the inline sidecar play route so the two paths stay matched. Live
+   * setting changes push via `zzfx/config`. */
+  playbackVolume: number
+}
+
+/** host -> webview, pushed when a zzfx setting the panel consumes changes
+ * — currently just the playback-volume trim (same resolved multiplier as
+ * `ZzfxInitPayload.playbackVolume`). */
+export type ZzfxConfigEvent = {
+  playbackVolume: number
 }
 
 /** webview -> host, requests the init payload (register the `zzfx/init`

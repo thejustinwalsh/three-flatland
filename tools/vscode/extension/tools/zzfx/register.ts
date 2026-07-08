@@ -5,6 +5,7 @@ import { getPlaySidecarClient, shutdownPlaySidecar } from './playSidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
 import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
+import { getPlaybackVolumeMultiplier } from './playbackVolume'
 import { isToolEnabled } from '../../toolRegistry'
 import { log } from '../../log'
 
@@ -67,7 +68,10 @@ function tryPlayInline(context: vscode.ExtensionContext, params: number[]): bool
   const playClient = getPlaySidecarClient(context)
   if (!playClient) return false
   try {
-    playClient.play(params)
+    // Trim read fresh per play so the current setting always wins — and
+    // through the same mapping the tuner webview's gain uses, keeping the
+    // two play paths matched by construction (see playbackVolume.ts).
+    playClient.play(params, getPlaybackVolumeMultiplier())
     return true
   } catch (err) {
     log(

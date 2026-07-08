@@ -17,7 +17,7 @@ import { AiGeneratePanel } from './AiGeneratePanel'
 import { SourceLink } from './SourceLink'
 import { useSidebarWidth } from './useSidebarWidth'
 import { WaveformPreview } from './WaveformPreview'
-import { playParams, type PlaybackHandle } from './audio'
+import { playParams, setPlaybackVolume, type PlaybackHandle } from './audio'
 import {
   CATEGORIES,
   fromArgs,
@@ -123,6 +123,13 @@ export function App() {
   const [playback, setPlayback] = useState<PlaybackHandle | null>(null)
   const [sidebarPx, setSidebarPx] = useSidebarWidth()
   const workAreaRef = useRef<HTMLDivElement>(null)
+
+  // Wire the user's playback-volume trim (host-resolved multiplier) into
+  // audio.ts's module-level gain — ONE wiring point covers every play
+  // entry (toolbar, CodeLens push, candidate/preset cards).
+  useEffect(() => {
+    setPlaybackVolume(session.playbackVolume)
+  }, [session.playbackVolume])
 
   const handlePlay = () => {
     setPlayError(null)
