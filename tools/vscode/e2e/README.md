@@ -110,41 +110,51 @@ stay aligned with.
   undocumented internal of an 0.0.1-beta package for no real savings over
   writing the ~60 lines this harness actually needs.
 
-## One VS Code window per spec file, reset between tests
+## One VS Code window per worker, reset between tests
 
 Launching VS Code (Electron cold start + extension host activation) costs
-far more wall time than most individual tests do, so `e2e/fixtures.ts`
-launches **one window per spec file**, not one per test:
+far more wall time than most individual tests do — and on macOS without
+xvfb, every launch flashes a real window. Beyond cost, relaunching per
+spec file isn't how the tools are used: a real user opens the editor
+**once** and swaps between tools in a single continuous session, so
+panels, sidecars, and settings from one tool genuinely coexist with the
+next tool's. `e2e/fixtures.ts` therefore launches **one window per
+worker** — the first test launches it, every test after that (across spec
+file boundaries included) reuses it:
 
-- An internal `_sharedWindow` fixture compares the running test's
-  `testInfo.file` against whichever window is currently cached
-  (`_windowCache`, a worker-lifetime box). Same file as last time → reuse
-  the existing window. Different file (or none cached yet) → tear down
-  whatever's cached and launch fresh. Tests run strictly in file order
-  here (`workers: 1`, `fullyParallel: false` in `playwright.config.ts`),
-  so this transition happens exactly once per file boundary, never
-  mid-file — safe to reason about without a "which test is this" check.
+- An internal `_sharedWindow` fixture keeps the window in `_windowCache`
+  (a worker-lifetime box). No window yet → launch. Window cached → reset
+  it, never relaunch. The one teardown happens when the worker itself
+  shuts down. Tests run strictly serially here (`workers: 1`,
+  `fullyParallel: false` in `playwright.config.ts`).
 - `baseDir` (the last positional arg in the launch `args` — literally the
   folder VS Code opens, `code <flags…> <baseDir>`) is decided once, at
   launch, from an `fs.mkdtemp()`'d + `fs.cp()`'d copy of
   `e2e/fixtures/workspace/`. It **cannot** change without relaunching the
-  window (it's a CLI arg), so reuse-within-a-file needs a different
-  mechanism to stay test-isolated: **content** reset. Every reused test
-  gets `workbench.action.closeAllEditors` run over the host-eval bridge
-  (no stale tab from the previous test can satisfy this test's
-  `webviewFrame` lookup) and `baseDir` wiped + recopied from the pristine
-  fixture workspace (no previous test's sidecar/encode/merge output can
-  leak forward). See `resetWindowWorkspace()` in `fixtures.ts`.
+  window (it's a CLI arg), so isolation comes from **content** reset —
+  `resetWindowWorkspace()` in `fixtures.ts`, run before every reused
+  test: `workbench.action.closeAllEditors` over the host-eval bridge (no
+  stale tab from the previous test can satisfy this test's `webviewFrame`
+  lookup), every workspace-level override of the extension's own
+  configuration keys cleared through the real config API (deterministic,
+  unlike waiting on the settings-file watcher — and it re-registers any
+  tool a failed settings spec left disabled), and `baseDir` wiped +
+  recopied from the pristine fixture workspace (no previous test's
+  sidecar/encode/merge output can leak forward).
 - `specs/activation.spec.ts`'s marker-file pair and `specs/atlas.spec.ts`'s
   "exactly one tab" test exist specifically to prove this reset actually
   works, not just that the window is reused — a broken reset could still
   pass every spec that only *reads* workspace state and never *writes* it.
+- The one exception: `specs/settings.spec.ts`'s "disabled at startup" test
+  launches its own bespoke window, because a fresh extension-host
+  activation with the setting already off is the very thing under test —
+  it can't be expressed against an already-activated shared session.
 
 None of this changes what a spec author calls: `baseDir`, `electronApp`,
 `workbox`, `evaluateInVSCode`, `openCommand`, and `webviewFrame` all keep
 their exact existing signatures and per-test semantics (a fresh-looking
 workspace, a window that responds to your commands) — only the
-*implementation* now reuses the expensive part across a file's tests.
+*implementation* reuses the expensive part across the whole run.
 
 Because `os.tmpdir()` resolves through a `/tmp` → `/private/tmp` symlink on
 macOS, and VS Code reports `workspaceFolders[0].uri.fsPath` through the

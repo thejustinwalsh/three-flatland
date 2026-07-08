@@ -16,8 +16,6 @@ const RUNNER_PATH = path.join(__dirname, 'host-bridge', 'dist', 'runner.cjs')
 const VSCODE_TEST_ROOT = path.join(EXTENSION_ROOT, '.vscode-test')
 
 type CachedWindow = {
-  /** Absolute path of the spec file this window was launched for — see `_sharedWindow`. */
-  file: string
   app: ElectronApplication
   workbox: Page
   bridge: HostBridgeClient
@@ -68,7 +66,7 @@ type WorkerFixtures = {
   _windowCache: { current?: CachedWindow }
 }
 
-async function launchWindow(vscodeInstallPath: string, file: string): Promise<CachedWindow> {
+async function launchWindow(vscodeInstallPath: string): Promise<CachedWindow> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fl-vscode-e2e-'))
   // realpath: macOS resolves os.tmpdir() through a /tmp -> /private/tmp
   // symlink. VS Code reports workspaceFolders[0].uri.fsPath through the
@@ -119,7 +117,7 @@ async function launchWindow(vscodeInstallPath: string, file: string): Promise<Ca
   // missing already-flushed output.
   const bridge = await HostBridgeClient.connect(app.process())
 
-  return { file, app, workbox, bridge, baseDir, extensionsDir, userDataDir }
+  return { app, workbox, bridge, baseDir, extensionsDir, userDataDir }
 }
 
 async function teardownWindow(win: CachedWindow | undefined): Promise<void> {
@@ -134,18 +132,39 @@ async function teardownWindow(win: CachedWindow | undefined): Promise<void> {
 }
 
 /**
- * Restores isolation for a window being reused by a second (or later) test
- * in the same spec file: closes every open editor/webview tab (so a stale
- * panel from the previous test can't satisfy this test's `webviewFrame`
- * lookup) and wipes + recopies `baseDir` back to the pristine fixture
- * workspace (so a previous test's sidecar/encode/merge output can't leak
- * into this one). Not called after a fresh `launchWindow` — there's
- * nothing to reset yet.
+ * Restores isolation for the one long-lived window between every pair of
+ * tests — including across spec-file boundaries, which used to be a full
+ * teardown + relaunch:
+ *
+ * 1. Closes every open editor/webview tab, so a stale panel from the
+ *    previous test can't satisfy this test's `webviewFrame` lookup.
+ * 2. Clears every workspace-level override of this extension's own
+ *    configuration keys (read off `packageJSON.contributes.configuration`)
+ *    through the real config API. The file recopy in step 3 also restores
+ *    `.vscode/settings.json` on disk, but that pickup rides VS Code's file
+ *    watcher — asynchronous, no completion signal — while an awaited
+ *    `update(key, undefined, Workspace)` is deterministic, and it fires the
+ *    same `onDidChangeConfiguration` path the tool registry re-registers
+ *    disposed tools from (a failed settings spec can't strand a tool
+ *    disabled for every spec after it).
+ * 3. Wipes + recopies `baseDir` back to the pristine fixture workspace, so
+ *    a previous test's sidecar/encode/merge output can't leak forward.
+ *
+ * Not called after a fresh `launchWindow` — there's nothing to reset yet.
  */
 async function resetWindowWorkspace(win: CachedWindow): Promise<void> {
-  await win.bridge.evaluate((vscode) =>
-    vscode.commands.executeCommand('workbench.action.closeAllEditors')
-  )
+  await win.bridge.evaluate(async (vscode) => {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors')
+
+    const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
+    const contributed = ext?.packageJSON?.contributes?.configuration?.properties ?? {}
+    const config = vscode.workspace.getConfiguration()
+    for (const key of Object.keys(contributed)) {
+      if (config.inspect(key)?.workspaceValue !== undefined) {
+        await config.update(key, undefined, vscode.ConfigurationTarget.Workspace)
+      }
+    }
+  })
   await fs.rm(win.baseDir, { recursive: true, force: true })
   await fs.mkdir(win.baseDir, { recursive: true })
   await fs.cp(FIXTURE_WORKSPACE, win.baseDir, { recursive: true })
@@ -166,13 +185,11 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
     { scope: 'worker' },
   ],
 
-  // Worker-lifetime box holding whatever window is currently "live". Its
-  // teardown (after `use`) runs once, when the worker itself shuts down —
-  // i.e. after the very last test of the very last file this worker ran —
-  // and closes whatever's left in the box. Per-file teardown (closing a
-  // file's window before the next file's replaces it) happens explicitly
-  // in `_sharedWindow` below, not here; Playwright has no native "once per
-  // file" fixture scope to hang that off of.
+  // Worker-lifetime box holding the one long-lived window. Its teardown
+  // (after `use`) runs once, when the worker itself shuts down — i.e.
+  // after the very last test of the very last file this worker ran — and
+  // closes whatever's in the box. That's the ONLY teardown: `_sharedWindow`
+  // below never closes a window mid-run, it resets the existing one.
   _windowCache: [
     async ({}, use) => {
       const state: { current?: CachedWindow } = {}
@@ -182,19 +199,20 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
     { scope: 'worker' },
   ],
 
-  // One real VS Code window per spec *file*, not per test: launching VS
-  // Code (download-cached, but still an Electron cold start + extension
-  // host activation) dominates a test's wall time far more than the test
-  // itself does. Compares `testInfo.file` against the cached window's file
-  // to decide reuse-vs-relaunch — tests run strictly in file order here
-  // (workers: 1, fullyParallel: false in playwright.config.ts), so this
-  // transition happens exactly once per file boundary, never mid-file.
-  _sharedWindow: async ({ vscodeInstallPath, _windowCache }, use, testInfo) => {
-    if (_windowCache.current && _windowCache.current.file === testInfo.file) {
+  // One real VS Code window per *worker* — launched for the first test,
+  // reused (reset, never relaunched) by every test after it, across spec
+  // file boundaries included. Beyond killing the per-file Electron cold
+  // starts (and the macOS window flashing they cause when running without
+  // xvfb), this matches how the tools are actually used: a real user opens
+  // the editor once and swaps between tools in a single session, so
+  // panels, sidecars, and settings from one tool genuinely coexist with
+  // the next tool's — coverage the relaunch-per-file model never had.
+  // Isolation between tests comes from `resetWindowWorkspace` instead.
+  _sharedWindow: async ({ vscodeInstallPath, _windowCache }, use) => {
+    if (_windowCache.current) {
       await resetWindowWorkspace(_windowCache.current)
     } else {
-      await teardownWindow(_windowCache.current)
-      _windowCache.current = await launchWindow(vscodeInstallPath, testInfo.file)
+      _windowCache.current = await launchWindow(vscodeInstallPath)
     }
     await use(_windowCache.current)
   },

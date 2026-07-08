@@ -34,11 +34,11 @@ test.describe('extension activation', () => {
   })
 
   // These two tests are ordered on purpose (workers: 1, fullyParallel:
-  // false guarantee it) — together they prove the window-reuse-per-file
-  // fixture (`_sharedWindow` in ../fixtures.ts) actually resets workspace
-  // content between tests that share one VS Code window, not just that it
-  // reuses the window. Without this pair, a broken reset could pass every
-  // spec that only *reads* workspace state and never *writes* it.
+  // false guarantee it) — together they prove the single-session fixture
+  // (`_sharedWindow` in ../fixtures.ts) actually resets workspace content
+  // between tests that share the one long-lived VS Code window, not just
+  // that it reuses the window. Without this pair, a broken reset could
+  // pass every spec that only *reads* workspace state and never *writes* it.
   test('writes a marker file for the next test to check', async ({ evaluateInVSCode }) => {
     await evaluateInVSCode(async (vscode) => {
       const folder = vscode.workspace.workspaceFolders![0]!

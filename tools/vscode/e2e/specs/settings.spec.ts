@@ -32,9 +32,9 @@ test.describe('FL tool settings', () => {
     const SETTING = 'threeFlatland.tools.imageEncoder.enabled'
 
     // Explicit activation rather than relying on onLanguage:* timing —
-    // this is the first thing this spec file's shared window does, so
-    // nothing has triggered activation yet (see zzfx.spec.ts's identical
-    // pattern).
+    // under the single-session harness an earlier spec has usually
+    // activated the extension already, but no test gets to assume that
+    // (see zzfx.spec.ts's identical pattern).
     await evaluateInVSCode(async (vscode) => {
       const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
       if (ext && !ext.isActive) await ext.activate()
