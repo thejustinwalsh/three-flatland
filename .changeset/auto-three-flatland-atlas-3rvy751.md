@@ -7,14 +7,13 @@
 
 ## What's new
 
-- Add a new `@three-flatland/atlas/vite` entry point exposing `flatlandAtlas`, a Vite plugin that wraps `bakeAtlas` for dev/build-time atlas generation — no more committing baked atlas artifacts.
-- Declare source sprite directories/globs per entry (`entries[].src`) and a stable output basename (`entries[].out`); each entry bakes to a `<out>.json` + `<out>.png` pair, never content-hashed, so consumers (e.g. `SpriteSheetLoader`) can fetch it by a fixed URL in both dev and prod.
-- **Dev**: entries bake once at server boot (or reuse a warm cache), are served from memory via a dev-only middleware at `/<out>.json` and `/<out>.png`, and source directories are watched — adding/changing/removing a `.png` re-bakes that entry and triggers a full reload.
-- **Build**: entries bake at `buildStart` and are emitted into the bundle via `this.emitFile` at the exact `<out>.json`/`<out>.png` filenames.
-- Add a caching layer (`staleness.ts`): a SHA-256 digest over source file bytes plus bake options is stored under Vite's `cacheDir` (`node_modules/.vite/flatland-atlas/` by default) so unchanged entries skip re-baking.
-- `entries[].src` supports bare directories (all `.png` files inside) or single-level wildcard glob patterns (no recursive `**`); arrays of patterns union into one atlas. Validates missing/empty `src`/`out` and colliding `out` values with descriptive errors.
-- `vite` is now an optional peer dependency of `@three-flatland/atlas`; `pngjs`/`@types/pngjs` versions moved to the workspace catalog.
+- New `@three-flatland/atlas/vite` plugin — declare source sprite directories in `vite.config` instead of committing pre-baked atlas artifacts
+- Each entry bakes to a stable `<out>.json` + `<out>.png` pair at a fixed path (never content-hashed), so loaders like `SpriteSheetLoader` can fetch it by a known URL in both dev and prod
+- Dev mode serves the baked pair from memory via middleware (no disk writes); source directories are watched, and adding/removing/changing a `.png` triggers a re-bake plus full page reload
+- Build mode emits the pair into the bundle via `emitFile`
+- Bake results are cached under Vite's `cacheDir` (`<cacheDir>/flatland-atlas/`), keyed by a SHA-256 digest of source file bytes + bake options — unchanged inputs skip re-baking entirely
+- `src` accepts a bare directory (all `.png` files inside) or glob pattern(s) with a wildcard in the final path segment; entries validate for missing `src`/`out` and colliding `out` paths
 
 ## Summary
 
-`@three-flatland/atlas` gains a Vite plugin (`@three-flatland/atlas/vite`) that bakes sprite sheets from source directories at dev/build time, with content-hash caching and dev-server hot reload, removing the need to commit pre-baked atlas files.
+Adds a Vite plugin to `@three-flatland/atlas` that bakes sprite atlases at dev/build time with content-hash caching, removing the need to commit baked atlas artifacts to the repo.
