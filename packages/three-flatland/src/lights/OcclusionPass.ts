@@ -21,7 +21,7 @@ import {
 } from '../debug/debug-sink'
 import { Fn, vec2, vec4, float, select, attribute, uv, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { readCastShadowFlag, readFlip } from '../materials/instanceAttributes'
+import { readCastShadowFlag, readFlip, readRotatedFrameFlag } from '../materials/instanceAttributes'
 import { synthQuadNodes } from '../materials/synthQuadNodes'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 
@@ -352,7 +352,13 @@ function buildOcclusionMaterial(texture: Texture, tightMesh = false): MeshBasicN
       select(flip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
       select(flip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
     )
-    const atlasUV = flippedUV
+    // Mirrors Sprite2DMaterial's rotated-frame unrotation (bit 3).
+    const rotated = readRotatedFrameFlag()
+    const frameUV = vec2(
+      select(rotated, flippedUV.y, flippedUV.x),
+      select(rotated, float(1).sub(flippedUV.x), flippedUV.y)
+    )
+    const atlasUV = frameUV
       .mul(vec2(instanceUV.z, instanceUV.w))
       .add(vec2(instanceUV.x, instanceUV.y))
 

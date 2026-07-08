@@ -1140,6 +1140,67 @@
       .registry-panel { flex: initial; height: 300px; }
       .protocol-panel { flex: initial; height: 420px; }
     }
+
+    /* ── Time-travel scrubber (#29 Phase A) ─────────────────────────── */
+    .frame-scrubber {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-bottom: 1px solid var(--border, #22262e);
+      font-size: 11px;
+      color: var(--fg-muted, #8b93a3);
+    }
+    .frame-scrubber.parked {
+      background: color-mix(in srgb, #d94c87 8%, transparent);
+    }
+    .frame-scrubber .scrub-slider {
+      flex: 1;
+      min-width: 80px;
+      accent-color: #d94c87;
+    }
+    .frame-scrubber .scrub-step,
+    .frame-scrubber .scrub-live {
+      background: none;
+      border: 1px solid var(--border, #22262e);
+      border-radius: 3px;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      padding: 1px 6px;
+    }
+    .frame-scrubber .scrub-live.active {
+      color: #47cca9;
+      border-color: #47cca9;
+    }
+    .frame-scrubber.parked .scrub-live {
+      color: #d94c87;
+      border-color: #d94c87;
+    }
+    .frame-scrubber .scrub-frame {
+      font-variant-numeric: tabular-nums;
+      min-width: 9ch;
+      text-align: right;
+    }
+    .stat-value.stat-parked {
+      color: #d94c87;
+    }
+    .buffers-parked-note,
+    .registry-parked-note {
+      position: absolute;
+      inset-inline: 0;
+      bottom: 0;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: #d94c87;
+      background: color-mix(in srgb, #0d1016 82%, transparent);
+      pointer-events: none;
+      z-index: 2;
+    }
+    .registry-parked-note {
+      position: static;
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>

@@ -281,12 +281,17 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     for (const [name, data] of Object.entries(json.frames)) {
       // Convert to normalized UV coordinates
       // Note: UV Y is flipped (0 = bottom, 1 = top) vs image coords (0 = top)
-      const normalizedHeight = data.frame.h / atlasHeight
+      // Rotated frames (TexturePacker 90° CW) occupy a swapped-dims
+      // region in the atlas: JSON w/h describe the unrotated sprite,
+      // the packed rect is (h × w) — pixi's convention.
+      const rectW = data.rotated ? data.frame.h : data.frame.w
+      const rectH = data.rotated ? data.frame.w : data.frame.h
+      const normalizedHeight = rectH / atlasHeight
       const frame: SpriteFrame = {
         name,
         x: data.frame.x / atlasWidth,
         y: 1 - data.frame.y / atlasHeight - normalizedHeight,
-        width: data.frame.w / atlasWidth,
+        width: rectW / atlasWidth,
         height: normalizedHeight,
         sourceWidth: data.sourceSize.w,
         sourceHeight: data.sourceSize.h,
@@ -327,12 +332,14 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     for (const data of json.frames) {
       // Convert to normalized UV coordinates
       // Note: UV Y is flipped (0 = bottom, 1 = top) vs image coords (0 = top)
-      const normalizedHeight = data.frame.h / atlasHeight
+      const rectW = data.rotated ? data.frame.h : data.frame.w
+      const rectH = data.rotated ? data.frame.w : data.frame.h
+      const normalizedHeight = rectH / atlasHeight
       const frame: SpriteFrame = {
         name: data.filename,
         x: data.frame.x / atlasWidth,
         y: 1 - data.frame.y / atlasHeight - normalizedHeight,
-        width: data.frame.w / atlasWidth,
+        width: rectW / atlasWidth,
         height: normalizedHeight,
         sourceWidth: data.sourceSize.w,
         sourceHeight: data.sourceSize.h,
