@@ -2522,6 +2522,7 @@ function FrameRow({
     : undefined
   return (
     <li
+      data-frame-id={rect.id}
       onClick={(e) => {
         if (editing) return
         handlers.onSelectRect(rect.id, e.shiftKey)
@@ -2633,6 +2634,28 @@ function FramesView({
   onCancelInlineRename: () => void
 }) {
   const startDrag = useDragSource()
+
+  // Scroll the most-recently-selected row into view whenever the
+  // selection changes — including from a canvas click, which is the
+  // whole point (stakeholder: "selecting a region also doesn't scroll
+  // the right pane into view when it is out of view... this is a core
+  // component we use, we should fix it everywhere"). `scrollIntoView`
+  // with `block: 'nearest'` is a no-op if the row is already visible —
+  // no need to separately detect offscreen-ness first. `selectedIds` is
+  // a `Set`, which preserves insertion order, so the last entry is
+  // whichever selection action (click, shift-click, canvas select) most
+  // recently added — the one the user just asked to see.
+  const listContainerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (selectedIds.size === 0) return
+    const lastId = Array.from(selectedIds).at(-1)
+    if (!lastId) return
+    const container = listContainerRef.current
+    if (!container) return
+    const row = container.querySelector(`[data-frame-id="${CSS.escape(lastId)}"]`)
+    row?.scrollIntoView({ block: 'nearest' })
+  }, [selectedIds])
+
   const handlers: FrameRowHandlers = {
     onSelectRect,
     onStartInlineRename,
@@ -2739,7 +2762,7 @@ function FramesView({
     </ul>
   )
   return (
-    <>
+    <div ref={listContainerRef}>
       {groups.named.map((g) => {
         const groupIds = g.rects.map((r) => r.id)
         const isActiveFolder = folderSelectionPrefix === g.prefix
@@ -2801,7 +2824,7 @@ function FramesView({
           </Collapsible>
         )
       ) : null}
-    </>
+    </div>
   )
 }
 
