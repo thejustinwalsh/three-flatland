@@ -478,6 +478,29 @@ export class Sprite2DMaterial extends EffectMaterial {
   }
 
   /**
+   * The construction options that participate in the shared-cache /
+   * variant key (`sprite2DMaterialVariantKey`), read back from live
+   * material state. Re-resolution paths (enrollment bootstrap, dispose
+   * resurrection, texture reassignment) rebuild a variant from these so
+   * the resurrected material preserves every key-bearing flag — notably
+   * `alphaTest` (opaque + depth fast-path) and `premultipliedAlpha`
+   * (`CustomBlending`), both of which change the shader / blend state and
+   * were previously dropped on re-resolution. `effectsKey` is owned by
+   * the sprite's live effect set, so callers layer it on; `lit` is a key
+   * discriminant the constructor never consumes, so it is intentionally
+   * not reconstructable here.
+   * @internal
+   */
+  get variantOptions(): Sprite2DMaterialOptions {
+    return {
+      transparent: this.transparent,
+      colorTransform: this._colorTransform ?? undefined,
+      alphaTest: this.alphaTest,
+      premultipliedAlpha: this._premultipliedAlpha,
+    }
+  }
+
+  /**
    * Clone this material.
    */
   override clone(): this {

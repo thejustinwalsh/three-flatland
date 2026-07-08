@@ -1024,8 +1024,7 @@ export class Sprite2D extends Mesh {
    */
   _currentVariantOptions(): Sprite2DMaterialOptions {
     return {
-      transparent: this.material.transparent,
-      colorTransform: this.material.colorTransform ?? undefined,
+      ...this.material.variantOptions,
       effectsKey: this._buildEffectsKey(),
     }
   }
@@ -1597,8 +1596,7 @@ export class Sprite2D extends Mesh {
       this._effects.push(effect)
 
       const options: Sprite2DMaterialOptions = {
-        transparent: this.material.transparent,
-        colorTransform: this.material.colorTransform ?? undefined,
+        ...this.material.variantOptions,
         effectsKey: this._buildEffectsKey(),
       }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { Texture } from 'three'
+import { Texture, CustomBlending, OneFactor } from 'three'
 import { universe } from 'koota'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
@@ -364,6 +364,46 @@ describe('registry-scoped effect-variant materials + dispose resurrection', () =
     expect(sprite._materialIsBootstrapVariant).toBe(false)
     expect(sprite._materialWasRegistryVariant).toBe(true)
     expect(sprite.material.hasEffect(VariantMarker)).toBe(true)
+
+    group.dispose()
+  })
+
+  it('re-resolution preserves non-default alphaTest / premultipliedAlpha (variant-key flags)', () => {
+    // `alphaTest` (opaque + depth fast-path) and `premultipliedAlpha`
+    // (CustomBlending) both live in the variant cache key and both change
+    // the shader / blend state, so every re-resolution must carry them —
+    // otherwise the resurrected variant silently reverts to alphaTest=0 /
+    // normal blending. The material starts with both set to non-defaults.
+    const group = new SpriteGroup()
+    const sprite = new Sprite2D({
+      texture,
+      material: Sprite2DMaterial.getShared({
+        map: texture,
+        alphaTest: 0.5,
+        premultipliedAlpha: true,
+      }),
+    })
+    group.add(sprite)
+
+    // Site 1 — addEffect mints a world-scoped variant from the current
+    // material's options; the variant must inherit both flags.
+    sprite.addEffect(new VariantMarker())
+    const variant = sprite.material
+    expect(sprite._materialWasRegistryVariant).toBe(true)
+    expect(variant.hasEffect(VariantMarker)).toBe(true)
+    expect(variant.alphaTest).toBe(0.5)
+    expect(variant.blending).toBe(CustomBlending)
+    expect(variant.blendSrc).toBe(OneFactor)
+
+    // Site 2 — dispose resurrection re-resolves via `_currentVariantOptions`;
+    // the fresh variant must still carry both flags.
+    variant.dispose()
+    const resurrected = sprite.material
+    expect(resurrected).not.toBe(variant)
+    expect(resurrected.hasEffect(VariantMarker)).toBe(true)
+    expect(resurrected.alphaTest).toBe(0.5)
+    expect(resurrected.blending).toBe(CustomBlending)
+    expect(resurrected.blendSrc).toBe(OneFactor)
 
     group.dispose()
   })
