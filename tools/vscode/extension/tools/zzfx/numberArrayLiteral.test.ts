@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isNumberArrayLiteralText,
+  parseNestedArrayLiteral,
   parseNumberArrayLiteral,
   tokenizeNumberArrayLiteral,
 } from './numberArrayLiteral'
@@ -83,5 +84,81 @@ describe('parseNumberArrayLiteral — the phantom-zero regression', () => {
     expect(parseNumberArrayLiteral('[,1,2]')).toEqual([])
     expect(parseNumberArrayLiteral('[,]')).toEqual([])
     expect(parseNumberArrayLiteral('getPreset()')).toEqual([])
+  })
+})
+
+describe('parseNestedArrayLiteral', () => {
+  it('parses a flat number array the same way the flat parser does', () => {
+    expect(parseNestedArrayLiteral('[1, 0.05, 220]')).toEqual([1, 0.05, 220])
+  })
+
+  it('parses arrays nested to arbitrary depth — the ZzFXM pattern shape (pattern[channel[note...]])', () => {
+    expect(parseNestedArrayLiteral('[[[0, 0, 12, 12]]]')).toEqual([[[0, 0, 12, 12]]])
+  })
+
+  it("respects bracket depth when splitting top-level elements — inner commas don't fragment the split", () => {
+    expect(parseNestedArrayLiteral('[[1, 2], [3, 4]]')).toEqual([
+      [1, 2],
+      [3, 4],
+    ])
+  })
+
+  it('accepts null leaves', () => {
+    expect(parseNestedArrayLiteral('[1, null, 2]')).toEqual([1, null, 2])
+  })
+
+  it('accepts string leaves, unwrapping single and double quotes', () => {
+    expect(parseNestedArrayLiteral('["a", \'b\']')).toEqual(['a', 'b'])
+  })
+
+  it('strips exactly one trailing comma per bracket level, not a phantom element', () => {
+    expect(parseNestedArrayLiteral('[[1, 2,], [3, 4],]')).toEqual([
+      [1, 2],
+      [3, 4],
+    ])
+  })
+
+  it('treats an empty array as zero elements', () => {
+    expect(parseNestedArrayLiteral('[]')).toEqual([])
+    expect(parseNestedArrayLiteral('[[], []]')).toEqual([[], []])
+  })
+
+  it('refuses text that is not bracket-wrapped at all', () => {
+    expect(parseNestedArrayLiteral('220')).toBeNull()
+    expect(parseNestedArrayLiteral('songVar')).toBeNull()
+  })
+
+  it('refuses an identifier leaf (a variable reference mid-structure)', () => {
+    expect(parseNestedArrayLiteral('[1, someVar, 2]')).toBeNull()
+  })
+
+  it('refuses a call expression leaf', () => {
+    expect(parseNestedArrayLiteral('[1, getPreset(), 2]')).toBeNull()
+  })
+
+  it('refuses an object leaf', () => {
+    expect(parseNestedArrayLiteral('[1, { a: 1 }, 2]')).toBeNull()
+  })
+
+  it('refuses a spread element', () => {
+    expect(parseNestedArrayLiteral('[...songVar]')).toBeNull()
+  })
+
+  it('refuses a sparse (internal empty) element at any depth', () => {
+    expect(parseNestedArrayLiteral('[1,,2]')).toBeNull()
+    expect(parseNestedArrayLiteral('[[1,,2], [3]]')).toBeNull()
+  })
+
+  it('refuses a leading comma', () => {
+    expect(parseNestedArrayLiteral('[,1,2]')).toBeNull()
+  })
+
+  it('refuses unbalanced brackets', () => {
+    expect(parseNestedArrayLiteral('[[1, 2]')).toBeNull()
+    expect(parseNestedArrayLiteral('[1, 2]]')).toBeNull()
+  })
+
+  it('refuses a comma inside a string literal being mistaken for a separator — round-trips correctly instead', () => {
+    expect(parseNestedArrayLiteral('["a,b", 1]')).toEqual(['a,b', 1])
   })
 })

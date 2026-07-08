@@ -50,3 +50,103 @@ export function parseNumberArrayLiteral(text: string): number[] {
   if (tokens === null) return []
   return tokens.map(Number).filter((n) => Number.isFinite(n))
 }
+
+/**
+ * A generalization of the lineage above for `songResolver.ts`'s ZzFXM
+ * parsing — a ZzFXM song is a deeply nested array of arrays (patterns of
+ * channels of notes), not a flat numeric list, so `tokenizeNumberArrayLiteral`'s
+ * single `.split(',')` isn't enough: a nested literal's inner commas
+ * (`[[1,2],[3,4]]`) must not fragment the top-level split. Leaves may be
+ * `number | null | string` — refuses anything else (an identifier, a call
+ * expression, an object, a spread element, ...) by returning `null` for
+ * the WHOLE literal, same "refuse, don't coerce" posture as
+ * `isNumberArrayLiteralText`. Kept as a separate function rather than
+ * rewriting the flat parser in terms of this one — the flat parser's
+ * trailing-comma/sparse-element behavior is pinned by its own regression
+ * tests and used by the write path (`host.ts`'s zzfx/save); no reason to
+ * risk drifting it.
+ */
+export type NestedArrayLeaf = number | null | string
+export type NestedArrayValue = NestedArrayLeaf | NestedArrayValue[]
+
+/** Splits a bracket literal's INTERIOR into top-level element texts,
+ * tracking `[`/`]` depth and quoted-string spans so neither a nested
+ * array's inner commas nor a comma inside a string literal fragments the
+ * split. Trailing-comma/sparse-element rules mirror
+ * `tokenizeNumberArrayLiteral` exactly, applied at this one level (each
+ * recursive call re-applies them one level deeper). */
+function splitTopLevelElements(inner: string): string[] | null {
+  if (inner.trim() === '') return []
+
+  const parts: string[] = []
+  let depth = 0
+  let quote: '"' | "'" | null = null
+  let current = ''
+
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i]!
+    if (quote) {
+      current += ch
+      if (ch === quote && inner[i - 1] !== '\\') quote = null
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      current += ch
+      continue
+    }
+    if (ch === '[') {
+      depth++
+      current += ch
+      continue
+    }
+    if (ch === ']') {
+      depth--
+      if (depth < 0) return null // unbalanced — a stray ']' at this level
+      current += ch
+      continue
+    }
+    if (ch === ',' && depth === 0) {
+      parts.push(current)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  if (quote !== null || depth !== 0) return null // unterminated string or unbalanced brackets
+  parts.push(current)
+
+  if ((parts[parts.length - 1] ?? '').trim() === '') parts.pop()
+  if (parts.some((part) => part.trim() === '')) return null
+  return parts.map((part) => part.trim())
+}
+
+const STRING_LITERAL = /^"(?:[^"\\]|\\.)*"$|^'(?:[^'\\]|\\.)*'$/
+
+function parseNestedLeafOrArray(token: string): NestedArrayValue | undefined {
+  if (token === 'null') return null
+  if (/^\[[\s\S]*\]$/.test(token)) {
+    const nested = parseNestedArrayLiteral(token)
+    return nested ?? undefined
+  }
+  if (STRING_LITERAL.test(token)) return token.slice(1, -1)
+  if (token === '') return undefined
+  const n = Number(token)
+  return Number.isFinite(n) ? n : undefined
+}
+
+export function parseNestedArrayLiteral(text: string): NestedArrayValue[] | null {
+  const trimmed = text.trim()
+  if (!/^\[[\s\S]*\]$/.test(trimmed)) return null
+  const inner = trimmed.slice(1, -1)
+  const tokens = splitTopLevelElements(inner)
+  if (tokens === null) return null
+
+  const values: NestedArrayValue[] = []
+  for (const token of tokens) {
+    const value = parseNestedLeafOrArray(token)
+    if (value === undefined) return null
+    values.push(value)
+  }
+  return values
+}

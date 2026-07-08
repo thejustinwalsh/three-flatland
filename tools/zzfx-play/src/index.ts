@@ -8,6 +8,7 @@ export type {
   Pattern,
   PlaybackStats,
   PlayCommand,
+  PlayFileCommand,
   PlaySongCommand,
   Response,
   ShutdownCommand,

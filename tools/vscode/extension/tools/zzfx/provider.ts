@@ -1,12 +1,20 @@
-// Inline `▶ Play` / `⚙ Edit` CodeLens above every `zzfx(...)` call — see
+// Inline `▶ Play` / `⚙ Edit` / `⏹ Stop` CodeLens above every zzfx.call,
+// zzfxm.song, and audio.file finding — see
 // planning/vscode-tools/tool-zzfx-studio.md's "CodeLens provider" section.
 // `provideCodeLenses` returns range-only lenses (fast — VS Code calls this
 // on every keystroke-adjacent scroll/edit); `resolveCodeLens` computes the
 // title + command lazily, only for lenses actually scrolled into view.
+//
+// `audio.file` is the one kind whose LENS EXISTENCE (not just its command)
+// depends on work done in `provideCodeLenses` — an unresolvable path means
+// no lens at all, which can't be deferred to `resolveCodeLens` (that only
+// fills in an already-emitted lens's command). See `audioFileResolver.ts`.
+import * as path from 'node:path'
 import * as vscode from 'vscode'
 import type { CodelensServiceClient, Finding } from '@three-flatland/codelens-service'
 import { log } from '../../log'
 import { resolveParams } from './resolveParams'
+import { resolveAudioFilePath } from './audioFileResolver'
 
 /** Tier 1 glob equivalent as a VS Code language selector — the sidecar
  * scans `**\/*.{ts,tsx,js,jsx,mjs,cjs}`; .mjs/.cjs both register under the
@@ -30,16 +38,22 @@ function toVscodeRange(range: Finding['range']): vscode.Range {
   )
 }
 
-/** Carries the finding + which of the two lenses this is — resolveCodeLens
- * reads these back off the instance VS Code hands it. */
-type ZzfxCallFinding = Extract<Finding, { kind: 'zzfx.call' }>
+/** Carries the finding + which lens variant this is — resolveCodeLens reads
+ * these back off the instance VS Code hands it. `variant` spans all three
+ * kinds: zzfx.call gets play/edit, zzfxm.song gets play/stop, audio.file
+ * gets play only. */
+type LensVariant = 'play' | 'edit' | 'stop'
 
 class ZzfxCodeLens extends vscode.CodeLens {
   constructor(
     range: vscode.Range,
-    readonly finding: ZzfxCallFinding,
-    readonly variant: 'play' | 'edit',
-    readonly docUri: vscode.Uri
+    readonly finding: Finding,
+    readonly variant: LensVariant,
+    readonly docUri: vscode.Uri,
+    /** `audio.file` only — the path resolved (and existence-checked) once
+     * in `provideCodeLenses`, so `resolveCodeLens` never re-touches the
+     * filesystem. */
+    readonly resolvedPath?: string
   ) {
     super(range)
   }
@@ -81,13 +95,31 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
     }
 
     const lenses: vscode.CodeLens[] = []
+    const sourceDir = path.dirname(document.uri.fsPath)
+    const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? sourceDir
+
     for (const finding of findings) {
-      // A1 added zzfxm.song / audio.file kinds; lenses for them arrive with
-      // A3 — until then only zzfx.call findings surface in the editor.
-      if (finding.kind !== 'zzfx.call') continue
       const range = toVscodeRange(finding.range)
-      lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri))
-      lenses.push(new ZzfxCodeLens(range, finding, 'edit', document.uri))
+      switch (finding.kind) {
+        case 'zzfx.call':
+          lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri))
+          lenses.push(new ZzfxCodeLens(range, finding, 'edit', document.uri))
+          break
+        case 'zzfxm.song':
+          lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri))
+          lenses.push(new ZzfxCodeLens(range, finding, 'stop', document.uri))
+          break
+        case 'audio.file': {
+          // Existence-gated: an audio.file lens must be ABSENT when the
+          // referenced path doesn't resolve to a real file — there's
+          // nothing playable to offer, and resolveCodeLens can't retract
+          // an already-emitted lens.
+          const resolved = resolveAudioFilePath(finding.payload.path, sourceDir, workspaceRoot)
+          if (!resolved) break
+          lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri, resolved))
+          break
+        }
+      }
     }
     return lenses
   }
@@ -98,30 +130,52 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
   ): Promise<vscode.CodeLens> {
     if (!(codeLens instanceof ZzfxCodeLens)) return codeLens
 
-    if (codeLens.variant === 'play') {
-      // For a variable-spread call (`zzfx(...NAME)`), the sidecar's
-      // `payload.params` is genuinely empty — the resolved values live
-      // only in the declaration's source text via `varRef`. Resolve
-      // before binding the command's argument so Play actually plays
-      // NAME's sound, not silence.
-      const { params } = await resolveParams(codeLens.finding)
-      // First argument is the plain params array (planning doc: "args:
-      // params array") — the second, additive argument carries this
-      // finding's real identity so register.ts can open/reuse its actual
-      // editor panel to play through, rather than needing a synthetic
-      // panel. Optional in the command's own signature; only this
-      // provider ever supplies it.
+    const { finding, variant, docUri } = codeLens
+    const source = { uri: docUri.toString(), findingId: finding.id }
+
+    if (finding.kind === 'zzfx.call') {
+      if (variant === 'play') {
+        // For a variable-spread call (`zzfx(...NAME)`), the sidecar's
+        // `payload.params` is genuinely empty — the resolved values live
+        // only in the declaration's source text via `varRef`. Resolve
+        // before binding the command's argument so Play actually plays
+        // NAME's sound, not silence.
+        const { params } = await resolveParams(finding)
+        // First argument is the plain params array (planning doc: "args:
+        // params array") — the second, additive argument carries this
+        // finding's real identity so register.ts can open/reuse its actual
+        // editor panel to play through, rather than needing a synthetic
+        // panel. Optional in the command's own signature; only this
+        // provider ever supplies it.
+        codeLens.command = {
+          title: '▶ Play',
+          command: 'threeFlatland.zzfx.playParams',
+          arguments: [params, source],
+        }
+      } else {
+        const isVar = Boolean(finding.payload.varRef)
+        codeLens.command = {
+          title: isVar ? '⚙ Edit (variable)' : '⚙ Edit',
+          command: 'threeFlatland.zzfx.openEditor',
+          arguments: [source],
+        }
+      }
+    } else if (finding.kind === 'zzfxm.song') {
+      // Resolution of the actual Song data (the harder, potentially
+      // async/error-prone part) is deferred to the command handler in
+      // register.ts — this only needs the finding's identity, mirroring
+      // playParams'/openEditor's `{uri, findingId}` re-parse-fresh pattern.
+      codeLens.command =
+        variant === 'play'
+          ? { title: '▶ Play', command: 'threeFlatland.zzfx.playSong', arguments: [source] }
+          : { title: '⏹ Stop', command: 'threeFlatland.zzfx.stopSong', arguments: [] }
+    } else {
+      // audio.file — resolvedPath was already existence-checked in
+      // provideCodeLenses; this lens wouldn't exist otherwise.
       codeLens.command = {
         title: '▶ Play',
-        command: 'threeFlatland.zzfx.playParams',
-        arguments: [params, { uri: codeLens.docUri.toString(), findingId: codeLens.finding.id }],
-      }
-    } else {
-      const isVar = Boolean(codeLens.finding.payload.varRef)
-      codeLens.command = {
-        title: isVar ? '⚙ Edit (variable)' : '⚙ Edit',
-        command: 'threeFlatland.zzfx.openEditor',
-        arguments: [{ uri: codeLens.docUri.toString(), findingId: codeLens.finding.id }],
+        command: 'threeFlatland.zzfx.playFile',
+        arguments: [codeLens.resolvedPath],
       }
     }
     return codeLens

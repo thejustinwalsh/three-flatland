@@ -1,10 +1,12 @@
 import * as vscode from 'vscode'
 import type { CodelensServiceClient, Finding } from '@three-flatland/codelens-service'
+import type { PlaySidecarClient } from '@three-flatland/zzfx-play'
 import { getSidecarClient, shutdownSidecar } from './sidecarManager'
 import { getPlaySidecarClient, shutdownPlaySidecar } from './playSidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
 import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
+import { resolveSong } from './resolveSong'
 import { getPlaybackVolumeMultiplier } from './playbackVolume'
 import { isToolEnabled } from '../../toolRegistry'
 import { log } from '../../log'
@@ -12,6 +14,7 @@ import { log } from '../../log'
 const INLINE_PLAYBACK_SETTING = 'threeFlatland.zzfx.inlinePlayback.enabled'
 
 type ZzfxCallFinding = Extract<Finding, { kind: 'zzfx.call' }>
+type ZzfxmSongFinding = Extract<Finding, { kind: 'zzfxm.song' }>
 
 function findFindingAtPosition(
   findings: readonly Finding[],
@@ -54,6 +57,50 @@ async function resolveFindingAtCursor(
     return undefined
   }
   return { uri: editor.document.uri, finding }
+}
+
+/** Re-parses `uri` fresh and returns the `zzfxm.song` finding matching
+ * `findingId`, or `undefined` if it's gone (edited away since the lens was
+ * resolved). Mirrors `host.ts`'s `resolveFinding` for zzfx.call. */
+async function resolveZzfxmSongFinding(
+  client: CodelensServiceClient,
+  uri: vscode.Uri,
+  findingId: string
+): Promise<ZzfxmSongFinding | undefined> {
+  const document = await vscode.workspace.openTextDocument(uri)
+  const { findings } = await client.parse({ uri: uri.toString(), text: document.getText() })
+  return findings.find((f): f is ZzfxmSongFinding => f.kind === 'zzfxm.song' && f.id === findingId)
+}
+
+/**
+ * Shared remote/setting/sidecar-availability guard for the `zzfxm.song`
+ * and `audio.file` play routes. Unlike `playParams`, there is no
+ * panel-based fallback for these (no editor webview plays a song or a raw
+ * audio file) — a blocked route just shows an info message and no-ops.
+ * Returns the ready-to-use client, or `undefined` after already showing
+ * the appropriate message.
+ */
+function getInlinePlayClientOrNotify(
+  context: vscode.ExtensionContext
+): PlaySidecarClient | undefined {
+  if (vscode.env.remoteName) {
+    void vscode.window.showInformationMessage(
+      'FL Audio: inline playback unavailable in remote windows.'
+    )
+    return undefined
+  }
+  if (!vscode.workspace.getConfiguration().get<boolean>(INLINE_PLAYBACK_SETTING, true)) {
+    void vscode.window.showInformationMessage('FL Audio: inline playback is disabled in Settings.')
+    return undefined
+  }
+  const playClient = getPlaySidecarClient(context)
+  if (!playClient) {
+    void vscode.window.showInformationMessage(
+      'FL Audio: inline playback unavailable — the audio sidecar could not be started.'
+    )
+    return undefined
+  }
+  return playClient
 }
 
 /**
@@ -216,6 +263,74 @@ export function registerZzfxTool(context: vscode.ExtensionContext): vscode.Dispo
         await openZzfxEditorPanel(context, client, resolved.uri, resolved.finding.id)
       }
     )
+  )
+
+  // CodeLens-only, like playParams — the `{uri, findingId}` shape lets this
+  // re-parse fresh and resolve the actual Song data itself, rather than
+  // trusting anything the provider snapshotted at lens-resolve time.
+  disposables.push(
+    vscode.commands.registerCommand(
+      'threeFlatland.zzfx.playSong',
+      async (source: { uri: string; findingId: string }) => {
+        // Defense in depth — see atlas/register.ts's identical guard comment.
+        if (!isToolEnabled('zzfxStudio')) {
+          void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
+          return
+        }
+        const playClient = getInlinePlayClientOrNotify(context)
+        if (!playClient) return
+
+        const uri = vscode.Uri.parse(source.uri)
+        const client = await getSidecarClient(context)
+        if (!client) {
+          void vscode.window.showErrorMessage('FL ZzFX: sidecar unavailable.')
+          return
+        }
+        const finding = await resolveZzfxmSongFinding(client, uri, source.findingId)
+        if (!finding) {
+          void vscode.window.showErrorMessage(
+            'FL ZzFX: this zzfxm() call could not be found — the source may have changed.'
+          )
+          return
+        }
+        const resolved = await resolveSong(uri, finding)
+        if ('loadError' in resolved) {
+          void vscode.window.showErrorMessage(`FL ZzFX: ${resolved.loadError}`)
+          return
+        }
+        playClient.playSong(resolved.song, getPlaybackVolumeMultiplier())
+      }
+    )
+  )
+
+  disposables.push(
+    vscode.commands.registerCommand('threeFlatland.zzfx.stopSong', () => {
+      // Defense in depth — see atlas/register.ts's identical guard comment.
+      if (!isToolEnabled('zzfxStudio')) {
+        void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
+        return
+      }
+      // stopSong() itself no-ops if nothing is running — no need to gate
+      // on remote/setting here beyond getting a client handle at all.
+      getPlaySidecarClient(context)?.stopSong()
+    })
+  )
+
+  // CodeLens-only — arg is the already-resolved, existence-checked
+  // absolute path from provider.ts's audioFileResolver.ts call (the lens
+  // itself doesn't exist for an unresolvable path, so this command never
+  // has to re-resolve or re-check existence).
+  disposables.push(
+    vscode.commands.registerCommand('threeFlatland.zzfx.playFile', async (absolutePath: string) => {
+      // Defense in depth — see atlas/register.ts's identical guard comment.
+      if (!isToolEnabled('zzfxStudio')) {
+        void vscode.window.showInformationMessage('FL ZzFX Studio is disabled in Settings.')
+        return
+      }
+      const playClient = getInlinePlayClientOrNotify(context)
+      if (!playClient) return
+      playClient.playFile(absolutePath, getPlaybackVolumeMultiplier())
+    })
   )
 
   // Turning inline playback off mid-session shouldn't leave an already-
