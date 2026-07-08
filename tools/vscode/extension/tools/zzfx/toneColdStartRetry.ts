@@ -26,39 +26,56 @@
 // sidecar has even looked at the command, so "no error observed within
 // the window" would be wrongly read as success.
 //
-// The fix: don't guess with a timeout at all — confirm success by asking
-// the sidecar directly. `playClient.getStats()` is ALREADY a safe,
-// content-correlated round trip (see tools/zzfx-play/CLAUDE.md's "Wire
-// protocol" section) that doesn't resolve until the sidecar actually
-// responds, however long that takes — immune to the spawn-time race by
-// construction. Since a single child process reads stdin strictly
-// sequentially, sending `playToneSynth` and then awaiting `getStats()`
-// guarantees the sidecar has already fully decided that `playToneSynth`
-// call's fate (Nack or real playback started) before the stats response
-// comes back — `stats.playing` is `true` immediately once a
-// `playToneSynth` call succeeds (player.ts's `trackPlayback` runs
-// synchronously inside the same backend call), so it's a reliable,
-// self-timing success signal. This also means the retry doesn't need
-// `Nack.code`/`'TONE_LOADING'` at all for its own logic — the code still
-// rides the wire (see protocol.ts/commandHandler.ts/client.ts) purely for
-// diagnostics (the existing global `onError` → log listener in
-// playSidecarManager.ts now logs it explicitly).
+// A second design was tried after that and ALSO had a real bug, subtler:
+// confirming success by polling `playClient.getStats().playing` after
+// sending. `getStats()` itself is a safe, content-correlated round trip —
+// but `stats.playing` reflects `player.ts`'s SHARED, per-context
+// "most-recently-started source" record, not anything correlated to the
+// SPECIFIC `playToneSynth` call that was just sent. A one-shot `zzfx.call`
+// never registers as that shared source (commandHandler.ts) and keeps its
+// OWN playback-record entry alive for its short duration — so a Tone play
+// issued while an unrelated one-shot is still audible reads
+// `stats.playing === true` off the ONE-SHOT and reports false success on
+// the very first attempt, even though the Tone call itself Nacked with
+// `TONE_LOADING` and nothing plays. `getStats()`'s own spawn-time immunity
+// doesn't help here — the false positive isn't a timing race, it's
+// correlating to the wrong signal entirely.
+//
+// The fix: correlate to THIS call's own response, not a shared side
+// channel. `PlaySidecarClient.playToneSynthAwaitable()` (`tools/zzfx-play/
+// src/client.ts`) attaches a listener for the next `cmd: 'playToneSynth'`
+// response line BEFORE sending, the same content-correlation pattern
+// `getStats()` already uses (safe because the sidecar processes stdin
+// strictly sequentially — see `tools/zzfx-play/CLAUDE.md`'s "Wire
+// protocol" section) — so it resolves with THIS SPECIFIC call's own
+// Ack/Nack, however long the sidecar takes to produce it, immune to both
+// the spawn-time race the first design had and the shared-state
+// misattribution the second one had.
 import type { PlaySidecarClient, PlayToneSynthCommand } from '@three-flatland/zzfx-play'
 
 const RETRY_DELAYS_MS = [250, 500, 1000, 2000]
 
-async function isNowPlaying(playClient: PlaySidecarClient): Promise<boolean> {
-  const stats = await playClient.getStats().catch(() => undefined)
-  return stats?.playing === true
+async function attemptPlayToneSynth(
+  playClient: PlaySidecarClient,
+  cmd: Omit<PlayToneSynthCommand, 'cmd'>,
+  volume: number | undefined
+): Promise<boolean> {
+  const response = await playClient
+    .playToneSynthAwaitable(cmd, volume)
+    .catch((error: unknown): { ok: false; error: string } => ({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }))
+  return response.ok
 }
 
 /**
  * Plays a Tone.js finding, silently resending on a cold-start failure per
  * the schedule above (~4s of backoff across 4 retries, plus whatever each
- * attempt's own `getStats()` confirmation round trip takes) before giving
- * up. Resolves `true` once an attempt is confirmed actually playing —
- * callers must call `trackPlayback` exactly ONCE, after this resolves
- * `true`, never per attempt. Resolves `false` once the budget is
+ * attempt's own correlated response round trip takes) before giving up.
+ * Resolves `true` once an attempt's OWN response confirms it actually
+ * started — callers must call `trackPlayback` exactly ONCE, after this
+ * resolves `true`, never per attempt. Resolves `false` once the budget is
  * exhausted so the caller shows exactly ONE user-visible error rather
  * than one per attempt.
  */
@@ -67,12 +84,10 @@ export async function playToneSynthWithColdStartRetry(
   cmd: Omit<PlayToneSynthCommand, 'cmd'>,
   volume: number | undefined
 ): Promise<boolean> {
-  playClient.playToneSynth(cmd, volume)
-  if (await isNowPlaying(playClient)) return true
+  if (await attemptPlayToneSynth(playClient, cmd, volume)) return true
   for (const delay of RETRY_DELAYS_MS) {
     await new Promise((resolve) => setTimeout(resolve, delay))
-    playClient.playToneSynth(cmd, volume)
-    if (await isNowPlaying(playClient)) return true
+    if (await attemptPlayToneSynth(playClient, cmd, volume)) return true
   }
   return false
 }

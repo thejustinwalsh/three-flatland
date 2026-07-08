@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import * as readline from 'node:readline'
 import type {
+  Ack,
   Command,
   Nack,
   PlaybackStats,
@@ -19,6 +20,19 @@ export type PlaySidecarOptions = {
   env?: NodeJS.ProcessEnv
 }
 
+/** Thrown by `start()` (and anything that calls it internally — `play()`,
+ * `getStats()`, etc.) once a `PlaySidecarClient` instance's process has
+ * exited even once. An exited instance never respawns itself — the
+ * singleton owner (`playSidecarManager.ts`) hands out a brand NEW instance
+ * on the next `getPlaySidecarClient()` call instead. See `start()`'s doc
+ * comment for why silently respawning from a stale instance is unsafe. */
+export class PlaySidecarExitedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PlaySidecarExitedError'
+  }
+}
+
 /**
  * Spawns and talks to the zzfx-play sidecar. Lifecycle mirrors `tools/
  * vscode/extension/tools/zzfx/sidecarManager.ts`'s pattern for the
@@ -34,6 +48,7 @@ export class PlaySidecarClient {
     (code: number | null, signal: NodeJS.Signals | null) => void
   >()
   private readonly errorListeners = new Set<(err: Error) => void>()
+  private exited = false
 
   constructor(private readonly options: PlaySidecarOptions) {}
 
@@ -41,13 +56,36 @@ export class PlaySidecarClient {
     return !!this.child && this.child.exitCode === null && !this.child.killed
   }
 
+  /** True once this instance's process has exited (cleanly or otherwise) —
+   * permanent for the instance's lifetime, mirrors `@three-flatland/
+   * codelens-service`'s `CodelensServiceClient.isExited`. */
+  get isExited(): boolean {
+    return this.exited
+  }
+
   /** The running sidecar's OS process id, or `undefined` if not started. */
   get pid(): number | undefined {
     return this.child?.pid
   }
 
-  /** Spawns the sidecar if it isn't already running. Safe to call repeatedly — a no-op once warm. */
+  /**
+   * Spawns the sidecar if it isn't already running. Safe to call
+   * repeatedly — a no-op once warm. Throws `PlaySidecarExitedError` once
+   * this instance's process has exited even once — it never silently
+   * respawns a NEW child from an exited instance. That matters because a
+   * caller can hold onto a `PlaySidecarClient` reference across the
+   * process's exit (e.g. `activePlayback.ts`'s `watchPlaybackEnd` polling
+   * loop, captured once per play and outliving a crash+respawn of the
+   * SINGLETON in `playSidecarManager.ts`); without this guard, the next
+   * poll's `getStats()` → `start()` on that stale instance would silently
+   * spawn a second, orphaned child process — invisible to the singleton's
+   * own pid/shutdown bookkeeping. Get a fresh instance from
+   * `getPlaySidecarClient()` instead of reusing an exited one.
+   */
   start(): void {
+    if (this.exited) {
+      throw new PlaySidecarExitedError('zzfx-play: this sidecar instance has already exited')
+    }
     if (this.child) return
 
     const child = spawn(this.options.execPath, [this.options.sidecarPath], {
@@ -78,12 +116,20 @@ export class PlaySidecarClient {
     })
 
     child.on('exit', (code, signal) => {
+      this.exited = true
       this.child = undefined
       this.rl?.close()
       this.rl = undefined
       for (const listener of this.exitListeners) listener(code, signal)
     })
-    child.on('error', (err) => this.emitError(err))
+    child.on('error', (err) => {
+      // A spawn failure doesn't reliably guarantee a following 'exit'
+      // event across every failure mode — `exited` must be set here
+      // directly (same reasoning as CodelensServiceClient's identical
+      // comment) or this instance could stay silently un-guarded forever.
+      this.exited = true
+      this.emitError(err)
+    })
   }
 
   private emitError(err: Error): void {
@@ -119,13 +165,89 @@ export class PlaySidecarClient {
   }
 
   /** Plays a Tone.js instrument finding (#47). Spawns the sidecar on
-   * first call, mirroring `play`/`playSong`. */
+   * first call, mirroring `play`/`playSong`. Fire-and-forget — a failure
+   * surfaces only via `onError`. See {@link playToneSynthAwaitable} for a
+   * variant that awaits THIS call's own correlated response. */
   playToneSynth(cmd: Omit<PlayToneSynthCommand, 'cmd'>, volume?: number): void {
     this.send({
       cmd: 'playToneSynth',
       ...cmd,
       ...(volume !== undefined ? { volume } : {}),
     })
+  }
+
+  /** Serializes `playToneSynthAwaitable` callers — same reasoning as
+   * `getStats`'s `statsChain`: content-based correlation (the next
+   * `cmd: 'playToneSynth'` response line) is only safe for one in-flight
+   * call at a time. Independent of `statsChain` — the two command kinds
+   * never share a queue. */
+  private toneSynthChain: Promise<unknown> = Promise.resolve()
+
+  /**
+   * Correlated variant of {@link playToneSynth} (toneColdStartRetry.ts's
+   * cold-start retry, #47/#49) — awaits THIS SPECIFIC call's own Ack/Nack
+   * response, rather than a caller inferring success from
+   * `getStats().playing`, which reflects the whole context's shared
+   * "most-recently-started source" record and can read `true` off an
+   * unrelated, still-audible one-shot that has nothing to do with this
+   * call. Safe (not a race against the sidecar's own cold-spawn time, no
+   * timeout window) because the sidecar processes stdin strictly
+   * sequentially (see `protocol.ts`'s doc comment): attaching a listener
+   * for the next `cmd: 'playToneSynth'` response line, before sending,
+   * always resolves with THIS call's own response, however long the
+   * sidecar takes to produce it.
+   *
+   * Concurrent callers are SERIALIZED via `toneSynthChain`, same
+   * reasoning (and same known one-in-flight limitation) as `getStats`.
+   */
+  async playToneSynthAwaitable(
+    cmd: Omit<PlayToneSynthCommand, 'cmd'>,
+    volume?: number
+  ): Promise<{ ok: true } | { ok: false; error: string; code?: string }> {
+    const run = this.toneSynthChain.then(() => this.requestPlayToneSynth(cmd, volume))
+    this.toneSynthChain = run.catch(() => undefined)
+    return run
+  }
+
+  private async requestPlayToneSynth(
+    cmd: Omit<PlayToneSynthCommand, 'cmd'>,
+    volume?: number
+  ): Promise<{ ok: true } | { ok: false; error: string; code?: string }> {
+    this.start()
+    if (!this.rl) {
+      throw new Error('zzfx-play: sidecar is not running')
+    }
+    const rl = this.rl
+
+    const responsePromise = new Promise<Nack | Ack>((resolve) => {
+      const onLine = (line: string): void => {
+        let parsed: Response
+        try {
+          parsed = JSON.parse(line) as Response
+        } catch {
+          return
+        }
+        if (parsed.cmd !== 'playToneSynth') return
+        rl.off('line', onLine)
+        resolve(parsed)
+      }
+      rl.on('line', onLine)
+    })
+
+    this.send({
+      cmd: 'playToneSynth',
+      ...cmd,
+      ...(volume !== undefined ? { volume } : {}),
+    })
+    const response = await responsePromise
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: response.error,
+        ...(response.code !== undefined ? { code: response.code } : {}),
+      }
+    }
+    return { ok: true }
   }
 
   /** Plays a Wad oscillator/noise synth finding (#47). Spawns the

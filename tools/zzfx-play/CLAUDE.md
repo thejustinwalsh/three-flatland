@@ -266,10 +266,23 @@ vitest-level real-sidecar test cannot substitute for it.
 `PlaySidecarClient` follows the exact same shape as `tools/vscode/
 extension/tools/zzfx/sidecarManager.ts`'s `CodelensServiceClient`
 wrapping: lazy spawn on first `play()`/`playSong()` call, warm reuse for
-everything after (`start()` is idempotent), `onExit`/`onError` return
-unsubscribe functions (not a bulk-`dispose()` API — same convention as
-`tools/bridge`'s `ClientBridge.on()`), graceful `shutdown()` with a
-`SIGKILL` fallback after a timeout, hard `dispose()` for immediate kill.
+everything after (`start()` is idempotent — until the instance has exited
+once), `onExit`/`onError` return unsubscribe functions (not a bulk-
+`dispose()` API — same convention as `tools/bridge`'s `ClientBridge.on()`),
+graceful `shutdown()` with a `SIGKILL` fallback after a timeout, hard
+`dispose()` for immediate kill. **Permanent-exited guard**: once an
+instance's process has exited (cleanly, crashed, or failed to spawn),
+`isExited` stays `true` for that instance's lifetime and `start()` (and
+everything that calls it internally — `play()`, `getStats()`, etc.) throws
+`PlaySidecarExitedError` instead of silently spawning a replacement child.
+This matters for a caller that captures a `PlaySidecarClient` reference
+across time (e.g. `tools/vscode/extension/tools/zzfx/activePlayback.ts`'s
+`watchPlaybackEnd` polling loop) — without it, a poll tick landing after
+the singleton in `playSidecarManager.ts` has already respawned a NEW
+instance would call `start()` on the stale, exited one and silently spawn
+a second, orphaned child process invisible to the singleton's pid/shutdown
+bookkeeping. Get a fresh client from `getPlaySidecarClient()` rather than
+reusing one that might have exited.
 
 ## Building
 
@@ -351,14 +364,14 @@ Contents/MacOS/Code Helper (Plugin)` (macOS) or the equivalent utility
   `.webkitAudioContext`.** `node-web-audio-api/polyfill.js` creates
   `globalThis.window` as a SEPARATE plain object (`globalThis.window = {}`,
   then copies each export onto it once) — `globalThis.window !==
-  globalThis`. A package whose own bundle reads `window.AudioContext ||
-  window.webkitAudioContext` (as `web-audio-daw`'s `src/common.js` does)
+globalThis`. A package whose own bundle reads `window.AudioContext ||
+window.webkitAudioContext` (as `web-audio-daw`'s `src/common.js` does)
   never sees a bare-`globalThis` patch at all, so it silently constructs
   its own second, genuinely separate real `AudioContext` instead of
   adopting the shared one. The symptom is exactly the "acks clean, plays
   nothing" failure mode this whole file is about, but louder: every
   `wad.play()` call threw `Attempting to connect nodes from different
-  contexts` (a native `InvalidAccessError`) the instant `plugEmIn` tried
+contexts` (a native `InvalidAccessError`) the instant `plugEmIn` tried
   to connect Wad's own internal chain to `player.ts`'s shared `gainNode`
   — caught by `commandHandler.ts`'s generic try/catch into a Nack nothing
   was listening for. This went undetected by e2e for a while because the

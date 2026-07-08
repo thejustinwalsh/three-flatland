@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PlaySidecarClient } from './client.js'
+import { PlaySidecarClient, PlaySidecarExitedError } from './client.js'
 
 const FAKE_SIDECAR = fileURLToPath(new URL('./__fixtures__/fakePlaySidecar.mjs', import.meta.url))
 
@@ -157,6 +157,54 @@ describe('PlaySidecarClient', () => {
     expect((errors[0] as Error & { code?: string }).code).toBe('TONE_LOADING')
   })
 
+  it('playToneSynthAwaitable() resolves { ok: true } once the sidecar Acks THIS call', async () => {
+    client = spawnFake()
+    const result = await client.playToneSynthAwaitable({
+      synthType: 'Synth',
+      note: 'C4',
+      duration: '8n',
+    })
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('playToneSynthAwaitable() resolves ok:false (not a rejection) when the sidecar Nacks, carrying the code', async () => {
+    client = spawnFake()
+    const result = await client.playToneSynthAwaitable({
+      synthType: 'Synth',
+      note: '__COLD_START_TEST__',
+      duration: '8n',
+    })
+    expect(result).toEqual({
+      ok: false,
+      error: 'Tone.js is still loading — try again in a moment',
+      code: 'TONE_LOADING',
+    })
+  })
+
+  it('concurrent playToneSynthAwaitable() calls are serialized — each caller gets its OWN correlated response, never a swapped one (#57 Fix 1)', async () => {
+    // The bug this guards against: content-based correlation (the next
+    // cmd:'playToneSynth' response line, no request id) is only sound for
+    // ONE in-flight call at a time — same reasoning as getStats()'s
+    // concurrent-serialization test above. Firing a normal call and a
+    // cold-start-Nack call "concurrently" (Promise.all) must still pair
+    // each with its OWN response, not cross-talk.
+    client = spawnFake()
+    const [normal, coldStart] = await Promise.all([
+      client.playToneSynthAwaitable({ synthType: 'Synth', note: 'C4', duration: '8n' }),
+      client.playToneSynthAwaitable({
+        synthType: 'Synth',
+        note: '__COLD_START_TEST__',
+        duration: '8n',
+      }),
+    ])
+    expect(normal).toEqual({ ok: true })
+    expect(coldStart).toEqual({
+      ok: false,
+      error: 'Tone.js is still loading — try again in a moment',
+      code: 'TONE_LOADING',
+    })
+  })
+
   it('onExit fires with the exit code/signal, and returns an unsubscribe function', async () => {
     client = spawnFake()
     const exits: Array<{ code: number | null; signal: NodeJS.Signals | null }> = []
@@ -188,6 +236,29 @@ describe('PlaySidecarClient', () => {
     const startedAt = Date.now()
     await client.shutdown(200)
     expect(Date.now() - startedAt).toBeLessThan(2000) // proves it didn't wait forever
+    expect(client.isRunning).toBe(false)
+  })
+
+  it('once exited, this instance never silently respawns — start()/play()/getStats() throw PlaySidecarExitedError instead', async () => {
+    client = spawnFake()
+    client.play([1, 0, 440])
+    await vi.waitFor(() => expect(client!.isRunning).toBe(true))
+    expect(client.isExited).toBe(false)
+
+    await client.shutdown()
+    expect(client.isExited).toBe(true)
+    expect(client.isRunning).toBe(false)
+
+    // Every entry point that calls start() internally must refuse to
+    // spawn a replacement child from this now-permanently-exited instance
+    // — a caller that still holds this reference (e.g. a stale watcher
+    // closure) must get a clean failure, not a silent orphan process.
+    expect(() => client!.start()).toThrow(PlaySidecarExitedError)
+    expect(() => client!.play([1, 0, 220])).toThrow(PlaySidecarExitedError)
+    await expect(client!.getStats()).rejects.toThrow(PlaySidecarExitedError)
+
+    // No new process was spawned by any of the above.
+    expect(client.pid).toBeUndefined()
     expect(client.isRunning).toBe(false)
   })
 

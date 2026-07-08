@@ -1,4 +1,4 @@
-export { PlaySidecarClient, type PlaySidecarOptions } from './client.js'
+export { PlaySidecarClient, PlaySidecarExitedError, type PlaySidecarOptions } from './client.js'
 export type {
   Ack,
   Channel,
