@@ -18,7 +18,7 @@ import type { MaterialEffect } from '../../materials/MaterialEffect'
 import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
-import { getOrCreateRun, findOrCreateBatch } from '../batchUtils'
+import { computeRunKey, getOrCreateRun, findOrCreateBatch } from '../batchUtils'
 import { ENTITY_ID_MASK } from '../snapshot'
 
 /**
@@ -32,9 +32,10 @@ import { ENTITY_ID_MASK } from '../snapshot'
  * a slot, and sets the InBatch relation with slot data. Also performs
  * a one-time full buffer sync from trait state.
  *
- * Closes over its own `Added` subscription + `dirtyMeshes` scratch Set
- * so multiple SpriteGroups don't share Koota change-tracking state and
- * the Set is cleared-and-reused instead of allocated per frame.
+ * Closes over its own `Added` subscription + `dirtyMeshes`/`pendingCounts`
+ * scratch collections so multiple SpriteGroups don't share Koota
+ * change-tracking state and the collections are cleared-and-reused
+ * instead of allocated per frame.
  */
 export function createBatchAssignSystem(): (
   world: World,
@@ -42,6 +43,7 @@ export function createBatchAssignSystem(): (
 ) => boolean {
   const Added = createAdded()
   const dirtyMeshes = new Set<SpriteBatch>()
+  const pendingCounts = new Map<string, number>()
 
   return function batchAssignSystem(
     world: World,
@@ -56,6 +58,22 @@ export function createBatchAssignSystem(): (
     if (!registry) return false
 
     dirtyMeshes.clear()
+
+    // Precompute how many pending sprites share each run in this pass —
+    // a bulk prime (thousands of sprites added in one shot) sizes its
+    // first batch for that load instead of the ladder's bottom tier. See
+    // resolveBatchSize/findOrCreateBatch.
+    pendingCounts.clear()
+    for (const entity of added) {
+      const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+      if (!sprite) continue
+      const layerData = entity.get(SortLayer)
+      const matRef = entity.get(SpriteMaterialRef)
+      if (!layerData || !matRef) continue
+      const layersMask = entity.get(CameraLayersMask)?.mask ?? sprite.layers.mask
+      const key = computeRunKey(layerData.value, matRef.materialId, layersMask)
+      pendingCounts.set(key, (pendingCounts.get(key) ?? 0) + 1)
+    }
 
     for (const entity of added) {
       const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
@@ -76,6 +94,7 @@ export function createBatchAssignSystem(): (
       }
 
       // Find or create the run for this (sortLayer, materialId, layers.mask)
+      const runKey = computeRunKey(layerData.value, matRef.materialId, layersMask)
       const { run } = getOrCreateRun(
         registry,
         layerData.value,
@@ -85,7 +104,8 @@ export function createBatchAssignSystem(): (
       )
 
       // Find or create a batch with free slots
-      const batchEntity = findOrCreateBatch(world, registry, run)
+      const pendingCount = pendingCounts.get(runKey) ?? 0
+      const batchEntity = findOrCreateBatch(world, registry, run, pendingCount)
       const batchMesh = batchEntity.get(BatchMesh)
       if (!batchMesh?.mesh) continue
       const mesh = batchMesh.mesh

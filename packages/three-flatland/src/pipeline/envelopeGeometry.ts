@@ -22,7 +22,8 @@ export function buildEnvelopeGeometry(texture: Texture | null): BufferGeometry |
 
   const points: [number, number][] = []
   for (const frame of atlas.frames) {
-    const mesh = frame.mesh!
+    if (!frame.mesh) continue
+    const mesh = frame.mesh
     for (let i = 0; i < mesh.vertexCount; i++) {
       points.push([mesh.verts[i * 4 + 0]!, mesh.verts[i * 4 + 1]!])
     }

@@ -25,7 +25,7 @@
  *   TLV section*  WIRE_SECTION.BIN — raw bytes per extracted binary,
  *                 in marker order
  */
-import type { DebugMessage } from '../debug-protocol'
+import { providerChannelName, type DebugMessage } from '../debug-protocol'
 import {
   BUS_TYPE,
   FrameReader,
@@ -314,12 +314,18 @@ export function createProviderRemoteBridge(options: ProviderBridgeOptions): Remo
   const onSocketMessage = (ev: MessageEvent): void => {
     const data = ev.data as ArrayBuffer
     if (!(data instanceof ArrayBuffer)) return
-    const { message } = decodeDebugMessage(data)
-    if (!isConsumerToProvider(message.type)) return
-    // provider:query belongs on discovery; everything else on data.
-    markFromWire(message)
-    if (message.type === 'provider:query') discoveryTap.postMessage(message)
-    else dataTap.postMessage(message)
+    try {
+      const { message } = decodeDebugMessage(data)
+      if (!isConsumerToProvider(message.type)) return
+      // provider:query belongs on discovery; everything else on data.
+      markFromWire(message)
+      if (message.type === 'provider:query') discoveryTap.postMessage(message)
+      else dataTap.postMessage(message)
+    } catch {
+      // A truncated or invalid frame must drop, not throw out of the
+      // socket 'message' handler and take remote debugging down for this
+      // page/process.
+    }
   }
   socket.addEventListener('message', onSocketMessage as never)
 
@@ -393,9 +399,23 @@ export function createConsumerRemoteBridge(options: ConsumerBridgeOptions): Remo
     if (disposed) return
     const data = ev.data as ArrayBuffer
     if (!(data instanceof ArrayBuffer)) return
-    const { message, channelName } = decodeDebugMessage(data)
-    if (!isProviderToConsumer(message.type)) return
-    openChannel(channelName).postMessage(markFromWire(message))
+    try {
+      const { message, channelName } = decodeDebugMessage(data)
+      if (!isProviderToConsumer(message.type)) return
+      // Eagerly open the announcing provider's data channel (name derived
+      // from its id, matching DevtoolsProvider's providerChannelName). A
+      // consumer subscribe that lands before the provider's first frame
+      // then has a channel to ride, instead of sitting unseen until the
+      // first provider→consumer frame lazily opens it below.
+      if (message.type === 'provider:announce') {
+        const id = (message.payload as { identity?: { id?: string } })?.identity?.id
+        if (id) openChannel(providerChannelName(id))
+      }
+      openChannel(channelName).postMessage(markFromWire(message))
+    } catch {
+      // Drop malformed/truncated frames rather than throw out of the
+      // socket 'message' handler and kill remote debugging.
+    }
   }
   socket.addEventListener('message', onSocketMessage as never)
 
