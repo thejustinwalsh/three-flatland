@@ -3,14 +3,20 @@ import type { PlaybackStats } from '@three-flatland/zzfx-play'
 export type ActiveSource = { findingId: string; sourceUri: string }
 
 /**
- * The extension-side "which finding's sound is playing right now" record
- * behind the single Play⇄Stop toggle lens (#46). At most one — the
- * sidecar replaces rather than stacks (see zzfx-play's commandHandler.ts)
- * — so this is one field plus a token guard: async watchers capture a
- * token at set() time, and a late clear() from a watcher that outlived
- * its own playback is a no-op if anything newer took over in between.
- * `onDidChange` fires on every real transition (a set, or a clear that
- * actually cleared) — register.ts wires it to the CodeLens refresh.
+ * The extension-side "which finding's sound is playing right now" record —
+ * NOT used to drive lens rendering (every playable kind shows a static
+ * Play+Stop pair, per the stakeholder reversal of #46's single toggling
+ * lens). What it tracks now is the source-editor-tab-binding feature
+ * (register.ts): a playing sound belongs to its source document, so
+ * switching away from or closing that document's tab stops it. At most one
+ * active source — the sidecar replaces rather than stacks (see
+ * zzfx-play's commandHandler.ts) — so this is one field plus a token
+ * guard: async watchers capture a token at set() time, and a late clear()
+ * from a watcher that outlived its own playback is a no-op if anything
+ * newer took over in between. `onDidChange` is a no-op in production
+ * (register.ts passes `() => {}`) — re-rendering lenses on every play/stop
+ * would reintroduce the refresh-round-trip churn the toggle removal exists
+ * to avoid, for a state no lens face reads anymore.
  */
 export class ActivePlayback {
   private active: ActiveSource | undefined
@@ -20,10 +26,6 @@ export class ActivePlayback {
 
   get current(): ActiveSource | undefined {
     return this.active
-  }
-
-  isActive(findingId: string, sourceUri: string): boolean {
-    return this.active?.findingId === findingId && this.active?.sourceUri === sourceUri
   }
 
   /** True while the playback marked by `token` is still the active one. */

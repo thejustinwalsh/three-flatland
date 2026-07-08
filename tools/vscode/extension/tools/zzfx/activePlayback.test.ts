@@ -11,25 +11,22 @@ const stats = (playing: boolean): PlaybackStats => ({
 })
 
 describe('ActivePlayback', () => {
-  it('set marks the source active — isActive matches that exact finding+uri pair only', () => {
+  it('set marks the source active and fires onDidChange', () => {
     const onDidChange = vi.fn()
     const active = new ActivePlayback(onDidChange)
 
     active.set({ findingId: 'f1', sourceUri: 'file:///a.ts' })
 
-    expect(active.isActive('f1', 'file:///a.ts')).toBe(true)
-    expect(active.isActive('f2', 'file:///a.ts')).toBe(false)
-    expect(active.isActive('f1', 'file:///b.ts')).toBe(false)
+    expect(active.current).toEqual({ findingId: 'f1', sourceUri: 'file:///a.ts' })
     expect(onDidChange).toHaveBeenCalledTimes(1)
   })
 
-  it('a new set replaces the previous active source — the prior lens reverts', () => {
+  it('a new set replaces the previous active source', () => {
     const active = new ActivePlayback(vi.fn())
     active.set({ findingId: 'f1', sourceUri: 'file:///a.ts' })
     active.set({ findingId: 'f2', sourceUri: 'file:///a.ts' })
 
-    expect(active.isActive('f1', 'file:///a.ts')).toBe(false)
-    expect(active.isActive('f2', 'file:///a.ts')).toBe(true)
+    expect(active.current).toEqual({ findingId: 'f2', sourceUri: 'file:///a.ts' })
   })
 
   it('an unconditional clear clears and fires onDidChange; clearing nothing fires nothing', () => {
@@ -51,7 +48,7 @@ describe('ActivePlayback', () => {
     active.set({ findingId: 'f2', sourceUri: 'file:///a.ts' })
 
     expect(active.clear(first)).toBe(false)
-    expect(active.isActive('f2', 'file:///a.ts')).toBe(true)
+    expect(active.current).toEqual({ findingId: 'f2', sourceUri: 'file:///a.ts' })
   })
 })
 
@@ -78,7 +75,7 @@ describe('watchPlaybackEnd', () => {
     active.set({ findingId: 'f2', sourceUri: 'file:///a.ts' })
     await watcher
 
-    expect(active.isActive('f2', 'file:///a.ts')).toBe(true)
+    expect(active.current).toEqual({ findingId: 'f2', sourceUri: 'file:///a.ts' })
   })
 
   it('a play that never starts within the startup window clears — no dead ⏹ Stop lens', async () => {
