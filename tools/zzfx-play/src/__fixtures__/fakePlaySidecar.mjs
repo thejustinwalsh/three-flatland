@@ -14,6 +14,7 @@
 import * as readline from 'node:readline'
 
 const HANG_ON_SHUTDOWN = process.env.FAKE_PLAY_SIDECAR_HANG_ON_SHUTDOWN === '1'
+const STATS_ERROR = process.env.FAKE_PLAY_SIDECAR_STATS_ERROR === '1'
 
 function send(response) {
   process.stdout.write(`${JSON.stringify(response)}\n`)
@@ -50,6 +51,13 @@ rl.on('line', (line) => {
     case 'shutdown':
       send({ ok: true, cmd: 'shutdown' })
       if (!HANG_ON_SHUTDOWN) process.stdout.end(() => process.exit(0))
+      return
+    case 'stats':
+      if (STATS_ERROR) {
+        send({ ok: false, cmd: 'stats', error: 'analyser unavailable' })
+        return
+      }
+      send({ ok: true, cmd: 'stats', stats: { peak: 0.5, silent: false } })
       return
     default:
       process.stderr.write(`fakePlaySidecar: unknown cmd ${command.cmd}\n`)

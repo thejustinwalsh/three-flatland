@@ -9,11 +9,22 @@
 import { expect, test } from '../fixtures'
 
 const LITERAL_PARAMS = [0.5, 0, 300, 0, 0.02, 0.05, 1]
+// Long sustain/release (~2s total) so there's a comfortable window to poll
+// for stats mid-playback — LITERAL_PARAMS' ~70ms one-shot is far too short
+// to reliably land a query inside its audible window, especially against
+// a cold sidecar spawn (native module load included).
+const SUSTAINED_PARAMS = [0.5, 0, 300, 0, 1, 1, 1]
+
+type PlaybackStats = {
+  peak: number
+  silent: boolean
+}
 
 type ExtensionApi = {
   zzfxPlay: {
     getActivePid: () => number | undefined
     shutdown: () => Promise<void>
+    getStats: () => Promise<PlaybackStats | undefined>
   }
 }
 
@@ -107,5 +118,48 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
 
     expect(result.pid).toBeGreaterThan(0)
     expect(result.aliveAfterShutdown).toBe(false)
+  })
+
+  // Z12 regression guard: node-web-audio-api's getChannelData() returns a
+  // detached copy, so writing samples into it (the pre-fix code path)
+  // acked clean and spawned a real process, but never actually reached
+  // the output — dead silent, with nothing in the previous three specs
+  // above able to detect it. This drives the real sidecar end-to-end and
+  // asserts real, nonzero audio via the AnalyserNode-backed `stats`
+  // command, so a regression back to the get-then-mutate pattern fails
+  // this test instead of shipping silently.
+  //
+  // Polls rather than sleeping a fixed delay: the prior spec shut the
+  // sidecar down, so this test's `play` has to cold-spawn a fresh
+  // process — native module load included — before audio starts
+  // rendering at all, and that startup time isn't fixed.
+  test('playing a sound actually reaches the output — not just an ack — per the stats AnalyserNode tap', async ({
+    evaluateInVSCode,
+  }) => {
+    const stats = await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+        const api = ext!.exports as ExtensionApi
+
+        await vscode.commands.executeCommand('threeFlatland.zzfx.playParams', arg.params)
+
+        const deadline = Date.now() + 5000
+        let last: Awaited<ReturnType<typeof api.zzfxPlay.getStats>>
+        while (Date.now() < deadline) {
+          last = await api.zzfxPlay.getStats()
+          if (last && !last.silent) return last
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        }
+        return last
+      },
+      { params: SUSTAINED_PARAMS }
+    )
+
+    expect(stats).toBeDefined()
+    expect(stats!.silent).toBe(false)
+    expect(stats!.peak).toBeGreaterThan(0)
   })
 })

@@ -15,9 +15,16 @@
  * Importing the polyfill FIRST (before `zzfx`/`@zzfx-studio/zzfxm`) is
  * required: `zzfx`'s `ZZFX.audioContext = new AudioContext` runs at
  * *module load time*, so `AudioContext` must already be a real global by
- * then. Both packages run completely unmodified past this point — no
- * synth port, zero fidelity drift from what the studio webview (Web
- * Audio in a real browser context) produces.
+ * then.
+ *
+ * Synthesis stays real, unmodified upstream zzfx/zzfxm — `ZZFX.buildSamples`
+ * and `ZZFXM.build` are pure numeric waveform generation, no AudioContext
+ * touch at all, so calling them directly (instead of the `zzfx()`/`zzfxm()`
+ * convenience wrappers) is zero fidelity drift from what those packages
+ * produce. Only the OUTPUT step — samples into a playable buffer — is
+ * replaced, in `player.ts`, because `node-web-audio-api`'s `AudioBuffer`
+ * doesn't support the get-then-mutate pattern those wrappers rely on (see
+ * that file's doc comment for the root cause).
  *
  * The command state machine itself (song replacement, stop semantics)
  * lives in `commandHandler.ts`, injected with this real zzfx/zzfxm-backed
@@ -27,16 +34,19 @@
  */
 import 'node-web-audio-api/polyfill.js'
 import * as readline from 'node:readline'
-import { zzfx, ZZFX } from 'zzfx'
-import { zzfxm } from '@zzfx-studio/zzfxm'
+import { ZZFX } from 'zzfx'
+import { ZZFXM } from '@zzfx-studio/zzfxm'
 import type { Command, Response } from './protocol.js'
 import { createCommandHandler } from './commandHandler.js'
+import { getPlaybackStats, playSampleChannels } from './player.js'
 
 const handler = createCommandHandler({
   play: (params) => {
-    zzfx(...params)
+    playSampleChannels([ZZFX.buildSamples(...params)])
   },
-  playSong: (song) => zzfxm(song.instruments, song.patterns, song.sequence, song.bpm),
+  playSong: (song) =>
+    playSampleChannels(ZZFXM.build(song.instruments, song.patterns, song.sequence, song.bpm)),
+  getStats: () => getPlaybackStats(),
 })
 
 function send(response: Response): void {

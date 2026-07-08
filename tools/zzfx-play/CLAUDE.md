@@ -1,8 +1,11 @@
 # @three-flatland/zzfx-play
 
 > Agent-facing reference for the inline audio sidecar — real `AudioContext`
-> (via `node-web-audio-api`) driving `zzfx` one-shots and `@zzfx-studio/
-zzfxm` songs, both run completely unmodified.
+> (via `node-web-audio-api`) rendering `zzfx` one-shots and `@zzfx-studio/
+zzfxm` songs through unmodified upstream synthesis, with a custom
+> `copyToChannel`-based output path (`src/player.ts`) — see "Why synthesis
+> is unmodified but output isn't" below for why the naive `zzfx()`/
+> `zzfxm()` convenience calls don't actually work under `node-web-audio-api`.
 
 ## Why this exists
 
@@ -101,16 +104,24 @@ proofs passed.
 Unlike `@three-flatland/codelens-service` (LSP `Content-Length` framing,
 needed because it ships large source-file text payloads),
 `src/protocol.ts` is deliberately simple: one JSON object per line on
-stdin (commands) and stdout (responses), fire-and-forget — commands carry
-no `id`, responses aren't correlated back to a specific request. A caller
-that needs to know a `play`/`playSong` failed listens for an error
-response via `client.onError()`; there's nothing meaningful to return on
-success.
+stdin (commands) and stdout (responses), fire-and-forget for
+`play`/`playSong`/`stopSong`/`stop`/`shutdown` — commands carry no `id`,
+responses aren't correlated back to a specific request. A caller that
+needs to know a `play`/`playSong` failed listens for an error response via
+`client.onError()`; there's nothing meaningful to return on success.
+
+`stats` (see "Audibility regression guard" below) is the one exception —
+it exists purely to hand data back, so `client.ts`'s `getStats()`
+correlates its response by content (the next `cmd: 'stats'` line on
+stdout) rather than a formal request id, which is safe only because the
+sidecar processes stdin lines strictly sequentially (`sidecar.ts`'s
+`rl.on('line', ...)`) — responses can never arrive out of order relative
+to the commands that produced them.
 
 Commands: `play {params}` (one-shot), `playSong {song}` / `stopSong`
 (ZzFXM), `stop` (currently identical to `stopSong` — see the comment on
 `handleStop` in `commandHandler.ts` for why it's a separate command
-anyway), `shutdown`.
+anyway), `shutdown`, `stats` (audibility snapshot).
 
 The command state machine (song replacement, stop semantics, catching a
 backend error into a `Nack`) lives in `src/commandHandler.ts`, injected
@@ -119,20 +130,65 @@ one, `commandHandler.test.ts` supplies a fake one with no real audio at
 all. `sidecar.ts` itself is only stdin/stdout wiring + that one real
 backend.
 
-## `zzfx`/`zzfxm` run completely unmodified — how
+## Why synthesis is unmodified but output isn't
 
-`sidecar.ts` imports `node-web-audio-api/polyfill.js` **before** `zzfx`.
-This matters because `zzfx`'s `ZZFX.audioContext = new AudioContext` runs
-at _module load time_ (`node_modules/zzfx/ZzFX.js`) — `AudioContext` has
-to already be a real global by the time `zzfx` is imported, which the
-polyfill provides by `Object.assign(globalThis, webaudio)` (see
-`node-web-audio-api/polyfill.js`). Past that import ordering, both `zzfx`
-and `@zzfx-studio/zzfxm` are used exactly as published — no synth port, no
-API shims, zero fidelity drift from what the studio webview (real browser
-Web Audio) produces. `zzfxm()` itself calls `ZZFX.playSamples(...)`
-internally (see `@zzfx-studio/zzfxm`'s `dist/zzfxm.js`), so a song and a
-one-shot share the exact same underlying `AudioContext` — no dual-context
+**Root cause (proven by an A/B listening test):** `zzfx()`/`zzfxm()`'s
+internal output step, `ZZFX.playSamples` (`node_modules/zzfx/ZzFX.js`),
+writes samples via `buffer.getChannelData(i).set(channel)`. In a real
+browser, `getChannelData()` returns a **live view** into the
+`AudioBuffer`'s underlying storage — mutating it is exactly how the spec
+expects you to fill a buffer. `node-web-audio-api`'s `AudioBuffer`
+(`node_modules/node-web-audio-api/js/AudioBuffer.js`) returns whatever its
+native binding's `getChannelData()` hands back — a **detached copy**, not
+a live view. Writing samples into that copy never reaches the buffer that
+actually gets played: every sound "plays" cleanly (no error,
+`source.start()` runs, the sidecar acks) but is **dead silent**. Calling
+`zzfx()`/`zzfxm()` directly — the original Z9 implementation — hit this
+exactly, silently, with nothing in the process/lifecycle e2e specs able
+to detect it.
+
+**The fix (`src/player.ts`):** `AudioBuffer.copyToChannel(source,
+channelNumber, bufferOffset)` (same file) calls straight through to a
+native write-into-buffer call, not a get-then-mutate one, so it works
+correctly under `node-web-audio-api`. `player.ts`'s `playSampleChannels`
+is `ZZFX.playSamples`'s exact graph (buffer, source, gain, stereo pan,
+connect, start) rebuilt with `copyToChannel` in place of
+`getChannelData().set()`.
+
+**What stays unmodified:** everything upstream of that one substitution.
+`sidecar.ts` calls `ZZFX.buildSamples(...params)` (one-shots) and
+`ZZFXM.build(instruments, patterns, sequence, bpm)` (songs) directly —
+both are pure numeric waveform synthesis, no `AudioContext` touch at all,
+unmodified real `zzfx`/`@zzfx-studio/zzfxm` — then hands the resulting
+sample arrays to `player.ts`'s `playSampleChannels` for output. Zero
+fidelity drift from what those packages produce; only the "get already-
+synthesized samples into the actual audio output" step is owned locally,
+because it's the one step `node-web-audio-api` doesn't support the way
+`zzfx`/`zzfxm` expect.
+
+`sidecar.ts` still imports `node-web-audio-api/polyfill.js` **before**
+`zzfx` — `zzfx`'s `ZZFX.audioContext = new AudioContext` runs at _module
+load time_ (`node_modules/zzfx/ZzFX.js`), so `AudioContext` has to already
+be a real global by the time `zzfx` is imported (the polyfill provides
+this via `Object.assign(globalThis, webaudio)`). `player.ts` reuses that
+same `ZZFX.audioContext` for both one-shots and songs — no dual-context
 juggling needed.
+
+## Audibility regression guard (`stats`, `src/player.ts`)
+
+`player.ts` keeps a persistent `AnalyserNode` tap in the master output
+path (every `playSampleChannels` call's gain node routes through it on
+its way to `destination`). `getPlaybackStats()` reads the analyser's
+current time-domain window via `getFloatTimeDomainData` — an out-param
+"write real-time data into this array" call, the same reliable category
+as `copyToChannel`, not the buggy `getChannelData` pattern — and reduces
+it to `{ peak, silent }`. This is wired through the `stats` protocol
+command, `PlaySidecarClient.getStats()`, `playSidecarManager.ts`'s
+`getPlaySidecarStats()`, and `extension/index.ts`'s `ExtensionApi` so
+`tools/vscode/e2e/specs/zzfx-play.spec.ts` can play a sound through the
+real sidecar and assert real, nonzero output — the exact check that would
+have caught the `getChannelData()` silent-playback bug instead of letting
+it ship acking clean.
 
 ## Lifecycle — mirrors `sidecarManager.ts`
 
@@ -205,17 +261,32 @@ Contents/MacOS/Code Helper (Plugin)` (macOS) or the equivalent utility
 - Adding a new file under `src/` without adding it to `tsup.config.ts`'s
   `entry` array — same `bundle: false` gotcha as `codelens-service`, see
   its `CLAUDE.md`.
+- **Never call `zzfx()`/`zzfxm()` (or `ZZFX.play`/`ZZFX.playSamples`)
+  directly in `sidecar.ts`** — they end in `getChannelData().set()`,
+  which is a detached copy under `node-web-audio-api` and produces silent
+  audio that acks clean (see "Why synthesis is unmodified but output
+  isn't" above). Always go through `ZZFX.buildSamples`/`ZZFXM.build` +
+  `player.ts`'s `playSampleChannels`.
+- Trusting a `stats` result queried too early — `getPlaybackStats()`
+  reflects whatever the analyser's current window sees, so a query issued
+  before the sidecar has actually spawned (cold start includes native
+  module load) or before the sound has started rendering will correctly,
+  and unhelpfully, report silence. Poll for a bit rather than a single
+  fixed-delay check — see the Z12 e2e spec's polling loop.
 
 ## Reference
 
 - Sidecar entry (stdin/stdout wiring + the real backend): `src/sidecar.ts`.
   Command state machine (DI'd, unit-tested): `src/commandHandler.ts`.
-  Client: `src/client.ts`. Protocol: `src/protocol.ts`.
+  Output path + analyser tap (`playSampleChannels`, `getPlaybackStats`):
+  `src/player.ts`. Client: `src/client.ts`. Protocol: `src/protocol.ts`.
 - `zzfx` has no shipped `.d.ts` — `src/zzfx.d.ts` is copied from
   `tools/vscode/webview/zzfx/zzfx.d.ts`; keep in sync if the pinned `zzfx`
   version changes.
 - Extension-side wiring: `tools/vscode/extension/tools/zzfx/
-playSidecarManager.ts` (mirrors `sidecarManager.ts`), `register.ts`
-  (routes `threeFlatland.zzfx.playParams` here instead of a panel, with a
+playSidecarManager.ts` (mirrors `sidecarManager.ts`, exposes
+  `getPlaySidecarStats()`), `register.ts` (routes
+  `threeFlatland.zzfx.playParams` here instead of a panel, with a
   remote/spawn-failure fallback back to the panel path).
-- e2e coverage: `tools/vscode/e2e/specs/zzfx-play.spec.ts`.
+- e2e coverage, including the Z12 audibility regression guard:
+  `tools/vscode/e2e/specs/zzfx-play.spec.ts`.

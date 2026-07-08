@@ -1,6 +1,11 @@
 import * as vscode from 'vscode'
+import type { PlaybackStats } from '@three-flatland/zzfx-play'
 import { registerWasmTest } from './tools/_wasm-test/register'
-import { getActivePlaySidecarPid, shutdownPlaySidecar } from './tools/zzfx/playSidecarManager'
+import {
+  getActivePlaySidecarPid,
+  getPlaySidecarStats,
+  shutdownPlaySidecar,
+} from './tools/zzfx/playSidecarManager'
 import { activateTools, watchToolConfiguration } from './toolRegistry'
 import { getChannel, log } from './log'
 
@@ -10,15 +15,19 @@ import { getChannel, log } from './log'
  * mechanism the built-in Git extension uses to expose its `git.API`. Kept
  * intentionally small: a diagnostic surface for the zzfx-play sidecar
  * (real AudioContext, no webview panel — see `tools/zzfx-play/CLAUDE.md`),
- * not a general extensibility API. `getActivePid`/`shutdown` are exactly
- * the functions `playSidecarManager.ts` itself uses — `shutdown` is the
- * same call `context.subscriptions`' dispose handler makes on a real
- * deactivation, not a separate test-only path.
+ * not a general extensibility API. `getActivePid`/`shutdown`/`getStats`
+ * are exactly the functions `playSidecarManager.ts` itself uses —
+ * `shutdown` is the same call `context.subscriptions`' dispose handler
+ * makes on a real deactivation, not a separate test-only path. `getStats`
+ * is the audibility regression guard (see `tools/zzfx-play/src/player.ts`)
+ * — an e2e test drives it to prove a played sound actually reaches the
+ * output, not just that `play` acked clean.
  */
 export type ExtensionApi = {
   zzfxPlay: {
     getActivePid: () => number | undefined
     shutdown: () => Promise<void>
+    getStats: () => Promise<PlaybackStats | undefined>
   }
 }
 
@@ -38,6 +47,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     zzfxPlay: {
       getActivePid: getActivePlaySidecarPid,
       shutdown: shutdownPlaySidecar,
+      getStats: getPlaySidecarStats,
     },
   }
 }

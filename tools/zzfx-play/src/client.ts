@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import * as readline from 'node:readline'
-import type { Command, Response, Song } from './protocol.js'
+import type { Command, Nack, PlaybackStats, Response, Song, StatsAck } from './protocol.js'
 
 export type PlaySidecarOptions = {
   /** `process.execPath`, read from *inside* the extension host — see `sidecar.ts`'s header comment for why this must come from there, not be computed independently. */
@@ -101,6 +101,48 @@ export class PlaySidecarClient {
   stop(): void {
     if (!this.isRunning) return
     this.send({ cmd: 'stop' })
+  }
+
+  /**
+   * Queries the master output's `AnalyserNode` tap for real-time
+   * audibility — the regression guard for the "acks clean but never
+   * actually reaches the output" failure mode (see `protocol.ts`'s
+   * `PlaybackStats`). Spawns the sidecar on first call, like `play`/
+   * `playSong`. Unlike every other command here, `stats` genuinely needs
+   * its response observed rather than just its ack/nack, so this attaches
+   * a dedicated, self-removing `line` listener *before* sending — see
+   * `protocol.ts`'s doc comment for why content-filtering (the next
+   * `cmd: 'stats'` line) is a safe way to correlate it without a formal
+   * request id.
+   */
+  async getStats(): Promise<PlaybackStats> {
+    this.start()
+    if (!this.rl) {
+      throw new Error('zzfx-play: sidecar is not running')
+    }
+    const rl = this.rl
+
+    const responsePromise = new Promise<Nack | StatsAck>((resolve) => {
+      const onLine = (line: string): void => {
+        let parsed: Response
+        try {
+          parsed = JSON.parse(line) as Response
+        } catch {
+          return
+        }
+        if (parsed.cmd !== 'stats') return
+        rl.off('line', onLine)
+        resolve(parsed)
+      }
+      rl.on('line', onLine)
+    })
+
+    this.send({ cmd: 'stats' })
+    const response = await responsePromise
+    if (!response.ok) {
+      throw new Error(`zzfx-play: stats failed: ${response.error}`)
+    }
+    return response.stats
   }
 
   /** Graceful shutdown: sends `shutdown`, waits for real process exit, SIGKILLs after `timeoutMs` if it doesn't. No-op if never started. */

@@ -5,6 +5,7 @@ export default defineConfig({
     'src/index.ts',
     'src/client.ts',
     'src/commandHandler.ts',
+    'src/player.ts',
     'src/protocol.ts',
     'src/sidecar.ts',
   ],

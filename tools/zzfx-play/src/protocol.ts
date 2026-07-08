@@ -6,11 +6,16 @@
  * small parameter array or song object, never a large source-file payload
  * that would need byte-precise `Content-Length` framing.
  *
- * Fire-and-forget by design: commands carry no `id`, responses aren't
- * correlated back to a specific request. A caller that needs to know a
- * `play`/`playSong` actually started listens for an error response
- * (`client.onError`); there's nothing meaningful to return on success
- * beyond "it started."
+ * Fire-and-forget by design for `play`/`playSong`/`stopSong`/`stop`/
+ * `shutdown`: no `id`, no correlation, nothing meaningful to return
+ * beyond "it started" (a failure surfaces via `client.onError`). `stats`
+ * is the one exception — it exists purely to HAND BACK data (whether
+ * real audio is actually reaching the output), so it needs its response
+ * observed, not just its ack/nack. `client.ts`'s `getStats()` correlates
+ * it by content (the next `cmd: 'stats'` line on stdout) rather than a
+ * formal id — safe because the sidecar processes stdin lines strictly
+ * sequentially (see `sidecar.ts`'s `rl.on('line', ...)`), so responses
+ * are never reordered relative to the commands that produced them.
  */
 
 /** A single ZzFX sound's 21 (all-optional-but-first) synth parameters. */
@@ -34,6 +39,8 @@ export type StopSongCommand = { cmd: 'stopSong' }
 /** Stops everything currently audible (today: equivalent to `stopSong` — one-shots have no persistent handle to interrupt mid-flight, see commandHandler.ts). */
 export type StopCommand = { cmd: 'stop' }
 export type ShutdownCommand = { cmd: 'shutdown' }
+/** Audibility regression guard — see `PlaybackStats`. */
+export type StatsCommand = { cmd: 'stats' }
 
 export type Command =
   | PlayCommand
@@ -41,7 +48,26 @@ export type Command =
   | StopSongCommand
   | StopCommand
   | ShutdownCommand
+  | StatsCommand
 
-export type Ack = { ok: true; cmd: Command['cmd'] }
+/**
+ * A snapshot of what the master output's `AnalyserNode` tap is seeing
+ * RIGHT NOW — the regression guard for the "everything acks clean but
+ * the buffer never actually reached the output" failure mode (see
+ * `player.ts`'s doc comment). Meaningful only while something is
+ * actually playing; query it shortly after a `play`/`playSong`, while
+ * the sound's release/sustain window is still open.
+ */
+export type PlaybackStats = {
+  /** Peak absolute sample value across the analyser's current
+   * time-domain window, 0..1. */
+  peak: number
+  /** `true` when `peak` is at-or-below floating-point noise — i.e.
+   * nothing audible is actually reaching the output right now. */
+  silent: boolean
+}
+
+export type Ack = { ok: true; cmd: Exclude<Command['cmd'], 'stats'> }
 export type Nack = { ok: false; cmd: Command['cmd']; error: string }
-export type Response = Ack | Nack
+export type StatsAck = { ok: true; cmd: 'stats'; stats: PlaybackStats }
+export type Response = Ack | Nack | StatsAck

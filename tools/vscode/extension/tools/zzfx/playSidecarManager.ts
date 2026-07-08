@@ -7,7 +7,7 @@
 // that's just an inline-playback convenience.
 import * as fs from 'node:fs'
 import * as vscode from 'vscode'
-import { PlaySidecarClient } from '@three-flatland/zzfx-play'
+import { PlaySidecarClient, type PlaybackStats } from '@three-flatland/zzfx-play'
 import { log } from '../../log'
 
 let client: PlaySidecarClient | undefined
@@ -76,6 +76,17 @@ function resolveSidecarPath(context: vscode.ExtensionContext): string | null {
 /** The currently running sidecar's OS process id, or `undefined` if none is spawned. Diagnostic surface — see `extension/index.ts`'s `activate()` return value. */
 export function getActivePlaySidecarPid(): number | undefined {
   return client?.pid
+}
+
+/**
+ * The audibility regression guard's extension-side entry point — `undefined`
+ * if no sidecar is currently running (nothing to query), never spawns one
+ * just to ask. See `@three-flatland/zzfx-play`'s `PlaySidecarClient.getStats`
+ * for what's actually being measured.
+ */
+export async function getPlaySidecarStats(): Promise<PlaybackStats | undefined> {
+  if (!client) return undefined
+  return client.getStats()
 }
 
 /** Graceful shutdown, called from the extension's `deactivate()`. */

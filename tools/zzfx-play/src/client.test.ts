@@ -69,6 +69,18 @@ describe('PlaySidecarClient', () => {
     expect(client.isRunning).toBe(false)
   })
 
+  it('getStats() spawns lazily and resolves with the sidecar-reported PlaybackStats', async () => {
+    client = spawnFake()
+    const stats = await client.getStats()
+    expect(stats).toEqual({ peak: 0.5, silent: false })
+    expect(client.isRunning).toBe(true)
+  })
+
+  it('getStats() rejects when the sidecar Nacks the stats query', async () => {
+    client = spawnFake({ ...process.env, FAKE_PLAY_SIDECAR_STATS_ERROR: '1' })
+    await expect(client.getStats()).rejects.toThrow(/analyser unavailable/)
+  })
+
   it('onError fires when the sidecar responds with a Nack', async () => {
     client = spawnFake()
     const errors: Error[] = []

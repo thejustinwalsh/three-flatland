@@ -1,4 +1,4 @@
-import type { Command, Response, Song } from './protocol.js'
+import type { Command, PlaybackStats, Response, Song } from './protocol.js'
 
 /**
  * The audio-producing half of a command, injected so the state machine
@@ -7,11 +7,15 @@ import type { Command, Response, Song } from './protocol.js'
  * `zzfx`/`@zzfx-studio/zzfxm` implementation, tests supply a fake one.
  * `playSong` returns anything with a `.stop()` — the real implementation
  * returns an `AudioBufferSourceNode` (see `zzfxm()`'s return type), a
- * fake just needs to match that one method.
+ * fake just needs to match that one method. `getStats` is the
+ * audibility regression guard (see `protocol.ts`'s `PlaybackStats`) —
+ * synchronous because it's just reading whatever the analyser tap
+ * currently sees, no async work involved.
  */
 export type AudioBackend = {
   play(params: number[]): void
   playSong(song: Song): { stop(): void }
+  getStats(): PlaybackStats
 }
 
 export type CommandHandler = {
@@ -72,6 +76,8 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
           return { ok: true, cmd: 'stop' }
         case 'shutdown':
           return { ok: true, cmd: 'shutdown' }
+        case 'stats':
+          return { ok: true, cmd: 'stats', stats: backend.getStats() }
       }
     } catch (err) {
       return {

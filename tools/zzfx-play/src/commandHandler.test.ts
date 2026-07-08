@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createCommandHandler, type AudioBackend } from './commandHandler.js'
-import type { Song } from './protocol.js'
+import type { PlaybackStats, Song } from './protocol.js'
 
 const SONG: Song = {
   instruments: [[1, 0, 220]],
@@ -9,7 +9,9 @@ const SONG: Song = {
   bpm: 120,
 }
 
-function fakeBackend(): AudioBackend & {
+const SILENT_STATS: PlaybackStats = { peak: 0, silent: true }
+
+function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
   playCalls: number[][]
   playSongCalls: Song[]
   songHandles: { stop: ReturnType<typeof vi.fn> }[]
@@ -30,6 +32,7 @@ function fakeBackend(): AudioBackend & {
       songHandles.push(handle)
       return handle
     },
+    getStats: () => stats,
   }
 }
 
@@ -112,6 +115,7 @@ describe('createCommandHandler', () => {
         throw new Error('boom')
       },
       playSong: () => ({ stop: vi.fn() }),
+      getStats: () => SILENT_STATS,
     })
     const response = handler.handleCommand({ cmd: 'play', params: [1] })
     expect(response).toEqual({ ok: false, cmd: 'play', error: 'boom' })
@@ -126,6 +130,7 @@ describe('createCommandHandler', () => {
         if (shouldThrow) throw new Error('song failed')
         return backend.playSong(song)
       },
+      getStats: backend.getStats,
     }
     const handler = createCommandHandler(throwing)
     handler.handleCommand({ cmd: 'playSong', song: SONG })
@@ -143,5 +148,30 @@ describe('createCommandHandler', () => {
     const stopSongResponse = handler.handleCommand({ cmd: 'stopSong' })
     expect(stopSongResponse).toEqual({ ok: true, cmd: 'stopSong' })
     expect(firstHandle.stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('stats returns the backend-reported PlaybackStats verbatim', () => {
+    const audible: PlaybackStats = { peak: 0.42, silent: false }
+    const handler = createCommandHandler(fakeBackend(audible))
+    const response = handler.handleCommand({ cmd: 'stats' })
+    expect(response).toEqual({ ok: true, cmd: 'stats', stats: audible })
+  })
+
+  it('stats reflects a silent backend the same way — no play() call needed to ask', () => {
+    const handler = createCommandHandler(fakeBackend(SILENT_STATS))
+    const response = handler.handleCommand({ cmd: 'stats' })
+    expect(response).toEqual({ ok: true, cmd: 'stats', stats: SILENT_STATS })
+  })
+
+  it('a backend that throws on getStats() produces a Nack, not an uncaught exception', () => {
+    const handler = createCommandHandler({
+      play: vi.fn(),
+      playSong: () => ({ stop: vi.fn() }),
+      getStats: () => {
+        throw new Error('analyser unavailable')
+      },
+    })
+    const response = handler.handleCommand({ cmd: 'stats' })
+    expect(response).toEqual({ ok: false, cmd: 'stats', error: 'analyser unavailable' })
   })
 })
