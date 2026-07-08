@@ -33,6 +33,7 @@ import * as vscode from 'vscode'
 import type { CodelensServiceClient, Finding } from '@three-flatland/codelens-service'
 import { log } from '../../log'
 import { resolveParams } from './resolveParams'
+import { rangeFromWire } from './wireRange'
 import type { AudioFileLensState, AudioFileResolver } from './audioFileResolver'
 
 /** Tier 1 glob equivalent as a VS Code language selector — the sidecar
@@ -47,15 +48,6 @@ export const ZZFX_DOCUMENT_SELECTOR: vscode.DocumentSelector = [
 
 const DIDCHANGE_DEBOUNCE_MS = 350
 const REFRESH_DEBOUNCE_MS = 250
-
-function toVscodeRange(range: Finding['range']): vscode.Range {
-  return new vscode.Range(
-    range.start.line,
-    range.start.character,
-    range.end.line,
-    range.end.character
-  )
-}
 
 /** Carries the finding + which lens variant this is — resolveCodeLens reads
  * these back off the instance VS Code hands it. zzfx.call gets play/edit;
@@ -134,7 +126,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
     const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? sourceDir
 
     for (const finding of findings) {
-      const range = toVscodeRange(finding.range)
+      const range = rangeFromWire(finding.range)
       switch (finding.kind) {
         case 'zzfx.call':
           lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri))

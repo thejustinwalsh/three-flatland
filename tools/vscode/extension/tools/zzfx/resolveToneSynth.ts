@@ -11,17 +11,9 @@
 import * as vscode from 'vscode'
 import type { Finding } from '@three-flatland/codelens-service'
 import { parseToneSynthArgsText, type ResolvedToneSynth } from './toneSynthResolver'
+import { rangeFromWire } from './wireRange'
 
 export type ToneSynthFinding = Extract<Finding, { kind: 'tone.synth' }>
-
-function rangeFromWire(range: Finding['range']): vscode.Range {
-  return new vscode.Range(
-    range.start.line,
-    range.start.character,
-    range.end.line,
-    range.end.character
-  )
-}
 
 /**
  * Reads the source text at `finding.payload.argRange` (the

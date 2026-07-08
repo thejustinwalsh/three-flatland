@@ -8,17 +8,9 @@
 import * as vscode from 'vscode'
 import type { Finding } from '@three-flatland/codelens-service'
 import { parseWadSynthLiteralText, type ResolvedWadSynth } from './wadSynthResolver'
+import { rangeFromWire } from './wireRange'
 
 export type WadSynthFinding = Extract<Finding, { kind: 'wad.synth' }>
-
-function rangeFromWire(range: Finding['range']): vscode.Range {
-  return new vscode.Range(
-    range.start.line,
-    range.start.character,
-    range.end.line,
-    range.end.character
-  )
-}
 
 /**
  * Reads the source text for `finding` (the declaration's value for a

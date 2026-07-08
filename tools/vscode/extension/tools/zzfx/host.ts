@@ -14,6 +14,8 @@ import { getPlaybackVolumeMultiplier, PLAYBACK_VOLUME_SETTING } from './playback
 import { PRESET_LIBRARY } from './lm/core'
 import { ZzfxLmService } from './lm/service'
 import { isNumberArrayLiteralText, resolveParams } from './resolveParams'
+import { getSidecarClient } from './sidecarManager'
+import { rangeFromWire } from './wireRange'
 
 const TOOL = 'zzfx'
 
@@ -117,15 +119,6 @@ async function resolveFindingForSave(
 }
 
 type ZzfxCallFinding = Extract<Finding, { kind: 'zzfx.call' }>
-
-function rangeFromWire(range: Finding['range']): vscode.Range {
-  return new vscode.Range(
-    range.start.line,
-    range.start.character,
-    range.end.line,
-    range.end.character
-  )
-}
 
 export async function openZzfxEditorPanel(
   context: vscode.ExtensionContext,
@@ -272,7 +265,19 @@ export async function openZzfxEditorPanel(
   })
 
   bridge.on<ZzfxSavePayload>('zzfx/save', async ({ findingId: fid, params }) => {
-    const current = await resolveFindingForSave(client, uri, fid)
+    // Fetch the CURRENT sidecar client rather than closing over `client`
+    // (the panel-open-time value) — if the codelens-service sidecar
+    // crashed and respawned while this panel stayed open (sidecarManager.ts
+    // nulls the singleton on exit; the next getSidecarClient() call gets a
+    // fresh one), the captured `client` is permanently exited and every
+    // call on it rejects. Save is long-lived (fires arbitrarily later, not
+    // just at open time), so it must always resolve against whatever
+    // client is live right now.
+    const liveClient = await getSidecarClient(context)
+    if (!liveClient) {
+      throw new Error('FL ZzFX: sidecar unavailable — cannot save right now.')
+    }
+    const current = await resolveFindingForSave(liveClient, uri, fid)
     if (!current) {
       throw new Error(
         'This zzfx() call could not be found — the source may have changed since the panel opened.'
@@ -353,8 +358,16 @@ export async function openZzfxEditorPanel(
     // play routes): the link's whole job is "take me there". A var-ref
     // with a readable declaration reveals the DECLARATION with the
     // initializer selected — that's what Save writes to; everything else
-    // reveals the call site with the call selected.
-    const current = await resolveFinding(client, uri, findingId)
+    // reveals the call site with the call selected. Fetch the CURRENT
+    // sidecar client, same reasoning as zzfx/save above — this handler is
+    // long-lived and must not stay bound to a client that exited and
+    // respawned since the panel opened. A resolve failure (sidecar still
+    // unavailable) falls through to the open-time snapshot below, same as
+    // a genuine "finding not found" — reveal is navigation, not a
+    // correctness-critical write, so a stale-ish reveal beats an error
+    // toast here too.
+    const liveClient = await getSidecarClient(context)
+    const current = liveClient ? await resolveFinding(liveClient, uri, findingId) : undefined
     if (current) {
       const varRef = current.finding.payload.varRef
       if (varRef?.defUri && varRef.defRange) {

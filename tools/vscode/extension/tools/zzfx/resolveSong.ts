@@ -9,17 +9,9 @@
 import * as vscode from 'vscode'
 import type { Finding } from '@three-flatland/codelens-service'
 import { parseSongLiteralText, type ResolvedSong } from './songResolver'
+import { rangeFromWire } from './wireRange'
 
 export type ZzfxmSongFinding = Extract<Finding, { kind: 'zzfxm.song' }>
-
-function rangeFromWire(range: Finding['range']): vscode.Range {
-  return new vscode.Range(
-    range.start.line,
-    range.start.character,
-    range.end.line,
-    range.end.character
-  )
-}
 
 /**
  * Reads the source text for `finding` (the declaration's value for a
