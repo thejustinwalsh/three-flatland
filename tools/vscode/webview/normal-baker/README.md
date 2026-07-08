@@ -74,8 +74,8 @@ type SavePayload = {
    * `region.strength ?? descriptor.strength ?? DEFAULT_STRENGTH` (same
    * for `bump`), and the CLI's `--strength`/`--bump` flags write
    * directly onto the descriptor object (packages/normals/src/cli.ts).
-   * So both already live in `descriptor`, and this webview's Defaults
-   * panel edits them there. Keeping `options` in the contract shape
+   * So both already live in `descriptor`, and this webview's Inspector
+   * (defaults view) edits them there. Keeping `options` in the contract shape
    * anyway for stability/extensibility even though it's empty today.
    */
   options: Record<string, never>
@@ -93,6 +93,7 @@ omitted (inherited) when the user never wrote to it in the first place.
 `version` is always stamped `1`.
 
 The host is expected to:
+
 1. Validate the incoming descriptor with `@three-flatland/schemas/normal-descriptor` (defense in depth — the webview already only ever produces well-formed shapes, but the host is the trust boundary).
 2. Bake `<source>.normal.png` via `packages/bake`/`packages/normals` (Node-side — `@three-flatland/normals/node`) and write `<source>.normal.json`.
 
@@ -121,23 +122,32 @@ patterns: custom editor vs ad-hoc command" for that decision).
   interaction — select / drag-move / resize-handles / draw-new-rect /
   grid-snap via `snapStep`). See "Reused as-is vs. composed locally"
   below for exactly what `RectOverlay` does and doesn't provide.
+- **Sidebar layout** — Regions (list, top) / Info (inspector + preview,
+  bottom) split with a draggable, persisted `Splitter` (encode's
+  adjustable Compare|Info idiom). The Info sub-areas are store-controlled
+  `Collapsible`s (`InfoSection.tsx`, encode's InfoSection shape). While
+  grid mode is active (toolbar "Grid Slice" toggle) the Info panel swaps
+  to the Grid & Split tool panel (Atlas's mode-driven sub-tool idiom) and
+  returns to the inspector on exit.
 - **Region list** — `RegionListPanel.tsx`. Selection is bidirectional
   with the canvas (`selectedIds` lives in the Zustand store); reorder is
   ▲/▼ buttons per row (not drag-and-drop — see note below).
-- **Region properties** — `RegionPropertiesPanel.tsx`. x/y/w/h
-  (`NumberField`), direction (`DirectionCompass.tsx`, local 9-way + flat
-  picker), pitch/elevation (`Slider.tsx`, local horizontal-track
-  primitive), strength (`NumberField`), bump source (`CompactSelect`,
-  full `NormalBump` enum — alpha/luminance/red/green/blue/none — not just
-  the CLI's alpha/none subset, since the descriptor type and baker
-  support all six). Every field the user touches here is written back
-  explicitly, even if it currently equals the descriptor default — see
-  `fieldResolution.ts`'s module doc.
-- **Defaults** — `DefaultsPanel.tsx`. Descriptor-level direction, pitch,
-  elevation, strength, bump. (Elevation wasn't explicitly named in the
-  original spec's Defaults-panel bullet, but `descriptor.elevation` is a
-  real inheritable field per `descriptor.ts` — omitting its editor would
-  have been a gap, so it's included alongside the others.)
+- **Inspector** — `Inspector.tsx`, one selection-aware panel. Exactly one
+  region selected → edit THAT region: x/y/w/h (`NumberField`), direction
+  (`DirectionCompass.tsx`, local 9-way + flat picker), pitch/elevation
+  (`Slider.tsx`, local horizontal-track primitive), strength
+  (`NumberField`), bump source (`CompactSelect`, full `NormalBump` enum —
+  alpha/luminance/red/green/blue/none — not just the CLI's alpha/none
+  subset, since the descriptor type and baker support all six), with a
+  per-field reset-to-inherited button on every overridable field. Every
+  field the user touches is written back explicitly, even if it currently
+  equals the descriptor default — see `fieldResolution.ts`'s module doc.
+  Nothing selected → edit the descriptor-level defaults every region
+  inherits (direction, pitch, elevation, strength, bump — elevation
+  wasn't explicitly named in the original spec's Defaults bullet, but
+  `descriptor.elevation` is a real inheritable field per `descriptor.ts`,
+  so it's included). Multi-selection edits neither (bulk region edit and
+  defaults edit would look identical — a hint says how to disambiguate).
 - **Live preview** — `LivePreviewPanel.tsx`. Two canvases: the baked
   normal map (direct `bakeNormalMap()` call from `@three-flatland/normals`
   — see "Browser-safe bake math" below) and a lit composite driven by a
@@ -183,7 +193,7 @@ What that actually gets you, precisely (see `tools/preview/CLAUDE.md`):
 - **`RectOverlay` is single-color for every rect** — "No per-rect color or
   stroke prop." Region-by-direction coloring is therefore a second,
   non-interactive SVG layer (`RegionColorOverlay.tsx`) rendered
-  *underneath* `RectOverlay`, not a fork of it. `RectOverlay` still owns
+  _underneath_ `RectOverlay`, not a fork of it. `RectOverlay` still owns
   100% of the pointer interaction; its selection chrome draws on top of
   the color fills.
 - **"Marquee-select" in the brief's wording ≈ `RectOverlay`'s actual
@@ -212,19 +222,20 @@ What that actually gets you, precisely (see `tools/preview/CLAUDE.md`):
 
 ## Files
 
-| File | What |
-|---|---|
-| `App.tsx` | Root component — bridge handshake, layout, CanvasStage wiring |
-| `main.tsx` / `index.html` | Boot shell (copied from atlas/merge's pattern) |
-| `normalBakerStore.ts` | Zustand + zundo store — regions, defaults, selection, undo |
-| `regionOps.ts` / `regionOps.test.ts` | Region add/remove/reorder/replace reducers (pure) |
-| `direction.ts` / `direction.test.ts` | Direction → hue/color mapping, compass-cell resolution (pure) |
-| `fieldResolution.ts` / `fieldResolution.test.ts` | Region-vs-descriptor field resolve for display (pure) |
-| `descriptorIO.ts` / `descriptorIO.test.ts` | Descriptor ⇄ store-state conversion, incl. round-trip tests (pure) |
-| `preview.ts` / `preview.test.ts` | Bake wrapper + lit-composite Lambert math + light rig (pure) |
-| `sliderMath.ts` / `sliderMath.test.ts` | Slider drag/click/step math (pure — split out so importing it doesn't need the StyleX transform) |
-| `DirectionCompass.tsx` | 9-way + flat direction picker |
-| `Slider.tsx` | Horizontal drag-track numeric input |
-| `RegionColorOverlay.tsx` | Non-interactive direction-tinted region fills |
-| `RegionListPanel.tsx` / `RegionPropertiesPanel.tsx` / `DefaultsPanel.tsx` / `LivePreviewPanel.tsx` | Sidebar panels |
-| `fixtures.ts` | Standalone dev-mode fixture (embedded, not imported by path) |
+| File                                                                                    | What                                                                                             |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `App.tsx`                                                                               | Root component — bridge handshake, layout, CanvasStage wiring                                    |
+| `main.tsx` / `index.html`                                                               | Boot shell (copied from atlas/merge's pattern)                                                   |
+| `normalBakerStore.ts`                                                                   | Zustand + zundo store — regions, defaults, selection, undo                                       |
+| `regionOps.ts` / `regionOps.test.ts`                                                    | Region add/remove/reorder/replace reducers (pure)                                                |
+| `direction.ts` / `direction.test.ts`                                                    | Direction → hue/color mapping, compass-cell resolution (pure)                                    |
+| `fieldResolution.ts` / `fieldResolution.test.ts`                                        | Region-vs-descriptor field resolve for display (pure)                                            |
+| `descriptorIO.ts` / `descriptorIO.test.ts`                                              | Descriptor ⇄ store-state conversion, incl. round-trip tests (pure)                               |
+| `preview.ts` / `preview.test.ts`                                                        | Bake wrapper + lit-composite Lambert math + light rig (pure)                                     |
+| `sliderMath.ts` / `sliderMath.test.ts`                                                  | Slider drag/click/step math (pure — split out so importing it doesn't need the StyleX transform) |
+| `DirectionCompass.tsx`                                                                  | 9-way + flat direction picker                                                                    |
+| `Slider.tsx`                                                                            | Horizontal drag-track numeric input                                                              |
+| `RegionColorOverlay.tsx`                                                                | Non-interactive direction-tinted region fills                                                    |
+| `RegionListPanel.tsx` / `Inspector.tsx` / `LivePreviewPanel.tsx` / `GridSlicePanel.tsx` | Sidebar panels — Regions list, selection-aware inspector, live preview, grid-mode tool panel     |
+| `InfoSection.tsx`                                                                       | Store-controlled `Collapsible` wrapper for the Info sub-areas                                    |
+| `fixtures.ts`                                                                           | Standalone dev-mode fixture (embedded, not imported by path)                                     |

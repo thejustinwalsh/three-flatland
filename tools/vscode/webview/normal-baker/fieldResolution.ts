@@ -26,7 +26,7 @@ import {
 // descriptor default was later changed to `'north'`, that region's
 // direction would silently flip to `'north'` too, even though the user
 // never touched it after their original explicit choice. Explicit means
-// explicit — `RegionPropertiesPanel.tsx`'s `commit()` and
+// explicit — `Inspector.tsx`'s `commit()` and
 // `descriptorIO.ts`'s `stateToDescriptor()` now write back exactly what
 // the store holds, no default-comparison stripping. A field only stays
 // omitted (inherited) when the user never wrote to it in the first place
@@ -68,7 +68,7 @@ export function isFieldOverridden(region: NormalRegion, field: OverridableField)
  * legitimate way a field goes from explicit to omitted post-load. Not
  * automatic, not triggered by a value happening to equal the default
  * (see this module's top doc comment) — only a direct user action
- * (`RegionPropertiesPanel.tsx`'s per-field reset button) calls this.
+ * (`Inspector.tsx`'s per-field reset button) calls this.
  */
 export function clearRegionField(region: NormalRegion, field: OverridableField): NormalRegion {
   const next = { ...region }

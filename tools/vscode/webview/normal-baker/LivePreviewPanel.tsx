@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { Panel } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import type { NormalSourceDescriptor } from '@three-flatland/normals'
@@ -64,17 +63,19 @@ const s = stylex.create({
     imageRendering: 'pixelated',
   },
   empty: {
+    padding: space.lg,
     color: vscode.descriptionFg,
     fontSize: '12px',
   },
 })
 
-export type LivePreviewPanelProps = {
+export type LivePreviewProps = {
   imageData: ImageData | null
   descriptor: NormalSourceDescriptor
 }
 
-export function LivePreviewPanel({ imageData, descriptor }: LivePreviewPanelProps) {
+/** Body-only content — App hosts it inside the Info panel's Preview collapsible. */
+export function LivePreview({ imageData, descriptor }: LivePreviewProps) {
   const reducedMotion = usePrefersReducedMotion()
   const normalCanvasRef = useRef<HTMLCanvasElement>(null)
   const litCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -136,26 +137,23 @@ export function LivePreviewPanel({ imageData, descriptor }: LivePreviewPanelProp
     return () => cancelAnimationFrame(raf)
   }, [baked, reducedMotion])
 
+  if (!imageData) {
+    return <div {...stylex.props(s.empty)}>Waiting for source image…</div>
+  }
   return (
-    <Panel title="Preview" bodyOverflow="visible">
-      {!imageData ? (
-        <div {...stylex.props(s.empty)}>Waiting for source image…</div>
-      ) : (
-        <div {...stylex.props(s.body)}>
-          <div {...stylex.props(s.slot)}>
-            <span {...stylex.props(s.label)}>Normal map</span>
-            <div {...stylex.props(s.canvasWrap)}>
-              <canvas ref={normalCanvasRef} {...stylex.props(s.canvas)} />
-            </div>
-          </div>
-          <div {...stylex.props(s.slot)}>
-            <span {...stylex.props(s.label)}>Lit (rotating light)</span>
-            <div {...stylex.props(s.canvasWrap)}>
-              <canvas ref={litCanvasRef} {...stylex.props(s.canvas)} />
-            </div>
-          </div>
+    <div {...stylex.props(s.body)}>
+      <div {...stylex.props(s.slot)}>
+        <span {...stylex.props(s.label)}>Normal map</span>
+        <div {...stylex.props(s.canvasWrap)}>
+          <canvas ref={normalCanvasRef} {...stylex.props(s.canvas)} />
         </div>
-      )}
-    </Panel>
+      </div>
+      <div {...stylex.props(s.slot)}>
+        <span {...stylex.props(s.label)}>Lit (rotating light)</span>
+        <div {...stylex.props(s.canvasWrap)}>
+          <canvas ref={litCanvasRef} {...stylex.props(s.canvas)} />
+        </div>
+      </div>
+    </div>
   )
 }
