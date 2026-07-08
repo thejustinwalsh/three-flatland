@@ -174,5 +174,33 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
       sineFinding,
       "new Wad({source: 'sine'}) is synthesis mode, not a file reference — must NOT be a finding"
     ).toBeUndefined()
+
+    // Expanded Wad coverage (#44), the TS twin of golden.rs's block: the
+    // depth-agnostic scanner reaches Wad's other file-referencing shapes
+    // (reverb impulse two levels down, the SoundIterator files array) with
+    // no Wad-specific code, and the full synthesis vocabulary stays out.
+    for (const [wadCase, wadPath] of [
+      ['convolution reverb impulse ({reverb:{impulse}})', 'ir.wav'],
+      ['SoundIterator files array', 'riff.mp3'],
+    ] as const) {
+      const found = result.findings.find(
+        (f) => f.kind === 'audio.file' && f.payload.path === wadPath
+      )
+      expect(found, `golden.ts must still reference ${wadPath} via Wad's ${wadCase}`).toBeDefined()
+      if (found?.kind !== 'audio.file') throw new Error('expected audio.file')
+      const foundLine = goldenText.split('\n')[found.payload.pathRange.start.line]!
+      expect(
+        foundLine.slice(
+          found.payload.pathRange.start.character,
+          found.payload.pathRange.end.character
+        )
+      ).toBe(found.payload.path)
+    }
+    for (const synth of ['square', 'sawtooth', 'triangle', 'noise', 'mic']) {
+      expect(
+        result.findings.find((f) => f.kind === 'audio.file' && f.payload.path === synth),
+        `new Wad({source: '${synth}'}) is synthesis mode — must NOT be a finding`
+      ).toBeUndefined()
+    }
   })
 })

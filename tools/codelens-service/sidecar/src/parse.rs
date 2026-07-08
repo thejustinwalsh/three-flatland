@@ -929,6 +929,62 @@ mod tests {
     }
 
     #[test]
+    fn wad_reverb_impulse_two_levels_deep_is_a_finding() {
+        // Wad's convolution reverb references its impulse-response FILE two
+        // object levels down (`{reverb:{impulse:'ir.wav'}}`) — the generic
+        // depth-agnostic walk reaches it with no Wad-specific code, pinned
+        // here by name (same reasoning as the file-mode source test above).
+        let f = call("a.ts", "new Wad({reverb:{impulse:'ir.wav'}});");
+        assert_eq!(f.kind(), AUDIO_FILE_KIND);
+        assert_eq!(f.as_audio_file().unwrap().path, "ir.wav");
+    }
+
+    #[test]
+    fn wad_sound_iterator_files_array_reports_only_the_file_string() {
+        // `new Wad.SoundIterator({files:[...]})` mixes real file paths with
+        // inline `new Wad(...)` synthesis objects in one array. Exactly ONE
+        // finding: 'riff.mp3'. The inner `new Wad({source:'square'})` is
+        // synthesis (no audio extension) — its presence must not produce a
+        // finding nor swallow the sibling path's.
+        let src = "new Wad.SoundIterator({files:['riff.mp3', new Wad({source:'square'})]});";
+        let f = call("a.ts", src);
+        assert_eq!(f.kind(), AUDIO_FILE_KIND);
+        assert_eq!(f.as_audio_file().unwrap().path, "riff.mp3");
+        // Attribution: 'riff.mp3''s nearest enclosing call is the
+        // SoundIterator new-expression itself, not the inner new Wad.
+        assert_eq!(f.range.start.character, 0);
+        assert_eq!(f.range.end.character, (src.len() - 1) as u32);
+    }
+
+    #[test]
+    fn wad_every_synthesis_mode_source_is_not_a_finding() {
+        // The full synthesis vocabulary, not just 'sine' (pinned above):
+        // oscillator shapes, noise, and live mic input all name NO file.
+        for source in ["square", "sawtooth", "triangle", "noise", "mic"] {
+            let src = format!("new Wad({{source:'{source}'}});");
+            let f = findings("a.ts", &src);
+            assert!(f.is_empty(), "source:'{source}' must not be a finding");
+        }
+    }
+
+    #[test]
+    fn wad_sprite_segments_alone_are_not_findings() {
+        // An audio sprite maps names to [start, duration] SEGMENTS of the
+        // source — numbers, not separate files. Nothing here has an audio
+        // extension, so the sprite map alone contributes no finding.
+        let f = findings("a.ts", "new Wad({sprite:{hello:[0,0.4]}});");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn wad_preset_member_expression_is_not_a_finding() {
+        // `new Wad(Wad.presets.hiHatClosed)` — a member expression, no
+        // string literal anywhere in the arguments; no user file involved.
+        let f = findings("a.ts", "new Wad(Wad.presets.hiHatClosed);");
+        assert!(f.is_empty());
+    }
+
+    #[test]
     fn extension_matching_is_case_insensitive() {
         let f = call("a.ts", "new Audio('BOOM.MP3');");
         assert_eq!(f.as_audio_file().unwrap().path, "BOOM.MP3");

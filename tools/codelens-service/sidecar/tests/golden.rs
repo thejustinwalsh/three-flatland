@@ -285,6 +285,38 @@ fn document_parse_matches_the_golden_fixture_exactly() {
         "new Wad({{source: 'sine'}}) is synthesis mode, not a file reference — must NOT be a finding"
     );
 
+    // Expanded Wad coverage (#44) — the depth-agnostic scanner reaches
+    // Wad's OTHER file-referencing shapes with no Wad-specific code, and
+    // the full synthesis vocabulary stays out. Positives slice-proven like
+    // every audio.file above; negatives asserted by name, not just left
+    // to the full-array equality.
+    for (case, path) in [
+        ("convolution reverb impulse ({reverb:{impulse}})", "ir.wav"),
+        ("SoundIterator files array", "riff.mp3"),
+    ] {
+        let finding = actual_findings
+            .iter()
+            .find(|f| f.as_audio_file().is_some_and(|p| p.path == path))
+            .unwrap_or_else(|| panic!("golden.ts must still reference {path} via Wad's {case}"));
+        let payload = finding.as_audio_file().unwrap();
+        let lines: Vec<&str> = golden_ts.lines().collect();
+        let line = lines[payload.path_range.start.line as usize];
+        let sliced = &line[payload.path_range.start.character as usize
+            ..payload.path_range.end.character as usize];
+        assert_eq!(
+            sliced, payload.path,
+            "{case}'s pathRange must slice to exactly the path text, no quotes"
+        );
+    }
+    for synth in ["square", "sawtooth", "triangle", "noise", "mic"] {
+        assert!(
+            !actual_findings
+                .iter()
+                .any(|f| f.as_audio_file().is_some_and(|p| p.path == synth)),
+            "new Wad({{source: '{synth}'}}) is synthesis mode — must NOT be a finding"
+        );
+    }
+
     write_frame(
         &mut stdin,
         &serde_json::to_vec(&json!({"jsonrpc": "2.0", "id": 3, "method": "shutdown"})).unwrap(),

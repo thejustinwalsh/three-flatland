@@ -465,5 +465,67 @@
         "line": 74
       }
     }
+  },
+  {
+    "byteRange": {
+      "end": 3107,
+      "start": 3065
+    },
+    "id": "8081c3a9f03df9e7",
+    "kind": "audio.file",
+    "payload": {
+      "path": "ir.wav",
+      "pathRange": {
+        "end": {
+          "character": 38,
+          "line": 89
+        },
+        "start": {
+          "character": 32,
+          "line": 89
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 44,
+        "line": 89
+      },
+      "start": {
+        "character": 2,
+        "line": 89
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 3494,
+      "start": 3417
+    },
+    "id": "15b229e82fde5c0f",
+    "kind": "audio.file",
+    "payload": {
+      "path": "riff.mp3",
+      "pathRange": {
+        "end": {
+          "character": 43,
+          "line": 97
+        },
+        "start": {
+          "character": 35,
+          "line": 97
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 79,
+        "line": 97
+      },
+      "start": {
+        "character": 2,
+        "line": 97
+      }
+    }
   }
 ]

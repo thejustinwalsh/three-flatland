@@ -41,8 +41,22 @@ const LONG_MARCH_CALL_LINE = lineOf('zzfxm(longMarchSong)') // #43 long song, pl
 const JUMP_SFX_LINE = lineOf("audioLoader.load('sounds/jump.wav')") // workspace-root tier
 const CLICK_SFX_LINE = lineOf("new Howl({ src: ['click.wav'] })") // source-dir tier
 const EXPLOSION_SFX_LINE = lineOf("new Wad({ source: 'explosion.ogg' })") // public/ tier
+const REVERB_SFX_LINE = lineOf("reverb: { impulse: 'click.wav' }") // #44, 2-level nesting
 const THUNDER_SFX_LINE = lineOf("new Audio('thunder.ogg')") // slow-search tier only
 const MISSING_SFX_LINE = lineOf("new Audio('nonexistent-sound.mp3')") // → $(search) not found
+
+// #44's synthesis-vocabulary decoy block — every line must surface ZERO
+// lenses (no file involved: oscillator shapes, noise, mic, sprite
+// segments, a stock preset).
+const SYNTH_DECOY_LINES = [
+  "new Wad({ source: 'square' })",
+  "new Wad({ source: 'sawtooth' })",
+  "new Wad({ source: 'triangle' })",
+  "new Wad({ source: 'noise' })",
+  "new Wad({ source: 'mic' })",
+  'new Wad({ sprite: { hello: [0, 0.4] } })',
+  'new Wad(Wad.presets.hiHatClosed)',
+].map(lineOf)
 
 type LensCommand = { command: string; title: string; arguments?: unknown[] }
 type ResolvedLens = { range: { start: { line: number } }; command?: LensCommand }
@@ -202,14 +216,15 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       .filter((t): t is string => t !== null)
 
     // 2 zzfx.call findings (Play+Edit each) + 4 zzfxm.song findings
-    // (Play+Stop each — incl. #43's long song) + 4 RESOLVABLE audio.file
-    // findings (Play each — 3 fast tiers + thunder.ogg via the slow
-    // search) + playMissingSfx's `$(search) not found` informational
-    // lens. Every commented-out decoy must contribute ZERO lenses —
-    // proven by the exact total below, not just presence of the positive
-    // cases.
-    expect(lenses).toHaveLength(17)
-    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(10)
+    // (Play+Stop each — incl. #43's long song) + 5 RESOLVABLE audio.file
+    // findings (Play each — 3 fast tiers + #44's reverb impulse +
+    // thunder.ogg via the slow search) + playMissingSfx's
+    // `$(search) not found` informational lens. Every decoy — the
+    // commented-out ones AND #44's uncommented synthesis block — must
+    // contribute ZERO lenses, proven by the exact total below, not just
+    // presence of the positive cases.
+    expect(lenses).toHaveLength(18)
+    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(11)
     expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(4)
     expect(titles.filter((t) => t === '⚙ Edit')).toHaveLength(1)
     expect(titles.filter((t) => t === '⚙ Edit (variable)')).toHaveLength(1)
@@ -386,6 +401,32 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const playLens = lensAt(lenses, EXPLOSION_SFX_LINE, '▶ Play')
     expect(playLens?.command?.command).toBe('threeFlatland.zzfx.playFile')
     expect(String(playLens?.command?.arguments?.[0])).toMatch(/public[/\\]explosion\.ogg$/)
+  })
+
+  // #44 expanded Wad coverage: the convolution-reverb impulse (a file
+  // reference TWO object levels down — {reverb:{impulse}}) gets a ▶ Play
+  // lens with the resolved real path baked into its arguments, while the
+  // full synthesis vocabulary (square/sawtooth/triangle/noise/mic),
+  // sprite segments, and a stock preset — all uncommented, all live code
+  // — surface ZERO lenses, asserted per line, not just via the exact
+  // total above. Audibility for the click.wav path is already proven by
+  // the .wav playFile test (e2e rationing — one audibility proof per
+  // output path).
+  test("Wad reverb impulse (nested 2 levels) gets a resolved ▶ Play lens; Wad's synthesis modes get none", async ({
+    evaluateInVSCode,
+  }) => {
+    const lenses = await fetchSettledLenses(evaluateInVSCode)
+
+    const playLens = lensAt(lenses, REVERB_SFX_LINE, '▶ Play')
+    expect(playLens?.command?.command).toBe('threeFlatland.zzfx.playFile')
+    expect(String(playLens?.command?.arguments?.[0])).toMatch(/src[/\\]click\.wav$/)
+
+    for (const line of SYNTH_DECOY_LINES) {
+      expect(
+        lenses.filter((l) => l.range.start.line === line),
+        `synthesis decoy on fixture line ${line} must surface no lens`
+      ).toHaveLength(0)
+    }
   })
 
   // #43: the long song (7.680s — MEASURED from ZZFXM.build's sample

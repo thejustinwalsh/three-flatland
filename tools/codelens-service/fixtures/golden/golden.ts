@@ -82,3 +82,40 @@ export function playJump() {
 export function beep() {
   new Wad({ source: 'sine' }).play()
 }
+
+// audio.file — Wad convolution reverb: the impulse-response FILE sits two
+// object levels down ({ reverb: { impulse } }); the depth-agnostic walk
+// reaches it with no Wad-specific code. One finding: 'ir.wav'.
+export function playWithReverb() {
+  new Wad({ reverb: { impulse: 'ir.wav' } }).play()
+}
+
+// audio.file — Wad.SoundIterator's files array mixes a real path with an
+// inline synthesis Wad. Exactly ONE finding ('riff.mp3'), attributed to
+// the SoundIterator new-expression; the inner new Wad({source:'square'})
+// is synthesis and contributes nothing.
+export function playIterated() {
+  new Wad.SoundIterator({ files: ['riff.mp3', new Wad({ source: 'square' })] }).play()
+}
+
+// The REST of Wad's synthesis vocabulary — oscillator shapes, noise, live
+// mic input — all name no file; NOT findings, proven by the golden
+// full-array equality (same treatment as 'sine' above).
+export function synthVoices() {
+  new Wad({ source: 'sawtooth' }).play()
+  new Wad({ source: 'triangle' }).play()
+  new Wad({ source: 'noise' }).play()
+  new Wad({ source: 'mic' }).play()
+}
+
+// An audio sprite alone maps names to [start, duration] SEGMENTS of the
+// source — numbers, not files. NOT a finding.
+export function spriteOnly() {
+  new Wad({ sprite: { hello: [0, 0.4] } }).play()
+}
+
+// A stock preset via member expression — no string literal in the
+// arguments at all. NOT a finding.
+export function hiHat() {
+  new Wad(Wad.presets.hiHatClosed).play()
+}

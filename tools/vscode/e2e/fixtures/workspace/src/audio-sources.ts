@@ -14,7 +14,9 @@
 // songResolver.ts's file doc comment), and
 // audio.file (three.js/Howler/Wad, one real file per audioFileResolver.ts
 // FAST resolution tier, one slow-search-only file, one unresolvable path,
-// and commented-out decoys of every positive case).
+// commented-out decoys of every positive case, plus #44's expanded Wad
+// coverage: a convolution-reverb impulse positive and the full
+// synthesis-vocabulary decoy block that must surface ZERO lenses).
 //
 // Real .wav/.ogg files: sounds/jump.wav (workspace root),
 // public/explosion.ogg (public/), src/click.wav (this file's own
@@ -57,8 +59,13 @@ declare class Howl {
   play(): void
 }
 declare class Wad {
-  constructor(opts: { source: string })
+  constructor(opts: {
+    source?: string
+    reverb?: { impulse?: string }
+    sprite?: Record<string, [number, number]>
+  })
   play(): void
+  static presets: Record<string, ConstructorParameters<typeof Wad>[0]>
 }
 declare const audioLoader: { load: (path: string, onLoad?: () => void) => void }
 
@@ -151,6 +158,30 @@ export function playClickSfx() {
 // workspace root (no copy exists at the source dir or workspace root).
 export function playExplosionSfx() {
   new Wad({ source: 'explosion.ogg' }).play()
+}
+
+// Positive case (#44): audio.file via Wad's convolution reverb — the
+// impulse-response FILE sits two object levels down
+// ({ reverb: { impulse } }); the depth-agnostic scanner reaches it with
+// no Wad-specific code. Resolves via this file's OWN DIRECTORY
+// (click.wav, the same real .wav playClickSfx uses).
+export function playWithReverb() {
+  new Wad({ reverb: { impulse: 'click.wav' } }).play()
+}
+
+// Negative cases (#44): Wad's full synthesis vocabulary — oscillator
+// shapes, noise, live mic input — plus sprite segments (numbers, not
+// files) and a stock preset (member expression, no string). ZERO lenses
+// for this entire block, proven by the spec's exact-total assertion and
+// per-line checks.
+export function synthDecoys() {
+  new Wad({ source: 'square' }).play()
+  new Wad({ source: 'sawtooth' }).play()
+  new Wad({ source: 'triangle' }).play()
+  new Wad({ source: 'noise' }).play()
+  new Wad({ source: 'mic' }).play()
+  new Wad({ sprite: { hello: [0, 0.4] } }).play()
+  new Wad(Wad.presets.hiHatClosed).play()
 }
 
 // Positive case (slow tier): audio.file via bare Audio whose path misses
