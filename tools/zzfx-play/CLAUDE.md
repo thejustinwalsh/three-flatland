@@ -439,6 +439,70 @@ contexts` (a native `InvalidAccessError`) the instant `plugEmIn` tried
   "any package's `getChannelData()` usage running under this Electron
   binary," and a vendored dependency can hit it just as easily as our
   own code can.
+- **A DIFFERENT bug class from the `getChannelData` trap: `tone`'s
+  AudioWorklet-based instruments (`Tone.PluckSynth`'s internal
+  `LowpassCombFilter`) used to CRASH THE ENTIRE SIDECAR PROCESS** — not a
+  clean Nack, every other in-flight sound (zzfx, zzfxm, other synths) died
+  with it. Root cause, traced with a throwaway diagnostic constructing
+  `new Tone.PluckSynth()` against the real polyfilled context:
+  `standardized-audio-context` (a dependency of `tone`, NOT
+  `node-web-audio-api` — `Tone.setContext(ZZFX.audioContext)` doesn't touch
+  this path at all) computes its exported `AudioWorkletNode` once at import
+  time gated on `window.isSecureContext`
+  (`standardized-audio-context/src/factories/is-secure-context.ts`) — a
+  real browser-only property our shim `window` object (from
+  `node-web-audio-api/polyfill.js`) never sets, so it reads `undefined` and
+  the export permanently resolves to `undefined`
+  (`standardized-audio-context/build/es2019/module.js`:
+  `const audioWorkletNodeConstructor = isSecureContext ? … : undefined`).
+  `tone`'s own `ToneAudioWorklet` constructor
+  (`build/esm/core/worklet/ToneAudioWorklet.js`) calls
+  `context.addAudioWorkletModule(…).then(() => this.context.
+createAudioWorkletNode(…))`, and `createAudioWorkletNode`'s
+  `assert(isDefined(stdAudioWorkletNode), …)`
+  (`build/esm/core/context/AudioContext.js`) throws INSIDE that unawaited
+  `.then()` — an unhandled promise rejection Node treats as fatal. Fixed in
+  `sidecar.ts` (module scope, before `loadToneEngine`'s dynamic
+  `import('tone')` can ever resolve) with `window.isSecureContext = true`
+  — this sidecar is a trusted native process, not a web page, so there's
+  no real mixed-content state for that flag to guard. A SECOND, separate
+  throw was hiding behind the first: `tone`'s own `createAudioWorkletNode`
+  picks its constructor via `typeof self === "object" ? self : null`, and
+  `self` isn't a Node global at all — without it, `context instanceof
+theWindow.BaseAudioContext` throws again (`TypeError`, RHS of
+  `instanceof` not callable) the moment the assert stops blocking. Fixed
+  with `self ??= window`, which — since `node-web-audio-api`'s polyfill
+  already copies its own `BaseAudioContext`/`AudioWorkletNode` onto
+  `window` and `AudioContext extends BaseAudioContext`
+  (`node_modules/node-web-audio-api/js/AudioContext.js`) — routes `tone`
+  to construct a REAL native `AudioWorkletNode`, confirmed genuinely
+  audible (not just crash-free) under both plain Node and the real `Code
+  Helper (Plugin)` binary. If a Tone effect that goes through
+  `ToneAudioWorklet` gets added to the sidecar later (none of the other 8
+  allowlisted synth types do), it should work out of the box now — but
+  re-verify with the same "construct it, poll for real peak" diagnostic
+  rather than assuming.
+- **Investigated and ruled out (not currently a live bug, but worth
+  knowing about): `tone`'s `Context.getConstant(val)`
+  (`build/esm/core/context/Context.js`) has the SAME
+  `getChannelData()`-then-write shape as the noise-buffer bug above** —
+  it `createBuffer`s a 128-sample buffer, calls `getChannelData(0)`, and
+  fills it with `val` in a loop, so the write is silently lost under this
+  Electron binary and the buffer stays at its zero-initialized default.
+  The only path that reaches it from this sidecar's 9 allowlisted Tone
+  synth types is `DuoSynth`'s internal vibrato `LFO`, which only ever
+  constructs `new Zero({...})` → `getConstant(0)` — and `val === 0` is
+  exactly the buffer's already-correct default state, so the lost write
+  never changes the outcome (confirmed audible, real peak, via the same
+  diagnostic). `getConstant(1)` (used by `CrossFade`/`StereoWidener`,
+  neither reachable from any of the 9 allowlisted classes today) WOULD
+  actually manifest this bug. If Tone effects that use `CrossFade` or
+  `StereoWidener` — or anything else calling `getConstant` with a nonzero
+  value — ever get added to `ToneEngine`'s allowlist, check this before
+  trusting silence-free playback; the fix would follow the same
+  intercept-and-`copyToChannel` shape as `loadWadConstructor`'s noise-buffer
+  fix, just against `Tone.Context.prototype.getConstant` instead of a
+  single `createBuffer` call.
 - **Never call `zzfx()`/`zzfxm()` (or `ZZFX.play`/`ZZFX.playSamples`)
   directly in `sidecar.ts`** — they end in `getChannelData().set()`,
   which is a detached copy under `node-web-audio-api` and produces silent

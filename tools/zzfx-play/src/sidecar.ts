@@ -50,6 +50,53 @@ import {
   type WadConstructor,
 } from './player.js'
 
+// `tone`'s AudioWorklet-based nodes (`Tone.PluckSynth`'s internal
+// `LowpassCombFilter`) go through `standardized-audio-context`, a
+// dependency of `tone` itself, NOT through `node-web-audio-api` directly —
+// `Tone.setContext(ZZFX.audioContext)` doesn't change that. Traced
+// empirically (a throwaway diagnostic constructing `new Tone.PluckSynth()`
+// against the real polyfilled context): `standardized-audio-context`'s
+// `src/factories/window.ts` reads the bare `window` global (present here,
+// via the polyfill's `globalThis.window` shim) and `src/factories/
+// is-secure-context.ts` then reads `window.isSecureContext` — a real
+// browser-only property our shim `window` object never sets, so it's
+// `undefined`. That makes `standardized-audio-context`'s exported
+// `AudioWorkletNode` permanently `undefined` (`build/es2019/module.js`:
+// `const audioWorkletNodeConstructor = isSecureContext ? … : undefined`),
+// which crashes the ENTIRE sidecar process — not a clean Nack — the moment
+// any AudioWorklet-based Tone node gets constructed: `tone`'s own
+// `ToneAudioWorklet` constructor
+// (`build/esm/core/worklet/ToneAudioWorklet.js`) calls
+// `context.addAudioWorkletModule(…).then(() => this.context.
+// createAudioWorkletNode(…))`, and `createAudioWorkletNode`'s
+// `assert(isDefined(stdAudioWorkletNode), …)` (`build/esm/core/context/
+// AudioContext.js`) throws INSIDE that unawaited `.then()` — an unhandled
+// promise rejection Node treats as fatal, killing zzfx/zzfxm/every other
+// in-flight sound along with it, not just the one Tone call.
+//
+// Fix: `window.isSecureContext = true` — this environment (a trusted
+// native sidecar process, not a web page) has no real mixed-content/
+// same-origin concern for that flag to guard, so there's no meaningful
+// "insecure" state to preserve. Separately, `tone`'s OWN
+// `createAudioWorkletNode` (not `standardized-audio-context`'s) picks its
+// constructor via `typeof self === "object" ? self : null` — `self` isn't
+// a Node global at all, so without it `theWindow` is `null` and the
+// following `context instanceof theWindow.BaseAudioContext` throws a
+// SECOND, different `TypeError` (RHS of `instanceof` not callable).
+// `self = window` (the same object, mirroring how a real browser aliases
+// them) fixes that too, and — since `node-web-audio-api`'s polyfill copies
+// its own `BaseAudioContext`/`AudioWorkletNode` exports onto `window` and
+// `AudioContext extends BaseAudioContext`
+// (`node_modules/node-web-audio-api/js/AudioContext.js`) — routes Tone to
+// construct a REAL native `AudioWorkletNode`, confirmed genuinely audible
+// (not just crash-free) via the same diagnostic: a real peak reached the
+// analyser tap under both plain Node and the real `Code Helper (Plugin)`
+// binary. Must run before `tone`'s own first import (`loadToneEngine`
+// below) — placed here, at module scope, so it's set once, unconditionally,
+// before that dynamic import can ever resolve.
+globalThis.window.isSecureContext = true
+globalThis.self ??= globalThis.window
+
 // Defined before `handler` — the real `playFile` backend below closes
 // over this directly to report an async decode/read failure, since
 // `handleCommand` has already returned its synchronous "accepted" ack by
