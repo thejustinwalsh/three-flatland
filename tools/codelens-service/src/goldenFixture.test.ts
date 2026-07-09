@@ -89,7 +89,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     expect(
       result.findings,
       "golden.ts's total finding count changed — update this expectation (and sidecar/tests/golden.rs's matching one) together with any fixture edit"
-    ).toHaveLength(25)
+    ).toHaveLength(27)
 
     // The specific regression this fixture exists to prevent: a
     // type-annotated declarator's defRange must land INSIDE the
@@ -264,17 +264,19 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
       "{ source: 'noise' }"
     )
 
-    // tone.synth: three positives (playTone/Synth, playNoise/NoiseSynth,
-    // playChord/PolySynth+voiceType) and one negative (playDynamicNote's
-    // note comes from a parameter, not a literal — no varRef indirection
-    // here at all, unlike wad.synth, so an unresolvable note just means no
-    // finding). argRange slice-equality proven against the real source
-    // text, the TS twin of golden.rs's same block.
+    // tone.synth: five findings — playTone/Synth, playNoise/NoiseSynth,
+    // playChord/PolySynth+voiceType (all literal-note positives),
+    // playToneDynamicNote (a bare-identifier note resolving a varRef
+    // against its same-file `const dynamicNote = 'C4'`), and
+    // playDynamicNote (a bare-identifier note whose "declaration" is a
+    // function parameter — still a finding, permissive posture, just an
+    // UNRESOLVED varRef). argRange slice-equality proven against the real
+    // source text, the TS twin of golden.rs's same block.
     const toneSynthFindings = result.findings.filter((f) => f.kind === 'tone.synth')
     expect(
       toneSynthFindings,
-      'expected playTone (Synth), playNoise (NoiseSynth), and playChord (PolySynth+FMSynth voice) — 3 total tone.synth findings; playDynamicNote’s non-static note must NOT produce a finding'
-    ).toHaveLength(3)
+      'expected playTone (Synth), playNoise (NoiseSynth), playChord (PolySynth+FMSynth voice), playToneDynamicNote (Synth, resolved varRef), and playDynamicNote (Synth, unresolved varRef) — 5 total tone.synth findings'
+    ).toHaveLength(5)
 
     const goldenLines = goldenText.split('\n')
     const slice = (range: {
@@ -320,13 +322,57 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     expect(chordFinding.payload.voiceType).toBe('FMSynth')
     expect(slice(chordFinding.payload.argRange)).toBe("['C4', 'E4', 'G4'], '4n'")
 
-    // playDynamicNote's new Tone.Synth()...triggerAttackRelease(note, '8n')
-    // has the identical shape to playTone's Synth call, differing only in
-    // its non-static note — the fixed length(3) above already proves it
-    // isn't a 4th finding; assert this directly too.
+    // playToneDynamicNote and playDynamicNote both have the identical
+    // Tone.Synth() shape to playTone, differing only in whether/how their
+    // note resolves — three Synth-typed findings total now.
+    const synthTyped = toneSynthFindings.filter(
+      (f) => f.kind === 'tone.synth' && f.payload.synthType === 'Synth'
+    )
     expect(
-      toneSynthFindings.filter((f) => f.kind === 'tone.synth' && f.payload.synthType === 'Synth'),
-      'expected exactly one Synth-typed tone.synth finding (playTone) — playDynamicNote’s non-static note must not produce a second one'
-    ).toHaveLength(1)
+      synthTyped,
+      'expected three Synth-typed tone.synth findings: playTone (literal), playToneDynamicNote (resolved varRef), playDynamicNote (unresolved varRef)'
+    ).toHaveLength(3)
+
+    // playToneDynamicNote: bare-identifier note resolves a varRef against
+    // its same-file `const dynamicNote = 'C4'` declaration — same
+    // "past the declarator, at the initializer value" contract
+    // explosionPreset/laserSong/laserOsc already prove above.
+    const dynamicNoteFinding = synthTyped.find((f) => {
+      if (f.kind !== 'tone.synth') return false
+      return slice(f.payload.argRange).startsWith('dynamicNote,')
+    })
+    expect(
+      dynamicNoteFinding,
+      'golden.ts must still declare playToneDynamicNote’s triggerAttackRelease(dynamicNote, ...) call'
+    ).toBeDefined()
+    if (dynamicNoteFinding?.kind !== 'tone.synth') throw new Error('expected tone.synth')
+    const dynamicNoteVarRef = dynamicNoteFinding.payload.varRef
+    expect(dynamicNoteVarRef, 'expected a resolved varRef for dynamicNote').toBeDefined()
+    expect(dynamicNoteVarRef!.name).toBe('dynamicNote')
+    expect(
+      dynamicNoteVarRef!.defRange,
+      'dynamicNote has an initializer; defRange must be present'
+    ).toBeDefined()
+    expect(slice(dynamicNoteVarRef!.defRange!)).toBe("'C4'")
+
+    // playDynamicNote: bare-identifier note whose "declaration" is a
+    // function parameter, not a top-level const/let/var — find_declarator
+    // correctly does not match it, so the varRef is present but
+    // UNRESOLVED (defUri/defRange both absent), same shape
+    // wad.synth's unresolved-declaration case already proves.
+    const unresolvedNoteFinding = synthTyped.find((f) => {
+      if (f.kind !== 'tone.synth') return false
+      return slice(f.payload.argRange).startsWith('note,')
+    })
+    expect(
+      unresolvedNoteFinding,
+      'golden.ts must still declare playDynamicNote’s triggerAttackRelease(note, ...) call'
+    ).toBeDefined()
+    if (unresolvedNoteFinding?.kind !== 'tone.synth') throw new Error('expected tone.synth')
+    const unresolvedVarRef = unresolvedNoteFinding.payload.varRef
+    expect(unresolvedVarRef, 'expected a varRef object even though it cannot resolve').toBeDefined()
+    expect(unresolvedVarRef!.name).toBe('note')
+    expect(unresolvedVarRef!.defUri).toBeUndefined()
+    expect(unresolvedVarRef!.defRange).toBeUndefined()
   })
 })

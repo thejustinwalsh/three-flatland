@@ -837,5 +837,84 @@
         "line": 168
       }
     }
+  },
+  {
+    "byteRange": {
+      "end": 7119,
+      "start": 7047
+    },
+    "id": "2aebebbb877c9831",
+    "kind": "tone.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 73,
+          "line": 179
+        },
+        "start": {
+          "character": 56,
+          "line": 179
+        }
+      },
+      "synthType": "Synth",
+      "varRef": {
+        "defRange": {
+          "end": {
+            "character": 24,
+            "line": 176
+          },
+          "start": {
+            "character": 20,
+            "line": 176
+          }
+        },
+        "defUri": "file:///golden.ts",
+        "name": "dynamicNote"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 74,
+        "line": 179
+      },
+      "start": {
+        "character": 2,
+        "line": 179
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 7634,
+      "start": 7569
+    },
+    "id": "103d95b07cea7cac",
+    "kind": "tone.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 66,
+          "line": 189
+        },
+        "start": {
+          "character": 56,
+          "line": 189
+        }
+      },
+      "synthType": "Synth",
+      "varRef": {
+        "name": "note"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 67,
+        "line": 189
+      },
+      "start": {
+        "character": 2,
+        "line": 189
+      }
+    }
   }
 ]

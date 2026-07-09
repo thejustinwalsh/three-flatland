@@ -169,10 +169,23 @@ export function playChord() {
   new Tone.PolySynth(Tone.FMSynth).toDestination().triggerAttackRelease(['C4', 'E4', 'G4'], '4n')
 }
 
-// tone.synth negative — the note comes from a parameter, not a static
-// literal. Detection here is fully-static-or-nothing (no varRef
-// indirection at all, unlike wad.synth's permissive posture) — an
-// unresolvable note just means no finding, full stop.
+// tone.synth — a bare-identifier note resolves a varRef against its
+// same-file declaration, same permissive posture zzfx/zzfxm/wad.synth
+// already take for a bare-identifier argument (duration stays
+// literal-only — see extract_tone_synth's doc comment for the exact
+// split).
+const dynamicNote = 'C4'
+
+export function playToneDynamicNote() {
+  new Tone.Synth().toDestination().triggerAttackRelease(dynamicNote, '8n')
+}
+
+// tone.synth — the note comes from a function parameter, not a top-level
+// declaration `find_declarator` can resolve. Still emits a finding with a
+// varRef (permissive posture), just an UNRESOLVED one (defUri/defRange
+// both absent) — the scanner can't know the parameter's runtime value, so
+// it defers to the client the same way an unresolvable wad.synth/zzfxm
+// varRef already does.
 export function playDynamicNote(note: string) {
   new Tone.Synth().toDestination().triggerAttackRelease(note, '8n')
 }

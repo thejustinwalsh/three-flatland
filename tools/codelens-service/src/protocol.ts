@@ -76,15 +76,17 @@ export interface WadSynthPayload {
 }
 
 /**
- * No pre-extracted note/duration, and no `varRef` field at all: unlike
- * `WadSynthPayload`'s permissive bare-identifier posture, a non-literal
- * note/duration/chord argument to `triggerAttackRelease` means the WHOLE
- * finding is refused at the sidecar level (no finding), so there is never
- * an unresolved reference for a client to chase — the client only ever
- * reads `argRange`'s text for an already-static call. `synthType`/
- * `voiceType` ARE pre-classified (unlike `params`/config elsewhere) since
- * validating the constructor chain requires descending through the whole
- * call chain, which is naturally the sidecar's job, not the client's.
+ * No pre-extracted note/duration text: the client reads `argRange`'s
+ * source text itself and parses it. `duration`/`time`/`velocity` stay
+ * fully-static-or-nothing (a non-literal there refuses the whole finding
+ * at the sidecar level — nothing for a client to chase there). The
+ * note/chord argument additionally accepts `WadSynthPayload`'s permissive
+ * bare-identifier posture: a var-ref there resolves via `varRef` instead
+ * of refusing the finding — see `varRef`'s own doc comment below.
+ * `synthType`/`voiceType` ARE pre-classified (unlike `params`/config
+ * elsewhere) since validating the constructor chain requires descending
+ * through the whole call chain, which is naturally the sidecar's job, not
+ * the client's.
  */
 export interface ToneSynthPayload {
   /** One of 9 allowlisted Tone.js synth constructor names. */
@@ -92,6 +94,14 @@ export interface ToneSynthPayload {
   /** `PolySynth`'s explicit voice class, itself one of the 9 allowlisted names. */
   voiceType?: string
   argRange: Range
+  /**
+   * Set only when the note/chord argument (position 0) is a bare
+   * identifier rather than a literal — absent for `NoiseSynth` (no note
+   * argument exists) and for every literal-note finding. `duration` stays
+   * literal-only regardless (a non-literal there refuses the whole
+   * finding), so this is the only var-ref slot on this payload.
+   */
+  varRef?: VarRef
 }
 
 interface FindingBase {

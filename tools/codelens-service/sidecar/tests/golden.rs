@@ -138,7 +138,7 @@ fn document_parse_matches_the_golden_fixture_exactly() {
     );
     assert_eq!(
         actual_findings.len(),
-        25,
+        27,
         "golden.ts's total finding count changed — update this expectation (and \
          src/goldenFixture.test.ts's matching one) together with any fixture edit"
     );
@@ -408,22 +408,24 @@ fn document_parse_matches_the_golden_fixture_exactly() {
         "the inner new Wad(...)'s byte_range must start after the outer SoundIterator call's opening"
     );
 
-    // tone.synth: three positives (playTone/Synth, playNoise/NoiseSynth,
-    // playChord/PolySynth+voiceType) and one negative (playDynamicNote's
-    // note comes from a parameter, not a literal — no varRef indirection
-    // here at all, unlike wad.synth, so an unresolvable note just means no
-    // finding). argRange slice-equality proven against the real source
-    // text, same discipline as every other kind above.
+    // tone.synth: five findings — playTone/Synth, playNoise/NoiseSynth,
+    // playChord/PolySynth+voiceType (all literal-note positives),
+    // playToneDynamicNote (bare-identifier note resolving a varRef against
+    // its same-file `const dynamicNote = 'C4'`), and playDynamicNote
+    // (bare-identifier note whose "declaration" is a function parameter —
+    // still a finding, permissive posture, just an UNRESOLVED varRef).
+    // argRange slice-equality proven against the real source text, same
+    // discipline as every other kind above.
     let tone_synth_findings: Vec<_> = actual_findings
         .iter()
         .filter(|f| f.kind() == TONE_SYNTH_KIND)
         .collect();
     assert_eq!(
         tone_synth_findings.len(),
-        3,
-        "expected playTone (Synth), playNoise (NoiseSynth), and playChord (PolySynth+FMSynth \
-         voice) — 3 total tone.synth findings; playDynamicNote's non-static note must NOT \
-         produce a finding"
+        5,
+        "expected playTone (Synth), playNoise (NoiseSynth), playChord (PolySynth+FMSynth voice), \
+         playToneDynamicNote (Synth, resolved varRef), and playDynamicNote (Synth, unresolved \
+         varRef) — 5 total tone.synth findings"
     );
 
     let lines: Vec<&str> = golden_ts.lines().collect();
@@ -434,11 +436,11 @@ fn document_parse_matches_the_golden_fixture_exactly() {
 
     let tone_finding = tone_synth_findings
         .iter()
-        .find(|f| f.as_tone_synth().unwrap().synth_type == "Synth")
+        .find(|f| slice(f.as_tone_synth().unwrap().arg_range) == "'C4', '8n'")
         .expect("golden.ts must still declare playTone's new Tone.Synth() call");
     let tone_payload = tone_finding.as_tone_synth().unwrap();
     assert!(tone_payload.voice_type.is_none());
-    assert_eq!(slice(tone_payload.arg_range), "'C4', '8n'");
+    assert!(tone_payload.var_ref.is_none());
 
     let noise_finding = tone_synth_findings
         .iter()
@@ -455,27 +457,70 @@ fn document_parse_matches_the_golden_fixture_exactly() {
     assert_eq!(chord_payload.voice_type.as_deref(), Some("FMSynth"));
     assert_eq!(slice(chord_payload.arg_range), "['C4', 'E4', 'G4'], '4n'");
 
-    // playDynamicNote's finding range covers the whole chain (constructor
-    // through the trigger call), same "whole expression" precedent
-    // wad.synth's own range test pins.
+    // playTone's finding range covers the whole chain (constructor through
+    // the trigger call), same "whole expression" precedent wad.synth's own
+    // range test pins.
     assert_eq!(
         slice(tone_finding.range),
         "new Tone.Synth().toDestination().triggerAttackRelease('C4', '8n')"
     );
 
-    // playDynamicNote's `new Tone.Synth()...triggerAttackRelease(note, '8n')`
-    // has the identical shape to playTone's Synth call, differing only in
-    // its non-static note — the fixed count above already proves it isn't
-    // a 4th finding, but assert this directly too: exactly ONE Synth-typed
-    // finding total (playTone's), not two.
+    // playToneDynamicNote: bare-identifier note resolves a varRef against
+    // its same-file `const dynamicNote = 'C4'` declaration — same
+    // "past the declarator, at the initializer value" contract
+    // explosionPreset/laserSong/laserOsc already prove elsewhere in this
+    // file.
+    let dynamic_note_finding = tone_synth_findings
+        .iter()
+        .find(|f| slice(f.as_tone_synth().unwrap().arg_range).starts_with("dynamicNote,"))
+        .expect(
+            "golden.ts must still declare playToneDynamicNote's triggerAttackRelease(dynamicNote, ...) call",
+        );
+    let dynamic_note_var_ref = dynamic_note_finding
+        .as_tone_synth()
+        .unwrap()
+        .var_ref
+        .as_ref()
+        .expect("expected a resolved varRef for dynamicNote");
+    assert_eq!(dynamic_note_var_ref.name, "dynamicNote");
+    let dynamic_note_def_range = dynamic_note_var_ref
+        .def_range
+        .expect("dynamicNote has an initializer; def_range must be present");
+    assert_eq!(slice(dynamic_note_def_range), "'C4'");
+
+    // playDynamicNote: bare-identifier note whose "declaration" is a
+    // function parameter, not a top-level const/let/var — find_declarator
+    // correctly does not match it, so the varRef is present but
+    // UNRESOLVED (def_uri/def_range both absent), same shape wad.synth's
+    // unresolved-declaration case already proves.
+    let unresolved_note_finding = tone_synth_findings
+        .iter()
+        .find(|f| slice(f.as_tone_synth().unwrap().arg_range).starts_with("note,"))
+        .expect(
+            "golden.ts must still declare playDynamicNote's triggerAttackRelease(note, ...) call",
+        );
+    let unresolved_var_ref = unresolved_note_finding
+        .as_tone_synth()
+        .unwrap()
+        .var_ref
+        .as_ref()
+        .expect("expected a varRef object even though it cannot resolve");
+    assert_eq!(unresolved_var_ref.name, "note");
+    assert!(unresolved_var_ref.def_uri.is_none());
+    assert!(unresolved_var_ref.def_range.is_none());
+
+    // Three Synth-typed findings total now (playTone, playToneDynamicNote,
+    // playDynamicNote all share the identical Tone.Synth() shape) — the
+    // fixed count(5) above already proves the total, assert the
+    // per-synth-type split directly too.
     assert_eq!(
         tone_synth_findings
             .iter()
             .filter(|f| f.as_tone_synth().unwrap().synth_type == "Synth")
             .count(),
-        1,
-        "expected exactly one Synth-typed tone.synth finding (playTone) — playDynamicNote's \
-         non-static note must not produce a second one"
+        3,
+        "expected three Synth-typed tone.synth findings: playTone (literal), \
+         playToneDynamicNote (resolved varRef), playDynamicNote (unresolved varRef)"
     );
 
     write_frame(

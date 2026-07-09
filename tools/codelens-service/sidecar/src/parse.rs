@@ -76,7 +76,7 @@ fn walk(node: Node, text: &str, line_index: &LineIndex, uri: &str, out: &mut Vec
             if let Some(finding) = extract_callee_call(node, text, line_index, uri) {
                 out.push(finding);
             }
-            if let Some(finding) = extract_tone_synth(node, text, line_index) {
+            if let Some(finding) = extract_tone_synth(node, text, line_index, uri) {
                 out.push(finding);
             }
         }
@@ -444,20 +444,30 @@ fn tone_synth_type_name(member: Node, text: &str) -> Option<&'static str> {
 /// doc comment for the client-side half of this decision).
 ///
 /// Finally, `triggerAttackRelease`'s OWN argument list is validated
-/// per-class, fully-static-or-nothing (no `varRef` permissiveness here,
-/// unlike zzfx/wad.synth — there's nothing for a client to resolve, since a
-/// non-literal argument just means no finding at all):
-///   - `NoiseSynth` — signature `(duration, time?, velocity?)`, no note.
-///     Requires >= 1 argument; argument 0 (duration) must be a
-///     [`is_string_or_number_literal`]. Arguments 1+ are ignored entirely.
+/// per-class. `duration`/`time`/`velocity` stay fully-static-or-nothing (a
+/// non-literal there refuses the whole finding — there's nothing for a
+/// client to resolve on those, same reasoning as before). The note/chord
+/// argument (position 0, where one exists) additionally accepts a bare
+/// identifier — zzfx/wad.synth's permissive `varRef` posture, resolved via
+/// [`resolve_var_ref`] exactly like `zzfxm`'s song-variable case — since
+/// `const someNote = 'C4'; ...triggerAttackRelease(someNote, '8n')` is
+/// structurally identical to those already-supported var-ref shapes, and
+/// refusing it read as "broken" rather than "intentionally unsupported":
+///   - `NoiseSynth` — signature `(duration, time?, velocity?)`, no note at
+///     all, so no var-ref case applies here. Requires >= 1 argument;
+///     argument 0 (duration) must be a [`is_string_or_number_literal`].
+///     Arguments 1+ are ignored entirely.
 ///   - `PolySynth` — signature `(notes[], duration, time?)`. Requires >= 2
-///     arguments; argument 0 must be a non-empty `array` node whose every
-///     element is a string/number literal (a chord — nothing to play if
-///     empty); argument 1 (duration) must be a literal. Arguments 2+
-///     ignored.
+///     arguments; argument 0 must be EITHER a non-empty `array` node whose
+///     every element is a string/number literal (a chord — nothing to play
+///     if empty) OR a bare identifier (resolved as a `varRef`, deferring
+///     shape validation of whatever it points at to the client — same
+///     posture `wad.synth` already takes); argument 1 (duration) must be a
+///     literal. Arguments 2+ ignored.
 ///   - every other class — signature `(note, duration, time?)`. Requires
-///     >= 2 arguments; arguments 0 (note) and 1 (duration) must both be
-///     literals. Arguments 2+ ignored.
+///     >= 2 arguments; argument 0 (note) must be EITHER a literal OR a bare
+///     identifier (resolved as a `varRef`); argument 1 (duration) must be a
+///     literal. Arguments 2+ ignored.
 ///
 /// `arg_range` is `triggerAttackRelease`'s OWN argument-list interior
 /// range (via the existing [`argument_interior_range`] helper, shared with
@@ -468,7 +478,12 @@ fn tone_synth_type_name(member: Node, text: &str) -> Option<&'static str> {
 /// contains the entire chain) and ends at `triggerAttackRelease(...)`'s
 /// closing paren, so no separate computation is needed — same "whole
 /// expression" range `wad.synth` already reports.
-fn extract_tone_synth(call: Node, text: &str, line_index: &LineIndex) -> Option<Finding> {
+fn extract_tone_synth(
+    call: Node,
+    text: &str,
+    line_index: &LineIndex,
+    uri: &str,
+) -> Option<Finding> {
     let function = call.child_by_field_name("function")?;
     if function.kind() != "member_expression" {
         return None;
@@ -506,25 +521,41 @@ fn extract_tone_synth(call: Node, text: &str, line_index: &LineIndex) -> Option<
         return None;
     }
 
-    if synth_type == "PolySynth" {
-        if named[0].kind() != "array" {
-            return None;
-        }
-        let mut cursor = named[0].walk();
-        let chord: Vec<Node> = named[0].named_children(&mut cursor).collect();
-        if chord.is_empty() || !chord.iter().all(|n| is_string_or_number_literal(*n)) {
-            return None;
-        }
-        if !is_string_or_number_literal(named[1]) {
-            return None;
-        }
-    } else if synth_type == "NoiseSynth" {
+    let var_ref = if synth_type == "NoiseSynth" {
         if !is_string_or_number_literal(named[0]) {
             return None;
         }
-    } else if !is_string_or_number_literal(named[0]) || !is_string_or_number_literal(named[1]) {
-        return None;
-    }
+        None
+    } else {
+        let note_var_ref = if synth_type == "PolySynth" {
+            match named[0].kind() {
+                "array" => {
+                    let mut cursor = named[0].walk();
+                    let chord: Vec<Node> = named[0].named_children(&mut cursor).collect();
+                    if chord.is_empty() || !chord.iter().all(|n| is_string_or_number_literal(*n)) {
+                        return None;
+                    }
+                    None
+                }
+                "identifier" => {
+                    let name = node_text(named[0], text).to_string();
+                    Some(resolve_var_ref(name, arguments, text, uri))
+                }
+                _ => return None,
+            }
+        } else if is_string_or_number_literal(named[0]) {
+            None
+        } else if named[0].kind() == "identifier" {
+            let name = node_text(named[0], text).to_string();
+            Some(resolve_var_ref(name, arguments, text, uri))
+        } else {
+            return None;
+        };
+        if !is_string_or_number_literal(named[1]) {
+            return None;
+        }
+        note_var_ref
+    };
 
     let (arg_start, arg_end) = argument_interior_range(arguments);
     let arg_range = Range {
@@ -550,6 +581,7 @@ fn extract_tone_synth(call: Node, text: &str, line_index: &LineIndex) -> Option<
             synth_type: synth_type.to_string(),
             voice_type: voice_type.map(|s| s.to_string()),
             arg_range,
+            var_ref,
         }),
     })
 }
@@ -1756,12 +1788,42 @@ export function sfx() { new Audio('explosion.mp3'); }
     }
 
     #[test]
-    fn non_static_note_is_not_a_finding() {
+    fn bare_identifier_note_resolves_a_var_ref_against_its_same_file_declaration() {
+        // Same permissive posture zzfx/zzfxm/wad.synth already take for a
+        // bare-identifier argument: `const someNote = 'C4'` referenced by
+        // name in `triggerAttackRelease(someNote, '8n')` is structurally
+        // identical to those already-supported var-ref shapes, so it
+        // resolves instead of refusing the whole finding.
+        let src = "const someNote = 'C4';\nnew Tone.Synth().toDestination().triggerAttackRelease(someNote, '8n');";
+        let p = tone_synth("a.ts", src);
+        assert_eq!(p.synth_type, "Synth");
+        let var_ref = p.var_ref.as_ref().expect("expected varRef");
+        assert_eq!(var_ref.name, "someNote");
+        assert_eq!(var_ref.def_uri.as_deref(), Some("a.ts"));
+        assert!(var_ref.def_range.is_some());
+    }
+
+    #[test]
+    fn bare_identifier_note_with_unresolved_declaration_still_emits_a_finding() {
         let f = findings(
             "a.ts",
-            "new Tone.Synth().toDestination().triggerAttackRelease(note, '8n');",
+            "function make(note) { new Tone.Synth().toDestination().triggerAttackRelease(note, '8n'); }",
         );
-        assert!(f.is_empty());
+        assert_eq!(f.len(), 1);
+        let var_ref = f[0].as_tone_synth().unwrap().var_ref.as_ref().unwrap();
+        assert_eq!(var_ref.name, "note");
+        assert!(var_ref.def_uri.is_none());
+        assert!(var_ref.def_range.is_none());
+    }
+
+    #[test]
+    fn poly_synth_bare_identifier_chord_resolves_a_var_ref() {
+        let src = "const chord = ['C4','E4','G4'];\nnew Tone.PolySynth().toDestination().triggerAttackRelease(chord, '4n');";
+        let p = tone_synth("a.ts", src);
+        assert_eq!(p.synth_type, "PolySynth");
+        let var_ref = p.var_ref.as_ref().expect("expected varRef");
+        assert_eq!(var_ref.name, "chord");
+        assert!(var_ref.def_range.is_some());
     }
 
     #[test]

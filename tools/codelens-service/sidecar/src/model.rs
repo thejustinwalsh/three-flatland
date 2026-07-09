@@ -110,13 +110,15 @@ pub struct WadSynthPayload {
 /// Deliberately has no pre-extracted note/duration: same posture
 /// `ZzfxmPayload`/`WadSynthPayload` already take — the client reads the
 /// source text at `arg_range` (the `triggerAttackRelease(...)` call's OWN
-/// argument-list text, not the whole chain's) and parses it itself. There
-/// is no `var_ref` here at all (unlike zzfx/wad.synth's permissive
-/// bare-identifier posture): a non-literal note/duration/chord argument
-/// means the whole finding is refused at the scanner level, so there is
-/// never an unresolved reference left for a client to chase — see
-/// [`crate::parse::extract_tone_synth`]'s doc comment for the full
-/// static-or-nothing detection rule.
+/// argument-list text, not the whole chain's) and parses it itself.
+/// `duration`/`time`/`velocity` stay fully-static-or-nothing (a non-literal
+/// there refuses the whole finding, same as before) — only the note/chord
+/// argument (position 0, or `NoiseSynth`'s sole duration argument, which has
+/// no note at all and is unaffected) gets zzfx/wad.synth's permissive
+/// bare-identifier posture: `triggerAttackRelease(noteVar, '8n')` where
+/// `noteVar` is a same-file `const`/`let`/`var` now resolves a `var_ref`
+/// instead of refusing the finding outright — see
+/// [`crate::parse::extract_tone_synth`]'s doc comment for the full rule.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToneSynthPayload {
@@ -131,6 +133,11 @@ pub struct ToneSynthPayload {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub voice_type: Option<String>,
     pub arg_range: Range,
+    /// Set only when the note/chord argument (position 0) is a bare
+    /// identifier rather than a literal — absent for `NoiseSynth` (no note
+    /// argument exists) and for every literal-note finding.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub var_ref: Option<VarRef>,
 }
 
 pub const ZZFX_CALL_KIND: &str = "zzfx.call";
@@ -423,6 +430,7 @@ mod tests {
                     start: pos(0, 45),
                     end: pos(0, 53),
                 },
+                var_ref: None,
             }),
         };
         let json = serde_json::to_value(&finding).unwrap();
@@ -460,6 +468,7 @@ mod tests {
                     start: pos(2, 50),
                     end: pos(2, 58),
                 },
+                var_ref: None,
             }),
         };
         let json = serde_json::to_value(&finding).unwrap();
