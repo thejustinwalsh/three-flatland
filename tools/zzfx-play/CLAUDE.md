@@ -334,6 +334,25 @@ specific class of regression at all.
 
 ## Common pitfalls
 
+- **Linux CI (`ubuntu-latest`) has no audio device by default — `xvfb-run`
+  only virtualizes the DISPLAY, not sound.** `node-web-audio-api` (via
+  Rust's `cpal`, which uses ALSA on Linux) has nothing to open in a bare
+  runner: real-audio-dependent e2e specs (anything waiting on
+  `stats.playing`, or a decoded `.wav`/song/synth actually reaching the
+  analyser tap) either hang until their 60s timeout or the sidecar itself
+  fails during `AudioContext` construction (observed as a `null`/
+  `undefined` pid on the very first `zzfx-play.spec.ts` assertion — the
+  child process never stabilizes). `tools/vscode/.github/workflows/
+vscode-e2e.yml` installs and starts PulseAudio with a null sink
+  (`pactl load-module module-null-sink`) before the e2e run specifically
+  for this — ALSA's `pulse` plugin then has a real, functioning (silent)
+  default device to open. This was never exercised until #47 (Tone/Wad
+  synthesis) landed and the workflow ran on Linux CI for the first time;
+  every previous "green e2e" in this epic's history was verified locally
+  on macOS, which has a real audio device. If a real-audio e2e spec times
+  out or gets a null pid in CI specifically (not locally), check this
+  step exists and actually ran before suspecting the test or the sidecar
+  logic itself.
 - Forgetting the `node-web-audio-api/polyfill.js` import order relative to
   `zzfx`/`@zzfx-studio/zzfxm` imports in `sidecar.ts` — `zzfx`'s top-level
   `new AudioContext` would throw (`AudioContext is not defined`) if the

@@ -77,6 +77,25 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-vscode-test-
 
+      # ubuntu-latest runners have no sound hardware and no audio device is
+      # configured by default -- xvfb (above) virtualizes the DISPLAY only.
+      # node-web-audio-api (tools/zzfx-play's sidecar, via Rust's cpal,
+      # which uses ALSA on Linux) needs somewhere to actually open a
+      # device; with nothing present, PlaySidecarClient-backed tests that
+      # wait on real audio output (stats.playing, decoded .wav/song/synth
+      # playback) either time out or the sidecar itself fails during
+      # AudioContext construction. A PulseAudio null sink gives ALSA's
+      # `pulse` plugin a real, functioning (silent) default device to open
+      # -- the standard fix for headless Web Audio API testing in CI (the
+      # same approach Chromium/Playwright's own CI uses).
+      - name: Set up a virtual audio device (PulseAudio null sink)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio
+          pulseaudio -D --exit-idle-time=-1 --disallow-exit
+          pactl load-module module-null-sink sink_name=DummyOutput
+          pactl set-default-sink DummyOutput
+
       # xvfb ships preinstalled on the ubuntu-latest runner image — this is
       # the same minimal invocation as microsoft/vscode-test's own sample CI
       # workflow (github.com/microsoft/vscode-test/blob/main/sample/.github/
