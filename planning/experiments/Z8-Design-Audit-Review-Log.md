@@ -12,6 +12,7 @@ Stakeholder feedback that triggered this pass: the ZzFX tuner "looked a bit out 
 | `z8-design-audit-captures/atlas.png`             | FL Atlas editor (sibling tool)                   |
 | `z8-design-audit-captures/encode.png`            | FL Image Encoder (sibling tool)                  |
 | `z8-design-audit-captures/merge.png`             | FL Atlas Merge (sibling tool)                    |
+| `z8-design-audit-captures/normal-baker.png`      | FL Normal Baker (sibling tool)                   |
 | `z8-design-audit-captures/native-settings.png`   | Native VS Code Settings editor (idiom reference) |
 | `z8-design-audit-captures/native-extensions.png` | Native VS Code Extensions view (idiom reference) |
 

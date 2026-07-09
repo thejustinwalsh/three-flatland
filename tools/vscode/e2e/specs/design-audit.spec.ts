@@ -76,6 +76,13 @@ test.describe('Z8 design audit screenshots', () => {
     await workbox.screenshot({ path: path.join(OUT_DIR, 'merge.png') })
   })
 
+  test('normal baker', async ({ openCommand, webviewFrame, workbox }) => {
+    await openCommand('threeFlatland.normalBaker.open', ['sprites/Dungeon_Tileset.png'])
+    const frame = await webviewFrame('Normal Baker: Dungeon_Tileset.png')
+    await frame.locator('#root').waitFor({ state: 'visible' })
+    await workbox.screenshot({ path: path.join(OUT_DIR, 'normal-baker.png') })
+  })
+
   test('native: settings editor', async ({ evaluateInVSCode, workbox }) => {
     await evaluateInVSCode(async (vscode) => {
       await vscode.commands.executeCommand('workbench.action.openSettings', 'volume')
