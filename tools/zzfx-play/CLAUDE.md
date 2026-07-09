@@ -353,6 +353,19 @@ vscode-e2e.yml` installs and starts PulseAudio with a null sink
   out or gets a null pid in CI specifically (not locally), check this
   step exists and actually ran before suspecting the test or the sidecar
   logic itself.
+- **The PulseAudio null sink is not perfectly reliable under CI load —
+  seen one flaked run where several `stats.silent`-polling tests
+  (`zzfx-audio-lenses.spec.ts`) genuinely ran out their full 10s poll
+  budget and returned silent, immediately followed by a clean 65/65 pass
+  on an unmodified re-run of the identical commit.** This is consistent
+  with PulseAudio/ALSA startup-readiness jitter under a loaded runner,
+  not a deterministic bug in the poll helper (`executeAndPollAudible`
+  already polls properly, not a fixed delay — checked before concluding
+  this). If `vscode-e2e` fails on `stats.silent`/`stats.peak` assertions
+  specifically (not a pid/spawn failure — see above), re-run the job
+  before assuming a real regression; if it fails reproducibly across
+  multiple re-runs with no code change in between, that's the signal
+  something else is actually broken.
 - Forgetting the `node-web-audio-api/polyfill.js` import order relative to
   `zzfx`/`@zzfx-studio/zzfxm` imports in `sidecar.ts` — `zzfx`'s top-level
   `new AudioContext` would throw (`AudioContext is not defined`) if the
