@@ -414,6 +414,31 @@ contexts` (a native `InvalidAccessError`) the instant `plugEmIn` tried
   `stats.playing === true` (not just `!stats.silent`) immediately after
   issuing the play, as the very FIRST command of a freshly spawned
   sidecar (no adjacent sound to produce a false positive).
+- **The `getChannelData().set()`-under-Electron trap isn't limited to OUR
+  code — it hit `web-audio-daw`'s OWN bundled noise-buffer construction
+  too.** `build/wad.js` pre-renders a shared noise buffer at import time
+  (`noiseBuffer.getChannelData(0)` then a fill loop writing into the
+  returned array) — a detached copy under `node-web-audio-api`/Electron,
+  same as everywhere else in this file, so every `source:'noise'` Wad
+  played real silence (acked clean, `stats.peak === 0`) while every other
+  oscillator type worked fine. Can't patch Wad's vendored bundle source,
+  and its `noiseBuffer` variable is closed over inside the webpack
+  bundle — not reachable from the public `Wad` export. Fixed in
+  `loadWadConstructor()` by temporarily wrapping `ZZFX.audioContext
+.createBuffer` for the duration of the `require('web-audio-daw')` call
+  (Wad's import-time IIFE makes exactly one `createBuffer` call — nothing
+  else in its top-level module code creates a buffer), capturing the
+  actual buffer object Wad's closure holds a reference to, and
+  re-committing real noise samples into it via `copyToChannel`
+  immediately after — same seeded-LCG algorithm Wad's own IIFE uses
+  (seed 6, `(seed * 9301 + 49297) % 233280`), so the result is the noise
+  Wad always intended, just actually audible. If a THIRD library gets
+  added to this sidecar later, budget time to check its own import-time
+  buffer construction for this same pattern before trusting silence-free
+  playback — this bug class isn't specific to Wad, it's specific to
+  "any package's `getChannelData()` usage running under this Electron
+  binary," and a vendored dependency can hit it just as easily as our
+  own code can.
 - **Never call `zzfx()`/`zzfxm()` (or `ZZFX.play`/`ZZFX.playSamples`)
   directly in `sidecar.ts`** — they end in `getChannelData().set()`,
   which is a detached copy under `node-web-audio-api` and produces silent

@@ -172,8 +172,46 @@ function loadWadConstructor(): WadConstructor {
   globalThis.window.AudioContext = FakeAudioContext as unknown as typeof AudioContext
   ;(globalThis.window as { webkitAudioContext?: unknown }).webkitAudioContext = FakeAudioContext
 
+  // Wad's own bundle pre-renders a shared noise buffer at import time
+  // (`build/wad.js`: `noiseBuffer.getChannelData(0)` then `output[i] =
+  // ...` in a fill loop) — the exact `getChannelData().set()`-style
+  // anti-pattern this file's own doc comments describe for OUR code: a
+  // DETACHED COPY under `node-web-audio-api`/Electron, so the writes
+  // never reach the real buffer and every `source:'noise'` Wad plays
+  // silence. We can't patch Wad's bundled source (vendored npm
+  // dependency), and its `noiseBuffer` variable is closed over inside
+  // the webpack bundle — not reachable from the public `Wad` export.
+  // Fix: intercept the ONE `createBuffer` call Wad's import-time IIFE
+  // makes (nothing else in Wad's top-level module code creates a
+  // buffer), capture the actual buffer object (a reference, not a
+  // copy — writing into IT is what Wad's own closure will play back),
+  // and immediately re-commit real noise samples into it via
+  // `copyToChannel`, which reliably reaches the native buffer. Same
+  // seeded-LCG algorithm Wad's own IIFE uses (`build/wad.js`: seed 6,
+  // `(seed * 9301 + 49297) % 233280`) so the output is the noise Wad
+  // always intended, just actually audible now.
+  let capturedNoiseBuffer: AudioBuffer | undefined
+  const realCreateBuffer = ZZFX.audioContext.createBuffer.bind(ZZFX.audioContext)
+  ZZFX.audioContext.createBuffer = ((...args: Parameters<typeof realCreateBuffer>) => {
+    const buffer = realCreateBuffer(...args)
+    capturedNoiseBuffer ??= buffer
+    return buffer
+  }) as typeof realCreateBuffer
+
   const require = createRequire(import.meta.url)
   wadCtor = require('web-audio-daw') as WadConstructor
+
+  ZZFX.audioContext.createBuffer = realCreateBuffer
+  if (capturedNoiseBuffer) {
+    let seed = 6
+    const seededRandom = () => {
+      seed = (seed * 9301 + 49297) % 233280
+      return seed / 233280
+    }
+    const noise = new Float32Array(capturedNoiseBuffer.length)
+    for (let i = 0; i < noise.length; i++) noise[i] = seededRandom() * 2 - 1
+    capturedNoiseBuffer.copyToChannel(noise, 0)
+  }
 
   // Restore the real constructors for hygiene — Wad's own module-scope
   // `context` reference is already captured permanently by this point
