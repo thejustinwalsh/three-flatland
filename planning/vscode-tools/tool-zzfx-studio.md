@@ -81,29 +81,29 @@ shutdown → void
 
 From `ZzFXMicro.min.js` v1.3.2:
 
-| # | Name | Default | Range | Notes |
-|---|---|---|---|---|
-| 0 | volume | 1 | 0..1 | master |
-| 1 | randomness | 0.05 | 0..2 | per-play pitch jitter |
-| 2 | frequency | 220 | 0..20000 Hz | base pitch |
-| 3 | attack | 0 | 0..1 s | |
-| 4 | sustain | 0 | 0..1 s | |
-| 5 | release | 0.1 | 0..1 s | |
-| 6 | shape | 0 | 0..4 int | 0 sine, 1 triangle, 2 saw, 3 tan, 4 noise |
-| 7 | shapeCurve | 1 | -1..3 | waveform warp |
-| 8 | slide | 0 | -9..9 | linear pitch slide |
-| 9 | deltaSlide | 0 | -1..1 | slide accel |
-| 10 | pitchJump | 0 | -1200..1200 ¢ | |
-| 11 | pitchJumpTime | 0 | 0..1 s | |
-| 12 | repeatTime | 0 | 0..1 s | loop period; 0 = no repeat |
-| 13 | noise | 0 | 0..1 | |
-| 14 | modulation | 0 | 0..100 | FM depth |
-| 15 | bitCrush | 0 | 0..1 | |
-| 16 | delay | 0 | 0..1 s | |
-| 17 | sustainVolume | 1 | 0..1 | |
-| 18 | decay | 0 | 0..1 s | |
-| 19 | tremolo | 0 | 0..1 | |
-| 20 | filter | 0 | -2000..2000 Hz | >0 highpass, <0 lowpass |
+| #   | Name          | Default | Range          | Notes                                     |
+| --- | ------------- | ------- | -------------- | ----------------------------------------- |
+| 0   | volume        | 1       | 0..1           | master                                    |
+| 1   | randomness    | 0.05    | 0..2           | per-play pitch jitter                     |
+| 2   | frequency     | 220     | 0..20000 Hz    | base pitch                                |
+| 3   | attack        | 0       | 0..1 s         |                                           |
+| 4   | sustain       | 0       | 0..1 s         |                                           |
+| 5   | release       | 0.1     | 0..1 s         |                                           |
+| 6   | shape         | 0       | 0..4 int       | 0 sine, 1 triangle, 2 saw, 3 tan, 4 noise |
+| 7   | shapeCurve    | 1       | -1..3          | waveform warp                             |
+| 8   | slide         | 0       | -9..9          | linear pitch slide                        |
+| 9   | deltaSlide    | 0       | -1..1          | slide accel                               |
+| 10  | pitchJump     | 0       | -1200..1200 ¢  |                                           |
+| 11  | pitchJumpTime | 0       | 0..1 s         |                                           |
+| 12  | repeatTime    | 0       | 0..1 s         | loop period; 0 = no repeat                |
+| 13  | noise         | 0       | 0..1           |                                           |
+| 14  | modulation    | 0       | 0..100         | FM depth                                  |
+| 15  | bitCrush      | 0       | 0..1           |                                           |
+| 16  | delay         | 0       | 0..1 s         |                                           |
+| 17  | sustainVolume | 1       | 0..1           |                                           |
+| 18  | decay         | 0       | 0..1 s         |                                           |
+| 19  | tremolo       | 0       | 0..1           |                                           |
+| 20  | filter        | 0       | -2000..2000 Hz | >0 highpass, <0 lowpass                   |
 
 Trailing zeros may be omitted in source.
 
@@ -111,15 +111,15 @@ Trailing zeros may be omitted in source.
 
 Return only `range` in `provideCodeLenses`; compute titles in `resolveCodeLens`. Two lenses per finding:
 
-- `▶ Play` → `threeFlatland.zzfx.playParams` with params array (CodeLens inline — no FL prefix, context is clear from position)
-- `⚙ Edit` → `threeFlatland.zzfx.openEditor` with `{ uri, findingId }`
+- `▶ Play` → `threeFlatland.audio.playParams` with params array (CodeLens inline — no FL prefix, context is clear from position)
+- `⚙ Edit` → `threeFlatland.audio.openEditor` with `{ uri, findingId }`
 
 Command palette versions use the FL category: `FL: Play ZzFX at Cursor`, `FL: Open ZzFX Editor`. Registered as:
 
 ```json
 "commands": [
-  { "command": "threeFlatland.zzfx.playAtCursor", "title": "Play ZzFX at Cursor", "category": "FL" },
-  { "command": "threeFlatland.zzfx.openEditor",   "title": "Open ZzFX Editor",    "category": "FL" }
+  { "command": "threeFlatland.audio.playAtCursor", "title": "Play ZzFX at Cursor", "category": "FL" },
+  { "command": "threeFlatland.audio.openEditor",   "title": "Open ZzFX Editor",    "category": "FL" }
 ]
 ```
 

@@ -323,16 +323,16 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // commands, proving provider.ts's per-kind dispatch (not just
     // zzfx.call's pre-existing playParams/openEditor).
     expect(lensAt(lenses, FANFARE_CALL_LINE, '▶ Play')?.command?.command).toBe(
-      'threeFlatland.zzfx.playSong'
+      'threeFlatland.audio.playSong'
     )
     expect(lensAt(lenses, FANFARE_CALL_LINE, '⏹ Stop')?.command?.command).toBe(
-      'threeFlatland.zzfx.stopSong'
+      'threeFlatland.audio.stopSong'
     )
     expect(lensAt(lenses, JUMP_SFX_LINE, '▶ Play')?.command?.command).toBe(
-      'threeFlatland.zzfx.playFile'
+      'threeFlatland.audio.playFile'
     )
     expect(lensAt(lenses, JUMP_SFX_LINE, '⏹ Stop')?.command?.command).toBe(
-      'threeFlatland.zzfx.stopSong'
+      'threeFlatland.audio.stopSong'
     )
     // The resolved absolute path is baked into the lens's own command
     // arguments — proving audioFileResolver.ts's workspace-root tier
@@ -345,7 +345,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // pair for an unresolved path (provider.ts only adds Stop for
     // audio.file's 'resolved' state).
     expect(lensAt(lenses, MISSING_SFX_LINE, '$(search) Not Found')?.command?.command).toBe(
-      'threeFlatland.zzfx.playFile'
+      'threeFlatland.audio.playFile'
     )
     expect(lensAt(lenses, MISSING_SFX_LINE, '⏹ Stop')).toBeUndefined()
 
@@ -358,9 +358,9 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       WAD_VAR_UNRESOLVABLE_LINE,
     ]) {
       expect(lensAt(lenses, line, '▶ Play')?.command?.command).toBe(
-        'threeFlatland.zzfx.playWadSynth'
+        'threeFlatland.audio.playWadSynth'
       )
-      expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.zzfx.stopSong')
+      expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.audio.stopSong')
     }
     for (const line of [
       TONE_NOTE_LINE,
@@ -371,9 +371,9 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       TONE_UNRESOLVABLE_NOTE_LINE,
     ]) {
       expect(lensAt(lenses, line, '▶ Play')?.command?.command).toBe(
-        'threeFlatland.zzfx.playToneSynth'
+        'threeFlatland.audio.playToneSynth'
       )
-      expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.zzfx.stopSong')
+      expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.audio.stopSong')
     }
   })
 
@@ -387,7 +387,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   }) => {
     const lenses = await fetchSettledLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, THUNDER_SFX_LINE, '▶ Play')
-    expect(playLens?.command?.command).toBe('threeFlatland.zzfx.playFile')
+    expect(playLens?.command?.command).toBe('threeFlatland.audio.playFile')
     expect(String(playLens?.command?.arguments?.[0])).toMatch(/media[/\\]deep[/\\]thunder\.ogg$/)
   })
 
@@ -407,7 +407,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // — same session, that's the point of the per-session cache).
     let lenses = await fetchSettledLenses(evaluateInVSCode)
     let playLens = lensAt(lenses, THUNDER_SFX_LINE, '▶ Play')
-    expect(playLens?.command?.command).toBe('threeFlatland.zzfx.playFile')
+    expect(playLens?.command?.command).toBe('threeFlatland.audio.playFile')
 
     // Delete the asset, then attempt Play with the (now stale) cached
     // path — the command must re-stat, re-search, and settle not-found
@@ -446,7 +446,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // still-running playback for test hygiene before the next spec —
     // Play/Stop are static now, so this isn't about hiding a toggled
     // face, just not leaving audio running into the next test.
-    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.zzfx.stopSong', [])
+    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
     playLens = await pollLensAt(evaluateInVSCode, THUNDER_SFX_LINE, '▶ Play')
     expect(String(playLens?.command?.arguments?.[0])).toMatch(/media[/\\]deep[/\\]thunder\.ogg$/)
   })
@@ -471,7 +471,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // itself.
     const silentAfterStop = await executeAndPollSilent(
       evaluateInVSCode,
-      'threeFlatland.zzfx.stopSong',
+      'threeFlatland.audio.stopSong',
       []
     )
     expect(silentAfterStop).toBe(true)
@@ -497,13 +497,13 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   // through the SAME shared analyser playSampleChannels uses, so this is
   // the shipped audibility proof for the audio.file route — vitest cannot
   // catch an Electron-only silent-decode regression (see
-  // tools/zzfx-play/CLAUDE.md).
+  // tools/audio-play/CLAUDE.md).
   test('playFile (audio.file route) decodes and plays a real .wav — reaches the SAME stats tap as zzfx/zzfxm', async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, CLICK_SFX_LINE, '▶ Play')!
-    expect(playLens.command?.command).toBe('threeFlatland.zzfx.playFile')
+    expect(playLens.command?.command).toBe('threeFlatland.audio.playFile')
 
     const stats = await executeAndPollAudible(
       evaluateInVSCode,
@@ -526,7 +526,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, EXPLOSION_SFX_LINE, '▶ Play')
-    expect(playLens?.command?.command).toBe('threeFlatland.zzfx.playFile')
+    expect(playLens?.command?.command).toBe('threeFlatland.audio.playFile')
     expect(String(playLens?.command?.arguments?.[0])).toMatch(/public[/\\]explosion\.ogg$/)
   })
 
@@ -545,7 +545,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const lenses = await fetchSettledLenses(evaluateInVSCode)
 
     const playLens = lensAt(lenses, REVERB_SFX_LINE, '▶ Play')
-    expect(playLens?.command?.command).toBe('threeFlatland.zzfx.playFile')
+    expect(playLens?.command?.command).toBe('threeFlatland.audio.playFile')
     expect(String(playLens?.command?.arguments?.[0])).toMatch(/src[/\\]click\.wav$/)
 
     for (const line of SYNTH_DECOY_LINES) {
@@ -576,7 +576,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, LONG_MARCH_CALL_LINE, '▶ Play')!
-    expect(playLens.command?.command).toBe('threeFlatland.zzfx.playSong')
+    expect(playLens.command?.command).toBe('threeFlatland.audio.playSong')
     // This test's stop phase executes stopSong directly rather than
     // discovering the (now-always-present) Stop lens — see the
     // static-lens-pair spec below for the lens/command assertion itself.
@@ -685,7 +685,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       {
         playCommand: playLens.command!.command,
         playArgs: playLens.command!.arguments,
-        stopCommand: 'threeFlatland.zzfx.stopSong',
+        stopCommand: 'threeFlatland.audio.stopSong',
         stopArgs: [] as unknown[],
       }
     )
@@ -719,8 +719,8 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(atRest).toHaveLength(2)
     const playLens = atRest.find((l) => l.command?.title === '▶ Play')!
     const stopLens = atRest.find((l) => l.command?.title === '⏹ Stop')!
-    expect(playLens.command?.command).toBe('threeFlatland.zzfx.playSong')
-    expect(stopLens.command?.command).toBe('threeFlatland.zzfx.stopSong')
+    expect(playLens.command?.command).toBe('threeFlatland.audio.playSong')
+    expect(stopLens.command?.command).toBe('threeFlatland.audio.stopSong')
 
     // Play — the lens SET doesn't change at all: same two lenses, same
     // titles, same commands. No refresh-triggered recompute, no face flip.
@@ -739,7 +739,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // unchanged) — and the lens set is STILL exactly the same afterward.
     const silentAfterStop = await executeAndPollSilent(
       evaluateInVSCode,
-      'threeFlatland.zzfx.stopSong',
+      'threeFlatland.audio.stopSong',
       []
     )
     expect(silentAfterStop).toBe(true)
@@ -751,7 +751,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     // Clicking Stop when nothing is playing is a harmless no-op — the
     // lens is present and clickable regardless of playback state.
-    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.zzfx.stopSong', [])
+    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 
   // THE regression guard for the exact bug that motivated reverting
@@ -768,7 +768,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, LONG_MARCH_CALL_LINE, '▶ Play')!
-    expect(playLens.command?.command).toBe('threeFlatland.zzfx.playSong')
+    expect(playLens.command?.command).toBe('threeFlatland.audio.playSong')
 
     const result = await evaluateInVSCode(
       async (vscode, arg) => {
@@ -804,7 +804,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
         }
         const afterRapidFire = await lensPairAt(arg.line)
 
-        await vscode.commands.executeCommand('threeFlatland.zzfx.stopSong')
+        await vscode.commands.executeCommand('threeFlatland.audio.stopSong')
         const afterStop = await lensPairAt(arg.line)
 
         return { before, afterRapidFire, afterStop }
@@ -818,8 +818,8 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     )
 
     const expectedPair = [
-      { title: '⏹ Stop', command: 'threeFlatland.zzfx.stopSong' },
-      { title: '▶ Play', command: 'threeFlatland.zzfx.playSong' },
+      { title: '⏹ Stop', command: 'threeFlatland.audio.stopSong' },
+      { title: '▶ Play', command: 'threeFlatland.audio.playSong' },
     ]
     expect(result.before).toEqual(expectedPair)
     expect(result.afterRapidFire).toEqual(expectedPair)
@@ -857,7 +857,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(clickStats!.silent).toBe(false)
     expect(clickStats!.peak).toBeGreaterThan(0)
 
-    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.zzfx.stopSong', [])
+    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 
   // SOURCE-EDITOR BINDING (kept working across the #46 toggle reversal —
@@ -971,7 +971,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, FANFARE_SPREAD_CALL_LINE, '▶ Play')!
-    expect(playLens.command?.command).toBe('threeFlatland.zzfx.playSong')
+    expect(playLens.command?.command).toBe('threeFlatland.audio.playSong')
 
     const stats = await executeAndPollAudible(
       evaluateInVSCode,

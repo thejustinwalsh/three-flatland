@@ -161,7 +161,7 @@ shape, not just a template.
 - **Defense in depth**: every command callback re-checks `isToolEnabled(id)` at the top, even
   though the menu/palette entry that would normally invoke it is already gated on the context key —
   a keybinding can call the command id directly, bypassing the menu.
-- **Sub-tool settings** (e.g. `threeFlatland.zzfx.inlinePlayback.enabled`, gating zzfx's inline
+- **Sub-tool settings** (e.g. `threeFlatland.audio.inlinePlayback.enabled`, gating zzfx's inline
   vs. panel-based `▶ Play` route) aren't full `ToolDescriptor`s — they're plain config reads inside
   the relevant code path, watched with their own narrow `onDidChangeConfiguration` listener if
   something needs live teardown (inline playback's already-spawned sidecar gets killed when the

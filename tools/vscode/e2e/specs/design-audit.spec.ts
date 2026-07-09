@@ -41,7 +41,7 @@ test.describe('Z8 design audit screenshots', () => {
         uri,
         100
       )) as { command?: { command: string; arguments?: unknown[] } }[]
-      const editLens = lenses.find((l) => l.command?.command === 'threeFlatland.zzfx.openEditor')
+      const editLens = lenses.find((l) => l.command?.command === 'threeFlatland.audio.openEditor')
       await vscode.commands.executeCommand(
         editLens!.command!.command,
         ...(editLens!.command!.arguments ?? [])

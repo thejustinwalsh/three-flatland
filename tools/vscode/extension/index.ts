@@ -1,15 +1,15 @@
 import * as vscode from 'vscode'
-import type { PlaybackStats } from '@three-flatland/zzfx-play'
+import type { PlaybackStats } from '@three-flatland/audio-play'
 import { registerWasmTest } from './tools/_wasm-test/register'
-import type { ZzfxHistoryBatch } from '../webview/zzfx/protocol'
-import { historyKeyFor } from './tools/zzfx/history/core'
-import { getZzfxHistoryStore } from './tools/zzfx/history/store'
+import type { ZzfxHistoryBatch } from '../webview/audio/protocol'
+import { historyKeyFor } from './tools/audio/history/core'
+import { getZzfxHistoryStore } from './tools/audio/history/store'
 import {
   getActivePlaySidecarPid,
   getPlaySidecarStats,
   shutdownPlaySidecar,
-} from './tools/zzfx/playSidecarManager'
-import { shutdownSidecar } from './tools/zzfx/sidecarManager'
+} from './tools/audio/playSidecarManager'
+import { shutdownSidecar } from './tools/audio/sidecarManager'
 import { activateTools, watchToolConfiguration } from './toolRegistry'
 import { getChannel, log } from './log'
 
@@ -17,13 +17,13 @@ import { getChannel, log } from './log'
  * Programmatic API returned from `activate()` — VS Code's standard
  * `exports` pattern (`vscode.extensions.getExtension(id)!.exports`), same
  * mechanism the built-in Git extension uses to expose its `git.API`. Kept
- * intentionally small: a diagnostic surface for the zzfx-play sidecar
- * (real AudioContext, no webview panel — see `tools/zzfx-play/CLAUDE.md`),
+ * intentionally small: a diagnostic surface for the audio-play sidecar
+ * (real AudioContext, no webview panel — see `tools/audio-play/CLAUDE.md`),
  * not a general extensibility API. `getActivePid`/`shutdown`/`getStats`
  * are exactly the functions `playSidecarManager.ts` itself uses —
  * `shutdown` is the same call `context.subscriptions`' dispose handler
  * makes on a real deactivation, not a separate test-only path. `getStats`
- * is the audibility regression guard (see `tools/zzfx-play/src/player.ts`)
+ * is the audibility regression guard (see `tools/audio-play/src/player.ts`)
  * — an e2e test drives it to prove a played sound actually reaches the
  * output, not just that `play` acked clean.
  */
@@ -79,9 +79,9 @@ export async function deactivate(): Promise<void> {
   // Both are idempotent and each bounds itself with a SIGKILL fallback
   // (see sidecarManager/playSidecarManager), so this can't hang — but it
   // MUST be awaited: otherwise the extension host tears down while the
-  // codelens-service / zzfx-play child processes are still alive, orphans
+  // codelens-service / audio-play child processes are still alive, orphans
   // them, and (under the single-session e2e's one final teardown) leaves
-  // app.close() waiting forever. The dispose handlers in zzfx/register.ts
+  // app.close() waiting forever. The dispose handlers in audio/register.ts
   // still call these too; the idempotent guard makes the double-call a
   // no-op. A real user closing VS Code gets the same clean cleanup.
   await Promise.allSettled([shutdownSidecar(), shutdownPlaySidecar()])

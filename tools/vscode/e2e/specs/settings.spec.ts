@@ -158,10 +158,10 @@ test.describe('FL tool settings', () => {
     await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
   })
 
-  test('FL ZzFX Studio disabled at startup: CodeLens provider never registers, no FL lenses', async ({
+  test('FL Audio disabled at startup: CodeLens provider never registers, no FL lenses', async ({
     vscodeInstallPath,
   }) => {
-    // zzfxStudio is liveToggle: false — a live setting change flips its
+    // audio is liveToggle: false — a live setting change flips its
     // context key but defers the actual register/dispose to a window
     // reload (see toolRegistry.ts). Simulating a real mid-session reload
     // isn't something the shared _sharedWindow harness supports (a new
@@ -180,7 +180,7 @@ test.describe('FL tool settings', () => {
     await fs.cp(FIXTURE_WORKSPACE, baseDir, { recursive: true })
     const settingsPath = path.join(baseDir, '.vscode', 'settings.json')
     const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8')) as Record<string, unknown>
-    settings['threeFlatland.tools.zzfxStudio.enabled'] = false
+    settings['threeFlatland.tools.audio.enabled'] = false
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2))
 
     const extensionsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fl-vscode-e2e-settings-ext-'))
@@ -230,7 +230,7 @@ test.describe('FL tool settings', () => {
           },
           { file: 'src/sounds.ts' }
         )
-        expect(lenses.filter((c) => c?.startsWith('threeFlatland.zzfx.'))).toEqual([])
+        expect(lenses.filter((c) => c?.startsWith('threeFlatland.audio.'))).toEqual([])
 
         // The tool being off shouldn't take the rest of the extension
         // with it — atlas's command must still be registered normally.

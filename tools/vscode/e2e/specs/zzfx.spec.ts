@@ -68,7 +68,7 @@ test.describe('FL ZzFX Studio', () => {
     expect(titles.sort()).toEqual(['▶ Play', '▶ Play', '⚙ Edit', '⚙ Edit (variable)'].sort())
   })
 
-  test('threeFlatland.zzfx.playAtCursor opens (or reuses) the real editor panel for the literal call under the cursor, with preserveFocus', async ({
+  test('threeFlatland.audio.playAtCursor opens (or reuses) the real editor panel for the literal call under the cursor, with preserveFocus', async ({
     evaluateInVSCode,
     webviewFrame,
   }) => {
@@ -84,7 +84,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.playAtCursor')
+        await vscode.commands.executeCommand('threeFlatland.audio.playAtCursor')
       },
       { file: SOUNDS_FILE, line: LITERAL_CALL_LINE }
     )
@@ -99,7 +99,7 @@ test.describe('FL ZzFX Studio', () => {
     await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
   })
 
-  test('threeFlatland.zzfx.openEditor (no args, command palette form) opens the full editor for the named-const call under the cursor, resolving LASER to real params', async ({
+  test('threeFlatland.audio.openEditor (no args, command palette form) opens the full editor for the named-const call under the cursor, resolving LASER to real params', async ({
     evaluateInVSCode,
     webviewFrame,
   }) => {
@@ -115,7 +115,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
     )
@@ -152,7 +152,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
     )
@@ -207,7 +207,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
     )
@@ -278,7 +278,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: LITERAL_CALL_LINE }
     )
@@ -333,7 +333,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: LITERAL_CALL_LINE }
     )
@@ -391,7 +391,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
     )
@@ -430,7 +430,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
     )
@@ -486,7 +486,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: LITERAL_CALL_LINE }
     )
@@ -535,7 +535,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: LITERAL_CALL_LINE }
     )
@@ -645,7 +645,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
     )
@@ -672,7 +672,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
     )
@@ -732,7 +732,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
     )
@@ -763,7 +763,7 @@ test.describe('FL ZzFX Studio', () => {
         const doc = await vscode.workspace.openTextDocument(uri)
         const editor = await vscode.window.showTextDocument(doc)
         editor.selection = new vscode.Selection(arg.line, 0, arg.line, 0)
-        await vscode.commands.executeCommand('threeFlatland.zzfx.openEditor')
+        await vscode.commands.executeCommand('threeFlatland.audio.openEditor')
       },
       { file: SOUNDS_FILE, line: VARIABLE_CALL_LINE }
     )

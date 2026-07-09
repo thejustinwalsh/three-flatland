@@ -262,7 +262,7 @@ export function playToneChord() {
 // LowpassCombFilter constructs an AudioWorkletNode through
 // standardized-audio-context (none of the other 8 classes do). Dedicated
 // coverage here specifically because that path used to crash the whole
-// sidecar process (window.isSecureContext undefined) — see zzfx-play's
+// sidecar process (window.isSecureContext undefined) — see audio-play's
 // CLAUDE.md and sidecar.ts's module-scope fix comment.
 export function playTonePluck() {
   new Tone.PluckSynth().toDestination().triggerAttackRelease('C4', '8n')

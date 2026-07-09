@@ -39,12 +39,12 @@
         "category": "FL"
       },
       {
-        "command": "threeFlatland.zzfx.playAtCursor",
+        "command": "threeFlatland.audio.playAtCursor",
         "title": "Play ZzFX at Cursor",
         "category": "FL"
       },
       {
-        "command": "threeFlatland.zzfx.openEditor",
+        "command": "threeFlatland.audio.openEditor",
         "title": "Open ZzFX Editor",
         "category": "FL"
       },
@@ -99,22 +99,22 @@
           "default": true,
           "description": "Enable FL Normal Baker (region editor for baking normal maps from PNG source art)."
         },
-        "threeFlatland.tools.zzfxStudio.enabled": {
+        "threeFlatland.tools.audio.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable FL ZzFX Studio (CodeLens + tuner panel for zzfx() sound-effect calls). Changing this setting requires a window reload."
+          "description": "Enable FL Audio (CodeLens playback for zzfx/zzfxm/Wad/Tone.js/audio-file calls, plus the ZzFX Studio tuner panel for zzfx() sound-effect calls). Changing this setting requires a window reload."
         },
-        "threeFlatland.zzfx.inlinePlayback.enabled": {
+        "threeFlatland.audio.inlinePlayback.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Play ZzFX one-shots via a lightweight background process instead of opening the editor panel. Disable to always route ▶ Play through the panel."
+          "description": "Play audio (zzfx one-shots, zzfxm songs, Wad/Tone.js synths, audio files) via a lightweight background process instead of the editor panel. Disable to always route zzfx one-shots' ▶ Play through the panel — other audio kinds have no panel fallback and won't play while this is off."
         },
-        "threeFlatland.zzfx.playbackVolume": {
+        "threeFlatland.audio.playbackVolume": {
           "type": "number",
           "default": 0,
           "minimum": -12,
           "maximum": 12,
-          "description": "Playback volume adjustment for ZzFX preview sounds, in dB relative to the default loudness. 0 keeps the built-in baseline; positive is louder, negative quieter (±12 dB ≈ ×4 / ×0.25). Applies to both the inline ▶ Play route and the tuner panel."
+          "description": "Playback volume adjustment for FL Audio preview sounds, in dB relative to the default loudness. 0 keeps the built-in baseline; positive is louder, negative quieter (±12 dB ≈ ×4 / ×0.25). Applies to the inline ▶ Play route for every audio kind, and to the ZzFX Studio tuner panel."
         }
       }
     },
@@ -173,12 +173,12 @@
           "when": "threeFlatland.tool.normalBaker.enabled && (resourceExtname == .png || resourceFilename =~ /\\.normal\\.json$/)"
         },
         {
-          "command": "threeFlatland.zzfx.playAtCursor",
-          "when": "threeFlatland.tool.zzfxStudio.enabled && (resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact)"
+          "command": "threeFlatland.audio.playAtCursor",
+          "when": "threeFlatland.tool.audio.enabled && (resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact)"
         },
         {
-          "command": "threeFlatland.zzfx.openEditor",
-          "when": "threeFlatland.tool.zzfxStudio.enabled && (resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact)"
+          "command": "threeFlatland.audio.openEditor",
+          "when": "threeFlatland.tool.audio.enabled && (resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact)"
         }
       ]
     },
@@ -229,7 +229,7 @@
     "@three-flatland/normals": "workspace:*",
     "@three-flatland/preview": "workspace:*",
     "@three-flatland/schemas": "workspace:*",
-    "@three-flatland/zzfx-play": "workspace:*",
+    "@three-flatland/audio-play": "workspace:*",
     "@react-three/fiber": "catalog:",
     "@vscode-elements/elements": "^2.5.1",
     "@vscode-elements/react-elements": "^2.4.0",

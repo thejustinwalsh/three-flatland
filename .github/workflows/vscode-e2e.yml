@@ -79,7 +79,7 @@ jobs:
 
       # ubuntu-latest runners have no sound hardware and no audio device is
       # configured by default -- xvfb (above) virtualizes the DISPLAY only.
-      # node-web-audio-api (tools/zzfx-play's sidecar, via Rust's cpal,
+      # node-web-audio-api (tools/audio-play's sidecar, via Rust's cpal,
       # which uses ALSA on Linux) needs somewhere to actually open a
       # device; with nothing present, PlaySidecarClient-backed tests that
       # wait on real audio output (stats.playing, decoded .wav/song/synth

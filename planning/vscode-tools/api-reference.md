@@ -16,13 +16,13 @@ Register with `vscode.languages.registerCodeLensProvider(selector, provider)`. P
 
 ## WebviewPanel vs CustomEditorProvider
 
-| | WebviewPanel | CustomEditorProvider |
-|---|---|---|
-| Trigger | imperative (`createWebviewPanel`) | user opens a matching file |
-| Doc binding | none | one URI per instance |
-| Flavors | — | `CustomTextEditor`, `CustomReadonlyEditor`, `CustomEditor` (binary + editable) |
-| Dirty state | manual | `onDidChangeCustomDocument` event |
-| Use case | ZzFX editor (opened from CodeLens command) | Atlas editor (opened from explorer on `.png`) |
+|             | WebviewPanel                               | CustomEditorProvider                                                           |
+| ----------- | ------------------------------------------ | ------------------------------------------------------------------------------ |
+| Trigger     | imperative (`createWebviewPanel`)          | user opens a matching file                                                     |
+| Doc binding | none                                       | one URI per instance                                                           |
+| Flavors     | —                                          | `CustomTextEditor`, `CustomReadonlyEditor`, `CustomEditor` (binary + editable) |
+| Dirty state | manual                                     | `onDidChangeCustomDocument` event                                              |
+| Use case    | ZzFX editor (opened from CodeLens command) | Atlas editor (opened from explorer on `.png`)                                  |
 
 Register custom editor:
 
@@ -31,7 +31,10 @@ context.subscriptions.push(
   vscode.window.registerCustomEditorProvider(
     'threeFlatland.atlas',
     new AtlasEditorProvider(context),
-    { supportsMultipleEditorsPerDocument: false, webviewOptions: { retainContextWhenHidden: false } }
+    {
+      supportsMultipleEditorsPerDocument: false,
+      webviewOptions: { retainContextWhenHidden: false },
+    }
   )
 )
 ```
@@ -64,7 +67,7 @@ webview.options = {
   enableScripts: true,
   localResourceRoots: [
     vscode.Uri.joinPath(context.extensionUri, 'dist'),
-    workspaceRootUri,                  // if webview needs workspace files
+    workspaceRootUri, // if webview needs workspace files
   ],
 }
 const scriptUri = webview.asWebviewUri(
@@ -98,9 +101,7 @@ Generate fresh nonce per render.
 const [model] = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' })
 if (!model) throw new Error('No Copilot chat model available')
 
-const messages = [
-  vscode.LanguageModelChatMessage.User(systemPrompt + '\n\n' + userPrompt),
-]
+const messages = [vscode.LanguageModelChatMessage.User(systemPrompt + '\n\n' + userPrompt)]
 const response = await model.sendRequest(messages, {}, token)
 let buffer = ''
 for await (const chunk of response.text) buffer += chunk
@@ -116,13 +117,13 @@ for await (const chunk of response.text) buffer += chunk
 
 ## Storage
 
-| API | Scope | Type | Use |
-|---|---|---|---|
-| `context.workspaceState` | workspace | Memento (kv JSON) | small per-project prefs, last-used values |
-| `context.globalState` | all | Memento (kv JSON) | user prefs; `setKeysForSync(keys)` for Settings Sync |
-| `context.storageUri` | workspace | `Uri` (dir) | caches, indexes. **Can be `undefined` if no folder open** |
-| `context.globalStorageUri` | all | `Uri` (dir) | downloaded binaries, LM cache. always defined |
-| `context.secrets` | all | `SecretStorage` (async kv) | OS keyring; never in mementos |
+| API                        | Scope     | Type                       | Use                                                       |
+| -------------------------- | --------- | -------------------------- | --------------------------------------------------------- |
+| `context.workspaceState`   | workspace | Memento (kv JSON)          | small per-project prefs, last-used values                 |
+| `context.globalState`      | all       | Memento (kv JSON)          | user prefs; `setKeysForSync(keys)` for Settings Sync      |
+| `context.storageUri`       | workspace | `Uri` (dir)                | caches, indexes. **Can be `undefined` if no folder open** |
+| `context.globalStorageUri` | all       | `Uri` (dir)                | downloaded binaries, LM cache. always defined             |
+| `context.secrets`          | all       | `SecretStorage` (async kv) | OS keyring; never in mementos                             |
 
 Use `vscode.workspace.fs` (not Node `fs`) against URIs so remote/virtual workspaces work.
 
@@ -172,7 +173,7 @@ Groups (numeric sort): `navigation`, `1_modification`, `7_modification`, etc. In
 "contributes": {
   "commands": [
     {
-      "command": "threeFlatland.zzfx.playAtCursor",
+      "command": "threeFlatland.audio.playAtCursor",
       "title": "Play ZzFX Sound at Cursor",
       "category": "three-flatland",
       "icon": "$(play)",
@@ -181,13 +182,13 @@ Groups (numeric sort): `navigation`, `1_modification`, `7_modification`, etc. In
   ],
   "menus": {
     "commandPalette": [
-      { "command": "threeFlatland.zzfx.playAtCursor", "when": "editorLangId in threeFlatland.jsLangs" }
+      { "command": "threeFlatland.audio.playAtCursor", "when": "editorLangId in threeFlatland.jsLangs" }
     ]
   },
   "configuration": {
     "title": "three-flatland Tools",
     "properties": {
-      "threeFlatland.zzfx.enabled": {
+      "threeFlatland.audio.enabled": {
         "type": "boolean",
         "default": true,
         "scope": "window"

@@ -440,7 +440,7 @@ fn tone_synth_type_name(member: Node, text: &str) -> Option<&'static str> {
 /// object) and every other class's sole constructor argument (an instance
 /// config object) are never inspected at all — config isn't load-bearing
 /// for playability the way note/duration are, and is out of scope for v1
-/// (see `tools/vscode/extension/tools/zzfx/toneSynthResolver.ts`'s file
+/// (see `tools/vscode/extension/tools/audio/toneSynthResolver.ts`'s file
 /// doc comment for the client-side half of this decision).
 ///
 /// Finally, `triggerAttackRelease`'s OWN argument list is validated

@@ -26,7 +26,7 @@ tools/
 
   zzfx-studio/                # extension-facing TS wrapper for the zzfx plugin
                               # thin — may migrate to standalone zzfx-studio repo later
-                              # (v0: may just live in tools/vscode/src/tools/zzfx/)
+                              # (v0: may just live in tools/vscode/src/tools/audio/)
 
   codelens-service/           # shared Go sidecar source + TS client
     go/                       # Go module root (module tools/codelens-service/go)
@@ -64,7 +64,8 @@ CLIs (`flatland-bake`, `slug-bake`, future bakers) continue to live in `packages
 
 ```ts
 const bin = path.join(
-  context.extensionPath, 'bin',
+  context.extensionPath,
+  'bin',
   `${process.platform}-${process.arch}`,
   scannerName + (process.platform === 'win32' ? '.exe' : '')
 )
@@ -132,6 +133,7 @@ CREATE INDEX IF NOT EXISTS findings_by_file ON findings(file_path);
 ```
 
 Behavior:
+
 1. On `document/parse` the sidecar checks `files` for `(path, mtime, size)` match; if fresh, returns cached findings.
 2. On mismatch, reparses, updates `files` + `findings` + `line_hashes` in a single transaction.
 3. On workspace scan, pre-filter candidates by `files.content_hash` and skip unchanged files entirely.
@@ -141,31 +143,31 @@ The DB is project-scoped because `storageUri` is. `globalStorageUri` holds only 
 
 ## Toolchain
 
-| Layer | Tool | Notes |
-|---|---|---|
-| Host bundler | esbuild | ESM, `platform: 'node'`, `target: 'node20'`, `external: ['vscode']` |
-| Webview bundler | Vite 7 + React 19 | Multi-entry; one per tool |
-| Dev harness | `@tomjs/vite-plugin-vscode` | Runs both bundles with HMR |
-| CSS-in-JS | StyleX (`@stylexjs/stylex`) | Custom primitives; atomic CSS, static extraction |
-| Unit tests | Vitest | Pure logic, schema validation, parsers |
-| Integration tests | `@vscode/test-cli` + `@vscode/test-electron` | Actual API surface; Mocha-based |
-| Go tests | `go test ./...` | Scanner correctness, SQLite cache invariants |
-| Packaging | `@vscode/vsce package` | Platform-neutral VSIX with all binaries packed |
-| Types | `@types/vscode: ^1.94.0` | Matches `engines.vscode` |
-| Dev ext | `connor4312.esbuild-problem-matchers` | `.vscode/extensions.json` recommendation |
+| Layer             | Tool                                         | Notes                                                               |
+| ----------------- | -------------------------------------------- | ------------------------------------------------------------------- |
+| Host bundler      | esbuild                                      | ESM, `platform: 'node'`, `target: 'node20'`, `external: ['vscode']` |
+| Webview bundler   | Vite 7 + React 19                            | Multi-entry; one per tool                                           |
+| Dev harness       | `@tomjs/vite-plugin-vscode`                  | Runs both bundles with HMR                                          |
+| CSS-in-JS         | StyleX (`@stylexjs/stylex`)                  | Custom primitives; atomic CSS, static extraction                    |
+| Unit tests        | Vitest                                       | Pure logic, schema validation, parsers                              |
+| Integration tests | `@vscode/test-cli` + `@vscode/test-electron` | Actual API surface; Mocha-based                                     |
+| Go tests          | `go test ./...`                              | Scanner correctness, SQLite cache invariants                        |
+| Packaging         | `@vscode/vsce package`                       | Platform-neutral VSIX with all binaries packed                      |
+| Types             | `@types/vscode: ^1.94.0`                     | Matches `engines.vscode`                                            |
+| Dev ext           | `connor4312.esbuild-problem-matchers`        | `.vscode/extensions.json` recommendation                            |
 
 ## What goes in the host vs webview
 
-| Concern | Extension host | Webview |
-|---|---|---|
-| File I/O (`workspace.fs`) | yes | no (use bridge) |
-| Spawn Go sidecar | yes | no |
-| JSON Schema validation (ajv) | yes (authoritative) | yes (optimistic) |
-| `vscode.lm` calls | yes (proxy responses over bridge) | no |
-| R3F preview | no | yes |
-| Audio playback | no | yes (AudioContext) |
-| BasisU/KTX2 encode | yes (spawn worker or run in-host) | no |
-| Sidecar write | yes (`WorkspaceEdit` respects formatter) | no |
+| Concern                      | Extension host                           | Webview            |
+| ---------------------------- | ---------------------------------------- | ------------------ |
+| File I/O (`workspace.fs`)    | yes                                      | no (use bridge)    |
+| Spawn Go sidecar             | yes                                      | no                 |
+| JSON Schema validation (ajv) | yes (authoritative)                      | yes (optimistic)   |
+| `vscode.lm` calls            | yes (proxy responses over bridge)        | no                 |
+| R3F preview                  | no                                       | yes                |
+| Audio playback               | no                                       | yes (AudioContext) |
+| BasisU/KTX2 encode           | yes (spawn worker or run in-host)        | no                 |
+| Sidecar write                | yes (`WorkspaceEdit` respects formatter) | no                 |
 
 Webview never touches the filesystem directly — bridge only.
 
@@ -175,7 +177,7 @@ Webview never touches the filesystem directly — bridge only.
 "contributes.configuration": {
   "title": "three-flatland Tools",
   "properties": {
-    "threeFlatland.zzfx.enabled":        { "type": "boolean", "default": true },
+    "threeFlatland.audio.enabled":        { "type": "boolean", "default": true },
     "threeFlatland.atlas.autoSliceMode": { "enum": ["grid","auto","off"], "default": "off" },
     "threeFlatland.atlas.defaultFormats": {
       "type": "array",
@@ -193,15 +195,16 @@ Webview never touches the filesystem directly — bridge only.
 
 Command id prefix: `threeFlatland.<tool>.<action>`. User-facing `category: "FL"` gives palette entries the shape `FL: <title>`. Context-menu titles include `FL` inline so right-click menus stay recognizable.
 
-| Command id | Palette title | Context-menu title |
-|---|---|---|
-| `threeFlatland.zzfx.playAtCursor` | Play ZzFX at Cursor | — (inline CodeLens: ▶ Play) |
-| `threeFlatland.zzfx.openEditor` | Open ZzFX Editor | — (inline CodeLens: ⚙ Edit) |
-| `threeFlatland.atlas.openEditor` | Open Sprite Atlas | Open in FL Sprite Atlas |
-| `threeFlatland.normalBaker.open` | Open Normal Baker | Open in FL Normal Baker |
-| `threeFlatland.imageEncoder.open` | Open Image Encoder | Open in FL Image Encoder |
+| Command id                         | Palette title       | Context-menu title          |
+| ---------------------------------- | ------------------- | --------------------------- |
+| `threeFlatland.audio.playAtCursor` | Play ZzFX at Cursor | — (inline CodeLens: ▶ Play) |
+| `threeFlatland.audio.openEditor`   | Open ZzFX Editor    | — (inline CodeLens: ⚙ Edit) |
+| `threeFlatland.atlas.openEditor`   | Open Sprite Atlas   | Open in FL Sprite Atlas     |
+| `threeFlatland.normalBaker.open`   | Open Normal Baker   | Open in FL Normal Baker     |
+| `threeFlatland.imageEncoder.open`  | Open Image Encoder  | Open in FL Image Encoder    |
 
 Rules of thumb:
+
 - Every registered command has `"category": "FL"`.
 - Explorer-context titles carry `FL <ToolName>` inline (the category doesn't render in context menus).
 - Inline CodeLens titles stay compact (space cost is high).

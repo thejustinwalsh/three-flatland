@@ -3,7 +3,7 @@ import { registerAtlasTool } from './tools/atlas/register'
 import { registerMergeTool } from './tools/merge/register'
 import { registerEncodeTool } from './tools/encode/register'
 import { registerNormalBakerTool } from './tools/normal-baker/register'
-import { registerZzfxTool } from './tools/zzfx/register'
+import { registerAudioTool } from './tools/audio/register'
 import { decideToolConfigAction } from './toolRegistryDecisions'
 import { log } from './log'
 
@@ -26,7 +26,7 @@ export type ToolDescriptor = {
   label: string
   /**
    * Whether flipping the setting mid-session can register/dispose the
-   * tool live. `false` tools (zzfx: a CodeLens provider with a debounced
+   * tool live. `false` tools (audio: a CodeLens provider with a debounced
    * document-change listener, plus two external sidecar processes with
    * async spawn/shutdown lifecycles) prompt for a window reload instead —
    * safer than risking a live re-register racing an in-flight sidecar
@@ -71,12 +71,12 @@ export const TOOL_DESCRIPTORS: ToolDescriptor[] = [
     register: registerMergeTool,
   },
   {
-    id: 'zzfxStudio',
-    settingKey: 'threeFlatland.tools.zzfxStudio.enabled',
-    contextKey: 'threeFlatland.tool.zzfxStudio.enabled',
-    label: 'FL ZzFX Studio',
+    id: 'audio',
+    settingKey: 'threeFlatland.tools.audio.enabled',
+    contextKey: 'threeFlatland.tool.audio.enabled',
+    label: 'FL Audio',
     liveToggle: false,
-    register: registerZzfxTool,
+    register: registerAudioTool,
   },
   {
     id: 'normalBaker',

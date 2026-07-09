@@ -23,13 +23,13 @@ catalog:
   # playback.
   '@zzfx-studio/zzfxm': ^0.1.5
   zzfx: ^1.3.2
-  # Real Web Audio in Node (napi-rs/Rust/cpal) — tools/zzfx-play's inline
+  # Real Web Audio in Node (napi-rs/Rust/cpal) — tools/audio-play's inline
   # (no-panel) sidecar's AudioContext, a separate Node-only consumer from
   # the browser audio engine above (native napi module, not resolved into
   # the same install). Ships ALL platform .node binaries in the one
   # package (5-7MB each); VSIX packaging strips unused platforms (#24).
   node-web-audio-api: ^2.0.0
-  # tools/zzfx-play's Tone/Wad synth findings (#47) — versions pinned
+  # tools/audio-play's Tone/Wad synth findings (#47) — versions pinned
   # exactly (no caret) to the prototype-gate-validated versions, not a
   # semver range, since the gate's findings (Tone.setContext behavior,
   # Wad's private-AudioContext monkey-patch ordering) were verified
