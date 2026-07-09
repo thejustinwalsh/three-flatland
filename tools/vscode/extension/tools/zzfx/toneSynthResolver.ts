@@ -11,15 +11,19 @@
 // arguments (note/duration, or chord/duration) out of argRange's raw text,
 // classified per synthType's signature.
 //
-// Unlike wadSynthResolver.ts, there is no `varRef`/loadError-on-unresolved
-// case here at all: the scanner already refuses the WHOLE finding if
-// note/duration/chord aren't static string/number literals
-// (tools/codelens-service/CLAUDE.md), so by the time a tone.synth finding
-// exists, argRange's text is guaranteed parseable — a `loadError` return
-// from this resolver only means the text genuinely doesn't match the
-// expected shape for its synthType (e.g. a malformed argRange, which
-// shouldn't happen for a real finding, but this stays defensive rather
-// than assuming the invariant always holds).
+// `duration`/`time`/`velocity` stay fully-static-or-nothing (the sidecar
+// refuses the WHOLE finding if those aren't literals), but the note/chord
+// argument (position 0) can carry a `varRef` — resolveToneSynth.ts (the
+// vscode-dependent half) resolves that BEFORE calling this function,
+// splicing the identifier's own declaration text in place of its name, so
+// this pure parser never sees a bare identifier at all — only ever
+// already-substituted, potentially-still-not-a-literal text (e.g. the
+// declaration turned out to be a function call, not a literal). A
+// `loadError` return here means either that substituted text genuinely
+// doesn't match the expected shape for its synthType, or (for a finding
+// with no varRef at all) a malformed argRange — shouldn't happen for a
+// real finding, but this stays defensive rather than assuming the
+// invariant always holds.
 //
 // Design decision (v1 scope, see tools/codelens-service/CLAUDE.md's
 // tone.synth section): the constructor's own config object

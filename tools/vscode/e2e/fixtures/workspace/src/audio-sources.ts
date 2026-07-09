@@ -258,13 +258,24 @@ export function playToneChord() {
   new Tone.PolySynth(Tone.FMSynth).toDestination().triggerAttackRelease(['C4', 'E4', 'G4'], '4n')
 }
 
-// Negative case: a non-static note (a local variable, not a literal) —
-// tone.synth's detection is fully-static-or-nothing; a non-literal
-// note/duration/chord argument refuses the WHOLE finding, not a partial
-// resolve. Must NOT surface a CodeLens.
+// Positive case: a bare-identifier note resolves a varRef against its
+// same-file declaration — same permissive posture zzfx/zzfxm/wad.synth
+// already take for a bare-identifier argument (duration stays
+// literal-only). Structurally identical to zzfx(...preset) resolving a
+// same-file const; there's no reason this should read as "unsupported".
 const dynamicNote = 'C4'
 export function playToneDynamicNote() {
   new Tone.Synth().toDestination().triggerAttackRelease(dynamicNote, '8n')
+}
+
+// Negative-ish case: the note comes from a function parameter, not a
+// top-level declaration the scanner can resolve — still surfaces a
+// CodeLens (permissive posture: the scanner can't know a parameter's
+// runtime value, so it defers to the client the same way an unresolvable
+// wad.synth/zzfxm varRef already does), but clicking Play must fail
+// gracefully with a loadError rather than attempting playback.
+export function playToneUnresolvableNote(note: string) {
+  new Tone.Synth().toDestination().triggerAttackRelease(note, '8n')
 }
 
 // Positive case (slow tier): audio.file via bare Audio whose path misses

@@ -51,6 +51,8 @@ const WAD_VAR_UNRESOLVABLE_LINE = lineOf('new Wad(invalidWadConfig)')
 const TONE_NOTE_LINE = lineOf("triggerAttackRelease('C4', '8n')")
 const TONE_NOISE_LINE = lineOf("new Tone.NoiseSynth().toDestination().triggerAttackRelease('8n')")
 const TONE_CHORD_LINE = lineOf('new Tone.PolySynth(Tone.FMSynth)')
+const TONE_VAR_RESOLVABLE_LINE = lineOf("triggerAttackRelease(dynamicNote, '8n')")
+const TONE_VAR_UNRESOLVABLE_LINE = lineOf("triggerAttackRelease(note, '8n')")
 const LONG_MARCH_CALL_LINE = lineOf('zzfxm(longMarchSong)')
 
 type LensCommand = { command: string; title: string; arguments?: unknown[] }
@@ -580,6 +582,69 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
 
     expect(result.captured).toBeDefined()
     expect(result.captured).toMatch(/FL ZzFX:.*Wad synthesis config/)
+    // Never crashed/hung, and never started playing anything either.
+    expect(result.stillSilent).toBe(true)
+  })
+
+  // tone.synth's note/chord argument gets the same permissive var-ref
+  // posture wad.synth's whole config argument already has: the scanner
+  // always emits for a bare identifier, so BOTH the resolvable
+  // (dynamicNote) and unresolvable (a function parameter) cases get a
+  // lens, but only the resolvable one actually plays.
+  test('tone.synth var-ref: the resolvable note plays real audio; the unresolvable one errors gracefully without crashing', async ({
+    evaluateInVSCode,
+  }) => {
+    const lenses = await fetchLenses(evaluateInVSCode)
+    const resolvableLens = lensAt(lenses, TONE_VAR_RESOLVABLE_LINE, '▶ Play')!
+    expect(resolvableLens.command?.command).toBe('threeFlatland.zzfx.playToneSynth')
+
+    const stats = await executeAndPollAudible(
+      evaluateInVSCode,
+      resolvableLens.command!.command,
+      resolvableLens.command!.arguments
+    )
+    expect(stats).toBeDefined()
+    expect(stats!.silent).toBe(false)
+    expect(stats!.peak).toBeGreaterThan(0)
+
+    const silentBeforeUnresolvable = await executeAndPollSilent(
+      evaluateInVSCode,
+      'threeFlatland.zzfx.stopSong',
+      []
+    )
+    expect(silentBeforeUnresolvable).toBe(true)
+
+    const unresolvableLens = lensAt(lenses, TONE_VAR_UNRESOLVABLE_LINE, '▶ Play')!
+    expect(unresolvableLens.command?.command).toBe('threeFlatland.zzfx.playToneSynth')
+
+    const result = await evaluateInVSCode(
+      async (vscode, arg) => {
+        const ext = vscode.extensions.all.find(
+          (e) => e.packageJSON.name === '@three-flatland/vscode'
+        )
+        if (ext && !ext.isActive) await ext.activate()
+        const api = ext!.exports as ExtensionApi
+
+        const original = vscode.window.showErrorMessage
+        let captured: string | undefined
+        vscode.window.showErrorMessage = (message: string) => {
+          captured = message
+          return Promise.resolve(undefined)
+        }
+        try {
+          await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+        } finally {
+          vscode.window.showErrorMessage = original
+        }
+        const stats = await api.zzfxPlay.getStats()
+        return { captured, stillSilent: !stats || stats.silent }
+      },
+      { command: unresolvableLens.command!.command, args: unresolvableLens.command!.arguments }
+    )
+
+    expect(result.captured).toBeDefined()
+    expect(result.captured).toMatch(/FL ZzFX:.*declaration wasn't found/)
     // Never crashed/hung, and never started playing anything either.
     expect(result.stillSilent).toBe(true)
   })

@@ -78,11 +78,13 @@ const SYNTH_DECOY_LINES = [
 ].map(lineOf)
 
 // #47: Tone.js triggerAttackRelease positives (pitched, no-note,
-// chord-with-explicit-voice) and the one fully-static-or-nothing negative.
+// chord-with-explicit-voice, and a bare-identifier note resolving a
+// varRef) plus the one whose varRef can't resolve (a function parameter).
 const TONE_NOTE_LINE = lineOf("triggerAttackRelease('C4', '8n')")
 const TONE_NOISE_LINE = lineOf("new Tone.NoiseSynth().toDestination().triggerAttackRelease('8n')")
 const TONE_CHORD_LINE = lineOf('new Tone.PolySynth(Tone.FMSynth)')
 const TONE_DYNAMIC_NOTE_LINE = lineOf("triggerAttackRelease(dynamicNote, '8n')")
+const TONE_UNRESOLVABLE_NOTE_LINE = lineOf("triggerAttackRelease(note, '8n')")
 
 type LensCommand = { command: string; title: string; arguments?: unknown[] }
 type ResolvedLens = { range: { start: { line: number } }; command?: LensCommand }
@@ -298,17 +300,19 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // pairs with a not-found state) + #47's 5 wad.synth oscillator/noise
     // findings + 2 wad.synth var-ref findings (Play+Stop each — the
     // scanner always emits for a bare identifier, so BOTH var-ref lines
-    // get a pair even though only one actually plays) + 3 tone.synth
-    // findings (Play+Stop each). Every decoy — the commented-out ones,
-    // #44's TRUE decoy block (mic/sprite/preset), and tone.synth's
-    // non-static-note negative — must contribute ZERO lenses, proven by
+    // get a pair even though only one actually plays) + 5 tone.synth
+    // findings (Play+Stop each — 3 literal-note positives, plus 2
+    // bare-identifier-note var-ref findings, same permissive posture as
+    // wad.synth's: both get a pair, only the resolvable one actually
+    // plays). Every decoy — the commented-out ones and #44's TRUE decoy
+    // block (mic/sprite/preset) — must contribute ZERO lenses, proven by
     // the exact total below, not just presence of the positive cases.
-    expect(lenses).toHaveLength(43)
+    expect(lenses).toHaveLength(47)
     // Play count is unchanged from the toggle era — exactly one Play per
     // playable finding, same as before; what's new is Stop now
     // accompanying every one of them unconditionally.
-    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(21)
-    expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(19)
+    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(23)
+    expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(21)
     expect(titles.filter((t) => t === '⚙ Edit')).toHaveLength(1)
     expect(titles.filter((t) => t === '⚙ Edit (variable)')).toHaveLength(1)
     expect(titles.filter((t) => t === '$(search) Not Found')).toHaveLength(1)
@@ -356,14 +360,18 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       )
       expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.zzfx.stopSong')
     }
-    for (const line of [TONE_NOTE_LINE, TONE_NOISE_LINE, TONE_CHORD_LINE]) {
+    for (const line of [
+      TONE_NOTE_LINE,
+      TONE_NOISE_LINE,
+      TONE_CHORD_LINE,
+      TONE_DYNAMIC_NOTE_LINE,
+      TONE_UNRESOLVABLE_NOTE_LINE,
+    ]) {
       expect(lensAt(lenses, line, '▶ Play')?.command?.command).toBe(
         'threeFlatland.zzfx.playToneSynth'
       )
       expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.zzfx.stopSong')
     }
-    // The fully-static-or-nothing tone.synth negative surfaces no lens.
-    expect(lenses.filter((l) => l.range.start.line === TONE_DYNAMIC_NOTE_LINE)).toHaveLength(0)
   })
 
   // #41 slow tier: thunder.ogg misses every fast tier (it lives only at
