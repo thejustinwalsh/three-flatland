@@ -84,3 +84,6 @@ tsconfig.madge.json
 !.restruct/verify.yaml
 !.restruct/permissions.yaml
 .superpowers/
+
+# Impeccable — local design-review hook cache, per-machine and per-session
+.impeccable/
