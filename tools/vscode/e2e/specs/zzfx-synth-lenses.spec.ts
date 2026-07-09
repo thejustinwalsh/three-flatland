@@ -51,6 +51,7 @@ const WAD_VAR_UNRESOLVABLE_LINE = lineOf('new Wad(invalidWadConfig)')
 const TONE_NOTE_LINE = lineOf("triggerAttackRelease('C4', '8n')")
 const TONE_NOISE_LINE = lineOf("new Tone.NoiseSynth().toDestination().triggerAttackRelease('8n')")
 const TONE_CHORD_LINE = lineOf('new Tone.PolySynth(Tone.FMSynth)')
+const TONE_PLUCK_LINE = lineOf('new Tone.PluckSynth()')
 const TONE_VAR_RESOLVABLE_LINE = lineOf("triggerAttackRelease(dynamicNote, '8n')")
 const TONE_VAR_UNRESOLVABLE_LINE = lineOf("triggerAttackRelease(note, '8n')")
 const LONG_MARCH_CALL_LINE = lineOf('zzfxm(longMarchSong)')
@@ -354,6 +355,58 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     expect(chordStats).toBeDefined()
     expect(chordStats!.silent).toBe(false)
     expect(chordStats!.peak).toBeGreaterThan(0)
+    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.zzfx.stopSong', [])
+  })
+
+  // Regression guard: PluckSynth is the ONE allowlisted class whose
+  // internal LowpassCombFilter constructs an AudioWorkletNode through
+  // standardized-audio-context — none of the other 8 do. That path used
+  // to throw inside an unawaited .then() (window.isSecureContext
+  // undefined in our shim window), an unhandled rejection Node treats as
+  // fatal — one PluckSynth play took down the ENTIRE sidecar process,
+  // silently killing every other in-flight sound with it, not a clean
+  // Nack (see sidecar.ts's module-scope fix comment). This went
+  // undetected for a while precisely BECAUSE none of the other 8 types
+  // exercise that path, so proves two things: PluckSynth itself produces
+  // real audio, AND the sidecar process is still alive and responsive
+  // for a completely unrelated zzfx.call afterward.
+  test('tone.synth PluckSynth: AudioWorkletNode construction does not crash the sidecar process', async ({
+    evaluateInVSCode,
+  }) => {
+    const lenses = await fetchLenses(evaluateInVSCode)
+    const pluckLens = lensAt(lenses, TONE_PLUCK_LINE, '▶ Play')!
+    expect(pluckLens.command?.command).toBe('threeFlatland.zzfx.playToneSynth')
+
+    const pluckStats = await executeAndPollAudible(
+      evaluateInVSCode,
+      pluckLens.command!.command,
+      pluckLens.command!.arguments
+    )
+    expect(pluckStats).toBeDefined()
+    expect(pluckStats!.silent).toBe(false)
+    expect(pluckStats!.peak).toBeGreaterThan(0)
+    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.zzfx.stopSong', [])
+
+    // The process survived — prove it by playing something totally
+    // unrelated (the plain Tone.Synth positive case) and getting real
+    // audio back, not a dropped connection / hung request.
+    const notePid = await evaluateInVSCode(async (vscode) => {
+      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
+      if (ext && !ext.isActive) await ext.activate()
+      const api = ext!.exports as ExtensionApi
+      return api.zzfxPlay.getActivePid()
+    })
+    expect(notePid, 'the sidecar process must still be alive after PluckSynth').toBeGreaterThan(0)
+
+    const noteLens = lensAt(lenses, TONE_NOTE_LINE, '▶ Play')!
+    const noteStats = await executeAndPollAudible(
+      evaluateInVSCode,
+      noteLens.command!.command,
+      noteLens.command!.arguments
+    )
+    expect(noteStats).toBeDefined()
+    expect(noteStats!.silent).toBe(false)
+    expect(noteStats!.peak).toBeGreaterThan(0)
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.zzfx.stopSong', [])
   })
 

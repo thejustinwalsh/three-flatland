@@ -258,6 +258,16 @@ export function playToneChord() {
   new Tone.PolySynth(Tone.FMSynth).toDestination().triggerAttackRelease(['C4', 'E4', 'G4'], '4n')
 }
 
+// Positive case: PluckSynth — the ONE allowlisted class whose internal
+// LowpassCombFilter constructs an AudioWorkletNode through
+// standardized-audio-context (none of the other 8 classes do). Dedicated
+// coverage here specifically because that path used to crash the whole
+// sidecar process (window.isSecureContext undefined) — see zzfx-play's
+// CLAUDE.md and sidecar.ts's module-scope fix comment.
+export function playTonePluck() {
+  new Tone.PluckSynth().toDestination().triggerAttackRelease('C4', '8n')
+}
+
 // Positive case: a bare-identifier note resolves a varRef against its
 // same-file declaration — same permissive posture zzfx/zzfxm/wad.synth
 // already take for a bare-identifier argument (duration stays
