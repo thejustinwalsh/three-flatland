@@ -103,7 +103,7 @@ function diffStats(a: Uint8Array, b: Uint8Array): DiffStats {
 }
 
 async function loadFont(): Promise<SlugFont> {
-  return SlugFontLoader.load(`${import.meta.env.BASE_URL}Inter-Regular.ttf`, {
+  return SlugFontLoader.load('./Inter-Regular.ttf', {
     forceRuntime: true,
   })
 }

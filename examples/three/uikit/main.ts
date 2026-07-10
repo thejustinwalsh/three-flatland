@@ -217,7 +217,7 @@ function createTileMapData(
 }
 
 async function loadFont(): Promise<SlugFont> {
-  return SlugFontLoader.load(`${import.meta.env.BASE_URL}Inter-Regular.ttf`, {
+  return SlugFontLoader.load('./Inter-Regular.ttf', {
     forceRuntime: true,
   })
 }

@@ -500,7 +500,7 @@ async function run(forceWebGL: boolean): Promise<Ok> {
     }
 
     // --- Baked round trip: fixture GLB vs runtime registration ---
-    const bakedBuf = await (await fetch(`${import.meta.env.BASE_URL}s4-shapes.glb`)).arrayBuffer()
+    const bakedBuf = await (await fetch('./s4-shapes.glb')).arrayBuffer()
     const setBaked = SlugShapeSet.fromBaked(bakedBuf)
     const setRuntime = new SlugShapeSet()
     for (const contours of fixtureShapes()) setRuntime.registerShape(contours)

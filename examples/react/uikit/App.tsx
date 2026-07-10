@@ -640,7 +640,7 @@ function GameScene({ ambient }: { ambient: number }) {
   const torch2Ref = useRef<Light2D>(null)
   const flickerT = useRef(0)
   const [flatlandCamera, setFlatlandCamera] = useState<ThreeOrthographicCamera | null>(null)
-  const font = useSlugFont(`${import.meta.env.BASE_URL}Inter-Regular.ttf`)
+  const font = useSlugFont('./Inter-Regular.ttf')
 
   const halfExtent = (MAP_SIZE * TILE_SIZE) / 2
 

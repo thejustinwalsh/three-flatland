@@ -253,6 +253,17 @@ export class SlugFontLoader extends Loader<SlugFont> {
       import('./pipeline/textMeasure.js'),
     ])
 
+    // `fetch` only rejects on a network failure, so a 404 arrives here as a
+    // resolved response with an empty body. Handing that to opentype.js reads
+    // offset 0 of a zero-length DataView and throws `RangeError: Offset is
+    // outside the bounds of the DataView` from deep inside the parser — which
+    // says nothing about the URL that was wrong.
+    if (!response.ok) {
+      throw new Error(
+        `[slug] Failed to fetch font "${url}": HTTP ${response.status} ${response.statusText}`
+      )
+    }
+
     const buffer = await response.arrayBuffer()
     const parsed = parseFont(buffer)
     const { glyphs } = parsed
