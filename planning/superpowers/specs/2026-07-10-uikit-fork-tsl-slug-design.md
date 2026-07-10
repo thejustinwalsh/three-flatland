@@ -1,8 +1,12 @@
 # uikit fork → TSL + Slug: design spec
 
-**Date:** 2026-07-10 (rev 2 — folds in Q1–Q7 resolutions, licensing facts, backend-branch
-authorization, the required interop example, and build-system mechanics)
-**Status:** Draft for stakeholder review
+**Date:** 2026-07-10 (rev 5 — delivery shape decided: stacked PR train, tip-green
+gate, ordered one-sitting merge (runbook in the plan); turbo.json carve-out debt
+folded in. Rev 4: D3 FINAL — `uikit-bake` bin, slug baker-contract debt,
+`SlugShapeSet` serialization in v1. Rev 3 folded the D1–D4 rulings. Rev 2 folded
+Q1–Q7, licensing, backend-branch authorization, the interop example, and build-system
+mechanics.)
+**Status:** D1–D4 ruled (§14); one open decision (D5, default font residence)
 **Verified against:** pmndrs/uikit @ `0d4d887` (clone), `three@0.183.1` (node_modules
 source), `@three-flatland/slug@0.1.0-alpha.3` (workspace),
 `@react-three/fiber@10.0.0-alpha.2` (installed), `yoga-layout@3.2.1` (registry)
@@ -18,9 +22,10 @@ Fork `pmndrs/uikit` into `@three-flatland/uikit`, ported to TSL node materials
 GLSL ES 3.0; never the legacy `WebGLRenderer`). Replace its MSDF text renderer with
 `@three-flatland/slug`, and in the process migrate uikit's proven text layout engine
 _into_ Slug so Slug becomes a complete standalone text engine. Route SVG rendering
-through a new Slug shape batch (analytic, instanced, zero render targets). Delivered as
-one PR on `feat/uikit-fork`, proven by uikit's use of Slug **and by a required
-three-flatland interop example** (§10).
+through a new Slug shape batch (analytic, instanced, zero render targets). Delivered
+as **one landing**: a stacked PR train based on `feat/uikit-fork`, held until the tip
+is green and merged to `main` in one ordered sitting (runbook in the plan) — proven by
+uikit's use of Slug **and by a required three-flatland interop example** (§10).
 
 Binding stakeholder decisions (not relitigated here):
 
@@ -38,7 +43,12 @@ Binding stakeholder decisions (not relitigated here):
    **constructor signatures** — see §9.1.
 4. SVG ships in v1 through Slug. Skia is a v2 escape hatch only, never on the hot path,
    never one render target per element (now also a root-`CLAUDE.md` rule).
-5. One PR, on the `feat/uikit-fork` worktree.
+5. One **landing**, on the `feat/uikit-fork` worktree — amended from "one PR" with
+   stakeholder direction (_"…ensure there is a runbook for how to merge it all
+   cleanly without re-work"_): a stacked PR train (five reviewable layers), nothing
+   merges until the tip is green, then the whole train merges in one ordered sitting
+   and the release is cut once, after — so no Slug API publishes before uikit proves
+   it. Full runbook in the plan.
 6. **MSDF is deleted, not kept as a fallback.** Slug replaces MSDF entirely — this is
    THE sanctioned divergence from upstream (§8.1).
 
@@ -199,6 +209,7 @@ packages/uikit/                      @three-flatland/uikit
   package.json                       exports: ".", "./react" (+ internals as upstream)
 packages/uikit-lucide/               @three-flatland/uikit-lucide  (generated icons + ./react)
 packages/uikit-default/              @three-flatland/uikit-default (kit core + ./react)
+packages/uikit-horizon/              @three-flatland/uikit-horizon (kit core + ./react)
 ```
 
 Kept as npm dependencies (unchanged upstream, renderer-agnostic — fork nothing we don't
@@ -207,9 +218,21 @@ change): `@pmndrs/uikit-pub-sub`, `@pmndrs/pointer-events`, `@preact/signals-cor
 
 Dropped dependencies: `@pmndrs/msdfonts`, `@zappar/msdf-generator` (MSDF-only — §8.1).
 
-Deferred out of v1 (stakeholder sign-off D2, §14): the `horizon` kit. Licensing is NOT
-the reason (see §3.1 — it is clean MIT); scope is. The default kit + lucide icons
-already prove the icons → controls → themes chain.
+**Build graph:** `turbo.json`'s global `build.dependsOn` chains every package without
+a per-package carve-out behind `@three-flatland/skia#build` (a WASM compile). Every
+new uikit package ships with a
+`"<pkg>#build": { "dependsOn": ["^build"], "outputs": ["dist/**"] }` carve-out, and
+`@three-flatland/slug`'s **missing** carve-out (pre-existing debt, now on uikit's
+critical build path) is fixed in this PR under the iron law.
+
+**Both kits ship in v1 — they are the conformance suite** (D2 ruling, overriding the
+earlier defer-horizon recommendation; stakeholder: _"needed to ensure it works
+correctly against the original"_). The kits are not surface area to minimize: `default`
+and `horizon` together exercise the panel material, text, `Svg`/icons, scroll
+containers, and input across a real component library, and — because the same kit tree
+runs on upstream `@pmndrs/uikit` — they can be visually diffed against the original.
+That is the strongest correctness signal available and costs no bespoke test authoring.
+See §12 (kit-conformance harness) and risk R10.
 
 ### 3.1 Licensing and attribution
 
@@ -222,8 +245,9 @@ The Horizon kit is not encumbered by Horizon UI's commercial terms.
 Where the notices live in the fork:
 
 - Each forked package (`packages/uikit`, `packages/uikit-lucide`,
-  `packages/uikit-default`) ships a `LICENSE` retaining **both** upstream copyright
-  lines plus ours, and a README "Forked from pmndrs/uikit @ 0d4d887" attribution block.
+  `packages/uikit-default`, `packages/uikit-horizon`) ships a `LICENSE` retaining
+  **both** upstream copyright lines plus ours, and a README "Forked from
+  pmndrs/uikit @ 0d4d887" attribution block.
 - Repo-level `THIRD_PARTY_LICENSES` gains a uikit entry (both copyright holders,
   upstream URL, commit). The existing Slug entries (Lengyel patent dedicated to the
   public domain 2026-03-17; reference shaders MIT) are load-bearing per
@@ -426,14 +450,24 @@ files consume today (verified those consume only this module — `text/selection
 The core rendering uplift. Requirements derived from uikit's glyph pipeline
 (`text/render/instanced-glyph*.ts`):
 
-1. **Cross-component batching is preserved.** Upstream batches all Text components
-   sharing a font into one instanced mesh (glyph-group keyed by `Font`,
-   `instanced-glyph-group.ts:11,41`). Per-Text meshes were considered and rejected: a
-   kit dashboard easily holds 100+ Text nodes and "minimize draw calls" is a repo
-   constraint. Consequence: glyph instances from _differently-transformed_ components
-   share one mesh, so instances need **full per-instance transforms** —
-   `glyphPos`'s position-only encoding cannot express uikit's
-   `transformRotateX/Y/Z`-capable matrices.
+1. **Cross-component batching is REQUIRED v1 scope** (D4 ruling — the fallback is
+   withdrawn). What this actually is, stated plainly because it is easy to mistake for
+   MSDF legacy: `SlugText extends InstancedMesh` — today Slug renders **one mesh per
+   text component**, so every glyph in that mesh shares the mesh's single transform.
+   `glyphJac` carries the inverse Jacobian, which `slugDilate` uses to expand each quad
+   by half a pixel **in screen space** (`SlugMaterial.ts:142-151`) and to map the pixel
+   footprint back into em space for analytic coverage. With one uniform transform that
+   Jacobian is trivially correct — which is why Slug looks crisp today. uikit batches
+   glyphs from **many components** into one instanced mesh keyed by `Font`
+   (`instanced-glyph-group.ts:11,41`); those components carry heterogeneous transforms
+   (different `pixelSize`, ancestor rotations via `transformRotateX/Y/Z`, non-uniform
+   scale), so each **instance** needs its own transform matrix, and the Jacobian must
+   be derived **per instance** from that matrix rather than from the mesh. Get it wrong
+   and glyphs go blurry or fat at odd transforms. This is a feature Slug is missing,
+   not MSDF baggage — exactly the "if this is a required feature that slug is missing
+   we add it" case. Without it, text regresses to one draw call per `Text` node against
+   uikit's one-draw-per-font model; a kit dashboard easily holds 100+ Text nodes and
+   "minimize draw calls" is a repo constraint.
 2. Therefore `SlugBatch` extends the instance layout (existing 5 × vec4 —
    `glyphPos/glyphTex/glyphJac/glyphBand/glyphColor` — kept intact, extended exactly as
    `packages/slug/CLAUDE.md` prescribes: new `InstancedBufferAttribute`s in the
@@ -443,7 +477,9 @@ The core rendering uplift. Requirements derived from uikit's glyph pipeline
      position/normal, and Slug's dilation math extends to fold the instance 2×2 upper
      block into its pixel-per-em Jacobian (SlugMaterial currently passes MVP rows as
      per-object uniforms; the instance matrix composes in the vertex stage). Highest-
-     risk shader change in the project (risk R2, fallback D4).
+     risk shader change in the project (risk R2) — **if S3 genuinely stalls, that is an
+     escalation to the stakeholder, not a silent exit; there is no per-Text-mesh
+     fallback.**
    - `glyphClip` (mat4 = 4 root-space plane equations, per Q4) — coverage-multiply mask
      (Q2-safe: unconditional `fwidth`, no in-graph discard) added to **both**
      `SlugMaterial` and `SlugStrokeMaterial`. Gates `overflow: hidden` and scroll
@@ -504,6 +540,12 @@ Roadmap item #37 (`slug/README.md:185`), pulled into v1.
   (control point at midpoint).
 - **`SlugShapeBatch`** = `SlugBatch` over a `SlugShapeSet` — identical instance layout
   (per-instance matrix, color, clip), one draw call for any number of shape instances.
+- **`SlugShapeSet` serialization** (D3-final scope — `uikit-bake icons` needs it, §8.3):
+  a baked shape-set container reusing slug's existing GLB packing infrastructure
+  (`glb.ts`, the `.slug.glb` pattern) — registered shapes' curve/band tables + bounds +
+  handles serialized once at bake time, loaded without any SVG parsing or band
+  building at runtime. Acceptance identity: a baked set renders pixel-identically to
+  the same SVGs registered at runtime.
 - **uikit `Svg` component**: replaces the mesh-forest
   (`components/svg.ts:106-117` — one `Mesh` + one `MeshBasicMaterial` per shape per
   path) with instances in a per-root shape-batch group, managed exactly like glyph
@@ -543,12 +585,63 @@ maintainer needs to read.
   `root.requestRender()` pings.
 - `InstancedGlyph` writes through `SlugBatch.writeGlyph/writeRect`.
 - `FontFamilies` property shape preserved (family → weight → URL); URL targets change
-  from MSDF JSON to TTF/OTF (runtime shaper) or `.slug.glb` (baked). Default fonts:
-  bake Inter (upstream's default family) at the weights the default kit uses, budget
-  ≤ 1.5 MB total; fallback runtime-shaped TTF (decision D3, §14). Baked-vs-runtime
-  divergences (notdef fallback, outline heuristic, subset coverage — see
-  `packages/slug/CLAUDE.md` gotchas) mean the shipped default should be baked with a
-  documented Unicode range.
+  from MSDF JSON to TTF/OTF (runtime shaper) or `.slug.glb` (baked).
+- **Fonts: runtime is the default path** (D3 ruling — no pre-baked font ships).
+  `SlugFontLoader` parses TTF/OTF and builds curve/band textures at runtime; no
+  `.slug.glb` in the package, no size budget, no Unicode-subset decision forced on
+  users. This composes with §2.4 — uikit users already pass TTF URLs. **Baking is an
+  opt-in optimization** (faster startup, no opentype.js parse), surfaced through the
+  CLI (§8.3), never a prerequisite. What remains open is only where the default
+  Inter _source_ TTFs live so `Text` keeps upstream's zero-config UX (upstream bundled
+  `@pmndrs/msdfonts` assets) — that is decision **D5** (§14): bundle the static TTFs
+  for the weights the kits use vs resolve from a pinned CDN URL vs require explicit
+  `fontFamilies`. Recommend bundling (parity with upstream's bundled defaults; TTFs
+  are source assets, not pre-baked artifacts, so the D3 ruling is respected).
+
+### 8.3 Baking tooling (D3 final ruling: uikit gets its own bin)
+
+Stakeholder principle, applied literally: _"uikit can be used standalone, so it gets a
+bin… slug surfaces its own bake, so should uikit, even if it just proxies it to slug."_
+**Each package surfaces its own tooling; a consumer of one package must never need to
+learn its dependencies' CLIs.**
+
+**Target convention (stated so the fleet doesn't guess):** every baking package
+**must** register with `flatland-bake` via `flatland.bake` in its package.json
+(discoverability — the registry pattern the repo built); a **standalone bin is
+additionally warranted** when the package is commonly used on its own (slug, uikit).
+Under this convention `alphamap` (`alpha`) and `normals` (`normal`) are already
+conformant — registration, no bin needed; slug and uikit get both.
+
+**Fold-in tech debt (iron law — slug violates the documented contract today):**
+`bake/src/types.ts:4-16` requires entry modules to default-export a
+`Baker { name, description, run(args): Promise<number>, usage?() }`, and its canonical
+example is literally `{ "name": "font", "description": "Bake SlugFont", "entry":
+"./dist/cli.js" }`; `flatland-bake`'s USAGE names `@three-flatland/slug` as the
+expected provider. But `slug/src/cli.ts` has **zero exports** (a bare bin script) and
+slug's package.json has **no `flatland.bake` field** — so `flatland-bake --list` omits
+it and the documented example is false. Fix in this PR:
+
+1. Refactor `slug/src/cli.ts` to `export default baker` following
+   `alphamap/src/cli.ts:35` (`name: 'font'` — making the `types.ts` canonical example
+   true; `description`, `usage()`, `run(args): Promise<number>`).
+2. Keep the `slug-bake` bin as a thin wrapper calling `baker.run(process.argv.slice(2))`.
+3. Add `flatland.bake: [{ "name": "font", … }]` to `packages/slug/package.json`.
+
+This also gives uikit a **callable exported function to proxy** — no subprocess
+spawning.
+
+**uikit's tooling:**
+
+- Bin **`uikit-bake`** (follows the `<pkg>-bake` precedent: `flatland-bake`,
+  `slug-bake`), plus a `flatland.bake` registration under baker name **`uikit`** so it
+  appears in `flatland-bake --list`. **Collision check:** `discoverBakers()` warns on
+  duplicate names — slug owns `font`, so uikit's baker is `uikit` with subcommands,
+  never a second top-level `font`.
+- Two subcommands, one CLI: `uikit-bake font <ttf...>` (proxies slug's exported
+  `baker.run` with kit-aware weight/range defaults) and `uikit-bake icons <svg-dir>`
+  (bakes an SVG set into a serialized `SlugShapeSet` — see §7; requires the S4
+  serialization format). `flatland-bake uikit font|icons …` dispatches to the same
+  implementation.
 
 ## 9. React surface
 
@@ -677,6 +770,14 @@ APIs; `FontFamilies` property shape; TTF font URLs (§2.4).
 - **Renderer smoke tests (both backends):** duck-typed instancing renders (panel +
   SlugBatch); per-instance clip planes clip; rounded-panel shadow silhouette matches
   its main-pass silhouette (E2); point-light shadow recorded pass-or-documented.
+- **Kit-conformance harness (D2 — the kits ARE the conformance suite):** a fixture app
+  renders the same `default` and `horizon` kit trees twice — upstream `@pmndrs/uikit`
+  (+ kits, pinned to `0d4d887`-era npm releases) on `WebGLRenderer`, and the fork on
+  `WebGPURenderer` — and screenshot-diffs them with tolerance. Text regions get a
+  looser tolerance band or masking (MSDF vs Slug rasterization legitimately differs at
+  the pixel level); layout boxes, panel geometry/radius/borders, icon shapes, and
+  scroll behavior must match. This is the primary "works correctly against the
+  original" signal and costs no bespoke test authoring.
 - **e2e/visual (playwright, existing harness):** the `uikit-hud` example pair — panels,
   scrolled clipped text, selection + caret, icon wall, transparent-over-sprites
   ordering, dark/light.
@@ -700,32 +801,50 @@ APIs; `FontFamilies` property shape; TTF font URLs (§2.4).
 
 ### 13.2 Standing risks
 
-| #   | Risk                                                                                                                     | Exposure                                        | Mitigation                                                                                                                                                    |
-| --- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | Duck-typed instancing breaks beyond the verified guards                                                                  | Panels + text + shapes                          | E1 before fan-out; fallback: real `InstancedMesh` subclass with shims                                                                                         |
-| R2  | Per-instance matrix × Slug dilation Jacobian — hardest shader change; errors show as blurry/fat glyphs at odd transforms | Cross-component text batching                   | Isolated example + AA screenshot fixtures at rotations/scales; **authorized fallback D4: per-Text-component meshes** (explicit stakeholder deferral if taken) |
-| R3  | Point-light (distance) shadows and ClippingContext/`clipShadows` in shadow passes not fully verifiable from source       | Image/panel shadows in lit scenes               | E2 records it; if broken upstream in three, scope v1 shadows to directional/spot with documented limitation                                                   |
-| R4  | MSDF-baseline vs Slug-ascender metric conversion shifts text vertically                                                  | Every Text node                                 | Baseline math defined once in `slug/layout`; parity fixtures assert line boxes; visual diff vs upstream on the same TTF                                       |
-| R5  | r3f `10.0.0-alpha.2` drift vs upstream react code written for r8/r9                                                      | 693-LOC react package                           | Q7 verified `extend`/`args` survive; port phase isolates the rest; divergences land in §11, never silently                                                    |
-| R6  | SlugText/SlugStackText migration onto the new layout engine balloons                                                     | Slug phase                                      | Compat wrappers ship regardless; migration is its own gated phase                                                                                             |
-| R7  | Unverified prior claim (accepted, not re-proven): Skia's compiled shaper is primitive-only                               | None in v1 — Slug is the only text engine       | Re-verify only if the v2 Skia escape hatch is exercised; Skia guidance owned by PR #172                                                                       |
-| R8  | An implementing agent "fixes" a ported constructor to no-arg per the repo convention, silently breaking API compat       | Every uikit class; fleet execution amplifies it | §9.1 carve-out (mirrored in root `CLAUDE.md`); U-phase acceptance includes a signature-diff check against upstream `.d.ts`                                    |
-| R9  | Fixed t=0.5 cubic split too coarse for SVG at scale (F2 caveat)                                                          | Icon rendering fidelity                         | Adaptive recursion in `slug/svg` (§7) with an error-bound unit test; lucide corpus screenshot sampling                                                        |
+| #   | Risk                                                                                                                     | Exposure                                                             | Mitigation                                                                                                                                                                                   |
+| --- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | Duck-typed instancing breaks beyond the verified guards                                                                  | Panels + text + shapes                                               | E1 before fan-out; fallback: real `InstancedMesh` subclass with shims                                                                                                                        |
+| R2  | Per-instance matrix × Slug dilation Jacobian — hardest shader change; errors show as blurry/fat glyphs at odd transforms | Cross-component text batching (REQUIRED v1 — D4 ruling, no fallback) | AA screenshot fixtures at rotations, **non-uniform scales, and mixed `pixelSize`** (where per-instance Jacobian errors surface); a stall is a stakeholder escalation, not an exit            |
+| R3  | Point-light (distance) shadows and ClippingContext/`clipShadows` in shadow passes not fully verifiable from source       | Image/panel shadows in lit scenes                                    | E2 records it; if broken upstream in three, scope v1 shadows to directional/spot with documented limitation                                                                                  |
+| R4  | MSDF-baseline vs Slug-ascender metric conversion shifts text vertically                                                  | Every Text node                                                      | Baseline math defined once in `slug/layout`; parity fixtures assert line boxes; visual diff vs upstream on the same TTF                                                                      |
+| R5  | r3f `10.0.0-alpha.2` drift vs upstream react code written for r8/r9                                                      | 693-LOC react package                                                | Q7 verified `extend`/`args` survive; port phase isolates the rest; divergences land in §11, never silently                                                                                   |
+| R6  | SlugText/SlugStackText migration onto the new layout engine balloons                                                     | Slug phase                                                           | Compat wrappers ship regardless; migration is its own gated phase                                                                                                                            |
+| R7  | Unverified prior claim (accepted, not re-proven): Skia's compiled shaper is primitive-only                               | None in v1 — Slug is the only text engine                            | Re-verify only if the v2 Skia escape hatch is exercised; Skia guidance owned by PR #172                                                                                                      |
+| R8  | An implementing agent "fixes" a ported constructor to no-arg per the repo convention, silently breaking API compat       | Every uikit class; fleet execution amplifies it                      | §9.1 carve-out (mirrored in root `CLAUDE.md`); U-phase acceptance includes a signature-diff check against upstream `.d.ts`                                                                   |
+| R9  | Fixed t=0.5 cubic split too coarse for SVG at scale (F2 caveat)                                                          | Icon rendering fidelity                                              | Adaptive recursion in `slug/svg` (§7) with an error-bound unit test; lucide corpus screenshot sampling                                                                                       |
+| R10 | Horizon kit doubles the kit port surface in v1 (D2 ruling)                                                               | Schedule; U3/U4/V volume                                             | Kits are renderer-agnostic component code consuming core primitives — port cost is mechanical; the kit-conformance harness (§12) catches drift; kit-track work parallelizes across the fleet |
 
-## 14. Stakeholder decision points
+## 14. Stakeholder decisions — rulings recorded (D1–D4) + open (D5)
 
-- **D1 — `getFBOId` removal** (`@three-flatland/skia`, exported at `three/index.ts:27`,
-  `react/index.ts:43`): provably dead in browsers (returns 0 unless
-  `__webglFramebuffer` is a number; browsers return `WebGLFramebuffer` objects), and
-  unambiguously dead under the now-codified "no legacy WebGLRenderer" rule — but
-  deleting is a breaking change to a published package. **Recommend: delete in this
-  PR** with a breaking-change commit marker. The internal `SkiaCanvas`
-  `WebGLRenderTarget → RenderTarget` swap is safe and ships regardless (and is now
-  mandated by root `CLAUDE.md`'s no-carve-out audit note). _Needs sign-off._
-- **D2 — horizon kit deferral** (§3). Licensing is clean (F1); this is purely scope.
-  Recommend defer. _Needs sign-off (acceptance-criteria gate)._
-- **D3 — default font shipping**: baked Inter `.slug.glb` (≤ 1.5 MB budget, documented
-  Unicode subset) vs runtime-shaped TTF fetch. Recommend baked; budget measured during
-  U2 with the fallback pre-agreed. _Sign-off on the budget._
-- **D4 — R2 fallback authorization**: if per-instance-matrix dilation slips, ship
-  per-Text-component batching in v1 (documented perf deferral). _Pre-authorize or not._
+- **D1 — RULED: delete `getFBOId`.** Remove the function and both public exports
+  (`skia/src/ts/three/index.ts:27`, `skia/src/ts/react/index.ts:43`), plus the
+  `SkiaCanvas` `WebGLRenderTarget → RenderTarget` swap. Breaking-change commit marker.
+  **Coordination hazard:** `packages/skia` source is also in PR #172's orbit (that PR
+  owns `packages/skia/CLAUDE.md` — different files, no direct conflict), so the skia
+  edits land in **their own commit**, independently cherry-pickable/revertable if #172
+  merges first.
+- **D2 — RULED (overrides the defer recommendation): port BOTH kits in v1.**
+  Stakeholder: _"needed to ensure it works correctly against the original."_ The kits
+  are the conformance suite (§3, §12, R10).
+- **D3 — RULED, FINAL (two rounds): no pre-baked default font; uikit gets its OWN
+  bin.** Runtime `SlugFontLoader` is the default path; baking is opt-in. Final ruling
+  on tooling shape: _"uikit can be used standalone, so it gets a bin… even if it just
+  proxies it to slug"_ — so `uikit-bake` (bin) + `flatland-bake` registration both
+  ship (§8.3), the slug baker-contract debt (zero exports, missing registration) is
+  folded in per the iron law, baker names are `font` (slug) and `uikit` (uikit) to
+  avoid the `discoverBakers()` collision warning, and `uikit-bake icons` pulls
+  `SlugShapeSet` serialization into v1 scope (§7). The 1.5 MB bake budget question
+  remains dissolved.
+- **D4 — RULED (withdraws the fallback): cross-component batching is required v1
+  scope.** R2 is a missing Slug feature (per-instance transform + per-instance
+  Jacobian), not MSDF legacy — see the §6.5 explanation. S3 acceptance strengthened
+  (rotations, non-uniform scales, mixed `pixelSize`); a genuine stall escalates to the
+  stakeholder.
+- **D5 — OPEN (spawned by the D3 ruling): where do the default Inter _source_ TTFs
+  live?** Upstream bundles its default fonts (`@pmndrs/msdfonts`), so zero-config
+  `Text` is part of the preserved UX. Options: (a) bundle static Inter TTFs for the
+  weights the kits use (~300 KB/weight, runtime-parsed — not pre-baked, so consistent
+  with D3); (b) resolve defaults from a pinned CDN URL (zero package weight, adds a
+  network dependency + supply-chain surface); (c) require explicit `fontFamilies`
+  (API/UX break with upstream). **Recommend (a)**, weights measured during U2.
+  _Needs ruling before U2._
