@@ -19,9 +19,12 @@ type LaneSync = {
   buffer: InstancedInterleavedBuffer
   /**
    * Drain `source.updateRanges` after forwarding. Safe only when the lane
-   * buffer is the source's sole consumer (aData/aClipping) — the matrix source
-   * is also read by three's own InstanceNode AFTER onBeforeRender, so its
-   * ranges must be left in place (core InstancedMesh behavior).
+   * buffer is the source's sole consumer (aData/aClipping). The matrix source
+   * is also read by three's own `InstanceNode` (this mesh is
+   * `isInstancedMesh`, so `NodeMaterial.setupPosition` stacks it), which
+   * needs NON-EMPTY ranges to render correctly — draining it blanks the
+   * panel transforms (verified empirically on the uikit examples). Matrix
+   * ranges are therefore COMPACTED instead — see `onBeforeRender`.
    */
   drainSource: boolean
 }
@@ -86,6 +89,21 @@ export class InstancedPanelMesh extends Mesh {
    * interleaved buffers — the same version/updateRanges sync three's own
    * `InstanceNode.update()` performs for `instanceMatrix`. Runs for the main
    * AND shadow passes (both go through `Renderer._renderObjectDirect`).
+   *
+   * Sole-consumer sources (aData/aClipping) are drained after forwarding.
+   * The matrix source CANNOT be drained (three's `InstanceNode` still reads
+   * it and misrenders on empty ranges) and CANNOT be left as-is: under the
+   * WebGPU renderer nothing ever clears it (`InstanceNode.update()`
+   * re-forwards without clearing, and the source attribute itself is never
+   * uploaded directly), so every animated panel's per-frame write would grow
+   * the list forever — re-forwarded here in full each frame. Measured on the
+   * uikit examples pre-fix: `addUpdateRange` traffic climbing 129k/s → 550k/s
+   * over 30s with FPS decaying 120 → 67 in BOTH twins. So after forwarding,
+   * the matrix source's accumulated ranges are COMPACTED into their single
+   * union range — a conservative superset over the same aliased array, so
+   * every consumer uploads correct data, and the list stays O(writes per
+   * frame) instead of O(runtime). Verified post-fix: flat 120 FPS and correct
+   * rendering over the same 30s soak.
    */
   override onBeforeRender = () => {
     for (const { source, buffer, drainSource } of this.laneSyncs) {
@@ -99,6 +117,15 @@ export class InstancedPanelMesh extends Mesh {
       buffer.version = source.version
       if (drainSource) {
         source.clearUpdateRanges()
+      } else if (source.updateRanges.length > 1) {
+        let lo = Infinity
+        let hi = 0
+        for (const { start, count } of source.updateRanges) {
+          if (start < lo) lo = start
+          if (start + count > hi) hi = start + count
+        }
+        source.clearUpdateRanges()
+        source.addUpdateRange(lo, hi - lo)
       }
     }
   }
