@@ -124,14 +124,45 @@ export class Video<
         return
       }
       const updateTexture = () => {
+        const previous = this.texture.peek()
         const texture = new VideoTexture(element)
         texture.colorSpace = SRGBColorSpace
-        texture.needsUpdate = true
+        // Guard the first GPU copy: marking the texture dirty before the video
+        // has a decodable frame makes the WebGPU backend copy an empty resource
+        // ("CopyExternalImageToTexture: Browser fails extracting valid
+        // resource"). Below HAVE_CURRENT_DATA the texture stays at version 0 —
+        // the renderer binds a default texture and no copy is attempted — and
+        // self-heals through `markDirty` (rVFC / 'loadeddata') once frames
+        // exist.
+        if (element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          texture.needsUpdate = true
+        }
         this.texture.value = texture
+        // the panel material has already switched to the new texture (signals
+        // are synchronous) — disposing the old one cancels its internal rVFC
+        // loop and frees its GPU copy
+        previous?.dispose()
+      }
+      // re-upload as soon as data arrives (first decodable frame or a seek
+      // while paused) — VideoTexture's own rVFC covers playback, but not
+      // browsers without requestVideoFrameCallback
+      const markDirty = () => {
+        const texture = this.texture.peek()
+        if (texture != null && element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          texture.needsUpdate = true
+          this.root.peek().requestRender?.()
+        }
       }
       updateTexture()
       element.addEventListener('resize', updateTexture)
-      return () => element.removeEventListener('resize', updateTexture)
+      element.addEventListener('loadeddata', markDirty)
+      element.addEventListener('seeked', markDirty)
+      return () => {
+        element.removeEventListener('resize', updateTexture)
+        element.removeEventListener('loadeddata', markDirty)
+        element.removeEventListener('seeked', markDirty)
+        this.texture.peek()?.dispose()
+      }
     }, this.abortSignal)
 
     abortableEffect(() => {
@@ -140,13 +171,35 @@ export class Video<
       if (requestRender == null || element == null) {
         return
       }
-      let requestId: number
-      const callback = () => {
-        requestRender()
+      // `typeof` (not `in`): the DOM types declare rVFC unconditionally, so an
+      // `in` check would narrow `element` to `never` in the fallback branch
+      if (typeof element.requestVideoFrameCallback === 'function') {
+        let requestId: number
+        const callback = () => {
+          requestRender()
+          requestId = element.requestVideoFrameCallback(callback)
+        }
         requestId = element.requestVideoFrameCallback(callback)
+        return () => element.cancelVideoFrameCallback(requestId)
       }
-      requestId = element.requestVideoFrameCallback(callback)
-      return () => element.cancelVideoFrameCallback(requestId)
+      // rVFC-less fallback: the common (WebGPU) renderer never calls
+      // VideoTexture.update(), so without requestVideoFrameCallback nothing
+      // would ever mark the texture dirty during playback — drive it (and the
+      // render loop) per animation frame, gated on readyState so no copy runs
+      // on an undecodable frame
+      let requestId: number
+      const fallback = () => {
+        if (!element.paused && element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          const texture = this.texture.peek()
+          if (texture != null) {
+            texture.needsUpdate = true
+          }
+          requestRender()
+        }
+        requestId = requestAnimationFrame(fallback)
+      }
+      requestId = requestAnimationFrame(fallback)
+      return () => cancelAnimationFrame(requestId)
     }, this.abortSignal)
   }
 
