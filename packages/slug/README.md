@@ -99,6 +99,63 @@ For the full algorithm walkthrough, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 
 For full API docs with all options and types, see [docs/REFERENCE.md](docs/REFERENCE.md).
 
+### Layout engine & queries
+
+A standalone text-layout engine over `SlugFont` metrics — measure, wrap, position, and
+query text without touching the render classes. Ported from
+[@pmndrs/uikit](https://github.com/pmndrs/uikit)'s text layout onto Slug's em-space,
+baseline-relative font contract (three wrap modes, CSS-style whitespace handling,
+kerning, alignment, justify), with whitespace entries preserved so caret placement
+after a space works.
+
+```typescript
+import {
+  measureGlyphLayout,
+  buildPositionedGlyphLayout,
+  getCharIndex,
+  getCaretTransformation,
+  getSelectionTransformations,
+} from '@three-flatland/slug'
+
+const props = {
+  text: 'The quick brown fox',
+  font, // a loaded SlugFont (or any SlugLayoutFont)
+  fontSize: 24,
+  wordBreak: 'break-word', // | 'break-all' | 'keep-all'
+  whiteSpace: 'normal', // | 'collapse' | 'pre' | 'pre-line'
+}
+
+// intrinsic or constrained measurement
+const { width, height, lineCount } = measureGlyphLayout(props, 200)
+
+// positioned lines: per-char entries (x/y/width, pen x, line baselineY)
+const layout = buildPositionedGlyphLayout(props, {
+  availableWidth: 200,
+  textAlign: 'justify', // 'left' | 'center' | 'right' | 'justify'
+  verticalAlign: 'top', // 'center' | 'middle' | 'bottom'
+})
+
+// geometric queries for editors / selection UIs
+const charIndex = getCharIndex(layout, pointerX, pointerY, 'between')
+const caret = getCaretTransformation(layout, charIndex)
+const { selections } = getSelectionTransformations(layout, [4, 9])
+```
+
+| Export                                                                    | Description                                                                                    |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `measureGlyphLayout`                                                      | Width / height / line count under an optional width constraint.                                |
+| `buildGlyphLayout`                                                        | Wrapped lines as char ranges + measured widths.                                                |
+| `buildPositionedGlyphLayout`                                              | Lines with positioned entries (glyphs AND whitespace), alignment, justify, per-line baselines. |
+| `getCharIndex` / `getCaretTransformation` / `getSelectionTransformations` | Hit-test, caret, and selection-rect geometry over a positioned layout.                         |
+| `normalizeWhitespace`                                                     | CSS-style whitespace collapsing (`normal`/`collapse`/`pre`/`pre-line`, `tabSize`).             |
+| `getLineBaselineOffset` / `getGlyphTopOffset` / `getEmBoxTopOffset`       | The single source of baseline math — line-box top → baseline / glyph ink top.                  |
+| `SlugLayoutFont`                                                          | The structural font contract the engine consumes (`SlugFont` satisfies it; stub it for tests). |
+
+Positioned coordinates are y-up with the origin at the center of the layout box;
+`charIndex` values refer to the whitespace-normalized text carried on the layout
+(`layout.text`). `getCharIndex` takes pointer coordinates measured from the box's
+top-left edge (x right, y down as negative values) — see the `query` module note.
+
 ## Pre-baking Fonts
 
 `slug-bake` pre-processes font files offline, producing a single `.slug.glb` file that eliminates runtime font parsing and the opentype.js dependency:

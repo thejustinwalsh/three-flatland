@@ -303,6 +303,62 @@ geometry.setGlyphs(positioned, font, { r: 1, g: 1, b: 1, a: 1 })
 
 ---
 
+## Layout engine (`layout/*`) and queries (`query/*`)
+
+Standalone text layout over `SlugFont` metrics — no dependency on the render classes.
+Ported from `@pmndrs/uikit`'s text layout onto Slug's em-space, baseline-relative
+font contract. All functions consume the structural `SlugLayoutFont` interface
+(`ascender`, `descender`, `getGlyphMetricsForChar`, `getKerning`) — `SlugFont`
+satisfies it; tests can stub it.
+
+```ts
+interface SlugGlyphLayoutProperties {
+  text: string
+  font: SlugLayoutFont
+  fontSize?: number // default 16
+  letterSpacing?: number // default 0
+  lineHeight?: number | `${number}%` // default (ascender - descender) * fontSize
+  wordBreak?: 'keep-all' | 'break-all' | 'break-word' // default 'break-word'
+  whiteSpace?: 'normal' | 'collapse' | 'pre' | 'pre-line' // default 'normal'
+  tabSize?: number // default 8
+}
+
+measureGlyphLayout(props, availableWidth?): { width, height, lineCount }
+buildGlyphLayout(props, availableWidth?, availableHeight?): GlyphLayout
+buildPositionedGlyphLayout(props, {
+  availableWidth?, availableHeight?, // default: intrinsic size
+  textAlign?,     // 'left' | 'center' | 'right' | 'justify', default 'left'
+  verticalAlign?, // 'top' | 'center' | 'middle' | 'bottom', default 'top'
+}): PositionedGlyphLayout
+
+getCharIndex(layout, x, y, 'between' | 'on'): number
+getCaretTransformation(layout, charIndex): CaretTransformation | undefined
+getSelectionTransformations(layout, [start, end]): { caret, selections }
+```
+
+- **Whitespace is normalized before wrapping** (`normalizeWhitespace`); all
+  `charIndex` values refer to the normalized text carried on the layout as
+  `layout.text`.
+- **Whitespace entries are preserved** in positioned lines — caret placement after
+  a space works, unlike `shapeText` output which drops outline-less glyphs.
+- **Coordinates:** positioned entries and caret/selection outputs are y-up with the
+  origin at the center of the `availableWidth × availableHeight` box. Glyph entries
+  carry the ink box (`x`, `y`, `width`) plus `penX`; lines carry `y` (line-box top)
+  and `baselineY` (consecutive baselines are exactly `lineHeight` apart).
+  `getCharIndex` alone takes pointer input measured from the box's top-left
+  (x rightward from the left edge, y downward as negative values) — uikit's pointer
+  convention, kept so its selection/input consumers port mechanically.
+- **Baseline math lives in one place** (`layout/baseline.ts`):
+  `getEmBoxTopOffset`, `getLineBaselineOffset`, `getGlyphTopOffset`. With
+  `lineHeight === fontSize` the first baseline sits exactly
+  `ascender * fontSize` (= `fontBoundingBoxAscent`) below the line-box top.
+- **Wrappers** (`WordWrapper`, `BreakallWrapper`, `NowrapWrapper`, `glyphWrappers`)
+  measure with advances + `letterSpacing`; kerning is applied at positioning time
+  (upstream parity).
+
+Non-goals (unchanged package-wide): GSUB/ligatures, bidi, complex scripts,
+astral-plane clusters, UAX-14.
+
 ## CLI: `slug-bake`
 
 Pre-process fonts offline. Eliminates opentype.js at runtime and lets you subset glyphs.

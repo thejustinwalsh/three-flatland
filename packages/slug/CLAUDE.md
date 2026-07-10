@@ -31,12 +31,21 @@ These are real and currently unimplemented. Several are tracked as [#37 Vector G
 - **GSUB is explicitly disabled** (`pipeline/textShaper.ts`) — no ligatures, no contextual substitution. GPOS is kerning-only: no mark-to-base, no cursive attachment.
 - **No bidi, no complex scripts.** Text is walked by UTF-16 code unit, so astral codepoints and emoji surrogate pairs are mishandled.
 - **No per-instance clipping.** `SlugMaterial extends MeshBasicNodeMaterial`, which supports only three.js _global_ `clippingPlanes` — per-material, not per-instance. Any consumer needing `overflow: hidden` or a scroll container must add an instanced clip attribute plus a coverage mask in both `SlugMaterial` and `SlugStrokeMaterial`.
-- **No public kerning API.** The data exists on both backends (`baked.ts` `kernLookup`; opentype's `getKerningValue`) but is private to the shapers.
+- ~~No public kerning API.~~ **Resolved (S1).** `SlugFont.getKerning(glyphIdA, glyphIdB)` dispatches to both backends and returns em-normalized kerning. Fonts encode tightening pairs (e.g. `AV`) as **negative** values; consumers add, not subtract.
 - **`glyphColor` is per-instance but not exposed.** The shader already multiplies it in; `setGlyphs` just writes one color to every instance. Per-run color is plumbing, not shader work.
-- **Outline-less glyphs are filtered out of `shapeText` output** — you cannot place a caret after a space from shaped results alone.
-- **`wrapLines` breaks on the ASCII space only.** No whitespace collapsing, no `\t`, no soft hyphen, no UAX-14 line breaking.
-- **`measureParagraph` returns `{text, width}` per line** — no per-glyph x, no line baselines. Insufficient for caret or selection.
+- **Outline-less glyphs are still filtered out of `shapeText` output** — you cannot place a caret after a space from shaped results alone. Use `slug/layout`'s positioned entries instead; they include whitespace. Renderers must skip entries whose `metrics.hasOutline === false`.
+- ~~`wrapLines` breaks on the ASCII space only.~~ **Superseded (S2).** `slug/layout` ships three real wrap modes (`word` / `break-all` / `nowrap`), whitespace collapsing (`normal` / `pre` / `pre-line`), and `tabSize`. The legacy `pipeline/wrapLines.ts` remains for `SlugText`'s current path until it is migrated (R6). Still no soft hyphen and no UAX-14.
+- ~~`measureParagraph` returns `{text, width}` per line.~~ **Superseded (S2).** `buildPositionedGlyphLayout` returns per-character entries **including whitespace**, per-line `y` and `baselineY`. `slug/query` adds `getCharIndex`, `getCaretTransformation`, `getSelectionTransformations`. `measureParagraph` remains as the Canvas2D-shaped convenience.
 - **No `lineGap`.** Line spacing is a caller-supplied multiplier (default 1.2), not the font's native leading.
+
+## Baseline conversion — one place, on purpose
+
+`src/layout/baseline.ts` is the ONLY place the MSDF folded-`yoffset` convention is mapped
+onto Slug's baseline-relative metrics: `getEmBoxTopOffset`, `getLineBaselineOffset`,
+`getGlyphTopOffset`. Everything that positions a glyph or a caret derives its `y` from
+those three. Get this wrong by a constant and every unit test still passes while every
+line of text shifts — so it is asserted against hand-computed Inter-Regular values in
+`src/layout/baseline.test.ts`. Do not inline a second copy of this math.
 
 ## Gotchas
 

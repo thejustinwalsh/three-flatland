@@ -350,7 +350,8 @@ export class SlugFont {
   }
 
   /**
-   * Em-normalized kerning adjustment for a glyph pair, positive = tighten.
+   * Em-normalized kerning adjustment for a glyph pair, added to the pen
+   * advance — fonts encode tightening pairs (e.g. AV) as NEGATIVE values.
    * Reads the same kerning tables `shapeText`/`measureText` already
    * consult (`baked.ts` `kernLookup`; opentype's `getKerningValue`) but
    * makes the value public and unitsPerEm-normalized instead of

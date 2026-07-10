@@ -35,3 +35,48 @@ export type { SlugMaterialOptions } from './SlugMaterial'
 
 export { bakedURLs } from './baked'
 export type { BakedJSON } from './baked'
+
+// Layout engine (measure / wrap / position) + geometric queries
+export {
+  normalizeWhitespace,
+  resolveGlyphLayoutProperties,
+  measureGlyphLayout,
+  buildGlyphLayout,
+  buildPositionedGlyphLayout,
+  getTextXOffset,
+  getTextYOffset,
+  getEmBoxTopOffset,
+  getLineBaselineOffset,
+  getGlyphTopOffset,
+  getGlyphMetricsWithFallback,
+  getOffsetToNextGlyph,
+  getKerningOffset,
+  getGlyphOffsetX,
+  getGlyphInkWidth,
+  getOffsetToNextLine,
+  getGlyphLayoutHeight,
+  getWhitespaceWidth,
+  WordWrapper,
+  BreakallWrapper,
+  NowrapWrapper,
+  glyphWrappers,
+} from './layout/index'
+export type {
+  BuildPositionedGlyphLayoutOptions,
+  GlyphWrapper,
+  WhiteSpace,
+  WordBreak,
+  TextAlign,
+  VerticalAlign,
+  SlugLayoutFont,
+  SlugGlyphLayoutProperties,
+  ResolvedGlyphLayoutProperties,
+  GlyphLayoutLine,
+  GlyphLayout,
+  PositionedGlyphLayoutEntry,
+  PositionedGlyphLayoutLine,
+  PositionedGlyphLayout,
+  CaretTransformation,
+  SelectionTransformation,
+} from './layout/index'
+export { getCharIndex, getCaretTransformation, getSelectionTransformations } from './query/index'

@@ -569,6 +569,40 @@ Acceptance:
       backends (screenshots recorded).
 - [ ] Slug suite green; prettier/eslint/typecheck green.
 
+### S2 — DELIVERED 2026-07-10, with three recorded deferrals
+
+Landed: `slug/layout` (measure, wrap ×3 modes, whitespace `normal`/`pre`/`pre-line`,
+`tabSize`, positioned entries **including whitespace**, per-line `y` + `baselineY`) and
+`slug/query` (`getCharIndex`, `getCaretTransformation`, `getSelectionTransformations`).
+Tests 236 → 312. R4's conversion lives in exactly one file, `layout/baseline.ts`, asserted
+against hand-computed Inter-Regular values.
+
+**Deferrals — need stakeholder acknowledgement, not silent carry-over:**
+
+1. **`SlugText`/`SlugStackText` were NOT migrated onto the new engine** (R6). They still
+   use `pipeline/wrapLines.ts` + `shapeText`. This unit shipped compatibility, not
+   migration. The plan's S2 line listing the migration + `measureParagraph`/`wrapLines`
+   compat wrappers is therefore **unmet**, and owned by a follow-up unit.
+2. **Parity fixtures are hand-computed, not machine-generated goldens** diffed against the
+   vendored uikit implementation. Importing uikit's layout into slug's suite would drag
+   `@preact/signals-core`, `yoga-layout`, and `zod` into it and breach the
+   no-uikit-imports boundary. Logic was ported token-for-token and asserted against traced
+   expectations; the wrap × whitespace × tabSize × letterSpacing × justify matrix is
+   covered, but it is not a mechanical golden diff.
+3. **The `slug-text` example pair was not updated** (an S2 acceptance item). Follow-up.
+
+**One deliberate behaviour change:** uikit `console.warn`s on every unmapped-codepoint
+lookup; Slug does not, because the wrappers run inside yoga-style re-measure loops where
+that would spam. Fallback is a 0.6em `MISSING_GLYPH` advance, documented on
+`getGlyphMetricsWithFallback`.
+
+**Upstream quirks preserved on purpose** (so uikit consumers port mechanically rather than
+silently changing behaviour): wrappers measure with advances+letterSpacing only, so a
+heavily-kerned line can render slightly narrower than measured; `getCharIndex` returns
+`charIndexOffset + charLength + 1` past a line end; `getCharIndex` takes top-left-origin
+input while caret/selection emit center-origin — uikit's asymmetry, documented in the
+query module.
+
 ## Phase S3 — Slug batch mode (`SlugBatch`: per-instance matrix, clip, writer API)
 
 Tasks (spec §6.5): opt-in `instanceMatrix` (duck-typed instanced mesh + per-instance
