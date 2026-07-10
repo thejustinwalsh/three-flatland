@@ -29,6 +29,18 @@
     },
     "./*": "./dist/*"
   },
+  "bin": {
+    "uikit-bake": "./dist/cli.js"
+  },
+  "flatland": {
+    "bake": [
+      {
+        "name": "uikit",
+        "description": "Bake uikit assets: fonts (proxies slug) and SVG icon shape-sets",
+        "entry": "./dist/cli.js"
+      }
+    ]
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -68,6 +80,7 @@
   },
   "devDependencies": {
     "@react-three/fiber": "catalog:",
+    "@three-flatland/bake": "workspace:*",
     "@types/react": "catalog:",
     "@types/three": "catalog:",
     "chai": "^5.2.0",
@@ -89,5 +102,8 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/uikit"
+  },
+  "optionalDependencies": {
+    "happy-dom": "^20.8.9"
   }
 }

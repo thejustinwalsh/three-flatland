@@ -1,8 +1,8 @@
 import type { Camera } from 'three'
-import { SlugBatch } from './SlugBatch'
-import type { SlugBatchInstanceOptions, SlugBatchOptions } from './SlugBatch'
-import type { SlugFont } from './SlugFont'
-import type { SlugShapeHandle, SlugShapeSet } from './SlugShapeSet'
+import { SlugBatch } from './SlugBatch.js'
+import type { SlugBatchInstanceOptions, SlugBatchOptions } from './SlugBatch.js'
+import type { SlugFont } from './SlugFont.js'
+import type { SlugShapeHandle, SlugShapeSet } from './SlugShapeSet.js'
 
 /** Options for `SlugShapeBatch`. */
 export interface SlugShapeBatchOptions extends Omit<SlugBatchOptions, 'font'> {

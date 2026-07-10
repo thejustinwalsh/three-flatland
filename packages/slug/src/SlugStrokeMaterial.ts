@@ -3,8 +3,8 @@ import { Vector2, Vector4, Color, Matrix4, FrontSide, NormalBlending } from 'thr
 import type { Camera, Object3D } from 'three'
 import { Fn, float, sign, vec2, vec3, vec4, attribute, uniform, varyingProperty } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { slugStroke } from './shaders/slugStroke'
-import { slugDilate } from './shaders/slugDilate'
+import { slugStroke } from './shaders/slugStroke.js'
+import { slugDilate } from './shaders/slugDilate.js'
 import {
   clipCoverage,
   clipDistances,
@@ -12,8 +12,8 @@ import {
   composeInstanceMatrix,
   foldInstanceRow,
   instanceMatrixLanes,
-} from './shaders/slugInstance'
-import type { SlugFont } from './SlugFont'
+} from './shaders/slugInstance.js'
+import type { SlugFont } from './SlugFont.js'
 
 export interface SlugStrokeMaterialOptions {
   color?: number | Color

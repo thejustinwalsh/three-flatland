@@ -15,7 +15,7 @@ import {
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { DataTexture } from 'three'
-import { distanceToQuadBezier } from './distanceToQuadBezier'
+import { distanceToQuadBezier } from './distanceToQuadBezier.js'
 
 /**
  * Phase 4 stroke fragment shader — analytic distance-to-curve, runtime-

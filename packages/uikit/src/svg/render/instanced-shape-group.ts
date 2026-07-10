@@ -1,37 +1,27 @@
 import { Vector2 } from 'three'
 import type { Camera, Material, Object3DEventMap } from 'three'
-import { SlugBatch } from '@three-flatland/slug'
-import type { SlugBatchOptions, SlugFont } from '@three-flatland/slug'
-import { computed } from '@preact/signals-core'
-import type { ReadonlySignal } from '@preact/signals-core'
-import type { InstancedGlyph } from './instanced-glyph.js'
-import type { Font } from '../font.js'
+import { SlugShapeBatch } from '@three-flatland/slug'
+import type { SlugShapeBatchOptions, SlugShapeSet } from '@three-flatland/slug'
+import type { InstancedShape } from './instanced-shape.js'
 import { ElementType, type OrderInfo, setupRenderOrder } from '../../order.js'
 import type { RootContext } from '../../context.js'
 import type { Component } from '../../components/component.js'
 import { computeWorldToGlobalMatrix } from '../../utils.js'
 
-/** Group-bucket dependency: only the font identity forces a new glyph group. */
-export function computedGylphGroupDependencies(fontSignal: ReadonlySignal<Font | undefined>) {
-  return computed(() => ({ font: fontSignal.value?.slug }))
-}
-
 const viewportSizeHelper = new Vector2()
 
 /**
- * `SlugBatch` wired into uikit's root-driven `matrixWorld` propagation
- * (uikit components don't sit in the normal Object3D parent chain — Root
- * recomputes each mesh's `matrixWorld` once via `onUpdateMatrixWorldSet`,
- * exactly like `InstancedPanelMesh`) plus self-contained per-frame
- * dilation plumbing: `onBeforeRender` reads the renderer's OWN drawing-
- * buffer size and pushes both `setViewportSize` and the MVP update
- * (`SlugBatch.update(camera)`) every frame, for whichever render target
- * this batch is actually drawn into. No Root/renderer coupling needed
- * anywhere else in the render seam. Keeps the historical `InstancedGlyphMesh`
- * name — `components/component.ts`/`content.ts` `instanceof`-check it to
- * recognize uikit-internal text meshes during traversal.
+ * `SlugShapeBatch` wired into uikit's root-driven `matrixWorld`
+ * propagation — the shape-batch analogue of
+ * `text/render/instanced-glyph-group.ts`'s `InstancedGlyphMesh`. Root
+ * recomputes each mesh's `matrixWorld` once via `onUpdateMatrixWorldSet`
+ * (uikit components don't sit in the normal Object3D parent chain), plus
+ * self-contained per-frame dilation plumbing identical to the glyph mesh's:
+ * `onBeforeRender` reads the renderer's own drawing-buffer size and pushes
+ * both `setViewportSize` and the MVP update (`SlugShapeBatch.update`)
+ * every frame.
  */
-export class InstancedGlyphMesh extends SlugBatch {
+export class InstancedShapeMesh extends SlugShapeBatch {
   private readonly customUpdateMatrixWorld = () =>
     computeWorldToGlobalMatrix(this.root, this.matrixWorld)
 
@@ -40,7 +30,7 @@ export class InstancedGlyphMesh extends SlugBatch {
       RootContext,
       'glyphGroupManager' | 'panelGroupManager' | 'shapeGroupManager'
     >,
-    options?: SlugBatchOptions
+    options?: SlugShapeBatchOptions
   ) {
     super(options)
     this.pointerEvents = 'none'
@@ -64,21 +54,18 @@ export class InstancedGlyphMesh extends SlugBatch {
     return this
   }
 
-  // Never legitimately cloneable: `Component.copyInto` explicitly skips these
-  // meshes as children (the glyph-group pipeline recreates them fresh instead),
-  // and three's default `Object3D.clone()` would call the zero-arg constructor,
-  // which crashes on the required `root` arg. Throw clearly instead.
+  // Never legitimately cloneable — see InstancedGlyphMesh's identical note.
   override clone(): this {
-    throw new Error('InstancedGlyphMesh.clone() is not supported. Use GlyphGroupManager instead.')
+    throw new Error('InstancedShapeMesh.clone() is not supported. Use ShapeGroupManager instead.')
   }
 
   override copy(): this {
-    throw new Error('InstancedGlyphMesh.copy() is not supported. Use GlyphGroupManager instead.')
+    throw new Error('InstancedShapeMesh.copy() is not supported. Use ShapeGroupManager instead.')
   }
 }
 
-export class GlyphGroupManager {
-  private map = new Map<SlugFont, Map<string, InstancedGlyphGroup>>()
+export class ShapeGroupManager {
+  private map = new Map<SlugShapeSet, Map<string, InstancedShapeGroup>>()
   constructor(
     private readonly root: Omit<
       RootContext,
@@ -96,7 +83,7 @@ export class GlyphGroupManager {
     })
   }
 
-  private traverse(fn: (group: InstancedGlyphGroup) => void) {
+  private traverse(fn: (group: InstancedShapeGroup) => void) {
     for (const groups of this.map.values()) {
       for (const group of groups.values()) {
         fn(group)
@@ -109,25 +96,25 @@ export class GlyphGroupManager {
     depthTest: boolean,
     depthWrite: boolean,
     renderOrder: number,
-    font: SlugFont
+    shapes: SlugShapeSet
   ) {
-    let groups = this.map.get(font)
+    let groups = this.map.get(shapes)
     if (groups == null) {
-      this.map.set(font, (groups = new Map()))
+      this.map.set(shapes, (groups = new Map()))
     }
     const key = [majorIndex, minorIndex, depthTest, depthWrite, renderOrder].join(',')
-    let glyphGroup = groups?.get(key)
-    if (glyphGroup == null) {
+    let shapeGroup = groups?.get(key)
+    if (shapeGroup == null) {
       groups.set(
         key,
-        (glyphGroup = new InstancedGlyphGroup(
+        (shapeGroup = new InstancedShapeGroup(
           this.object,
-          font,
+          shapes,
           this.root,
           {
             majorIndex,
             minorIndex,
-            elementType: ElementType.Text,
+            elementType: ElementType.Content,
             patchIndex: 0,
           },
           depthTest,
@@ -136,19 +123,19 @@ export class GlyphGroupManager {
         ))
       )
     }
-    return glyphGroup
+    return shapeGroup
   }
 }
 
-export class InstancedGlyphGroup {
-  private glyphs: Array<InstancedGlyph | undefined> = []
-  private requestedGlyphs: Array<InstancedGlyph> = []
+export class InstancedShapeGroup {
+  private shapeInstances: Array<InstancedShape | undefined> = []
+  private requestedShapes: Array<InstancedShape> = []
   private holeIndicies: Array<number> = []
-  private mesh?: InstancedGlyphMesh
+  private mesh?: InstancedShapeMesh
 
   constructor(
     private object: Component,
-    public readonly font: SlugFont,
+    public readonly shapes: SlugShapeSet,
     public readonly root: Omit<
       RootContext,
       'glyphGroupManager' | 'panelGroupManager' | 'shapeGroupManager'
@@ -159,110 +146,109 @@ export class InstancedGlyphGroup {
     private renderOrder: number
   ) {}
 
-  /** The batch instances write into — `undefined` until the first glyph activates. */
-  get batch(): SlugBatch | undefined {
+  /** The batch instances write into — `undefined` until the first shape activates. */
+  get batch(): SlugShapeBatch | undefined {
     return this.mesh
   }
 
-  requestActivate(glyph: InstancedGlyph): void {
+  requestActivate(shape: InstancedShape): void {
     const holeIndex = this.holeIndicies.shift()
     if (holeIndex != null) {
       //inserting into existing hole
-      this.glyphs[holeIndex] = glyph
-      glyph.activate(holeIndex)
+      this.shapeInstances[holeIndex] = shape
+      shape.activate(holeIndex)
       this.root.requestRender?.()
       return
     }
 
     if (this.mesh == null || this.mesh.count >= this.mesh.capacity) {
       //requesting insert because no space available (or the batch doesn't exist yet)
-      this.requestedGlyphs.push(glyph)
+      this.requestedShapes.push(shape)
       this.root.requestFrame?.()
       return
     }
 
     //inserting at the end because space available
     const index = this.mesh.count
-    this.glyphs[index] = glyph
-    glyph.activate(index)
+    this.shapeInstances[index] = shape
+    shape.activate(index)
     this.mesh.count += 1
     this.root.requestRender?.()
     return
   }
 
-  delete(glyph: InstancedGlyph): void {
-    if (glyph.index == null) {
-      //remove an not yet added glyph
-      const indexInRequested = this.requestedGlyphs.indexOf(glyph)
+  delete(shape: InstancedShape): void {
+    if (shape.index == null) {
+      //remove an not yet added shape
+      const indexInRequested = this.requestedShapes.indexOf(shape)
       if (indexInRequested === -1) {
         return
       }
-      this.requestedGlyphs.splice(indexInRequested, 1)
+      this.requestedShapes.splice(indexInRequested, 1)
       return
     }
 
     //can directly request render because we don't need "onFrame" to handle delete
     this.root.requestRender?.()
 
-    const replacement = this.requestedGlyphs.shift()
+    const replacement = this.requestedShapes.shift()
     if (replacement != null) {
       //replace
-      replacement.activate(glyph.index)
-      this.glyphs[glyph.index] = replacement
-      glyph.index = undefined
+      replacement.activate(shape.index)
+      this.shapeInstances[shape.index] = replacement
+      shape.index = undefined
       return
     }
 
-    if (glyph.index === this.glyphs.length - 1) {
+    if (shape.index === this.shapeInstances.length - 1) {
       //remove at the end
-      this.glyphs.length -= 1
+      this.shapeInstances.length -= 1
       this.mesh!.count -= 1
-      glyph.index = undefined
+      shape.index = undefined
       return
     }
 
     //remove in between: hide via the hidden-degenerate rect (zero size, zero alpha),
-    //remember the slot as a hole for reuse. `SlugBatch` only ever grows
-    //(`ensureCapacity`, no shrink) so — unlike the old MSDF group — this group
-    //never rebuilds/decimates its buffer; it just never gives capacity back.
-    this.mesh!.writeRect(glyph.index, { x: 0, y: 0, width: 0, height: 0 }, { opacity: 0 })
-    this.holeIndicies.push(glyph.index)
-    this.glyphs[glyph.index] = undefined
-    glyph.index = undefined
+    //remember the slot as a hole for reuse — the batch only ever grows.
+    this.mesh!.writeRect(shape.index, { x: 0, y: 0, width: 0, height: 0 }, { opacity: 0 })
+    this.holeIndicies.push(shape.index)
+    this.shapeInstances[shape.index] = undefined
+    shape.index = undefined
   }
 
   onFrame(): void {
-    const requiredSize = this.glyphs.length - this.holeIndicies.length + this.requestedGlyphs.length
+    const requiredSize =
+      this.shapeInstances.length - this.holeIndicies.length + this.requestedShapes.length
 
     if (this.mesh != null) {
       this.mesh.visible = requiredSize > 0
     }
 
-    if (this.requestedGlyphs.length === 0) {
+    if (this.requestedShapes.length === 0) {
       return
     }
 
     this.ensureMesh()
     this.mesh!.ensureCapacity(requiredSize)
     const indexOffset = this.mesh!.count
-    const requestedGlyphsLength = this.requestedGlyphs.length
-    for (let i = 0; i < requestedGlyphsLength; i++) {
-      const glyph = this.requestedGlyphs[i]!
-      glyph.activate(indexOffset + i)
-      this.glyphs[indexOffset + i] = glyph
+    const requestedShapesLength = this.requestedShapes.length
+    for (let i = 0; i < requestedShapesLength; i++) {
+      const shape = this.requestedShapes[i]!
+      shape.activate(indexOffset + i)
+      this.shapeInstances[indexOffset + i] = shape
     }
-    this.mesh!.count += requestedGlyphsLength
+    this.mesh!.count += requestedShapesLength
     this.mesh!.visible = true
-    this.requestedGlyphs.length = 0
+    this.requestedShapes.length = 0
   }
 
   private ensureMesh(): void {
     if (this.mesh != null) {
       return
     }
-    this.mesh = new InstancedGlyphMesh(this.root, { font: this.font })
-    // `font` was passed to the constructor, so the SlugBatch `font` setter already
-    // built a single `SlugMaterial` — never the `Material[]` half of `Mesh.material`.
+    this.mesh = new InstancedShapeMesh(this.root, { shapes: this.shapes })
+    // `shapes` was passed to the constructor, so the `SlugShapeBatch` `shapes`
+    // setter already built a single `SlugMaterial` — never `Material[]`.
     const material = this.mesh.material as Material
     material.depthTest = this.depthTest
     material.depthWrite = this.depthWrite

@@ -66,7 +66,10 @@ export class InstancedPanelGroup {
 
   constructor(
     private readonly object: Component,
-    public readonly root: Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager'>,
+    public readonly root: Omit<
+      RootContext,
+      'glyphGroupManager' | 'panelGroupManager' | 'shapeGroupManager'
+    >,
     private readonly orderInfo: OrderInfo,
     private readonly panelGroupProperties: Required<PanelGroupProperties>
   ) {

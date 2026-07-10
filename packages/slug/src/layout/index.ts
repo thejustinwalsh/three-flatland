@@ -3,11 +3,11 @@
 // em-space, baseline-relative font contract. No uikit imports; usable by
 // any consumer with a SlugFont (or a stubbed SlugLayoutFont).
 
-export { normalizeWhitespace, resolveGlyphLayoutProperties } from './normalize'
-export { measureGlyphLayout, buildGlyphLayout } from './measure'
-export { buildPositionedGlyphLayout, getTextXOffset, getTextYOffset } from './positioned'
-export type { BuildPositionedGlyphLayoutOptions } from './positioned'
-export { getEmBoxTopOffset, getLineBaselineOffset, getGlyphTopOffset } from './baseline'
+export { normalizeWhitespace, resolveGlyphLayoutProperties } from './normalize.js'
+export { measureGlyphLayout, buildGlyphLayout } from './measure.js'
+export { buildPositionedGlyphLayout, getTextXOffset, getTextYOffset } from './positioned.js'
+export type { BuildPositionedGlyphLayoutOptions } from './positioned.js'
+export { getEmBoxTopOffset, getLineBaselineOffset, getGlyphTopOffset } from './baseline.js'
 export {
   getGlyphMetricsWithFallback,
   getOffsetToNextGlyph,
@@ -17,9 +17,9 @@ export {
   getOffsetToNextLine,
   getGlyphLayoutHeight,
   getWhitespaceWidth,
-} from './utils'
-export { WordWrapper, BreakallWrapper, NowrapWrapper, glyphWrappers } from './wrappers'
-export type { GlyphWrapper } from './wrappers'
+} from './utils.js'
+export { WordWrapper, BreakallWrapper, NowrapWrapper, glyphWrappers } from './wrappers.js'
+export type { GlyphWrapper } from './wrappers.js'
 export type {
   WhiteSpace,
   WordBreak,
@@ -35,4 +35,4 @@ export type {
   PositionedGlyphLayout,
   CaretTransformation,
   SelectionTransformation,
-} from './types'
+} from './types.js'

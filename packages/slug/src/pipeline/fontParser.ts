@@ -1,7 +1,7 @@
 import opentype from 'opentype.js'
 import type { PathCommand } from 'opentype.js'
-import type { QuadCurve, SlugGlyphData } from '../types'
-import { buildAdvanceOnlyGlyph, buildGpuGlyphData } from './buildGpuGlyph'
+import type { QuadCurve, SlugGlyphData } from '../types.js'
+import { buildAdvanceOnlyGlyph, buildGpuGlyphData } from './buildGpuGlyph.js'
 
 /**
  * Epsilon for converting straight lines to degenerate quadratics.

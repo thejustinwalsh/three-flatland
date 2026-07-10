@@ -7,7 +7,7 @@ import {
   RGBAFormat,
   RGFormat,
 } from 'three'
-import type { SlugGlyphData, SlugTextureData } from '../types'
+import type { SlugGlyphData, SlugTextureData } from '../types.js'
 
 /** Default texture width in texels (must be power of 2). */
 const TEXTURE_WIDTH = 4096

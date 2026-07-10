@@ -9,10 +9,10 @@ import {
   Color,
 } from 'three'
 import type { Camera, Matrix4 } from 'three'
-import { SlugMaterial } from './SlugMaterial'
-import type { SlugMaterialOptions } from './SlugMaterial'
-import type { SlugFont } from './SlugFont'
-import type { DecorationRect, SlugGlyphData, SlugGlyphSource } from './types'
+import { SlugMaterial } from './SlugMaterial.js'
+import type { SlugMaterialOptions } from './SlugMaterial.js'
+import type { SlugFont } from './SlugFont.js'
+import type { DecorationRect, SlugGlyphData, SlugGlyphSource } from './types.js'
 
 /** Default initial capacity for batch instances. */
 const DEFAULT_CAPACITY = 256

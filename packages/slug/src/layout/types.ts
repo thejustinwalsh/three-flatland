@@ -1,4 +1,4 @@
-import type { SlugGlyphMetrics } from '../types'
+import type { SlugGlyphMetrics } from '../types.js'
 
 /** CSS-style whitespace handling applied before wrapping. */
 export type WhiteSpace = 'normal' | 'collapse' | 'pre' | 'pre-line'

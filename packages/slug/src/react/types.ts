@@ -1,9 +1,9 @@
 import type { ThreeElement } from '@react-three/fiber'
-import type { SlugText } from '../SlugText'
-import type { SlugStackText } from '../SlugStackText'
-import type { SlugMaterial } from '../SlugMaterial'
-import type { SlugGeometry } from '../SlugGeometry'
-import type { SlugFontStack } from '../SlugFontStack'
+import type { SlugText } from '../SlugText.js'
+import type { SlugStackText } from '../SlugStackText.js'
+import type { SlugMaterial } from '../SlugMaterial.js'
+import type { SlugGeometry } from '../SlugGeometry.js'
+import type { SlugFontStack } from '../SlugFontStack.js'
 
 /**
  * R3F ThreeElements type augmentation for @three-flatland/slug.

@@ -1,7 +1,7 @@
 import type { DataTexture } from 'three'
 import type { Font as OpenTypeFont } from 'opentype.js'
-import type { BakedFontData } from './baked'
-import { cmapLookup, kernLookup } from './baked'
+import type { BakedFontData } from './baked.js'
+import { cmapLookup, kernLookup } from './baked.js'
 import type {
   SlugGlyphData,
   PositionedGlyph,
@@ -20,8 +20,8 @@ import type {
   RuntimeShapeTextFn,
   RuntimeMeasureTextFn,
   RuntimeWrapLinesFn,
-} from './types'
-import { emitDecorations } from './pipeline/decorations'
+} from './types.js'
+import { emitDecorations } from './pipeline/decorations.js'
 
 /**
  * Per-font metrics passed into `SlugFont`. Mirrors `parseFont`'s output and

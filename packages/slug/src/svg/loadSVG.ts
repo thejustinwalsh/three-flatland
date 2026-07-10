@@ -1,7 +1,7 @@
-import { SlugShapeSet } from '../SlugShapeSet'
-import type { SlugShapeHandle } from '../SlugShapeSet'
-import { parseSVG } from './parseSVG'
-import type { ParsedSVG, ParsedSVGFill, ParseSVGOptions } from './parseSVG'
+import { SlugShapeSet } from '../SlugShapeSet.js'
+import type { SlugShapeHandle } from '../SlugShapeSet.js'
+import { parseSVG } from './parseSVG.js'
+import type { ParsedSVG, ParsedSVGFill, ParseSVGOptions } from './parseSVG.js'
 
 /** One SVG registered into a shape set: parallel handles + fills. */
 export interface RegisteredSVG {

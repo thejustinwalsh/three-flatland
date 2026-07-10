@@ -1,5 +1,5 @@
-import { buildBands } from './bandBuilder'
-import type { QuadCurve, GlyphBands, GlyphBounds, SlugGlyphData } from '../types'
+import { buildBands } from './bandBuilder.js'
+import type { QuadCurve, GlyphBands, GlyphBounds, SlugGlyphData } from '../types.js'
 
 /**
  * Shared curves → GPU-glyph pipeline. Takes em-space quadratic Beziers

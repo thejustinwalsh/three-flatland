@@ -1,4 +1,8 @@
-import type { ResolvedGlyphLayoutProperties, SlugGlyphLayoutProperties, WhiteSpace } from './types'
+import type {
+  ResolvedGlyphLayoutProperties,
+  SlugGlyphLayoutProperties,
+  WhiteSpace,
+} from './types.js'
 
 const collapseRegex = /[\t\n ]+/gm
 const preLineCollapseNonLinefeedWhitespaceRegex = /[\t ]+/g

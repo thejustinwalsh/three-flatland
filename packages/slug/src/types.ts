@@ -1,7 +1,7 @@
 import type { Color, DataTexture } from 'three'
 import type { Font as OpenTypeFont } from 'opentype.js'
-import type { SlugFont } from './SlugFont'
-import type { BakedFontData } from './baked'
+import type { SlugFont } from './SlugFont.js'
+import type { BakedFontData } from './baked.js'
 
 /** A quadratic Bezier curve defined by three control points in em-space. */
 export interface QuadCurve {

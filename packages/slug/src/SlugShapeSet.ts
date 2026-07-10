@@ -1,10 +1,10 @@
 import type { DataTexture } from 'three'
-import { buildGpuGlyphData } from './pipeline/buildGpuGlyph'
-import { packTextures } from './pipeline/texturePacker'
-import { readGlb } from './glb'
-import { readBandWords } from './baked'
-import { SLUG_SHAPES_EXTENSION_NAME, SLUG_SHAPES_VERSION } from './format'
-import type { QuadContour, QuadCurve, SlugGlyphData, SlugTextureData } from './types'
+import { buildGpuGlyphData } from './pipeline/buildGpuGlyph.js'
+import { packTextures } from './pipeline/texturePacker.js'
+import { readGlb } from './glb.js'
+import { readBandWords } from './baked.js'
+import { SLUG_SHAPES_EXTENSION_NAME, SLUG_SHAPES_VERSION } from './format.js'
+import type { QuadContour, QuadCurve, SlugGlyphData, SlugTextureData } from './types.js'
 
 /**
  * A registered shape — structurally the same record a font glyph gets

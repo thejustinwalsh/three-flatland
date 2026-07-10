@@ -1,6 +1,6 @@
-import { cmapLookup, kernLookup } from '../baked'
-import type { BakedFontData } from '../baked'
-import type { SlugGlyphData, TextMetrics } from '../types'
+import { cmapLookup, kernLookup } from '../baked.js'
+import type { BakedFontData } from '../baked.js'
+import type { SlugGlyphData, TextMetrics } from '../types.js'
 
 /**
  * Measure a single unwrapped line of text using baked font data.

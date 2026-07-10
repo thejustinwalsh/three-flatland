@@ -1,5 +1,5 @@
-import type { SlugGlyphMetrics } from '../types'
-import type { SlugLayoutFont } from './types'
+import type { SlugGlyphMetrics } from '../types.js'
+import type { SlugLayoutFont } from './types.js'
 
 /**
  * Metrics used when a font's cmap has no entry for a char — mirrors

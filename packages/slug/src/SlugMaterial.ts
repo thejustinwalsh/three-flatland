@@ -17,8 +17,8 @@ import {
   varyingProperty,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { slugRender } from './shaders/slugFragment'
-import { slugDilate } from './shaders/slugDilate'
+import { slugRender } from './shaders/slugFragment.js'
+import { slugDilate } from './shaders/slugDilate.js'
 import {
   clipCoverage,
   clipDistances,
@@ -26,8 +26,8 @@ import {
   composeInstanceMatrix,
   foldInstanceRow,
   instanceMatrixLanes,
-} from './shaders/slugInstance'
-import type { SlugCurveSource } from './types'
+} from './shaders/slugInstance.js'
+import type { SlugCurveSource } from './types.js'
 
 export interface SlugMaterialOptions {
   color?: number | Color

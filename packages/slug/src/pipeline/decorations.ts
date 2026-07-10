@@ -1,4 +1,4 @@
-import type { DecorationRect, PositionedGlyph, StyleSpan } from '../types'
+import type { DecorationRect, PositionedGlyph, StyleSpan } from '../types.js'
 
 export interface DecorationFontMetrics {
   underlinePosition: number

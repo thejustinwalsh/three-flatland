@@ -1,8 +1,8 @@
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js'
 import type { Vector2 } from 'three'
-import { cubicToQuadraticsAdaptive, lineToQuadratic } from '../pipeline/fontParser'
-import type { QuadContour, QuadCurve } from '../types'
-import type { SlugBatchColor } from '../SlugBatch'
+import { cubicToQuadraticsAdaptive, lineToQuadratic } from '../pipeline/fontParser.js'
+import type { QuadContour, QuadCurve } from '../types.js'
+import type { SlugBatchColor } from '../SlugBatch.js'
 
 /**
  * Default adaptive-subdivision tolerance: 0.25% of the (normalized)

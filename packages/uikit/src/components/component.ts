@@ -46,6 +46,7 @@ import { computedTransformMatrix } from '../transform.js'
 import { setupCursorCleanup } from '../hover.js'
 import { ClassList, getStarProperties, StyleSheet } from './classes.js'
 import { InstancedGlyphMesh } from '../text/index.js'
+import { InstancedShapeMesh } from '../svg/index.js'
 import {
   buildRootContext,
   buildRootMatrix,
@@ -372,7 +373,8 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
         if (
           child instanceof Component ||
           child instanceof InstancedPanelMesh ||
-          child instanceof InstancedGlyphMesh
+          child instanceof InstancedGlyphMesh ||
+          child instanceof InstancedShapeMesh
         ) {
           return
         }
@@ -487,7 +489,11 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
     target.userData = JSON.parse(JSON.stringify(this.userData))
     if (recursive !== false) {
       for (const child of this.children) {
-        if (child instanceof InstancedPanelMesh || child instanceof InstancedGlyphMesh) {
+        if (
+          child instanceof InstancedPanelMesh ||
+          child instanceof InstancedGlyphMesh ||
+          child instanceof InstancedShapeMesh
+        ) {
           continue
         }
         if (child instanceof Component) {

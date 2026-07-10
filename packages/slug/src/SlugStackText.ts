@@ -1,12 +1,12 @@
 import { Color, Group, InstancedBufferAttribute, InstancedMesh } from 'three'
 import type { Camera } from 'three'
-import type { SlugFontStack } from './SlugFontStack'
-import { SlugMaterial } from './SlugMaterial'
-import { SlugStrokeMaterial } from './SlugStrokeMaterial'
-import { SlugGeometry } from './SlugGeometry'
-import { shapeStackText } from './pipeline/textShaperStack'
-import type { SlugFont } from './SlugFont'
-import type { PositionedGlyph, SlugOutlineOptions, StyleSpan } from './types'
+import type { SlugFontStack } from './SlugFontStack.js'
+import { SlugMaterial } from './SlugMaterial.js'
+import { SlugStrokeMaterial } from './SlugStrokeMaterial.js'
+import { SlugGeometry } from './SlugGeometry.js'
+import { shapeStackText } from './pipeline/textShaperStack.js'
+import type { SlugFont } from './SlugFont.js'
+import type { PositionedGlyph, SlugOutlineOptions, StyleSpan } from './types.js'
 
 export interface SlugStackTextOptions {
   font?: SlugFontStack

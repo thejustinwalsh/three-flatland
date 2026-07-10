@@ -8,15 +8,15 @@
 // `y - availableHeight / 2`. Kept asymmetric so uikit's selection/input
 // callers port without coordinate churn.
 
-import { getEmBoxTopOffset } from '../layout/baseline'
-import { getTextXOffset, getTextYOffset } from '../layout/positioned'
+import { getEmBoxTopOffset } from '../layout/baseline.js'
+import { getTextXOffset, getTextYOffset } from '../layout/positioned.js'
 import type {
   CaretTransformation,
   PositionedGlyphLayout,
   PositionedGlyphLayoutEntry,
   SelectionTransformation,
-} from '../layout/types'
-import { getOffsetToNextLine, getWhitespaceWidth } from '../layout/utils'
+} from '../layout/types.js'
+import { getOffsetToNextLine, getWhitespaceWidth } from '../layout/utils.js'
 
 const noSelectionTransformations: Array<SelectionTransformation> = []
 

@@ -1394,6 +1394,9 @@ importers:
       '@three-flatland/uikit':
         specifier: workspace:*
         version: link:../../../packages/uikit
+      '@three-flatland/uikit-lucide':
+        specifier: workspace:*
+        version: link:../../../packages/uikit-lucide
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -1761,6 +1764,9 @@ importers:
       '@react-three/fiber':
         specifier: 'catalog:'
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/bake':
+        specifier: workspace:*
+        version: link:../bake
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.9
@@ -1776,6 +1782,10 @@ importers:
       three:
         specifier: 'catalog:'
         version: 0.183.1
+    optionalDependencies:
+      happy-dom:
+        specifier: ^20.8.9
+        version: 20.10.6
 
   packages/uikit-default:
     dependencies:

@@ -4,6 +4,7 @@ import { abortableEffect, alignmentXMap, alignmentYMap } from './utils.js'
 import type { WithReversePainterSortStableCache } from './order.js'
 import { Matrix4, type Vector2Tuple } from 'three'
 import { GlyphGroupManager } from './text/render/instanced-glyph-group.js'
+import { ShapeGroupManager } from './svg/render/instanced-shape-group.js'
 import type { Component } from './components/component.js'
 import type { Properties } from './properties/index.js'
 import { parseNumberValue } from './properties/values.js'
@@ -18,6 +19,7 @@ export type RootContext = WithReversePainterSortStableCache & {
   component: Component
   glyphGroupManager: GlyphGroupManager
   panelGroupManager: PanelGroupManager
+  shapeGroupManager: ShapeGroupManager
   onFrameSet: Set<(delta: number) => void>
   onUpdateMatrixWorldSet: Set<() => void>
   isUpdateRunning: boolean
@@ -41,6 +43,7 @@ export function buildRootContext(
     const abortController = new AbortController()
     rootValue.glyphGroupManager.init(abortController.signal)
     rootValue.panelGroupManager.init(abortController.signal)
+    rootValue.shapeGroupManager.init(abortController.signal)
 
     rootValue.requestCalculateLayout = createDeferredRequestLayoutCalculation(rootValue, component)
 
@@ -55,7 +58,7 @@ export function buildRootContext(
 }
 
 function createRootContext(component: Component, renderContext: RenderContext | undefined) {
-  const ctx: Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager'> = {
+  const ctx: Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager' | 'shapeGroupManager'> = {
     isUpdateRunning: false,
     onFrameSet: new Set<(delta: number) => void>(),
     requestFrame: renderContext?.requestFrame,
@@ -75,6 +78,7 @@ function createRootContext(component: Component, renderContext: RenderContext | 
   return Object.assign(ctx, {
     glyphGroupManager: new GlyphGroupManager(ctx, component),
     panelGroupManager: new PanelGroupManager(ctx, component),
+    shapeGroupManager: new ShapeGroupManager(ctx, component),
   }) satisfies RootContext
 }
 

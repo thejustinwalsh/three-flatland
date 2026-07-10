@@ -61,7 +61,10 @@ export class InstancedPanelMesh extends Mesh {
     computeWorldToGlobalMatrix(this.root, this.matrixWorld)
 
   constructor(
-    protected readonly root: Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager'>,
+    protected readonly root: Omit<
+      RootContext,
+      'glyphGroupManager' | 'panelGroupManager' | 'shapeGroupManager'
+    >,
     public readonly instanceMatrix: InstancedBufferAttribute,
     instanceData: InstancedBufferAttribute,
     instanceClipping: InstancedBufferAttribute

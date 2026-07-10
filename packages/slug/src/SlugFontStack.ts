@@ -1,7 +1,7 @@
-import { wrapLinesStack } from './pipeline/wrapLinesStack'
-import { emitDecorations as emitDecorationsCore } from './pipeline/decorations'
-import type { SlugFont } from './SlugFont'
-import type { DecorationRect, PositionedGlyph, StyleSpan } from './types'
+import { wrapLinesStack } from './pipeline/wrapLinesStack.js'
+import { emitDecorations as emitDecorationsCore } from './pipeline/decorations.js'
+import type { SlugFont } from './SlugFont.js'
+import type { DecorationRect, PositionedGlyph, StyleSpan } from './types.js'
 
 /**
  * Ordered chain of fonts used by `SlugText` for per-codepoint glyph

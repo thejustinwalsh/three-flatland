@@ -1,12 +1,12 @@
-import { resolveGlyphLayoutProperties } from './normalize'
+import { resolveGlyphLayoutProperties } from './normalize.js'
 import type {
   GlyphLayout,
   GlyphLayoutLine,
   ResolvedGlyphLayoutProperties,
   SlugGlyphLayoutProperties,
-} from './types'
-import { getGlyphLayoutHeight } from './utils'
-import { glyphWrappers } from './wrappers'
+} from './types.js'
+import { getGlyphLayoutHeight } from './utils.js'
+import { glyphWrappers } from './wrappers.js'
 
 const lineHelper = {} as GlyphLayoutLine
 

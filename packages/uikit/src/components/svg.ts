@@ -1,4 +1,4 @@
-import { Material, Mesh, MeshBasicMaterial, ShapeGeometry, Vector3 } from 'three'
+import { Vector3 } from 'three'
 import {
   type BoundingBox,
   Content,
@@ -7,12 +7,15 @@ import {
 } from './content.js'
 import { computed, signal } from '@preact/signals-core'
 import { abortableEffect, loadResourceWithParams } from '../utils.js'
-import { SVGLoader, type SVGResult } from 'three/examples/jsm/loaders/SVGLoader.js'
+import { loadSVGShapes } from '@three-flatland/slug'
+import type { RegisteredSVG } from '@three-flatland/slug'
 import type { BaseOutProperties, InProperties, WithSignal } from '../properties/index.js'
 import type { RenderContext } from '../context.js'
 import { string } from 'zod'
 import type { z } from 'zod'
 import { createInPropertiesSchema, defineSchema } from '../properties/schema.js'
+import { computedGlobalContentMatrix } from '../svg/matrix.js'
+import { createInstancedShapes } from '../svg/render/index.js'
 
 export const svgOutPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
   contentOutPropertiesSchema.extend({
@@ -31,6 +34,15 @@ export type SvgOutProperties = ContentOutProperties & {
 }
 export type SvgProperties = z.input<typeof SvgPropertiesSchema>
 
+/**
+ * Renders SVG paths through `@three-flatland/slug`'s `SlugShapeBatch` — one
+ * draw call for every icon sharing a `SlugShapeSet` (see `svg/render/`),
+ * resolution-independent, no render targets. Upstream's `Svg` tessellates a
+ * `Mesh` + `MeshBasicMaterial` per path per instance (hundreds of icons is
+ * hundreds-to-thousands of draw calls); this rewrite keeps the public API
+ * (`src`, `content`, `width`, `height`, `fill`, `keepAspectRatio`) and
+ * constructor signature identical — only the rendering internals change.
+ */
 export class Svg<
   OutProperties extends SvgOutProperties = SvgOutProperties,
 > extends Content<OutProperties> {
@@ -52,30 +64,57 @@ export class Svg<
       boundingBox,
     })
 
-    const svgResult = signal<Awaited<ReturnType<typeof loadSvg>>>(undefined)
+    const svgResult = signal<RegisteredSVG | undefined>(undefined)
+    // Shared cache (never disposed on unmount) keyed by source — mirrors
+    // `SlugFontLoader`'s font caching. Repeated use of the SAME icon across
+    // many `Svg` instances registers its paths into ONE `SlugShapeSet`, so
+    // `ShapeGroupManager` (keyed by `SlugShapeSet` identity) batches them
+    // into a single draw call rather than re-registering per instance.
     loadResourceWithParams(
       svgResult,
       loadSvg,
-      disposeSvg,
+      undefined,
       this.abortSignal,
       computed(() => ({
         src: this.properties.value.src,
         content: this.properties.value.content,
       }))
     )
+
     abortableEffect(() => {
       const result = svgResult.value
-      boundingBox.value = result?.boundingBox
-      if (result == null || result.meshes.length === 0) {
-        this.notifyAncestorsChanged()
+      if (result == null) {
+        boundingBox.value = undefined
         return
       }
-      super.addUnsafe(...result.meshes)
-      this.notifyAncestorsChanged()
-      return () => {
-        super.remove(...result.meshes)
+      // Normalize the viewBox the SAME way `slug/svg`'s `parseSVG` normalized
+      // every path's contours (longer side = 1, y flipped up) — `boundingBox`
+      // and shape-space MUST share one frame for `Content`'s proportional
+      // box math to place shapes correctly (see `svg/matrix.ts`).
+      const s = 1 / Math.max(result.viewBox.width, result.viewBox.height)
+      const width = result.viewBox.width * s
+      const height = result.viewBox.height * s
+      boundingBox.value = {
+        center: new Vector3(width * 0.5, height * 0.5, 0),
+        size: new Vector3(width, height, 0.00001),
       }
     }, this.abortSignal)
+
+    const parentClippingRect = computed(() => this.parentContainer.value?.clippingRect.value)
+    const globalContentMatrix = computedGlobalContentMatrix(this)
+
+    createInstancedShapes(
+      {
+        root: this.root,
+        svgSignal: svgResult,
+        orderInfo: this.orderInfo,
+        properties: this.properties,
+        globalContentMatrix,
+        isVisible: this.isVisible,
+        abortSignal: this.abortSignal,
+      },
+      parentClippingRect
+    )
   }
 
   add(): this {
@@ -89,8 +128,7 @@ export class Svg<
   }
 }
 
-const svgCache = new Map<string, Promise<SVGResult>>()
-const loader = new SVGLoader()
+const svgCache = new Map<string, Promise<RegisteredSVG>>()
 
 async function loadSvg({
   src,
@@ -98,55 +136,14 @@ async function loadSvg({
 }: {
   src?: string
   content?: string
-}): Promise<{ meshes: Array<Mesh>; boundingBox?: BoundingBox } | undefined> {
+}): Promise<RegisteredSVG | undefined> {
   if (src == null && content == null) {
     return undefined
   }
-  let result: Omit<SVGResult, 'xml'> & { xml: Element }
-  if (src != null) {
-    let promise = svgCache.get(src)
-    if (promise == null) {
-      svgCache.set(src, (promise = loader.loadAsync(src)))
-    }
-    result = (await promise) as any
-  } else {
-    result = loader.parse(content!) as any
+  const key = src ?? content!
+  let promise = svgCache.get(key)
+  if (promise == null) {
+    svgCache.set(key, (promise = loadSVGShapes(key)))
   }
-  const meshes: Array<Mesh> = []
-  for (const path of result.paths) {
-    const shapes = SVGLoader.createShapes(path)
-    const material = new MeshBasicMaterial({ color: path.color, toneMapped: false })
-
-    for (const shape of shapes) {
-      const mesh = new Mesh(new ShapeGeometry(shape), material)
-      mesh.matrixAutoUpdate = false
-      mesh.scale.y = -1
-      mesh.updateMatrix()
-      meshes.push(mesh)
-    }
-  }
-  let boundingBox: { center: Vector3; size: Vector3 } | undefined
-  const viewBoxNumbers = result.xml
-    .getAttribute('viewBox')
-    ?.split(/\s+/)
-    .map((s) => Number.parseFloat(s))
-    .filter((value) => !isNaN(value))
-  if (viewBoxNumbers?.length === 4) {
-    const [minX, minY, width, height] = viewBoxNumbers as [number, number, number, number]
-    boundingBox = {
-      center: new Vector3(width / 2 + minX, -height / 2 - minY, 0),
-      size: new Vector3(width, height, 0.00001),
-    }
-  }
-
-  return { meshes, boundingBox }
-}
-
-function disposeSvg(result: Awaited<ReturnType<typeof loadSvg>>) {
-  result?.meshes.forEach((mesh) => {
-    if (mesh.material instanceof Material) {
-      mesh.material.dispose()
-    }
-    mesh.geometry.dispose()
-  })
+  return promise
 }

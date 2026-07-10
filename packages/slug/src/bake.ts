@@ -53,7 +53,7 @@ import {
   RefMap,
   type WriterContext,
 } from '@gltf-transform/core'
-import type { BakeInput } from './baked'
+import type { BakeInput } from './baked.js'
 import {
   SLUG_COLUMNS,
   SLUG_EXTENSION_NAME,
@@ -63,8 +63,8 @@ import {
   SLUG_SHAPE_COLUMNS,
   type SlugColumnName,
   type SlugShapeColumnName,
-} from './format'
-import type { SlugGlyphData } from './types'
+} from './format.js'
+import type { SlugGlyphData } from './types.js'
 
 type SupportedTypedArray =
   | Float32Array<ArrayBuffer>

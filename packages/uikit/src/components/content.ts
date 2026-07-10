@@ -38,6 +38,7 @@ import {
 import { createGlobalClippingPlanes } from '../clipping.js'
 import { makeClippedCast } from '../panel/interaction/clipped-cast.js'
 import { InstancedGlyphMesh, toAbsoluteNumber } from '../text/index.js'
+import { InstancedShapeMesh } from '../svg/render/instanced-shape-group.js'
 import { InstancedPanelMesh } from '../panel/instance/mesh.js'
 import { componentDefaults } from '../properties/defaults.js'
 import type { RenderContext } from '../context.js'
@@ -281,6 +282,7 @@ export class Content<
       if (
         descendant instanceof InstancedGlyphMesh ||
         descendant instanceof InstancedPanelMesh ||
+        descendant instanceof InstancedShapeMesh ||
         !(descendant instanceof Mesh)
       ) {
         return
@@ -317,7 +319,11 @@ export class Content<
       //no need to compute the bounding box ourselves
       box3Helper.makeEmpty()
       for (const child of this.children) {
-        if (child instanceof InstancedGlyphMesh || child instanceof InstancedPanelMesh) {
+        if (
+          child instanceof InstancedGlyphMesh ||
+          child instanceof InstancedPanelMesh ||
+          child instanceof InstancedShapeMesh
+        ) {
           continue
         }
         child.parent = null
@@ -381,6 +387,7 @@ function applyAppearancePropertiesToGroup(
     if (
       child instanceof InstancedGlyphMesh ||
       child instanceof InstancedPanelMesh ||
+      child instanceof InstancedShapeMesh ||
       !(child instanceof Mesh)
     ) {
       return

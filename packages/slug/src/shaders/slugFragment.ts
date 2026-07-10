@@ -16,9 +16,9 @@ import {
   If,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { calcRootCode } from './calcRootCode'
-import { solveHorizPoly, solveVertPoly } from './solveQuadratic'
-import { calcCoverage } from './calcCoverage'
+import { calcRootCode } from './calcRootCode.js'
+import { solveHorizPoly, solveVertPoly } from './solveQuadratic.js'
+import { calcCoverage } from './calcCoverage.js'
 
 import type { DataTexture } from 'three'
 

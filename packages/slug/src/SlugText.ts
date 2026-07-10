@@ -1,10 +1,10 @@
 import { InstancedMesh, InstancedBufferAttribute, Color } from 'three'
 import type { Camera } from 'three'
-import type { SlugFont } from './SlugFont'
-import { SlugMaterial } from './SlugMaterial'
-import { SlugStrokeMaterial } from './SlugStrokeMaterial'
-import { SlugGeometry } from './SlugGeometry'
-import type { SlugOutlineOptions, SlugTextOptions, StyleSpan } from './types'
+import type { SlugFont } from './SlugFont.js'
+import { SlugMaterial } from './SlugMaterial.js'
+import { SlugStrokeMaterial } from './SlugStrokeMaterial.js'
+import { SlugGeometry } from './SlugGeometry.js'
+import type { SlugOutlineOptions, SlugTextOptions, StyleSpan } from './types.js'
 
 /**
  * High-level text rendering object using the Slug algorithm.

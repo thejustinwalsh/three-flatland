@@ -1,7 +1,7 @@
-import type { PositionedGlyph, SlugGlyphData } from '../types'
-import type { SlugFont } from '../SlugFont'
-import type { SlugFontStack } from '../SlugFontStack'
-import { cmapLookup, kernLookup } from '../baked'
+import type { PositionedGlyph, SlugGlyphData } from '../types.js'
+import type { SlugFont } from '../SlugFont.js'
+import type { SlugFontStack } from '../SlugFontStack.js'
+import { cmapLookup, kernLookup } from '../baked.js'
 
 /**
  * Output of `shapeStackText` — positioned glyphs grouped by which font

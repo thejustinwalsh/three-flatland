@@ -1,5 +1,5 @@
-import type { QuadCurve, SlugGlyphData } from '../types'
-import { buildGpuGlyphData } from './buildGpuGlyph'
+import type { QuadCurve, SlugGlyphData } from '../types.js'
+import { buildGpuGlyphData } from './buildGpuGlyph.js'
 
 /**
  * Quadratic-Bezier adaptive stroke offsetter (Phase 5 Task 16).

@@ -1,6 +1,6 @@
-import { cmapLookup, kernLookup } from '../baked'
-import type { BakedFontData } from '../baked'
-import type { SlugGlyphData, PositionedGlyph } from '../types'
+import { cmapLookup, kernLookup } from '../baked.js'
+import type { BakedFontData } from '../baked.js'
+import type { SlugGlyphData, PositionedGlyph } from '../types.js'
 
 /**
  * Shape text using baked font data — no opentype.js dependency.

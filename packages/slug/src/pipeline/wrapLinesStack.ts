@@ -1,6 +1,6 @@
-import { cmapLookup, kernLookup } from '../baked'
-import type { SlugFont } from '../SlugFont'
-import type { SlugFontStack } from '../SlugFontStack'
+import { cmapLookup, kernLookup } from '../baked.js'
+import type { SlugFont } from '../SlugFont.js'
+import type { SlugFontStack } from '../SlugFontStack.js'
 
 /**
  * Wrap text into lines using per-codepoint font resolution from a

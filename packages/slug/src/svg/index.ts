@@ -28,7 +28,7 @@ export {
   contoursFromShapePath,
   quadraticsFromCurve,
   DEFAULT_CURVE_TOLERANCE,
-} from './parseSVG'
+} from './parseSVG.js'
 export type {
   ParsedSVG,
   ParsedSVGFill,
@@ -36,6 +36,6 @@ export type {
   SVGViewBox,
   ShapePathLike,
   CurveLike,
-} from './parseSVG'
-export { registerSVG, loadSVGShapes } from './loadSVG'
-export type { RegisteredSVG } from './loadSVG'
+} from './parseSVG.js'
+export { registerSVG, loadSVGShapes } from './loadSVG.js'
+export type { RegisteredSVG } from './loadSVG.js'

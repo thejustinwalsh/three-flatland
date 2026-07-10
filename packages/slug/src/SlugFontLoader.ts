@@ -8,12 +8,12 @@ import {
   RGFormat,
 } from 'three'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
-import { readGlb } from './glb'
-import { SlugFont } from './SlugFont'
-import { bakedURLs, unpackBaked } from './baked'
-import { shapeTextBaked } from './pipeline/textShaperBaked'
-import { wrapLinesBaked } from './pipeline/wrapLinesBaked'
-import { measureTextBaked } from './pipeline/textMeasureBaked'
+import { readGlb } from './glb.js'
+import { SlugFont } from './SlugFont.js'
+import { bakedURLs, unpackBaked } from './baked.js'
+import { shapeTextBaked } from './pipeline/textShaperBaked.js'
+import { wrapLinesBaked } from './pipeline/wrapLinesBaked.js'
+import { measureTextBaked } from './pipeline/textMeasureBaked.js'
 
 /**
  * The single entry point for loading SlugFont data.
@@ -246,11 +246,11 @@ export class SlugFontLoader extends Loader<SlugFont> {
     ] = await Promise.all([
       fetch(url),
       import('opentype.js'),
-      import('./pipeline/fontParser'),
-      import('./pipeline/texturePacker'),
-      import('./pipeline/textShaper'),
-      import('./pipeline/wrapLines'),
-      import('./pipeline/textMeasure'),
+      import('./pipeline/fontParser.js'),
+      import('./pipeline/texturePacker.js'),
+      import('./pipeline/textShaper.js'),
+      import('./pipeline/wrapLines.js'),
+      import('./pipeline/textMeasure.js'),
     ])
 
     const buffer = await response.arrayBuffer()

@@ -4,8 +4,8 @@ import {
   InstancedBufferAttribute,
   Uint16BufferAttribute,
 } from 'three'
-import type { SlugFont } from './SlugFont'
-import type { DecorationRect, PositionedGlyph, SlugGlyphData } from './types'
+import type { SlugFont } from './SlugFont.js'
+import type { DecorationRect, PositionedGlyph, SlugGlyphData } from './types.js'
 
 /** Default initial capacity for glyph instances. */
 const DEFAULT_CAPACITY = 256

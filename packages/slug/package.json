@@ -48,6 +48,17 @@
         "default": "./dist/bake.cjs"
       }
     },
+    "./svg": {
+      "source": "./src/svg/index.ts",
+      "import": {
+        "types": "./dist/svg/index.d.ts",
+        "default": "./dist/svg/index.js"
+      },
+      "require": {
+        "types": "./dist/svg/index.d.cts",
+        "default": "./dist/svg/index.cjs"
+      }
+    },
     "./pipeline": {
       "source": "./src/pipeline/index.ts",
       "import": {

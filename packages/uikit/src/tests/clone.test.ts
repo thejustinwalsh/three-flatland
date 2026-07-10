@@ -6,7 +6,10 @@ import { InstancedBufferAttribute, Object3D, Group } from 'three'
 import { Component } from '../components/component.js'
 import { RootContext } from '../context.js'
 
-function createMockRootContext(): Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager'> {
+function createMockRootContext(): Omit<
+  RootContext,
+  'glyphGroupManager' | 'panelGroupManager' | 'shapeGroupManager'
+> {
   return {
     isUpdateRunning: false,
     onFrameSet: new Set(),

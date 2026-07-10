@@ -1,5 +1,5 @@
-import type { GlyphLayoutLine, ResolvedGlyphLayoutProperties } from './types'
-import { getGlyphMetricsWithFallback, getOffsetToNextGlyph } from './utils'
+import type { GlyphLayoutLine, ResolvedGlyphLayoutProperties } from './types.js'
+import { getGlyphMetricsWithFallback, getOffsetToNextGlyph } from './utils.js'
 
 /**
  * A wrapper consumes chars from `textStartIndex` and fills `target` with

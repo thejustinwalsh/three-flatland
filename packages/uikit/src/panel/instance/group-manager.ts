@@ -10,7 +10,10 @@ export class PanelGroupManager {
   private map = new Map<NodeMaterialClass, Map<string, InstancedPanelGroup>>()
 
   constructor(
-    private readonly root: Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager'>,
+    private readonly root: Omit<
+      RootContext,
+      'glyphGroupManager' | 'panelGroupManager' | 'shapeGroupManager'
+    >,
     private readonly object: Component
   ) {}
 

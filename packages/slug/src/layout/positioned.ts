@@ -1,6 +1,6 @@
-import { getGlyphTopOffset, getLineBaselineOffset } from './baseline'
-import { buildLayoutResolved } from './measure'
-import { resolveGlyphLayoutProperties } from './normalize'
+import { getGlyphTopOffset, getLineBaselineOffset } from './baseline.js'
+import { buildLayoutResolved } from './measure.js'
+import { resolveGlyphLayoutProperties } from './normalize.js'
 import type {
   GlyphLayout,
   PositionedGlyphLayout,
@@ -9,7 +9,7 @@ import type {
   SlugGlyphLayoutProperties,
   TextAlign,
   VerticalAlign,
-} from './types'
+} from './types.js'
 import {
   getGlyphInkWidth,
   getGlyphLayoutHeight,
@@ -19,7 +19,7 @@ import {
   getOffsetToNextGlyph,
   getOffsetToNextLine,
   getWhitespaceWidth,
-} from './utils'
+} from './utils.js'
 
 export interface BuildPositionedGlyphLayoutOptions {
   /** Wrap constraint and alignment extent. Omit for intrinsic width. */

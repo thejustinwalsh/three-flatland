@@ -65,9 +65,9 @@
  * ```
  */
 
-import type { GlbView } from './glb'
-import type { GlyphBands, SlugGlyphData } from './types'
-import { SLUG_EXTENSION_NAME, SLUG_FONT_VERSION } from './format'
+import type { GlbView } from './glb.js'
+import type { GlyphBands, SlugGlyphData } from './types.js'
+import { SLUG_EXTENSION_NAME, SLUG_FONT_VERSION } from './format.js'
 
 /** JSON header shape — kept for backward compat; consumed by unpackBaked (G4.2). */
 export interface BakedJSON {
