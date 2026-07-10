@@ -157,11 +157,24 @@ export const Fullscreen = /* @__PURE__ */ (() => {
         [renderer, renderContext]
       )
       const outProps = useSetup(ref, props, args)
+      // `injectScene: false` is load-bearing on @react-three/fiber@10. By
+      // default v10's Portal inserts an intermediate `Scene` between the
+      // container and the portalled children, which breaks Fullscreen twice
+      // over: (a) the extra hop makes the ancestor chain
+      // camera → wrapper → injected Scene → Fullscreen, exceeding
+      // `searchFor(this, Camera, 2, true)`'s maxSteps (written for v9, where
+      // portal children attached directly to the container); (b) under
+      // <StrictMode> the Portal's cleanup-only layout effect removes and
+      // disposes the injected Scene on the dev double-invoke and never
+      // re-adds it, orphaning the HUD permanently. With `injectScene: false`
+      // children attach straight to the wrapper (v9 semantics) and the
+      // cleanup no-ops (`portalScene === container`).
       return createPortal(
         <vanillaFullscreen {...outProps} ref={ref}>
           {children}
         </vanillaFullscreen>,
-        fullscreenWrapper
+        fullscreenWrapper,
+        { injectScene: false }
       )
     }
   )

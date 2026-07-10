@@ -12,7 +12,7 @@ import {
   HalfFloatType,
   LinearFilter,
   Scene,
-  WebGLRenderTarget,
+  RenderTarget,
   PerspectiveCamera,
   Raycaster,
   Vector2,
@@ -68,7 +68,7 @@ export type PortalProperties = {
 
 export const Portal = forwardRef<VanillaImage, PortalProperties>(
   ({ children, dpr, frames = Infinity, renderPriority = 0, eventPriority = 0, ...props }, ref) => {
-    const fbo = useMemo(() => new Signal<WebGLRenderTarget | undefined>(undefined), [])
+    const fbo = useMemo(() => new Signal<RenderTarget | undefined>(undefined), [])
     const imageRef = useRef<VanillaImage>(null)
     const previousRoot = useStore()
     dpr ??= previousRoot.getState().viewport.dpr
@@ -172,7 +172,7 @@ export const Portal = forwardRef<VanillaImage, PortalProperties>(
       if (imageRef.current == null) {
         return
       }
-      const renderTarget = (fbo.value = new WebGLRenderTarget(1, 1, {
+      const renderTarget = (fbo.value = new RenderTarget(1, 1, {
         minFilter: LinearFilter,
         magFilter: LinearFilter,
         type: HalfFloatType,
@@ -242,6 +242,15 @@ function uvCompute(
   state.raycaster.setFromCamera(state.pointer.set(uv.x * 2 - 1, uv.y * 2 - 1), state.camera)
 }
 
+/** The slice of the renderer `ChildrenToFBO` drives, satisfied by both backends. */
+interface PortalRenderer {
+  autoClear: boolean
+  xr: { enabled: boolean; isPresenting: boolean }
+  getRenderTarget(): RenderTarget | null
+  setRenderTarget(target: RenderTarget | null): void
+  render(scene: Scene, camera: Camera): void
+}
+
 function ChildrenToFBO({
   frames,
   renderPriority,
@@ -252,7 +261,7 @@ function ChildrenToFBO({
   frames: number
   renderPriority: number
   children: ReactNode
-  fbo: Signal<WebGLRenderTarget | undefined>
+  fbo: Signal<RenderTarget | undefined>
   imageRef: RefObject<VanillaImage | null>
 }) {
   const store = useStore()
@@ -280,11 +289,17 @@ function ChildrenToFBO({
   }, [store])
 
   let count = 0
-  let oldAutoClear
-  let oldXrEnabled
-  let oldIsPresenting
-  let oldRenderTarget
+  let oldAutoClear: boolean
+  let oldXrEnabled: boolean
+  let oldIsPresenting: boolean
+  let oldRenderTarget: RenderTarget | null
   useFrame((state) => {
+    // `@react-three/fiber@10` types `RootState.gl` as `WebGLRenderer` even from
+    // its `/webgpu` entry, but this repo only ever constructs a `WebGPURenderer`.
+    // Both satisfy this slice, and the renderer we actually run takes the
+    // renderer-agnostic `RenderTarget` — hence the structural narrowing rather
+    // than a cast to a `WebGLRenderTarget` we never allocate.
+    const gl = state.gl as unknown as PortalRenderer
     const currentFBO = fbo.peek()
     //we only render if we have a framebuffer to write to and if the portal is not clipped
     if (currentFBO == null || imageRef.current?.isVisible?.peek() != true) {
@@ -295,19 +310,19 @@ function ChildrenToFBO({
       return
     }
     if (frames === Infinity || count < frames) {
-      oldAutoClear = state.gl.autoClear
-      oldXrEnabled = state.gl.xr.enabled
-      oldIsPresenting = state.gl.xr.isPresenting
-      oldRenderTarget = state.gl.getRenderTarget()
-      state.gl.autoClear = true
-      state.gl.xr.enabled = false
-      state.gl.xr.isPresenting = false
-      state.gl.setRenderTarget(currentFBO)
-      state.gl.render(state.scene, state.camera)
-      state.gl.setRenderTarget(oldRenderTarget)
-      state.gl.autoClear = oldAutoClear
-      state.gl.xr.enabled = oldXrEnabled
-      state.gl.xr.isPresenting = oldIsPresenting
+      oldAutoClear = gl.autoClear
+      oldXrEnabled = gl.xr.enabled
+      oldIsPresenting = gl.xr.isPresenting
+      oldRenderTarget = gl.getRenderTarget()
+      gl.autoClear = true
+      gl.xr.enabled = false
+      gl.xr.isPresenting = false
+      gl.setRenderTarget(currentFBO)
+      gl.render(state.scene, state.camera)
+      gl.setRenderTarget(oldRenderTarget)
+      gl.autoClear = oldAutoClear
+      gl.xr.enabled = oldXrEnabled
+      gl.xr.isPresenting = oldIsPresenting
       count++
     }
   }, renderPriority)

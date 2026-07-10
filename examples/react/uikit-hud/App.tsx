@@ -72,11 +72,19 @@ function HudFullscreen({
     [renderer, renderContext]
   )
   const outProps = useSetup(ref, props, args)
+  // `injectScene: false` is load-bearing: R3F v10's Portal otherwise inserts
+  // an intermediate `Scene` between the camera and the HUD, and under
+  // <StrictMode> the Portal's cleanup-only layout effect removes + disposes
+  // that scene on the dev double-invoke without re-adding it — orphaning the
+  // HUD so `Fullscreen.update()`'s camera search throws and unmounts the
+  // Canvas. With it, the fullscreen parents directly onto the camera — the
+  // exact graph the vanilla twin builds via `flatland.camera.add(hud)`.
   return createPortal(
     <vanillaFullscreen {...outProps} ref={ref}>
       {children}
     </vanillaFullscreen>,
-    camera
+    camera,
+    { injectScene: false }
   )
 }
 
@@ -165,7 +173,11 @@ function createProceduralTileset(): DataTexture {
   return texture
 }
 
-function buildRoomLayers(size: number): { ground: Uint32Array; walls: Uint32Array; decor: Uint32Array } {
+function buildRoomLayers(size: number): {
+  ground: Uint32Array
+  walls: Uint32Array
+  decor: Uint32Array
+} {
   const ground = new Uint32Array(size * size)
   const walls = new Uint32Array(size * size)
   const decor = new Uint32Array(size * size)
@@ -204,7 +216,11 @@ function buildRoomLayers(size: number): { ground: Uint32Array; walls: Uint32Arra
   return { ground, walls, decor }
 }
 
-function createTileMapData(size: number, tileset: TilesetData, layers: ReturnType<typeof buildRoomLayers>): TileMapData {
+function createTileMapData(
+  size: number,
+  tileset: TilesetData,
+  layers: ReturnType<typeof buildRoomLayers>
+): TileMapData {
   const tileLayers: TileLayerData[] = [
     { name: 'Ground', id: 0, width: size, height: size, data: layers.ground, visible: true },
     { name: 'Walls', id: 1, width: size, height: size, data: layers.walls, visible: true },
@@ -258,18 +274,21 @@ function HudScene({ ambient }: { ambient: number }) {
 
   const halfExtent = (MAP_SIZE * TILE_SIZE) / 2
 
-  const tileset = useMemo<TilesetData>(() => ({
-    name: 'dungeon',
-    firstGid: 1,
-    tileWidth: TILE_SIZE,
-    tileHeight: TILE_SIZE,
-    imageWidth: TILESET_COLUMNS * TILE_SIZE,
-    imageHeight: TILESET_ROWS * TILE_SIZE,
-    columns: TILESET_COLUMNS,
-    tileCount: TILESET_COLUMNS * TILESET_ROWS,
-    tiles: new Map(),
-    texture: createProceduralTileset(),
-  }), [])
+  const tileset = useMemo<TilesetData>(
+    () => ({
+      name: 'dungeon',
+      firstGid: 1,
+      tileWidth: TILE_SIZE,
+      tileHeight: TILE_SIZE,
+      imageWidth: TILESET_COLUMNS * TILE_SIZE,
+      imageHeight: TILESET_ROWS * TILE_SIZE,
+      columns: TILESET_COLUMNS,
+      tileCount: TILESET_COLUMNS * TILESET_ROWS,
+      tiles: new Map(),
+      texture: createProceduralTileset(),
+    }),
+    []
+  )
 
   const mapData = useMemo(() => {
     const layers = buildRoomLayers(MAP_SIZE)
@@ -313,9 +332,12 @@ function HudScene({ ambient }: { ambient: number }) {
     }
   })
 
-  useFrame(() => {
-    flatlandRef.current?.render(gl as unknown as WebGPURenderer)
-  }, { phase: 'render' })
+  useFrame(
+    () => {
+      flatlandRef.current?.render(gl as unknown as WebGPURenderer)
+    },
+    { phase: 'render' }
+  )
 
   return (
     <>
