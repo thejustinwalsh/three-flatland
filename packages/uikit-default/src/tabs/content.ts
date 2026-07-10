@@ -48,6 +48,12 @@ export class TabsContent extends Container<TabsContentOutProperties> {
           borderColor: colors.border,
         },
         marginTop: 8,
+        // shadcn's TabsContent is a block-level div: children stack vertically and
+        // fill its width. Yoga's web default is flexDirection row, which makes the
+        // content (e.g. a Card) shrink-to-fit instead — the content box then changes
+        // width per tab based on measured text. Upstream has the same latent behavior
+        // but its MSDF Inter metrics happen to fill the available width, masking it.
+        flexDirection: 'column',
         display: computed(() => (isVisible.value ? 'flex' : 'none')),
         ...config?.defaultOverrides,
       },
