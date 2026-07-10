@@ -3,7 +3,12 @@ import { attribute, vec2, vec3, vec4, float, Fn, mix, floor, mod, positionWorld 
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Texture } from 'three'
 import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
-import type { MaterialEffect, EffectSchemaValue, SchemaToNodeType, ChannelNodeContext } from './MaterialEffect'
+import type {
+  MaterialEffect,
+  EffectSchemaValue,
+  SchemaToNodeType,
+  ChannelNodeContext,
+} from './MaterialEffect'
 import { channelDefaults } from './channels'
 
 import { EFFECT_BIT_OFFSET } from './effectFlagBits'
@@ -61,7 +66,8 @@ export function getPackedComponent(
 export interface EffectMaterialOptions {
   /**
    * Effect buffer tier size in floats.
-   * Buffers are allocated in tiers: 0, 4, 8, 16.
+   * Buffers are allocated in tiers: 0, 4, 8, 16, then multiples of 4 up
+   * to the 24-float cap ({@link EffectMaterial.MAX_EFFECT_FLOATS}).
    * Default is 8 (2 vec4 buffers), covering most effect combinations.
    * Set to 0 for fully effect-free materials (no effect buffer overhead).
    */
@@ -134,14 +140,20 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   /**
    * Maximum total effect-data floats allowed across all registered
    * effects on this material. WebGPU allows 8 vertex-buffer bindings
-   * per pipeline; SpriteBatch uses 5 fixed bindings (3 geometry +
-   * instanceMatrix + interleaved core), leaving 3 for `effectBuf0/1/2`
-   * × 4 floats = 12 floats. Exceeding this would force a 4th effectBuf
-   * binding which WebGPU rejects at pipeline creation with a cryptic
-   * "vertex buffer count exceeds maximum" error. `registerEffect`
-   * throws clearly when the cap would be exceeded.
+   * per pipeline; SpriteBatch uses 2 fixed bindings (instanceMatrix +
+   * interleaved core — the synth-quad geometry's `position`/`uv`
+   * attributes exist for user TSL but cost a binding only when a
+   * material's nodes actually read them), leaving 6 for
+   * `effectBuf0..5` × 4 floats = 24 floats. Exceeding this would force
+   * a 7th effectBuf binding which WebGPU rejects at pipeline creation
+   * with a cryptic "vertex buffer count exceeds maximum" error.
+   * `registerEffect` throws clearly when the cap would be exceeded.
+   *
+   * A material whose custom TSL nodes call `uv()`/`positionGeometry()`
+   * consumes one or two additional vertex-buffer bindings beyond the 2
+   * above, reducing headroom below 24 floats for that material.
    */
-  static readonly MAX_EFFECT_FLOATS = 12
+  static readonly MAX_EFFECT_FLOATS = 24
 
   /**
    * Maps effect name to its bit position in the enable flags bitmask.
@@ -187,6 +199,15 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   }
 
   /**
+   * Per-instance effect-float cap for THIS material. Strategy-dependent
+   * in subclasses: tight-mesh geometry spends bindings on position/uv,
+   * shrinking the effect budget (see Sprite2DMaterial).
+   */
+  get maxEffectFloats(): number {
+    return EffectMaterial.MAX_EFFECT_FLOATS
+  }
+
+  /**
    * Current per-instance effect-float usage (sum across all registered
    * effects). Complements {@link getMaxEffectFloats}.
    */
@@ -208,6 +229,14 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
   constructor(options: EffectMaterialOptions = {}) {
     super()
+
+    if (options.effectTier !== undefined && options.effectTier > EffectMaterial.MAX_EFFECT_FLOATS) {
+      throw new Error(
+        `[EffectMaterial] Cannot construct with effectTier: ${options.effectTier}, ` +
+          `exceeding the cap of ${EffectMaterial.MAX_EFFECT_FLOATS} ` +
+          `(WebGPU 8-buffer limit).`
+      )
+    }
 
     // Set up effect tier
     this._defaultEffectTier = options.effectTier ?? 8
@@ -262,6 +291,30 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   // ============================================
 
   /**
+   * Effective per-instance float cap for a PROSPECTIVE effect total,
+   * queried before `registerEffect` mutates any state. A subclass whose
+   * cap depends on a geometry strategy it can demote (Sprite2DMaterial's
+   * tight-mesh → synth-quad, 16 → 24) reports the post-demotion cap here,
+   * so an effect that would force a demotion is measured against the
+   * ceiling it will actually run under. Pure — no side effects, safe to
+   * call on the throw path. Base class: the fixed cap.
+   * @internal
+   */
+  protected _effectFloatCap(_prospectiveTotal: number): number {
+    return this.maxEffectFloats
+  }
+
+  /**
+   * Reconcile a geometry-strategy-dependent cap AFTER an effect is
+   * committed and `_effectTotalFloats` reflects it (e.g. Sprite2DMaterial
+   * demoting out of tight-mesh). Runs only on `registerEffect`'s success
+   * path — a rejected over-cap registration never reaches it, so it can't
+   * leave a demoted strategy behind. No-op in the base class.
+   * @internal
+   */
+  protected _applyEffectGeometryStrategy(): void {}
+
+  /**
    * Register an effect class on this material.
    * Assigns a bit index and packed buffer slots, then rebuilds the shader.
    * If the effect is already registered, this is a no-op.
@@ -276,6 +329,45 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
     // Skip if already registered
     if (this._effectBitIndex.has(effectClass.effectName)) return false
+
+    // Prospective per-instance float total if we accept this effect: the
+    // sum of every registered effect's floats plus this one's. Effect
+    // names are unique and already-registered effects short-circuit
+    // above, so no cross-effect slot dedup reduces it — this equals the
+    // total the commit below produces. Computed BEFORE any mutation so an
+    // over-cap registration throws transactionally, leaving `_effects`,
+    // `_effectBitIndex`, `_effectSlots`, `_effectTotalFloats`, and the
+    // geometry strategy all untouched on failure.
+    let dataFloats = effectClass._totalFloats
+    for (const eff of this._effects) {
+      dataFloats += eff._totalFloats
+    }
+
+    // Hard cap: WebGPU allows 8 vertex-buffer bindings per pipeline.
+    // SpriteBatch uses 2 fixed bindings (instanceMatrix + interleaved
+    // core; the synth-quad's position/uv attributes cost nothing here
+    // since the built-in shader doesn't read them), leaving 6 for
+    // `effectBuf0..5` × 4 floats = 24 effect floats max. Exceeding that
+    // would force a 7th effectBuf binding which WebGPU will reject at
+    // pipeline creation with a cryptic "vertex buffer count exceeds
+    // maximum" error. Reject clearly here instead. `_effectFloatCap`
+    // reports the effective ceiling for this prospective total (a
+    // subclass may demote to a laxer cap — Sprite2DMaterial dropping
+    // tight-mesh's 16 for synth-quad's 24); it is a pure query, so no
+    // state changes on the throw path.
+    const cap = this._effectFloatCap(dataFloats)
+    if (dataFloats > cap) {
+      const names = [...this._effects.map((e) => e.effectName), effectClass.effectName].join(', ')
+      throw new Error(
+        `[EffectMaterial] Cannot register '${effectClass.effectName}': ` +
+          `effects would use ${dataFloats} floats of per-instance data, ` +
+          `exceeding the cap of ${cap} ` +
+          `(WebGPU 8-buffer limit). Registered so far: [${names}]. ` +
+          `Reduce a schema or consolidate effects.`
+      )
+    }
+
+    // --- Past the cap check: commit the registration. ---
 
     // Store constants if provided
     if (constants && Object.keys(constants).length > 0) {
@@ -306,34 +398,16 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       }
     }
 
-    // 3. Compute new total — sum of all effect data floats only. No
-    //    longer includes any reservation for the system/enable slots
-    //    (those live in instanceSystem now).
-    let dataFloats = 0
-    for (const eff of this._effects) {
-      dataFloats += eff._totalFloats
-    }
+    // 3. Commit the new total (already validated against the cap above).
     this._effectTotalFloats = dataFloats
 
-    // Hard cap: WebGPU allows 8 vertex-buffer bindings per pipeline.
-    // SpriteBatch uses 5 for fixed bindings (3 geometry + instanceMatrix
-    // + interleaved core), leaving 3 for `effectBuf0/1/2` × 4 floats =
-    // 12 effect floats max. Exceeding that would force a 4th effectBuf
-    // binding which WebGPU will reject at pipeline creation with a
-    // cryptic "vertex buffer count exceeds maximum" error. Reject
-    // clearly here instead.
-    if (dataFloats > EffectMaterial.MAX_EFFECT_FLOATS) {
-      const names = this._effects.map((e) => e.effectName).join(', ')
-      throw new Error(
-        `[EffectMaterial] Cannot register '${effectClass.effectName}': ` +
-          `effects would use ${dataFloats} floats of per-instance data, ` +
-          `exceeding the cap of ${EffectMaterial.MAX_EFFECT_FLOATS} ` +
-          `(WebGPU 8-buffer limit). Registered so far: [${names}]. ` +
-          `Reduce a schema or consolidate effects.`
-      )
-    }
+    // 4. Now that the effect is committed and the total reflects it, let
+    //    a subclass reconcile a geometry-strategy-dependent cap (e.g.
+    //    Sprite2DMaterial demoting tight-mesh → synth-quad). Success path
+    //    only — never runs when the cap check above threw.
+    this._applyEffectGeometryStrategy()
 
-    // 4. Compute new tier
+    // 5. Compute new tier
     const oldTier = this._effectTier
     const neededTier = computeTier(this._effectTotalFloats)
     this._effectTier = Math.max(neededTier, this._defaultEffectTier)

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { Texture } from 'three'
+import { Matrix4, Texture } from 'three'
 import { SpriteBatch } from './SpriteBatch'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createMaterialEffect } from '../materials/MaterialEffect'
@@ -202,5 +202,25 @@ describe('SpriteBatch', () => {
     batch.dispose()
 
     expect(batch.activeCount).toBe(0)
+  })
+})
+
+describe('freed slots', () => {
+  it('collapse to a zero-scale matrix (no fragments rasterized) and zero alpha', () => {
+    const material = new Sprite2DMaterial()
+    const batch = new SpriteBatch(material, 8)
+    const slot = batch.allocateSlot()
+    const matrix = new Matrix4().makeScale(3, 3, 1)
+    batch.writeMatrix(slot, matrix)
+    batch.writeColor(slot, 1, 1, 1, 1)
+
+    batch.freeSlot(slot)
+
+    const m = batch.instanceMatrix.array as Float32Array
+    for (let i = 0; i < 16; i++) {
+      expect(m[slot * 16 + i]).toBe(0)
+    }
+    const color = batch.getColorAttribute()
+    expect(color.getW(slot)).toBe(0)
   })
 })

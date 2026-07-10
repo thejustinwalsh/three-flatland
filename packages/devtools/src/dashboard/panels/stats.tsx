@@ -13,8 +13,9 @@
  * jittering zero.
  */
 import { useEffect, useRef, useState } from 'preact/hooks'
-import type { DevtoolsSeries, DevtoolsState } from '../../devtools-client.js'
+import type { DevtoolsSeries, DevtoolsState, DevtoolsFrameSeries } from '../../devtools-client.js'
 import { useDevtoolsState } from '../hooks.js'
+import { getFrameCursor } from '../frame-cursor.js'
 
 interface StatDef {
   label: string
@@ -104,8 +105,12 @@ function StatCard({
   // instantly to match new peaks, decays slowly afterward (see
   // `drawSeries`'s RANGE_DECAY).
   const rangeRef = useRef<{ min: number; max: number } | null>(null)
-  const value = def.pick(state)
   const series = def.series(state)
+  // Parked cursor: show the ring sample whose engine frame is the
+  // closest ≤ the cursor instead of the live smoothed value.
+  const cursor = getFrameCursor()
+  const parkedValue = cursor !== null ? seriesValueAtFrame(series, state.series.frames, cursor) : undefined
+  const value = cursor !== null ? parkedValue : def.pick(state)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -133,9 +138,36 @@ function StatCard({
     >
       <canvas class="stat-canvas" ref={canvasRef} />
       <span class="stat-label">{def.label}</span>
-      <span class="stat-value">{def.format(value)}</span>
+      <span class={`stat-value${cursor !== null ? ' stat-parked' : ''}`}>
+        {def.format(value)}
+      </span>
     </button>
   )
+}
+
+/**
+ * Ring sample for the closest engine frame ≤ `frame` (time-travel
+ * cursor). Rings ingest in lockstep, so an index into the frames ring
+ * is valid for every series ring.
+ */
+function seriesValueAtFrame(
+  series: DevtoolsSeries,
+  frames: DevtoolsFrameSeries,
+  frame: number
+): number | undefined {
+  const len = Math.min(series.length, frames.length)
+  if (len === 0) return undefined
+  const size = frames.data.length
+  // Walk newest → oldest; rings are small (1024) and this only runs
+  // while parked.
+  for (let i = 0; i < len; i++) {
+    const idx = (frames.write - 1 - i + size) % size
+    if (frames.data[idx]! <= frame) {
+      return series.data[(series.write - 1 - i + size) % size]
+    }
+  }
+  // Cursor is older than everything we hold — show the oldest sample.
+  return series.data[(series.write - len + size) % size]
 }
 
 function StatDetail({ def, state, onClose }: {

@@ -85,6 +85,18 @@ export interface DevtoolsSeries {
 }
 
 /**
+ * Engine-frame ring parallel to the stats series rings — sample i of
+ * every series ring belongs to engine frame `frames.data[i]`. The
+ * time-travel cursor uses it to park panels at a past frame (#29
+ * Phase A).
+ */
+export interface DevtoolsFrameSeries {
+  readonly data: Uint32Array
+  write: number
+  length: number
+}
+
+/**
  * Snapshot of a registered CPU array as seen by the client. The
  * `sample` typed array is owned by this object (structured-cloned from
  * the provider) — read-only by contract; don't mutate in place.
@@ -190,6 +202,8 @@ export interface DevtoolsState {
     gpuMs: DevtoolsSeries
     heapUsedMB: DevtoolsSeries
     drawCalls: DevtoolsSeries
+    /** Parallel engine-frame numbers for every series sample. */
+    frames: DevtoolsFrameSeries
     triangles: DevtoolsSeries
     primitives: DevtoolsSeries
     geometries: DevtoolsSeries
@@ -316,6 +330,7 @@ export class DevtoolsClient {
         primitives: mkSeries(),
         geometries: mkSeries(),
         textures: mkSeries(),
+        frames: { data: new Uint32Array(CLIENT_SERIES_SIZE), write: 0, length: 0 },
       },
       registry: new Map(),
       buffers: new Map(),
@@ -595,7 +610,7 @@ export class DevtoolsClient {
         this._markServerAlive()
         this.state.frame = msg.payload.frame
         const features = msg.payload.features
-        if (features.stats !== undefined) this._applyStats(features.stats)
+        if (features.stats !== undefined) this._applyStats(features.stats, msg.payload.frame)
         if (features.env !== undefined) this._applyEnv(features.env)
         if (features.registry !== undefined) this._applyRegistry(features.registry)
         if (features.buffers !== undefined) this._applyBuffers(features.buffers)
@@ -703,7 +718,7 @@ export class DevtoolsClient {
    * and update the scalar with the batch mean (natural smoothing for
    * the text label).
    */
-  private _applyStats(batch: StatsPayload | null): void {
+  private _applyStats(batch: StatsPayload | null, batchFrame = 0): void {
     if (batch === null) {
       this.state.drawCalls = undefined
       this.state.triangles = undefined
@@ -725,11 +740,28 @@ export class DevtoolsClient {
       s.primitives.write = 0; s.primitives.length = 0
       s.geometries.write = 0; s.geometries.length = 0
       s.textures.write = 0; s.textures.length = 0
+      s.frames.write = 0; s.frames.length = 0
       return
     }
     const count = batch.count
     if (count <= 0) return
     const s = this.state.series
+
+    // Parallel engine-frame numbers: the batch covers `count` per-frame
+    // samples ending at `batchFrame`, so sample i belongs to frame
+    // batchFrame - count + 1 + i. Keeps the time-travel cursor able to
+    // map frame → ring index without protocol-log round trips.
+    {
+      const ring = s.frames
+      const size = ring.data.length
+      let w = ring.write
+      for (let i = 0; i < count; i++) {
+        ring.data[w] = Math.max(0, batchFrame - count + 1 + i)
+        w = (w + 1) % size
+      }
+      ring.write = w
+      ring.length = Math.min(size, ring.length + count)
+    }
     if (batch.fps)        this.state.fps        = this._ingestI16(s.fps,        batch.fps,        count, 0.1)
     if (batch.cpuMs)      this.state.cpuMs      = this._ingestU16(s.cpuMs,      batch.cpuMs,      count, 0.01)
     if (batch.gpuMs)      this.state.gpuMs      = this._ingestU16(s.gpuMs,      batch.gpuMs,      count, 0.01)

@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber/webgpu'
 import { useQuery } from 'koota/react'
 import type { Entity } from 'koota'
 import type { Sprite2DMaterial, Sprite2D as Sprite2DType } from 'three-flatland/react'
-import { Layers } from 'three-flatland/react'
+import { SortLayers } from 'three-flatland/react'
 import { Paddle as PaddleTrait, Position, Bounds } from '../traits'
 
 interface PaddleRendererProps {
@@ -41,7 +41,7 @@ function PaddleView({ entity, material }: PaddleViewProps) {
       tint="#4ecdc4"
       position={[pos.x, pos.y, 0]}
       scale={[bounds.width, bounds.height, 1]}
-      layer={Layers.ENTITIES}
+      sortLayer={SortLayers.ENTITIES}
       zIndex={15}
     />
   )

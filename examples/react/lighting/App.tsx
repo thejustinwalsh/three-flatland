@@ -14,7 +14,7 @@ import {
   TileMap2D,
   SpriteSheetLoader,
   LDtkLoader,
-  Layers,
+  SortLayers,
   attachLighting,
   attachEffect,
   type AnimationSetDefinition,
@@ -978,7 +978,7 @@ function FlatlandScene(props: SceneProps) {
           scale={[KNIGHT_SCALE, KNIGHT_SCALE, 1]}
           castsShadow
           lit
-          layer={Layers.ENTITIES + 1}
+          sortLayer={SortLayers.ENTITIES + 1}
         >
           <normalMapProvider attach={attachEffect} normalMap={knightSheet.normalMap ?? null} />
         </animatedSprite2D>
@@ -1009,7 +1009,7 @@ function FlatlandScene(props: SceneProps) {
             scale={[SLIME_SCALE, SLIME_SCALE, 1]}
             anchor={[0.5, 0.5]}
             lit
-            layer={Layers.ENTITIES}
+            sortLayer={SortLayers.ENTITIES}
           >
             <normalMapProvider attach={attachEffect} normalMap={slimeSheet.normalMap ?? null} />
           </animatedSprite2D>

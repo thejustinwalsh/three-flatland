@@ -3,9 +3,12 @@ import type { Texture } from 'three'
 import type {
   SpriteSheet,
   SpriteFrame,
+  SpriteFrameMesh,
+  SpriteSheetFrameMeshJSON,
   SpriteSheetJSONHash,
   SpriteSheetJSONArray,
 } from '../sprites/types'
+import { degradeAtlasMesh, registerAtlasMesh } from './atlasMeshRegistry'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
 import {
   resolveNormalMap,
@@ -278,12 +281,17 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     for (const [name, data] of Object.entries(json.frames)) {
       // Convert to normalized UV coordinates
       // Note: UV Y is flipped (0 = bottom, 1 = top) vs image coords (0 = top)
-      const normalizedHeight = data.frame.h / atlasHeight
+      // Rotated frames (TexturePacker 90° CW) occupy a swapped-dims
+      // region in the atlas: JSON w/h describe the unrotated sprite,
+      // the packed rect is (h × w) — pixi's convention.
+      const rectW = data.rotated ? data.frame.h : data.frame.w
+      const rectH = data.rotated ? data.frame.w : data.frame.h
+      const normalizedHeight = rectH / atlasHeight
       const frame: SpriteFrame = {
         name,
         x: data.frame.x / atlasWidth,
         y: 1 - data.frame.y / atlasHeight - normalizedHeight,
-        width: data.frame.w / atlasWidth,
+        width: rectW / atlasWidth,
         height: normalizedHeight,
         sourceWidth: data.sourceSize.w,
         sourceHeight: data.sourceSize.h,
@@ -300,6 +308,8 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
           height: data.spriteSourceSize.h,
         }
       }
+
+      frame.mesh = SpriteSheetLoader.parseFrameMesh(data, frame)
 
       frames.set(name, frame)
     }
@@ -322,12 +332,14 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     for (const data of json.frames) {
       // Convert to normalized UV coordinates
       // Note: UV Y is flipped (0 = bottom, 1 = top) vs image coords (0 = top)
-      const normalizedHeight = data.frame.h / atlasHeight
+      const rectW = data.rotated ? data.frame.h : data.frame.w
+      const rectH = data.rotated ? data.frame.w : data.frame.h
+      const normalizedHeight = rectH / atlasHeight
       const frame: SpriteFrame = {
         name: data.filename,
         x: data.frame.x / atlasWidth,
         y: 1 - data.frame.y / atlasHeight - normalizedHeight,
-        width: data.frame.w / atlasWidth,
+        width: rectW / atlasWidth,
         height: normalizedHeight,
         sourceWidth: data.sourceSize.w,
         sourceHeight: data.sourceSize.h,
@@ -344,6 +356,8 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
           height: data.spriteSourceSize.h,
         }
       }
+
+      frame.mesh = SpriteSheetLoader.parseFrameMesh(data, frame)
 
       frames.set(data.filename, frame)
     }
@@ -372,7 +386,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     width: number,
     height: number
   ): SpriteSheet {
-    return {
+    const sheet: SpriteSheet = {
       texture,
       frames,
       width,
@@ -388,6 +402,124 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
         return Array.from(frames.keys())
       },
     }
+
+    // Concatenate per-frame mesh data into sheet-level arrays and stamp
+    // each frame's offsets — the layout the tight-mesh render path (and
+    // a future vertex-shader mesh table) indexes into.
+    let vertexTotal = 0
+    let indexTotal = 0
+    const meshed: SpriteFrame[] = []
+    for (const frame of frames.values()) {
+      if (!frame.mesh) continue
+      meshed.push(frame)
+      vertexTotal += frame.mesh.vertexCount
+      indexTotal += frame.mesh.indices.length
+    }
+    if (meshed.length > 0) {
+      const meshVerts = new Float32Array(vertexTotal * 4)
+      const meshIndices = new Uint16Array(indexTotal)
+      let vOff = 0
+      let iOff = 0
+      for (const frame of meshed) {
+        const mesh = frame.mesh!
+        mesh.vertexOffset = vOff
+        mesh.indexOffset = iOff
+        meshVerts.set(mesh.verts, vOff * 4)
+        meshIndices.set(mesh.indices, iOff)
+        vOff += mesh.vertexCount
+        iOff += mesh.indices.length
+      }
+      sheet.meshVerts = meshVerts
+      sheet.meshIndices = meshIndices
+      registerAtlasMesh(texture, {
+        frames: meshed,
+        complete: meshed.length === frames.size,
+      })
+    } else {
+      // A meshless sheet sharing a texture with a previously-registered
+      // meshed sheet: its frames are unknown to the envelope — degrade
+      // it toward the full quad so nothing clips.
+      degradeAtlasMesh(texture)
+    }
+
+    return sheet
+  }
+
+  /**
+   * Normalize a frame's optional polygon payload to a SpriteFrameMesh.
+   *
+   * Two accepted inputs:
+   * - our own \`mesh\` field — already local [-0.5, 0.5] + frame-local
+   *   UV [0, 1], pre-triangulated; passed through
+   * - TexturePacker polygon-trim output (\`vertices\`/\`triangles\` in
+   *   source-image pixels, y-down) — normalized here. Frame-local UVs
+   *   are derived from the vertex position within the (trimmed) frame
+   *   rect, so the shader's instanceUV atlas remap applies unchanged.
+   */
+  private static parseFrameMesh(
+    data: SpriteSheetFrameMeshJSON,
+    frame: SpriteFrame
+  ): SpriteFrameMesh | null {
+    if (data.mesh && data.mesh.verts.length >= 3 && data.mesh.indices.length >= 3) {
+      const count = data.mesh.verts.length
+      const verts = new Float32Array(count * 4)
+      for (let i = 0; i < count; i++) {
+        const [x, y, u, v] = data.mesh.verts[i]!
+        verts[i * 4 + 0] = x
+        verts[i * 4 + 1] = y
+        verts[i * 4 + 2] = u
+        verts[i * 4 + 3] = v
+      }
+      return {
+        verts,
+        indices: Uint16Array.from(data.mesh.indices),
+        vertexCount: count,
+        vertexOffset: 0,
+        indexOffset: 0,
+      }
+    }
+
+    if (data.vertices && data.triangles && data.vertices.length >= 3) {
+      // Mesh space is always the unrotated source frame — vertices are
+      // positioned from sourceWidth/sourceHeight and the trim rect,
+      // neither of which vary with `frame.rotated`. Atlas rotation
+      // (TexturePacker 90° CW packing) is a sampling-time concern the
+      // shader already handles per-instance (`ROTATED_FRAME_MASK`
+      // unrotation in `Sprite2DMaterial`/`OcclusionPass`), so it needs
+      // no transform here.
+      const sourceW = frame.sourceWidth
+      const sourceH = frame.sourceHeight
+      const trim = frame.trimOffset ?? { x: 0, y: 0, width: sourceW, height: sourceH }
+      const count = data.vertices.length
+      const verts = new Float32Array(count * 4)
+      for (let i = 0; i < count; i++) {
+        const [px, py] = data.vertices[i]!
+        // Source-image pixels (y-down) → unit-quad locals (y-up)
+        verts[i * 4 + 0] = px / sourceW - 0.5
+        verts[i * 4 + 1] = 0.5 - py / sourceH
+        // Frame-local UV relative to the (trimmed) packed rect, v-up
+        verts[i * 4 + 2] = (px - trim.x) / trim.width
+        verts[i * 4 + 3] = 1 - (py - trim.y) / trim.height
+      }
+      const indices = new Uint16Array(data.triangles.length * 3)
+      for (let i = 0; i < data.triangles.length; i++) {
+        const [a, b, c] = data.triangles[i]!
+        indices[i * 3 + 0] = a
+        // TexturePacker triangles are wound for y-down screen space —
+        // the y flip above mirrors them, so swap to keep CCW front faces.
+        indices[i * 3 + 1] = c
+        indices[i * 3 + 2] = b
+      }
+      return {
+        verts,
+        indices,
+        vertexCount: count,
+        vertexOffset: 0,
+        indexOffset: 0,
+      }
+    }
+
+    return null
   }
 
   /**

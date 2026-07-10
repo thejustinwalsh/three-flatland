@@ -52,6 +52,19 @@ export {
   type DevtoolsProviderHandle,
 } from './debug/createDevtoolsProvider'
 
+// Remote-debugging bridges (#114) — WebSocket wire transport over the
+// bus-frame binary format. Provider side is usually reached via
+// `createDevtoolsProvider({ remote })`; the consumer side backs
+// @three-flatland/devtools' connectRemoteDevtools.
+export {
+  createProviderRemoteBridge,
+  createConsumerRemoteBridge,
+  encodeDebugMessage,
+  decodeDebugMessage,
+  type RemoteBridgeHandle,
+  type WebSocketLike,
+} from './debug/bus-websocket'
+
 // Devtools gates — re-exported so wrappers (e.g., @three-flatland/devtools'
 // React `<DevtoolsProvider>`) can early-return in production / when
 // devtools is disabled at runtime, allowing bundlers to drop the dev-only

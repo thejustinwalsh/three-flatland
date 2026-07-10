@@ -10,6 +10,7 @@ import { useEffect, useState } from 'preact/hooks'
 import type { DevtoolsState } from '../devtools-client.js'
 import { getClient } from './client.js'
 import { getProtocolStore } from './protocol-store.js'
+import { addFrameCursorListener } from './frame-cursor.js'
 
 type Subscriber = () => void
 
@@ -43,6 +44,7 @@ function ensureSourcesWired(): void {
   _sourcesWired = true
   getClient().addListener(scheduleFrame)
   getProtocolStore().addListener(scheduleFrame)
+  addFrameCursorListener(scheduleFrame)
 }
 
 /**

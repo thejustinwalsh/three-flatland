@@ -187,6 +187,21 @@ Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/textu
 - **JSON Hash** (TexturePacker default) - Frames as object properties
 - **JSON Array** - Frames as array with `filename` property
 
+### TexturePacker features
+
+The loader understands the full TexturePacker output, so atlases packed
+with size-optimizing options render correctly out of the box:
+
+- **Rotation** (`Allow rotation`) — frames packed 90° clockwise are
+  unrotated per-instance in the shader; no extra draw cost
+- **Trimming** (`Trim mode: Trim`) — the trimmed rect renders at its
+  true position inside the source bounds (baked into the sprite
+  matrix), so animations with per-frame trim don't wobble or stretch
+- **Polygon trim** (`Trim mode: Polygon`) — per-frame meshes feed the
+  tight-mesh overdraw-reduction path for alpha-blended sprites, rotated
+  frames included: mesh verts/UVs live in unrotated frame space, and
+  the shader's per-instance unrotation samples them correctly
+
 ## TiledLoader
 
 Load maps from [Tiled Map Editor](https://www.mapeditor.org/). See the [Tilemaps guide](../tilemaps/) for detailed usage.

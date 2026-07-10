@@ -3,20 +3,18 @@ import { createWorld, type World, type Entity, type Trait } from 'koota'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { SpriteGroupOptions, RenderStats } from './types'
-import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
 import { assignWorld, type WorldProvider } from '../ecs/world'
-import {
-  BatchRegistry,
-  BatchMesh,
-  BatchMeta,
-  BatchSlot,
-  InBatch,
-  IsBatched,
-  IsRenderable,
-  SpriteMaterialRef,
-} from '../ecs/traits'
+import { BatchRegistry, BatchMesh } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
-import { computeRunKey, recycleBatchIfEmpty } from '../ecs/batchUtils'
+import {
+  BATCH_TIER_LADDER,
+  ensureMaterialDisposeHook,
+  evictBatchesForMaterial,
+  getWorldDefaultMaterial,
+  getWorldEffectVariant,
+  removeMaterialDisposeHooks,
+} from '../ecs/batchUtils'
+import { buildBatchQueryView, type BatchQueryView } from './batchQuery'
 import {
   _registerBatchSource,
   _unregisterBatchSource,
@@ -59,7 +57,7 @@ declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
  * scene.add(spriteGroup)
  *
  * const sprite = new Sprite2D({ texture })
- * sprite.layer = Layers.ENTITIES
+ * sprite.sortLayer = SortLayers.ENTITIES
  * spriteGroup.add(sprite)
  *
  * // In render loop — no update() call needed
@@ -94,9 +92,41 @@ export class SpriteGroup extends Group implements WorldProvider {
   private _lastRunSeen = 0
 
   /**
-   * Maximum sprites per batch.
+   * Maximum sprites per batch (explicit `maxBatchSize` opt-in). When the
+   * user doesn't pass one, batches size themselves off the tier ladder.
    */
   private _maxBatchSize: number
+
+  /**
+   * Tier ladder for batch sizing — non-null unless the user pinned an
+   * explicit `maxBatchSize`, in which case every batch uses that size.
+   */
+  private _tierLadder: readonly number[] | null
+
+  /**
+   * Maximum sprites per batch. Reads back whichever sizing mode is
+   * active; setting it pins every future batch in this group to that
+   * fixed size (tier ladder off) — the escape hatch for hand-tuned
+   * scenes where the ladder's warmup tiers cost more than they save
+   * (e.g. a scene that's always going to hold tens of thousands of
+   * sprites). Property setter (not just a constructor option) so R3F's
+   * JSX prop path (`<spriteGroup maxBatchSize={16384} />`) works — only
+   * affects batches created after the set; existing live batches keep
+   * their size.
+   */
+  get maxBatchSize(): number {
+    return this._maxBatchSize
+  }
+
+  set maxBatchSize(value: number) {
+    this._maxBatchSize = value
+    this._tierLadder = null
+    const registry = this._getRegistry()
+    if (registry) {
+      registry.maxBatchSize = value
+      registry.tierLadder = null
+    }
+  }
 
   /**
    * Whether frustum culling is enabled.
@@ -149,7 +179,10 @@ export class SpriteGroup extends Group implements WorldProvider {
     this.name = 'SpriteGroup'
     this.frustumCulled = false
 
-    this._maxBatchSize = options.maxBatchSize ?? DEFAULT_BATCH_SIZE
+    // Explicit maxBatchSize pins every batch to that size; otherwise the
+    // tier ladder scales allocation with usage (1024 → 4096 → 16384).
+    this._maxBatchSize = options.maxBatchSize ?? BATCH_TIER_LADDER[BATCH_TIER_LADDER.length - 1]!
+    this._tierLadder = options.maxBatchSize !== undefined ? null : BATCH_TIER_LADDER
 
     this.autoSort = options.autoSort ?? true
     this.frustumCulling = options.frustumCulling ?? true
@@ -250,7 +283,10 @@ export class SpriteGroup extends Group implements WorldProvider {
           activeBatches: [],
           renderOrderDirty: false,
           maxBatchSize: this._maxBatchSize,
+          tierLadder: this._tierLadder,
           materialRefs: new Map(),
+          defaultMaterials: new WeakMap(),
+          effectVariants: new WeakMap(),
           batchSlots: [],
           batchSlotFreeList: [],
           spriteArr: [],
@@ -286,8 +322,9 @@ export class SpriteGroup extends Group implements WorldProvider {
     if ('_enrollInWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
       // Skip if already enrolled (R3F insertBefore re-adds during reconciliation)
       if (spriteOrObject.entity) return this
-      // Assign ECS world and enroll entity
+      // Assign ECS world, resolve world-scoped default material, enroll
       assignWorld(spriteOrObject, this.world)
+      this._resolveDefaultMaterial(spriteOrObject)
       spriteOrObject._enrollInWorld(this.world)
       this._spriteCount++
       this._trackMaterial(spriteOrObject)
@@ -298,11 +335,34 @@ export class SpriteGroup extends Group implements WorldProvider {
   }
 
   /**
+   * Re-resolve a bootstrap default or bootstrap effect-variant material
+   * to this group's world-scoped store for the sprite's texture.
+   * Explicit user materials pass through untouched (their dispose hook
+   * still installs via _trackMaterial → ensureMaterialDisposeHook).
+   */
+  private _resolveDefaultMaterial(sprite: Sprite2D): void {
+    const texture = sprite.texture
+    if (!texture) return
+    if (sprite._materialIsBootstrapDefault) {
+      const registry = this._getRegistry()
+      if (!registry) return
+      sprite._resolveDefaultMaterial(getWorldDefaultMaterial(this.world, registry, texture))
+    } else if (sprite._materialIsBootstrapVariant) {
+      const registry = this._getRegistry()
+      if (!registry) return
+      sprite._resolveEffectVariantMaterial(
+        getWorldEffectVariant(this.world, registry, texture, sprite._currentVariantOptions())
+      )
+    }
+  }
+
+  /**
    * Add multiple sprites to the renderer.
    */
   addSprites(...sprites: Sprite2D[]): this {
     for (const sprite of sprites) {
       assignWorld(sprite, this.world)
+      this._resolveDefaultMaterial(sprite)
       sprite._enrollInWorld(this.world)
       this._spriteCount++
       this._trackMaterial(sprite)
@@ -348,7 +408,7 @@ export class SpriteGroup extends Group implements WorldProvider {
    * This method is kept for explicit invalidation if needed.
    */
   invalidate(_sprite: Sprite2D): void {
-    // No-op: batchReassignSystem detects Changed(SpriteLayer/SpriteMaterialRef) automatically
+    // No-op: batchReassignSystem detects Changed(SortLayer/SpriteMaterialRef/CameraLayersMask) automatically
   }
 
   /**
@@ -426,14 +486,26 @@ export class SpriteGroup extends Group implements WorldProvider {
    * automatically in `updateMatrixWorld()`. Kept for backwards compatibility.
    */
   update(): void {
+    this._runScheduleNow()
+  }
+
+  /**
+   * Force-run the ECS schedule for this frame if it hasn't already run.
+   * The non-deprecated internal used by callers that need the schedule
+   * to have executed before they proceed this frame (e.g. the
+   * auto-orchestration scene sweep) — `update()` is the deprecated
+   * public alias of this same logic.
+   * @internal
+   */
+  _runScheduleNow(): void {
     if (!this._world) return
     const registry = this._getRegistry()
     if (registry?.schedule) {
       // Skip when the schedule has already run this frame (e.g. via
-      // Flatland.render's direct `schedule.run`). `update()` becoming
-      // a no-op under Flatland is intentional — the direct call above
-      // it already did the work. Standalone callers who haven't run
-      // the schedule yet still get a full run here.
+      // Flatland.render's direct `schedule.run`). Becoming a no-op under
+      // Flatland is intentional — the direct call above it already did
+      // the work. Standalone callers who haven't run the schedule yet
+      // still get a full run here.
       if (registry.scheduleRuns !== this._lastRunSeen) {
         this._lastRunSeen = registry.scheduleRuns
         return
@@ -458,6 +530,7 @@ export class SpriteGroup extends Group implements WorldProvider {
       material: mat,
       version: mat._effectSchemaVersion,
     })
+    ensureMaterialDisposeHook(this._world, registry, mat)
   }
 
   /**
@@ -474,6 +547,12 @@ export class SpriteGroup extends Group implements WorldProvider {
     if (!registry) return
 
     for (const [materialId, ref] of registry.materialRefs) {
+      // Late atlas-mesh registration (loader finished after sprites
+      // batched) flips the geometry strategy here — the flip bumps the
+      // schema version, and the standard rebuild below re-batches with
+      // matching geometry. Cheap when nothing changed: a WeakMap lookup
+      // + boolean compare per tracked material.
+      ref.material._resolveGeometryStrategy()
       if (ref.material._effectSchemaVersion !== ref.version) {
         ref.version = ref.material._effectSchemaVersion
         this._rebuildBatchesForMaterial(registry, materialId)
@@ -489,51 +568,7 @@ export class SpriteGroup extends Group implements WorldProvider {
    */
   private _rebuildBatchesForMaterial(registry: RegistryData, materialId: number): void {
     if (!this._world) return
-
-    // Find all batched entities using this material
-    const batched = this._world.query(IsBatched, SpriteMaterialRef, BatchSlot)
-    for (const entity of batched) {
-      const matRef = entity.get(SpriteMaterialRef)
-      if (!matRef || matRef.materialId !== materialId) continue
-
-      // Find and free the batch slot
-      const batchEntity = entity.targetFor(InBatch)
-      if (batchEntity) {
-        // BatchSlot.slot is the authoritative live slot (kept in sync by
-        // batchSortSystem); InBatch.slot can be a stale pre-swap index.
-        const slot = entity.get(BatchSlot)?.slot ?? -1
-        const batchMesh = batchEntity.get(BatchMesh)
-        if (slot >= 0 && batchMesh?.mesh) {
-          batchMesh.mesh.freeSlot(slot)
-          batchMesh.mesh.syncCount()
-        }
-
-        // Remove batch relationship
-        entity.remove(InBatch(batchEntity))
-
-        // Recycle batch if empty
-        if (batchMesh?.mesh?.isEmpty) {
-          const meta = batchEntity.get(BatchMeta)
-          if (meta) {
-            const key = computeRunKey(meta.layer, meta.materialId)
-            const run = registry.runs.get(key)
-            if (run) {
-              recycleBatchIfEmpty(registry, batchEntity, run)
-            }
-          }
-        }
-      }
-
-      // Reset batch tracking (IsBatched and BatchSlot persist — no archetype change)
-      entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
-
-      // Re-trigger IsRenderable so batchAssignSystem picks it up
-      // and creates a new batch with the correct buffer layout
-      entity.remove(IsRenderable)
-      entity.add(IsRenderable)
-    }
-
-    registry.renderOrderDirty = true
+    evictBatchesForMaterial(this._world, registry, materialId)
   }
 
   /**
@@ -583,6 +618,14 @@ export class SpriteGroup extends Group implements WorldProvider {
       batchCount,
       visibleSprites,
     }
+  }
+
+  /**
+   * Read-only view of this group's batches keyed by run key, with the
+   * classification query facade (`group.batches.where(IsLitBatch)`).
+   */
+  get batches(): BatchQueryView {
+    return buildBatchQueryView(this._world, this._getRegistry())
   }
 
   /**
@@ -698,6 +741,7 @@ export class SpriteGroup extends Group implements WorldProvider {
       this._batchSource = null
     }
     if (this._world) {
+      removeMaterialDisposeHooks(this._world)
       this._world.destroy()
       this._world = null
       this._registryEntity = null

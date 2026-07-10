@@ -1,7 +1,7 @@
 {
   "name": "@three-flatland/devtools",
   "version": "1.0.0-alpha.4",
-  "description": "Dev-time introspection toolkit for three-flatland — Tweakpane v4 UI plugin, stats monitor, and buffer inspection",
+  "description": "Dev-time introspection toolkit for three-flatland \u2014 Tweakpane v4 UI plugin, stats monitor, and buffer inspection",
   "type": "module",
   "exports": {
     ".": {
@@ -99,7 +99,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/three": "catalog:",
-    "happy-dom": "^15.11.7",
+    "happy-dom": "^20.8.9",
     "react": "catalog:",
     "react-dom": "catalog:",
     "three": "catalog:",
@@ -120,5 +120,8 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/devtools"
+  },
+  "bin": {
+    "flatland-devtools-relay": "./dist/relay.js"
   }
 }

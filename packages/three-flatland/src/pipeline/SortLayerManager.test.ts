@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Texture } from 'three'
-import { LayerManager, Layer } from './LayerManager'
+import { SortLayerManager, SortLayer } from './SortLayerManager'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
-import { Layers } from './layers'
+import { SortLayers } from './sortLayers'
 
-describe('Layer', () => {
+describe('SortLayer', () => {
   let texture: Texture
   let material: Sprite2DMaterial
 
@@ -17,7 +17,7 @@ describe('Layer', () => {
   })
 
   it('should create a layer with config', () => {
-    const layer = new Layer({
+    const layer = new SortLayer({
       name: 'entities',
       value: 3,
       blendMode: 'additive',
@@ -32,18 +32,18 @@ describe('Layer', () => {
   })
 
   it('should add sprites', () => {
-    const layer = new Layer({ name: 'test', value: 0 })
+    const layer = new SortLayer({ name: 'test', value: 0 })
     const sprite = new Sprite2D({ material })
 
     layer.add(sprite)
 
     expect(layer.count).toBe(1)
     expect(layer.has(sprite)).toBe(true)
-    expect(sprite.layer).toBe(0)
+    expect(sprite.sortLayer).toBe(0)
   })
 
   it('should remove sprites', () => {
-    const layer = new Layer({ name: 'test', value: 0 })
+    const layer = new SortLayer({ name: 'test', value: 0 })
     const sprite = new Sprite2D({ material })
 
     layer.add(sprite)
@@ -54,7 +54,7 @@ describe('Layer', () => {
   })
 
   it('should toggle visibility', () => {
-    const layer = new Layer({ name: 'test', value: 0 })
+    const layer = new SortLayer({ name: 'test', value: 0 })
     const sprite = new Sprite2D({ material })
 
     layer.add(sprite)
@@ -65,7 +65,7 @@ describe('Layer', () => {
   })
 
   it('should iterate over sprites', () => {
-    const layer = new Layer({ name: 'test', value: 0 })
+    const layer = new SortLayer({ name: 'test', value: 0 })
     const sprite1 = new Sprite2D({ material })
     const sprite2 = new Sprite2D({ material })
 
@@ -80,7 +80,7 @@ describe('Layer', () => {
   })
 })
 
-describe('LayerManager', () => {
+describe('SortLayerManager', () => {
   let texture: Texture
   let material: Sprite2DMaterial
 
@@ -92,36 +92,36 @@ describe('LayerManager', () => {
   })
 
   it('should create an empty manager', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
 
     expect(manager.count).toBe(0)
   })
 
   it('should create layers', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
 
     const layer = manager.createLayer({
       name: 'entities',
-      value: Layers.ENTITIES,
+      value: SortLayers.ENTITIES,
     })
 
     expect(layer.name).toBe('entities')
-    expect(layer.value).toBe(Layers.ENTITIES)
+    expect(layer.value).toBe(SortLayers.ENTITIES)
     expect(manager.count).toBe(1)
     expect(manager.hasLayer('entities')).toBe(true)
   })
 
   it('should throw on duplicate layer names', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     manager.createLayer({ name: 'test', value: 0 })
 
     expect(() => {
       manager.createLayer({ name: 'test', value: 1 })
-    }).toThrow('Layer "test" already exists')
+    }).toThrow('SortLayer "test" already exists')
   })
 
   it('should get layers by name', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     const layer = manager.createLayer({ name: 'entities', value: 3 })
 
     expect(manager.getLayer('entities')).toBe(layer)
@@ -129,7 +129,7 @@ describe('LayerManager', () => {
   })
 
   it('should get layers by value', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     const layer = manager.createLayer({ name: 'entities', value: 3 })
 
     expect(manager.getLayerByValue(3)).toBe(layer)
@@ -137,7 +137,7 @@ describe('LayerManager', () => {
   })
 
   it('should remove layers', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     manager.createLayer({ name: 'test', value: 0 })
 
     const removed = manager.removeLayer('test')
@@ -148,27 +148,27 @@ describe('LayerManager', () => {
   })
 
   it('should add sprites to layers', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     manager.createLayer({ name: 'entities', value: 3 })
     const sprite = new Sprite2D({ material })
 
     manager.addToLayer('entities', sprite)
 
-    expect(sprite.layer).toBe(3)
+    expect(sprite.sortLayer).toBe(3)
     expect(manager.getLayer('entities')?.has(sprite)).toBe(true)
   })
 
   it('should throw on adding to nonexistent layer', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     const sprite = new Sprite2D({ material })
 
     expect(() => {
       manager.addToLayer('nonexistent', sprite)
-    }).toThrow('Layer "nonexistent" not found')
+    }).toThrow('SortLayer "nonexistent" not found')
   })
 
   it('should move sprites between layers', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     manager.createLayer({ name: 'entities', value: 3 })
     manager.createLayer({ name: 'effects', value: 4 })
     const sprite = new Sprite2D({ material })
@@ -176,13 +176,13 @@ describe('LayerManager', () => {
     manager.addToLayer('entities', sprite)
     manager.moveToLayer(sprite, 'effects')
 
-    expect(sprite.layer).toBe(4)
+    expect(sprite.sortLayer).toBe(4)
     expect(manager.getLayer('entities')?.has(sprite)).toBe(false)
     expect(manager.getLayer('effects')?.has(sprite)).toBe(true)
   })
 
   it('should set layer visibility', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     manager.createLayer({ name: 'entities', value: 3 })
     const sprite = new Sprite2D({ material })
     manager.addToLayer('entities', sprite)
@@ -194,7 +194,7 @@ describe('LayerManager', () => {
   })
 
   it('should toggle layer visibility', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     manager.createLayer({ name: 'entities', value: 3 })
 
     const visible = manager.toggleLayerVisible('entities')
@@ -204,7 +204,7 @@ describe('LayerManager', () => {
   })
 
   it('should create default layers', () => {
-    const manager = LayerManager.withDefaults()
+    const manager = SortLayerManager.withDefaults()
 
     expect(manager.hasLayer('background')).toBe(true)
     expect(manager.hasLayer('ground')).toBe(true)
@@ -217,7 +217,7 @@ describe('LayerManager', () => {
   })
 
   it('should get layer names', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     manager.createLayer({ name: 'a', value: 0 })
     manager.createLayer({ name: 'b', value: 1 })
 
@@ -228,7 +228,7 @@ describe('LayerManager', () => {
   })
 
   it('should get all layers', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     const layer1 = manager.createLayer({ name: 'a', value: 0 })
     const layer2 = manager.createLayer({ name: 'b', value: 1 })
 
@@ -239,7 +239,7 @@ describe('LayerManager', () => {
   })
 
   it('should clear all layers', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     manager.createLayer({ name: 'test', value: 0 })
 
     manager.clear()
@@ -248,7 +248,7 @@ describe('LayerManager', () => {
   })
 
   it('should iterate over layers', () => {
-    const manager = new LayerManager()
+    const manager = new SortLayerManager()
     manager.createLayer({ name: 'a', value: 0 })
     manager.createLayer({ name: 'b', value: 1 })
 

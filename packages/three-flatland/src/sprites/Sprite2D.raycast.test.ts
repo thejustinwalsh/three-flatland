@@ -147,6 +147,24 @@ describe('Sprite2D.raycast', () => {
     warn.mockRestore()
   })
 
+  it('the missing-alphaMap warning is latched per sprite, not process-wide', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const first = makeSprite()
+    first.hitTestMode = 'alpha'
+    first.updateMatrixWorld(true)
+    makeRaycaster(0, 0).intersectObject(first) // latches first's warning
+
+    // A second, distinct sprite in the same misconfigured state must
+    // still warn — one sprite's latch must not suppress another's.
+    const second = makeSprite()
+    second.hitTestMode = 'alpha'
+    second.updateMatrixWorld(true)
+    makeRaycaster(0, 0).intersectObject(second)
+
+    expect(warn).toHaveBeenCalledTimes(2)
+    warn.mockRestore()
+  })
+
   it('alpha mode mirrors flipX so flipped sprites hit the drawn pixels', () => {
     const sprite = makeSprite()
     sprite.hitTestMode = 'alpha'

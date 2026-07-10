@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, NearestFilter } from 'three'
-import { AnimatedSprite2D, SpriteSheetLoader, Layers, createDevtoolsProvider } from 'three-flatland'
+import { AnimatedSprite2D, SpriteSheetLoader, SortLayers, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
@@ -111,7 +111,7 @@ async function main() {
       },
     },
     animation: 'idle',
-    layer: Layers.ENTITIES,
+    sortLayer: SortLayers.ENTITIES,
     anchor: [0.5, 0.5],
   })
 

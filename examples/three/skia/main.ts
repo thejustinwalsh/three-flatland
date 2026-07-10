@@ -24,10 +24,26 @@ import {
 import { createPane } from '@three-flatland/devtools'
 import { createDevtoolsProvider } from 'three-flatland'
 
-function setStatus(msg: string, _ok: boolean) {
+function setStatus(msg: string, ok: boolean) {
   console.log(`[skia] ${msg}`)
   const el = document.getElementById('status')
-  if (el) el.style.display = 'none'
+  if (!el) return
+  if (ok) {
+    el.style.display = 'none'
+    return
+  }
+  el.textContent = msg
+  el.classList.add('error')
+  el.style.display = ''
+}
+
+const SKIA_WASM_BUILD_HINT =
+  'packages/skia/dist/ is gitignored — build it first: pnpm --filter @three-flatland/skia build'
+
+/** True when `err` is the WASM instantiate failure that fires when packages/skia/dist/ hasn't been built. */
+function isSkiaWasmLoadError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return /webassembly\.instantiate/i.test(message) || /buffersource argument is empty/i.test(message)
 }
 
 function hslToArgb(h: number, s: number, l: number): number {
@@ -500,5 +516,10 @@ if (import.meta.hot) {
 
 main().catch((err) => {
   console.error(err)
+  if (isSkiaWasmLoadError(err)) {
+    console.error(`[skia] Skia WASM failed to load. ${SKIA_WASM_BUILD_HINT}`)
+    setStatus('Skia WASM not built — run: pnpm --filter @three-flatland/skia build', false)
+    return
+  }
   setStatus(`Error: ${err.message}`, false)
 })

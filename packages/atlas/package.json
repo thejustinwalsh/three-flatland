@@ -1,0 +1,46 @@
+{
+  "name": "@three-flatland/atlas",
+  "version": "0.1.0-alpha.0",
+  "description": "First-party atlas baker — packs source images into a sprite atlas and generates tight polygon meshes from alpha silhouettes for the overdraw-reduction path",
+  "type": "module",
+  "bin": {
+    "flatland-atlas": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5"
+  },
+  "keywords": [
+    "three-flatland",
+    "atlas",
+    "texture-packer",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/atlas"
+  }
+}

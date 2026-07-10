@@ -7,7 +7,7 @@ import {
   SpriteUV,
   SpriteColor,
   SpriteFlip,
-  SpriteLayer,
+  SortLayer,
   SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
@@ -46,7 +46,7 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
       material,
       tint: 0xff0000,
       alpha: 0.5,
-      layer: 3,
+      sortLayer: 3,
       zIndex: 42,
     })
     sprite._enrollInWorld(world)
@@ -59,9 +59,9 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
     expect(color!.b).toBeCloseTo(0)
     expect(color!.a).toBe(0.5)
 
-    const layer = entity.get(SpriteLayer)
+    const layer = entity.get(SortLayer)
     expect(layer).toBeDefined()
-    expect(layer!.layer).toBe(3)
+    expect(layer!.value).toBe(3)
 
     const zIdx = entity.get(SpriteZIndex)
     expect(zIdx).toBeDefined()
@@ -203,14 +203,14 @@ describe('ECS traits — property sync', () => {
     expect(color!.a).toBe(0.3)
   })
 
-  it('should sync layer changes to SpriteLayer trait', () => {
+  it('should sync sortLayer changes to SortLayer trait', () => {
     setup()
     const sprite = new Sprite2D({ material })
     sprite._enrollInWorld(world)
 
-    sprite.layer = 5
-    const layer = sprite._entity!.get(SpriteLayer)
-    expect(layer!.layer).toBe(5)
+    sprite.sortLayer = 5
+    const layer = sprite._entity!.get(SortLayer)
+    expect(layer!.value).toBe(5)
   })
 
   it('should sync zIndex changes to SpriteZIndex trait', () => {
@@ -282,7 +282,7 @@ describe('ECS traits — property sync', () => {
     // No enrollment — should not throw
     sprite.tint = 0xff0000
     sprite.alpha = 0.5
-    sprite.layer = 3
+    sprite.sortLayer = 3
     sprite.zIndex = 10
     sprite.flipX = true
     sprite.flipY = true
@@ -321,7 +321,7 @@ describe('ECS traits — snapshot lifecycle', () => {
 
     sprite.tint = 0xff0000
     sprite.alpha = 0.5
-    sprite.layer = 3
+    sprite.sortLayer = 3
     sprite.zIndex = 42
     sprite.flipX = true
 
@@ -342,7 +342,7 @@ describe('ECS traits — snapshot lifecycle', () => {
 
     sprite.tint = 0x00ff00
     sprite.alpha = 0.7
-    sprite.layer = 5
+    sprite.sortLayer = 5
     sprite.zIndex = 99
 
     const color = sprite._entity!.get(SpriteColor)
@@ -351,8 +351,8 @@ describe('ECS traits — snapshot lifecycle', () => {
     expect(color!.b).toBeCloseTo(0)
     expect(color!.a).toBe(0.7)
 
-    const layer = sprite._entity!.get(SpriteLayer)
-    expect(layer!.layer).toBe(5)
+    const layer = sprite._entity!.get(SortLayer)
+    expect(layer!.value).toBe(5)
 
     const zIdx = sprite._entity!.get(SpriteZIndex)
     expect(zIdx!.zIndex).toBe(99)
@@ -363,14 +363,14 @@ describe('ECS traits — snapshot lifecycle', () => {
     const sprite = new Sprite2D({ material })
     sprite.tint = 0xff0000
     sprite.alpha = 0.5
-    sprite.layer = 3
+    sprite.sortLayer = 3
     sprite.zIndex = 42
     sprite._enrollInWorld(world)
 
     // Change values while enrolled (writes to SoA arrays)
     sprite.tint = 0x00ff00
     sprite.alpha = 0.8
-    sprite.layer = 7
+    sprite.sortLayer = 7
     sprite.zIndex = 55
 
     // Unenroll — should copy SoA values back to local arrays
@@ -382,7 +382,7 @@ describe('ECS traits — snapshot lifecycle', () => {
     expect(sprite.tint.g).toBeCloseTo(1)
     expect(sprite.tint.b).toBeCloseTo(0)
     expect(sprite.alpha).toBe(0.8)
-    expect(sprite.layer).toBe(7)
+    expect(sprite.sortLayer).toBe(7)
     expect(sprite.zIndex).toBe(55)
   })
 
@@ -391,13 +391,13 @@ describe('ECS traits — snapshot lifecycle', () => {
     const sprite = new Sprite2D({ material })
     sprite.tint = 0xff0000
     sprite.alpha = 0.5
-    sprite.layer = 3
+    sprite.sortLayer = 3
     sprite.zIndex = 42
     sprite._enrollInWorld(world)
 
     // Change values, unenroll
     sprite.tint = 0x0000ff
-    sprite.layer = 9
+    sprite.sortLayer = 9
     sprite._unenrollFromWorld()
 
     // Re-enroll — should spawn entity from snapshot
@@ -409,8 +409,8 @@ describe('ECS traits — snapshot lifecycle', () => {
     expect(color!.g).toBeCloseTo(0)
     expect(color!.b).toBeCloseTo(1)
 
-    const layer = sprite._entity!.get(SpriteLayer)
-    expect(layer!.layer).toBe(9)
+    const layer = sprite._entity!.get(SortLayer)
+    expect(layer!.value).toBe(9)
   })
 
   it('should read from correct source via getters', () => {
@@ -418,19 +418,19 @@ describe('ECS traits — snapshot lifecycle', () => {
     const sprite = new Sprite2D({ material })
 
     // Pre-enrollment: getters read from snapshot
-    sprite.layer = 3
+    sprite.sortLayer = 3
     sprite.zIndex = 42
-    expect(sprite.layer).toBe(3)
+    expect(sprite.sortLayer).toBe(3)
     expect(sprite.zIndex).toBe(42)
 
     // Post-enrollment: getters read from entity
     sprite._enrollInWorld(world)
-    sprite.layer = 5
-    expect(sprite.layer).toBe(5)
+    sprite.sortLayer = 5
+    expect(sprite.sortLayer).toBe(5)
 
     // After unenrollment: getters read from snapshot again
     sprite._unenrollFromWorld()
-    expect(sprite.layer).toBe(5)
+    expect(sprite.sortLayer).toBe(5)
     expect(sprite.zIndex).toBe(42)
   })
 

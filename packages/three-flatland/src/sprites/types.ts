@@ -1,3 +1,4 @@
+import type { SortLayerValue } from '../pipeline/sortLayers'
 import type { Texture, Color, Vector2 } from 'three'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { AlphaMap } from '../events/AlphaMap'
@@ -5,6 +6,28 @@ import type { AlphaMap } from '../events/AlphaMap'
 /**
  * Represents a single frame in a spritesheet atlas.
  */
+/**
+ * Tight per-frame polygon mesh baked from the frame's alpha silhouette.
+ *
+ * Local positions live in the unit-quad space `[-0.5, 0.5]` (matching
+ * the synthesized quad), UVs are frame-local `[0, 1]` (the shader
+ * remaps them into the atlas via `instanceUV`, exactly like the
+ * synth-quad corner UV). Consumed by the alpha-blend tight-mesh render
+ * path; frames without a mesh fall back to the synth quad.
+ */
+export interface SpriteFrameMesh {
+  /** Interleaved vertex data: [x, y, u, v] × vertexCount. */
+  verts: Float32Array
+  /** Triangle indices into `verts`. */
+  indices: Uint16Array
+  /** Number of vertices (verts.length / 4). */
+  vertexCount: number
+  /** Vertex offset into the sheet's concatenated `meshVerts` array. */
+  vertexOffset: number
+  /** Index offset into the sheet's concatenated `meshIndices` array. */
+  indexOffset: number
+}
+
 export interface SpriteFrame {
   /** Frame name/identifier */
   name: string
@@ -28,6 +51,8 @@ export interface SpriteFrame {
   trimmed?: boolean
   /** Trim offset if trimmed */
   trimOffset?: { x: number; y: number; width: number; height: number }
+  /** Tight polygon mesh for the alpha-blend path; null/absent = synth quad. */
+  mesh?: SpriteFrameMesh | null
 }
 
 /**
@@ -48,9 +73,9 @@ export interface Sprite2DOptions {
   flipX?: boolean
   /** Flip vertically */
   flipY?: boolean
-  /** Render layer (for SpriteGroup) */
-  layer?: number
-  /** Z-index within layer */
+  /** Sort layer — registered name or numeric order */
+  sortLayer?: SortLayerValue
+  /** Z-index within sortLayer */
   zIndex?: number
   /** Pixel-perfect rendering (snap to pixels) */
   pixelPerfect?: boolean
@@ -100,6 +125,15 @@ export interface SpriteSheet {
    * `hitTestMode: 'alpha'` (assign to `sprite.alphaMap`). Spec §8.4.
    */
   alphaMap?: AlphaMap
+  /**
+   * Concatenated per-frame mesh vertex data ([x,y,u,v] interleaved)
+   * across all frames that carry a mesh. Frame offsets live on
+   * `frame.mesh.vertexOffset` / `indexOffset`. Undefined when no frame
+   * has mesh data.
+   */
+  meshVerts?: Float32Array
+  /** Concatenated per-frame mesh indices (see `meshVerts`). */
+  meshIndices?: Uint16Array
   /** Get a frame by name */
   getFrame(name: string): SpriteFrame
   /** Get all frame names */
@@ -109,6 +143,23 @@ export interface SpriteSheet {
 /**
  * JSON Hash format (TexturePacker default).
  */
+/**
+ * Optional per-frame polygon payloads the loader understands:
+ * - `mesh` — three-flatland's own format: locals in [-0.5, 0.5],
+ *   frame-local UVs in [0, 1], pre-triangulated
+ * - `vertices`/`triangles` — TexturePacker polygon-trim output
+ *   (source-image pixel coords, y-down), normalized by the loader
+ */
+export interface SpriteSheetFrameMeshJSON {
+  mesh?: {
+    verts: [number, number, number, number][]
+    indices: number[]
+  }
+  vertices?: [number, number][]
+  verticesUV?: [number, number][]
+  triangles?: [number, number, number][]
+}
+
 export interface SpriteSheetJSONHash {
   frames: {
     [name: string]: {
@@ -118,7 +169,7 @@ export interface SpriteSheetJSONHash {
       spriteSourceSize: { x: number; y: number; w: number; h: number }
       sourceSize: { w: number; h: number }
       pivot?: { x: number; y: number }
-    }
+    } & SpriteSheetFrameMeshJSON
   }
   meta: {
     image: string
@@ -131,15 +182,17 @@ export interface SpriteSheetJSONHash {
  * JSON Array format.
  */
 export interface SpriteSheetJSONArray {
-  frames: Array<{
-    filename: string
-    frame: { x: number; y: number; w: number; h: number }
-    rotated: boolean
-    trimmed: boolean
-    spriteSourceSize: { x: number; y: number; w: number; h: number }
-    sourceSize: { w: number; h: number }
-    pivot?: { x: number; y: number }
-  }>
+  frames: Array<
+    {
+      filename: string
+      frame: { x: number; y: number; w: number; h: number }
+      rotated: boolean
+      trimmed: boolean
+      spriteSourceSize: { x: number; y: number; w: number; h: number }
+      sourceSize: { w: number; h: number }
+      pivot?: { x: number; y: number }
+    } & SpriteSheetFrameMeshJSON
+  >
   meta: {
     image: string
     size: { w: number; h: number }
