@@ -27,7 +27,7 @@
 - Examples always exist in **pairs** — Three.js + React. Create both or neither.
 - `examples/three/` = plain Three.js, `examples/react/` = React Three Fiber
 - R3F classes must be registered with `extend()` before use in JSX
-- All Three.js objects used as R3F JSX elements need: optional constructor params, property setters, array-compatible setters
+- All Three.js objects used as R3F JSX elements need: optional constructor params, property setters, array-compatible setters — except ported packages, which keep upstream signatures and use R3F's `args` (see Constraints)
 
 ## Planning
 
@@ -46,7 +46,7 @@
 ## Constraints
 
 - Performance is critical — minimize draw calls, batch sprites via SpriteGroup, watch frame budgets
-- All custom Three.js classes must work with R3F's no-arg construction + property-setting pattern
+- All custom Three.js classes must work with R3F's no-arg construction + property-setting pattern. This is an **ergonomic convention for classes we author**, so consumers never reach for R3F's `args` prop — it is not an R3F requirement. **Ported packages are exempt**: `@three-flatland/uikit` preserves `@pmndrs/uikit`'s constructor signatures verbatim (e.g. `Fullscreen(renderer, ...)`) and passes them through R3F's `args`, which is the sanctioned mechanism. API compatibility beats convention. Do not "fix" a ported constructor to be no-arg.
 
 ## Do NOT
 

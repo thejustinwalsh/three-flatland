@@ -12,11 +12,11 @@ Implements the Slug algorithm (Eric Lengyel, JCGT 2017). TSL only — compiles t
 
 Three shaping backends sit behind one dispatcher, bound at load time by `SlugFontLoader` and stored as `SlugFont._backend`:
 
-| Backend | Source | Path |
-|---|---|---|
-| runtime | opentype.js, parses TTF/OTF live | `pipeline/textShaper.ts` |
-| baked | `.slug.glb` packed tables, no opentype.js | `pipeline/textShaperBaked.ts` |
-| stack | multi-font fallback chain | `pipeline/textShaperStack.ts` |
+| Backend | Source                                    | Path                          |
+| ------- | ----------------------------------------- | ----------------------------- |
+| runtime | opentype.js, parses TTF/OTF live          | `pipeline/textShaper.ts`      |
+| baked   | `.slug.glb` packed tables, no opentype.js | `pipeline/textShaperBaked.ts` |
+| stack   | multi-font fallback chain                 | `pipeline/textShaperStack.ts` |
 
 Rendering is one instanced unit quad per glyph (`SlugGeometry`), with **five `vec4` per-instance attributes**: `glyphPos`, `glyphTex`, `glyphJac`, `glyphBand`, `glyphColor`. The list is freely extensible — add an `InstancedBufferAttribute` in the constructor and in `_grow`.
 
@@ -30,7 +30,7 @@ These are real and currently unimplemented. Several are tracked as [#37 Vector G
 
 - **GSUB is explicitly disabled** (`pipeline/textShaper.ts`) — no ligatures, no contextual substitution. GPOS is kerning-only: no mark-to-base, no cursive attachment.
 - **No bidi, no complex scripts.** Text is walked by UTF-16 code unit, so astral codepoints and emoji surrogate pairs are mishandled.
-- **No per-instance clipping.** `SlugMaterial extends MeshBasicNodeMaterial`, which supports only three.js *global* `clippingPlanes` — per-material, not per-instance. Any consumer needing `overflow: hidden` or a scroll container must add an instanced clip attribute plus a coverage mask in both `SlugMaterial` and `SlugStrokeMaterial`.
+- **No per-instance clipping.** `SlugMaterial extends MeshBasicNodeMaterial`, which supports only three.js _global_ `clippingPlanes` — per-material, not per-instance. Any consumer needing `overflow: hidden` or a scroll container must add an instanced clip attribute plus a coverage mask in both `SlugMaterial` and `SlugStrokeMaterial`.
 - **No public kerning API.** The data exists on both backends (`baked.ts` `kernLookup`; opentype's `getKerningValue`) but is private to the shapers.
 - **`glyphColor` is per-instance but not exposed.** The shader already multiplies it in; `setGlyphs` just writes one color to every instance. Per-run color is plumbing, not shader work.
 - **Outline-less glyphs are filtered out of `shapeText` output** — you cannot place a caret after a space from shaped results alone.
@@ -40,7 +40,7 @@ These are real and currently unimplemented. Several are tracked as [#37 Vector G
 
 ## Gotchas
 
-- **Baked and runtime are *approximately*, not strictly, equivalent.** They diverge on two points: baked falls back to notdef (glyph 0) for missing glyphs where runtime does not, and baked infers outline presence from bounds-area because `unpackBaked` discards the curve list. Widths, kerning, cmap, and bands round-trip within float32. `baked.equivalence.test.ts` guards this — keep it green.
+- **Baked and runtime are _approximately_, not strictly, equivalent.** They diverge on two points: baked falls back to notdef (glyph 0) for missing glyphs where runtime does not, and baked infers outline presence from bounds-area because `unpackBaked` discards the curve list. Widths, kerning, cmap, and bands round-trip within float32. `baked.equivalence.test.ts` guards this — keep it green.
 - **Baked cmap coverage depends on what was subsetted** at bake time (`cli.ts` Unicode-range selection). Runtime has the whole font. A codepoint that renders under runtime may be notdef under baked.
 - `SlugStackText` is a `Group` with one `InstancedMesh` child per font, because each font binds distinct curve/band textures. Decorations attach to the primary mesh only.
 - `SlugFontStack` resolves fallback **per UTF-16 code unit**, not per shaping run — so surrogate pairs and combining sequences are not treated as clusters, and cross-font kerning is intentionally dropped at run boundaries.
