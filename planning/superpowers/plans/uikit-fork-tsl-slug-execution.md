@@ -30,8 +30,12 @@ and names its serialization points.
 - **Lint/format is a per-phase gate, not a hook.** `lefthook.yml` pre-commit runs ONLY
   sync scripts (`sync-pack-full`, `sync-pack-files`, `sync-lockfile`,
   `sync-react-subpaths`, `sync-examples`, `check-skia-pin`) — no prettier, no eslint.
-  Every phase's acceptance therefore includes `prettier --check .`, eslint, and
-  `pnpm -r typecheck` explicitly. Hooks do fire from worktrees.
+  Every phase's acceptance therefore runs format/lint/typecheck explicitly. **Gate on
+  the files the phase touches, not the repo:** `pnpm format:check` already fails on 196
+  files inherited from `main` (a `.prettierrc` export-wrapping disagreement), and
+  `prettier --check .` fails on 557 (no `.prettierignore`, so it scans generated
+  output). Use `pnpm exec prettier --check <changed files>` + `pnpm lint` +
+  `pnpm typecheck`. Hooks do fire from worktrees.
 - **No catalog bumps** — `three ^0.183.1` and `@react-three/fiber 10.0.0-alpha.2` are
   already pinned. Catalog **additions** only: `@preact/signals-core`, `yoga-layout`,
   `zod`, `@pmndrs/uikit-pub-sub`, `@pmndrs/pointer-events`, `suspend-react`, `zustand`.
@@ -83,7 +87,7 @@ failure mode of parallel execution:
 | `packages/slug/src/index.ts` (public export surface)                | one Slug-track agent at a time (S-phases are serial anyway)                                                   |
 | `packages/slug/package.json` + `packages/slug/src/cli.ts`           | S1 only (baker-contract refactor + `flatland.bake` registration — D3 final)                                   |
 | `turbo.json`                                                        | orchestrator only — slug carve-out on L0, uikit carve-outs land with their packages on L2/L3 (see runbook)    |
-| `packages/skia/**`                                                  | P0 only, one isolated commit (D1; cross-PR touchpoint with #172)                                              |
+| `packages/skia/**`                                                  | NOBODY — descoped from this train (D1 moves to a follow-up PR)                                                |
 | `packages/uikit/src/index.ts`                                       | U-track                                                                                                       |
 | `lefthook.yml`, `scripts/sync-react-subpaths.ts`                    | NOBODY (recorded decision above)                                                                              |
 
@@ -142,14 +146,14 @@ Sonnet unit. Sonnet runs `medium` unless marked.
 
 **Wave 0 — P0 (≈6 concurrent):**
 
-| Unit                                                                      | Model / effort                      | Owns (files)                                                                   | Proves                          | Tier rationale                                                                                                    |
-| ------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| P0.a workspace plumbing (catalog, licenses, lockfile cascade, one commit) | **opus** (orchestrator)             | `pnpm-workspace.yaml`, `pnpm-lock.yaml`, LICENSE files, `THIRD_PARTY_LICENSES` | P0 acceptance rows 1, 6         | All serialization-point files; git is orchestrator-only                                                           |
-| P0.b experiments E1–E4                                                    | **opus** (orchestrator, personally) | scratch harness only                                                           | E-table pass/fail + screenshots | Gates ALL fan-out; the evidence that authorizes proceeding must not be produced by an agent that wants to proceed |
-| P0.c vendor core + react sources                                          | sonnet / medium                     | `packages/uikit/**`                                                            | typecheck + ported specs green  | Mechanical import-rewrite + stubs                                                                                 |
-| P0.d vendor kits + icons                                                  | sonnet / medium                     | `packages/uikit-{default,horizon,lucide}/**`                                   | typecheck green                 | Same                                                                                                              |
-| P0.e example scaffold + gems registration                                 | sonnet / medium                     | `examples/{three,react}/uikit-hud/**`, `gems.config.ts`, `example-gems.ts`     | row 1 lit; syncs idempotent     | Template-following                                                                                                |
-| P0.f skia isolated commit (D1)                                            | sonnet / medium                     | `packages/skia/**`                                                             | skia pair screenshots unchanged | Adjudicated mechanical change; orchestrator commits it separately                                                 |
+| Unit                                                                                  | Model / effort                      | Owns (files)                                                                   | Proves                          | Tier rationale                                                                                                    |
+| ------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| P0.a workspace plumbing (catalog, licenses, lockfile cascade, one commit)             | **opus** (orchestrator)             | `pnpm-workspace.yaml`, `pnpm-lock.yaml`, LICENSE files, `THIRD_PARTY_LICENSES` | P0 acceptance rows 1, 6         | All serialization-point files; git is orchestrator-only                                                           |
+| P0.b experiments E1–E4                                                                | **opus** (orchestrator, personally) | scratch harness only                                                           | E-table pass/fail + screenshots | Gates ALL fan-out; the evidence that authorizes proceeding must not be produced by an agent that wants to proceed |
+| P0.c vendor core + react sources                                                      | sonnet / medium                     | `packages/uikit/**`                                                            | typecheck + ported specs green  | Mechanical import-rewrite + stubs                                                                                 |
+| P0.d vendor kits + icons                                                              | sonnet / medium                     | `packages/uikit-{default,horizon,lucide}/**`                                   | typecheck green                 | Same                                                                                                              |
+| P0.e example scaffold + gems registration                                             | sonnet / medium                     | `examples/{three,react}/uikit-hud/**`, `gems.config.ts`, `example-gems.ts`     | row 1 lit; syncs idempotent     | Template-following                                                                                                |
+| ~~P0.f skia~~ **DESCOPED** — no agent; `packages/skia/**` is off-limits on this train | —                                   | —                                                                              | —                               | Stakeholder: cannot compile skia on this machine                                                                  |
 
 **Wave 1 — after E1–E4 pass (Slug track serial ∥ U1; ≈4–5 concurrent):**
 
@@ -297,7 +301,7 @@ them).
 
 | Layer | Branch                   | PR base | Contents (seam)                                                                                                                                                                                                                                                    | Phases / work units                                                   |
 | ----- | ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| L0    | `feat/uikit-fork`        | `main`  | Planning docs + CLAUDE.md changes (already committed); adjudicated debt: skia isolated commit (D1), **slug turbo carve-out**; licensing (`THIRD_PARTY_LICENSES`, LICENSE files land with their packages); E1–E4 evidence in the PR description                     | P0.a (licensing part), P0.b, P0.f                                     |
+| L0    | `feat/uikit-fork`        | `main`  | Planning docs + CLAUDE.md changes (already committed); adjudicated debt: **slug turbo carve-out** (`aecc2f21`; skia/D1 descoped); licensing (`THIRD_PARTY_LICENSES`, LICENSE files land with their packages); E1–E4 evidence in the PR description                 | P0.a (licensing part), P0.b, P0.f                                     |
 | L1    | `feat/slug-uplift`       | L0      | The entire Slug uplift: metrics + baker-contract fix, layout/query engine, `SlugBatch`, `SlugShapeSet`/svg/serialization, `slug-text` example updates, slug README                                                                                                 | S1, S2, S3, S4, S4.b                                                  |
 | L2    | `feat/uikit-core`        | L1      | `packages/uikit` vendored (core + react src); workspace plumbing (catalog additions, overrides, lockfile cascade, uikit turbo carve-out); panel TSL; text-on-slug; `uikit-bake` bin + `font`; react port code                                                      | P0.a (plumbing part), P0.c, U1.a, U1.b (impl files), U2.a, U2.b, U4.a |
 | L3    | `feat/uikit-vector-kits` | L2      | `packages/uikit-{lucide,default,horizon}` vendored (+ their turbo carve-outs); `Svg` on `SlugShapeBatch` (edits `packages/uikit/src/components/svg.ts` — a deliberate cross-layer file edit, merge order preserves it); `uikit-bake icons`; kit-conformance slices | P0.d, U3.a, U3.b, K1–K10                                              |
@@ -366,7 +370,8 @@ base is `/three-flatland/`, `trailingSlash: always`.
 
 ### Cross-PR touchpoints and issue closure
 
-- `packages/skia/**` (L0's isolated D1 commit) vs **PR #172**, which owns
+- ~~`packages/skia/**` (L0's isolated D1 commit)~~ **DESCOPED — no skia touchpoint on
+  this train.** Historical note: it would have collided with **PR #172**, which owns
   `packages/skia/CLAUDE.md`. Different files, no direct conflict. If #172 merges
   first: rebase L0, verify the skia commit still applies clean. If the train merges
   first: report the skia commit SHA to #172's owner. Either way the isolated commit
@@ -418,19 +423,40 @@ Tasks:
      AA rounded corners within tolerance.
    - E4 yoga-layout published-TS + inlined-WASM through our vitest + example dev boot;
      fallback `noExternal: ['yoga-layout']` if it fails.
-5. Skia debt (**D1 RULED: approved — execute, don't ask**): delete `getFBOId` and both
-   public re-exports (`skia/src/ts/three/index.ts:27`, `skia/src/ts/react/index.ts:43`)
-   with a breaking-change commit marker, and swap `SkiaCanvas.ts`
-   `WebGLRenderTarget` → `RenderTarget` (verified drop-in — the WebGPU branch fishes
-   `GPUTexture`s out of it regardless). **All skia edits in their own dedicated
-   commit** — PR #172 (`preview/tools-combined`) owns `packages/skia/CLAUDE.md`;
-   different files so no direct conflict, but the isolated commit keeps these edits
-   independently cherry-pickable/revertable if #172 lands first. Flag the commit SHA
-   to the team lead as a cross-PR touchpoint.
+5. ~~Skia debt (D1)~~ — **DESCOPED from this PR (stakeholder ruling, 2026-07-10).**
+   _"We can't compile skia right now on this machine… leave skia out of this PR because
+   we are not even using it."_ **No fleet agent may touch `packages/skia/**`on this
+train.** The`getFBOId`deletion and the`WebGLRenderTarget → RenderTarget` swap
+   remain correct and D1-approved, but they move to a separate follow-up PR where Skia
+   can actually be built and its example pair screenshot-verified. This also dissolves
+   the PR #172 cross-touchpoint for this train.
+
+   Two consequences that DO stay in scope, because they are what make the fork
+   buildable without Skia:
+   - The `@three-flatland/slug` turbo carve-out is already landed (`aecc2f21`).
+     `slug#build` no longer has a `skia#build` edge — verified 2 tasks / 5.4 s, no WASM
+     compile. This is now load-bearing, not just hygiene.
+   - **Every new uikit package needs its own carve-out for the same reason.** The
+     global `build.dependsOn` (`turbo.json:26`) adds `@three-flatland/skia#build` to any
+     package lacking one, so without carve-outs the uikit packages would each demand a
+     Skia WASM compile we cannot perform.
+
+   **Never run bare `pnpm build` / `turbo run build`** on this machine — the root
+   script is `turbo run build`, which includes `skia#build`. Use filtered builds
+   (`pnpm --filter=@three-flatland/<pkg> build`) or `turbo run build --filter=…`.
 
 Acceptance:
 
-- [ ] `pnpm -r typecheck && pnpm -r build` green; `prettier --check .` + eslint green.
+- [ ] `pnpm typecheck` green. Builds are **filtered** (`--filter`), never bare
+      `turbo run build` — that pulls `skia#build`, which cannot compile here.
+- [ ] **Format/lint gate is scoped to files this PR touches**, not the repo.
+      Measured 2026-07-10: `pnpm format:check`
+      (`prettier --check "packages/*/src/**/*.{ts,tsx}"`) fails on **196 files already
+      present on `main`** — a `.prettierrc` printWidth/export-wrapping disagreement that
+      predates this work and would be a 196-file reformat diff. Do NOT "fix" it here.
+      Gate: `pnpm exec prettier --check <files changed by this PR>` + `pnpm lint`.
+      Note `prettier --check .` (the criterion this replaces) was never achievable —
+      there is no `.prettierignore`, so it scans generated output too (557 failures).
 - [ ] Ported upstream specs (clone/schema/flex/allocation/color) pass in
       `packages/uikit`.
 - [ ] E1–E4 all recorded with pass/fail + screenshots; any FAIL halts fan-out and
@@ -438,12 +464,17 @@ Acceptance:
 - [ ] Example pair scaffolded, registered in gems config, `pnpm sync:examples` and
       `pnpm sync:pack` idempotent (no diff on re-run); base scene renders on WebGPU
       and forceWebGL (spec §10 row 1 lit).
-- [ ] Skia edits landed as one isolated commit: `getFBOId` + both exports deleted,
-      `RenderTarget` swap in, skia example pair rendering unchanged (before/after
-      screenshots); commit SHA reported as the PR #172 cross-touchpoint.
-- [ ] turbo carve-outs in place: `turbo run build --dry-run` shows `slug#build` and
-      each `uikit*#build` depending only on `^build` (no `skia#build` edge, no
-      cycles); full `pnpm -r build` still green.
+- [x] ~~Skia edits landed as one isolated commit~~ — **DESCOPED** (see task 5).
+      `git diff HEAD -- packages/skia/` must be **empty** for the whole train.
+- [ ] turbo carve-outs in place: `turbo run build --dry-run=json` shows `slug#build`
+      (done, `aecc2f21`) and each `uikit*#build` depending only on `^build` — no
+      `skia#build` edge, no cycles. Verify per-package with filtered builds, not a
+      full build.
+- [ ] New example registered in **both** places: `examples/_shared/gems.config.ts`
+      (then `pnpm sync:examples`) **and** `turbo.json`'s `docs#build.dependsOn`, which
+      enumerates every example explicitly (`example-three-slug-text#build`, …). The
+      plan previously named only the former; `docs#build` would silently miss the new
+      example otherwise. `turbo.json` is orchestrator-owned.
 - [ ] No `CLAUDE.md`, `lefthook.yml`, or `sync-react-subpaths.ts` modifications by
       any fleet agent (the team lead's CLAUDE.md commits already on L0 —
       `c05f3d26`, `37c186dc` — are the only sanctioned CLAUDE.md changes in the
@@ -717,7 +748,8 @@ Acceptance:
 - [ ] **Kit conformance: both kits pass the upstream visual-diff harness** within the
       agreed tolerances; every diff outside tolerance is either fixed or mapped to a
       spec §11 compat-matrix row.
-- [ ] Full workspace: `pnpm -r typecheck`, `prettier --check .`, eslint,
+- [ ] Full workspace: `pnpm typecheck`, `pnpm lint`, `pnpm exec prettier --check`
+      over the PR's changed files (repo-wide prettier is red on `main` — see mechanics),
       `pnpm -r test`, examples build — green.
 - [ ] Docs example page exists and renders; gems registration + `sync:examples` +
       `sync:pack` all idempotent.
