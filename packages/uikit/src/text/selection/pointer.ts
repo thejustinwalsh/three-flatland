@@ -38,9 +38,22 @@ export const canvasInputProps = {
  * default pointer-down handling immediately blurs it again — the component looks
  * interactive and silently accepts no keystrokes.
  *
- * Register this **after** `forwardHtmlEvents`: listeners fire in registration
- * order, and the uikit component must claim the event (via `cancelBlur`) before
- * this guard decides whether to suppress the default.
+ * Two ordering constraints, both load-bearing:
+ *
+ * 1. `forwardHtmlEvents` must be called with `{ batchEvents: false }`. It
+ *    otherwise queues events and dispatches them from its own `update()` at
+ *    animation-frame time, long after the browser has run the pointer-down's
+ *    default action. `cancelBlur` would then mark the event *after* this guard
+ *    already declined to suppress the blur, and the guard becomes inert.
+ * 2. Register this **after** `forwardHtmlEvents`. Listeners fire in registration
+ *    order, so the uikit component must claim the event before the guard reads
+ *    the claim.
+ *
+ * @example
+ * ```ts
+ * const { update } = forwardHtmlEvents(canvas, camera, scene, { batchEvents: false })
+ * const detach = attachCanvasInputProps(canvas)
+ * ```
  *
  * @returns a disposer that removes the listener
  */
