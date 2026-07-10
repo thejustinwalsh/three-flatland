@@ -101,7 +101,12 @@ export interface FlatlandOptions {
   clearAlpha?: number
   /** Enable post-processing pipeline (default: false) */
   postProcessing?: boolean
-  /** Initial aspect ratio (default: 1, use resize() to update) */
+  /**
+   * Fixed aspect ratio. When omitted, Flatland derives the aspect from
+   * the renderer's viewport (or the render target) automatically on
+   * every render. Passing a value — or calling resize() — switches to
+   * manual control and disables the automatic sync.
+   */
   aspect?: number
 }
 
@@ -206,6 +211,18 @@ export class Flatland extends Group implements WorldProvider {
   /** Current aspect ratio */
   private _aspect: number
 
+  /**
+   * Whether the aspect ratio is derived from the renderer/render-target
+   * size on each render. Starts true; an explicit `aspect` option, an
+   * `aspect` property assignment, or a `resize()` call switches to
+   * manual control.
+   */
+  private _autoAspect: boolean
+
+  /** Last auto-synced size — skips redundant per-frame resize work */
+  private _lastSyncedWidth = 0
+  private _lastSyncedHeight = 0
+
   /** Whether we own the camera (for disposal) */
   private _ownsCamera: boolean
 
@@ -306,9 +323,11 @@ export class Flatland extends Group implements WorldProvider {
     this.spriteGroup = new SpriteGroup()
     this.scene.add(this.spriteGroup)
 
-    // Store view size and aspect
+    // Store view size and aspect. Omitted aspect = auto-derive from the
+    // renderer (or render target) each render; explicit aspect = manual.
     this._viewSize = options.viewSize ?? 400
     this._aspect = options.aspect ?? 1
+    this._autoAspect = options.aspect === undefined
 
     // Create or use provided camera
     if (options.camera) {
@@ -429,6 +448,27 @@ export class Flatland extends Group implements WorldProvider {
    */
   set viewSize(value: number) {
     this._viewSize = value
+    this._updateCameraFrustum()
+  }
+
+  /**
+   * Get the current aspect ratio.
+   */
+  get aspect(): number {
+    return this._aspect
+  }
+
+  /**
+   * Pin the aspect ratio manually, disabling the automatic per-render
+   * sync from the renderer/render-target size. Non-finite or
+   * non-positive values are ignored so a transient zero-sized layout
+   * (e.g. R3F's first commit before the canvas is measured) can never
+   * latch a broken frustum.
+   */
+  set aspect(value: number) {
+    if (!Number.isFinite(value) || value <= 0) return
+    this._autoAspect = false
+    this._aspect = value
     this._updateCameraFrustum()
   }
 
@@ -1235,6 +1275,11 @@ export class Flatland extends Group implements WorldProvider {
     // Auto-sync global uniforms from renderer
     this._syncGlobals(renderer)
 
+    // Auto-sync the camera aspect from the render surface (no-op once
+    // resize()/aspect take manual control). Must run before the world
+    // uniforms below read the camera bounds.
+    this._autoSyncSize(renderer)
+
     // Update LightingContext runtime fields before systems run
     const lctx = this._getLightingContext()
     if (lctx) {
@@ -1386,9 +1431,30 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
-   * Resize the rendering area.
+   * Resize the rendering area, taking manual control of the aspect
+   * ratio (the automatic per-render sync is disabled from here on).
+   *
+   * Zero, negative, or non-finite dimensions are ignored — a transient
+   * unmeasured layout (R3F's first commit reports a 0×0 canvas) must
+   * not latch a NaN/Infinity frustum, and must not disable the
+   * automatic sync that will pick up the real size once it exists.
    */
   resize(width: number, height: number): void {
+    if (!this._isValidSize(width, height)) return
+    this._autoAspect = false
+    this._applyResize(width, height)
+  }
+
+  /** Guard against zero/negative/NaN dimensions. */
+  private _isValidSize(width: number, height: number): boolean {
+    return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+  }
+
+  /**
+   * Shared resize path for explicit resize() calls and the automatic
+   * per-render size sync. Dimensions are pre-validated by callers.
+   */
+  private _applyResize(width: number, height: number): void {
     this._aspect = width / height
     this._updateCameraFrustum()
 
@@ -1401,6 +1467,41 @@ export class Flatland extends Group implements WorldProvider {
     if (this._lightEffect?.enabled) {
       this._lightEffect.resize(width, height)
     }
+  }
+
+  /**
+   * Auto-derive the aspect ratio from the render surface. Runs every
+   * render() while in auto mode (no explicit `aspect`, no resize()
+   * call): the render target's dimensions when rendering to texture,
+   * the renderer's viewport size otherwise. This is what makes a bare
+   * `<flatland>` in R3F track the canvas without a hand-rolled
+   * `useThree(s => s.size)` → resize() bridge — the renderer is already
+   * the source of truth for viewport-dependent state (`_syncGlobals`
+   * reads it each frame); the camera frustum follows the same truth.
+   */
+  private _autoSyncSize(renderer: WebGPURenderer): void {
+    if (!this._autoAspect) return
+
+    let width: number
+    let height: number
+    if (this._renderTarget) {
+      width = this._renderTarget.width
+      height = this._renderTarget.height
+    } else {
+      const size = renderer.getSize(this._tempVec2)
+      width = size.x
+      height = size.y
+    }
+
+    // Skip unmeasured/invalid surfaces (0×0 first R3F commit, NaN) and
+    // frames where nothing changed — LightEffect.resize can reallocate
+    // GPU tile buffers, so it must only fire on real size changes.
+    if (!this._isValidSize(width, height)) return
+    if (width === this._lastSyncedWidth && height === this._lastSyncedHeight) return
+
+    this._lastSyncedWidth = width
+    this._lastSyncedHeight = height
+    this._applyResize(width, height)
   }
 
   /**
