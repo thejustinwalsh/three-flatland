@@ -101,6 +101,24 @@ These are the real PR candidates. Draft repros live in `upstream-uikit-bugs.md`.
   upstream _bug_ (their target is WebGL), but a portability landmine. Fixed fork-side (uniform clip
   path + ClippingGroup). Noted for the record.
 
+### U7 — cross-subtree paint order ties `minorIndex`; a Text paints over a later sibling's Panel ⏳📤
+
+- `order.ts` derives an element's `minorIndex` from its **parent** orderInfo (`container.ts:96`,
+  `computed(() => parentContainer.value.orderInfo.value)`), NOT the previous sibling. So two elements
+  in different sibling subtrees tie on `(majorIndex, minorIndex)`, and the `elementType` tiebreak
+  (`Text 4 > Panel 0`) paints an EARLIER subtree's `Text` over a LATER subtree's `Panel` — regardless
+  of document order. Repro: the game-UI radio labels (`Text`) sort over the "Loading assets" footer
+  bar (`Panel`). **Byte-identical to upstream** (our `order.ts` differs from `/tmp/uikit-upstream`
+  only in type-only imports + the WebGPU RenderItem type), so UPSTREAM-SHARED, PR candidate.
+- Deterministic repro (no browser/React): a column root with child0 = `tabs→radioGroup→radioItem→
+  Text('Normal')` and child1 = `footer→loadingBar(Panel)`; after `root.update(16)` twice,
+  `compareOrderInfo(radioLabel, loadingBar) === 4` (radio paints OVER — a correct result is < 0).
+- **NOT fixed in core** (stakeholder call — "don't open Pandora's box"): a reactive document-order
+  rewrite fragments panel batching (geoms 11→40) AND hits a preact "Cycle detected" on the three
+  twin's build-then-attach; the untracked-read workaround reintroduces the ties. A proper fix needs an
+  imperative single-pass order assignment — deferred as a deliberate upstream PR. The visible symptom
+  is gone because its trigger (the reflow jump, F7) is fixed; the tie is latent without overlap.
+
 ---
 
 ## Fork-owned (our code — not upstream)
@@ -118,6 +136,13 @@ These are the real PR candidates. Draft repros live in `upstream-uikit-bugs.md`.
 - **F6 example silent no-ops** ✅ — font-URL 404 → opentype on empty buffer; missing
   `attachCanvasInputProps`/`batchEvents:false`; double event system in the React twin; Flatland
   aspect never resized in R3F (→ PR #181). All fixed in examples / three-flatland.
+- **F7 react-twin menu card re-centers on tab switch** ✅ — the React twin's `HudFullscreen` used
+  `justifyContent:'center'`, recomputing the card's vertical position from its current height every
+  frame, so each tab switch slid the whole card and a bad mid-reflow height frame flung it ("jumps
+  halfway down the screen"). The vanilla twin already pins the top edge (`createMenuAnchor`); ported
+  the anchor to the React twin (`examples/react/uikit/App.tsx`, `9a3e63cb`). This was the actual
+  visible bug behind the "radios over the loading bar" report — the U7 stacking tie is only visible
+  during the jump, so removing the jump removes the symptom.
 
 ---
 
@@ -127,6 +152,10 @@ These are the real PR candidates. Draft repros live in `upstream-uikit-bugs.md`.
    value, cleanly ours-vs-theirs verifiable. **Needs stakeholder sign-off to file.**
 2. **U4/U5** — confirm fork-vs-upstream first (is it in upstream main too?). If upstream, PR; if
    fork, land locally.
+2b. **U7** — cross-subtree paint-order tie. Confirmed byte-identical to upstream + deterministic repro
+   in hand. Filing needs a soundness call on the fix (imperative single-pass order assignment) — a
+   bigger change than U1-U3, so PR only after the approach is designed. Do NOT land the reactive
+   rewrite (batching + preact-cycle regressions).
 3. **R1** — minimal StrictMode repro, file against react-three-fiber.
 4. **R3** — confirm the subscribers-never-iterated claim before reporting; do not file unverified.
 5. **T1** — none; already merged, we carry the backport patch.
