@@ -400,9 +400,23 @@ for (const anyKey in defaultThemes['default']) {
   colors[key] = computed(() => computeThemeProperty(key))
 }
 
+// uikit draws its OWN scrollbar (an in-scene panel, not the OS one), so match the
+// host convention: macOS/iOS render native scrollbars with rounded thumbs, while
+// Windows/Linux use square ones. Round only on Apple platforms; stay square
+// elsewhere and when the platform can't be read. The thumb is thinned on every
+// platform regardless.
+function hostRoundsScrollbars(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData
+  const platform = uaData?.platform ?? navigator.platform ?? ''
+  const ua = navigator.userAgent ?? ''
+  return /mac|iphone|ipad|ipod/i.test(platform) || /mac os x|iphone|ipad|ipod/i.test(ua)
+}
+
 export const defaults = {
   scrollbarColor: withOpacity(colors.foreground, 0.3),
-  scrollbarBorderRadius: 4,
+  scrollbarWidth: 8,
+  scrollbarBorderRadius: hostRoundsScrollbars() ? 4 : 0,
   lineHeight: '150%',
   borderColor: colors.border,
   color: colors.foreground,
