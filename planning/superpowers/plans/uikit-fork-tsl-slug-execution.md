@@ -514,6 +514,38 @@ via writer (no shader change). Zero backend branches (spec §5.5). **This phase 
 REQUIRED v1 scope (D4 ruling) — there is no per-Text-mesh fallback; a genuine stall is
 a stakeholder escalation with the failing fixtures attached, not an exit.**
 
+### Prior art to evaluate before implementing — Windfoil (timeboxed spike, S3 owner)
+
+Reference: <https://publishing.tjw.dev/windfoil-vs-slug/>
+
+Windfoil was reviewed previously and **mostly ruled out** for our general text case. That
+evaluation predates this plan and very likely did not consider the `SlugBatch`
+per-instance-transform case, which is exactly where R2 bites. Read the article before
+writing the Jacobian.
+
+**Why it might matter here.** Windfoil derives its pixel footprint from per-axis gradient
+length — `length(vec2(dpdx, dpdy))` of the curve-space coordinate — which the article
+describes as more principled under scale and translation. Slug instead uses `fwidth`
+together with a _precomputed_ inverse Jacobian (`glyphJac`). R2 exists because that
+precomputed Jacobian must be re-derived per instance once transforms are heterogeneous.
+
+**Hypothesis worth a timebox, not a conclusion.** The em-space coordinate is already a
+fragment varying (`SlugMaterial.ts:104`), so its screen-space derivatives encode each
+instance's actual transform for free. If the coverage term is rebuilt on those
+derivatives, the per-instance Jacobian may drop out of the _fragment_ stage entirely.
+
+**The caveat that keeps this honest.** `glyphJac.x` also feeds the **vertex-stage**
+dilation (`invScale`, `SlugMaterial.ts:142-151`), which runs before rasterization and
+therefore cannot use derivatives. At best this removes the Jacobian from the coverage
+term, not from dilation. **Do not assume it eliminates R2.**
+
+**Scope discipline.** Evaluate the derivative/footprint term only. Do **not** adopt
+Windfoil's Green's-theorem coverage integrator: Slug's hard-capped, zoom-flat cost and
+its WebGL2 + WebGPU support are load-bearing for us, whereas Windfoil's cost climbs under
+minification and its edges wobble under deep zoom. If the spike does not pay off inside
+its timebox, ship the per-instance Jacobian exactly as specified above and record the
+negative result here.
+
 Acceptance:
 
 - [ ] AA screenshot fixtures show no edge-quality regression vs the non-batched path,
