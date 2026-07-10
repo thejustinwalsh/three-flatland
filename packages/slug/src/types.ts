@@ -190,7 +190,16 @@ export interface SlugTextOptions {
   thicken?: number
   /** Enable 2x2 supersampling (expensive). */
   supersample?: boolean
-  /** Snap glyph positions to pixel grid. Default true. */
+  /**
+   * Snap glyph positions to the pixel grid. Default **false**.
+   *
+   * Slug's coverage is analytic and resolution-independent, so snapping is off by
+   * default — it quantizes sub-pixel placement (uneven advances, shimmer when text
+   * moves) and buys nothing at typical sizes. Opt in only for static text at very
+   * small sizes on a DPR-1 display, where aligning stems to the pixel grid can read
+   * marginally crisper. The snap grid follows the material's viewport, which must be
+   * in device pixels for the snap (and the AA dilation) to be correct on retina.
+   */
   pixelSnap?: boolean
   /** Style spans (underline / strike / sub-super) applied to character ranges. */
   styles?: readonly StyleSpan[]

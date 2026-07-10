@@ -32,7 +32,7 @@ export class SlugText extends InstancedMesh {
   private _stemDarken = 0
   private _thicken = 0
   private _supersample = false
-  private _pixelSnap = true
+  private _pixelSnap = false
   private _styles: readonly StyleSpan[] = []
   private _dirty = true
 

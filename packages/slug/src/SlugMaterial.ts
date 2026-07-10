@@ -94,7 +94,7 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     this._evenOdd = options.evenOdd ?? false
     this._weightBoost = options.weightBoost ?? false
     this._supersample = options.supersample ?? false
-    this._pixelSnap = options.pixelSnap ?? true
+    this._pixelSnap = options.pixelSnap ?? false
     this._instanceTransform = options.instanceTransform ?? false
     this._instanceClip = options.instanceClip ?? false
 
