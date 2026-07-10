@@ -863,6 +863,65 @@ Acceptance:
       path proven, not required).
 - [ ] Suites green; prettier/eslint/typecheck green.
 
+### S4 + U2 — DELIVERED and VERIFIED IN-BROWSER, 2026-07-10
+
+Both harnesses run by the orchestrator on WebGPU and forceWebGL. **Both pass, all scenarios,
+zero warnings, zero errors, identical across backends.**
+
+**S4 (`examples/three/uikit-hud/s4.html`) — 9/9.**
+
+| scenario                                                                      | result                                                           |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `activityIcon` (real lucide)                                                  | `litA 11597` vs tessellated reference `litB 11603` — within 6 px |
+| `circleIcon`                                                                  | `litA 14696` vs `14743`, hole present                            |
+| `fills`                                                                       | `[{color: [0,0,0,1], rule: 'evenodd'}]`                          |
+| `oneDrawCall`                                                                 | **120 instances, `drawCalls: 1`**                                |
+| `winding` / `curvature` / `clip` / `growth` / `bakedRoundTrip` / `multiColor` | pass                                                             |
+
+Slug's analytic shape render matches SVGLoader's tessellation to ~0.05%.
+
+**U2 (`examples/three/uikit-hud/u2.html`) — 5/5.**
+
+| scenario         | result                                                                                                                                        |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `legible`        | `litPixels 1451`, identical on both backends                                                                                                  |
+| `batching`       | **`drawCallsOne: 1`, `drawCallsTwo: 1`** — two `Text` components, one draw call                                                               |
+| `clip`           | inside lit, outside dark, 16 smooth edge pixels                                                                                               |
+| `zoom`           | `fringe1x: 2`, `fringe8x: 1` — **the AA fringe SHRINKS at 8× zoom.** Resolution independence, measured. An MSDF atlas would go the other way. |
+| `caretSelection` | caret hit, selection hit — driven by `slug/query`                                                                                             |
+
+Evidence: `planning/superpowers/{s4,u2}-evidence.png`.
+
+### Every Wave-2 failure was in the HARNESSES. The libraries were sound.
+
+Two rounds of orchestrator diagnosis were **wrong**, and both are recorded here so nobody
+inherits them:
+
+1. **"Real lucide icons render nothing because `slug/svg`'s parse→contour path is broken."**
+   FALSE. Bounds, contour closure and winding sign were all correct. Post-`oslllo-svg-fixer`
+   lucide icons carry a literal `fill="black"`, the harness forwarded that fill, and **black
+   ink on a black-cleared RenderTarget reads zero** while the reference forced white. A
+   harness colour bug. The repair made the gate _stricter_ (a new `fillsOk` assertion pins the
+   black + `evenodd` contract) rather than looser.
+
+2. **"`renderer.info` accumulates and is never reset, so the batching gate can never pass."**
+   BACKWARDS. `Renderer.js:803` starts an ambient rAF loop from `init()`, and
+   `common/Animation.js:75` does `if (this.info.autoReset === true) this.info.reset()` **every
+   animation frame** — whether or not you call `setAnimationLoop`. The orchestrator's probe ran
+   two _synchronous_ renders with no `await` between them, so no rAF fired and it observed
+   3 → 6 and concluded "accumulates." The harness awaits across macrotasks, so the hidden loop
+   zeroes the counter between render and read. Direct probe: `after render: 1` → `after
+readback: 0`. **Set `info.autoReset = false` and reset manually** — which `Info.js:19`
+   documents.
+
+   (An earlier orchestrator claim that `webgl-fallback/WebGLBackend` never calls `info.update`
+   was also false; both backends report identically.)
+
+Five harness bugs total in `u2.ts`, none in `packages/uikit` or `packages/slug`: the ambient
+`info.reset()` race; `positionLeft/Top` treated as world coordinates rather than Yoga
+box-model offsets; an only-child flushed to the container's top-left without
+`justifyContent`/`alignItems: 'center'`; plus two more. **The libraries were never broken.**
+
 ## Phase U3 — uikit `Svg` on `SlugShapeBatch` (needs S4 + U1)
 
 Tasks (spec §7): per-root shape-batch group manager (mirrors glyph groups); `Svg`

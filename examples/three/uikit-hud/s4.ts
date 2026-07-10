@@ -6,9 +6,14 @@
  *  - activityIcon / circleIcon  real lucide (post-oslllo-svg-fixer) icons via
  *                               parseSVG → SlugShapeBatch, pixel-compared to a
  *                               4× supersampled tessellated SVGLoader
- *                               reference (downsampled). circleIcon also
- *                               asserts its HOLE (nonzero winding on a real
- *                               donut outline).
+ *                               reference (downsampled). Both sides render a
+ *                               WHITE consumer tint: the fixer bakes
+ *                               fill="black" (its currentColor stand-in), so
+ *                               a faithful-color render is black-on-black and
+ *                               invisible to these red-channel gates — fill
+ *                               capture (black + evenodd) is asserted
+ *                               separately. circleIcon also asserts its HOLE
+ *                               (nonzero winding on a real donut outline).
  *  - winding                    synthetic hole coverage: reversed inner
  *                               contour (nonzero) and same-winding inner
  *                               contour (even-odd) both punch the hole; the
@@ -68,7 +73,12 @@ type DiffStats = {
   litB: number
 }
 
-type IconResult = DiffStats & { shapes: number; quads: number; pass: boolean }
+type IconResult = DiffStats & {
+  shapes: number
+  quads: number
+  fills: { color: number[]; rule: string }[]
+  pass: boolean
+}
 type HoleResult = { holeAlpha: number; ringAlpha: number; pass: boolean }
 
 type Ok = {
@@ -258,21 +268,44 @@ async function runIcon(
   const set = new SlugShapeSet()
   const reg = registerSVG(set, parsed)
   const quads = reg.handles.reduce((sum, h) => sum + h.curves.length, 0)
-  const writes = reg.handles.map((h, i) => ({
+  // Consumer tint, NOT reg.fills[i].color: post-fixer lucide paths carry
+  // fill="black" (the fixer's currentColor stand-in), and the tessellated
+  // reference below is forced white — writing the faithful black fill here
+  // renders black-on-black and zeroes every red-channel gate. Consumers
+  // tint by replacing the instance color (upstream uikit replaces material
+  // color the same way); fill CAPTURE is asserted in `fillsOk` instead.
+  const writes = reg.handles.map((h) => ({
     handleId: h.glyphId,
-    opts: { scale: ICON_SCALE, ...ICON_ORIGIN, color: reg.fills[i]!.color },
+    opts: { scale: ICON_SCALE, ...ICON_ORIGIN, color: { r: 1, g: 1, b: 1, a: 1 } },
   }))
   const { pixels } = await renderBatch(ctx, set, writes)
   const ref = await renderIconReference(ctx, svgText, ICON_SCALE)
   const stats = diffStats(pixels, ref)
+  const fills = reg.fills.map((f) => ({
+    color: [f.color.r, f.color.g, f.color.b, f.color.a],
+    rule: f.rule,
+  }))
+  // Lucide fixer output is black + evenodd on every painted path — parseSVG
+  // must report it faithfully (a browser renders these icons black too).
+  const fillsOk =
+    reg.fills.length === reg.handles.length &&
+    reg.fills.every(
+      (f) =>
+        f.color.r === 0 &&
+        f.color.g === 0 &&
+        f.color.b === 0 &&
+        f.color.a === 1 &&
+        f.rule === 'evenodd'
+    )
   const pass =
+    fillsOk &&
     stats.litA >= 500 &&
     stats.litB >= 500 &&
     stats.meanDiff < 2.5 &&
     stats.fracOver64 < 0.006 &&
     Math.abs(stats.litA - stats.litB) / Math.max(stats.litA, stats.litB) < 0.15
   set.dispose()
-  return { result: { ...stats, shapes: reg.handles.length, quads, pass }, pixels }
+  return { result: { ...stats, shapes: reg.handles.length, quads, fills, pass }, pixels }
 }
 
 function holeCheck(px: Uint8Array, holeDx: number, ringDx: number): HoleResult {

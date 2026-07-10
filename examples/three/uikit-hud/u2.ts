@@ -96,7 +96,28 @@ async function readPixels(
   renderer.setRenderTarget(rt)
   renderer.render(scene, camera)
   renderer.setRenderTarget(null)
-  return (await renderer.readRenderTargetPixelsAsync(rt, 0, 0, SIZE, SIZE)) as Uint8Array
+  const buf = (await renderer.readRenderTargetPixelsAsync(rt, 0, 0, SIZE, SIZE)) as Uint8Array
+  // three.js's WebGL fallback backend reads back via `gl.readPixels`, which is
+  // bottom-up (row 0 = bottom), while the WebGPU backend's texture copy is
+  // top-down (row 0 = top) — confirmed by direct probe: identical content
+  // placed near the box TOP landed at buffer rows 13-30 on WebGPU but rows
+  // 353-370 (the mirror image) on WebGL2. This is an upstream three.js
+  // `RenderTarget` readback convention difference, not a uikit/Slug bug —
+  // normalize once here so every consumer (`alphaAt`, row scans) can assume a
+  // single top-down layout regardless of backend.
+  const isWebGPU = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend === true
+  return isWebGPU ? buf : flipRowsY(buf, SIZE, SIZE)
+}
+
+function flipRowsY(buf: Uint8Array, width: number, height: number): Uint8Array {
+  const stride = width * 4
+  const out = new Uint8Array(buf.length)
+  for (let row = 0; row < height; row++) {
+    const src = row * stride
+    const dst = (height - 1 - row) * stride
+    out.set(buf.subarray(src, src + stride), dst)
+  }
+  return out
 }
 
 function alphaAt(buf: Uint8Array, x: number, y: number): number {
@@ -198,10 +219,21 @@ async function testClip(
   )
   // A small scroll container near the top-left, holding text far too tall to fit —
   // only the container's own box should ever show ink.
+  //
+  // `positionLeft`/`positionTop` are Yoga/CSS box-model offsets measured from
+  // the PARENT'S top-left edge (0..parentWidth/Height, y-down) — NOT
+  // center-origin world coordinates. Passing `-HALF + 20` here (as if it were
+  // the desired world x) told Yoga "170px to the left of the root's own left
+  // edge," pushing the whole scroller off-canvas (relativeCenter landed at
+  // world x=-304, entirely outside the -HALF..HALF frustum) — nothing ever
+  // rendered inside the box. The correct offset from each edge is just `20`;
+  // `node.ts`'s `relativeCenterX = x + width*0.5 - parentWidth*0.5` (and the
+  // mirrored Y calc) then reproduces the intended `boxLeft`/`boxTop` world
+  // coordinates used for pixel sampling below.
   const scroller = new Container({
     positionType: 'absolute',
-    positionLeft: -HALF + 20,
-    positionTop: -HALF + 20,
+    positionLeft: 20,
+    positionTop: 20,
     width: 120,
     height: 60,
     overflow: 'scroll',
@@ -222,11 +254,26 @@ async function testClip(
   const buf = await readPixels(renderer, scene, camera, rt)
 
   // scroller box in world space: left edge at -HALF+20, top at HALF-20 (y-up),
-  // spanning 120x60. Sample well inside vs. well outside (below the box).
+  // spanning 120x60. `wordBreak: 'break-all'` wraps glyphs into a dense grid
+  // with real gaps between strokes, so a single exact-pixel sample can land
+  // in a gap by pure luck (font-hinting/backend-dependent) even though the
+  // box is genuinely full of ink. Scan a small grid inside vs. a strip well
+  // below the box instead of one point each — "any ink in the box" / "no ink
+  // below it" is the actual claim, not "this one pixel happens to be lit."
   const boxLeft = -HALF + 20
   const boxTop = HALF - 20
-  const insideLit = alphaAt(buf, boxLeft + 30, boxTop - 20) > 16
-  const outsideLit = alphaAt(buf, boxLeft + 30, boxTop - 90) > 16
+  let insideLit = false
+  for (let dy = 5; dy <= 55 && !insideLit; dy += 5) {
+    for (let dx = 5; dx <= 115 && !insideLit; dx += 5) {
+      if (alphaAt(buf, boxLeft + dx, boxTop - dy) > 16) insideLit = true
+    }
+  }
+  let outsideLit = false
+  for (let dy = 70; dy <= 110 && !outsideLit; dy += 5) {
+    for (let dx = 5; dx <= 115 && !outsideLit; dx += 5) {
+      if (alphaAt(buf, boxLeft + dx, boxTop - dy) > 16) outsideLit = true
+    }
+  }
 
   // scan the bottom clip edge for an antialiased (partial-coverage) fringe
   // rather than a hard binary cut
@@ -257,8 +304,23 @@ async function measureFringe(
 ): Promise<number> {
   const camera = makeCamera(zoom)
   const scene = new Scene()
+  // Default flow layout flushes an only-child to the container's top-left
+  // corner (block-start/cross-start), not its center — without
+  // `justifyContent`/`alignItems: 'center'` the glyph sits with
+  // `relativeCenter` near `(-HALF, 0)`. The scanline below samples the FIXED
+  // screen row/column at the canvas center, which only lands on the glyph
+  // by construction if the glyph is centered; at zoom 8x an off-center glyph
+  // is panned entirely out of the (now much narrower) visible world range,
+  // which is why `fringe8x` measured `0` before this fix.
   const root = new Container(
-    { pixelSize: 1, width: SIZE, height: SIZE, backgroundColor: 'transparent' },
+    {
+      pixelSize: 1,
+      width: SIZE,
+      height: SIZE,
+      backgroundColor: 'transparent',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
     undefined,
     { renderContext: noopRenderContext }
   )
@@ -314,8 +376,21 @@ async function testCaretSelection(
 ): Promise<Ok['caretSelection']> {
   const camera = makeCamera()
   const scene = new Scene()
+  // Same fix as `measureFringe`: default flow layout flushes the only child
+  // to the top-left corner (`relativeCenter` landed near `(-126, 0)`, well off
+  // the root's center), which broke the "local == world" assumption below —
+  // caret/selection world-space samples missed the actual (off-center) ink
+  // entirely. Centering makes the box's local origin coincide with world
+  // origin again, matching what the comment below has always assumed.
   const root = new Container(
-    { pixelSize: 1, width: SIZE, height: SIZE, backgroundColor: 'transparent' },
+    {
+      pixelSize: 1,
+      width: SIZE,
+      height: SIZE,
+      backgroundColor: 'transparent',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
     undefined,
     { renderContext: noopRenderContext }
   )
@@ -373,6 +448,16 @@ async function run(forceWebGL: boolean, font: SlugFont): Promise<Ok> {
   const renderer = new WebGPURenderer({ antialias: false, forceWebGL })
   await renderer.init()
   renderer.setSize(SIZE, SIZE)
+  // WebGPURenderer.init() unconditionally starts an internal rAF loop
+  // (Animation.start(), common/Animation.js) that calls `info.reset()` every
+  // browser frame whenever `info.autoReset` is true — REGARDLESS of whether
+  // the app ever calls setAnimationLoop. Every `settle()`/readback in this
+  // harness awaits across a macrotask boundary, giving that ambient loop a
+  // chance to fire and zero `info.render.drawCalls` out from under us between
+  // `renderer.render()` and the point where we read the counter. Disable
+  // autoReset so only our own explicit `info.reset()` calls (in readPixels)
+  // control the counter.
+  renderer.info.autoReset = false
   const backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend
     ? 'webgpu'
     : 'webgl2'

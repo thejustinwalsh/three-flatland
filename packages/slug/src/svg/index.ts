@@ -11,12 +11,16 @@
  *
  * v1 supports fills only. The lucide pipeline runs `oslllo-svg-fixer` at
  * build time, converting all strokes to closed filled outlines, so icons
- * are pure fills by construction. Matching upstream uikit's `Svg`
- * behavior, paths are emitted even when `fill` resolves to `none`
- * (stroke-to-fill outlines typically inherit `fill="none"` from the svg
- * root); their fill color defaults to white so a consumer tint works.
- * Fill-rule is captured per path but applied batch-level v1
- * (`material: { evenOdd }` on `SlugShapeBatch`).
+ * are pure fills by construction — with an explicit `fill="black"` on
+ * every path (the fixer's stand-in for `currentColor`). Fills are
+ * reported FAITHFULLY: lucide icons parse black, exactly as a browser
+ * renders the files. Consumers tint by replacing the per-instance color
+ * (`writeShape`'s `color`), the same way upstream uikit replaces material
+ * color on icons — never by assuming icon fills are white. Matching
+ * upstream uikit's `Svg` behavior, paths are still emitted when `fill`
+ * resolves to `none`; only those default to white. Fill-rule is captured
+ * per path but applied batch-level in v1 (`material: { evenOdd }` on
+ * `SlugShapeBatch`).
  */
 
 export {

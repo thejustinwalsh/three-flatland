@@ -34,9 +34,11 @@ export interface SVGViewBox {
 /** Per-path fill info captured from the SVG. */
 export interface ParsedSVGFill {
   /**
-   * Fill color with `fillOpacity` folded into alpha. White when the path's
-   * `fill` resolves to `none` (see module doc — matches upstream uikit, so
-   * consumer tints keep working on stroke-to-fill icon pipelines).
+   * Fill color with `fillOpacity` folded into alpha, reported faithfully —
+   * post-fixer lucide icons parse BLACK because the fixer bakes
+   * `fill="black"` (its `currentColor` stand-in). Tinting consumers replace
+   * the instance color instead of using this (see module doc). White only
+   * when the path's `fill` resolves to `none` (matches upstream uikit).
    */
   color: SlugBatchColor
   /** The path's declared fill rule. Applied batch-level in v1. */

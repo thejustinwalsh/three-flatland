@@ -144,6 +144,7 @@
     "@types/react": "catalog:",
     "@types/three": "catalog:",
     "gltf-validator": "^2.0.0-dev.3.10",
+    "happy-dom": "^20.8.9",
     "react": "catalog:",
     "three": "catalog:"
   },
