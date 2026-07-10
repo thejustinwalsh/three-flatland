@@ -1,9 +1,4 @@
-import type {
-  ForwardRefExoticComponent,
-  PropsWithoutRef,
-  ReactNode,
-  RefAttributes,
-} from 'react'
+import type { ForwardRefExoticComponent, PropsWithoutRef, ReactNode, RefAttributes } from 'react'
 import {
   Switch as VanillaSwitch,
   type SwitchProperties as VanillaSwitchProperties,

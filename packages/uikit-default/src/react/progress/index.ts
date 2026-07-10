@@ -1,9 +1,4 @@
-import type {
-  ForwardRefExoticComponent,
-  PropsWithoutRef,
-  ReactNode,
-  RefAttributes,
-} from 'react'
+import type { ForwardRefExoticComponent, PropsWithoutRef, ReactNode, RefAttributes } from 'react'
 import {
   Progress as VanillaProgress,
   type ProgressProperties as VanillaProgressProperties,

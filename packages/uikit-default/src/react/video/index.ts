@@ -1,9 +1,4 @@
-import type {
-  ForwardRefExoticComponent,
-  PropsWithoutRef,
-  ReactNode,
-  RefAttributes,
-} from 'react'
+import type { ForwardRefExoticComponent, PropsWithoutRef, ReactNode, RefAttributes } from 'react'
 import {
   Video as VanillaVideo,
   type VideoProperties as VanillaVideoProperties,

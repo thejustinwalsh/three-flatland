@@ -1,9 +1,4 @@
-import type {
-  ForwardRefExoticComponent,
-  PropsWithoutRef,
-  ReactNode,
-  RefAttributes,
-} from 'react'
+import type { ForwardRefExoticComponent, PropsWithoutRef, ReactNode, RefAttributes } from 'react'
 import {
   PaginationPrevious as VanillaPaginationPrevious,
   type PaginationPreviousProperties as VanillaPaginationPreviousProperties,

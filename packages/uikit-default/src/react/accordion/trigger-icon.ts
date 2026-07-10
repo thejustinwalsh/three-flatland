@@ -1,9 +1,4 @@
-import type {
-  ForwardRefExoticComponent,
-  PropsWithoutRef,
-  ReactNode,
-  RefAttributes,
-} from 'react'
+import type { ForwardRefExoticComponent, PropsWithoutRef, ReactNode, RefAttributes } from 'react'
 import {
   AccordionTriggerIcon as VanillaAccordionTriggerIcon,
   type AccordionTriggerIconProperties as VanillaAccordionTriggerIconProperties,
