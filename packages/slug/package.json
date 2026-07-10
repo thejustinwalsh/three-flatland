@@ -96,6 +96,15 @@
   "bin": {
     "slug-bake": "./dist/cli.js"
   },
+  "flatland": {
+    "bake": [
+      {
+        "name": "font",
+        "description": "Bake SlugFont data (.slug.glb) from a TTF/OTF font",
+        "entry": "./dist/cli.js"
+      }
+    ]
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

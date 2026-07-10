@@ -58,6 +58,29 @@ export interface SlugGlyphData {
   curveLocation: { x: number; y: number }
 }
 
+/**
+ * Public, em-normalized metrics for one glyph — the surface a text-layout
+ * consumer needs without touching `SlugGlyphData` internals. Returned by
+ * `SlugFont.getGlyphMetrics`/`getGlyphMetricsForChar`; a fresh value object
+ * per call, safe to mutate.
+ */
+export interface SlugGlyphMetrics {
+  /** Glyph ID resolved from the codepoint. */
+  glyphId: number
+  /** Horizontal advance width, em-space (unitsPerEm-normalized). */
+  advanceWidth: number
+  /**
+   * Advertised left side bearing, em-space. Layout engines position by this,
+   * not by `bounds.xMin` — the two coincide for TrueType but diverge for
+   * CFF/OTF, where `xMin` is where ink actually starts.
+   */
+  lsb: number
+  /** Outline bounding box, em-space. All-zero for outline-less glyphs (space, tab). */
+  bounds: GlyphBounds
+  /** False for outline-less glyphs (space, tab, zero-width controls) — same heuristic `measureTextBaked` uses (non-zero bounds area). */
+  hasOutline: boolean
+}
+
 /** A positioned glyph in a shaped text run. */
 export interface PositionedGlyph {
   glyphId: number

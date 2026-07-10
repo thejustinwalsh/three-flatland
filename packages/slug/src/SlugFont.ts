@@ -1,7 +1,7 @@
 import type { DataTexture } from 'three'
 import type { Font as OpenTypeFont } from 'opentype.js'
 import type { BakedFontData } from './baked'
-import { cmapLookup } from './baked'
+import { cmapLookup, kernLookup } from './baked'
 import type {
   SlugGlyphData,
   PositionedGlyph,
@@ -13,6 +13,7 @@ import type {
   DecorationRect,
   ShapeTextOptions,
   ShapingBackend,
+  SlugGlyphMetrics,
   BakedShapeTextFn,
   BakedMeasureTextFn,
   BakedWrapLinesFn,
@@ -327,6 +328,91 @@ export class SlugFont {
       return this._opentypeFont.charToGlyph(String.fromCharCode(charCode)).index !== 0
     }
     return false
+  }
+
+  /**
+   * Resolve a Unicode codepoint to a glyph ID via the font's cmap.
+   * Returns 0 (notdef) for unmapped codepoints. Dispatches across the
+   * baked/runtime backends the same way `hasCharCode` does.
+   *
+   * Codepoints are read as UTF-16 code units, matching every other
+   * per-character API in this package (`hasCharCode`, `shapeText`) — no
+   * astral-plane handling (documented non-goal, see package CLAUDE.md).
+   */
+  getGlyphId(codepoint: number): number {
+    if (this._bakedData) {
+      return cmapLookup(codepoint, this._bakedData.cmapCodes, this._bakedData.cmapGlyphs)
+    }
+    if (this._opentypeFont) {
+      return this._opentypeFont.charToGlyph(String.fromCharCode(codepoint)).index
+    }
+    return 0
+  }
+
+  /**
+   * Em-normalized kerning adjustment for a glyph pair, positive = tighten.
+   * Reads the same kerning tables `shapeText`/`measureText` already
+   * consult (`baked.ts` `kernLookup`; opentype's `getKerningValue`) but
+   * makes the value public and unitsPerEm-normalized instead of
+   * pixel-scaled — useful to a caller building its own layout instead of
+   * going through `shapeText`.
+   *
+   * Returns 0 for unkerned pairs, notdef, or an unloaded font.
+   */
+  getKerning(glyphIdA: number, glyphIdB: number): number {
+    if (this._bakedData) {
+      const { kernData, kernCount } = this._bakedData
+      return kernLookup(glyphIdA, glyphIdB, kernData, kernCount) / this.unitsPerEm
+    }
+    if (this._opentypeFont) {
+      const g1 = this._opentypeFont.glyphs.get(glyphIdA)
+      const g2 = this._opentypeFont.glyphs.get(glyphIdB)
+      if (!g1 || !g2) return 0
+      return this._opentypeFont.getKerningValue(g1, g2) / this.unitsPerEm
+    }
+    return 0
+  }
+
+  /**
+   * Em-normalized metrics for the glyph a codepoint maps to — advance
+   * width, outline bounds, and whether it has a renderable outline at
+   * all. Unlike `shapeText`'s output (which drops outline-less glyphs,
+   * see package CLAUDE.md "Known gaps"), this returns entries for space,
+   * tab, and other advance-only glyphs, so a caller can place a caret
+   * after one without re-deriving the mapping itself.
+   *
+   * Returns `undefined` for a codepoint the font's cmap doesn't cover
+   * (mirrors `hasCharCode`'s notion of "unmapped"). Each call returns a
+   * fresh object — safe to mutate, no shared internal state leaks.
+   */
+  getGlyphMetrics(codepoint: number): SlugGlyphMetrics | undefined {
+    if (!this._bakedData && !this._opentypeFont) return undefined
+    if (!this.hasCharCode(codepoint)) return undefined
+
+    const glyphId = this.getGlyphId(codepoint)
+    const glyphData = this.glyphs.get(glyphId)
+    if (!glyphData) return undefined
+
+    return {
+      glyphId,
+      advanceWidth: glyphData.advanceWidth,
+      // The advertised left side bearing, not `bounds.xMin`. They coincide for
+      // TrueType but can diverge for CFF/OTF, where xMin is where ink actually
+      // starts. Layout engines position by lsb.
+      lsb: glyphData.lsb,
+      bounds: { ...glyphData.bounds },
+      // Same heuristic textMeasureBaked.ts uses — valid on both backends
+      // because runtime's advance-only glyphs are also stored with
+      // all-zero bounds (`buildAdvanceOnlyGlyph`).
+      hasOutline: glyphData.bounds.xMax > glyphData.bounds.xMin,
+    }
+  }
+
+  /** Convenience over `getGlyphMetrics` — takes a single character instead of a codepoint. */
+  getGlyphMetricsForChar(char: string): SlugGlyphMetrics | undefined {
+    const codepoint = char.codePointAt(0)
+    if (codepoint === undefined) return undefined
+    return this.getGlyphMetrics(codepoint)
   }
 
   /**

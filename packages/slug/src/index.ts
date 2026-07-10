@@ -18,6 +18,7 @@ export type {
   GlyphBands,
   Band,
   SlugGlyphData,
+  SlugGlyphMetrics,
   PositionedGlyph,
   SlugTextureData,
   SlugTextOptions,

@@ -27,6 +27,11 @@ and names its serialization points.
   `.changeset/config.json` ignore; they start public with `0.1.0-alpha.0` intent.
 - Prettier: no semicolons, single quotes, trailing commas. `type` keyword on type-only
   imports (`verbatimModuleSyntax`). Unused vars prefixed `_`.
+- **TRAP: `pnpm --filter=<pkg> test` SILENTLY EXITS 0** for any package without a `test`
+  script — which is most of them (`slug`, `bake`, `alphamap`, `normals`, …). Tests run
+  through the single root `vitest.config.ts`. A phase that "verified tests pass" with a
+  filtered command verified nothing. Use `pnpm exec vitest run packages/<pkg>/src` (or
+  root `pnpm test`). This bit the orchestrator once already.
 - **Lint/format is a per-phase gate, not a hook.** `lefthook.yml` pre-commit runs ONLY
   sync scripts (`sync-pack-full`, `sync-pack-files`, `sync-lockfile`,
   `sync-react-subpaths`, `sync-examples`, `check-skia-pin`) — no prettier, no eslint.
