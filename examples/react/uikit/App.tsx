@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useLayoutEffect, useState } from 'react'
 import { Canvas, createPortal, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import {
@@ -109,19 +109,24 @@ function HudFullscreen({
     [renderer, renderContext]
   )
   const outProps = useSetup(ref, props, args)
-  // `injectScene: false` is load-bearing: R3F v10's Portal otherwise inserts
-  // an intermediate `Scene` between the camera and the UI, and under
-  // <StrictMode> the Portal's cleanup-only layout effect removes + disposes
-  // that scene on the dev double-invoke without re-adding it — orphaning the
-  // UI so `Fullscreen.update()`'s camera search throws and unmounts the
-  // Canvas. With it, the fullscreen parents directly onto the camera — the
-  // exact graph the vanilla twin builds via `flatland.camera.add(ui)`.
+  // `camera` in the portal state is what makes R3F's native events work here, and
+  // it is why this twin needs no event package at all. R3F raycasts its interaction
+  // registry — an Object3D list, not a scene graph (fiber dist/index.mjs:648) — but
+  // it takes the ray from `getRootState(object).camera`, i.e. the *portal's* state.
+  // A portal snapshots its state at creation, so mutating the root store's camera
+  // later never reaches it. Scoping the camera here leaves R3F's own camera alone.
+  //
+  // `injectScene: false` is load-bearing too: R3F v10's Portal otherwise inserts an
+  // intermediate `Scene` between the camera and the UI, and under <StrictMode> its
+  // cleanup-only layout effect removes + disposes that scene on the dev double-invoke
+  // without re-adding it — orphaning the UI so `Fullscreen.update()`'s camera search
+  // throws and unmounts the Canvas.
   return createPortal(
     <vanillaFullscreen {...outProps} ref={ref}>
       {children}
     </vanillaFullscreen>,
     camera,
-    { injectScene: false }
+    { injectScene: false, camera }
   )
 }
 
@@ -298,6 +303,33 @@ function createTileMapData(
     tileLayers,
     objectLayers: [],
   }
+}
+
+/**
+ * R3F's own orthographic camera, matching Flatland's frustum.
+ *
+ * Flatland renders its internal scene with its own camera, but R3F still needs one
+ * for its default scene and for `useThree(s => s.camera)` consumers. The UI's events
+ * do not come from here — `HudFullscreen` scopes Flatland's camera into its portal.
+ */
+function OrthoCamera({ viewSize }: { viewSize: number }) {
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+  const camRef = useRef<ThreeOrthographicCamera | null>(null)
+  const aspect = size.width / size.height
+
+  useLayoutEffect(() => {
+    const cam = camRef.current
+    if (!cam) return
+    cam.left = (-viewSize * aspect) / 2
+    cam.right = (viewSize * aspect) / 2
+    cam.top = viewSize / 2
+    cam.bottom = -viewSize / 2
+    cam.updateProjectionMatrix()
+    set({ camera: cam })
+  }, [viewSize, aspect, set])
+
+  return <orthographicCamera ref={camRef} position={[0, 0, 100]} near={0.1} far={1000} manual />
 }
 
 /** A shadcn `Label` wrapping a single line of text. */
@@ -609,7 +641,6 @@ function GameScene({ ambient }: { ambient: number }) {
   const flickerT = useRef(0)
   const [flatlandCamera, setFlatlandCamera] = useState<ThreeOrthographicCamera | null>(null)
   const font = useSlugFont(`${import.meta.env.BASE_URL}Inter-Regular.ttf`)
-  const setR3FState = useThree((s) => s.set)
 
   const halfExtent = (MAP_SIZE * TILE_SIZE) / 2
 
@@ -662,17 +693,14 @@ function GameScene({ ambient }: { ambient: number }) {
   // flatland-camera-portalled UI is already reachable. What it needs is for the
   // ray to originate from the camera the UI is parented to.
   //
-  // Adopting `flatlandCamera` as R3F's camera keeps that a single object. The
-  // alternative — a second ortho camera kept in sync by hand — drifts on resize
-  // and displaces every hit zone from the pixels it is supposed to be under.
+  // ray to originate from the camera the UI is parented to. `HudFullscreen` scopes
+  // Flatland's camera into the portal's own state, which is where the ray is taken
+  // from — mutating the root store's camera would never reach it, because a portal
+  // snapshots its state at creation.
   //
-  // Do NOT also wire `forwardHtmlEvents` here. uikit's React layer publishes its
-  // handlers as JSX props, so those objects are in R3F's registry regardless;
-  // a second event source dispatches every pointer event twice.
-  useEffect(() => {
-    if (flatlandCamera == null) return
-    setR3FState({ camera: flatlandCamera })
-  }, [flatlandCamera, setR3FState])
+  // Do NOT wire `forwardHtmlEvents` here. uikit's React layer publishes its handlers
+  // as JSX props, so those objects sit in R3F's registry regardless; a second event
+  // source dispatches every pointer event twice, through two different cameras.
 
   useFrame((_, rawDelta) => {
     flickerT.current += rawDelta
@@ -693,6 +721,7 @@ function GameScene({ ambient }: { ambient: number }) {
 
   return (
     <>
+      <OrthoCamera viewSize={VIEW_SIZE} />
       <flatland ref={flatlandRef} viewSize={VIEW_SIZE}>
         <defaultLightEffect attach={attachLighting} />
 
