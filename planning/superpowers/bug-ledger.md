@@ -133,3 +133,31 @@ These are the real PR candidates. Draft repros live in `upstream-uikit-bugs.md`.
 
 **Rule for this ledger:** nothing gets filed upstream on my say-so. Every entry marked ⏳ is
 unconfirmed until re-verified against source, and filing on a third-party repo is a stakeholder call.
+
+---
+
+## PR extraction — MANDATORY before filing any upstream PR (future work)
+
+We folded `pmndrs/uikit` into this monorepo and reran it through **our** Prettier/ESLint (no
+semicolons, single quotes, trailing commas, `type` imports, our line width). A naive
+`git diff` of any changed file against upstream is therefore **thousands of formatting lines around a
+one-line fix** — unmergeable as a PR.
+
+Before opening ANY upstream PR:
+
+1. **Match upstream's exact formatting** on the file(s) you touched. Copy upstream's Prettier/ESLint
+   config (from the isolated clone `/tmp/uikit-upstream` — its `.prettierrc`/`eslint.config`) and
+   reformat ONLY the changed file(s) to upstream's style. Upstream uses semicolons, tabs, its own
+   width — the opposite of ours.
+2. **Extract the minimal diff.** Start from the upstream file at the commit/version we forked from,
+   apply ONLY our behavioural change (e.g. U1's `for...in`→`for...of` is literally one word), and
+   confirm `git diff` shows just that change — no formatting churn, no unrelated edits, no renames
+   (`@three-flatland/*` → `@react-three/*` package names must be reverted for the PR).
+3. **Rebase onto upstream, not our fork.** The PR branch is off `pmndrs/uikit` main, carrying only
+   the minimal behavioural delta — never our TSL/Slug/rename changes.
+4. Re-verify the fix still reproduces + resolves on a clean upstream checkout (not just our fork),
+   since our fork's behaviour can diverge (different renderer, different deps).
+
+In short: the fix content is trivial (U1/U2/U3 are one-liners); the _work_ is presenting it as a
+clean minimal diff against upstream, stripped of our monorepo's formatting and renames. Budget for
+that extraction step — it is the actual cost of each upstream PR, not the fix itself.
