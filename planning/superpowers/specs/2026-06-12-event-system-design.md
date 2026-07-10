@@ -17,12 +17,12 @@ No flatland-specific event bus. No new dependencies. The library's entire obliga
 
 These were resolved in stakeholder review (2026-06-12) and are not open for re-litigation at plan time:
 
-| # | Decision | Resolution |
-|---|---|---|
-| D1 | Batched-sprite interactivity vs Phase 2 (#85) | **Document the gap, no interim code.** Sprites inside today's `SpriteGroup`/`Flatland` are ECS-only (not scene-graph children) and stay non-interactive until #85 makes them graph citizens. Zero throwaway code. |
-| D2 | Alpha hitmask sidecar format | **Single-channel PNG** (`<source>.alpha.png`) — reuses `writeSidecarPng` + tEXt hash stamp + `probeBakedSibling` verbatim from the normals pipeline. |
-| D3 | Alpha map attachment point | **Resolved in this spec — see §8.4.** `SpriteSheet.alphaMap` (asset carrier, mirrors `normalMap`) + `Sprite2D.alphaMap` (instance consumer slot). ECS trait deferred to Phase 2 if acceleration needs it. |
-| D4 | `@pmndrs/pointer-events` | **Out entirely.** It was research scaffolding in the PoC; it does not appear in source, examples, or docs. The vanilla path is plain `Raycaster`. |
+| #   | Decision                                      | Resolution                                                                                                                                                                                                        |
+| --- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Batched-sprite interactivity vs Phase 2 (#85) | **Document the gap, no interim code.** Sprites inside today's `SpriteGroup`/`Flatland` are ECS-only (not scene-graph children) and stay non-interactive until #85 makes them graph citizens. Zero throwaway code. |
+| D2  | Alpha hitmask sidecar format                  | **Single-channel PNG** (`<source>.alpha.png`) — reuses `writeSidecarPng` + tEXt hash stamp + `probeBakedSibling` verbatim from the normals pipeline.                                                              |
+| D3  | Alpha map attachment point                    | **Resolved in this spec — see §8.4.** `SpriteSheet.alphaMap` (asset carrier, mirrors `normalMap`) + `Sprite2D.alphaMap` (instance consumer slot). ECS trait deferred to Phase 2 if acceleration needs it.         |
+| D4  | `@pmndrs/pointer-events`                      | **Out entirely.** It was research scaffolding in the PoC; it does not appear in source, examples, or docs. The vanilla path is plain `Raycaster`.                                                                 |
 
 ## 3. Canonical contracts (ground truth, verified against installed sources)
 
@@ -50,7 +50,7 @@ These were resolved in stakeholder review (2026-06-12) and are not open for re-l
 2. **`SpriteGroup.add(sprite)` enrolls in ECS without `super.add()`** — the sprite is not a scene-graph child; only `SpriteBatch` InstancedMeshes exist in the graph, inside `flatland.scene` (a private Scene, rendered with a private orthographic camera). Nothing inside is reachable by any raycaster today. This is the D1 gap.
 3. **Phase 2 (#85, design canonical in `AUTO-BATCH-DESIGN.md` / `RENDERING-ARCHITECTURE.md`)** keeps Sprite2D a scene-graph citizen whose `instanceMatrix` is slaved to `matrixWorld` when batched, with byte-identical visuals. Operating principle 1: "Every primitive works as a vanilla Object3D in any three.js scene… R3F support falls out for free."
 
-**Consequence — the load-bearing simplification of this spec:** once #85 lands, `Sprite2D.raycast()` is the *only* hit-test implementation sprites need, standalone or batched. The PoC's `SpriteBatch.raycast()` + `SpriteGroup.getSpriteAtInstance()` reverse-lookup apparatus (old EVENT-SYSTEM.md §3.1, §7) is **deleted from the design**, not deferred. That apparatus was also where the PoC's worst bugs and all of its dead-tree coupling lived.
+**Consequence — the load-bearing simplification of this spec:** once #85 lands, `Sprite2D.raycast()` is the _only_ hit-test implementation sprites need, standalone or batched. The PoC's `SpriteBatch.raycast()` + `SpriteGroup.getSpriteAtInstance()` reverse-lookup apparatus (old EVENT-SYSTEM.md §3.1, §7) is **deleted from the design**, not deferred. That apparatus was also where the PoC's worst bugs and all of its dead-tree coupling lived.
 
 ## 5. The identity contract
 
@@ -60,12 +60,12 @@ This is strictly stronger than the `InstancedMesh`/`BatchedMesh` precedent (cont
 
 ## 6. Hit-test modes (harvested from PoC §6, semantics unchanged)
 
-| Mode | Mechanism | Cost | Default |
-|---|---|---|---|
-| `'radius'` | `dx² + dy² > rSq` against conservative inscribed circle (`min(halfW, halfH)`); `hitRadius` override | O(1) | `Sprite2D` |
-| `'bounds'` | anchor-aware AABB in local space; `hitBox` override | O(1) | `TileMap2D` |
-| `'alpha'` | bounds pre-check, then CPU alpha sample vs `alphaThreshold` (default 0.5) | O(1) + sidecar memory | opt-in |
-| `'none'` | **null the instance `raycast` property** (R3F skips at registration; prototype restored on mode change) | zero | — |
+| Mode       | Mechanism                                                                                               | Cost                  | Default     |
+| ---------- | ------------------------------------------------------------------------------------------------------- | --------------------- | ----------- |
+| `'radius'` | `dx² + dy² > rSq` against conservative inscribed circle (`min(halfW, halfH)`); `hitRadius` override     | O(1)                  | `Sprite2D`  |
+| `'bounds'` | anchor-aware AABB in local space; `hitBox` override                                                     | O(1)                  | `TileMap2D` |
+| `'alpha'`  | bounds pre-check, then CPU alpha sample vs `alphaThreshold` (default 0.5)                               | O(1) + sidecar memory | opt-in      |
+| `'none'`   | **null the instance `raycast` property** (R3F skips at registration; prototype restored on mode change) | zero                  | —           |
 
 Mode plumbing: `hitTestMode` getter/setter per class, `static supportedHitTestModes`, `resolveHitTestMode()` with dev-only fallback warning — all portable from the PoC's `HitTestMode.ts` as-is.
 
@@ -86,7 +86,7 @@ The PoC's O(1) arithmetic lookup, kept: local Z=0 intersection → pixel-bounds 
 
 **Not interactive until #85** (D1). The spec's contract section (§5) is written so that #85's graph-citizenship makes them interactive with zero event-system changes. The docs page and example carry a short note naming the limitation and the epic.
 
-`SpatialGrid` (the PoC's broadphase) is **demoted to optional acceleration**: R3F only raycasts objects that carry handlers, so baseline cost is proportional to *interactive* count at O(1) each. The grid earns its place only if profiling shows thousands of simultaneously-interactive sprites; if adopted, its PoC bugs (duplicate candidates from multi-cell insert, high-water-mark rebuild) are documented in §11 as required fixes.
+`SpatialGrid` (the PoC's broadphase) is **demoted to optional acceleration**: R3F only raycasts objects that carry handlers, so baseline cost is proportional to _interactive_ count at O(1) each. The grid earns its place only if profiling shows thousands of simultaneously-interactive sprites; if adopted, its PoC bugs (duplicate candidates from multi-cell insert, high-water-mark rebuild) are documented in §11 as required fixes.
 
 ## 8. R3F integration
 
@@ -148,7 +148,7 @@ Every confirmed defect from the harvest review becomes a named regression test i
 3. No duplicate intersections from one raycast call (plain three gets no dedup).
 4. `'alpha'` mode honors anchor offsets (UV anchor math has two equivalent-looking formulas; pin with a non-default anchor test).
 5. `'none'` mode: own-property null + prototype restoration round-trip.
-6. Non-uniform scale: `'radius'` uses the conservative inscribed circle in *local* space with scale carried by `matrixWorld` — pin behavior with an asymmetric-scale test.
+6. Non-uniform scale: `'radius'` uses the conservative inscribed circle in _local_ space with scale carried by `matrixWorld` — pin behavior with an asymmetric-scale test.
 
 ## 12. Card-game showcase mapping (P4)
 
@@ -162,26 +162,26 @@ Deferred from this PR; each has a tracking issue so nothing is lost.
 - **`FlatlandTexture`** render-to-texture portal (§8.2) — `createFlatlandCompute` ships; the component needs a render-target ownership story. → [#126](https://github.com/thejustinwalsh/three-flatland/issues/126).
 - **Batched-sprite picking** (D1) — interactive once #85 makes batched sprites graph citizens. → [#127](https://github.com/thejustinwalsh/three-flatland/issues/127) (depends on #85). No interim code by design.
 - **GPU ID-buffer picking** — high-instance Phase 2 path, same `pick()` signature; `instanceExtras.y` reserved. → [#128](https://github.com/thejustinwalsh/three-flatland/issues/128).
-- **Drag helper** — *not blocked by anything*: we're on R3F v10 everywhere, so drag is already composable from the pointer events the raycast contract ships. A dedicated ergonomic helper is future scope. → [#129](https://github.com/thejustinwalsh/three-flatland/issues/129).
+- **Drag helper** — _not blocked by anything_: we're on R3F v10 everywhere, so drag is already composable from the pointer events the raycast contract ships. A dedicated ergonomic helper is future scope. → [#129](https://github.com/thejustinwalsh/three-flatland/issues/129).
 - **Skia node picking** (`SkPath::contains`) — needs the C export from **our** zig Skia WASM build (we own Skia end-to-end). → [#130](https://github.com/thejustinwalsh/three-flatland/issues/130).
 - **`meta.alpha` atlas-schema discovery** — lands with the atlas schema work. → [#124](https://github.com/thejustinwalsh/three-flatland/issues/124).
 - **Rotated/trimmed atlas frames** — not honored by the renderer (and so, consistently, not by alpha hit-testing); owned by the atlas overhaul in [PR #117](https://github.com/thejustinwalsh/three-flatland/pull/117), not this workstream.
 
 ## 14. Harvest manifest (from `d24fd704`)
 
-| Artifact | Disposition |
-|---|---|
-| `planning/EVENT-SYSTEM.md` §2, §6, §7 rationale | Carried into §3, §6, and §7.3 here |
-| `EVENT-SYSTEM.md` §3.1/§7 batch raycast + reverse lookup | **Deleted from design** (§4) |
-| `events/HitTestMode.ts` | Port as-is |
-| `events/AlphaMap.ts` | Port; `fromTexture` demoted to fallback (§10) |
-| `events/raycastHelpers.ts` | Port with shared-`Vector3` fix (§11.2) |
-| `events/SpatialGrid.ts` | Shelve as optional acceleration (§7.3) with documented fixes |
-| `Sprite2D`/`TileMap2D` raycast implementations | Re-derive against current classes; algorithms carry, field access does not |
-| `react/uvCompute.ts`, `FlatlandTexture.tsx` | Harvest pattern; rebuild against current Flatland API (§8.1–8.2) |
-| `examples/{react,vanilla}/hit-test` | Rebuild as `examples/{react,three}/hit-test` per current pairing convention; vanilla example drops pointer-events for plain Raycaster (§9) |
-| `docs examples/hit-test.mdx` | Rewrite against the new examples |
-| `planning/ASSET-PRECOMPUTATION.md` (rode along in the commit) | §3.1/§5.2 alpha proposal realized as §10 here; rest already superseded by the shipped bake pipeline |
+| Artifact                                                      | Disposition                                                                                                                                |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `planning/EVENT-SYSTEM.md` §2, §6, §7 rationale               | Carried into §3, §6, and §7.3 here                                                                                                         |
+| `EVENT-SYSTEM.md` §3.1/§7 batch raycast + reverse lookup      | **Deleted from design** (§4)                                                                                                               |
+| `events/HitTestMode.ts`                                       | Port as-is                                                                                                                                 |
+| `events/AlphaMap.ts`                                          | Port; `fromTexture` demoted to fallback (§10)                                                                                              |
+| `events/raycastHelpers.ts`                                    | Port with shared-`Vector3` fix (§11.2)                                                                                                     |
+| `events/SpatialGrid.ts`                                       | Shelve as optional acceleration (§7.3) with documented fixes                                                                               |
+| `Sprite2D`/`TileMap2D` raycast implementations                | Re-derive against current classes; algorithms carry, field access does not                                                                 |
+| `react/uvCompute.ts`, `FlatlandTexture.tsx`                   | Harvest pattern; rebuild against current Flatland API (§8.1–8.2)                                                                           |
+| `examples/{react,vanilla}/hit-test`                           | Rebuild as `examples/{react,three}/hit-test` per current pairing convention; vanilla example drops pointer-events for plain Raycaster (§9) |
+| `docs examples/hit-test.mdx`                                  | Rewrite against the new examples                                                                                                           |
+| `planning/ASSET-PRECOMPUTATION.md` (rode along in the commit) | §3.1/§5.2 alpha proposal realized as §10 here; rest already superseded by the shipped bake pipeline                                        |
 
 ## 15. Implementation slices (for the plan)
 

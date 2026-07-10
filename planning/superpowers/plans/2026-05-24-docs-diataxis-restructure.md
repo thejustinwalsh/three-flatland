@@ -11,6 +11,7 @@
 **Source of truth for the audit that produced this plan:** the 2026-05-24 full 4-layer audit (this session). Type-pure templates to imitate: `guides/lighting.mdx`, `guides/shadows.mdx` (Explanation); `guides/devtools.mdx`, `guides/baking.mdx` (How-to); `getting-started/quick-start.mdx` (Tutorial).
 
 **Verification used throughout:**
+
 - Build: `NODE_OPTIONS="--max-old-space-size=8192" pnpm --filter=docs build` must exit 0.
 - Type purity: after each split, re-read the page and confirm it passes its type's must-not list (`.claude/skills/documentation/diataxis.md`).
 - Links: every cross-link resolves at correct relative depth; anchors match heading slugs.
@@ -20,6 +21,7 @@
 ## Task 1: Decide and stand up the API/reference link targets
 
 **Files:**
+
 - Modify: `docs/astro.config.mjs` (starlightTypeDoc `entryPoints`)
 - Verify: `docs/src/content/docs/api/` regenerates
 
@@ -64,6 +66,7 @@ git commit -m "docs(api): generate reference pages for @three-flatland/devtools"
 ## Task 2: Split `guides/flatland.mdx` (Concept) — extract how-to + reference
 
 **Files:**
+
 - Modify: `docs/src/content/docs/guides/flatland.mdx` (keep Explanation only)
 - Create: `docs/src/content/docs/guides/flatland-setup.mdx` (How-to)
 - Modify: `docs/astro.config.mjs` (add `flatland-setup` to the Guides sidebar group)
@@ -72,7 +75,7 @@ The page is Explanation but carries Basic Setup, Adding Objects, Render Loop, Po
 
 - [ ] **Step 1: Create the How-to page** `guides/flatland-setup.mdx` with frontmatter `title: Set up a Flatland scene`, `description: Create a Flatland instance, add objects, drive its render loop, and dispose it.` Move into it (cut from `flatland.mdx`): the Basic Setup tabs + the R3F-phase caution, Adding Objects code, Render Loop code, Post-Processing recipe, Render to Texture, Disposal. Add `import { Tabs, TabItem } from 'starlight-theme/components'`. Open with a one-line "what you'll do." Apply `marketing-voice` calm register.
 
-- [ ] **Step 2: Reduce `flatland.mdx` to Explanation.** Keep: intro, "When to Use Flatland vs SpriteGroup" table, the render-loop **diagram** + narrative (concept), the auto-vs-manual time *concept* (one paragraph, no table). Delete the Constructor Options table and the method/uniform/stats tables. Replace the deleted setup spans with one cross-link line:
+- [ ] **Step 2: Reduce `flatland.mdx` to Explanation.** Keep: intro, "When to Use Flatland vs SpriteGroup" table, the render-loop **diagram** + narrative (concept), the auto-vs-manual time _concept_ (one paragraph, no table). Delete the Constructor Options table and the method/uniform/stats tables. Replace the deleted setup spans with one cross-link line:
 
 ```mdx
 For setup, the render loop, post-processing, and disposal, see [Set up a Flatland scene](../flatland-setup/). For every constructor option and method, see the [`Flatland` API reference](/three-flatland/api/three-flatland/src/classes/flatland/).
@@ -101,6 +104,7 @@ git commit -m "docs: split Flatland concept from its setup how-to (Diátaxis)"
 ## Task 3: Split `guides/pass-effects.mdx` (How-to) — the worst offender
 
 **Files:**
+
 - Modify: `docs/src/content/docs/guides/pass-effects.mdx` (keep How-to only)
 - Modify: `docs/src/content/docs/guides/lighting-setup.mdx` (receive the DefaultLightEffect schema) OR link to its API page
 - Create (optional): `docs/src/content/docs/guides/effects.mdx` (Concept — the three effect layers)
@@ -141,6 +145,7 @@ git commit -m "docs: split pass-effects into a pure how-to; relocate node catalo
 ## Task 4: Trim `guides/batch-rendering.mdx` (Concept) to Explanation
 
 **Files:**
+
 - Modify: `docs/src/content/docs/guides/batch-rendering.mdx`
 - Modify (target): the how-to home for the optimization tips (a new `## Optimization` section appended to `guides/sprites.mdx`, or a short standalone — decide in Step 1)
 
@@ -152,7 +157,7 @@ Keep: "How It Works" + the interleaved-buffer-layout explanation + diagrams (the
 For every `SpriteGroup` constructor option, see the [`SpriteGroup` API reference](/three-flatland/api/three-flatland/src/classes/spritegroup/).
 ```
 
-- [ ] **Step 2: Relocate Optimization Tips.** Move the "Optimization Tips" (Share Materials / Atlases / Layers do-and-don't recipes) into a How-to home — append as a "## Optimizing batches" section in `guides/sprites.mdx` (the closest task page), or keep three sentences of *why* in batch-rendering and link out. Replace in batch-rendering with:
+- [ ] **Step 2: Relocate Optimization Tips.** Move the "Optimization Tips" (Share Materials / Atlases / Layers do-and-don't recipes) into a How-to home — append as a "## Optimizing batches" section in `guides/sprites.mdx` (the closest task page), or keep three sentences of _why_ in batch-rendering and link out. Replace in batch-rendering with:
 
 ```mdx
 For the practical do's and don'ts — sharing materials, atlasing, layer assignment — see [Optimizing batches](../sprites/#optimizing-batches).
@@ -176,32 +181,32 @@ Each guide keeps only the fields the task sets; the full table moves to the API 
 **Files + spans (cut the table, insert the link):**
 
 - [ ] **5a `guides/sprites.mdx`** — anchor-values table, the `lit/receiveShadows/castsShadow/shadowRadius` table, the Layers enum listing → `Sprite2D` + `Layers` API.
-  Link: `Full property reference: [`Sprite2D` API](/three-flatland/api/three-flatland/src/classes/sprite2d/).`
-  Verify + commit `docs: lift Sprite2D reference tables to the API page`.
+      Link: `Full property reference: [`Sprite2D` API](/three-flatland/api/three-flatland/src/classes/sprite2d/).`
+      Verify + commit `docs: lift Sprite2D reference tables to the API page`.
 
 - [ ] **5b `guides/animation.mdx`** — "Animation Set Definition" field enumeration → `AnimatedSprite2D` / `AnimationSetDefinition` API. Keep the playback recipes.
-  Verify + commit `docs: link animation-set reference to the API page`.
+      Verify + commit `docs: link animation-set reference to the API page`.
 
 - [ ] **5c `guides/loaders.mdx`** — Available Loaders table, Available Presets table, custom-data field table → API. Keep the per-loader task snippets.
-  Verify + commit `docs: lift loader reference tables to the API page`.
+      Verify + commit `docs: lift loader reference tables to the API page`.
 
 - [ ] **5d `guides/tilemaps.mdx`** — the `TileMapData` interface block → `TileMap2D`/types API.
-  Verify + commit `docs: link TileMapData interface to the API page`.
+      Verify + commit `docs: link TileMapData interface to the API page`.
 
 - [ ] **5e `guides/lighting-setup.mdx`** — the Light2D Properties table and the Presets table → `Light2D` + presets API (the exact smell named in the skill). Keep the per-type task snippets and the `type`-vs-`lightType` note.
-  Verify + commit `docs: lift Light2D properties table to the API page`.
+      Verify + commit `docs: lift Light2D properties table to the API page`.
 
 - [ ] **5f `guides/shadows-setup.mdx`** — the Tuning uniforms table → `DefaultLightEffect` API (already half-links to pass-effects/lighting).
-  Verify + commit `docs: link shadow tuning uniforms to the API page`.
+      Verify + commit `docs: link shadow tuning uniforms to the API page`.
 
 - [ ] **5g `guides/tsl-nodes.mdx`** — the node catalog (Sprite Sampling / Color / Effect / Retro sections) → `/three-flatland/api/nodes/src/`. Keep the 2-3 nodes the damage-flash/dissolve tasks call.
-  Verify + commit `docs: link the TSL node catalog to the nodes API`.
+      Verify + commit `docs: link the TSL node catalog to the nodes API`.
 
 - [ ] **5h `guides/skia.mdx`** (Experimental) — TRIM "Common Paint Props" and SkiaGroup props to the fields the shown shapes use; link the package README for the full surface (no generated API per Task 1).
-  Verify + commit `docs: trim skia reference tables to task-scoped fields`.
+      Verify + commit `docs: trim skia reference tables to task-scoped fields`.
 
 - [ ] **5i `guides/slug-text.mdx`** (Experimental) — TRIM SlugText Properties, Material Options, StyleSpan tables to task-scoped fields; link the README. Also add the missing "What you'll learn" intro block.
-  Verify + commit `docs: trim slug-text reference tables; add intro`.
+      Verify + commit `docs: trim slug-text reference tables; add intro`.
 
 Each sub-task: cut table → insert link/trim → `pnpm --filter=docs build` (exit 0) → re-read page passes How-to must-not → commit.
 
@@ -210,12 +215,13 @@ Each sub-task: cut table → insert link/trim → `pnpm --filter=docs build` (ex
 ## Task 6: Split `loaders.mdx`'s Baked Normal Pipeline (Explanation) out
 
 **Files:**
+
 - Modify: `docs/src/content/docs/guides/loaders.mdx`
 - Modify (target): `docs/src/content/docs/guides/baking.mdx` (How-to) and/or a Concept page
 
 The "Baked Normal Pipeline" section (atlas RGBA encoding, resolution-strategy internals, `forceRuntime` rationale, descriptor hashing) is Explanation living in a How-to.
 
-- [ ] **Step 1:** Move the *conceptual* prose (RGBA encoding, hashing, why `forceRuntime` exists) to a Concept location — either a new `## How baked normals work` section near the top of the existing Shadows/Lighting concept, or a short Concept page. Keep on `loaders.mdx` only the task: "load with `normals: true`."
+- [ ] **Step 1:** Move the _conceptual_ prose (RGBA encoding, hashing, why `forceRuntime` exists) to a Concept location — either a new `## How baked normals work` section near the top of the existing Shadows/Lighting concept, or a short Concept page. Keep on `loaders.mdx` only the task: "load with `normals: true`."
 
 - [ ] **Step 2:** Replace with: `For how the baked-normal pipeline works (atlas encoding, hashing, runtime vs baked), see [the baking guide](../baking/#how-it-works).`
 
@@ -228,6 +234,7 @@ The "Baked Normal Pipeline" section (atlas RGBA encoding, resolution-strategy in
 ## Task 7: Make example pages single-feature tutorials (get-it command + dual-framework build walkthrough)
 
 **Files:**
+
 - Modify: each `docs/src/content/docs/examples/*.mdx` prose slot
 - Modify: `docs/src/components/ExampleDetailLayout.astro` / `ExampleSplitView.astro` (surface the "get it" command)
 - Modify: `docs/src/content/docs/showcases/breakout.mdx`
@@ -244,10 +251,10 @@ The "Baked Normal Pipeline" section (atlas RGBA encoding, resolution-strategy in
   - **Target (separate subsystem — spec its own plan):** a first-party `three-flatland` / `create-three-flatland` CLI that pulls the isolated example into a freshly-`git init`'d, bootstrapped repo in one command (`npx three-flatland new basic-sprite --react`). This is NOT part of the docs restructure — note it as a companion feature; once it ships, swap the interim command for the first-party one.
 
 - [ ] **Step 2 — the build walkthrough (per example page).** Replace the API-inventory/option-table prose with a **guided "how it's built" tutorial**: ordered steps that walk the reader through the example's construction, focused on the **one prime feature**, with the Three.js and React variants behind the existing `syncKey="framework"` code-sample tabs (the runnable source + live demo already carry the result). Move any full option tables to the matching API page; add the missing example→guide/API cross-links on `basic-sprite`, `animation`, `knightmark`, `tilemap`. Align the `examples/lighting` snippet `viewSize` to the runnable `640`.
-  Commit per page or in one `docs: rebuild example pages as single-feature tutorials`.
+      Commit per page or in one `docs: rebuild example pages as single-feature tutorials`.
 
-- [ ] **Step 3 — showcases are Explanation.** `breakout.mdx` is a deep architecture walkthrough of a full game (collision math, ECS taxonomy, AI, third-party deps) — by Diátaxis that is **Explanation**, and the audit read it correctly. Keep the depth; do **not** split it or strip the architecture content. Work: make it read as a clear, well-structured *explanation* of how the game is built and why (systems, trade-offs, the role of the third-party deps), not a dry dump — and surface a "get it / play it" pointer (the playable build is the artifact it illuminates). Frontmatter/intro should orient it as "how this game is architected," not "follow along to build it." The showcase index stays an artifact gallery. (Note: depth and subject do not make a page a tutorial — form does; there is no "uber-tutorial" type.)
-  Commit `docs: shape breakout as an architecture explanation (keep the depth)`.
+- [ ] **Step 3 — showcases are Explanation.** `breakout.mdx` is a deep architecture walkthrough of a full game (collision math, ECS taxonomy, AI, third-party deps) — by Diátaxis that is **Explanation**, and the audit read it correctly. Keep the depth; do **not** split it or strip the architecture content. Work: make it read as a clear, well-structured _explanation_ of how the game is built and why (systems, trade-offs, the role of the third-party deps), not a dry dump — and surface a "get it / play it" pointer (the playable build is the artifact it illuminates). Frontmatter/intro should orient it as "how this game is architected," not "follow along to build it." The showcase index stays an artifact gallery. (Note: depth and subject do not make a page a tutorial — form does; there is no "uber-tutorial" type.)
+      Commit `docs: shape breakout as an architecture explanation (keep the depth)`.
 
 - [ ] **Step 4: Build + verify** (exit 0).
 
@@ -284,7 +291,7 @@ The "Baked Normal Pipeline" section (atlas RGBA encoding, resolution-strategy in
 
 **Spec coverage (audit P1 items → task):** flatland split → T2; pass-effects quadruple-mix + misfiled DefaultLightEffect → T3; batch-rendering trim → T4; sprites/animation/loaders/tilemaps/lighting-setup/shadows-setup/tsl-nodes/skia/slug-text table lifts → T5; loaders baked-normal Explanation → T6; example pages → single-feature tutorials (get-it command + dual-framework walkthrough) → T7; visuals/cross-link gaps → T8; nodes/devtools API targets → T1. All P1 + P2 findings mapped.
 
-**Type decisions (stakeholder-confirmed):** Examples are **Tutorials** (guided build of one prime feature, dual-framework, + a get-it command). Showcases are **Explanation** (how a full, shipped game is architected; depth and third-party deps are correct — that is what Explanation is for). The audit's instinct that `breakout` is Explanation was right; the interim "uber-tutorial" framing was wrong (no such Diátaxis type — form, not depth, sets the type). T7 Step 3 therefore keeps breakout's depth and shapes it as a clear architecture *explanation*, and does not split it.
+**Type decisions (stakeholder-confirmed):** Examples are **Tutorials** (guided build of one prime feature, dual-framework, + a get-it command). Showcases are **Explanation** (how a full, shipped game is architected; depth and third-party deps are correct — that is what Explanation is for). The audit's instinct that `breakout` is Explanation was right; the interim "uber-tutorial" framing was wrong (no such Diátaxis type — form, not depth, sets the type). T7 Step 3 therefore keeps breakout's depth and shapes it as a clear architecture _explanation_, and does not split it.
 
 **Known decisions deferred to execution (not placeholders — explicit forks):** T1 Step 1 (devtools in TypeDoc; skia/slug stay trimmed); T3 Step 3 (new `effects.mdx` vs fold into flatland); T4 Step 2 (tips home); T7 Step 1 (interim `degit` command now, first-party `three-flatland new` CLI as a separate companion subsystem). Each fork has a recommended option stated.
 

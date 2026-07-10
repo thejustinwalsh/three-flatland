@@ -17,7 +17,7 @@ Fork `pmndrs/uikit` into `@three-flatland/uikit`, ported to TSL node materials
 (WebGPU + WebGL2 via the common `Renderer`'s two backends — one shader graph, WGSL and
 GLSL ES 3.0; never the legacy `WebGLRenderer`). Replace its MSDF text renderer with
 `@three-flatland/slug`, and in the process migrate uikit's proven text layout engine
-*into* Slug so Slug becomes a complete standalone text engine. Route SVG rendering
+_into_ Slug so Slug becomes a complete standalone text engine. Route SVG rendering
 through a new Slug shape batch (analytic, instanced, zero render targets). Delivered as
 one PR on `feat/uikit-fork`, proven by uikit's use of Slug **and by a required
 three-flatland interop example** (§10).
@@ -51,7 +51,7 @@ findings **changed the design**:
 
 1. **`depth.ts` is not "collapsed by `castShadowNode`" — it is already dead under the
    new renderer, and `castShadowNode` is the wrong replacement.**
-   `customDepthMaterial` / `customDistanceMaterial` are referenced *nowhere* in
+   `customDepthMaterial` / `customDistanceMaterial` are referenced _nowhere_ in
    `three/src/renderers/common/` or the shadow node system — the common Renderer
    ignores them entirely. And `castShadowNode` requires the global
    `renderer.shadowMap.transmitted = true` flag (warns otherwise,
@@ -73,7 +73,7 @@ findings **changed the design**:
 
 3. **No catalog version bumps are needed.** `pnpm-workspace.yaml` already pins
    `@react-three/fiber: 10.0.0-alpha.2` (deliberately, with a canary-breakage comment)
-   and `three: ^0.183.1`. The fork *adds* catalog entries for new dependencies but
+   and `three: ^0.183.1`. The fork _adds_ catalog entries for new dependencies but
    bumps nothing.
 
 4. **uikit already accepts TTF fonts** via `src/loaders/ttf.ts` (runtime MSDF
@@ -97,7 +97,7 @@ Two load-bearing facts the research missed:
 **Q1 — mat4 instanced attributes (RESOLVED, no experiment needed).** Neither WGSL nor
 TSL's attribute system has matrix vertex attributes. three itself lowers
 `instanceMatrix` to **4 × vec4 lanes** over an `InstancedInterleavedBuffer` and
-recomposes `mat4(lane0, lane1, lane2, lane3)` in the node graph — on *both* backends
+recomposes `mat4(lane0, lane1, lane2, lane3)` in the node graph — on _both_ backends
 (`nodes/accessors/InstanceNode.js`, `_createInstanceMatrixNode`:
 `bufferFn(interleaved,'vec4',16,0|4|8|12)` → `mat4(...)`). The fork normalizes **all**
 mat4-shaped instance data (`aData`, `aClipping`, Slug's `glyphClip` and per-instance
@@ -107,8 +107,8 @@ one code path, proven by three's own instancing and by Slug's existing 5×vec4 d
 **Q2 — `fwidth` after non-uniform `discard` (RESOLVED, restructure + E3 compile
 check).** TSL's `Discard()` emits a raw `discard` expression on both builders
 (`nodes/utils/Discard.js:13`). In WGSL, `discard` has demote-to-helper semantics, so a
-*top-level* conditional discard followed by derivative calls is actually valid; the
-real WGSL hazard is a derivative call *lexically inside non-uniform control flow*
+_top-level_ conditional discard followed by derivative calls is actually valid; the
+real WGSL hazard is a derivative call _lexically inside non-uniform control flow_
 (uniformity analysis error). The design eliminates the question entirely: **all
 `fwidth` calls execute unconditionally**, clipping folds into a coverage multiply
 (uikit's per-iteration `discard` at `shader.ts:121` / `instanced-glyph-material.ts:66`
@@ -125,7 +125,7 @@ WGSL uniformity diagnostic.
 `castShadowNode` anywhere in the design). Residual: the shadow override material is
 compiled per RenderObject against the object's geometry, and `NodeMaterial.setup`
 runs the instancing path off `builder.object.isInstancedMesh` — so per-instance
-attributes *should* be available in the shadow pass. Not statically provable →
+attributes _should_ be available in the shadow pass. Not statically provable →
 experiment E2 with a silhouette pass/fail.
 
 **Q4 — per-instance clip cost vs batch granularity (RESOLVED: per-instance planes).**
@@ -251,7 +251,8 @@ Where the notices live in the fork:
 ```ts
 type NodeMaterialClass = { new (): NodeMaterial }
 function createPanelNodeMaterial<T extends NodeMaterialClass>(
-  MaterialClass: T, info: PanelMaterialInfo, // { type: 'instanced' } | { type: 'normal'; data: Float32Array }
+  MaterialClass: T,
+  info: PanelMaterialInfo // { type: 'instanced' } | { type: 'normal'; data: Float32Array }
 ): InstanceType<T>
 ```
 
@@ -291,13 +292,13 @@ f32); unpacking ports to TSL `floor`/`mod` arithmetic.
 
 ### 5.3 Node-slot mapping
 
-| upstream GLSL injection (shader.ts) | TSL |
-|---|---|
-| fragment prelude + `#include <clipping_planes_fragment>` replacement: corner SDF, border weights, 4-plane instanced clip loop with in-loop `discard` | one `Fn()` computing coverage; **all `fwidth` unconditional, clip = coverage multiply, no in-graph discard** (Q2); 4-corner selection as an `If`/`ElseIf` chain whose branches contain no derivative calls (corner distances computed before branching) |
-| `#include <color_fragment>` injection: writes `diffuseColor.rgb/.a` | `material.colorNode = vec4(mix(mix(mainColor, borderColor, borderMix), mainColor, transition), outOpacity)` — **alpha carries full coverage** so `_getShadowNodes` sees it (§2.1) |
-| `if (outOpacity < 0.01) discard` | `material.alphaTest = 0.01` (applies in main + shadow passes, emitted after all derivatives — Q2-safe) |
-| `#include <normal_fragment_maps>` injection: border-bend normal | `material.normalNode` — bent view-space normal from `tangentView`/`bitangentView` (panel geometry keeps its constant `tangent` attribute, `panel/geometry.ts`); no-op for unlit MeshBasicNodeMaterial; note `transformedNormalView` is deprecated r177+ (use `normalView`) |
-| `PanelDepthMaterial` / `PanelDistanceMaterial` (depth.ts) | **deleted** — `colorNode.a` + `alphaTest` give correct shadow silhouettes through `_getShadowNodes` (§2.1) |
+| upstream GLSL injection (shader.ts)                                                                                                                  | TSL                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| fragment prelude + `#include <clipping_planes_fragment>` replacement: corner SDF, border weights, 4-plane instanced clip loop with in-loop `discard` | one `Fn()` computing coverage; **all `fwidth` unconditional, clip = coverage multiply, no in-graph discard** (Q2); 4-corner selection as an `If`/`ElseIf` chain whose branches contain no derivative calls (corner distances computed before branching)                    |
+| `#include <color_fragment>` injection: writes `diffuseColor.rgb/.a`                                                                                  | `material.colorNode = vec4(mix(mix(mainColor, borderColor, borderMix), mainColor, transition), outOpacity)` — **alpha carries full coverage** so `_getShadowNodes` sees it (§2.1)                                                                                          |
+| `if (outOpacity < 0.01) discard`                                                                                                                     | `material.alphaTest = 0.01` (applies in main + shadow passes, emitted after all derivatives — Q2-safe)                                                                                                                                                                     |
+| `#include <normal_fragment_maps>` injection: border-bend normal                                                                                      | `material.normalNode` — bent view-space normal from `tangentView`/`bitangentView` (panel geometry keeps its constant `tangent` attribute, `panel/geometry.ts`); no-op for unlit MeshBasicNodeMaterial; note `transformedNormalView` is deprecated r177+ (use `normalView`) |
+| `PanelDepthMaterial` / `PanelDistanceMaterial` (depth.ts)                                                                                            | **deleted** — `colorNode.a` + `alphaTest` give correct shadow silhouettes through `_getShadowNodes` (§2.1)                                                                                                                                                                 |
 
 ### 5.4 `Fullscreen`
 
@@ -429,7 +430,7 @@ The core rendering uplift. Requirements derived from uikit's glyph pipeline
    sharing a font into one instanced mesh (glyph-group keyed by `Font`,
    `instanced-glyph-group.ts:11,41`). Per-Text meshes were considered and rejected: a
    kit dashboard easily holds 100+ Text nodes and "minimize draw calls" is a repo
-   constraint. Consequence: glyph instances from *differently-transformed* components
+   constraint. Consequence: glyph instances from _differently-transformed_ components
    share one mesh, so instances need **full per-instance transforms** —
    `glyphPos`'s position-only encoding cannot express uikit's
    `transformRotateX/Y/Z`-capable matrices.
@@ -453,11 +454,11 @@ The core rendering uplift. Requirements derived from uikit's glyph pipeline
 
    ```ts
    class SlugBatch /* duck-typed instanced Mesh over SlugGeometry-compatible buffers */ {
-     ensureCapacity(n: number): void            // grow-by-1.5×, copyWithin-preserving
-     writeGlyph(i, glyphId, font, opts): void   // opts: matrix, color, clip
-     writeRect(i, rect, opts): void             // rect sentinel (glyphJac.w < 0) — replaces
-                                                // MSDF renderSolid AND serves underline/strikethrough
-     copyWithin(target, start, end): void       // bucket compaction
+     ensureCapacity(n: number): void // grow-by-1.5×, copyWithin-preserving
+     writeGlyph(i, glyphId, font, opts): void // opts: matrix, color, clip
+     writeRect(i, rect, opts): void // rect sentinel (glyphJac.w < 0) — replaces
+     // MSDF renderSolid AND serves underline/strikethrough
+     copyWithin(target, start, end): void // bucket compaction
      count: number
    }
    ```
@@ -465,6 +466,7 @@ The core rendering uplift. Requirements derived from uikit's glyph pipeline
    Per-glyph color (attr exists; shader already multiplies it in,
    `SlugMaterial.ts:258-263`) is exposed through `writeGlyph` — zero shader work, as
    the audit predicted.
+
 4. `SlugText` (standalone) keeps the cheap path: no instance matrices, no clip attrs —
    both attribute groups are constructor-opt-in so existing users pay nothing.
 
@@ -494,7 +496,7 @@ Roadmap item #37 (`slug/README.md:185`), pulled into v1.
   De Casteljau split emitting exactly 2 quadratics — no recursion, no error metric.
   Adequate for em-normalized glyph outlines; **not** guaranteed for arbitrary SVG
   cubics rendered at icon-wall scale (long high-curvature segments will visibly
-  deviate). Design: `slug/svg` wraps the *same* converter in adaptive recursion —
+  deviate). Design: `slug/svg` wraps the _same_ converter in adaptive recursion —
   split while the max deviation between the cubic and its quadratic approximation
   exceeds a tolerance relative to the shape's viewBox (default 0.25% of the diagonal),
   with a depth cap. One converter, parameterized — honoring `packages/slug/CLAUDE.md`'s
@@ -518,7 +520,7 @@ Roadmap item #37 (`slug/README.md:185`), pulled into v1.
 
 There is **no dual-path text renderer**. Concretely: `text/render/**` (5 files) is
 replaced by the Slug-backed renderer; `text/font.ts`'s MSDF `Font` class dies — its
-layout-metric *contract* (`getGlyphInfo` em-unit fields + `getKerning`) survives as the
+layout-metric _contract_ (`getGlyphInfo` em-unit fields + `getKerning`) survives as the
 `SlugFont` metrics API (§6.2), while its render fields (`uvX/uvY/uvWidth/uvHeight`,
 `page`, `pageWidth/pageHeight`, `distanceRange`, `renderSolid`) die with it
 (`renderSolid`'s job is taken by the rect sentinel); `text/cache.ts`'s `loadFont` (one
@@ -527,7 +529,7 @@ atlas page + page image assert) is rewritten on `SlugFontLoader` (a
 `loaders/ttf.ts` and the `@pmndrs/msdfonts` / `@zappar/msdf-generator` dependencies are
 dropped.
 
-In the compat matrix this is the one *intentional* break, and the rationale belongs in
+In the compat matrix this is the one _intentional_ break, and the rationale belongs in
 the README verbatim: **an MSDF atlas has a fixed resolution ceiling; a world-space UI
 you can walk up to — or a HUD at arbitrary DPI — has none. Slug evaluates the glyph's
 actual Bézier curves analytically per fragment, so one font tree is exact at every
@@ -575,9 +577,9 @@ mechanism: `packages/react/src/build.tsx:22-24` builds
 The root `CLAUDE.md` rule ("optional constructor params, property setters,
 array-compatible setters") governs classes **this repo authors** — it is an ergonomic
 convention, not an R3F requirement, and root `CLAUDE.md` now states the ported-package
-exemption explicitly. Stakeholder ruling, verbatim: *"The uikit compatibility decision
+exemption explicitly. Stakeholder ruling, verbatim: _"The uikit compatibility decision
 overrides the constructor arg decision, it works fine in r3f, we keep their convention
-for uikit."* An agent "helpfully" normalizing a ported constructor to no-arg is
+for uikit."_ An agent "helpfully" normalizing a ported constructor to no-arg is
 breaking public API compatibility — this is named risk R8, and this subsection is its
 mitigation.
 
@@ -601,16 +603,16 @@ flatland LightEffects into panel materials is a named v2 idea, not v1 scope.
 The example's real function is **integration acceptance test** — each phase lights one
 row, and a row that cannot be lit means the phase did not land:
 
-| Example feature | Risk/uncertainty it retires | Lands with phase |
-|---|---|---|
-| Tilemap + Light2D base scene renders alongside an empty uikit Root | E1 duck-typed instancing, renderer co-existence | P0 |
-| `Fullscreen` HUD (score/health/FPS) | `pixelSize` mapping, `Renderer.getSize()` widening, §9.1 args construction | U1 |
-| World-space panel, `MeshStandardNodeMaterial`, casting a shadow | panel TSL port, shadow-via-`colorNode.a` (E2) | U1 |
-| Transparent UI over sprites | Q5 render order under the common renderer | U1 |
-| Zoomable text on the world panel | Slug resolution independence vs the MSDF it replaces | U2 |
-| Scroll container (quest log) | Q4/per-instance clipping — the hardest Slug gap | U2 |
-| lucide icons in the HUD | `SlugShapeBatch`, zero-render-target constraint, F2 adaptive cubics | U3 |
-| React twin of all of the above | Q7 r3f alpha `/webgpu`, `extend`/`args` | U4 |
+| Example feature                                                    | Risk/uncertainty it retires                                                | Lands with phase |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------- | ---------------- |
+| Tilemap + Light2D base scene renders alongside an empty uikit Root | E1 duck-typed instancing, renderer co-existence                            | P0               |
+| `Fullscreen` HUD (score/health/FPS)                                | `pixelSize` mapping, `Renderer.getSize()` widening, §9.1 args construction | U1               |
+| World-space panel, `MeshStandardNodeMaterial`, casting a shadow    | panel TSL port, shadow-via-`colorNode.a` (E2)                              | U1               |
+| Transparent UI over sprites                                        | Q5 render order under the common renderer                                  | U1               |
+| Zoomable text on the world panel                                   | Slug resolution independence vs the MSDF it replaces                       | U2               |
+| Scroll container (quest log)                                       | Q4/per-instance clipping — the hardest Slug gap                            | U2               |
+| lucide icons in the HUD                                            | `SlugShapeBatch`, zero-render-target constraint, F2 adaptive cubics        | U3               |
+| React twin of all of the above                                     | Q7 r3f alpha `/webgpu`, `extend`/`args`                                    | U4               |
 
 Conventions (all hard requirements — see plan "Build-system facts"): example **pair**
 `examples/three/uikit-hud/` + `examples/react/uikit-hud/` scaffolded from
@@ -628,19 +630,19 @@ constructor signatures** (§9.1) — Container, Content, Custom, Image, Input, R
 Text, Textarea, Video, Fullscreen; the properties/classes/signals system (zod schemas,
 conditional props, `md`/`hover` etc.); yoga flexbox layout incl. `measureFunc` rounding;
 scroll/overflow semantics; event system (`@pmndrs/pointer-events`);
-`reversePainterSortStable` (and it is now the common renderer's *default* transparent
+`reversePainterSortStable` (and it is now the common renderer's _default_ transparent
 sort — Q5); `CaretTransformation`/`SelectionTransformation` types; kits/icons component
 APIs; `FontFamilies` property shape; TTF font URLs (§2.4).
 
 **Naturally upgraded (forced by three/WebGPU/r3f):**
 
-| API | upstream | fork |
-|---|---|---|
-| `panelMaterialClass` | `Material` classes (Basic/Phong/Physical…) | `NodeMaterial` classes (`Mesh*NodeMaterial`); default `MeshBasicNodeMaterial` |
-| `GlassMaterial` / `MetalMaterial` / `PlasticMaterial` aliases | WebGL material classes | corresponding NodeMaterial classes |
-| `Fullscreen(renderer)` | `WebGLRenderer` | `Renderer` (common base; WebGPURenderer incl. forceWebGL) — signature otherwise identical |
-| react peer | `@react-three/fiber >= 8` | `10.0.0-alpha.2` (catalog pin) |
-| three peer | `>= 0.162` | `>= 0.183` (common-renderer maturity; NodeMaterial slot surface) |
+| API                                                           | upstream                                   | fork                                                                                      |
+| ------------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `panelMaterialClass`                                          | `Material` classes (Basic/Phong/Physical…) | `NodeMaterial` classes (`Mesh*NodeMaterial`); default `MeshBasicNodeMaterial`             |
+| `GlassMaterial` / `MetalMaterial` / `PlasticMaterial` aliases | WebGL material classes                     | corresponding NodeMaterial classes                                                        |
+| `Fullscreen(renderer)`                                        | `WebGLRenderer`                            | `Renderer` (common base; WebGPURenderer incl. forceWebGL) — signature otherwise identical |
+| react peer                                                    | `@react-three/fiber >= 8`                  | `10.0.0-alpha.2` (catalog pin)                                                            |
+| three peer                                                    | `>= 0.162`                                 | `>= 0.183` (common-renderer maturity; NodeMaterial slot surface)                          |
 
 **Broken (enumerated, each argued):**
 
@@ -689,26 +691,26 @@ APIs; `FontFamilies` property shape; TTF font URLs (§2.4).
 
 ### 13.1 Phase-0 experiments (unverifiable statically — hard pass/fail)
 
-| # | Experiment | Pass criterion |
-|---|---|---|
-| E1 | Duck-typed `isInstancedMesh` mesh (Mesh subclass + `instanceMatrix` attr + count) with a NodeMaterial reading interleaved vec4-lane mat4 attrs | Renders N distinct instances on WebGPU **and** forceWebGL; no warnings; instance update via `addUpdateRange` visible next frame |
-| E2 | Rounded-corner coverage in `colorNode.a` + `alphaTest` on an instanced duck-typed mesh, casting shadows | Directional-light shadow silhouette matches main-pass silhouette (screenshot diff); per-instance attrs readable in shadow pass; point-light variant recorded pass/fail |
-| E3 | Panel coverage graph (unconditional `fwidth`, coverage-multiply clip, `If/ElseIf` corners) compiled on both backends | Compiles clean — zero WGSL uniformity diagnostics, zero GLSL warnings; renders AA'd rounded corners identically (tolerance diff) |
-| E4 | `packages/uikit` vitest (flex specs exercising yoga's published TS + inlined WASM) + example dev boot | Flex specs green under our vitest; example renders a yoga-laid-out container on both backends; else flip to `noExternal: ['yoga-layout']` and re-run |
+| #   | Experiment                                                                                                                                     | Pass criterion                                                                                                                                                         |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1  | Duck-typed `isInstancedMesh` mesh (Mesh subclass + `instanceMatrix` attr + count) with a NodeMaterial reading interleaved vec4-lane mat4 attrs | Renders N distinct instances on WebGPU **and** forceWebGL; no warnings; instance update via `addUpdateRange` visible next frame                                        |
+| E2  | Rounded-corner coverage in `colorNode.a` + `alphaTest` on an instanced duck-typed mesh, casting shadows                                        | Directional-light shadow silhouette matches main-pass silhouette (screenshot diff); per-instance attrs readable in shadow pass; point-light variant recorded pass/fail |
+| E3  | Panel coverage graph (unconditional `fwidth`, coverage-multiply clip, `If/ElseIf` corners) compiled on both backends                           | Compiles clean — zero WGSL uniformity diagnostics, zero GLSL warnings; renders AA'd rounded corners identically (tolerance diff)                                       |
+| E4  | `packages/uikit` vitest (flex specs exercising yoga's published TS + inlined WASM) + example dev boot                                          | Flex specs green under our vitest; example renders a yoga-laid-out container on both backends; else flip to `noExternal: ['yoga-layout']` and re-run                   |
 
 ### 13.2 Standing risks
 
-| # | Risk | Exposure | Mitigation |
-|---|---|---|---|
-| R1 | Duck-typed instancing breaks beyond the verified guards | Panels + text + shapes | E1 before fan-out; fallback: real `InstancedMesh` subclass with shims |
-| R2 | Per-instance matrix × Slug dilation Jacobian — hardest shader change; errors show as blurry/fat glyphs at odd transforms | Cross-component text batching | Isolated example + AA screenshot fixtures at rotations/scales; **authorized fallback D4: per-Text-component meshes** (explicit stakeholder deferral if taken) |
-| R3 | Point-light (distance) shadows and ClippingContext/`clipShadows` in shadow passes not fully verifiable from source | Image/panel shadows in lit scenes | E2 records it; if broken upstream in three, scope v1 shadows to directional/spot with documented limitation |
-| R4 | MSDF-baseline vs Slug-ascender metric conversion shifts text vertically | Every Text node | Baseline math defined once in `slug/layout`; parity fixtures assert line boxes; visual diff vs upstream on the same TTF |
-| R5 | r3f `10.0.0-alpha.2` drift vs upstream react code written for r8/r9 | 693-LOC react package | Q7 verified `extend`/`args` survive; port phase isolates the rest; divergences land in §11, never silently |
-| R6 | SlugText/SlugStackText migration onto the new layout engine balloons | Slug phase | Compat wrappers ship regardless; migration is its own gated phase |
-| R7 | Unverified prior claim (accepted, not re-proven): Skia's compiled shaper is primitive-only | None in v1 — Slug is the only text engine | Re-verify only if the v2 Skia escape hatch is exercised; Skia guidance owned by PR #172 |
-| R8 | An implementing agent "fixes" a ported constructor to no-arg per the repo convention, silently breaking API compat | Every uikit class; fleet execution amplifies it | §9.1 carve-out (mirrored in root `CLAUDE.md`); U-phase acceptance includes a signature-diff check against upstream `.d.ts` |
-| R9 | Fixed t=0.5 cubic split too coarse for SVG at scale (F2 caveat) | Icon rendering fidelity | Adaptive recursion in `slug/svg` (§7) with an error-bound unit test; lucide corpus screenshot sampling |
+| #   | Risk                                                                                                                     | Exposure                                        | Mitigation                                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | Duck-typed instancing breaks beyond the verified guards                                                                  | Panels + text + shapes                          | E1 before fan-out; fallback: real `InstancedMesh` subclass with shims                                                                                         |
+| R2  | Per-instance matrix × Slug dilation Jacobian — hardest shader change; errors show as blurry/fat glyphs at odd transforms | Cross-component text batching                   | Isolated example + AA screenshot fixtures at rotations/scales; **authorized fallback D4: per-Text-component meshes** (explicit stakeholder deferral if taken) |
+| R3  | Point-light (distance) shadows and ClippingContext/`clipShadows` in shadow passes not fully verifiable from source       | Image/panel shadows in lit scenes               | E2 records it; if broken upstream in three, scope v1 shadows to directional/spot with documented limitation                                                   |
+| R4  | MSDF-baseline vs Slug-ascender metric conversion shifts text vertically                                                  | Every Text node                                 | Baseline math defined once in `slug/layout`; parity fixtures assert line boxes; visual diff vs upstream on the same TTF                                       |
+| R5  | r3f `10.0.0-alpha.2` drift vs upstream react code written for r8/r9                                                      | 693-LOC react package                           | Q7 verified `extend`/`args` survive; port phase isolates the rest; divergences land in §11, never silently                                                    |
+| R6  | SlugText/SlugStackText migration onto the new layout engine balloons                                                     | Slug phase                                      | Compat wrappers ship regardless; migration is its own gated phase                                                                                             |
+| R7  | Unverified prior claim (accepted, not re-proven): Skia's compiled shaper is primitive-only                               | None in v1 — Slug is the only text engine       | Re-verify only if the v2 Skia escape hatch is exercised; Skia guidance owned by PR #172                                                                       |
+| R8  | An implementing agent "fixes" a ported constructor to no-arg per the repo convention, silently breaking API compat       | Every uikit class; fleet execution amplifies it | §9.1 carve-out (mirrored in root `CLAUDE.md`); U-phase acceptance includes a signature-diff check against upstream `.d.ts`                                    |
+| R9  | Fixed t=0.5 cubic split too coarse for SVG at scale (F2 caveat)                                                          | Icon rendering fidelity                         | Adaptive recursion in `slug/svg` (§7) with an error-bound unit test; lucide corpus screenshot sampling                                                        |
 
 ## 14. Stakeholder decision points
 
@@ -719,11 +721,11 @@ APIs; `FontFamilies` property shape; TTF font URLs (§2.4).
   deleting is a breaking change to a published package. **Recommend: delete in this
   PR** with a breaking-change commit marker. The internal `SkiaCanvas`
   `WebGLRenderTarget → RenderTarget` swap is safe and ships regardless (and is now
-  mandated by root `CLAUDE.md`'s no-carve-out audit note). *Needs sign-off.*
+  mandated by root `CLAUDE.md`'s no-carve-out audit note). _Needs sign-off._
 - **D2 — horizon kit deferral** (§3). Licensing is clean (F1); this is purely scope.
-  Recommend defer. *Needs sign-off (acceptance-criteria gate).*
+  Recommend defer. _Needs sign-off (acceptance-criteria gate)._
 - **D3 — default font shipping**: baked Inter `.slug.glb` (≤ 1.5 MB budget, documented
   Unicode subset) vs runtime-shaped TTF fetch. Recommend baked; budget measured during
-  U2 with the fallback pre-agreed. *Sign-off on the budget.*
+  U2 with the fallback pre-agreed. _Sign-off on the budget._
 - **D4 — R2 fallback authorization**: if per-instance-matrix dilation slips, ship
-  per-Text-component batching in v1 (documented perf deferral). *Pre-authorize or not.*
+  per-Text-component batching in v1 (documented perf deferral). _Pre-authorize or not._

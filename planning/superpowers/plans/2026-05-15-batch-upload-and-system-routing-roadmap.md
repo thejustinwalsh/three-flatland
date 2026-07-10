@@ -12,10 +12,10 @@
 
 Four orthogonal axes of batch behavior:
 
-|                    | Moving sprites           | Static sprites             |
-|--------------------|---------------------------|----------------------------|
-| **Sorted batch**   | y-sort top-down, batch-demo placement | UI panels with alpha       |
-| **AlphaTest batch**| knightmark (GPU depth)    | tilemaps, large static fields |
+|                     | Moving sprites                        | Static sprites                |
+| ------------------- | ------------------------------------- | ----------------------------- |
+| **Sorted batch**    | y-sort top-down, batch-demo placement | UI panels with alpha          |
+| **AlphaTest batch** | knightmark (GPU depth)                | tilemaps, large static fields |
 
 These four cells share data layout (SoA traits, instanced GPU buffers) but want different update strategies. The plan covers the data structure (bucketed dirty tracking), the ECS routing (which systems touch which batches), and the decision metric (computed inline during writes — no extra walks, no allocations).
 
@@ -42,27 +42,27 @@ Per phase, record at: **1k, 5k, 10k, 20k, 30k, 50k** sprites. Two scenes:
 
 For each scene + count, record:
 
-| System | Target |
-|---|---|
-| `batchAssignSystem` | < 0.1 ms steady-state |
-| `batchSortSystem` | < 0.5 ms at 50k |
-| `transformSyncSystem` | < 5 ms at 50k |
-| `bufferSync*` | gone (Phase 3+) |
-| `_flushDirtyRanges` | < 1 ms at 50k |
+| System                | Target                |
+| --------------------- | --------------------- |
+| `batchAssignSystem`   | < 0.1 ms steady-state |
+| `batchSortSystem`     | < 0.5 ms at 50k       |
+| `transformSyncSystem` | < 5 ms at 50k         |
+| `bufferSync*`         | gone (Phase 3+)       |
+| `_flushDirtyRanges`   | < 1 ms at 50k         |
 
 ---
 
 ## Phases
 
-| Phase | Status | Win |
-|---|---|---|
-| 0 — Baseline + harness | ⬜ | calibration |
-| 1 — `BucketedDirtyTracker` | ⬜ | tight uploads on pre-allocated batches |
-| 2 — Sprite2D batch cache | ⬜ | plumbing for direct writes |
-| 3 — Direct-write setters (UV / color / flip / alpha) | ⬜ | drops bufferSync systems |
-| 4 — `dirtyBatchSet` replaces `Changed(SpriteZIndex)` | ⬜ | drops Koota Changed from hot path |
-| 5 — Threshold calibration | ⬜ | tune per-attribute |
-| 6 (stretch) — Per-batch system routing via ECS | ⬜ | static batches skip transform sync |
+| Phase                                                | Status | Win                                    |
+| ---------------------------------------------------- | ------ | -------------------------------------- |
+| 0 — Baseline + harness                               | ⬜     | calibration                            |
+| 1 — `BucketedDirtyTracker`                           | ⬜     | tight uploads on pre-allocated batches |
+| 2 — Sprite2D batch cache                             | ⬜     | plumbing for direct writes             |
+| 3 — Direct-write setters (UV / color / flip / alpha) | ⬜     | drops bufferSync systems               |
+| 4 — `dirtyBatchSet` replaces `Changed(SpriteZIndex)` | ⬜     | drops Koota Changed from hot path      |
+| 5 — Threshold calibration                            | ⬜     | tune per-attribute                     |
+| 6 (stretch) — Per-batch system routing via ECS       | ⬜     | static batches skip transform sync     |
 
 ---
 
@@ -83,6 +83,7 @@ Bake current numbers into the plan as a reference. No code changes.
 Drop-in replacement for per-attribute `_dirtyMin`/`_dirtyMax` on `SpriteBatch`. Same external API (`writeUV(slot, ...)` etc.); the tracker handles dirty bookkeeping and flush strategy internally.
 
 **Files:**
+
 - New: `packages/three-flatland/src/pipeline/BucketedDirtyTracker.ts`
 - Modify: `packages/three-flatland/src/pipeline/SpriteBatch.ts`
 
@@ -91,19 +92,19 @@ Drop-in replacement for per-attribute `_dirtyMin`/`_dirtyMax` on `SpriteBatch`. 
 ```ts
 // BucketedDirtyTracker.ts
 export class BucketedDirtyTracker {
-  private bucketState: Int32Array     // -1 = clean; else = first dirty slot in bucket
-  private bucketLastSlot: Int32Array  // last dirty slot in bucket
+  private bucketState: Int32Array // -1 = clean; else = first dirty slot in bucket
+  private bucketLastSlot: Int32Array // last dirty slot in bucket
   private bucketDirtyCount = 0
-  private readonly bucketShift: number  // log2(bucketSize)
+  private readonly bucketShift: number // log2(bucketSize)
   private readonly bucketCount: number
-  private readonly stride: number       // floats per slot
+  private readonly stride: number // floats per slot
 
   constructor(
     private readonly attr: InstancedBufferAttribute,
     maxSize: number,
     bucketSize: number,
     stride: number,
-    private readonly fullThreshold: number,
+    private readonly fullThreshold: number
   ) {
     this.bucketShift = Math.log2(bucketSize)
     this.bucketCount = Math.ceil(maxSize / bucketSize)
@@ -171,6 +172,7 @@ flushDirtyRanges(): void {
 **Bucket sizes**: default 256 across attributes. Power-of-2 so `>>> shift` works.
 
 **Tasks:**
+
 - [ ] **1.1** Implement `BucketedDirtyTracker` with the API above + unit tests covering: empty flush, single-bucket dirty, all-buckets dirty (full upload), scattered ranges across buckets.
 - [ ] **1.2** Migrate `SpriteBatch` to use one `BucketedDirtyTracker` per attribute. Replace every `_xDirtyMin` / `_xDirtyMax` site. `swapSlots` calls `markDirty(a)` and `markDirty(b)` per attribute.
 - [ ] **1.3** Run `pnpm test` — every existing batch test must still pass.
@@ -179,6 +181,7 @@ flushDirtyRanges(): void {
 **Expected outcome:** at full-dirty extreme, neutral perf (threshold trips → full upload, same as today). At pre-allocated-batch-with-rolling-churn, measurable reduction in upload bytes.
 
 **Alternative if Phase 1 regresses anything:**
+
 - The bucket walk in `flush` is the only added work in the worst case. If it shows in a profile, raise default `fullThreshold` to ~5 so we fall into full-upload sooner; only attrs with very sparse writes benefit from bucketed.
 - If `Int32Array` allocation per batch is a startup cost concern, pool trackers across batches in `BatchRegistry`.
 
@@ -199,6 +202,7 @@ class Sprite2D extends Mesh {
 ```
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/sprites/Sprite2D.ts` (declare fields)
 - Modify: `packages/three-flatland/src/ecs/systems/batchAssignSystem.ts` (populate after slot alloc)
 - Modify: `packages/three-flatland/src/ecs/systems/batchReassignSystem.ts` (update on cross-batch move)
@@ -221,6 +225,7 @@ sprite._batchIdx = -1
 ```
 
 **Tasks:**
+
 - [ ] **2.1** Add fields, populate at assign, clear at remove, update at reassign.
 - [ ] **2.2** Add invariant test: post-assign, `sprite._batchMesh.allocateSlot()`'s returned slot matches `sprite._batchSlot`. Post-remove, all three fields are reset.
 - [ ] **2.3** Re-run perf — should be neutral (no hot-path change yet).
@@ -234,6 +239,7 @@ sprite._batchIdx = -1
 Skip the Koota Changed roundtrip for UV / color / flip / alpha. Setters write directly to the cached batch mesh.
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/sprites/Sprite2D.ts` (setters)
 - Modify: `packages/three-flatland/src/pipeline/SpriteGroup.ts` (drop deleted systems from `_runSystems`)
 - Delete: the body of `bufferSyncColorSystem`, `bufferSyncFlipSystem` (keep exports as no-op for one release, then drop entirely)
@@ -294,6 +300,7 @@ setFrame(frame: SpriteFrame): this {
 Keep `bufferSyncEffectSystem` for now — effect param changes are more rare and the per-field plumbing is complex. Revisit in a follow-up.
 
 **Tasks:**
+
 - [ ] **3.1** Migrate `setFrame` (UV).
 - [ ] **3.2** Migrate `tint` / `alpha` (color).
 - [ ] **3.3** Migrate `flipX` / `flipY` / `flip()` (flip).
@@ -303,6 +310,7 @@ Keep `bufferSyncEffectSystem` for now — effect param changes are more rare and
 - [ ] **3.7** Re-measure. `transformSyncSystem` should drop. `bufferSyncColorSystem` and `bufferSyncFlipSystem` are gone.
 
 **Alternative if a setter path breaks visually:**
+
 - For the broken setter only: keep `entity.set(...)` alongside the direct write. The bufferSync system stays for that one trait until the direct path is verified. Incremental migration.
 - For animation issue (UV write happens but animation looks wrong): verify `setFrame` is being called on the actual sprite, not a clone. `AnimatedSprite2D.update()` is the caller — check it goes through `setFrame`.
 
@@ -315,6 +323,7 @@ Keep `bufferSyncEffectSystem` for now — effect param changes are more rare and
 Drop Koota Changed for the sort path. Registry holds the dirty signal directly.
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/ecs/traits.ts` (add `dirtyBatchSet: Set<number>` to `BatchRegistry`)
 - Modify: `packages/three-flatland/src/sprites/Sprite2D.ts` (zIndex setter)
 - Modify: `packages/three-flatland/src/ecs/systems/batchSortSystem.ts` (read Set, no Changed query)
@@ -361,6 +370,7 @@ export function batchSortSystem(world: World): void {
 The whole "Pass 0 / Pass 1 / Pass 2" structure collapses. No Changed query, no full-world IsBatched walk to filter, no gate precompute (the setter handles gating).
 
 **Tasks:**
+
 - [ ] **4.1** Add `dirtyBatchSet` to `BatchRegistry` trait + initialize in `SpriteGroup.world` getter.
 - [ ] **4.2** Cache `_dirtyBatchSetRef: Set<number> | null` on Sprite2D at assign time.
 - [ ] **4.3** Rewrite `zIndex` setter to use the cached set.
@@ -371,6 +381,7 @@ The whole "Pass 0 / Pass 1 / Pass 2" structure collapses. No Changed query, no f
 - [ ] **4.8** Re-measure. `batchSortSystem` cost should be proportional to N_dirty_batches, not N_changed_entities.
 
 **Alternative if sort timing has issues:**
+
 - Dual-track mode (dev only): populate both the Set AND fire the old `entity.set(SpriteZIndex, ...)`. Run both queries. Assert the same batches are flagged. Drop dual-track once verified across a few sessions.
 
 **Human gate:** verify batch-demo placement preserves correct y-sort order across many placements + removals + re-placements.
@@ -382,12 +393,14 @@ The whole "Pass 0 / Pass 1 / Pass 2" structure collapses. No Changed query, no f
 The `BucketedDirtyTracker.fullThreshold` is currently a guess (30 for matrix/UV, 10 for color/flip). Calibrate against the real distribution.
 
 **Tasks:**
+
 - [ ] **5.1** Add a per-tracker telemetry hook: count how many flushes go to "full" vs "ranged" per attribute per frame. Surface to the stats panel.
 - [ ] **5.2** Sweep thresholds (5, 10, 20, 30, 50) in knightmark and batch-demo at 5k / 20k / 50k. Record best per attribute.
 - [ ] **5.3** Set defaults in `SpriteBatch` constructor. Document the calibration scene + reasoning inline.
 - [ ] **5.4** Optional: expose threshold as a constructor option on `SpriteGroup` for advanced users to override per-renderer.
 
 **Alternative if threshold tuning yields <5% improvement:**
+
 - Hard-code a sensible default (say 16 for everything) and don't ship the override option. Less surface area.
 
 **Human gate:** final perf numbers. Update the `## Baseline` and `## Final` sections of this doc.
@@ -422,12 +435,14 @@ This rebuilds `transformSyncSystem` from "walk all batched entities" to "walk pe
 **Catch:** for the common case (single material, all batches behave the same), per-batch iteration adds overhead. Only worth it when scenes are heterogeneous.
 
 **Tasks (only if Phase 5 falls short of the 60k target):**
+
 - [ ] **6.1** Profile a mixed scene — knightmark sprites + a static tilemap batch — to confirm per-batch routing pays off.
 - [ ] **6.2** If yes: implement the `BatchBehavior` trait + per-batch system rewrites.
 - [ ] **6.3** If no: skip; document that homogeneous scenes don't benefit and per-batch routing is premature.
 
 **Alternative if profiling shows no win:**
-- Skip Phase 6 entirely. The per-batch gate at the *material* level (Phase 0's alphaTest gate, already shipped) covers the practical case; full ECS-level routing is over-engineered for current workloads.
+
+- Skip Phase 6 entirely. The per-batch gate at the _material_ level (Phase 0's alphaTest gate, already shipped) covers the practical case; full ECS-level routing is over-engineered for current workloads.
 
 **Human gate:** profile before any implementation. Don't build infrastructure for problems you don't have.
 
@@ -436,6 +451,7 @@ This rebuilds `transformSyncSystem` from "walk all batched entities" to "walk pe
 ## Self-review
 
 **Constraints honored:**
+
 - No hot-path allocations: tracker buckets are typed arrays sized at batch construction.
 - Cheap runtime decisions: threshold check is a single integer compare in flush.
 - ECS-clean: Koota stays authoritative for entity lifecycle + rare-change traits; buffer dirty tracking is mesh-internal.

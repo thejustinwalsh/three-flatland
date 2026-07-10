@@ -70,6 +70,7 @@ vitest.workspace.ts                              # + docs/vitest.config.ts (T1)
 ### Task 1: Foundation — dependency, page shell, deck CSS, test wiring
 
 **Files:**
+
 - Modify: `docs/package.json` (add `reveal.js`)
 - Create: `docs/vitest.config.ts`
 - Modify: `vitest.workspace.ts` (repo root)
@@ -77,19 +78,24 @@ vitest.workspace.ts                              # + docs/vitest.config.ts (T1)
 - Create: `docs/src/pages/slides/make-web-games.astro`
 
 **Interfaces:**
+
 - Produces: a reachable route `/slides/make-web-games` rendering a placeholder island; a docs Vitest project so `docs/src/components/**/*.test.ts` run under `pnpm test`.
 
 - [ ] **Step 1: Add reveal.js and anime.js dependencies**
 
 In `docs/package.json` `dependencies`, add (keep alphabetical near other deps):
+
 ```json
 "animejs": "^4.5.0",
 "reveal.js": "^5.1.0"
 ```
+
 Also add the anime.js types to `devDependencies` if not bundled:
+
 ```json
 "@types/animejs": "^4.0.0"
 ```
+
 Run: `pnpm install`
 Expected: installs `animejs` and `reveal.js` into `docs`. Note: anime.js v4 ships its
 own types — verify with `ls docs/node_modules/animejs/types* docs/node_modules/animejs/*.d.ts`;
@@ -98,6 +104,7 @@ if present, omit `@types/animejs`.
 - [ ] **Step 2: Create docs Vitest project**
 
 Create `docs/vitest.config.ts`:
+
 ```ts
 import { defineConfig } from 'vitest/config'
 
@@ -113,6 +120,7 @@ export default defineConfig({
 - [ ] **Step 3: Register docs project in the workspace**
 
 In `vitest.workspace.ts`, add `'docs/vitest.config.ts'` to the array:
+
 ```ts
 import { defineWorkspace } from 'vitest/config'
 
@@ -126,9 +134,11 @@ export default defineWorkspace([
 - [ ] **Step 4: Create the deck stylesheet**
 
 Create `docs/src/styles/deck.css`:
+
 ```css
 /* Deck layout: the R3F scene is a fixed backdrop; reveal sits over it, transparent. */
-html, body {
+html,
+body {
   margin: 0;
   height: 100%;
   background: var(--surface-0, #111418);
@@ -143,9 +153,19 @@ html, body {
 }
 
 /* reveal.js base ships its own .reveal sizing; make it transparent so the scene shows through. */
-.reveal-root { position: fixed; inset: 0; z-index: 1; }
-.reveal, .reveal .slides, .reveal .slides section { background: transparent !important; }
-.reveal .slides { text-align: left; }
+.reveal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+.reveal,
+.reveal .slides,
+.reveal .slides section {
+  background: transparent !important;
+}
+.reveal .slides {
+  text-align: left;
+}
 
 /* Bold-minimalist type defaults for slide content. */
 .reveal .slides section {
@@ -156,6 +176,7 @@ html, body {
 - [ ] **Step 5: Create the standalone page shell (placeholder island)**
 
 Create `docs/src/pages/slides/make-web-games.astro`:
+
 ```astro
 ---
 // Standalone, unlinked deck page. Bypasses the Starlight layout entirely.
@@ -201,10 +222,12 @@ git commit -m "feat(slides): scaffold standalone make-web-games deck page + deck
 ### Task 2: Presentation store
 
 **Files:**
+
 - Create: `docs/src/components/deck/presentationStore.ts`
 - Test: `docs/src/components/deck/presentationStore.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - `type DeckPosition = { slideIndex: number; fragment: number }`
   - `getPosition(): DeckPosition`
@@ -215,6 +238,7 @@ git commit -m "feat(slides): scaffold standalone make-web-games deck page + deck
 - [ ] **Step 1: Write the failing test**
 
 Create `docs/src/components/deck/presentationStore.test.ts`:
+
 ```ts
 import { describe, it, expect, vi } from 'vitest'
 import { getPosition, setPosition, subscribe } from './presentationStore'
@@ -252,6 +276,7 @@ Expected: FAIL (module not found / exports undefined).
 - [ ] **Step 3: Implement the store**
 
 Create `docs/src/components/deck/presentationStore.ts`:
+
 ```ts
 import { useSyncExternalStore } from 'react'
 
@@ -299,10 +324,12 @@ git commit -m "feat(deck): add presentation position store"
 ### Task 3: Scene beat type + resolver
 
 **Files:**
+
 - Create: `docs/src/components/deck/beats.ts`
 - Test: `docs/src/components/deck/beats.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - `type CameraPose = { position: [number, number, number]; lookAt: [number, number, number]; zoom: number }`
   - `type SceneBeat = { camera: CameraPose }` (decks may extend with extra fields)
@@ -311,6 +338,7 @@ git commit -m "feat(deck): add presentation position store"
 - [ ] **Step 1: Write the failing test**
 
 Create `docs/src/components/deck/beats.test.ts`:
+
 ```ts
 import { describe, it, expect } from 'vitest'
 import { resolveBeat, type SceneBeat } from './beats'
@@ -344,6 +372,7 @@ Expected: FAIL (module not found).
 - [ ] **Step 3: Implement beats**
 
 Create `docs/src/components/deck/beats.ts`:
+
 ```ts
 export type CameraPose = {
   position: [number, number, number]
@@ -379,10 +408,12 @@ git commit -m "feat(deck): add scene beat type and resolver"
 ### Task 4: DeckCanvas + SceneDirector
 
 **Files:**
+
 - Create: `docs/src/components/deck/DeckCanvas.tsx`
 - Create: `docs/src/components/deck/SceneDirector.tsx`
 
 **Interfaces:**
+
 - Consumes: `usePosition` (T2), `resolveBeat`, `SceneBeat` (T3).
 - Produces:
   - `DeckCanvas({ children }: { children: ReactNode })` — fixed fullscreen WebGPU `<Canvas>`.
@@ -396,6 +427,7 @@ Create `docs/src/components/deck/SceneDirector.tsx`. On each slide change, anime
 tweens the camera position; R3F's render loop keeps the camera oriented at the beat's
 look target. The side-effect adapter import makes `camera` (a three.js object) a valid
 `animate()` target.
+
 ```tsx
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber/webgpu'
@@ -430,6 +462,7 @@ export function SceneDirector({ beats }: { beats: readonly SceneBeat[] }) {
   return null
 }
 ```
+
 Note: the three adapter maps `x`/`y`/`z` to `camera.position` (per the docs example
 `animate(mesh, { x: 5 })`). If `astro check` reports the animate return type lacks
 `.pause()`, consult the installed `animejs` types and use the documented stop/pause
@@ -438,6 +471,7 @@ method name — do not delete the cleanup.
 - [ ] **Step 2: Implement DeckCanvas**
 
 Create `docs/src/components/deck/DeckCanvas.tsx`:
+
 ```tsx
 import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber/webgpu'
@@ -473,6 +507,7 @@ git commit -m "feat(deck): add R3F canvas and slide-synced scene director"
 ### Task 5: Typography primitives
 
 **Files:**
+
 - Create: `docs/src/components/deck/primitives/Slide.tsx`
 - Create: `docs/src/components/deck/primitives/Eyebrow.tsx`
 - Create: `docs/src/components/deck/primitives/Headline.tsx`
@@ -481,6 +516,7 @@ git commit -m "feat(deck): add R3F canvas and slide-synced scene director"
 - Create: `docs/src/components/deck/primitives/index.ts`
 
 **Interfaces:**
+
 - Produces presentational components (no store dependency):
   - `Slide({ children }: { children: ReactNode })` → `<section>` with padding wrapper (reveal reads `.slides > section`).
   - `Eyebrow({ children, gem }: { children: ReactNode; gem?: Gem })` — uppercase label in a gem accent.
@@ -492,6 +528,7 @@ git commit -m "feat(deck): add R3F canvas and slide-synced scene director"
 - [ ] **Step 1: Implement the primitives**
 
 Create `docs/src/components/deck/primitives/Slide.tsx`:
+
 ```tsx
 import type { ReactNode } from 'react'
 
@@ -505,6 +542,7 @@ export function Slide({ children }: { children: ReactNode }) {
 ```
 
 Create `docs/src/components/deck/primitives/Eyebrow.tsx`:
+
 ```tsx
 import type { ReactNode } from 'react'
 
@@ -528,6 +566,7 @@ export function Eyebrow({ children, gem = 'emerald' }: { children: ReactNode; ge
 ```
 
 Create `docs/src/components/deck/primitives/Headline.tsx`:
+
 ```tsx
 import type { ReactNode } from 'react'
 
@@ -547,6 +586,7 @@ export function Headline({ children }: { children: ReactNode }) {
 ```
 
 Create `docs/src/components/deck/primitives/Subline.tsx`:
+
 ```tsx
 import type { ReactNode } from 'react'
 
@@ -566,6 +606,7 @@ export function Subline({ children }: { children: ReactNode }) {
 ```
 
 Create `docs/src/components/deck/primitives/Credit.tsx`:
+
 ```tsx
 import type { ReactNode } from 'react'
 
@@ -589,6 +630,7 @@ export function Credit({ children }: { children: ReactNode }) {
 ```
 
 Create `docs/src/components/deck/primitives/index.ts`:
+
 ```ts
 export { Slide } from './Slide'
 export { Eyebrow, type Gem } from './Eyebrow'
@@ -614,15 +656,18 @@ git commit -m "feat(deck): add bold-minimalist typography primitives"
 ### Task 6: Presentation (reveal.js mount + event wiring)
 
 **Files:**
+
 - Create: `docs/src/components/deck/Presentation.tsx`
 
 **Interfaces:**
+
 - Consumes: `setPosition` (T2), `DeckCanvas` (T4).
 - Produces: `Presentation({ slides, scene }: { slides: ReactNode; scene: ReactNode })` — the island that owns reveal + canvas.
 
 - [ ] **Step 1: Implement Presentation**
 
 Create `docs/src/components/deck/Presentation.tsx`:
+
 ```tsx
 import { useEffect, useRef, type ReactNode } from 'react'
 import { DeckCanvas } from './DeckCanvas'
@@ -706,29 +751,32 @@ git commit -m "feat(deck): mount reveal.js and wire slide events to the store"
 ### Task 7: make-web-games beats
 
 **Files:**
+
 - Create: `docs/src/components/slides/make-web-games/beats.ts`
 
 **Interfaces:**
+
 - Consumes: `SceneBeat`, `CameraPose` (T3).
 - Produces: `export const beats: SceneBeat[]` — exactly 10 entries, indices matching the 10 slides.
 
 - [ ] **Step 1: Implement the beats table**
 
 Create `docs/src/components/slides/make-web-games/beats.ts`. Ten camera beats; values are scaffold poses (a slow dolly that tightens on the sizzle and pulls wide for GO NATIVE, returning home on the close):
+
 ```ts
 import type { SceneBeat } from '../../deck/beats'
 
 export const beats: SceneBeat[] = [
-  { camera: { position: [0, 0, 9], lookAt: [0, 0, 0], zoom: 1 } },     // 1 MAKE WEB GAMES
-  { camera: { position: [1, 0, 11], lookAt: [0, 0, 0], zoom: 1 } },    // 2 frictionless
-  { camera: { position: [2, 0.5, 13], lookAt: [0, 0, 0], zoom: 1 } },  // 3 USE THE PLATFORM
-  { camera: { position: [0, 0, 12], lookAt: [0, 0, 0], zoom: 1 } },    // 4 objection
-  { camera: { position: [0, 0, 8], lookAt: [0, 0, 0], zoom: 1 } },     // 5 FIRST CLASS 2D
-  { camera: { position: [-1, 0, 6], lookAt: [0, 0, 0], zoom: 1 } },    // 6 sprites
-  { camera: { position: [1, -0.5, 6], lookAt: [0, 0, 0], zoom: 1 } },  // 7 tilemaps + lighting
-  { camera: { position: [0, 0, 5], lookAt: [0, 0, 0], zoom: 1 } },     // 8 radiance cascades
-  { camera: { position: [0, 1, 16], lookAt: [0, 0, 0], zoom: 1 } },    // 9 GO NATIVE (wide)
-  { camera: { position: [0, 0, 9], lookAt: [0, 0, 0], zoom: 1 } },     // 10 close
+  { camera: { position: [0, 0, 9], lookAt: [0, 0, 0], zoom: 1 } }, // 1 MAKE WEB GAMES
+  { camera: { position: [1, 0, 11], lookAt: [0, 0, 0], zoom: 1 } }, // 2 frictionless
+  { camera: { position: [2, 0.5, 13], lookAt: [0, 0, 0], zoom: 1 } }, // 3 USE THE PLATFORM
+  { camera: { position: [0, 0, 12], lookAt: [0, 0, 0], zoom: 1 } }, // 4 objection
+  { camera: { position: [0, 0, 8], lookAt: [0, 0, 0], zoom: 1 } }, // 5 FIRST CLASS 2D
+  { camera: { position: [-1, 0, 6], lookAt: [0, 0, 0], zoom: 1 } }, // 6 sprites
+  { camera: { position: [1, -0.5, 6], lookAt: [0, 0, 0], zoom: 1 } }, // 7 tilemaps + lighting
+  { camera: { position: [0, 0, 5], lookAt: [0, 0, 0], zoom: 1 } }, // 8 radiance cascades
+  { camera: { position: [0, 1, 16], lookAt: [0, 0, 0], zoom: 1 } }, // 9 GO NATIVE (wide)
+  { camera: { position: [0, 0, 9], lookAt: [0, 0, 0], zoom: 1 } }, // 10 close
 ]
 ```
 
@@ -749,9 +797,11 @@ git commit -m "feat(make-web-games): add per-slide camera beats"
 ### Task 8: Scene scaffold
 
 **Files:**
+
 - Create: `docs/src/components/slides/make-web-games/scene/DeckScene.tsx`
 
 **Interfaces:**
+
 - Consumes: `SceneDirector` (T4), `beats` (T7), `three-flatland/react` (`Flatland`, `Sprite2D`).
 - Produces: `DeckScene()` — the R3F subtree placed inside `DeckCanvas`: a `Flatland` root, a placeholder hero element, ambient lighting, and the `SceneDirector` driving the camera.
 
@@ -760,6 +810,7 @@ git commit -m "feat(make-web-games): add per-slide camera beats"
 - [ ] **Step 1: Implement the scaffold scene**
 
 Create `docs/src/components/slides/make-web-games/scene/DeckScene.tsx`:
+
 ```tsx
 import { extend } from '@react-three/fiber/webgpu'
 import { Flatland } from 'three-flatland/react'
@@ -786,6 +837,7 @@ export function DeckScene() {
   )
 }
 ```
+
 If `<flatland>` requires constructor args or specific props in this repo, follow the exact usage in `examples/react/lighting/App.tsx`; the placeholder mesh inside is the only Phase-1 requirement.
 
 - [ ] **Step 2: Typecheck**
@@ -805,9 +857,11 @@ git commit -m "feat(make-web-games): add background scene scaffold with camera d
 ### Task 9: The ten slides
 
 **Files:**
+
 - Create: `docs/src/components/slides/make-web-games/slides/index.tsx`
 
 **Interfaces:**
+
 - Consumes: primitives (T5) — `Slide`, `Eyebrow`, `Headline`, `Subline`, `Credit`.
 - Produces: `export function Slides(): JSX.Element` — a fragment of exactly 10 `<section>` elements in order, each with a `<aside className="notes">`.
 
@@ -816,6 +870,7 @@ git commit -m "feat(make-web-games): add background scene scaffold with camera d
 - [ ] **Step 1: Implement all ten slides**
 
 Create `docs/src/components/slides/make-web-games/slides/index.tsx`:
+
 ```tsx
 import { Slide, Eyebrow, Headline, Subline, Credit } from '../../../deck/primitives'
 
@@ -826,8 +881,8 @@ export function Slides() {
       <Slide>
         <Headline>MAKE WEB GAMES</Headline>
         <aside className="notes">
-          Who I am, and the provocation. This room ships on Unity and Unreal. I am
-          here to make the case for the platform you already have open.
+          Who I am, and the provocation. This room ships on Unity and Unreal. I am here to make the
+          case for the platform you already have open.
         </aside>
       </Slide>
 
@@ -837,8 +892,8 @@ export function Slides() {
         <Headline>No install. No store. One URL.</Headline>
         <Subline>Your game is one click from every player on Earth.</Subline>
         <aside className="notes">
-          The friction tax of native distribution — downloads, store review,
-          platform cuts. The web collapses it to a link. Instant play is a feature.
+          The friction tax of native distribution — downloads, store review, platform cuts. The web
+          collapses it to a link. Instant play is a feature.
         </aside>
       </Slide>
 
@@ -847,13 +902,13 @@ export function Slides() {
         <Eyebrow gem="emerald">Use the platform</Eyebrow>
         <Headline>The web is already the biggest game platform.</Headline>
         <Subline>
-          [SOURCE: web/HTML5 market size] · [SOURCE: monthly players, Poki / CrazyGames]
-          · [SOURCE: growth/revenue trend]
+          [SOURCE: web/HTML5 market size] · [SOURCE: monthly players, Poki / CrazyGames] · [SOURCE:
+          growth/revenue trend]
         </Subline>
         <aside className="notes">
-          Cite each source out loud. Reach plus revenue. This is the load-bearing
-          data slide — web games are a real market, not a toy. Numbers are
-          placeholders pending a sourced research pass; do not present fabricated figures.
+          Cite each source out loud. Reach plus revenue. This is the load-bearing data slide — web
+          games are a real market, not a toy. Numbers are placeholders pending a sourced research
+          pass; do not present fabricated figures.
         </aside>
       </Slide>
 
@@ -863,8 +918,8 @@ export function Slides() {
         <Headline>"But the web can't make real games."</Headline>
         <Subline>That was true. It isn't anymore.</Subline>
         <aside className="notes">
-          Name the Unity/Unreal skepticism directly and respect it. The turn:
-          WebGPU and TSL changed the rendering ceiling. Set up the toolkit.
+          Name the Unity/Unreal skepticism directly and respect it. The turn: WebGPU and TSL changed
+          the rendering ceiling. Set up the toolkit.
         </aside>
       </Slide>
 
@@ -874,9 +929,9 @@ export function Slides() {
         <Headline>three-flatland</Headline>
         <Subline>Spartan development. One library. All you need.</Subline>
         <aside className="notes">
-          raylib calls it Spartan development — minimal dependencies, you against
-          the machine. three-flatland is that for web 2D: WebGPU + TSL, sprites,
-          tilemaps, lighting, GI, in one place.
+          raylib calls it Spartan development — minimal dependencies, you against the machine.
+          three-flatland is that for web 2D: WebGPU + TSL, sprites, tilemaps, lighting, GI, in one
+          place.
         </aside>
       </Slide>
 
@@ -885,8 +940,8 @@ export function Slides() {
         <Eyebrow gem="amethyst">Sizzle</Eyebrow>
         <Headline>100,000 sprites. One draw call.</Headline>
         <aside className="notes">
-          SpriteGroup batching, GPU-driven. The hard thing in 2D — throughput — is
-          the thing the GPU does best. (Live background demo target.)
+          SpriteGroup batching, GPU-driven. The hard thing in 2D — throughput — is the thing the GPU
+          does best. (Live background demo target.)
         </aside>
       </Slide>
 
@@ -895,8 +950,8 @@ export function Slides() {
         <Eyebrow gem="amethyst">Sizzle</Eyebrow>
         <Headline>Tilemaps. Real-time 2D lights. Soft shadows.</Headline>
         <aside className="notes">
-          Tiled Forward+ lighting and dynamic shadows — lighting that used to mean
-          a PC/console budget, in a 2D browser scene. (Live background demo target.)
+          Tiled Forward+ lighting and dynamic shadows — lighting that used to mean a PC/console
+          budget, in a 2D browser scene. (Live background demo target.)
         </aside>
       </Slide>
 
@@ -906,8 +961,8 @@ export function Slides() {
         <Headline>Radiance cascades. Global illumination in 2D.</Headline>
         <Subline>Light that bounces. In a browser.</Subline>
         <aside className="notes">
-          GI was console/PC-only territory. Radiance cascades bring bounced light to
-          2D, running live in the page. This is the wow beat. (Live background demo target.)
+          GI was console/PC-only territory. Radiance cascades bring bounced light to 2D, running
+          live in the page. This is the wow beat. (Live background demo target.)
         </aside>
       </Slide>
 
@@ -917,20 +972,18 @@ export function Slides() {
         <Headline>You're not trapped in a browser.</Headline>
         <Subline>NativeScript + three.js · ANGLE → native WebGL2 · Steam Deck</Subline>
         <Credit>
-          Device models: "Steam Deck" by VM-Models and "iPhone 16 Pro Max" by
-          MajdyModels, licensed CC-BY-4.0.
+          Device models: "Steam Deck" by VM-Models and "iPhone 16 Pro Max" by MajdyModels, licensed
+          CC-BY-4.0.
         </Credit>
         <aside className="notes">
-          The Steam Deck / native question is the real worry — answer it head-on. In
-          2026 you are not boxed in: my NativeScript + three.js demo, ANGLE bridging
-          WebGL2 to native, Steam Deck's browser-grade runtime. Hylo is the long game —
-          publish once, ship everywhere — mention it here as the trajectory, not a slide.
-
-          Full credits: This work is based on "Steam Deck"
-          (https://sketchfab.com/3d-models/steam-deck-502407f2dab048728e1b63699bf99d45)
-          by VM-Models licensed under CC-BY-4.0. This work is based on "iPhone 16 Pro Max"
-          (https://sketchfab.com/3d-models/iphone-16-pro-max-41a071ae12794b668502f58d1e0fd1a3)
-          by MajdyModels licensed under CC-BY-4.0.
+          The Steam Deck / native question is the real worry — answer it head-on. In 2026 you are
+          not boxed in: my NativeScript + three.js demo, ANGLE bridging WebGL2 to native, Steam
+          Deck's browser-grade runtime. Hylo is the long game — publish once, ship everywhere —
+          mention it here as the trajectory, not a slide. Full credits: This work is based on "Steam
+          Deck" (https://sketchfab.com/3d-models/steam-deck-502407f2dab048728e1b63699bf99d45) by
+          VM-Models licensed under CC-BY-4.0. This work is based on "iPhone 16 Pro Max"
+          (https://sketchfab.com/3d-models/iphone-16-pro-max-41a071ae12794b668502f58d1e0fd1a3) by
+          MajdyModels licensed under CC-BY-4.0.
         </aside>
       </Slide>
 
@@ -938,14 +991,15 @@ export function Slides() {
       <Slide>
         <Headline>three-flatland</Headline>
         <Subline>Make web games. First-class 2D. Go anywhere.</Subline>
-        <p style={{ marginTop: '2rem', font: "600 1rem/1 Inter, sans-serif", color: 'var(--gold)' }}>
+        <p
+          style={{ marginTop: '2rem', font: '600 1rem/1 Inter, sans-serif', color: 'var(--gold)' }}
+        >
           [QR → Getting Started]
         </p>
         <aside className="notes">
-          The advertisement close. Invite questions — leave one thread deliberately
-          unpulled (Hylo / the native pipeline / a feature not shown) so the Q&A has
-          an obvious place to start. Replace the QR placeholder with a generated code
-          pointing at the Getting Started page.
+          The advertisement close. Invite questions — leave one thread deliberately unpulled (Hylo /
+          the native pipeline / a feature not shown) so the Q&A has an obvious place to start.
+          Replace the QR placeholder with a generated code pointing at the Getting Started page.
         </aside>
       </Slide>
     </>
@@ -970,17 +1024,20 @@ git commit -m "feat(make-web-games): add all ten slides with speaker notes"
 ### Task 10: Integration — deck assembly, page wiring, smoke test
 
 **Files:**
+
 - Create: `docs/src/components/slides/make-web-games/deck.tsx`
 - Modify: `docs/src/pages/slides/make-web-games.astro`
 - Create: `e2e/smoke-make-web-games.spec.ts` (repo root `e2e/`)
 
 **Interfaces:**
+
 - Consumes: `Presentation` (T6), `Slides` (T9), `DeckScene` (T8).
 - Produces: `MakeWebGamesDeck()` default-exported React component; the page renders it as `client:only="react"`.
 
 - [ ] **Step 1: Assemble the deck**
 
 Create `docs/src/components/slides/make-web-games/deck.tsx`:
+
 ```tsx
 import { Presentation } from '../../deck/Presentation'
 import { Slides } from './slides'
@@ -994,6 +1051,7 @@ export default function MakeWebGamesDeck() {
 - [ ] **Step 2: Wire the page to the island**
 
 Replace the `<main>` body in `docs/src/pages/slides/make-web-games.astro` and add the import to the frontmatter:
+
 ```astro
 ---
 import '@fontsource/public-sans/latin-400.css'
@@ -1021,6 +1079,7 @@ import MakeWebGamesDeck from '../../components/slides/make-web-games/deck'
 - [ ] **Step 3: Write the smoke test**
 
 Create `e2e/smoke-make-web-games.spec.ts`:
+
 ```ts
 import { test, expect } from '@playwright/test'
 
@@ -1028,7 +1087,9 @@ test('make-web-games deck mounts: canvas, 10 slides, notes, advances', async ({ 
   await page.goto('/slides/make-web-games')
 
   // R3F canvas backdrop present.
-  await expect(page.locator('canvas.deck-bg, .deck-bg canvas').first()).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('canvas.deck-bg, .deck-bg canvas').first()).toBeVisible({
+    timeout: 20_000,
+  })
 
   // reveal initialized with exactly 10 sections, each carrying speaker notes.
   await expect(page.locator('.reveal .slides > section')).toHaveCount(10)
@@ -1045,6 +1106,7 @@ test('make-web-games deck mounts: canvas, 10 slides, notes, advances', async ({ 
   expect(indexAfter).toBeGreaterThan(indexBefore)
 })
 ```
+
 Note: if `window.Reveal` is not global in this reveal version, instead assert the active section changed via `.reveal .slides section.present` text. Verify which during implementation.
 
 - [ ] **Step 4: Full build**
@@ -1069,12 +1131,14 @@ git commit -m "feat(make-web-games): assemble deck, wire page, add smoke test"
 ### Task 11: Deck audio (zzfx SFX + zzfx-studio music, no header UI)
 
 **Files:**
+
 - Create: `docs/src/components/deck/useDeckAudio.ts`
 - Create: `docs/src/components/deck/DeckSoundToggle.tsx`
 - Modify: `docs/src/components/deck/Presentation.tsx` (call the hook, render the toggle)
 - Modify: `e2e/smoke-make-web-games.spec.ts` (assert the toggle is present)
 
 **Interfaces:**
+
 - Consumes: `subscribe`, `getPosition` (T2); existing `docs/src/scripts/sounds.ts`
   (`createZzfxProxy`, `setVolumeLevel`, `getVolumeLevel`, `initVolumeLevel`) and
   `docs/src/audio/storage.ts` (`type VolumeLevel`).
@@ -1091,6 +1155,7 @@ the toggle click) is the user gesture that unlocks the AudioContext.
 - [ ] **Step 1: Implement the audio hook**
 
 Create `docs/src/components/deck/useDeckAudio.ts`:
+
 ```ts
 import { useEffect, useRef } from 'react'
 import { createZzfxProxy } from '../../scripts/sounds'
@@ -1098,7 +1163,9 @@ import type { PlaySoundFn, ZzFxParams } from '../../audio/types'
 import { subscribe, getPosition } from './presentationStore'
 
 // Subtle UI tick on slide advance. Tune to taste; kept gentle and short.
-const TRANSITION_SFX: ZzFxParams = [0.4, 0, 320, 0, 0.02, 0.08, 0, 1.4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.7, 0.02]
+const TRANSITION_SFX: ZzFxParams = [
+  0.4, 0, 320, 0, 0.02, 0.08, 0, 1.4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.7, 0.02,
+]
 
 export function useDeckAudio(): void {
   const playRef = useRef<PlaySoundFn | null>(null)
@@ -1122,6 +1189,7 @@ export function useDeckAudio(): void {
 
 Create `docs/src/components/deck/DeckSoundToggle.tsx`. Reuses the same volume state as
 the header toggle, so mute persists across the site:
+
 ```tsx
 import { useEffect, useState } from 'react'
 import { initVolumeLevel, getVolumeLevel, setVolumeLevel } from '../../scripts/sounds'
@@ -1174,26 +1242,32 @@ export function DeckSoundToggle() {
 
 In `docs/src/components/deck/Presentation.tsx`, import and use the hook + toggle.
 Add near the top:
+
 ```tsx
 import { useDeckAudio } from './useDeckAudio'
 import { DeckSoundToggle } from './DeckSoundToggle'
 ```
+
 Inside the component body, call the hook before the return:
+
 ```tsx
-  useDeckAudio()
+useDeckAudio()
 ```
+
 And render the toggle inside the returned fragment, after the `.reveal-root` div:
+
 ```tsx
-      <DeckSoundToggle />
+<DeckSoundToggle />
 ```
 
 - [ ] **Step 4: Extend the smoke test**
 
 In `e2e/smoke-make-web-games.spec.ts`, add before the final assertion:
+
 ```ts
-  // Deck-local sound toggle present (header transport controls are absent).
-  await expect(page.locator('.deck-sound-toggle')).toBeVisible()
-  await expect(page.locator('starlight-menu-button, .music-player')).toHaveCount(0)
+// Deck-local sound toggle present (header transport controls are absent).
+await expect(page.locator('.deck-sound-toggle')).toBeVisible()
+await expect(page.locator('starlight-menu-button, .music-player')).toHaveCount(0)
 ```
 
 - [ ] **Step 5: Typecheck, build, smoke**

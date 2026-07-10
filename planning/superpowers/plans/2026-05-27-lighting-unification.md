@@ -25,6 +25,7 @@
 ## File Structure
 
 **New files**
+
 - `packages/three-flatland/src/lights/lights2d.ts` — `PointLight2D`, `SpotLight2D`, `DirectionalLight2D`, `AmbientLight2D`, shared `FlatlandLightMixin` helpers, `isFlatlandLight()`.
 - `packages/three-flatland/src/lights/FlatlandLightsNode.ts` — `LightsNode` subclass wrapping ForwardPlus + SDF.
 - `packages/three-flatland/src/lights/Flatland2DLightingModel.ts` — `LightingModel` subclass for the 2D stylization.
@@ -35,6 +36,7 @@
 - `test/regression/golden/` — committed golden PNGs.
 
 **Modified files**
+
 - `packages/three-flatland/src/lights/Light2D.ts` — convert class → deprecated factory + re-export subclasses.
 - `packages/three-flatland/src/lights/index.ts` — export new symbols.
 - `packages/three-flatland/src/lights/LightEffect.ts` — effect builds a `FlatlandLightsNode` + `Flatland2DLightingModel` bundle (not a raw `ColorTransformFn`).
@@ -58,6 +60,7 @@ Goal: make the current behavior fully observable so the migration can prove zero
 ### Task 0.1: Characterization tests for the current tiler + store
 
 **Files:**
+
 - Test: `packages/three-flatland/src/lights/ForwardPlusLighting.characterization.test.ts`
 - Test: `packages/three-flatland/src/lights/LightStore.characterization.test.ts`
 
@@ -80,7 +83,13 @@ describe('ForwardPlusLighting characterization (pre-unification baseline)', () =
 
     const lights = [
       new Light2D({ type: 'point', position: [32, 32], intensity: 1, distance: 40, importance: 1 }),
-      new Light2D({ type: 'point', position: [96, 96], intensity: 2, distance: 60, importance: 10 }),
+      new Light2D({
+        type: 'point',
+        position: [96, 96],
+        intensity: 2,
+        distance: 60,
+        importance: 10,
+      }),
       new Light2D({ type: 'ambient', intensity: 0.3 }),
     ]
     fp.update(lights)
@@ -97,8 +106,10 @@ describe('ForwardPlusLighting characterization (pre-unification baseline)', () =
     const fp = new ForwardPlusLighting()
     fp.init(TILE_SIZE, TILE_SIZE) // single tile
     fp.setWorldBounds(new Vector2(TILE_SIZE, TILE_SIZE), new Vector2(0, 0))
-    const lights = Array.from({ length: MAX_LIGHTS_PER_TILE + 4 }, (_, i) =>
-      new Light2D({ type: 'point', position: [8, 8], intensity: 1, distance: 100, importance: i })
+    const lights = Array.from(
+      { length: MAX_LIGHTS_PER_TILE + 4 },
+      (_, i) =>
+        new Light2D({ type: 'point', position: [8, 8], intensity: 1, distance: 100, importance: i })
     )
     fp.update(lights)
     const data = fp.tileTexture!.image.data as Float32Array
@@ -128,11 +139,22 @@ describe('LightStore characterization (pre-unification baseline)', () => {
   it('packs Light2D into the documented 4-row texel layout', () => {
     const store = new LightStore()
     const light = new Light2D({
-      type: 'spot', position: [10, 20], color: 0x804020, intensity: 1.5,
-      distance: 200, decay: 2, angle: 0.5, penumbra: 0.25, category: 'torch',
+      type: 'spot',
+      position: [10, 20],
+      color: 0x804020,
+      intensity: 1.5,
+      distance: 200,
+      decay: 2,
+      angle: 0.5,
+      penumbra: 0.25,
+      category: 'torch',
     })
     store.sync([light])
-    const tex = (store as unknown as { _lightsTexture: { image: { data: Float32Array }; needsUpdate: boolean } })._lightsTexture
+    const tex = (
+      store as unknown as {
+        _lightsTexture: { image: { data: Float32Array }; needsUpdate: boolean }
+      }
+    )._lightsTexture
     const d = tex.image.data
     const lineSize = tex.image && (store as unknown as { _maxLights: number })._maxLights * 4
     // Row 0: posX, posY, colorR, colorG
@@ -159,6 +181,7 @@ git commit -m "test(lighting): characterization snapshots for tiler + store base
 ### Task 0.2: Characterization test for the colorTransform context + per-instance lit gate
 
 **Files:**
+
 - Test: `packages/three-flatland/src/materials/EffectMaterial.lighting.characterization.test.ts`
 
 - [ ] **Step 1: Write a node-shape test that locks the lighting application contract**
@@ -197,6 +220,7 @@ git commit -m "test(lighting): lock colorTransform lit-gate contract"
 ### Task 0.3: vitexec visual + perf baseline harness
 
 **Files:**
+
 - Create: `test/regression/lighting-visual.spec.ts`
 - Create: `test/regression/capture.ts` (shared vitexec helper)
 - Create: `test/regression/golden/.gitkeep`
@@ -249,10 +273,15 @@ Modify `examples/three/lighting/main.ts` to expose `globalThis.__flatlandDebug` 
 // near the end of examples/three/lighting/main.ts, after the render loop is set up
 if (import.meta.env.DEV) {
   ;(globalThis as Record<string, unknown>).__flatlandDebug = {
-    pauseAnimation: () => { paused = true },          // `paused` gates the rAF update
+    pauseAnimation: () => {
+      paused = true
+    }, // `paused` gates the rAF update
     pinLights: () => {
       // deterministic, flicker-free pose for golden capture
-      switchableTorches.forEach((t, i) => { t.intensity = 1.28; t.position.set(i === 0 ? -120 : 120, 40, 0) })
+      switchableTorches.forEach((t, i) => {
+        t.intensity = 1.28
+        t.position.set(i === 0 ? -120 : 120, 40, 0)
+      })
     },
     stats: () => ({ draws: renderer.info.render.drawCalls, fps: lastFps }),
   }
@@ -292,7 +321,14 @@ describe('lighting visual regression', () => {
       const actual = PNG.sync.read(readFileSync(actualPath))
       expect(actual.width).toBe(golden.width)
       const diff = new PNG({ width: golden.width, height: golden.height })
-      const mismatched = pixelmatch(golden.data, actual.data, diff.data, golden.width, golden.height, { threshold: 0.1 })
+      const mismatched = pixelmatch(
+        golden.data,
+        actual.data,
+        diff.data,
+        golden.width,
+        golden.height,
+        { threshold: 0.1 }
+      )
       const ratio = mismatched / (golden.width * golden.height)
       expect(ratio).toBeLessThan(0.005) // <0.5% pixels may differ (AA/dither tolerance)
     })
@@ -345,6 +381,7 @@ Goal: prove a sprite material can render through `lightsNode` + `LightingModel` 
 ### Task 1.1: Spike a minimal lit sprite material
 
 **Files:**
+
 - Create (spike, throwaway): `packages/three-flatland/src/lights/__spike__/litSprite.spike.test.ts`
 
 - [ ] **Step 1: Write a test that builds a NodeMaterial through the lighting pipeline and asserts node-shape**
@@ -362,14 +399,21 @@ const isNodeShaped = (v: unknown) => typeof (v as { toVar?: unknown }).toVar ===
 describe('spike: lit sprite material wiring', () => {
   it('a NodeMaterial accepts a custom lightsNode + lighting model', () => {
     class StubModel extends LightingModel {
-      direct({ lightColor, reflectedLight }: { lightColor: { toVar?: unknown }; reflectedLight: { directDiffuse: { addAssign: (n: unknown) => void } } }) {
+      direct({
+        lightColor,
+        reflectedLight,
+      }: {
+        lightColor: { toVar?: unknown }
+        reflectedLight: { directDiffuse: { addAssign: (n: unknown) => void } }
+      }) {
         reflectedLight.directDiffuse.addAssign(lightColor)
       }
     }
     const mat = new MeshBasicNodeMaterial()
     mat.lights = true
     mat.lightsNode = new LightsNode().setLights([new PointLight()])
-    ;(mat as unknown as { setupLightingModel: () => LightingModel }).setupLightingModel = () => new StubModel()
+    ;(mat as unknown as { setupLightingModel: () => LightingModel }).setupLightingModel = () =>
+      new StubModel()
     expect(mat.lights).toBe(true)
     expect(isNodeShaped(mat.lightsNode as unknown)).toBe(false) // it's a LightsNode, not a value node
     expect(mat.lightsNode).toBeInstanceOf(LightsNode)
@@ -407,6 +451,7 @@ git commit -m "chore(lighting): architecture spike validated (lit material, no b
 ### Task 2.1: Shared flatland-light mixin + layer constant
 
 **Files:**
+
 - Create: `packages/three-flatland/src/lights/lightingLayers.ts`
 - Test: `packages/three-flatland/src/lights/lightingLayers.test.ts`
 
@@ -465,6 +510,7 @@ git commit -m "feat(lighting): FLATLAND_LIGHTING_LAYER constant + layer helper"
 ### Task 2.2: `PointLight2D` (reference subclass)
 
 **Files:**
+
 - Create: `packages/three-flatland/src/lights/lights2d.ts`
 - Test: `packages/three-flatland/src/lights/lights2d.test.ts`
 
@@ -516,7 +562,9 @@ import { FLATLAND_LIGHTING_LAYER, applyLightingLayer } from './lightingLayers'
 
 const FLATLAND_LIGHT = Symbol.for('three-flatland.light')
 
-export function isFlatlandLight(o: unknown): o is { importance: number; category?: string; _categoryBucket: number; lit2D: true } {
+export function isFlatlandLight(
+  o: unknown
+): o is { importance: number; category?: string; _categoryBucket: number; lit2D: true } {
   return !!o && (o as Record<symbol, unknown>)[FLATLAND_LIGHT] === true
 }
 
@@ -530,7 +578,9 @@ export class PointLight2D extends PointLight {
     super()
     applyLightingLayer(this, FLATLAND_LIGHTING_LAYER)
   }
-  get category(): string | undefined { return this._category }
+  get category(): string | undefined {
+    return this._category
+  }
   set category(v: string | undefined) {
     if (this._category === v) return
     this._category = v
@@ -552,6 +602,7 @@ git commit -m "feat(lighting): PointLight2D subclass with flatland extras + laye
 ### Task 2.3: `SpotLight2D`, `DirectionalLight2D`, `AmbientLight2D`
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/lights/lights2d.ts`
 - Test: `packages/three-flatland/src/lights/lights2d.test.ts`
 
@@ -590,7 +641,9 @@ Expected: FAIL (exports missing).
 Add a `defineFlatlandExtras(proto)` mixin applied in each constructor so importance/category/layer logic is not duplicated. Each subclass mirrors `PointLight2D`'s body but extends its respective base:
 
 ```typescript
-function initFlatlandLight(self: Object3D & { importance?: number; _categoryBucket?: number }): void {
+function initFlatlandLight(
+  self: Object3D & { importance?: number; _categoryBucket?: number }
+): void {
   self.importance = 1
   self._categoryBucket = 0
   applyLightingLayer(self, FLATLAND_LIGHTING_LAYER)
@@ -602,9 +655,18 @@ export class SpotLight2D extends SpotLight {
   importance = 1
   private _category: string | undefined
   _categoryBucket = 0
-  constructor() { super(); initFlatlandLight(this) }
-  get category() { return this._category }
-  set category(v: string | undefined) { if (this._category === v) return; this._category = v; this._categoryBucket = categoryToBucket(v ?? '') }
+  constructor() {
+    super()
+    initFlatlandLight(this)
+  }
+  get category() {
+    return this._category
+  }
+  set category(v: string | undefined) {
+    if (this._category === v) return
+    this._category = v
+    this._categoryBucket = categoryToBucket(v ?? '')
+  }
 }
 
 export class DirectionalLight2D extends DirectionalLight {
@@ -612,7 +674,10 @@ export class DirectionalLight2D extends DirectionalLight {
   readonly lit2D = true as const
   importance = 1
   _categoryBucket = 0
-  constructor() { super(); initFlatlandLight(this) }
+  constructor() {
+    super()
+    initFlatlandLight(this)
+  }
 }
 
 export class AmbientLight2D extends AmbientLight {
@@ -620,7 +685,10 @@ export class AmbientLight2D extends AmbientLight {
   readonly lit2D = true as const
   importance = 1
   _categoryBucket = 0
-  constructor() { super(); initFlatlandLight(this) }
+  constructor() {
+    super()
+    initFlatlandLight(this)
+  }
 }
 ```
 
@@ -637,6 +705,7 @@ git commit -m "feat(lighting): SpotLight2D, DirectionalLight2D, AmbientLight2D s
 ### Task 2.4: Convert `Light2D` to a deprecated factory
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/lights/Light2D.ts`
 - Test: `packages/three-flatland/src/lights/Light2D.test.ts`
 
@@ -655,7 +724,14 @@ describe('Light2D deprecated factory', () => {
     expect(new Light2D({ type: 'ambient' })).toBeInstanceOf(AmbientLight2D)
   })
   it('maps legacy options onto the subclass', () => {
-    const l = new Light2D({ type: 'point', position: [10, 20], intensity: 2, distance: 50, importance: 7, category: 'fire' }) as PointLight2D
+    const l = new Light2D({
+      type: 'point',
+      position: [10, 20],
+      intensity: 2,
+      distance: 50,
+      importance: 7,
+      category: 'fire',
+    }) as PointLight2D
     expect(l.position.x).toBe(10)
     expect(l.position.y).toBe(20)
     expect(l.intensity).toBe(2)
@@ -679,19 +755,33 @@ Rewrite `Light2D.ts` so `Light2D` is a function returning a subclass instance, p
 import { Color } from 'three'
 import { PointLight2D, SpotLight2D, DirectionalLight2D, AmbientLight2D } from './lights2d'
 export type Light2DType = 'point' | 'directional' | 'spot' | 'ambient'
-export interface Light2DOptions { /* unchanged from current file */ }
+export interface Light2DOptions {
+  /* unchanged from current file */
+}
 
 /** @deprecated Use PointLight2D / SpotLight2D / DirectionalLight2D / AmbientLight2D directly. */
 export function Light2D(options: Light2DOptions = {}) {
   const type = options.type ?? 'point'
-  const light = type === 'spot' ? new SpotLight2D()
-    : type === 'directional' ? new DirectionalLight2D()
-    : type === 'ambient' ? new AmbientLight2D()
-    : new PointLight2D()
-  if (options.position) light.position.set(options.position[0] ?? (options.position as { x: number }).x, /* y */ Array.isArray(options.position) ? options.position[1] : (options.position as { y: number }).y, 0)
+  const light =
+    type === 'spot'
+      ? new SpotLight2D()
+      : type === 'directional'
+        ? new DirectionalLight2D()
+        : type === 'ambient'
+          ? new AmbientLight2D()
+          : new PointLight2D()
+  if (options.position)
+    light.position.set(
+      options.position[0] ?? (options.position as { x: number }).x,
+      /* y */ Array.isArray(options.position)
+        ? options.position[1]
+        : (options.position as { y: number }).y,
+      0
+    )
   if (options.color != null) (light as { color: Color }).color = new Color(options.color)
   if (options.intensity != null) light.intensity = options.intensity
-  if ('distance' in light && options.distance != null) (light as { distance: number }).distance = options.distance
+  if ('distance' in light && options.distance != null)
+    (light as { distance: number }).distance = options.distance
   if ('decay' in light && options.decay != null) (light as { decay: number }).decay = options.decay
   if (options.importance != null) (light as { importance: number }).importance = options.importance
   if (options.category != null) (light as { category?: string }).category = options.category
@@ -715,12 +805,19 @@ git commit -m "refactor(lighting)!: Light2D becomes deprecated factory over real
 ### Task 2.5: Export new symbols + regenerate React wrappers
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/lights/index.ts`
 
 - [ ] **Step 1: Add exports**
 
 ```typescript
-export { PointLight2D, SpotLight2D, DirectionalLight2D, AmbientLight2D, isFlatlandLight } from './lights2d'
+export {
+  PointLight2D,
+  SpotLight2D,
+  DirectionalLight2D,
+  AmbientLight2D,
+  isFlatlandLight,
+} from './lights2d'
 export { FLATLAND_LIGHTING_LAYER, applyLightingLayer } from './lightingLayers'
 ```
 
@@ -743,6 +840,7 @@ git commit -m "feat(lighting): export Light2D subclasses + layer helpers"
 ### Task 3.1: `FlatlandLightsNode` skeleton extending `LightsNode`
 
 **Files:**
+
 - Create: `packages/three-flatland/src/lights/FlatlandLightsNode.ts`
 - Test: `packages/three-flatland/src/lights/FlatlandLightsNode.test.ts`
 
@@ -762,7 +860,10 @@ describe('FlatlandLightsNode', () => {
   it('accepts flatland lights and world bounds, packs the tiler', () => {
     const node = new FlatlandLightsNode()
     node.setWorldBounds(new Vector2(128, 128), new Vector2(0, 0))
-    const l = new PointLight2D(); l.position.set(32, 32, 0); l.intensity = 1; l.distance = 40
+    const l = new PointLight2D()
+    l.position.set(32, 32, 0)
+    l.intensity = 1
+    l.distance = 40
     node.updateLights([l])
     // The internal ForwardPlus tile texture is populated (CPU side, no GPU).
     expect(node.tileTexture).toBeDefined()
@@ -788,10 +889,13 @@ export class FlatlandLightsNode extends LightsNode {
   readonly forwardPlus = new ForwardPlusLighting()
   readonly store = new LightStore()
   private _bounds = { size: new Vector2(), offset: new Vector2() }
-  get tileTexture() { return this.forwardPlus.tileTexture }
+  get tileTexture() {
+    return this.forwardPlus.tileTexture
+  }
 
   setWorldBounds(size: Vector2, offset: Vector2): void {
-    this._bounds.size.copy(size); this._bounds.offset.copy(offset)
+    this._bounds.size.copy(size)
+    this._bounds.offset.copy(offset)
     this.forwardPlus.setWorldBounds(size, offset)
   }
   updateLights(lights: Light[]): void {
@@ -816,6 +920,7 @@ git commit -m "feat(lighting): FlatlandLightsNode skeleton wrapping ForwardPlus 
 ### Task 3.2: Adapt `LightStore.sync` to read from three.js light subclasses
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/lights/LightStore.ts`
 - Test: `packages/three-flatland/src/lights/LightStore.test.ts`
 
@@ -827,9 +932,14 @@ import { PointLight2D, SpotLight2D } from './lights2d'
 it('packs PointLight2D the same as the legacy Light2D layout', () => {
   const store = new LightStore()
   const l = new PointLight2D()
-  l.position.set(10, 20, 0); l.intensity = 1.5; l.distance = 200; l.decay = 2; l.category = 'torch'
+  l.position.set(10, 20, 0)
+  l.intensity = 1.5
+  l.distance = 200
+  l.decay = 2
+  l.category = 'torch'
   store.sync([l])
-  const d = (store as unknown as { _lightsTexture: { image: { data: Float32Array } } })._lightsTexture.image.data
+  const d = (store as unknown as { _lightsTexture: { image: { data: Float32Array } } })
+    ._lightsTexture.image.data
   expect(d[0]).toBeCloseTo(10) // posX
   expect(d[1]).toBeCloseTo(20) // posY
 })
@@ -857,6 +967,7 @@ git commit -m "refactor(lighting): LightStore.sync reads standard three.js light
 ### Task 3.3: `setupLights` override — emit the tiled loop + SDF, call `setupDirectLight`
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/lights/FlatlandLightsNode.ts`
 - Modify: `packages/presets/src/lighting/DefaultLightEffect.ts` (source the loop body)
 - Test: `packages/three-flatland/src/lights/FlatlandLightsNode.test.ts`
@@ -899,6 +1010,7 @@ git commit -m "feat(lighting): FlatlandLightsNode.setupLights emits tiled loop +
 ### Task 4.1: `direct()` + `indirect()` (diffuse + ambient)
 
 **Files:**
+
 - Create: `packages/three-flatland/src/lights/Flatland2DLightingModel.ts`
 - Test: `packages/three-flatland/src/lights/Flatland2DLightingModel.test.ts`
 
@@ -913,8 +1025,15 @@ describe('Flatland2DLightingModel', () => {
   it('direct() accumulates N·L diffuse into reflectedLight', () => {
     const model = new Flatland2DLightingModel({ bands: 0, rim: 0, glow: 0 })
     const adds: unknown[] = []
-    const reflectedLight = { directDiffuse: { addAssign: (n: unknown) => adds.push(n) }, indirectDiffuse: { addAssign: () => {} } }
-    model.direct({ lightDirection: vec3(0, 0, 1), lightColor: vec3(1, 1, 1), reflectedLight } as never)
+    const reflectedLight = {
+      directDiffuse: { addAssign: (n: unknown) => adds.push(n) },
+      indirectDiffuse: { addAssign: () => {} },
+    }
+    model.direct({
+      lightDirection: vec3(0, 0, 1),
+      lightColor: vec3(1, 1, 1),
+      reflectedLight,
+    } as never)
     expect(adds.length).toBe(1)
     expect(typeof (adds[0] as { toVar?: unknown }).toVar).toBe('function')
   })
@@ -932,16 +1051,36 @@ Expected: FAIL (module missing).
 import LightingModel from 'three/src/nodes/core/LightingModel.js'
 import { normalView, float, vec3 } from 'three/tsl'
 
-export interface Flatland2DLightingModelOptions { bands?: number; rim?: number; glow?: number }
+export interface Flatland2DLightingModelOptions {
+  bands?: number
+  rim?: number
+  glow?: number
+}
 
 export class Flatland2DLightingModel extends LightingModel {
-  constructor(private opts: Flatland2DLightingModelOptions = {}) { super() }
-  direct({ lightDirection, lightColor, reflectedLight }: { lightDirection: ReturnType<typeof vec3>; lightColor: ReturnType<typeof vec3>; reflectedLight: { directDiffuse: { addAssign: (n: unknown) => void } } }) {
+  constructor(private opts: Flatland2DLightingModelOptions = {}) {
+    super()
+  }
+  direct({
+    lightDirection,
+    lightColor,
+    reflectedLight,
+  }: {
+    lightDirection: ReturnType<typeof vec3>
+    lightColor: ReturnType<typeof vec3>
+    reflectedLight: { directDiffuse: { addAssign: (n: unknown) => void } }
+  }) {
     const NdotL = normalView.dot(lightDirection).clamp()
     reflectedLight.directDiffuse.addAssign(lightColor.mul(NdotL))
   }
-  indirect(builder: { context: { irradiance?: unknown; reflectedLight: { indirectDiffuse: { addAssign: (n: unknown) => void } } } }) {
-    if (builder.context.irradiance) builder.context.reflectedLight.indirectDiffuse.addAssign(builder.context.irradiance)
+  indirect(builder: {
+    context: {
+      irradiance?: unknown
+      reflectedLight: { indirectDiffuse: { addAssign: (n: unknown) => void } }
+    }
+  }) {
+    if (builder.context.irradiance)
+      builder.context.reflectedLight.indirectDiffuse.addAssign(builder.context.irradiance)
   }
 }
 ```
@@ -961,6 +1100,7 @@ git commit -m "feat(lighting): Flatland2DLightingModel direct/indirect (N·L dif
 ### Task 4.2: `finish()` — cel-band / pixel-snap / glow shaping
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/lights/Flatland2DLightingModel.ts`
 - Test: `packages/three-flatland/src/lights/Flatland2DLightingModel.test.ts`
 
@@ -1001,6 +1141,7 @@ git commit -m "feat(lighting): Flatland2DLightingModel.finish ports cel/pixel-sn
 ### Task 5.1: Lit `EffectMaterial` — albedo-only colorNode + lighting triad
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/materials/EffectMaterial.ts`
 - Modify: `packages/three-flatland/src/materials/Sprite2DMaterial.ts`
 - Test: `packages/three-flatland/src/materials/EffectMaterial.lighting.test.ts`
@@ -1019,7 +1160,9 @@ describe('lit EffectMaterial', () => {
     mat.setFlatlandLighting(node, { bands: 0 })
     expect(mat.lights).toBe(true)
     expect(mat.lightsNode).toBe(node)
-    expect(typeof (mat as unknown as { setupLightingModel: () => unknown }).setupLightingModel).toBe('function')
+    expect(
+      typeof (mat as unknown as { setupLightingModel: () => unknown }).setupLightingModel
+    ).toBe('function')
   })
 })
 ```
@@ -1047,6 +1190,7 @@ git commit -m "feat(lighting): lit Sprite2DMaterial via lightsNode + LightingMod
 ### Task 5.2: Drive `normalNode` from `NormalMapProvider`
 
 **Files:**
+
 - Modify: `packages/presets/src/lighting/NormalMapProvider.ts`
 - Test: `packages/presets/src/lighting/NormalMapProvider.test.ts`
 
@@ -1093,6 +1237,7 @@ git commit -m "feat(lighting): NormalMapProvider drives material.normalNode (idi
 ### Task 6.1: `lightCollector` selector + token sugar
 
 **Files:**
+
 - Create: `packages/three-flatland/src/lights/lightCollector.ts`
 - Test: `packages/three-flatland/src/lights/lightCollector.test.ts`
 
@@ -1105,18 +1250,22 @@ import { resolveLightCollector, defaultLightCollector } from './lightCollector'
 
 describe('lightCollector', () => {
   it('default selects flatland lights on the lighting layer', () => {
-    const a = new PointLight2D(); const b = new PointLight2D()
+    const a = new PointLight2D()
+    const b = new PointLight2D()
     expect(defaultLightCollector([a, b])).toEqual([a, b])
   })
   it('token list compiles to a category predicate', () => {
-    const fire = new PointLight2D(); fire.category = 'fire'
-    const slime = new PointLight2D(); slime.category = 'slime'
+    const fire = new PointLight2D()
+    fire.category = 'fire'
+    const slime = new PointLight2D()
+    slime.category = 'slime'
     const collect = resolveLightCollector(['fire'])
     expect(collect([fire, slime])).toEqual([fire])
   })
   it('passes through a custom function', () => {
     const collect = resolveLightCollector((ls) => ls.slice(0, 1))
-    const a = new PointLight2D(); const b = new PointLight2D()
+    const a = new PointLight2D()
+    const b = new PointLight2D()
     expect(collect([a, b])).toEqual([a])
   })
 })
@@ -1136,13 +1285,15 @@ import { isFlatlandLight } from './lights2d'
 export type LightCollector = (lights: Light[]) => Light[]
 export type LightCollectorSpec = LightCollector | string[]
 
-export const defaultLightCollector: LightCollector = (lights) => lights.filter((l) => isFlatlandLight(l))
+export const defaultLightCollector: LightCollector = (lights) =>
+  lights.filter((l) => isFlatlandLight(l))
 
 export function resolveLightCollector(spec?: LightCollectorSpec): LightCollector {
   if (!spec) return defaultLightCollector
   if (typeof spec === 'function') return spec
   const tokens = new Set(spec)
-  return (lights) => lights.filter((l) => isFlatlandLight(l) && l.category != null && tokens.has(l.category))
+  return (lights) =>
+    lights.filter((l) => isFlatlandLight(l) && l.category != null && tokens.has(l.category))
 }
 ```
 
@@ -1159,6 +1310,7 @@ git commit -m "feat(lighting): lightCollector selector primitive + token-list su
 ### Task 6.2: Flatland camera layer setup + tag-based light add/remove
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/Flatland.ts`
 - Test: `packages/three-flatland/src/Flatland.lighting.test.ts`
 
@@ -1208,6 +1360,7 @@ git commit -m "feat(lighting): tag-based light tracking + camera excludes lighti
 ### Task 6.3: `lightCollector` prop on Flatland + SpriteGroup, with layer propagation
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/Flatland.ts`
 - Modify: `packages/three-flatland/src/pipeline/SpriteGroup.ts`
 - Test: `packages/three-flatland/src/pipeline/SpriteGroup.lighting.test.ts`
@@ -1256,6 +1409,7 @@ git commit -m "feat(lighting): lightCollector + hierarchical lightingLayer on Fl
 ### Task 7.1: `LightEffect` builds a node+model bundle
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/lights/LightEffect.ts`
 - Modify: `packages/presets/src/lighting/DefaultLightEffect.ts`
 - Test: `packages/three-flatland/src/lights/LightEffect.test.ts`
@@ -1297,6 +1451,7 @@ git commit -m "feat(lighting): LightEffect.buildLightingBundle yields FlatlandLi
 ### Task 7.2: Update the three lighting systems
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/ecs/systems/lightSyncSystem.ts`
 - Modify: `packages/three-flatland/src/ecs/systems/lightEffectSystem.ts`
 - Modify: `packages/three-flatland/src/ecs/systems/lightMaterialAssignSystem.ts`
@@ -1352,6 +1507,7 @@ git commit -m "refactor(lighting): ECS systems feed FlatlandLightsNode + install
 ### Task 7.3: Rewire `Flatland.setLighting`
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/Flatland.ts`
 - Test: `packages/three-flatland/src/Flatland.lighting.test.ts`
 
@@ -1361,7 +1517,9 @@ git commit -m "refactor(lighting): ECS systems feed FlatlandLightsNode + install
 it('setLighting installs a FlatlandLightsNode-based context', () => {
   const fl = new Flatland({ viewSize: 100 })
   fl.setLighting(new DefaultLightEffect())
-  const ctx = (fl as unknown as { _getLightingContext: () => { lightsNode: unknown } })._getLightingContext()
+  const ctx = (
+    fl as unknown as { _getLightingContext: () => { lightsNode: unknown } }
+  )._getLightingContext()
   expect(ctx.lightsNode).toBeInstanceOf(FlatlandLightsNode)
 })
 ```
@@ -1392,6 +1550,7 @@ git commit -m "refactor(lighting): Flatland.setLighting wires node+model bundle 
 ### Task 8.1: Headless integration test — lit batch renders one draw call with mixed lit/unlit
 
 **Files:**
+
 - Create: `packages/three-flatland/src/lights/integration.lit-batch.test.ts`
 
 - [ ] **Step 1: Write an integration test exercising the full assembly at node-graph level**
@@ -1438,6 +1597,7 @@ git commit -m "test(lighting): integration — mixed lit/unlit share one lit bat
 ### Task 8.2: Playwright smoke still green; add a lit-isolation assertion
 
 **Files:**
+
 - Modify: `e2e/smoke-examples.spec.ts`
 
 - [ ] **Step 1: Add an assertion that the lighting example reports draw calls ≤ baseline**
@@ -1461,6 +1621,7 @@ git commit -m "test(lighting): smoke asserts lighting example draw calls stay at
 ### Task 9.1: Migrate both lighting examples to subclasses
 
 **Files:**
+
 - Modify: `examples/three/lighting/main.ts`
 - Modify: `examples/react/lighting/App.tsx`
 
@@ -1483,6 +1644,7 @@ git commit -m "refactor(examples): lighting examples use Light2D subclasses (no 
 ### Task 9.2: Ship the consumer codemod
 
 **Files:**
+
 - Create: `packages/three-flatland/codemods/light2d-to-subclasses.md`
 - Modify: `packages/three-flatland/package.json` (add `codemods/` to `files[]`)
 
@@ -1507,6 +1669,7 @@ git commit -m "docs(lighting): ship light2d-to-subclasses codemod + breaking cha
 ### Task 9.3: Update documentation
 
 **Files:**
+
 - Modify: lighting docs pages (locate: `find docs -iname '*light*'`), and `.library/three-flatland/loader-architecture.md` if it references lighting.
 
 - [ ] **Step 1: Locate lighting docs**
@@ -1554,6 +1717,7 @@ git commit -m "chore(lighting): finalize unification — full suite + regression
 ## Self-Review
 
 **1. Spec coverage**
+
 - No performance regression → Phase 0.3 perf baseline + Phase 8.2 `maxDraws` smoke + Phase 9.4 gate. ✓
 - No visual regression → Phase 0.3 vitexec goldens + Phase 9.1/9.4 pixel-diff gate. ✓
 - Integration tests required → Phase 8.1 (headless assembly) + 8.2 (Playwright). ✓
@@ -1572,6 +1736,7 @@ git commit -m "chore(lighting): finalize unification — full suite + regression
 **3. Type consistency** — `FlatlandLightsNode` (methods `setWorldBounds`, `updateLights`, `tileTexture`, `setupLights`), `Flatland2DLightingModel` (`direct`/`indirect`/`finish`/`shapesOutput`, `Flatland2DLightingModelOptions { bands, rim, glow }`), `setFlatlandLighting`/`clearFlatlandLighting` on the material, `LightCollector`/`LightCollectorSpec`/`resolveLightCollector`/`defaultLightCollector`, `isFlatlandLight`, `FLATLAND_LIGHTING_LAYER`/`applyLightingLayer`, `buildLightingBundle` — names used consistently across Phases 3–9.
 
 **Open implementation risks flagged for the executor** (verify, don't assume):
+
 - Exact `LightingModel.start`/`setupDirectLight` call signature in r183 (Phase 1 spike confirms).
 - That `MeshBasicNodeMaterial` honors `setupLightingModel` when `lights = true` (spike confirms; if not, base-class must change to a NodeMaterial that does).
 - `normalView` space alignment for camera-facing quads under the (future) perspective camera — orthographic today, so safe for this epic; Epic 2 must re-validate.

@@ -18,17 +18,17 @@
 
 ## File structure
 
-| File | Responsibility |
-|---|---|
-| Create `packages/normals/src/alphaBake.node.ts` | `bakeAlphaMapFile(input, output?)` — PNG → alpha-in-R sidecar + stamp |
-| Create `packages/normals/src/alphaCli.ts` | `Baker` for `flatland-bake alpha` |
-| Modify `packages/normals/package.json` | Second `flatland.bake` entry + `./alpha-cli` build output (mirror how `cli.ts` becomes `./dist/cli.js` in the tsup config) |
-| Create `packages/three-flatland/src/events/resolveAlphaMap.ts` | probe → fetch baked → decode R channel → `AlphaMap`; fallback readback |
-| Modify `packages/three-flatland/src/events/index.ts` | Export `resolveAlphaMap` |
-| Modify `packages/three-flatland/src/sprites/types.ts` | `SpriteSheet.alphaMap?: AlphaMap` |
-| Modify `packages/three-flatland/src/loaders/SpriteSheetLoader.ts` | `alpha` option, populate `sheet.alphaMap` |
-| Modify `packages/three-flatland/src/sprites/AnimatedSprite2D.ts` | Copy `sheet.alphaMap` → `this.alphaMap` when the sheet is assigned |
-| Tests | `packages/normals/src/alphaBake.test.ts`, `packages/three-flatland/src/events/resolveAlphaMap.test.ts`, loader test additions |
+| File                                                              | Responsibility                                                                                                                |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Create `packages/normals/src/alphaBake.node.ts`                   | `bakeAlphaMapFile(input, output?)` — PNG → alpha-in-R sidecar + stamp                                                         |
+| Create `packages/normals/src/alphaCli.ts`                         | `Baker` for `flatland-bake alpha`                                                                                             |
+| Modify `packages/normals/package.json`                            | Second `flatland.bake` entry + `./alpha-cli` build output (mirror how `cli.ts` becomes `./dist/cli.js` in the tsup config)    |
+| Create `packages/three-flatland/src/events/resolveAlphaMap.ts`    | probe → fetch baked → decode R channel → `AlphaMap`; fallback readback                                                        |
+| Modify `packages/three-flatland/src/events/index.ts`              | Export `resolveAlphaMap`                                                                                                      |
+| Modify `packages/three-flatland/src/sprites/types.ts`             | `SpriteSheet.alphaMap?: AlphaMap`                                                                                             |
+| Modify `packages/three-flatland/src/loaders/SpriteSheetLoader.ts` | `alpha` option, populate `sheet.alphaMap`                                                                                     |
+| Modify `packages/three-flatland/src/sprites/AnimatedSprite2D.ts`  | Copy `sheet.alphaMap` → `this.alphaMap` when the sheet is assigned                                                            |
+| Tests                                                             | `packages/normals/src/alphaBake.test.ts`, `packages/three-flatland/src/events/resolveAlphaMap.test.ts`, loader test additions |
 
 The alpha descriptor is parameterless: `{ kind: 'alpha', v: 1 }` — its hash is a constant, so staleness only triggers on format version bumps. Define it ONCE in the core package and import nothing across packages for it (the baker re-declares the same literal; both sides hash with `hashDescriptor` from `@three-flatland/bake`, which both packages already depend on — verify with `grep '"@three-flatland/bake"' packages/normals/package.json packages/three-flatland/package.json`).
 
@@ -37,6 +37,7 @@ The alpha descriptor is parameterless: `{ kind: 'alpha', v: 1 }` — its hash is
 ### Task 1: Alpha baker (node)
 
 **Files:**
+
 - Create: `packages/normals/src/alphaBake.node.ts`
 - Test: `packages/normals/src/alphaBake.test.ts`
 
@@ -56,10 +57,7 @@ import { hashDescriptor } from '@three-flatland/bake'
 function writeTestPng(path: string): void {
   const png = new PNG({ width: 2, height: 2 })
   // RGBA: pixel (0,0) opaque red, (1,0) half alpha, row 1 transparent
-  png.data = Buffer.from([
-    255, 0, 0, 255,   0, 255, 0, 128,
-    0, 0, 255, 0,     255, 255, 255, 0,
-  ])
+  png.data = Buffer.from([255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 0])
   writeFileSync(path, PNG.sync.write(png))
 }
 
@@ -156,6 +154,7 @@ git commit -m "feat(normals): alpha hitmask baker writing stamped .alpha.png sid
 ### Task 2: CLI baker registration
 
 **Files:**
+
 - Create: `packages/normals/src/alphaCli.ts`
 - Modify: `packages/normals/package.json` (the `flatland.bake` array at line ~62)
 - Modify: `packages/normals/tsup.config.ts` (add the new CLI entry — mirror how `src/cli.ts` is configured)
@@ -261,6 +260,7 @@ git commit -m "feat(normals): register flatland-bake alpha baker"
 ### Task 3: resolveAlphaMap (runtime probe + fallback)
 
 **Files:**
+
 - Create: `packages/three-flatland/src/events/resolveAlphaMap.ts`
 - Modify: `packages/three-flatland/src/events/index.ts`
 - Test: `packages/three-flatland/src/events/resolveAlphaMap.test.ts`
@@ -313,9 +313,7 @@ describe('resolveAlphaMap', () => {
   })
 
   it('uses the constant descriptor hash for the probe', async () => {
-    const probe = vi
-      .spyOn(bake, 'probeBakedSibling')
-      .mockResolvedValue({ ok: false } as never)
+    const probe = vi.spyOn(bake, 'probeBakedSibling').mockResolvedValue({ ok: false } as never)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     await resolveAlphaMap('/sprites/a.png', {
       runtimeFallback: async () => null,
@@ -431,6 +429,7 @@ git commit -m "feat(events): resolveAlphaMap with baked-sidecar probe and runtim
 ### Task 4: SpriteSheetLoader `alpha` option + SpriteSheet.alphaMap
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/sprites/types.ts` (the `SpriteSheet` interface, ~line 79)
 - Modify: `packages/three-flatland/src/loaders/SpriteSheetLoader.ts` (mirror the `normals` option plumbing at lines ~38, ~92, ~111, ~178)
 - Test: extend the existing loader test file (find it: `ls packages/three-flatland/src/loaders/*.test.ts`) following its existing mocking style for the normals option
@@ -504,6 +503,7 @@ git commit -m "feat(loaders): alpha option populating SpriteSheet.alphaMap via s
 ### Task 5: AnimatedSprite2D auto-wiring
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/sprites/AnimatedSprite2D.ts` (`_spriteSheet` set path — find the `spriteSheet` setter / constructor assignment at ~line 71–82)
 - Test: extend `packages/three-flatland/src/sprites/AnimatedSprite2D.test.ts`
 

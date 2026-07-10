@@ -14,15 +14,15 @@
 
 ## File structure
 
-| File | Responsibility |
-|---|---|
-| Modify `packages/three-flatland/src/Flatland.ts` | Public `get camera()` accessor (currently only private `_camera`) |
-| Create `packages/three-flatland/src/react/flatlandEvents.ts` | `createFlatlandCompute(getFlatland)` — portal `events.compute` factory |
-| Modify `packages/three-flatland/src/react/index.ts` | Export the factory |
-| Create `examples/three/hit-test/*` | Plain-three example: `Raycaster` + `hitTestMode` (no event library — spec D4) |
-| Create `examples/react/hit-test/*` | R3F example: `onPointer*` props on standalone sprites + tilemap hover |
-| Create `docs/src/content/docs/examples/hit-test.mdx` | Docs page (rewrite of the PoC page against the shipped API) |
-| Test | `packages/three-flatland/src/react/flatlandEvents.test.ts` |
+| File                                                         | Responsibility                                                                |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Modify `packages/three-flatland/src/Flatland.ts`             | Public `get camera()` accessor (currently only private `_camera`)             |
+| Create `packages/three-flatland/src/react/flatlandEvents.ts` | `createFlatlandCompute(getFlatland)` — portal `events.compute` factory        |
+| Modify `packages/three-flatland/src/react/index.ts`          | Export the factory                                                            |
+| Create `examples/three/hit-test/*`                           | Plain-three example: `Raycaster` + `hitTestMode` (no event library — spec D4) |
+| Create `examples/react/hit-test/*`                           | R3F example: `onPointer*` props on standalone sprites + tilemap hover         |
+| Create `docs/src/content/docs/examples/hit-test.mdx`         | Docs page (rewrite of the PoC page against the shipped API)                   |
+| Test                                                         | `packages/three-flatland/src/react/flatlandEvents.test.ts`                    |
 
 **Explicit scope cut:** `FlatlandTexture` (render-to-texture portal component, spec §8.2) is deferred to its own follow-up plan — it additionally needs a `Flatland` render-target ownership story in React (creation, sizing, disposal) that deserves its own brainstorm. The `createFlatlandCompute` factory built here is the reusable half; the PoC's `createUvCompute` (`git show d24fd704:packages/three-flatland/src/react/uvCompute.ts`) is the reference for the UV-mapping half when that plan happens. Record this deferral in the PR description.
 
@@ -31,6 +31,7 @@
 ### Task 1: Public camera accessor on Flatland
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/Flatland.ts` (private `_camera` declared at line ~173)
 - Test: extend `packages/three-flatland/src/react/flatlandEvents.test.ts` (created in Task 2 — write this assertion there; this task only adds the accessor and verifies via typecheck)
 
@@ -68,6 +69,7 @@ git commit -m "feat(flatland): public read-only camera accessor"
 ### Task 2: createFlatlandCompute
 
 **Files:**
+
 - Create: `packages/three-flatland/src/react/flatlandEvents.ts`
 - Modify: `packages/three-flatland/src/react/index.ts`
 - Test: `packages/three-flatland/src/react/flatlandEvents.test.ts`
@@ -91,11 +93,7 @@ describe('createFlatlandCompute', () => {
     const portalState = { pointer: new Vector2(), raycaster: new Raycaster() }
     const parentState = { pointer: new Vector2(0.5, -0.25) }
 
-    compute(
-      {} as never,
-      portalState as never,
-      parentState as never
-    )
+    compute({} as never, portalState as never, parentState as never)
 
     expect(portalState.pointer.x).toBe(0.5)
     expect(portalState.pointer.y).toBe(-0.25)
@@ -198,6 +196,7 @@ git commit -m "feat(react): createFlatlandCompute portal events seam for flatlan
 ### Task 3: examples/react/hit-test
 
 **Files:**
+
 - Create: `examples/react/hit-test/` (scaffold via the repo's example conventions)
 
 - [ ] **Step 1: Scaffold the example**
@@ -283,11 +282,7 @@ function Ground({ onWalk }: { onWalk: (x: number, y: number) => void }) {
 export default function App() {
   const [target, setTarget] = useState<[number, number]>([0, 0])
   return (
-    <Canvas
-      orthographic
-      camera={{ position: [0, 0, 100], zoom: 1 }}
-      gl={{ antialias: false }}
-    >
+    <Canvas orthographic camera={{ position: [0, 0, 100], zoom: 1 }} gl={{ antialias: false }}>
       <Suspense fallback={null}>
         <Ground onWalk={(x, y) => setTarget([x, y])} />
         <Knight target={target} />
@@ -319,6 +314,7 @@ git commit -m "feat(examples): react hit-test example (R3F pointer events on spr
 ### Task 4: examples/three/hit-test
 
 **Files:**
+
 - Create: `examples/three/hit-test/` (mirror of Task 3 — examples exist in pairs)
 
 - [ ] **Step 1: Scaffold + assets**
@@ -431,6 +427,7 @@ git commit -m "feat(examples): three hit-test example (plain Raycaster picking)"
 ### Task 5: docs page
 
 **Files:**
+
 - Create: `docs/src/content/docs/examples/hit-test.mdx`
 - Modify: `docs/astro.config.mjs` only if examples pages need sidebar registration (check how an existing `examples/*.mdx` page is registered first and follow that exactly)
 
