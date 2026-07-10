@@ -12,7 +12,7 @@ export { hitTest, locateCaret, selectRange } from './query.js'
 export { getScriptTransform } from './script.js'
 export type { SlugScriptTransform } from './script.js'
 export { paragraphYToWorldY } from '../layout/worldSpace.js'
-export { getEmBoxTopOffset, getGlyphTopOffset, getLineBaselineOffset } from '../layout/baseline.js'
+export { getHalfLeading, getGlyphTopOffset, getLineBaselineOffset } from '../layout/baseline.js'
 export type {
   SlugTypeface,
   SlugRun,

@@ -68,10 +68,11 @@ export type GlyphInfo = {
   /** Left-side-bearing before ink starts (glyph advertised `lsb`), ratio of `fontSize`. */
   xoffset: number
   /**
-   * Downward offset from the line-box top to the glyph's ink top, ratio of
-   * `fontSize`. MSDF folded this into its baked `yoffset`; Slug doesn't —
-   * this is `ascender - bounds.yMax`, the inner term of slug's
-   * `getGlyphTopOffset(ascender, yMax, 1, 1)` (R4: routed through slug's
+   * Downward offset from the CONTENT-BOX top (the ascender line) to the
+   * glyph's ink top, ratio of `fontSize` — `ascender - bounds.yMax`,
+   * baseline-relative and free of any line-box term. `text/utils.ts`
+   * `getGlyphOffsetY` adds the half-leading that places the content box in
+   * the line box (R4: both terms routed through slug's
    * `layout/baseline.ts`, not re-derived here).
    */
   yoffset: number
@@ -252,7 +253,16 @@ export class Font {
     return {
       id: metrics.glyphId,
       xoffset: metrics.lsb,
-      yoffset: getGlyphTopOffset(this.slug.ascender, metrics.bounds.yMax, 1, 1),
+      // fontSize 1, lineHeight = content height ⇒ zero half-leading: the
+      // pure baseline-relative ink-top ratio `ascender - yMax`.
+      // `getGlyphOffsetY` adds the real half-leading for the actual lineHeight.
+      yoffset: getGlyphTopOffset(
+        this.slug.ascender,
+        this.slug.descender,
+        metrics.bounds.yMax,
+        1,
+        this.slug.ascender - this.slug.descender
+      ),
       width: metrics.bounds.xMax - metrics.bounds.xMin,
       xadvance: metrics.advanceWidth,
     }

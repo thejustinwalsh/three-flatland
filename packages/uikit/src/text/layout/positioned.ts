@@ -66,7 +66,7 @@ export function buildPositionedGlyphLayout(
         char,
         glyphInfo,
         x: x + getGlyphOffsetX(glyphInfo, fontSize),
-        y: -(y + getGlyphOffsetY(fontSize, lineHeight, glyphInfo)),
+        y: -(y + getGlyphOffsetY(font, fontSize, lineHeight, glyphInfo)),
         width: glyphInfo.width * fontSize,
       })
       x += getOffsetToNextGlyph(fontSize, glyphInfo, letterSpacing)

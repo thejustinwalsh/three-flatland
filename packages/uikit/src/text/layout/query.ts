@@ -52,7 +52,7 @@ export function getCaretTransformation(
     getTextYOffset(layout, layout.verticalAlign) -
     layout.availableHeight / 2 +
     lineIndex * getOffsetToNextLine(layout.lineHeight) +
-    getGlyphOffsetY(layout.fontSize, layout.lineHeight)
+    getGlyphOffsetY(layout.font, layout.fontSize, layout.lineHeight)
   )
   return { position: [x, y - layout.fontSize / 2], height: layout.fontSize }
 }

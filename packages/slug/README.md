@@ -176,15 +176,15 @@ const caret = getCaretTransformation(layout, charIndex)
 const { selections } = getSelectionTransformations(layout, [4, 9])
 ```
 
-| Export                                                                    | Description                                                                                    |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `measureGlyphLayout`                                                      | Width / height / line count under an optional width constraint.                                |
-| `buildGlyphLayout`                                                        | Wrapped lines as char ranges + measured widths.                                                |
-| `buildPositionedGlyphLayout`                                              | Lines with positioned entries (glyphs AND whitespace), alignment, justify, per-line baselines. |
-| `getCharIndex` / `getCaretTransformation` / `getSelectionTransformations` | Hit-test, caret, and selection-rect geometry over a positioned layout.                         |
-| `normalizeWhitespace`                                                     | CSS-style whitespace collapsing (`normal`/`collapse`/`pre`/`pre-line`, `tabSize`).             |
-| `getLineBaselineOffset` / `getGlyphTopOffset` / `getEmBoxTopOffset`       | The single source of baseline math — line-box top → baseline / glyph ink top.                  |
-| `SlugLayoutFont`                                                          | The structural font contract the engine consumes (`SlugFont` satisfies it; stub it for tests). |
+| Export                                                                    | Description                                                                                        |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `measureGlyphLayout`                                                      | Width / height / line count under an optional width constraint.                                    |
+| `buildGlyphLayout`                                                        | Wrapped lines as char ranges + measured widths.                                                    |
+| `buildPositionedGlyphLayout`                                              | Lines with positioned entries (glyphs AND whitespace), alignment, justify, per-line baselines.     |
+| `getCharIndex` / `getCaretTransformation` / `getSelectionTransformations` | Hit-test, caret, and selection-rect geometry over a positioned layout.                             |
+| `normalizeWhitespace`                                                     | CSS-style whitespace collapsing (`normal`/`collapse`/`pre`/`pre-line`, `tabSize`).                 |
+| `getLineBaselineOffset` / `getGlyphTopOffset` / `getHalfLeading`          | The single source of baseline math (CSS line-box model) — line-box top → baseline / glyph ink top. |
+| `SlugLayoutFont`                                                          | The structural font contract the engine consumes (`SlugFont` satisfies it; stub it for tests).     |
 
 Positioned coordinates are y-up with the origin at the center of the layout box;
 `charIndex` values refer to the whitespace-normalized text carried on the layout

@@ -1,3 +1,4 @@
+import { getHalfLeading } from '@three-flatland/slug'
 import type { GlyphLayout } from './layout/index.js'
 import type { Font, GlyphInfo } from './font.js'
 import type { RootContext } from '../context.js'
@@ -27,12 +28,23 @@ export function toAbsoluteNumber(
 }
 
 export function getGlyphOffsetY(
+  font: Font,
   fontSize: number,
   lineHeight: number,
   glyphInfo?: GlyphInfo
 ): number {
-  //glyphInfo undefined for the caret, which has no yoffset
-  return (glyphInfo?.yoffset ?? 0) * fontSize + (lineHeight - fontSize) / 2
+  if (glyphInfo == null) {
+    // The caret has no ink: a fontSize-tall box centered in the line box.
+    // That is also the content-box center — half-leading centers the
+    // content box in the line box (see slug's layout/baseline.ts).
+    return (lineHeight - fontSize) / 2
+  }
+  // yoffset is the baseline-relative ink-top ratio (`ascender - yMax`);
+  // half-leading places the content box in the line box, CSS-style.
+  return (
+    glyphInfo.yoffset * fontSize +
+    getHalfLeading(font.slug.ascender, font.slug.descender, fontSize, lineHeight)
+  )
 }
 
 export function getOffsetToNextGlyph(

@@ -293,7 +293,7 @@ export function layoutParagraph(
     if (b.start < rp.text.length) walkLine(rp, b.start, rec)
     const { em, ascender, descender } = lineEmMetrics(rp, b)
     const lineHeight = em * rp.lineSpacing
-    const baselineY = top + getLineBaselineOffset(ascender, em, lineHeight)
+    const baselineY = top + getLineBaselineOffset(ascender, descender, em, lineHeight)
 
     // Truncation (BuildTruncatableSlug): only under wrap 'none' with a
     // width the line exceeds.
