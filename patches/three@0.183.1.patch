@@ -1,0 +1,120 @@
+diff --git a/build/three.webgpu.js b/build/three.webgpu.js
+index fc56aab58cea5a5372a7952d23d91437912381f8..55e46151cc282d5b2224f9da58579f3811a2102f 100644
+--- a/build/three.webgpu.js
++++ b/build/three.webgpu.js
+@@ -17534,6 +17534,15 @@ class InstanceNode extends Node {
+ 		 */
+ 		this.instanceColorNode = null;
+ 
++		/**
++		 * The update type is set to `frame` for updating
++		 * velocity-related data.
++		 *
++		 * @type {string}
++		 * @default 'frame'
++		 */
++		this.updateType = NodeUpdateType.FRAME;
++
+ 		/**
+ 		 * The update type is set to `frame` since an update
+ 		 * of instanced buffer data must be checked per frame.
+@@ -17541,7 +17550,7 @@ class InstanceNode extends Node {
+ 		 * @type {string}
+ 		 * @default 'frame'
+ 		 */
+-		this.updateType = NodeUpdateType.FRAME;
++		this.updateBeforeType = NodeUpdateType.FRAME;
+ 
+ 		/**
+ 		 * A reference to a buffer that is used by `instanceMatrixNode`.
+@@ -17674,11 +17683,10 @@ class InstanceNode extends Node {
+ 	}
+ 
+ 	/**
+-	 * Checks if the internal buffers require an update.
+-	 *
+-	 * @param {NodeFrame} frame - The current node frame.
++	 * Syncs the internal buffers' update ranges before the render, so writes
++	 * queued this frame are uploaded before this frame's draw (not next frame).
+ 	 */
+-	update( frame ) {
++	updateBefore( /*frame*/ ) {
+ 
+ 		if ( this.buffer !== null && this.isStorageMatrix !== true ) {
+ 
+@@ -17708,6 +17716,15 @@ class InstanceNode extends Node {
+ 
+ 		}
+ 
++	}
++
++	/**
++	 * Updates velocity-related data if necessary.
++	 *
++	 * @param {NodeFrame} frame - The current node frame.
++	 */
++	update( frame ) {
++
+ 		if ( this.previousInstanceMatrixNode !== null ) {
+ 
+ 			frame.object.previousInstanceMatrix.array.set( this.instanceMatrix.array );
+diff --git a/src/nodes/accessors/InstanceNode.js b/src/nodes/accessors/InstanceNode.js
+index 7ba8f36dabf0804cb63fc0fe6852023475c490ba..3130a36b6d84e19881ff20cda462ae7b959b6bc5 100644
+--- a/src/nodes/accessors/InstanceNode.js
++++ b/src/nodes/accessors/InstanceNode.js
+@@ -76,6 +76,15 @@ class InstanceNode extends Node {
+ 		 */
+ 		this.instanceColorNode = null;
+ 
++		/**
++		 * The update type is set to `frame` for updating
++		 * velocity-related data.
++		 *
++		 * @type {string}
++		 * @default 'frame'
++		 */
++		this.updateType = NodeUpdateType.FRAME;
++
+ 		/**
+ 		 * The update type is set to `frame` since an update
+ 		 * of instanced buffer data must be checked per frame.
+@@ -83,7 +92,7 @@ class InstanceNode extends Node {
+ 		 * @type {string}
+ 		 * @default 'frame'
+ 		 */
+-		this.updateType = NodeUpdateType.FRAME;
++		this.updateBeforeType = NodeUpdateType.FRAME;
+ 
+ 		/**
+ 		 * A reference to a buffer that is used by `instanceMatrixNode`.
+@@ -216,11 +225,10 @@ class InstanceNode extends Node {
+ 	}
+ 
+ 	/**
+-	 * Checks if the internal buffers require an update.
+-	 *
+-	 * @param {NodeFrame} frame - The current node frame.
++	 * Syncs the internal buffers' update ranges before the render, so writes
++	 * queued this frame are uploaded before this frame's draw (not next frame).
+ 	 */
+-	update( frame ) {
++	updateBefore( /*frame*/ ) {
+ 
+ 		if ( this.buffer !== null && this.isStorageMatrix !== true ) {
+ 
+@@ -250,6 +258,15 @@ class InstanceNode extends Node {
+ 
+ 		}
+ 
++	}
++
++	/**
++	 * Updates velocity-related data if necessary.
++	 *
++	 * @param {NodeFrame} frame - The current node frame.
++	 */
++	update( frame ) {
++
+ 		if ( this.previousInstanceMatrixNode !== null ) {
+ 
+ 			frame.object.previousInstanceMatrix.array.set( this.instanceMatrix.array );

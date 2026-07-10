@@ -39,6 +39,9 @@ catalogs:
     '@types/three':
       specifier: ^0.183.1
       version: 0.183.1
+    '@vitejs/plugin-react':
+      specifier: ^4.3.4
+      version: 4.7.0
     '@zzfx-studio/zzfxm':
       specifier: ^0.1.5
       version: 0.1.5
@@ -113,6 +116,11 @@ overrides:
   linkify-it@<=5.0.0: '>=5.0.1 <6'
   js-yaml@<3.15.0: '>=3.15.0 <4'
   js-yaml@>=4.0.0 <=4.1.1: '>=4.2.0 <5'
+
+patchedDependencies:
+  three@0.183.1:
+    hash: 7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc
+    path: patches/three@0.183.1.patch
 
 importers:
 
@@ -210,7 +218,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../packages/three-flatland
@@ -271,7 +279,7 @@ importers:
         version: 3.1.3
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@stackblitz/sdk':
         specifier: ^1.11.0
         version: 1.11.0
@@ -289,7 +297,7 @@ importers:
         version: 0.1.5(zzfx@1.3.2)
       animejs:
         specifier: ^4.5.0
-        version: 4.5.0(@types/three@0.183.1)(three@0.183.1)
+        version: 4.5.0(@types/three@0.183.1)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       astro:
         specifier: ^6.4.6
         version: 6.4.8(@types/node@24.12.4)(jiti@2.7.0)(rollup@4.62.2)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
@@ -334,7 +342,7 @@ importers:
         version: 0.21.5(@astrojs/starlight@0.38.5(astro@6.4.8(@types/node@24.12.4)(jiti@2.7.0)(rollup@4.62.2)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)))(typedoc-plugin-markdown@4.11.0(typedoc@0.28.19(typescript@5.9.3)))(typedoc@0.28.19(typescript@5.9.3))
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../packages/three-flatland
@@ -380,7 +388,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../packages/devtools
@@ -407,7 +415,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../packages/three-flatland
@@ -438,7 +446,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -453,7 +461,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -484,7 +492,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -499,7 +507,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -530,7 +538,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -545,7 +553,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -576,7 +584,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -591,7 +599,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -622,7 +630,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -637,7 +645,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -668,7 +676,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -686,7 +694,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -717,7 +725,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -735,7 +743,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -766,7 +774,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -784,7 +792,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       tweakpane:
         specifier: ^4.0.5
         version: 4.0.5
@@ -812,7 +820,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -827,7 +835,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
     devDependencies:
       '@types/react':
         specifier: ^19.0.2
@@ -852,7 +860,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -867,7 +875,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -898,7 +906,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -913,7 +921,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -944,7 +952,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -962,7 +970,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -993,7 +1001,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/devtools':
         specifier: workspace:*
         version: link:../../../packages/devtools
@@ -1026,7 +1034,7 @@ importers:
         version: 0.1.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1063,7 +1071,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1091,7 +1099,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1119,7 +1127,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1147,7 +1155,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1175,7 +1183,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1206,7 +1214,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1237,7 +1245,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1268,7 +1276,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       tweakpane:
         specifier: ^4.0.5
         version: 4.0.5
@@ -1293,7 +1301,7 @@ importers:
         version: link:../../../packages/slug
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
     devDependencies:
       '@types/three':
         specifier: ^0.183.1
@@ -1315,7 +1323,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1343,7 +1351,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1374,7 +1382,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1420,7 +1428,7 @@ importers:
         version: 0.2.1(tweakpane@4.0.5)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
@@ -1455,7 +1463,7 @@ importers:
     devDependencies:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@types/react':
         specifier: ^19.0.2
         version: 19.2.9
@@ -1479,7 +1487,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: ^0.183.1
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.0)
@@ -1527,7 +1535,7 @@ importers:
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@testing-library/react':
         specifier: ^16.1.0
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.9))(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1557,7 +1565,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       three-flatland:
         specifier: workspace:*
         version: link:../three-flatland
@@ -1578,7 +1586,7 @@ importers:
         version: 0.183.1
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
 
   packages/normals:
     dependencies:
@@ -1597,7 +1605,7 @@ importers:
         version: 0.183.1
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
 
   packages/presets:
     dependencies:
@@ -1610,13 +1618,13 @@ importers:
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@types/three':
         specifier: 'catalog:'
         version: 0.183.1
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
 
   packages/skia:
     devDependencies:
@@ -1628,7 +1636,7 @@ importers:
         version: 1.17.6
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@testing-library/react':
         specifier: ^16.1.0
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.9))(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1652,7 +1660,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
 
   packages/slug:
     dependencies:
@@ -1668,7 +1676,7 @@ importers:
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@types/opentype.js':
         specifier: ^1.3.9
         version: 1.3.9
@@ -1689,7 +1697,7 @@ importers:
         version: 19.2.3
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
 
   packages/starlight-theme:
     dependencies:
@@ -1735,7 +1743,7 @@ importers:
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/atlas':
         specifier: workspace:*
         version: link:../atlas
@@ -1750,7 +1758,7 @@ importers:
         version: 19.2.3
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
 
   packages/uikit:
     dependencies:
@@ -1781,7 +1789,7 @@ importers:
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@three-flatland/bake':
         specifier: workspace:*
         version: link:../bake
@@ -1799,7 +1807,7 @@ importers:
         version: 19.2.3
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
     optionalDependencies:
       happy-dom:
         specifier: ^20.8.9
@@ -1822,7 +1830,7 @@ importers:
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.9
@@ -1834,7 +1842,59 @@ importers:
         version: 19.2.3
       three:
         specifier: 'catalog:'
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
+
+  packages/uikit-default/example:
+    dependencies:
+      '@preact/signals-core':
+        specifier: 'catalog:'
+        version: 1.14.4
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
+      '@three-flatland/slug':
+        specifier: workspace:*
+        version: link:../../slug
+      '@three-flatland/uikit':
+        specifier: workspace:*
+        version: link:../../uikit
+      '@three-flatland/uikit-default':
+        specifier: workspace:*
+        version: link:..
+      '@three-flatland/uikit-lucide':
+        specifier: workspace:*
+        version: link:../../uikit-lucide
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      suspend-react:
+        specifier: 'catalog:'
+        version: 0.1.3(react@19.2.3)
+      three:
+        specifier: 'catalog:'
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
+    devDependencies:
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: 'catalog:'
         version: 0.183.1
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
 
   packages/uikit-horizon:
     dependencies:
@@ -1853,7 +1913,7 @@ importers:
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.9
@@ -1865,7 +1925,7 @@ importers:
         version: 19.2.3
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
 
   packages/uikit-lucide:
     dependencies:
@@ -1875,7 +1935,7 @@ importers:
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.9
@@ -1893,7 +1953,7 @@ importers:
         version: 19.2.3
       three:
         specifier: 'catalog:'
-        version: 0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       ts-node:
         specifier: ^10.9.2
         version: 10.9.2(@types/node@24.12.4)(typescript@5.9.3)
@@ -9475,7 +9535,7 @@ snapshots:
     dependencies:
       quansync: 1.0.0
 
-  '@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)':
+  '@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))':
     dependencies:
       '@babel/runtime': 7.28.6
       dequal: 2.0.3
@@ -9484,7 +9544,7 @@ snapshots:
       react-use-measure: 2.1.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       scheduler: 0.27.0
       suspend-react: 0.1.3(react@19.2.3)
-      three: 0.183.1
+      three: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       use-sync-external-store: 1.6.0(react@19.2.3)
       zustand: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
     optionalDependencies:
@@ -10391,10 +10451,10 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  animejs@4.5.0(@types/three@0.183.1)(three@0.183.1):
+  animejs@4.5.0(@types/three@0.183.1)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)):
     optionalDependencies:
       '@types/three': 0.183.1
-      three: 0.183.1
+      three: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
 
   ansi-colors@4.1.3: {}
 
@@ -13791,7 +13851,7 @@ snapshots:
     dependencies:
       any-promise: 1.3.0
 
-  three@0.183.1: {}
+  three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc): {}
 
   timm@1.7.1: {}
 
