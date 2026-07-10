@@ -1,5 +1,5 @@
 import type { Signal } from '@preact/signals-core'
-import type { Object3D, RenderItem } from 'three'
+import type { Object3D } from 'three'
 import { abortableEffect, readReactive } from './utils.js'
 import type { Properties } from './properties/index.js'
 import { parseNumberValue, type NumberValue } from './properties/values.js'
@@ -9,15 +9,33 @@ export type WithReversePainterSortStableCache = { reversePainterSortStableCache?
 export const reversePainterSortStableCacheKey = Symbol('reverse-painter-sort-stable-cache-key')
 export const orderInfoKey = Symbol('order-info-key')
 
-export function reversePainterSortStable(a: RenderItem, b: RenderItem) {
+/**
+ * The subset of three's RenderItem the transparent sort reads — structurally
+ * compatible with BOTH the legacy WebGLRenderer's item shape and the common
+ * (WebGPU) renderer's pooled, nullable one (which isn't re-exported from
+ * `three/webgpu`). Items handed to a sort are always populated; the
+ * non-null assertions below mirror three's own untyped comparators.
+ */
+export type TransparentSortRenderItem = {
+  groupOrder: number | null
+  renderOrder: number | null
+  z: number | null
+  id: number | null
+  object: Object3D | null
+}
+
+export function reversePainterSortStable(
+  a: TransparentSortRenderItem,
+  b: TransparentSortRenderItem
+) {
   if (a.groupOrder !== b.groupOrder) {
-    return a.groupOrder - b.groupOrder
+    return a.groupOrder! - b.groupOrder!
   }
   if (a.renderOrder !== b.renderOrder) {
-    return a.renderOrder - b.renderOrder
+    return a.renderOrder! - b.renderOrder!
   }
-  let az = a.z
-  let bz = b.z
+  let az = a.z!
+  let bz = b.z!
   const aRootSignal = (a.object as any)[reversePainterSortStableCacheKey] as
     | { peek(): WithReversePainterSortStableCache }
     | undefined
@@ -41,7 +59,7 @@ export function reversePainterSortStable(a: RenderItem, b: RenderItem) {
     )
   }
   //default z comparison
-  return az !== bz ? bz - az : a.id - b.id
+  return az !== bz ? bz - az : a.id! - b.id!
 }
 
 //the following order tries to represent the most common element order of the respective element types (e.g. panels are most likely the background element)

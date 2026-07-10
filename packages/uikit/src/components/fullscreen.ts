@@ -10,6 +10,7 @@ import type { Renderer } from 'three/webgpu'
 import { batch, type Signal, signal } from '@preact/signals-core'
 import type { BaseOutProperties, InProperties, WithSignal } from '../properties/index.js'
 import type { RenderContext } from '../context.js'
+import { reversePainterSortStable } from '../order.js'
 import { searchFor } from '../utils.js'
 import { Container } from './container.js'
 import { parseNumberValue, type NumberValue } from '../properties/values.js'
@@ -65,6 +66,14 @@ export class Fullscreen<
     this.sizeY = sizeY
     this.transformTranslateZ = transformTranslateZ
     this.pixelSize = pixelSize
+
+    // uikit's paint order lives in per-mesh `orderInfo` and is consulted ONLY by
+    // the custom transparent sort. Every group mesh renders at renderOrder 0 with
+    // depthWrite off, so under three's default sort (renderOrder → z → object id)
+    // panels paint over their own labels: all meshes share one z, and the panel
+    // mesh happens to sort after the glyph mesh. The react integration installs
+    // this in `build.tsx`; the vanilla path meets the renderer exactly here.
+    renderer.setTransparentSort(reversePainterSortStable)
   }
 
   clone(recursive?: boolean): this {
