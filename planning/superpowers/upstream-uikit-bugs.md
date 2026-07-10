@@ -30,8 +30,27 @@ and the subsequent `properties[conditionalKey]` lookup reads `properties['0']`, 
 always `undefined`.
 
 **Impact:** the `*` (star) property path never picks up _any_ conditional properties. Hover,
-dark-mode, active, focus, and every breakpoint variant are silently dropped. Nothing throws;
-styles simply never apply.
+dark-mode, active, focus, and every breakpoint variant are silently dropped. Nothing throws.
+
+The consequence is sharper than "styles never apply." Tracing the chain:
+
+1. `getStarProperties` fails to extract `hover: { '*': … }` into a star layer.
+2. So `starProperties.usedConditionals.hover` never flips
+   (`properties/index.ts:92`, `hasConditional(layers, 'hover')`).
+3. And `computedHandlers` attaches the `pointerover` / `pointerout` listeners **only when a
+   used-hover conditional exists** — `utils.ts:138-144` passes _both_
+   `properties.usedConditionals.hover` and `starProperties.usedConditionals.hover` to
+   `addHoverHandlers`.
+
+So a component whose hover styling is expressed **only** through star-nesting never attaches a
+hover listener at all. It is not that its hover styles fail to apply — it is that the component
+cannot be hovered. `active` mirrors this exactly (`utils.ts:145-151`, `conditional.ts:59`).
+
+This is why the kit components are affected. `uikit-default`'s `Button` declares its variants
+under `'*': { … }` (`packages/uikit-default/src/button/index.ts:119`, hover variants at
+`:23-60`, `:130`). Its _direct_ `hover: {}` props ride the parallel
+`properties.usedConditionals.hover` leg, which never depended on `getStarProperties` — which is
+presumably why the bug survived: the common case appears to work.
 
 **Fix:** `for (const conditionalKey of conditionalKeys)`.
 
