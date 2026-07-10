@@ -7,6 +7,7 @@ import {
   Mesh,
   Uint16BufferAttribute,
   Color,
+  Vector2,
 } from 'three'
 import type { Camera, Matrix4 } from 'three'
 import { SlugMaterial } from './SlugMaterial.js'
@@ -68,6 +69,8 @@ export interface SlugBatchGlyphOptions extends SlugBatchInstanceOptions {
   /** Font size in glyph-space units. May vary per glyph within one batch. Default 16. */
   fontSize?: number
 }
+
+const _drawingBufferSize = new Vector2()
 
 const IDENTITY_LANES = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 /** Clip-disabled sentinel: 4 × (0, 0, 0, 1) — always-pass planes. */
@@ -449,7 +452,28 @@ export class SlugBatch extends Mesh {
     material.updateMVP?.(this, camera)
   }
 
-  /** Update viewport size for dilation calculations. */
+  /**
+   * Feed the dilation viewport from the renderer's DRAWING BUFFER size —
+   * device pixels — right before this batch draws. CSS-pixel viewports
+   * (the historical `setViewportSize` contract) over-expand the AA
+   * footprint by the device pixel ratio on retina displays. Bit-identical
+   * at DPR 1, where device px == CSS px. Subclass overrides (uikit's
+   * `InstancedGlyphMesh`/`InstancedShapeMesh`) keep this exact signature.
+   */
+  override onBeforeRender = (
+    renderer: { getDrawingBufferSize(target: Vector2): Vector2 },
+    _scene: unknown,
+    _camera: Camera
+  ): void => {
+    renderer.getDrawingBufferSize(_drawingBufferSize)
+    this.setViewportSize(_drawingBufferSize.width, _drawingBufferSize.height)
+  }
+
+  /**
+   * Update viewport size for dilation calculations. Render-time viewport
+   * comes from `onBeforeRender` (drawing-buffer device pixels); this
+   * remains as the headless/pre-render seed.
+   */
   setViewportSize(width: number, height: number): void {
     this._viewportWidth = width
     this._viewportHeight = height

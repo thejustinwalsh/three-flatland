@@ -467,6 +467,12 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
     for (const onFrame of this.root.peek().onFrameSet) {
       onFrame(delta)
     }
+    // Post-pass: flush instance-group activations queued by the handlers
+    // above (layout, scroll, component onFrame) so freshly-shown glyphs,
+    // shapes, and panels draw on THIS frame — not one frame late.
+    for (const onFrameEnd of this.root.peek().onFrameEndSet) {
+      onFrameEnd(delta)
+    }
     root.isUpdateRunning = false
   }
 

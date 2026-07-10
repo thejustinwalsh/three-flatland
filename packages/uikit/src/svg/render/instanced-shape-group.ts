@@ -75,10 +75,12 @@ export class ShapeGroupManager {
   ) {}
 
   init(abortSignal: AbortSignal) {
-    const onFrame = () => this.traverse((group) => group.onFrame())
-    this.root.onFrameSet.add(onFrame)
+    //flush runs in the end-of-update post-pass so shapes activated during
+    //THIS frame's layout/scroll handlers still draw on this frame's render
+    const onFrameEnd = () => this.traverse((group) => group.onFrame())
+    this.root.onFrameEndSet.add(onFrameEnd)
     abortSignal.addEventListener('abort', () => {
-      this.root.onFrameSet.delete(onFrame)
+      this.root.onFrameEndSet.delete(onFrameEnd)
       this.traverse((group) => group.destroy())
     })
   }

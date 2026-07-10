@@ -21,6 +21,17 @@ export type RootContext = WithReversePainterSortStableCache & {
   panelGroupManager: PanelGroupManager
   shapeGroupManager: ShapeGroupManager
   onFrameSet: Set<(delta: number) => void>
+  /**
+   * Runs after EVERY `onFrameSet` handler, still inside the same
+   * `Component.update()` pass (see `Component.update`). The instance-group
+   * managers flush their queued activations here so content whose
+   * activation is requested DURING the frame — by the deferred layout
+   * calculation, scroll-driven clip visibility, or any component-level
+   * frame handler — still draws on THIS frame's render instead of popping
+   * in one frame late (mesh count/buffers were previously only raised by
+   * the next frame's flush).
+   */
+  onFrameEndSet: Set<(delta: number) => void>
   onUpdateMatrixWorldSet: Set<() => void>
   isUpdateRunning: boolean
 } & Partial<RenderContext>
@@ -61,6 +72,7 @@ function createRootContext(component: Component, renderContext: RenderContext | 
   const ctx: Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager' | 'shapeGroupManager'> = {
     isUpdateRunning: false,
     onFrameSet: new Set<(delta: number) => void>(),
+    onFrameEndSet: new Set<(delta: number) => void>(),
     requestFrame: renderContext?.requestFrame,
     requestRender() {
       if (ctx.isUpdateRunning) {

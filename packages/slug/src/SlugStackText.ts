@@ -1,4 +1,4 @@
-import { Color, Group, InstancedBufferAttribute, InstancedMesh } from 'three'
+import { Color, Group, InstancedBufferAttribute, InstancedMesh, Vector2 } from 'three'
 import type { Camera } from 'three'
 import type { SlugFontStack } from './SlugFontStack.js'
 import { SlugMaterial } from './SlugMaterial.js'
@@ -7,6 +7,8 @@ import { SlugGeometry } from './SlugGeometry.js'
 import { shapeStackText } from './pipeline/textShaperStack.js'
 import type { SlugFont } from './SlugFont.js'
 import type { PositionedGlyph, SlugOutlineOptions, StyleSpan } from './types.js'
+
+const _drawingBufferSize = new Vector2()
 
 export interface SlugStackTextOptions {
   font?: SlugFontStack
@@ -44,6 +46,20 @@ export class SlugStackText extends Group {
 
   private _viewportWidth = 1
   private _viewportHeight = 1
+
+  /**
+   * Per-child-mesh render hook: feed the dilation viewport from the
+   * renderer's DRAWING BUFFER size (device pixels). `Group`s never
+   * receive `onBeforeRender`, so this is wired onto every fill/stroke
+   * child mesh instead. CSS-pixel viewports over-expand the AA footprint
+   * by the device pixel ratio on retina; device px == CSS px at DPR 1.
+   */
+  private readonly _applyDrawingBufferViewport = (renderer: {
+    getDrawingBufferSize(target: Vector2): Vector2
+  }): void => {
+    renderer.getDrawingBufferSize(_drawingBufferSize)
+    this.setViewportSize(_drawingBufferSize.width, _drawingBufferSize.height)
+  }
 
   /** One mesh per font in the stack. Created on font set, disposed on swap. */
   private _meshes: InstancedMesh[] = []
@@ -157,6 +173,7 @@ export class SlugStackText extends Group {
       mesh.frustumCulled = false
       mesh.renderOrder = -1
       mesh.visible = false
+      mesh.onBeforeRender = this._applyDrawingBufferViewport
       this._outlineMaterials.push(mat)
       this._outlineMeshes.push(mesh)
       this.add(mesh)
@@ -224,6 +241,7 @@ export class SlugStackText extends Group {
       const mesh = new InstancedMesh(geom, mat, 0)
       mesh.frustumCulled = false
       mesh.visible = false
+      mesh.onBeforeRender = this._applyDrawingBufferViewport
       this._geometries.push(geom)
       this._materials.push(mat)
       this._meshes.push(mesh)
@@ -413,6 +431,11 @@ export class SlugStackText extends Group {
     this._syncOutlines()
   }
 
+  /**
+   * Update viewport size for dilation calculations. Render-time viewport
+   * comes from each child mesh's `onBeforeRender` (drawing-buffer device
+   * pixels); this remains as the headless/pre-render seed.
+   */
   setViewportSize(width: number, height: number): void {
     this._viewportWidth = width
     this._viewportHeight = height
