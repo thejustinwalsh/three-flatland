@@ -29,7 +29,7 @@ export {
   type UnionizeVariants,
   withOpacity,
 } from './utils.js'
-export { canvasInputProps } from './text/selection/pointer.js'
+export { canvasInputProps, attachCanvasInputProps } from './text/selection/pointer.js'
 export type { CaretTransformation, SelectionTransformation } from './text/index.js'
 export * from './properties/index.js'
 export { FontFamiliesSchema, FontFamilyWeightMapSchema, FontWeightSchema } from './text/index.js'

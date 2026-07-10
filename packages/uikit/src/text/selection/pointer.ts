@@ -30,6 +30,31 @@ export const canvasInputProps = {
   },
 }
 
+/**
+ * Vanilla three.js counterpart to {@link canvasInputProps}, which React applies
+ * by spreading onto `<Canvas>`.
+ *
+ * Without it, pressing an `Input` focuses the hidden field and the canvas's own
+ * default pointer-down handling immediately blurs it again — the component looks
+ * interactive and silently accepts no keystrokes.
+ *
+ * Register this **after** `forwardHtmlEvents`: listeners fire in registration
+ * order, and the uikit component must claim the event (via `cancelBlur`) before
+ * this guard decides whether to suppress the default.
+ *
+ * @returns a disposer that removes the listener
+ */
+export function attachCanvasInputProps(canvas: HTMLElement): () => void {
+  const onPointerDown = (nativeEvent: Event) => {
+    canvasInputProps.onPointerDown({
+      nativeEvent,
+      preventDefault: () => nativeEvent.preventDefault(),
+    })
+  }
+  canvas.addEventListener('pointerdown', onPointerDown)
+  return () => canvas.removeEventListener('pointerdown', onPointerDown)
+}
+
 const segmenter =
   typeof Intl === 'undefined' ? undefined : new Intl.Segmenter(undefined, { granularity: 'word' })
 
