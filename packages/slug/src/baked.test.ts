@@ -22,7 +22,7 @@ describe('unpackBaked version gate', () => {
 
   it('rejects a FL_slug_font version newer than supported', () => {
     expect(() => unpackBaked(stub({ version: SLUG_FONT_VERSION + 1 }))).toThrow(
-      /unsupported FL_slug_font version/,
+      /unsupported FL_slug_font version/
     )
   })
 
