@@ -772,14 +772,13 @@ export default function App() {
     // `canvasInputProps` stops the canvas's default pointer-down from blurring the
     // hidden <input> a uikit `Input` types into. Without it the field focuses,
     // renders a caret for one frame, and silently swallows every keystroke.
-    <Canvas
-      {...canvasInputProps}
-      dpr={1}
-      renderer={{ antialias: false }}
-      onCreated={({ gl }) => {
-        gl.domElement.style.imageRendering = 'pixelated'
-      }}
-    >
+    // No `dpr={1}` + `image-rendering: pixelated`: that renders the whole
+    // framebuffer at 1x and nearest-upscales it, pixelating Slug's analytic text
+    // along with everything else. R3F's default dpr respects the device pixel
+    // ratio, so text stays crisp; the tilemap stays chunky because its tileset is
+    // NearestFilter-sampled (Flatland's TextureConfig default 'pixel-art'), not
+    // because the canvas is downscaled.
+    <Canvas {...canvasInputProps} renderer={{ antialias: false }}>
       <DevtoolsProvider name="uikit" />
       <Suspense fallback={null}>
         <GameScene ambient={ambient} />

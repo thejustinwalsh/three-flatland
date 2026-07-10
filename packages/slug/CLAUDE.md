@@ -55,9 +55,11 @@ These are real and currently unimplemented. Several are tracked as [#37 Vector G
 ## Baseline conversion — one place, on purpose
 
 `src/layout/baseline.ts` is the ONLY place the MSDF folded-`yoffset` convention is mapped
-onto Slug's baseline-relative metrics: `getEmBoxTopOffset`, `getLineBaselineOffset`,
+onto Slug's baseline-relative metrics: `getHalfLeading`, `getLineBaselineOffset`,
 `getGlyphTopOffset`. Everything that positions a glyph or a caret derives its `y` from
-those three. Get this wrong by a constant and every unit test still passes while every
+those three. Half-leading is content-box based — `(lineHeight - (ascender - descender) *
+fontSize) / 2` — so it goes slightly negative for Inter at `lineHeight: 1.2`, exactly as a
+browser renders it; NOT the em-square `(lineHeight - fontSize) / 2`. Get this wrong by a constant and every unit test still passes while every
 line of text shifts — so it is asserted against hand-computed Inter-Regular values in
 `src/layout/baseline.test.ts`. Do not inline a second copy of this math. Its sibling
 `src/layout/worldSpace.ts` is the equally-singular D6 paragraph-space → world-space y flip.
