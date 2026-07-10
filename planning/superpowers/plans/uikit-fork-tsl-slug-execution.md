@@ -448,6 +448,53 @@ Tasks:
    and on forceWebGL, zero console warnings, and an `addUpdateRange` write visible the
    next frame. Static evidence retires the structural risk, not the runtime one.
 
+   **E1 — PASS (runtime), 2026-07-10.** Harness: `examples/three/uikit-hud/e1.{html,ts}`,
+   driven in Chrome against the example's Vite dev server. A `Mesh` subclass that merely
+   declares `isInstancedMesh = true`, carries an `instanceMatrix` and a `count`, over a
+   plain `PlaneGeometry`, with a `mat4` recomposed from four `vec4` instanced lanes:
+
+   ```json
+   {
+     "pass": true,
+     "results": {
+       "webgpu": {
+         "drew": true,
+         "distinctColors": 4,
+         "expected": 4,
+         "instancesSeparated": true,
+         "updateVisibleNextFrame": true,
+         "warnings": [],
+         "errors": []
+       },
+       "webgl2": {
+         "drew": true,
+         "distinctColors": 4,
+         "expected": 4,
+         "instancesSeparated": true,
+         "updateVisibleNextFrame": true,
+         "warnings": [],
+         "errors": []
+       }
+     }
+   }
+   ```
+
+   Four distinct per-instance colours prove the vec4 lanes step per instance and that
+   `mat4(v0,v1,v2,v3)` recomposes and indexes correctly. `instancesSeparated` proves
+   `instanceMatrix` was consumed. `updateVisibleNextFrame` proves `addUpdateRange` +
+   `needsUpdate` reaches the GPU. Zero warnings, zero errors, on **both** backends.
+   Screenshot: `planning/superpowers/e1-evidence.png`. **R1 fully retired — fan-out is
+   authorized.**
+
+   **E4 — PASS, 2026-07-10.** `yoga-layout@3.2.1` ships raw TypeScript with the WASM
+   base64-inlined; it runs unmodified through our vitest (`packages/uikit/src/tests/flex.test.ts`,
+   9 tests) and the example dev server boots and serves. No `noExternal` fallback needed.
+
+   **E2 / E3 — BLOCKED until U1.** Both need the TSL panel coverage graph, which does not
+   exist yet. E2 (shadow silhouette via `colorNode.a` + `alphaTest`) and E3 (both-backend
+   compile, zero WGSL uniformity diagnostics) run the moment U1.a lands. They gate U2/U3,
+   not the Slug track.
+
    **Harness note:** the repo's Playwright suite cannot be used. Its `webServer` runs
    `astro preview` over a prebuilt `docs/dist/`, which requires `pnpm build` →
    `turbo run build` → `skia#build`, and Skia cannot compile on this machine. Drive the
