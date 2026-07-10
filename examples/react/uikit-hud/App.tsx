@@ -1,5 +1,5 @@
-import { Suspense, useEffect, useMemo, useRef, useLayoutEffect } from 'react'
-import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
+import { Suspense, useEffect, useMemo, useRef, useLayoutEffect, useState } from 'react'
+import { Canvas, createPortal, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import {
   DataTexture,
@@ -20,19 +20,69 @@ import {
 import { DefaultLightEffect } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { DevtoolsProvider, usePane, usePaneInput } from '@three-flatland/devtools/react'
+import {
+  Container,
+  Text,
+  VanillaFullscreen,
+  withOpacity,
+  useRenderContext,
+  useSetup,
+  type FullscreenProperties,
+} from '@three-flatland/uikit/react'
+import { ChevronUp } from '@three-flatland/uikit-lucide/react'
+import { SlugFontLoader } from '@three-flatland/slug/react'
+import type { SlugFont } from '@three-flatland/slug'
+import { suspend } from 'suspend-react'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
-extend({ Flatland, Light2D, TileMap2D, DefaultLightEffect })
+extend({ Flatland, Light2D, TileMap2D, DefaultLightEffect, VanillaFullscreen })
 
 // ============================================
-// uikit-hud — base scene (P0.e scaffold)
+// uikit-hud — HUD over the tilemap + Light2D base scene (U4)
 //
-// Ships ONLY the tilemap + Light2D base scene. The TSL panel material
-// landed in U1 (`createPanelNodeMaterial`), but text rendering is still
-// stubbed until U2 (`text/render/**`, `loaders/ttf.ts`) — mounting the
-// HUD waits for U2. See the TODO below for the exact mount point.
+// U1 (TSL panel material), U2 (Slug text), and U3 (Slug SVG shapes) have all
+// landed, so the uikit HUD mounts here: a rounded score panel, a `Text`
+// readout, and a lucide `Svg` icon — composed with three-flatland's own
+// renderer, not standing alone. See u1.ts/u2.ts/u3.ts (vanilla) for the
+// isolated per-feature harnesses this composes.
+//
+// `<Fullscreen>` from `@three-flatland/uikit/react` targets R3F's OWN
+// default scene/camera (`useThree().scene`/`.camera`) via `createPortal`.
+// That default scene is never rendered here — this scene renders Flatland's
+// *internal* scene/camera explicitly (`flatlandRef.current.render(gl)`
+// below), so a HUD parented to R3F's default camera would silently never
+// draw. `HudFullscreen` reimplements the same createPortal trick but
+// targets Flatland's own camera instead — mirrors the vanilla twin's
+// `flatland.add(flatland.camera); flatland.camera.add(hud)`.
 // ============================================
+
+function HudFullscreen({
+  camera,
+  children,
+  ...props
+}: FullscreenProperties & { camera: ThreeOrthographicCamera }) {
+  const renderer = useThree((s) => s.gl)
+  const renderContext = useRenderContext()
+  const ref = useRef<VanillaFullscreen>(null)
+  const args = useMemo(
+    () => [renderer, props, undefined, { renderContext }],
+    // `props` intentionally excluded — see build.tsx's identical note.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [renderer, renderContext]
+  )
+  const outProps = useSetup(ref, props, args)
+  return createPortal(
+    <vanillaFullscreen {...outProps} ref={ref}>
+      {children}
+    </vanillaFullscreen>,
+    camera
+  )
+}
+
+function useSlugFont(url: string): SlugFont {
+  return suspend(() => SlugFontLoader.load(url, { forceRuntime: true }), [url, 'uikit-hud-font'])
+}
 
 const TILES = {
   EMPTY: 0,
@@ -201,6 +251,10 @@ function HudScene({ ambient }: { ambient: number }) {
   const torchRef = useRef<Light2D>(null)
   const torch2Ref = useRef<Light2D>(null)
   const flickerT = useRef(0)
+  const scoreT = useRef(0)
+  const [score, setScore] = useState(0)
+  const [flatlandCamera, setFlatlandCamera] = useState<ThreeOrthographicCamera | null>(null)
+  const font = useSlugFont(`${import.meta.env.BASE_URL}Inter-Regular.ttf`)
 
   const halfExtent = (MAP_SIZE * TILE_SIZE) / 2
 
@@ -233,6 +287,17 @@ function HudScene({ ambient }: { ambient: number }) {
     scene.backgroundNode = node
   }, [])
 
+  // Flatland renders its OWN internal scene/camera explicitly (see the
+  // `'render'`-phase useFrame below) — the HUD needs its camera to be part
+  // of THAT scene graph, not R3F's default one. `flatlandCamera` (below)
+  // feeds `<HudFullscreen>`.
+  useEffect(() => {
+    const flatland = flatlandRef.current
+    if (!flatland) return
+    flatland.add(flatland.camera)
+    setFlatlandCamera(flatland.camera)
+  }, [])
+
   useFrame((_, rawDelta) => {
     flickerT.current += rawDelta
     if (torchRef.current) {
@@ -240,6 +305,11 @@ function HudScene({ ambient }: { ambient: number }) {
     }
     if (torch2Ref.current) {
       torch2Ref.current.intensity = 1.3 * (1 + Math.sin(flickerT.current * 18 + 1) * 0.1)
+    }
+    scoreT.current += rawDelta
+    if (scoreT.current > 1) {
+      scoreT.current -= 1
+      setScore((s) => s + 10)
     }
   })
 
@@ -274,14 +344,35 @@ function HudScene({ ambient }: { ambient: number }) {
           distance={120}
           decay={2}
         />
-
-        {/* TODO(U2): mount uikit Root here once Slug-backed text rendering
-            lands. e.g.
-              <root ref={rootRef} args={[renderer, style]} />
-            The TSL panel material landed in U1; text/render/** is still
-            stubbed, so a text-bearing HUD would throw at glyph setup
-            time. */}
       </flatland>
+
+      {flatlandCamera && (
+        <HudFullscreen
+          camera={flatlandCamera}
+          flexDirection="row"
+          justifyContent="flex-start"
+          alignItems="flex-start"
+          padding={16}
+        >
+          <Container
+            flexDirection="row"
+            alignItems="center"
+            gap={8}
+            paddingX={14}
+            paddingY={8}
+            backgroundColor={withOpacity('#111418', 0.85)}
+            borderTopLeftRadius={12}
+            borderTopRightRadius={12}
+            borderBottomLeftRadius={12}
+            borderBottomRightRadius={12}
+          >
+            <ChevronUp width={20} height={20} fill="#f5c451" />
+            <Text color="white" fontSize={20} fontFamilies={{ inter: { normal: font } }}>
+              {`Score: ${score}`}
+            </Text>
+          </Container>
+        </HudFullscreen>
+      )}
     </>
   )
 }

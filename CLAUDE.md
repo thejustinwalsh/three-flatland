@@ -4,7 +4,7 @@
 
 - `pnpm dev` — docs (port 4000) + examples MPA (port 5174) behind microfrontends proxy at http://localhost:5173
 - `pnpm --filter=example-react-tilemap dev` — run a single example
-- `pnpm sync:pack` — sync example/mini package.json deps with the workspace catalog after editing `pnpm-workspace.yaml`
+- `pnpm sync:pack examples minis` — sync example/mini package.json deps with the workspace catalog after editing `pnpm-workspace.yaml`. **The bare form exits 1**: `scripts/sync-pack.ts` requires explicit directory args (`pnpm sync:pack <dir> [<dir>…]`), which is how `lefthook.yml` invokes it.
 - `pnpm sync:react` — regenerate React subpath wrappers after touching `packages/three-flatland/src/*/index.ts`
 
 ## Code Style

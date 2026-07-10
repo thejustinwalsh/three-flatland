@@ -2,7 +2,7 @@
 
 Base scene scaffold for the uikit fork: a lit dungeon room (TileMap2D + Light2D)
 that will host a `@three-flatland/uikit` HUD once the TSL panel material lands
-(see the `TODO(U1)` in `main.ts`).
+The uikit HUD mounts over it: a rounded score panel, a `Text`, and a lucide `Svg` icon.
 
 Part of [three-flatland](https://github.com/thejustinwalsh/three-flatland) — a TSL-native 2D rendering library for Three.js.
 

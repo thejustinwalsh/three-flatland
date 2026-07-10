@@ -5,7 +5,7 @@ import {
   reversePainterSortStable,
 } from '../index.js'
 import { effect } from '@preact/signals-core'
-import { extend, useStore, useThree, type Instance, applyProps } from '@react-three/fiber'
+import { extend, useFrame, useThree, type Instance, applyProps } from '@react-three/fiber'
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
 import { jsx } from 'react/jsx-runtime'
 
@@ -41,25 +41,35 @@ export function useRenderContext() {
  * @returns the props that should be applied to the component
  */
 export function useSetup(ref: { current: Component | null }, inProps: any, args: Array<any>): any {
-  const store = useStore()
-  useEffect(() => {
+  // Pump uikit's tree once per frame.
+  //
+  // Upstream subscribes through R3F's internal priority loop:
+  //   `store.getState().internal.subscribe({ current: (_, d) => c.update(d * 1000) }, 0, store)`
+  // That API is gone in `@react-three/fiber@10` — v10 replaced the priority loop with a
+  // named-phase scheduler, and `RootState.internal` no longer exists. The subscription
+  // silently never ran, so every R3F uikit tree stayed unlaid-out and drew nothing.
+  //
+  // `useFrame`'s default `'update'` phase runs before `'render'`, which is what the old
+  // priority-0 subscriber gave us. `Component.update()` already no-ops on non-root
+  // components, so no guard is needed here. R3F's delta is seconds; uikit wants ms.
+  useFrame((_, delta) => {
     const component = ref.current
-    if (component == null) {
-      return
-    }
-    return effect(() => {
-      if (component.root.value.component != component) {
-        return
-      }
-      return store.getState().internal.subscribe(
-        {
-          current: (_, delta) => component.update(delta * 1000),
-        },
-        0,
-        store
-      )
-    })
-  }, [ref, store])
+    if (component == null) return
+    // Upstream's root guard is load-bearing and NOT redundant with
+    // `Component.update()`'s own `root.component != this` early-return:
+    // `Fullscreen` OVERRIDES `update()`, calls `super.update()` (which does
+    // no-op for non-roots) and then searches its ancestors for a Camera,
+    // throwing if it finds none. Pumping a not-yet-portalled Fullscreen would
+    // throw out of the frame job.
+    if (component.root.peek().component !== component) return
+    // R3F's `createPortal` constructs the instance and assigns its ref BEFORE
+    // attaching it to the portal container, so on the first frame `parent` is
+    // still null. `Fullscreen.update()` searches its ancestors for a Camera and
+    // throws when it finds none, which would blow up the frame job. A detached
+    // tree has nothing to lay out anyway.
+    if (component.parent == null) return
+    component.update(delta * 1000)
+  })
   const renderer = useThree((s) => s.gl)
   useEffect(() => {
     renderer.localClippingEnabled = true

@@ -11,16 +11,22 @@ import {
 } from 'three-flatland'
 import { DefaultLightEffect } from '@three-flatland/presets'
 import { createPane } from '@three-flatland/devtools'
+import { Container, Fullscreen, Text, withOpacity } from '@three-flatland/uikit'
+import type { RenderContext } from '@three-flatland/uikit'
+import { ChevronUp } from '@three-flatland/uikit-lucide'
+import { SlugFontLoader } from '@three-flatland/slug'
+import type { SlugFont } from '@three-flatland/slug'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
 // ============================================
-// uikit-hud — base scene (P0.e scaffold)
+// uikit-hud — HUD over the tilemap + Light2D base scene (U4)
 //
-// Ships ONLY the tilemap + Light2D base scene. The TSL panel material
-// landed in U1 (`createPanelNodeMaterial`), but text rendering is still
-// stubbed until U2 (`text/render/**`, `loaders/ttf.ts`) — mounting the
-// HUD waits for U2. See the TODO below for the exact mount point.
+// U1 (TSL panel material), U2 (Slug text), and U3 (Slug SVG shapes) have all
+// landed, so the uikit `Fullscreen` HUD mounts here: a rounded score panel,
+// a `Text` readout, and a lucide `Svg` icon — composed with three-flatland's
+// own renderer/camera rather than standing alone. See u1.ts/u2.ts/u3.ts for
+// the isolated per-feature harnesses this composes.
 // ============================================
 
 // Tile IDs for our procedural tileset (copied from examples/three/tilemap)
@@ -170,6 +176,12 @@ function createTileMapData(size: number, tileset: TilesetData, layers: ReturnTyp
   }
 }
 
+async function loadFont(): Promise<SlugFont> {
+  return SlugFontLoader.load(`${import.meta.env.BASE_URL}Inter-Regular.ttf`, {
+    forceRuntime: true,
+  })
+}
+
 /* HMR-tracked teardown state. Without this, every dev save accumulates
  * a fresh renderer + animate() loop while the previous one keeps
  * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
@@ -241,12 +253,60 @@ async function main() {
   flatland.add(tilemap)
   tilemap.markOccluders(['collision'])
 
-  // TODO(U2): mount uikit Root here once Slug-backed text rendering lands.
-  // e.g.
-  //   const root = new Root(renderer, computedStyleFromElement(...))
-  //   flatland.add(root)
-  // The TSL panel material landed in U1; text/render/** is still stubbed,
-  // so a text-bearing HUD would throw at glyph setup time.
+  // ─── uikit HUD ──────────────────────────────────────────────────
+  // `Fullscreen` walks its Object3D ancestors looking for a Camera
+  // (`searchFor(this, Camera, 2, true)` in fullscreen.ts) to size itself
+  // against, so the camera has to be part of the graph `Fullscreen` is
+  // rendered in — add it to Flatland's internal scene and hang the HUD
+  // root off the camera itself (the same trick the R3F twin's
+  // `scene.add(camera)` + `camera.add(fullscreenWrapper)` performs).
+  flatland.add(flatland.camera)
+
+  const font = await loadFont()
+  // Imperative render loop already runs every frame — uikit's reactive
+  // invalidation hook (used by the React twin's `invalidate()`) has nothing
+  // to do here, so it's a no-op (same contract as u1.ts/u2.ts/u3.ts).
+  const renderContext: RenderContext = { requestFrame: () => {} }
+
+  const hud = new Fullscreen(
+    renderer,
+    {
+      flexDirection: 'row',
+      justifyContent: 'flex-start',
+      alignItems: 'flex-start',
+      padding: 16,
+    },
+    undefined,
+    { renderContext }
+  )
+
+  const scorePanel = new Container({
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingX: 14,
+    paddingY: 8,
+    backgroundColor: withOpacity('#111418', 0.85),
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+  })
+
+  const scoreIcon = new ChevronUp({ width: 20, height: 20, fill: '#f5c451' })
+
+  let score = 0
+  const scoreText = new Text({
+    text: `Score: ${score}`,
+    color: 'white',
+    fontSize: 20,
+    fontFamilies: { inter: { normal: font } },
+  })
+
+  scorePanel.add(scoreIcon)
+  scorePanel.add(scoreText)
+  hud.add(scorePanel)
+  flatland.camera.add(hud)
 
   // ─── Tweakpane UI ───────────────────────────────────────────────
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
@@ -265,6 +325,7 @@ async function main() {
 
   // ─── Render loop ────────────────────────────────────────────────
   let flickerT = 0
+  let scoreT = 0
   let lastTime = performance.now()
 
   function animate() {
@@ -273,9 +334,18 @@ async function main() {
     const delta = Math.min(0.1, (now - lastTime) / 1000)
     lastTime = now
     flickerT += delta
+    scoreT += delta
 
     torchLight.intensity = 1.6 * (1 + Math.sin(flickerT * 15) * 0.1)
     torchLight2.intensity = 1.3 * (1 + Math.sin(flickerT * 18 + 1) * 0.1)
+
+    if (scoreT > 1) {
+      scoreT -= 1
+      score += 10
+      scoreText.setProperties({ text: `Score: ${score}` })
+    }
+
+    hud.update(delta)
 
     devtools.beginFrame(performance.now(), renderer)
     flatland.render(renderer)

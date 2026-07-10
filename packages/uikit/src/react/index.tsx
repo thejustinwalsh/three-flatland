@@ -33,23 +33,20 @@ import {
   Svg as VanillaSvg,
   type SvgProperties as VanillaSvgProperties,
   Text as VanillaText,
-  type TextProperties as VanillaTextProperties,
   Textarea as VanillaTextarea,
   type TextareaProperties as VanillaTextareaProperties,
   type InProperties,
   type TextOutProperties,
 } from '../index.js'
-import type { ReadonlySignal } from '@preact/signals-core'
 import {
   createPortal,
   extend,
   type ThreeElement,
   useFrame,
-  useLoader,
   useStore,
   useThree,
 } from '@react-three/fiber'
-import { Object3D, SRGBColorSpace, TextureLoader } from 'three'
+import { Object3D } from 'three'
 import { jsx } from 'react/jsx-runtime'
 
 export type ClassListProperties = { classList?: Array<string | InProperties> }
