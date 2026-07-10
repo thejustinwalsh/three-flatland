@@ -4,18 +4,30 @@
 **PR #179 (DRAFT — never mark ready without stakeholder approval).** ~46 commits ahead of `origin/main`.
 Second draft PR **#181** (Flatland aspect fix) is independent and also draft.
 
-## STEP 0 — the immediate next action
+## STEP 0 — DONE. All units landed and committed (tree clean, 52 commits).
 
-**One workflow is still running: `wxjyh9m6w` (PE — panel edge precision).** It notifies on completion.
-When it lands (or if already landed), do STEP 1. Do NOT commit anything until PE settles — the tree is
-mid-edit and panels render broken in PE's intermediate state (expected).
+PE (panel-edge) landed and the whole batch is **committed** (874cf5a5 retina, f7ff0d13 tabs,
+a6368334 video, 869c2e96 panel-edge, 3213fe33 conformance example). typecheck + 66 uikit / 392 slug
+tests green; PE's u1 dual-backend harness passed with zero shader warnings; box-doesn't-swim invariant
+respected (SDF remapped to true rect, render-only dilation). My DPR-1 spot-check showed the radio
+rounder + centered; **the definitive retina judgment is the FIRST thing to do next** (see STEP 1).
 
-If PE is stuck/spiraled (check: `git diff --stat packages/uikit/src/panel/material/shader.ts` — should
-be a focused ~50-line change; screenshot shows broken panels): stop it (`TaskStop wxjyh9m6w`), revert
-its files (`git checkout packages/uikit/src/panel/material/`), and re-dispatch the dilation with the
-**hard invariant below**.
+## STEP 1 — FINAL retina verification (do this first), then the queue
 
-## STEP 1 — verify the whole batch with PIXELS, then commit
+The batch is committed but pixel-verified only at DPR 1 (headless) + by PE's harness. On a **real
+retina (DPR 2) screen**, re-verify the stakeholder's bars against `localhost:5182/?component=<name>`
+and `localhost:5180/three/uikit/`:
+
+- radio ring round, no flat cardinal tangents (was the headline complaint)
+- badge white icon does NOT bleed past the black border
+- switch stadium, avatar circle, card corners all clean
+- nothing swims (a 16×16 element still lays out 16×16 — dilation is render-only)
+  If any bar fails on retina, the fix is in `packages/uikit/src/panel/material/shader.ts` (the dilation
+  headroom / border-presence math) — see 869c2e96 and PE's report in
+  `tasks/wxjyh9m6w.output` (notes a minification edge case: 1 panel-px headroom < 1 screen-px for
+  far/tilted panels — same as upstream; escalation is slug's projected-Jacobian screen-space dilation).
+
+### Reference: what was in the (now committed) batch
 
 Uncommitted work sitting in the tree from two workflows (all done except PE):
 
