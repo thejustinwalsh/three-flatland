@@ -7,7 +7,7 @@ export default defineConfig(({ command }) => ({
     'process.env.FL_DEVTOOLS': JSON.stringify('true'),
   },
   plugins: [react()],
-  base: command === 'serve' ? '/react/uikit-hud/' : './',
+  base: command === 'serve' ? '/react/uikit/' : './',
   server: {
     strictPort: true,
   },

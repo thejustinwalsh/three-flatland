@@ -5,7 +5,7 @@ export default defineConfig(({ command }) => ({
   define: {
     'process.env.FL_DEVTOOLS': JSON.stringify('true'),
   },
-  base: command === 'serve' ? '/three/uikit-hud/' : './',
+  base: command === 'serve' ? '/three/uikit/' : './',
   server: {
     strictPort: true,
   },

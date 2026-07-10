@@ -72,7 +72,10 @@ export function useSetup(ref: { current: Component | null }, inProps: any, args:
   })
   const renderer = useThree((s) => s.gl)
   useEffect(() => {
-    renderer.localClippingEnabled = true
+    // no `renderer.localClippingEnabled` — that flag exists only on the legacy
+    // WebGLRenderer; the common (WebGPU) renderer clips exclusively through
+    // clipping-group contexts (see content.ts/custom.ts) and the panel
+    // materials' own coverage-multiply clip paths.
     renderer.setTransparentSort(reversePainterSortStable)
   }, [renderer])
   useLayoutEffect(() => {

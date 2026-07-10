@@ -69,47 +69,10 @@ export type { SlugMaterialOptions } from './SlugMaterial.js'
 export { bakedURLs } from './baked.js'
 export type { BakedJSON } from './baked.js'
 
-// Layout engine (measure / wrap / position) + geometric queries
-export {
-  normalizeWhitespace,
-  resolveGlyphLayoutProperties,
-  measureGlyphLayout,
-  buildGlyphLayout,
-  buildPositionedGlyphLayout,
-  getTextXOffset,
-  getTextYOffset,
-  getEmBoxTopOffset,
-  getLineBaselineOffset,
-  getGlyphTopOffset,
-  getGlyphMetricsWithFallback,
-  getOffsetToNextGlyph,
-  getKerningOffset,
-  getGlyphOffsetX,
-  getGlyphInkWidth,
-  getOffsetToNextLine,
-  getGlyphLayoutHeight,
-  getWhitespaceWidth,
-  WordWrapper,
-  BreakallWrapper,
-  NowrapWrapper,
-  glyphWrappers,
-} from './layout/index.js'
-export type {
-  BuildPositionedGlyphLayoutOptions,
-  GlyphWrapper,
-  WhiteSpace,
-  WordBreak,
-  TextAlign,
-  VerticalAlign,
-  SlugLayoutFont,
-  SlugGlyphLayoutProperties,
-  ResolvedGlyphLayoutProperties,
-  GlyphLayoutLine,
-  GlyphLayout,
-  PositionedGlyphLayoutEntry,
-  PositionedGlyphLayoutLine,
-  PositionedGlyphLayout,
-  CaretTransformation,
-  SelectionTransformation,
-} from './layout/index.js'
-export { getCharIndex, getCaretTransformation, getSelectionTransformations } from './query/index.js'
+// Baseline conversion — the MSDF folded-yoffset ↔ Slug baseline-relative
+// metrics math, the package's single copy (see layout/baseline.ts).
+// Consumed by @three-flatland/uikit (getGlyphTopOffset) and by the
+// `slug/text` engine. The full run-based text engine lives at the
+// './text' subpath, not here — Slug's rendering surface and its text
+// engine are separate domains.
+export { getEmBoxTopOffset, getLineBaselineOffset, getGlyphTopOffset } from './layout/baseline.js'

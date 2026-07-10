@@ -45,6 +45,7 @@ import {
 import { computedTransformMatrix } from '../transform.js'
 import { setupCursorCleanup } from '../hover.js'
 import { ClassList, getStarProperties, StyleSheet } from './classes.js'
+import { CustomContentMesh } from './custom-content-mesh.js'
 import { InstancedGlyphMesh } from '../text/index.js'
 import { InstancedShapeMesh } from '../svg/index.js'
 import {
@@ -374,7 +375,8 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
           child instanceof Component ||
           child instanceof InstancedPanelMesh ||
           child instanceof InstancedGlyphMesh ||
-          child instanceof InstancedShapeMesh
+          child instanceof InstancedShapeMesh ||
+          child instanceof CustomContentMesh
         ) {
           return
         }
@@ -492,7 +494,9 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
         if (
           child instanceof InstancedPanelMesh ||
           child instanceof InstancedGlyphMesh ||
-          child instanceof InstancedShapeMesh
+          child instanceof InstancedShapeMesh ||
+          // the cloned component constructs its own content mesh
+          child instanceof CustomContentMesh
         ) {
           continue
         }

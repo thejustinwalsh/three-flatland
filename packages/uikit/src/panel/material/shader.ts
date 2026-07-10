@@ -1,4 +1,4 @@
-import { Matrix4 } from 'three'
+import { Matrix4, type Plane } from 'three'
 import {
   Fn,
   If,
@@ -20,6 +20,7 @@ import {
   normalView,
   normalize,
   positionGeometry,
+  positionWorld,
   select,
   smoothstep,
   step,
@@ -33,6 +34,7 @@ import {
   vertexStage,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
+import { NoClippingPlane } from '../../clipping.js'
 import type { PanelMaterialInfo } from './create.js'
 
 /**
@@ -63,6 +65,27 @@ type PanelDataColumns = readonly [Vec4Node, Vec4Node, Vec4Node, Vec4Node]
 export interface PanelMaterialNodes {
   colorNode: Vec4Node
   normalNode: Vec3Node
+}
+
+/**
+ * Pack up to four world-space clipping planes into mat4 columns
+ * (xyz = plane normal, w = plane constant) for the uniform clip path.
+ * Missing entries fall back to `NoClippingPlane`, which clips nothing.
+ */
+export function packClippingPlanes(planes: ReadonlyArray<Plane>, target: Matrix4): Matrix4 {
+  const elements = target.elements
+  for (let i = 0; i < 4; i++) {
+    const plane = planes[i] ?? NoClippingPlane
+    // read the normal fully before `constant`: live planes (RelativePlane)
+    // recompute into a shared helper on every property access
+    const { normal } = plane
+    const offset = i * 4
+    elements[offset] = normal.x
+    elements[offset + 1] = normal.y
+    elements[offset + 2] = normal.z
+    elements[offset + 3] = plane.constant
+  }
+  return target
 }
 
 const min4 = (v: Vec4Node): FloatNode => min(min(v.x, v.y), min(v.z, v.w))
@@ -262,7 +285,27 @@ export function createPanelMaterialNodes(info: PanelMaterialInfo): PanelMaterial
       dataUniform.mul(vec4(0, 0, 1, 0)),
       dataUniform.mul(vec4(0, 0, 0, 1)),
     ]
+    const { clippingPlanes } = info
     clipCoverage = float(1)
+    if (clippingPlanes != null) {
+      // Uniform clip path for non-instanced panels (e.g. Image): the SAME
+      // coverage multiply as the instanced attribute lanes — never a discard
+      // (Q2) — with the four planes fed as one mat4 uniform. The planes are
+      // world-space (`createGlobalClippingPlanes`), so they pair with
+      // `positionWorld` instead of the instanced path's root-space position.
+      const clippingMatrix = packClippingPlanes(clippingPlanes, new Matrix4())
+      const clippingUniform = uniform(clippingMatrix)
+      clippingUniform.onFrameUpdate(() => {
+        packClippingPlanes(clippingPlanes, clippingMatrix)
+      })
+      const lanes = [vec4(1, 0, 0, 0), vec4(0, 1, 0, 0), vec4(0, 0, 1, 0), vec4(0, 0, 0, 1)]
+      for (const lane of lanes) {
+        const plane = clippingUniform.mul(lane)
+        const distanceToPlane = dot(positionWorld, plane.xyz).add(plane.w)
+        const gradient = max(fwidth(distanceToPlane).mul(0.5), 0.00001)
+        clipCoverage = clipCoverage.mul(smoothstep(gradient.negate(), gradient, distanceToPlane))
+      }
+    }
   }
 
   const borderRadius = unpackBorderRadius(cols[2].x)

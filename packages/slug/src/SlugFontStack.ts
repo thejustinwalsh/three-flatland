@@ -1,7 +1,7 @@
 import { wrapLinesStack } from './pipeline/wrapLinesStack.js'
 import { emitDecorations as emitDecorationsCore } from './pipeline/decorations.js'
 import type { SlugFont } from './SlugFont.js'
-import type { DecorationRect, PositionedGlyph, StyleSpan } from './types.js'
+import type { DecorationRect, PositionedGlyph, SlugGlyphMetrics, StyleSpan } from './types.js'
 
 /**
  * Ordered chain of fonts used by `SlugText` for per-codepoint glyph
@@ -64,6 +64,45 @@ export class SlugFontStack {
   /** The primary font — used for default metrics (line-height, etc.). */
   get primary(): SlugFont {
     return this.fonts[0]!
+  }
+
+  // --- SlugTypeface conformance ---------------------------------------
+  // A stack is usable anywhere the text engine wants a typeface: block
+  // metrics come from the primary font, glyph metrics resolve through the
+  // fallback chain per codepoint (manual §4.6).
+
+  /** Primary font's units per em. */
+  get unitsPerEm(): number {
+    return this.primary.unitsPerEm
+  }
+
+  /** Primary font's ascender, em-space. */
+  get ascender(): number {
+    return this.primary.ascender
+  }
+
+  /** Primary font's descender, em-space (negative). */
+  get descender(): number {
+    return this.primary.descender
+  }
+
+  /**
+   * Glyph metrics from the first font in the chain that maps `codePoint`
+   * (the primary when none does — its notdef is the visual signal).
+   * Advances are em-normalized per font, so they compose across the chain.
+   */
+  getGlyphMetrics(codePoint: number): SlugGlyphMetrics | undefined {
+    return this.fonts[this.resolveCodepoint(codePoint)]!.getGlyphMetrics(codePoint)
+  }
+
+  /**
+   * Kerning via the primary font only. Glyph ids are meaningful within a
+   * single font, and cross-font pairs are intentionally unkerned (see
+   * package CLAUDE.md) — callers that mix fonts get 0-adjustment
+   * behavior, matching the run-boundary rule.
+   */
+  getKerning(a: number, b: number): number {
+    return this.primary.getKerning(a, b)
   }
 
   /**

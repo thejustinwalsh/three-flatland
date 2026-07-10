@@ -9,12 +9,13 @@ import {
 import { type Signal, computed, effect, signal } from '@preact/signals-core'
 import type { BaseOutProperties, InProperties, WithSignal } from '../properties/index.js'
 import { Component } from './component.js'
-import { SRGBColorSpace, Texture, TextureLoader, type Vector2Tuple } from 'three'
+import { SRGBColorSpace, Texture, TextureLoader, type Plane, type Vector2Tuple } from 'three'
 import { abortableEffect, loadResourceWithParams, setupMatrixWorldUpdate } from '../utils.js'
 import {
   createPanelNodeMaterial,
   createPanelMaterialConfig,
   type PanelMaterialConfig,
+  type PanelMaterialInfo,
   writeColor,
 } from '../panel/material/index.js'
 import { createGlobalClippingPlanes } from '../clipping.js'
@@ -53,6 +54,8 @@ export class Image<
   OutProperties extends ImageOutProperties<unknown> = ImageOutProperties<string | Texture>,
 > extends Component<OutProperties> {
   readonly texture = signal<Texture | undefined>(undefined)
+  /** live world-space planes feeding the material's uniform clip path */
+  readonly clippingPlanes: Array<Plane>
 
   constructor(
     inputProperties?: InProperties<OutProperties>,
@@ -100,7 +103,7 @@ export class Image<
       )
     }
 
-    const clippingPlanes = createGlobalClippingPlanes(this)
+    this.clippingPlanes = createGlobalClippingPlanes(this)
     const isMeshVisible = getImageMaterialConfig().computedIsVisibile(
       this.properties,
       this.borderInset,
@@ -109,7 +112,14 @@ export class Image<
     )
 
     const data = new Float32Array(16)
-    const info = { data: data, type: 'normal' } as const
+    // `clippingPlanes` opts into the material's uniform clip path —
+    // `material.clippingPlanes` is inert on the common (WebGPU) renderer, so
+    // the coverage multiply inside `colorNode` is the only clip that works here.
+    const info: PanelMaterialInfo = {
+      type: 'normal',
+      data,
+      clippingPlanes: this.clippingPlanes,
+    }
     // No PanelDepth/DistanceMaterial: the common Renderer ignores
     // customDepthMaterial/customDistanceMaterial entirely — shadow silhouettes
     // come from the panel material's colorNode.a + alphaTest (spec §2.1).
@@ -132,7 +142,6 @@ export class Image<
         resolvePanelMaterialClassProperty(this.properties.value.panelMaterialClass),
         info
       )
-      material.clippingPlanes = clippingPlanes
       ;(material as any).map = (this.material as any).map
       material.depthWrite = this.material.depthWrite
       material.depthTest = this.material.depthTest

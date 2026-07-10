@@ -82,7 +82,20 @@ export class Content<
   OutProperties extends ContentOutProperties = ContentOutProperties,
 > extends Component<OutProperties> {
   readonly boundingBox: Signal<BoundingBox | undefined>
+  /**
+   * ClippingGroup contract (duck-typed) — the renderer builds a clipping
+   * context from these flags + `clippingPlanes` for every descendant (see
+   * `custom.ts` for the full story; `material.clippingPlanes` is inert on the
+   * common renderer). Content's own mesh was never drawn (`material.visible =
+   * false`), so the renderer's group branch changes nothing about what draws.
+   */
+  readonly isGroup = true
+  readonly isClippingGroup = true
+  /** the live world-space planes (`createGlobalClippingPlanes`) — never replaced */
   readonly clippingPlanes: Array<Plane>
+  clipShadows = true
+  /** driven by the parent's clippingRect — no context is attached while unclipped */
+  enabled = false
 
   private readonly childrenMatrix = new Matrix4()
 
@@ -214,6 +227,11 @@ export class Content<
     this.clippingPlanes = createGlobalClippingPlanes(this)
 
     abortableEffect(() => {
+      this.enabled = this.parentContainer.value?.clippingRect.value != null
+      this.root.peek().requestRender?.()
+    }, this.abortSignal)
+
+    abortableEffect(() => {
       this.visible = this.isVisible.value
       applyAppearancePropertiesToGroup(
         this.properties,
@@ -288,7 +306,8 @@ export class Content<
         return
       }
       setupRenderOrder(descendant, this.root, this.orderInfo)
-      descendant.material.clippingPlanes = this.clippingPlanes
+      // no material.clippingPlanes — inert on the common renderer; descendants
+      // are clipped by the clipping-group context this component provides
       descendant.material.needsUpdate = true
       descendant.material.transparent = true
       descendant.raycast = makeClippedCast(
@@ -358,8 +377,10 @@ export class Content<
 
   dispose(): void {
     if (this.timeoutRef != null) {
+      // clear BEFORE nulling — the previous order cleared `undefined` and
+      // leaked the pending remeasure timeout
+      clearTimeout(this.timeoutRef)
       this.timeoutRef = undefined
-      clearInterval(this.timeoutRef)
     }
     super.dispose()
   }
@@ -385,6 +406,9 @@ function applyAppearancePropertiesToGroup(
   const renderOrder = parseNumberValue(properties.value.renderOrder ?? 0)
   group.traverse((child) => {
     if (
+      // never the group itself: as a clipping group its renderOrder is the
+      // subtree's groupOrder — it must stay 0 so render sorting is unchanged
+      child === group ||
       child instanceof InstancedGlyphMesh ||
       child instanceof InstancedPanelMesh ||
       child instanceof InstancedShapeMesh ||

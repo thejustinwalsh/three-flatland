@@ -35,6 +35,7 @@ export const GEM_OVERRIDES: Record<string, Gem | null> = {
   // Add per-slug pins here when auto-assignment lands wrong.
   // Example:
   //   knightmark: 'salmon',
+  uikit: 'amethyst',
 }
 
 export const GEM_COLORS: Record<Gem, string> = {
