@@ -231,16 +231,16 @@ class RelativePlane implements Plane {
     return target.copy(localPlane).applyMatrix4(globalMatrix)
   }
 
-  set(normal: Vector3, constant: number): Plane {
+  set(_normal: Vector3, _constant: number): Plane {
     return this
   }
-  setComponents(x: number, y: number, z: number, w: number): Plane {
+  setComponents(_x: number, _y: number, _z: number, _w: number): Plane {
     return this
   }
-  setFromNormalAndCoplanarPoint(normal: Vector3, point: Vector3): Plane {
+  setFromNormalAndCoplanarPoint(_normal: Vector3, _point: Vector3): Plane {
     return this
   }
-  setFromCoplanarPoints(a: Vector3, b: Vector3, c: Vector3): Plane {
+  setFromCoplanarPoints(_a: Vector3, _b: Vector3, _c: Vector3): Plane {
     return this
   }
   clone(): this {
@@ -280,10 +280,10 @@ class RelativePlane implements Plane {
   coplanarPoint(target: Vector3): Vector3 {
     return this.computeInto(helperPlane).coplanarPoint(target)
   }
-  applyMatrix4(matrix: Matrix4, optionalNormalMatrix?: Matrix3): Plane {
+  applyMatrix4(_matrix: Matrix4, _optionalNormalMatrix?: Matrix3): Plane {
     return this
   }
-  translate(offset: Vector3): Plane {
+  translate(_offset: Vector3): Plane {
     return this
   }
   equals(plane: Plane): boolean {

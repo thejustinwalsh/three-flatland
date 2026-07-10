@@ -43,7 +43,7 @@ export function createPanelNodeMaterial<T extends NodeMaterialClass>(
   info: PanelMaterialInfo
 ): InstanceType<T> {
   const material = new MaterialClass() as InstanceType<T>
-  const { colorNode, normalNode } = createPanelMaterialNodes(info)
+  const { colorNode, normalNode, positionNode } = createPanelMaterialNodes(info)
   material.side = FrontSide
   // NOTE: no `material.clipShadows` / `material.clippingPlanes` — both are
   // legacy-WebGLRenderer flags; the common (WebGPU) renderer reads clipping
@@ -60,6 +60,9 @@ export function createPanelNodeMaterial<T extends NodeMaterialClass>(
   const background = (material as PanelBackgroundColorNodeProvider).panelBackgroundColorNode
   material.colorNode = background != null ? vec4(background, colorNode.w) : colorNode
   material.normalNode = normalNode
+  // Half-pixel edge headroom (see `dilatedPanelPosition`): applied in main and
+  // shadow passes alike, so coverage silhouettes stay in sync.
+  material.positionNode = positionNode
   // Coverage alpha (including material opacity) lives entirely in colorNode.a —
   // neutralize NodeMaterial's default `materialOpacity` multiply so it is not
   // applied twice. `opacityNode` is invisible to the shadow path (spec §2.2).

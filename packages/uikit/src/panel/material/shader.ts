@@ -65,6 +65,7 @@ type PanelDataColumns = readonly [Vec4Node, Vec4Node, Vec4Node, Vec4Node]
 export interface PanelMaterialNodes {
   colorNode: Vec4Node
   normalNode: Vec3Node
+  positionNode: Vec3Node
 }
 
 /**
@@ -92,6 +93,24 @@ const min4 = (v: Vec4Node): FloatNode => min(min(v.x, v.y), min(v.z, v.w))
 const max4 = (v: Vec4Node): FloatNode => max(max(v.x, v.y), max(v.z, v.w))
 const step4 = (edge: FloatNode, v: Vec4Node): Vec4Node =>
   vec4(step(edge, v.x), step(edge, v.y), step(edge, v.z), step(edge, v.w))
+
+/** Guard against zero-size panels before dividing by the dimensions. */
+const safeDims = (dimensions: Vec2Node): Vec2Node => max(dimensions, vec2(1e-4, 1e-4))
+
+/**
+ * Pixel vertex dilation (slug's dilate, panel edition): grow the unit quad by
+ * one panel-pixel per side so the OUTER half of the ±fwidth coverage fringe
+ * has fragments to land on. Without it the SDF isosurface sits exactly at the
+ * quad edge, so an edge that lands on pixel centers hard-cuts its
+ * bottom/right AA row (top-left fill rule) and a fully-rounded corner clips
+ * its fringe at the four cardinal tangents. `computePanelFragment` undoes the
+ * dilation by remapping `uv` back onto the true panel rect.
+ */
+function dilatedPanelPosition(dimensions: Vec2Node): Vec3Node {
+  const dims = safeDims(dimensions)
+  const scale = dims.add(vec2(2, 2)).div(dims)
+  return vec3(positionGeometry.xy.mul(scale), positionGeometry.z)
+}
 
 /** vec2(outer sdf, inner/border sdf) inside a rounded corner (port of upstream `radiusDistance`). */
 function radiusDistance(
@@ -142,11 +161,17 @@ function unpackBorderRadius(packed: FloatNode): Vec4Node {
  * corner `If`/`ElseIf` branches only assign values computed before branching.
  */
 function computePanelFragment(cols: PanelDataColumns, borderRadius: Vec4Node) {
-  const dimensions = cols[3].zw
+  const dimensions = safeDims(cols[3].zw)
   const aspectRatio = dimensions.x.div(dimensions.y)
   const borderSize = cols[0].div(dimensions.y)
 
+  // `uv` interpolates over the DILATED quad (size + 2px per axis — see
+  // `dilatedPanelPosition`); remap so 0..1 spans the true panel rect. The
+  // dilated fringe lands at <0 / >1, where the SDF fades coverage to zero.
   const uvNode = uv()
+    .mul(dimensions.add(vec2(2, 2)))
+    .sub(vec2(1, 1))
+    .div(dimensions)
   const uvFlipped = vec2(uvNode.x, float(1).sub(uvNode.y))
   const outsideDistance = vec4(
     uvFlipped.y,
@@ -229,10 +254,19 @@ function computePanelFragment(cols: PanelDataColumns, borderRadius: Vec4Node) {
   })
 
   // Unconditional derivatives — top-level control flow on both backends (Q2).
+  // The ±fwidth window matches upstream's AA width; the one-pixel vertex
+  // dilation gives its outer half fragments to land on, so the fringe is
+  // never clipped by the quad boundary.
   const distanceGradient = fwidth(dist)
   const outer = smoothstep(distanceGradient.x.negate(), distanceGradient.x, dist.x)
   const inner = smoothstep(distanceGradient.y.negate(), distanceGradient.y, dist.y)
-  const transition = float(1).sub(step(0.1, outer.sub(inner)).mul(float(1).sub(inner)))
+  // Border presence from the SDF gap (dist.x - dist.y = border width at the
+  // nearest side), NOT upstream's coverage difference `step(0.1, outer - inner)`
+  // — that reads 0 in the outer fringe (outer < 0.1), painting the outermost
+  // AA sliver in the BACKGROUND color: content bleeding outside the border.
+  // With the SDF test, content coverage is exactly the inner (border-inset)
+  // box and the outer fringe keeps the border color.
+  const transition = float(1).sub(step(1e-5, dist.x.sub(dist.y)).mul(float(1).sub(inner)))
 
   return { dist, borderWeight, outer, transition }
 }
@@ -248,6 +282,7 @@ function computePanelFragment(cols: PanelDataColumns, borderRadius: Vec4Node) {
 export function createPanelMaterialNodes(info: PanelMaterialInfo): PanelMaterialNodes {
   let cols: PanelDataColumns
   let clipCoverage: FloatNode
+  let positionNode: Vec3Node
 
   if (info.type === 'instanced') {
     cols = [
@@ -262,9 +297,16 @@ export function createPanelMaterialNodes(info: PanelMaterialInfo): PanelMaterial
       attribute<'vec4'>(panelMatrixLanes[2], 'vec4'),
       attribute<'vec4'>(panelMatrixLanes[3], 'vec4')
     )
+    // Geometry-local dilated position: `positionLocal.assign(positionNode)` is
+    // emitted BEFORE InstanceNode's multiply in the generated code, so the
+    // instance transform still applies on top — positionNode must stay local.
+    const dilatedPosition = dilatedPanelPosition(cols[3].zw)
+    positionNode = dilatedPosition
     // Root-space position from the attribute lanes directly — deterministic
     // regardless of `positionLocal` mutation order after InstanceNode (spec §5.2).
-    const localPosition = varying(instanceMatrix.mul(vec4(positionGeometry, 1)).xyz)
+    // Uses the SAME dilated local position the rasterizer sees, so the
+    // interpolated plane distances stay exact across the dilated fringe.
+    const localPosition = varying(instanceMatrix.mul(vec4(dilatedPosition, 1)).xyz)
     clipCoverage = float(1)
     for (const name of panelClippingLanes) {
       const plane = attribute<'vec4'>(name, 'vec4')
@@ -285,6 +327,10 @@ export function createPanelMaterialNodes(info: PanelMaterialInfo): PanelMaterial
       dataUniform.mul(vec4(0, 0, 1, 0)),
       dataUniform.mul(vec4(0, 0, 0, 1)),
     ]
+    // Non-instanced panels (e.g. Image) scale via the object's matrixWorld, so
+    // the half-pixel dilation is plain local-space headroom; `positionWorld`
+    // (the uniform clip path below) derives from it automatically.
+    positionNode = dilatedPanelPosition(cols[3].zw)
     const { clippingPlanes } = info
     clipCoverage = float(1)
     if (clippingPlanes != null) {
@@ -355,5 +401,5 @@ export function createPanelMaterialNodes(info: PanelMaterialInfo): PanelMaterial
     return normalize(mix(normalView, outsideNormal, outsideNormalWeight))
   })()
 
-  return { colorNode, normalNode }
+  return { colorNode, normalNode, positionNode }
 }
