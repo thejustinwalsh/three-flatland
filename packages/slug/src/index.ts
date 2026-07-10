@@ -11,6 +11,13 @@ export { SlugMaterial } from './SlugMaterial'
 export { SlugStrokeMaterial } from './SlugStrokeMaterial'
 export type { SlugStrokeMaterialOptions } from './SlugStrokeMaterial'
 export { SlugGeometry } from './SlugGeometry'
+export { SlugBatch, SlugBatchGeometry } from './SlugBatch'
+export type {
+  SlugBatchOptions,
+  SlugBatchColor,
+  SlugBatchInstanceOptions,
+  SlugBatchGlyphOptions,
+} from './SlugBatch'
 
 export type {
   QuadCurve,

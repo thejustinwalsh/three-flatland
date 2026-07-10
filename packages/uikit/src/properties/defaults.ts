@@ -1,4 +1,4 @@
-import { MeshBasicMaterial } from 'three'
+import { MeshBasicNodeMaterial } from 'three/webgpu'
 import type { FontWeight, GlyphProperties, WhiteSpace } from '../text/index.js'
 import type { alignmentXMap, alignmentYMap, VisibilityProperties } from '../utils.js'
 import type { PanelGroupProperties } from '../panel/instance/properties.js'
@@ -20,7 +20,9 @@ export const componentDefaults = {
   caretWidth: 1.5 as AbsoluteLengthValue,
   receiveShadow: false,
   castShadow: false,
-  panelMaterialClass: MeshBasicMaterial as NonNullable<PanelGroupProperties['panelMaterialClass']>,
+  panelMaterialClass: MeshBasicNodeMaterial as NonNullable<
+    PanelGroupProperties['panelMaterialClass']
+  >,
   pixelSize: 0.01 as NumberValue,
   anchorX: 'center' as keyof typeof alignmentXMap,
   anchorY: 'center' as keyof typeof alignmentYMap,

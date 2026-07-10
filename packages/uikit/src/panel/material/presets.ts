@@ -1,7 +1,7 @@
-import { MeshPhongMaterial, MeshPhysicalMaterial } from 'three'
-import type { MaterialClass } from './create.js'
+import { MeshPhongNodeMaterial, MeshPhysicalNodeMaterial } from 'three/webgpu'
+import type { NodeMaterialClass } from './create.js'
 
-export class PlasticMaterial extends MeshPhongMaterial {
+export class PlasticMaterial extends MeshPhongNodeMaterial {
   constructor() {
     super({
       specular: '#111',
@@ -10,7 +10,7 @@ export class PlasticMaterial extends MeshPhongMaterial {
   }
 }
 
-export class GlassMaterial extends MeshPhysicalMaterial {
+export class GlassMaterial extends MeshPhysicalNodeMaterial {
   constructor() {
     super({
       roughness: 0.1,
@@ -23,7 +23,7 @@ export class GlassMaterial extends MeshPhysicalMaterial {
   }
 }
 
-export class MetalMaterial extends MeshPhysicalMaterial {
+export class MetalMaterial extends MeshPhysicalNodeMaterial {
   constructor() {
     super({
       iridescence: 0.001,
@@ -39,9 +39,9 @@ export const materialClasses = {
   plastic: PlasticMaterial,
 }
 
-export type PanelMaterialClass = MaterialClass | keyof typeof materialClasses
+export type PanelMaterialClass = NodeMaterialClass | keyof typeof materialClasses
 
-export function resolvePanelMaterialClassProperty(input: PanelMaterialClass): MaterialClass {
+export function resolvePanelMaterialClassProperty(input: PanelMaterialClass): NodeMaterialClass {
   if (typeof input != 'string') {
     return input
   }

@@ -12,6 +12,7 @@
   "dependencies": {
     "@three-flatland/devtools": "^1.0.0-alpha.4",
     "@three-flatland/presets": "^0.1.0-alpha.7",
+    "@three-flatland/slug": "^0.1.0-alpha.3",
     "@three-flatland/uikit": "^0.1.0-alpha.0",
     "@tweakpane/plugin-essentials": "^0.2.1",
     "three-flatland": "^0.1.0-alpha.7",

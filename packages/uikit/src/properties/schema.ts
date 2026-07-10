@@ -21,7 +21,7 @@ import type { AddAllAliases } from './alias.js'
 import { FontFamiliesSchema, FontWeightSchema } from '../text/font.js'
 import type { WhiteSpace, WordBreak } from '../text/index.js'
 import type { ColorRepresentation } from '../utils.js'
-import type { MaterialClass } from '../panel/index.js'
+import type { NodeMaterialClass } from '../panel/index.js'
 import type { AllowedPointerEventsType } from '../panel/interaction/pointer-events.js'
 import {
   isNumberString,
@@ -133,7 +133,7 @@ const colorValueSchema = /* @__PURE__ */ defineSchema(
 const materialClassSchema = /* @__PURE__ */ defineSchema(() =>
   union([
     enumSchema(['glass', 'metal', 'plastic']),
-    constructorSchema as z.ZodType<MaterialClass, MaterialClass>,
+    constructorSchema as z.ZodType<NodeMaterialClass, NodeMaterialClass>,
   ])
 )
 

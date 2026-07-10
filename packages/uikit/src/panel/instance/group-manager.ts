@@ -1,13 +1,13 @@
 import type { Component } from '../../components/component.js'
 import type { RootContext } from '../../context.js'
 import { ElementType, type OrderInfo } from '../../order.js'
-import type { MaterialClass } from '../material/create.js'
+import type { NodeMaterialClass } from '../material/create.js'
 import { resolvePanelMaterialClassProperty } from '../material/presets.js'
 import { InstancedPanelGroup } from './group.js'
 import type { PanelGroupProperties } from './properties.js'
 
 export class PanelGroupManager {
-  private map = new Map<MaterialClass, Map<string, InstancedPanelGroup>>()
+  private map = new Map<NodeMaterialClass, Map<string, InstancedPanelGroup>>()
 
   constructor(
     private readonly root: Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager'>,

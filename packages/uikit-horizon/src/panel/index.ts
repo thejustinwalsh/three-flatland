@@ -11,7 +11,6 @@ import {
   type RenderContext,
 } from '@three-flatland/uikit'
 import { DarkBackgroundMaterial, panelMaterialClass } from '../background-material.js'
-import { MeshBasicMaterial } from 'three'
 export const PanelOutPropertiesSchema = baseOutPropertiesSchema
 
 export const PanelPropertiesSchema = /* @__PURE__ */ defineSchema(() =>

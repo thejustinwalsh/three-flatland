@@ -28,11 +28,10 @@ extend({ Flatland, Light2D, TileMap2D, DefaultLightEffect })
 // ============================================
 // uikit-hud — base scene (P0.e scaffold)
 //
-// Ships ONLY the tilemap + Light2D base scene. The panel material is
-// stubbed (`createPanelMaterial` throws `ported in U1/U2`) — mounting
-// any uikit Root/Fullscreen/Container here would eagerly construct an
-// InstancedPanelGroup and throw at runtime. See the TODO below for the
-// exact mount point once U1/U2 land the TSL panel material.
+// Ships ONLY the tilemap + Light2D base scene. The TSL panel material
+// landed in U1 (`createPanelNodeMaterial`), but text rendering is still
+// stubbed until U2 (`text/render/**`, `loaders/ttf.ts`) — mounting the
+// HUD waits for U2. See the TODO below for the exact mount point.
 // ============================================
 
 const TILES = {
@@ -276,13 +275,12 @@ function HudScene({ ambient }: { ambient: number }) {
           decay={2}
         />
 
-        {/* TODO(U1): mount uikit Root here once the TSL panel material
+        {/* TODO(U2): mount uikit Root here once Slug-backed text rendering
             lands. e.g.
               <root ref={rootRef} args={[renderer, style]} />
-            Do NOT do this yet — createPanelMaterial() throws
-            `ported in U1/U2` and any panel-bearing component eagerly
-            constructs an InstancedPanelGroup, which will throw at
-            runtime. */}
+            The TSL panel material landed in U1; text/render/** is still
+            stubbed, so a text-bearing HUD would throw at glyph setup
+            time. */}
       </flatland>
     </>
   )

@@ -1,6 +1,6 @@
 import { computed } from '@preact/signals-core'
 import type { Properties } from '../../properties/index.js'
-import type { MaterialClass } from '../material/create.js'
+import type { NodeMaterialClass } from '../material/create.js'
 import { type materialClasses, resolvePanelMaterialClassProperty } from '../material/presets.js'
 import { parseNumberValue, type NumberValue } from '../../properties/values.js'
 
@@ -16,7 +16,7 @@ export type RenderProperties = {
 }
 
 export type PanelGroupProperties = {
-  panelMaterialClass?: MaterialClass | keyof typeof materialClasses
+  panelMaterialClass?: NodeMaterialClass | keyof typeof materialClasses
 } & ShadowProperties &
   RenderProperties
 

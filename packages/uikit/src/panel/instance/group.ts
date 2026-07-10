@@ -9,7 +9,7 @@ import {
 import type { Component } from '../../components/component.js'
 import type { RootContext } from '../../context.js'
 import { type OrderInfo, setupRenderOrder } from '../../order.js'
-import { createPanelMaterial } from '../material/create.js'
+import { createPanelNodeMaterial } from '../material/create.js'
 import { resolvePanelMaterialClassProperty } from '../material/presets.js'
 import { InstancedPanelMesh } from './mesh.js'
 import type { InstancedPanel } from './panel.js'
@@ -71,7 +71,7 @@ export class InstancedPanelGroup {
     private readonly panelGroupProperties: Required<PanelGroupProperties>
   ) {
     const materialClass = resolvePanelMaterialClassProperty(panelGroupProperties.panelMaterialClass)
-    this.instanceMaterial = createPanelMaterial(materialClass, { type: 'instanced' })
+    this.instanceMaterial = createPanelNodeMaterial(materialClass, { type: 'instanced' })
     this.instanceMaterial.depthTest = panelGroupProperties.depthTest
     this.instanceMaterial.depthWrite = panelGroupProperties.depthWrite
   }

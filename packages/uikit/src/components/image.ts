@@ -12,10 +12,8 @@ import { Component } from './component.js'
 import { SRGBColorSpace, Texture, TextureLoader, type Vector2Tuple } from 'three'
 import { abortableEffect, loadResourceWithParams, setupMatrixWorldUpdate } from '../utils.js'
 import {
-  createPanelMaterial,
+  createPanelNodeMaterial,
   createPanelMaterialConfig,
-  PanelDepthMaterial,
-  PanelDistanceMaterial,
   type PanelMaterialConfig,
   writeColor,
 } from '../panel/material/index.js'
@@ -112,10 +110,9 @@ export class Image<
 
     const data = new Float32Array(16)
     const info = { data: data, type: 'normal' } as const
-    this.customDepthMaterial = new PanelDepthMaterial(info)
-    this.customDistanceMaterial = new PanelDistanceMaterial(info)
-    this.customDepthMaterial.clippingPlanes = clippingPlanes
-    this.customDistanceMaterial.clippingPlanes = clippingPlanes
+    // No PanelDepth/DistanceMaterial: the common Renderer ignores
+    // customDepthMaterial/customDistanceMaterial entirely — shadow silhouettes
+    // come from the panel material's colorNode.a + alphaTest (spec §2.1).
 
     abortableEffect(() => {
       this.material.depthTest = this.properties.value.depthTest
@@ -131,7 +128,7 @@ export class Image<
       this.root.peek().requestRender?.()
     }, this.abortSignal)
     abortableEffect(() => {
-      const material = createPanelMaterial(
+      const material = createPanelNodeMaterial(
         resolvePanelMaterialClassProperty(this.properties.value.panelMaterialClass),
         info
       )

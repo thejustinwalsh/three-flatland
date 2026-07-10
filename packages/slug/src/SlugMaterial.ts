@@ -19,6 +19,14 @@ import {
 import type Node from 'three/src/nodes/core/Node.js'
 import { slugRender } from './shaders/slugFragment'
 import { slugDilate } from './shaders/slugDilate'
+import {
+  clipCoverage,
+  clipDistances,
+  clipPlaneLanes,
+  composeInstanceMatrix,
+  foldInstanceRow,
+  instanceMatrixLanes,
+} from './shaders/slugInstance'
 import type { SlugFont } from './SlugFont'
 
 export interface SlugMaterialOptions {
@@ -35,6 +43,21 @@ export interface SlugMaterialOptions {
   supersample?: boolean
   /** Snap glyph positions to pixel grid for crisp small text. Default true. */
   pixelSnap?: boolean
+  /**
+   * Read a per-instance transform from the `glyphMtx0..3` vec4 lanes
+   * (SlugBatch). Folds each instance's matrix into the dilation MVP so the
+   * screen-space Jacobian is exact per instance. Disables `pixelSnap`
+   * (grid snapping is ill-defined across heterogeneous per-instance
+   * transforms). Default false — the SlugText path is untouched.
+   */
+  instanceTransform?: boolean
+  /**
+   * Apply a per-instance 4-plane clip from the `glyphClip0..3` vec4 lanes
+   * (SlugBatch) as an antialiased coverage multiply — never a discard.
+   * The sentinel plane `(0, 0, 0, 1)` disables clipping bit-exactly.
+   * Default false.
+   */
+  instanceClip?: boolean
 }
 
 const _mvp = new Matrix4()
@@ -60,6 +83,8 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
   private _weightBoost: boolean
   private _supersample: boolean
   private _pixelSnap: boolean
+  private _instanceTransform: boolean
+  private _instanceClip: boolean
 
   constructor(font: SlugFont, options: SlugMaterialOptions = {}) {
     super()
@@ -69,6 +94,8 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     this._weightBoost = options.weightBoost ?? false
     this._supersample = options.supersample ?? false
     this._pixelSnap = options.pixelSnap ?? true
+    this._instanceTransform = options.instanceTransform ?? false
+    this._instanceClip = options.instanceClip ?? false
 
     const color =
       options.color instanceof Color ? options.color : new Color(options.color ?? 0xffffff)
@@ -109,6 +136,14 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     const vNumHBands = varyingProperty('float', 'vNumHBands')
     const vNumVBands = varyingProperty('float', 'vNumVBands')
 
+    // Opt-in per-instance groups (SlugBatch). When disabled the node graph
+    // is identical to the non-batched material — zero cost for SlugText.
+    const mtxLanes = this._instanceTransform ? instanceMatrixLanes() : null
+    const clipLanes = this._instanceClip ? clipPlaneLanes() : null
+    // Plane distances are affine in position, so vertex-stage evaluation +
+    // varying interpolation is exact — one vec4 varying carries all 4 planes.
+    const vClipDist = clipLanes ? varyingProperty('vec4', 'vClipDist') : null
+
     // Capture for closures
     const curveTexture = font.curveTexture
     const bandTexture = font.bandTexture
@@ -147,15 +182,22 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
         emCenter.y.add(basePos.y.mul(emHalfH.mul(2.0)))
       )
 
+      // Per-instance Jacobian: fold the instance matrix into the MVP rows
+      // so dilation measures THIS instance's screen-space footprint. With
+      // no instance transform these are the plain mesh-level rows.
+      const dilateRow0: Node<'vec4'> = mtxLanes ? foldInstanceRow(mvpRow0, mtxLanes) : mvpRow0
+      const dilateRow1: Node<'vec4'> = mtxLanes ? foldInstanceRow(mvpRow1, mtxLanes) : mvpRow1
+      const dilateRow3: Node<'vec4'> = mtxLanes ? foldInstanceRow(mvpRow3, mtxLanes) : mvpRow3
+
       // Dynamic dilation — expands quad by half a pixel in screen space
       const dilated = slugDilate(
         objPos,
         normal,
         emCoord,
         invScale,
-        mvpRow0,
-        mvpRow1,
-        mvpRow3,
+        dilateRow0,
+        dilateRow1,
+        dilateRow3,
         viewportUniform
       )
 
@@ -165,7 +207,9 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       // Pixel-grid snapping: snap glyph center to nearest pixel boundary.
       // Only applied to the center vertex offset (basePos = 0,0 doesn't exist,
       // but all 4 corners shift by the same amount since we snap the center).
-      if (this._pixelSnap) {
+      // Skipped in batch mode — the snap math assumes an axis-aligned ortho
+      // MVP, which heterogeneous per-instance transforms break.
+      if (this._pixelSnap && !mtxLanes) {
         // Compute clip-space position using our MVP uniforms
         const clipX = dot(mvpRow0, vec4(finalPos.x, finalPos.y, float(0), float(1)))
         const clipY = dot(mvpRow1, vec4(finalPos.x, finalPos.y, float(0), float(1)))
@@ -201,7 +245,21 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       vNumHBands.assign(glyphJac.z)
       vNumVBands.assign(glyphJac.w)
 
-      return vec3(finalPos.x, finalPos.y, float(0.0))
+      // Per-instance transform: glyph space → batch-local space
+      let outPos: Node<'vec3'> = vec3(finalPos.x, finalPos.y, float(0.0))
+      if (mtxLanes) {
+        const local = composeInstanceMatrix(mtxLanes).mul(
+          vec4(finalPos.x, finalPos.y, float(0.0), float(1.0))
+        )
+        outPos = vec3(local.x, local.y, local.z)
+      }
+
+      // Per-instance clip: signed plane distances in batch-local space
+      if (clipLanes && vClipDist) {
+        vClipDist.assign(clipDistances(outPos, clipLanes))
+      }
+
+      return outPos
     })() as typeof this.positionNode
 
     // --- Fragment shader ---
@@ -252,7 +310,11 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       // Compile-time bool: dead-code eliminates the unused path
       const curveCoverage = select(supersampleNode, ss, single)
       // Rect instances short-circuit to full coverage.
-      const coverage = select(isRect, float(1.0), curveCoverage)
+      const baseCoverage = select(isRect, float(1.0), curveCoverage)
+
+      // Per-instance clip: coverage multiply AFTER the rect select so
+      // decoration rects clip too. Unconditional fwidth, no discard (Q2).
+      const coverage = vClipDist ? baseCoverage.mul(clipCoverage(vClipDist)) : baseCoverage
 
       // Final color: glyph color * material color * coverage
       return vec4(

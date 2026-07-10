@@ -495,6 +495,25 @@ Tasks:
    compile, zero WGSL uniformity diagnostics) run the moment U1.a lands. They gate U2/U3,
    not the Slug track.
 
+   **E3 — PASS both backends, 2026-07-10.** Harness `examples/three/uikit-hud/u1.{html,ts}`.
+   `perInstanceColors`, `cornersTransparent`, `antialiased`, `dynamicDataUpdate`,
+   `perInstanceClip`, `matrixLaneSync`, `normalVariant` — all true on WebGPU and
+   forceWebGL. **Zero warnings**, so zero WGSL uniformity diagnostics: the Q2 restructure
+   (unconditional `fwidth`, coverage-multiply clip, single `alphaTest` discard) holds.
+
+   **E2 directional — PASS both backends.** `shadowPresent`, `sceneLit`, and
+   `cornerCutoutUnshadowed` all true; `cutoutRatios [1,1]` (the rounded corner cutout is
+   fully unshadowed) against `insideRatios ≈ 0.099` (the panel body is shadowed). Coverage
+   in `colorNode.a` + `alphaTest` reproduces rounded-corner shadow silhouettes with
+   `depth.ts` deleted, no `castShadowNode`, no `renderer.shadowMap.transmitted`.
+
+   **E2 point — PASS on WebGPU, FAIL on WebGL2. UNRESOLVED (R3).** On the WebGL2 backend
+   `sceneLit: false` — the point light contributes _nothing_, shadowed or not, which points
+   at harness configuration rather than a shadow bug. **Do not blame three:** it ships
+   `PointShadowNode` with an explicit WebGL branch (`_cubeDirectionsWebGL`) and
+   `WebGLBackend` handles cube faces. Needs a follow-up. Directional shadows work on both
+   backends, so v1 is not blocked. Evidence: `planning/superpowers/u1-evidence.png`.
+
    **Harness note:** the repo's Playwright suite cannot be used. Its `webServer` runs
    `astro preview` over a prebuilt `docs/dist/`, which requires `pnpm build` →
    `turbo run build` → `skia#build`, and Skia cannot compile on this machine. Drive the
@@ -709,6 +728,45 @@ Acceptance:
 - [ ] Existing `SlugText` unaffected (opt-in cost model) — its tests and perf
       characteristics unchanged.
 - [ ] Slug suite green; prettier/eslint/typecheck green.
+
+### S3 — DELIVERED 2026-07-10. Verified in-browser by the orchestrator.
+
+`SlugBatch` ships: per-instance transform as 4×vec4 lanes, per-instance 4-plane clip as a
+coverage multiply in **both** `SlugMaterial` and `SlugStrokeMaterial`, and a writer API
+(`ensureCapacity` / `writeGlyph` / `writeRect` / `copyWithin` / `count`). Tests 312 → 327.
+`SlugText`/`SlugStackText` untouched — opt-in cost model, `instanceTransform` defaults false.
+
+**Harness `examples/three/uikit-hud/s3.{html,ts}`, run by the orchestrator, both backends:**
+
+| scenario                       | maxDiff                                   | meanDiff |
+| ------------------------------ | ----------------------------------------- | -------- |
+| rot 0° / 37° / 90°             | 0                                         | 0        |
+| scale 1×2 / 3×0.5              | 0                                         | 0        |
+| mixed fontSize in ONE batch    | 0                                         | 0        |
+| clip (angled plane)            | `leakMax 0`, 33 smooth-edge intermediates |          |
+| sentinel vs clip-free material | 0                                         |          |
+| stroke-material batch clip     | `leakMax 0`                               |          |
+
+Zero warnings, zero errors. **The batched path is bit-identical to the non-batched
+`SlugText` reference** — the gate is not degenerate: `SlugText.ts`/`SlugGeometry.ts` are
+untouched, `SlugText` never references `SlugBatch`, and only the batch material sets
+`instanceTransform: true`. R2 is retired. Evidence: `planning/superpowers/s3-evidence.png`.
+
+**Windfoil spike — negative result, and illuminating.** The fragment footprint _already_
+came from `fwidth(renderCoord)`; the derivative-based term Windfoil advocates was Slug's
+coverage mechanism all along, so per-instance transforms reach fragment coverage for free.
+The plan's caveat held exactly: vertex-stage dilation cannot use derivatives, so the
+per-instance transform ships as `foldInstanceRow` (instance matrix folded into the MVP
+rows). **No new Jacobian attribute, no Green's-theorem integrator.** That folding is the
+same composition the CPU was doing, which is why the diff is bit-zero rather than merely
+below threshold — the implementer predicted exact zero was impossible and was wrong.
+
+**Deferrals:** clip pixel-verified only for `z = 0` planes (`nz != 0` is shader-supported,
+unverified); `pixelSnap` is force-disabled under `instanceTransform` (its snap math assumes
+an axis-aligned ortho MVP) — a documented divergence from `SlugText`'s default; any write
+marks the whole interleaved buffer dirty, so U2's adapter should add ranged updates if
+profiling asks; `SlugBatch` is single-font by construction, mirroring uikit's font-keyed
+glyph groups.
 
 ## Phase S4 — `SlugShapeSet` / `SlugShapeBatch` / `slug/svg`
 
