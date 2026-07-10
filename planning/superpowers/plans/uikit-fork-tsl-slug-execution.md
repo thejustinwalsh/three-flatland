@@ -416,6 +416,37 @@ Tasks:
    (spec §10 row 1).
 4. **Experiments E1–E4** (spec §13.1) as standalone harness scenes/tests inside the
    example or a scratch mini, each with its recorded pass/fail:
+
+   **E1 STATIC EVIDENCE — recorded 2026-07-10, R1 structurally retired.** The duck-typed
+   instancing assumption is confirmed at four independent points in `three@0.183.1`, and
+   none of them requires an `InstancedBufferGeometry`:
+   - `materials/nodes/NodeMaterial.js:832` — instancing setup is gated on
+     `object.isInstancedMesh && object.instanceMatrix && object.instanceMatrix.isInstancedBufferAttribute === true`.
+     A property check, not `instanceof`.
+   - `renderers/common/RenderObject.js:567-577` — `instanceCount = 1`; if
+     `geometry.isInstancedBufferGeometry` use `geometry.instanceCount`, **else if
+     `object.count !== undefined` use `Math.max(0, object.count)`**. uikit's
+     `createPanelGeometry()` returns a plain `PlaneGeometry`, so the draw count comes
+     from the duck-typed `count`. `instanceCount === 0` returns null (no draw), which
+     matches uikit's initial `count = 0`.
+   - `renderers/webgpu/utils/WebGPUAttributeUtils.js:259,264` — WebGPU `stepMode` is
+     derived from the **attribute** (`isInstancedBufferAttribute` /
+     `isInstancedInterleavedBuffer`), not the geometry.
+   - `renderers/webgl-fallback/WebGLBackend.js:2457-2463` — WebGL2 `vertexAttribDivisor`
+     is likewise keyed off the attribute.
+
+   `uikit/src/panel/instance/mesh.ts` carries all three required properties
+   (`isInstancedMesh = true` — `protected` erases at runtime — a real
+   `instanceMatrix: InstancedBufferAttribute`, and `count`).
+
+   **Still owed by E1:** the visual pass — N distinct instances actually drawn on WebGPU
+   and on forceWebGL, zero console warnings, and an `addUpdateRange` write visible the
+   next frame. Static evidence retires the structural risk, not the runtime one.
+
+   **Harness note:** the repo's Playwright suite cannot be used. Its `webServer` runs
+   `astro preview` over a prebuilt `docs/dist/`, which requires `pnpm build` →
+   `turbo run build` → `skia#build`, and Skia cannot compile on this machine. Drive the
+   examples Vite dev server directly instead.
    - E1 duck-typed instancing + vec4-lane mat4 attrs, both backends.
    - E2 `colorNode.a`+`alphaTest` shadow silhouette on an instanced duck-typed mesh;
      point-light variant recorded.
@@ -423,6 +454,7 @@ Tasks:
      AA rounded corners within tolerance.
    - E4 yoga-layout published-TS + inlined-WASM through our vitest + example dev boot;
      fallback `noExternal: ['yoga-layout']` if it fails.
+
 5. ~~Skia debt (D1)~~ — **DESCOPED from this PR (stakeholder ruling, 2026-07-10).**
    _"We can't compile skia right now on this machine… leave skia out of this PR because
    we are not even using it."_ **No fleet agent may touch `packages/skia/**`on this
