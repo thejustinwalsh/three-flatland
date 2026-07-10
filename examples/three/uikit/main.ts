@@ -4,7 +4,6 @@ import {
   Flatland,
   Light2D,
   TileMap2D,
-  createDevtoolsProvider,
   type TileMapData,
   type TilesetData,
   type TileLayerData,
@@ -265,6 +264,46 @@ interface Realtime {
   staminaPct: Text
   loadBar: Progress
   loadPct: Text
+  /** The menu card. Anchored by `anchorMenu` so tab switches never move it. */
+  panel: Container
+}
+
+/** Padding on the fullscreen root, in px. Subtracted from the anchor's available height. */
+const ROOT_PADDING = 24
+
+/**
+ * Pin the menu card's top edge instead of centring it every frame.
+ *
+ * `justifyContent: 'center'` re-centres the card whenever its height changes, so
+ * switching to a taller tab slides the tab strip out from under the pointer. We
+ * centre once, against the height of the *first* laid-out frame, then hold that
+ * top edge and let taller tabs grow downward.
+ *
+ * The captured height is deliberately the initial one: recomputing it per tab
+ * would reintroduce the shift it exists to prevent.
+ */
+function createMenuAnchor(ui: Fullscreen, panel: Container): () => void {
+  let initialCardHeight: number | undefined
+  let appliedTop: number | undefined
+
+  return () => {
+    const rootSize = ui.size.peek()
+    const cardSize = panel.size.peek()
+    if (rootSize == null || cardSize == null) return
+
+    // Layout has not settled on the first frames; a zero height would anchor to the top.
+    if (initialCardHeight == null) {
+      if (cardSize[1] <= 0) return
+      initialCardHeight = cardSize[1]
+    }
+
+    const available = rootSize[1] - ROOT_PADDING * 2
+    const top = Math.max(0, (available - initialCardHeight) / 2)
+    // Re-runs on resize; a no-op while the viewport is stable.
+    if (top === appliedTop) return
+    appliedTop = top
+    panel.setProperties({ marginTop: top })
+  }
 }
 
 const SAVE_SLOTS: Array<{ name: string; stamp: string; level: string }> = [
@@ -286,11 +325,19 @@ let activePointerEvents: { destroy: () => void } | null = null
 
 async function main() {
   // ─── Renderer ───────────────────────────────────────────────────
+  // Native device pixel ratio, NOT `setPixelRatio(1)` + `image-rendering:
+  // pixelated`. That pair renders the whole framebuffer at 1x and nearest-
+  // upscales it — which pixelates Slug's analytic text along with everything
+  // else, defeating the entire point of resolution-independent glyphs. The
+  // tilemap stays chunky regardless of canvas resolution because its tileset is
+  // NearestFilter-sampled from a 64x64 texture (Flatland's `TextureConfig`
+  // defaults to 'pixel-art'). Texture filtering is the right lever for pixel
+  // art; canvas downscaling is not — never reach for it when UI text shares the
+  // frame.
   const renderer = new WebGPURenderer({ antialias: false })
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.setPixelRatio(1)
-  renderer.domElement.style.imageRendering = 'pixelated'
+  renderer.setPixelRatio(window.devicePixelRatio)
   document.body.appendChild(renderer.domElement)
   await renderer.init()
 
@@ -370,9 +417,12 @@ async function main() {
     renderer,
     {
       flexDirection: 'column',
-      justifyContent: 'center',
+      // Top-anchored, not centred: `createMenuAnchor` supplies the card's
+      // marginTop once, so a taller tab grows downward instead of shoving the
+      // tab strip out from under the pointer.
+      justifyContent: 'flex-start',
       alignItems: 'center',
-      padding: 24,
+      padding: ROOT_PADDING,
       // Inherited by every descendant Text / kit component.
       fontFamilies: { inter: { normal: font } },
     },
@@ -381,6 +431,7 @@ async function main() {
   )
 
   const rt = buildMenu(ui)
+  const anchorMenu = createMenuAnchor(ui, rt.panel)
   flatland.camera.add(ui)
 
   // ─── Pointer events ─────────────────────────────────────────────
@@ -412,8 +463,13 @@ async function main() {
   }
 
   // ─── Tweakpane UI ───────────────────────────────────────────────
+  // No manual `createDevtoolsProvider` here: `Flatland` owns its own provider
+  // and brackets every internal pass with beginFrame/endFrame, which is what
+  // keeps GPU-timestamp tracking correct across its multi-pass render. A second
+  // provider on the same renderer fights it over `backend.trackTimestamp` and
+  // the GPU graph goes blank — see examples/three/lighting, which drives
+  // `flatland.render()` with no provider of its own.
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
-  const devtools = createDevtoolsProvider({ name: 'uikit' })
 
   const params = { ambient: 0.6 }
   pane.addBinding(params, 'ambient', { min: 0, max: 3, step: 0.05 }).on('change', (ev) => {
@@ -472,10 +528,11 @@ async function main() {
     // uikit wants milliseconds — scroll velocity is px/ms (the React twin's
     // wrapper passes `delta * 1000` for the same reason).
     ui.update(delta * 1000)
+    // After layout, so the card's measured height is this frame's.
+    anchorMenu()
 
-    devtools.beginFrame(performance.now(), renderer)
+    // Flatland instruments its own frame internally — no beginFrame/endFrame here.
     flatland.render(renderer)
-    devtools.endFrame(renderer)
     updateDevtools()
   }
 
@@ -726,7 +783,7 @@ function buildMenu(ui: Fullscreen): Realtime {
   )
   ui.add(panel)
 
-  return { fps, credits, staminaFill, staminaPct, loadBar, loadPct }
+  return { fps, credits, staminaFill, staminaPct, loadBar, loadPct, panel }
 }
 
 function radioOption(value: string, label: string): RadioGroupItem {
