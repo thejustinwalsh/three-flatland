@@ -1,20 +1,47 @@
 import { Matrix4 } from 'three'
 import type { InstancedGlyphGroup } from './instanced-glyph-group.js'
 import type { ColorRepresentation } from '../../utils.js'
-import { type ClippingRect, defaultClippingData } from '../../clipping.js'
-import { type Font, type GlyphInfo, glyphIntoToUV } from '../font.js'
-import { type Signal, computed } from '@preact/signals-core'
+import type { ClippingRect } from '../../clipping.js'
+import type { GlyphInfo } from '../font.js'
 import { writeColor } from '../../panel/index.js'
 
-const helperMatrix1 = new Matrix4()
-const helperMatrix2 = new Matrix4()
+const colorArrayHelper = new Float32Array(4)
+const clipArrayHelper = new Float32Array(16)
+const clipMatrixHelper = new Matrix4()
 
-export function computedGylphGroupDependencies(fontSignal: Signal<Font | undefined>) {
-  return computed(() => ({ font: fontSignal.value }))
+/**
+ * `ClippingRect.toArray` writes 4 plane equations `(nx, ny, nz, d)`
+ * contiguously (plane-major, i.e. row-major for a matrix whose ROWS are
+ * plane equations) — exactly the layout `Matrix4.set(...)`'s row-major
+ * argument order expects, and exactly what `SlugBatch`'s `clip` option
+ * requires (§8.2). `Matrix4.fromArray` would be wrong here — it treats the
+ * array as already-column-major `elements`.
+ */
+function clippingRectToMatrix(rect: ClippingRect, target: Matrix4): Matrix4 {
+  rect.toArray(clipArrayHelper, 0)
+  return target.set(
+    clipArrayHelper[0]!,
+    clipArrayHelper[1]!,
+    clipArrayHelper[2]!,
+    clipArrayHelper[3]!,
+    clipArrayHelper[4]!,
+    clipArrayHelper[5]!,
+    clipArrayHelper[6]!,
+    clipArrayHelper[7]!,
+    clipArrayHelper[8]!,
+    clipArrayHelper[9]!,
+    clipArrayHelper[10]!,
+    clipArrayHelper[11]!,
+    clipArrayHelper[12]!,
+    clipArrayHelper[13]!,
+    clipArrayHelper[14]!,
+    clipArrayHelper[15]!
+  )
 }
 
 /**
- * renders an initially specified glyph
+ * Renders one glyph through `group.batch.writeGlyph` — the `SlugBatch`
+ * writer-API replacement for MSDF's raw instanced-attribute pokes.
  */
 export class InstancedGlyph {
   public index?: number
@@ -22,6 +49,8 @@ export class InstancedGlyph {
   private hidden = true
 
   private glyphInfo?: GlyphInfo
+  //ink-box top-left (x-right, y-up), in the SAME units as `baseMatrix` expects —
+  //i.e. NOT yet pixelSize-scaled. Matches `PositionedGlyphLayoutEntry`'s convention.
   private x: number = 0
   private y: number = 0
   private fontSize: number = 0
@@ -61,11 +90,7 @@ export class InstancedGlyph {
 
   activate(index: number): void {
     this.index = index
-    this.writeUpdatedMatrix()
-    this.writeUV()
-    this.writeRenderSolid()
-    this.updateColor(this.color, this.opacity)
-    this.updateClippingRect(this.clippingRect)
+    this.write()
   }
 
   setIndex(index: number): void {
@@ -74,33 +99,13 @@ export class InstancedGlyph {
 
   updateClippingRect(clippingRect: ClippingRect | undefined): void {
     this.clippingRect = clippingRect
-    if (this.index == null) {
-      return
-    }
-    const offset = this.index * 16
-    const { instanceClipping, root } = this.group
-    if (this.clippingRect == null) {
-      instanceClipping.set(defaultClippingData, offset)
-    } else {
-      this.clippingRect.toArray(instanceClipping.array, offset)
-    }
-    instanceClipping.addUpdateRange(offset, 16)
-    instanceClipping.needsUpdate = true
-    root.requestRender?.()
+    this.write()
   }
 
   updateColor(color: ColorRepresentation, opacity: number): void {
     this.color = color
     this.opacity = opacity
-    if (this.index == null) {
-      return
-    }
-    const { instanceRGBA, root } = this.group
-    const offset = instanceRGBA.itemSize * this.index
-    writeColor(instanceRGBA.array, offset, color, opacity)
-    instanceRGBA.addUpdateRange(offset, 4)
-    instanceRGBA.needsUpdate = true
-    root.requestRender?.()
+    this.write()
   }
 
   updateGlyphAndTransformation(
@@ -119,16 +124,12 @@ export class InstancedGlyph {
     ) {
       return
     }
-    if (this.glyphInfo != glyphInfo) {
-      this.glyphInfo = glyphInfo
-      this.writeUV()
-      this.writeRenderSolid()
-    }
+    this.glyphInfo = glyphInfo
     this.x = x
     this.y = y
     this.fontSize = fontSize
     this.pixelSize = pixelSize
-    this.writeUpdatedMatrix()
+    this.write()
   }
 
   updateBaseMatrix(baseMatrix: Matrix4): void {
@@ -136,52 +137,47 @@ export class InstancedGlyph {
       return
     }
     this.baseMatrix = baseMatrix
-    this.writeUpdatedMatrix()
+    this.write()
   }
 
-  private writeUV(): void {
-    if (this.index == null || this.glyphInfo == null) {
-      return
-    }
-    const offset = this.index * 4
-    const { instanceUV, root } = this.group
-    glyphIntoToUV(this.glyphInfo, instanceUV.array, offset)
-    instanceUV.addUpdateRange(offset, 4)
-    instanceUV.needsUpdate = true
-    root.requestRender?.()
-  }
-
-  private writeRenderSolid(): void {
-    if (this.index == null || this.glyphInfo == null) {
-      return
-    }
-    const { instanceRenderSolid, root } = this.group
-    const offset = this.index * 1
-    instanceRenderSolid.array[offset] = this.glyphInfo.renderSolid ? 1.0 : 0.0
-    instanceRenderSolid.addUpdateRange(offset, 1)
-    instanceRenderSolid.needsUpdate = true
-    root.requestRender?.()
-  }
-
-  private writeUpdatedMatrix(): void {
+  private write(): void {
     if (this.index == null || this.glyphInfo == null || this.baseMatrix == null) {
       return
     }
-    const offset = this.index * 16
-    const { instanceMatrix, root } = this.group
-    instanceMatrix.addUpdateRange(offset, 16)
-    helperMatrix1
-      .makeTranslation(this.x * this.pixelSize, this.y * this.pixelSize, 0)
-      .multiply(
-        helperMatrix2.makeScale(
-          this.fontSize * this.glyphInfo.width * this.pixelSize,
-          this.fontSize * this.glyphInfo.height * this.pixelSize,
-          1
-        )
-      )
-      .premultiply(this.baseMatrix)
-    helperMatrix1.toArray(instanceMatrix.array, offset)
-    instanceMatrix.needsUpdate = true
+    const { batch, font, root } = this.group
+    if (batch == null) {
+      return
+    }
+
+    writeColor(colorArrayHelper, 0, this.color, this.opacity)
+
+    const fontSize = this.fontSize * this.pixelSize
+    // R4: uikit's ink-box (x,y) -> Slug's pen origin. `xoffset`/`yoffset` are the
+    // SAME ratios `Font.getGlyphInfo` derived via slug's `getGlyphTopOffset` — this
+    // is algebra over that already-derived value, not a second baseline formula
+    // (see `packages/slug/CLAUDE.md` "Baseline conversion — one place, on purpose").
+    // ink x = pen x + xoffset*fontSize  =>  pen x = ink x - xoffset*fontSize
+    // ink y (top, y-up) = pen y (baseline, y-up) + yMax*fontSize, yMax = ascender - yoffset
+    const penX = this.x * this.pixelSize - this.glyphInfo.xoffset * fontSize
+    const yMax = font.ascender - this.glyphInfo.yoffset
+    const penY = this.y * this.pixelSize - yMax * fontSize
+
+    const clip =
+      this.clippingRect == null ? null : clippingRectToMatrix(this.clippingRect, clipMatrixHelper)
+
+    batch.writeGlyph(this.index, this.glyphInfo.id, font, {
+      x: penX,
+      y: penY,
+      fontSize,
+      matrix: this.baseMatrix,
+      clip,
+      color: {
+        r: colorArrayHelper[0]!,
+        g: colorArrayHelper[1]!,
+        b: colorArrayHelper[2]!,
+        a: colorArrayHelper[3]!,
+      },
+    })
     root.requestRender?.()
   }
 }

@@ -27,7 +27,7 @@ import {
   foldInstanceRow,
   instanceMatrixLanes,
 } from './shaders/slugInstance'
-import type { SlugFont } from './SlugFont'
+import type { SlugCurveSource } from './types'
 
 export interface SlugMaterialOptions {
   color?: number | Color
@@ -70,7 +70,7 @@ const _mvp = new Matrix4()
  *   via dual-axis ray casting, producing antialiased coverage.
  */
 export class SlugMaterial extends MeshBasicNodeMaterial {
-  private _font: SlugFont
+  private _font: SlugCurveSource
   private _colorUniform
   private _opacityUniform
   private _viewportUniform
@@ -86,7 +86,8 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
   private _instanceTransform: boolean
   private _instanceClip: boolean
 
-  constructor(font: SlugFont, options: SlugMaterialOptions = {}) {
+  /** `font` is any curve/band texture source — a `SlugFont` or a `SlugShapeSet`. */
+  constructor(font: SlugCurveSource, options: SlugMaterialOptions = {}) {
     super()
 
     this._font = font
@@ -361,7 +362,8 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     this._thickenUniform.value = value
   }
 
-  get font(): SlugFont {
+  /** The bound curve/band texture source (`SlugFont` or `SlugShapeSet`). */
+  get font(): SlugCurveSource {
     return this._font
   }
 }

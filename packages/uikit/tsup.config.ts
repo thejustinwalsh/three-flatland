@@ -1,4 +1,9 @@
 import { defineConfig } from 'tsup'
+import { cpSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   entry: ['src/**/*.ts', 'src/**/*.tsx', '!src/**/*.test.ts', '!src/**/*.d.ts'],
@@ -16,4 +21,14 @@ export default defineConfig({
   // fail declaration emit with TS2742 ("cannot be named"). Keep 1:1 file output.
   splitting: false,
   external: ['three', 'react', '@react-three/fiber'],
+  async onSuccess() {
+    // Copy the bundled default-font TTF (provisional D5 — see text/font.ts) next to
+    // its compiled module so `new URL('./assets/Inter-Regular.ttf', import.meta.url)`
+    // resolves against dist the same way it resolves against src. Mirrors
+    // packages/skia/tsup.config.ts's onSuccess asset-copy precedent.
+    cpSync(
+      resolve(__dirname, 'src/text/assets/Inter-Regular.ttf'),
+      resolve(__dirname, 'dist/text/assets/Inter-Regular.ttf')
+    )
+  },
 })

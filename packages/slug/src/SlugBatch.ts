@@ -12,7 +12,7 @@ import type { Camera, Matrix4 } from 'three'
 import { SlugMaterial } from './SlugMaterial'
 import type { SlugMaterialOptions } from './SlugMaterial'
 import type { SlugFont } from './SlugFont'
-import type { DecorationRect, SlugGlyphData } from './types'
+import type { DecorationRect, SlugGlyphData, SlugGlyphSource } from './types'
 
 /** Default initial capacity for batch instances. */
 const DEFAULT_CAPACITY = 256
@@ -312,7 +312,8 @@ export class SlugBatch extends Mesh {
   /** Live instance count (drives the instanced draw). */
   count = 0
 
-  private _font: SlugFont | null = null
+  /** Bound curve/band source — a `SlugFont` (glyphs) or `SlugShapeSet` (shapes). */
+  protected _source: SlugGlyphSource | null = null
   private _clip: boolean
   private _materialOptions: SlugBatchOptions['material']
   private _slugMaterial: SlugMaterial | null = null
@@ -334,12 +335,22 @@ export class SlugBatch extends Mesh {
   }
 
   get font(): SlugFont | null {
-    return this._font
+    return this._source as SlugFont | null
   }
 
   set font(value: SlugFont | null) {
-    if (this._font === value) return
-    this._font = value
+    if (this._source === value) return
+    this._bindSource(value)
+  }
+
+  /**
+   * Bind a curve/band source: dispose the old batch material and build a
+   * fresh `SlugMaterial` over the source's textures. Shared by the `font`
+   * setter and `SlugShapeBatch`'s `shapes` binding (which also re-binds on
+   * shape-set repack).
+   */
+  protected _bindSource(value: SlugGlyphSource | null): void {
+    this._source = value
     this._slugMaterial?.dispose()
     this._slugMaterial = null
     if (value) {
@@ -376,7 +387,7 @@ export class SlugBatch extends Mesh {
   writeGlyph(
     index: number,
     glyphId: number,
-    font: SlugFont,
+    font: SlugGlyphSource,
     opts: SlugBatchGlyphOptions = {}
   ): void {
     this.ensureCapacity(index + 1)
@@ -410,7 +421,7 @@ export class SlugBatch extends Mesh {
     this._batchGeometry.markDirty()
   }
 
-  private _writeCommon(index: number, opts: SlugBatchInstanceOptions, alphaScale: number): void {
+  protected _writeCommon(index: number, opts: SlugBatchInstanceOptions, alphaScale: number): void {
     const g = this._batchGeometry
     const color = opts.color
     if (color instanceof Color) {

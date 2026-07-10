@@ -48,3 +48,48 @@ export const SLUG_COLUMNS = [
 
 /** Union of column names. */
 export type SlugColumnName = (typeof SLUG_COLUMNS)[number]['name']
+
+// ---------------------------------------------------------------------------
+// FL_slug_shapes — baked `SlugShapeSet` container (`.shapes.glb`)
+// ---------------------------------------------------------------------------
+
+/** Extension name for baked shape sets (`packShapeSet` / `SlugShapeSet.fromBaked`). */
+export const SLUG_SHAPES_EXTENSION_NAME = 'FL_slug_shapes'
+
+/**
+ * Current `FL_slug_shapes` schema version. Same policy as
+ * `SLUG_FONT_VERSION`: bump ONLY on layout-incompatible changes; the reader
+ * refuses newer files loudly.
+ */
+export const SLUG_SHAPES_VERSION = 1
+
+/**
+ * Accessor columns for a baked shape set, SoA over shapes sorted ascending
+ * by shape id. The format is **geometry-complete**: curves + contour starts
+ * + prebuilt bands round-trip losslessly, so a loaded set needs no SVG
+ * parsing and no band building — only the (linear-copy) texture pack — and
+ * stays growable via `registerShape` after load.
+ *
+ * - `shapeId`  FLOAT SCALAR (N) — ascending shape ids
+ * - `bounds`   FLOAT VEC4  (N) — xMin yMin xMax yMax, normalized shape space
+ * - `curveOffsets`   FLOAT SCALAR (N+1) — CSR prefix-sum, in CURVES, into `curveData`
+ * - `curveData`      FLOAT SCALAR (totalCurves × 6) — p0x p0y p1x p1y p2x p2y
+ * - `contourOffsets` FLOAT SCALAR (N+1) — CSR prefix-sum into `contourStarts`
+ * - `contourStarts`  FLOAT SCALAR — per-shape contour start indices (curve indices)
+ * - `bandOffsets`    FLOAT SCALAR (N+1) — CSR word offsets into `bandData`
+ * - `bandData`       USHORT SCALAR — per-shape band words, same layout as
+ *   `FL_slug_font`: [numH, numV, hCounts…, hIndices…, vCounts…, vIndices…]
+ */
+export const SLUG_SHAPE_COLUMNS = [
+  { name: 'shapeId', type: 'SCALAR' },
+  { name: 'bounds', type: 'VEC4' },
+  { name: 'curveOffsets', type: 'SCALAR' },
+  { name: 'curveData', type: 'SCALAR' },
+  { name: 'contourOffsets', type: 'SCALAR' },
+  { name: 'contourStarts', type: 'SCALAR' },
+  { name: 'bandOffsets', type: 'SCALAR' },
+  { name: 'bandData', type: 'SCALAR' },
+] as const satisfies ReadonlyArray<{ name: string; type: SlugColumnType }>
+
+/** Union of shape column names. */
+export type SlugShapeColumnName = (typeof SLUG_SHAPE_COLUMNS)[number]['name']

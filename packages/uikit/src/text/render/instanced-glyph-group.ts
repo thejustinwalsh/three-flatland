@@ -1,27 +1,88 @@
-import {
-  DynamicDrawUsage,
-  InstancedBufferAttribute,
-  type Material,
-  Object3D,
-  type TypedArray,
-} from 'three'
+import { Vector2 } from 'three'
+import type { Camera, Material, Object3DEventMap } from 'three'
+import { SlugBatch } from '@three-flatland/slug'
+import type { SlugBatchOptions, SlugFont } from '@three-flatland/slug'
+import { computed } from '@preact/signals-core'
+import type { ReadonlySignal } from '@preact/signals-core'
 import type { InstancedGlyph } from './instanced-glyph.js'
-import { InstancedGlyphMesh } from './instanced-glyph-mesh.js'
-import { InstancedGlyphMaterial } from './instanced-glyph-material.js'
 import type { Font } from '../font.js'
 import { ElementType, type OrderInfo, setupRenderOrder } from '../../order.js'
 import type { RootContext } from '../../context.js'
 import type { Component } from '../../components/component.js'
+import { computeWorldToGlobalMatrix } from '../../utils.js'
+
+/** Group-bucket dependency: only the font identity forces a new glyph group. */
+export function computedGylphGroupDependencies(fontSignal: ReadonlySignal<Font | undefined>) {
+  return computed(() => ({ font: fontSignal.value?.slug }))
+}
+
+const viewportSizeHelper = new Vector2()
+
+/**
+ * `SlugBatch` wired into uikit's root-driven `matrixWorld` propagation
+ * (uikit components don't sit in the normal Object3D parent chain — Root
+ * recomputes each mesh's `matrixWorld` once via `onUpdateMatrixWorldSet`,
+ * exactly like `InstancedPanelMesh`) plus self-contained per-frame
+ * dilation plumbing: `onBeforeRender` reads the renderer's OWN drawing-
+ * buffer size and pushes both `setViewportSize` and the MVP update
+ * (`SlugBatch.update(camera)`) every frame, for whichever render target
+ * this batch is actually drawn into. No Root/renderer coupling needed
+ * anywhere else in the render seam. Keeps the historical `InstancedGlyphMesh`
+ * name — `components/component.ts`/`content.ts` `instanceof`-check it to
+ * recognize uikit-internal text meshes during traversal.
+ */
+export class InstancedGlyphMesh extends SlugBatch {
+  private readonly customUpdateMatrixWorld = () =>
+    computeWorldToGlobalMatrix(this.root, this.matrixWorld)
+
+  constructor(
+    private readonly root: Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager'>,
+    options?: SlugBatchOptions
+  ) {
+    super(options)
+    this.pointerEvents = 'none'
+    root.onUpdateMatrixWorldSet.add(this.customUpdateMatrixWorld)
+  }
+
+  override onBeforeRender = (
+    renderer: { getDrawingBufferSize(target: Vector2): Vector2 },
+    _scene: unknown,
+    camera: Camera
+  ) => {
+    renderer.getDrawingBufferSize(viewportSizeHelper)
+    this.setViewportSize(viewportSizeHelper.width, viewportSizeHelper.height)
+    this.update(camera)
+  }
+
+  override dispose(): this {
+    this.root.onUpdateMatrixWorldSet.delete(this.customUpdateMatrixWorld)
+    this.dispatchEvent({ type: 'dispose' as keyof Object3DEventMap })
+    super.dispose()
+    return this
+  }
+
+  // Never legitimately cloneable: `Component.copyInto` explicitly skips these
+  // meshes as children (the glyph-group pipeline recreates them fresh instead),
+  // and three's default `Object3D.clone()` would call the zero-arg constructor,
+  // which crashes on the required `root` arg. Throw clearly instead.
+  override clone(): this {
+    throw new Error('InstancedGlyphMesh.clone() is not supported. Use GlyphGroupManager instead.')
+  }
+
+  override copy(): this {
+    throw new Error('InstancedGlyphMesh.copy() is not supported. Use GlyphGroupManager instead.')
+  }
+}
 
 export class GlyphGroupManager {
-  private map = new Map<Font, Map<string, InstancedGlyphGroup>>()
+  private map = new Map<SlugFont, Map<string, InstancedGlyphGroup>>()
   constructor(
     private readonly root: Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager'>,
     private readonly object: Component
   ) {}
 
   init(abortSignal: AbortSignal) {
-    const onFrame = (delta: number) => this.traverse((group) => group.onFrame(delta))
+    const onFrame = () => this.traverse((group) => group.onFrame())
     this.root.onFrameSet.add(onFrame)
     abortSignal.addEventListener('abort', () => {
       this.root.onFrameSet.delete(onFrame)
@@ -42,7 +103,7 @@ export class GlyphGroupManager {
     depthTest: boolean,
     depthWrite: boolean,
     renderOrder: number,
-    font: Font
+    font: SlugFont
   ) {
     let groups = this.map.get(font)
     if (groups == null) {
@@ -74,33 +135,24 @@ export class GlyphGroupManager {
 }
 
 export class InstancedGlyphGroup {
-  public instanceMatrix!: InstancedBufferAttribute
-  public instanceUV!: InstancedBufferAttribute
-  public instanceRGBA!: InstancedBufferAttribute
-  public instanceClipping!: InstancedBufferAttribute
-  public instanceRenderSolid!: InstancedBufferAttribute
-
   private glyphs: Array<InstancedGlyph | undefined> = []
   private requestedGlyphs: Array<InstancedGlyph> = []
   private holeIndicies: Array<number> = []
   private mesh?: InstancedGlyphMesh
 
-  private instanceMaterial: Material
-
-  private timeTillDecimate?: number
-
   constructor(
     private object: Component,
-    font: Font,
+    public readonly font: SlugFont,
     public readonly root: Omit<RootContext, 'glyphGroupManager' | 'panelGroupManager'>,
     private orderInfo: OrderInfo,
-    depthTest: boolean,
-    depthWrite: boolean,
+    private depthTest: boolean,
+    private depthWrite: boolean,
     private renderOrder: number
-  ) {
-    this.instanceMaterial = new InstancedGlyphMaterial(font)
-    this.instanceMaterial.depthTest = depthTest
-    this.instanceMaterial.depthWrite = depthWrite
+  ) {}
+
+  /** The batch instances write into — `undefined` until the first glyph activates. */
+  get batch(): SlugBatch | undefined {
+    return this.mesh
   }
 
   requestActivate(glyph: InstancedGlyph): void {
@@ -113,8 +165,8 @@ export class InstancedGlyphGroup {
       return
     }
 
-    if (this.mesh == null || this.mesh.count >= this.instanceMatrix.count) {
-      //requesting insert because no space available
+    if (this.mesh == null || this.mesh.count >= this.mesh.capacity) {
+      //requesting insert because no space available (or the batch doesn't exist yet)
       this.requestedGlyphs.push(glyph)
       this.root.requestFrame?.()
       return
@@ -160,48 +212,29 @@ export class InstancedGlyphGroup {
       return
     }
 
-    //remove in between
-    //hiding the glyph by writing a 0 matrix (0 scale ...)
-    const bufferOffset = glyph.index * 16
-    this.instanceMatrix.array.fill(0, bufferOffset, bufferOffset + 16)
-    this.instanceMatrix.addUpdateRange(bufferOffset, 16)
-    this.instanceMatrix.needsUpdate = true
+    //remove in between: hide via the hidden-degenerate rect (zero size, zero alpha),
+    //remember the slot as a hole for reuse. `SlugBatch` only ever grows
+    //(`ensureCapacity`, no shrink) so — unlike the old MSDF group — this group
+    //never rebuilds/decimates its buffer; it just never gives capacity back.
+    this.mesh!.writeRect(glyph.index, { x: 0, y: 0, width: 0, height: 0 }, { opacity: 0 })
     this.holeIndicies.push(glyph.index)
     this.glyphs[glyph.index] = undefined
     glyph.index = undefined
   }
 
-  onFrame(delta: number): void {
+  onFrame(): void {
     const requiredSize = this.glyphs.length - this.holeIndicies.length + this.requestedGlyphs.length
 
     if (this.mesh != null) {
       this.mesh.visible = requiredSize > 0
     }
 
-    if (requiredSize === 0) {
+    if (this.requestedGlyphs.length === 0) {
       return
     }
 
-    const availableSize = this.instanceMatrix?.count ?? 0
-
-    //if the buffer is continously to small over a period of 1 second, it will be decimated
-    if (requiredSize < availableSize / 3) {
-      this.timeTillDecimate ??= 1
-    } else {
-      this.timeTillDecimate = undefined
-    }
-    if (this.timeTillDecimate != null) {
-      this.timeTillDecimate -= delta
-    }
-
-    if (
-      (this.timeTillDecimate == null || this.timeTillDecimate > 0) &&
-      requiredSize <= availableSize
-    ) {
-      return
-    }
-    this.timeTillDecimate = undefined
-    this.resize(requiredSize)
+    this.ensureMesh()
+    this.mesh!.ensureCapacity(requiredSize)
     const indexOffset = this.mesh!.count
     const requestedGlyphsLength = this.requestedGlyphs.length
     for (let i = 0; i < requestedGlyphsLength; i++) {
@@ -214,65 +247,18 @@ export class InstancedGlyphGroup {
     this.requestedGlyphs.length = 0
   }
 
-  private resize(neededSize: number): void {
-    const newSize = Math.ceil(neededSize * 1.5)
-    const matrixArray = new Float32Array(newSize * 16)
-    const uvArray = new Float32Array(newSize * 4)
-    const rgbaArray = new Float32Array(newSize * 4)
-    const clippingArray = new Float32Array(newSize * 16)
-    const renderSolidArray = new Float32Array(newSize * 1)
-    this.instanceMatrix = new InstancedBufferAttribute(matrixArray, 16, false)
-    this.instanceMatrix.setUsage(DynamicDrawUsage)
-    this.instanceUV = new InstancedBufferAttribute(uvArray, 4, false)
-    this.instanceUV.setUsage(DynamicDrawUsage)
-    this.instanceRGBA = new InstancedBufferAttribute(rgbaArray, 4, false)
-    this.instanceRGBA.setUsage(DynamicDrawUsage)
-    this.instanceClipping = new InstancedBufferAttribute(clippingArray, 16, false)
-    this.instanceClipping.setUsage(DynamicDrawUsage)
-    this.instanceRenderSolid = new InstancedBufferAttribute(renderSolidArray, 1, false)
-    this.instanceRenderSolid.setUsage(DynamicDrawUsage)
-    const oldMesh = this.mesh
-    this.mesh = new InstancedGlyphMesh(
-      this.root,
-      this.instanceMatrix,
-      this.instanceRGBA,
-      this.instanceUV,
-      this.instanceClipping,
-      this.instanceRenderSolid,
-      this.instanceMaterial
-    )
-    this.mesh.renderOrder = this.renderOrder
-
-    //copy over old arrays and merging the holes
-    if (oldMesh != null) {
-      this.holeIndicies.sort((i1, i2) => i1 - i2)
-      const holesLength = this.holeIndicies.length
-      let afterPrevHoleIndex = 0
-      let i = 0
-      while (i < holesLength) {
-        const holeIndex = this.holeIndicies[i]!
-        copyBuffer(afterPrevHoleIndex - i, afterPrevHoleIndex, holeIndex, oldMesh, this.mesh)
-        afterPrevHoleIndex = holeIndex + 1
-        this.glyphs.splice(holeIndex - i, 1)
-        i++
-      }
-      copyBuffer(afterPrevHoleIndex - i, afterPrevHoleIndex, oldMesh.count, oldMesh, this.mesh)
-
-      if (this.holeIndicies.length > 0) {
-        for (let i = this.holeIndicies[0]!; i < this.glyphs.length; i++) {
-          this.glyphs[i]!.setIndex(i)
-        }
-      }
-      this.holeIndicies.length = 0
-
-      //destroying the old mesh
-      this.object.remove(oldMesh)
-      oldMesh.dispose()
+  private ensureMesh(): void {
+    if (this.mesh != null) {
+      return
     }
-
-    //finalizing the new mesh
+    this.mesh = new InstancedGlyphMesh(this.root, { font: this.font })
+    // `font` was passed to the constructor, so the SlugBatch `font` setter already
+    // built a single `SlugMaterial` — never the `Material[]` half of `Mesh.material`.
+    const material = this.mesh.material as Material
+    material.depthTest = this.depthTest
+    material.depthWrite = this.depthWrite
+    this.mesh.renderOrder = this.renderOrder
     setupRenderOrder(this.mesh, { peek: () => this.root }, { value: this.orderInfo })
-    this.mesh.count = this.glyphs.length
     this.object.addUnsafe(this.mesh)
   }
 
@@ -282,37 +268,5 @@ export class InstancedGlyphGroup {
     }
     this.object.remove(this.mesh)
     this.mesh.dispose()
-    this.instanceMaterial.dispose()
   }
-}
-
-function copyBuffer(
-  target: number,
-  start: number,
-  end: number,
-  oldMesh: InstancedGlyphMesh,
-  newMesh: InstancedGlyphMesh
-) {
-  copy(target, start, end, oldMesh.instanceMatrix.array, newMesh.instanceMatrix.array, 16)
-  copy(target, start, end, oldMesh.instanceUV.array, newMesh.instanceUV.array, 4)
-  copy(target, start, end, oldMesh.instanceRGBA.array, newMesh.instanceRGBA.array, 4)
-  copy(target, start, end, oldMesh.instanceClipping.array, newMesh.instanceClipping.array, 16)
-  copy(target, start, end, oldMesh.instanceRenderSolid.array, newMesh.instanceRenderSolid.array, 1)
-}
-
-function copy(
-  target: number,
-  start: number,
-  end: number,
-  from: TypedArray,
-  to: TypedArray,
-  itemSize: number
-): void {
-  if (start === end) {
-    return
-  }
-  const targetIndex = target * itemSize
-  const startIndex = start * itemSize
-  const endIndex = end * itemSize
-  to.set(from.subarray(startIndex, endIndex), targetIndex)
 }

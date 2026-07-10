@@ -60,6 +60,7 @@
     "@pmndrs/pointer-events": "catalog:",
     "@pmndrs/uikit-pub-sub": "catalog:",
     "@preact/signals-core": "catalog:",
+    "@three-flatland/slug": "workspace:*",
     "suspend-react": "catalog:",
     "yoga-layout": "catalog:",
     "zod": "catalog:",

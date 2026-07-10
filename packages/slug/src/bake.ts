@@ -54,7 +54,16 @@ import {
   type WriterContext,
 } from '@gltf-transform/core'
 import type { BakeInput } from './baked'
-import { SLUG_COLUMNS, SLUG_EXTENSION_NAME, SLUG_FONT_VERSION, type SlugColumnName } from './format'
+import {
+  SLUG_COLUMNS,
+  SLUG_EXTENSION_NAME,
+  SLUG_FONT_VERSION,
+  SLUG_SHAPES_EXTENSION_NAME,
+  SLUG_SHAPES_VERSION,
+  SLUG_SHAPE_COLUMNS,
+  type SlugColumnName,
+  type SlugShapeColumnName,
+} from './format'
 import type { SlugGlyphData } from './types'
 
 type SupportedTypedArray =
@@ -81,34 +90,32 @@ function addColumn(
 }
 
 // ---------------------------------------------------------------------------
-// FL_slug_font glTF-Transform extension
+// Slug root glTF-Transform extensions (FL_slug_font, FL_slug_shapes)
 //
-// Root extension holding plain JSON metadata + named accessor references.
+// Root extensions holding plain JSON metadata + named accessor references.
 // Emitted JSON shape: { ...metadata, columns: { "<name>": { accessor: <idx> } } }.
-// All baked data lives in native accessors; this extension is the reachability
-// root that keeps them linked.
+// All baked data lives in native accessors; the extension is the reachability
+// root that keeps them linked. Both formats share the same property/extension
+// behavior — the subclasses only pin the extension name.
 // ---------------------------------------------------------------------------
 
-/** Backing data for {@link SlugFontProperty}: a free-form JSON metadata object
+/** Backing data for {@link SlugRootProperty}: a free-form JSON metadata object
  *  plus a named map of accessor references. */
-interface ISlugFontProperty extends IProperty {
+interface ISlugRootProperty extends IProperty {
   metadata: Record<string, unknown>
   accessorRefs: RefMap<Accessor>
 }
 
-/** Root `ExtensionProperty` for `FL_slug_font` — holds the metadata object and
+/** Shared root `ExtensionProperty` behavior — holds the metadata object and
  *  the named accessor refs the writer serializes under `columns`. */
-class SlugFontProperty extends ExtensionProperty<ISlugFontProperty> {
-  public static readonly EXTENSION_NAME = SLUG_EXTENSION_NAME
-  public readonly extensionName = SLUG_EXTENSION_NAME
-  public readonly propertyType = 'FlSlugFontProperty'
+abstract class SlugRootProperty extends ExtensionProperty<ISlugRootProperty> {
   public readonly parentTypes = [PropertyType.ROOT]
 
   protected init(): void {
-    // Concrete values are class fields above.
+    // Concrete values are class fields on the subclasses.
   }
 
-  protected getDefaults(): Nullable<ISlugFontProperty> {
+  protected getDefaults(): Nullable<ISlugRootProperty> {
     return Object.assign(super.getDefaults() as IProperty, {
       metadata: {},
       accessorRefs: new RefMap<Accessor>(),
@@ -137,6 +144,70 @@ class SlugFontProperty extends ExtensionProperty<ISlugFontProperty> {
   }
 }
 
+/** Root `ExtensionProperty` for `FL_slug_font`. */
+class SlugFontProperty extends SlugRootProperty {
+  public static readonly EXTENSION_NAME = SLUG_EXTENSION_NAME
+  public readonly extensionName = SLUG_EXTENSION_NAME
+  public readonly propertyType = 'FlSlugFontProperty'
+}
+
+/** Root `ExtensionProperty` for `FL_slug_shapes`. */
+class SlugShapesProperty extends SlugRootProperty {
+  public static readonly EXTENSION_NAME = SLUG_SHAPES_EXTENSION_NAME
+  public readonly extensionName = SLUG_SHAPES_EXTENSION_NAME
+  public readonly propertyType = 'FlSlugShapesProperty'
+}
+
+/** Shared read/write for both slug root extensions (name-parameterized). */
+abstract class SlugRootExtension extends Extension {
+  /** Create a detached root property seeded with `metadata`. */
+  public abstract createProperty(metadata: Record<string, unknown>): SlugRootProperty
+
+  /** @hidden */
+  public read(context: ReaderContext): this {
+    const extJson = context.jsonDoc.json.extensions?.[this.extensionName] as
+      | Record<string, unknown>
+      | undefined
+    if (!extJson) return this
+
+    const columns = extJson['columns'] as Record<string, { accessor: number }> | undefined
+    const metadata: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(extJson)) if (k !== 'columns') metadata[k] = v
+
+    const prop = this.createProperty(metadata)
+    if (columns) {
+      for (const [semantic, { accessor: idx }] of Object.entries(columns)) {
+        const acc = context.accessors[idx]
+        if (acc) prop.setAccessorRef(semantic, acc)
+      }
+    }
+    this.document.getRoot().setExtension(this.extensionName, prop)
+    return this
+  }
+
+  /** @hidden */
+  public write(context: WriterContext): this {
+    const prop = this.document.getRoot().getExtension<SlugRootProperty>(this.extensionName)
+    if (!prop) return this
+
+    const columns: Record<string, { accessor: number }> = {}
+    for (const semantic of prop.listAccessorSemantics()) {
+      const acc = prop.getAccessorRef(semantic)
+      if (acc) {
+        const idx = context.accessorIndexMap.get(acc)
+        if (idx !== undefined) columns[semantic] = { accessor: idx }
+      }
+    }
+
+    const extJson: Record<string, unknown> = { ...prop.getMetadata() }
+    if (Object.keys(columns).length > 0) extJson['columns'] = columns
+
+    context.jsonDoc.json.extensions ??= {}
+    context.jsonDoc.json.extensions[this.extensionName] = extJson
+    return this
+  }
+}
+
 /**
  * Registerable glTF-Transform extension for the `FL_slug_font` format.
  *
@@ -155,7 +226,7 @@ class SlugFontProperty extends ExtensionProperty<ISlugFontProperty> {
  * Without registration, an unregistered tool treats the accessors as unused
  * (and refuses an `extensionsRequired` file).
  */
-export class FlSlugFontExtension extends Extension {
+export class FlSlugFontExtension extends SlugRootExtension {
   public static readonly EXTENSION_NAME = SLUG_EXTENSION_NAME
   public readonly extensionName = SLUG_EXTENSION_NAME
 
@@ -165,49 +236,22 @@ export class FlSlugFontExtension extends Extension {
     prop.setMetadata(metadata)
     return prop
   }
+}
 
-  /** @hidden */
-  public read(context: ReaderContext): this {
-    const extJson = context.jsonDoc.json.extensions?.[SLUG_EXTENSION_NAME] as
-      | Record<string, unknown>
-      | undefined
-    if (!extJson) return this
+/**
+ * Registerable glTF-Transform extension for the `FL_slug_shapes` format
+ * (baked `SlugShapeSet` containers written by `packShapeSet`). Same
+ * registration story as {@link FlSlugFontExtension}.
+ */
+export class FlSlugShapesExtension extends SlugRootExtension {
+  public static readonly EXTENSION_NAME = SLUG_SHAPES_EXTENSION_NAME
+  public readonly extensionName = SLUG_SHAPES_EXTENSION_NAME
 
-    const columns = extJson['columns'] as Record<string, { accessor: number }> | undefined
-    const metadata: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(extJson)) if (k !== 'columns') metadata[k] = v
-
-    const prop = this.createProperty(metadata)
-    if (columns) {
-      for (const [semantic, { accessor: idx }] of Object.entries(columns)) {
-        const acc = context.accessors[idx]
-        if (acc) prop.setAccessorRef(semantic, acc)
-      }
-    }
-    this.document.getRoot().setExtension(SLUG_EXTENSION_NAME, prop)
-    return this
-  }
-
-  /** @hidden */
-  public write(context: WriterContext): this {
-    const prop = this.document.getRoot().getExtension<SlugFontProperty>(SLUG_EXTENSION_NAME)
-    if (!prop) return this
-
-    const columns: Record<string, { accessor: number }> = {}
-    for (const semantic of prop.listAccessorSemantics()) {
-      const acc = prop.getAccessorRef(semantic)
-      if (acc) {
-        const idx = context.accessorIndexMap.get(acc)
-        if (idx !== undefined) columns[semantic] = { accessor: idx }
-      }
-    }
-
-    const extJson: Record<string, unknown> = { ...prop.getMetadata() }
-    if (Object.keys(columns).length > 0) extJson['columns'] = columns
-
-    context.jsonDoc.json.extensions ??= {}
-    context.jsonDoc.json.extensions[SLUG_EXTENSION_NAME] = extJson
-    return this
+  /** Create a detached {@link SlugShapesProperty} seeded with `metadata`. */
+  public createProperty(metadata: Record<string, unknown>): SlugShapesProperty {
+    const prop = new SlugShapesProperty(this.document.getGraph())
+    prop.setMetadata(metadata)
+    return prop
   }
 }
 
@@ -388,5 +432,113 @@ export async function packBaked(input: BakeInput): Promise<Uint8Array> {
 
   // ── Write GLB ──
   const io = new NodeIO().registerExtensions([FlSlugFontExtension])
+  return io.writeBinary(doc)
+}
+
+/**
+ * Pack a `SlugShapeSet` (or anything exposing its `glyphs` map of
+ * `SlugGlyphData`) into an `FL_slug_shapes` GLB — the baked shape-set
+ * container `SlugShapeSet.fromBaked` rehydrates without SVG parsing or
+ * band building. Geometry-complete: curves + contour starts + prebuilt
+ * bands round-trip losslessly, so the loaded set renders pixel-identically
+ * to the runtime-registered one AND stays growable.
+ *
+ * **Ordering:** shapes are stored sorted ascending by id; the reader
+ * re-registers in the same order, so a repack after load reproduces the
+ * exact texel layout the runtime path produces.
+ *
+ * `meta` is free-form JSON carried verbatim in the extension (surfaced as
+ * `SlugShapeSet.meta`) — `uikit-bake icons` stores its icon-name →
+ * handle/fill map there.
+ */
+export async function packShapeSet(
+  set: { glyphs: Map<number, SlugGlyphData> },
+  meta?: Record<string, unknown>
+): Promise<Uint8Array> {
+  const sorted = Array.from(set.glyphs.values()).sort((a, b) => a.glyphId - b.glyphId)
+  const count = sorted.length
+  if (count === 0) throw new Error('packShapeSet: no shapes registered')
+
+  const shapeIdArr = new Float32Array(count)
+  const boundsArr = new Float32Array(count * 4)
+  const curveOffsets = new Float32Array(count + 1)
+  const contourOffsets = new Float32Array(count + 1)
+  const bandOffsets = new Float32Array(count + 1)
+
+  let totalCurves = 0
+  let totalContours = 0
+  let totalBandWords = 0
+  for (let i = 0; i < count; i++) {
+    const s = sorted[i]!
+    if (s.curves.length === 0) {
+      throw new Error(`packShapeSet: shape ${s.glyphId} has no curve data (already baked away?)`)
+    }
+    shapeIdArr[i] = s.glyphId
+    boundsArr[i * 4] = s.bounds.xMin
+    boundsArr[i * 4 + 1] = s.bounds.yMin
+    boundsArr[i * 4 + 2] = s.bounds.xMax
+    boundsArr[i * 4 + 3] = s.bounds.yMax
+    curveOffsets[i] = totalCurves
+    contourOffsets[i] = totalContours
+    bandOffsets[i] = totalBandWords
+    totalCurves += s.curves.length
+    totalContours += s.contourStarts.length
+    totalBandWords += bandWordCount(s)
+  }
+  curveOffsets[count] = totalCurves
+  contourOffsets[count] = totalContours
+  bandOffsets[count] = totalBandWords
+
+  const curveData = new Float32Array(totalCurves * 6)
+  const contourStarts = new Float32Array(totalContours)
+  const bandDataArr = new Uint16Array(totalBandWords)
+
+  let curveOff = 0
+  let contourOff = 0
+  let wordOff = 0
+  for (const s of sorted) {
+    for (const c of s.curves) {
+      const o = curveOff * 6
+      curveData[o] = c.p0x
+      curveData[o + 1] = c.p0y
+      curveData[o + 2] = c.p1x
+      curveData[o + 3] = c.p1y
+      curveData[o + 4] = c.p2x
+      curveData[o + 5] = c.p2y
+      curveOff++
+    }
+    for (const start of s.contourStarts) contourStarts[contourOff++] = start
+    wordOff += writeBandWords(s, bandDataArr, wordOff)
+  }
+
+  const columnArrays: Record<SlugShapeColumnName, SupportedTypedArray> = {
+    shapeId: shapeIdArr,
+    bounds: boundsArr,
+    curveOffsets,
+    curveData,
+    contourOffsets,
+    contourStarts,
+    bandOffsets,
+    bandData: bandDataArr,
+  }
+
+  const doc = new Document()
+  const buf = doc.createBuffer()
+  const ext = doc.createExtension(FlSlugShapesExtension).setRequired(true)
+
+  const metadata: Record<string, unknown> = {
+    version: SLUG_SHAPES_VERSION,
+    shapes: { count },
+    ...(meta !== undefined ? { meta } : {}),
+  }
+  const prop = ext.createProperty(metadata)
+
+  for (const { name, type } of SLUG_SHAPE_COLUMNS) {
+    const acc = addColumn(doc, buf, name, columnArrays[name], type)
+    prop.setAccessorRef(name, acc)
+  }
+  doc.getRoot().setExtension(SLUG_SHAPES_EXTENSION_NAME, prop)
+
+  const io = new NodeIO().registerExtensions([FlSlugShapesExtension])
   return io.writeBinary(doc)
 }

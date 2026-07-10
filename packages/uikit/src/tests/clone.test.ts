@@ -1,8 +1,8 @@
 import { expect } from 'chai'
 import { Container, Image, Text, Content, Custom } from '../index.js'
 import { InstancedPanelMesh } from '../panel/instance/mesh.js'
-import { InstancedGlyphMesh } from '../text/render/instanced-glyph-mesh.js'
-import { InstancedBufferAttribute, Object3D, Group, MeshBasicMaterial } from 'three'
+import { InstancedGlyphMesh } from '../text/render/instanced-glyph-group.js'
+import { InstancedBufferAttribute, Object3D, Group } from 'three'
 import { Component } from '../components/component.js'
 import { RootContext } from '../context.js'
 
@@ -148,25 +148,21 @@ describe('InstancedPanelMesh.clone()', () => {
 })
 
 describe('InstancedGlyphMesh.clone()', () => {
-  it('should clone with shared root and buffer attributes', () => {
+  // `InstancedGlyphMesh` (a `SlugBatch` wired to a root) is never cloned in
+  // practice — `Component.copyInto` explicitly skips it (see the
+  // "should not clone ... children" test above); the glyph-group pipeline
+  // recreates text meshes fresh instead. Both `clone()` and `copy()` throw
+  // rather than silently doing the wrong thing (three's default `Object3D.clone()`
+  // would call the zero-arg constructor, which crashes on the required `root` arg).
+  it('should throw on clone()', () => {
     const root = createMockRootContext()
-    const buf = new InstancedBufferAttribute(new Float32Array(16), 16)
-    const material = new MeshBasicMaterial()
-
-    const mesh = new InstancedGlyphMesh(root, buf, buf, buf, buf, buf, material)
-    mesh.count = 3
-
-    const cloned = mesh.clone()
-    expect(cloned).to.be.instanceOf(InstancedGlyphMesh)
-    expect(cloned).to.not.equal(mesh)
-    expect(cloned.count).to.equal(3)
-    expect(cloned.material).to.equal(material)
+    const mesh = new InstancedGlyphMesh(root)
+    expect(() => mesh.clone()).to.throw(/not supported/)
   })
 
   it('should throw on copy()', () => {
     const root = createMockRootContext()
-    const buf = new InstancedBufferAttribute(new Float32Array(16), 16)
-    const mesh = new InstancedGlyphMesh(root, buf, buf, buf, buf, buf, new MeshBasicMaterial())
+    const mesh = new InstancedGlyphMesh(root)
     expect(() => mesh.copy()).to.throw(/not supported/)
   })
 })

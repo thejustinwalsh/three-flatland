@@ -19,8 +19,34 @@ export type {
   SlugBatchGlyphOptions,
 } from './SlugBatch'
 
+// Vector shapes (SVG) — "a font whose glyphs are SVG paths"
+export { SlugShapeSet } from './SlugShapeSet'
+export type { SlugShapeHandle } from './SlugShapeSet'
+export { SlugShapeBatch } from './SlugShapeBatch'
+export type { SlugShapeBatchOptions, SlugShapeBatchWriteOptions } from './SlugShapeBatch'
+export {
+  parseSVG,
+  registerSVG,
+  loadSVGShapes,
+  contoursFromShapePath,
+  quadraticsFromCurve,
+  DEFAULT_CURVE_TOLERANCE,
+} from './svg/index'
+export type {
+  ParsedSVG,
+  ParsedSVGFill,
+  ParseSVGOptions,
+  SVGViewBox,
+  RegisteredSVG,
+  ShapePathLike,
+  CurveLike,
+} from './svg/index'
+
 export type {
   QuadCurve,
+  QuadContour,
+  SlugCurveSource,
+  SlugGlyphSource,
   GlyphBounds,
   GlyphBands,
   Band,

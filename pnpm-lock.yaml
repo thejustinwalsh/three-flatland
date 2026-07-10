@@ -1739,6 +1739,9 @@ importers:
       '@preact/signals-core':
         specifier: 'catalog:'
         version: 1.14.4
+      '@three-flatland/slug':
+        specifier: workspace:*
+        version: link:../slug
       suspend-react:
         specifier: 'catalog:'
         version: 0.1.3(react@19.2.3)

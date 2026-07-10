@@ -86,18 +86,53 @@ For the full algorithm walkthrough, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 
 ## API
 
-| Export               | Description                                                                                                                        |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `SlugFontLoader`     | Loads a baked `.slug.glb` or `.ttf`/`.otf`/`.woff` (runtime). Single entry point for fonts.                                        |
-| `SlugFont`           | Font data container. Glyphs, GPU textures, text shaping, `measureText`, `measureParagraph`, `wrapText`.                            |
-| `SlugText`           | High-level `InstancedMesh` subclass. `.text`, `.fontSize`, `.align`, `.styles`, `.outline`.                                        |
-| `SlugFontStack`      | Ordered fallback chain across multiple `SlugFont`s. Per-codepoint resolution.                                                      |
-| `SlugStackText`      | Multi-font renderable (`Group`). One `InstancedMesh` per backing font. Full `SlugText` parity (`styles`, `outline`, `setOpacity`). |
-| `SlugMaterial`       | `MeshBasicNodeMaterial` with Slug vertex + fragment TSL shaders.                                                                   |
-| `SlugStrokeMaterial` | Stroke shader for outlined text — analytic distance-to-curve, runtime-uniform half-width.                                          |
-| `SlugGeometry`       | Instanced quad geometry with 5× vec4 per-glyph instance attributes.                                                                |
+| Export                       | Description                                                                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `SlugFontLoader`             | Loads a baked `.slug.glb` or `.ttf`/`.otf`/`.woff` (runtime). Single entry point for fonts.                                        |
+| `SlugFont`                   | Font data container. Glyphs, GPU textures, text shaping, `measureText`, `measureParagraph`, `wrapText`.                            |
+| `SlugText`                   | High-level `InstancedMesh` subclass. `.text`, `.fontSize`, `.align`, `.styles`, `.outline`.                                        |
+| `SlugFontStack`              | Ordered fallback chain across multiple `SlugFont`s. Per-codepoint resolution.                                                      |
+| `SlugStackText`              | Multi-font renderable (`Group`). One `InstancedMesh` per backing font. Full `SlugText` parity (`styles`, `outline`, `setOpacity`). |
+| `SlugMaterial`               | `MeshBasicNodeMaterial` with Slug vertex + fragment TSL shaders.                                                                   |
+| `SlugStrokeMaterial`         | Stroke shader for outlined text — analytic distance-to-curve, runtime-uniform half-width.                                          |
+| `SlugGeometry`               | Instanced quad geometry with 5× vec4 per-glyph instance attributes.                                                                |
+| `SlugBatch`                  | Cross-component glyph batch — per-instance transform + 4-plane clip, one draw call for many text runs.                             |
+| `SlugShapeSet`               | "A font whose glyphs are SVG paths" — incremental registry of closed Bézier contours over one curve/band texture pair.             |
+| `SlugShapeBatch`             | `SlugBatch` over a `SlugShapeSet` — one draw call for any number of shape instances.                                               |
+| `parseSVG` / `loadSVGShapes` | `slug/svg`: SVG markup or URL → normalized contours + fills → `SlugShapeSet` (adaptive cubic→quadratic conversion).                |
 
 For full API docs with all options and types, see [docs/REFERENCE.md](docs/REFERENCE.md).
+
+### Vector shapes (SVG)
+
+The same analytic fill pipeline renders arbitrary closed-Bézier shapes — instanced,
+resolution-independent, zero render targets. An icon wall that upstream approaches
+tessellate into one mesh + material per path collapses to **one draw call**:
+
+```ts
+import { SlugShapeSet, SlugShapeBatch, loadSVGShapes } from '@three-flatland/slug'
+
+const set = new SlugShapeSet()
+const activity = await loadSVGShapes('/icons/activity.svg', set) // accumulate many SVGs per set
+const heart = await loadSVGShapes('/icons/heart.svg', set)
+
+const batch = new SlugShapeBatch({ shapes: set })
+batch.writeShape(0, activity.handles[0], { scale: 64, x: -80, color: activity.fills[0].color })
+batch.writeShape(1, heart.handles[0], { scale: 64, x: 16 })
+batch.count = 2
+scene.add(batch)
+batch.update(camera) // once per frame, like SlugText
+```
+
+Shapes are normalized to a y-up unit box (viewBox longer side = 1). Cubics convert
+through the same De Casteljau + best-fit core the font parser uses, wrapped in
+**adaptive recursion** (`cubicToQuadraticsAdaptive`) — split until the analytic
+deviation bound drops under 0.25% of the viewBox diagonal — so high-curvature SVG
+paths don't facet the way a fixed split would. Fill rule is batch-level in v1
+(`material: { evenOdd: true }`); per-shape fill-rule is a v2 item. Sets can be baked
+to a GLB (`packShapeSet` in `@three-flatland/slug/bake`) and rehydrated with
+`SlugShapeSet.fromBaked` — no SVG parsing or band building at runtime, pixel-identical
+output, still growable.
 
 ### Layout engine & queries
 
@@ -236,10 +271,10 @@ TSL compiles to WGSL for WebGPU and GLSL ES 3.0 for WebGL2. All features used (b
 - [x] Multi-font glyph fallback (`SlugFontStack`, `SlugStackText`)
 - [x] Analytic stroked text (`SlugText.outline` — runtime-uniform width, bevel-via-min joins)
 - [x] Stroke-set bake CLI (`slug-bake --stroke-widths`, `--stroke-join`, `--stroke-cap`)
+- [x] [#37](https://github.com/thejustinwalsh/three-flatland/issues/37) — General shape rendering (`SlugShapeSet`, `SlugShapeBatch`, `slug/svg`, baked shape sets)
 
 **In progress:**
 
-- [ ] [#37](https://github.com/thejustinwalsh/three-flatland/issues/37) — General shape rendering (`SlugShapeBatch`, SVG paths)
 - [ ] [#37](https://github.com/thejustinwalsh/three-flatland/issues/37) — Baked-as-fill stroked text (1× fill cost) + dash arrays
 - [ ] [#38](https://github.com/thejustinwalsh/three-flatland/issues/38) — Rich text (`SlugRichText`)
 

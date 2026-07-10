@@ -1,9 +1,7 @@
-import { TextureLoader } from 'three'
-import { Font, type FontInfo, type FontInfoSource } from './font.js'
+import { SlugFontLoader, type SlugFont } from '@three-flatland/slug'
+import { Font, type FontInfoSource } from './font.js'
 
 const fontCache = new Map<FontInfoSource, Set<(font: Font) => void> | Font>()
-
-const textureLoader = new TextureLoader()
 
 export function loadCachedFont(fontInfoOrUrl: FontInfoSource, onLoad: (font: Font) => void): void {
   const entry = fontCache.get(fontInfoOrUrl)
@@ -31,32 +29,14 @@ export function loadCachedFont(fontInfoOrUrl: FontInfoSource, onLoad: (font: Fon
 }
 
 async function loadFont(fontInfoOrUrl: FontInfoSource): Promise<Font> {
-  const resolvedFontInfoOrUrl = await resolveFontInfoSource(fontInfoOrUrl)
-  const info: FontInfo =
-    typeof resolvedFontInfoOrUrl === 'object'
-      ? resolvedFontInfoOrUrl
-      : await (await fetch(resolvedFontInfoOrUrl)).json()
-
-  if (info.pages.length !== 1) {
-    throw new Error('only supporting exactly 1 page')
-  }
-
-  const page = await textureLoader.loadAsync(
-    new URL(
-      info.pages[0]!,
-      typeof resolvedFontInfoOrUrl === 'string'
-        ? new URL(resolvedFontInfoOrUrl, window.location.href)
-        : undefined
-    ).href
-  )
-
-  page.flipY = false
-
-  return new Font(info, page)
+  const resolved = await resolveFontInfoSource(fontInfoOrUrl)
+  const slugFont: SlugFont =
+    typeof resolved === 'string' ? await SlugFontLoader.load(resolved) : resolved
+  return new Font(slugFont)
 }
 
 function resolveFontInfoSource(
   fontInfoOrUrl: FontInfoSource
-): string | FontInfo | Promise<string | FontInfo> {
+): string | SlugFont | Promise<string | SlugFont> {
   return typeof fontInfoOrUrl === 'function' ? fontInfoOrUrl() : fontInfoOrUrl
 }

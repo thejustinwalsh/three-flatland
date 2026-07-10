@@ -16,6 +16,13 @@ export interface QuadCurve {
   p2y: number
 }
 
+/**
+ * One closed contour: an ordered list of quadratic curves where each
+ * curve's end point is the next curve's start point (and the last closes
+ * back to the first). The unit `SlugShapeSet.registerShape` ingests.
+ */
+export type QuadContour = QuadCurve[]
+
 /** Bounding box in em-space. */
 export interface GlyphBounds {
   xMin: number
@@ -133,6 +140,26 @@ export interface DecorationRect {
   /** Rectangle width and height in object space */
   width: number
   height: number
+}
+
+/**
+ * Anything that can bind Slug curve/band textures to a material —
+ * satisfied by both `SlugFont` and `SlugShapeSet`. `SlugMaterial` and
+ * `SlugStrokeMaterial` only ever read these three fields.
+ */
+export interface SlugCurveSource {
+  curveTexture: DataTexture
+  bandTexture: DataTexture
+  textureWidth: number
+}
+
+/**
+ * A curve source that also resolves ids to `SlugGlyphData` records — the
+ * structural contract `SlugBatch`'s writer needs. `SlugFont` (glyph ids)
+ * and `SlugShapeSet` (shape handles) both satisfy it.
+ */
+export interface SlugGlyphSource extends SlugCurveSource {
+  glyphs: Map<number, SlugGlyphData>
 }
 
 /** Packed GPU textures for all glyphs in a font. */

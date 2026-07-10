@@ -1,6 +1,5 @@
 import {
   any as anySchema,
-  boolean,
   custom,
   enum as enumSchema,
   number,
@@ -12,7 +11,7 @@ import {
 import type { z } from 'zod'
 import { computed, effect, signal } from '@preact/signals-core'
 import type { Signal } from '@preact/signals-core'
-import type { Texture, TypedArray } from 'three'
+import { getGlyphTopOffset, type SlugFont } from '@three-flatland/slug'
 import { loadCachedFont } from './cache.js'
 import type { Properties } from '../properties/index.js'
 import type { Container } from '../components/container.js'
@@ -53,70 +52,45 @@ export const FontWeightSchema = /* @__PURE__ */ defineSchema(() =>
 
 export type FontWeight = z.input<typeof FontWeightSchema>
 
+/**
+ * The layout-metric contract MSDF's `Font`/`GlyphInfo` used to expose,
+ * trimmed to what `text/layout` and `text/wrapper` actually consume (see
+ * `text/utils.ts` `getGlyphOffsetX/Y`, `getOffsetToNextGlyph`,
+ * `getKerningOffset`). All fields are ratios of `fontSize` — multiply by
+ * `fontSize` at the call site, exactly as before. The MSDF-only render
+ * fields (`uvX/uvY/uvWidth/uvHeight`, `page`, `pageWidth/pageHeight`,
+ * `distanceRange`, `renderSolid`) die with the atlas — Slug needs none of
+ * them (`text/render/**` reads `SlugFont`/`SlugGlyphData` directly).
+ */
 export type GlyphInfo = {
+  /** Glyph ID — kerning-lookup identity, and the id `SlugBatch.writeGlyph` needs. */
   id: number
-  index: number
-  char: string
-  width: number
-  height: number
-  x: number
-  y: number
+  /** Left-side-bearing before ink starts (glyph advertised `lsb`), ratio of `fontSize`. */
   xoffset: number
+  /**
+   * Downward offset from the line-box top to the glyph's ink top, ratio of
+   * `fontSize`. MSDF folded this into its baked `yoffset`; Slug doesn't —
+   * this is `ascender - bounds.yMax`, the inner term of slug's
+   * `getGlyphTopOffset(ascender, yMax, 1, 1)` (R4: routed through slug's
+   * `layout/baseline.ts`, not re-derived here).
+   */
   yoffset: number
+  /** Ink width (`bounds.xMax - bounds.xMin`), ratio of `fontSize`. */
+  width: number
+  /** Advance to the next glyph's pen position, ratio of `fontSize`. */
   xadvance: number
-  chnl: number
-  page: number
-  uvWidth?: number
-  uvHeight?: number
-  uvX?: number
-  uvY?: number
-  renderSolid?: boolean
 }
 
-export type FontInfo = {
-  pages: Array<string>
-  chars: Array<GlyphInfo>
-  info: {
-    face: string
-    size: number
-    bold: number
-    italic: number
-    charset: Array<string>
-    unicode: number
-    stretchH: number
-    smooth: number
-    aa: number
-    padding: Array<number>
-    spacing: Array<number>
-    outline: number
-  }
-  common: {
-    lineHeight: number
-    base: number
-    scaleW: number
-    scaleH: number
-    pages: number
-    packed: number
-    alphaChnl: number
-    redChnl: number
-    greenChnl: number
-    blueChnl: number
-  }
-  distanceField: {
-    fieldType: string
-    distanceRange: number
-  }
-  kernings: Array<{
-    first: number
-    second: number
-    amount: number
-  }>
-}
-
+/**
+ * A font family's weight entry. MSDF accepted a URL/object pointing at a
+ * BMFont JSON atlas; the fork points at a TTF/OTF (runtime-shaped, D3
+ * ruling) or a pre-baked `.slug.glb`, loaded via `SlugFontLoader` — or an
+ * already-loaded `SlugFont` for callers who manage loading themselves.
+ */
 export type FontInfoSource =
   | string
-  | FontInfo
-  | (() => string | FontInfo | Promise<string | FontInfo>)
+  | SlugFont
+  | (() => string | SlugFont | Promise<string | SlugFont>)
 
 const fontFamilyWeightMapEntrySchema = /* @__PURE__ */ defineSchema(
   () => anySchema() as z.ZodType<FontInfoSource, FontInfoSource>
@@ -140,11 +114,18 @@ export type FontFamilyProperties = {
   fontFamilies?: FontFamilies
 }
 
-// `@pmndrs/msdfonts` is dropped (MSDF is deleted, not kept as a fallback — design spec
-// §8.1). Upstream bundled default Inter weights here; where the fork's default TTF
-// sources live is open decision D5 (spec §14) — until it's ruled, there is no
-// zero-config default font family, and callers must pass `fontFamilies` explicitly.
-const defaultFontFamiles: FontFamilies = {}
+// PROVISIONAL — pending stakeholder ruling D5 (design spec §14), taking the
+// spec's recommended option (a): bundle ONE weight of Inter (~325 KB,
+// runtime-parsed via SlugFontLoader — NOT pre-baked, consistent with the D3
+// ruling that runtime parsing is the default path). This restores upstream's
+// zero-config `Text` UX (`@pmndrs/msdfonts`'s bundled default) without
+// reintroducing MSDF. Trivially reversible: delete this block (and the
+// bundled .ttf + its tsup copy step) to fall back to "no default, callers
+// must pass `fontFamilies` explicitly" if D5 rules otherwise.
+const defaultInterUrl = /* @__PURE__ */ new URL('./assets/Inter-Regular.ttf', import.meta.url).href
+const defaultFontFamiles: FontFamilies = {
+  inter: { normal: defaultInterUrl },
+}
 
 export function computedFontFamilies(
   properties: Properties,
@@ -237,86 +218,47 @@ function getWeightNumber(value: string): number {
 
 const MISSING_GLYPH: GlyphInfo = {
   id: -1,
-  index: 0,
-  char: '',
-  chnl: 0,
-  page: 0,
-  x: 0,
-  y: 0,
-  width: 0.5,
-  height: 0.5,
-  xadvance: 0.6,
   xoffset: 0,
   yoffset: 0.3,
-  uvX: 0,
-  uvY: 0,
-  uvWidth: 0,
-  uvHeight: 0,
-  renderSolid: true,
+  width: 0.5,
+  xadvance: 0.6,
 } as const
 
+/**
+ * Thin wrapper over a `SlugFont`, preserving the layout-metric contract
+ * (`getGlyphInfo`/`getKerning`) that `text/layout`, `text/wrapper`, and
+ * `text/utils.ts` already consume — those modules are renderer-agnostic and
+ * unchanged by the Slug uplift (spec §8.2). `text/render/**` reads the
+ * underlying `slug` (a real `SlugFont`) directly instead of going through
+ * this wrapper — glyph groups are keyed by `SlugFont`, not `Font`.
+ */
 export class Font {
-  private glyphInfoMap = new Map<string, GlyphInfo>()
-  private kerningMap = new Map<string, number>()
-
-  //needed in the shader:
-  public readonly pageWidth: number
-  public readonly pageHeight: number
-  public readonly distanceRange: number
-
-  constructor(
-    info: FontInfo,
-    public page: Texture
-  ) {
-    const { scaleW, scaleH, lineHeight } = info.common
-    const { size } = info.info
-
-    this.pageWidth = scaleW
-    this.pageHeight = scaleH
-    this.distanceRange = info.distanceField.distanceRange
-
-    for (const glyph of info.chars) {
-      const normalizedGlyph: GlyphInfo = {
-        ...glyph,
-        uvX: glyph.x / scaleW,
-        uvY: glyph.y / scaleH,
-        uvWidth: glyph.width / scaleW,
-        uvHeight: glyph.height / scaleH,
-        width: glyph.width / size,
-        height: glyph.height / size,
-        xadvance: glyph.xadvance / size,
-        xoffset: glyph.xoffset / size,
-        yoffset: (glyph.yoffset - (lineHeight - size)) / size,
-      }
-      this.glyphInfoMap.set(normalizedGlyph.char, normalizedGlyph)
-    }
-
-    for (const { first, second, amount } of info.kernings) {
-      this.kerningMap.set(`${first}/${second}`, amount / size)
-    }
-  }
+  constructor(public readonly slug: SlugFont) {}
 
   getGlyphInfo(char: string): GlyphInfo {
-    const glyph = this.glyphInfoMap.get(char)
-    if (glyph) return glyph
-
-    if (char === '\n') {
-      const space = this.glyphInfoMap.get(' ')
-      if (space) return space
+    let codepoint = char.codePointAt(0)
+    let metrics = codepoint == null ? undefined : this.slug.getGlyphMetrics(codepoint)
+    if (metrics == null && char === '\n') {
+      // MSDF folded a missing "\n" glyph onto the space glyph — `positioned.ts`'s
+      // char walk includes each line's trailing terminator, so this fallback
+      // keeps that behavior rather than warning on every wrapped line.
+      codepoint = ' '.codePointAt(0)
+      metrics = codepoint == null ? undefined : this.slug.getGlyphMetrics(codepoint)
     }
-
-    console.warn(`Missing glyph info for character "${char}"`)
-    return MISSING_GLYPH
+    if (metrics == null) {
+      console.warn(`Missing glyph info for character "${char}"`)
+      return MISSING_GLYPH
+    }
+    return {
+      id: metrics.glyphId,
+      xoffset: metrics.lsb,
+      yoffset: getGlyphTopOffset(this.slug.ascender, metrics.bounds.yMax, 1, 1),
+      width: metrics.bounds.xMax - metrics.bounds.xMin,
+      xadvance: metrics.advanceWidth,
+    }
   }
 
   getKerning(firstId: number, secondId: number): number {
-    return this.kerningMap.get(`${firstId}/${secondId}`) ?? 0
+    return this.slug.getKerning(firstId, secondId)
   }
-}
-
-export function glyphIntoToUV(info: GlyphInfo, target: TypedArray, offset: number): void {
-  target[offset + 0] = info.uvX!
-  target[offset + 1] = info.uvY! + info.uvHeight!
-  target[offset + 2] = info.uvWidth!
-  target[offset + 3] = -info.uvHeight!
 }

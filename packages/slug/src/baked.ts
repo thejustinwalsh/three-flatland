@@ -66,7 +66,7 @@
  */
 
 import type { GlbView } from './glb'
-import type { SlugGlyphData } from './types'
+import type { GlyphBands, SlugGlyphData } from './types'
 import { SLUG_EXTENSION_NAME, SLUG_FONT_VERSION } from './format'
 
 /** JSON header shape — kept for backward compat; consumed by unpackBaked (G4.2). */
@@ -213,38 +213,12 @@ export function unpackBaked(asset: GlbView): BakedFontData {
     const glyphId = glyphIdArr[i]!
 
     // ── Reconstruct hBands / vBands from the flat bandData slice ──
-    const wordStart = bandOffsets[i]!
-    const wordEnd = bandOffsets[i + 1]!
-    let w = wordStart
-
-    const numH = bandData[w++]!
-    const numV = bandData[w++]!
-
-    // Read all hBand counts first, then all hBand indices (same layout as packBaked)
-    const hCounts: number[] = []
-    for (let b = 0; b < numH; b++) hCounts.push(bandData[w++]!)
-
-    const hBands = hCounts.map((count) => {
-      const curveIndices: number[] = []
-      for (let j = 0; j < count; j++) curveIndices.push(bandData[w++]!)
-      return { curveIndices }
-    })
-
-    const vCounts: number[] = []
-    for (let b = 0; b < numV; b++) vCounts.push(bandData[w++]!)
-
-    const vBands = vCounts.map((count) => {
-      const curveIndices: number[] = []
-      for (let j = 0; j < count; j++) curveIndices.push(bandData[w++]!)
-      return { curveIndices }
-    })
-
-    // Sanity: w should equal wordEnd
-    if (w !== wordEnd) {
-      throw new Error(
-        `unpackBaked: band word count mismatch for glyph ${glyphId}: expected ${wordEnd - wordStart}, consumed ${w - wordStart}`
-      )
-    }
+    const { hBands, vBands } = readBandWords(
+      bandData,
+      bandOffsets[i]!,
+      bandOffsets[i + 1]!,
+      `unpackBaked: glyph ${glyphId}`
+    )
 
     glyphs.set(glyphId, {
       glyphId,
@@ -290,6 +264,53 @@ export function unpackBaked(asset: GlbView): BakedFontData {
   const kernData = new DataView(kernArr.buffer, kernArr.byteOffset, kernArr.byteLength)
 
   return { glyphs, cmapCodes, cmapGlyphs, kernData, kernCount }
+}
+
+/**
+ * Reconstruct `hBands`/`vBands` from one glyph's/shape's flat band-word
+ * slice: `[numH, numV, hCounts…, hIndices…, vCounts…, vIndices…]` — the
+ * layout `writeBandWords` (bake) emits for both `FL_slug_font` and
+ * `FL_slug_shapes`. Throws (prefixed with `errLabel`) when the slice's
+ * declared word count doesn't match what the counts imply.
+ */
+export function readBandWords(
+  bandData: Uint16Array,
+  wordStart: number,
+  wordEnd: number,
+  errLabel: string
+): GlyphBands {
+  let w = wordStart
+
+  const numH = bandData[w++]!
+  const numV = bandData[w++]!
+
+  // Read all hBand counts first, then all hBand indices (same layout as packBaked)
+  const hCounts: number[] = []
+  for (let b = 0; b < numH; b++) hCounts.push(bandData[w++]!)
+
+  const hBands = hCounts.map((count) => {
+    const curveIndices: number[] = []
+    for (let j = 0; j < count; j++) curveIndices.push(bandData[w++]!)
+    return { curveIndices }
+  })
+
+  const vCounts: number[] = []
+  for (let b = 0; b < numV; b++) vCounts.push(bandData[w++]!)
+
+  const vBands = vCounts.map((count) => {
+    const curveIndices: number[] = []
+    for (let j = 0; j < count; j++) curveIndices.push(bandData[w++]!)
+    return { curveIndices }
+  })
+
+  // Sanity: w should equal wordEnd
+  if (w !== wordEnd) {
+    throw new Error(
+      `${errLabel}: band word count mismatch: expected ${wordEnd - wordStart}, consumed ${w - wordStart}`
+    )
+  }
+
+  return { hBands, vBands }
 }
 
 /** Binary search cmap for a char code. Returns glyphId or 0 (notdef). */
