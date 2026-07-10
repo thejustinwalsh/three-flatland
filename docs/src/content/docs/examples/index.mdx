@@ -12,7 +12,9 @@ import GalleryTile from '../../../components/gallery/GalleryTile.astro'
 <header class="examples-header">
   <p class="examples-eyebrow">Examples</p>
   <h1 class="examples-title">Shortcuts to getting started.</h1>
-  <p class="examples-tagline">Self contained cloneable templates that demonstrate real world use of three-flatland features.</p>
+  <p class="examples-tagline">
+    Self contained cloneable templates that demonstrate real world use of three-flatland features.
+  </p>
 </header>
 
 <GalleryGrid>
@@ -82,12 +84,18 @@ import GalleryTile from '../../../components/gallery/GalleryTile.astro'
     title="Hit Testing"
     description="Raycaster sprite picking: hover, drag, and walk-to-collect coins."
   />
+  <GalleryTile
+    surface="examples"
+    slug="uikit"
+    title="uikit"
+    description="A fullscreen game menu — tabs, sliders, a text input with a live caret — batched through TSL."
+  />
 </GalleryGrid>
 
 </div>
 
 <style>
-{`
+  {`
   /* MDX-safe — CSS wrapped in a template literal because MDX 3
      treats { and } in raw <style> content as JS expression
      boundaries. Same pattern the landing page (index.mdx) uses. */
