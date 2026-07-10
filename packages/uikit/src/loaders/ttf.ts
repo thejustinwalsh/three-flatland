@@ -31,7 +31,7 @@ export class TTFLoader extends Loader<MSDFResult, TTFInput> {
     throw new Error('ported in U1/U2')
   }
 
-  override async loadAsync(
+  override loadAsync(
     _input: TTFInput,
     _onProgress?: (event: ProgressEvent) => void
   ): Promise<MSDFResult> {

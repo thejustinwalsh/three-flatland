@@ -19,14 +19,14 @@ export function build<T extends Component, P>(Component: { new (): T }, name = C
   extend({ [`Vanilla${name}`]: Component })
   return forwardRef<T, P>(({ children, ...props }: any, forwardRef) => {
     const ref = useRef<Component>(null)
-    const latestPropsRef = useRef(props)
-    latestPropsRef.current = props
     useImperativeHandle(forwardRef, () => ref.current! as T, [])
     const renderContext = useRenderContext()
-    const args = useMemo(
-      () => [latestPropsRef.current, undefined, { renderContext }],
-      [renderContext]
-    )
+    // `props` is intentionally excluded: `args` must stay referentially stable
+    // across prop-only re-renders so R3F does not reconstruct the vanilla
+    // instance. Live prop updates flow through `resetProperties` in useSetup;
+    // `args` only needs the props present at construction time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const args = useMemo(() => [props, undefined, { renderContext }], [renderContext])
     const outProps = useSetup(ref, props, args)
     return jsx(`vanilla${name}` as any, { ref, children, ...outProps })
   })

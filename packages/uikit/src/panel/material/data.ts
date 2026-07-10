@@ -19,9 +19,8 @@ export const materialSetters = {
     ),
 
   // 8 = border radiuses
-  borderBottomLeftRadius: (d, o, p: number | string, { value: s }, _, u) => {
-    s != null && writeBorderRadius(d, o + 8, 0, p, s[1], u)
-  },
+  borderBottomLeftRadius: (d, o, p: number | string, { value: s }, _, u) =>
+    s != null && writeBorderRadius(d, o + 8, 0, p, s[1], u),
   borderBottomRightRadius: (d, o, p: number | string, { value: s }, _, u) =>
     s != null && writeBorderRadius(d, o + 8, 1, p, s[1], u),
   borderTopRightRadius: (d, o, p: number | string, { value: s }, _, u) =>

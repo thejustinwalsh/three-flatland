@@ -70,12 +70,18 @@ export function computedGlyphOutProperties(
   })
 }
 
-function toString(value: unknown) {
+function toString(value: unknown): string {
   if (value instanceof Signal) {
     value = value.value
   }
   if (value == null) {
     return ''
   }
-  return String(value)
+  if (typeof value === 'string') {
+    return value
+  }
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value)
+  }
+  return JSON.stringify(value) ?? ''
 }

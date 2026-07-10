@@ -97,9 +97,8 @@ export class Input<
     const caretColor = signal<InputOutProperties['caretColor']>(undefined)
     const selectionHandlers = signal<EventHandlersProperties | undefined>(undefined)
 
-    let element: HTMLInputElement | HTMLTextAreaElement | undefined
     const htmlSelectionRange = signal<Vector2Tuple | undefined>(undefined)
-    const updateSelectionRange = () => updateHtmlSelectionRange(htmlSelectionRange, element)
+    const updateSelectionRange = () => updateHtmlSelectionRange(htmlSelectionRange, this.element)
     const hasFocus = signal<boolean>(false)
     const selectionRange = computed<Vector2Tuple | undefined>(() => {
       if (!hasFocus.value) {
@@ -163,7 +162,6 @@ export class Input<
       inputConfig?.multiline ?? false,
       updateSelectionRange
     )
-    element = this.element
 
     setupCaret(
       this.properties,

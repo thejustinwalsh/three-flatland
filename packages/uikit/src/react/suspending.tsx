@@ -28,8 +28,16 @@ export const SuspendingImage: (
   props: SuspendingImageProperties & RefAttributes<VanillaImage>
 ) => ReactNode = forwardRef(({ src, ...props }, ref) => {
   const texture = useLoader(TextureLoader, src)
-  texture.colorSpace = SRGBColorSpace
-  texture.matrixAutoUpdate = false
+  // `texture` is a three.js Texture (a vanilla GPU resource, not a React-tracked
+  // value) — configuring it imperatively after load is standard three.js/R3F
+  // practice (mirrors drei's useTexture). Deferred to an effect so the shared,
+  // useLoader-cached instance isn't touched on every render, only when it
+  // actually changes.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability -- imperative three.js resource config, see above
+    texture.colorSpace = SRGBColorSpace
+    texture.matrixAutoUpdate = false
+  }, [texture])
   return <Image ref={ref} src={texture} {...props} />
 })
 

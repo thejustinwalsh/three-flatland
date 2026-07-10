@@ -105,5 +105,5 @@ export function convertYogaPoint(
   if (isViewportHeightLength(input)) {
     return (viewportHeight * Number.parseFloat(input)) / 100
   }
-  throw new Error(`Invalid Yoga point: ${input}`)
+  throw new Error(`Invalid Yoga point: ${JSON.stringify(input)}`)
 }

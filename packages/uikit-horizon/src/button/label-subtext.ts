@@ -38,8 +38,8 @@ export class ButtonLabelSubtext extends Container<BaseOutProperties> {
             return undefined
           }
           if (button.properties.value.disabled === true) {
-            theme.component.button[button.properties.value.variant ?? 'primary'].subtext.disabled
-              .value
+            return theme.component.button[button.properties.value.variant ?? 'primary'].subtext
+              .disabled.value
           }
           return theme.component.button[button.properties.value.variant ?? 'primary'].subtext
             .default.value

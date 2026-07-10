@@ -148,12 +148,15 @@ export const Fullscreen = /* @__PURE__ */ (() => {
       camera.add(fullscreenWrapper)
       const renderer = useThree((s) => s.gl)
       const ref = useRef<VanillaFullscreen>(null)
-      const latestPropsRef = useRef(props)
-      latestPropsRef.current = props
       useImperativeHandle(forwardRef, () => ref.current!, [])
       const renderContext = useRenderContext()
       const args = useMemo(
-        () => [renderer, latestPropsRef.current, undefined, { renderContext }],
+        () => [renderer, props, undefined, { renderContext }],
+        // `props` is intentionally excluded: `args` must stay referentially stable
+        // across prop-only re-renders so R3F does not reconstruct the vanilla
+        // instance. Live prop updates flow through `resetProperties` in useSetup;
+        // `args` only needs the props present at construction time.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [renderer, renderContext]
       )
       const outProps = useSetup(ref, props, args)
@@ -174,12 +177,12 @@ export const Text = /* @__PURE__ */ (() => {
     useImperativeHandle(forwardRef, () => ref.current!, [])
     const renderContext = useRenderContext()
     const inProps = { ...props, text: children }
-    const latestPropsRef = useRef(inProps)
-    latestPropsRef.current = inProps
-    const args = useMemo(
-      () => [latestPropsRef.current, undefined, { renderContext }],
-      [renderContext]
-    )
+    // `inProps` is intentionally excluded: `args` must stay referentially stable
+    // across prop-only re-renders so R3F does not reconstruct the vanilla
+    // instance. Live prop updates flow through `resetProperties` in useSetup;
+    // `args` only needs the props present at construction time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const args = useMemo(() => [inProps, undefined, { renderContext }], [renderContext])
     const outProps = useSetup(ref, inProps, args)
     return jsx(`vanillaText` as any, { ...outProps, ref })
   })

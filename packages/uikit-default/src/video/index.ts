@@ -232,7 +232,9 @@ export class VideoControls extends Container<BaseOutProperties> {
           const videoElement = videoElementSignal.peek()
           if (videoElement) {
             if (paused.value) {
-              videoElement.play()
+              videoElement.play().catch(() => {
+                /* playback rejected (e.g. autoplay policy); ignore */
+              })
             } else {
               videoElement.pause()
             }

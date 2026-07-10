@@ -48,6 +48,5 @@ export class Input extends InputImpl<InputOutProperties> {
         ...config?.defaultOverrides,
       },
     })
-    console
   }
 }

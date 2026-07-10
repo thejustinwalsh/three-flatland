@@ -219,7 +219,7 @@ function getMatchingFontUrl(fontFamily: FontFamilyWeightMap, weight: number): Fo
     }
   }
   if (result == null) {
-    throw new Error(`font family has no entries ${fontFamily}`)
+    throw new Error(`font family has no entries ${JSON.stringify(fontFamily)}`)
   }
   return result
 }

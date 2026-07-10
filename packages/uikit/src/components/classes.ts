@@ -13,7 +13,7 @@ export class ClassList {
     private readonly starProperties: Properties
   ) {}
   *[Symbol.iterator]() {
-    for (const entry in this.list) {
+    for (const entry of this.list) {
       if (entry != null) {
         yield entry
       }
@@ -53,7 +53,9 @@ export class ClassList {
       for (const classRef of classes) {
         const classIndex = this.list.indexOf(classRef)
         if (classIndex === -1) {
-          console.warn(`Class '${classRef}' not found in the classList`)
+          console.warn(
+            `Class '${typeof classRef === 'string' ? classRef : JSON.stringify(classRef)}' not found in the classList`
+          )
           return
         }
         if (classIndex + 1 === this.list.length) {
@@ -114,7 +116,7 @@ export function getStarProperties<T extends BaseOutProperties>(
   if ('*' in properties) {
     result = { ...properties['*'] } as any
   }
-  for (const conditionalKey in conditionalKeys) {
+  for (const conditionalKey of conditionalKeys) {
     const conditionalEntry = properties[conditionalKey as keyof InProperties<T>]?.['*' as never]
     if (conditionalEntry == null) {
       continue

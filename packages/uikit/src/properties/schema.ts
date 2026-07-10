@@ -186,8 +186,7 @@ export function createInPropertiesSchema<T extends z.ZodRawShape>(
     }
   }
 
-  let result: z.ZodTypeAny
-  result = lazy(() => {
+  const result: z.ZodTypeAny = lazy(() => {
     const recursiveShape: Record<string, z.ZodTypeAny> = { ...shape, '*': result.optional() }
     for (const key of conditionals) {
       recursiveShape[key] = result.optional()
