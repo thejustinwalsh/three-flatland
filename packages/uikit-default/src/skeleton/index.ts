@@ -1,0 +1,53 @@
+import type { z } from 'zod'
+import { ContainerPropertiesSchema } from '@three-flatland/uikit'
+import {
+  abortableEffect,
+  type BaseOutProperties,
+  Container,
+  type InProperties,
+  type RenderContext,
+} from '@three-flatland/uikit'
+import { type Signal, signal } from '@preact/signals-core'
+import { borderRadius, colors, componentDefaults } from '../theme.js'
+export const SkeletonPropertiesSchema = ContainerPropertiesSchema
+
+export type SkeletonProperties = z.input<typeof SkeletonPropertiesSchema>
+
+export class Skeleton extends Container<BaseOutProperties> {
+  private readonly opacity: Signal<number>
+  private time = 0
+
+  constructor(
+    inputProperties?: SkeletonProperties,
+    initialClasses?: Array<InProperties<BaseOutProperties> | string>,
+    config?: { renderContext?: RenderContext; defaultOverrides?: InProperties<BaseOutProperties> }
+  ) {
+    const opacity = signal(1)
+    super(inputProperties, initialClasses, {
+      defaults: componentDefaults,
+      ...config,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        borderRadius: borderRadius.md,
+        backgroundColor: colors.muted,
+        opacity,
+        ...config?.defaultOverrides,
+      },
+    })
+    this.opacity = opacity
+    abortableEffect(() => {
+      const fn = this.animate.bind(this)
+      const root = this.root.value
+      root.onFrameSet.add(fn)
+      return () => root.onFrameSet.delete(fn)
+    }, this.abortSignal)
+  }
+
+  private animate(delta: number) {
+    this.opacity.value = Math.cos((this.time / 1000) * Math.PI) * 0.25 + 0.75
+    this.time += delta
+    this.root.peek().requestFrame?.()
+  }
+}

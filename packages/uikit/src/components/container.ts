@@ -1,0 +1,129 @@
+import type { z } from 'zod'
+import {
+  baseOutPropertiesSchema,
+  createInPropertiesSchema,
+  defineSchema,
+} from '../properties/schema.js'
+import { computed, signal, type Signal } from '@preact/signals-core'
+import { type Matrix4, type Vector2Tuple, type Vector3, Vector2 } from 'three'
+import { type ClippingRect, computedClippingRect } from '../clipping.js'
+import { ElementType, setupOrderInfo } from '../order.js'
+import { setupInstancedPanel } from '../panel/instance/setup.js'
+import { getDefaultPanelMaterialConfig } from '../panel/material/config.js'
+import {
+  computedAnyAncestorScrollable,
+  computedGlobalScrollMatrix,
+  type ScrollEventHandlers,
+  setupScroll,
+  setupScrollbars,
+  setupScrollHandlers,
+} from '../scroll.js'
+import { computedFontFamilies, type FontFamilies } from '../text/font.js'
+import { computedPanelGroupDependencies } from '../panel/instance/properties.js'
+import type { BaseOutProperties, InProperties, WithSignal } from '../properties/index.js'
+import type { RenderContext } from '../context.js'
+import { Component } from './component.js'
+import { parseNumberValue } from '../properties/values.js'
+export const ContainerPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
+  createInPropertiesSchema(baseOutPropertiesSchema)
+)
+
+export type ContainerOutProperties = BaseOutProperties
+export type ContainerProperties = z.input<typeof ContainerPropertiesSchema>
+
+export class Container<
+  OutProperties extends BaseOutProperties = BaseOutProperties,
+> extends Component<OutProperties> {
+  readonly downPointerMap = new Map<
+    number,
+    | { type: 'scroll-bar'; localPoint: Vector3; axisIndex: number }
+    | { type: 'scroll-panel'; localPoint: Vector3; timestamp: number }
+  >()
+  readonly scrollVelocity = new Vector2()
+  readonly anyAncestorScrollable: Signal<readonly [boolean, boolean]>
+  readonly clippingRect: Signal<ClippingRect | undefined>
+  readonly childrenMatrix: Signal<Matrix4 | undefined>
+  readonly fontFamilies: Signal<FontFamilies | undefined>
+  readonly scrollPosition = signal<Vector2Tuple>([0, 0])
+
+  constructor(
+    inputProperties?: InProperties<OutProperties>,
+    initialClasses?: Array<InProperties<BaseOutProperties> | string>,
+    protected inputConfig?: {
+      renderContext?: RenderContext
+      defaultOverrides?: InProperties<OutProperties>
+      defaults?: WithSignal<OutProperties>
+    }
+  ) {
+    const scrollHandlers = signal<ScrollEventHandlers | undefined>(undefined)
+    super(inputProperties, initialClasses, {
+      hasNonUikitChildren: false,
+      isRenderless: true,
+      dynamicHandlers: scrollHandlers,
+      ...inputConfig,
+    })
+    this.material.visible = false
+
+    const updateScrollFrame = setupScroll(this)
+    setupScrollHandlers(scrollHandlers, this, this.abortSignal, updateScrollFrame)
+
+    this.childrenMatrix = computedGlobalScrollMatrix(
+      this.properties,
+      this.scrollPosition,
+      this.globalMatrix
+    )
+
+    const parentClippingRect = computed(() => this.parentContainer.value?.clippingRect.value)
+
+    this.fontFamilies = computedFontFamilies(this.properties, this.parentContainer)
+
+    this.clippingRect = computedClippingRect(
+      this.globalMatrix,
+      this,
+      computed(() => parseNumberValue(this.properties.value.pixelSize)),
+      parentClippingRect
+    )
+
+    this.anyAncestorScrollable = computedAnyAncestorScrollable(this.parentContainer)
+
+    const panelGroupDeps = computedPanelGroupDependencies(this.properties)
+    setupOrderInfo(
+      this.orderInfo,
+      this.properties,
+      'zIndex',
+      ElementType.Panel,
+      panelGroupDeps,
+      computed(() =>
+        this.parentContainer.value == null ? null : this.parentContainer.value.orderInfo.value
+      ),
+      this.abortSignal
+    )
+
+    setupInstancedPanel(
+      this.properties,
+      this.root,
+      this.orderInfo,
+      panelGroupDeps,
+      this.globalPanelMatrix,
+      this.size,
+      this.borderInset,
+      parentClippingRect,
+      this.isVisible,
+      getDefaultPanelMaterialConfig(),
+      this.abortSignal
+    )
+
+    //scrolling:
+    setupScrollbars(this, parentClippingRect, this.orderInfo, panelGroupDeps)
+  }
+
+  clone(recursive?: boolean): this {
+    const cloned = new Container(
+      this.inputProperties,
+      this.initialClasses,
+      this.inputConfig
+    ) as this
+    this.copyInto(cloned, recursive)
+    return cloned
+  }
+}

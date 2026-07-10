@@ -1,0 +1,30 @@
+import type { z } from 'zod'
+import { ContainerPropertiesSchema } from '@three-flatland/uikit'
+import { type BaseOutProperties, Container, type InProperties } from '@three-flatland/uikit'
+import { colors, componentDefaults } from '../theme.js'
+export const CardFooterPropertiesSchema = ContainerPropertiesSchema
+
+export type CardFooterProperties = z.input<typeof CardFooterPropertiesSchema>
+
+export class CardFooter extends Container<BaseOutProperties> {
+  constructor(
+    inputProperties?: InProperties<BaseOutProperties>,
+    initialClasses?: Array<InProperties<BaseOutProperties> | string>,
+    config?: { renderContext?: any; defaultOverrides?: InProperties<BaseOutProperties> }
+  ) {
+    super(inputProperties, initialClasses, {
+      defaults: componentDefaults,
+      ...config,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 24,
+        paddingTop: 0,
+        ...config?.defaultOverrides,
+      },
+    })
+  }
+}

@@ -1,0 +1,64 @@
+import type { z } from 'zod'
+import { ContainerPropertiesSchema } from '@three-flatland/uikit'
+import {
+  type InProperties,
+  type BaseOutProperties,
+  type RenderContext,
+  Container,
+} from '@three-flatland/uikit'
+import { Ellipsis } from '@three-flatland/uikit-lucide'
+import { colors, componentDefaults, contentDefaults } from '../theme.js'
+import type { Object3D } from 'three'
+export const PaginationEllipsisPropertiesSchema = ContainerPropertiesSchema
+
+export type PaginationEllipsisProperties = z.input<typeof PaginationEllipsisPropertiesSchema>
+
+export class PaginationEllipsis extends Container {
+  public readonly icon: InstanceType<typeof Ellipsis>
+  constructor(
+    inputProperties?: InProperties<BaseOutProperties>,
+    initialClasses?: Array<BaseOutProperties | string>,
+    config?: {
+      renderContext?: RenderContext
+      defaultOverrides?: InProperties<BaseOutProperties>
+    }
+  ) {
+    super(inputProperties, initialClasses, {
+      defaults: componentDefaults,
+      ...config,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        flexDirection: 'row',
+        height: 36,
+        width: 36,
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...config?.defaultOverrides,
+      },
+    })
+
+    super.add(
+      (this.icon = new Ellipsis(undefined, undefined, {
+        defaults: contentDefaults,
+        defaultOverrides: {
+          '*': {
+            borderColor: colors.border,
+          },
+          width: 16,
+          height: 16,
+        },
+      }))
+    )
+  }
+
+  dispose(): void {
+    this.icon.dispose()
+    super.dispose()
+  }
+
+  add(...object: Object3D[]): this {
+    throw new Error(`the ellipsis component can not have any children`)
+  }
+}

@@ -1,0 +1,152 @@
+import { Material, Mesh, MeshBasicMaterial, ShapeGeometry, Vector3 } from 'three'
+import {
+  type BoundingBox,
+  Content,
+  type ContentOutProperties,
+  contentOutPropertiesSchema,
+} from './content.js'
+import { computed, signal } from '@preact/signals-core'
+import { abortableEffect, loadResourceWithParams } from '../utils.js'
+import { SVGLoader, type SVGResult } from 'three/examples/jsm/loaders/SVGLoader.js'
+import type { BaseOutProperties, InProperties, WithSignal } from '../properties/index.js'
+import type { RenderContext } from '../context.js'
+import { string } from 'zod'
+import type { z } from 'zod'
+import { createInPropertiesSchema, defineSchema } from '../properties/schema.js'
+
+export const svgOutPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
+  contentOutPropertiesSchema.extend({
+    src: string().optional(),
+    content: string().optional(),
+  })
+)
+export const SvgPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
+  createInPropertiesSchema(svgOutPropertiesSchema)
+)
+
+export type SvgOutProperties = ContentOutProperties & {
+  keepAspectRatio?: boolean
+  src?: string
+  content?: string
+}
+export type SvgProperties = z.input<typeof SvgPropertiesSchema>
+
+export class Svg<
+  OutProperties extends SvgOutProperties = SvgOutProperties,
+> extends Content<OutProperties> {
+  constructor(
+    inputProperties?: InProperties<OutProperties>,
+    initialClasses?: Array<InProperties<BaseOutProperties> | string>,
+    protected inputConfig?: {
+      renderContext?: RenderContext
+      defaultOverrides?: InProperties<OutProperties>
+      defaults?: WithSignal<OutProperties>
+    }
+  ) {
+    const boundingBox = signal<BoundingBox | undefined>(undefined)
+    super(inputProperties, initialClasses, {
+      ...inputConfig,
+      remeasureOnChildrenChange: false,
+      depthWriteDefault: false,
+      supportFillProperty: true,
+      boundingBox,
+    })
+
+    const svgResult = signal<Awaited<ReturnType<typeof loadSvg>>>(undefined)
+    loadResourceWithParams(
+      svgResult,
+      loadSvg,
+      disposeSvg,
+      this.abortSignal,
+      computed(() => ({
+        src: this.properties.value.src,
+        content: this.properties.value.content,
+      }))
+    )
+    abortableEffect(() => {
+      const result = svgResult.value
+      boundingBox.value = result?.boundingBox
+      if (result == null || result.meshes.length === 0) {
+        this.notifyAncestorsChanged()
+        return
+      }
+      super.addUnsafe(...result.meshes)
+      this.notifyAncestorsChanged()
+      return () => {
+        super.remove(...result.meshes)
+      }
+    }, this.abortSignal)
+  }
+
+  add(): this {
+    throw new Error(`the svg component can not have any children`)
+  }
+
+  clone(recursive?: boolean): this {
+    const cloned = new Svg(this.inputProperties, this.initialClasses, this.inputConfig) as this
+    this.copyInto(cloned, recursive)
+    return cloned
+  }
+}
+
+const svgCache = new Map<string, Promise<SVGResult>>()
+const loader = new SVGLoader()
+
+async function loadSvg({
+  src,
+  content,
+}: {
+  src?: string
+  content?: string
+}): Promise<{ meshes: Array<Mesh>; boundingBox?: BoundingBox } | undefined> {
+  if (src == null && content == null) {
+    return undefined
+  }
+  let result: Omit<SVGResult, 'xml'> & { xml: Element }
+  if (src != null) {
+    let promise = svgCache.get(src)
+    if (promise == null) {
+      svgCache.set(src, (promise = loader.loadAsync(src)))
+    }
+    result = (await promise) as any
+  } else {
+    result = loader.parse(content!) as any
+  }
+  const meshes: Array<Mesh> = []
+  for (const path of result.paths) {
+    const shapes = SVGLoader.createShapes(path)
+    const material = new MeshBasicMaterial({ color: path.color, toneMapped: false })
+
+    for (const shape of shapes) {
+      const mesh = new Mesh(new ShapeGeometry(shape), material)
+      mesh.matrixAutoUpdate = false
+      mesh.scale.y = -1
+      mesh.updateMatrix()
+      meshes.push(mesh)
+    }
+  }
+  let boundingBox: { center: Vector3; size: Vector3 } | undefined
+  const viewBoxNumbers = result.xml
+    .getAttribute('viewBox')
+    ?.split(/\s+/)
+    .map((s) => Number.parseFloat(s))
+    .filter((value) => !isNaN(value))
+  if (viewBoxNumbers?.length === 4) {
+    const [minX, minY, width, height] = viewBoxNumbers as [number, number, number, number]
+    boundingBox = {
+      center: new Vector3(width / 2 + minX, -height / 2 - minY, 0),
+      size: new Vector3(width, height, 0.00001),
+    }
+  }
+
+  return { meshes, boundingBox }
+}
+
+function disposeSvg(result: Awaited<ReturnType<typeof loadSvg>>) {
+  result?.meshes.forEach((mesh) => {
+    if (mesh.material instanceof Material) {
+      mesh.material.dispose()
+    }
+    mesh.geometry.dispose()
+  })
+}

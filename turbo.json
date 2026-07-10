@@ -61,6 +61,22 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "@three-flatland/uikit#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/uikit-lucide#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/uikit-default#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/uikit-horizon#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
     "@three-flatland/bake#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
@@ -104,6 +120,14 @@
       "outputs": []
     },
     "typecheck": {
+      "outputs": []
+    },
+    "@three-flatland/uikit-default#typecheck": {
+      "dependsOn": ["@three-flatland/uikit-lucide#build"],
+      "outputs": []
+    },
+    "@three-flatland/uikit-horizon#typecheck": {
+      "dependsOn": ["@three-flatland/uikit-lucide#build"],
       "outputs": []
     },
     "clean": {

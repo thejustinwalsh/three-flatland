@@ -1,0 +1,92 @@
+{
+  "name": "@three-flatland/uikit",
+  "version": "0.1.0-alpha.0",
+  "description": "Performant 3D user interfaces for Three.js and yoga, ported to TSL and @three-flatland/slug",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "source": "./src/react/index.tsx",
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      }
+    },
+    "./*": "./dist/*"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "three": "catalog:",
+    "react": "catalog:",
+    "@react-three/fiber": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "@react-three/fiber": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@pmndrs/pointer-events": "catalog:",
+    "@pmndrs/uikit-pub-sub": "catalog:",
+    "@preact/signals-core": "catalog:",
+    "suspend-react": "catalog:",
+    "yoga-layout": "catalog:",
+    "zod": "catalog:",
+    "zustand": "catalog:"
+  },
+  "devDependencies": {
+    "@react-three/fiber": "catalog:",
+    "@types/react": "catalog:",
+    "@types/three": "catalog:",
+    "chai": "^5.2.0",
+    "react": "catalog:",
+    "three": "catalog:"
+  },
+  "keywords": [
+    "three.js",
+    "tsl",
+    "uikit",
+    "userinterface",
+    "flexbox",
+    "yoga",
+    "webgpu",
+    "slug"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/uikit"
+  }
+}

@@ -1,0 +1,389 @@
+import { boolean, object } from 'zod'
+import type { z } from 'zod'
+import {
+  baseOutPropertyShape,
+  createInPropertiesSchema,
+  defineSchema,
+  videoOutPropertiesSchema,
+  type InProperties,
+  type VideoOutProperties as BaseVideoOutProperties,
+  Container,
+  Video as VideoImpl,
+  Text,
+  type BaseOutProperties,
+  abortableEffect,
+  withOpacity,
+  searchFor,
+} from '@three-flatland/uikit'
+import { signal, computed } from '@preact/signals-core'
+import { Play, Pause, VolumeX, Volume2 } from '@three-flatland/uikit-lucide'
+import { Slider } from '../slider/index.js'
+import { Button } from '../button/index.js'
+import {
+  colors,
+  componentDefaults,
+  contentDefaults,
+  imageDefaults,
+  textDefaults,
+} from '../theme.js'
+import type { Object3D } from 'three'
+export const VideoOutPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
+  videoOutPropertiesSchema.extend({
+    controls: boolean().optional(),
+  })
+)
+
+export const VideoPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
+  createInPropertiesSchema(VideoOutPropertiesSchema)
+)
+
+export type VideoOutProperties = BaseVideoOutProperties & z.output<typeof VideoOutPropertiesSchema>
+
+export type VideoProperties = z.input<typeof VideoPropertiesSchema>
+
+export class Video extends Container<VideoOutProperties> {
+  readonly interacting = signal(false)
+  private timeoutRef?: NodeJS.Timeout
+
+  readonly video: VideoImpl
+  public readonly controls: VideoControls
+
+  constructor(
+    inputProperties?: VideoProperties,
+    initialClasses?: Array<InProperties<BaseOutProperties> | string>,
+    config?: { renderContext?: any; defaultOverrides?: InProperties<VideoOutProperties> }
+  ) {
+    super(inputProperties, initialClasses, {
+      defaults: imageDefaults,
+      ...config,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        positionType: 'relative',
+        ...config?.defaultOverrides,
+      },
+    })
+
+    this.addEventListener('pointermove', this.onInteract.bind(this))
+    this.addEventListener('pointerdown', this.onInteract.bind(this))
+
+    super.add(
+      (this.video = new VideoImpl(undefined, undefined, {
+        defaults: imageDefaults,
+        defaultOverrides: {
+          '*': {
+            borderColor: colors.border,
+          },
+          volume: this.properties.signal.volume,
+          preservesPitch: this.properties.signal.preservesPitch,
+          playbackRate: this.properties.signal.playbackRate,
+          muted: this.properties.signal.muted,
+          loop: this.properties.signal.loop,
+          autoplay: this.properties.signal.autoplay,
+          crossOrigin: this.properties.signal.crossOrigin,
+          objectFit: this.properties.signal.objectFit,
+          keepAspectRatio: this.properties.signal.keepAspectRatio,
+          backgroundColor: this.properties.signal.backgroundColor,
+          borderColor: this.properties.signal.borderColor,
+          borderBend: this.properties.signal.borderBend,
+          borderTopLeftRadius: this.properties.signal.borderTopLeftRadius,
+          borderTopRightRadius: this.properties.signal.borderTopRightRadius,
+          borderBottomLeftRadius: this.properties.signal.borderBottomLeftRadius,
+          borderBottomRightRadius: this.properties.signal.borderBottomRightRadius,
+          borderTopWidth: this.properties.signal.borderTopWidth,
+          borderRightWidth: this.properties.signal.borderRightWidth,
+          borderBottomWidth: this.properties.signal.borderBottomWidth,
+          borderLeftWidth: this.properties.signal.borderLeftWidth,
+          panelMaterialClass: this.properties.signal.panelMaterialClass,
+          castShadow: this.properties.signal.castShadow,
+          receiveShadow: this.properties.signal.receiveShadow,
+          width: '100%',
+          height: '100%',
+          src: this.properties.signal.src,
+        },
+      }))
+    )
+
+    super.add(
+      (this.controls = new VideoControls(undefined, undefined, {
+        defaultOverrides: {
+          '*': {
+            borderColor: colors.border,
+          },
+          display: computed(() =>
+            this.interacting.value && (this.properties.value.controls ?? true) ? 'flex' : 'none'
+          ),
+        },
+      }))
+    )
+  }
+
+  private onInteract() {
+    this.interacting.value = true
+    if (this.timeoutRef != null) {
+      clearTimeout(this.timeoutRef)
+    }
+    this.timeoutRef = setTimeout(() => (this.interacting.value = false), 2000)
+  }
+
+  add(...object: Object3D[]): this {
+    throw new Error(`the video component can not have any children`)
+  }
+
+  dispose(): void {
+    super.dispose()
+    if (this.timeoutRef != null) {
+      clearTimeout(this.timeoutRef)
+    }
+  }
+}
+
+export const VideoControlsPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
+  createInPropertiesSchema(object(baseOutPropertyShape).strict())
+)
+
+export type VideoControlsProperties = z.input<typeof VideoControlsPropertiesSchema>
+
+export class VideoControls extends Container<BaseOutProperties> {
+  constructor(
+    inputProperties?: VideoControlsProperties,
+    initialClasses?: Array<InProperties<BaseOutProperties> | string>,
+    config?: { renderContext?: any; defaultOverrides?: InProperties<BaseOutProperties> }
+  ) {
+    super(inputProperties, initialClasses, {
+      defaults: componentDefaults,
+      ...config,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        display: computed(() => (searchFor(this, Video, 2)?.interacting.value ? 'flex' : 'none')),
+        zIndex: 1,
+        positionType: 'absolute',
+        padding: 8,
+        positionBottom: 0,
+        positionLeft: 0,
+        positionRight: 0,
+        flexDirection: 'column',
+        backgroundColor: withOpacity(colors.background, 0.5),
+        gap: 8,
+        ...config?.defaultOverrides,
+      },
+    })
+    const videoElementSignal = computed(() => searchFor(this, Video, 2)?.video.element.value)
+
+    const paused = signal(false)
+    const muted = signal(false)
+    const durationSignal = signal(1)
+    const timeSignal = signal(0)
+
+    abortableEffect(() => {
+      const videoElement = videoElementSignal.value
+      if (videoElement == null) {
+        return
+      }
+
+      const internalAbort = new AbortController()
+      const updatePlayPause = () => (paused.value = videoElement.paused)
+      const updateMuted = () => (muted.value = videoElement.muted)
+      const updateDuration = () =>
+        (durationSignal.value = isNaN(videoElement.duration) ? 1 : videoElement.duration)
+      const updateTime = () => (timeSignal.value = videoElement.currentTime)
+
+      videoElement.addEventListener('pause', updatePlayPause, { signal: internalAbort.signal })
+      videoElement.addEventListener('play', updatePlayPause, { signal: internalAbort.signal })
+      videoElement.addEventListener('volumechange', updateMuted, { signal: internalAbort.signal })
+      videoElement.addEventListener('loadedmetadata', updateDuration, {
+        signal: internalAbort.signal,
+      })
+      videoElement.addEventListener('timeupdate', updateTime, { signal: internalAbort.signal })
+
+      updatePlayPause()
+      updateMuted()
+      updateDuration()
+      updateTime()
+
+      return () => internalAbort.abort()
+    }, this.abortSignal)
+
+    // Setup control container
+    const controlsContainer = new Container(undefined, undefined, {
+      defaults: componentDefaults,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        flexDirection: 'row',
+        alignItems: 'center',
+      },
+    })
+
+    // Setup play button
+    const playButton = new Button(undefined, undefined, {
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        size: 'icon',
+        variant: 'ghost',
+        marginRight: 8,
+        onClick: () => {
+          const videoElement = videoElementSignal.peek()
+          if (videoElement) {
+            if (paused.value) {
+              videoElement.play()
+            } else {
+              videoElement.pause()
+            }
+          }
+        },
+      },
+    })
+    const pauseIcon = new Pause(undefined, undefined, {
+      defaults: contentDefaults,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        cursor: 'pointer',
+        width: 16,
+        height: 16,
+      },
+    })
+    const playIcon = new Play(undefined, undefined, {
+      defaults: contentDefaults,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        cursor: 'pointer',
+        width: 16,
+        height: 16,
+      },
+    })
+    abortableEffect(() => {
+      playButton.clear()
+      if (paused.value) {
+        playButton.add(playIcon)
+      } else {
+        playButton.add(pauseIcon)
+      }
+    }, this.abortSignal)
+
+    // Setup mute button
+    const muteButton = new Button(undefined, undefined, {
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        size: 'icon',
+        variant: 'ghost',
+        marginRight: 8,
+        onClick: () => {
+          const videoElement = videoElementSignal.peek()
+          if (videoElement) {
+            videoElement.muted = !muted.peek()
+          }
+        },
+      },
+    })
+    const volume2Icon = new Volume2(undefined, undefined, {
+      defaults: contentDefaults,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        cursor: 'pointer',
+        width: 16,
+        height: 16,
+      },
+    })
+    const volumeXIcon = new VolumeX(undefined, undefined, {
+      defaults: contentDefaults,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        cursor: 'pointer',
+        width: 16,
+        height: 16,
+      },
+    })
+    abortableEffect(() => {
+      muteButton.clear()
+      if (muted.value) {
+        muteButton.add(volumeXIcon)
+      } else {
+        muteButton.add(volume2Icon)
+      }
+    }, this.abortSignal)
+
+    // Setup spacer
+    const spacer = new Container(undefined, undefined, {
+      defaults: componentDefaults,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        flexGrow: 1,
+      },
+    })
+
+    // Setup time text
+    const timeText = new Text(undefined, undefined, {
+      defaults: textDefaults,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        marginRight: 16,
+        fontSize: 12,
+        text: computed(
+          () => `${formatDuration(timeSignal.value)} / ${formatDuration(durationSignal.value)}`
+        ),
+      },
+    })
+
+    // Setup slider
+    const slider = new Slider(undefined, undefined, {
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        min: 0,
+        margin: 16,
+        marginTop: 8,
+        width: 'initial',
+        max: durationSignal,
+        value: timeSignal,
+        onValueChange: (t: number) => {
+          const videoElement = videoElementSignal.peek()
+          if (videoElement) {
+            videoElement.currentTime = t
+          }
+        },
+      },
+    })
+
+    // Add components to containers
+    controlsContainer.add(playButton)
+    controlsContainer.add(muteButton)
+    controlsContainer.add(spacer)
+    controlsContainer.add(timeText)
+
+    super.add(controlsContainer)
+    super.add(slider)
+  }
+
+  add(...object: Object3D[]): this {
+    throw new Error(`the input component can not have any children`)
+  }
+}
+
+function formatDuration(seconds: number): string {
+  const hour = Math.floor(seconds / 3600)
+  const min = Math.floor((seconds / 60) % 60)
+  const sec = Math.floor(seconds % 60)
+  return `${hour > 0 ? `${hour}:` : ''}${hour > 0 ? min.toString().padStart(2, '0') : min}:${sec.toString().padStart(2, '0')}`
+}
