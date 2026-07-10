@@ -352,6 +352,8 @@ function GameMenu({ font }: { font: SlugFont }) {
   const loadPctRef = useRef<VanillaText>(null)
   const masterValueRef = useRef<VanillaText>(null)
   const musicValueRef = useRef<VanillaText>(null)
+  const panelRef = useRef<VanillaContainer>(null)
+  const anchorRef = useRef<{ initialCardHeight?: number; appliedTop?: number }>({})
 
   // Realtime clocks. Held in refs so realtime updates never re-render the
   // tree (which would clobber imperative text via useSetup's resetProperties).
@@ -389,10 +391,37 @@ function GameMenu({ font }: { font: SlugFont }) {
     const load = (elapsed.current * 12) % 100
     loadBarRef.current?.setProperties({ value: load })
     loadPctRef.current?.setProperties({ text: `${Math.round(load)}%` })
+
+    // Pin the card's top edge instead of re-centering it every frame. The
+    // fullscreen is `justifyContent: 'flex-start'`; we center ONCE against the
+    // first laid-out height, then hold that top edge so a taller tab grows
+    // downward. Mirrors the vanilla twin's `createMenuAnchor` — without it,
+    // `justifyContent: 'center'` recomputes the card's position from its current
+    // height every frame, so each tab switch slides the whole card (and any bad
+    // mid-reflow height frame flings it across the screen).
+    const panel = panelRef.current
+    if (panel) {
+      const rootSize = panel.parentContainer.peek()?.size.peek()
+      const cardSize = panel.size.peek()
+      const anchor = anchorRef.current
+      if (rootSize != null && cardSize != null) {
+        if (anchor.initialCardHeight == null && cardSize[1] > 0) {
+          anchor.initialCardHeight = cardSize[1]
+        }
+        if (anchor.initialCardHeight != null) {
+          const top = Math.max(0, (rootSize[1] - 24 * 2 - anchor.initialCardHeight) / 2)
+          if (top !== anchor.appliedTop) {
+            anchor.appliedTop = top
+            panel.setProperties({ marginTop: top })
+          }
+        }
+      }
+    }
   })
 
   return (
     <Container
+      ref={panelRef}
       width={480}
       maxWidth="92%"
       flexDirection="column"
@@ -752,7 +781,7 @@ function GameScene({ ambient }: { ambient: number }) {
         <HudFullscreen
           camera={flatlandCamera}
           flexDirection="column"
-          justifyContent="center"
+          justifyContent="flex-start"
           alignItems="center"
           padding={24}
           fontFamilies={{ inter: { normal: font } }}
