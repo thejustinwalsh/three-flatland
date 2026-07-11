@@ -6,6 +6,7 @@ export {
   isDarkMode,
   canvasInputProps,
 } from '../index.js'
+export { noEvents, PointerEvents } from './events.js'
 
 declare module '@react-three/fiber' {
   interface ThreeElements {

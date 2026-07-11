@@ -9,11 +9,17 @@ import { extend, useFrame, useThree, type Instance, applyProps } from '@react-th
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
 import { jsx } from 'react/jsx-runtime'
 
-declare module 'three' {
-  interface Object3D {
-    __r3f?: Instance
-  }
-}
+// R3F stashes its per-object instance descriptor on `__r3f`; uikit pokes its `.props`
+// (in `useSetup`) so R3F re-applies uikit's freshly-derived event handlers. We do NOT
+// augment `Object3D.__r3f` here: R3F-adjacent packages already do, with mutually
+// incompatible shapes — `@pmndrs/pointer-events` (a uikit dependency, pulled in by the
+// `PointerEvents` binding) types it as a minimal `{ eventCount, handlers, root }` with
+// no `props`, and TS rejects a conflicting re-declaration (TS2717). Instead we reach the
+// field through this local structural type; the runtime value is always R3F's real
+// instance, which does carry `props`.
+type R3FHandle = { props: Record<string, unknown> }
+const r3fHandle = (object: Component): R3FHandle | undefined =>
+  (object as unknown as { __r3f?: R3FHandle }).__r3f
 
 export function build<T extends Component, P>(Component: { new (): T }, name = Component.name) {
   extend({ [`Vanilla${name}`]: Component })
@@ -105,18 +111,20 @@ export function useSetup(ref: { current: Component | null }, inProps: any, args:
       } else {
         outPropsRef.current = { args, ...handlers }
       }
-      if (container.__r3f != null) {
-        container.__r3f.props = outPropsRef.current
-        applyProps(container, outPropsRef.current)
+      const instance = r3fHandle(container)
+      if (instance != null) {
+        instance.props = outPropsRef.current
+        applyProps(container as Instance['object'], outPropsRef.current)
       }
     })
     return () => {
       unsubscribe()
       outPropsRef.current = { args }
-      if (container.__r3f != null) {
-        container.__r3f.props = outPropsRef.current
+      const instance = r3fHandle(container)
+      if (instance != null) {
+        instance.props = outPropsRef.current
       }
-      applyProps(container, outPropsRef.current)
+      applyProps(container as Instance['object'], outPropsRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [args])
