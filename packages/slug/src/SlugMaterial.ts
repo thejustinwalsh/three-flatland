@@ -12,9 +12,9 @@ import {
   bool,
   round,
   dot,
-  select,
   fwidth,
   varyingProperty,
+  If,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { slugRender } from './shaders/slugFragment.js'
@@ -284,8 +284,6 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       )
     }
 
-    const supersampleNode = bool(this._supersample)
-
     this.colorNode = Fn(() => {
       const renderCoord = vRenderCoord
 
@@ -296,22 +294,43 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       // numVBands information (none needed here) without a separate attr.
       const isRect = vNumVBands.lessThan(float(0))
 
-      // Single-sample coverage (default path)
-      const single = evalCoverage(renderCoord)
-
-      // 2x2 supersampled coverage: evaluate at quarter-pixel offsets and average.
-      // fwidth gives the em-space size of one pixel; mul(0.25) → quarter-pixel jitter.
-      const hp = fwidth(renderCoord).mul(0.25)
-      const ss = evalCoverage(renderCoord.add(hp.mul(vec2(-1, -1))))
-        .add(evalCoverage(renderCoord.add(hp.mul(vec2(1, -1)))))
-        .add(evalCoverage(renderCoord.add(hp.mul(vec2(-1, 1)))))
-        .add(evalCoverage(renderCoord.add(hp.mul(vec2(1, 1)))))
-        .mul(0.25)
-
-      // Compile-time bool: dead-code eliminates the unused path
-      const curveCoverage = select(supersampleNode, ss, single)
-      // Rect instances short-circuit to full coverage.
-      const baseCoverage = select(isRect, float(1.0), curveCoverage)
+      // Rect and glyph coverage both need a REAL per-fragment branch, not a
+      // `select()`-composed ternary: `select(cond, a, b)` builds BOTH `a`
+      // and `b` into the graph before choosing between them (they're plain
+      // Node objects by the time `select` sees them, and nothing downstream
+      // folds away the unused one) — so a plain `select(isRect, 1, curveCoverage)`
+      // still ran the full analytic Bézier band loops for every rect
+      // instance (underline/strikethrough), work whose result it then threw
+      // away. TSL's imperative `If/Else` defers its callback's node-building
+      // until the matching WGSL branch is generated, so the loops only
+      // compile into the non-rect arm. Same root cause independently sank
+      // the supersample toggle below: `select(bool(this._supersample), ss,
+      // single)` silently compiled 5 calls to `evalCoverage` (the single +
+      // all 4 supersample taps) — 10 band loops, 40 texture-load sites —
+      // into every default (non-supersample) fragment shader. Confirmed via
+      // `renderer.debug.getShaderAsync`.
+      const baseCoverage = float(0.0).toVar()
+      If(isRect, () => {
+        // Rect instances short-circuit to full coverage.
+        baseCoverage.assign(1.0)
+      }).Else(() => {
+        // `_supersample` is a constructor-time JS boolean, not a runtime
+        // uniform — branch in JS too, so only ONE of the two coverage graphs
+        // is ever built for the non-rect arm.
+        if (this._supersample) {
+          // 2x2 supersampled coverage: evaluate at quarter-pixel offsets and average.
+          // fwidth gives the em-space size of one pixel; mul(0.25) → quarter-pixel jitter.
+          const hp = fwidth(renderCoord).mul(0.25)
+          const ss = evalCoverage(renderCoord.add(hp.mul(vec2(-1, -1))))
+            .add(evalCoverage(renderCoord.add(hp.mul(vec2(1, -1)))))
+            .add(evalCoverage(renderCoord.add(hp.mul(vec2(-1, 1)))))
+            .add(evalCoverage(renderCoord.add(hp.mul(vec2(1, 1)))))
+            .mul(0.25)
+          baseCoverage.assign(ss)
+        } else {
+          baseCoverage.assign(evalCoverage(renderCoord))
+        }
+      })
 
       // Per-instance clip: coverage multiply AFTER the rect select so
       // decoration rects clip too. Unconditional fwidth, no discard (Q2).
