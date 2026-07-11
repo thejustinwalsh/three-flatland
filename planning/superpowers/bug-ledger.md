@@ -49,6 +49,58 @@ caught only by looking at pixels. Every entry below notes how it was caught.
   scheduler). If confirmed, a callback registered via `internal.subscribe` is silently never called.
   **Needs a definitive check before any report.**
 
+### R4 — R3F v10's dispatcher never delivers to Object3D `addEventListener` listeners (uikit's drag backend); fixed by routing events through @pmndrs/pointer-events ✅📤
+
+- **NOT "pointer capture is broken."** Native DOM pointer capture works fine under v10 — our own events
+  example (`examples/react/hit-test`) drags the knight with `gl.domElement.setPointerCapture(id)` +
+  `canvas.addEventListener('pointermove', …)` (`hit-test/App.tsx:250–280`), reading `clientX/Y` by hand.
+  That's the browser's `Element.setPointerCapture` on the real `<canvas>`; R3F is not in the loop, so it
+  can't break. What v10's built-in dispatcher does NOT do is (a) deliver pointer events to an Object3D's
+  `addEventListener` listeners, and (b) run the *synthetic* scene-graph capture (`event.target.setPointerCapture`
+  → fresh-plane re-intersection → re-dispatch moves to that object). uikit is built on both; the knight
+  sidesteps both by going straight to the DOM.
+- **Symptom:** uikit `Slider` thumbs wouldn't drag and `Textarea` text-selection wouldn't drag; the
+  hover cursor never changed. EVERYTHING else worked — clicks, focus, single-line typing, tabs, radios,
+  switches, accordions, dialogs, pagination-as-buttons. Only interactions relying on **object-registered
+  pointer-move + synthetic capture** failed. (React DevTools also wouldn't load — same-root suspicion;
+  the fix cleared it, no loop.)
+- **Isolation (user-confirmed, real Chrome):** the SAME uikit + uikit-default build worked in the plain
+  **three.js** example and failed in EVERY **React** example → the @react-three/fiber v10-alpha React
+  binding, not the bento example nor uikit core. Exonerated `uikit-bento` (time was lost suspecting its
+  `frameloop`/`Fullscreen`).
+- **Root cause (CONFIRMED):** R3F v10 dispatches events ONLY to JSX-prop handlers (`__r3f.handlers`).
+  uikit's React binding bridges uikit's **declarative** handlers onto the R3F instance
+  (`build.tsx` → `applyProps(container, {...handlers})`), so click/focus/type reach uikit fine. But
+  `Slider`/`Textarea` drag register **imperative** Object3D listeners
+  (`this.addEventListener('pointermove'…)` + `e.target.setPointerCapture`, `uikit-default/src/slider/index.ts:100–120`,
+  `uikit/src/text/selection/pointer.ts:104–160`) which R3F v10 never delivers — and its capture path
+  doesn't re-dispatch captured moves to Object3D listeners. The vanilla twin works precisely because it
+  wires @pmndrs/pointer-events (`forwardHtmlEvents(..., {batchEvents:false})` + `attachCanvasInputProps`),
+  which reads BOTH `object._listeners` AND `__r3f.handlers` and does capture with fresh-plane
+  re-intersection. This is a **port gap, not an R3F bug** — upstream uikit ships the very same
+  `noEvents`/`PointerEvents` pattern (its `noEvents` comes from `@react-three/xr`).
+- **Fix (IMPLEMENTED):** new `packages/uikit/src/react/events.tsx` exports `noEvents` (an `EventManager`
+  with `enabled:false`) + `<PointerEvents camera? scene?/>` — mounts
+  `forwardHtmlEvents(dom, () => camera, scene, {batchEvents:false})` + `attachCanvasInputProps`, pumped by
+  a `useFrame` update; defaults to R3F's camera/scene, takes optional overrides. Examples switch R3F's
+  dispatcher OFF (`<Canvas events={noEvents}>`) and mount ONE `<PointerEvents>` aimed at the scene that
+  hosts the UI (bento → defaults; `examples/react/uikit` → Flatland's OWN camera+scene, since the HUD is
+  portalled onto that camera). Single dispatch source ⇒ no double-fire. Re-exported from `react/index.tsx`.
+- **Verified (vitexec, headless WebGPU, `examples/react/uikit-bento`):** self-located `Slider` instances
+  by `constructor.name`, drove multi-move drags — thumbs move AND **accumulate** (Δ1-move 0.025 → Δ4-move
+  0.052; a second slider 0.038 → 0.065), hover lights the `pointer` cursor, **0 console errors, 120 fps**
+  (no loop). Screenshot shows the dragged Resize/Radius thumbs parked at the right. `Input`/textarea
+  targets show the `text` cursor and no x-motion (correct — selection, not translation).
+- **Collateral port-debt folded in (iron law):** `build.tsx` globally augmented `three`'s
+  `Object3D.__r3f` as R3F's full `Instance`; @pmndrs/pointer-events — now a real transitive dep via the
+  `PointerEvents` binding — augments the SAME field as a minimal `R3FInstance` with no `.props`, so both
+  in one program = **TS2717** conflicting re-declaration. Dropped uikit's augmentation; reach `.props`
+  through a local structural type (`r3fHandle()`) at the two call sites (runtime value is always R3F's
+  real instance, which has `props`). uikit + all four affected examples typecheck clean.
+- **Upstream (📤):** file the port pattern (`noEvents` + `PointerEvents`) as the sanctioned v10 wiring.
+  Our `PointerEvents` takes optional `camera`/`scene` (upstream's is default-only) — required for the
+  Flatland-portalled-camera case; offer that as the upstream shape too.
+
 ---
 
 ## @pmndrs/uikit (the upstream base we forked)
@@ -143,6 +195,34 @@ These are the real PR candidates. Draft repros live in `upstream-uikit-bugs.md`.
   the anchor to the React twin (`examples/react/uikit/App.tsx`, `9a3e63cb`). This was the actual
   visible bug behind the "radios over the loading bar" report — the U7 stacking tie is only visible
   during the jump, so removing the jump removes the symptom.
+- **F8 SlugBatch grows its instance buffer in place; WebGPU never rebinds it → the draw range
+  outruns the bound buffer and the whole text batch freezes** ✅ — `slug/SlugBatch.ts`.
+  `SlugBatchGeometry.ensureCapacity` grew the interleaved instance array, built a fresh
+  `InstancedInterleavedBuffer`, and rebound the attributes **in place** (same geometry object). three's
+  WebGPU render object caches a mesh's vertex buffers per geometry and does NOT notice a replaced
+  interleaved buffer, so every grow AFTER the first render left the smaller GPU buffer bound while
+  `SlugBatch.count` climbed into the grown region: `DrawIndexed(6, 778)` against a 772-instance buffer
+  → `[Invalid CommandBuffer] is invalid due to a previous error` on every `Submit`, the whole batch
+  frozen on its last good frame (no animation, stale `info.render`, `drawCalls` reads 0). Confirmed by
+  instrumenting the grow — `[SBGX] grew cap -> 1158 arrayInstances 1158` fired while the draw still
+  bound 772, and the glyph group's `count` never exceeded the LOGICAL capacity (no `[GGX]`), ruling out
+  the allocator. The FIRST grow (before the render object exists) binds; every later grow does not.
+  **Fix:** `SlugBatch.ensureCapacity` swaps in a fresh `SlugBatchGeometry` (`cloneGrown`, instances
+  copied) and disposes the old one **after** it is unbound — a new geometry object forces three to
+  rebuild the render object's vertex buffers, the same reason `panel/instance/group.ts` rebuilds its
+  mesh on resize. Disposing the still-bound geometry instead throws `[Buffer] used in submit while
+  destroyed` (three uploads to the freed buffer mid-frame), so the unbind-then-dispose order is
+  load-bearing. Also folded a glyph-group fix: `text/render/instanced-glyph-group.ts` `onFrame` now
+  ensures capacity for the append high-water `indexOffset + requestedGlyphsLength` (was the net live
+  count, which undercounts by the hole slots `count` still spans). **Fork-owned** (SlugBatch is our
+  Slug batch renderer, grow-only, diverges from upstream's MSDF group). **Caught by:** the uikit-default
+  bento (~780 glyphs in one group) froze on first paint; ANY uikit text batch that grows past its
+  initial capacity after first render hit this. **Follow-up:** the existing `SlugBatch.test.ts`
+  "ensureCapacity grows…" case already exercises the swap and still passes (asserts ≥1.5× growth,
+  contents preserved, `glyphPos` attribute identity changed) — but a jsdom test cannot catch the
+  WebGPU rebind, so the real guard is a headless-WebGPU smoke test that grows a live `SlugBatch` past
+  capacity after first render and asserts the draw succeeds. The in-place `SlugBatchGeometry.ensureCapacity`
+  (`_growInto`) is now unused in production (kept for the pre-bind path / direct callers).
 
 ---
 
