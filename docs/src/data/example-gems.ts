@@ -19,5 +19,4 @@ export const EXAMPLE_GEMS: Record<string, Gem | null> = {
   "tilemap": 'salmon',
   "tsl-nodes": 'pink',
   "uikit": 'amethyst',
-  "uikit-icons": 'ruby',
 }
