@@ -98,7 +98,7 @@ export class SlugShapeBatch extends SlugBatch {
       this.batchGeometry.writeRectData(index, { x: 0, y: 0, width: 0, height: 0 })
       this._writeCommon(index, opts, 0)
     }
-    this.batchGeometry.markDirty()
+    this.batchGeometry.markDirty(index)
   }
 
   /**

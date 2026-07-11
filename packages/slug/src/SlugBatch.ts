@@ -140,7 +140,14 @@ export class SlugBatchGeometry extends BufferGeometry {
   /** Grow to hold at least `n` instances (1.5×, contents preserved). */
   ensureCapacity(n: number): void {
     if (n <= this._capacity) return
-    const newCapacity = Math.max(n, Math.ceil(this._capacity * 1.5))
+    this._growInto(Math.max(n, Math.ceil(this._capacity * 1.5)))
+  }
+
+  /** Grow the array + buffer in place. Only safe BEFORE the geometry is bound to
+   *  a render object (three's WebGPU backend caches vertex buffers per geometry
+   *  and does not re-bind a replaced interleaved buffer). Post-bind growth must
+   *  go through a fresh geometry — see `SlugBatch.ensureCapacity`. */
+  private _growInto(newCapacity: number): void {
     const next = new Float32Array(newCapacity * STRIDE)
     next.set(this._array)
     this._array = next
@@ -149,15 +156,32 @@ export class SlugBatchGeometry extends BufferGeometry {
     this._bindInstanceAttributes()
   }
 
-  /** Flag the instance buffer for GPU re-upload. */
-  markDirty(): void {
+  /** A fresh geometry grown to hold at least `n` instances, with this geometry's
+   *  instances copied in. Used to swap the mesh's geometry on grow so three's
+   *  render object rebuilds its vertex buffers instead of keeping the stale
+   *  (smaller) buffer bound. */
+  cloneGrown(n: number): SlugBatchGeometry {
+    const grown = new SlugBatchGeometry(Math.max(n, Math.ceil(this._capacity * 1.5)))
+    grown._array.set(this._array)
+    grown._buffer.needsUpdate = true
+    return grown
+  }
+
+  /** Flag instances `[start, start+count)` for a PARTIAL GPU re-upload. three's
+   *  WebGPU backend (`WebGPUAttributeUtils.updateAttribute`) uploads only the flagged
+   *  updateRanges instead of the whole interleaved buffer — so a frame that touches a
+   *  few animating glyphs re-sends a few KB, not the entire batch. This is the
+   *  dirty-range/bucketing discipline the sprite batches use; without it, one changed
+   *  glyph re-uploads every static glyph in its batch (~200 MB/s for this gallery). */
+  markDirty(start: number, count = 1): void {
+    this._buffer.addUpdateRange(start * STRIDE, count * STRIDE)
     this._buffer.needsUpdate = true
   }
 
   /** Move whole instances `[start, end)` to `target` (bucket compaction). */
   copyWithin(target: number, start: number, end: number): void {
     this._array.copyWithin(target * STRIDE, start * STRIDE, end * STRIDE)
-    this.markDirty()
+    this.markDirty(target, end - start)
   }
 
   /** Write glyph pos/tex/jac/band fields — same math as `SlugGeometry`. */
@@ -378,7 +402,20 @@ export class SlugBatch extends Mesh {
 
   /** Grow to hold at least `n` instances (1.5×, contents preserved). */
   ensureCapacity(n: number): void {
-    this._batchGeometry.ensureCapacity(n)
+    const geometry = this._batchGeometry
+    if (n <= geometry.capacity) return
+    // Swap in a fresh, larger geometry rather than growing in place: three's
+    // WebGPU render object caches this mesh's vertex buffers per geometry and
+    // will not rebind a replaced interleaved buffer, so an in-place grow leaves
+    // the smaller buffer bound while `count` climbs into the grown region and the
+    // draw fails every frame. A new geometry object forces a clean rebind. Dispose
+    // the old one only AFTER it is unbound (`this.geometry = grown`), never while
+    // it is still the bound geometry (that frees a buffer three uploads to
+    // mid-frame → "used in submit while destroyed").
+    const grown = geometry.cloneGrown(n)
+    this._batchGeometry = grown
+    this.geometry = grown
+    geometry.dispose()
   }
 
   /**
@@ -409,7 +446,7 @@ export class SlugBatch extends Mesh {
       this._batchGeometry.writeRectData(index, { x: 0, y: 0, width: 0, height: 0 })
       this._writeCommon(index, opts, 0)
     }
-    this._batchGeometry.markDirty()
+    this._batchGeometry.markDirty(index)
   }
 
   /**
@@ -421,7 +458,7 @@ export class SlugBatch extends Mesh {
     this.ensureCapacity(index + 1)
     this._batchGeometry.writeRectData(index, rect)
     this._writeCommon(index, opts, 1)
-    this._batchGeometry.markDirty()
+    this._batchGeometry.markDirty(index)
   }
 
   protected _writeCommon(index: number, opts: SlugBatchInstanceOptions, alphaScale: number): void {
