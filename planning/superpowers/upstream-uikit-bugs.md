@@ -8,6 +8,11 @@ were surfaced by a stricter ESLint config (`@typescript-eslint/no-for-in-array`,
 None is a vendoring artifact. **Not yet filed — needs stakeholder sign-off, since filing on
 a third-party repository is an outward-facing action.**
 
+**Update (2026-07-11):** a fourth issue — layout drift on a non-representable `pointScaleFactor`
+grid (§4 below) — has been root-caused, **fixed, and pushed to a vanilla fork**
+(`thejustinwalsh/uikit` @ `fix/layout-representable-grid-drift`, commit `a20b065`). PR not yet
+opened. Bugs 1–3 remain unfixed reports; §4 is the first fix contributed back.
+
 ---
 
 ## 1. Conditional properties (`hover`, `dark`, `active`, `focus`, breakpoints) are never applied
@@ -102,6 +107,52 @@ The disabled colour is computed and then discarded — it is an expression state
 **Impact:** a disabled Horizon button renders its subtext in the enabled colour.
 
 **Fix:** add the missing `return`.
+
+---
+
+## 4. Layout drift on a non-representable `pointScaleFactor` grid ("UI swimming") — FIXED
+
+**`packages/uikit/src/flex/yoga.ts:4`** (`PointScaleFactor = 100`), plus the JS-side
+derivations in **`packages/uikit/src/flex/node.ts`** (`relativeCenter`, committed min-size).
+
+Yoga rounds computed layout onto a `1 / pointScaleFactor` grid. But **`1/100` is not exactly
+representable in binary float** (same family as `0.1 + 0.2 !== 0.3`), so every value Yoga
+"snaps" lands on a grid whose ticks themselves carry representation error, and each re-truncates
+on every JS <-> Yoga (float32 / WASM embind) boundary crossing. Combined with the off-grid JS
+`relativeCenter` derivation (`x + w/2 - pw/2`), a static element's matrix position accumulates
+sub-pixel error across relayouts — text visibly "swims" / crawls. Most reproducible under
+interaction: any control change re-triggers a whole-tree relayout, so the error compounds — an
+idle scene barely moves, you have to drive relayouts to see it.
+
+**Impact:** static UI text and elements drift by sub-pixels over time, worse the more the tree
+relayouts. Present on a pristine fork of upstream HEAD — not a vendoring artifact.
+
+**Fix (three parts, in order of impact):**
+
+1. `PointScaleFactor = 128` — the nearest power of two >= 100: essentially the same precision
+   but exactly representable, so Yoga's grid ticks are exact and a deterministic layout is
+   byte-identical across relayouts.
+2. Snap `relativeCenter` onto the `1/256` half-grid (a centered box's center is inherently a
+   half-cell of the 1/128 edges) — preserves Yoga's exact center byte-stably; snapping to 1/128
+   would nudge it up to half a cell off.
+3. `ceilQuantize` the committed min-size (`setMinWidth/Height`) to match the measure func's
+   existing ceil — never-clip consistency across the two paths.
+
+Verified in this fork with a raw-Yoga determinism harness + unit tests: raw Yoga is byte-stable
+at 128, idempotency holds byte-identically over N=150 relayouts, and jitter-fuzz (models the
+sub-cell re-measurement noise interaction produces) drifts 0/48.
+
+**Fork-only extra:** three-flatland's `node.ts` also has a measure-request relayout gate (an
+optimization upstream lacks — upstream always relayouts). Our fix additionally corrects that
+gate to compare the grid-snapped committed size (exact `===` on the `ceilQuantize`d value)
+rather than a raw-float compare, so a genuine one-cell change still relayouts while sub-cell
+noise does not. **That gate change is fork-only and intentionally NOT in the upstream patch.**
+
+**Status: FIXED and pushed** to `thejustinwalsh/uikit` @ `fix/layout-representable-grid-drift`
+(commit `a20b065`) — fix only (no gate, no tests: upstream has no measure gate and no unit-test
+runner). **PR not yet opened**, awaiting sign-off. Note: vanilla's fresh-clone `tsc` build has
+pre-existing type errors (three types drift in `text/`, `transform.ts`, `utils.ts`) unrelated to
+the fix; the three touched files are type-clean.
 
 ---
 
