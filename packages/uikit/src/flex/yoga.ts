@@ -1,7 +1,10 @@
 import { signal } from '@preact/signals-core'
 import { ExperimentalFeature, type Node, type Yoga, loadYoga } from 'yoga-layout/load'
+import { LAYOUT_GRID } from '../quantize.js'
 
-export const PointScaleFactor = 100
+// A power-of-two grid: 1/128 is exactly representable in float, so Yoga's snapped
+// output and our JS-side derivations land on identical grid points (see quantize.ts).
+export const PointScaleFactor = LAYOUT_GRID
 
 export function createDefaultConfig(Config: Yoga['Config']) {
   const config = Config.create()

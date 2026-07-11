@@ -10,10 +10,10 @@ import {
 } from 'yoga-layout/load'
 import { setter } from './setter.js'
 import { PointScaleFactor, createYogaNode } from './yoga.js'
+import { LAYOUT_GRID, ceilQuantize, quantize } from '../quantize.js'
 import { abortableEffect } from '../utils.js'
 import type { Component } from '../components/component.js'
 import type { BaseOutProperties } from '../properties/index.js'
-import type { YogaProperties } from './schema.js'
 
 export type { YogaProperties } from './schema.js'
 
@@ -107,7 +107,14 @@ export class FlexNode {
     //root-triggered, whole-tree) layout pass when the intrinsic size actually moved, so
     //unrelated static siblings don't get relayouted - and their matrices re-uploaded to
     //the GPU - on every such update
-    const { minWidth, minHeight } = this.customLayouting
+    //compare the grid-SNAPPED min-content size Yoga actually commits (see commit()), not the
+    //raw float: this snaps away sub-cell re-measurement noise ("not moving") while still
+    //catching a real one-cell change. Two raw sizes < 1/128 apart can straddle a cell
+    //boundary and change the committed layout - an exact `===` on the raw value is too twitchy
+    //(relayouts on noise) and a nearEqual tolerance is too coarse (misses the crossing);
+    //`===` on the ceilQuantized value is exactly right.
+    const minWidth = ceilQuantize(this.customLayouting.minWidth)
+    const minHeight = ceilQuantize(this.customLayouting.minHeight)
     if (minWidth === this.lastMeasuredMinWidth && minHeight === this.lastMeasuredMinHeight) {
       return
     }
@@ -156,7 +163,11 @@ export class FlexNode {
         undefined
     ) {
       this.yogaNode[parentDirectionVertical ? 'setMinHeight' : 'setMinWidth'](
-        parentDirectionVertical ? this.customLayouting.minHeight : this.customLayouting.minWidth
+        //ceil onto the grid to match the measure func (setMeasureFunc) and the relayout gate:
+        //a min-content size rounded DOWN would clip / line-break text. Same snap everywhere.
+        ceilQuantize(
+          parentDirectionVertical ? this.customLayouting.minHeight : this.customLayouting.minWidth
+        )
       )
     }
 
@@ -250,8 +261,12 @@ export class FlexNode {
     const x = this.yogaNode.getComputedLeft()
     const y = this.yogaNode.getComputedTop()
 
-    const relativeCenterX = x + width * 0.5 - parentWidth * 0.5
-    const relativeCenterY = -(y + height * 0.5 - parentHeight * 0.5)
+    //the relative center is a HALF-cell quantity - x0.5 of the grid-snapped edges - so it
+    //lands exactly on the 1/256 grid. Snapping to LAYOUT_GRID (1/128) would nudge a centered
+    //box up to half a cell off Yoga's true center; snapping to 2x resolution preserves the
+    //exact center AND stays byte-stable across relayouts, so static text stops swimming.
+    const relativeCenterX = quantize(x + width * 0.5 - parentWidth * 0.5, LAYOUT_GRID * 2)
+    const relativeCenterY = quantize(-(y + height * 0.5 - parentHeight * 0.5), LAYOUT_GRID * 2)
     updateVector2Signal(this.component.relativeCenter, relativeCenterX, relativeCenterY)
 
     const paddingTop = this.yogaNode.getComputedPadding(Edge.Top)
