@@ -98,11 +98,21 @@ export class InstancedGlyph {
   }
 
   updateClippingRect(clippingRect: ClippingRect | undefined): void {
+    // Dirty-track: `sync()` re-runs every frame (its `globalTextMatrix` dependency is a
+    // fresh matrix per frame) and re-pushes the SAME clip to every glyph. Skipping the
+    // no-op keeps the interleaved buffer clean, so three doesn't re-upload it — the
+    // difference between ~0 and ~200 MB/s of buffer traffic for a static UI.
+    if (this.clippingRect === clippingRect) {
+      return
+    }
     this.clippingRect = clippingRect
     this.write()
   }
 
   updateColor(color: ColorRepresentation, opacity: number): void {
+    if (this.color === color && this.opacity === opacity) {
+      return
+    }
     this.color = color
     this.opacity = opacity
     this.write()
@@ -133,7 +143,10 @@ export class InstancedGlyph {
   }
 
   updateBaseMatrix(baseMatrix: Matrix4): void {
-    if (this.baseMatrix === baseMatrix) {
+    // Value equality, NOT reference: `globalTextMatrix` is rebuilt into a fresh Matrix4
+    // every frame (matrixAutoUpdate), so `===` always missed and re-wrote every glyph.
+    // Comparing the 16 elements makes a static text a no-op; a genuine move still writes.
+    if (this.baseMatrix != null && this.baseMatrix.equals(baseMatrix)) {
       return
     }
     this.baseMatrix = baseMatrix

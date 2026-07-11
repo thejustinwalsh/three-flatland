@@ -245,9 +245,16 @@ export class InstancedGlyphGroup {
     }
 
     this.ensureMesh()
-    this.mesh!.ensureCapacity(requiredSize)
     const indexOffset = this.mesh!.count
     const requestedGlyphsLength = this.requestedGlyphs.length
+    // Requested glyphs are appended at [count, count + requested). `count` already
+    // spans the hidden hole slots (SlugBatch only grows — deleted-in-between glyphs
+    // are hidden in place, never removed), so the buffer must reach that append
+    // high-water mark. `requiredSize` is the NET live count (holes excluded) and
+    // undercounts the append range by exactly the number of holes; ensuring only
+    // that leaves `count` past the bound buffer, so every DrawIndexed fails with
+    // "requires a larger buffer than the bound buffer size" and the batch freezes.
+    this.mesh!.ensureCapacity(indexOffset + requestedGlyphsLength)
     for (let i = 0; i < requestedGlyphsLength; i++) {
       const glyph = this.requestedGlyphs[i]!
       glyph.activate(indexOffset + i)
