@@ -5,5 +5,6 @@ declare module 'three/addons/inspector/Inspector.js' {
     domElement: HTMLElement
     constructor()
     setRenderer(renderer: unknown): void
+    init(): void
   }
 }
