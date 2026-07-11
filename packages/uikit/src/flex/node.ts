@@ -38,6 +38,8 @@ export class FlexNode {
 
   private layoutChangeListeners = new Set<() => void>()
   private customLayouting?: CustomLayouting
+  private lastMeasuredMinWidth?: number
+  private lastMeasuredMinHeight?: number
 
   private active = signal(false)
 
@@ -99,6 +101,18 @@ export class FlexNode {
       return
     }
     setMeasureFunc(this.yogaNode!, this.customLayouting.measure)
+    //content whose string changes every frame (e.g. a live stat readout) still produces
+    //a fresh `customLayouting` object each time, but its min-content size usually doesn't
+    //change (digits share glyph widths in most fonts) - only re-request the (expensive,
+    //root-triggered, whole-tree) layout pass when the intrinsic size actually moved, so
+    //unrelated static siblings don't get relayouted - and their matrices re-uploaded to
+    //the GPU - on every such update
+    const { minWidth, minHeight } = this.customLayouting
+    if (minWidth === this.lastMeasuredMinWidth && minHeight === this.lastMeasuredMinHeight) {
+      return
+    }
+    this.lastMeasuredMinWidth = minWidth
+    this.lastMeasuredMinHeight = minHeight
     this.component.root.peek().requestCalculateLayout()
   }
 
