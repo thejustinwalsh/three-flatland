@@ -39,3 +39,5 @@ export type {
 } from './parseSVG.js'
 export { registerSVG, loadSVGShapes } from './loadSVG.js'
 export type { RegisteredSVG } from './loadSVG.js'
+export { iconFromBaked, iconNamesFromBaked } from './bakedIcons.js'
+export type { BakedIconEntry, BakedIconsMeta } from './bakedIcons.js'

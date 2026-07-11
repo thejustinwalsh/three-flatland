@@ -24,6 +24,7 @@ export { SlugShapeSet } from './SlugShapeSet.js'
 export type { SlugShapeHandle } from './SlugShapeSet.js'
 export { SlugShapeBatch } from './SlugShapeBatch.js'
 export type { SlugShapeBatchOptions, SlugShapeBatchWriteOptions } from './SlugShapeBatch.js'
+export { SlugShapeSetLoader } from './SlugShapeSetLoader.js'
 export {
   parseSVG,
   registerSVG,
@@ -31,6 +32,8 @@ export {
   contoursFromShapePath,
   quadraticsFromCurve,
   DEFAULT_CURVE_TOLERANCE,
+  iconFromBaked,
+  iconNamesFromBaked,
 } from './svg/index.js'
 export type {
   ParsedSVG,
@@ -40,6 +43,8 @@ export type {
   RegisteredSVG,
   ShapePathLike,
   CurveLike,
+  BakedIconEntry,
+  BakedIconsMeta,
 } from './svg/index.js'
 
 export type {
