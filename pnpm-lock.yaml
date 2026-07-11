@@ -816,6 +816,73 @@ importers:
         specifier: ^6.4.3
         version: 6.4.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
 
+  examples/react/slug-showcase:
+    dependencies:
+      '@preact/signals-core':
+        specifier: ^1.5.1
+        version: 1.14.4
+      '@react-three/fiber':
+        specifier: 10.0.0-alpha.2
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
+      '@three-flatland/presets':
+        specifier: workspace:*
+        version: link:../../../packages/presets
+      '@three-flatland/slug':
+        specifier: workspace:*
+        version: link:../../../packages/slug
+      '@three-flatland/uikit':
+        specifier: workspace:*
+        version: link:../../../packages/uikit
+      '@three-flatland/uikit-default':
+        specifier: workspace:*
+        version: link:../../../packages/uikit-default
+      '@three-flatland/uikit-lucide':
+        specifier: workspace:*
+        version: link:../../../packages/uikit-lucide
+      '@tweakpane/plugin-essentials':
+        specifier: ^0.2.1
+        version: 0.2.1(tweakpane@4.0.5)
+      react:
+        specifier: ^19.2.0
+        version: 19.2.3
+      react-dom:
+        specifier: ^19.2.0
+        version: 19.2.3(react@19.2.3)
+      suspend-react:
+        specifier: ^0.1.3
+        version: 0.1.3(react@19.2.3)
+      three:
+        specifier: ^0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
+      three-flatland:
+        specifier: workspace:*
+        version: link:../../../packages/three-flatland
+      tweakpane:
+        specifier: ^4.0.5
+        version: 4.0.5
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.2
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: ^19.0.2
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: ^0.183.1
+        version: 0.183.1
+      '@vitejs/plugin-react':
+        specifier: ^4.3.4
+        version: 4.7.0(vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.4.3
+        version: 6.4.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
+
   examples/react/slug-text:
     dependencies:
       '@react-three/fiber':
@@ -1038,6 +1105,131 @@ importers:
       three-flatland:
         specifier: workspace:*
         version: link:../../../packages/three-flatland
+      tweakpane:
+        specifier: ^4.0.5
+        version: 4.0.5
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.2
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: ^19.0.2
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: ^0.183.1
+        version: 0.183.1
+      '@vitejs/plugin-react':
+        specifier: ^4.3.4
+        version: 4.7.0(vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.4.3
+        version: 6.4.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
+
+  examples/react/uikit-bento:
+    dependencies:
+      '@preact/signals-core':
+        specifier: ^1.5.1
+        version: 1.14.4
+      '@react-three/fiber':
+        specifier: 10.0.0-alpha.2
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
+      '@three-flatland/presets':
+        specifier: workspace:*
+        version: link:../../../packages/presets
+      '@three-flatland/slug':
+        specifier: workspace:*
+        version: link:../../../packages/slug
+      '@three-flatland/uikit':
+        specifier: workspace:*
+        version: link:../../../packages/uikit
+      '@three-flatland/uikit-default':
+        specifier: workspace:*
+        version: link:../../../packages/uikit-default
+      '@three-flatland/uikit-lucide':
+        specifier: workspace:*
+        version: link:../../../packages/uikit-lucide
+      '@tweakpane/plugin-essentials':
+        specifier: ^0.2.1
+        version: 0.2.1(tweakpane@4.0.5)
+      react:
+        specifier: ^19.2.0
+        version: 19.2.3
+      react-dom:
+        specifier: ^19.2.0
+        version: 19.2.3(react@19.2.3)
+      suspend-react:
+        specifier: ^0.1.3
+        version: 0.1.3(react@19.2.3)
+      three:
+        specifier: ^0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
+      three-flatland:
+        specifier: workspace:*
+        version: link:../../../packages/three-flatland
+      tweakpane:
+        specifier: ^4.0.5
+        version: 4.0.5
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.2
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: ^19.0.2
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: ^0.183.1
+        version: 0.183.1
+      '@vitejs/plugin-react':
+        specifier: ^4.3.4
+        version: 4.7.0(vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))
+      babel-plugin-react-compiler:
+        specifier: 1.0.0
+        version: 1.0.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.4.3
+        version: 6.4.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
+
+  examples/react/uikit-icons:
+    dependencies:
+      '@react-three/fiber':
+        specifier: 10.0.0-alpha.2
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc))
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
+      '@three-flatland/slug':
+        specifier: workspace:*
+        version: link:../../../packages/slug
+      '@three-flatland/uikit':
+        specifier: workspace:*
+        version: link:../../../packages/uikit
+      '@three-flatland/uikit-lucide':
+        specifier: workspace:*
+        version: link:../../../packages/uikit-lucide
+      '@tweakpane/plugin-essentials':
+        specifier: ^0.2.1
+        version: 0.2.1(tweakpane@4.0.5)
+      react:
+        specifier: ^19.2.0
+        version: 19.2.3
+      react-dom:
+        specifier: ^19.2.0
+        version: 19.2.3(react@19.2.3)
+      suspend-react:
+        specifier: ^0.1.3
+        version: 0.1.3(react@19.2.3)
+      three:
+        specifier: ^0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
       tweakpane:
         specifier: ^4.0.5
         version: 4.0.5
@@ -1420,6 +1612,43 @@ importers:
       '@three-flatland/uikit-default':
         specifier: workspace:*
         version: link:../../../packages/uikit-default
+      '@three-flatland/uikit-lucide':
+        specifier: workspace:*
+        version: link:../../../packages/uikit-lucide
+      '@tweakpane/plugin-essentials':
+        specifier: ^0.2.1
+        version: 0.2.1(tweakpane@4.0.5)
+      three:
+        specifier: ^0.183.1
+        version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
+      three-flatland:
+        specifier: workspace:*
+        version: link:../../../packages/three-flatland
+      tweakpane:
+        specifier: ^4.0.5
+        version: 4.0.5
+    devDependencies:
+      '@types/three':
+        specifier: ^0.183.1
+        version: 0.183.1
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.4.3
+        version: 6.4.3(@types/node@24.12.4)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
+
+  examples/three/uikit-icons:
+    dependencies:
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
+      '@three-flatland/slug':
+        specifier: workspace:*
+        version: link:../../../packages/slug
+      '@three-flatland/uikit':
+        specifier: workspace:*
+        version: link:../../../packages/uikit
       '@three-flatland/uikit-lucide':
         specifier: workspace:*
         version: link:../../../packages/uikit-lucide
@@ -9854,24 +10083,24 @@ snapshots:
 
   '@types/babel__core@7.20.5':
     dependencies:
-      '@babel/parser': 7.29.3
-      '@babel/types': 7.29.0
+      '@babel/parser': 7.29.7
+      '@babel/types': 7.29.7
       '@types/babel__generator': 7.27.0
       '@types/babel__template': 7.4.4
       '@types/babel__traverse': 7.28.0
 
   '@types/babel__generator@7.27.0':
     dependencies:
-      '@babel/types': 7.29.0
+      '@babel/types': 7.29.7
 
   '@types/babel__template@7.4.4':
     dependencies:
-      '@babel/parser': 7.29.3
-      '@babel/types': 7.29.0
+      '@babel/parser': 7.29.7
+      '@babel/types': 7.29.7
 
   '@types/babel__traverse@7.28.0':
     dependencies:
-      '@babel/types': 7.29.0
+      '@babel/types': 7.29.7
 
   '@types/braces@3.0.5': {}
 
@@ -10383,7 +10612,7 @@ snapshots:
 
   '@vue/compiler-core@3.5.34':
     dependencies:
-      '@babel/parser': 7.29.3
+      '@babel/parser': 7.29.7
       '@vue/shared': 3.5.34
       entities: 7.0.1
       estree-walker: 2.0.2
@@ -10396,7 +10625,7 @@ snapshots:
 
   '@vue/compiler-sfc@3.5.34':
     dependencies:
-      '@babel/parser': 7.29.3
+      '@babel/parser': 7.29.7
       '@vue/compiler-core': 3.5.34
       '@vue/compiler-dom': 3.5.34
       '@vue/compiler-ssr': 3.5.34
@@ -10615,7 +10844,7 @@ snapshots:
 
   babel-plugin-react-compiler@1.0.0:
     dependencies:
-      '@babel/types': 7.29.0
+      '@babel/types': 7.29.7
 
   bail@2.0.2: {}
 
@@ -12162,8 +12391,8 @@ snapshots:
 
   magicast@0.5.3:
     dependencies:
-      '@babel/parser': 7.29.3
-      '@babel/types': 7.29.0
+      '@babel/parser': 7.29.7
+      '@babel/types': 7.29.7
       source-map-js: 1.2.1
 
   make-dir@4.0.0:
@@ -12747,7 +12976,7 @@ snapshots:
 
   node-source-walk@7.0.2:
     dependencies:
-      '@babel/parser': 7.29.3
+      '@babel/parser': 7.29.7
 
   normalize-path@3.0.0: {}
 
