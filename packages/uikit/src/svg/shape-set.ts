@@ -1,4 +1,4 @@
-import { SlugShapeSet } from '@three-flatland/slug'
+import { SlugShapeSet, SlugShapeSetLoader, iconNamesFromBaked } from '@three-flatland/slug'
 import type { RegisteredSVG } from '@three-flatland/slug'
 
 let sharedShapeSet: SlugShapeSet | undefined
@@ -33,4 +33,21 @@ export function getSharedShapeSet(): SlugShapeSet {
 export function setSharedShapeSet(set: SlugShapeSet): void {
   sharedShapeSet = set
   svgCache.clear()
+}
+
+/**
+ * Installs a baked icon atlas (`uikit-bake icons` output) as the shared
+ * set. A `string` fetches + decodes via `SlugShapeSetLoader`; an already
+ * loaded `SlugShapeSet` installs directly (both routes end in
+ * `setSharedShapeSet`, so the invariants above apply: call before
+ * constructing `icon`-driven `Svg`s, not as a live hot-swap).
+ */
+export async function installIconAtlas(atlas: SlugShapeSet | string): Promise<void> {
+  const set = typeof atlas === 'string' ? await SlugShapeSetLoader.load(atlas) : atlas
+  setSharedShapeSet(set)
+}
+
+/** Every icon name resolvable against the installed atlas (empty if none installed). */
+export function getInstalledAtlasNames(): string[] {
+  return iconNamesFromBaked(getSharedShapeSet())
 }

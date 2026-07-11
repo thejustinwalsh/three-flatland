@@ -35,4 +35,9 @@ export * from './properties/index.js'
 export { FontFamiliesSchema, FontFamilyWeightMapSchema, FontWeightSchema } from './text/index.js'
 export type { FontFamilies, FontWeight, FontFamilyWeightMap } from './text/index.js'
 export * from './loaders/index.js'
-export { getSharedShapeSet, setSharedShapeSet } from './svg/index.js'
+export {
+  getSharedShapeSet,
+  setSharedShapeSet,
+  installIconAtlas,
+  getInstalledAtlasNames,
+} from './svg/index.js'

@@ -7,7 +7,7 @@ import {
 } from './content.js'
 import { computed, signal } from '@preact/signals-core'
 import { abortableEffect, loadResourceWithParams } from '../utils.js'
-import { loadSVGShapes } from '@three-flatland/slug'
+import { iconFromBaked, loadSVGShapes } from '@three-flatland/slug'
 import type { RegisteredSVG } from '@three-flatland/slug'
 import type { BaseOutProperties, InProperties, WithSignal } from '../properties/index.js'
 import type { RenderContext } from '../context.js'
@@ -16,12 +16,13 @@ import type { z } from 'zod'
 import { createInPropertiesSchema, defineSchema } from '../properties/schema.js'
 import { computedGlobalContentMatrix } from '../svg/matrix.js'
 import { createInstancedShapes } from '../svg/render/index.js'
-import { getSharedShapeSet, svgCache } from '../svg/shape-set.js'
+import { getInstalledAtlasNames, getSharedShapeSet, svgCache } from '../svg/shape-set.js'
 
 export const svgOutPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
   contentOutPropertiesSchema.extend({
     src: string().optional(),
     content: string().optional(),
+    icon: string().optional(),
   })
 )
 export const SvgPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
@@ -32,6 +33,8 @@ export type SvgOutProperties = ContentOutProperties & {
   keepAspectRatio?: boolean
   src?: string
   content?: string
+  /** Name of an icon in the installed atlas (`installIconAtlas`) — NOT `name` (`Object3D.name` collision, D3). */
+  icon?: string
 }
 export type SvgProperties = z.input<typeof SvgPropertiesSchema>
 
@@ -43,6 +46,8 @@ export type SvgProperties = z.input<typeof SvgPropertiesSchema>
  * hundreds-to-thousands of draw calls); this rewrite keeps the public API
  * (`src`, `content`, `width`, `height`, `fill`, `keepAspectRatio`) and
  * constructor signature identical — only the rendering internals change.
+ * `icon` additionally resolves a name against the installed atlas
+ * (`installIconAtlas`) with zero SVG parsing; see `loadSvg`.
  */
 export class Svg<
   OutProperties extends SvgOutProperties = SvgOutProperties,
@@ -78,6 +83,7 @@ export class Svg<
       undefined,
       this.abortSignal,
       computed(() => ({
+        icon: this.properties.value.icon,
         src: this.properties.value.src,
         content: this.properties.value.content,
       }))
@@ -131,24 +137,59 @@ export class Svg<
 }
 
 /**
- * Resolves `src`/`content` into a `RegisteredSVG`, registering into the
- * shared `SlugShapeSet` (`svg/shape-set.ts`) so every `Svg` instance
- * batches together. Exported for tests only — not part of the public API.
+ * Resolves `icon`/`src`/`content` into a `RegisteredSVG`, registering into
+ * the shared `SlugShapeSet` (`svg/shape-set.ts`) so every `Svg` instance
+ * batches together. Resolution order: (1) `icon` present AND resolvable
+ * against the installed atlas ⇒ zero-parse lookup via `iconFromBaked`; (2)
+ * `src`/`content` ⇒ runtime SVG parse into the shared set (unchanged); (3)
+ * `icon` present but unresolvable and no `src`/`content` fallback ⇒ throws,
+ * naming the icons the installed atlas actually has. Exported for tests
+ * only — not part of the public API.
  */
 export async function loadSvg({
+  icon,
   src,
   content,
 }: {
+  icon?: string
   src?: string
   content?: string
 }): Promise<RegisteredSVG | undefined> {
+  if (icon != null) {
+    // Namespaced key: the icon and src/content key spaces must not collide, or a
+    // source literally named `icon:activity` would return the baked atlas entry.
+    const cacheKey = JSON.stringify(['icon', icon])
+    const cached = svgCache.get(cacheKey)
+    if (cached != null) {
+      return cached
+    }
+    const baked = iconFromBaked(getSharedShapeSet(), icon)
+    if (baked != null) {
+      const promise = Promise.resolve(baked)
+      svgCache.set(cacheKey, promise)
+      return promise
+    }
+    if (src == null && content == null) {
+      const available = getInstalledAtlasNames()
+      throw new Error(
+        `Svg: icon "${icon}" is not in the installed atlas, and no "src"/"content" fallback was ` +
+          `given. Installed icons: ${
+            available.length > 0 ? available.join(', ') : '(none — call installIconAtlas() first)'
+          }`
+      )
+    }
+    // `icon` didn't resolve but a runtime fallback was given — fall through
+    // to the src/content path below, still registering into the shared set.
+  }
+
   if (src == null && content == null) {
     return undefined
   }
-  const key = src ?? content!
+  const source = src ?? content!
+  const key = JSON.stringify(['src', source])
   let promise = svgCache.get(key)
   if (promise == null) {
-    svgCache.set(key, (promise = loadSVGShapes(key, getSharedShapeSet())))
+    svgCache.set(key, (promise = loadSVGShapes(source, getSharedShapeSet())))
   }
   return promise
 }

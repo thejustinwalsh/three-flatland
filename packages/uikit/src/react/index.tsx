@@ -5,6 +5,8 @@ export {
   withOpacity,
   isDarkMode,
   canvasInputProps,
+  installIconAtlas,
+  getInstalledAtlasNames,
 } from '../index.js'
 export { noEvents, PointerEvents } from './events.js'
 
