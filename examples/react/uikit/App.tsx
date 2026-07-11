@@ -31,7 +31,8 @@ import {
   setPreferredColorScheme,
   useRenderContext,
   useSetup,
-  canvasInputProps,
+  noEvents,
+  PointerEvents,
   type FullscreenProperties,
 } from '@three-flatland/uikit/react'
 import {
@@ -669,6 +670,7 @@ function GameScene({ ambient }: { ambient: number }) {
   const torch2Ref = useRef<Light2D>(null)
   const flickerT = useRef(0)
   const [flatlandCamera, setFlatlandCamera] = useState<ThreeOrthographicCamera | null>(null)
+  const [flatlandScene, setFlatlandScene] = useState<Object3D | null>(null)
   const font = useSlugFont('./Inter-Regular.ttf')
 
   const halfExtent = (MAP_SIZE * TILE_SIZE) / 2
@@ -714,22 +716,16 @@ function GameScene({ ambient }: { ambient: number }) {
     if (!flatland) return
     flatland.add(flatland.camera)
     setFlatlandCamera(flatland.camera)
+    setFlatlandScene((flatland as unknown as { scene: Object3D }).scene)
   }, [])
 
-  // R3F needs no extra event package — that is the whole point of the React
-  // binding. It raycasts its *interaction registry* (an Object3D list every
-  // component with handlers is pushed onto), not a scene graph, so the
-  // flatland-camera-portalled UI is already reachable. What it needs is for the
-  // ray to originate from the camera the UI is parented to.
-  //
-  // ray to originate from the camera the UI is parented to. `HudFullscreen` scopes
-  // Flatland's camera into the portal's own state, which is where the ray is taken
-  // from — mutating the root store's camera would never reach it, because a portal
-  // snapshots its state at creation.
-  //
-  // Do NOT wire `forwardHtmlEvents` here. uikit's React layer publishes its handlers
-  // as JSX props, so those objects sit in R3F's registry regardless; a second event
-  // source dispatches every pointer event twice, through two different cameras.
+  // Events route through `@pmndrs/pointer-events`, NOT R3F's own dispatcher — see
+  // `<Canvas events={noEvents}>` + `<PointerEvents .../>` below. R3F v10 delivers
+  // events ONLY to JSX-prop handlers; uikit's Slider / Textarea drag via imperative
+  // Object3D listeners plus pointer capture, which R3F never delivers, so on the
+  // built-in dispatcher the thumbs are inert (no hover cursor, no drag). Point the
+  // forwarder at Flatland's OWN camera + scene — that is the graph the HUD is
+  // portalled into — mirroring the vanilla twin's `forwardHtmlEvents(...)` wiring.
 
   useFrame((_, rawDelta) => {
     flickerT.current += rawDelta
@@ -789,6 +785,12 @@ function GameScene({ ambient }: { ambient: number }) {
           <GameMenu font={font} />
         </HudFullscreen>
       )}
+
+      {/* Forward DOM pointer events to Flatland's OWN camera + scene — the graph
+          the HUD is portalled into — so uikit's sliders drag under R3F v10. */}
+      {flatlandCamera && flatlandScene && (
+        <PointerEvents camera={flatlandCamera} scene={flatlandScene} />
+      )}
     </>
   )
 }
@@ -798,16 +800,18 @@ export default function App() {
   const [ambient] = usePaneInput<number>(pane, 'ambient', 0.6, { min: 0, max: 3, step: 0.05 })
 
   return (
-    // `canvasInputProps` stops the canvas's default pointer-down from blurring the
-    // hidden <input> a uikit `Input` types into. Without it the field focuses,
-    // renders a caret for one frame, and silently swallows every keystroke.
+    // `events={noEvents}` switches OFF R3F's own dispatcher; `<PointerEvents>`
+    // (mounted inside GameScene, aimed at Flatland's camera + scene) forwards DOM
+    // events through @pmndrs/pointer-events instead — the only path that delivers
+    // uikit's imperative drag/pointer-capture handlers, and it re-attaches the
+    // Input blur-guard internally so typing still works.
     // No `dpr={1}` + `image-rendering: pixelated`: that renders the whole
     // framebuffer at 1x and nearest-upscales it, pixelating Slug's analytic text
     // along with everything else. R3F's default dpr respects the device pixel
     // ratio, so text stays crisp; the tilemap stays chunky because its tileset is
     // NearestFilter-sampled (Flatland's TextureConfig default 'pixel-art'), not
     // because the canvas is downscaled.
-    <Canvas {...canvasInputProps} renderer={{ antialias: false }}>
+    <Canvas events={noEvents} renderer={{ antialias: false }}>
       <DevtoolsProvider name="uikit" />
       <Suspense fallback={null}>
         <GameScene ambient={ambient} />
