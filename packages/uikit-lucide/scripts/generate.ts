@@ -18,6 +18,7 @@ async function main() {
     }
     const name = getName(icon)
     names.push(name)
+    const iconName = icon.slice(0, -4)
     const raw = await readFile(`${baseDir}${icon}`)
     const svg = raw.toString()
     const code = `
@@ -38,6 +39,7 @@ async function main() {
           super(inputProperties, initialClasses, {
             ...config,
             defaultOverrides: {
+              icon: '${iconName}',
               content,
               width: 24,
               height: 24,
