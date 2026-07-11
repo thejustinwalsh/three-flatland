@@ -1,0 +1,31 @@
+{
+  "out": "public/icons.shapes.glb",
+  "sources": [
+    "../../../packages/uikit-lucide/icons/activity.svg",
+    "../../../packages/uikit-lucide/icons/airplay.svg",
+    "../../../packages/uikit-lucide/icons/alarm-clock.svg",
+    "../../../packages/uikit-lucide/icons/archive.svg",
+    "../../../packages/uikit-lucide/icons/award.svg",
+    "../../../packages/uikit-lucide/icons/bell.svg",
+    "../../../packages/uikit-lucide/icons/book-open.svg",
+    "../../../packages/uikit-lucide/icons/calendar.svg",
+    "../../../packages/uikit-lucide/icons/camera.svg",
+    "../../../packages/uikit-lucide/icons/check.svg",
+    "../../../packages/uikit-lucide/icons/chevron-down.svg",
+    "../../../packages/uikit-lucide/icons/clock.svg",
+    "../../../packages/uikit-lucide/icons/cloud.svg",
+    "../../../packages/uikit-lucide/icons/compass.svg",
+    "../../../packages/uikit-lucide/icons/database.svg",
+    "../../../packages/uikit-lucide/icons/download.svg",
+    "../../../packages/uikit-lucide/icons/flame.svg",
+    "../../../packages/uikit-lucide/icons/gauge.svg",
+    "../../../packages/uikit-lucide/icons/heart.svg",
+    "../../../packages/uikit-lucide/icons/house.svg",
+    "../../../packages/uikit-lucide/icons/image.svg",
+    "../../../packages/uikit-lucide/icons/layers.svg",
+    "../../../packages/uikit-lucide/icons/menu.svg",
+    "../../../packages/uikit-lucide/icons/search.svg",
+    "../../../packages/uikit-lucide/icons/star.svg",
+    "../../../packages/uikit-lucide/icons/zap.svg"
+  ]
+}
