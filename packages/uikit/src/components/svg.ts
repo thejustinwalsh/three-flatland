@@ -16,6 +16,7 @@ import type { z } from 'zod'
 import { createInPropertiesSchema, defineSchema } from '../properties/schema.js'
 import { computedGlobalContentMatrix } from '../svg/matrix.js'
 import { createInstancedShapes } from '../svg/render/index.js'
+import { getSharedShapeSet, svgCache } from '../svg/shape-set.js'
 
 export const svgOutPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
   contentOutPropertiesSchema.extend({
@@ -65,11 +66,12 @@ export class Svg<
     })
 
     const svgResult = signal<RegisteredSVG | undefined>(undefined)
-    // Shared cache (never disposed on unmount) keyed by source — mirrors
-    // `SlugFontLoader`'s font caching. Repeated use of the SAME icon across
-    // many `Svg` instances registers its paths into ONE `SlugShapeSet`, so
-    // `ShapeGroupManager` (keyed by `SlugShapeSet` identity) batches them
-    // into a single draw call rather than re-registering per instance.
+    // Every `Svg` instance registers its paths into the ONE module-level
+    // shared `SlugShapeSet` (`svg/shape-set.ts`), so `ShapeGroupManager`
+    // (keyed by `SlugShapeSet` identity) batches ALL icons — not just
+    // repeats of the same source — into a single draw call. `svgCache`
+    // below only dedupes redundant re-parses of the SAME source; the
+    // cross-source batching comes from the shared set, not this cache.
     loadResourceWithParams(
       svgResult,
       loadSvg,
@@ -128,9 +130,12 @@ export class Svg<
   }
 }
 
-const svgCache = new Map<string, Promise<RegisteredSVG>>()
-
-async function loadSvg({
+/**
+ * Resolves `src`/`content` into a `RegisteredSVG`, registering into the
+ * shared `SlugShapeSet` (`svg/shape-set.ts`) so every `Svg` instance
+ * batches together. Exported for tests only — not part of the public API.
+ */
+export async function loadSvg({
   src,
   content,
 }: {
@@ -143,7 +148,7 @@ async function loadSvg({
   const key = src ?? content!
   let promise = svgCache.get(key)
   if (promise == null) {
-    svgCache.set(key, (promise = loadSVGShapes(key)))
+    svgCache.set(key, (promise = loadSVGShapes(key, getSharedShapeSet())))
   }
   return promise
 }
