@@ -34,6 +34,7 @@ import { createRequire } from 'node:module'
 import type { Baker } from '@three-flatland/bake'
 import type { Window as HappyDomWindow } from 'happy-dom'
 import { SlugShapeSet } from '@three-flatland/slug'
+import type { BakedIconEntry } from '@three-flatland/slug'
 import { loadSVGShapes } from '@three-flatland/slug/svg'
 import { packShapeSet } from '@three-flatland/slug/bake'
 
@@ -133,9 +134,17 @@ Options:
   --output, -o <path>   Output .glb path. Default: icons.glb in the
                         current directory.
 
-Each icon's name (its filename without extension) and per-shape fill data
-is carried in the output's \`meta\` field, so SlugShapeSet.fromBaked callers
-can look shapes up by name instead of raw handle id.`
+Determinism: all collected files (positional files plus every directory's
+entries) are sorted by basename, then full path, before registering — shape
+ids are stable across re-bakes of the same input set. Two inputs that
+resolve to the same icon name (filename without extension) is a hard error;
+rename one of the files.
+
+Each icon's name, per-shape fill data, and source viewBox is carried in the
+output's \`meta\` field as \`meta.icons[name] = { handles, fills, viewBox }\`
+(viewBox: minX/minY/width/height), so SlugShapeSet.fromBaked callers can
+look shapes up by name — via @three-flatland/slug's \`iconFromBaked\` —
+instead of raw handle id.`
 
 // --- font subcommand: proxy slug's exported Baker, no subprocess ---
 
@@ -168,6 +177,21 @@ async function runFont(args: string[]): Promise<number> {
 
 // --- icons subcommand ---
 
+/** Ascending compare: basename first, then full path — D6 determinism. */
+function compareByBasenameThenPath(a: string, b: string): number {
+  const ba = basename(a)
+  const bb = basename(b)
+  if (ba !== bb) return ba < bb ? -1 : 1
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/**
+ * Resolve inputs (files and/or non-recursively scanned directories) to a
+ * `.svg` file list sorted by basename then full path, so shape ids come out
+ * stable across re-bakes of the same input set (D6). Throws when two
+ * different paths resolve to the same icon name (filename without
+ * extension) — a silent `meta.icons` collision otherwise.
+ */
 function collectSvgFiles(inputs: string[]): string[] {
   const files: string[] = []
   for (const input of inputs) {
@@ -183,6 +207,21 @@ function collectSvgFiles(inputs: string[]): string[] {
       files.push(resolved)
     }
   }
+
+  files.sort(compareByBasenameThenPath)
+
+  const byName = new Map<string, string>()
+  for (const file of files) {
+    const name = basename(file, extname(file))
+    const existing = byName.get(name)
+    if (existing !== undefined && existing !== file) {
+      throw new Error(
+        `uikit-bake icons: duplicate icon name "${name}" from both "${existing}" and "${file}"`
+      )
+    }
+    byName.set(name, file)
+  }
+
   return files
 }
 
@@ -212,20 +251,20 @@ async function runIcons(args: string[]): Promise<number> {
     return 1
   }
 
-  const svgFiles = collectSvgFiles(inputs)
+  let svgFiles: string[]
+  try {
+    svgFiles = collectSvgFiles(inputs)
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err))
+    return 1
+  }
   if (svgFiles.length === 0) {
     console.error('No .svg files found in the given inputs.')
     return 1
   }
 
   const set = new SlugShapeSet()
-  const icons: Record<
-    string,
-    {
-      handles: number[]
-      fills: { color: { r: number; g: number; b: number; a: number }; rule: string }[]
-    }
-  > = {}
+  const icons: Record<string, BakedIconEntry> = {}
 
   const restoreDomParser = await installDomParserShim()
   try {
@@ -236,6 +275,7 @@ async function runIcons(args: string[]): Promise<number> {
       icons[name] = {
         handles: registered.handles.map((h) => h.glyphId),
         fills: registered.fills.map((f) => ({ color: { ...f.color }, rule: f.rule })),
+        viewBox: { ...registered.viewBox },
       }
       console.log(`  ${name}: ${registered.handles.length} shape(s)`)
     }
