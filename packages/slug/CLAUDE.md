@@ -24,6 +24,19 @@ Cubic Béziers (CFF/OTF, and SVG path data) are converted by `cubicToQuadratics`
 
 Decoration rects (underline, strikethrough) ride the same instance buffer via a sentinel: `glyphJac.w = -1` tells the fragment shader to short-circuit coverage to 1.
 
+### SVG shapes — `SlugShapeSet` backends
+
+Vector shapes (icons) have the same two-backend shape as fonts, in `svg/`, targeting the shared `SlugShapeSet` rather than a `SlugFont`:
+
+| Backend | Source                                       | Path                                                    |
+| ------- | --------------------------------------------- | -------------------------------------------------------- |
+| runtime | parses SVG markup live via `loadSVGShapes`    | `svg/loadSVG.ts`                                          |
+| baked   | `FL_slug_shapes` `.glb` atlas, resolved by name | `SlugShapeSetLoader` (fetch → `SlugShapeSet.fromBaked`) + `svg/bakedIcons.ts`'s `iconFromBaked` |
+
+Guard: `svg/svgBaked.equivalence.test.ts`. **Unlike the font pipeline above, this contract is bit-exact, not approximate** — `registerShape` (`SlugShapeSet.ts`) snaps every control point to float32 (`Math.fround`) at registration time, and the baked format stores curves, contour starts, and prebuilt bands complete (nothing is inferred on reload, unlike baked fonts' notdef fallback and bounds-inferred outline presence). Do not generalize the "approximately equivalent" font gotcha below to shapes — a shapes-parity regression should fail the equivalence test exactly, with no tolerance.
+
+**What to bake.** Bake a fixed, known icon set through `uikit-bake icons` (positional args or a checked-in `--manifest`) — one shared `SlugShapeSet` for baked + runtime icons alike is what enables batching either way; baking on top buys zero-parse-cost and reproducible re-bakes. Runtime-parse dynamic/user-supplied SVGs via `loadSVGShapes` instead — they still join the same shared set and batch identically. A bigger atlas trades startup download / GPU texture memory for fewer draws and no parse cost; bake what an app actually ships, not an entire icon library. Full guidance (including the manifest schema) is in `uikit-bake icons --help`; do not duplicate it here.
+
 ## The text engine — `@three-flatland/slug/text`
 
 `src/text/` is the run-based paragraph engine, exported ONLY at the `./text` subpath (the root barrel is the rendering surface; the engine is its own domain). Vocabulary is the Slug User Manual's, not CSS's:
@@ -68,6 +81,8 @@ line of text shifts — so it is asserted against hand-computed Inter-Regular va
 
 - **Baked and runtime are _approximately_, not strictly, equivalent.** They diverge on two points: baked falls back to notdef (glyph 0) for missing glyphs where runtime does not, and baked infers outline presence from bounds-area because `unpackBaked` discards the curve list. Widths, kerning, cmap, and bands round-trip within float32. `baked.equivalence.test.ts` guards this — keep it green.
 - **Baked cmap coverage depends on what was subsetted** at bake time (`cli.ts` Unicode-range selection). Runtime has the whole font. A codepoint that renders under runtime may be notdef under baked.
+- **Baked icon atlases require `viewBox` on every `meta.icons[*]` entry.** `iconFromBaked` throws a "re-bake with a newer uikit-bake" error on entries baked before `viewBox` was added — a stale atlas fails loud, not silently. Re-bake with a current `uikit-bake icons`.
+- **Bake ordering is deterministic, not arbitrary.** `uikit-bake icons` sorts every collected SVG path by basename, then full path, before registering, so shape ids (and `meta.icons` order) are stable across re-bakes of the same input set — including the `--manifest` form's resolved names.
 - `SlugStackText` is a `Group` with one `InstancedMesh` child per font, because each font binds distinct curve/band textures. Decorations attach to the primary mesh only.
 - `SlugFontStack` resolves fallback **per UTF-16 code unit**, not per shaping run — so surrogate pairs and combining sequences are not treated as clusters, and cross-font kerning is intentionally dropped at run boundaries.
 - `SlugStrokeMaterial`'s outer ring is clipped by the glyph bounding box. Wide strokes will be cut off.
