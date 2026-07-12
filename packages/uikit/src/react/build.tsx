@@ -4,6 +4,7 @@ import {
   type RenderContext,
   reversePainterSortStable,
 } from '../index.js'
+import { setupA11yProjection } from '../a11y/index.js'
 import { effect } from '@preact/signals-core'
 import { extend, useFrame, useThree, type Instance, applyProps } from '@react-three/fiber'
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
@@ -77,6 +78,7 @@ export function useSetup(ref: { current: Component | null }, inProps: any, args:
     component.update(delta * 1000)
   })
   const renderer = useThree((s) => s.gl)
+  const camera = useThree((s) => s.camera)
   useEffect(() => {
     // no `renderer.localClippingEnabled` — that flag exists only on the legacy
     // WebGLRenderer; the common (WebGPU) renderer clips exclusively through
@@ -84,6 +86,16 @@ export function useSetup(ref: { current: Component | null }, inProps: any, args:
     // materials' own coverage-multiply clip paths.
     renderer.setTransparentSort(reversePainterSortStable)
   }, [renderer])
+  useEffect(() => {
+    // Only the root component owns a projection — see the root guard in the
+    // per-frame pump above for why this check is load-bearing.
+    const component = ref.current
+    if (component == null || component.root.peek().component !== component) return
+    return setupA11yProjection(component, { camera, renderer })
+    // `ref` is a stable ref object, not a reactive dependency — camera/renderer
+    // identity changes are what should dispose-and-resetup the projection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera, renderer])
   useLayoutEffect(() => {
     ref.current?.resetProperties(inProps)
   })
