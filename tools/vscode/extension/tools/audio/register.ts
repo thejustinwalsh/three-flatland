@@ -15,8 +15,7 @@ import { playToneSynthWithColdStartRetry } from './toneColdStartRetry'
 import { getPlaybackVolumeMultiplier } from './playbackVolume'
 import { isToolEnabled } from '../../toolRegistry'
 import { log } from '../../log'
-
-const INLINE_PLAYBACK_SETTING = 'threeFlatland.audio.inlinePlayback.enabled'
+import { INLINE_PLAYBACK_SETTING } from './settings'
 
 /** Cap on the slow audio.file basename search — the resolver only plays
  * one match, and an uncapped findFiles over a huge workspace buys nothing
@@ -592,8 +591,11 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
   )
 
   // Turning inline playback off mid-session shouldn't leave an already-
-  // spawned audio-play sidecar process lingering — the setting means
-  // "the panel route only," not just "no *new* sidecars."
+  // spawned audio-play sidecar process lingering — the setting means "no
+  // playback at all," not just "no *new* sidecars." provider.refresh()
+  // re-runs provideCodeLenses for every open document so the Play/Stop
+  // lenses this setting gates (see provider.ts) disappear/reappear live,
+  // without waiting for the next edit.
   disposables.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration(INLINE_PLAYBACK_SETTING)) return
@@ -601,6 +603,7 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
         .getConfiguration()
         .get<boolean>(INLINE_PLAYBACK_SETTING, true)
       if (!enabled) void shutdownPlaySidecar()
+      provider.refresh()
     })
   )
 

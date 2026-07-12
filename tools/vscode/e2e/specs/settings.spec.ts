@@ -251,4 +251,86 @@ test.describe('FL tool settings', () => {
       ])
     }
   })
+
+  // Unlike FL Audio's own tools.audio.enabled (liveToggle: false, tested
+  // above via a fresh launch), inlinePlayback.enabled is read directly by
+  // provider.ts's provideCodeLenses and re-applied live via
+  // provider.refresh() in register.ts's onDidChangeConfiguration — no
+  // reload needed, so this uses the shared-window fixtures like the other
+  // live-toggle tests in this file.
+  test('disabling inline audio playback live: only zzfx.call keeps its Edit lens, every Play/Stop lens disappears; re-enabling restores them', async ({
+    evaluateInVSCode,
+  }) => {
+    const SETTING = 'threeFlatland.audio.inlinePlayback.enabled'
+
+    await evaluateInVSCode(async (vscode) => {
+      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
+      if (ext && !ext.isActive) await ext.activate()
+    })
+
+    const fetchTitlesOnce = () =>
+      evaluateInVSCode(
+        async (vscode, arg) => {
+          const [folder] = vscode.workspace.workspaceFolders ?? []
+          const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+          const doc = await vscode.workspace.openTextDocument(uri)
+          await vscode.window.showTextDocument(doc)
+          const lenses = (await vscode.commands.executeCommand(
+            'vscode.executeCodeLensProvider',
+            uri,
+            1000
+          )) as { command?: { title: string } }[]
+          return lenses.map((l) => l.command?.title ?? null).filter((t): t is string => t !== null)
+        },
+        { file: 'src/audio-sources.ts' }
+      )
+
+    // audio.file's slow workspace-wide search (thunder.ogg) resolves
+    // asynchronously after the first query — poll past its transient
+    // `$(search) Searching…` lens the same way zzfx-audio-lenses.spec.ts's
+    // fetchSettledLenses does, or the count is one short.
+    const fetchTitles = async () => {
+      const deadline = Date.now() + 15_000
+      let titles = await fetchTitlesOnce()
+      while (titles.includes('$(search) Searching…') && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 150))
+        titles = await fetchTitlesOnce()
+      }
+      return titles
+    }
+
+    // Baseline (setting on, the default): every kind's Play/Stop/Edit/
+    // Unresolved lens set, matching zzfx-audio-lenses.spec.ts's own
+    // count for this fixture.
+    const before = await fetchTitles()
+    expect(before).toHaveLength(48)
+    expect(before.filter((t) => t === '▶ Play').length).toBeGreaterThan(0)
+
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        await vscode.workspace
+          .getConfiguration()
+          .update(arg.setting, false, vscode.ConfigurationTarget.Workspace)
+      },
+      { setting: SETTING }
+    )
+
+    // Only zzfx.call's 2 findings survive, each showing just its Edit
+    // lens — no Play anywhere, not even zzfx's own panel-fallback route.
+    const disabled = await fetchTitles()
+    expect(disabled.sort()).toEqual(['⚙ Edit', '⚙ Edit (variable)'])
+
+    await evaluateInVSCode(
+      async (vscode, arg) => {
+        await vscode.workspace
+          .getConfiguration()
+          .update(arg.setting, true, vscode.ConfigurationTarget.Workspace)
+      },
+      { setting: SETTING }
+    )
+
+    const reenabled = await fetchTitles()
+    expect(reenabled).toHaveLength(48)
+    expect(reenabled.filter((t) => t === '▶ Play').length).toBeGreaterThan(0)
+  })
 })

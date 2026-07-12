@@ -35,6 +35,7 @@ import { log } from '../../log'
 import { resolveParams } from './resolveParams'
 import { rangeFromWire } from './wireRange'
 import type { AudioFileLensState, AudioFileResolver } from './audioFileResolver'
+import { INLINE_PLAYBACK_SETTING } from './settings'
 
 /** Tier 1 glob equivalent as a VS Code language selector — the sidecar
  * scans `**\/*.{ts,tsx,js,jsx,mjs,cjs}`; .mjs/.cjs both register under the
@@ -52,8 +53,10 @@ const REFRESH_DEBOUNCE_MS = 250
 /** Carries the finding + which lens variant this is — resolveCodeLens reads
  * these back off the instance VS Code hands it. zzfx.call gets play/edit;
  * every other playable kind gets a static play/stop PAIR (both always
- * present, neither conditioned on playback state). */
-type LensVariant = 'play' | 'edit' | 'stop'
+ * present, neither conditioned on playback state) — UNLESS its varRef is
+ * provably unresolvable (see 'unresolved' below), in which case it gets a
+ * single inert lens instead of the pair. */
+type LensVariant = 'play' | 'edit' | 'stop' | 'unresolved'
 
 /** `audio.file` only — everything `resolveCodeLens` needs to bake the
  * lens's command without re-touching the filesystem: the resolution
@@ -124,28 +127,60 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
     const lenses: vscode.CodeLens[] = []
     const sourceDir = path.dirname(document.uri.fsPath)
     const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? sourceDir
+    // Inline playback off means "no playback, full stop" — every Play/Stop
+    // lens (every kind but zzfx.call's Edit, which doesn't play anything)
+    // disappears rather than showing an affordance that can't work. zzfx
+    // is the one kind with a real panel-based fallback, but keeping its
+    // Play lens around while nothing else plays is exactly the
+    // inconsistent, hard-to-explain state this setting is meant to avoid —
+    // see register.ts's onDidChangeConfiguration, which refreshes every
+    // open document's lenses live when this flips.
+    const inlineEnabled = vscode.workspace
+      .getConfiguration()
+      .get<boolean>(INLINE_PLAYBACK_SETTING, true)
 
     for (const finding of findings) {
       const range = rangeFromWire(finding.range)
       switch (finding.kind) {
         case 'zzfx.call':
-          lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri))
+          if (inlineEnabled) lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri))
           lenses.push(new ZzfxCodeLens(range, finding, 'edit', document.uri))
           break
         case 'zzfxm.song':
         case 'wad.synth':
-        case 'tone.synth':
+        case 'tone.synth': {
+          if (!inlineEnabled) break
           // A static Play+Stop pair, both always present — see the file
           // doc comment for why this reverses #46's single toggling
           // lens. Always emitted immediately, unlike audio.file's
           // fast/slow resolution states — a wad.synth var-ref that
-          // doesn't resolve to a valid oscillator config, or any other
-          // resolver refusal, surfaces as an error message at Play-click
-          // time (register.ts), not as a conditional lens here.
+          // resolves to a real declaration but an INVALID oscillator
+          // config, or any other content-level resolver refusal, still
+          // surfaces as an error message at Play-click time (register.ts),
+          // not as a conditional lens here — that check needs to open and
+          // parse the declaration's document, real I/O this fast,
+          // per-keystroke-adjacent call shouldn't pay for on every finding.
+          //
+          // The ONE case hoisted here is cheaper: `varRef.defUri`/
+          // `defRange` are already sitting on the finding's payload from
+          // the sidecar's own parse (see VarRef's doc comment in
+          // protocol.ts) — no I/O needed to know a bare-identifier
+          // reference has no findable declaration/initializer at all
+          // (e.g. a function parameter). That's provably never playable,
+          // so it gets a single inert `$(question) Unresolved` lens
+          // instead of a Play that would always fail with the same
+          // error resolveSong/resolveWadSynth/resolveToneSynth throw.
+          const varRef = finding.payload.varRef
+          if (varRef && (!varRef.defUri || !varRef.defRange)) {
+            lenses.push(new ZzfxCodeLens(range, finding, 'unresolved', document.uri))
+            break
+          }
           lenses.push(new ZzfxCodeLens(range, finding, 'play', document.uri))
           lenses.push(new ZzfxCodeLens(range, finding, 'stop', document.uri))
           break
+        }
         case 'audio.file': {
+          if (!inlineEnabled) break
           // Progressive resolution (#41): fast tiers give a static
           // `▶ Play` + `⏹ Stop` pair immediately; a fast miss on a
           // searchable (plainly-relative) path shows `$(search)
@@ -188,6 +223,17 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
 
     const { finding, variant, docUri } = codeLens
     const source = { uri: docUri.toString(), findingId: finding.id }
+
+    if (variant === 'unresolved') {
+      // Not clickable — same inert shape as audio.file's `$(search)
+      // Searching…` lens (empty command id). Unlike a searching/not-found
+      // audio.file reference, this can never become resolved by a later
+      // fallback search: the identifier provably has no declaration/
+      // initializer to read (see provideCodeLenses), so there's nothing
+      // to retry.
+      codeLens.command = { title: '$(question) Unresolved', command: '' }
+      return codeLens
+    }
 
     if (finding.kind === 'zzfx.call') {
       if (variant === 'play') {

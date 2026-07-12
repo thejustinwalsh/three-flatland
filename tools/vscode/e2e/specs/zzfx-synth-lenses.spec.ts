@@ -641,10 +641,16 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
 
   // tone.synth's note/chord argument gets the same permissive var-ref
   // posture wad.synth's whole config argument already has: the scanner
-  // always emits for a bare identifier, so BOTH the resolvable
-  // (dynamicNote) and unresolvable (a function parameter) cases get a
-  // lens, but only the resolvable one actually plays.
-  test('tone.synth var-ref: the resolvable note plays real audio; the unresolvable one errors gracefully without crashing', async ({
+  // always emits for a bare identifier. The resolvable case (dynamicNote)
+  // plays for real. The unresolvable case (a function parameter — no
+  // declaration/initializer exists at all, known from the sidecar's own
+  // parse) is provably never playable, so it gets a single inert
+  // `$(question) Unresolved` lens instead of a Play that would always
+  // fail — see provider.ts's provideCodeLenses. This is a stricter
+  // guarantee than wad.synth's unresolvable case (an existing declaration
+  // whose VALUE isn't a valid config, only knowable by reading it), which
+  // still gets a real Play lens and errors at click time.
+  test('tone.synth var-ref: the resolvable note plays real audio; the unresolvable one (no declaration at all) gets an inert Unresolved lens instead of Play', async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
@@ -667,39 +673,12 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     )
     expect(silentBeforeUnresolvable).toBe(true)
 
-    const unresolvableLens = lensAt(lenses, TONE_VAR_UNRESOLVABLE_LINE, '▶ Play')!
-    expect(unresolvableLens.command?.command).toBe('threeFlatland.audio.playToneSynth')
-
-    const result = await evaluateInVSCode(
-      async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
-        if (ext && !ext.isActive) await ext.activate()
-        const api = ext!.exports as ExtensionApi
-
-        const original = vscode.window.showErrorMessage
-        let captured: string | undefined
-        vscode.window.showErrorMessage = (message: string) => {
-          captured = message
-          return Promise.resolve(undefined)
-        }
-        try {
-          await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-        } finally {
-          vscode.window.showErrorMessage = original
-        }
-        const stats = await api.zzfxPlay.getStats()
-        return { captured, stillSilent: !stats || stats.silent }
-      },
-      { command: unresolvableLens.command!.command, args: unresolvableLens.command!.arguments }
-    )
-
-    expect(result.captured).toBeDefined()
-    expect(result.captured).toMatch(/FL Audio:.*declaration wasn't found/)
-    // Never crashed/hung, and never started playing anything either.
-    expect(result.stillSilent).toBe(true)
+    // No Play/Stop pair at all for this line — just the one inert lens.
+    expect(lensAt(lenses, TONE_VAR_UNRESOLVABLE_LINE, '▶ Play')).toBeUndefined()
+    expect(lensAt(lenses, TONE_VAR_UNRESOLVABLE_LINE, '⏹ Stop')).toBeUndefined()
+    const unresolvedLens = lensAt(lenses, TONE_VAR_UNRESOLVABLE_LINE, '$(question) Unresolved')!
+    expect(unresolvedLens).toBeDefined()
+    expect(unresolvedLens.command?.command).toBe('')
   })
 
   // Part A: the very FIRST command a freshly-spawned sidecar receives is

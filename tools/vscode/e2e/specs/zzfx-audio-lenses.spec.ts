@@ -301,23 +301,29 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // pairs with a not-found state) + #47's 5 wad.synth oscillator/noise
     // findings + 2 wad.synth var-ref findings (Play+Stop each — the
     // scanner always emits for a bare identifier, so BOTH var-ref lines
-    // get a pair even though only one actually plays) + 6 tone.synth
-    // findings (Play+Stop each — 4 literal/no-note positives incl.
-    // PluckSynth's AudioWorklet regression guard, plus 2
-    // bare-identifier-note var-ref findings, same permissive posture as
-    // wad.synth's: both get a pair, only the resolvable one actually
-    // plays). Every decoy — the commented-out ones and #44's TRUE decoy
-    // block (mic/sprite/preset) — must contribute ZERO lenses, proven by
-    // the exact total below, not just presence of the positive cases.
-    expect(lenses).toHaveLength(49)
-    // Play count is unchanged from the toggle era — exactly one Play per
-    // playable finding, same as before; what's new is Stop now
-    // accompanying every one of them unconditionally.
-    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(24)
-    expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(22)
+    // get a pair, since wad.synth's unresolvable case has a real
+    // declaration whose CONTENT is invalid — only knowable by reading it,
+    // so it still gets a Play lens and errors at click time) + 5
+    // tone.synth findings (Play+Stop each — 4 literal/no-note positives
+    // incl. PluckSynth's AudioWorklet regression guard, plus 1
+    // bare-identifier-note var-ref finding that resolves) + 1 tone.synth
+    // finding whose var-ref has NO declaration at all (a function
+    // parameter — provably unresolvable straight from the sidecar's own
+    // parse, no read needed) getting a single inert `$(question)
+    // Unresolved` lens instead of a Play+Stop pair. Every decoy — the
+    // commented-out ones and #44's TRUE decoy block (mic/sprite/preset) —
+    // must contribute ZERO lenses, proven by the exact total below, not
+    // just presence of the positive cases.
+    expect(lenses).toHaveLength(48)
+    // Play/Stop counts are each down by 1 from the toggle-reversal era —
+    // TONE_UNRESOLVABLE_NOTE_LINE no longer gets a Play+Stop pair, just
+    // the one inert Unresolved lens below.
+    expect(titles.filter((t) => t === '▶ Play')).toHaveLength(23)
+    expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(21)
     expect(titles.filter((t) => t === '⚙ Edit')).toHaveLength(1)
     expect(titles.filter((t) => t === '⚙ Edit (variable)')).toHaveLength(1)
     expect(titles.filter((t) => t === '$(search) Not Found')).toHaveLength(1)
+    expect(titles.filter((t) => t === '$(question) Unresolved')).toHaveLength(1)
 
     // Every zzfxm.song and audio.file Play/Stop pair routes to the right
     // commands, proving provider.ts's per-kind dispatch (not just
@@ -368,13 +374,21 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       TONE_CHORD_LINE,
       TONE_PLUCK_LINE,
       TONE_DYNAMIC_NOTE_LINE,
-      TONE_UNRESOLVABLE_NOTE_LINE,
     ]) {
       expect(lensAt(lenses, line, '▶ Play')?.command?.command).toBe(
         'threeFlatland.audio.playToneSynth'
       )
       expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.audio.stopSong')
     }
+
+    // No declaration/initializer at all for this var-ref (a function
+    // parameter) — provably never playable, so no Play/Stop pair, just a
+    // single inert lens with an empty command.
+    expect(lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '▶ Play')).toBeUndefined()
+    expect(lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '⏹ Stop')).toBeUndefined()
+    expect(
+      lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '$(question) Unresolved')?.command?.command
+    ).toBe('')
   })
 
   // #41 slow tier: thunder.ogg misses every fast tier (it lives only at
