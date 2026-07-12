@@ -99,6 +99,7 @@ interface BakeManifest {
 /** One selectable icon tile, absolutely positioned at its grid cell. */
 const IconChip = memo(function IconChip({
   name,
+  index,
   selected,
   active,
   onToggle,
@@ -108,10 +109,11 @@ const IconChip = memo(function IconChip({
   height,
 }: {
   name: string
+  index: number
   selected: boolean
   /** Keyboard/AT focus highlight — the single listbox "active" cell, independent of `selected`. */
   active: boolean
-  onToggle: (name: string) => void
+  onToggle: (name: string, index: number) => void
   top: number
   left: number
   width: number
@@ -137,7 +139,7 @@ const IconChip = memo(function IconChip({
       backgroundColor={selected ? colors.accent : colors.card}
       hover={{ borderColor: colors.primary }}
       cursor="pointer"
-      onClick={() => onToggle(name)}
+      onClick={() => onToggle(name, index)}
     >
       {name ? (
         // A single reusable <Svg> whose `icon` prop changes as the pool slot rebinds — the
@@ -375,6 +377,22 @@ function IconBrowser() {
     [filtered, selected, toggle]
   )
 
+  // Pointer-selecting a chip also moves the listbox active descendant, so keyboard + pointer keep a
+  // single "active" cell (codex P2 #5). Stable identity so IconChip's memo isn't defeated.
+  const onChipSelect = useCallback(
+    (name: string, index: number) => {
+      setActiveIdx(index)
+      toggle(name)
+    },
+    [toggle]
+  )
+
+  // The stored activeIdx is only reset in an effect (post-render), so clamp it to the live filtered
+  // set for THIS render — otherwise the managed option briefly reads "501 of 3" after filtering, or
+  // "1 of 0" with no matches (codex P2 #4). -1 / undefined => no active option.
+  const safeActiveIdx = filtered.length === 0 ? -1 : Math.min(activeIdx, filtered.length - 1)
+  const activeName = safeActiveIdx >= 0 ? filtered[safeActiveIdx] : undefined
+
   const selectAll = useCallback(() => {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -508,8 +526,9 @@ function IconBrowser() {
         role="listbox"
         ariaLabel={`Icon grid, ${filtered.length} icons`}
         ariaItemCount={filtered.length}
-        ariaActiveIndex={activeIdx}
-        ariaActiveLabel={filtered[activeIdx] ?? ''}
+        ariaActiveIndex={safeActiveIdx >= 0 ? safeActiveIdx : undefined}
+        ariaActiveLabel={activeName ?? ''}
+        ariaSelected={activeName != null && selected.has(activeName)}
         onA11yActiveIndexChange={onA11yActiveIndexChange}
         onA11yActivate={onA11yActivate}
       >
@@ -527,9 +546,10 @@ function IconBrowser() {
               <IconChip
                 key={slot}
                 name={cell?.name ?? ''}
+                index={cell?.index ?? -1}
                 selected={cell != null && selected.has(cell.name)}
-                active={cell != null && cell.index === activeIdx}
-                onToggle={toggle}
+                active={cell != null && cell.index === safeActiveIdx}
+                onToggle={onChipSelect}
                 top={cell?.top ?? -9999}
                 left={cell?.left ?? -9999}
                 width={win.cellW}

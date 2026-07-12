@@ -289,6 +289,11 @@ export function setupComponentA11y(component: Component, abortSignal: AbortSigna
       // Key → move-token grammar (spec §8). The app owns column geometry and scroll; this only
       // translates keys — no row/column math here.
       const onKeyDown = (event: KeyboardEvent): void => {
+        // Unlike click (which routes through dispatchActivation's disabled guard), this path calls
+        // the callbacks directly — so a disabled listbox must ignore arrow/Enter/Space itself.
+        if (component.properties.peek().disabled === true) {
+          return
+        }
         const move = LISTBOX_MOVE_BY_KEY[event.key]
         if (move != null) {
           event.preventDefault()

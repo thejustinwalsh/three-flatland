@@ -156,6 +156,26 @@ describe('listbox keydown grammar', () => {
     }
   })
 
+  it('a disabled listbox ignores arrow/Enter keydown (codex P2 #2)', () => {
+    const onA11yActiveIndexChange = vi.fn()
+    const onA11yActivate = vi.fn()
+    const c = mount({
+      role: 'listbox',
+      ariaLabel: 'Icons',
+      disabled: true,
+      onA11yActiveIndexChange,
+      onA11yActivate,
+    })
+    try {
+      c.a11yElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', cancelable: true }))
+      c.a11yElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      expect(onA11yActiveIndexChange).not.toHaveBeenCalled()
+      expect(onA11yActivate).not.toHaveBeenCalled()
+    } finally {
+      c.dispose()
+    }
+  })
+
   it('unmapped keys neither fire callbacks nor preventDefault', () => {
     const onA11yActiveIndexChange = vi.fn()
     const onA11yActivate = vi.fn()
