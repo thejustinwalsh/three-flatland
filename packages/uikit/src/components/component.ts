@@ -35,6 +35,8 @@ import { FlexNode, type Inset } from '../flex/node.js'
 import type { OrderInfo } from '../order.js'
 import { allAliases } from '../properties/alias.js'
 import { type Conditionals, createConditionals } from '../properties/conditional.js'
+import { dispatchActivation, type A11yActivationEvent } from '../a11y/activation.js'
+import { setupComponentA11y } from '../a11y/hidden-element.js'
 import {
   type BaseOutProperties,
   type InProperties,
@@ -116,6 +118,10 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
   readonly paddingInset = signal<Inset | undefined>(undefined)
   readonly maxScrollPosition = signal<Partial<Vector2Tuple>>([undefined, undefined])
   readonly root: Signal<RootContext>
+  /** Live when a role gives this component a hidden a11y element; drives the `focus` conditional. */
+  readonly hasFocus: Signal<boolean>
+  /** The hidden focusable DOM element for this component's role (Mode 1), if any. */
+  a11yElement: HTMLElement | undefined = undefined
   readonly parentContainer = signal<Container | undefined>(undefined)
   readonly isAttached = signal(false)
   readonly isRootAttached: Signal<boolean> = computed(
@@ -139,6 +145,7 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
       renderContext?: RenderContext
       dynamicHandlers?: Signal<EventHandlersProperties | undefined>
       hasFocus?: Signal<boolean>
+      ownsHiddenA11yElement?: boolean
       isPlaceholder?: Signal<boolean>
       defaultOverrides?: InProperties<OutProperties>
       hasNonUikitChildren?: boolean
@@ -163,12 +170,14 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
 
     this.root = buildRootContext(this, config?.renderContext)
 
+    this.hasFocus = config?.hasFocus ?? signal(false)
+
     //properties
     const conditionals = createConditionals(
       this.root,
       this.hoveredList,
       this.activeList,
-      config?.hasFocus,
+      this.hasFocus,
       config?.isPlaceholder
     )
     this.properties = new PropertiesImplementation<OutProperties>(
@@ -389,6 +398,35 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
         this.removeEventListener('childadded', listener)
       )
     }
+
+    // Pointer clicks delegate to semantic activation (skipping the shim's own synthetic click), so
+    // kit widgets that move behavior onto onActivate work for pointer + AT + XR with no extra code.
+    this.addEventListener('click', (event) => {
+      if (event.synthetic) {
+        return
+      }
+      this.activate({ source: 'pointer', intersection: event, nativeEvent: event.nativeEvent })
+    })
+
+    // Hidden a11y element for this component's role (Mode 1). Input/Textarea own theirs.
+    if (!config?.ownsHiddenA11yElement) {
+      setupComponentA11y(this, this.abortSignal)
+    }
+  }
+
+  /** Semantic activation entry point (spec §2) — keyboard/AT/XR call this; pointer clicks delegate. */
+  activate(event?: Partial<A11yActivationEvent>): void {
+    dispatchActivation(this, { source: 'keyboard', ...event })
+  }
+
+  /** Focus this component's hidden a11y element (Mode 1). Overridden by Input/Textarea. */
+  focus(): void {
+    this.a11yElement?.focus()
+  }
+
+  /** Blur this component's hidden a11y element. Overridden by Input/Textarea. */
+  blur(): void {
+    this.a11yElement?.blur()
   }
 
   raycast(raycaster: Raycaster, intersects: Intersection[]): unknown {
