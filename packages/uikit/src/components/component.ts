@@ -359,6 +359,23 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
     }
     setupPointerEvents(this, hasNonUikitChildren)
 
+    // Pointer clicks delegate to semantic activation (skipping the shim's own synthetic click), so
+    // kit widgets that move behavior onto onActivate work for pointer + AT + XR with no extra code.
+    // Registered BEFORE the prop-handler binding below so onActivate runs ahead of a legacy onClick
+    // on pointer — matching keyboard/AT ordering (activate is the cross-mode truth) — and passes the
+    // original click's stopPropagation through so onActivate can halt propagation to overlays/parents.
+    this.addEventListener('click', (event) => {
+      if (event.synthetic) {
+        return
+      }
+      this.activate({
+        source: 'pointer',
+        intersection: event,
+        nativeEvent: event.nativeEvent,
+        stopPropagation: event.stopPropagation,
+      })
+    })
+
     abortableEffect(() => {
       const { value } = this.handlers
       for (const key in value) {
@@ -398,15 +415,6 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
         this.removeEventListener('childadded', listener)
       )
     }
-
-    // Pointer clicks delegate to semantic activation (skipping the shim's own synthetic click), so
-    // kit widgets that move behavior onto onActivate work for pointer + AT + XR with no extra code.
-    this.addEventListener('click', (event) => {
-      if (event.synthetic) {
-        return
-      }
-      this.activate({ source: 'pointer', intersection: event, nativeEvent: event.nativeEvent })
-    })
 
     // Hidden a11y element for this component's role (Mode 1). Input/Textarea own theirs.
     if (!config?.ownsHiddenA11yElement) {

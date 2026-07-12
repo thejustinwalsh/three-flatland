@@ -53,7 +53,9 @@ export function dispatchActivation(component: Component, event: A11yActivationEv
 
   component.dispatchEvent({ type: 'activate', ...event })
 
-  if (event.source !== 'pointer') {
+  // onActivate may have synchronously disabled the component (vanilla signal path) — don't fire the
+  // compat synthetic click into a now-disabled control (would double-act with a legacy onClick).
+  if (event.source !== 'pointer' && component.properties.value.disabled !== true) {
     component.getWorldPosition(activationPoint)
     const click: ThreeMouseEvent = {
       distance: 0,

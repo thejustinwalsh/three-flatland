@@ -173,7 +173,10 @@ export function setupComponentA11y(component: Component, abortSignal: AbortSigna
       return
     }
     const element = createHtmlA11yElement(role)
-    const root = component.root.peek()
+    // Read reactively: if the component is reparented to a different root (diegetic reparenting,
+    // Modes 3–4), this effect re-runs — teardown releases the old root's container, the re-run
+    // acquires the new one — so the hidden element follows the component instead of stranding.
+    const root = component.root.value
     acquireRootContainer(root).appendChild(element)
     component.a11yElement = element
 

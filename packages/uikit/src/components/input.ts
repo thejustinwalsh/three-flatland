@@ -191,8 +191,16 @@ export class Input<
     )
 
     setupHtmlInputElement(this.properties, this.element, this.currentSignal, this.abortSignal)
-    // The hidden <input> IS Input's a11y element — sync its accessible name (it had none before).
+    // The hidden <input> IS Input's a11y element — sync its accessible name (it had none before) and
+    // expose it as a11yElement so generic a11y code (focus managers, Mode 2 projection) discovers it
+    // the same as a base component's hidden element.
     setupAriaAttributes(this.properties, this.element, this.abortSignal)
+    this.a11yElement = this.element
+    this.abortSignal.addEventListener('abort', () => {
+      if (this.a11yElement === this.element) {
+        this.a11yElement = undefined
+      }
+    })
 
     setupUpdateHasFocus(
       this.element,

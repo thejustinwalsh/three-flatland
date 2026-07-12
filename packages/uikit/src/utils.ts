@@ -103,6 +103,9 @@ export function loadResourceWithParams<P, R, A extends Array<unknown>>(
 }
 
 const eventHandlerKeys: Array<keyof EventHandlersProperties> = [
+  // onActivate binds to the semantic 'activate' event dispatched by dispatchActivation — without it
+  // here, computedHandlers never wires prop/class/defaultOverride onActivate and the handler is dead.
+  'onActivate',
   'onClick',
   'onContextMenu',
   'onDblClick',

@@ -28,5 +28,11 @@ export function setupUpdateHasFocus(
   abortSignal.addEventListener('abort', () => {
     element.removeEventListener('focus', listener)
     element.removeEventListener('blur', listener)
+    // Removing a focused element (role → undefined, or dispose) fires no blur, so the signal would
+    // stay stuck true and onFocusChange(false) never run — reset it here on teardown.
+    if (hasFocusSignal.value) {
+      hasFocusSignal.value = false
+      onFocusChange(false)
+    }
   })
 }
