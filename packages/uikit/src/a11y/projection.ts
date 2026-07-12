@@ -113,6 +113,11 @@ export function setupA11yProjection(
 ): () => void {
   const root = rootComponent.root.peek()
   const lastRects = new WeakMap<HTMLElement, A11yScreenRect>()
+  // Every component this projection has classified — its focus-skip is projection-OWNED, so ownership
+  // outlives any single element incarnation. Reset on dispose even for components whose role was since
+  // removed (no longer in the members map), and NOT on mere element teardown (which would briefly
+  // un-skip a still-offscreen panel across a role remove+re-add) (codex P3-round3 #4).
+  const touched = new Set<Component>()
   // Screen-space roots (Fullscreen) are always visible|hidden — skip the per-frame frustum/occlusion
   // classify entirely so the Mode 1/2 cost floor is unchanged; world-space roots run the full policy.
   // (cast through unknown: Fullscreen's private fields make the direct instanceof narrowing a TS2367.)
@@ -143,6 +148,7 @@ export function setupA11yProjection(
       height: canvasRect.height,
     }
     for (const [component, element] of members) {
+      touched.add(component)
       // Not laid out yet → hide; a null globalPanelMatrix would otherwise place it at the root origin.
       if (component.globalPanelMatrix.peek() == null) {
         resetA11yVisibilityState(component, element)
@@ -170,8 +176,17 @@ export function setupA11yProjection(
 
   return () => {
     root.onFrameEndSet.delete(onFrame)
-    // Clear any visibility-policy state we imposed, so a Mode-1 DOM fallback (no projection) is
-    // tabbable again and no stale aria-hidden/tabIndex -1 survives teardown (codex P3 #3).
+    // Reset focus-skip on EVERY component this projection ever classified — including ones whose role
+    // was since removed and so are no longer members — so no stale tabIndex -1 outlives the projection
+    // (codex P3 #3 / round3 #4). Projection ownership outlives individual element incarnations.
+    for (const component of touched) {
+      const focusSkip = a11yFocusSkipSignal(component)
+      if (focusSkip.value) {
+        focusSkip.value = false
+      }
+    }
+    // Restore projection-owned aria + inline styles on the elements that still exist, so a Mode-1 DOM
+    // fallback (no projection) is tabbable again and no stale aria-hidden / visibility:hidden survives.
     const members = getRootA11yMembers(root)
     if (members != null) {
       for (const [component, element] of members) {

@@ -300,6 +300,55 @@ describe('setFocus — DOM mirror and echo-loop safety', () => {
     expect(b.hasFocus.value).toBe(false)
   })
 
+  it('a re-entrant setFocus from a blur callback delivers no STALE onFocusChange(true) (codex P3-round3 #1)', () => {
+    const { root, a, b, c } = makeScene()
+    const manager = makeManager(root)
+    const bEvents: Array<boolean> = []
+    b.setProperties({ onFocusChange: (f) => bEvents.push(f) })
+    // When A loses focus during A→B, it redirects to C. B is set focused for an instant, but the
+    // redirect moves focus on to C before B's queued onFocusChange(true) would fire — that queued
+    // notification must be coalesced away, not delivered for a control that is no longer focused.
+    a.setProperties({
+      onFocusChange: (f) => {
+        if (!f) {
+          manager.setFocus(c)
+        }
+      },
+    })
+    root.update(16)
+
+    manager.setFocus(a)
+    bEvents.length = 0 // ignore the setFocus(a) step
+    manager.setFocus(b)
+
+    expect(manager.focused.value).toBe(c)
+    expect(c.hasFocus.value).toBe(true)
+    expect(b.hasFocus.value).toBe(false)
+    expect(bEvents).not.toContain(true) // B never settled as focus → no onFocusChange(true)
+  })
+
+  it('dispose rejects a setFocus re-entered from a blur callback — nothing left focused (codex P3-round3 #2)', () => {
+    const { root, a, b } = makeScene()
+    const manager = makeManager(root)
+    // A's blur handler tries to grab focus for B during teardown; disposal must refuse it, or B would
+    // be left focused on a manager whose focusin listener is already gone.
+    a.setProperties({
+      onFocusChange: (f) => {
+        if (!f) {
+          manager.setFocus(b)
+        }
+      },
+    })
+    root.update(16)
+    manager.setFocus(a)
+
+    manager.dispose()
+
+    expect(a.hasFocus.value).toBe(false)
+    expect(b.hasFocus.value).toBe(false) // the re-entrant setFocus(b) was rejected
+    expect(manager.focused.value).toBeUndefined()
+  })
+
   it('skips the DOM mirror inside an XR session', () => {
     const { root, a } = makeScene()
     const manager = makeManager(root, { isXRSession: () => true })

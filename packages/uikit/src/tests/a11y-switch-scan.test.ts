@@ -153,6 +153,54 @@ describe('auto-advance', () => {
     expect(manager.focused.value).toBe(c) // C is NOT skipped
     expect(scan.running).toBe(false) // lap complete once B and C (the survivors) are covered
   })
+
+  it('does not end the lap on a refused advance (no movement is not a wrap) (codex P3-round3 #3)', () => {
+    vi.useFakeTimers()
+    // Stub manager over A,B,C where the B→C advance is REFUSED once (focused stays B), as if the
+    // target's visibility changed between enumeration and setFocus. A "no movement means wrap" rule
+    // would stop the non-looping scan at B, skipping C; the fix retries and reaches C.
+    const A = {}
+    const B = {}
+    const C = {}
+    const order = [A, B, C]
+    const focusables = { value: order }
+    const focused: { value: unknown } = { value: undefined }
+    let refuseOnce = true
+    const stub = {
+      focusables,
+      focused,
+      focusFirst() {
+        focused.value = order[0]
+      },
+      focusNext() {
+        const next = order[(order.indexOf(focused.value) + 1) % order.length]
+        if (next === C && refuseOnce) {
+          refuseOnce = false // refuse the B→C advance exactly once
+          return
+        }
+        focused.value = next
+      },
+      activateFocused() {},
+    }
+    const scan = track(
+      createSwitchScan(stub as unknown as A11yFocusManager, {
+        autoStart: true,
+        intervalMs: 1000,
+        loop: false,
+      })
+    )
+
+    vi.advanceTimersByTime(1000)
+    expect(focused.value).toBe(A)
+    vi.advanceTimersByTime(1000)
+    expect(focused.value).toBe(B)
+    vi.advanceTimersByTime(1000) // B→C refused: focus stays B, but this is NOT a completed lap
+    expect(focused.value).toBe(B)
+    expect(scan.running).toBe(true)
+    vi.advanceTimersByTime(1000) // retry lands C, the last item → lap completes
+    expect(focused.value).toBe(C)
+    expect(scan.running).toBe(false)
+  })
 })
 
 describe('switchPress', () => {

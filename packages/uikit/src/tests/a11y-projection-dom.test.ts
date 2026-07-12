@@ -299,18 +299,42 @@ describe('setupA11yProjection — visibility teardown (codex P3 #3)', () => {
     c.update(0)
     expect(c.a11yElement!.tabIndex).toBe(-1)
 
-    // Remove the role → the hidden element is torn down while focus-skip is still set. The reset must
-    // happen at teardown, because the projection's own dispose loop only sees CURRENTLY-registered
-    // members and would miss this now-role-less component.
+    // Remove the role → the hidden element is torn down while focus-skip is still set. The projection
+    // TRACKED this component when it skipped it, so even though it is no longer a member, disposal
+    // still resets its focus-skip — ownership outlives the element incarnation.
     c.setProperties({ role: undefined })
     c.update(0)
     expect(c.a11yElement).toBeUndefined()
     dispose()
 
-    // Re-add the role (no projection now) → a FRESH element with the default tabIndex 0, not a stale -1.
+    // Re-add the role (projection gone) → a FRESH element with the default tabIndex 0, not a stale -1.
     c.setProperties({ role: 'button', ariaLabel: 'Go' })
     c.update(0)
     expect(c.a11yElement!.tabIndex).toBe(0)
+    c.dispose()
+  })
+
+  it('keeps focus-skip across a role remove+re-add while the projection is STILL active (codex P3-round3 #4)', () => {
+    const c = mountAt(
+      { width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' },
+      [20, 0, 0]
+    )
+    const dispose = setupA11yProjection(c, {
+      camera: facingCamera(),
+      renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }),
+    })
+    c.update(0)
+    expect(c.a11yElement!.tabIndex).toBe(-1)
+
+    // Remove then re-add the role WITHOUT disposing the projection or pumping a frame in between: the
+    // projection still owns the skip, so the fresh element must NOT be momentarily tabbable — resetting
+    // focus-skip on element teardown would open exactly that Tab-reachable window.
+    c.setProperties({ role: undefined })
+    c.update(0)
+    c.setProperties({ role: 'button', ariaLabel: 'Go' })
+    expect(c.a11yElement!.tabIndex).toBe(-1)
+
+    dispose()
     c.dispose()
   })
 })

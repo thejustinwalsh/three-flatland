@@ -267,11 +267,16 @@ export class A11yFocusManager {
     if (this.disposed) {
       return
     }
+    // Enter the disposed state BEFORE clearing focus. Clearing fires a blur onFocusChange outside the
+    // latch, and a setFocus re-entered from there must be rejected — otherwise it would re-focus a
+    // component on a manager whose focusin listener is already gone (codex P3-round3 #2). The clear
+    // itself goes through applyFocus directly, which — unlike public setFocus — is not gated on
+    // `disposed`, so disposal can still release the current focus.
+    this.disposed = true
     if (typeof document !== 'undefined') {
       document.removeEventListener('focusin', this.onDomFocusIn)
     }
-    this.setFocus(undefined)
-    this.disposed = true
+    this.applyFocus(undefined)
     this.lastOrder = undefined
     if (managers.get(this.rootContext) === this) {
       managers.delete(this.rootContext)
@@ -328,12 +333,10 @@ export class A11yFocusManager {
     // App callbacks fire ONLY after focus state is fully committed and the latch is released, so a
     // callback sees manager.focused === component, activateFocused() hits the right control, and a
     // re-entrant setFocus/dispose is honored rather than dropped mid-transition (codex P3-round2 #2).
-    if (toBlur != null) {
-      toBlur.properties.peek().onFocusChange?.(false)
-    }
-    if (toFocus != null) {
-      toFocus.properties.peek().onFocusChange?.(true)
-    }
+    // Each fire is re-checked against the LIVE hasFocus so a re-entrant transition that already moved
+    // focus on cannot deliver a now-stale notification (codex P3-round3 #1).
+    this.notifyFocusChange(toBlur, false)
+    this.notifyFocusChange(toFocus, true)
   }
 
   /** Align manager state to a DOM focus the platform already moved — signals only, no element.focus(). */
@@ -356,14 +359,22 @@ export class A11yFocusManager {
     } finally {
       this.isApplying = false
     }
-    // Callbacks after commit + latch release (codex P3-round2 #2). In the common Tab path both guards
-    // are already false — setupUpdateHasFocus fired onFocusChange off the native focus/blur events —
-    // so this only fires for the rare adopt where hasFocus was not already toggled by a DOM event.
-    if (toBlur != null) {
-      toBlur.properties.peek().onFocusChange?.(false)
-    }
-    if (toFocus != null) {
-      toFocus.properties.peek().onFocusChange?.(true)
+    // Callbacks after commit + latch release (codex P3-round2 #2), each re-checked against live
+    // hasFocus (codex P3-round3 #1). In the common Tab path both guards are already false —
+    // setupUpdateHasFocus fired onFocusChange off the native focus/blur events — so this only fires
+    // for the rare adopt where hasFocus was not already toggled by a DOM event.
+    this.notifyFocusChange(toBlur, false)
+    this.notifyFocusChange(toFocus, true)
+  }
+
+  /**
+   * Deliver one onFocusChange, but ONLY if the component's live hasFocus still matches what we are
+   * about to report. Callbacks fire outside the latch, so a re-entrant transition may have already
+   * moved focus on; re-checking here coalesces the now-stale notification away (codex P3-round3 #1).
+   */
+  private notifyFocusChange(component: Component | undefined, focused: boolean): void {
+    if (component != null && component.hasFocus.peek() === focused) {
+      component.properties.peek().onFocusChange?.(focused)
     }
   }
 

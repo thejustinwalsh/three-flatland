@@ -347,12 +347,6 @@ export function setupComponentA11y(component: Component, abortSignal: AbortSigna
       if (component.a11yElement === element) {
         component.a11yElement = undefined
       }
-      // Reset any projection-imposed focus-skip when the element goes away, so a later role re-add
-      // builds a fresh Mode-1 element without inheriting a stale tabIndex -1 (codex P3-round2 #6).
-      const focusSkip = focusSkipSignals.get(component)
-      if (focusSkip != null && focusSkip.value) {
-        focusSkip.value = false
-      }
       releaseRootContainer(root)
     }
   }, abortSignal)

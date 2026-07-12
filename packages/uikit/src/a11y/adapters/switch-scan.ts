@@ -118,19 +118,30 @@ export function createSwitchScan(
     }
     if (freshLap) {
       manager.focusFirst()
-      visited = new Set()
       const landed = manager.focused.value
-      if (landed != null) {
-        visited.add(landed)
+      if (landed == null) {
+        return // focusFirst refused — retry as a fresh lap next tick, do not start counting.
       }
+      visited = new Set([landed])
       freshLap = false
       completeLapIfCovered()
       return
     }
+    const before = manager.focused.value
     manager.focusNext()
     const landed = manager.focused.value
-    // A wrap re-lands on an already-scanned control (or focus went nowhere) → the lap is complete.
-    if (landed == null || visited.has(landed)) {
+    if (landed == null) {
+      return // focus went nowhere (everything refused) → wait, do NOT end the lap.
+    }
+    if (landed === before) {
+      // No movement is a REFUSED advance, not a wrap — do not treat it as a completed lap (codex
+      // P3-round3 #3). Complete only if the set has shrunk to already-visited members; otherwise retry
+      // next tick. (The sole-focusable case already completed via completeLapIfCovered on its landing.)
+      completeLapIfCovered()
+      return
+    }
+    if (visited.has(landed)) {
+      // MOVED onto an already-scanned control → a genuine wrap → the lap is complete.
       completeLap()
       return
     }
