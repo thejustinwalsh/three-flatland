@@ -1,8 +1,26 @@
+import { signal, type Signal } from '@preact/signals-core'
 import { abortableEffect } from '../utils.js'
 import { parseNumberValue } from '../properties/values.js'
 import type { Component } from '../components/component.js'
 import type { RootContext } from '../context.js'
 import { setupUpdateHasFocus } from './focus.js'
+
+// ——— per-component focus-skip flag (Mode 3 visibility policy) ———
+// setupA11yProjection classifies each element's perceivability per frame and toggles this when a
+// panel is offscreen/occluded/behind/too-small; setupRoleState's tabIndex effect reads it so a
+// non-perceivable panel is skipped by sequential focus (tabIndex -1) without setupRoleState and the
+// projection fighting over tabIndex. Screen-space roots never set it (always perceivable).
+const focusSkipSignals = /* @__PURE__ */ new WeakMap<Component, Signal<boolean>>()
+
+/** The component's focus-skip signal (lazily created); read by setupRoleState, written by projection. */
+export function a11yFocusSkipSignal(component: Component): Signal<boolean> {
+  let existing = focusSkipSignals.get(component)
+  if (existing == null) {
+    existing = signal(false)
+    focusSkipSignals.set(component, existing)
+  }
+  return existing
+}
 
 export type A11yRole =
   | 'button'
@@ -341,6 +359,7 @@ function setupRoleState(
   abortSignal: AbortSignal
 ): void {
   const properties = component.properties
+  const focusSkip = a11yFocusSkipSignal(component)
   const nativeFormEl =
     element instanceof HTMLButtonElement || element instanceof HTMLInputElement
       ? element
@@ -349,13 +368,16 @@ function setupRoleState(
   abortableEffect(() => {
     const disabled = properties.value.disabled === true
     const tabIndexProp = properties.value.tabIndex
-    element.tabIndex = disabled
-      ? -1
-      : tabIndexProp != null
-        ? parseNumberValue(tabIndexProp)
-        : role === 'content'
-          ? -1
-          : 0
+    // focusSkip (a not-perceivable panel, Mode 3) forces -1 the same way disabled does — the visibility
+    // policy skips it in sequential focus while it stays in the accessibility tree.
+    element.tabIndex =
+      disabled || focusSkip.value
+        ? -1
+        : tabIndexProp != null
+          ? parseNumberValue(tabIndexProp)
+          : role === 'content'
+            ? -1
+            : 0
   }, abortSignal)
 
   abortableEffect(() => {

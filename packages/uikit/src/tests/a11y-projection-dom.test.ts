@@ -155,3 +155,69 @@ describe('setupA11yProjection', () => {
     expect(getRootA11yMembers(root)?.has(c) ?? false).toBe(false)
   })
 })
+
+/** Root-attaches a world-space Container under a wrapper at a given world position (Mode 3). */
+function mountAt(
+  properties: ConstructorParameters<typeof Container>[0],
+  position: [number, number, number]
+): Container {
+  const container = new Container(properties)
+  const wrapper = new Object3D()
+  wrapper.position.set(...position)
+  wrapper.add(container)
+  wrapper.updateMatrixWorld(true)
+  return container
+}
+
+describe('setupA11yProjection — Mode 3 visibility policy', () => {
+  const viewportRenderer = () => fakeRenderer({ left: 0, top: 0, width: 100, height: 100 })
+
+  it('a visible world-space panel stays focusable and not aria-hidden', () => {
+    const c = mount({ width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' })
+    const dispose = setupA11yProjection(c, { camera: facingCamera(), renderer: viewportRenderer() })
+    try {
+      c.update(0)
+      const el = c.a11yElement!
+      expect(el.hasAttribute('aria-hidden')).toBe(false)
+      expect(el.tabIndex).toBe(0)
+      expect(el.style.visibility).not.toBe('hidden')
+    } finally {
+      dispose()
+      c.dispose()
+    }
+  })
+
+  it('a panel far off to the side → offscreen: skipped by Tab (tabIndex -1) but still exposed', () => {
+    const c = mountAt(
+      { width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' },
+      [20, 0, 0]
+    )
+    const dispose = setupA11yProjection(c, { camera: facingCamera(), renderer: viewportRenderer() })
+    try {
+      c.update(0)
+      const el = c.a11yElement!
+      expect(el.hasAttribute('aria-hidden')).toBe(false)
+      expect(el.tabIndex).toBe(-1)
+    } finally {
+      dispose()
+      c.dispose()
+    }
+  })
+
+  it('a panel behind the camera → aria-hidden and hidden (not perceivable)', () => {
+    const c = mountAt(
+      { width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' },
+      [0, 0, 10]
+    )
+    const dispose = setupA11yProjection(c, { camera: facingCamera(), renderer: viewportRenderer() })
+    try {
+      c.update(0)
+      const el = c.a11yElement!
+      expect(el.getAttribute('aria-hidden')).toBe('true')
+      expect(el.style.visibility).toBe('hidden')
+    } finally {
+      dispose()
+      c.dispose()
+    }
+  })
+})

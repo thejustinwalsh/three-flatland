@@ -1,7 +1,9 @@
 import { Vector3 } from 'three'
 import type { Camera, Matrix4 } from 'three'
 import type { Component } from '../components/component.js'
-import { getRootA11yContainer, getRootA11yMembers } from './hidden-element.js'
+import { Fullscreen } from '../components/fullscreen.js'
+import { a11yFocusSkipSignal, getRootA11yContainer, getRootA11yMembers } from './hidden-element.js'
+import { classifyA11yVisibility, type A11yVisibility } from './visibility.js'
 
 /** Axis-aligned bounding rect of a projected panel, in canvas-local CSS px. */
 export interface A11yScreenRect {
@@ -89,6 +91,13 @@ export interface A11yProjectionOptions {
   camera: Camera
   /** Only `domElement` is read (for its on-page rect) — accepts a full three renderer. */
   renderer: { domElement: HTMLElement }
+  /**
+   * Opt-in occlusion hook (Mode 3): return false when another mesh covers the panel, so it's
+   * treated as not-perceivable. See `createRaycastOcclusionProbe`. Ignored for screen-space roots.
+   */
+  occlusionProbe?: (component: Component) => boolean
+  /** Below this projected px size a panel is `too-small` (aria-hidden). Default 8. */
+  minPerceivableSize?: number
 }
 
 /**
@@ -100,10 +109,15 @@ export interface A11yProjectionOptions {
  */
 export function setupA11yProjection(
   rootComponent: Component,
-  { camera, renderer }: A11yProjectionOptions
+  { camera, renderer, occlusionProbe, minPerceivableSize }: A11yProjectionOptions
 ): () => void {
   const root = rootComponent.root.peek()
   const lastRects = new WeakMap<HTMLElement, A11yScreenRect>()
+  // Screen-space roots (Fullscreen) are always visible|hidden — skip the per-frame frustum/occlusion
+  // classify entirely so the Mode 1/2 cost floor is unchanged; world-space roots run the full policy.
+  // (cast through unknown: Fullscreen's private fields make the direct instanceof narrowing a TS2367.)
+  const isScreenSpace = (rootComponent as unknown) instanceof Fullscreen
+  const visibilityOptions = { occlusionProbe, minPerceivableSize }
 
   const onFrame = (): void => {
     const members = getRootA11yMembers(root)
@@ -129,16 +143,22 @@ export function setupA11yProjection(
       height: canvasRect.height,
     }
     for (const [component, element] of members) {
-      // A clipped/hidden/not-yet-laid-out panel must not be projected — hide its element instead of
-      // stranding it (a missing globalPanelMatrix would otherwise place it at the root origin).
-      if (!component.isVisible.peek() || component.globalPanelMatrix.peek() == null) {
+      // Not laid out yet → hide; a null globalPanelMatrix would otherwise place it at the root origin.
+      if (component.globalPanelMatrix.peek() == null) {
         applyRect(element, null, lastRects)
         continue
       }
-      if (component !== rootComponent) {
-        component.updateWorldMatrix(false, false)
+      let visibility: A11yVisibility
+      if (isScreenSpace) {
+        if (component !== rootComponent) {
+          component.updateWorldMatrix(false, false)
+        }
+        visibility = component.isVisible.peek() ? 'visible' : 'hidden'
+      } else {
+        // classifyA11yVisibility refreshes the component's world matrix internally.
+        visibility = classifyA11yVisibility(component, camera, viewport, visibilityOptions)
       }
-      applyRect(element, computeA11yScreenRect(component.matrixWorld, camera, viewport), lastRects)
+      applyVisibilityPolicy(component, element, visibility, camera, viewport, lastRects)
     }
   }
 
@@ -185,4 +205,43 @@ function applyRect(
   element.style.transform = `translate(${rect.x}px, ${rect.y}px)`
   element.style.width = `${rect.w}px`
   element.style.height = `${rect.h}px`
+}
+
+/**
+ * Apply the Mode-3 visibility policy (spec §4.1) to one element:
+ * - `visible` → in the a11y tree, focusable, positioned over the panel.
+ * - `offscreen` / `occluded` → still in the tree (exposed to AT) but SKIPPED by sequential focus
+ *   (tabIndex -1 via the component's focus-skip signal); positioned at its off-screen/covered rect.
+ * - `behind-camera` / `too-small` → `aria-hidden` and hidden (not perceivable).
+ * - `hidden` → hidden, out of the tree (the Phase-0 off-frustum behaviour).
+ */
+function applyVisibilityPolicy(
+  component: Component,
+  element: HTMLElement,
+  visibility: A11yVisibility,
+  camera: Camera,
+  viewport: A11yViewport,
+  lastRects: WeakMap<HTMLElement, A11yScreenRect>
+): void {
+  const focusSkip = a11yFocusSkipSignal(component)
+  if (visibility === 'hidden' || visibility === 'behind-camera' || visibility === 'too-small') {
+    if (visibility === 'hidden') {
+      element.removeAttribute('aria-hidden')
+    } else if (element.getAttribute('aria-hidden') !== 'true') {
+      element.setAttribute('aria-hidden', 'true')
+    }
+    if (focusSkip.value) {
+      focusSkip.value = false
+    }
+    applyRect(element, null, lastRects)
+    return
+  }
+  if (element.hasAttribute('aria-hidden')) {
+    element.removeAttribute('aria-hidden')
+  }
+  const shouldSkip = visibility !== 'visible'
+  if (focusSkip.value !== shouldSkip) {
+    focusSkip.value = shouldSkip
+  }
+  applyRect(element, computeA11yScreenRect(component.matrixWorld, camera, viewport), lastRects)
 }
