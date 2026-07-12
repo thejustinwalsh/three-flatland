@@ -56,28 +56,6 @@ export function setupHtmlInputElement(
   abortableEffect(() => element.setAttribute('type', properties.value.type), abortSignal)
 }
 
-export function setupUpdateHasFocus(
-  element: HTMLElement,
-  hasFocusSignal: Signal<boolean>,
-  onFocusChange: (focus: boolean) => void,
-  abortSignal: AbortSignal
-) {
-  if (abortSignal.aborted) {
-    return
-  }
-  hasFocusSignal.value = document.activeElement === element
-  const listener = () => {
-    const hasFocus = document.activeElement === element
-    if (hasFocus == hasFocusSignal.value) {
-      return
-    }
-    hasFocusSignal.value = hasFocus
-    onFocusChange(hasFocus)
-  }
-  element.addEventListener('focus', listener)
-  element.addEventListener('blur', listener)
-  abortSignal.addEventListener('abort', () => {
-    element.removeEventListener('focus', listener)
-    element.removeEventListener('blur', listener)
-  })
-}
+// Moved to a11y/focus.ts so every component's hidden a11y element (not just Input) can drive
+// `hasFocus`; re-exported here so existing importers keep working.
+export { setupUpdateHasFocus } from '../../a11y/focus.js'
