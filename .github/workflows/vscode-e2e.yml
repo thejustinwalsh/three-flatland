@@ -93,8 +93,32 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pulseaudio
           pulseaudio -D --exit-idle-time=-1 --disallow-exit
+          # `-D` forks and returns as soon as the daemon PROCESS exists, not
+          # once it's actually ready to accept connections -- racing pactl
+          # (here) or the real sidecar's first AudioContext open (later, in
+          # the actual e2e run) against that startup window is the
+          # documented source of intermittent stats.silent/stats.peak
+          # failures under a loaded runner (tools/audio-play/CLAUDE.md,
+          # "Common pitfalls" -- "PulseAudio null sink is not perfectly
+          # reliable under CI load"). Poll for real readiness instead of
+          # assuming the fork already means ready.
+          for i in $(seq 1 30); do
+            pactl info >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          pactl info >/dev/null 2>&1 || { echo "::error::pulseaudio did not become ready within 15s"; exit 1; }
           pactl load-module module-null-sink sink_name=DummyOutput
           pactl set-default-sink DummyOutput
+          # Same readiness concern one level down: the null sink module was
+          # just requested, not necessarily fully attached and routable the
+          # instant `load-module` returns. Confirm it's actually the
+          # default sink and enumerable before trusting ALSA's `pulse`
+          # plugin can open it.
+          for i in $(seq 1 20); do
+            pactl get-default-sink 2>/dev/null | grep -q DummyOutput && break
+            sleep 0.25
+          done
+          pactl get-default-sink 2>/dev/null | grep -q DummyOutput || { echo "::error::DummyOutput sink did not become the default sink in time"; exit 1; }
 
       # xvfb ships preinstalled on the ubuntu-latest runner image — this is
       # the same minimal invocation as microsoft/vscode-test's own sample CI

@@ -109,7 +109,13 @@ jobs:
   fro-bot:
     name: Fro Bot
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 30m was tuned for a normal-sized PR. This job's own PR_REVIEW_PROMPT
+    # requires running pnpm build (observed 20-25m alone on this repo's
+    # regular CI for a large PR) plus typecheck/test/smoke on top of the
+    # actual AI review reasoning — 30m leaves no real room once build alone
+    # eats most of it. Bumped for large-diff PRs; revisit if it becomes the
+    # norm rather than the exception.
+    timeout-minutes: 60
     if: >-
       (
         github.event.pull_request == null ||
