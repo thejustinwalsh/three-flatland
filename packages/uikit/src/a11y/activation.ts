@@ -1,4 +1,8 @@
+import { Vector3 } from 'three'
 import type { Intersection } from 'three'
+import type { Component } from '../components/component.js'
+import type { ThreeMouseEvent } from '../events.js'
+import { announce } from './announce/announcer.js'
 
 /**
  * The modality that triggered an activation. The cross-mode truth: pointer clicks delegate TO
@@ -28,4 +32,44 @@ export type A11yActivationEvent = {
   intersection?: Intersection
   handedness?: 'left' | 'right' | 'none'
   stopPropagation?: () => void
+}
+
+const activationPoint = /* @__PURE__ */ new Vector3()
+const noop = (): void => {}
+
+/**
+ * Dispatch a semantic activation on a component (spec §2). Fires `'activate'` through the existing
+ * handler chain — so `onActivate` from props / classes / star props / kit `defaultOverrides` all
+ * run via the exact computedHandlers → addEventListener path already in component.ts — then a
+ * compat synthetic `'click'` (marked `synthetic` so onClick-only code keeps working for keyboard/AT
+ * activation, skipped for real pointer clicks that already ran), then announces the activation /
+ * deactivation message chosen by the current toggle state.
+ */
+export function dispatchActivation(component: Component, event: A11yActivationEvent): void {
+  const properties = component.properties.value
+  if (properties.disabled === true) {
+    return
+  }
+
+  component.dispatchEvent({ type: 'activate', ...event })
+
+  if (event.source !== 'pointer') {
+    component.getWorldPosition(activationPoint)
+    const click: ThreeMouseEvent = {
+      distance: 0,
+      point: activationPoint.clone(),
+      object: component,
+      synthetic: true,
+      source: event.source,
+      nativeEvent: event.nativeEvent,
+      stopPropagation: event.stopPropagation ?? noop,
+    }
+    component.dispatchEvent({ type: 'click', ...click })
+  }
+
+  const wasToggled = properties.ariaChecked ?? properties.ariaPressed
+  const message = wasToggled ? properties.deactivationMessage : properties.activationMessage
+  if (typeof message === 'string' && message.length > 0) {
+    announce(message, { source: component, kind: 'activation' })
+  }
 }

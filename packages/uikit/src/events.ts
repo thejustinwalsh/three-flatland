@@ -1,5 +1,5 @@
 import type { Intersection, Object3DEventMap } from 'three'
-import type { A11yActivationEvent } from './a11y/activation.js'
+import type { A11yActivationEvent, A11yActivationSource } from './a11y/activation.js'
 
 declare module 'three' {
   interface Object3DEventMap {
@@ -27,6 +27,11 @@ export type ThreeMouseEvent = Intersection & {
   nativeEvent?: unknown
   stopPropagation?: () => void
   stopImmediatePropagation?: () => void
+  /** Set when a11y activation synthesized this click (keyboard / AT / XR). Geometry-sensitive
+   *  onClick handlers should ignore synthetic clicks, and the base Component's pointer delegation
+   *  skips them to avoid re-entrancy. */
+  synthetic?: boolean
+  source?: A11yActivationSource
 }
 
 export type ThreePointerEvent = ThreeMouseEvent & { pointerId?: number }
