@@ -4,6 +4,7 @@ import { signal } from '@preact/signals-core'
 import { Object3D } from 'three'
 import { loadYoga } from 'yoga-layout/load'
 import { Container, Input } from '../index.js'
+import { registerAnnouncementBackend } from '../a11y/announce/announcer.js'
 
 /**
  * The semantic activation contract (spec §2), the load-bearing cross-mode path. Regression cover for
@@ -113,6 +114,28 @@ describe('semantic activation', () => {
       // onActivate ran and disabled the control mid-activation → the compat click is suppressed.
       expect(calls).toEqual(['activate'])
     } finally {
+      c.dispose()
+    }
+  })
+
+  it('still announces (and does not throw out of activate) when a legacy onClick throws', () => {
+    // Regression from the live probe: navigator.clipboard.writeText threw on an insecure origin
+    // inside the compat synthetic click, which aborted dispatchActivation before the announcement.
+    const announced: Array<string> = []
+    const unregister = registerAnnouncementBackend({ announce: (a) => announced.push(a.message) })
+    const c = mount({
+      role: 'button',
+      ariaLabel: 'Copy',
+      activationMessage: 'Copied 3 items',
+      onClick: () => {
+        throw new Error('boom')
+      },
+    })
+    try {
+      expect(() => c.activate()).not.toThrow()
+      expect(announced).toContain('Copied 3 items')
+    } finally {
+      unregister()
       c.dispose()
     }
   })
