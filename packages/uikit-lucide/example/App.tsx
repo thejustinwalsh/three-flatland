@@ -1,14 +1,15 @@
 import { Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ComponentType } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber/webgpu'
+import { Canvas, useFrame, useThree } from '@react-three/fiber/webgpu'
+import { Inspector } from 'three/addons/inspector/Inspector.js'
 import {
   Fullscreen,
   Container,
+  Svg,
   Text,
   canvasInputProps,
+  installIconAtlas,
   setPreferredColorScheme,
 } from '@three-flatland/uikit/react'
-import type { SvgProperties } from '@three-flatland/uikit/react'
 import type { Container as VanillaContainer } from '@three-flatland/uikit'
 import { colors, Button, Input } from '@three-flatland/uikit-default/react'
 import * as LucideIcons from '@three-flatland/uikit-lucide/react'
@@ -21,21 +22,23 @@ import iconTags from './icon-tags.json'
 // ============================================================================
 // uikit-lucide icon browser — the showcase for `@three-flatland/uikit-lucide`.
 //
-// Every lucide icon (1594 of them) is enumerated FROM SOURCE by
-// `generate-icon-list.mts` (reads `../icons/*.svg` basenames → `icon-names.json`,
-// plus `icon-tags.json` from lucide-static) and resolved to its component at
-// runtime via `pascal()` — the exact kebab→PascalCase transform the package's own
-// `scripts/generate.ts` uses, so coverage is total. No baked atlas: icons are
-// live-parsed by `@three-flatland/slug`, and every rendered `Svg` batches into the
-// SAME shared `SlugShapeSet` (one `InstancedShapeMesh`, ~1 draw call).
+// Every lucide icon (1594) is enumerated FROM SOURCE by `generate-icon-list.mts`
+// (reads `../icons/*.svg` basenames → `icon-names.json`, plus `icon-tags.json`
+// from lucide-static). The browser ships its OWN baked atlas of all of them
+// (`public/lucide.shapes.glb`, produced from `lucide.icons.manifest.json` via
+// `uikit-bake icons --manifest`), installed BEFORE the grid mounts — so every tile
+// is a zero-parse baked lookup and all icons batch into ONE `InstancedShapeMesh`.
 //
-// The grid is VIRTUALIZED — only the rows in (or just around) the scroll viewport
-// are rendered, so all 1594 matches scroll smoothly while only a viewport's worth
-// of icons ever instance. Search matches by NAME or TAG.
+// The grid is VIRTUALIZED + RECYCLED: a pool of `windowRows × columns` cells, each
+// filtered index binding to slot `index % poolSize`, so sliding one row rebinds
+// only that row (offscreen, in the overscan buffer) — the uikit Container AND its
+// `<Svg>` are reused (the `icon` prop just re-resolves), no unmount/remount churn.
+// Search matches by NAME or TAG.
 //
 // Flow: search → select → Copy manifest → `uikit-bake icons --manifest <file>`.
-// The browser's OUTPUT is an `IconBakeManifest` (see packages/uikit/src/cli.ts)
-// for the user to bake their own trimmed atlas — it does not ship one.
+// The browser's OUTPUT is that `IconBakeManifest` (see packages/uikit/src/cli.ts)
+// for a consumer to bake their own trimmed atlas; the browser itself ships the
+// full one so scrolling all 1594 stays on the baked (parse-free) path.
 // ============================================================================
 
 const ALL_ICONS: string[] = iconNames
@@ -47,32 +50,27 @@ const HAYSTACKS: string[] = (() => {
   return ALL_ICONS.map((name) => `${name} ${(tagMap[name] ?? []).join(' ')}`.toLowerCase())
 })()
 
-/** Kebab basename → PascalCase export name. Mirrors uikit-lucide's own
- * `scripts/generate.ts` `getName`, so every entry resolves to a component. */
-function pascal(kebab: string): string {
-  return kebab[0]!.toUpperCase() + kebab.slice(1).replace(/-./g, (m) => m[1]!.toUpperCase())
-}
-
-/** The `/react` namespace, indexed dynamically by PascalCase name. */
-const iconRegistry = LucideIcons as unknown as Record<string, ComponentType<SvgProperties>>
-
-// Fixed chip geometry (uikit px) — a fixed cell makes the virtualization math
-// exact: columns derive from the measured viewport width, and every icon's
-// absolute position is a pure function of its filtered index.
-const CHIP_W = 104
-const CHIP_H = 96
+// Responsive chip geometry (uikit px): columns = as many MIN_CHIP_W cells as fit the measured
+// viewport (minus the gutter), then every cell stretches to divide the row evenly — no ragged
+// right edge, and it reflows to fewer/more columns as the window resizes. Height tracks width by
+// CHIP_ASPECT so tiles grow up/down proportionally. The live cell size rides in `win` so the
+// virtualization math and the rendered chips agree on the same stride.
+const MIN_CHIP_W = 104
+const CHIP_ASPECT = 96 / 104
 const GAP = 8
-const COL_STRIDE = CHIP_W + GAP
-const ROW_STRIDE = CHIP_H + GAP
-const OVERSCAN = 3
+const OVERSCAN = 5 // rows rendered beyond the viewport each side — recycled, so the icon-swap happens offscreen and scroll never pops
+const GUTTER = 18 // right gutter reserved so cells never slide under the scrollbar
 const CHIP_ICON_SIZE = 26
 const INITIAL_COLUMNS = 10
 
-/** The rendered slice: filtered indices [start, end) at `columns` per row. */
+/** The recycled window: `poolSize` cells covering filtered indices [start, start+poolSize),
+ *  one cell per pool slot (`index % poolSize`) so the same instances rebind as it slides. */
 interface Window {
   start: number
-  end: number
+  poolSize: number
   columns: number
+  cellW: number
+  cellH: number
 }
 
 /** Shape emitted to the clipboard — an `IconBakeManifest` (uikit CLI). */
@@ -88,21 +86,24 @@ const IconChip = memo(function IconChip({
   onToggle,
   top,
   left,
+  width,
+  height,
 }: {
   name: string
   selected: boolean
   onToggle: (name: string) => void
   top: number
   left: number
+  width: number
+  height: number
 }) {
-  const Icon = iconRegistry[pascal(name)]
   return (
     <Container
       positionType="absolute"
       positionTop={top}
       positionLeft={left}
-      width={CHIP_W}
-      height={CHIP_H}
+      width={width}
+      height={height}
       flexDirection="column"
       alignItems="center"
       justifyContent="center"
@@ -116,8 +117,11 @@ const IconChip = memo(function IconChip({
       cursor="pointer"
       onClick={() => onToggle(name)}
     >
-      {Icon ? (
-        <Icon
+      {name ? (
+        // A single reusable <Svg> whose `icon` prop changes as the pool slot rebinds — the
+        // uikit Svg re-resolves the baked shape reactively (no component swap, no GC churn).
+        <Svg
+          icon={name}
           width={CHIP_ICON_SIZE}
           height={CHIP_ICON_SIZE}
           color={selected ? colors.primary : colors.foreground}
@@ -137,19 +141,23 @@ const IconChip = memo(function IconChip({
 })
 
 /**
- * Our fork renders text through Slug (analytic Bézier glyphs) instead of an MSDF
- * atlas, so a font must be provided explicitly — without one every `<Text>` is
- * invisible. Mirrors the uikit-default example.
+ * Load the browser's assets in ONE suspense gate, before the grid ever mounts: first install
+ * the baked all-icons atlas as the shared shape set — so every `<Icon>` resolves baked-by-name
+ * (`icon: "settings"` → the packed shape), zero runtime parse, smooth scroll — THEN load the
+ * text font. Installing here, a single gate ahead of any `<Svg>`, is what guarantees the icons
+ * mount against the baked set (an already-mounted `Svg` keeps its old set). The ~4 MB GLB fetch
+ * + decode is covered by the LoadingSplash. Absolute base URL so the loader resolves it against
+ * the site root, not a module path.
  */
-function useSlugFont(url: string): SlugFont {
-  return suspend(
-    () => SlugFontLoader.load(url, { forceRuntime: true }),
-    [url, 'uikit-lucide-icon-browser-font']
-  )
+function useBrowserAssets(): SlugFont {
+  return suspend(async () => {
+    await installIconAtlas(`${import.meta.env.BASE_URL}lucide.shapes.glb`)
+    return SlugFontLoader.load('./Inter-Regular.ttf', { forceRuntime: true })
+  }, ['uikit-lucide-browser-assets'])
 }
 
 function IconBrowser() {
-  const font = useSlugFont('./Inter-Regular.ttf')
+  const font = useBrowserAssets()
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(() => new Set<string>())
   const [copyLabel, setCopyLabel] = useState('Copy manifest')
@@ -159,7 +167,13 @@ function IconBrowser() {
   // `scrollPosition` / `size` signals — we poll them in `useFrame` to drive
   // virtualization without a per-tick React render (see below).
   const scrollRef = useRef<VanillaContainer | null>(null)
-  const [win, setWin] = useState<Window>({ start: 0, end: INITIAL_COLUMNS * 12, columns: INITIAL_COLUMNS })
+  const [win, setWin] = useState<Window>({
+    start: 0,
+    poolSize: INITIAL_COLUMNS * 15,
+    columns: INITIAL_COLUMNS,
+    cellW: MIN_CHIP_W,
+    cellH: Math.round(MIN_CHIP_W * CHIP_ASPECT),
+  })
   const lastWin = useRef<Window>(win)
 
   const q = query.trim().toLowerCase()
@@ -173,8 +187,14 @@ function IconBrowser() {
   useEffect(() => {
     const c = scrollRef.current
     if (c) c.scrollPosition.value = [0, 0]
-    lastWin.current = { start: -1, end: -1, columns: 0 }
-    setWin((w) => ({ start: 0, end: w.columns * 12, columns: w.columns }))
+    lastWin.current = { start: -1, poolSize: 0, columns: 0, cellW: 0, cellH: 0 }
+    setWin((w) => ({
+      start: 0,
+      poolSize: w.poolSize,
+      columns: w.columns,
+      cellW: w.cellW,
+      cellH: w.cellH,
+    }))
   }, [q])
 
   // Poll scroll offset + viewport size every frame; recompute the visible row
@@ -187,16 +207,29 @@ function IconBrowser() {
     const size = c.size.value
     if (size == null) return
     const [w, h] = size
-    const columns = Math.max(1, Math.floor((w - GAP) / COL_STRIDE))
+    // usable row width = viewport minus the left GAP and the reserved right GUTTER
+    const availW = w - GAP - GUTTER
+    // as many MIN_CHIP_W cells (+ their gaps) as fit, then stretch each to divide it evenly
+    const columns = Math.max(1, Math.floor((availW + GAP) / (MIN_CHIP_W + GAP)))
+    const cellW = Math.max(MIN_CHIP_W, Math.floor((availW - (columns - 1) * GAP) / columns))
+    const cellH = Math.round(cellW * CHIP_ASPECT)
+    const rowStride = cellH + GAP
     const scrollY = c.scrollPosition.value?.[1] ?? 0
-    const firstRow = Math.max(0, Math.floor((scrollY - GAP) / ROW_STRIDE) - OVERSCAN)
-    const rowsInView = Math.ceil(h / ROW_STRIDE) + OVERSCAN * 2 + 1
+    const firstRow = Math.max(0, Math.floor((scrollY - GAP) / rowStride) - OVERSCAN)
+    const windowRows = Math.ceil(h / rowStride) + OVERSCAN * 2 + 1
+    // pool spans a whole number of rows so a one-row slide reuses the vacated slots (see render)
+    const poolSize = windowRows * columns
     const start = firstRow * columns
-    const end = (firstRow + rowsInView) * columns
     const prev = lastWin.current
-    if (prev.start !== start || prev.end !== end || prev.columns !== columns) {
-      lastWin.current = { start, end, columns }
-      setWin({ start, end, columns })
+    if (
+      prev.start !== start ||
+      prev.poolSize !== poolSize ||
+      prev.columns !== columns ||
+      prev.cellW !== cellW ||
+      prev.cellH !== cellH
+    ) {
+      lastWin.current = { start, poolSize, columns, cellW, cellH }
+      setWin({ start, poolSize, columns, cellW, cellH })
     }
   })
 
@@ -223,7 +256,7 @@ function IconBrowser() {
     const names = [...selected].sort((a, b) => a.localeCompare(b))
     if (names.length === 0) return
     const manifest: BakeManifest = {
-      out: 'icons.shapes.glb',
+      out: 'lucide.shapes.glb',
       sources: names.map((name) => ({
         path: `node_modules/@three-flatland/uikit-lucide/icons/${name}.svg`,
         name,
@@ -237,18 +270,29 @@ function IconBrowser() {
 
   const selectedCount = selected.size
   const columns = Math.max(1, win.columns)
+  const poolSize = Math.max(columns, win.poolSize)
+  const colStride = win.cellW + GAP
+  const rowStride = win.cellH + GAP
   const totalRows = Math.ceil(filtered.length / columns)
-  const contentHeight = GAP + totalRows * ROW_STRIDE
+  const contentHeight = GAP + totalRows * rowStride
 
-  // Materialize only the visible window; each chip's cell is a pure function of
-  // its filtered index, so positions stay stable as the window slides.
-  const slice: Array<{ name: string; top: number; left: number }> = []
-  const end = Math.min(win.end, filtered.length)
+  // RECYCLED pool: each filtered index i binds to pool slot `i % poolSize`. poolSize is a whole
+  // number of rows, so sliding the window one row lands the entering row on the SAME slots the
+  // leaving row vacated (i+poolSize ≡ i mod poolSize) — one row rebinds (offscreen, in the
+  // overscan buffer) and every other slot is memo-skipped. No unmount/remount churn: the uikit
+  // Container is reused and only its (baked, so cheap) icon swaps. Empty trailing slots park off.
+  const bySlot: Array<{ name: string; top: number; left: number } | null> = new Array(
+    poolSize
+  ).fill(null)
+  const end = Math.min(win.start + poolSize, filtered.length)
   for (let i = win.start; i < end; i++) {
-    const name = filtered[i]!
     const row = Math.floor(i / columns)
     const col = i % columns
-    slice.push({ name, top: GAP + row * ROW_STRIDE, left: GAP + col * COL_STRIDE })
+    bySlot[i % poolSize] = {
+      name: filtered[i]!,
+      top: GAP + row * rowStride,
+      left: GAP + col * colStride,
+    }
   }
 
   return (
@@ -259,17 +303,7 @@ function IconBrowser() {
       gap={16}
       fontFamilies={{ inter: { normal: font } }}
     >
-      <Container flexDirection="column" gap={4}>
-        <Text fontSize={20} fontWeight="bold" color={colors.foreground}>
-          uikit-lucide icon browser
-        </Text>
-        <Text fontSize={13} color={colors.mutedForeground}>
-          Search by name or tag, select icons, Copy manifest, then bake: uikit-bake icons
-          --manifest icons.json
-        </Text>
-      </Container>
-
-      <Container flexDirection="row" alignItems="center" gap={12}>
+      <Container flexDirection="row" alignItems="center" gap={12} marginBottom={8}>
         <Input
           flexGrow={1}
           placeholder="Search 1594 icons by name or tag…"
@@ -320,6 +354,9 @@ function IconBrowser() {
         borderWidth={1}
         borderColor={colors.border}
         backgroundColor={colors.card}
+        scrollbarColor={colors.mutedForeground}
+        scrollbarWidth={8}
+        scrollbarBorderRadius={4}
       >
         {filtered.length === 0 ? (
           <Container flexGrow={1} alignItems="center" justifyContent="center" padding={48}>
@@ -329,25 +366,23 @@ function IconBrowser() {
           // Full-height content sizer so the scrollbar spans ALL matches; the
           // visible slice is absolutely positioned at its true grid offset.
           <Container width="100%" height={contentHeight} flexShrink={0} positionType="relative">
-            {slice.map(({ name, top, left }) => (
+            {bySlot.map((cell, slot) => (
+              // Key by POOL SLOT (index % poolSize): the instance is reused as the window slides;
+              // only the row that changed rebinds. Empty trailing slots park offscreen.
               <IconChip
-                key={name}
-                name={name}
-                selected={selected.has(name)}
+                key={slot}
+                name={cell?.name ?? ''}
+                selected={cell != null && selected.has(cell.name)}
                 onToggle={toggle}
-                top={top}
-                left={left}
+                top={cell?.top ?? -9999}
+                left={cell?.left ?? -9999}
+                width={win.cellW}
+                height={win.cellH}
               />
             ))}
           </Container>
         )}
       </Container>
-
-      <Text fontSize={12} color={colors.mutedForeground}>
-        {filtered.length === ALL_ICONS.length
-          ? `All ${ALL_ICONS.length} icons — scroll to browse.`
-          : `${filtered.length} of ${ALL_ICONS.length} icons match “${query}” — scroll to browse.`}
-      </Text>
     </Fullscreen>
   )
 }
@@ -355,17 +390,104 @@ function IconBrowser() {
 // A deterministic dark tool surface regardless of the host color scheme.
 setPreferredColorScheme('dark')
 
-export default function App() {
+/** HTML loading splash (outside the Canvas): a bold "uikit" wordmark pulsing on near-black.
+ *  Fades out once the scene has drawn a few frames — covering the atlas fetch + first draw. */
+function LoadingSplash({ hidden }: { hidden: boolean }) {
   return (
-    // `canvasInputProps` stops the canvas pointer-down from blurring the hidden
-    // <input> the search `Input` types into. Native DPR keeps Slug text crisp.
-    <Canvas {...canvasInputProps} style={{ height: '100dvh', touchAction: 'none' }}>
-      <color attach="background" args={['black']} />
-      <ambientLight intensity={0.5} />
-      <directionalLight intensity={0} position={[5, 1, 10]} />
-      <Suspense fallback={null}>
-        <IconBrowser />
-      </Suspense>
-    </Canvas>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        display: 'grid',
+        placeItems: 'center',
+        background: '#0b0d11',
+        zIndex: 10,
+        pointerEvents: 'none',
+        opacity: hidden ? 0 : 1,
+        transition: 'opacity 500ms ease',
+      }}
+    >
+      <style>{`
+        @font-face {
+          font-family: 'InterSplash';
+          src: url('${import.meta.env.BASE_URL}Inter-Bold.woff') format('woff');
+          font-weight: 700;
+          font-display: block; /* invisible until the real Inter 700 loads — no FOUT */
+        }
+        @keyframes uikitSplashPulse { 0%, 100% { opacity: 0.8 } 50% { opacity: 1 } }
+        @media (prefers-reduced-motion: reduce) {
+          .uikit-splash-word { animation: none !important; opacity: 0.85 }
+        }
+      `}</style>
+      <span
+        className="uikit-splash-word"
+        style={{
+          fontFamily: "'InterSplash', Inter, system-ui, sans-serif",
+          fontWeight: 700,
+          fontSize: 'clamp(72px, 13vw, 180px)',
+          letterSpacing: '-0.05em',
+          color: '#f5f6fa',
+          animation: 'uikitSplashPulse 2.2s ease-in-out infinite',
+        }}
+      >
+        uikit
+      </span>
+    </div>
+  )
+}
+
+/** Fires once the renderer has drawn a few frames — the cue to fade the splash. */
+function ReadySignal({ onReady }: { onReady: () => void }) {
+  const frames = useRef(0)
+  useFrame(() => {
+    frames.current += 1
+    if (frames.current === 3) onReady()
+  })
+  return null
+}
+
+/** three.js' built-in WebGPU Inspector (r180+), opt-in via `?inspector=true`: per-pass GPU
+ *  timings, scene graph, and console overlaid on the canvas. Same wiring as the bento — assign
+ *  `renderer.inspector` and it drives the panel from the render loop. `__inspector` guards
+ *  StrictMode's double-mount. */
+function ThreeInspector() {
+  const gl = useThree((s) => s.gl)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('inspector') !== 'true') return
+    const renderer = gl as unknown as { inspector: Inspector; __inspector?: boolean }
+    if (renderer.__inspector) return
+    renderer.__inspector = true
+    const inspector = new Inspector()
+    renderer.inspector = inspector
+    // three auto-mounts the panel from init(); under R3F the canvas isn't attached on the first
+    // run, so re-run next frame when it's in the DOM (init() is idempotent once parented).
+    requestAnimationFrame(() => inspector.init())
+  }, [gl])
+  return null
+}
+
+export default function App() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    // Safety net: never let the splash stick if the ready signal is missed.
+    const id = setTimeout(() => setReady(true), 8000)
+    return () => clearTimeout(id)
+  }, [])
+  return (
+    <>
+      {/* `canvasInputProps` stops the canvas pointer-down from blurring the hidden
+          <input> the search `Input` types into. Native DPR keeps Slug text crisp. */}
+      <Canvas {...canvasInputProps} style={{ height: '100dvh', touchAction: 'none' }}>
+        <color attach="background" args={['black']} />
+        <ambientLight intensity={0.5} />
+        <directionalLight intensity={0} position={[5, 1, 10]} />
+        <ThreeInspector />
+        <Suspense fallback={null}>
+          <IconBrowser />
+          <ReadySignal onReady={() => setReady(true)} />
+        </Suspense>
+      </Canvas>
+      <LoadingSplash hidden={ready} />
+    </>
   )
 }

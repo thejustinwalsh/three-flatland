@@ -8,5 +8,8 @@ export default defineConfig({
     conditions: ['source'],
     dedupe: ['react', 'react-dom', 'three', '@react-three/fiber'],
   },
-  plugins: [react()],
+  // react-compiler auto-memoizes every component (matching the bento) — so the recycled grid's
+  // per-slot work, the imperative scroll/virtualization, and the search never trigger redundant
+  // re-renders. IconChip's manual memo still guards the hot path; this optimizes the parent.
+  plugins: [react({ babel: { plugins: [['babel-plugin-react-compiler', {}]] } })],
 })
