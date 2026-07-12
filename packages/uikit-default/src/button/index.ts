@@ -116,6 +116,7 @@ export class Button extends Container<ButtonOutProperties> {
       defaults: componentDefaults,
       ...config,
       defaultOverrides: {
+        role: 'button',
         '*': {
           borderColor: colors.border,
         },

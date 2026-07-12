@@ -10,8 +10,13 @@ import {
   installIconAtlas,
   setPreferredColorScheme,
 } from '@three-flatland/uikit/react'
-import type { Container as VanillaContainer } from '@three-flatland/uikit'
-import { colors, Button, Input } from '@three-flatland/uikit-default/react'
+import { computeA11yScreenRect, type Container as VanillaContainer } from '@three-flatland/uikit'
+import {
+  colors,
+  Button,
+  Input,
+  type VanillaButton,
+} from '@three-flatland/uikit-default/react'
 import * as LucideIcons from '@three-flatland/uikit-lucide/react'
 import { SlugFontLoader } from '@three-flatland/slug/react'
 import type { SlugFont } from '@three-flatland/slug'
@@ -40,6 +45,14 @@ import iconTags from './icon-tags.json'
 // for a consumer to bake their own trimmed atlas; the browser itself ships the
 // full one so scrolling all 1594 stays on the baked (parse-free) path.
 // ============================================================================
+
+// Dev-only debug hook the a11y-projection probe reads — see the `useEffect` in
+// `IconBrowser` that assigns it.
+declare global {
+  interface Window {
+    __uikitA11yDebug?: () => unknown
+  }
+}
 
 const ALL_ICONS: string[] = iconNames
 
@@ -167,6 +180,47 @@ function IconBrowser() {
   // `scrollPosition` / `size` signals — we poll them in `useFrame` to drive
   // virtualization without a per-tick React render (see below).
   const scrollRef = useRef<VanillaContainer | null>(null)
+
+  // Refs to the toolbar Buttons' vanilla uikit Components — read by the dev-only
+  // `window.__uikitA11yDebug` hook (below) to verify the Mode 2 a11y projection lines
+  // up each hidden native element with its actual on-canvas panel.
+  const selectAllRef = useRef<VanillaButton>(null)
+  const copyRef = useRef<VanillaButton>(null)
+  const clearRef = useRef<VanillaButton>(null)
+
+  const camera = useThree((s) => s.camera)
+  const gl = useThree((s) => s.gl)
+
+  // Dev-only debug hook for the a11y projection probe: `window.__uikitA11yDebug()` reports,
+  // per toolbar button, the panel's projected screen rect (via the same math the Mode 2
+  // projection uses) alongside its hidden a11y element's actual `getBoundingClientRect()` —
+  // so a browser probe can assert they overlap.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    window.__uikitA11yDebug = () =>
+      [selectAllRef, copyRef, clearRef].map((r) => {
+        const c = r.current
+        if (c == null) return null
+        c.updateWorldMatrix(true, false)
+        const rect = gl.domElement.getBoundingClientRect()
+        const panel = computeA11yScreenRect(c.matrixWorld, camera, {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        })
+        const el = c.a11yElement
+        return {
+          panel,
+          element: el ? el.getBoundingClientRect() : null,
+          name: el ? el.getAttribute('aria-label') : null,
+        }
+      })
+    return () => {
+      delete window.__uikitA11yDebug
+    }
+  }, [camera, gl])
+
   const [win, setWin] = useState<Window>({
     start: 0,
     poolSize: INITIAL_COLUMNS * 15,
@@ -309,36 +363,47 @@ function IconBrowser() {
           placeholder="Search 1594 icons by name or tag…"
           value={query}
           onValueChange={setQuery}
+          ariaLabel="Search icons by name or tag"
         />
         <Text fontSize={13} color={colors.mutedForeground}>
           {selectedCount} selected
         </Text>
         <Button
+          ref={selectAllRef}
           variant="outline"
           disabled={filtered.length === 0}
           onClick={selectAll}
           flexDirection="row"
           gap={8}
+          ariaLabel={`Select all ${filtered.length} icons`}
+          focus={{ borderColor: colors.ring ?? colors.primary, borderWidth: 2 }}
         >
           <LucideIcons.CheckCheck width={16} height={16} />
           <Text>Select all {filtered.length}</Text>
         </Button>
         <Button
+          ref={copyRef}
           variant="secondary"
           disabled={selectedCount === 0}
           onClick={copyManifest}
           flexDirection="row"
           gap={8}
+          ariaLabel="Copy manifest"
+          activationMessage={`Copied ${selectedCount} icons`}
+          focus={{ borderColor: colors.ring ?? colors.primary, borderWidth: 2 }}
         >
           <LucideIcons.Copy width={16} height={16} />
           <Text>{copyLabel}</Text>
         </Button>
         <Button
+          ref={clearRef}
           variant="outline"
           disabled={selectedCount === 0}
           onClick={clearSelection}
           flexDirection="row"
           gap={8}
+          ariaLabel="Clear selection"
+          focus={{ borderColor: colors.ring ?? colors.primary, borderWidth: 2 }}
         >
           <LucideIcons.X width={16} height={16} />
           <Text>Clear</Text>
