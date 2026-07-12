@@ -22,7 +22,7 @@ import {
   setupHtmlInputElement,
   setupUpdateHasFocus,
 } from '../text/input/hidden-input.js'
-import { setupAriaAttributes } from '../a11y/hidden-element.js'
+import { registerA11yMember, setupAriaAttributes } from '../a11y/hidden-element.js'
 import type { RenderContext } from '../context.js'
 import type { NumberValue } from '../properties/values.js'
 export const inputOutPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
@@ -196,7 +196,11 @@ export class Input<
     // the same as a base component's hidden element.
     setupAriaAttributes(this.properties, this.element, this.abortSignal)
     this.a11yElement = this.element
+    // Register with the per-root projection registry (Input opts out of setupComponentA11y, which
+    // would otherwise do this) so Mode 2 projection positions the hidden <input> over the field.
+    const unregisterA11yMember = registerA11yMember(this.root.peek(), this, this.element)
     this.abortSignal.addEventListener('abort', () => {
+      unregisterA11yMember()
       if (this.a11yElement === this.element) {
         this.a11yElement = undefined
       }
