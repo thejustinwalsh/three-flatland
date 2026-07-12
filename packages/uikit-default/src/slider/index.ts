@@ -78,6 +78,17 @@ export class Slider extends Container<SliderOutProperties> {
         height: 8,
         width: '100%',
         alignItems: 'center',
+        role: 'slider',
+        ariaValueNow: computed(() => this.currentSignal.value),
+        ariaValueMin: computed(() => Number(this.properties.value.min ?? 0)),
+        ariaValueMax: computed(() => Number(this.properties.value.max ?? 100)),
+        ariaValueStep: computed(() => Number(this.properties.value.step ?? 1)),
+        onA11yValueChange: (value: number) => {
+          if (this.properties.peek().disabled ?? false) {
+            return
+          }
+          this.setValue(value)
+        },
         ...config?.defaultOverrides,
       },
     })
@@ -197,20 +208,23 @@ export class Slider extends Container<SliderOutProperties> {
     this.worldToLocal(vectorHelper)
     const minValue = Number(this.properties.peek().min ?? 0)
     const maxValue = Number(this.properties.peek().max ?? 100)
+    this.setValue((vectorHelper.x + 0.5) * (maxValue - minValue) + minValue)
+    e.stopPropagation?.()
+  }
+
+  /** Clamp/step a raw value and commit it through the controlled/uncontrolled path — shared by pointer drag and `onA11yValueChange`. */
+  private setValue(rawValue: number): void {
+    const minValue = Number(this.properties.peek().min ?? 0)
+    const maxValue = Number(this.properties.peek().max ?? 100)
     const stepValue = Number(this.properties.peek().step ?? 1)
     const newValue = Math.min(
-      Math.max(
-        Math.round(((vectorHelper.x + 0.5) * (maxValue - minValue) + minValue) / stepValue) *
-          stepValue,
-        minValue
-      ),
+      Math.max(Math.round(rawValue / stepValue) * stepValue, minValue),
       maxValue
     )
     if (this.properties.peek().value == null) {
       this.uncontrolledSignal.value = newValue
     }
     this.properties.peek().onValueChange?.(newValue)
-    e.stopPropagation?.()
   }
 
   dispose(): void {

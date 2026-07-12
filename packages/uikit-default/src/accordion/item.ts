@@ -7,7 +7,6 @@ import {
   type InProperties,
   type RenderContext,
 } from '@three-flatland/uikit'
-import { Accordion } from './index.js'
 import { colors, componentDefaults } from '../theme.js'
 export const AccordionItemOutPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
   object({
@@ -41,18 +40,11 @@ export class AccordionItem extends Container<AccordionItemOutProperties> {
         '*': {
           borderColor: colors.border,
         },
-        cursor: 'pointer',
+        // AccordionTrigger owns activation (role: 'button' + onActivate) so pointer/keyboard/AT/XR
+        // all toggle through one handler. The item itself is a non-interactive layout wrapper — it
+        // must NOT also handle 'click', or the bubbled pointer click would re-toggle via this
+        // component's own activate() right after the trigger's already ran (open-then-close flicker).
         flexDirection: 'column',
-        onClick: () => {
-          const parent = this.parentContainer.peek()
-          if (!(parent instanceof Accordion)) {
-            return
-          }
-          const ownValue = this.properties.peek().value
-          const currentValue = parent.openItemValue.peek()
-          const isSelected = ownValue === currentValue
-          parent.openItemValue.value = isSelected ? undefined : ownValue
-        },
         borderBottomWidth: 1,
         ...config?.defaultOverrides,
       },

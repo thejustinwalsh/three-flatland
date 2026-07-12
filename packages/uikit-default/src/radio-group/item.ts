@@ -47,7 +47,14 @@ export class RadioGroupItem extends Container<RadioGroupItemOutProperties> {
           borderColor: colors.border,
         },
         cursor: computed(() => (this.properties.value.disabled ? undefined : 'pointer')),
-        onClick: computed(() =>
+        role: 'radio',
+        // Self-contained (does not read the `isSelected` local below): setupComponentA11y's
+        // aria-checked effect runs synchronously inside this constructor's `super()` call, before
+        // any post-super `const` in this constructor body has initialized (TDZ).
+        ariaChecked: computed(
+          () => searchFor(this, RadioGroup, 2)?.currentSignal.value === this.properties.value.value
+        ),
+        onActivate: computed(() =>
           this.properties.value.disabled
             ? undefined
             : () => {

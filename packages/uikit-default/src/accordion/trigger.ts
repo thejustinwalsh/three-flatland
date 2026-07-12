@@ -3,10 +3,13 @@ import { ContainerPropertiesSchema } from '@three-flatland/uikit'
 import {
   type BaseOutProperties,
   Container,
-  type ContainerProperties,
   type InProperties,
   type RenderContext,
+  searchFor,
 } from '@three-flatland/uikit'
+import { computed } from '@preact/signals-core'
+import { Accordion } from './index.js'
+import { AccordionItem } from './item.js'
 import { colors, componentDefaults } from '../theme.js'
 export const AccordionTriggerPropertiesSchema = ContainerPropertiesSchema
 
@@ -27,6 +30,30 @@ export class AccordionTrigger extends Container {
       defaultOverrides: {
         '*': {
           borderColor: colors.border,
+        },
+        role: 'button',
+        ariaExpanded: computed(() => {
+          const item = searchFor(this, AccordionItem, 2)
+          if (item == null) {
+            return false
+          }
+          const accordion = searchFor(item, Accordion, 2)
+          return item.properties.value.value === accordion?.openItemValue.value
+        }),
+        cursor: 'pointer',
+        onActivate: () => {
+          const item = searchFor(this, AccordionItem, 2)
+          if (item == null) {
+            return
+          }
+          const accordion = searchFor(item, Accordion, 2)
+          if (accordion == null) {
+            return
+          }
+          const ownValue = item.properties.peek().value
+          const currentValue = accordion.openItemValue.peek()
+          const isSelected = ownValue === currentValue
+          accordion.openItemValue.value = isSelected ? undefined : ownValue
         },
         flexDirection: 'row',
         flexGrow: 1,
