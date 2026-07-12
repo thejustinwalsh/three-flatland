@@ -1,7 +1,9 @@
 import type { Intersection, Object3DEventMap } from 'three'
+import type { A11yActivationEvent } from './a11y/activation.js'
 
 declare module 'three' {
   interface Object3DEventMap {
+    activate: A11yActivationEvent
     childadded: { child: Object3D }
     childremoved: { child: Object3D }
     click: ThreeMouseEvent
@@ -30,6 +32,7 @@ export type ThreeMouseEvent = Intersection & {
 export type ThreePointerEvent = ThreeMouseEvent & { pointerId?: number }
 
 export type EventHandlersProperties = {
+  onActivate?: (event: Object3DEventMap['activate']) => void
   onClick?: (event: Object3DEventMap['click']) => void
   onContextMenu?: (event: Object3DEventMap['contextmenu']) => void
   onDblClick?: (event: Object3DEventMap['dblclick']) => void

@@ -214,6 +214,59 @@ const eventHandlerShape = /* @__PURE__ */ defineSchema(() => ({
   onPointerCancel: functionSchema.optional(),
 }))
 
+// Accessibility semantics + spatial props — see planning/superpowers/specs/uikit-native-a11y.md §1.3.
+// All optional and signal-accepting (via propertyValueSchema), spread into baseOutPropertyShape so
+// every component inherits them; kit widgets bind `computed(...)` through defaultOverrides.
+const a11yPropertyShape = /* @__PURE__ */ defineSchema(() => ({
+  // semantics (Mode 1)
+  role: enumSchema([
+    'button',
+    'togglebutton',
+    'link',
+    'checkbox',
+    'switch',
+    'radio',
+    'tab',
+    'slider',
+    'image',
+    'content',
+    'listbox',
+    'landmark',
+  ]).optional(),
+  ariaLabel: string().optional(),
+  ariaDescription: string().optional(),
+  tabIndex: numberValueSchema.optional(),
+  disabled: boolean().optional(),
+  href: string().optional(),
+  ariaChecked: boolean().optional(),
+  ariaPressed: boolean().optional(),
+  ariaExpanded: boolean().optional(),
+  ariaSelected: boolean().optional(),
+  ariaValueMin: numberValueSchema.optional(),
+  ariaValueMax: numberValueSchema.optional(),
+  ariaValueNow: numberValueSchema.optional(),
+  ariaValueStep: numberValueSchema.optional(),
+  ariaValueText: string().optional(),
+  ariaItemCount: numberValueSchema.optional(),
+  ariaActiveIndex: numberValueSchema.optional(),
+  ariaActiveLabel: string().optional(),
+  activationMessage: string().optional(),
+  deactivationMessage: string().optional(),
+  // spatial semantics (Modes 3–4)
+  a11yOrder: numberValueSchema.optional(),
+  a11yGroup: string().optional(),
+  a11ySpatialLabel: string().optional(),
+  a11yPositionDescription: string().optional(),
+  a11yReachable: boolean().optional(),
+  a11yVisibilityOverride: enumSchema(['visible', 'hidden']).optional(),
+  // handlers
+  onFocusChange: functionSchema.optional(),
+  onActivate: functionSchema.optional(),
+  onA11yValueChange: functionSchema.optional(),
+  onA11yActiveIndexChange: functionSchema.optional(),
+  onA11yActivate: functionSchema.optional(),
+}))
+
 const panelShape = /* @__PURE__ */ defineSchema(() => ({
   borderTopLeftRadius: lengthValueSchema.optional(),
   borderTopRightRadius: lengthValueSchema.optional(),
@@ -310,6 +363,7 @@ export const baseOutPropertyShape = /* @__PURE__ */ defineSchema(
       ]).optional(),
       pointerEventsOrder: numberValueSchema.optional(),
       ...eventHandlerShape,
+      ...a11yPropertyShape,
       onScroll: functionSchema.optional(),
       onHoverChange: functionSchema.optional(),
       onActiveChange: functionSchema.optional(),
