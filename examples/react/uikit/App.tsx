@@ -472,13 +472,13 @@ function GameMenu({ font }: { font: SlugFont }) {
       {/* Tabs */}
       <Tabs defaultValue="play">
         <TabsList width="100%">
-          <TabsTrigger value="play" flexGrow={1}>
+          <TabsTrigger value="play" flexGrow={1} ariaLabel="Play tab">
             <Text>Play</Text>
           </TabsTrigger>
-          <TabsTrigger value="loadout" flexGrow={1}>
+          <TabsTrigger value="loadout" flexGrow={1} ariaLabel="Loadout tab">
             <Text>Loadout</Text>
           </TabsTrigger>
-          <TabsTrigger value="settings" flexGrow={1}>
+          <TabsTrigger value="settings" flexGrow={1} ariaLabel="Settings tab">
             <Text>Settings</Text>
           </TabsTrigger>
         </TabsList>
@@ -487,22 +487,28 @@ function GameMenu({ font }: { font: SlugFont }) {
         <TabsContent value="play" flexDirection="column" gap={14}>
           <Container flexDirection="column" gap={6}>
             <Labeled>Player Name</Labeled>
-            <Input placeholder="Enter your name" defaultValue="Ranger" fontSize={14} width="100%" />
+            <Input
+              placeholder="Enter your name"
+              defaultValue="Ranger"
+              fontSize={14}
+              width="100%"
+              ariaLabel="Player Name"
+            />
           </Container>
           <Container flexDirection="column" gap={8}>
             <Labeled>Difficulty</Labeled>
-            <RadioGroup defaultValue="normal" flexDirection="row" gap={16}>
-              <RadioGroupItem value="easy">
+            <RadioGroup defaultValue="normal" flexDirection="row" gap={16} ariaLabel="Difficulty">
+              <RadioGroupItem value="easy" ariaLabel="Easy">
                 <Text color={WHITE} fontSize={14}>
                   Easy
                 </Text>
               </RadioGroupItem>
-              <RadioGroupItem value="normal">
+              <RadioGroupItem value="normal" ariaLabel="Normal">
                 <Text color={WHITE} fontSize={14}>
                   Normal
                 </Text>
               </RadioGroupItem>
-              <RadioGroupItem value="hardcore">
+              <RadioGroupItem value="hardcore" ariaLabel="Hardcore">
                 <Text color={WHITE} fontSize={14}>
                   Hardcore
                 </Text>
@@ -595,6 +601,7 @@ function GameMenu({ font }: { font: SlugFont }) {
               max={100}
               step={1}
               onValueChange={(v) => masterValueRef.current?.setProperties({ text: `${v}` })}
+              ariaLabel="Master Volume"
             />
           </Container>
           <Container flexDirection="column" gap={6}>
@@ -613,14 +620,15 @@ function GameMenu({ font }: { font: SlugFont }) {
               max={100}
               step={1}
               onValueChange={(v) => musicValueRef.current?.setProperties({ text: `${v}` })}
+              ariaLabel="Music Volume"
             />
           </Container>
           <Container flexDirection="row" justifyContent="space-between" alignItems="center">
             <Labeled>Fullscreen</Labeled>
-            <Switch defaultChecked={true} />
+            <Switch defaultChecked={true} ariaLabel="Fullscreen" />
           </Container>
           <Container flexDirection="row" gap={10} alignItems="center">
-            <Checkbox defaultChecked={true} />
+            <Checkbox defaultChecked={true} ariaLabel="V-Sync" />
             <Labeled>V-Sync</Labeled>
           </Container>
         </TabsContent>
@@ -645,7 +653,12 @@ function GameMenu({ font }: { font: SlugFont }) {
           a visible press-down is both game-feel and a regression guard for
           that path. */}
       <Container flexDirection="row" gap={12} width="100%">
-        <Button gap={8} flexGrow={1} active={{ transformTranslateY: 1, opacity: 0.85 }}>
+        <Button
+          gap={8}
+          flexGrow={1}
+          active={{ transformTranslateY: 1, opacity: 0.85 }}
+          ariaLabel="Play"
+        >
           <Play width={16} height={16} />
           <Text>Play</Text>
         </Button>
@@ -654,6 +667,7 @@ function GameMenu({ font }: { font: SlugFont }) {
           gap={8}
           flexGrow={1}
           active={{ transformTranslateY: 1, opacity: 0.85 }}
+          ariaLabel="Quit"
         >
           <X width={16} height={16} />
           <Text>Quit</Text>

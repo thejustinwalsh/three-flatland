@@ -64,7 +64,9 @@ export class Switch extends Container<SwitchOutProperties> {
           this.currentSignal.value ? colors.primary.value : colors.input.value
         ),
         cursor: computed(() => (this.properties.value.disabled ? undefined : 'pointer')),
-        onClick: computed(() => {
+        role: 'switch',
+        ariaChecked: computed(() => this.currentSignal.value ?? false),
+        onActivate: computed(() => {
           return this.properties.value.disabled
             ? undefined
             : () => {
@@ -101,7 +103,7 @@ export class Switch extends Container<SwitchOutProperties> {
     super.dispose()
   }
 
-  add(...object: Object3D[]): this {
+  add(..._object: Object3D[]): this {
     throw new Error(`the switch component can not have any children`)
   }
 }

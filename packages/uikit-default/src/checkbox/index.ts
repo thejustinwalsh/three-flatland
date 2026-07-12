@@ -58,7 +58,9 @@ export class Checkbox extends Container<CheckboxOutProperties> {
         alignItems: 'center',
         justifyContent: 'center',
         cursor: computed(() => (this.properties.value.disabled ? undefined : 'pointer')),
-        onClick: () => {
+        role: 'checkbox',
+        ariaChecked: computed(() => this.currentSignal.value ?? false),
+        onActivate: () => {
           if (this.properties.peek().disabled) {
             return
           }

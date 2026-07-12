@@ -45,10 +45,12 @@ export class TabsTrigger extends Container<TabsTriggerOutProperties> {
       defaults: componentDefaults,
       ...config,
       defaultOverrides: {
+        role: 'tab',
+        ariaSelected: active,
         '*': {
           borderColor: colors.border,
         },
-        onClick: computed(() => {
+        onActivate: computed(() => {
           return (this.properties.value.disabled ?? false)
             ? undefined
             : () => {

@@ -74,8 +74,10 @@
     "@react-three/fiber": "catalog:",
     "@types/react": "catalog:",
     "@types/three": "catalog:",
+    "happy-dom": "^20.8.9",
     "react": "catalog:",
-    "three": "catalog:"
+    "three": "catalog:",
+    "yoga-layout": "catalog:"
   },
   "keywords": [
     "three.js",

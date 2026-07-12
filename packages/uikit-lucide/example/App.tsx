@@ -10,13 +10,12 @@ import {
   installIconAtlas,
   setPreferredColorScheme,
 } from '@three-flatland/uikit/react'
-import { computeA11yScreenRect, type Container as VanillaContainer } from '@three-flatland/uikit'
 import {
-  colors,
-  Button,
-  Input,
-  type VanillaButton,
-} from '@three-flatland/uikit-default/react'
+  announce,
+  computeA11yScreenRect,
+  type Container as VanillaContainer,
+} from '@three-flatland/uikit'
+import { colors, Button, Input, type VanillaButton } from '@three-flatland/uikit-default/react'
 import * as LucideIcons from '@three-flatland/uikit-lucide/react'
 import { SlugFontLoader } from '@three-flatland/slug/react'
 import type { SlugFont } from '@three-flatland/slug'
@@ -86,6 +85,11 @@ interface Window {
   cellH: number
 }
 
+/** Keyboard-grammar move tokens the listbox role emits on arrow/Home/End — the app (not uikit)
+ *  owns the grid geometry, so it translates a move into a new active index using the live column
+ *  count (see `onA11yActiveIndexChange` below). */
+type A11yMove = 'next' | 'prev' | 'nextRow' | 'prevRow' | 'first' | 'last'
+
 /** Shape emitted to the clipboard — an `IconBakeManifest` (uikit CLI). */
 interface BakeManifest {
   out: string
@@ -95,7 +99,9 @@ interface BakeManifest {
 /** One selectable icon tile, absolutely positioned at its grid cell. */
 const IconChip = memo(function IconChip({
   name,
+  index,
   selected,
+  active,
   onToggle,
   top,
   left,
@@ -103,8 +109,11 @@ const IconChip = memo(function IconChip({
   height,
 }: {
   name: string
+  index: number
   selected: boolean
-  onToggle: (name: string) => void
+  /** Keyboard/AT focus highlight — the single listbox "active" cell, independent of `selected`. */
+  active: boolean
+  onToggle: (name: string, index: number) => void
   top: number
   left: number
   width: number
@@ -123,12 +132,14 @@ const IconChip = memo(function IconChip({
       gap={8}
       padding={8}
       borderRadius={8}
-      borderWidth={1}
-      borderColor={selected ? colors.primary : colors.border}
+      borderWidth={active ? 2 : 1}
+      borderColor={
+        active ? (colors.ring ?? colors.primary) : selected ? colors.primary : colors.border
+      }
       backgroundColor={selected ? colors.accent : colors.card}
       hover={{ borderColor: colors.primary }}
       cursor="pointer"
-      onClick={() => onToggle(name)}
+      onClick={() => onToggle(name, index)}
     >
       {name ? (
         // A single reusable <Svg> whose `icon` prop changes as the pool slot rebinds — the
@@ -173,6 +184,10 @@ function IconBrowser() {
   const font = useBrowserAssets()
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(() => new Set<string>())
+  // The listbox role's single managed "active" descendant — an index into `filtered`, not a
+  // selection. Keyboard/AT users arrow through this; the grid never re-renders per-arrow beyond
+  // the one or two `IconChip`s whose `active` prop actually flips (see `bySlot` below).
+  const [activeIdx, setActiveIdx] = useState(0)
   const [copyLabel, setCopyLabel] = useState('Copy manifest')
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -237,7 +252,8 @@ function IconBrowser() {
   )
 
   // Reset to the top whenever the filter changes — the old scroll offset is
-  // meaningless against a different (often shorter) result set.
+  // meaningless against a different (often shorter) result set. The active listbox index
+  // resets too — it may no longer even be in range against the new (often shorter) result set.
   useEffect(() => {
     const c = scrollRef.current
     if (c) c.scrollPosition.value = [0, 0]
@@ -249,6 +265,7 @@ function IconBrowser() {
       cellW: w.cellW,
       cellH: w.cellH,
     }))
+    setActiveIdx(0)
   }, [q])
 
   // Poll scroll offset + viewport size every frame; recompute the visible row
@@ -296,6 +313,86 @@ function IconBrowser() {
     })
   }, [])
 
+  // Listbox role (uikit's native-a11y virtualized-listbox pattern, spec §8): the scroll Container
+  // is the ONE focusable tab stop; arrow/Home/End keys on it dispatch these moves and WE translate
+  // move → a new active index using the LIVE column count (`lastWin.current`, freshest — `win`
+  // only updates on a row-boundary crossing) since the grid geometry is app-owned, not uikit's.
+  const onA11yActiveIndexChange = useCallback(
+    ({ move }: { move: A11yMove }) => {
+      if (filtered.length === 0) return
+      const columns = Math.max(1, lastWin.current.columns || win.columns)
+      const last = filtered.length - 1
+      let next = activeIdx
+      switch (move) {
+        case 'next':
+          next = activeIdx + 1
+          break
+        case 'prev':
+          next = activeIdx - 1
+          break
+        case 'nextRow':
+          next = activeIdx + columns
+          break
+        case 'prevRow':
+          next = activeIdx - columns
+          break
+        case 'first':
+          next = 0
+          break
+        case 'last':
+          next = last
+          break
+      }
+      next = Math.max(0, Math.min(last, next))
+      setActiveIdx(next)
+
+      // Scroll the active row into view — minimally: only when it's above the current top or
+      // below the current bottom, using the same row stride (`cellH + GAP`) the grid renders with.
+      const c = scrollRef.current
+      if (c == null) return
+      const cellH = lastWin.current.cellH || win.cellH
+      const stride = cellH + GAP
+      const activeRow = Math.floor(next / columns)
+      const rowTop = GAP + activeRow * stride
+      const rowBottom = rowTop + cellH
+      const size = c.size.value
+      const viewportH = size ? size[1] : 0
+      const [x, y] = c.scrollPosition.value ?? [0, 0]
+      let targetY = y
+      if (rowTop < y) targetY = rowTop
+      else if (rowBottom > y + viewportH) targetY = rowBottom - viewportH
+      if (targetY !== y) c.scrollPosition.value = [x, targetY]
+    },
+    [activeIdx, filtered.length, win.columns, win.cellH]
+  )
+
+  const onA11yActivate = useCallback(
+    (index: number) => {
+      const name = filtered[index]
+      if (name == null) return
+      const wasSelected = selected.has(name)
+      toggle(name)
+      announce(`${name} ${wasSelected ? 'deselected' : 'selected'}`)
+    },
+    [filtered, selected, toggle]
+  )
+
+  // Pointer-selecting a chip also moves the listbox active descendant, so keyboard + pointer keep a
+  // single "active" cell (codex P2 #5). Stable identity so IconChip's memo isn't defeated.
+  const onChipSelect = useCallback(
+    (name: string, index: number) => {
+      setActiveIdx(index)
+      toggle(name)
+    },
+    [toggle]
+  )
+
+  // The stored activeIdx is only reset in an effect (post-render), so clamp it to the live filtered
+  // set for THIS render — otherwise the managed option briefly reads "501 of 3" after filtering, or
+  // "1 of 0" with no matches (codex P2 #4). -1 / undefined => no active option.
+  const safeActiveIdx = filtered.length === 0 ? -1 : Math.min(activeIdx, filtered.length - 1)
+  const activeName = safeActiveIdx >= 0 ? filtered[safeActiveIdx] : undefined
+
   const selectAll = useCallback(() => {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -335,9 +432,8 @@ function IconBrowser() {
   // leaving row vacated (i+poolSize ≡ i mod poolSize) — one row rebinds (offscreen, in the
   // overscan buffer) and every other slot is memo-skipped. No unmount/remount churn: the uikit
   // Container is reused and only its (baked, so cheap) icon swaps. Empty trailing slots park off.
-  const bySlot: Array<{ name: string; top: number; left: number } | null> = new Array(
-    poolSize
-  ).fill(null)
+  const bySlot: Array<{ name: string; top: number; left: number; index: number } | null> =
+    new Array(poolSize).fill(null)
   const end = Math.min(win.start + poolSize, filtered.length)
   for (let i = win.start; i < end; i++) {
     const row = Math.floor(i / columns)
@@ -346,6 +442,7 @@ function IconBrowser() {
       name: filtered[i]!,
       top: GAP + row * rowStride,
       left: GAP + col * colStride,
+      index: i,
     }
   }
 
@@ -422,6 +519,18 @@ function IconBrowser() {
         scrollbarColor={colors.mutedForeground}
         scrollbarWidth={8}
         scrollbarBorderRadius={4}
+        // Native-a11y virtualized listbox (uikit spec §8): ONE focusable tab stop for the whole
+        // 1594-icon grid. uikit renders the managed aria-posinset/aria-setsize option and owns the
+        // keydown grammar (arrows/Home/End); WE own geometry — translating `move` → index and
+        // scrolling the active row into view (see `onA11yActiveIndexChange` above).
+        role="listbox"
+        ariaLabel={`Icon grid, ${filtered.length} icons`}
+        ariaItemCount={filtered.length}
+        ariaActiveIndex={safeActiveIdx >= 0 ? safeActiveIdx : undefined}
+        ariaActiveLabel={activeName ?? ''}
+        ariaSelected={activeName != null && selected.has(activeName)}
+        onA11yActiveIndexChange={onA11yActiveIndexChange}
+        onA11yActivate={onA11yActivate}
       >
         {filtered.length === 0 ? (
           <Container flexGrow={1} alignItems="center" justifyContent="center" padding={48}>
@@ -437,8 +546,10 @@ function IconBrowser() {
               <IconChip
                 key={slot}
                 name={cell?.name ?? ''}
+                index={cell?.index ?? -1}
                 selected={cell != null && selected.has(cell.name)}
-                onToggle={toggle}
+                active={cell != null && cell.index === safeActiveIdx}
+                onToggle={onChipSelect}
                 top={cell?.top ?? -9999}
                 left={cell?.left ?? -9999}
                 width={win.cellW}

@@ -82,7 +82,9 @@ export class Toggle extends Container<ToggleOutProperties> {
         '*': {
           borderColor: colors.border,
         },
-        onClick: () => {
+        role: 'togglebutton',
+        ariaPressed: computed(() => this.currentSignal.value ?? false),
+        onActivate: () => {
           if (this.properties.peek().disabled) {
             return
           }

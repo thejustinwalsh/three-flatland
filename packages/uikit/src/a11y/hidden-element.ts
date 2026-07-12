@@ -35,11 +35,27 @@ const INTERACTIVE_ROLES = new Set<A11yRole>([
 ])
 const warnedRoles = /* @__PURE__ */ new Set<string>()
 const missingLabelWarned = /* @__PURE__ */ new WeakSet<object>()
+let nextListboxOptionId = 0
+
+// Key → move-token grammar for the virtualized listbox (spec §8, APG listbox).
+const LISTBOX_MOVE_BY_KEY: Record<
+  string,
+  'next' | 'prev' | 'nextRow' | 'prevRow' | 'first' | 'last'
+> = {
+  ArrowRight: 'next',
+  ArrowLeft: 'prev',
+  ArrowDown: 'nextRow',
+  ArrowUp: 'prevRow',
+  Home: 'first',
+  End: 'last',
+}
 
 /**
  * Create the hidden native DOM element for a role (spec §1.2). Native `<button>`/`<a>`/
  * `<input type=range>`/`<img>`/`<p>` so Enter/Space/AT activation and arrow-key handling come for
- * free. Unimplemented roles (`listbox` P2, `landmark` P3) warn once and fall back to content.
+ * free. `listbox` (spec §8) is the virtualized pattern: ONE focusable element with ONE managed
+ * option re-labelled as the active index moves — no per-item DOM. Unimplemented roles
+ * (`landmark` P3) warn once and fall back to content.
  */
 export function createHtmlA11yElement(role: A11yRole): HTMLElement {
   let element: HTMLElement
@@ -80,6 +96,17 @@ export function createHtmlA11yElement(role: A11yRole): HTMLElement {
     case 'content':
       element = document.createElement('p')
       break
+    case 'listbox': {
+      element = document.createElement('div')
+      element.setAttribute('role', 'listbox')
+      element.setAttribute('tabindex', '0')
+      const option = document.createElement('div')
+      option.setAttribute('role', 'option')
+      option.id = `uikit-a11y-option-${nextListboxOptionId++}`
+      element.appendChild(option)
+      element.setAttribute('aria-activedescendant', option.id)
+      break
+    }
     default:
       if (!warnedRoles.has(role)) {
         warnedRoles.add(role)
@@ -175,7 +202,9 @@ export function registerA11yMember(
 }
 
 /** Live (component → hidden element) map for a root — read by setupA11yProjection each frame. */
-export function getRootA11yMembers(root: RootContext): ReadonlyMap<Component, HTMLElement> | undefined {
+export function getRootA11yMembers(
+  root: RootContext
+): ReadonlyMap<Component, HTMLElement> | undefined {
   return rootMembers.get(root)
 }
 
@@ -256,6 +285,33 @@ export function setupComponentA11y(component: Component, abortSignal: AbortSigna
       scoped.signal.addEventListener('abort', () => input.removeEventListener('input', onInput))
     }
 
+    if (role === 'listbox') {
+      // Key → move-token grammar (spec §8). The app owns column geometry and scroll; this only
+      // translates keys — no row/column math here.
+      const onKeyDown = (event: KeyboardEvent): void => {
+        // Unlike click (which routes through dispatchActivation's disabled guard), this path calls
+        // the callbacks directly — so a disabled listbox must ignore arrow/Enter/Space itself.
+        if (component.properties.peek().disabled === true) {
+          return
+        }
+        const move = LISTBOX_MOVE_BY_KEY[event.key]
+        if (move != null) {
+          event.preventDefault()
+          component.properties.peek().onA11yActiveIndexChange?.({ move })
+          return
+        }
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          const { onA11yActivate, ariaActiveIndex } = component.properties.peek()
+          onA11yActivate?.(parseNumberValue(ariaActiveIndex ?? 0))
+        }
+      }
+      element.addEventListener('keydown', onKeyDown)
+      scoped.signal.addEventListener('abort', () =>
+        element.removeEventListener('keydown', onKeyDown)
+      )
+    }
+
     setupUpdateHasFocus(
       element,
       component.hasFocus,
@@ -286,7 +342,9 @@ function setupRoleState(
 ): void {
   const properties = component.properties
   const nativeFormEl =
-    element instanceof HTMLButtonElement || element instanceof HTMLInputElement ? element : undefined
+    element instanceof HTMLButtonElement || element instanceof HTMLInputElement
+      ? element
+      : undefined
 
   abortableEffect(() => {
     const disabled = properties.value.disabled === true
@@ -344,6 +402,36 @@ function setupRoleState(
         element.removeAttribute('href')
       }
     }, abortSignal)
+  }
+  if (role === 'listbox') {
+    // The one managed option (created by createHtmlA11yElement); aria-activedescendant already
+    // points at it. setsize/posinset/selected/label are re-stamped as the active index moves, so
+    // AT reads "n of N" without a DOM node per item.
+    const option = element.querySelector<HTMLElement>('[role=option]')
+    if (option != null) {
+      abortableEffect(() => {
+        const count = properties.value.ariaItemCount
+        if (count != null) {
+          option.setAttribute('aria-setsize', String(parseNumberValue(count)))
+        } else {
+          option.removeAttribute('aria-setsize')
+        }
+      }, abortSignal)
+      abortableEffect(() => {
+        const index = properties.value.ariaActiveIndex
+        if (index != null) {
+          option.setAttribute('aria-posinset', String(parseNumberValue(index) + 1))
+        } else {
+          option.removeAttribute('aria-posinset')
+        }
+      }, abortSignal)
+      abortableEffect(() => {
+        option.setAttribute('aria-selected', properties.value.ariaSelected ? 'true' : 'false')
+      }, abortSignal)
+      abortableEffect(() => {
+        option.textContent = properties.value.ariaActiveLabel ?? ''
+      }, abortSignal)
+    }
   }
   if (role === 'slider') {
     const input = element as HTMLInputElement

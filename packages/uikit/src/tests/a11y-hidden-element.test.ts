@@ -91,11 +91,11 @@ describe('createHtmlA11yElement — role → native element', () => {
     expect(el.getAttribute('src')).toContain('svg')
   })
 
-  it('an unimplemented role (listbox) warns once and falls back to <p> content', () => {
+  it('an unimplemented role (landmark) warns once and falls back to <p> content', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
-      expect(createHtmlA11yElement('listbox').tagName).toBe('P')
-      createHtmlA11yElement('listbox') // second time: already warned, stays quiet
+      expect(createHtmlA11yElement('landmark').tagName).toBe('P')
+      createHtmlA11yElement('landmark') // second time: already warned, stays quiet
       expect(warn).toHaveBeenCalledTimes(1)
     } finally {
       warn.mockRestore()
