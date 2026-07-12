@@ -2,16 +2,20 @@ import * as vscode from 'vscode'
 import { randomUUID } from 'node:crypto'
 import {
   atlasToRects as atlasToRectsImpl,
+  buildAsepriteJson as buildAsepriteJsonImpl,
   buildAtlasJson as buildAtlasJsonImpl,
+  buildTexturePackerJson as buildTexturePackerJsonImpl,
+  detectAtlasFormat,
   readAnimationsFromJson,
   type AnimationInput,
+  type AtlasFormat,
   type AtlasJson,
   type AtlasMergeMeta,
   type RectInput,
 } from '@three-flatland/io/atlas'
 import { assertValidAtlas } from './validateAtlas'
 
-export type { AnimationInput, AtlasJson, RectInput }
+export type { AnimationInput, AtlasFormat, AtlasJson, RectInput }
 
 export function buildAtlasJson(input: {
   image: { fileName: string; width: number; height: number }
@@ -20,6 +24,21 @@ export function buildAtlasJson(input: {
   merge?: AtlasMergeMeta
 }): AtlasJson {
   return buildAtlasJsonImpl(input)
+}
+
+export function buildTexturePackerJson(input: {
+  image: { fileName: string; width: number; height: number }
+  rects: readonly RectInput[]
+}): AtlasJson {
+  return buildTexturePackerJsonImpl(input)
+}
+
+export function buildAsepriteJson(input: {
+  image: { fileName: string; width: number; height: number }
+  rects: readonly RectInput[]
+  animations?: Record<string, AnimationInput>
+}): AtlasJson {
+  return buildAsepriteJsonImpl(input)
 }
 
 export function atlasToRects(json: AtlasJson): RectInput[] {
@@ -51,11 +70,10 @@ export type LoadedAtlas = {
   json: AtlasJson
   rects: RectInput[]
   animations: Record<string, AnimationInput>
+  format: AtlasFormat
 }
 
-export async function readAtlasSidecar(
-  imageUri: vscode.Uri
-): Promise<LoadedAtlas | null> {
+export async function readAtlasSidecar(imageUri: vscode.Uri): Promise<LoadedAtlas | null> {
   const uri = sidecarUriForImage(imageUri)
   let bytes: Uint8Array
   try {
@@ -80,5 +98,6 @@ export async function readAtlasSidecar(
     json: atlas,
     rects: atlasToRects(atlas),
     animations: readAnimationsFromJson(atlas),
+    format: detectAtlasFormat(atlas),
   }
 }

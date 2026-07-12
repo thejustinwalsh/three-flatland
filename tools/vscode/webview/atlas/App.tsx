@@ -12,6 +12,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
+import type { AtlasFormat, RectInput } from '@three-flatland/io/atlas'
 import {
   Badge,
   Collapsible,
@@ -71,10 +72,14 @@ import {
   atlasActions,
   atlasHistory,
   useAtlasAnimations,
+  useAtlasDetectedFormat,
   useAtlasHistoryStore,
+  useAtlasOutputFormat,
+  useAtlasPassthrough,
   useAtlasRects,
   useAtlasSelectedIds,
   useAtlasStore,
+  type RectPassthrough,
   type Tool,
 } from './atlasStore'
 import { AtlasMenu } from './AtlasMenu'
@@ -88,12 +93,17 @@ import { z } from '@three-flatland/design-system/tokens/z.stylex'
 type InitPayload = {
   imageUri: string
   fileName: string
-  /** Rects seeded from an existing sidecar, if one was found and valid. */
-  rects?: readonly Rect[]
+  /** Rects seeded from an existing sidecar, if one was found and valid —
+   * the full RectInput shape (id/x/y/w/h/name + format passthrough), not
+   * just the canvas-editable Rect subset. The atlas/init handler below
+   * splits this into the store's narrow `rects` and `passthrough` map. */
+  rects?: readonly RectInput[]
   /** Animations seeded from an existing sidecar's `meta.animations` map. */
   animations?: Record<string, Animation>
   /** Populated when a sidecar existed but failed to parse/validate. */
   loadError?: string | null
+  /** Detected source format — 'native' when no sidecar existed yet. */
+  format?: AtlasFormat
 }
 
 declare global {
@@ -172,6 +182,19 @@ function isEditableTarget(t: EventTarget | null): boolean {
   const tag = t.tagName.toLowerCase()
   return tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable
 }
+
+const FORMAT_LABEL: Record<AtlasFormat, string> = {
+  native: 'FL Atlas',
+  texturepacker: 'TexturePacker',
+  aseprite: 'Aseprite',
+}
+
+// Saving with an output format different from what was loaded is a
+// one-way trip — see requestSave()'s doc comment. Matches the window
+// used by the identically-shaped ClearHistoryButton confirm idiom in
+// webview/audio/AiGeneratePanel.tsx (a separate tool — not shared, kept
+// as its own local constant here on purpose).
+const FORMAT_SWITCH_CONFIRM_WINDOW_MS = 3000
 
 /**
  * Compute the alpha-trimmed bounding box of a single rect: the smallest
@@ -338,6 +361,25 @@ const s = stylex.create({
     fontSize: vscode.fontSize,
   },
   toolbarSpacer: { flex: 1 },
+  // Non-native-format indicator (TexturePacker/Aseprite) — Atlas panel
+  // header, next to the AtlasMenu trigger. Never rendered for our own
+  // native format; see FORMAT_LABEL / requestSave's doc comment.
+  formatBadge: {
+    backgroundColor: 'transparent',
+    color: vscode.descriptionFg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.panelBorder,
+    borderRadius: radius.sm,
+    paddingInline: space.sm,
+    paddingBlock: '1px',
+    marginInlineEnd: space.md,
+    fontFamily: vscode.monoFontFamily,
+    fontSize: '10px',
+    lineHeight: 1.4,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
   workArea: {
     flex: 1,
     minHeight: 0,
@@ -693,6 +735,10 @@ export function App() {
   const [payload, setPayload] = useState<InitPayload | null>(() => window.__FL_ATLAS__ ?? null)
   const rects = useAtlasRects()
   const setRects = atlasActions.setRects
+  const passthrough = useAtlasPassthrough()
+  const detectedFormat = useAtlasDetectedFormat()
+  const outputFormat = useAtlasOutputFormat()
+  const setOutputFormat = atlasActions.setOutputFormat
   const selectedIds = useAtlasSelectedIds()
   const setSelectedIds = atlasActions.setSelectedIds
   const tool = useAtlasStore((s) => s.tool)
@@ -727,6 +773,20 @@ export function App() {
     | { kind: 'saved'; at: number; path: string; count: number }
     | { kind: 'error'; message: string }
   >({ kind: 'idle' })
+  // Two-step confirm for a Save that would switch the atlas to a
+  // DIFFERENT format than it was loaded in — see requestSave()'s doc
+  // comment. Reset any time the target format itself changes, so an
+  // already-armed confirm never silently applies to a format the user
+  // didn't actually confirm.
+  const [formatSwitchArmed, setFormatSwitchArmed] = useState(false)
+  useEffect(() => {
+    if (!formatSwitchArmed) return
+    const timer = setTimeout(() => setFormatSwitchArmed(false), FORMAT_SWITCH_CONFIRM_WINDOW_MS)
+    return () => clearTimeout(timer)
+  }, [formatSwitchArmed])
+  useEffect(() => {
+    setFormatSwitchArmed(false)
+  }, [outputFormat])
   const bridgeRef = useRef<ReturnType<typeof createClientBridge> | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const editorBg = useCssVar('--vscode-editor-background', '#1e1e1e')
@@ -863,9 +923,23 @@ export function App() {
       setPayload(p)
       if (!didLoadRef.current) {
         didLoadRef.current = true
+        // Split the wire's full RectInput shape into the canvas-editable
+        // Rect subset (what RectOverlay/the store's `rects` render/drag)
+        // and a passthrough map keyed by id (format metadata RectOverlay
+        // has no business knowing about) — see RectPassthrough's doc
+        // comment in atlasStore.ts.
+        const rects: Rect[] = []
+        const passthrough: Record<string, RectPassthrough> = {}
+        for (const r of p.rects ?? []) {
+          const { id, x, y, w, h, name, ...rest } = r
+          rects.push({ id, x, y, w, h, name })
+          if (Object.keys(rest).length > 0) passthrough[id] = rest
+        }
         atlasActions.loadFromInit(
-          p.rects ? [...p.rects] : [],
-          p.animations ? { ...p.animations } : {}
+          rects,
+          p.animations ? { ...p.animations } : {},
+          passthrough,
+          p.format ?? 'native'
         )
       }
       if (p.loadError) {
@@ -897,9 +971,23 @@ export function App() {
         sidecarUri: string
         frameCount: number
       }>('atlas/save', {
-        rects: rects.map(({ id, x, y, w, h, name }) => ({ id, x, y, w, h, name })),
+        // Re-merge each rect's format passthrough (rotation/trim/pivot/
+        // polygon-mesh/duration — dropped from `Rect` itself, see
+        // RectPassthrough's doc comment in atlasStore.ts) back in before
+        // it crosses the bridge; the host's buildXJson functions read it
+        // straight off each rect.
+        rects: rects.map(({ id, x, y, w, h, name }) => ({
+          id,
+          x,
+          y,
+          w,
+          h,
+          name,
+          ...passthrough[id],
+        })),
         image: { width: imageSize.w, height: imageSize.h },
         animations: Object.keys(animations).length > 0 ? animations : undefined,
+        outputFormat,
       })
       setSaveStatus({
         kind: 'saved',
@@ -914,7 +1002,30 @@ export function App() {
         message: `Save failed: ${msg}`,
       })
     }
-  }, [rects, imageSize, animations])
+  }, [rects, imageSize, animations, passthrough, outputFormat])
+
+  /**
+   * The one path both the toolbar Save button and the Cmd/Ctrl+S hotkey
+   * go through. Saving in the format the atlas was actually loaded in is
+   * unconditional — that's the common case and stays exactly as fast as
+   * before this feature existed. Switching to a DIFFERENT output format
+   * is a one-way trip (the other format's rotation/trim/pivot/mesh or
+   * frameTags/duration fields — whichever this one doesn't carry — are
+   * dropped, and there's no "convert back" once written), so the first
+   * call just arms the toolbar button's warning state instead of saving;
+   * only a second call within the confirm window actually saves. See
+   * `formatSwitchArmed` above and `ClearHistoryButton` in
+   * webview/audio/AiGeneratePanel.tsx for the same idiom elsewhere in
+   * this tool suite.
+   */
+  const requestSave = useCallback(() => {
+    if (outputFormat !== detectedFormat && !formatSwitchArmed) {
+      setFormatSwitchArmed(true)
+      return
+    }
+    setFormatSwitchArmed(false)
+    void handleSave()
+  }, [outputFormat, detectedFormat, formatSwitchArmed, handleSave])
 
   const handleRectCreate = useCallback((r: Rect) => {
     setRects((prev) => [...prev, r])
@@ -924,6 +1035,11 @@ export function App() {
   const handleRectChange = useCallback(
     (id: string, next: { x: number; y: number; w: number; h: number }) => {
       setRects((prev) => prev.map((r) => (r.id === id ? { ...r, ...next } : r)))
+      // The rect's frame geometry just changed — any loaded rotation/trim/
+      // pivot/polygon-mesh passthrough for it no longer describes the new
+      // rect, and there's no editing UI to keep it consistent. See
+      // RectPassthrough's doc comment in atlasStore.ts.
+      atlasActions.clearPassthrough(id)
     },
     []
   )
@@ -1752,9 +1868,12 @@ export function App() {
       }
       // Cmd/Ctrl+S — Save. preventDefault first so the browser never sees
       // it (VSCode would otherwise offer its own Save dialog for the panel).
+      // Goes through requestSave, not handleSave directly, so the
+      // format-switch confirm applies here too, not just to the toolbar
+      // button click.
       if (mod && (e.key === 's' || e.key === 'S')) {
         e.preventDefault()
-        void handleSave()
+        requestSave()
         return
       }
 
@@ -1820,7 +1939,7 @@ export function App() {
     deleteSelected,
     selectAll,
     startRename,
-    handleSave,
+    requestSave,
     mode,
     sliceCanCommit,
     commitSlice,
@@ -1942,15 +2061,41 @@ export function App() {
             }}
           />
           <ToolbarButton
-            icon={saveStatus.kind === 'saving' ? 'loading' : 'save'}
-            title="Save Atlas  (⌘S)"
+            icon={saveStatus.kind === 'saving' ? 'loading' : formatSwitchArmed ? 'warning' : 'save'}
+            title={
+              formatSwitchArmed
+                ? `Click again to save as ${FORMAT_LABEL[outputFormat]} — ${FORMAT_LABEL[detectedFormat]}-specific data will be dropped and can't be recovered`
+                : outputFormat !== detectedFormat
+                  ? `Save Atlas — will convert to ${FORMAT_LABEL[outputFormat]} format  (⌘S)`
+                  : 'Save Atlas  (⌘S)'
+            }
             disabled={inTool}
-            onClick={() => void handleSave()}
+            onClick={requestSave}
           />
         </Toolbar>
 
         <div ref={workAreaRef} {...stylex.props(s.workArea, s.workAreaCols(framesPx))}>
-          <Panel title="Atlas" headerActions={<AtlasMenu prefs={prefs} />} bodyPadding="none">
+          <Panel
+            title="Atlas"
+            headerActions={
+              <>
+                {outputFormat !== 'native' ? (
+                  <span
+                    {...stylex.props(s.formatBadge)}
+                    title={`Export format: ${FORMAT_LABEL[outputFormat]}`}
+                  >
+                    {FORMAT_LABEL[outputFormat]}
+                  </span>
+                ) : null}
+                <AtlasMenu
+                  prefs={prefs}
+                  outputFormat={outputFormat}
+                  onOutputFormatChange={setOutputFormat}
+                />
+              </>
+            }
+            bodyPadding="none"
+          >
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <div {...stylex.props(s.previewWrap)} style={{ flex: 1, minHeight: 0 }}>
                 <Suspense

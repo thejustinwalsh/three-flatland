@@ -10,12 +10,21 @@ export type {
 export {
   animationInputToWire,
   atlasToRects,
+  baseFramePassthrough,
   buildAtlasJson,
   importAsepriteFrameTags,
   readAnimationsFromJson,
   uniqueKey,
   wireAnimationToInput,
 } from './build'
+
+export {
+  animationInputToFrameTag,
+  buildAsepriteJson,
+  buildTexturePackerJson,
+  detectAtlasFormat,
+  type AtlasFormat,
+} from './formats'
 
 export { packRects, type PackInput, type PackResult, type Placement } from './maxrects'
 

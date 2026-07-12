@@ -31,5 +31,8 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@three-flatland/schemas": "workspace:*"
   }
 }

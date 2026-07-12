@@ -1,10 +1,4 @@
-import type {
-  AnimationInput,
-  AtlasJson,
-  AtlasMergeMeta,
-  RectInput,
-  WireAnimation,
-} from './types'
+import type { AnimationInput, AtlasJson, AtlasMergeMeta, RectInput, WireAnimation } from './types'
 
 function formatFromFileName(name: string): 'png' | 'webp' | 'avif' | 'ktx2' {
   const lastDot = name.lastIndexOf('.')
@@ -26,10 +20,16 @@ export function buildAtlasJson(input: {
     const key = uniqueKey(r.name ?? `frame_${i}`, used)
     frames[key] = {
       frame: { x: r.x, y: r.y, w: r.w, h: r.h },
-      rotated: false,
-      trimmed: false,
-      spriteSourceSize: { x: 0, y: 0, w: r.w, h: r.h },
-      sourceSize: { w: r.w, h: r.h },
+      ...baseFramePassthrough(r, { w: r.w, h: r.h }),
+      // Native is our own superset — everything a rect carries is valid
+      // here, unlike buildTexturePackerJson/buildAsepriteJson in
+      // formats.ts, which only forward the subset their real format
+      // understands (see baseFramePassthrough's doc comment).
+      ...(r.duration !== undefined ? { duration: r.duration } : {}),
+      ...(r.mesh ? { mesh: r.mesh } : {}),
+      ...(r.vertices ? { vertices: r.vertices } : {}),
+      ...(r.verticesUV ? { verticesUV: r.verticesUV } : {}),
+      ...(r.triangles ? { triangles: r.triangles } : {}),
     }
   })
 
@@ -56,6 +56,41 @@ export function buildAtlasJson(input: {
   }
 }
 
+// The Frame fields valid in ALL THREE formats — `rotated`/`trimmed`/
+// `spriteSourceSize`/`sourceSize`/`pivot`. Everything else a `Frame` can
+// carry is format-specific and must NOT be blindly forwarded: `duration`
+// is Aseprite-only, `vertices`/`verticesUV`/`triangles` are
+// TexturePacker-only, `mesh` is ours-only — a TexturePacker-loaded rect's
+// `vertices` (or our own `mesh`) leaking into an Aseprite-format save (or
+// vice versa) would produce a file that ISN'T a genuinely faithful
+// export, which is exactly what the strict per-format schemas in
+// packages/schemas/src/atlas exist to catch. `buildAtlasJson` (below) is
+// the exception — it's our own superset, so it adds all of those back on
+// top of this base. See `buildTexturePackerJson`/`buildAsepriteJson` in
+// formats.ts for the other two.
+//
+// `rotated`/`trimmed`/`spriteSourceSize`/`sourceSize` are non-optional on
+// the wire, so a rect that was ever loaded from a real atlas always
+// carries real values for them; a freshly-packed rect (never
+// round-tripped through `atlasToRects`) has them `undefined`, and this
+// falls back to today's defaults (`rotated:false, trimmed:false,
+// sourceSize:fullSize`) in that case.
+export function baseFramePassthrough(
+  r: Pick<RectInput, 'rotated' | 'trimmed' | 'spriteSourceSize' | 'sourceSize' | 'pivot'>,
+  fallbackSize: { w: number; h: number }
+): Pick<
+  AtlasJson['frames'][string],
+  'rotated' | 'trimmed' | 'spriteSourceSize' | 'sourceSize' | 'pivot'
+> {
+  return {
+    rotated: r.rotated ?? false,
+    trimmed: r.trimmed ?? false,
+    spriteSourceSize: r.spriteSourceSize ?? { x: 0, y: 0, ...fallbackSize },
+    sourceSize: r.sourceSize ?? fallbackSize,
+    ...(r.pivot ? { pivot: r.pivot } : {}),
+  }
+}
+
 export function atlasToRects(json: AtlasJson, idGen: () => string): RectInput[] {
   const out: RectInput[] = []
   for (const [name, frame] of Object.entries(json.frames)) {
@@ -66,6 +101,16 @@ export function atlasToRects(json: AtlasJson, idGen: () => string): RectInput[] 
       w: frame.frame.w,
       h: frame.frame.h,
       name,
+      rotated: frame.rotated,
+      trimmed: frame.trimmed,
+      spriteSourceSize: frame.spriteSourceSize,
+      sourceSize: frame.sourceSize,
+      ...(frame.pivot ? { pivot: frame.pivot } : {}),
+      ...(frame.duration !== undefined ? { duration: frame.duration } : {}),
+      ...(frame.mesh ? { mesh: frame.mesh } : {}),
+      ...(frame.vertices ? { vertices: frame.vertices } : {}),
+      ...(frame.verticesUV ? { verticesUV: frame.verticesUV } : {}),
+      ...(frame.triangles ? { triangles: frame.triangles } : {}),
     })
   }
   return out
@@ -117,9 +162,7 @@ export function wireAnimationToInput(wire: WireAnimation): AnimationInput {
   }
 }
 
-export function importAsepriteFrameTags(
-  json: AtlasJson
-): Record<string, AnimationInput> {
+export function importAsepriteFrameTags(json: AtlasJson): Record<string, AnimationInput> {
   const frameNames = Object.keys(json.frames)
   const out: Record<string, AnimationInput> = {}
   const used = new Set<string>()
@@ -143,6 +186,14 @@ export function importAsepriteFrameTags(
       fps,
       loop: true,
       pingPong: isPingPong,
+      // Passthrough — carried through unedited so a save back to Aseprite's
+      // format (formats.ts's animationInputToFrameTag) can reproduce the
+      // exact same tag if this animation isn't touched. See AnimationInput's
+      // doc comment in types.ts.
+      ...(tag.direction ? { direction: tag.direction } : {}),
+      ...(tag.color ? { color: tag.color } : {}),
+      ...(tag.repeat ? { repeat: tag.repeat } : {}),
+      ...(tag.data ? { data: tag.data } : {}),
     }
   }
   return out
@@ -160,9 +211,7 @@ export function uniqueKey(candidate: string, used: Set<string>): string {
   return key
 }
 
-export function readAnimationsFromJson(
-  json: AtlasJson
-): Record<string, AnimationInput> {
+export function readAnimationsFromJson(json: AtlasJson): Record<string, AnimationInput> {
   if (json.meta.animations && Object.keys(json.meta.animations).length > 0) {
     const out: Record<string, AnimationInput> = {}
     for (const [name, wire] of Object.entries(json.meta.animations)) {

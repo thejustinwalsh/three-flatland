@@ -1,1 +1,12 @@
-export { atlasSchema, validateAtlas, assertValidAtlas, formatAtlasErrors } from './validator'
+export {
+  atlasSchema,
+  validateAtlas,
+  assertValidAtlas,
+  formatAtlasErrors,
+  validateTexturePackerAtlas,
+  assertValidTexturePackerAtlas,
+  formatTexturePackerAtlasErrors,
+  validateAsepriteAtlas,
+  assertValidAsepriteAtlas,
+  formatAsepriteAtlasErrors,
+} from './validator'

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { Icon } from '@three-flatland/design-system'
+import { CompactSelect, Icon } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 import { z } from '@three-flatland/design-system/tokens/z.stylex'
+import type { AtlasFormat } from '@three-flatland/io/atlas'
 import { prefsStore, type AtlasPrefs } from './prefs'
 
 const s = stylex.create({
@@ -191,20 +192,28 @@ function Segmented<V extends string>({ label, value, options, onChange }: Segmen
 
 export type AtlasMenuProps = {
   prefs: AtlasPrefs
+  /** Current save-target format — defaults to whatever was detected on
+   * load; see AtlasStoreState's doc comment in atlasStore.ts. */
+  outputFormat: AtlasFormat
+  onOutputFormatChange: (next: AtlasFormat) => void
 }
 
 /**
  * Hamburger menu surfacing the user's display preferences for the Atlas
  * tool: background style, dim-out-of-bounds, color/coord readout format,
- * and visibility toggles for the floating overlays. All writes go through
- * `prefsStore` so the values are persisted to localStorage.
+ * visibility toggles for the floating overlays, and the atlas's save
+ * output format. Display prefs go through `prefsStore` (persisted to
+ * localStorage); `outputFormat` is document state owned by the caller
+ * (atlasStore, via App.tsx) since it's per-file, not a cross-session
+ * preference — switching it doesn't save immediately, see App.tsx's
+ * `requestSave`/`formatSwitchArmed` for the confirm-before-lossy-save flow.
  *
  * The popover closes on outside-click, Escape, or selecting an option in
  * a way that fully resolves the choice (segmented buttons stay open so
  * the user can compare side-by-side; toggles stay open so the user can
  * flip multiple in one trip).
  */
-export function AtlasMenu({ prefs }: AtlasMenuProps) {
+export function AtlasMenu({ prefs, outputFormat, onOutputFormatChange }: AtlasMenuProps) {
   const [open, setOpen] = useState(false)
   const anchorRef = useRef<HTMLDivElement>(null)
 
@@ -214,6 +223,13 @@ export function AtlasMenu({ prefs }: AtlasMenuProps) {
     const onDocClick = (e: MouseEvent) => {
       if (!anchorRef.current) return
       if (anchorRef.current.contains(e.target as Node)) return
+      // The Export format CompactSelect portals its own popover to
+      // document.body, so a click on one of its options lands OUTSIDE
+      // anchorRef's DOM subtree even though it's a nested control —
+      // without this check, selecting an option would close this menu
+      // on mousedown before the option's own click handler could fire,
+      // silently discarding the selection.
+      if ((e.target as Element).closest?.('[role="listbox"]')) return
       setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
@@ -306,6 +322,18 @@ export function AtlasMenu({ prefs }: AtlasMenuProps) {
             checked={prefs.showInfoPanel}
             onChange={(v) => prefsStore.set({ showInfoPanel: v })}
           />
+
+          <div {...stylex.props(s.divider)} />
+          <div {...stylex.props(s.sectionLabel)}>Export format</div>
+          <div {...stylex.props(s.segRow)}>
+            <span>Save as</span>
+            <CompactSelect<AtlasFormat>
+              value={outputFormat}
+              options={[{ value: 'native' }, { value: 'texturepacker' }, { value: 'aseprite' }]}
+              onChange={onOutputFormatChange}
+              aria-label="Export format"
+            />
+          </div>
         </div>
       ) : null}
     </div>

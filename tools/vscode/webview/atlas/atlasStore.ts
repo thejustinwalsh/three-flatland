@@ -3,7 +3,22 @@ import { temporal } from 'zundo'
 import type { TemporalState } from 'zundo'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import type { Rect } from '@three-flatland/preview'
+import type { AtlasFormat, RectInput } from '@three-flatland/io/atlas'
 import { localStorageStorage, webviewStorage } from '../state'
+
+// Everything a loaded frame can carry beyond the canvas-editable geometry
+// (`Rect`'s id/x/y/w/h/name) — rotation/trim/pivot/polygon-mesh/duration
+// from a TexturePacker or Aseprite source. `Rect` itself (from
+// `@three-flatland/preview`) is a generic reusable canvas-overlay
+// primitive shared by other tools — it must NOT carry atlas-format-
+// specific fields, so this rides alongside it in the store instead,
+// keyed by rect id. Populated on load (see `loadFromInit`), read back in
+// at save time (App.tsx's `handleSave`), and cleared for a given rect
+// the moment its geometry is edited (see `clearPassthrough` and
+// `RectOverlay`'s `onRectChange` wiring in App.tsx) — there is no
+// rotation/trim *editing* UI, so once a rect's frame rect changes, its
+// old passthrough data can no longer be trusted to describe it.
+export type RectPassthrough = Partial<Omit<RectInput, 'id' | 'x' | 'y' | 'w' | 'h' | 'name'>>
 
 // Matches the local Animation type in App.tsx — kept in sync here so
 // A2 can import it from the store instead of redeclaring it.
@@ -23,6 +38,17 @@ export type AtlasStoreState = {
   // Primary user-edit state. These ARE the document's content.
   rects: Rect[]
   animations: Record<string, Animation>
+  // Format passthrough (rotation/trim/pivot/mesh/duration), keyed by rect
+  // id — see RectPassthrough's doc comment above.
+  passthrough: Record<string, RectPassthrough>
+
+  // The format detected on load (immutable per-load — 'native' for a
+  // brand-new atlas with no sidecar yet) vs. the format the NEXT save
+  // will actually write in (mutable, defaults to detectedFormat, switched
+  // via AtlasMenu's Export Format section). They diverge only when the
+  // user explicitly changes the output format.
+  detectedFormat: AtlasFormat
+  outputFormat: AtlasFormat
 
   // Session UI state — persisted via webviewStorage (tab focus loss),
   // reset on panel close.
@@ -39,7 +65,7 @@ export type AtlasStoreState = {
   setAnimations: (
     next:
       | Record<string, Animation>
-      | ((prev: Record<string, Animation>) => Record<string, Animation>),
+      | ((prev: Record<string, Animation>) => Record<string, Animation>)
   ) => void
 
   // Atomic updater for both rects and animations in one set() call.
@@ -49,13 +75,26 @@ export type AtlasStoreState = {
     rectsUpdater: Rect[] | ((prev: Rect[]) => Rect[]),
     animsUpdater:
       | Record<string, Animation>
-      | ((prev: Record<string, Animation>) => Record<string, Animation>),
+      | ((prev: Record<string, Animation>) => Record<string, Animation>)
   ) => void
 
   // Initial-load helper — replace both at once. Used during the
   // atlas/init bridge handshake. Doesn't push history (we don't want
   // file-load to be undoable; the user can't have done anything yet).
-  loadFromInit: (rects: Rect[], animations: Record<string, Animation>) => void
+  loadFromInit: (
+    rects: Rect[],
+    animations: Record<string, Animation>,
+    passthrough: Record<string, RectPassthrough>,
+    format: AtlasFormat
+  ) => void
+
+  // Drops a rect's format passthrough — not undo-tracked (see the
+  // `HistorySlice`/`equality` comment below): a rect drag/resize that's
+  // later undone restores its geometry but not its passthrough, an
+  // accepted, low-stakes limitation rather than the complexity of
+  // history-tracking opaque metadata nothing in the UI directly edits.
+  clearPassthrough: (id: string) => void
+  setOutputFormat: (next: AtlasFormat) => void
 
   setSelectedIds: (next: Set<string> | ((prev: Set<string>) => Set<string>)) => void
   setTool: (next: Tool) => void
@@ -93,10 +132,7 @@ function rectsEqual(a: Rect[], b: Rect[]): boolean {
   return true
 }
 
-function animationsEqual(
-  a: Record<string, Animation>,
-  b: Record<string, Animation>,
-): boolean {
+function animationsEqual(a: Record<string, Animation>, b: Record<string, Animation>): boolean {
   if (a === b) return true
   const ak = Object.keys(a)
   if (ak.length !== Object.keys(b).length) return false
@@ -127,6 +163,9 @@ export const useAtlasStore = create<AtlasStoreState>()(
         (set) => ({
           rects: [],
           animations: {},
+          passthrough: {},
+          detectedFormat: 'native' as AtlasFormat,
+          outputFormat: 'native' as AtlasFormat,
           selectedIds: new Set<string>(),
           tool: 'rect' as Tool,
           activeAnimation: null,
@@ -152,7 +191,7 @@ export const useAtlasStore = create<AtlasStoreState>()(
                 typeof animsUpdater === 'function' ? animsUpdater(s.animations) : animsUpdater,
             })),
 
-          loadFromInit: (rects, animations) => {
+          loadFromInit: (rects, animations, passthrough, format) => {
             // Replace state AND clear history — file load should not be undoable.
             // Also reset session-scoped state that won't make sense against a
             // new sidecar: selection refers to old rect ids, and a persisted
@@ -167,11 +206,24 @@ export const useAtlasStore = create<AtlasStoreState>()(
             useAtlasStore.setState({
               rects,
               animations,
+              passthrough,
+              detectedFormat: format,
+              outputFormat: format,
               activeAnimation: validActive,
               selectedIds: new Set<string>(),
             })
             useAtlasStore.temporal.getState().clear()
           },
+
+          clearPassthrough: (id) =>
+            set((s) => {
+              if (!(id in s.passthrough)) return s
+              const next = { ...s.passthrough }
+              delete next[id]
+              return { ...s, passthrough: next }
+            }),
+
+          setOutputFormat: (next) => set((s) => ({ ...s, outputFormat: next })),
 
           setSelectedIds: (next) =>
             set((s) => ({
@@ -179,8 +231,7 @@ export const useAtlasStore = create<AtlasStoreState>()(
               selectedIds: typeof next === 'function' ? next(s.selectedIds) : next,
             })),
 
-          setTool: (next) =>
-            set((s) => ({ ...s, tool: next })),
+          setTool: (next) => set((s) => ({ ...s, tool: next })),
 
           setActiveAnimation: (next) =>
             set((s) => ({
@@ -188,8 +239,7 @@ export const useAtlasStore = create<AtlasStoreState>()(
               activeAnimation: typeof next === 'function' ? next(s.activeAnimation) : next,
             })),
 
-          setFramesPx: (px) =>
-            set((s) => ({ ...s, framesPx: px })),
+          setFramesPx: (px) => set((s) => ({ ...s, framesPx: px })),
         }),
         {
           // Session state: survives tab focus loss + dev reload, lost on panel close.
@@ -198,6 +248,9 @@ export const useAtlasStore = create<AtlasStoreState>()(
           partialize: (s) => ({
             rects: s.rects,
             animations: s.animations,
+            passthrough: s.passthrough,
+            detectedFormat: s.detectedFormat,
+            outputFormat: s.outputFormat,
             selectedIds: Array.from(s.selectedIds),
             tool: s.tool,
             activeAnimation: s.activeAnimation,
@@ -207,6 +260,9 @@ export const useAtlasStore = create<AtlasStoreState>()(
             const p = persisted as {
               rects?: Rect[]
               animations?: Record<string, Animation>
+              passthrough?: Record<string, RectPassthrough>
+              detectedFormat?: AtlasFormat
+              outputFormat?: AtlasFormat
               selectedIds?: string[]
               tool?: Tool
               activeAnimation?: string | null
@@ -215,12 +271,15 @@ export const useAtlasStore = create<AtlasStoreState>()(
               ...current,
               ...(p.rects !== undefined ? { rects: p.rects } : {}),
               ...(p.animations !== undefined ? { animations: p.animations } : {}),
+              ...(p.passthrough !== undefined ? { passthrough: p.passthrough } : {}),
+              ...(p.detectedFormat !== undefined ? { detectedFormat: p.detectedFormat } : {}),
+              ...(p.outputFormat !== undefined ? { outputFormat: p.outputFormat } : {}),
               selectedIds: new Set<string>(p.selectedIds ?? []),
               ...(p.tool !== undefined ? { tool: p.tool } : {}),
               ...(p.activeAnimation !== undefined ? { activeAnimation: p.activeAnimation } : {}),
             }
           },
-        },
+        }
       ),
       {
         // Cross-session prefs: survive panel close + VSCode restart.
@@ -229,7 +288,7 @@ export const useAtlasStore = create<AtlasStoreState>()(
         partialize: (s) => ({
           framesPx: s.framesPx,
         }),
-      },
+      }
     ),
     {
       // Track only the document's content — action functions slot
@@ -243,7 +302,8 @@ export const useAtlasStore = create<AtlasStoreState>()(
       // entries whenever a setter returns fresh references with
       // identical content (e.g. dropping a rect at its original
       // geometry, blurring a rename input unchanged).
-      equality: (a, b) => rectsEqual(a.rects, b.rects) && animationsEqual(a.animations, b.animations),
+      equality: (a, b) =>
+        rectsEqual(a.rects, b.rects) && animationsEqual(a.animations, b.animations),
       // Coalesce burst sets (drag, hot-key repeats) into one undo entry.
       // 100 ms is below human undo-reaction latency.
       handleSet: (handleSet) => {
@@ -256,8 +316,8 @@ export const useAtlasStore = create<AtlasStoreState>()(
           }, 100)
         }
       },
-    },
-  ),
+    }
+  )
 )
 
 // ── Convenience hooks ────────────────────────────────────────────────────────
@@ -274,32 +334,53 @@ export function useAtlasSelectedIds(): Set<string> {
   return useStore(useAtlasStore, (s) => s.selectedIds)
 }
 
+export function useAtlasPassthrough(): Record<string, RectPassthrough> {
+  return useStore(useAtlasStore, (s) => s.passthrough)
+}
+
+// Two separate primitive-field hooks, not one hook returning a combined
+// object — a selector that builds a new object literal every call breaks
+// Zustand's reference-equality snapshot check (useSyncExternalStore),
+// which manifests as the whole component tree never settling (not just a
+// stale format value) rather than an obvious render error. Every other
+// hook in this file reads one primitive field for the same reason.
+export function useAtlasDetectedFormat(): AtlasFormat {
+  return useStore(useAtlasStore, (s) => s.detectedFormat)
+}
+
+export function useAtlasOutputFormat(): AtlasFormat {
+  return useStore(useAtlasStore, (s) => s.outputFormat)
+}
+
 // ── Direct action accessors (for non-React call sites) ───────────────────────
 
 export const atlasActions = {
-  setRects: (next: Rect[] | ((prev: Rect[]) => Rect[])) =>
-    useAtlasStore.getState().setRects(next),
+  setRects: (next: Rect[] | ((prev: Rect[]) => Rect[])) => useAtlasStore.getState().setRects(next),
   setAnimations: (
     next:
       | Record<string, Animation>
-      | ((prev: Record<string, Animation>) => Record<string, Animation>),
+      | ((prev: Record<string, Animation>) => Record<string, Animation>)
   ) => useAtlasStore.getState().setAnimations(next),
   applyMulti: (
     rectsUpdater: Rect[] | ((prev: Rect[]) => Rect[]),
     animsUpdater:
       | Record<string, Animation>
-      | ((prev: Record<string, Animation>) => Record<string, Animation>),
+      | ((prev: Record<string, Animation>) => Record<string, Animation>)
   ) => useAtlasStore.getState().applyMulti(rectsUpdater, animsUpdater),
-  loadFromInit: (rects: Rect[], animations: Record<string, Animation>) =>
-    useAtlasStore.getState().loadFromInit(rects, animations),
+  loadFromInit: (
+    rects: Rect[],
+    animations: Record<string, Animation>,
+    passthrough: Record<string, RectPassthrough>,
+    format: AtlasFormat
+  ) => useAtlasStore.getState().loadFromInit(rects, animations, passthrough, format),
+  clearPassthrough: (id: string) => useAtlasStore.getState().clearPassthrough(id),
+  setOutputFormat: (next: AtlasFormat) => useAtlasStore.getState().setOutputFormat(next),
   setSelectedIds: (next: Set<string> | ((prev: Set<string>) => Set<string>)) =>
     useAtlasStore.getState().setSelectedIds(next),
-  setTool: (next: Tool) =>
-    useAtlasStore.getState().setTool(next),
+  setTool: (next: Tool) => useAtlasStore.getState().setTool(next),
   setActiveAnimation: (next: string | null | ((prev: string | null) => string | null)) =>
     useAtlasStore.getState().setActiveAnimation(next),
-  setFramesPx: (px: number) =>
-    useAtlasStore.getState().setFramesPx(px),
+  setFramesPx: (px: number) => useAtlasStore.getState().setFramesPx(px),
 }
 
 // ── Undo/redo helpers ────────────────────────────────────────────────────────

@@ -3,10 +3,13 @@ import { createHostBridge } from '@three-flatland/bridge/host'
 import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
 import {
+  buildAsepriteJson,
   buildAtlasJson,
+  buildTexturePackerJson,
   readAtlasSidecar,
   writeAtlasSidecar,
   type AnimationInput,
+  type AtlasFormat,
   type RectInput,
 } from './sidecar'
 
@@ -65,14 +68,20 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
       let rects: RectInput[] = []
       let animations: Record<string, AnimationInput> = {}
       let loadError: string | null = null
+      // Defaults to 'native' for a brand-new atlas (no sidecar yet) — the
+      // webview's output-format selector defaults to whatever this is, and
+      // a fresh atlas should default to our own format, not an arbitrary
+      // foreign one.
+      let format: AtlasFormat = 'native'
       try {
         const loaded = await readAtlasSidecar(document.uri)
         if (loaded) {
           rects = loaded.rects
           animations = loaded.animations
+          format = loaded.format
           log(
             `atlas/ready loaded ${rects.length} frame(s) and ` +
-              `${Object.keys(animations).length} animation(s) from sidecar`,
+              `${Object.keys(animations).length} animation(s) from sidecar (format: ${format})`
           )
         } else {
           log('atlas/ready no existing sidecar')
@@ -81,7 +90,7 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
         loadError = err instanceof Error ? err.message : String(err)
         log(`atlas/ready sidecar load failed: ${loadError}`)
       }
-      bridge.emit('atlas/init', { imageUri, fileName, rects, animations, loadError })
+      bridge.emit('atlas/init', { imageUri, fileName, rects, animations, loadError, format })
       return { ok: true }
     })
 
@@ -91,22 +100,32 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
     })
 
     // atlas/save: webview hands us a snapshot of rects + the image's
-    // native size; we project to SpriteSheetJSONHash and write
-    // <basename>.atlas.json next to the image.
+    // native size; we project to the selected output format (our own
+    // schema, or a genuinely faithful TexturePacker/Aseprite export — see
+    // tools/io/src/atlas/formats.ts) and write <basename>.atlas.json next
+    // to the image. `outputFormat` defaults to 'native' for older webview
+    // builds mid-deploy; host and webview ship together in this monorepo
+    // so that's a belt-and-suspenders default, not a real compat path.
     bridge.on<{
       rects: RectInput[]
       image: { width: number; height: number }
       animations?: Record<string, AnimationInput>
-    }>('atlas/save', async ({ rects, image, animations }) => {
+      outputFormat?: AtlasFormat
+    }>('atlas/save', async ({ rects, image, animations, outputFormat = 'native' }) => {
       try {
-        const json = buildAtlasJson({
-          image: { ...image, fileName },
-          rects,
-          animations,
-        })
+        const json =
+          outputFormat === 'texturepacker'
+            ? buildTexturePackerJson({ image: { ...image, fileName }, rects })
+            : outputFormat === 'aseprite'
+              ? buildAsepriteJson({ image: { ...image, fileName }, rects, animations })
+              : buildAtlasJson({ image: { ...image, fileName }, rects, animations })
         const out = await writeAtlasSidecar(document.uri, json)
-        const animCount = json.meta.animations ? Object.keys(json.meta.animations).length : 0
-        log(`atlas/save wrote ${out.fsPath} (${rects.length} frames, ${animCount} animations)`)
+        const animCount = json.meta.animations
+          ? Object.keys(json.meta.animations).length
+          : (json.meta.frameTags?.length ?? 0)
+        log(
+          `atlas/save wrote ${out.fsPath} (${rects.length} frames, ${animCount} animations, format: ${outputFormat})`
+        )
         return { ok: true, sidecarUri: out.toString(), frameCount: rects.length }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)

@@ -28,6 +28,8 @@ export default defineConfig({
     // intact in the output JS, so the JSON file must be present alongside it.
     mkdirSync('dist/atlas', { recursive: true })
     copyFileSync('src/atlas/schema.json', 'dist/atlas/schema.json')
+    copyFileSync('src/atlas/texturepacker.schema.json', 'dist/atlas/texturepacker.schema.json')
+    copyFileSync('src/atlas/aseprite.schema.json', 'dist/atlas/aseprite.schema.json')
     mkdirSync('dist/normal-descriptor', { recursive: true })
     copyFileSync('src/normal-descriptor/schema.json', 'dist/normal-descriptor/schema.json')
 
