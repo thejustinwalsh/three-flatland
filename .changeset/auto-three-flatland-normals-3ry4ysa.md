@@ -5,13 +5,18 @@
 > Branch: preview/tools-combined
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/172
 
-## Normal Baker: schema, validation, atomic publish
+## Normal Baker schema & validation
 
-- Add `NormalSourceDescriptor` JSON Schema + ajv validator (`@three-flatland/schemas/normal-descriptor`), mirroring the atlas schema's conventions; published to `docs/public/schemas/normal-descriptor.v1.json` via `sync:docs:schemas`
-- Tighten schema so region `x`/`y`/`w`/`h` must be integers; add invalid-fixture tests (fractional values) to both the schema validator suite and the normals type<->schema parity suite
-- Extract bake/write/rename/cleanup orchestration out of `saveNormalDescriptor` into a new pure `atomicPublish.ts` (dependency-injected, unit-testable) — verified temp files are cleaned up and final paths are untouched on error across three distinct failure paths
-- Add a per-field "reset to inherited" affordance (bump/direction/pitch/strength/elevation) in `RegionPropertiesPanel`, since normalize-on-save removed the only prior way a field could revert to inherited
-- Verify the preview's elevation lighting formula against the actual `DefaultLightEffect` runtime implementation (not just docs), add regression coverage for high-elevation/low-light shading
-- Strengthen the e2e save-round-trip spec: exact hash equality on the PNG's descriptor stamp, plus an independently-derived pixel check confirming R/G/B channel encoding on a real fixture region
+- New `NormalSourceDescriptor` JSON Schema + `validateNormalDescriptor()` (in `@three-flatland/schemas`), used by the FL Normal Baker GUI before baking; published to `docs/public/schemas/normal-descriptor.v1.json`
+- Schema conforms to the hand-written `NormalSourceDescriptor` type in `packages/normals` — the browser-safe normals bundle never depends on ajv
+- Added invalid-fixture tests (fractional x/y/w/h) covering the integer coordinate tightening, closing a gap where the published docs schema had drifted from the type
 
-Adds a validated JSON schema for the Normal Baker's source descriptor format and hardens its save pipeline with atomic publish semantics, stricter integer field validation, and expanded test coverage.
+## Normal Baker editor (VSCode tool)
+
+- Added a per-field "reset to inherited" affordance (bump/direction/pitch/strength/elevation) in the Region Properties panel, restoring a way back to inherited values after explicit-field-fidelity normalization removed it
+- Region list reorder controls now use the shared `ToolbarButton` design-system primitive instead of raw `<button>`s
+- Extracted the bake/write/rename/cleanup sequence out of the sidecar save path into a standalone, unit-testable `atomicPublish` function, covering the success path and three injected-failure paths (confirms temp files are cleaned up and final paths untouched on error)
+- Verified the live preview's elevation formula against the actual `DefaultLightEffect` runtime implementation and documented the one intentional divergence; added a "high elevation under low light shades darker" test
+- Strengthened the save round-trip e2e spec with exact descriptor-hash equality on the PNG's stamp and an independently derived pixel check confirming encoded R/G/B values match the source region
+
+Adds schema-backed validation and a save/publish pipeline for the Normal Baker, plus editor UX and reliability fixes (reset affordance, atomic publish, elevation-preview accuracy).
