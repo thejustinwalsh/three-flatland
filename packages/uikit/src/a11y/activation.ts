@@ -66,7 +66,14 @@ export function dispatchActivation(component: Component, event: A11yActivationEv
       nativeEvent: event.nativeEvent,
       stopPropagation: event.stopPropagation ?? noop,
     }
-    component.dispatchEvent({ type: 'click', ...click })
+    // The synthetic click is a compat bridge to legacy onClick code. If that code throws (a bug, or
+    // an env-gated API like navigator.clipboard on an insecure origin), it must NOT abort the
+    // semantic path — assistive tech still needs the activation announcement below. Surface, continue.
+    try {
+      component.dispatchEvent({ type: 'click', ...click })
+    } catch (error) {
+      console.error('[uikit a11y] a click handler threw during activation', error)
+    }
   }
 
   const wasToggled = properties.ariaChecked ?? properties.ariaPressed

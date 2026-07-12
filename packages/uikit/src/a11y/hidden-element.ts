@@ -124,6 +124,61 @@ function releaseRootContainer(root: RootContext): void {
   }
 }
 
+/** The per-root `[data-uikit-a11y]` container, if one exists — the Mode 2 projection overlays it. */
+export function getRootA11yContainer(root: RootContext): HTMLElement | undefined {
+  return rootContainers.get(root)?.element
+}
+
+/**
+ * Move a hidden element into the per-root a11y container and neutralize any own left/top offset, so
+ * Mode 2 projection positions it uniformly by `transform`. Used by Input, whose `<input>` is created
+ * off-screen on `document.body` (text/input/hidden-input.ts) rather than by setupComponentA11y.
+ * Returns a detach that releases the container refcount.
+ */
+export function attachA11yElementToRoot(root: RootContext, element: HTMLElement): () => void {
+  acquireRootContainer(root).appendChild(element)
+  element.style.left = '0'
+  element.style.top = '0'
+  return () => releaseRootContainer(root)
+}
+
+// ——— per-root a11y member registry (component → its hidden element) ———
+// Mode 2 projection enumerates these to position each element over its panel every frame. Both the
+// role-driven elements (setupComponentA11y) and Input's own hidden <input> register here, since
+// Input opts out of setupComponentA11y but still needs projecting.
+
+const rootMembers = /* @__PURE__ */ new WeakMap<RootContext, Map<Component, HTMLElement>>()
+
+/** Register a component's hidden element under its root for projection; returns an unregister fn. */
+export function registerA11yMember(
+  root: RootContext,
+  component: Component,
+  element: HTMLElement
+): () => void {
+  let map = rootMembers.get(root)
+  if (map == null) {
+    map = new Map()
+    rootMembers.set(root, map)
+  }
+  map.set(component, element)
+  // Nudge a frame so a member added after the projection started gets positioned on-demand.
+  root.requestFrame?.()
+  return () => {
+    const current = rootMembers.get(root)
+    if (current != null && current.get(component) === element) {
+      current.delete(component)
+      if (current.size === 0) {
+        rootMembers.delete(root)
+      }
+    }
+  }
+}
+
+/** Live (component → hidden element) map for a root — read by setupA11yProjection each frame. */
+export function getRootA11yMembers(root: RootContext): ReadonlyMap<Component, HTMLElement> | undefined {
+  return rootMembers.get(root)
+}
+
 // Minimal structural shape both a Component's properties and Input's share.
 type A11yNameSource = {
   readonly value: { ariaLabel?: string; ariaDescription?: string }
@@ -179,6 +234,7 @@ export function setupComponentA11y(component: Component, abortSignal: AbortSigna
     const root = component.root.value
     acquireRootContainer(root).appendChild(element)
     component.a11yElement = element
+    const unregisterMember = registerA11yMember(root, component, element)
 
     const scoped = new AbortController()
 
@@ -211,6 +267,7 @@ export function setupComponentA11y(component: Component, abortSignal: AbortSigna
 
     return () => {
       scoped.abort()
+      unregisterMember()
       element.removeEventListener('click', onClick)
       element.remove()
       if (component.a11yElement === element) {

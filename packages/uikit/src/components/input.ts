@@ -22,7 +22,11 @@ import {
   setupHtmlInputElement,
   setupUpdateHasFocus,
 } from '../text/input/hidden-input.js'
-import { setupAriaAttributes } from '../a11y/hidden-element.js'
+import {
+  attachA11yElementToRoot,
+  registerA11yMember,
+  setupAriaAttributes,
+} from '../a11y/hidden-element.js'
 import type { RenderContext } from '../context.js'
 import type { NumberValue } from '../properties/values.js'
 export const inputOutPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
@@ -196,7 +200,15 @@ export class Input<
     // the same as a base component's hidden element.
     setupAriaAttributes(this.properties, this.element, this.abortSignal)
     this.a11yElement = this.element
+    // Input opts out of setupComponentA11y, so wire its hidden <input> into the projection path
+    // directly: relocate it from its off-screen document.body spot into the per-root overlay
+    // container and register it, so Mode 2 projection positions it over the field like any role
+    // element. (createHtmlInputElement parented it to document.body at left:-1000vw.)
+    const detachA11yElement = attachA11yElementToRoot(this.root.peek(), this.element)
+    const unregisterA11yMember = registerA11yMember(this.root.peek(), this, this.element)
     this.abortSignal.addEventListener('abort', () => {
+      unregisterA11yMember()
+      detachA11yElement()
       if (this.a11yElement === this.element) {
         this.a11yElement = undefined
       }

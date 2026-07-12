@@ -2,6 +2,8 @@ export type { A11yActivationSource, A11yActivationEvent } from './activation.js'
 export { dispatchActivation } from './activation.js'
 export type { A11yRole } from './hidden-element.js'
 export { createHtmlA11yElement, setupComponentA11y, setupAriaAttributes } from './hidden-element.js'
+export type { A11yScreenRect, A11yViewport, A11yProjectionOptions } from './projection.js'
+export { computeA11yScreenRect, setupA11yProjection } from './projection.js'
 export type {
   Politeness,
   Announcement,

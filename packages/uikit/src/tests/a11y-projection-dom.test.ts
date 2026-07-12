@@ -1,0 +1,157 @@
+// @vitest-environment happy-dom
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { Object3D, PerspectiveCamera } from 'three'
+import { loadYoga } from 'yoga-layout/load'
+import { Container } from '../index.js'
+import { computeA11yScreenRect, setupA11yProjection } from '../a11y/projection.js'
+import { getRootA11yContainer, getRootA11yMembers } from '../a11y/hidden-element.js'
+
+/**
+ * Mode 2 projection integration through a real Container root: setupA11yProjection enumerates the
+ * per-root member registry, refreshes matrices each frame, and writes each hidden element's transform
+ * to exactly what the (independently oracle-tested) computeA11yScreenRect produces — hiding it when
+ * the panel is off-frustum, and restoring the off-screen container on dispose.
+ */
+
+beforeAll(async () => {
+  await loadYoga()
+})
+
+afterEach(() => {
+  for (const el of document.querySelectorAll('[data-uikit-a11y]')) {
+    el.remove()
+  }
+})
+
+function mount(properties: ConstructorParameters<typeof Container>[0]): Container {
+  const container = new Container(properties)
+  new Object3D().add(container)
+  return container
+}
+
+function facingCamera() {
+  const cam = new PerspectiveCamera(90, 1, 0.1, 100)
+  cam.position.set(0, 0, 2)
+  cam.lookAt(0, 0, 0)
+  cam.updateMatrixWorld(true)
+  cam.updateProjectionMatrix()
+  return cam
+}
+
+// A stand-in renderer exposing only the on-page canvas rect the projection reads.
+function fakeRenderer(rect: { left: number; top: number; width: number; height: number }) {
+  return {
+    domElement: {
+      getBoundingClientRect: () => ({ ...rect, right: rect.left + rect.width, bottom: rect.top + rect.height }),
+    } as unknown as HTMLElement,
+  }
+}
+
+describe('setupA11yProjection', () => {
+  it('positions the hidden element over the panel with the math-core rect', () => {
+    const c = mount({ width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' })
+    const camera = facingCamera()
+    const viewport = { x: 0, y: 0, width: 100, height: 100 }
+    const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
+    try {
+      const root = c.root.peek()
+
+      c.update(0) // pump the frame (projection runs in onFrameEndSet)
+
+      // The container flips from the off-screen fallback to a canvas overlay once projection runs.
+      expect(getRootA11yContainer(root)!.style.position).toBe('fixed')
+
+      // Independently recompute the expected rect from the same matrix the projection used.
+      c.updateWorldMatrix(true, false)
+      const expected = computeA11yScreenRect(c.matrixWorld, camera, viewport)
+      expect(expected).not.toBeNull()
+
+      const el = c.a11yElement!
+      expect(el.style.visibility).not.toBe('hidden')
+      expect(el.style.transform).toBe(`translate(${expected!.x}px, ${expected!.y}px)`)
+      expect(el.style.width).toBe(`${expected!.w}px`)
+      expect(el.style.height).toBe(`${expected!.h}px`)
+    } finally {
+      dispose()
+      c.dispose()
+    }
+  })
+
+  it('offsets by the canvas page position', () => {
+    const c = mount({ width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' })
+    const camera = facingCamera()
+    const dispose = setupA11yProjection(c, {
+      camera,
+      renderer: fakeRenderer({ left: 40, top: 25, width: 100, height: 100 }),
+    })
+    try {
+      c.update(0)
+      c.updateWorldMatrix(true, false)
+      const expected = computeA11yScreenRect(c.matrixWorld, camera, { x: 40, y: 25, width: 100, height: 100 })
+      expect(expected).not.toBeNull()
+      expect(c.a11yElement!.style.transform).toBe(`translate(${expected!.x}px, ${expected!.y}px)`)
+    } finally {
+      dispose()
+      c.dispose()
+    }
+  })
+
+  it('hides the element when the panel is behind the camera', () => {
+    const c = mount({ width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' })
+    // Camera behind the panel, looking away — every corner is behind the camera plane.
+    const camera = new PerspectiveCamera(90, 1, 0.1, 100)
+    camera.position.set(0, 0, -2)
+    camera.lookAt(0, 0, -10)
+    camera.updateMatrixWorld(true)
+    camera.updateProjectionMatrix()
+    const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
+    try {
+      c.update(0)
+      expect(c.a11yElement!.style.visibility).toBe('hidden')
+    } finally {
+      dispose()
+      c.dispose()
+    }
+  })
+
+  it('restores the off-screen container fallback on dispose', () => {
+    const c = mount({ width: 100, height: 100, role: 'button', ariaLabel: 'Go' })
+    const camera = facingCamera()
+    const root = c.root.peek()
+    const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
+    c.update(0)
+    expect(getRootA11yContainer(root)!.style.position).toBe('fixed')
+    dispose()
+    expect(getRootA11yContainer(root)!.style.left).toBe('-1000vw')
+    c.dispose()
+  })
+
+  it('hides the element for a visibility:hidden panel instead of projecting it (codex #1)', () => {
+    const c = mount({
+      width: 100,
+      height: 100,
+      pixelSize: 0.01,
+      role: 'button',
+      ariaLabel: 'Go',
+      visibility: 'hidden',
+    })
+    const camera = facingCamera()
+    const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
+    try {
+      c.update(0)
+      // Not visible → not a tab target this frame, even though the panel is in front of the camera.
+      expect(c.a11yElement!.style.visibility).toBe('hidden')
+    } finally {
+      dispose()
+      c.dispose()
+    }
+  })
+
+  it('drops a component from the member registry when it is disposed', () => {
+    const c = mount({ width: 100, height: 100, role: 'button', ariaLabel: 'Go' })
+    const root = c.root.peek()
+    expect(getRootA11yMembers(root)?.has(c)).toBe(true)
+    c.dispose()
+    expect(getRootA11yMembers(root)?.has(c) ?? false).toBe(false)
+  })
+})
