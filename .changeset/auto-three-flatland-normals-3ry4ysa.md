@@ -5,13 +5,36 @@
 > Branch: preview/tools-combined
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/172
 
-## Normal Baker: descriptor schema, atomic save, and reset affordance
+## Normal descriptor schema + validation
 
-- Added `NormalSourceDescriptor` JSON Schema + Ajv validator (`@three-flatland/schemas`) that the Normal Baker GUI validates against before baking; published to `docs/public/schemas/normal-descriptor.v1.json`
-- Tightened schema validation to require integer `x`/`y`/`w`/`h` region coordinates, with regression tests covering fractional-value fixtures
-- Extracted the bake/write/rename/cleanup flow into a standalone, unit-testable `atomicPublish.ts` — verifies temp files are cleaned up and final output is left untouched on any injected failure
-- Added a per-field "reset to inherited" button (bump/direction/pitch/strength/elevation) in the Region Properties panel, restoring the ability to clear an explicit override back to inherited
-- Verified the preview lighting formula against the actual runtime `DefaultLightEffect` elevation/NdotL implementation; added a test for "high elevation under low light shades darker"
-- Strengthened the save round-trip e2e spec with exact PNG `tEXt` hash equality and an independently-derived pixel check confirming R/G/B channel encoding
+- Added a `NormalSourceDescriptor` JSON Schema and `validateNormalDescriptor()`
+  (via `@three-flatland/schemas`) that the Normal Baker GUI validates against
+  before baking. The schema conforms to the hand-written `NormalSourceDescriptor`
+  type in `@three-flatland/normals`, keeping the browser-safe normals bundle
+  free of an `ajv` dependency.
+- Published schema at `docs/public/schemas/normal-descriptor.v1.json`, kept in
+  sync with the package schema via `pnpm sync:docs:schemas` (a prior drift
+  where integer x/y/w/h tightening didn't propagate to the docs copy is now
+  covered by fixture tests on both the schemas validator suite and the
+  normals type<->schema parity suite).
 
-Normal Baker now validates descriptors against a published schema, saves atomically with verified rollback on failure, and lets users reset individual region fields back to inherited values.
+## Normal Baker editor
+
+- `RegionPropertiesPanel` gained a per-field "reset to inherited" button
+  (bump/direction/pitch/strength/elevation), restoring the ability to clear
+  an explicit field override now that save-time normalization no longer does
+  it implicitly.
+- Extracted the bake/write/rename/cleanup logic from `saveNormalDescriptor`
+  into a standalone, unit-testable `atomicPublish.ts` — covers the success
+  path and injected-failure paths, confirming temp files are cleaned up and
+  final files are untouched on error.
+- Verified the preview elevation formula matches the runtime lighting
+  implementation (`DefaultLightEffect`), and strengthened the e2e
+  save-round-trip test with exact descriptor-hash equality and a real
+  pixel-level check on baked elevation data.
+- Migrated `RegionListPanel`'s reorder buttons to the shared `ToolbarButton`
+  design-system component.
+
+Introduces schema-validated normal descriptors for the Normal Baker, plus
+editor and save-pipeline hardening (reset affordance, atomic writes, stricter
+round-trip verification).
