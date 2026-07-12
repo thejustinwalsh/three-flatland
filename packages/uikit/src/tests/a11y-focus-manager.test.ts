@@ -396,6 +396,72 @@ describe('setFocus — DOM mirror and echo-loop safety', () => {
     expect(onReveal).not.toHaveBeenCalled()
   })
 
+  it('latest-wins even when the final request targets the CURRENT focus (codex P3-round5 #1)', () => {
+    const { root, a, b, c } = makeScene()
+    const manager = makeManager(root)
+    // While B gains focus, redirect to C then back to B. B is the LATEST request and must rest as the
+    // focus — resolving at enqueue would reject "already B" and strand C as the pending winner.
+    let once = true
+    b.setProperties({
+      onFocusChange: (f) => {
+        if (f && once) {
+          once = false
+          manager.setFocus(c)
+          manager.setFocus(b)
+        }
+      },
+    })
+    root.update(16)
+
+    manager.setFocus(a)
+    manager.setFocus(b)
+
+    expect(manager.focused.value).toBe(b) // B, not C
+    expect(b.hasFocus.value).toBe(true)
+    expect(c.hasFocus.value).toBe(false)
+  })
+
+  it('dispose mid-drain does not resurrect focus from a pending request (codex P3-round5 #2)', () => {
+    const { root, a, b, c } = makeScene()
+    const manager = makeManager(root)
+    // A's blur (during A→B) queues C, then disposes. C must never be applied onto the disposed manager.
+    a.setProperties({
+      onFocusChange: (f) => {
+        if (!f) {
+          manager.setFocus(c)
+          manager.dispose()
+        }
+      },
+    })
+    root.update(16)
+    manager.setFocus(a)
+    manager.setFocus(b)
+
+    expect(manager.focused.value).toBeUndefined()
+    expect(c.hasFocus.value).toBe(false)
+    expect(b.hasFocus.value).toBe(false)
+  })
+
+  it('re-judges a queued request against live state — a target disabled after queueing is refused (codex P3-round5 #3)', () => {
+    const { root, b, c } = makeScene()
+    const manager = makeManager(root)
+    // While B gains focus, queue C then disable C before the drain reaches it. Resolving at DEQUEUE
+    // must re-classify C against the live (disabled) state and refuse it — never focus a disabled control.
+    b.setProperties({
+      onFocusChange: (f) => {
+        if (f) {
+          manager.setFocus(c)
+          c.setProperties({ disabled: true })
+        }
+      },
+    })
+    root.update(16)
+    manager.setFocus(b)
+
+    expect(c.hasFocus.value).toBe(false)
+    expect(manager.focused.value).toBe(b)
+  })
+
   it('skips the DOM mirror inside an XR session', () => {
     const { root, a } = makeScene()
     const manager = makeManager(root, { isXRSession: () => true })

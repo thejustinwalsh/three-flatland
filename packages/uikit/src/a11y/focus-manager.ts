@@ -114,13 +114,17 @@ export class A11yFocusManager {
   private isApplying = false
   private disposed = false
 
-  // Iterative transition queue. `setFocus` resolves+enqueues a single latest request and drains it;
-  // a `setFocus` re-entered from an onFocusChange/onReveal callback (while `draining`) just replaces
-  // the pending request and returns, so the transition applies on the NEXT drain iteration rather than
-  // recursing. This flattens re-entrant redirects — no stack overflow, and every hasFocus edge the
-  // notifications observe is real (codex P3-round4 #1/#2/#3).
+  // Iterative transition queue. `setFocus` enqueues a single latest RAW request (component + opts) and
+  // drains it; a `setFocus` re-entered from an onFocusChange/onReveal callback (while `draining`) just
+  // replaces the pending request and returns, so it applies on the NEXT drain iteration rather than
+  // recursing. This flattens re-entrant redirects — no stack overflow, every hasFocus edge the
+  // notifications observe is real (codex P3-round4 #1/#2/#3). Requests are RESOLVED (validated +
+  // classified) at DEQUEUE, not enqueue, so a redirect that targets the current focus cancels a stale
+  // pending request (latest-wins) and a target that changed since it was queued is re-judged against
+  // live state (codex P3-round5 #1/#3).
   private draining = false
-  private pendingRequest: FocusRequest | undefined = undefined
+  private pendingComponent: Component | undefined = undefined
+  private pendingOpts: { reveal?: boolean } | undefined = undefined
   private hasPendingRequest = false
 
   /**
@@ -189,12 +193,11 @@ export class A11yFocusManager {
     if (this.disposed) {
       return
     }
-    const request = this.resolveFocusRequest(component, opts)
-    if (request == null) {
-      return // refused (already focused, disabled, hidden, or skip-policy)
-    }
-    // Latest-request-wins: a redirect from a callback supersedes any still-queued request.
-    this.pendingRequest = request
+    // Latest-request-wins: a redirect from a callback supersedes any still-queued request. The request
+    // is stored RAW and resolved in the drain, so `setFocus(C); setFocus(currentFocus)` correctly
+    // cancels C rather than being refused and stranding C (codex P3-round5 #1).
+    this.pendingComponent = component
+    this.pendingOpts = opts
     this.hasPendingRequest = true
     if (!this.draining) {
       this.drainFocus()
@@ -246,30 +249,49 @@ export class A11yFocusManager {
     this.draining = true
     try {
       let budget = MAX_FOCUS_TRANSITIONS_PER_DRAIN
-      while (this.hasPendingRequest && budget > 0) {
-        budget -= 1
-        const request = this.pendingRequest!
-        this.hasPendingRequest = false
-        this.pendingRequest = undefined
-        this.applyFocus(request.component)
+      // Outer loop repeats only when a resting side effect (onReveal/announce) itself enqueues focus.
+      while (this.hasPendingRequest && !this.disposed && budget > 0) {
+        // Phase 1: apply queued transitions until the queue drains. Re-entrant setFocus from the
+        // notifications just re-arms the pending request, picked up by the next inner iteration.
+        let resting: FocusRequest | undefined
+        while (this.hasPendingRequest && !this.disposed && budget > 0) {
+          budget -= 1
+          const component = this.pendingComponent
+          const opts = this.pendingOpts
+          this.hasPendingRequest = false
+          this.pendingComponent = undefined
+          this.pendingOpts = undefined
+          const request = this.resolveFocusRequest(component, opts)
+          if (request == null) {
+            continue // refused (already focused, disabled, hidden, or skip-policy)
+          }
+          this.applyFocus(request.component)
+          resting = request
+        }
+        // Phase 2: fire the RESTING transition's side effect once — only if that target is still the
+        // live focus with nothing newer queued, so a superseded/disposed/displaced target is never
+        // revealed or announced (codex P3-round4 #3 / round5 #3). It may enqueue → the outer loop repeats.
         if (
+          resting != null &&
+          resting.component != null &&
+          resting.sideEffect !== 'none' &&
           !this.hasPendingRequest &&
           !this.disposed &&
-          request.component != null &&
-          this.focusedSignal.peek() === request.component
+          this.focusedSignal.peek() === resting.component
         ) {
-          if (request.sideEffect === 'reveal') {
-            this.policy.onReveal?.(request.component)
-          } else if (request.sideEffect === 'announce') {
-            this.announcePosition(request.component)
+          if (resting.sideEffect === 'reveal') {
+            this.policy.onReveal?.(resting.component)
+          } else {
+            this.announcePosition(resting.component)
           }
         }
       }
-      if (budget === 0) {
-        // A callback kept redirecting focus every transition — stop rather than spin. Drop the
-        // pending request; focus rests wherever the last applied transition left it.
+      // Never leave a request to be applied onto a disposed manager, and don't spin at the livelock
+      // cap — discard whatever is still queued (codex P3-round5 #2).
+      if (this.disposed || budget <= 0) {
         this.hasPendingRequest = false
-        this.pendingRequest = undefined
+        this.pendingComponent = undefined
+        this.pendingOpts = undefined
       }
     } finally {
       this.draining = false
@@ -354,6 +376,11 @@ export class A11yFocusManager {
     // itself goes through applyFocus directly, which — unlike public setFocus — is not gated on
     // `disposed`, so disposal can still release the current focus.
     this.disposed = true
+    // Discard any queued request so a drain in progress (dispose called from a callback) cannot apply
+    // focus onto this now-disposed manager after the clear (codex P3-round5 #2).
+    this.hasPendingRequest = false
+    this.pendingComponent = undefined
+    this.pendingOpts = undefined
     if (typeof document !== 'undefined') {
       document.removeEventListener('focusin', this.onDomFocusIn)
     }
