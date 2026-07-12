@@ -6,6 +6,7 @@
  */
 
 import { type ChildProcessByStdio, spawn } from 'node:child_process'
+import { chmodSync } from 'node:fs'
 import type { Readable, Writable } from 'node:stream'
 import { encodeMessage, MessageDecoder } from './framing.js'
 import type { InitializeResult, NotificationMethods, RequestMethods } from './protocol.js'
@@ -73,6 +74,25 @@ export class CodelensServiceClient {
    */
   async start(): Promise<InitializeResult> {
     if (this.child) throw new Error('CodelensServiceClient.start() called more than once')
+
+    // GitHub Actions' upload-artifact/download-artifact round trip
+    // normalizes file permissions to 644 (documented limitation, see
+    // actions/upload-artifact#38), and a VSIX-packaged binary passes
+    // through another zip on top of that — a binary built with the
+    // executable bit set in CI can easily arrive here non-executable.
+    // Restoring it unconditionally right before spawn, rather than
+    // chasing every step that might strip it, is the one place that
+    // actually matters. Best-effort: a failure here (e.g. a read-only
+    // install location) just falls through to spawn()'s own ENOENT/EACCES
+    // handling below — same degrade-not-panic posture as the rest of this
+    // client (see CLAUDE.md's "Degrade, don't panic").
+    if (process.platform !== 'win32') {
+      try {
+        chmodSync(this.options.binaryPath, 0o755)
+      } catch {
+        // fall through — spawn() below will surface the real error
+      }
+    }
 
     this.child = spawn(this.options.binaryPath, this.options.args ?? [], {
       cwd: this.options.cwd,
