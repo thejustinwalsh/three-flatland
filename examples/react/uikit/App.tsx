@@ -7,8 +7,10 @@ import {
   NearestFilter,
   SRGBColorSpace,
   Object3D,
+  Spherical,
   type OrthographicCamera as ThreeOrthographicCamera,
 } from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import {
   Flatland,
   Light2D,
@@ -70,6 +72,18 @@ import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
 extend({ Flatland, Light2D, TileMap2D, DefaultLightEffect, VanillaFullscreen })
+
+// Phase 3 (diegetic 3D a11y) debug hook — a scripted probe drives Flatland's
+// camera through this instead of simulating pointer drags on OrbitControls.
+declare global {
+  interface Window {
+    __uikitA11yScene?: {
+      /** Set the orbit camera's azimuthal angle (radians) around its target, preserving radius/elevation. */
+      setCameraAngle: (rad: number) => void
+      getCamera: () => ThreeOrthographicCamera
+    }
+  }
+}
 
 // The shadcn kit resolves its palette through uikit's color-scheme signal —
 // pin dark so the menu reads the same on every tester's machine instead of
@@ -185,6 +199,9 @@ const PANEL_BG = withOpacity('#0d0f13', 0.94)
 const AMETHYST = '#995bff'
 const WHITE = '#f5f6fa'
 const MUTED = '#8b8f9a'
+// World-space (wall / behind-camera) panels get their own accent so they read as
+// a distinct layer from the camera-locked HUD above.
+const TURQUOIZE = '#2fd6c8'
 
 const SAVE_SLOTS: Array<{ name: string; stamp: string; level: string }> = [
   { name: 'The Sunken Crypt', stamp: 'Autosave · 2m ago', level: 'Lv 12' },
@@ -677,6 +694,134 @@ function GameMenu({ font }: { font: SlugFont }) {
   )
 }
 
+// ============================================
+// World-space dogfood scene (Phase 3 T3.0) — diegetic 3D a11y.
+//
+// `GameMenu` above is screen-space: it rides `flatlandCamera` via `HudFullscreen`
+// and is always dead-center, regardless of where the camera looks. The two panels
+// below are plain `<Container>` roots (NOT `<Fullscreen>`) parented to ordinary
+// `<group>` transforms inside Flatland's scene — `Container`'s `globalMatrix` falls
+// back to `buildRootMatrix` when it has no uikit parent (see
+// `packages/uikit/src/context.ts`), and its `updateWorldMatrix` reads the real
+// Object3D ancestor chain (`computeWorldToGlobalMatrix`), so the group's
+// position/rotation places the panel like any other 3D object. `pixelSize={1}`
+// scales the panel to dungeon-room units (default pixelSize is 0.01 — sized for
+// screen-space HUDs, not a ~1000-unit-wide 3D room). `<CameraOrbit>` below moves
+// `flatlandCamera` around this scene, so both panels can leave the frustum, sit
+// behind the camera, or land partly occluded by the tilemap — the moving-camera
+// code Phase 3's probes exercise.
+// ============================================
+
+/** World-space settings panel mounted on a "wall" to one side of the dungeon room. */
+function WallPanel({ font }: { font: SlugFont }) {
+  return (
+    <Container
+      width={260}
+      pixelSize={1}
+      flexDirection="column"
+      gap={14}
+      padding={20}
+      backgroundColor={PANEL_BG}
+      borderRadius={12}
+      borderWidth={1}
+      borderColor={withOpacity(TURQUOIZE, 0.45)}
+      fontFamilies={{ inter: { normal: font } }}
+    >
+      <Text color={WHITE} fontSize={16} fontWeight="bold">
+        Wall Panel
+      </Text>
+      <Text color={MUTED} fontSize={11}>
+        world-space uikit root
+      </Text>
+      <Separator />
+      <Container flexDirection="row" justifyContent="space-between" alignItems="center">
+        <Labeled>Torches Lit</Labeled>
+        <Switch defaultChecked={true} ariaLabel="Torches Lit" />
+      </Container>
+      <Container flexDirection="row" gap={10} alignItems="center">
+        <Checkbox defaultChecked={false} ariaLabel="Show Collision" />
+        <Labeled>Show Collision</Labeled>
+      </Container>
+      <Button gap={8} ariaLabel="Reset Wall Panel">
+        <Text>Reset</Text>
+      </Button>
+    </Container>
+  )
+}
+
+/** A small panel placed behind the camera's starting position — a probe rotates
+ *  it into view via `window.__uikitA11yScene.setCameraAngle`. */
+function BehindCameraPanel({ font }: { font: SlugFont }) {
+  return (
+    <Container
+      width={200}
+      pixelSize={1}
+      flexDirection="column"
+      gap={10}
+      padding={16}
+      backgroundColor={PANEL_BG}
+      borderRadius={12}
+      borderWidth={1}
+      borderColor={withOpacity(TURQUOIZE, 0.45)}
+      fontFamilies={{ inter: { normal: font } }}
+    >
+      <Text color={WHITE} fontSize={14} fontWeight="bold">
+        Behind You
+      </Text>
+      <Container flexDirection="row" gap={10} alignItems="center">
+        <Checkbox defaultChecked={true} ariaLabel="Ambush Alert" />
+        <Labeled>Ambush Alert</Labeled>
+      </Container>
+      <Button gap={8} ariaLabel="Turn Around">
+        <Text>Turn Around</Text>
+      </Button>
+    </Container>
+  )
+}
+
+/**
+ * Orbits Flatland's own camera around the dungeon room and exposes
+ * `window.__uikitA11yScene` so a scripted probe can drive it directly instead of
+ * simulating pointer drags. `setCameraAngle` only touches the azimuthal component —
+ * it re-derives the current radius/elevation from the camera's live position so it
+ * composes with whatever the user (or a previous probe call) already did.
+ */
+function CameraOrbit({ camera }: { camera: ThreeOrthographicCamera }) {
+  const gl = useThree((s) => s.gl)
+  const controlsRef = useRef<OrbitControls | null>(null)
+
+  useEffect(() => {
+    const controls = new OrbitControls(camera, gl.domElement)
+    controls.target.set(0, 0, 0)
+    controls.enableDamping = true
+    controls.dampingFactor = 0.08
+    controls.minDistance = 40
+    controls.maxDistance = 400
+    controlsRef.current = controls
+
+    const setCameraAngle = (rad: number) => {
+      const offset = camera.position.clone().sub(controls.target)
+      const spherical = new Spherical().setFromVector3(offset)
+      spherical.theta = rad
+      offset.setFromSpherical(spherical)
+      camera.position.copy(controls.target).add(offset)
+      controls.update()
+    }
+
+    window.__uikitA11yScene = { setCameraAngle, getCamera: () => camera }
+
+    return () => {
+      controls.dispose()
+      controlsRef.current = null
+      delete window.__uikitA11yScene
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera, gl])
+
+  useFrame(() => controlsRef.current?.update())
+  return null
+}
+
 function GameScene({ ambient }: { ambient: number }) {
   const { gl } = useThree()
   const flatlandRef = useRef<Flatland>(null)
@@ -785,7 +930,19 @@ function GameScene({ ambient }: { ambient: number }) {
           distance={120}
           decay={2}
         />
+
+        {/* World-space dogfood scene (Phase 3 T3.0) — plain `<group>` transforms,
+            not attached to the camera, so `<CameraOrbit>` moving `flatlandCamera`
+            can walk these in and out of frame. */}
+        <group position={[halfExtent + 400, 0, 0]} rotation={[0, Math.PI / 6, 0]}>
+          <WallPanel font={font} />
+        </group>
+        <group position={[0, 0, 350]}>
+          <BehindCameraPanel font={font} />
+        </group>
       </flatland>
+
+      {flatlandCamera && <CameraOrbit camera={flatlandCamera} />}
 
       {flatlandCamera && (
         <HudFullscreen

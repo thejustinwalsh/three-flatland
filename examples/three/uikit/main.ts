@@ -1,5 +1,14 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { DataTexture, RGBAFormat, NearestFilter, SRGBColorSpace, Object3D } from 'three'
+import {
+  DataTexture,
+  RGBAFormat,
+  NearestFilter,
+  SRGBColorSpace,
+  Object3D,
+  Spherical,
+  type OrthographicCamera,
+} from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import {
   Flatland,
   Light2D,
@@ -43,6 +52,18 @@ import { SlugFontLoader } from '@three-flatland/slug'
 import type { SlugFont } from '@three-flatland/slug'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
+
+// Phase 3 (diegetic 3D a11y) debug hook — a scripted probe drives Flatland's
+// camera through this instead of simulating pointer drags on OrbitControls.
+declare global {
+  interface Window {
+    __uikitA11yScene?: {
+      /** Set the orbit camera's azimuthal angle (radians) around its target, preserving radius/elevation. */
+      setCameraAngle: (rad: number) => void
+      getCamera: () => OrthographicCamera
+    }
+  }
+}
 
 // ============================================
 // uikit — a fullscreen game front-end over the tilemap + Light2D scene.
@@ -249,6 +270,9 @@ const PANEL_BG = withOpacity('#0d0f13', 0.94)
 const AMETHYST = '#995bff'
 const WHITE = '#f5f6fa'
 const MUTED = '#8b8f9a'
+// World-space (wall / behind-camera) panels get their own accent so they read as
+// a distinct layer from the camera-locked HUD above.
+const TURQUOIZE = '#2fd6c8'
 
 /** Threshold color for the stamina bar — reads like a game health gauge. */
 function staminaColor(pct: number): string {
@@ -323,7 +347,10 @@ const SAVE_SLOTS: Array<{ name: string; stamp: string; level: string }> = [
 let rafId = 0
 let activeRenderer: WebGPURenderer | null = null
 let activePointerEvents: { destroy: () => void } | null = null
-let activeDisposeA11yProjection: (() => void) | null = null
+// One entry per uikit root (`ui`, plus the two world-space panels below) — each
+// gets its own a11y projection.
+let activeDisposeA11yProjections: Array<() => void> = []
+let activeControls: OrbitControls | null = null
 
 async function main() {
   // ─── Renderer ───────────────────────────────────────────────────
@@ -445,7 +472,39 @@ async function main() {
   // panel's on-screen rect each frame, so screen readers / tab focus / switch
   // access hit-test the real, currently-visible location instead of an
   // off-screen fallback.
-  activeDisposeA11yProjection = setupA11yProjection(ui, { camera: flatland.camera, renderer })
+  activeDisposeA11yProjections.push(setupA11yProjection(ui, { camera: flatland.camera, renderer }))
+
+  // ─── World-space dogfood scene (Phase 3 T3.0) ────────────────────
+  // Plain `Container` roots (NOT `Fullscreen`), each parented to an ordinary
+  // `Object3D` transform in Flatland's scene instead of the camera — unlike `ui`
+  // above, these don't ride the camera, so `setupCameraOrbit` below (which moves
+  // `flatland.camera`) walks them in and out of frame, behind the camera, or
+  // partly occluded by the tilemap. `setupA11yProjection` explicitly re-reads
+  // `camera.updateWorldMatrix()` every frame — it's built to sit under "a moving
+  // rig" (its own doc comment), which is exactly this scene.
+  const wallPanel = buildWallPanel(font, renderContext)
+  const wallAnchor = new Object3D()
+  wallAnchor.position.set(halfExtent + 400, 0, 0)
+  wallAnchor.rotation.y = Math.PI / 6
+  wallAnchor.add(wallPanel)
+  flatland.add(wallAnchor)
+  activeDisposeA11yProjections.push(
+    setupA11yProjection(wallPanel, { camera: flatland.camera, renderer })
+  )
+
+  const behindPanel = buildBehindCameraPanel(font, renderContext)
+  const behindAnchor = new Object3D()
+  behindAnchor.position.set(0, 0, 350)
+  behindAnchor.add(behindPanel)
+  flatland.add(behindAnchor)
+  activeDisposeA11yProjections.push(
+    setupA11yProjection(behindPanel, { camera: flatland.camera, renderer })
+  )
+
+  // ─── Camera orbit ─────────────────────────────────────────────────
+  // Moves `flatland.camera` around the world-space scene above and exposes
+  // `window.__uikitA11yScene` for scripted probes to drive it directly.
+  activeControls = setupCameraOrbit(flatland.camera, renderer.domElement)
 
   // ─── Pointer events ─────────────────────────────────────────────
   // Vanilla three has no built-in raycast / event routing. `forwardHtmlEvents`
@@ -541,8 +600,14 @@ async function main() {
     // uikit wants milliseconds — scroll velocity is px/ms (the React twin's
     // wrapper passes `delta * 1000` for the same reason).
     ui.update(delta * 1000)
+    // World-space roots have no uikit parent, so each needs its own update() —
+    // `Component.update()` no-ops for anything that isn't `root.component`.
+    wallPanel.update(delta * 1000)
+    behindPanel.update(delta * 1000)
     // After layout, so the card's measured height is this frame's.
     anchorMenu()
+
+    activeControls?.update()
 
     // Flatland instruments its own frame internally — no beginFrame/endFrame here.
     flatland.render(renderer)
@@ -821,6 +886,131 @@ function tabTrigger(value: string, label: string): TabsTrigger {
   return trigger
 }
 
+// ============================================
+// World-space dogfood scene (Phase 3 T3.0) — diegetic 3D a11y.
+//
+// `ui` above is screen-space: it hangs off `flatland.camera` and is always
+// dead-center, regardless of where the camera looks. The two panels below are
+// plain `Container` roots (NOT `Fullscreen`), each parented to an ordinary
+// `Object3D` transform added to `flatland`'s internal scene — `Container`'s
+// `globalMatrix` falls back to `buildRootMatrix` when it has no uikit parent
+// (see `packages/uikit/src/context.ts`), and its `updateWorldMatrix` reads the
+// real Object3D ancestor chain (`computeWorldToGlobalMatrix`), so the wrapping
+// Object3D's position/rotation places the panel like any other 3D object.
+// `pixelSize: 1` scales the panel to dungeon-room units (default pixelSize is
+// 0.01 — sized for screen-space HUDs, not a ~1000-unit-wide 3D room). The
+// OrbitControls set up in `main()` move `flatland.camera` around this scene, so
+// both panels can leave the frustum, sit behind the camera, or land partly
+// occluded by the tilemap — the moving-camera code Phase 3's probes exercise.
+// ============================================
+
+/**
+ * World-space settings panel mounted on a "wall" to one side of the dungeon room —
+ * a plain `Container` root (NOT `Fullscreen`), positioned via an ordinary Object3D
+ * transform. Mirrors the React twin's `WallPanel`.
+ */
+function buildWallPanel(font: SlugFont, renderContext: RenderContext): Container {
+  const root = new Container(
+    {
+      width: 260,
+      pixelSize: 1,
+      flexDirection: 'column',
+      gap: 14,
+      padding: 20,
+      backgroundColor: PANEL_BG,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: withOpacity(TURQUOIZE, 0.45),
+      fontFamilies: { inter: { normal: font } },
+    },
+    undefined,
+    { renderContext }
+  )
+  const resetButton = new Button({ gap: 8, ariaLabel: 'Reset Wall Panel' })
+  resetButton.add(text('Reset'))
+  root.add(
+    text('Wall Panel', { color: WHITE, fontSize: 16, fontWeight: 'bold' }),
+    text('world-space uikit root', { color: MUTED, fontSize: 11 }),
+    new Separator(),
+    row(
+      { justifyContent: 'space-between', alignItems: 'center' },
+      labeled('Torches Lit'),
+      new Switch({ defaultChecked: true, ariaLabel: 'Torches Lit' })
+    ),
+    row(
+      { gap: 10, alignItems: 'center' },
+      new Checkbox({ defaultChecked: false, ariaLabel: 'Show Collision' }),
+      labeled('Show Collision')
+    ),
+    resetButton
+  )
+  return root
+}
+
+/**
+ * A small panel placed behind the camera's starting position — a probe rotates it
+ * into view via `window.__uikitA11yScene.setCameraAngle`. Mirrors the React twin's
+ * `BehindCameraPanel`.
+ */
+function buildBehindCameraPanel(font: SlugFont, renderContext: RenderContext): Container {
+  const root = new Container(
+    {
+      width: 200,
+      pixelSize: 1,
+      flexDirection: 'column',
+      gap: 10,
+      padding: 16,
+      backgroundColor: PANEL_BG,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: withOpacity(TURQUOIZE, 0.45),
+      fontFamilies: { inter: { normal: font } },
+    },
+    undefined,
+    { renderContext }
+  )
+  const turnButton = new Button({ gap: 8, ariaLabel: 'Turn Around' })
+  turnButton.add(text('Turn Around'))
+  root.add(
+    text('Behind You', { color: WHITE, fontSize: 14, fontWeight: 'bold' }),
+    row(
+      { gap: 10, alignItems: 'center' },
+      new Checkbox({ defaultChecked: true, ariaLabel: 'Ambush Alert' }),
+      labeled('Ambush Alert')
+    ),
+    turnButton
+  )
+  return root
+}
+
+/**
+ * Orbits `flatland.camera` around the dungeon room and exposes
+ * `window.__uikitA11yScene` so a scripted probe can drive it directly instead of
+ * simulating pointer drags. `setCameraAngle` only touches the azimuthal component —
+ * it re-derives the current radius/elevation from the camera's live position so it
+ * composes with whatever the user (or a previous probe call) already did.
+ */
+function setupCameraOrbit(camera: OrthographicCamera, domElement: HTMLElement): OrbitControls {
+  const controls = new OrbitControls(camera, domElement)
+  controls.target.set(0, 0, 0)
+  controls.enableDamping = true
+  controls.dampingFactor = 0.08
+  controls.minDistance = 40
+  controls.maxDistance = 400
+
+  const setCameraAngle = (rad: number) => {
+    const offset = camera.position.clone().sub(controls.target)
+    const spherical = new Spherical().setFromVector3(offset)
+    spherical.theta = rad
+    offset.setFromSpherical(spherical)
+    camera.position.copy(controls.target).add(offset)
+    controls.update()
+  }
+
+  window.__uikitA11yScene = { setCameraAngle, getCamera: () => camera }
+  return controls
+}
+
 main()
 
 if (import.meta.hot) {
@@ -833,10 +1023,13 @@ if (import.meta.hot) {
       activePointerEvents.destroy()
       activePointerEvents = null
     }
-    if (activeDisposeA11yProjection) {
-      activeDisposeA11yProjection()
-      activeDisposeA11yProjection = null
+    for (const dispose of activeDisposeA11yProjections) dispose()
+    activeDisposeA11yProjections = []
+    if (activeControls) {
+      activeControls.dispose()
+      activeControls = null
     }
+    delete window.__uikitA11yScene
     if (activeRenderer) {
       activeRenderer.dispose?.()
       activeRenderer.domElement.remove()
