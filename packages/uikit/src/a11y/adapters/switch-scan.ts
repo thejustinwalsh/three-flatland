@@ -1,3 +1,4 @@
+import type { Component } from '../../components/component.js'
 import type { A11yFocusManager } from '../focus-manager.js'
 
 export interface SwitchScanOptions {
@@ -49,10 +50,12 @@ export function createSwitchScan(
   const bindSpaceKey = options?.bindSpaceKey ?? false
 
   let timer: ReturnType<typeof setInterval> | undefined
-  // Count of advances made since the current lap started (fresh at `start()`, preserved across
-  // `pause()`/`resume()`). Reaching the focusable count means the walk just landed on the last
-  // entry — the NEXT tick is the one that either wraps (loop) or ends the scan.
-  let visited = 0
+  // The distinct components focused during the CURRENT lap. Lap completion is detected by re-landing
+  // on an already-visited control (a wrap) or by having covered every current focusable — robust to
+  // the focusable set changing mid-lap (e.g. activation disabling/removing the focused control),
+  // which a raw advance counter mis-handled, skipping entries (codex P3-round2 #3). Fresh at
+  // `start()`/`stop()`, preserved across `pause()`/`resume()`.
+  let visited = new Set<Component>()
   // True from `start()` until the lap's first tick fires. Deliberately NOT inferred from
   // `manager.focused` — `stop()` intentionally leaves the manager's focus alone (only the scan's
   // own walk position resets), so a stale non-null focus must not be mistaken for "mid-walk".
@@ -92,28 +95,47 @@ export function createSwitchScan(
     }
   }
 
+  // Landing on the LAST still-unvisited control completes the lap on THIS tick, so `loop:false` halts
+  // immediately instead of one interval later, and `loop` restarts on the next tick (codex P3-round2 #4).
+  const completeLap = (): void => {
+    if (loop) {
+      freshLap = true
+    } else {
+      stop()
+    }
+  }
+
+  const completeLapIfCovered = (): void => {
+    const focusables = manager.focusables.value
+    if (focusables.length > 0 && focusables.every((component) => visited.has(component))) {
+      completeLap()
+    }
+  }
+
   const tick = (): void => {
-    const count = manager.focusables.value.length
-    if (count === 0) {
+    if (manager.focusables.value.length === 0) {
       return
     }
     if (freshLap) {
       manager.focusFirst()
-      visited = 1
-      freshLap = false
-      return
-    }
-    if (visited >= count) {
-      if (loop) {
-        manager.focusFirst()
-        visited = 1
-      } else {
-        stop()
+      visited = new Set()
+      const landed = manager.focused.value
+      if (landed != null) {
+        visited.add(landed)
       }
+      freshLap = false
+      completeLapIfCovered()
       return
     }
     manager.focusNext()
-    visited += 1
+    const landed = manager.focused.value
+    // A wrap re-lands on an already-scanned control (or focus went nowhere) → the lap is complete.
+    if (landed == null || visited.has(landed)) {
+      completeLap()
+      return
+    }
+    visited.add(landed)
+    completeLapIfCovered()
   }
 
   function start(): void {
@@ -121,7 +143,7 @@ export function createSwitchScan(
       return
     }
     running = true
-    visited = 0
+    visited = new Set()
     freshLap = true
     bindKey()
     timer = setInterval(tick, intervalMs)
@@ -130,7 +152,7 @@ export function createSwitchScan(
   function stop(): void {
     clearTimer()
     running = false
-    visited = 0
+    visited = new Set()
     freshLap = true
     unbindKey()
   }

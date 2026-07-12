@@ -111,10 +111,12 @@ export class A11yFocusManager {
     if (component == null || component === this.focusedSignal.peek()) {
       return
     }
-    // A disabled or policy-excluded (skipped / not-perceivable) member can still be focused
-    // programmatically (tabIndex -1 only blocks sequential Tab) — don't let it become the tracked
-    // spatial focus (codex P3 #2).
-    if (!this.passesFocusPolicy(component)) {
+    // The platform already moved native focus here, so TRACK it unless the target cannot legitimately
+    // hold focus — disabled, or not perceivable (codex P3 #2). Adoption is deliberately BROADER than
+    // the nav predicate: any enabled, perceivable member the user reached (a `listbox`, a tabbable
+    // `content` region — roles outside INTERACTIVE_ROLES) must be adopted, or `manager.focused`
+    // desyncs from `document.activeElement` with no way to reconcile (codex P3-round2 #1).
+    if (!this.canAdoptDomFocus(component)) {
       return
     }
     this.adopt(component)
@@ -293,53 +295,75 @@ export class A11yFocusManager {
    */
   private applyFocus(component: Component | undefined): void {
     const previous = this.focusedSignal.peek()
+    const toBlur =
+      previous != null && previous !== component && previous.hasFocus.peek() ? previous : undefined
+    const toFocus = component != null && !component.hasFocus.peek() ? component : undefined
     this.isApplying = true
     try {
       batch(() => {
-        if (previous != null && previous !== component && previous.hasFocus.peek()) {
-          previous.hasFocus.value = false
-          previous.properties.peek().onFocusChange?.(false)
+        if (toBlur != null) {
+          toBlur.hasFocus.value = false
         }
-        if (component != null && !component.hasFocus.peek()) {
-          component.hasFocus.value = true
-          component.properties.peek().onFocusChange?.(true)
+        if (toFocus != null) {
+          toFocus.hasFocus.value = true
         }
         this.focusedSignal.value = component
       })
-      if (this.isXRSession?.() === true || typeof document === 'undefined') {
-        return
-      }
-      if (component == null) {
-        const element = previous?.a11yElement
-        if (element != null && document.activeElement === element) {
-          element.blur()
+      // DOM mirror — still latched, so the focus/blur events it dispatches back into this module are
+      // ignored (wall 1). The idempotent hasFocus guards above mean the mirror causes no signal change
+      // and therefore no onFocusChange fire from setupUpdateHasFocus (wall 2).
+      if (this.isXRSession?.() !== true && typeof document !== 'undefined') {
+        if (component == null) {
+          const element = previous?.a11yElement
+          if (element != null && document.activeElement === element) {
+            element.blur()
+          }
+        } else {
+          component.a11yElement?.focus()
         }
-        return
       }
-      component.a11yElement?.focus()
     } finally {
       this.isApplying = false
+    }
+    // App callbacks fire ONLY after focus state is fully committed and the latch is released, so a
+    // callback sees manager.focused === component, activateFocused() hits the right control, and a
+    // re-entrant setFocus/dispose is honored rather than dropped mid-transition (codex P3-round2 #2).
+    if (toBlur != null) {
+      toBlur.properties.peek().onFocusChange?.(false)
+    }
+    if (toFocus != null) {
+      toFocus.properties.peek().onFocusChange?.(true)
     }
   }
 
   /** Align manager state to a DOM focus the platform already moved — signals only, no element.focus(). */
   private adopt(component: Component): void {
     const previous = this.focusedSignal.peek()
+    const toBlur =
+      previous != null && previous !== component && previous.hasFocus.peek() ? previous : undefined
+    const toFocus = component.hasFocus.peek() ? undefined : component
     this.isApplying = true
     try {
       batch(() => {
-        if (previous != null && previous !== component && previous.hasFocus.peek()) {
-          previous.hasFocus.value = false
-          previous.properties.peek().onFocusChange?.(false)
+        if (toBlur != null) {
+          toBlur.hasFocus.value = false
         }
-        if (!component.hasFocus.peek()) {
-          component.hasFocus.value = true
-          component.properties.peek().onFocusChange?.(true)
+        if (toFocus != null) {
+          toFocus.hasFocus.value = true
         }
         this.focusedSignal.value = component
       })
     } finally {
       this.isApplying = false
+    }
+    // Callbacks after commit + latch release (codex P3-round2 #2). In the common Tab path both guards
+    // are already false — setupUpdateHasFocus fired onFocusChange off the native focus/blur events —
+    // so this only fires for the rare adopt where hasFocus was not already toggled by a DOM event.
+    if (toBlur != null) {
+      toBlur.properties.peek().onFocusChange?.(false)
+    }
+    if (toFocus != null) {
+      toFocus.properties.peek().onFocusChange?.(true)
     }
   }
 
@@ -400,6 +424,22 @@ export class A11yFocusManager {
       return this.policy.offscreen !== 'skip'
     }
     return false
+  }
+
+  /**
+   * Whether native DOM focus that ALREADY landed on `component` should be adopted as the tracked
+   * spatial focus. Unlike {@link passesFocusPolicy} (which gates the manager's own sequential nav to
+   * interactive, perceivable, policy-passing members), adoption only rejects targets that cannot
+   * legitimately hold focus at all — disabled, or not perceivable (hidden / behind-camera /
+   * too-small). Everything else the platform focused — including non-INTERACTIVE_ROLES members like
+   * `listbox` or a tabbable `content` region — is adopted so the manager stays in sync with reality.
+   */
+  private canAdoptDomFocus(component: Component): boolean {
+    if (component.properties.value.disabled === true) {
+      return false
+    }
+    const visibility = this.classify(component)
+    return visibility !== 'hidden' && visibility !== 'behind-camera' && visibility !== 'too-small'
   }
 
   private refreshFocusables(): Array<Component> {

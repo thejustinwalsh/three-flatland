@@ -176,6 +176,7 @@ export function setupA11yProjection(
     if (members != null) {
       for (const [component, element] of members) {
         resetA11yVisibilityState(component, element)
+        restoreA11yElementStyle(element)
       }
     }
     const c = getRootA11yContainer(root)
@@ -194,6 +195,20 @@ function resetA11yVisibilityState(component: Component, element: HTMLElement): v
   if (focusSkip.value) {
     focusSkip.value = false
   }
+}
+
+/**
+ * Strip the projection-owned inline styles (visibility / transform / size) on teardown so a Mode-1
+ * fallback element returns to natural DOM flow inside the off-screen container. Critically, a member
+ * left at `visibility:hidden` (behind-camera / too-small / not-laid-out at dispose) would stay OUT of
+ * the accessibility tree — visibility:hidden prunes the a11y subtree — defeating the fallback
+ * (codex P3-round2 #5). Only for teardown; the per-frame not-laid-out path intentionally hides.
+ */
+function restoreA11yElementStyle(element: HTMLElement): void {
+  element.style.removeProperty('visibility')
+  element.style.removeProperty('transform')
+  element.style.removeProperty('width')
+  element.style.removeProperty('height')
 }
 
 function applyRect(

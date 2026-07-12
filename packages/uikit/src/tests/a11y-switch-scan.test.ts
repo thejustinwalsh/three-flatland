@@ -112,7 +112,7 @@ describe('auto-advance', () => {
     expect(manager.focused.value).toBe(a)
   })
 
-  it('stops advancing at the last focusable when loop is false', () => {
+  it('halts on the last focusable immediately when loop is false — no idle extra interval', () => {
     vi.useFakeTimers()
     const { root, c } = makeScene()
     const manager = makeManager(root)
@@ -120,17 +120,38 @@ describe('auto-advance', () => {
       createSwitchScan(manager, { autoStart: true, intervalMs: 1000, loop: false })
     )
 
+    // tick1→A, tick2→B, tick3 lands the LAST item C and completes the lap on the SAME tick, so the
+    // timer is already stopped — no idle 4th interval keeping the timer/Space listener armed
+    // (codex P3-round2 #4).
     vi.advanceTimersByTime(1000 * 3)
-    expect(manager.focused.value).toBe(c)
-    expect(scan.running).toBe(true)
-
-    // The 4th tick discovers the walk is already at the end and halts instead of wrapping.
-    vi.advanceTimersByTime(1000)
     expect(manager.focused.value).toBe(c)
     expect(scan.running).toBe(false)
 
-    vi.advanceTimersByTime(1000 * 2)
+    // Nothing advances afterward — focus rests on the last item, ready for a switch press.
+    vi.advanceTimersByTime(1000 * 3)
     expect(manager.focused.value).toBe(c)
+  })
+
+  it('when activation removes the focused control mid-lap, still visits every remaining item (codex P3-round2 #3)', () => {
+    vi.useFakeTimers()
+    const { root, a, b, c } = makeScene()
+    const manager = makeManager(root)
+    const scan = track(
+      createSwitchScan(manager, { autoStart: true, intervalMs: 1000, loop: false })
+    )
+
+    // Land on A, then simulate A's activation disabling it — the focusable set shrinks to [B, C]
+    // mid-lap. A raw advance counter would treat B as "visit 2 of 2" and stop before ever reaching C.
+    vi.advanceTimersByTime(1000)
+    expect(manager.focused.value).toBe(a)
+    a.setProperties({ disabled: true })
+    root.update(16)
+
+    vi.advanceTimersByTime(1000)
+    expect(manager.focused.value).toBe(b)
+    vi.advanceTimersByTime(1000)
+    expect(manager.focused.value).toBe(c) // C is NOT skipped
+    expect(scan.running).toBe(false) // lap complete once B and C (the survivors) are covered
   })
 })
 

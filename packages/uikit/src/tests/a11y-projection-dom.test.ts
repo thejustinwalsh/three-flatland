@@ -263,4 +263,54 @@ describe('setupA11yProjection — visibility teardown (codex P3 #3)', () => {
     expect(el.hasAttribute('aria-hidden')).toBe(false)
     c.dispose()
   })
+
+  it('clears projection-owned visibility:hidden on dispose so a behind-camera member rejoins the a11y tree (codex P3-round2 #5)', () => {
+    // Behind the camera → the policy sets aria-hidden AND visibility:hidden.
+    const c = mountAt(
+      { width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' },
+      [0, 0, 10]
+    )
+    const dispose = setupA11yProjection(c, {
+      camera: facingCamera(),
+      renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }),
+    })
+    c.update(0)
+    const el = c.a11yElement!
+    expect(el.style.visibility).toBe('hidden')
+    expect(el.getAttribute('aria-hidden')).toBe('true')
+    // visibility:hidden prunes the element from the accessibility tree; teardown must strip it, or the
+    // advertised Mode-1 fallback stays invisible to assistive tech.
+    dispose()
+    expect(el.style.visibility).toBe('')
+    expect(el.hasAttribute('aria-hidden')).toBe(false)
+    c.dispose()
+  })
+
+  it('resets focus-skip when the a11y element is torn down, so a re-added role is not stuck tabIndex -1 (codex P3-round2 #6)', () => {
+    // Offscreen → projection focus-skips the panel (tabIndex -1).
+    const c = mountAt(
+      { width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' },
+      [20, 0, 0]
+    )
+    const dispose = setupA11yProjection(c, {
+      camera: facingCamera(),
+      renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }),
+    })
+    c.update(0)
+    expect(c.a11yElement!.tabIndex).toBe(-1)
+
+    // Remove the role → the hidden element is torn down while focus-skip is still set. The reset must
+    // happen at teardown, because the projection's own dispose loop only sees CURRENTLY-registered
+    // members and would miss this now-role-less component.
+    c.setProperties({ role: undefined })
+    c.update(0)
+    expect(c.a11yElement).toBeUndefined()
+    dispose()
+
+    // Re-add the role (no projection now) → a FRESH element with the default tabIndex 0, not a stale -1.
+    c.setProperties({ role: 'button', ariaLabel: 'Go' })
+    c.update(0)
+    expect(c.a11yElement!.tabIndex).toBe(0)
+    c.dispose()
+  })
 })

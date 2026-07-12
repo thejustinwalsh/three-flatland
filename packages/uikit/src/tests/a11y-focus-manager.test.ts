@@ -253,6 +253,53 @@ describe('setFocus — DOM mirror and echo-loop safety', () => {
     expect(focusSpyB).toHaveBeenCalledTimes(1)
   })
 
+  it('adopts native focus onto a non-INTERACTIVE_ROLES but focusable member (listbox) — no desync (codex P3-round2 #1)', () => {
+    const { root, a, child } = makeScene()
+    const list = child(150, 250, { ariaLabel: 'Inventory', role: 'listbox' })
+    const manager = makeManager(root)
+    manager.setFocus(a)
+
+    // The platform Tabs onto the listbox (tabIndex 0, but a role OUTSIDE INTERACTIVE_ROLES). Adoption
+    // must still track it — the nav predicate (passesFocusPolicy) would reject it and leave
+    // manager.focused stuck on `a` while document.activeElement is the listbox, an unrepairable desync.
+    list.a11yElement!.focus()
+
+    expect(manager.focused.value).toBe(list)
+    expect(list.hasFocus.value).toBe(true)
+    expect(a.hasFocus.value).toBe(false)
+  })
+
+  it('fires onFocusChange only after focus commits, and honors a setFocus re-entered from it (codex P3-round2 #2)', () => {
+    const { root, a: _a, b, c } = makeScene()
+    void _a
+    const manager = makeManager(root)
+
+    let observed: Component | undefined
+    let observedAt = false
+    let reentered = false
+    // When b GAINS focus, manager.focused must already read b (committed), and a setFocus re-entered
+    // here must be honored — not dropped by the isApplying latch as it was when the callback fired
+    // mid-batch.
+    b.setProperties({
+      onFocusChange: (focused) => {
+        if (focused && !reentered) {
+          observed = manager.focused.value
+          observedAt = true
+          reentered = true
+          manager.setFocus(c)
+        }
+      },
+    })
+    root.update(16)
+
+    manager.setFocus(b)
+    expect(observedAt).toBe(true)
+    expect(observed).toBe(b) // focusedSignal was committed before the callback ran
+    expect(manager.focused.value).toBe(c) // the re-entrant setFocus(c) took effect, not dropped
+    expect(c.hasFocus.value).toBe(true)
+    expect(b.hasFocus.value).toBe(false)
+  })
+
   it('skips the DOM mirror inside an XR session', () => {
     const { root, a } = makeScene()
     const manager = makeManager(root, { isXRSession: () => true })
@@ -274,8 +321,9 @@ describe('setFocus — DOM mirror and echo-loop safety', () => {
   })
 
   it('fires onFocusChange(true) on the new focus and (false) on the old, each once (codex P3 #1)', () => {
-    // A generic role:'button' container has no standing hasFocus→onFocusChange effect (only Input
-    // does), so the manager's explicit callback is the ONLY source — programmatic focus must still
+    // setupUpdateHasFocus only fires onFocusChange off real DOM focus/blur events (idempotently). A
+    // programmatic manager write never triggers it, and the idempotent DOM mirror produces no second
+    // fire, so the manager's explicit callback is the ONLY source and must fire exactly once —
     // notify listeners exactly as a real DOM focus would.
     const { root, child } = makeScene()
     const gained: Array<boolean> = []
