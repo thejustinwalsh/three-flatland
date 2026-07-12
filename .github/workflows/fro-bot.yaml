@@ -44,7 +44,17 @@ env:
     - Test coverage for new/changed behavior
     - Whether package/version sync or React subpath wrappers need regeneration
 
-    Use these repository checks as the source of truth when relevant:
+    This repo's own CI (ci.yml) already runs build, typecheck, lint, the
+    full test suite, smoke tests, and every sync:*:verify check in
+    parallel for this exact PR and reports each as a named status check —
+    check those results first (gh pr checks <number>, or the PR's Checks
+    tab) rather than re-running any of them yourself. Re-running a cold
+    pnpm build alone costs 20-25+ minutes on a large PR, which starves the
+    time you actually need for reading and reasoning about the diff — the
+    part of this review only you can do. Only run one of the commands
+    below yourself to investigate a SPECIFIC question CI's pass/fail
+    signal doesn't answer (e.g. why one particular type error occurs, not
+    a blanket re-verification pass):
     - pnpm sync:pack:verify examples minis
     - pnpm sync:react:verify
     - pnpm sync:versions:verify
