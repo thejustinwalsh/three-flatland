@@ -103,10 +103,6 @@ export function setupA11yProjection(
   { camera, renderer }: A11yProjectionOptions
 ): () => void {
   const root = rootComponent.root.peek()
-  const container = getRootA11yContainer(root)
-  if (container != null) {
-    container.style.cssText = CONTAINER_OVERLAY
-  }
   const lastRects = new WeakMap<HTMLElement, A11yScreenRect>()
 
   const onFrame = (): void => {
@@ -114,8 +110,16 @@ export function setupA11yProjection(
     if (members == null || members.size === 0) {
       return
     }
-    camera.updateMatrixWorld()
-    // Refresh the root's world matrix once; each member recomputes its own below.
+    // Overlay the container here rather than once at setup: it may be (re)created only after the
+    // first role/input mounts, so it can start in the off-screen fallback and must be flipped once
+    // it exists (else every projected element sits inside a -1000vw parent).
+    const container = getRootA11yContainer(root)
+    if (container != null && container.style.position !== 'fixed') {
+      container.style.cssText = CONTAINER_OVERLAY
+    }
+    // Update the camera's full world chain (it may sit under a moving rig) and the root once; each
+    // member recomputes its own world matrix below.
+    camera.updateWorldMatrix(true, false)
     rootComponent.updateWorldMatrix(true, false)
     const canvasRect = renderer.domElement.getBoundingClientRect()
     const viewport = {
@@ -125,6 +129,12 @@ export function setupA11yProjection(
       height: canvasRect.height,
     }
     for (const [component, element] of members) {
+      // A clipped/hidden/not-yet-laid-out panel must not be projected — hide its element instead of
+      // stranding it (a missing globalPanelMatrix would otherwise place it at the root origin).
+      if (!component.isVisible.peek() || component.globalPanelMatrix.peek() == null) {
+        applyRect(element, null, lastRects)
+        continue
+      }
       if (component !== rootComponent) {
         component.updateWorldMatrix(false, false)
       }
@@ -132,11 +142,13 @@ export function setupA11yProjection(
     }
   }
 
-  root.onFrameSet.add(onFrame)
+  // onFrameEndSet runs AFTER every onFrameSet handler (layout, scroll, component frames) in the same
+  // update() pass, so projection reads matrices that have already settled this frame — no 1-frame lag.
+  root.onFrameEndSet.add(onFrame)
   root.requestFrame?.()
 
   return () => {
-    root.onFrameSet.delete(onFrame)
+    root.onFrameEndSet.delete(onFrame)
     const c = getRootA11yContainer(root)
     if (c != null) {
       c.style.cssText = CONTAINER_OFFSCREEN

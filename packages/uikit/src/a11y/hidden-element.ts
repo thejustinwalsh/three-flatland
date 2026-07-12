@@ -161,6 +161,8 @@ export function registerA11yMember(
     rootMembers.set(root, map)
   }
   map.set(component, element)
+  // Nudge a frame so a member added after the projection started gets positioned on-demand.
+  root.requestFrame?.()
   return () => {
     const current = rootMembers.get(root)
     if (current != null && current.get(component) === element) {

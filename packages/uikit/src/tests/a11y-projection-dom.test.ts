@@ -55,10 +55,11 @@ describe('setupA11yProjection', () => {
     const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
     try {
       const root = c.root.peek()
-      // The container flips from the off-screen fallback to a canvas overlay.
-      expect(getRootA11yContainer(root)!.style.position).toBe('fixed')
 
-      c.update(0) // pump the frame
+      c.update(0) // pump the frame (projection runs in onFrameEndSet)
+
+      // The container flips from the off-screen fallback to a canvas overlay once projection runs.
+      expect(getRootA11yContainer(root)!.style.position).toBe('fixed')
 
       // Independently recompute the expected rect from the same matrix the projection used.
       c.updateWorldMatrix(true, false)
@@ -118,10 +119,32 @@ describe('setupA11yProjection', () => {
     const camera = facingCamera()
     const root = c.root.peek()
     const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
+    c.update(0)
     expect(getRootA11yContainer(root)!.style.position).toBe('fixed')
     dispose()
     expect(getRootA11yContainer(root)!.style.left).toBe('-1000vw')
     c.dispose()
+  })
+
+  it('hides the element for a visibility:hidden panel instead of projecting it (codex #1)', () => {
+    const c = mount({
+      width: 100,
+      height: 100,
+      pixelSize: 0.01,
+      role: 'button',
+      ariaLabel: 'Go',
+      visibility: 'hidden',
+    })
+    const camera = facingCamera()
+    const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
+    try {
+      c.update(0)
+      // Not visible → not a tab target this frame, even though the panel is in front of the camera.
+      expect(c.a11yElement!.style.visibility).toBe('hidden')
+    } finally {
+      dispose()
+      c.dispose()
+    }
   })
 
   it('drops a component from the member registry when it is disposed', () => {
