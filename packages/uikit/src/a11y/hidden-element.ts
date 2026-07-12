@@ -129,6 +129,19 @@ export function getRootA11yContainer(root: RootContext): HTMLElement | undefined
   return rootContainers.get(root)?.element
 }
 
+/**
+ * Move a hidden element into the per-root a11y container and neutralize any own left/top offset, so
+ * Mode 2 projection positions it uniformly by `transform`. Used by Input, whose `<input>` is created
+ * off-screen on `document.body` (text/input/hidden-input.ts) rather than by setupComponentA11y.
+ * Returns a detach that releases the container refcount.
+ */
+export function attachA11yElementToRoot(root: RootContext, element: HTMLElement): () => void {
+  acquireRootContainer(root).appendChild(element)
+  element.style.left = '0'
+  element.style.top = '0'
+  return () => releaseRootContainer(root)
+}
+
 // ——— per-root a11y member registry (component → its hidden element) ———
 // Mode 2 projection enumerates these to position each element over its panel every frame. Both the
 // role-driven elements (setupComponentA11y) and Input's own hidden <input> register here, since
