@@ -78,6 +78,13 @@ describe('classifyA11yVisibility', () => {
     )
   })
 
+  it('classifies a wide 2px-tall sliver as too-small (smallest extent decides, codex P3 #5)', () => {
+    // 200×8 layout px at pixelSize 0.01 → 2×0.08 world units → 50×2 screen px. The 2px height is
+    // imperceivable even though the width is huge; min(w,h) must decide, not max(w,h).
+    const c = mount({ width: 200, height: 8, pixelSize: 0.01 })
+    expect(classifyA11yVisibility(c, makeCamera(), viewport)).toBe('too-small')
+  })
+
   it('a11yVisibilityOverride hidden wins over perfect geometry', () => {
     const c = mount({ ...visibleProps, a11yVisibilityOverride: 'hidden' })
     expect(classifyA11yVisibility(c, makeCamera(), viewport)).toBe('hidden')

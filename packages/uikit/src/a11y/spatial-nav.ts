@@ -41,6 +41,18 @@ interface OrderEntry {
  */
 const orderBaseline = new WeakMap<Component, ProjectedCenter | null>()
 
+// Baseline of the ordering-relevant metadata (a11yOrder + a11yGroup) — a change to it is a SEMANTIC
+// re-order that must bypass positional hysteresis (codex P3 #6).
+const metaBaseline = new WeakMap<Component, string>()
+
+function metaSignatureOf(entry: OrderEntry): string {
+  return `${entry.order ?? ''}|${entry.group}`
+}
+
+function metaChanged(entry: OrderEntry): boolean {
+  return metaBaseline.get(entry.component) !== metaSignatureOf(entry)
+}
+
 const worldHelper = new Vector3()
 
 function isComponent(object: Object3D): object is Component {
@@ -145,12 +157,18 @@ export function computeSpatialOrder(
   const { previousOrder } = options ?? {}
   if (previousOrder != null && isSameComponentSet(previousOrder, components)) {
     const hysteresisPx = options?.hysteresisPx ?? 24
-    if (!entries.some((entry) => movedPastThreshold(entry, hysteresisPx))) {
+    // Hysteresis absorbs sub-threshold camera jitter, but an a11yOrder/a11yGroup change is a semantic
+    // re-order that must take effect at once (codex P3 #6).
+    const stable = !entries.some(
+      (entry) => movedPastThreshold(entry, hysteresisPx) || metaChanged(entry)
+    )
+    if (stable) {
       return [...previousOrder]
     }
   }
   for (const entry of entries) {
     orderBaseline.set(entry.component, entry.center)
+    metaBaseline.set(entry.component, metaSignatureOf(entry))
   }
 
   const projectable = entries.filter((entry) => entry.center != null)

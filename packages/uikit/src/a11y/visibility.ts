@@ -57,7 +57,8 @@ export function classifyA11yVisibility(
   ) {
     return 'offscreen'
   }
-  if (Math.max(rect.w, rect.h) < (options?.minPerceivableSize ?? 8)) {
+  // Smallest projected extent — a 200x2px sliver is not a perceivable target (codex P3 #5).
+  if (Math.min(rect.w, rect.h) < (options?.minPerceivableSize ?? 8)) {
     return 'too-small'
   }
   if (options?.occlusionProbe != null && options.occlusionProbe(component) === false) {

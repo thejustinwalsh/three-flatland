@@ -272,6 +272,25 @@ describe('setFocus — DOM mirror and echo-loop safety', () => {
     expect(manager.focused.value).toBe(a)
     expect(disabled.hasFocus.value).toBe(false)
   })
+
+  it('fires onFocusChange(true) on the new focus and (false) on the old, each once (codex P3 #1)', () => {
+    // A generic role:'button' container has no standing hasFocus→onFocusChange effect (only Input
+    // does), so the manager's explicit callback is the ONLY source — programmatic focus must still
+    // notify listeners exactly as a real DOM focus would.
+    const { root, child } = makeScene()
+    const gained: Array<boolean> = []
+    const lost: Array<boolean> = []
+    const first = child(50, 150, { ariaLabel: 'First', onFocusChange: (v) => gained.push(v) })
+    const second = child(150, 150, { ariaLabel: 'Second', onFocusChange: (v) => lost.push(v) })
+    const manager = makeManager(root)
+
+    manager.setFocus(first)
+    expect(gained).toEqual([true])
+
+    manager.setFocus(second)
+    expect(gained).toEqual([true, false]) // first was notified it lost focus
+    expect(lost).toEqual([true]) // second gained it — no duplicate fire from the DOM mirror echo
+  })
 })
 
 describe('reveal policy', () => {

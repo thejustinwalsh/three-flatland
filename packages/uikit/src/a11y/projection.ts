@@ -145,6 +145,7 @@ export function setupA11yProjection(
     for (const [component, element] of members) {
       // Not laid out yet → hide; a null globalPanelMatrix would otherwise place it at the root origin.
       if (component.globalPanelMatrix.peek() == null) {
+        resetA11yVisibilityState(component, element)
         applyRect(element, null, lastRects)
         continue
       }
@@ -169,10 +170,29 @@ export function setupA11yProjection(
 
   return () => {
     root.onFrameEndSet.delete(onFrame)
+    // Clear any visibility-policy state we imposed, so a Mode-1 DOM fallback (no projection) is
+    // tabbable again and no stale aria-hidden/tabIndex -1 survives teardown (codex P3 #3).
+    const members = getRootA11yMembers(root)
+    if (members != null) {
+      for (const [component, element] of members) {
+        resetA11yVisibilityState(component, element)
+      }
+    }
     const c = getRootA11yContainer(root)
     if (c != null) {
       c.style.cssText = CONTAINER_OFFSCREEN
     }
+  }
+}
+
+/** Clear the visibility-policy state (aria-hidden + focus-skip) an element may be carrying. */
+function resetA11yVisibilityState(component: Component, element: HTMLElement): void {
+  if (element.hasAttribute('aria-hidden')) {
+    element.removeAttribute('aria-hidden')
+  }
+  const focusSkip = a11yFocusSkipSignal(component)
+  if (focusSkip.value) {
+    focusSkip.value = false
   }
 }
 

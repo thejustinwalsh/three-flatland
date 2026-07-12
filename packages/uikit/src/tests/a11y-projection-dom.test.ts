@@ -42,7 +42,11 @@ function facingCamera() {
 function fakeRenderer(rect: { left: number; top: number; width: number; height: number }) {
   return {
     domElement: {
-      getBoundingClientRect: () => ({ ...rect, right: rect.left + rect.width, bottom: rect.top + rect.height }),
+      getBoundingClientRect: () => ({
+        ...rect,
+        right: rect.left + rect.width,
+        bottom: rect.top + rect.height,
+      }),
     } as unknown as HTMLElement,
   }
 }
@@ -52,7 +56,10 @@ describe('setupA11yProjection', () => {
     const c = mount({ width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' })
     const camera = facingCamera()
     const viewport = { x: 0, y: 0, width: 100, height: 100 }
-    const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
+    const dispose = setupA11yProjection(c, {
+      camera,
+      renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }),
+    })
     try {
       const root = c.root.peek()
 
@@ -87,7 +94,12 @@ describe('setupA11yProjection', () => {
     try {
       c.update(0)
       c.updateWorldMatrix(true, false)
-      const expected = computeA11yScreenRect(c.matrixWorld, camera, { x: 40, y: 25, width: 100, height: 100 })
+      const expected = computeA11yScreenRect(c.matrixWorld, camera, {
+        x: 40,
+        y: 25,
+        width: 100,
+        height: 100,
+      })
       expect(expected).not.toBeNull()
       expect(c.a11yElement!.style.transform).toBe(`translate(${expected!.x}px, ${expected!.y}px)`)
     } finally {
@@ -104,7 +116,10 @@ describe('setupA11yProjection', () => {
     camera.lookAt(0, 0, -10)
     camera.updateMatrixWorld(true)
     camera.updateProjectionMatrix()
-    const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
+    const dispose = setupA11yProjection(c, {
+      camera,
+      renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }),
+    })
     try {
       c.update(0)
       expect(c.a11yElement!.style.visibility).toBe('hidden')
@@ -118,7 +133,10 @@ describe('setupA11yProjection', () => {
     const c = mount({ width: 100, height: 100, role: 'button', ariaLabel: 'Go' })
     const camera = facingCamera()
     const root = c.root.peek()
-    const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
+    const dispose = setupA11yProjection(c, {
+      camera,
+      renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }),
+    })
     c.update(0)
     expect(getRootA11yContainer(root)!.style.position).toBe('fixed')
     dispose()
@@ -136,7 +154,10 @@ describe('setupA11yProjection', () => {
       visibility: 'hidden',
     })
     const camera = facingCamera()
-    const dispose = setupA11yProjection(c, { camera, renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }) })
+    const dispose = setupA11yProjection(c, {
+      camera,
+      renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }),
+    })
     try {
       c.update(0)
       // Not visible → not a tab target this frame, even though the panel is in front of the camera.
@@ -219,5 +240,27 @@ describe('setupA11yProjection — Mode 3 visibility policy', () => {
       dispose()
       c.dispose()
     }
+  })
+})
+
+describe('setupA11yProjection — visibility teardown (codex P3 #3)', () => {
+  it('clears focus-skip + aria-hidden on dispose so a Mode-1 fallback stays tabbable', () => {
+    // Offscreen → the policy sets tabIndex -1 (focus-skip).
+    const c = mountAt(
+      { width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' },
+      [20, 0, 0]
+    )
+    const dispose = setupA11yProjection(c, {
+      camera: facingCamera(),
+      renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }),
+    })
+    c.update(0)
+    const el = c.a11yElement!
+    expect(el.tabIndex).toBe(-1)
+    // Teardown must restore focusability — otherwise the hidden element is untabbable forever.
+    dispose()
+    expect(el.tabIndex).toBe(0)
+    expect(el.hasAttribute('aria-hidden')).toBe(false)
+    c.dispose()
   })
 })

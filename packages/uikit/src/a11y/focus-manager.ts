@@ -111,6 +111,12 @@ export class A11yFocusManager {
     if (component == null || component === this.focusedSignal.peek()) {
       return
     }
+    // A disabled or policy-excluded (skipped / not-perceivable) member can still be focused
+    // programmatically (tabIndex -1 only blocks sequential Tab) — don't let it become the tracked
+    // spatial focus (codex P3 #2).
+    if (!this.passesFocusPolicy(component)) {
+      return
+    }
     this.adopt(component)
   }
 
@@ -292,9 +298,11 @@ export class A11yFocusManager {
       batch(() => {
         if (previous != null && previous !== component && previous.hasFocus.peek()) {
           previous.hasFocus.value = false
+          previous.properties.peek().onFocusChange?.(false)
         }
         if (component != null && !component.hasFocus.peek()) {
           component.hasFocus.value = true
+          component.properties.peek().onFocusChange?.(true)
         }
         this.focusedSignal.value = component
       })
@@ -322,9 +330,11 @@ export class A11yFocusManager {
       batch(() => {
         if (previous != null && previous !== component && previous.hasFocus.peek()) {
           previous.hasFocus.value = false
+          previous.properties.peek().onFocusChange?.(false)
         }
         if (!component.hasFocus.peek()) {
           component.hasFocus.value = true
+          component.properties.peek().onFocusChange?.(true)
         }
         this.focusedSignal.value = component
       })
@@ -361,26 +371,35 @@ export class A11yFocusManager {
     }
     const result: Array<Component> = []
     for (const component of members.keys()) {
-      const properties = component.properties.value
-      if (
-        properties.role == null ||
-        !INTERACTIVE_ROLES.has(properties.role) ||
-        properties.disabled === true
-      ) {
-        continue
-      }
-      const visibility = classifyA11yVisibility(component, camera, viewport, {
-        occlusionProbe: this.occlusionProbe,
-      })
-      if (
-        visibility === 'visible' ||
-        ((visibility === 'offscreen' || visibility === 'occluded') &&
-          this.policy.offscreen !== 'skip')
-      ) {
+      if (this.passesFocusPolicy(component)) {
         result.push(component)
       }
     }
     return result
+  }
+
+  /**
+   * The focusable predicate shared by the focusables snapshot AND DOM-focus adoption: an interactive,
+   * enabled role whose a11yVisibility passes the reveal policy — visible always; offscreen/occluded
+   * only when the policy is not 'skip'; behind-camera/too-small/hidden never.
+   */
+  private passesFocusPolicy(component: Component): boolean {
+    const properties = component.properties.value
+    if (
+      properties.role == null ||
+      !INTERACTIVE_ROLES.has(properties.role) ||
+      properties.disabled === true
+    ) {
+      return false
+    }
+    const visibility = this.classify(component)
+    if (visibility === 'visible') {
+      return true
+    }
+    if (visibility === 'offscreen' || visibility === 'occluded') {
+      return this.policy.offscreen !== 'skip'
+    }
+    return false
   }
 
   private refreshFocusables(): Array<Component> {
