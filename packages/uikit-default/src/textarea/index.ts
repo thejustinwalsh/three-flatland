@@ -85,6 +85,10 @@ export class Textarea extends Container<TextareaOutProperties> {
         type: this.properties.signal.type,
         onValueChange: this.properties.signal.onValueChange,
         onFocusChange: this.properties.signal.onFocusChange,
+        // The inner Input owns the hidden <textarea> (its a11y element) — without forwarding these,
+        // ariaLabel/ariaDescription set on the outer Textarea never reach it (gap found by T2.8).
+        ariaLabel: this.properties.signal.ariaLabel,
+        ariaDescription: this.properties.signal.ariaDescription,
       },
     })
     this.input = inputImpl
@@ -115,7 +119,7 @@ export class Textarea extends Container<TextareaOutProperties> {
     super.dispose()
   }
 
-  add(...object: Object3D[]): this {
+  add(..._object: Object3D[]): this {
     throw new Error(`the input component can not have any children`)
   }
 }
