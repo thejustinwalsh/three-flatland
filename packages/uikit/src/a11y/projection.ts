@@ -2,6 +2,7 @@ import { Vector3 } from 'three'
 import type { Camera, Matrix4 } from 'three'
 import type { Component } from '../components/component.js'
 import { Fullscreen } from '../components/fullscreen.js'
+import { applyA11yDebugStyle, getA11yDebug } from './debug.js'
 import { a11yFocusSkipSignal, getRootA11yContainer, getRootA11yMembers } from './hidden-element.js'
 import { classifyA11yVisibility, type A11yVisibility } from './visibility.js'
 
@@ -147,8 +148,12 @@ export function setupA11yProjection(
       width: canvasRect.width,
       height: canvasRect.height,
     }
+    const debugOn = getA11yDebug().peek()
     for (const [component, element] of members) {
       touched.add(component)
+      // Debug overlay: reveal the projected element (outline + role/name) so the a11y tree is visible
+      // over the panels. Independent of positioning below — visibility:hidden members stay hidden.
+      applyA11yDebugStyle(element, component, debugOn)
       // Not laid out yet → hide; a null globalPanelMatrix would otherwise place it at the root origin.
       if (component.globalPanelMatrix.peek() == null) {
         resetA11yVisibilityState(component, element)

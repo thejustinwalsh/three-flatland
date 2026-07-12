@@ -4,6 +4,7 @@ import { Object3D, PerspectiveCamera } from 'three'
 import { loadYoga } from 'yoga-layout/load'
 import { Container } from '../index.js'
 import { computeA11yScreenRect, setupA11yProjection } from '../a11y/projection.js'
+import { setA11yDebug } from '../a11y/debug.js'
 import { getRootA11yContainer, getRootA11yMembers } from '../a11y/hidden-element.js'
 
 /**
@@ -336,5 +337,40 @@ describe('setupA11yProjection — visibility teardown (codex P3 #3)', () => {
 
     dispose()
     c.dispose()
+  })
+})
+
+describe('setupA11yProjection — debug overlay', () => {
+  it('reveals a visible member (opacity + outline + role/name label) when debug is on, restores it off', () => {
+    const c = mount({ width: 100, height: 100, pixelSize: 0.01, role: 'button', ariaLabel: 'Go' })
+    const dispose = setupA11yProjection(c, {
+      camera: facingCamera(),
+      renderer: fakeRenderer({ left: 0, top: 0, width: 100, height: 100 }),
+    })
+    try {
+      const el = c.a11yElement!
+      c.update(0)
+      // Hidden by default — the a11y element is opacity:0 and carries no debug marker.
+      expect(el.style.opacity).toBe('0')
+      expect(el.hasAttribute('data-a11y-debug')).toBe(false)
+
+      setA11yDebug(true)
+      c.update(0)
+      expect(el.style.opacity).toBe('1')
+      expect(el.style.outline).not.toBe('')
+      expect(el.getAttribute('data-a11y-debug')).toContain('button')
+      expect(el.getAttribute('data-a11y-debug')).toContain('Go')
+      expect(el.title).toContain('Go')
+
+      setA11yDebug(false)
+      c.update(0)
+      expect(el.style.opacity).toBe('0')
+      expect(el.hasAttribute('data-a11y-debug')).toBe(false)
+      expect(el.style.outline).toBe('')
+    } finally {
+      setA11yDebug(false)
+      dispose()
+      c.dispose()
+    }
   })
 })
