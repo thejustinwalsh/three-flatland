@@ -1,5 +1,42 @@
 # uikit a11y — Phase 4: immersive XR (Mode 4) — adapters, backends, DOM Overlay, emulated-XR harness
 
+> ## STATUS: DEFERRED to a separate follow-up (decided 2026-07-12)
+>
+> The a11y epic **ships at Phase 3** (PRs #182–#185). Phase 4 is deliberately **not** part of it.
+>
+> **Why (architectural finding, verified against the shipped API):** XR does not need a different a11y
+> vocabulary. XAUR maps onto the **same semantic props** we already ship — `role`, `ariaLabel`,
+> `ariaDescription`, value, plus the spatial props `a11yOrder` / `a11yGroup` / `a11ySpatialLabel` /
+> `a11yPositionDescription` (schema.ts:256). What immersive XR needs is a different **delivery** of
+> that same semantics: **input** adapters (controller-ray / gaze → focus) and **output** backends
+> (earcon / haptic / caption / speech). Both ride the **public** API with zero core changes:
+> - input → `getA11yFocusManager().setFocus / focusDirectional / activateFocused` + the public
+>   pointer-events stream;
+> - output → `registerAnnouncementBackend({ announce })` (the `Announcement` already carries
+>   `source: Component` for spatial-audio panning and `kind: 'activation'|'focus'|'status'`);
+> - the one XR-aware behavior (skip the DOM mirror in-session) is already the public
+>   `A11yFocusManager` option `isXRSession: () => boolean`.
+>
+> Therefore XR a11y for uikit **can and should live outside the core** — a separate
+> `@three-flatland/uikit-xr` package (or app-land), which also proves the P3 API is complete +
+> externally extensible. The core library stays XR-dependency-free.
+>
+> **Dependency groundwork already scouted (so the follow-up need not re-derive it):**
+> - `@react-three/xr@^6.6.30` peers `@react-three/fiber >=8` (loose) — coexists with the examples'
+>   `@react-three/fiber@10.0.0-alpha.2` under pnpm's non-strict peers **plus** a root
+>   `package.json` `pnpm.peerDependencyRules.allowedVersions: { "@react-three/fiber": "10" }`.
+> - `@pmndrs/xr@^6.6.30` (framework-agnostic core; peers `three *`); `@pmndrs/pointer-events@^6.6.30`
+>   already catalogued. `iwer@^2.x` (pure-JS WebXR emulator) for a headless Playwright harness — do
+>   NOT add `@iwer/devui` (its `three ^0.184` peer conflicts with the repo's `three ^0.183.1`).
+> - **First blocker to solve before even an input demo renders:** WebGPU + WebXR *presentation* —
+>   all examples render via `WebGPURenderer` (WebGL2 fallback), and WebXR historically binds a WebGL
+>   `XRWebGLLayer`; WebGPU-backed XR layers are nascent, so the XR example likely needs forcing onto
+>   the WebGL2 backend, plus a render-loop rewrite to `renderer.setAnimationLoop((t, frame) => …)`.
+>
+> The task breakdown below is retained as the **spec for that future package**.
+
+
+
 **Spec:** `uikit-native-a11y.md` §5, §6 (remaining backends), §10 (XAUR compliance), §11 rows 11–15
 **Depends on:** Phase 3 (focus manager is the substrate).
 **Foundation fact (verified 2026-07-12):** `@pmndrs/xr` core ships **zero a11y** (input/setup only: controllers, hands, pointers, teleport, hit-test, emulate, store) and is built on the `@pmndrs/pointer-events` uikit already consumes. This phase INTEGRATES with it as the XR input plumbing and supplies the missing AT layer. uikit has zero XR binding today — T4.0 establishes the dogfood binding.
