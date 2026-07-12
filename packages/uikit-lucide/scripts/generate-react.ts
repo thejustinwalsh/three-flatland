@@ -8,6 +8,11 @@ import { readdir, writeFile } from 'fs/promises'
 const baseDir = './icons/'
 const outDir = './src/react/'
 
+// JS restricted global names (eslint `no-shadow-restricted-names`) that a few icons collide with
+// via their un-suffixed alias — e.g. lucide's `infinity` → `Infinity`. The suffixed `${name}Icon`
+// export is always safe; the alias just carries a disable so both spellings stay importable.
+const RESTRICTED_GLOBALS = new Set(['Infinity', 'NaN', 'undefined', 'eval', 'arguments'])
+
 async function main() {
   const icons = await readdir(baseDir)
   const names: string[] = []
@@ -17,6 +22,9 @@ async function main() {
     }
     const name = getName(icon)
     names.push(name)
+    const aliasEslintDisable = RESTRICTED_GLOBALS.has(name)
+      ? '// eslint-disable-next-line no-shadow-restricted-names\n'
+      : ''
     const code = `
 import type { ForwardRefExoticComponent, PropsWithoutRef, RefAttributes } from 'react'
 import { ${name}Icon as Vanilla${name}Icon } from '@three-flatland/uikit-lucide'
@@ -26,7 +34,7 @@ import type { SvgProperties } from '@three-flatland/uikit/react'
 export const ${name}Icon: ForwardRefExoticComponent<
   PropsWithoutRef<SvgProperties> & RefAttributes<Vanilla${name}Icon>
 > = /*@__PURE__*/ build<Vanilla${name}Icon, SvgProperties>(Vanilla${name}Icon)
-export const ${name}: ForwardRefExoticComponent<
+${aliasEslintDisable}export const ${name}: ForwardRefExoticComponent<
   PropsWithoutRef<SvgProperties> & RefAttributes<Vanilla${name}Icon>
 > = ${name}Icon
     `
