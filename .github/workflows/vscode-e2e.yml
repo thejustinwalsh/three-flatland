@@ -124,8 +124,25 @@ jobs:
       # the same minimal invocation as microsoft/vscode-test's own sample CI
       # workflow (github.com/microsoft/vscode-test/blob/main/sample/.github/
       # workflows/ci.yml): no extra system packages needed on top of it.
+      #
+      # Wrapped in a job-level retry (not relying on Playwright's own
+      # in-process test retry alone): tools/audio-play/CLAUDE.md documents
+      # residual PulseAudio/ALSA jitter under a loaded runner even with the
+      # daemon confirmed ready (see the readiness wait above) — real,
+      # occasional silence on an otherwise-correct audio path, not a
+      # deterministic bug (confirmed: workers: 1 below rules out cross-test
+      # audio contention, and which specific test catches it varies run to
+      # run). Playwright's own retry reuses the SAME already-running VS
+      # Code instance and sidecar process for its retry attempt, so it
+      # can't shake a glitch tied to that process's audio state; retrying
+      # the whole step gets a genuinely fresh xvfb + VS Code + sidecar +
+      # AudioContext each attempt, which is a materially stronger reset.
       - name: Run VS Code extension e2e tests
-        run: xvfb-run -a pnpm --filter @three-flatland/vscode test:e2e
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 15
+          max_attempts: 2
+          command: xvfb-run -a pnpm --filter @three-flatland/vscode test:e2e
 
       - name: Upload Playwright report
         if: failure()
