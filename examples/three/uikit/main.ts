@@ -17,6 +17,7 @@ import {
   withOpacity,
   setPreferredColorScheme,
   attachCanvasInputProps,
+  setupA11yProjection,
 } from '@three-flatland/uikit'
 import type { RenderContext, ContainerProperties, TextProperties } from '@three-flatland/uikit'
 import {
@@ -322,6 +323,7 @@ const SAVE_SLOTS: Array<{ name: string; stamp: string; level: string }> = [
 let rafId = 0
 let activeRenderer: WebGPURenderer | null = null
 let activePointerEvents: { destroy: () => void } | null = null
+let activeDisposeA11yProjection: (() => void) | null = null
 
 async function main() {
   // ─── Renderer ───────────────────────────────────────────────────
@@ -433,6 +435,17 @@ async function main() {
   const rt = buildMenu(ui)
   const anchorMenu = createMenuAnchor(ui, rt.panel)
   flatland.camera.add(ui)
+
+  // ─── Accessibility projection ────────────────────────────────────
+  // The React twin wires this up for free — `build.tsx`'s root binding calls
+  // `setupA11yProjection` itself inside a `useEffect` once `camera` + `renderer`
+  // are known. Vanilla three has no such lifecycle to hook, so the example must
+  // call it explicitly, once the root uikit component, camera, and renderer all
+  // exist. It re-projects every hidden a11y DOM element under `ui` onto its
+  // panel's on-screen rect each frame, so screen readers / tab focus / switch
+  // access hit-test the real, currently-visible location instead of an
+  // off-screen fallback.
+  activeDisposeA11yProjection = setupA11yProjection(ui, { camera: flatland.camera, renderer })
 
   // ─── Pointer events ─────────────────────────────────────────────
   // Vanilla three has no built-in raycast / event routing. `forwardHtmlEvents`
@@ -583,9 +596,15 @@ function buildMenu(ui: Fullscreen): Realtime {
     defaultValue: 'Ranger',
     fontSize: 14,
     width: '100%',
+    ariaLabel: 'Player Name',
   })
 
-  const difficulty = new RadioGroup({ defaultValue: 'normal', flexDirection: 'row', gap: 16 })
+  const difficulty = new RadioGroup({
+    defaultValue: 'normal',
+    flexDirection: 'row',
+    gap: 16,
+    ariaLabel: 'Difficulty',
+  })
   difficulty.add(
     radioOption('easy', 'Easy'),
     radioOption('normal', 'Normal'),
@@ -674,6 +693,7 @@ function buildMenu(ui: Fullscreen): Realtime {
     max: 100,
     step: 1,
     onValueChange: (v) => masterValue.setProperties({ text: `${v}` }),
+    ariaLabel: 'Master Volume',
   })
   const musicSlider = new Slider({
     defaultValue: 45,
@@ -681,6 +701,7 @@ function buildMenu(ui: Fullscreen): Realtime {
     max: 100,
     step: 1,
     onValueChange: (v) => musicValue.setProperties({ text: `${v}` }),
+    ariaLabel: 'Music Volume',
   })
 
   const settingsTab = new TabsContent({ value: 'settings', flexDirection: 'column', gap: 16 })
@@ -714,11 +735,11 @@ function buildMenu(ui: Fullscreen): Realtime {
     row(
       { justifyContent: 'space-between', alignItems: 'center' },
       labeled('Fullscreen'),
-      new Switch({ defaultChecked: true })
+      new Switch({ defaultChecked: true, ariaLabel: 'Fullscreen' })
     ),
     row(
       { gap: 10, alignItems: 'center' },
-      new Checkbox({ defaultChecked: true }),
+      new Checkbox({ defaultChecked: true, ariaLabel: 'V-Sync' }),
       labeled('V-Sync')
     )
   )
@@ -751,6 +772,7 @@ function buildMenu(ui: Fullscreen): Realtime {
     gap: 8,
     flexGrow: 1,
     active: { transformTranslateY: 1, opacity: 0.85 },
+    ariaLabel: 'Play',
   })
   playButton.add(new Play({ width: 16, height: 16 }), new Text({ text: 'Play' }))
   const quitButton = new Button({
@@ -758,6 +780,7 @@ function buildMenu(ui: Fullscreen): Realtime {
     gap: 8,
     flexGrow: 1,
     active: { transformTranslateY: 1, opacity: 0.85 },
+    ariaLabel: 'Quit',
   })
   quitButton.add(new X({ width: 16, height: 16 }), new Text({ text: 'Quit' }))
   const buttons = row({ gap: 12, width: '100%' }, playButton, quitButton)
@@ -787,13 +810,13 @@ function buildMenu(ui: Fullscreen): Realtime {
 }
 
 function radioOption(value: string, label: string): RadioGroupItem {
-  const item = new RadioGroupItem({ value })
+  const item = new RadioGroupItem({ value, ariaLabel: label })
   item.add(new Text({ text: label, color: WHITE, fontSize: 14 }))
   return item
 }
 
 function tabTrigger(value: string, label: string): TabsTrigger {
-  const trigger = new TabsTrigger({ value, flexGrow: 1 })
+  const trigger = new TabsTrigger({ value, flexGrow: 1, ariaLabel: `${label} tab` })
   trigger.add(new Text({ text: label }))
   return trigger
 }
@@ -809,6 +832,10 @@ if (import.meta.hot) {
     if (activePointerEvents) {
       activePointerEvents.destroy()
       activePointerEvents = null
+    }
+    if (activeDisposeA11yProjection) {
+      activeDisposeA11yProjection()
+      activeDisposeA11yProjection = null
     }
     if (activeRenderer) {
       activeRenderer.dispose?.()
