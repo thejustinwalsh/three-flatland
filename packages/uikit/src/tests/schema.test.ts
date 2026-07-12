@@ -89,6 +89,26 @@ describe('property schemas', () => {
     expect(InputPropertiesSchema.safeParse({ text: 'not allowed' }).success).to.equal(false)
   })
 
+  it('accepts native a11y props chain-wide and still rejects unknown keys and bad roles', () => {
+    // a11yPropertyShape is spread into the base out-shape, so every component inherits it.
+    expect(
+      ContainerPropertiesSchema.safeParse({
+        role: 'button',
+        ariaLabel: 'Play',
+        ariaChecked: true,
+        tabIndex: 0,
+        disabled: false,
+        hover: { backgroundColor: 'red' },
+      }).success
+    ).to.equal(true)
+    // The role enum is closed…
+    expect(ContainerPropertiesSchema.safeParse({ role: 'not-a-real-role' }).success).to.equal(false)
+    // …and strictness still bites unknown keys sitting next to valid a11y props.
+    expect(
+      ContainerPropertiesSchema.safeParse({ ariaLabel: 'x', notAnAriaProp: true }).success
+    ).to.equal(false)
+  })
+
   it('constructs core Video with schema-valid props outside the browser', () => {
     const props = { src: 'movie.mp4', objectFit: 'cover' as const, keepAspectRatio: false }
     expect(ComponentPropertiesSchemas.Video.safeParse(props).success).to.equal(true)
