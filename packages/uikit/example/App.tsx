@@ -175,7 +175,14 @@ function Tile({
   children: React.ReactNode
 }) {
   return (
-    <Card flexDirection="column" gap={10} padding={16} flexGrow={grow} flexShrink={1} flexBasis="auto">
+    <Card
+      flexDirection="column"
+      gap={10}
+      padding={16}
+      flexGrow={grow}
+      flexShrink={1}
+      flexBasis="auto"
+    >
       <CardHeader padding={0} gap={2}>
         <Container flexDirection="row" alignItems="center" gap={8}>
           {icon}
@@ -222,7 +229,14 @@ function Stat({
   return (
     // Fixed equal-width cell (flexGrow + flexBasis 0) so a changing number never
     // reflows its neighbours — the readout stays put instead of dancing.
-    <Container flexDirection="column" gap={1} alignItems="flex-start" flexGrow={1} flexBasis={0} minWidth={0}>
+    <Container
+      flexDirection="column"
+      gap={1}
+      alignItems="flex-start"
+      flexGrow={1}
+      flexBasis={0}
+      minWidth={0}
+    >
       <Text color={MUTED} fontSize={11}>
         {label}
       </Text>
@@ -265,7 +279,12 @@ function SlugCard() {
     }
   })
   return (
-    <Tile title="Slug text" hint="live resize · analytic Bézier · no atlas" icon={<Type width={16} height={16} color={GEM} />} grow={1.5}>
+    <Tile
+      title="Slug text"
+      hint="live resize · analytic Bézier · no atlas"
+      icon={<Type width={16} height={16} color={GEM} />}
+      grow={1.5}
+    >
       <Container
         flexGrow={1}
         minHeight={160}
@@ -340,14 +359,20 @@ function PerfCard() {
       gpuRef.current?.setProperties({ text: gpuMs.current > 0 ? gpuMs.current.toFixed(2) : '—' })
       fpsRef.current?.setProperties({ text: `${Math.round(frames.current / acc.current)}` })
       const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory
-      if (mem) memRef.current?.setProperties({ text: `${Math.round(mem.usedJSHeapSize / 1048576)}` })
+      if (mem)
+        memRef.current?.setProperties({ text: `${Math.round(mem.usedJSHeapSize / 1048576)}` })
       acc.current = 0
       frames.current = 0
     },
     { phase: 'finish' }
   )
   return (
-    <Tile title="Performance" hint="live · this frame" icon={<Gauge width={16} height={16} color={GEM} />} grow={1}>
+    <Tile
+      title="Performance"
+      hint="live · this frame"
+      icon={<Gauge width={16} height={16} color={GEM} />}
+      grow={1}
+    >
       <Container flexDirection="column" gap={12}>
         <Container flexDirection="row" gap={10}>
           <Stat label="FPS" valueRef={fpsRef} />
@@ -365,24 +390,37 @@ function PerfCard() {
   )
 }
 
-/** Auto-animating meter: the Progress value ping-pongs 0↔100 while its fill lerps
- *  amethyst→ruby. The Rate slider sets the base speed; Boost cranks it up. */
+/** Output level: the meter stays a live fake-EQ animation (random transients + exponential
+ *  decay, amethyst→ruby fill). Only the dB READOUT changed — it now tracks the Volume slider
+ *  across a MIN_DB..MAX_DB scale (Boost nudges it louder) instead of measuring the animated
+ *  level, so the number reflects what you set, not what the meter is doing. */
 function OutputCard() {
   const meterRef = useRef<VanillaProgress>(null)
   const readRef = useRef<VanillaText>(null)
-  const volume = useRef(0.65) // Volume slider — scales the EQ amplitude (loudness ceiling)
-  const boost = useRef(false) // Boost switch — amplifies the signal a bit
+  const volume = useRef(0.65) // Volume slider position, 0..1 — loudness ceiling + readout
+  const boost = useRef(false) // Boost switch — a little EQ gain + a nudge to the readout
   const t = useRef(0) // song time
-  const level = useRef(0) // current EQ level 0..1
+  const level = useRef(0) // current EQ level 0..1 (drives the meter only)
   const nextBeat = useRef(0.2) // song time of the next transient
-  const labelAcc = useRef(0)
   const from = useMemo(() => new Color('#995bff'), [])
   const to = useMemo(() => new Color('#eb3c67'), [])
   const cur = useMemo(() => new Color(), [])
-  // Fake EQ: transients land at song-like random intervals — each snaps the level
-  // UP instantly (fast attack), then it decays exponentially (slow fall-off). Volume
-  // sets the loudness ceiling the hits scale to; Boost adds a little gain on top.
-  // Same Progress component, same colour-lerp — only the value driver changed.
+  const MIN_DB = -60
+  const MAX_DB = 0
+  // The dB readout tracks the SLIDER, not the meter: linear across MIN_DB..MAX_DB, Boost adds
+  // a nudge. Imperative + slider-driven, so it never live-updates off the EQ animation.
+  const paintReadout = () => {
+    const setpoint = Math.min(1, volume.current + (boost.current ? 0.15 : 0))
+    const db = MIN_DB + setpoint * (MAX_DB - MIN_DB)
+    readRef.current?.setProperties({ text: `${db.toFixed(1)} dB` })
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    paintReadout()
+  }, [])
+  // Fake EQ: transients land at song-like random intervals — each snaps the level UP instantly
+  // (fast attack), then it decays exponentially (slow fall-off). Volume sets the loudness
+  // ceiling the hits scale to; Boost adds a little gain. Drives the meter (value + colour) only.
   useFrame((_, rawDelta) => {
     const dt = Math.min(0.05, rawDelta)
     t.current += dt
@@ -399,23 +437,19 @@ function OutputCard() {
     meterRef.current?.setProperties({ value })
     cur.copy(from).lerp(to, level.current)
     meterRef.current?.fill.setProperties({ backgroundColor: `#${cur.getHexString()}` })
-    labelAcc.current += Math.min(0.05, rawDelta)
-    if (labelAcc.current >= 0.1) {
-      // DAW-style level meter: 20·log10(amplitude) with 3 dB headroom — floors at
-      // -80 dB (near silence) and peaks at -3 dB (hot, rocking out) without hitting 0.
-      const db = Math.max(-80, 20 * Math.log10(Math.max(level.current, 0.0001)) - 3)
-      readRef.current?.setProperties({ text: `${db.toFixed(1)} dB` })
-      labelAcc.current = 0
-    }
   })
   return (
-    <Tile title="Output level" hint="fake EQ · peak + decay · Boost = louder" icon={<Volume2 width={16} height={16} color={GEM} />}>
+    <Tile
+      title="Output level"
+      hint="fake EQ · peak + decay · Boost = louder"
+      icon={<Volume2 width={16} height={16} color={GEM} />}
+    >
       <Row justifyContent="space-between">
         <Label>
           <Text fontSize={13}>Volume</Text>
         </Label>
         <Text ref={readRef} color={MUTED} fontSize={12}>
-          -60.0 dB
+          -21.0 dB
         </Text>
       </Row>
       <Slider
@@ -424,7 +458,10 @@ function OutputCard() {
         max={100}
         step={1}
         width="100%"
-        onValueChange={(v: number) => (volume.current = v / 100)}
+        onValueChange={(v: number) => {
+          volume.current = v / 100
+          paintReadout()
+        }}
       />
       <Progress ref={meterRef} value={4} />
       <Row justifyContent="space-between">
@@ -434,7 +471,12 @@ function OutputCard() {
             <Text fontSize={13}>Boost</Text>
           </Label>
         </Row>
-        <Switch onCheckedChange={(on: boolean) => (boost.current = on)} />
+        <Switch
+          onCheckedChange={(on: boolean) => {
+            boost.current = on
+            paintReadout()
+          }}
+        />
       </Row>
     </Tile>
   )
@@ -475,45 +517,51 @@ function ProfileCard() {
           Input's natural height 40, pills = badge height 20 — identical column so the
           reveal doesn't move anything. */}
       <Container minHeight={66} width="100%" justifyContent="center">
-      {loading ? (
-        <Row width="100%">
-          <Skeleton width={52} height={52} borderRadius={999} />
-          <Container flexDirection="column" gap={6} flexGrow={1}>
-            <Skeleton width="100%" height={40} borderRadius={8} />
-            <Row gap={6}>
-              <Skeleton width={50} height={20} borderRadius={999} />
-              <Skeleton width={58} height={20} borderRadius={999} />
-            </Row>
-          </Container>
-        </Row>
-      ) : (
-        <Row width="100%">
-          <Container
-            width={52}
-            height={52}
-            borderRadius={999}
-            backgroundColor={withOpacity(GEM, 0.22)}
-            borderWidth={1}
-            borderColor={withOpacity(GEM, 0.5)}
-            justifyContent="center"
-            alignItems="center"
-          >
-            <User width={26} height={26} color={GEM} />
-          </Container>
-          <Container flexDirection="column" gap={6} flexGrow={1}>
-            <Input placeholder="Display name" defaultValue="Ranger" fontSize={14} width="100%" />
-            <Row gap={6}>
-              <Badge variant="secondary" height={20} alignItems="center" justifyContent="center">
-                <Text fontSize={11}>Lv 12</Text>
-              </Badge>
-              <Badge flexDirection="row" gap={4} height={20} alignItems="center" justifyContent="center">
-                <Star width={11} height={11} />
-                <Text fontSize={11}>Pro</Text>
-              </Badge>
-            </Row>
-          </Container>
-        </Row>
-      )}
+        {loading ? (
+          <Row width="100%">
+            <Skeleton width={52} height={52} borderRadius={999} />
+            <Container flexDirection="column" gap={6} flexGrow={1}>
+              <Skeleton width="100%" height={40} borderRadius={8} />
+              <Row gap={6}>
+                <Skeleton width={50} height={20} borderRadius={999} />
+                <Skeleton width={58} height={20} borderRadius={999} />
+              </Row>
+            </Container>
+          </Row>
+        ) : (
+          <Row width="100%">
+            <Container
+              width={52}
+              height={52}
+              borderRadius={999}
+              backgroundColor={withOpacity(GEM, 0.22)}
+              borderWidth={1}
+              borderColor={withOpacity(GEM, 0.5)}
+              justifyContent="center"
+              alignItems="center"
+            >
+              <User width={26} height={26} color={GEM} />
+            </Container>
+            <Container flexDirection="column" gap={6} flexGrow={1}>
+              <Input placeholder="Display name" defaultValue="Ranger" fontSize={14} width="100%" />
+              <Row gap={6}>
+                <Badge variant="secondary" height={20} alignItems="center" justifyContent="center">
+                  <Text fontSize={11}>Lv 12</Text>
+                </Badge>
+                <Badge
+                  flexDirection="row"
+                  gap={4}
+                  height={20}
+                  alignItems="center"
+                  justifyContent="center"
+                >
+                  <Star width={11} height={11} />
+                  <Text fontSize={11}>Pro</Text>
+                </Badge>
+              </Row>
+            </Container>
+          </Row>
+        )}
       </Container>
     </Tile>
   )
@@ -537,8 +585,19 @@ function ReelCard() {
     }
   }
   return (
-    <Tile title="Reel" hint="Video · play / pause" icon={<Play width={16} height={16} color={GEM} />} grow={2}>
-      <Container width="100%" height={130} borderRadius={6} overflow="hidden" backgroundColor="black">
+    <Tile
+      title="Reel"
+      hint="Video · play / pause"
+      icon={<Play width={16} height={16} color={GEM} />}
+      grow={2}
+    >
+      <Container
+        width="100%"
+        height={130}
+        borderRadius={6}
+        overflow="hidden"
+        backgroundColor="black"
+      >
         {/* cover: fill the box exactly (keepAspectRatio false so it doesn't grow past
             the box and get its rounded bottom rect-clipped), crop via objectFit — all
             four of the video's own rounded corners land on the box edges. */}
@@ -569,7 +628,12 @@ function FaqCard() {
     if (faqRef.current) faqRef.current.openItemValue.value = '2'
   }, [])
   return (
-    <Tile title="FAQ" hint="Accordion" grow={2} icon={<CircleHelp width={16} height={16} color={GEM} />}>
+    <Tile
+      title="FAQ"
+      hint="Accordion"
+      grow={2}
+      icon={<CircleHelp width={16} height={16} color={GEM} />}
+    >
       {/* minHeight reserves the one-item-open height so opening an accordion
           doesn't grow the card and shift the column. */}
       <Accordion ref={faqRef} minHeight={150}>
@@ -614,7 +678,13 @@ function PhotoCard() {
   }
   return (
     <Tile title="Photo" hint="Opacity · radius" icon={<Image width={16} height={16} color={GEM} />}>
-      <Container width="100%" height={96} borderRadius={12} overflow="hidden" backgroundColor={INSET}>
+      <Container
+        width="100%"
+        height={96}
+        borderRadius={12}
+        overflow="hidden"
+        backgroundColor={INSET}
+      >
         <UikitImage
           ref={imageRef}
           src="https://picsum.photos/seed/flatland/640/360"
@@ -634,12 +704,26 @@ function PhotoCard() {
           80%
         </Text>
       </Row>
-      <Slider defaultValue={80} min={10} max={100} step={1} width="100%" onValueChange={setImgOpacity} />
+      <Slider
+        defaultValue={80}
+        min={10}
+        max={100}
+        step={1}
+        width="100%"
+        onValueChange={setImgOpacity}
+      />
       <Row gap={10}>
         <Label>
           <Text fontSize={12}>Radius</Text>
         </Label>
-        <Slider defaultValue={20} min={0} max={100} step={1} flexGrow={1} onValueChange={setImgRadius} />
+        <Slider
+          defaultValue={20}
+          min={0}
+          max={100}
+          step={1}
+          flexGrow={1}
+          onValueChange={setImgRadius}
+        />
       </Row>
     </Tile>
   )
@@ -677,7 +761,11 @@ function PaletteCard() {
     accentTextRef.current?.setProperties({ text: g.name })
   }
   return (
-    <Tile title="Palette" hint="Swatches recolor the showcase" icon={<Palette width={16} height={16} color={GEM} />}>
+    <Tile
+      title="Palette"
+      hint="Swatches recolor the showcase"
+      icon={<Palette width={16} height={16} color={GEM} />}
+    >
       <Row gap={8}>
         {GEMS.map((g) => (
           <Button
@@ -710,7 +798,11 @@ function PaletteCard() {
 
 function NotesCard() {
   return (
-    <Tile title="Notes" hint="Textarea · Checkbox" icon={<FileText width={16} height={16} color={GEM} />}>
+    <Tile
+      title="Notes"
+      hint="Textarea · Checkbox"
+      icon={<FileText width={16} height={16} color={GEM} />}
+    >
       <Textarea width="100%" placeholder="Write a note…" />
       <Row gap={10}>
         <Checkbox defaultChecked={true} />
@@ -724,7 +816,11 @@ function NotesCard() {
 
 function FormatCard() {
   return (
-    <Tile title="Format" hint="ToggleGroup · Toggle" icon={<Bold width={16} height={16} color={GEM} />}>
+    <Tile
+      title="Format"
+      hint="ToggleGroup · Toggle"
+      icon={<Bold width={16} height={16} color={GEM} />}
+    >
       <ToggleGroup>
         <ToggleGroupItem>
           <Bold width={16} height={16} />
@@ -752,7 +848,11 @@ function FormatCard() {
 
 function AppearanceCard() {
   return (
-    <Tile title="Appearance" hint="Theme · light / dark" icon={<Sun width={16} height={16} color={GEM} />}>
+    <Tile
+      title="Appearance"
+      hint="Theme · light / dark"
+      icon={<Sun width={16} height={16} color={GEM} />}
+    >
       <Row justifyContent="space-between">
         <Row gap={8}>
           <Moon width={15} height={15} color={MUTED} />
@@ -782,7 +882,11 @@ function ResizeCard() {
     heightReadRef.current?.setProperties({ text: `${h}px` })
   }
   return (
-    <Tile title="Resize" hint="Slider drives the panel height" icon={<Maximize2 width={16} height={16} color={GEM} />}>
+    <Tile
+      title="Resize"
+      hint="Slider drives the panel height"
+      icon={<Maximize2 width={16} height={16} color={GEM} />}
+    >
       <Container
         ref={heightPanelRef}
         width="100%"
@@ -800,14 +904,25 @@ function ResizeCard() {
           64px
         </Text>
       </Row>
-      <Slider defaultValue={38} min={0} max={100} step={1} width="100%" onValueChange={setPanelHeight} />
+      <Slider
+        defaultValue={38}
+        min={0}
+        max={100}
+        step={1}
+        width="100%"
+        onValueChange={setPanelHeight}
+      />
     </Tile>
   )
 }
 
 function NavigateCard() {
   return (
-    <Tile title="Navigate" hint="Tabs · Pagination" icon={<Compass width={16} height={16} color={GEM} />}>
+    <Tile
+      title="Navigate"
+      hint="Tabs · Pagination"
+      icon={<Compass width={16} height={16} color={GEM} />}
+    >
       <Tabs defaultValue="a">
         <TabsList width="100%">
           <TabsTrigger value="a" flexGrow={1}>
@@ -866,7 +981,11 @@ function NoticesCard({
   alert: Signal<VanillaAlertDialog | undefined>
 }) {
   return (
-    <Tile title="Notices" hint="Alert · Dialog · Tooltip" icon={<Info width={16} height={16} color={GEM} />}>
+    <Tile
+      title="Notices"
+      hint="Alert · Dialog · Tooltip"
+      icon={<Info width={16} height={16} color={GEM} />}
+    >
       <Alert>
         <AlertTitle>
           <Text fontSize={14}>Heads up</Text>
