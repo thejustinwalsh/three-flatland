@@ -23,7 +23,9 @@ export interface AnnouncementBackend {
 }
 
 const backends = new Set<AnnouncementBackend>()
-let triedDefault = false
+let defaultDomBackend: AnnouncementBackend | undefined
+let defaultDomBackendTried = false
+let defaultDomBackendEnabled = true
 
 /** Register an announcement backend; returns an unregister function that disposes it. */
 export function registerAnnouncementBackend(backend: AnnouncementBackend): () => void {
@@ -36,15 +38,44 @@ export function registerAnnouncementBackend(backend: AnnouncementBackend): () =>
 }
 
 /**
- * Speak a message through every registered backend. In a DOM env the default off-screen live
- * region auto-registers on first use (unless the app registered its own backend first); SSR /
- * no-DOM is a silent no-op.
+ * Ensure the built-in DOM `aria-live` backend exists — once, in a DOM env, unless explicitly
+ * disabled. It is ADDITIVE with any app backends: registering captions/earcons/haptics must NEVER
+ * suppress screen-reader announcements, which the old "auto-register only when backends is empty"
+ * rule silently did (codex system #4).
+ */
+function ensureDefaultDomBackend(): void {
+  if (defaultDomBackendTried || !defaultDomBackendEnabled || typeof document === 'undefined') {
+    return
+  }
+  defaultDomBackendTried = true
+  defaultDomBackend = createDomLiveRegionBackend()
+  backends.add(defaultDomBackend)
+}
+
+/**
+ * Enable/disable the built-in DOM live-region (screen-reader) backend explicitly. On by default in a
+ * DOM environment; disable it ONLY when the app deliberately routes every announcement through its
+ * own backends. Replacement is now an explicit choice, not inferred from whether other backends exist.
+ */
+export function setDefaultAnnouncementBackend(enabled: boolean): void {
+  defaultDomBackendEnabled = enabled
+  if (!enabled) {
+    if (defaultDomBackend != null && backends.delete(defaultDomBackend)) {
+      defaultDomBackend.dispose?.()
+    }
+    defaultDomBackend = undefined
+  } else if (defaultDomBackend == null) {
+    defaultDomBackendTried = false
+    ensureDefaultDomBackend()
+  }
+}
+
+/**
+ * Speak a message through every registered backend. The built-in DOM live region is ensured first (in
+ * a DOM env, unless disabled); SSR / no-DOM with no custom backend is a silent no-op.
  */
 export function announce(message: string, opts?: Partial<Omit<Announcement, 'message'>>): void {
-  if (!triedDefault && backends.size === 0 && typeof document !== 'undefined') {
-    triedDefault = true
-    registerAnnouncementBackend(createDomLiveRegionBackend())
-  }
+  ensureDefaultDomBackend()
   if (backends.size === 0) {
     return
   }
@@ -54,8 +85,15 @@ export function announce(message: string, opts?: Partial<Omit<Announcement, 'mes
     source: opts?.source,
     kind: opts?.kind,
   }
-  for (const backend of backends) {
-    backend.announce(announcement)
+  // Snapshot the set (a backend may register/unregister during delivery) and isolate per-backend
+  // errors, so one throwing backend cannot abort delivery to the others or propagate out of the
+  // focus/activation caller (codex system #9).
+  for (const backend of [...backends]) {
+    try {
+      backend.announce(announcement)
+    } catch {
+      // A backend's own failure must not break a11y delivery.
+    }
   }
 }
 

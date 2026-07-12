@@ -233,7 +233,17 @@ export class A11yFocusManager {
     if (visibility === 'visible') {
       return { component, sideEffect: 'none' }
     }
-    if (visibility === 'hidden' || this.policy.offscreen === 'skip') {
+    // `behind-camera` / `too-small` are aria-hidden AND visibility:hidden by projection — absent from
+    // the a11y tree and unable to take native DOM focus — so direct setFocus must refuse them exactly
+    // like `hidden`, agreeing with passesFocusPolicy (which already excludes them). Otherwise the
+    // manager claims focus on an element the platform can't focus (codex system #3). Only offscreen /
+    // occluded (still exposed, just off-view/covered) are announce-able, and skip policy refuses those.
+    if (
+      visibility === 'hidden' ||
+      visibility === 'behind-camera' ||
+      visibility === 'too-small' ||
+      this.policy.offscreen === 'skip'
+    ) {
       return null
     }
     const reveal =

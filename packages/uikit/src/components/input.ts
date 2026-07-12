@@ -23,6 +23,7 @@ import {
   setupUpdateHasFocus,
 } from '../text/input/hidden-input.js'
 import {
+  a11yFocusSkipSignal,
   attachA11yElementToRoot,
   registerA11yMember,
   setupAriaAttributes,
@@ -194,7 +195,13 @@ export class Input<
       this.abortSignal
     )
 
-    setupHtmlInputElement(this.properties, this.element, this.currentSignal, this.abortSignal)
+    setupHtmlInputElement(
+      this.properties,
+      this.element,
+      this.currentSignal,
+      a11yFocusSkipSignal(this),
+      this.abortSignal
+    )
     // The hidden <input> IS Input's a11y element — sync its accessible name (it had none before) and
     // expose it as a11yElement so generic a11y code (focus managers, Mode 2 projection) discovers it
     // the same as a base component's hidden element.
@@ -204,11 +211,22 @@ export class Input<
     // directly: relocate it from its off-screen document.body spot into the per-root overlay
     // container and register it, so Mode 2 projection positions it over the field like any role
     // element. (createHtmlInputElement parented it to document.body at left:-1000vw.)
-    const detachA11yElement = attachA11yElementToRoot(this.root.peek(), this.element)
-    const unregisterA11yMember = registerA11yMember(this.root.peek(), this, this.element)
+    //
+    // Keyed reactively on `this.root.value`, NOT a one-shot `this.root.peek()`: before attachment every
+    // component is its OWN root, so registering once at construction strands a nested input in its
+    // constructor-time self-root — the real parent root's projection and focus manager would never
+    // discover it (codex system review, CRITICAL). Re-home on every root change, mirroring
+    // setupComponentA11y's reactive registration.
+    abortableEffect(() => {
+      const root = this.root.value
+      const detachA11yElement = attachA11yElementToRoot(root, this.element)
+      const unregisterA11yMember = registerA11yMember(root, this, this.element)
+      return () => {
+        unregisterA11yMember()
+        detachA11yElement()
+      }
+    }, this.abortSignal)
     this.abortSignal.addEventListener('abort', () => {
-      unregisterA11yMember()
-      detachA11yElement()
       if (this.a11yElement === this.element) {
         this.a11yElement = undefined
       }

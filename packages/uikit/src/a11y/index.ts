@@ -26,6 +26,7 @@ export type {
 export {
   announce,
   registerAnnouncementBackend,
+  setDefaultAnnouncementBackend,
   setA11yPreferences,
   getA11yPreferences,
 } from './announce/announcer.js'

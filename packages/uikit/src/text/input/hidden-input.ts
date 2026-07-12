@@ -37,6 +37,7 @@ export function setupHtmlInputElement(
   properties: ReadonlyProperties<HiddenInputProperties>,
   element: HTMLInputElement | HTMLTextAreaElement,
   value: Signal<string>,
+  focusSkip: Signal<boolean>,
   abortSignal: AbortSignal
 ) {
   document.body.appendChild(element)
@@ -48,7 +49,10 @@ export function setupHtmlInputElement(
     element.disabled = properties.value.disabled
   }, abortSignal)
   abortableEffect(() => {
-    element.tabIndex = parseNumberValue(properties.value.tabIndex)
+    // Mode-3 focus-skip (projection sets it when the field's panel is offscreen/occluded) removes the
+    // input from sequential Tab, matching setupRoleState's ownership for role-driven elements — else
+    // an off-panel input stays tabbable while every other control goes tabIndex -1 (codex system #2).
+    element.tabIndex = focusSkip.value ? -1 : parseNumberValue(properties.value.tabIndex)
   }, abortSignal)
   abortableEffect(() => {
     element.autocomplete = properties.value.autocomplete as AutoFill

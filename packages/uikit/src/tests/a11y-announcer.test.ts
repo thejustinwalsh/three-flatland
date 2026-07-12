@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   announce,
   registerAnnouncementBackend,
+  setDefaultAnnouncementBackend,
   type Announcement,
   type AnnouncementBackend,
 } from '../a11y/announce/announcer.js'
@@ -74,6 +75,56 @@ describe('announcement registry', () => {
       expect(dispose).toHaveBeenCalledTimes(1)
     } finally {
       removeSentinel()
+    }
+  })
+
+  it('the DOM live-region backend is ADDITIVE — a custom backend does not suppress it (codex system #4)', () => {
+    // Force a clean default-on state (the singleton may be in any state from prior tests).
+    setDefaultAnnouncementBackend(false)
+    setDefaultAnnouncementBackend(true)
+    const received: Array<string> = []
+    const unregister = registerAnnouncementBackend({ announce: (a) => received.push(a.message) })
+    try {
+      // Old bug: an existing custom backend made announce() skip the DOM (screen-reader) backend,
+      // silently dropping SR output. It must now fire BOTH.
+      announce('go')
+      expect(received).toEqual(['go']) // custom backend fired
+      expect(document.body.querySelector('[aria-live]')).not.toBeNull() // DOM backend ALSO fired
+    } finally {
+      unregister()
+    }
+  })
+
+  it('setDefaultAnnouncementBackend(false) routes announcements through app backends only', () => {
+    setDefaultAnnouncementBackend(false)
+    const received: Array<string> = []
+    const unregister = registerAnnouncementBackend({ announce: (a) => received.push(a.message) })
+    try {
+      announce('custom only')
+      expect(received).toEqual(['custom only'])
+      expect(document.body.querySelector('[aria-live]')).toBeNull() // DOM backend disabled
+    } finally {
+      unregister()
+      setDefaultAnnouncementBackend(true) // restore default-on for the rest of the file
+    }
+  })
+
+  it('a throwing backend does not abort delivery to the others (codex system #9)', () => {
+    setDefaultAnnouncementBackend(false)
+    const received: Array<string> = []
+    const bad = registerAnnouncementBackend({
+      announce: () => {
+        throw new Error('boom')
+      },
+    })
+    const good = registerAnnouncementBackend({ announce: (a) => received.push(a.message) })
+    try {
+      expect(() => announce('x')).not.toThrow()
+      expect(received).toEqual(['x']) // the good backend still received it
+    } finally {
+      bad()
+      good()
+      setDefaultAnnouncementBackend(true)
     }
   })
 })
