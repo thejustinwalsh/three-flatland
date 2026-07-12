@@ -141,8 +141,11 @@ export function createSwitchScan(
       return
     }
     if (visited.has(landed)) {
-      // MOVED onto an already-scanned control → a genuine wrap → the lap is complete.
-      completeLap()
+      // MOVED onto an already-scanned control — a wrap — but complete only if every focusable has
+      // actually been covered. A re-entrant reveal/focus callback can jump the landing back onto a
+      // visited control while members remain unvisited; ending there would skip them (codex P3-round4
+      // #4). Uncovered → keep scanning toward the survivors.
+      completeLapIfCovered()
       return
     }
     visited.add(landed)

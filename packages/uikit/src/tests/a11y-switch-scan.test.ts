@@ -201,6 +201,54 @@ describe('auto-advance', () => {
     expect(focused.value).toBe(C)
     expect(scan.running).toBe(false)
   })
+
+  it('a revisit does not complete the lap while focusables remain unvisited (codex P3-round4 #4)', () => {
+    vi.useFakeTimers()
+    // Stub A,B,C where advancing from A "reveals" and jumps straight to C (skipping B) once; C then
+    // wraps to A (already visited). B was never visited, so the scan must NOT stop on that wrap — it
+    // keeps going until B is covered.
+    const A = {}
+    const B = {}
+    const C = {}
+    const order = [A, B, C]
+    const focusables = { value: order }
+    const focused: { value: unknown } = { value: undefined }
+    let step = 0
+    const stub = {
+      focusables,
+      focused,
+      focusFirst() {
+        focused.value = A
+      },
+      focusNext() {
+        step += 1
+        if (focused.value === A && step === 1) {
+          focused.value = C // a re-entrant reveal jumps past B on the first advance
+          return
+        }
+        focused.value = order[(order.indexOf(focused.value) + 1) % order.length]
+      },
+      activateFocused() {},
+    }
+    const scan = track(
+      createSwitchScan(stub as unknown as A11yFocusManager, {
+        autoStart: true,
+        intervalMs: 1000,
+        loop: false,
+      })
+    )
+
+    vi.advanceTimersByTime(1000) // A
+    expect(focused.value).toBe(A)
+    vi.advanceTimersByTime(1000) // jumps to C (B skipped)
+    expect(focused.value).toBe(C)
+    vi.advanceTimersByTime(1000) // wraps C→A (visited) — but B uncovered, so do NOT complete
+    expect(focused.value).toBe(A)
+    expect(scan.running).toBe(true)
+    vi.advanceTimersByTime(1000) // A→B finally covers B → lap completes
+    expect(focused.value).toBe(B)
+    expect(scan.running).toBe(false)
+  })
 })
 
 describe('switchPress', () => {

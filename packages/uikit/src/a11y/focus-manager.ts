@@ -61,6 +61,23 @@ const managers = /* @__PURE__ */ new WeakMap<RootContext, A11yFocusManager>()
 
 const positionHelper = new Vector3()
 
+/** Post-landing side effect for an off-`visible` target (spec §5.1). */
+type FocusSideEffect = 'none' | 'reveal' | 'announce'
+
+/** A resolved, accepted focus request awaiting application by the drain loop. */
+interface FocusRequest {
+  component: Component | undefined
+  sideEffect: FocusSideEffect
+}
+
+/**
+ * Livelock cap for the drain loop. `onFocusChange`/`onReveal` may re-enter `setFocus`; those requests
+ * are queued and applied iteratively (not recursively — no stack overflow). If app callbacks keep
+ * redirecting focus every transition, this bounds the loop so an unconditional A↔B redirect terminates
+ * instead of spinning forever.
+ */
+const MAX_FOCUS_TRANSITIONS_PER_DRAIN = 64
+
 export class A11yFocusManager {
   private readonly rootContext: RootContext
   private readonly policy: FocusRevealPolicy
@@ -96,6 +113,15 @@ export class A11yFocusManager {
    */
   private isApplying = false
   private disposed = false
+
+  // Iterative transition queue. `setFocus` resolves+enqueues a single latest request and drains it;
+  // a `setFocus` re-entered from an onFocusChange/onReveal callback (while `draining`) just replaces
+  // the pending request and returns, so the transition applies on the NEXT drain iteration rather than
+  // recursing. This flattens re-entrant redirects — no stack overflow, and every hasFocus edge the
+  // notifications observe is real (codex P3-round4 #1/#2/#3).
+  private draining = false
+  private pendingRequest: FocusRequest | undefined = undefined
+  private hasPendingRequest = false
 
   /**
    * DOM → manager adoption: native focus moved by the platform (Tab, screen reader) lands on a
@@ -160,38 +186,93 @@ export class A11yFocusManager {
    * (a control the user cannot operate must never hold focus — that is a trap).
    */
   setFocus(component: Component | undefined, opts?: { reveal?: boolean }): void {
-    if (this.isApplying || this.disposed) {
+    if (this.disposed) {
       return
     }
+    const request = this.resolveFocusRequest(component, opts)
+    if (request == null) {
+      return // refused (already focused, disabled, hidden, or skip-policy)
+    }
+    // Latest-request-wins: a redirect from a callback supersedes any still-queued request.
+    this.pendingRequest = request
+    this.hasPendingRequest = true
+    if (!this.draining) {
+      this.drainFocus()
+    }
+  }
+
+  /**
+   * Validate + classify a focus request into an accepted {@link FocusRequest}, or null to refuse.
+   * Refusals: already the focused component, disabled, `hidden`, or off-`visible` under `skip` policy.
+   * Off-`visible` accepted targets carry a `reveal`/`announce` side effect (reveal falls back to
+   * announce with no `onReveal` or under reduced motion — off-screen focus is never silent).
+   */
+  private resolveFocusRequest(
+    component: Component | undefined,
+    opts?: { reveal?: boolean }
+  ): FocusRequest | null {
     if (component === this.focusedSignal.peek()) {
-      return
+      return null
     }
     if (component == null) {
-      this.applyFocus(undefined)
-      return
+      return { component: undefined, sideEffect: 'none' }
     }
     if (component.properties.peek().disabled === true) {
-      return
+      return null
     }
     const visibility = this.classify(component)
     if (visibility === 'visible') {
-      this.applyFocus(component)
-      return
+      return { component, sideEffect: 'none' }
     }
     if (visibility === 'hidden' || this.policy.offscreen === 'skip') {
-      return
+      return null
     }
     const reveal =
       (this.policy.offscreen === 'reveal' || opts?.reveal === true) &&
       this.policy.onReveal != null &&
       !getA11yPreferences().value.reducedMotion
-    this.applyFocus(component)
-    if (reveal) {
-      // Exactly once per focus landing (the component === focused early-return above prevents
-      // repeats). The camera move itself is ALWAYS app-implemented — never done here.
-      this.policy.onReveal?.(component)
-    } else {
-      this.announcePosition(component)
+    return { component, sideEffect: reveal ? 'reveal' : 'announce' }
+  }
+
+  /**
+   * Apply queued focus requests one at a time until the queue drains (or the livelock cap trips).
+   * Each iteration commits the transition then fires its notifications; a `setFocus` re-entered from
+   * those notifications only re-arms `pendingRequest`, so it is picked up by the NEXT loop iteration
+   * instead of recursing. The post-landing side effect runs only for the RESTING transition — the one
+   * left with no newer request queued — so a superseded/disposed target is never revealed or announced
+   * (codex P3-round4 #3).
+   */
+  private drainFocus(): void {
+    this.draining = true
+    try {
+      let budget = MAX_FOCUS_TRANSITIONS_PER_DRAIN
+      while (this.hasPendingRequest && budget > 0) {
+        budget -= 1
+        const request = this.pendingRequest!
+        this.hasPendingRequest = false
+        this.pendingRequest = undefined
+        this.applyFocus(request.component)
+        if (
+          !this.hasPendingRequest &&
+          !this.disposed &&
+          request.component != null &&
+          this.focusedSignal.peek() === request.component
+        ) {
+          if (request.sideEffect === 'reveal') {
+            this.policy.onReveal?.(request.component)
+          } else if (request.sideEffect === 'announce') {
+            this.announcePosition(request.component)
+          }
+        }
+      }
+      if (budget === 0) {
+        // A callback kept redirecting focus every transition — stop rather than spin. Drop the
+        // pending request; focus rests wherever the last applied transition left it.
+        this.hasPendingRequest = false
+        this.pendingRequest = undefined
+      }
+    } finally {
+      this.draining = false
     }
   }
 

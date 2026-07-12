@@ -324,7 +324,9 @@ describe('setFocus — DOM mirror and echo-loop safety', () => {
     expect(manager.focused.value).toBe(c)
     expect(c.hasFocus.value).toBe(true)
     expect(b.hasFocus.value).toBe(false)
-    expect(bEvents).not.toContain(true) // B never settled as focus → no onFocusChange(true)
+    // Transitions are serialized, so B's notifications are a consistent edge sequence ending in false
+    // — B is never LEFT notified-as-focused after focus moved on (no stale trailing true).
+    expect(bEvents[bEvents.length - 1]).toBe(false)
   })
 
   it('dispose rejects a setFocus re-entered from a blur callback — nothing left focused (codex P3-round3 #2)', () => {
@@ -347,6 +349,51 @@ describe('setFocus — DOM mirror and echo-loop safety', () => {
     expect(a.hasFocus.value).toBe(false)
     expect(b.hasFocus.value).toBe(false) // the re-entrant setFocus(b) was rejected
     expect(manager.focused.value).toBeUndefined()
+  })
+
+  it('an onFocusChange that always redirects terminates iteratively, never stack-overflows (codex P3-round4 #2)', () => {
+    const { root, a, b } = makeScene()
+    const manager = makeManager(root)
+    let gains = 0
+    // Pathological: every control, on gaining focus, bounces focus to the other. A recursive
+    // callback-driven model would stack-overflow; the iterative drain must terminate under its cap.
+    const bounce = (other: Component) => (focused: boolean) => {
+      if (focused) {
+        gains += 1
+        manager.setFocus(other)
+      }
+    }
+    a.setProperties({ onFocusChange: bounce(b) })
+    b.setProperties({ onFocusChange: bounce(a) })
+    root.update(16)
+
+    expect(() => manager.setFocus(a)).not.toThrow()
+    // Bounded by the drain cap (64), not runaway, and focus rests on one of the two.
+    expect(gains).toBeGreaterThan(1)
+    expect(gains).toBeLessThanOrEqual(64)
+    expect([a, b]).toContain(manager.focused.value)
+  })
+
+  it('does not reveal a target displaced by a re-entrant redirect before it rests (codex P3-round4 #3)', () => {
+    const { root, a, child } = makeScene()
+    const off = child(850, 150, { ariaLabel: 'Off' }) // offscreen → reveal policy
+    const onReveal = vi.fn()
+    const manager = makeManager(root, { policy: { offscreen: 'reveal', onReveal } })
+    // The instant `off` is focused, redirect to the visible `a` — `off` never rests as the focus.
+    off.setProperties({
+      onFocusChange: (f) => {
+        if (f) {
+          manager.setFocus(a)
+        }
+      },
+    })
+    root.update(16)
+
+    manager.setFocus(off, { reveal: true })
+
+    expect(manager.focused.value).toBe(a)
+    // `off` was displaced before the drain settled, so its reveal is skipped; `a` is visible (no reveal).
+    expect(onReveal).not.toHaveBeenCalled()
   })
 
   it('skips the DOM mirror inside an XR session', () => {
