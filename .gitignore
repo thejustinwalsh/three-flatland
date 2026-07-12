@@ -87,3 +87,11 @@ tsconfig.madge.json
 
 # Impeccable — local design-review hook cache, per-machine and per-session
 .impeccable/
+
+# VS Code extension packaging — sidecar binaries (bundle-sidecars.mjs),
+# the packaged VSIX itself, and the LICENSE copy package-vsix.mjs
+# regenerates from the repo root's real one on every run.
+tools/vscode/bin/
+tools/vscode/audio-play/
+tools/vscode/*.vsix
+tools/vscode/LICENSE

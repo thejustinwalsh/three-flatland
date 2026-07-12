@@ -17,7 +17,7 @@ import '@vscode-elements/elements/dist/vscode-progress-ring/index.js'
 import '@vscode/codicons/dist/codicon.css'
 import { App } from './App'
 
-// Forward uncaught errors to the FL Tools output channel so 'empty panel'
+// Forward uncaught errors to the Flatland Tools output channel so 'empty panel'
 // situations are diagnosable without opening Webview Developer Tools.
 let vscodeApi: ReturnType<typeof getVSCodeApi> | null = null
 try {

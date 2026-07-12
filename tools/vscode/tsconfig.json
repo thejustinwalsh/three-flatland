@@ -5,6 +5,6 @@
     "rootDir": ".",
     "types": ["node", "three"]
   },
-  "include": ["extension/**/*", "webview/**/*", "vite.config.ts"],
+  "include": ["extension/**/*", "webview/**/*", "vite.config.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
 }

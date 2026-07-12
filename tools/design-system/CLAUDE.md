@@ -6,36 +6,53 @@
 
 For any VSCode-themed chrome inside a webview, use the primitives from this package. Do **not** write raw `<button>`, `<select>`, `<input>`, or `<div style="background: var(--vscode-…)">` — all of that is covered below.
 
-| Primitive | Use case | Key props |
-|-----------|----------|-----------|
-| `Toolbar` | Top action row | `style` (StyleXStyles); adds standard inset padding automatically |
-| `ToolbarButton` | Icon button inside a toolbar | `icon` (codicon name), `title`, `onClick`, `disabled` |
-| `Button` | Standalone call-to-action | Full `ComponentProps<VscodeButton>` passthrough |
-| `Panel` | Titled region with a header bar | `title`, `headerActions`, `bodyPadding: 'normal'\|'none'` |
-| `Splitter` | Resizable divider between sibling panels | `axis: 'vertical'\|'horizontal'`, `onDrag(clientPx)` — parent owns the size state, clamps min/max |
-| `CompactSelect` | Inline 18px dropdown; fits in Panel headers | `value`, `options: {value, label?}[]`, `onChange`, `width`, `disabled` |
-| `NumberField` | Bounded number input with drag handle | `value`, `onChange`, `min`, `max`, `step`, `disabled` |
-| `Slider` | Horizontal scrub control, pairs with `NumberField` for an exact readout | `value`, `range: {min,max,step}`, `onChange`, `disabled` — accent color reserved for active drag/focus, resting fill is muted |
-| `Pill` | Toggleable chip for small enum picks (wrap in your own group for single/multi-select) | `label`, `active`, `onToggle`, `disabled` — active state uses list-selection tokens, not `focusRing` |
-| `Tabs` / `TabHeader` / `TabPanel` | Tab strip + content panels | Lit slot auto-promotion; no `slot=` needed on `TabHeader` children |
-| `Checkbox` | Boolean toggle with label | `label`, `checked`, `onChange` |
-| `SingleSelect` / `Option` | Full-height native-looking dropdown | Use when `CompactSelect` is too compact (< 22 px rows) |
-| `TextField` | Single-line text input | Read value via `e.currentTarget.value` (not `e.target`) |
-| `Collapsible` | Disclosure section | Replaces `<details>`/`<summary>` |
-| `Icon` | Codicon glyph | `name="save"` etc. — requires codicon CSS on the page |
-| `Divider` | Horizontal or vertical rule | Default is horizontal |
-| `Scrollable` | Themed scroll container | Wraps children with VSCode scrollbar styling |
-| `Badge` | Inline count or label chip | Pass content as children |
-| `Label` | Form field label | Associates with an input via `for` |
-| `Tree` / `TreeItem` | Hierarchical list | Lit data model; set `data` prop on `Tree` |
+| Primitive                         | Use case                                                                              | Key props                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `Toolbar`                         | Top action row                                                                        | `style` (StyleXStyles); adds standard inset padding automatically                                                             |
+| `ToolbarButton`                   | Icon button inside a toolbar                                                          | `icon` (codicon name), `title`, `onClick`, `disabled`                                                                         |
+| `Button`                          | Standalone call-to-action                                                             | Full `ComponentProps<VscodeButton>` passthrough                                                                               |
+| `Panel`                           | Titled region with a header bar                                                       | `title`, `headerActions`, `bodyPadding: 'normal'\|'none'`                                                                     |
+| `Splitter`                        | Resizable divider between sibling panels                                              | `axis: 'vertical'\|'horizontal'`, `onDrag(clientPx)` — parent owns the size state, clamps min/max                             |
+| `CompactSelect`                   | Inline 18px dropdown; fits in Panel headers                                           | `value`, `options: {value, label?}[]`, `onChange`, `width`, `disabled`                                                        |
+| `NumberField`                     | Bounded number input with drag handle                                                 | `value`, `onChange`, `min`, `max`, `step`, `disabled`                                                                         |
+| `Slider`                          | Horizontal scrub control, pairs with `NumberField` for an exact readout               | `value`, `range: {min,max,step}`, `onChange`, `disabled` — accent color reserved for active drag/focus, resting fill is muted |
+| `Pill`                            | Toggleable chip for small enum picks (wrap in your own group for single/multi-select) | `label`, `active`, `onToggle`, `disabled` — active state uses list-selection tokens, not `focusRing`                          |
+| `Tabs` / `TabHeader` / `TabPanel` | Tab strip + content panels                                                            | Lit slot auto-promotion; no `slot=` needed on `TabHeader` children                                                            |
+| `Checkbox`                        | Boolean toggle with label                                                             | `label`, `checked`, `onChange`                                                                                                |
+| `SingleSelect` / `Option`         | Full-height native-looking dropdown                                                   | Use when `CompactSelect` is too compact (< 22 px rows)                                                                        |
+| `TextField`                       | Single-line text input                                                                | Read value via `e.currentTarget.value` (not `e.target`)                                                                       |
+| `Collapsible`                     | Disclosure section                                                                    | Replaces `<details>`/`<summary>`                                                                                              |
+| `Icon`                            | Codicon glyph                                                                         | `name="save"` etc. — requires codicon CSS on the page                                                                         |
+| `Divider`                         | Horizontal or vertical rule                                                           | Default is horizontal                                                                                                         |
+| `Scrollable`                      | Themed scroll container                                                               | Wraps children with VSCode scrollbar styling                                                                                  |
+| `Badge`                           | Inline count or label chip                                                            | Pass content as children                                                                                                      |
+| `Label`                           | Form field label                                                                      | Associates with an input via `for`                                                                                            |
+| `Tree` / `TreeItem`               | Hierarchical list                                                                     | Lit data model; set `data` prop on `Tree`                                                                                     |
 
 All of the above are re-exported from `@three-flatland/design-system`. Import from the barrel for components; use subpaths only for tokens (see below).
 
 ```ts
 import {
-  Toolbar, ToolbarButton, Panel, Splitter, CompactSelect, NumberField,
-  Slider, Pill, Checkbox, SingleSelect, Option, TextField, Icon, Divider,
-  Scrollable, Badge, Collapsible, Tabs, TabHeader, TabPanel,
+  Toolbar,
+  ToolbarButton,
+  Panel,
+  Splitter,
+  CompactSelect,
+  NumberField,
+  Slider,
+  Pill,
+  Checkbox,
+  SingleSelect,
+  Option,
+  TextField,
+  Icon,
+  Divider,
+  Scrollable,
+  Badge,
+  Collapsible,
+  Tabs,
+  TabHeader,
+  TabPanel,
 } from '@three-flatland/design-system'
 ```
 
@@ -58,30 +75,30 @@ For all StyleX authoring (style creation, token definitions, theme building, mig
 
 ```ts
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
-import { space }  from '@three-flatland/design-system/tokens/space.stylex'
+import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
-import { z }      from '@three-flatland/design-system/tokens/z.stylex'
+import { z } from '@three-flatland/design-system/tokens/z.stylex'
 ```
 
 ### `vscode.*` — theme-adaptive CSS vars
 
-| Token | Maps to |
-|-------|---------|
-| `bg` | `--vscode-editor-background` |
-| `fg` | `--vscode-foreground` |
-| `panelBg` | `--vscode-editorWidget-background` (floating chrome, not the dock) |
-| `panelBorder` | `--vscode-panel-border` with fallback |
-| `panelTitleFg` | `--vscode-panelTitle-activeForeground` |
-| `focusRing` | `--vscode-focusBorder` |
-| `descriptionFg` | `--vscode-descriptionForeground` |
-| `btnBg/btnFg/btnHoverBg/btnBorder` | Button tokens |
-| `inputBg/inputFg/inputBorder` | Input tokens |
-| `notifyBg/notifyFg/notifyBorder` | Notification/toast tokens |
-| `listActiveSelectionBg/Fg` | List selection tokens |
-| `errorBg/errorFg/errorBorder` | Input validation error tokens |
-| `fontFamily` | `--vscode-font-family` |
-| `fontSize` | `--vscode-font-size` |
-| `monoFontFamily` | `--vscode-editor-font-family` |
+| Token                              | Maps to                                                            |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| `bg`                               | `--vscode-editor-background`                                       |
+| `fg`                               | `--vscode-foreground`                                              |
+| `panelBg`                          | `--vscode-editorWidget-background` (floating chrome, not the dock) |
+| `panelBorder`                      | `--vscode-panel-border` with fallback                              |
+| `panelTitleFg`                     | `--vscode-panelTitle-activeForeground`                             |
+| `focusRing`                        | `--vscode-focusBorder`                                             |
+| `descriptionFg`                    | `--vscode-descriptionForeground`                                   |
+| `btnBg/btnFg/btnHoverBg/btnBorder` | Button tokens                                                      |
+| `inputBg/inputFg/inputBorder`      | Input tokens                                                       |
+| `notifyBg/notifyFg/notifyBorder`   | Notification/toast tokens                                          |
+| `listActiveSelectionBg/Fg`         | List selection tokens                                              |
+| `errorBg/errorFg/errorBorder`      | Input validation error tokens                                      |
+| `fontFamily`                       | `--vscode-font-family`                                             |
+| `fontSize`                         | `--vscode-font-size`                                               |
+| `monoFontFamily`                   | `--vscode-editor-font-family`                                      |
 
 ### `space.*` — spacing scale
 

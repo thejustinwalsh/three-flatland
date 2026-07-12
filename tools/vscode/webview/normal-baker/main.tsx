@@ -24,7 +24,7 @@ function tagCodiconStylesheet() {
 }
 tagCodiconStylesheet()
 
-// Forward uncaught errors to the FL Tools output channel so 'empty panel'
+// Forward uncaught errors to the Flatland Tools output channel so 'empty panel'
 // situations are diagnosable without opening Webview Developer Tools.
 // Guarded: standalone dev mode (opening dist/webview/normal-baker/index.html
 // directly, no acquireVsCodeApi) has no host to forward to.

@@ -3,7 +3,7 @@ import * as vscode from 'vscode'
 let channel: vscode.OutputChannel | null = null
 
 export function getChannel(): vscode.OutputChannel {
-  if (!channel) channel = vscode.window.createOutputChannel('FL Tools')
+  if (!channel) channel = vscode.window.createOutputChannel('Flatland Tools')
   return channel
 }
 

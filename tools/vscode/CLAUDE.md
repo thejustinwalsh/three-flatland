@@ -83,7 +83,7 @@ naming convention):
     "threeFlatland.tools.myTool.enabled": { "type": "boolean", "default": true, "description": "…" }
   }
 },
-"commands": [{ "command": "threeFlatland.myTool.open", "title": "Do the thing", "category": "FL" }],
+"commands": [{ "command": "threeFlatland.myTool.open", "title": "Do the thing" }],
 "menus": {
   "threeFlatland.flatlandMenu": [{
     "command": "threeFlatland.myTool.open",
@@ -406,7 +406,12 @@ Layer two `persist` middlewares in one Zustand store with different `name` + `st
 
 ## `package.json` contributes reference
 
-- `commands` — id must be `threeFlatland.<tool>.<action>`, `category` must be `"FL"`.
+- `commands` — id must be `threeFlatland.<tool>.<action>`. No `category` — the root context-menu
+  submenu (`threeFlatland.flatlandMenu`, labeled "Flatland Tools") is the only grouping; individual
+  command titles stay bare (e.g. `"Open in Sprite Atlas"`, not `"FL: Open in Sprite Atlas"`). `FL`
+  as a short form is reserved for a tool's own identity — `customEditors[].displayName`
+  (`"FL Sprite Atlas"`), `toolRegistry.ts`'s `label`, and in-app notification strings — never for
+  menu/command-palette entries.
 - `customEditors` — file-backed editors only. Set `"priority": "option"` so the default editor still works.
 - `menus.explorer/context` — use `when` to match the file pattern; `group` string like `"navigation@10"` controls ordering.
 - `menus.commandPalette` — gate commands behind a `when` clause to avoid polluting the palette.

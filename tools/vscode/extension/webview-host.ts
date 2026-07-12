@@ -76,9 +76,9 @@ export async function composeToolHtml(params: ComposeHtmlParams): Promise<string
 
 function placeholderHtml(message: string): string {
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>FL Tools</title></head>
+<html><head><meta charset="utf-8"><title>Flatland Tools</title></head>
 <body style="font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 16px;">
-  <h2 style="margin:0 0 8px 0">FL Tools</h2>
+  <h2 style="margin:0 0 8px 0">Flatland Tools</h2>
   <p style="color: var(--vscode-descriptionForeground);">${message}</p>
 </body></html>`
 }

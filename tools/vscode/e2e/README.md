@@ -195,10 +195,10 @@ Runs a registered command through the real extension host — the same
 `vscode.commands.executeCommand` path a command-palette selection or a
 context-menu click resolves to. Built on `evaluateInVSCode` rather than a
 literal keystroke simulation of `Cmd+Shift+P` + typing + Enter: VS Code's
-command palette fuzzy-matches against a command's *display title*
-(`"FL: <title>"`), not its internal id, so driving it from a plain command
-id string would be guessing at a match, and the actual matching/filtering
-logic being exercised would be VS Code's, not ours. This still activates
+command palette fuzzy-matches against a command's *display title*, not its
+internal id, so driving it from a plain command id string would be
+guessing at a match, and the actual matching/filtering logic being
+exercised would be VS Code's, not ours. This still activates
 the extension for real, resolves the real command handler, opens the real
 custom editor / webview panel, and exercises the real bridge handshake —
 only "which literal pixels a user clicked" is skipped, not any of the
