@@ -220,6 +220,12 @@ export class A11yFocusManager {
     if (component == null) {
       return { component: undefined, sideEffect: 'none' }
     }
+    // A request resolved at DEQUEUE may name a component disposed or reparented out of this root since
+    // it was queued (a focus callback can dispose/move it). Focusing it would set hasFocus on a
+    // torn-down/detached component and can throw in a custom occlusionProbe (codex P3-round6 #2).
+    if (this.isComponentLost(component)) {
+      return null
+    }
     if (component.properties.peek().disabled === true) {
       return null
     }
@@ -266,6 +272,16 @@ export class A11yFocusManager {
             continue // refused (already focused, disabled, hidden, or skip-policy)
           }
           this.applyFocus(request.component)
+          if (request.component != null && this.isComponentLost(request.component)) {
+            // The component disposed/detached itself from its own onFocusChange(true) — don't leave the
+            // manager resting on a dead component (focusedSignal === it, hasFocus already reset by its
+            // teardown). Release focus and skip its side effect (codex P3-round6 #2).
+            if (this.focusedSignal.peek() === request.component) {
+              this.applyFocus(undefined)
+            }
+            resting = undefined
+            continue
+          }
           resting = request
         }
         // Phase 2: fire the RESTING transition's side effect once — only if that target is still the
@@ -295,7 +311,22 @@ export class A11yFocusManager {
       }
     } finally {
       this.draining = false
+      // If an app callback threw, control skips the loop and a pending request would strand with no
+      // drain scheduled — clear it so a later setFocus starts clean. A no-op on normal completion,
+      // where the loop has already drained everything (codex P3-round6 #3).
+      this.hasPendingRequest = false
+      this.pendingComponent = undefined
+      this.pendingOpts = undefined
     }
+  }
+
+  /**
+   * True when a queued component can no longer legitimately hold this manager's focus: its subtree was
+   * disposed (abort signal fired) or it was reparented out of this root. Guards the dequeue resolution
+   * and the post-apply self-dispose case (codex P3-round6 #2).
+   */
+  private isComponentLost(component: Component): boolean {
+    return component.abortSignal.aborted || component.root.peek() !== this.rootContext
   }
 
   /**

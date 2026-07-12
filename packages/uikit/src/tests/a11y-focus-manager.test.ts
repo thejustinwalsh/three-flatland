@@ -462,6 +462,45 @@ describe('setFocus — DOM mirror and echo-loop safety', () => {
     expect(manager.focused.value).toBe(b)
   })
 
+  it('refuses a queued target disposed before the drain reached it (codex P3-round6 #2)', () => {
+    const { root, b, c } = makeScene()
+    const manager = makeManager(root)
+    // While B gains focus, queue C then dispose C. Dequeue must re-check liveness and refuse the
+    // torn-down component rather than set hasFocus on it.
+    b.setProperties({
+      onFocusChange: (f) => {
+        if (f) {
+          manager.setFocus(c)
+          c.dispose()
+        }
+      },
+    })
+    root.update(16)
+    manager.setFocus(b)
+
+    expect(c.hasFocus.value).toBe(false)
+    expect(manager.focused.value).toBe(b)
+  })
+
+  it('releases focus when a component disposes itself from its own onFocusChange (codex P3-round6 #2)', () => {
+    const { root, a, b } = makeScene()
+    const manager = makeManager(root)
+    // B, on gaining focus, disposes itself. The manager must not rest pointing at the dead component.
+    b.setProperties({
+      onFocusChange: (f) => {
+        if (f) {
+          b.dispose()
+        }
+      },
+    })
+    root.update(16)
+    manager.setFocus(a)
+    manager.setFocus(b)
+
+    expect(manager.focused.value).toBeUndefined()
+    expect(b.hasFocus.value).toBe(false)
+  })
+
   it('skips the DOM mirror inside an XR session', () => {
     const { root, a } = makeScene()
     const manager = makeManager(root, { isXRSession: () => true })
