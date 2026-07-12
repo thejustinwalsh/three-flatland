@@ -8,6 +8,15 @@ export type { A11yVisibility, A11yVisibilityOptions } from './visibility.js'
 export { classifyA11yVisibility, createRaycastOcclusionProbe } from './visibility.js'
 export type { SpatialNavContext, SpatialNavDirection } from './spatial-nav.js'
 export { computeSpatialOrder, focusDirectional } from './spatial-nav.js'
+export type { FocusRevealPolicy, A11yFocusManagerOptions } from './focus-manager.js'
+export {
+  A11yFocusManager,
+  getA11yFocusManager,
+  routeFocusThroughManager,
+  enableKeyboardSceneNav,
+} from './focus-manager.js'
+export type { SwitchScanOptions, SwitchScanController } from './adapters/switch-scan.js'
+export { createSwitchScan } from './adapters/switch-scan.js'
 export type {
   Politeness,
   Announcement,
