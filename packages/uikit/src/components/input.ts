@@ -22,6 +22,7 @@ import {
   setupHtmlInputElement,
   setupUpdateHasFocus,
 } from '../text/input/hidden-input.js'
+import { setupAriaAttributes } from '../a11y/hidden-element.js'
 import type { RenderContext } from '../context.js'
 import type { NumberValue } from '../properties/values.js'
 export const inputOutPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
@@ -111,6 +112,8 @@ export class Input<
       defaults: inputDefaults as WithSignal<OutProperties>,
       dynamicHandlers: selectionHandlers,
       hasFocus,
+      // The hidden <input> is Input's own a11y element — don't let the base build a second one.
+      ownsHiddenA11yElement: true,
       isPlaceholder: computed(() => this.currentSignal.value.length === 0),
       ...inputConfig,
       defaultOverrides: {
@@ -188,6 +191,8 @@ export class Input<
     )
 
     setupHtmlInputElement(this.properties, this.element, this.currentSignal, this.abortSignal)
+    // The hidden <input> IS Input's a11y element — sync its accessible name (it had none before).
+    setupAriaAttributes(this.properties, this.element, this.abortSignal)
 
     setupUpdateHasFocus(
       this.element,

@@ -63,6 +63,7 @@ export class Text<
       hasFocus?: Signal<boolean>
       defaults?: WithSignal<OutProperties>
       isPlaceholder?: Signal<boolean>
+      ownsHiddenA11yElement?: boolean
     }
   ) {
     super(inputProperties, initialClasses, {
