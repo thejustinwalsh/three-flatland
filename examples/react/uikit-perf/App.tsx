@@ -44,7 +44,16 @@ const modes: Array<{ id: Mode; label: string }> = [
   { id: 'sampled', label: 'Sampled' },
 ]
 
-const palette = ['#f8fafc', '#d8e2dc', '#ffd166', '#7bdff2', '#b2f7ef', '#ffafcc', '#cdb4db', '#bde0fe']
+const palette = [
+  '#f8fafc',
+  '#d8e2dc',
+  '#ffd166',
+  '#7bdff2',
+  '#b2f7ef',
+  '#ffafcc',
+  '#cdb4db',
+  '#bde0fe',
+]
 const ink = '#172033'
 const muted = '#607080'
 
@@ -75,14 +84,21 @@ function useRendererConfig() {
   return useMemo(() => {
     const params = new URLSearchParams(window.location.search)
     const forceWebGL = params.get('renderer') === 'webgl'
-    return forceWebGL ? { antialias: false, forceWebGL: true } : { antialias: false }
+    // trackTimestamp enables GPU-timing queries (WebGPU: TimestampQuery; WebGL2 fallback:
+    // EXT_disjoint_timer_query, Chrome-only) — read back per-frame in PerformanceBridge as gpuMs.
+    return {
+      antialias: false,
+      trackTimestamp: true,
+      ...(forceWebGL ? { forceWebGL: true } : {}),
+    }
   }, [])
 }
 
 export default function App() {
   const [state, setState] = useState<SceneState>(() => readInitialState())
   const preset = presets[state.level]!
-  const setLevel = (level: number) => setState((current) => ({ ...current, level: clampLevel(level) }))
+  const setLevel = (level: number) =>
+    setState((current) => ({ ...current, level: clampLevel(level) }))
   const setMode = (mode: Mode) => setState((current) => ({ ...current, mode }))
   const rendererConfig = useRendererConfig()
 
@@ -98,7 +114,13 @@ export default function App() {
       <directionalLight intensity={0.4} position={[5, 8, 12]} />
       <PointerEvents />
       <PerformanceBridge state={state} setState={setState} />
-      <Fullscreen flexDirection="column" gap={16} padding={28} backgroundColor="#eef3f7" {...{ '*': { fontSize: 14 } }}>
+      <Fullscreen
+        flexDirection="column"
+        gap={16}
+        padding={28}
+        backgroundColor="#eef3f7"
+        {...{ '*': { fontSize: 14 } }}
+      >
         <Header state={state} preset={preset} setLevel={setLevel} setMode={setMode} />
         <Container flexGrow={1} alignSelf="stretch" flexDirection="row" gap={16} minHeight={0}>
           <SummaryPanel state={state} preset={preset} />
@@ -138,7 +160,9 @@ function Header({
         <Text fontSize={26} fontWeight="bold" color={ink}>
           R3F UI Performance Lab
         </Text>
-        <Text color={muted}>Preset {preset.label} keeps {preset.items.toLocaleString()} live cards in view.</Text>
+        <Text color={muted}>
+          Preset {preset.label} keeps {preset.items.toLocaleString()} live cards in view.
+        </Text>
       </Container>
       <Container flexDirection="row" gap={14} alignItems="center">
         <SegmentedControl
@@ -206,7 +230,15 @@ function SegmentedControl({
   )
 }
 
-function StepButton({ selected, label, onClick }: { selected: boolean; label: string; onClick: () => void }) {
+function StepButton({
+  selected,
+  label,
+  onClick,
+}: {
+  selected: boolean
+  label: string
+  onClick: () => void
+}) {
   return (
     <Container
       width={36}
@@ -252,7 +284,13 @@ function SummaryPanel({ state, preset }: { state: SceneState; preset: Preset }) 
         Load Shape
       </Text>
       {rows.map(([label, value]) => (
-        <Container key={label} height={38} flexDirection="row" justifyContent="space-between" alignItems="center">
+        <Container
+          key={label}
+          height={38}
+          flexDirection="row"
+          justifyContent="space-between"
+          alignItems="center"
+        >
           <Text color={muted}>{label}</Text>
           <Text color={ink} fontWeight="bold">
             {value}
@@ -261,8 +299,8 @@ function SummaryPanel({ state, preset }: { state: SceneState; preset: Preset }) 
       ))}
       <Container height={1} backgroundColor="#d7dee8" />
       <Text color={muted} lineHeight="150%">
-        Cards isolates layout and glyph instancing. Decorated adds panel groups, hover styles, borders, and depth.
-        Sampled adds one relative-center effect and color signal per card.
+        Cards isolates layout and glyph instancing. Decorated adds panel groups, hover styles,
+        borders, and depth. Sampled adds one relative-center effect and color signal per card.
       </Text>
     </Container>
   )
@@ -285,7 +323,7 @@ function WorkSurface({ state, preset }: { state: SceneState; preset: Preset }) {
         border: index % 3 === 0 ? 1 : 0,
         z: (index % 8) * 0.25,
       })),
-    [preset.items],
+    [preset.items]
   )
 
   return (
@@ -309,7 +347,13 @@ function WorkSurface({ state, preset }: { state: SceneState; preset: Preset }) {
       >
         {items.map((item) =>
           state.mode === 'sampled' ? (
-            <SampledCard key={item.id} item={item} width={cellWidth} height={cellHeight} surfaceWidth={surfaceWidth} />
+            <SampledCard
+              key={item.id}
+              item={item}
+              width={cellWidth}
+              height={cellHeight}
+              surfaceWidth={surfaceWidth}
+            />
           ) : (
             <StressCard
               key={item.id}
@@ -318,7 +362,7 @@ function WorkSurface({ state, preset }: { state: SceneState; preset: Preset }) {
               height={cellHeight}
               decorated={state.mode === 'decorated'}
             />
-          ),
+          )
         )}
       </Container>
     </Container>
@@ -434,7 +478,9 @@ function SampledCard({
  */
 function getBackend(renderer: unknown): Backend {
   const backend = (renderer as { backend?: unknown } | null | undefined)?.backend
-  return backend != null && typeof backend === 'object' && 'isWebGPUBackend' in backend ? 'webgpu' : 'webgl'
+  return backend != null && typeof backend === 'object' && 'isWebGPUBackend' in backend
+    ? 'webgpu'
+    : 'webgl'
 }
 
 function PerformanceBridge({
@@ -449,6 +495,8 @@ function PerformanceBridge({
   const scene = useThree((threeState) => threeState.scene)
   const latest = useRef(state)
   latest.current = state
+  // GPU time (ms) from the renderer's timestamp query, read back asynchronously (trails 1-2 frames).
+  const gpuMsRef = useRef(0)
 
   useEffect(() => {
     window.__uikitPerf = {
@@ -458,6 +506,7 @@ function PerformanceBridge({
         objects: countObjects(scene),
         render: { ...gl.info.render },
         memory: { ...gl.info.memory },
+        gpuMs: gpuMsRef.current,
         backend: getBackend(renderer),
       }),
       setLevel: (level) => setState((current) => ({ ...current, level: clampLevel(level) })),
@@ -474,6 +523,18 @@ function PerformanceBridge({
   }, [gl, renderer, scene, setState])
 
   useFrame(() => {
+    // Async GPU-timing readback: resolveTimestampsAsync resolves to the render duration in MS (WebGPU
+    // via TimestampQuery, WebGL2 via EXT_disjoint_timer_query). It trails a frame or two — fine for a
+    // benchmark that samples p50/p95 over many frames.
+    const timed = gl as unknown as { resolveTimestampsAsync?: (type: string) => Promise<number> }
+    timed
+      .resolveTimestampsAsync?.('render')
+      .then((durationMs) => {
+        if (typeof durationMs === 'number' && durationMs > 0) {
+          gpuMsRef.current = durationMs
+        }
+      })
+      .catch(() => {})
     gl.info.reset()
   })
 

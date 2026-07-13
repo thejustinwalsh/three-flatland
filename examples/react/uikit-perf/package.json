@@ -7,7 +7,9 @@
     "dev": "vite dev --port ${TURBO_MFE_PORT:-5179}",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bench": "node bench/run.mjs && node bench/report.mjs",
+    "bench:report": "node bench/report.mjs"
   },
   "dependencies": {
     "@preact/signals-core": "^1.5.1",
@@ -18,6 +20,7 @@
     "three": "^0.183.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@types/three": "^0.183.1",

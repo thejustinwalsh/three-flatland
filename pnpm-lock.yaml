@@ -1082,6 +1082,9 @@ importers:
         specifier: ^0.183.1
         version: 0.183.1(patch_hash=7342f6838d6d5c06d076fb84a89d9e262887d2ed7bc07b4d3bf78fce8454dcfc)
     devDependencies:
+      '@playwright/test':
+        specifier: ^1.60.0
+        version: 1.60.0
       '@types/react':
         specifier: ^19.0.2
         version: 19.2.9
