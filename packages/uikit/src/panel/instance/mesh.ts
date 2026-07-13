@@ -8,7 +8,7 @@ import {
 } from 'three'
 import type { BufferGeometry, InstancedBufferAttribute, Object3DEventMap } from 'three'
 import { createPanelGeometry } from '../geometry.js'
-import { panelClippingLanes, panelDataLanes, panelMatrixLanes } from '../material/shader.js'
+import { panelClippingLanes, panelDataLanes } from '../material/shader.js'
 import type { RootContext } from '../../context.js'
 import { computeWorldToGlobalMatrix } from '../../utils.js'
 
@@ -17,16 +17,6 @@ type LaneNames = readonly [string, string, string, string]
 type LaneSync = {
   source: InstancedBufferAttribute
   buffer: InstancedInterleavedBuffer
-  /**
-   * Drain `source.updateRanges` after forwarding. Safe only when the lane
-   * buffer is the source's sole consumer (aData/aClipping). The matrix source
-   * is also read by three's own `InstanceNode` (this mesh is
-   * `isInstancedMesh`, so `NodeMaterial.setupPosition` stacks it), which
-   * needs NON-EMPTY ranges to render correctly — draining it blanks the
-   * panel transforms (verified empirically on the uikit examples). Matrix
-   * ranges are therefore COMPACTED instead — see `onBeforeRender`.
-   */
-  drainSource: boolean
 }
 
 /**
@@ -38,15 +28,14 @@ type LaneSync = {
 function addMat4Lanes(
   geometry: BufferGeometry,
   names: LaneNames,
-  source: InstancedBufferAttribute,
-  drainSource: boolean
+  source: InstancedBufferAttribute
 ): LaneSync {
   const buffer = new InstancedInterleavedBuffer(source.array as Float32Array, 16, 1)
   buffer.setUsage(DynamicDrawUsage)
   for (let i = 0; i < 4; i++) {
     geometry.setAttribute(names[i]!, new InterleavedBufferAttribute(buffer, 4, i * 4))
   }
-  return { source, buffer, drainSource }
+  return { source, buffer }
 }
 
 export class InstancedPanelMesh extends Mesh {
@@ -75,10 +64,14 @@ export class InstancedPanelMesh extends Mesh {
     const panelGeometry = createPanelGeometry()
     super(panelGeometry)
     this.pointerEvents = 'none'
+    // Only aData/aClipping get lane attributes — the custom per-instance data that genuinely needs
+    // splitting for WGSL. The instance MATRIX is NOT laned: three's own InstanceNode already exposes
+    // `this.instanceMatrix` as vec4 lanes for WGSL and applies it to positionLocal, and the panel
+    // shader reads that instanced positionLocal directly. Declaring a second aInstanceMatrix lane set
+    // over the same buffer took the panel program to 19 vertex attributes, overflowing WebGL2's cap.
     this.laneSyncs = [
-      addMat4Lanes(panelGeometry, panelMatrixLanes, instanceMatrix, false),
-      addMat4Lanes(panelGeometry, panelDataLanes, instanceData, true),
-      addMat4Lanes(panelGeometry, panelClippingLanes, instanceClipping, true),
+      addMat4Lanes(panelGeometry, panelDataLanes, instanceData),
+      addMat4Lanes(panelGeometry, panelClippingLanes, instanceClipping),
     ]
     this.frustumCulled = false
     root.onUpdateMatrixWorldSet.add(this.customUpdateMatrixWorld)
@@ -106,7 +99,7 @@ export class InstancedPanelMesh extends Mesh {
    * rendering over the same 30s soak.
    */
   override onBeforeRender = () => {
-    for (const { source, buffer, drainSource } of this.laneSyncs) {
+    for (const { source, buffer } of this.laneSyncs) {
       if (buffer.version === source.version) {
         continue
       }
@@ -115,18 +108,25 @@ export class InstancedPanelMesh extends Mesh {
         buffer.addUpdateRange(range.start, range.count)
       }
       buffer.version = source.version
-      if (drainSource) {
-        source.clearUpdateRanges()
-      } else if (source.updateRanges.length > 1) {
-        let lo = Infinity
-        let hi = 0
-        for (const { start, count } of source.updateRanges) {
-          if (start < lo) lo = start
-          if (start + count > hi) hi = start + count
-        }
-        source.clearUpdateRanges()
-        source.addUpdateRange(lo, hi - lo)
+      // aData/aClipping: the lane buffer is the source's SOLE consumer → drain after forwarding.
+      source.clearUpdateRanges()
+    }
+    // The instance MATRIX has no lane — three's own InstanceNode consumes `this.instanceMatrix`. But
+    // InstanceNode.update() forwards the source's updateRanges into its buffer WITHOUT clearing the
+    // source, so an animated panel's per-frame writes grow the list forever (measured 129k→550k
+    // ranges/30s, FPS 120→67). It cannot be drained (InstanceNode misrenders on empty ranges), so
+    // compact to the single union range each frame — a conservative superset over the same array,
+    // correct for every consumer, O(writes/frame) not O(runtime).
+    const matrixRanges = this.instanceMatrix.updateRanges
+    if (matrixRanges.length > 1) {
+      let lo = Infinity
+      let hi = 0
+      for (const { start, count } of matrixRanges) {
+        if (start < lo) lo = start
+        if (start + count > hi) hi = start + count
       }
+      this.instanceMatrix.clearUpdateRanges()
+      this.instanceMatrix.addUpdateRange(lo, hi - lo)
     }
   }
 
@@ -140,8 +140,8 @@ export class InstancedPanelMesh extends Mesh {
     const cloned = new InstancedPanelMesh(
       this.root,
       this.instanceMatrix,
-      this.laneSyncs[1]!.source,
-      this.laneSyncs[2]!.source
+      this.laneSyncs[0]!.source,
+      this.laneSyncs[1]!.source
     ) as this
     cloned.count = this.count
     cloned.material = this.material

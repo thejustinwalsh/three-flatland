@@ -10,7 +10,6 @@ import {
   float,
   floor,
   fwidth,
-  mat4,
   materialColor,
   materialOpacity,
   max,
@@ -20,6 +19,7 @@ import {
   normalView,
   normalize,
   positionGeometry,
+  positionLocal,
   positionWorld,
   select,
   smoothstep,
@@ -45,12 +45,6 @@ import type { PanelMaterialInfo } from './create.js'
  * no matrix vertex attributes — Q1); `InstancedPanelMesh` publishes them under
  * these names as interleaved views over the untouched itemSize-16 buffers.
  */
-export const panelMatrixLanes = [
-  'aInstanceMatrix0',
-  'aInstanceMatrix1',
-  'aInstanceMatrix2',
-  'aInstanceMatrix3',
-] as const
 export const panelDataLanes = ['aData0', 'aData1', 'aData2', 'aData3'] as const
 export const panelClippingLanes = ['aClipping0', 'aClipping1', 'aClipping2', 'aClipping3'] as const
 
@@ -291,22 +285,18 @@ export function createPanelMaterialNodes(info: PanelMaterialInfo): PanelMaterial
       attribute<'vec4'>(panelDataLanes[2], 'vec4'),
       attribute<'vec4'>(panelDataLanes[3], 'vec4'),
     ]
-    const instanceMatrix = mat4(
-      attribute<'vec4'>(panelMatrixLanes[0], 'vec4'),
-      attribute<'vec4'>(panelMatrixLanes[1], 'vec4'),
-      attribute<'vec4'>(panelMatrixLanes[2], 'vec4'),
-      attribute<'vec4'>(panelMatrixLanes[3], 'vec4')
-    )
-    // Geometry-local dilated position: `positionLocal.assign(positionNode)` is
-    // emitted BEFORE InstanceNode's multiply in the generated code, so the
-    // instance transform still applies on top — positionNode must stay local.
+    // Geometry-local dilated position: `positionLocal.assign(positionNode)` is emitted BEFORE
+    // InstanceNode's multiply in the generated code, so the instance transform still applies on top —
+    // positionNode must stay local.
     const dilatedPosition = dilatedPanelPosition(cols[3].zw)
     positionNode = dilatedPosition
-    // Root-space position from the attribute lanes directly — deterministic
-    // regardless of `positionLocal` mutation order after InstanceNode (spec §5.2).
-    // Uses the SAME dilated local position the rasterizer sees, so the
-    // interpolated plane distances stay exact across the dilated fringe.
-    const localPosition = varying(instanceMatrix.mul(vec4(dilatedPosition, 1)).xyz)
+    // Root-space (instanced) position for the clip planes. three's InstanceNode ALREADY computes
+    // `positionLocal = instanceMatrix × positionLocal` (= instanceMatrix × dilatedPosition), and it
+    // already lane-splits the instance matrix into vec4 attributes for WGSL. So read three's result
+    // directly instead of re-declaring the instance matrix as a SECOND attribute set (`aInstanceMatrix`
+    // lanes) — that duplication took the panel program to 19 vertex attributes, overflowing WebGL2's
+    // 16-attribute cap and dropping every panel under the WebGPU renderer's WebGL2 fallback.
+    const localPosition = varying(positionLocal)
     clipCoverage = float(1)
     for (const name of panelClippingLanes) {
       const plane = attribute<'vec4'>(name, 'vec4')
