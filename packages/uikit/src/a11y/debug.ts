@@ -1,5 +1,6 @@
 import { signal, type ReadonlySignal } from '@preact/signals-core'
 import type { Component } from '../components/component.js'
+import { a11yGlobal } from './global-state.js'
 
 /**
  * A11y DEBUG overlay (spec §7, dev-tool). The hidden a11y elements the library projects over each
@@ -9,7 +10,7 @@ import type { Component } from '../components/component.js'
  * Mode-2/3 positioning against the real panels. Developer aid only; never enable in production.
  */
 
-const a11yDebugSignal = /* @__PURE__ */ signal(false)
+const a11yDebugSignal = a11yGlobal('debug', () => signal(false))
 
 /** Toggle the a11y debug overlay on/off for every projected root. */
 export function setA11yDebug(enabled: boolean): void {

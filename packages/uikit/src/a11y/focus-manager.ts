@@ -4,6 +4,7 @@ import type { Component } from '../components/component.js'
 import type { RootContext } from '../context.js'
 import type { A11yActivationEvent } from './activation.js'
 import { announce, getA11yPreferences } from './announce/announcer.js'
+import { a11yGlobal } from './global-state.js'
 import { getRootA11yMembers } from './hidden-element.js'
 import type { A11yViewport } from './projection.js'
 import {
@@ -56,8 +57,9 @@ const INTERACTIVE_ROLES = /* @__PURE__ */ new Set<string>([
   'slider',
 ])
 
-/** Lazy per-root singleton registry — keyed by RootContext so reparented components resolve consistently. */
-const managers = /* @__PURE__ */ new WeakMap<RootContext, A11yFocusManager>()
+/** Lazy per-root singleton registry — keyed by RootContext so reparented components resolve consistently.
+ *  Guarded on globalThis (a11yGlobal) so duplicate module copies share one registry, not fork it. */
+const managers = a11yGlobal('focusManagers', () => new WeakMap<RootContext, A11yFocusManager>())
 
 const positionHelper = new Vector3()
 

@@ -2,6 +2,7 @@ import { Vector3 } from 'three'
 import type { Camera, Object3D } from 'three'
 import type { Component } from '../components/component.js'
 import { parseNumberValue } from '../properties/values.js'
+import { a11yGlobal } from './global-state.js'
 import { computeA11yScreenRect } from './projection.js'
 
 /**
@@ -39,11 +40,14 @@ interface OrderEntry {
  * order is being kept), so sub-threshold camera jitter accumulates against the last accepted pose
  * instead of resetting every call. `null` = the component was unprojectable at the baseline.
  */
-const orderBaseline = new WeakMap<Component, ProjectedCenter | null>()
+const orderBaseline = a11yGlobal(
+  'orderBaseline',
+  () => new WeakMap<Component, ProjectedCenter | null>()
+)
 
 // Baseline of the ordering-relevant metadata (a11yOrder + a11yGroup) — a change to it is a SEMANTIC
 // re-order that must bypass positional hysteresis (codex P3 #6).
-const metaBaseline = new WeakMap<Component, string>()
+const metaBaseline = a11yGlobal('metaBaseline', () => new WeakMap<Component, string>())
 
 function metaSignatureOf(entry: OrderEntry): string {
   return `${entry.order ?? ''}|${entry.group}`

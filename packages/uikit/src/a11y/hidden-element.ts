@@ -4,13 +4,17 @@ import { parseNumberValue } from '../properties/values.js'
 import type { Component } from '../components/component.js'
 import type { RootContext } from '../context.js'
 import { setupUpdateHasFocus } from './focus.js'
+import { a11yGlobal } from './global-state.js'
 
 // ——— per-component focus-skip flag (Mode 3 visibility policy) ———
 // setupA11yProjection classifies each element's perceivability per frame and toggles this when a
 // panel is offscreen/occluded/behind/too-small; setupRoleState's tabIndex effect reads it so a
 // non-perceivable panel is skipped by sequential focus (tabIndex -1) without setupRoleState and the
 // projection fighting over tabIndex. Screen-space roots never set it (always perceivable).
-const focusSkipSignals = /* @__PURE__ */ new WeakMap<Component, Signal<boolean>>()
+const focusSkipSignals = a11yGlobal(
+  'focusSkipSignals',
+  () => new WeakMap<Component, Signal<boolean>>()
+)
 
 /** The component's focus-skip signal (lazily created); read by setupRoleState, written by projection. */
 export function a11yFocusSkipSignal(component: Component): Signal<boolean> {
@@ -51,7 +55,7 @@ const INTERACTIVE_ROLES = new Set<A11yRole>([
   'tab',
   'slider',
 ])
-const warnedRoles = /* @__PURE__ */ new Set<string>()
+const warnedRoles = a11yGlobal('warnedRoles', () => new Set<string>())
 const missingLabelWarned = /* @__PURE__ */ new WeakSet<object>()
 let nextListboxOptionId = 0
 
@@ -140,7 +144,10 @@ export function createHtmlA11yElement(role: A11yRole): HTMLElement {
 // ——— per-root a11y container (one <div data-uikit-a11y> on document.body, refCounted) ———
 
 type RootA11yContainer = { element: HTMLElement; refCount: number }
-const rootContainers = /* @__PURE__ */ new WeakMap<RootContext, RootA11yContainer>()
+const rootContainers = a11yGlobal(
+  'rootContainers',
+  () => new WeakMap<RootContext, RootA11yContainer>()
+)
 
 function acquireRootContainer(root: RootContext): HTMLElement {
   let entry = rootContainers.get(root)
@@ -192,7 +199,10 @@ export function attachA11yElementToRoot(root: RootContext, element: HTMLElement)
 // role-driven elements (setupComponentA11y) and Input's own hidden <input> register here, since
 // Input opts out of setupComponentA11y but still needs projecting.
 
-const rootMembers = /* @__PURE__ */ new WeakMap<RootContext, Map<Component, HTMLElement>>()
+const rootMembers = a11yGlobal(
+  'rootMembers',
+  () => new WeakMap<RootContext, Map<Component, HTMLElement>>()
+)
 
 /** Register a component's hidden element under its root for projection; returns an unregister fn. */
 export function registerA11yMember(
