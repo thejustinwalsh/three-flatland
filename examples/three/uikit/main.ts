@@ -27,6 +27,7 @@ import {
   setPreferredColorScheme,
   attachCanvasInputProps,
   setupA11yProjection,
+  setA11yDebug,
 } from '@three-flatland/uikit'
 import type { RenderContext, ContainerProperties, TextProperties } from '@three-flatland/uikit'
 import {
@@ -543,9 +544,14 @@ async function main() {
   // `flatland.render()` with no provider of its own.
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
 
-  const params = { ambient: 0.6 }
+  const params = { ambient: 0.6, a11yDebug: false }
   pane.addBinding(params, 'ambient', { min: 0, max: 3, step: 0.05 }).on('change', (ev) => {
     ambientLight.intensity = ev.value
+  })
+  // a11y debug overlay: reveals every hidden a11y element as an outlined box + role/name label over
+  // its panel, so the accessibility tree the library projects is visible.
+  pane.addBinding(params, 'a11yDebug', { label: 'a11y debug' }).on('change', (ev) => {
+    setA11yDebug(ev.value)
   })
 
   // ─── Resize ─────────────────────────────────────────────────────

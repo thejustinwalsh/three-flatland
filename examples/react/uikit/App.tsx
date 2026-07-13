@@ -37,6 +37,7 @@ import {
   PointerEvents,
   type FullscreenProperties,
 } from '@three-flatland/uikit/react'
+import { setA11yDebug } from '@three-flatland/uikit'
 import {
   Tabs,
   TabsList,
@@ -969,6 +970,12 @@ function GameScene({ ambient }: { ambient: number }) {
 export default function App() {
   const { pane } = usePane()
   const [ambient] = usePaneInput<number>(pane, 'ambient', 0.6, { min: 0, max: 3, step: 0.05 })
+  // Toggle the a11y debug overlay: reveals every hidden a11y element as an outlined box + role/name
+  // label over its panel, so you can SEE the accessibility tree the library projects.
+  const [a11yDebug] = usePaneInput<boolean>(pane, 'a11y debug', false)
+  useEffect(() => {
+    setA11yDebug(a11yDebug)
+  }, [a11yDebug])
 
   return (
     // `events={noEvents}` switches OFF R3F's own dispatcher; `<PointerEvents>`
