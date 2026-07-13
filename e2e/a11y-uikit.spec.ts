@@ -470,13 +470,14 @@ test.describe('Tier 3 — camera motion (examples/three/uikit, explicit-wiring c
   })
 })
 
-test.describe('Tier 3 — examples/react/uikit world-space camera-follow (A11yCamera override)', () => {
-  // Was a `test.fail()` canary: build.tsx's auto-wired projection read `useThree((s) => s.camera)`
-  // — R3F's default camera — for every root, so the React example's world-space panels (rendered
-  // relative to Flatland's OWN `flatlandCamera`, the one `setCameraAngle` moves) ignored camera
-  // motion. Fixed by wrapping those roots in `<A11yCamera camera={flatlandCamera}>`
-  // (packages/uikit/src/react/build.tsx): the projection now follows Flatland's render camera, so
-  // rotating it toggles the panel's a11y-hidden state exactly like the Three.js control case.
+test.describe('Tier 3 — examples/react/uikit world-space camera-follow', () => {
+  // Was a `test.fail()` canary: build.tsx's auto-wired projection reads `useThree((s) => s.camera)` —
+  // R3F's ACTIVE camera. The React example USED to register a phantom `OrthoCamera` as R3F's active
+  // camera while actually rendering through a separate `flatland.camera` (the one `setCameraAngle`
+  // moves), so world-space panels ignored camera motion. Fixed with NO library config: the example now
+  // registers `flatland.camera` as R3F's active camera (`set({ camera: flatland.camera })`), so the
+  // projection auto-follows the camera the scene is actually rendered with — exactly like the Three.js
+  // explicit-wiring control case.
   test('rotating the scripted camera changes the Behind-You panel a11y-hidden state', async ({
     page,
   }) => {

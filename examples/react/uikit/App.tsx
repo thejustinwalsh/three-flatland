@@ -36,7 +36,6 @@ import {
   noEvents,
   PointerEvents,
   type FullscreenProperties,
-  A11yCamera,
 } from '@three-flatland/uikit/react'
 import { setA11yDebug } from '@three-flatland/uikit'
 import {
@@ -323,33 +322,6 @@ function createTileMapData(
     tileLayers,
     objectLayers: [],
   }
-}
-
-/**
- * R3F's own orthographic camera, matching Flatland's frustum.
- *
- * Flatland renders its internal scene with its own camera, but R3F still needs one
- * for its default scene and for `useThree(s => s.camera)` consumers. The UI's events
- * do not come from here — `HudFullscreen` scopes Flatland's camera into its portal.
- */
-function OrthoCamera({ viewSize }: { viewSize: number }) {
-  const set = useThree((s) => s.set)
-  const size = useThree((s) => s.size)
-  const camRef = useRef<ThreeOrthographicCamera | null>(null)
-  const aspect = size.width / size.height
-
-  useLayoutEffect(() => {
-    const cam = camRef.current
-    if (!cam) return
-    cam.left = (-viewSize * aspect) / 2
-    cam.right = (viewSize * aspect) / 2
-    cam.top = viewSize / 2
-    cam.bottom = -viewSize / 2
-    cam.updateProjectionMatrix()
-    set({ camera: cam })
-  }, [viewSize, aspect, set])
-
-  return <orthographicCamera ref={camRef} position={[0, 0, 100]} near={0.1} far={1000} manual />
 }
 
 /** A shadcn `Label` wrapping a single line of text. */
@@ -825,7 +797,7 @@ function CameraOrbit({ camera }: { camera: ThreeOrthographicCamera }) {
 }
 
 function GameScene({ ambient }: { ambient: number }) {
-  const { gl } = useThree()
+  const { gl, set } = useThree()
   const flatlandRef = useRef<Flatland>(null)
   const torchRef = useRef<Light2D>(null)
   const torch2Ref = useRef<Light2D>(null)
@@ -872,13 +844,20 @@ function GameScene({ ambient }: { ambient: number }) {
   // `'render'`-phase useFrame below) — the UI needs its camera to be part of
   // THAT scene graph, not R3F's default one. `flatlandCamera` feeds
   // `<HudFullscreen>`.
+  //
+  // Register Flatland's camera as R3F's ACTIVE camera (`set({ camera })`). R3F never renders with it
+  // here (events are off and the `'render'`-phase useFrame below drives `flatland.render` instead), so
+  // it does no harm — but it makes `useThree(s => s.camera)` consumers see the camera the scene is
+  // actually rendered with. In particular uikit's auto-wired a11y projection then tracks THIS camera,
+  // so the world-space panels' a11y visibility follows `<CameraOrbit>` with no per-root configuration.
   useEffect(() => {
     const flatland = flatlandRef.current
     if (!flatland) return
     flatland.add(flatland.camera)
+    set({ camera: flatland.camera })
     setFlatlandCamera(flatland.camera)
     setFlatlandScene((flatland as unknown as { scene: Object3D }).scene)
-  }, [])
+  }, [set])
 
   // Events route through `@pmndrs/pointer-events`, NOT R3F's own dispatcher — see
   // `<Canvas events={noEvents}>` + `<PointerEvents .../>` below. R3F v10 delivers
@@ -907,7 +886,6 @@ function GameScene({ ambient }: { ambient: number }) {
 
   return (
     <>
-      <OrthoCamera viewSize={VIEW_SIZE} />
       <flatland ref={flatlandRef} viewSize={VIEW_SIZE}>
         <defaultLightEffect attach={attachLighting} />
 
@@ -935,17 +913,15 @@ function GameScene({ ambient }: { ambient: number }) {
 
         {/* World-space dogfood scene (Phase 3 T3.0) — plain `<group>` transforms,
             not attached to the camera, so `<CameraOrbit>` moving `flatlandCamera`
-            can walk these in and out of frame. `<A11yCamera>` points the a11y
-            projection at Flatland's OWN render camera (not R3F's default), so the
-            panels' a11y visibility follows the orbiting camera. */}
-        <A11yCamera camera={flatlandCamera}>
-          <group position={[halfExtent + 400, 0, 0]} rotation={[0, Math.PI / 6, 0]}>
-            <WallPanel font={font} />
-          </group>
-          <group position={[0, 0, 350]}>
-            <BehindCameraPanel font={font} />
-          </group>
-        </A11yCamera>
+            can walk these in and out of frame. The a11y projection follows R3F's
+            active camera, which we set to `flatland.camera` below — so the panels'
+            a11y visibility tracks the orbiting camera with no per-root config. */}
+        <group position={[halfExtent + 400, 0, 0]} rotation={[0, Math.PI / 6, 0]}>
+          <WallPanel font={font} />
+        </group>
+        <group position={[0, 0, 350]}>
+          <BehindCameraPanel font={font} />
+        </group>
       </flatland>
 
       {flatlandCamera && <CameraOrbit camera={flatlandCamera} />}
