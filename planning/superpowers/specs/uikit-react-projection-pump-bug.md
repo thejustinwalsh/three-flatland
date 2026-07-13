@@ -1,6 +1,29 @@
 # Bug: React auto-wired a11y projection never pumps (Mode-2/3 positioning dead in R3F)
 
-**Status:** open, pre-existing since Phase 1 (`dabbf790`), surfaced during the Phase 3 live probe.
+> ## ✅ RESOLVED — the original diagnosis below was WRONG
+>
+> The "onFrame never pumps" conclusion was a **flaky-browser probe artifact** (a frozen/uninitialised
+> canvas), not a real global failure. Codex's static trace and the Playwright e2e suite both confirm
+> the pump runs: the React `[data-uikit-a11y]` containers flip to `position: fixed` and elements get
+> real `transform` rects. The genuine causes of the misbehaviour I saw were two OTHER bugs, both now
+> fixed and proven by `e2e/a11y-uikit.spec.ts` (13 real-browser tests):
+>
+> 1. **Duplicate-module WeakMap fork** — the per-root `rootMembers`/`rootContainers` registries were
+>    module-global `WeakMap`s; a duplicate copy of the module forked them, so `setupComponentA11y`
+>    registered members in one copy and projection read an empty map in another → `onFrame` early-
+>    returned at `members.size === 0` → container stuck at `-1000vw`. Fixed by `c6bc9f02` (a11yGlobal
+>    stashes every registry on `globalThis` under a `Symbol.for` key).
+> 2. **Wrong camera for world-space roots** — `build.tsx` auto-wired projection against R3F's active
+>    camera for EVERY root; an app rendering through its own camera (the flatland examples) left
+>    world-space panels projected against the wrong static camera, so camera motion had no effect.
+>    Fixed by `08252ae2` (the `<A11yCamera camera={renderCamera}>` context override).
+>
+> Lesson: a flaky live-browser probe is not ground truth — a deterministic Playwright/CDP test is.
+> The original diagnosis (below) is retained for the record; ignore its conclusion.
+
+---
+
+**Status:** ~~open, pre-existing since Phase 1 (`dabbf790`)~~ — **RESOLVED** (see banner). Original write-up follows.
 **Severity:** medium — degrades an *enhancement* (visual position overlay), not core a11y.
 **Scope:** `packages/uikit/src/react/build.tsx` (the React root's projection auto-wiring). NOT the a11y
 library logic, which is directly proven by the passing happy-dom `a11y-projection-dom.test.ts` suite.
