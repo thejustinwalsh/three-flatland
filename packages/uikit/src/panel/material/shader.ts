@@ -151,8 +151,10 @@ function unpackBorderRadius(packed: FloatNode): Vec4Node {
 /**
  * Rounded-rect coverage + border weights. Must run inside an `Fn` stack.
  *
- * Q2 discipline: every `fwidth` executes unconditionally at the top level; the
- * corner `If`/`ElseIf` branches only assign values computed before branching.
+ * Q2 discipline: the only derivative — `fwidth(dist)` — runs unconditionally at the
+ * top level. The rounded-corner SDF is derivative-free, so it lives INSIDE the
+ * corner `If`/`ElseIf`; a flat-fill fragment (the whole full-viewport background)
+ * computes zero corners instead of all four.
  */
 function computePanelFragment(cols: PanelDataColumns, borderRadius: Vec4Node) {
   const dimensions = safeDims(cols[3].zw)
@@ -217,30 +219,27 @@ function computePanelFragment(cols: PanelDataColumns, borderRadius: Vec4Node) {
       place: (ci) => vec4(0, 0, ci.x, ci.y),
     },
   ]
-  const candidates = corners.map(({ outside, border, size, radius, place }) => ({
-    condition: outside.x.lessThan(radius).and(outside.y.lessThan(radius)),
-    distance: radiusDistance(radius, outside, border, size).toVar(),
-    insideBorder: place(
-      max(vec2(0, 0), calculateCornerIntersection(radius, size, aspectRatio).sub(border))
-    ).toVar(),
-  }))
+  // Only the corner CONDITION (cheap comparisons) is evaluated up front; the
+  // expensive rounded-corner SDF — `radiusDistance` is 2 `distance()`/sqrt, plus
+  // `calculateCornerIntersection` — is computed INSIDE the matched branch. So a
+  // flat-interior fragment (the entire full-viewport background, where no corner
+  // condition holds) computes ZERO corners instead of all four. Safe under Q2:
+  // neither function contains a derivative, so nothing here needs top-level
+  // uniform control flow — the only `fwidth`, `fwidth(dist)`, stays at top level.
+  type Corner = (typeof corners)[number]
+  const cornerCond = ({ outside, radius }: Corner) =>
+    outside.x.lessThan(radius).and(outside.y.lessThan(radius))
+  const applyCorner = ({ outside, border, size, radius, place }: Corner) => {
+    dist.assign(radiusDistance(radius, outside, border, size))
+    insideBorder.assign(
+      place(max(vec2(0, 0), calculateCornerIntersection(radius, size, aspectRatio).sub(border)))
+    )
+  }
 
-  If(candidates[0]!.condition, () => {
-    dist.assign(candidates[0]!.distance)
-    insideBorder.assign(candidates[0]!.insideBorder)
-  })
-    .ElseIf(candidates[1]!.condition, () => {
-      dist.assign(candidates[1]!.distance)
-      insideBorder.assign(candidates[1]!.insideBorder)
-    })
-    .ElseIf(candidates[2]!.condition, () => {
-      dist.assign(candidates[2]!.distance)
-      insideBorder.assign(candidates[2]!.insideBorder)
-    })
-    .ElseIf(candidates[3]!.condition, () => {
-      dist.assign(candidates[3]!.distance)
-      insideBorder.assign(candidates[3]!.insideBorder)
-    })
+  If(cornerCond(corners[0]!), () => applyCorner(corners[0]!))
+    .ElseIf(cornerCond(corners[1]!), () => applyCorner(corners[1]!))
+    .ElseIf(cornerCond(corners[2]!), () => applyCorner(corners[2]!))
+    .ElseIf(cornerCond(corners[3]!), () => applyCorner(corners[3]!))
 
   const insideBorderSum = dot(insideBorder, vec4(1, 1, 1, 1))
   If(insideBorderSum.greaterThan(0), () => {

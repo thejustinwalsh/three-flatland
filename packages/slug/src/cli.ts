@@ -235,31 +235,32 @@ async function bakeFont(
   console.log('  Packing textures...')
   const textures = packTextures(glyphs)
 
-  // Shader loop bound — keep in sync with MAX_CURVES_PER_BAND in
-  // src/shaders/slugFragment.ts. Bands exceeding this cap get truncated
-  // at render time, which is a correctness bug — warn the user so they
-  // can either raise the shader bound or subset to fit.
-  const SHADER_MAX_CURVES_PER_BAND = 40
+  // Density advisory. The shader now loops each band by its runtime curve count
+  // (no fixed bound), so a dense band renders CORRECTLY — no truncation. But per-
+  // fragment GPU cost scales with band fill, so flag unusually dense bands: the
+  // author can add bands (`buildBands` bandCount) or subset the font to bring the
+  // per-fragment curve-eval cost down.
+  const DENSE_BAND_THRESHOLD = 40
   let maxBandFill = 0
-  let overBudgetBands = 0
+  let denseBands = 0
   for (const glyph of glyphs.values()) {
     for (const band of glyph.bands.hBands) {
       if (band.curveIndices.length > maxBandFill) maxBandFill = band.curveIndices.length
-      if (band.curveIndices.length > SHADER_MAX_CURVES_PER_BAND) overBudgetBands++
+      if (band.curveIndices.length > DENSE_BAND_THRESHOLD) denseBands++
     }
     for (const band of glyph.bands.vBands) {
       if (band.curveIndices.length > maxBandFill) maxBandFill = band.curveIndices.length
-      if (band.curveIndices.length > SHADER_MAX_CURVES_PER_BAND) overBudgetBands++
+      if (band.curveIndices.length > DENSE_BAND_THRESHOLD) denseBands++
     }
   }
-  if (overBudgetBands > 0) {
+  if (denseBands > 0) {
     console.warn(
-      `  WARNING: ${overBudgetBands} bands exceed MAX_CURVES_PER_BAND (${SHADER_MAX_CURVES_PER_BAND}); ` +
-        `max observed ${maxBandFill}. Those glyphs will render incorrectly. ` +
-        `Increase the shader bound or drop the affected glyphs from the subset.`
+      `  NOTE: ${denseBands} bands exceed the density advisory (${DENSE_BAND_THRESHOLD}); ` +
+        `max observed ${maxBandFill}. These render correctly (dynamic loop) but cost more ` +
+        `per-fragment GPU — consider more bands or subsetting to reduce it.`
     )
   } else {
-    console.log(`  max band fill: ${maxBandFill} / ${SHADER_MAX_CURVES_PER_BAND}`)
+    console.log(`  max band fill: ${maxBandFill} (advisory ${DENSE_BAND_THRESHOLD})`)
   }
 
   // Curve data is Uint16Array (half-float RGBA). Band data is Float32Array (RG).

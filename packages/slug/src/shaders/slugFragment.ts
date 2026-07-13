@@ -22,18 +22,6 @@ import { calcCoverage } from './calcCoverage.js'
 
 import type { DataTexture } from 'three'
 
-/**
- * Maximum curves per band the shader iterates. The loop has an early-exit
- * on `i >= curveCount`, so under-filled bands pay the branch cost but not
- * the body cost. WGSL/GLSL compilers still reserve registers for the full
- * bound, so keeping this tight reduces register pressure.
- *
- * Chosen to cover 100% of Inter Regular's full 2849-glyph corpus (max
- * observed band fill: 38 curves, p999: 25). Baked fonts that exceed 40
- * emit a bake-time warning.
- */
-const MAX_CURVES_PER_BAND = 40
-
 /** log2(TEXTURE_WIDTH) for row-wrapping bit ops. */
 const LOG_TEXTURE_WIDTH = 12 // 2^12 = 4096
 const TEXTURE_WIDTH_MASK = (1 << LOG_TEXTURE_WIDTH) - 1 // 4095
@@ -116,12 +104,13 @@ export function slugRender(
   const hCurveCount = int(hBandHeader.x)
   const hCurveListOffset = int(hBandHeader.y)
 
-  Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    // Early exit when past curve count
-    If(i.greaterThanEqual(hCurveCount), () => {
-      Break()
-    })
-
+  // Dynamic loop bound: iterate exactly this band's curve count (from the band
+  // header), like Lengyel's/JSlug's reference. A compile-time bound forced the
+  // compiler to reserve registers for the worst case on EVERY fragment; a runtime
+  // bound can't be unrolled, so register pressure tracks the real (small) per-band
+  // count. It also removes the old truncation risk — a band denser than the former
+  // 40-curve cap now renders correctly instead of dropping curves.
+  Loop({ start: 0, end: hCurveCount, type: 'int' }, ({ i }) => {
     // Read curve reference with row wrapping
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, hCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)
@@ -177,11 +166,8 @@ export function slugRender(
   const vCurveCount = int(vBandHeader.x)
   const vCurveListOffset = int(vBandHeader.y)
 
-  Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    If(i.greaterThanEqual(vCurveCount), () => {
-      Break()
-    })
-
+  // Dynamic loop bound — see the horizontal pass above.
+  Loop({ start: 0, end: vCurveCount, type: 'int' }, ({ i }) => {
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, vCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)
     const curveTexX = int(refData.x)

@@ -3,7 +3,6 @@ import {
   vec2,
   int,
   Loop,
-  Break,
   textureLoad,
   ivec2,
   fwidth,
@@ -11,7 +10,6 @@ import {
   min,
   clamp,
   smoothstep,
-  If,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { DataTexture } from 'three'
@@ -40,9 +38,6 @@ import { distanceToQuadBezier } from './distanceToQuadBezier.js'
  * comfortably larger than a hairline width. Phase 5 adds a `halfWidth`-
  * driven multi-band halo probe for thick shape strokes.
  */
-
-/** Mirrors the bound in slugFragment.ts so bake-time warnings apply to both. */
-const MAX_CURVES_PER_BAND = 40
 
 const LOG_TEXTURE_WIDTH = 12
 const TEXTURE_WIDTH_MASK = (1 << LOG_TEXTURE_WIDTH) - 1
@@ -118,11 +113,9 @@ export function slugStroke(
   const hCurveCount = int(hBandHeader.x)
   const hCurveListOffset = int(hBandHeader.y)
 
-  Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    If(i.greaterThanEqual(hCurveCount), () => {
-      Break()
-    })
-
+  // Dynamic loop bound — per-band curve count, matching slugFragment.ts (removes
+  // fixed-bound register pressure and the former 40-curve truncation cap).
+  Loop({ start: 0, end: hCurveCount, type: 'int' }, ({ i }) => {
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, hCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)
     const curveTexX = int(refData.x)
@@ -153,11 +146,8 @@ export function slugStroke(
   const vCurveCount = int(vBandHeader.x)
   const vCurveListOffset = int(vBandHeader.y)
 
-  Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    If(i.greaterThanEqual(vCurveCount), () => {
-      Break()
-    })
-
+  // Dynamic loop bound — see the horizontal pass above.
+  Loop({ start: 0, end: vCurveCount, type: 'int' }, ({ i }) => {
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, vCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)
     const curveTexX = int(refData.x)
