@@ -639,12 +639,12 @@ function FaqCard() {
       <Accordion ref={faqRef} minHeight={150}>
         <AccordionItem value="1">
           <AccordionTrigger>
-            <Text fontSize={14}>Is it accessible?</Text>
+            <Text fontSize={14}>Is it fast?</Text>
             <AccordionTriggerIcon />
           </AccordionTrigger>
           <AccordionContent>
             <Text color={MUTED} fontSize={13}>
-              Yes — it mirrors the WAI-ARIA pattern.
+              Very — WebGPU-rendered and sprite-batched.
             </Text>
           </AccordionContent>
         </AccordionItem>
