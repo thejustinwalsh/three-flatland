@@ -346,6 +346,7 @@ function GameMenu({ font }: { font: SlugFont }) {
   const musicValueRef = useRef<VanillaText>(null)
   const panelRef = useRef<VanillaContainer>(null)
   const anchorRef = useRef<{ initialCardHeight?: number; appliedTop?: number }>({})
+  const [selectedSlot, setSelectedSlot] = useState(SAVE_SLOTS[0]!.name)
 
   // Realtime clocks. Held in refs so realtime updates never re-render the
   // tree (which would clobber imperative text via useSetup's resetProperties).
@@ -546,31 +547,42 @@ function GameMenu({ font }: { font: SlugFont }) {
             borderRadius={10}
             padding={8}
           >
-            {SAVE_SLOTS.map((slot) => (
-              <Container
-                key={slot.name}
-                flexDirection="row"
-                gap={10}
-                alignItems="center"
-                padding={8}
-                borderRadius={8}
-                backgroundColor={withOpacity('white', 0.04)}
-                flexShrink={0}
-              >
-                <Save width={18} height={18} color={AMETHYST} />
-                <Container flexDirection="column" gap={2} flexGrow={1}>
-                  <Text color={WHITE} fontSize={14}>
-                    {slot.name}
-                  </Text>
-                  <Text color={MUTED} fontSize={11}>
-                    {slot.stamp}
-                  </Text>
-                </Container>
-                <Badge variant="secondary">
-                  <Text fontSize={12}>{slot.level}</Text>
-                </Badge>
-              </Container>
-            ))}
+            {SAVE_SLOTS.map((slot) => {
+              const selected = slot.name === selectedSlot
+              return (
+                <Button
+                  key={slot.name}
+                  variant="ghost"
+                  flexDirection="row"
+                  gap={10}
+                  alignItems="center"
+                  padding={8}
+                  borderRadius={8}
+                  backgroundColor={
+                    selected ? withOpacity(AMETHYST, 0.18) : withOpacity('white', 0.04)
+                  }
+                  flexShrink={0}
+                  ariaLabel={`Load ${slot.name}, ${slot.level}, ${slot.stamp}${selected ? ', selected' : ''}`}
+                  onClick={() => {
+                    setSelectedSlot(slot.name)
+                    console.log(`Load ${slot.name}`)
+                  }}
+                >
+                  <Save width={18} height={18} color={AMETHYST} />
+                  <Container flexDirection="column" gap={2} flexGrow={1}>
+                    <Text color={WHITE} fontSize={14}>
+                      {slot.name}
+                    </Text>
+                    <Text color={MUTED} fontSize={11}>
+                      {slot.stamp}
+                    </Text>
+                  </Container>
+                  <Badge variant="secondary">
+                    <Text fontSize={12}>{slot.level}</Text>
+                  </Badge>
+                </Button>
+              )
+            })}
           </Container>
         </TabsContent>
 

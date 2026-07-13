@@ -342,6 +342,9 @@ const SAVE_SLOTS: Array<{ name: string; stamp: string; level: string }> = [
   { name: 'The Pale Warren', stamp: 'Autosave · 1w ago', level: 'Lv 2' },
 ]
 
+/** Single-select state for the Loadout tab's save slots. */
+let selectedSlotName: string = SAVE_SLOTS[0]!.name
+
 /* HMR-tracked teardown state. Without this, every dev save accumulates
  * a fresh renderer + animate() loop while the previous one keeps
  * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
@@ -712,6 +715,33 @@ function buildMenu(ui: Fullscreen): Realtime {
   )
 
   // ── Loadout tab: a scrollable list proving per-instance clipping ──
+  // Save slots are the load screen's natural selectable items — single-select
+  // Buttons (not static rows) so the a11y tree exposes them as real, activatable
+  // controls with a composite name (icon + name/stamp + level Badge).
+  const slotButtons: Array<{ name: string; button: Button }> = []
+
+  function slotAriaLabel(slot: (typeof SAVE_SLOTS)[number]): string {
+    const selected = slot.name === selectedSlotName
+    return `Load ${slot.name}, ${slot.level}, ${slot.stamp}${selected ? ', selected' : ''}`
+  }
+
+  function slotBackground(slot: (typeof SAVE_SLOTS)[number]) {
+    const selected = slot.name === selectedSlotName
+    return selected ? withOpacity(AMETHYST, 0.18) : withOpacity('white', 0.04)
+  }
+
+  function selectSlot(name: string): void {
+    selectedSlotName = name
+    console.log(`Load ${name}`)
+    for (const slot of SAVE_SLOTS) {
+      const entry = slotButtons.find((s) => s.name === slot.name)
+      entry?.button.setProperties({
+        backgroundColor: slotBackground(slot),
+        ariaLabel: slotAriaLabel(slot),
+      })
+    }
+  }
+
   const slots = col(
     {
       height: 168,
@@ -725,15 +755,19 @@ function buildMenu(ui: Fullscreen): Realtime {
     ...SAVE_SLOTS.map((slot) => {
       const badge = new Badge({ variant: 'secondary' })
       badge.add(text(slot.level, { fontSize: 12 }))
-      return row(
-        {
-          gap: 10,
-          alignItems: 'center',
-          padding: 8,
-          borderRadius: 8,
-          backgroundColor: withOpacity('white', 0.04),
-          flexShrink: 0,
-        },
+      const slotButton = new Button({
+        variant: 'ghost',
+        flexDirection: 'row',
+        gap: 10,
+        alignItems: 'center',
+        padding: 8,
+        borderRadius: 8,
+        backgroundColor: slotBackground(slot),
+        flexShrink: 0,
+        ariaLabel: slotAriaLabel(slot),
+        onClick: () => selectSlot(slot.name),
+      })
+      slotButton.add(
         new Save({ width: 18, height: 18, color: AMETHYST }),
         col(
           { gap: 2, flexGrow: 1 },
@@ -742,6 +776,8 @@ function buildMenu(ui: Fullscreen): Realtime {
         ),
         badge
       )
+      slotButtons.push({ name: slot.name, button: slotButton })
+      return slotButton
     })
   )
 
