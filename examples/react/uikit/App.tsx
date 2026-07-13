@@ -36,6 +36,7 @@ import {
   noEvents,
   PointerEvents,
   type FullscreenProperties,
+  A11yCamera,
 } from '@three-flatland/uikit/react'
 import { setA11yDebug } from '@three-flatland/uikit'
 import {
@@ -934,13 +935,17 @@ function GameScene({ ambient }: { ambient: number }) {
 
         {/* World-space dogfood scene (Phase 3 T3.0) — plain `<group>` transforms,
             not attached to the camera, so `<CameraOrbit>` moving `flatlandCamera`
-            can walk these in and out of frame. */}
-        <group position={[halfExtent + 400, 0, 0]} rotation={[0, Math.PI / 6, 0]}>
-          <WallPanel font={font} />
-        </group>
-        <group position={[0, 0, 350]}>
-          <BehindCameraPanel font={font} />
-        </group>
+            can walk these in and out of frame. `<A11yCamera>` points the a11y
+            projection at Flatland's OWN render camera (not R3F's default), so the
+            panels' a11y visibility follows the orbiting camera. */}
+        <A11yCamera camera={flatlandCamera}>
+          <group position={[halfExtent + 400, 0, 0]} rotation={[0, Math.PI / 6, 0]}>
+            <WallPanel font={font} />
+          </group>
+          <group position={[0, 0, 350]}>
+            <BehindCameraPanel font={font} />
+          </group>
+        </A11yCamera>
       </flatland>
 
       {flatlandCamera && <CameraOrbit camera={flatlandCamera} />}

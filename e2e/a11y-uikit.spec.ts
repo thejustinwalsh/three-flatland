@@ -470,35 +470,27 @@ test.describe('Tier 3 — camera motion (examples/three/uikit, explicit-wiring c
   })
 })
 
-test.describe('Tier 3 canary — examples/react/uikit world-space camera-follow gap', () => {
-  // Expected to currently FAIL: `packages/uikit/src/react/build.tsx`'s auto-wired
-  // `setupA11yProjection` call reads `camera = useThree((s) => s.camera)` — R3F's OWN default
-  // camera (an untouched default PerspectiveCamera, since `<Canvas>` in
-  // examples/react/uikit/App.tsx sets no `camera` prop) — for EVERY uikit root, including the
-  // world-space Wall Panel and Behind-You panel. Those two roots are actually rendered relative
-  // to Flatland's OWN internal camera (`flatlandCamera`, the one `<CameraOrbit>` drives and the
-  // one `window.__uikitA11yScene.setCameraAngle` moves). Because the a11y projection watches the
-  // wrong camera object, rotating the scripted camera has NO effect on their a11y visibility
-  // state — confirmed via repeated live probing (see the report). This is a real, previously
-  // undocumented library/example integration bug, not a flake. Per instructions, library source
-  // is not touched to force this green; `test.fail()` keeps the assertion honest while making the
-  // suite still report success, AND turns into a loud "unexpectedly passed" signal the moment
-  // someone fixes the camera wiring.
-  test.fail(
-    'rotating the scripted camera changes the Behind-You panel a11y-hidden state',
-    async ({ page }) => {
-      await page.goto(REACT_URL, { waitUntil: 'networkidle' })
-      await waitForA11yMembers(page, 10)
+test.describe('Tier 3 — examples/react/uikit world-space camera-follow (A11yCamera override)', () => {
+  // Was a `test.fail()` canary: build.tsx's auto-wired projection read `useThree((s) => s.camera)`
+  // — R3F's default camera — for every root, so the React example's world-space panels (rendered
+  // relative to Flatland's OWN `flatlandCamera`, the one `setCameraAngle` moves) ignored camera
+  // motion. Fixed by wrapping those roots in `<A11yCamera camera={flatlandCamera}>`
+  // (packages/uikit/src/react/build.tsx): the projection now follows Flatland's render camera, so
+  // rotating it toggles the panel's a11y-hidden state exactly like the Three.js control case.
+  test('rotating the scripted camera changes the Behind-You panel a11y-hidden state', async ({
+    page,
+  }) => {
+    await page.goto(REACT_URL, { waitUntil: 'networkidle' })
+    await waitForA11yMembers(page, 10)
 
-      const before = await describeByLabel(page, 'Turn Around')
-      expect(before!.ariaHidden).toBe('true')
+    const before = await describeByLabel(page, 'Turn Around')
+    expect(before!.ariaHidden).toBe('true')
 
-      await setCameraAngle(page, Math.PI)
-      await page.waitForTimeout(1000)
+    await setCameraAngle(page, Math.PI)
+    await page.waitForTimeout(1000)
 
-      const after = await describeByLabel(page, 'Turn Around')
-      // This is the assertion that SHOULD hold once the projection uses the right camera.
-      expect(after!.ariaHidden).toBeNull()
-    }
-  )
+    const after = await describeByLabel(page, 'Turn Around')
+    // This is the assertion that SHOULD hold once the projection uses the right camera.
+    expect(after!.ariaHidden).toBeNull()
+  })
 })

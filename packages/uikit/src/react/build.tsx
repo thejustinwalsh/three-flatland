@@ -7,7 +7,18 @@ import {
 import { setupA11yProjection } from '../a11y/index.js'
 import { effect } from '@preact/signals-core'
 import { extend, useFrame, useThree, type Instance, applyProps } from '@react-three/fiber'
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
+import {
+  createContext,
+  forwardRef,
+  useContext,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react'
+import type { Camera } from 'three'
 import { jsx } from 'react/jsx-runtime'
 
 // R3F stashes its per-object instance descriptor on `__r3f`; uikit pokes its `.props`
@@ -45,6 +56,26 @@ export function useRenderContext() {
 }
 
 /**
+ * Override the camera the a11y projection uses for the uikit roots inside it. The auto-wiring defaults
+ * to R3F's active camera (`useThree(s => s.camera)`), which is correct for a standard R3F app. But an
+ * app that renders through its OWN camera — one R3F doesn't manage as the default — must point the
+ * projection at that camera, or world-space panels won't follow it as it moves. Wrap those roots:
+ * `<A11yCamera camera={renderCamera}><Container … /></A11yCamera>`.
+ */
+const A11yCameraContext = /* @__PURE__ */ createContext<Camera | undefined>(undefined)
+
+export function A11yCamera({
+  camera,
+  children,
+}: {
+  /** null/undefined falls back to R3F's active camera until the app's camera is ready. */
+  camera: Camera | null | undefined
+  children: ReactNode
+}) {
+  return jsx(A11yCameraContext.Provider, { value: camera ?? undefined, children })
+}
+
+/**
  * @returns the props that should be applied to the component
  */
 export function useSetup(ref: { current: Component | null }, inProps: any, args: Array<any>): any {
@@ -78,7 +109,11 @@ export function useSetup(ref: { current: Component | null }, inProps: any, args:
     component.update(delta * 1000)
   })
   const renderer = useThree((s) => s.gl)
-  const camera = useThree((s) => s.camera)
+  // The a11y projection follows R3F's active camera by default; an <A11yCamera> ancestor overrides it
+  // for apps that render through their own camera (else world-space panels don't track camera motion).
+  const overrideCamera = useContext(A11yCameraContext)
+  const defaultCamera = useThree((s) => s.camera)
+  const camera = overrideCamera ?? defaultCamera
   useEffect(() => {
     // no `renderer.localClippingEnabled` — that flag exists only on the legacy
     // WebGLRenderer; the common (WebGPU) renderer clips exclusively through
