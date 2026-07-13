@@ -13,6 +13,7 @@ import {
   type SpatialNavDirection,
 } from './spatial-nav.js'
 import { classifyA11yVisibility, type A11yVisibility } from './visibility.js'
+import { getA11yVisibilityView, setA11yFocusReconciler } from './visibility-view.js'
 
 /**
  * Spatial focus truth for world-space / XR roots (spec §5.1, Modes 3–4). Platform DOM focus alone
@@ -170,6 +171,8 @@ export class A11yFocusManager {
     if (typeof document !== 'undefined') {
       document.addEventListener('focusin', this.onDomFocusIn)
     }
+    // The projection drives this each frame so a focused panel that becomes imperceivable is released (#7).
+    setA11yFocusReconciler(this.rootContext, () => this.reconcileFocus())
   }
 
   /** Feed / update the view the manager judges perceivability and spatial order against. */
@@ -431,6 +434,7 @@ export class A11yFocusManager {
     this.lastOrder = undefined
     if (managers.get(this.rootContext) === this) {
       managers.delete(this.rootContext)
+      setA11yFocusReconciler(this.rootContext, undefined)
     }
   }
 
@@ -629,14 +633,56 @@ export class A11yFocusManager {
 
   /** Without a view the manager cannot judge perceivability — treat as visible (focus lands plainly). */
   private classify(component: Component): A11yVisibility {
-    const camera = this.camera
-    const viewport = this.viewport
+    // Prefer the projection's shared per-root view (the single source of truth): its camera, LIVE
+    // viewport, occlusion probe, and size threshold — so the manager and projection can't diverge on
+    // perceivability (#6). Fall back to the manager's own camera/viewport when no projection is active.
+    const view = getA11yVisibilityView(this.rootContext)
+    const camera = view?.camera ?? this.camera
+    const viewport = view?.viewport ?? this.viewport
     if (camera == null || viewport == null) {
       return 'visible'
     }
     return classifyA11yVisibility(component, camera, viewport, {
-      occlusionProbe: this.occlusionProbe,
+      occlusionProbe: view?.occlusionProbe ?? this.occlusionProbe,
+      minPerceivableSize: view?.minPerceivableSize,
     })
+  }
+
+  /**
+   * Re-check the focused component against the current view and release focus if it can no longer
+   * legitimately hold it — its subtree disposed/reparented, or it became imperceivable (hidden /
+   * behind-camera / too-small, or offscreen/occluded under a `skip` policy). Projection aria-hides /
+   * visibility:hidden's such a panel, so its hidden element can't hold DOM focus; without this the
+   * manager would keep stale `focused` state and the DOM `activeElement` would strand on a pruned
+   * element (codex system #7). Driven each frame by the projection through the reconciler registry.
+   */
+  reconcileFocus(): void {
+    if (this.disposed) {
+      return
+    }
+    const focused = this.focusedSignal.peek()
+    if (focused == null) {
+      return
+    }
+    if (this.isComponentLost(focused)) {
+      this.setFocus(undefined)
+      return
+    }
+    const visibility = this.classify(focused)
+    if (visibility === 'visible') {
+      return
+    }
+    // Offscreen / occluded targets stay focusable under a non-skip policy — projection keeps their
+    // element positioned + exposed to AT (just off-view / covered), so focus may legitimately remain.
+    if (
+      (visibility === 'offscreen' || visibility === 'occluded') &&
+      this.policy.offscreen !== 'skip'
+    ) {
+      return
+    }
+    // Otherwise the panel is no longer perceivable/focusable: release focus so the manager and the DOM
+    // agree. The blur + onFocusChange(false) let the app react (e.g. re-target on the next reveal).
+    this.setFocus(undefined)
   }
 
   private announcePosition(component: Component): void {

@@ -14,6 +14,7 @@ import {
   setA11yPreferences,
   type Announcement,
 } from '../a11y/announce/announcer.js'
+import { setA11yVisibilityView } from '../a11y/visibility-view.js'
 
 /**
  * A11yFocusManager (spec §5.1) with hand-derived geometry. One 400×400 px root (pixelSize 0.01 →
@@ -753,5 +754,62 @@ describe('enableKeyboardSceneNav', () => {
     } finally {
       unbind()
     }
+  })
+})
+
+describe('shared visibility view + focus reconciliation (codex system #6/#7)', () => {
+  it('#6: the manager judges perceivability against the projection view minPerceivableSize, not its own default', () => {
+    const { root, b } = makeScene()
+    const manager = makeManager(root)
+    // The ~10px panels clear the default 8px floor, so setFocus lands on b.
+    manager.setFocus(b)
+    expect(manager.focused.value).toBe(b)
+    manager.setFocus(undefined)
+    // Publish a projection view raising the threshold well above the panels' projected size. The
+    // manager must now read the SHARED threshold and agree with projection (b is too-small), instead of
+    // silently keeping its own default 8px (the #6 divergence) — so setFocus refuses to land on it.
+    setA11yVisibilityView(root.root.peek(), {
+      camera: makeCamera(),
+      viewport: VIEWPORT,
+      minPerceivableSize: 50,
+    })
+    manager.setFocus(b)
+    expect(manager.focused.value).toBeUndefined()
+    // Retracting the view restores the manager's own judgement (default floor → b focusable again).
+    setA11yVisibilityView(root.root.peek(), undefined)
+    manager.setFocus(b)
+    expect(manager.focused.value).toBe(b)
+  })
+
+  it('#7: reconcileFocus releases focus when the focused panel swings behind the camera', () => {
+    const { root, b } = makeScene()
+    const camera = makeCamera()
+    const manager = makeManager(root, { camera })
+    manager.setFocus(b)
+    expect(manager.focused.value).toBe(b)
+    // The camera turns away: the panels at z=0 now sit behind it → behind-camera → aria-hidden by
+    // projection, so the hidden element cannot hold DOM focus. Reconcile must release, not strand it.
+    camera.position.set(0, 0, -5)
+    camera.lookAt(0, 0, -10)
+    camera.updateMatrixWorld(true)
+    manager.reconcileFocus()
+    expect(manager.focused.value).toBeUndefined()
+  })
+
+  it('#7: reconcileFocus leaves a still-perceivable focus untouched', () => {
+    const { root, b } = makeScene()
+    const manager = makeManager(root)
+    manager.setFocus(b)
+    manager.reconcileFocus()
+    expect(manager.focused.value).toBe(b)
+  })
+
+  it('#7: reconcileFocus keeps an offscreen focus under announce policy (still exposed to AT)', () => {
+    const { root, off } = makeScene()
+    const manager = makeManager(root) // default 'announce' policy
+    manager.setFocus(off)
+    expect(manager.focused.value).toBe(off)
+    manager.reconcileFocus()
+    expect(manager.focused.value).toBe(off)
   })
 })

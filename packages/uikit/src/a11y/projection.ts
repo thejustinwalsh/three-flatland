@@ -5,6 +5,11 @@ import { Fullscreen } from '../components/fullscreen.js'
 import { applyA11yDebugStyle, getA11yDebug } from './debug.js'
 import { a11yFocusSkipSignal, getRootA11yContainer, getRootA11yMembers } from './hidden-element.js'
 import { classifyA11yVisibility, type A11yVisibility } from './visibility.js'
+import {
+  runA11yFocusReconcile,
+  setA11yVisibilityView,
+  type A11yVisibilityView,
+} from './visibility-view.js'
 
 /** Axis-aligned bounding rect of a projected panel, in canvas-local CSS px. */
 export interface A11yScreenRect {
@@ -139,6 +144,17 @@ export function setupA11yProjection(
   const isScreenSpace = (rootComponent as unknown) instanceof Fullscreen
   const visibilityOptions = { occlusionProbe, minPerceivableSize }
 
+  // Publish the per-root visibility view so the focus manager judges perceivability against the SAME
+  // camera / live viewport / occlusion / size threshold this projection uses — no divergence (#6). The
+  // viewport is reassigned to each frame's fresh canvas rect below.
+  const view: A11yVisibilityView = {
+    camera,
+    viewport: { x: 0, y: 0, width: 0, height: 0 },
+    occlusionProbe,
+    minPerceivableSize,
+  }
+  setA11yVisibilityView(root, view)
+
   // Temporal-coherence dirty state (the hot-path optimization). A member's projected rect + visibility
   // class are a pure function of (camera view + projection, the root's world placement, the viewport,
   // and per-member: globalPanelMatrix, render-visibility, visibility override). When the frame-level
@@ -177,6 +193,9 @@ export function setupA11yProjection(
       width: canvasRect.width,
       height: canvasRect.height,
     }
+    // Point the shared view at this frame's fresh viewport object (a fresh object each frame, so the
+    // dirty-gate's lastViewport snapshot below stays a valid previous-frame comparison).
+    view.viewport = viewport
     const debugOn = getA11yDebug().peek()
     // Frame-level half of the dirty gate: camera view + projection, the root's world placement, the
     // viewport, and the debug flag are all unchanged since last frame. rootComponent.matrixWorld folds
@@ -246,6 +265,10 @@ export function setupA11yProjection(
     lastRoot = rootComponent.matrixWorld.elements.slice()
     lastViewport = viewport
     lastDebug = debugOn
+    // After positions settle, let the focus manager (if any) reconcile a focused panel that just
+    // became imperceivable against this same frame's view — releasing focus rather than stranding it
+    // on an aria-hidden / visibility:hidden element the platform can no longer focus (#7).
+    runA11yFocusReconcile(root)
   }
 
   // onFrameEndSet runs AFTER every onFrameSet handler (layout, scroll, component frames) in the same
@@ -277,6 +300,9 @@ export function setupA11yProjection(
     if (c != null) {
       c.style.cssText = CONTAINER_OFFSCREEN
     }
+    // Retract the shared view so the focus manager falls back to its own camera/viewport (Mode-1 DOM
+    // focus) instead of reading a stale projection view after teardown.
+    setA11yVisibilityView(root, undefined)
   }
 }
 
