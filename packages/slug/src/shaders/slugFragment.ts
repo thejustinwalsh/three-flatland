@@ -27,6 +27,16 @@ const LOG_TEXTURE_WIDTH = 12 // 2^12 = 4096
 const TEXTURE_WIDTH_MASK = (1 << LOG_TEXTURE_WIDTH) - 1 // 4095
 
 /**
+ * Defensive per-fragment loop cap. The band curve count is read straight from a
+ * texture, and baked fonts can be fetched from external URLs — a corrupt/hostile
+ * `.slug.glb` could carry a garbage count and spin the (now dynamic) loop into a GPU
+ * watchdog / device loss. Clamp far above any real font's densest band (even adaptive
+ * CJK bands stay well under this) so legitimate glyphs never truncate — only runaway
+ * data. `min(read, cap)` is still a runtime bound, so the loop stays dynamic (no unroll).
+ */
+const MAX_SAFE_BAND_CURVES = 512
+
+/**
  * Wrap a linear texel offset into (x, y) coordinates for a 4096-wide texture.
  * Handles offsets that cross row boundaries.
  */
@@ -101,7 +111,12 @@ export function slugRender(
   // Band header at (glyphLoc + bandIdxY)
   const hBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(bandIdxY))
   const hBandHeader = textureLoad(bandTexture, hBandCoord)
-  const hCurveCount = int(hBandHeader.x)
+  const hRawCount = int(hBandHeader.x)
+  const hCurveCount = select(
+    hRawCount.greaterThan(int(MAX_SAFE_BAND_CURVES)),
+    int(MAX_SAFE_BAND_CURVES),
+    hRawCount
+  )
   const hCurveListOffset = int(hBandHeader.y)
 
   // Dynamic loop bound: iterate exactly this band's curve count (from the band
@@ -163,7 +178,12 @@ export function slugRender(
   // Band header at (glyphLoc + numHBands + bandIdxX)
   const vBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(numHBands).add(int(bandIdxX)))
   const vBandHeader = textureLoad(bandTexture, vBandCoord)
-  const vCurveCount = int(vBandHeader.x)
+  const vRawCount = int(vBandHeader.x)
+  const vCurveCount = select(
+    vRawCount.greaterThan(int(MAX_SAFE_BAND_CURVES)),
+    int(MAX_SAFE_BAND_CURVES),
+    vRawCount
+  )
   const vCurveListOffset = int(vBandHeader.y)
 
   // Dynamic loop bound — see the horizontal pass above.

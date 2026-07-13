@@ -20,6 +20,28 @@ export function refCalcRootCode(y1: number, y2: number, y3: number): number {
 }
 
 /**
+ * Numerically-stable quadratic roots of `a·t² − 2b·t + c = 0` — CPU mirror of the
+ * shader's `stableRoots` (solveQuadratic.ts): q-form + pre-clamp-discriminant grazing
+ * guard, ordered t1=(b−d)/a, t2=(b+d)/a.
+ */
+function stableRootsRef(a: number, b: number, c: number): [number, number] {
+  if (Math.abs(a) < 1.0 / 65536.0) {
+    const t = c / (2 * b)
+    return [t, t]
+  }
+  const discRaw = b * b - a * c
+  if (discRaw <= 0) {
+    const e = b / a
+    return [e, e]
+  }
+  const d = Math.sqrt(discRaw)
+  const q = b + (b >= 0 ? 1 : -1) * d
+  const rootA = q / a
+  const rootB = c / q
+  return b >= 0 ? [rootB, rootA] : [rootA, rootB]
+}
+
+/**
  * Reference implementation of solveHorizPoly.
  * Returns [x1, x2] intersection coordinates for a horizontal ray at y=0.
  */
@@ -38,18 +60,7 @@ export function refSolveHorizPoly(
   const ax = p0x - 2 * p1x + p2x
   const bx = p0x - p1x
 
-  const disc = Math.max(b * b - a * c, 0)
-  const d = Math.sqrt(disc)
-
-  const nearLinear = Math.abs(a) < 1.0 / 65536.0
-
-  let t1: number, t2: number
-  if (nearLinear) {
-    t1 = t2 = c / (2 * b)
-  } else {
-    t1 = (b - d) / a
-    t2 = (b + d) / a
-  }
+  const [t1, t2] = stableRootsRef(a, b, c)
 
   const x1 = (ax * t1 - bx * 2) * t1 + p0x
   const x2 = (ax * t2 - bx * 2) * t2 + p0x
@@ -76,18 +87,7 @@ export function refSolveVertPoly(
   const ay = p0y - 2 * p1y + p2y
   const by = p0y - p1y
 
-  const disc = Math.max(b * b - a * c, 0)
-  const d = Math.sqrt(disc)
-
-  const nearLinear = Math.abs(a) < 1.0 / 65536.0
-
-  let t1: number, t2: number
-  if (nearLinear) {
-    t1 = t2 = c / (2 * b)
-  } else {
-    t1 = (b - d) / a
-    t2 = (b + d) / a
-  }
+  const [t1, t2] = stableRootsRef(a, b, c)
 
   const y1 = (ay * t1 - by * 2) * t1 + p0y
   const y2 = (ay * t2 - by * 2) * t2 + p0y

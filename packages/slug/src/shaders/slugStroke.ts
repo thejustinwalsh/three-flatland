@@ -9,6 +9,7 @@ import {
   max,
   min,
   clamp,
+  select,
   smoothstep,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
@@ -41,6 +42,10 @@ import { distanceToQuadBezier } from './distanceToQuadBezier.js'
 
 const LOG_TEXTURE_WIDTH = 12
 const TEXTURE_WIDTH_MASK = (1 << LOG_TEXTURE_WIDTH) - 1
+
+/** Defensive per-fragment loop cap — see slugFragment.ts. Guards a corrupt/hostile
+ * baked band count from spinning the dynamic loop into a GPU watchdog reset. */
+const MAX_SAFE_BAND_CURVES = 512
 
 function wrapTexCoord(baseX: Node<'int'>, baseY: Node<'int'>, offset: Node<'int'>) {
   const linearX = baseX.add(offset)
@@ -110,7 +115,12 @@ export function slugStroke(
   // --- Horizontal band pass ---
   const hBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(bandIdxY))
   const hBandHeader = textureLoad(bandTexture, hBandCoord)
-  const hCurveCount = int(hBandHeader.x)
+  const hRawCount = int(hBandHeader.x)
+  const hCurveCount = select(
+    hRawCount.greaterThan(int(MAX_SAFE_BAND_CURVES)),
+    int(MAX_SAFE_BAND_CURVES),
+    hRawCount
+  )
   const hCurveListOffset = int(hBandHeader.y)
 
   // Dynamic loop bound — per-band curve count, matching slugFragment.ts (removes
@@ -143,7 +153,12 @@ export function slugStroke(
   // the fill shader's coverage of "any curve near the fragment".
   const vBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(numHBands).add(int(bandIdxX)))
   const vBandHeader = textureLoad(bandTexture, vBandCoord)
-  const vCurveCount = int(vBandHeader.x)
+  const vRawCount = int(vBandHeader.x)
+  const vCurveCount = select(
+    vRawCount.greaterThan(int(MAX_SAFE_BAND_CURVES)),
+    int(MAX_SAFE_BAND_CURVES),
+    vRawCount
+  )
   const vCurveListOffset = int(vBandHeader.y)
 
   // Dynamic loop bound — see the horizontal pass above.

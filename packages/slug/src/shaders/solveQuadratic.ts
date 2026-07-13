@@ -1,40 +1,51 @@
-import { vec2, select, abs, sqrt, max, float } from 'three/tsl'
+import { vec2, select, abs, sqrt, float, If } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 
 /**
  * Two real roots of `a·t² − 2b·t + c = 0`, ordered `t1 = (b−d)/a`, `t2 = (b+d)/a`
- * (d = √disc) so the pairing still matches `calcRootCode`'s winding convention.
+ * (d = √disc) so the pairing matches `calcRootCode`'s winding convention.
  *
- * Uses the numerically-stable q-form instead of the naive `(b∓d)/a`: on a flat or
- * grazing curve `b ≈ d`, and `(b−d)` catastrophically cancels in f32 — a real
- * rim-fringe artifact on near-tangent curves. `q = b + sign(b)·d` adds same-sign
- * terms (no cancellation); the two roots are `q/a` and `c/q` (Vieta's `t1·t2 = c/a`),
- * assigned by sign(b) to preserve the ordering above. Two guards:
- *   - a ≈ 0  → the curve is linear along this axis; use the single linear root.
- *   - d ≈ 0  → tangent/grazing (disc clamped to 0); the stable `c/q` pairing drifts
- *              off the true double root, so fold both to the extremum `b/a`.
- * (Kept faithful to Lengyel's reference; the naive form got the grazing case for free.)
+ * Imperative `If/ElseIf/Else` (NOT `select`): `select` evaluates every operand, so a
+ * branchless form would pay all four divisions on every fragment; the common path
+ * here needs only two. No derivatives occur, so branching is safe. Three cases:
+ *   - a ≈ 0        → curve is linear along this axis; single linear root.
+ *   - discRaw ≤ 0  → tangent (=0) or no real crossing (<0, skipped by rootCode); both
+ *                    roots fold to the extremum b/a. Guarding on the PRE-CLAMP
+ *                    discriminant is the only correct grazing test — root separation is
+ *                    2d/|a|, so a small |d| (or |q|) does NOT imply a double root when a
+ *                    is also small, and an absolute threshold collapses distinct roots.
+ *   - else         → distinct real roots via the numerically-stable q-form
+ *                    (q = b + sign(b)·d; roots q/a and c/q via Vieta), which avoids the
+ *                    catastrophic cancellation of the naive `(b−d)/a` on flat curves.
  *
  * Must be called inside a Fn() TSL context.
  */
 function stableRoots(a: Node<'float'>, b: Node<'float'>, c: Node<'float'>) {
-  const disc = max(b.mul(b).sub(a.mul(c)), 0.0)
-  const d = sqrt(disc)
+  const discRaw = b.mul(b).sub(a.mul(c))
+  const t1 = float(0).toVar()
+  const t2 = float(0).toVar()
 
-  // sign(b) via select so b == 0 yields +1 (avoids q == 0 → div-by-zero).
-  const bPos = b.greaterThanEqual(0.0)
-  const q = b.add(select(bPos, float(1.0), float(-1.0)).mul(d))
-  const rootA = q.div(a) // (b+d)/a when b>=0, (b-d)/a when b<0
-  const rootB = c.div(q) // paired Vieta root
+  If(abs(a).lessThan(1.0 / 65536.0), () => {
+    const tLin = c.div(b.mul(2.0))
+    t1.assign(tLin)
+    t2.assign(tLin)
+  })
+    .ElseIf(discRaw.lessThanEqual(0.0), () => {
+      const extremum = b.div(a)
+      t1.assign(extremum)
+      t2.assign(extremum)
+    })
+    .Else(() => {
+      const d = sqrt(discRaw)
+      const bPos = b.greaterThanEqual(0.0)
+      const q = b.add(select(bPos, float(1.0), float(-1.0)).mul(d))
+      const rootA = q.div(a) // (b+d)/a when b>=0, (b-d)/a when b<0
+      const rootB = c.div(q) // paired Vieta root
+      t1.assign(select(bPos, rootB, rootA))
+      t2.assign(select(bPos, rootA, rootB))
+    })
 
-  const extremum = b.div(a)
-  const grazing = d.lessThan(1.0 / 65536.0)
-  const t1 = select(grazing, extremum, select(bPos, rootB, rootA))
-  const t2 = select(grazing, extremum, select(bPos, rootA, rootB))
-
-  const nearLinear = abs(a).lessThan(1.0 / 65536.0)
-  const tLin = c.div(b.mul(2.0))
-  return vec2(select(nearLinear, tLin, t1), select(nearLinear, tLin, t2))
+  return vec2(t1, t2)
 }
 
 /**
