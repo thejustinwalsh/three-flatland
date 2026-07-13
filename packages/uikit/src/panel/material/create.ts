@@ -59,7 +59,18 @@ export function createPanelNodeMaterial<T extends NodeMaterialClass>(
   // shadow path reads `colorNode.a` and nothing else (spec §2.1).
   const background = (material as PanelBackgroundColorNodeProvider).panelBackgroundColorNode
   material.colorNode = background != null ? vec4(background, colorNode.w) : colorNode
-  material.normalNode = normalNode
+  // `normalNode` computes the bent-panel surface normal for LIT materials. Assigning it to an unlit
+  // `MeshBasicNodeMaterial` (uikit's default — every UI panel) is a shading no-op, but it still pulls
+  // the normal/tangent/bitangent vertex attributes into the compiled program, taking the instanced
+  // panel to 17 attributes — one past WebGL2's 16-attribute limit. WebGPU tolerates the overflow, but
+  // under the WebGPU renderer's WebGL2 fallback the vertex shader fails to link ("Attribute location
+  // out of range") and EVERY panel drops out (only text, a different material, survives). Basic
+  // materials never shade with the normal, so skip it for them: no visual change, no WebGPU cost, and
+  // the panel program drops back to 14 attributes so the WebGL2 fallback renders panels correctly.
+  // (`lights` is true on all node materials incl. basic, so `isMeshBasicNodeMaterial` is the signal.)
+  if ((material as { isMeshBasicNodeMaterial?: boolean }).isMeshBasicNodeMaterial !== true) {
+    material.normalNode = normalNode
+  }
   // Half-pixel edge headroom (see `dilatedPanelPosition`): applied in main and
   // shadow passes alike, so coverage silhouettes stay in sync.
   material.positionNode = positionNode
