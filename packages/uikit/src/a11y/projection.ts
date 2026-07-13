@@ -88,6 +88,20 @@ const CONTAINER_OVERLAY = 'position:fixed;top:0;left:0;'
 /** Skip a style write unless the rect moved at least this many px (avoids per-frame reflow churn). */
 const RECT_EPSILON = 1
 
+/** True when a live Matrix4's 16 elements equal a stored snapshot (a null snapshot is never equal). */
+function matrixElementsEqual(matrix: Matrix4, snapshot: number[] | null): boolean {
+  if (snapshot == null) {
+    return false
+  }
+  const e = matrix.elements
+  for (let i = 0; i < 16; i++) {
+    if (e[i] !== snapshot[i]) {
+      return false
+    }
+  }
+  return true
+}
+
 export interface A11yProjectionOptions {
   camera: Camera
   /** Only `domElement` is read (for its on-page rect) — accepts a full three renderer. */
@@ -125,6 +139,21 @@ export function setupA11yProjection(
   const isScreenSpace = (rootComponent as unknown) instanceof Fullscreen
   const visibilityOptions = { occlusionProbe, minPerceivableSize }
 
+  // Temporal-coherence dirty state (the hot-path optimization). A member's projected rect + visibility
+  // class are a pure function of (camera view + projection, the root's world placement, the viewport,
+  // and per-member: globalPanelMatrix, render-visibility, visibility override). When the frame-level
+  // inputs are unchanged AND a member's own inputs are unchanged, the result is identical, so the whole
+  // classify → project → DOM pass is skipped — a static camera over a settled UI re-projects nothing.
+  const memberState = new WeakMap<
+    Component,
+    { panel: Matrix4; element: HTMLElement; vis: boolean; override: string | undefined }
+  >()
+  let lastCam: number[] | null = null
+  let lastProj: number[] | null = null
+  let lastRoot: number[] | null = null
+  let lastViewport: A11yViewport | null = null
+  let lastDebug = false
+
   const onFrame = (): void => {
     const members = getRootA11yMembers(root)
     if (members == null || members.size === 0) {
@@ -149,15 +178,48 @@ export function setupA11yProjection(
       height: canvasRect.height,
     }
     const debugOn = getA11yDebug().peek()
+    // Frame-level half of the dirty gate: camera view + projection, the root's world placement, the
+    // viewport, and the debug flag are all unchanged since last frame. rootComponent.matrixWorld folds
+    // in both the root's world transform and its own layout, so it's a conservative proxy for "the
+    // root→screen mapping is unchanged". An occlusion probe disables the skip (a moving occluder changes
+    // perceivability with no matrix change).
+    const frameStatic =
+      occlusionProbe == null &&
+      debugOn === lastDebug &&
+      matrixElementsEqual(camera.matrixWorld, lastCam) &&
+      matrixElementsEqual(camera.projectionMatrix, lastProj) &&
+      matrixElementsEqual(rootComponent.matrixWorld, lastRoot) &&
+      lastViewport != null &&
+      lastViewport.x === viewport.x &&
+      lastViewport.y === viewport.y &&
+      lastViewport.width === viewport.width &&
+      lastViewport.height === viewport.height
     for (const [component, element] of members) {
       touched.add(component)
+      const panel = component.globalPanelMatrix.peek()
+      // Per-member half: with the frame static, this member re-projects to the same rect + class unless
+      // its own panel matrix (a fresh Matrix4 ref on any layout/scroll change), render-visibility, or
+      // visibility override changed — or its hidden element was rebuilt (a new element must be placed).
+      if (frameStatic && panel != null) {
+        const prev = memberState.get(component)
+        if (
+          prev != null &&
+          prev.panel === panel &&
+          prev.element === element &&
+          prev.vis === component.isVisible.peek() &&
+          prev.override === component.properties.value.a11yVisibilityOverride
+        ) {
+          continue
+        }
+      }
       // Debug overlay: reveal the projected element (outline + role/name) so the a11y tree is visible
       // over the panels. Independent of positioning below — visibility:hidden members stay hidden.
       applyA11yDebugStyle(element, component, debugOn)
       // Not laid out yet → hide; a null globalPanelMatrix would otherwise place it at the root origin.
-      if (component.globalPanelMatrix.peek() == null) {
+      if (panel == null) {
         resetA11yVisibilityState(component, element)
         applyRect(element, null, lastRects)
+        memberState.delete(component)
         continue
       }
       let visibility: A11yVisibility
@@ -171,7 +233,19 @@ export function setupA11yProjection(
         visibility = classifyA11yVisibility(component, camera, viewport, visibilityOptions)
       }
       applyVisibilityPolicy(component, element, visibility, camera, viewport, lastRects)
+      memberState.set(component, {
+        panel,
+        element,
+        vis: component.isVisible.peek(),
+        override: component.properties.value.a11yVisibilityOverride,
+      })
     }
+    // Snapshot the frame-level inputs for next frame's gate.
+    lastCam = camera.matrixWorld.elements.slice()
+    lastProj = camera.projectionMatrix.elements.slice()
+    lastRoot = rootComponent.matrixWorld.elements.slice()
+    lastViewport = viewport
+    lastDebug = debugOn
   }
 
   // onFrameEndSet runs AFTER every onFrameSet handler (layout, scroll, component frames) in the same
