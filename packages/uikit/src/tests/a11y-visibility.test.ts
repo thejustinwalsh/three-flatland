@@ -104,6 +104,19 @@ describe('classifyA11yVisibility', () => {
     expect(probe).not.toHaveBeenCalled()
   })
 
+  it('a11yVisibilityOverride visible does NOT resurrect a behind-camera panel — no valid rect stays behind-camera (codex system #5)', () => {
+    // The override force-includes past the SOFT tests, but a panel that cannot be projected has no
+    // screen rect to place the hidden element at, so projection would aria-hide it. The classifier
+    // must agree (behind-camera) so the focus manager refuses focus rather than claiming a control the
+    // platform can't focus. Probe is never consulted — behind-camera precedes the occlusion check.
+    const probe = vi.fn(() => true)
+    const c = mount({ ...visibleProps, a11yVisibilityOverride: 'visible' }, [0, 0, 10])
+    expect(classifyA11yVisibility(c, makeCamera(), viewport, { occlusionProbe: probe })).toBe(
+      'behind-camera'
+    )
+    expect(probe).not.toHaveBeenCalled()
+  })
+
   it('an occlusionProbe returning false marks a geometrically visible panel occluded', () => {
     const c = mount(visibleProps)
     expect(classifyA11yVisibility(c, makeCamera(), viewport, { occlusionProbe: () => false })).toBe(
@@ -225,5 +238,37 @@ describe('createRaycastOcclusionProbe', () => {
     probe(c)
     onFrame()
     expect(probe(c)).toBe(true)
+  })
+
+  it('prunes a disposed (aborted) component so it is no longer retained or raycast (codex system #10)', () => {
+    const { probe, onFrame } = createRaycastOcclusionProbe(new Object3D(), { camera: makeCamera() })
+    const makeFake = (signal: AbortSignal) => ({
+      abortSignal: signal,
+      getWorldPosition: vi.fn((target: Vector3) => target.set(0, 0, 0)),
+    })
+    const live = makeFake(new AbortController().signal)
+    const deadController = new AbortController()
+    const dead = makeFake(deadController.signal)
+    probe(live as unknown as Component)
+    probe(dead as unknown as Component)
+    // The subtree tears down: its abort fires. Next frame must drop it BEFORE raycasting.
+    deadController.abort()
+    onFrame()
+    expect(dead.getWorldPosition).not.toHaveBeenCalled()
+    expect(live.getWorldPosition).toHaveBeenCalledTimes(1)
+  })
+
+  it('dispose() releases registered components so the round-robin runs empty afterward', () => {
+    const { probe, onFrame, dispose } = createRaycastOcclusionProbe(new Object3D(), {
+      camera: makeCamera(),
+    })
+    const fake = {
+      abortSignal: new AbortController().signal,
+      getWorldPosition: vi.fn((target: Vector3) => target.set(0, 0, 0)),
+    }
+    probe(fake as unknown as Component)
+    dispose()
+    onFrame()
+    expect(fake.getWorldPosition).not.toHaveBeenCalled()
   })
 })

@@ -41,13 +41,20 @@ export function classifyA11yVisibility(
   if (override === 'hidden' || !component.isVisible.peek()) {
     return 'hidden'
   }
-  if (override === 'visible') {
-    return 'visible'
-  }
   component.updateWorldMatrix(true, false)
   const rect = computeA11yScreenRect(component.matrixWorld, camera, viewport)
   if (rect == null) {
+    // No valid projection (behind the camera / straddling the near plane): there is no screen rect to
+    // place the hidden element at, so it cannot hold DOM focus. This precedes the override:'visible'
+    // check on purpose — the override force-includes past the SOFT perceivability tests, but a panel
+    // that literally cannot be projected stays behind-camera even under it, keeping projection and the
+    // focus manager in agreement (both aria-hide / refuse focus) rather than diverging (codex system #5).
     return 'behind-camera'
+  }
+  if (override === 'visible') {
+    // Force-include past the soft tests (offscreen / too-small / occlusion) — e.g. a critical alarm
+    // panel — now that a valid on-screen rect is confirmed above.
+    return 'visible'
   }
   if (
     rect.x + rect.w < viewport.x ||
@@ -108,7 +115,7 @@ const rayDirection = new Vector3()
 export function createRaycastOcclusionProbe(
   scene: Object3D,
   options?: RaycastOcclusionProbeOptions
-): { probe: (c: Component) => boolean; onFrame: () => void } {
+): { probe: (c: Component) => boolean; onFrame: () => void; dispose: () => void } {
   const budget = options?.budgetPerFrame ?? 8
   const registered: Component[] = []
   const registeredSet = new Set<Component>()
@@ -124,7 +131,30 @@ export function createRaycastOcclusionProbe(
     return lastResult.get(c) ?? true
   }
 
+  /** Drop components whose subtree was disposed — `registered`/`registeredSet` strongly retain them,
+   *  so without this a long-lived scene accumulates dead entries forever and keeps raycasting them
+   *  (codex system #10). Cheap guard first so the compaction only runs when something actually left. */
+  const pruneAborted = (): void => {
+    // Optional-chained: real Components always carry an abortSignal, but this scene-wide probe accepts
+    // any Component-typed value, so tolerate one without it (never-aborted) rather than throw.
+    if (!registered.some((c) => c.abortSignal?.aborted)) {
+      return
+    }
+    for (let i = registered.length - 1; i >= 0; i--) {
+      const component = registered[i]!
+      if (component.abortSignal?.aborted) {
+        registered.splice(i, 1)
+        registeredSet.delete(component)
+        lastResult.delete(component)
+      }
+    }
+    if (cursor >= registered.length) {
+      cursor = 0
+    }
+  }
+
   const onFrame = (): void => {
+    pruneAborted()
     const camera = options?.camera
     if (camera == null || registered.length === 0) {
       return
@@ -155,5 +185,12 @@ export function createRaycastOcclusionProbe(
     }
   }
 
-  return { probe, onFrame }
+  /** Release all registered components (the strong retainers) so a torn-down scene's probe frees them. */
+  const dispose = (): void => {
+    registered.length = 0
+    registeredSet.clear()
+    cursor = 0
+  }
+
+  return { probe, onFrame, dispose }
 }
