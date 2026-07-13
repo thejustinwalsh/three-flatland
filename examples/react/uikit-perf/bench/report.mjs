@@ -12,6 +12,7 @@ const MODE_LABEL = {
   cards: 'Cards (layout + glyphs)',
   decorated: 'Decorated (+ panels, borders, depth)',
   sampled: 'Sampled (+ per-card color signal)',
+  fixed: 'Bento showcase — fixed scene',
 }
 
 const ok = data.results.filter((r) => r.error == null)
@@ -53,7 +54,9 @@ for (const key of sortedKeys) {
   const rows = groups.get(key)
   const [mode] = key.split('::')
   const items = rows[0].items
-  lines.push(`## ${MODE_LABEL[mode] ?? mode} — ${items.toLocaleString()} cards`)
+  const heading =
+    items > 0 ? `${MODE_LABEL[mode] ?? mode} — ${items.toLocaleString()} cards` : MODE_LABEL[mode] ?? mode
+  lines.push(`## ${heading}`)
   lines.push('')
   lines.push(
     '| Cell | backend | frame p50 | frame p95 | jitter | GPU p50 | GPU p95 | draws | textures | geometries |'

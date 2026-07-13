@@ -140,7 +140,9 @@ const PAD = 16
 // ============================================================================
 
 function useSlugFont(url: string): SlugFont {
-  return suspend(() => SlugFontLoader.load(url, { forceRuntime: true }), [url, 'uikit-bento-font'])
+  // No forceRuntime: load the pre-baked {name}.slug.glb sidecar (run `slug-bake`
+  // on the fonts in public/) so the showcase runs the same baked path we ship.
+  return suspend(() => SlugFontLoader.load(url), [url, 'uikit-bento-font'])
 }
 
 function Col({ children }: { children: React.ReactNode }) {
@@ -1226,8 +1228,57 @@ function BentoApp({ onReady }: { onReady: () => void }) {
   )
 }
 
+/**
+ * Reads `?renderer=webgl` and forces `WebGPURenderer` onto its WebGL2 fallback
+ * backend — the same A/B lever the perf-lab bench uses, so the bento can be
+ * benchmarked WebGPU vs. forced-WebGL2. `trackTimestamp` stays on either way so
+ * the PerfCard + bench GPU-timing readout work.
+ */
+function useRendererConfig() {
+  return useMemo(() => {
+    const forceWebGL = new URLSearchParams(window.location.search).get('renderer') === 'webgl'
+    return { trackTimestamp: true, ...(forceWebGL ? { forceWebGL: true } : {}) }
+  }, [])
+}
+
+/**
+ * Exposes `window.__uikitPerf.getState()` so the committed bench runner
+ * (examples/react/uikit-perf/bench) can read the bento's steady-state metrics
+ * off the renderer — draws, triangles, memory, GPU-ms, backend. The bento is a
+ * FIXED scene, so the sweep hooks are no-ops (the runner marks bento cells
+ * `fixed` and measures once). GPU-ms is read from `info.render.timestamp`, which
+ * PerfCard's own `resolveTimestampsAsync` already fills — the bridge never drains
+ * the timestamp query itself, so the two don't fight over it.
+ */
+function PerfBridge() {
+  const gl = useThree((s) => s.gl)
+  useEffect(() => {
+    const renderer = gl as unknown as {
+      info: { render: Record<string, number>; memory: Record<string, number> }
+      backend?: { isWebGPUBackend?: boolean }
+    }
+    ;(window as unknown as { __uikitPerf?: unknown }).__uikitPerf = {
+      getState: () => ({
+        items: 0,
+        backend: renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl',
+        render: { ...renderer.info.render },
+        memory: { ...renderer.info.memory },
+        gpuMs: renderer.info.render?.timestamp ?? 0,
+      }),
+      setComplexity: () => {},
+      setLevel: () => {},
+      setMode: () => {},
+    }
+    return () => {
+      delete (window as unknown as { __uikitPerf?: unknown }).__uikitPerf
+    }
+  }, [gl])
+  return null
+}
+
 export default function App() {
   const [ready, setReady] = useState(false)
+  const rendererConfig = useRendererConfig()
   useEffect(() => {
     // Safety net: never let the loading splash stick if the ready signal is missed.
     const id = setTimeout(() => setReady(true), 6000)
@@ -1243,13 +1294,14 @@ export default function App() {
       <Canvas
         events={noEvents}
         frameloop="always"
-        renderer={{ trackTimestamp: true }}
+        renderer={rendererConfig}
         style={{ height: '100dvh', touchAction: 'none' }}
       >
         <color attach="background" args={[INK]} />
         <ambientLight intensity={0.5} />
         <directionalLight intensity={0} position={[5, 1, 10]} />
         <PointerEvents />
+        <PerfBridge />
         <ThreeInspector />
         <Suspense fallback={null}>
           <BentoApp onReady={() => setReady(true)} />

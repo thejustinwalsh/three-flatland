@@ -15,10 +15,20 @@ import { dirname, join } from 'node:path'
 const { chromium } = pw
 const HERE = dirname(fileURLToPath(import.meta.url))
 
+// Two workloads, each with a WebGPU + a forced-WebGL2 cell:
+//  - Perf Lab: a sweepable stress scene (presets x modes), shared baked Slug font.
+//  - Bento: the FIXED product showcase (packages/uikit/example), baked Slug font.
+// `fixed: true` marks the bento's single-state scene — the runner measures it once
+// instead of driving the (no-op) sweep hooks. Point `bentoUrl` at the bento's own
+// dev server. Upstream (WebGL-only, MSDF) is the ceiling reference for the lab.
+const LAB = process.env.LAB_URL ?? 'http://localhost:5241/react/uikit-perf/'
+const BENTO = process.env.BENTO_URL ?? 'http://localhost:5240/'
 const CELLS = [
-  { label: 'fork · WebGPU · Slug', url: 'http://localhost:5218/react/uikit-perf/' },
-  { label: 'fork · WebGL2 · Slug', url: 'http://localhost:5218/react/uikit-perf/?renderer=webgl' },
-  { label: 'upstream · WebGL · MSDF', url: 'http://localhost:5230/' },
+  { label: 'lab · fork · WebGPU · Slug', url: LAB },
+  { label: 'lab · fork · WebGL2 · Slug', url: `${LAB}?renderer=webgl` },
+  { label: 'lab · upstream · WebGL · MSDF', url: 'http://localhost:5230/' },
+  { label: 'bento · fork · WebGPU · Slug', url: BENTO, fixed: true },
+  { label: 'bento · fork · WebGL2 · Slug', url: `${BENTO}?renderer=webgl`, fixed: true },
 ]
 
 // Levels index the scene's presets (0=Desk 192 … 8=Crush 98304). Default caps at 6 (24,576) — the
@@ -52,60 +62,72 @@ async function measureCell(browser, cell) {
   await page.goto(cell.url, { waitUntil: 'domcontentloaded', timeout: 40000 })
   await page.waitForFunction(() => window.__uikitPerf != null, { timeout: 40000 })
   await page.waitForTimeout(WARM_MS)
-  const rows = []
-  for (const mode of MODES) {
-    for (const level of LEVELS) {
-      await page.evaluate(([l, m]) => window.__uikitPerf.setComplexity(l, m), [level, mode])
-      await page.waitForTimeout(SETTLE_MS)
-      const cap = await page.evaluate(async (frames) => {
-        const frameMs = []
-        const gpuMs = []
-        let prev = performance.now()
-        await new Promise((resolve) => {
-          let i = 0
-          const tick = () => {
-            const now = performance.now()
-            frameMs.push(now - prev)
-            prev = now
-            const g = window.__uikitPerf.getState().gpuMs
-            if (typeof g === 'number' && g > 0) gpuMs.push(g)
-            if (++i < frames) requestAnimationFrame(tick)
-            else resolve()
-          }
-          requestAnimationFrame(tick)
-        })
-        const st = window.__uikitPerf.getState()
-        return {
-          frameMs: frameMs.slice(3),
-          gpuMs,
-          items: st.items,
-          backend: st.backend,
-          objects: st.objects,
-          drawCalls: st.render?.calls ?? null,
-          textures: st.memory?.textures ?? null,
-          geometries: st.memory?.geometries ?? null,
+
+  // Capture FRAMES rAF frames: per-frame times + a GPU-ms sample per frame, then a
+  // final state snapshot (draws/textures/geometries/backend). Prefer three's real
+  // `drawCalls`; `calls` is the legacy fallback.
+  const capture = () =>
+    page.evaluate(async (frames) => {
+      const frameMs = []
+      const gpuMs = []
+      let prev = performance.now()
+      await new Promise((resolve) => {
+        let i = 0
+        const tick = () => {
+          const now = performance.now()
+          frameMs.push(now - prev)
+          prev = now
+          const g = window.__uikitPerf.getState().gpuMs
+          if (typeof g === 'number' && g > 0) gpuMs.push(g)
+          if (++i < frames) requestAnimationFrame(tick)
+          else resolve()
         }
-      }, FRAMES)
-      const row = {
-        cell: cell.label,
-        mode,
-        level,
-        items: cap.items,
-        backend: cap.backend,
-        objects: cap.objects,
-        drawCalls: cap.drawCalls,
-        textures: cap.textures,
-        geometries: cap.geometries,
-        frameMs: summarize(cap.frameMs),
-        gpuMs: summarize(cap.gpuMs),
+        requestAnimationFrame(tick)
+      })
+      const st = window.__uikitPerf.getState()
+      return {
+        frameMs: frameMs.slice(3),
+        gpuMs,
+        items: st.items,
+        backend: st.backend,
+        objects: st.objects,
+        drawCalls: st.render?.drawCalls ?? st.render?.calls ?? null,
+        textures: st.memory?.textures ?? null,
+        geometries: st.memory?.geometries ?? null,
       }
-      rows.push(row)
-      console.error(
-        `  ${cell.label.padEnd(24)} ${mode.padEnd(9)} L${level} items=${String(cap.items).padStart(5)} ` +
-          `frame ${row.frameMs?.p50}/${row.frameMs?.p95}ms jit ${row.frameMs?.jitter} ` +
-          `gpu ${row.gpuMs?.p50 ?? 'n/a'}ms draws ${cap.drawCalls} tex ${cap.textures}`
-      )
+    }, FRAMES)
+
+  // A fixed scene (bento) is measured once; a sweepable scene (lab) runs modes x levels.
+  const steps = cell.fixed
+    ? [{ mode: 'fixed', level: 0 }]
+    : MODES.flatMap((mode) => LEVELS.map((level) => ({ mode, level })))
+
+  const rows = []
+  for (const { mode, level } of steps) {
+    if (!cell.fixed) {
+      await page.evaluate(([l, m]) => window.__uikitPerf.setComplexity(l, m), [level, mode])
     }
+    await page.waitForTimeout(SETTLE_MS)
+    const cap = await capture()
+    const row = {
+      cell: cell.label,
+      mode,
+      level,
+      items: cap.items,
+      backend: cap.backend,
+      objects: cap.objects,
+      drawCalls: cap.drawCalls,
+      textures: cap.textures,
+      geometries: cap.geometries,
+      frameMs: summarize(cap.frameMs),
+      gpuMs: summarize(cap.gpuMs),
+    }
+    rows.push(row)
+    console.error(
+      `  ${cell.label.padEnd(28)} ${mode.padEnd(6)} L${level} items=${String(cap.items).padStart(5)} ` +
+        `frame ${row.frameMs?.p50}/${row.frameMs?.p95}ms jit ${row.frameMs?.jitter} ` +
+        `gpu ${row.gpuMs?.p50 ?? 'n/a'}ms draws ${cap.drawCalls} tex ${cap.textures}`
+    )
   }
   await page.close()
   return rows

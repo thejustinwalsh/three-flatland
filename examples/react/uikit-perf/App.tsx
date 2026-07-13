@@ -8,8 +8,10 @@ import {
   PointerEvents,
 } from '@three-flatland/uikit/react'
 import { effect, signal } from '@preact/signals-core'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, use, useEffect, useMemo, useRef, useState } from 'react'
 import { Color } from 'three'
+import { SlugFontLoader } from '@three-flatland/slug/react'
+import type { SlugFont } from '@three-flatland/slug'
 
 type Mode = 'cards' | 'decorated' | 'sampled'
 
@@ -94,6 +96,48 @@ function useRendererConfig() {
   }, [])
 }
 
+// Load Inter ONCE and share it across every Text via `fontFamilies`, so all glyphs
+// batch into one baked SlugShapeSet — the same shared-font path the bento and every
+// real app use. No `forceRuntime`, so the loader fetches the pre-baked
+// Inter-Regular.slug.glb sidecar (run `slug-bake public/Inter-Regular.ttf`). Without
+// this the scene falls back to uikit's DEFAULT font, which shares no shape set and
+// fans the text out into ~1 draw per run — a scene-authoring artifact, not the fork.
+let interFontPromise: Promise<SlugFont> | null = null
+function useSharedFont(): SlugFont {
+  interFontPromise ??= SlugFontLoader.load('./Inter-Regular.ttf')
+  return use(interFontPromise)
+}
+
+function Scene({
+  state,
+  preset,
+  setLevel,
+  setMode,
+}: {
+  state: SceneState
+  preset: Preset
+  setLevel: (level: number) => void
+  setMode: (mode: Mode) => void
+}) {
+  const font = useSharedFont()
+  return (
+    <Fullscreen
+      flexDirection="column"
+      gap={16}
+      padding={28}
+      backgroundColor="#eef3f7"
+      fontFamilies={{ inter: { normal: font } }}
+      {...{ '*': { fontSize: 14, fontFamily: 'inter' } }}
+    >
+      <Header state={state} preset={preset} setLevel={setLevel} setMode={setMode} />
+      <Container flexGrow={1} alignSelf="stretch" flexDirection="row" gap={16} minHeight={0}>
+        <SummaryPanel state={state} preset={preset} />
+        <WorkSurface state={state} preset={preset} />
+      </Container>
+    </Fullscreen>
+  )
+}
+
 export default function App() {
   const [state, setState] = useState<SceneState>(() => readInitialState())
   const preset = presets[state.level]!
@@ -114,19 +158,9 @@ export default function App() {
       <directionalLight intensity={0.4} position={[5, 8, 12]} />
       <PointerEvents />
       <PerformanceBridge state={state} setState={setState} />
-      <Fullscreen
-        flexDirection="column"
-        gap={16}
-        padding={28}
-        backgroundColor="#eef3f7"
-        {...{ '*': { fontSize: 14 } }}
-      >
-        <Header state={state} preset={preset} setLevel={setLevel} setMode={setMode} />
-        <Container flexGrow={1} alignSelf="stretch" flexDirection="row" gap={16} minHeight={0}>
-          <SummaryPanel state={state} preset={preset} />
-          <WorkSurface state={state} preset={preset} />
-        </Container>
-      </Fullscreen>
+      <Suspense fallback={null}>
+        <Scene state={state} preset={preset} setLevel={setLevel} setMode={setMode} />
+      </Suspense>
     </Canvas>
   )
 }
