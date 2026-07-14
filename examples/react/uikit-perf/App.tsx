@@ -246,9 +246,10 @@ function DefaultApp() {
 // Ladder ROWS stay text+icon-only in BOTH paths; the only panels anywhere are the
 // perf HUD's. The spec is pinned identically in the uikit app for a fair compare.
 const LADDER_TEXT = 'Sphinx of black quartz, judge my vow'
-// 14 doubling-ish steps (8→256). Dense enough that sub-pixel crawl shows at every size the
-// eye actually reads text at — the whole point of the shipped shimmer test.
-const LADDER_SIZES = [8, 10, 12, 14, 16, 20, 24, 32, 48, 64, 96, 128, 192, 256]
+// 13 doubling-ish steps (8→192). Dense enough that sub-pixel crawl shows at every size the
+// eye actually reads text at — the whole point of the shipped shimmer test. The former 256px
+// top step overflowed the fold at common screen sizes; 192 leaves a little more breathing room.
+const LADDER_SIZES = [8, 10, 12, 14, 16, 20, 24, 32, 48, 64, 96, 128, 192]
 const LADDER_FG = '#e6edf3'
 const LADDER_BG = '#0b0e13'
 // Lucide "atom" — its elliptical electron-orbit curves are exactly what shows Slug's
@@ -986,9 +987,12 @@ function LadderNav() {
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',
+        flexWrap: 'nowrap',
+        whiteSpace: 'nowrap',
         alignItems: 'center',
-        gap: 18,
-        padding: '8px 16px',
+        gap: 13,
+        maxWidth: 'calc(100vw - 16px)',
+        padding: '8px 14px',
         margin: 8,
         borderRadius: 8,
         background: 'rgba(11, 14, 19, 0.66)',
@@ -1003,10 +1007,10 @@ function LadderNav() {
     >
       <span style={{ color: '#e6edf3', fontWeight: 700, letterSpacing: '0.04em' }}>Slug</span>
       {groups.map((group) => (
-        <span key={group.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span key={group.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ color: 'rgba(230, 237, 243, 0.4)' }}>{group.label}</span>
           {group.links.map((link, index) => (
-            <span key={link.text} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span key={link.text} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {index > 0 && <span style={{ color: 'rgba(230, 237, 243, 0.25)' }}>·</span>}
               <a
                 href={link.href}
