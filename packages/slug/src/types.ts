@@ -166,7 +166,7 @@ export interface SlugGlyphSource extends SlugCurveSource {
 export interface SlugTextureData {
   /** RGBA16F — Bezier control points (2 texels per curve, with endpoint sharing). */
   curveTexture: DataTexture
-  /** RG32F — Band headers + curve reference lists. */
+  /** R32F — Band headers + curve reference lists, each packed into one float32. */
   bandTexture: DataTexture
   /** Width of the textures in texels. */
   textureWidth: number

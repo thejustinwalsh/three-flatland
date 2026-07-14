@@ -242,8 +242,9 @@ describe('baked set stays growable without disturbing previously baked icons', (
         priorCurveData.slice(curveStart, curveEnd)
       )
 
-      const bandStart = texelIndex(handle.bandLocation, width) * 2
-      const bandEnd = texelIndex(nextBandLoc, width) * 2
+      // Band texture is R32F — one float per texel (was RG, two).
+      const bandStart = texelIndex(handle.bandLocation, width) * 1
+      const bandEnd = texelIndex(nextBandLoc, width) * 1
       expect(newBandData.slice(bandStart, bandEnd), `id ${id} band payload`).toEqual(
         priorBandData.slice(bandStart, bandEnd)
       )

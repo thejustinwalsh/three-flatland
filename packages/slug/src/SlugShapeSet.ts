@@ -109,7 +109,7 @@ export class SlugShapeSet {
     return this._textures!.curveTexture
   }
 
-  /** RG32F band header + curve reference texture (packs lazily). */
+  /** R32F band header + curve reference texture (packed, packs lazily). */
   get bandTexture(): DataTexture {
     this._ensurePacked()
     return this._textures!.bandTexture

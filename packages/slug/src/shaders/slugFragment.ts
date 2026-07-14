@@ -27,6 +27,15 @@ const LOG_TEXTURE_WIDTH = 12 // 2^12 = 4096
 const TEXTURE_WIDTH_MASK = (1 << LOG_TEXTURE_WIDTH) - 1 // 4095
 
 /**
+ * Band texel is a single packed R32F float (see `pipeline/texturePacker.ts`):
+ *   - header  = curveCount << 14 | curveListOffset  (count high 10, offset low 14)
+ *   - curveRef = texelY << 12 | texelX              (texelX low 12, texelY high)
+ * Decoding is exact — the packed ints are ≤ 2^24-1, representable in float32.
+ */
+const HEADER_OFFSET_BITS = 14
+const HEADER_OFFSET_MASK = (1 << HEADER_OFFSET_BITS) - 1 // 16383
+
+/**
  * Defensive per-fragment loop cap. The band curve count is read straight from a
  * texture, and baked fonts can be fetched from external URLs — a corrupt/hostile
  * `.slug.glb` could carry a garbage count and spin the (now dynamic) loop into a GPU
@@ -75,8 +84,12 @@ export function slugRender(
   // loops) instead of TSL re-inlining them at every iteration — critically fwidth(), a derivative
   // op that must not be evaluated per-curve.
   const emsPerPixel = fwidth(renderCoord).toVar()
-  const pixelsPerEmX = float(1.0).div(max(emsPerPixel.x, 1.0 / 65536.0)).toVar()
-  const pixelsPerEmY = float(1.0).div(max(emsPerPixel.y, 1.0 / 65536.0)).toVar()
+  const pixelsPerEmX = float(1.0)
+    .div(max(emsPerPixel.x, 1.0 / 65536.0))
+    .toVar()
+  const pixelsPerEmY = float(1.0)
+    .div(max(emsPerPixel.y, 1.0 / 65536.0))
+    .toVar()
 
   // Pixels-per-em (isotropic average) for stem darkening and thickening
   const ppem = pixelsPerEmX.add(pixelsPerEmY).mul(0.5).toVar()
@@ -87,7 +100,9 @@ export function slugRender(
   const thickenPpem = float(24.0)
   // .toVar(): used 4× inside the two loops — hoist so its div/sub/mul/max runs once, not per curve.
   const thickenFactor = thicken
-    ? float(1.0).add(thicken.mul(max(float(0.0), float(1.0).sub(ppem.div(thickenPpem))))).toVar()
+    ? float(1.0)
+        .add(thicken.mul(max(float(0.0), float(1.0).sub(ppem.div(thickenPpem)))))
+        .toVar()
     : float(1.0)
 
   // Determine band indices from band transform
@@ -114,14 +129,17 @@ export function slugRender(
   // --- Horizontal band pass ---
   // Band header at (glyphLoc + bandIdxY)
   const hBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(bandIdxY))
-  const hBandHeader = textureLoad(bandTexture, hBandCoord)
-  const hRawCount = int(hBandHeader.x)
+  // Single packed R32F texel → decode count (high bits) + offset (low bits).
+  // .toVar(): read once, unpacked twice (count + offset).
+  const hHeaderPacked = int(textureLoad(bandTexture, hBandCoord).x).toVar()
+  const hRawCount = hHeaderPacked.shiftRight(HEADER_OFFSET_BITS)
   const hCurveCount = select(
     hRawCount.greaterThan(int(MAX_SAFE_BAND_CURVES)),
     int(MAX_SAFE_BAND_CURVES),
     hRawCount
   )
-  const hCurveListOffset = int(hBandHeader.y)
+  // .toVar(): loop-invariant reused every iteration (hCurveListOffset.add(i)).
+  const hCurveListOffset = hHeaderPacked.bitAnd(HEADER_OFFSET_MASK).toVar()
 
   // Dynamic loop bound: iterate exactly this band's curve count (from the band
   // header), like Lengyel's/JSlug's reference. A compile-time bound forced the
@@ -130,11 +148,13 @@ export function slugRender(
   // count. It also removes the old truncation risk — a band denser than the former
   // 40-curve cap now renders correctly instead of dropping curves.
   Loop({ start: 0, end: hCurveCount, type: 'int' }, ({ i }) => {
-    // Read curve reference with row wrapping
+    // Read curve reference with row wrapping. Single packed R32F texel →
+    // decode texelX (low 12 bits) + texelY (high bits). .toVar(): read once,
+    // unpacked twice (mask + shift).
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, hCurveListOffset.add(i))
-    const refData = textureLoad(bandTexture, refCoord)
-    const curveTexX = int(refData.x)
-    const curveTexY = int(refData.y)
+    const refPacked = int(textureLoad(bandTexture, refCoord).x).toVar()
+    const curveTexX = refPacked.bitAnd(TEXTURE_WIDTH_MASK)
+    const curveTexY = refPacked.shiftRight(LOG_TEXTURE_WIDTH)
 
     // Load 3 control points from curve texture (2 consecutive texels)
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
@@ -183,21 +203,22 @@ export function slugRender(
   // --- Vertical band pass ---
   // Band header at (glyphLoc + numHBands + bandIdxX)
   const vBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(numHBands).add(int(bandIdxX)))
-  const vBandHeader = textureLoad(bandTexture, vBandCoord)
-  const vRawCount = int(vBandHeader.x)
+  // Packed R32F header — see the horizontal pass for the layout + .toVar() rationale.
+  const vHeaderPacked = int(textureLoad(bandTexture, vBandCoord).x).toVar()
+  const vRawCount = vHeaderPacked.shiftRight(HEADER_OFFSET_BITS)
   const vCurveCount = select(
     vRawCount.greaterThan(int(MAX_SAFE_BAND_CURVES)),
     int(MAX_SAFE_BAND_CURVES),
     vRawCount
   )
-  const vCurveListOffset = int(vBandHeader.y)
+  const vCurveListOffset = vHeaderPacked.bitAnd(HEADER_OFFSET_MASK).toVar()
 
   // Dynamic loop bound — see the horizontal pass above.
   Loop({ start: 0, end: vCurveCount, type: 'int' }, ({ i }) => {
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, vCurveListOffset.add(i))
-    const refData = textureLoad(bandTexture, refCoord)
-    const curveTexX = int(refData.x)
-    const curveTexY = int(refData.y)
+    const refPacked = int(textureLoad(bandTexture, refCoord).x).toVar()
+    const curveTexX = refPacked.bitAnd(TEXTURE_WIDTH_MASK)
+    const curveTexY = refPacked.shiftRight(LOG_TEXTURE_WIDTH)
 
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
     const texel1 = textureLoad(curveTexture, ivec2(curveTexX.add(1), curveTexY))

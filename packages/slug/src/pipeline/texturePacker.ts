@@ -4,13 +4,77 @@ import {
   FloatType,
   HalfFloatType,
   NearestFilter,
+  RedFormat,
   RGBAFormat,
-  RGFormat,
 } from 'three'
 import type { SlugGlyphData, SlugTextureData } from '../types.js'
 
 /** Default texture width in texels (must be power of 2). */
 const TEXTURE_WIDTH = 4096
+
+// ── Band texel packing (R32Float, single channel) ──────────────────────────
+// Every band texel packs two small non-negative integers into ONE float32.
+// float32 stores integers ≤ 2^24-1 (16,777,215) exactly, so both encodings are
+// bit-exact — the decoded count/offset/texelX/texelY equal the pre-pack values.
+// The matching shader decode lives in `shaders/slugFragment.ts` + `slugStroke.ts`.
+
+/** log2(TEXTURE_WIDTH). A curve-ref texel packs texelY in the high bits and
+ *  texelX (< 4096) in the low 12 bits: `texelY << 12 | texelX`. */
+const LOG_TEXTURE_WIDTH = 12
+const TEXTURE_WIDTH_MASK = (1 << LOG_TEXTURE_WIDTH) - 1 // 4095
+
+/**
+ * Band-header bit split: `curveCount` in the high 10 bits, `curveListOffset` in
+ * the low 14 bits → `curveCount << 14 | curveListOffset`. Max packed value is
+ * `1023 * 16384 + 16383 = 2^24-1`, exact in float32.
+ *
+ * - 10-bit count (≤ 1023) covers `MAX_SAFE_BAND_CURVES` (512, the shader's read
+ *   cap) with 2× headroom; no real font band approaches 1023 curves.
+ * - 14-bit offset (≤ 16383) covers the largest per-glyph curve-list offset
+ *   (offset is glyph-relative — Inter-Regular's densest glyph observes offsets
+ *   in the low hundreds, so 16383 leaves ample headroom). Both are GUARDED.
+ */
+const HEADER_OFFSET_BITS = 14
+const HEADER_OFFSET_MASK = (1 << HEADER_OFFSET_BITS) - 1 // 16383
+const MAX_HEADER_COUNT = (1 << (24 - HEADER_OFFSET_BITS)) - 1 // 1023
+
+/**
+ * Pack a band header `(curveCount, curveListOffset)` into one float32. Both are
+ * small non-negative integers and round-trip exactly. Throws {@link RangeError}
+ * if either exceeds its field so a silent bit-collision can never ship.
+ */
+export function packHeader(count: number, offset: number): number {
+  if (!Number.isInteger(count) || count < 0 || count > MAX_HEADER_COUNT) {
+    throw new RangeError(
+      `packHeader: band curve count ${count} out of range 0..${MAX_HEADER_COUNT} ` +
+        `(the ${24 - HEADER_OFFSET_BITS}-bit header count field)`
+    )
+  }
+  if (!Number.isInteger(offset) || offset < 0 || offset > HEADER_OFFSET_MASK) {
+    throw new RangeError(
+      `packHeader: curve-list offset ${offset} out of range 0..${HEADER_OFFSET_MASK} ` +
+        `(the ${HEADER_OFFSET_BITS}-bit header offset field)`
+    )
+  }
+  return count * (HEADER_OFFSET_MASK + 1) + offset
+}
+
+/**
+ * Pack a curve-ref `(texelX, texelY)` into one float32 as `texelY << 12 | texelX`.
+ * `texelX` is always `< TEXTURE_WIDTH` by construction; `texelY` is GUARDED to
+ * the same 12-bit range and throws {@link RangeError} if the band curve-ref
+ * texture ever exceeds 4096 rows.
+ */
+export function packRefCoord(texelX: number, texelY: number): number {
+  if (!Number.isInteger(texelY) || texelY < 0 || texelY > TEXTURE_WIDTH_MASK) {
+    throw new RangeError(
+      `packRefCoord: curve texel Y ${texelY} out of range 0..${TEXTURE_WIDTH_MASK} ` +
+        `(curve texture exceeded ${TEXTURE_WIDTH_MASK + 1} rows — split the atlas)`
+    )
+  }
+  // texelX < TEXTURE_WIDTH by construction (curveOffset % TEXTURE_WIDTH).
+  return texelY * (TEXTURE_WIDTH_MASK + 1) + texelX
+}
 
 /** Round up to next power of 2. */
 function nextPow2(n: number): number {
@@ -35,12 +99,14 @@ function nextPow2(n: number): number {
  *     range and at ~11-bit mantissa precision which is subpixel-accurate
  *     at all realistic rendering sizes.
  *
- * Band Texture (RG32Float — FloatType, 2-channel):
+ * Band Texture (R32Float — FloatType, single-channel):
  *   - Per glyph: [hBand headers][vBand headers][curve ref lists]
- *   - Header: (curveCount, offsetFromGlyphStart) — stored as floats but
- *     always integer values, exactly representable up to 2^24
- *   - Curve ref: (texelX, texelY) → pointer into curve texture
- *   - 8 bytes per texel vs 16 for RGBA32F — halves band bandwidth
+ *   - Header texel: `packHeader(curveCount, offsetFromGlyphStart)` — two ints
+ *     packed into one float32 (count << 14 | offset), exact up to 2^24-1.
+ *   - Curve-ref texel: `packRefCoord(texelX, texelY)` = texelY << 12 | texelX,
+ *     a pointer into the curve texture, exact up to 2^24-1.
+ *   - 4 bytes per texel vs 8 for the old RG32F — halves every band read
+ *     (~2 headers + 1 ref-per-curve per fragment). Universal bandwidth win.
  */
 export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureData {
   // First pass: calculate total sizes
@@ -79,9 +145,9 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
 
   // Allocate buffers.
   // Curve texture: 4 channels × 2 bytes (half-float) = 8 bytes/texel.
-  // Band texture: 2 channels × 4 bytes (float) = 8 bytes/texel.
+  // Band texture: 1 channel × 4 bytes (float) = 4 bytes/texel (packed).
   const curveData = new Uint16Array(TEXTURE_WIDTH * curveHeight * 4) // RGBA half-float
-  const bandData = new Float32Array(TEXTURE_WIDTH * bandHeight * 2) // RG float
+  const bandData = new Float32Array(TEXTURE_WIDTH * bandHeight * 1) // R float (packed)
 
   let curveOffset = 0 // texel offset into curve texture
   let bandOffset = 0 // texel offset into band texture
@@ -163,25 +229,26 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
 
       for (let b = 0; b < bands.length; b++) {
         const band = bands[b]!
-        const headerIdx = (headerStart + b) * 2
-        bandData[headerIdx] = band.curveIndices.length
+        const headerIdx = headerStart + b // one R32F texel per header
+        const count = band.curveIndices.length
 
         // Check if this band's curve list matches the previous band's
         const indicesKey = band.curveIndices.join(',')
         if (b > 0 && indicesKey === prevIndicesKey) {
           // Reuse previous band's data offset
-          bandData[headerIdx + 1] = prevListOffset
+          bandData[headerIdx] = packHeader(count, prevListOffset)
         } else {
           // Write new curve reference list
           const listOffset = bandOffset - glyphBandStart
-          bandData[headerIdx + 1] = listOffset
+          bandData[headerIdx] = packHeader(count, listOffset)
           prevListOffset = listOffset
 
           for (const curveIdx of band.curveIndices) {
             const curveTexelOffset = curveTexelMap[curveIdx]!
-            const bidx = bandOffset * 2
-            bandData[bidx] = curveTexelOffset % TEXTURE_WIDTH
-            bandData[bidx + 1] = Math.floor(curveTexelOffset / TEXTURE_WIDTH)
+            bandData[bandOffset] = packRefCoord(
+              curveTexelOffset % TEXTURE_WIDTH,
+              Math.floor(curveTexelOffset / TEXTURE_WIDTH)
+            )
             bandOffset++
           }
         }
@@ -205,10 +272,10 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
   curveTexture.magFilter = NearestFilter
   curveTexture.needsUpdate = true
 
-  // Band texture — RG32F. Values are always small non-negative integers
-  // (counts up to ~40, offsets up to a few thousand) which are exactly
-  // representable as float32. Halves texel width vs the old RGBA32F.
-  const bandTexture = new DataTexture(bandData, TEXTURE_WIDTH, bandHeight, RGFormat, FloatType)
+  // Band texture — R32F (single channel). Each texel packs two small non-negative
+  // integers (header = count/offset, ref = texelX/texelY) into one float32 — all
+  // exact in float32's 24-bit mantissa. Halves texel width vs the old RG32F.
+  const bandTexture = new DataTexture(bandData, TEXTURE_WIDTH, bandHeight, RedFormat, FloatType)
   bandTexture.minFilter = NearestFilter
   bandTexture.magFilter = NearestFilter
   bandTexture.needsUpdate = true

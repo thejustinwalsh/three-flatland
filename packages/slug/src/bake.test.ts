@@ -19,7 +19,7 @@ function makeTinyInput(): BakeInput {
   for (let i = 0; i < curveData.length; i++) curveData[i] = i + 1
 
   const bandTextureHeight = 1
-  const bandData = new Float32Array(textureWidth * bandTextureHeight * 2)
+  const bandData = new Float32Array(textureWidth * bandTextureHeight * 1) // R32F, 1 ch
   for (let i = 0; i < bandData.length; i++) bandData[i] = (i + 1) * 0.5
 
   const glyph: SlugGlyphData = {
@@ -105,7 +105,7 @@ describe('FlSlugFontExtension — registerable glTF-Transform extension', () => 
     }
 
     // Metadata survives the round-trip too.
-    expect(prop!.getMetadata()['version']).toBe(1)
+    expect(prop!.getMetadata()['version']).toBe(2)
 
     // Re-write to confirm the registered extension round-trips without loss.
     const rewritten = await io.writeBinary(doc)

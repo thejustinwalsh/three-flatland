@@ -14,11 +14,24 @@ export const SLUG_EXTENSION_NAME = 'FL_slug_font'
 /**
  * Current `FL_slug_font` schema version, written by the baker and gated by the
  * reader. Bump ONLY on layout-incompatible changes; additive changes (new
- * optional accessors/fields) keep this version. A reader refuses a file whose
- * version exceeds what it supports, so a future bump fails loudly with a clear
- * message instead of misreading.
+ * optional accessors/fields) keep this version. The reader refuses a file whose
+ * version is outside `[SLUG_FONT_MIN_VERSION, SLUG_FONT_VERSION]`, so both a
+ * future bump and a stale bake fail loudly with a clear message (→ runtime
+ * fallback in the loader) instead of misreading.
+ *
+ * - v1: RG32Float band texture — header (count, offset) + ref (texelX, texelY).
+ * - v2: R32Float band texture — header/ref packed into one float per texel
+ *   (`packHeader`/`packRefCoord`), halving every band read. The GPU band-texel
+ *   bytes changed, so a v1 bake is unreadable by the v2 shader decode.
  */
-export const SLUG_FONT_VERSION = 1
+export const SLUG_FONT_VERSION = 2
+
+/**
+ * Oldest `FL_slug_font` version this build can read. v1 stored a two-channel
+ * band texture the v2 shader can no longer decode, so the reader rejects it
+ * loudly and the loader re-parses the source font at runtime.
+ */
+export const SLUG_FONT_MIN_VERSION = 2
 
 /** glTF accessor element type for a column. */
 export type SlugColumnType = 'SCALAR' | 'VEC2' | 'VEC4'

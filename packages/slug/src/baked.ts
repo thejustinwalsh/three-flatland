@@ -17,13 +17,13 @@
  * The extension JSON emitted by the bake helper has shape:
  * ```json
  * {
- *   "version": 1,
+ *   "version": 2,
  *   "metrics": { ... },
  *   "strokeSets": [...],
  *   "glyphs": { "count": N },
  *   "kern": { "stride": 3 },
  *   "curveTexture": { "width": W, "height": H, "format": "rgba16f" },
- *   "bandTexture":  { "width": W, "height": H, "format": "rg32f" },
+ *   "bandTexture":  { "width": W, "height": H, "format": "r32f" },
  *   "bands": { "glyphCount": N },
  *   "columns": {
  *     "glyphId":      { "accessor": <idx> },
@@ -67,7 +67,7 @@
 
 import type { GlbView } from './glb.js'
 import type { GlyphBands, SlugGlyphData } from './types.js'
-import { SLUG_EXTENSION_NAME, SLUG_FONT_VERSION } from './format.js'
+import { SLUG_EXTENSION_NAME, SLUG_FONT_MIN_VERSION, SLUG_FONT_VERSION } from './format.js'
 
 /** JSON header shape — kept for backward compat; consumed by unpackBaked (G4.2). */
 export interface BakedJSON {
@@ -133,7 +133,8 @@ export interface BakeInput {
   /** RGBA half-float data — 4 channels × 2 bytes per texel. */
   curveData: Uint16Array
   bandTextureHeight: number
-  /** RG float32 data — 2 channels × 4 bytes per texel. */
+  /** R32F band texture words — 1 channel × 4 bytes per texel, packed header/ref
+   *  (see `pipeline/texturePacker.ts` packHeader/packRefCoord). */
   bandData: Float32Array
   glyphs: Map<number, SlugGlyphData>
   cmap: [charCode: number, glyphId: number][]
@@ -174,11 +175,16 @@ export function unpackBaked(asset: GlbView): BakedFontData {
   if (!ext) throw new Error('unpackBaked: FL_slug_font extension not found in GLB')
 
   const version = ext['version']
-  if (typeof version !== 'number' || version > SLUG_FONT_VERSION) {
+  if (
+    typeof version !== 'number' ||
+    version < SLUG_FONT_MIN_VERSION ||
+    version > SLUG_FONT_VERSION
+  ) {
     throw new Error(
       `unpackBaked: unsupported FL_slug_font version ${String(version)} ` +
-        `(this build supports up to ${SLUG_FONT_VERSION}). Re-bake with a matching ` +
-        `slug-bake, or upgrade @three-flatland/slug.`
+        `(this build supports ${SLUG_FONT_MIN_VERSION}..${SLUG_FONT_VERSION}). A pre-v2 ` +
+        `bake uses the old two-channel band texture the current shader can't decode — ` +
+        `re-bake with a matching slug-bake, or upgrade @three-flatland/slug.`
     )
   }
 

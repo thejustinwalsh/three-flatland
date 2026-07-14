@@ -4,8 +4,8 @@ import {
   HalfFloatType,
   Loader,
   NearestFilter,
+  RedFormat,
   RGBAFormat,
-  RGFormat,
 } from 'three'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
 import { readGlb } from './glb.js'
@@ -178,13 +178,13 @@ export class SlugFontLoader extends Loader<SlugFont> {
       curveTexture.minFilter = NearestFilter
       curveTexture.needsUpdate = true
 
-      // ── Band texture: RG32F → FloatType ──
+      // ── Band texture: R32F → FloatType (single-channel packed header/ref) ──
       const bandData = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
       const bandTexture = new DataTexture(
         bandData,
         bandTexMeta.width,
         bandTexMeta.height,
-        RGFormat,
+        RedFormat,
         FloatType
       )
       bandTexture.magFilter = NearestFilter

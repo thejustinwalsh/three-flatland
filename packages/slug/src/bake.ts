@@ -14,13 +14,13 @@
  * The extension JSON emitted by `packBaked` has shape:
  * ```json
  * {
- *   "version": 1,
+ *   "version": 2,
  *   "metrics": { ... },
  *   "strokeSets": [...],
  *   "glyphs": { "count": N },
  *   "kern": { "stride": 3 },
  *   "curveTexture": { "width": W, "height": H, "format": "rgba16f" },
- *   "bandTexture":  { "width": W, "height": H, "format": "rg32f" },
+ *   "bandTexture":  { "width": W, "height": H, "format": "r32f" },
  *   "bands": { "glyphCount": N },
  *   "columns": {
  *     "glyphId": { "accessor": <idx> }, "bounds": { "accessor": <idx> }, …
@@ -414,7 +414,7 @@ export async function packBaked(input: BakeInput): Promise<Uint8Array> {
     glyphs: { count: glyphCount },
     kern: { stride: 3 },
     curveTexture: { width: textureWidth, height: curveTextureHeight, format: 'rgba16f' },
-    bandTexture: { width: textureWidth, height: bandTextureHeight, format: 'rg32f' },
+    bandTexture: { width: textureWidth, height: bandTextureHeight, format: 'r32f' },
     bands: { glyphCount },
     ...(input.strokeSets ? { strokeSets: input.strokeSets } : {}),
   }

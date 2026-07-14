@@ -37,18 +37,18 @@ Font data container. Holds parsed glyphs, GPU textures, text shaping, measuremen
 
 ### Properties
 
-| Property                                          | Type                         | Description                                                                 |
-| ------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------- |
-| `glyphs`                                          | `Map<number, SlugGlyphData>` | Glyph data indexed by glyph ID.                                             |
-| `curveTexture`                                    | `DataTexture`                | RGBA16F (`HalfFloatType`). Two texels per quadratic, with endpoint sharing. |
-| `bandTexture`                                     | `DataTexture`                | RG32F (`FloatType`). Band headers + curve reference lists.                  |
-| `textureWidth`                                    | `number`                     | Texture width in texels (typically 4096).                                   |
-| `unitsPerEm`                                      | `number`                     | Font design units per em.                                                   |
-| `ascender`                                        | `number`                     | Ascender in em-space.                                                       |
-| `descender`                                       | `number`                     | Descender in em-space (typically negative).                                 |
-| `capHeight`                                       | `number`                     | Cap height in em-space.                                                     |
-| `underlinePosition`, `underlineThickness`         | `number`                     | em-space metrics from OpenType `post` table (used by decoration emit).      |
-| `strikethroughPosition`, `strikethroughThickness` | `number`                     | em-space metrics from `os/2` table.                                         |
+| Property                                          | Type                         | Description                                                                             |
+| ------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
+| `glyphs`                                          | `Map<number, SlugGlyphData>` | Glyph data indexed by glyph ID.                                                         |
+| `curveTexture`                                    | `DataTexture`                | RGBA16F (`HalfFloatType`). Two texels per quadratic, with endpoint sharing.             |
+| `bandTexture`                                     | `DataTexture`                | R32F (`FloatType`). Band headers + curve reference lists, each packed into one float32. |
+| `textureWidth`                                    | `number`                     | Texture width in texels (typically 4096).                                               |
+| `unitsPerEm`                                      | `number`                     | Font design units per em.                                                               |
+| `ascender`                                        | `number`                     | Ascender in em-space.                                                                   |
+| `descender`                                       | `number`                     | Descender in em-space (typically negative).                                             |
+| `capHeight`                                       | `number`                     | Cap height in em-space.                                                                 |
+| `underlinePosition`, `underlineThickness`         | `number`                     | em-space metrics from OpenType `post` table (used by decoration emit).                  |
+| `strikethroughPosition`, `strikethroughThickness` | `number`                     | em-space metrics from `os/2` table.                                                     |
 
 ### Methods
 

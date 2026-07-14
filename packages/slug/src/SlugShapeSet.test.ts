@@ -105,7 +105,7 @@ describe('SlugShapeSet', () => {
     // …and their packed texels are bit-identical. Compare the prefix up to
     // shape 2's start (covers shape 0 and 1 entirely).
     const curvePrefix = (curveLoc2.y * 4096 + curveLoc2.x) * 4
-    const bandPrefix = (bandLoc2.y * 4096 + bandLoc2.x) * 2
+    const bandPrefix = (bandLoc2.y * 4096 + bandLoc2.x) * 1 // R32F: 1 float/texel
     expect(curvePrefix).toBeGreaterThan(0)
     expect(bandPrefix).toBeGreaterThan(0)
     expect(Array.from(curveData2.subarray(0, curvePrefix))).toEqual(

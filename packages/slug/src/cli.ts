@@ -263,7 +263,8 @@ async function bakeFont(
     console.log(`  max band fill: ${maxBandFill} (advisory ${DENSE_BAND_THRESHOLD})`)
   }
 
-  // Curve data is Uint16Array (half-float RGBA). Band data is Float32Array (RG).
+  // Curve data is Uint16Array (half-float RGBA). Band data is Float32Array (R,
+  // single-channel packed header/ref — see texturePacker packHeader/packRefCoord).
   // Three's `DataTexture.image` is `{ data, width, height }` but typed as the
   // generic `Texture['image']` union. Narrow once for downstream packing.
   const curveImage = textures.curveTexture.image as {
