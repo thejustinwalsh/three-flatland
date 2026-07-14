@@ -62,7 +62,13 @@ export async function instantiateWasm(
 ): Promise<WebAssembly.WebAssemblyInstantiatedSource> {
   const res = await response
   try {
-    return await WebAssembly.instantiateStreaming(res, imports)
+    // Stream from a clone so the original body stays unread for the
+    // fallback. instantiateStreaming consumes (and locks) the body it is
+    // given, and on a MIME rejection it may have already drained it — a
+    // second read of the same Response throws "body stream already read"
+    // (seen in Safari, which rejects streaming for non-application/wasm
+    // MIME types where Chrome accepts it).
+    return await WebAssembly.instantiateStreaming(res.clone(), imports)
   } catch (e) {
     // Only fall back for MIME errors, not genuine WASM validation failures
     if (e instanceof TypeError || (e instanceof Error && /mime/i.test(e.message))) {
