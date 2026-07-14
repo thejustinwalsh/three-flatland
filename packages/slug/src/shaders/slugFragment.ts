@@ -75,12 +75,8 @@ export function slugRender(
   // loops) instead of TSL re-inlining them at every iteration — critically fwidth(), a derivative
   // op that must not be evaluated per-curve.
   const emsPerPixel = fwidth(renderCoord).toVar()
-  const pixelsPerEmX = float(1.0)
-    .div(max(emsPerPixel.x, 1.0 / 65536.0))
-    .toVar()
-  const pixelsPerEmY = float(1.0)
-    .div(max(emsPerPixel.y, 1.0 / 65536.0))
-    .toVar()
+  const pixelsPerEmX = float(1.0).div(max(emsPerPixel.x, 1.0 / 65536.0)).toVar()
+  const pixelsPerEmY = float(1.0).div(max(emsPerPixel.y, 1.0 / 65536.0)).toVar()
 
   // Pixels-per-em (isotropic average) for stem darkening and thickening
   const ppem = pixelsPerEmX.add(pixelsPerEmY).mul(0.5).toVar()
@@ -91,9 +87,7 @@ export function slugRender(
   const thickenPpem = float(24.0)
   // .toVar(): used 4× inside the two loops — hoist so its div/sub/mul/max runs once, not per curve.
   const thickenFactor = thicken
-    ? float(1.0)
-        .add(thicken.mul(max(float(0.0), float(1.0).sub(ppem.div(thickenPpem)))))
-        .toVar()
+    ? float(1.0).add(thicken.mul(max(float(0.0), float(1.0).sub(ppem.div(thickenPpem))))).toVar()
     : float(1.0)
 
   // Determine band indices from band transform
@@ -139,22 +133,8 @@ export function slugRender(
     // Read curve reference with row wrapping
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, hCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)
-
-    // Early exit on sorted max-X — BEFORE the two curve-texel loads. Curves are
-    // sorted descending by max-X, so once a curve's hull is >0.5px left of the
-    // pixel, all remaining are too. refData.y is the curve's max-x hull in
-    // em-space (pre-subtraction), baked from the SAME half-float texels this
-    // shader decodes, so `(hull - renderCoord.x)*ppem` is bit-identical to the
-    // old post-load `max(p0.x,p1.x,p2.x)*ppem` — but skips the terminal curve's
-    // texel reads (perf win #2). pixelsPerEmX/renderCoord are hoisted vars.
-    If(refData.y.sub(renderCoord.x).mul(pixelsPerEmX).lessThan(-0.5), () => {
-      Break()
-    })
-
-    // Unpack the packed curve-texel coord: x = packed & (W-1), y = packed >> log2(W).
-    const packed = int(refData.x).toVar()
-    const curveTexX = packed.bitAnd(TEXTURE_WIDTH_MASK).toVar()
-    const curveTexY = packed.shiftRight(LOG_TEXTURE_WIDTH).toVar()
+    const curveTexX = int(refData.x)
+    const curveTexY = int(refData.y)
 
     // Load 3 control points from curve texture (2 consecutive texels)
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
@@ -164,6 +144,13 @@ export function slugRender(
     const p0 = vec2(texel0.x, texel0.y).sub(renderCoord)
     const p1 = vec2(texel0.z, texel0.w).sub(renderCoord)
     const p2 = vec2(texel1.x, texel1.y).sub(renderCoord)
+
+    // Early exit on sorted max-X: curves are sorted descending by max X,
+    // so if this curve's max X is left of pixel, all remaining are too
+    const maxX = max(max(p0.x, p1.x), p2.x).mul(pixelsPerEmX)
+    If(maxX.lessThan(-0.5), () => {
+      Break()
+    })
 
     // Root eligibility — if both roots are ineligible (rootCode == 0) the
     // curve doesn't cross the horizontal ray at all and contributes nothing.
@@ -209,17 +196,8 @@ export function slugRender(
   Loop({ start: 0, end: vCurveCount, type: 'int' }, ({ i }) => {
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, vCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)
-
-    // Early exit on sorted max-Y — BEFORE the curve loads. refData.y is this
-    // curve's max-y hull (em-space), so the test is bit-identical to the old
-    // post-load `max(p0.y,p1.y,p2.y)*ppem`. See the horizontal pass above.
-    If(refData.y.sub(renderCoord.y).mul(pixelsPerEmY).lessThan(-0.5), () => {
-      Break()
-    })
-
-    const packed = int(refData.x).toVar()
-    const curveTexX = packed.bitAnd(TEXTURE_WIDTH_MASK).toVar()
-    const curveTexY = packed.shiftRight(LOG_TEXTURE_WIDTH).toVar()
+    const curveTexX = int(refData.x)
+    const curveTexY = int(refData.y)
 
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
     const texel1 = textureLoad(curveTexture, ivec2(curveTexX.add(1), curveTexY))
@@ -227,6 +205,12 @@ export function slugRender(
     const p0 = vec2(texel0.x, texel0.y).sub(renderCoord)
     const p1 = vec2(texel0.z, texel0.w).sub(renderCoord)
     const p2 = vec2(texel1.x, texel1.y).sub(renderCoord)
+
+    // Early exit on sorted max-Y
+    const maxY = max(max(p0.y, p1.y), p2.y).mul(pixelsPerEmY)
+    If(maxY.lessThan(-0.5), () => {
+      Break()
+    })
 
     const rootCode = calcRootCode(p0.x, p1.x, p2.x)
 
