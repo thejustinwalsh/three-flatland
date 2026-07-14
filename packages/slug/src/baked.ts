@@ -9,6 +9,10 @@
  * class live in the Node-only `./bake` module so `@gltf-transform/core` never
  * enters the browser `.` static graph.
  *
+ * `unpackBaked` reads v1 and v2 bakes alike (see `SLUG_FONT_MIN_VERSION`);
+ * `convertV1BandTexture` upgrades a v1 band texture to the v2 packed layout
+ * the shader decodes — `SlugFontLoader` calls it when `version === 1`.
+ *
  * ## GLB layout — FL_slug_font extension
  *
  * All numeric data lives in standard glTF accessors in the BIN chunk.
@@ -68,6 +72,7 @@
 import type { GlbView } from './glb.js'
 import type { GlyphBands, SlugGlyphData } from './types.js'
 import { SLUG_EXTENSION_NAME, SLUG_FONT_MIN_VERSION, SLUG_FONT_VERSION } from './format.js'
+import { packHeader, packRefCoord } from './pipeline/texturePacker.js'
 
 /** JSON header shape — kept for backward compat; consumed by unpackBaked (G4.2). */
 export interface BakedJSON {
@@ -182,9 +187,8 @@ export function unpackBaked(asset: GlbView): BakedFontData {
   ) {
     throw new Error(
       `unpackBaked: unsupported FL_slug_font version ${String(version)} ` +
-        `(this build supports ${SLUG_FONT_MIN_VERSION}..${SLUG_FONT_VERSION}). A pre-v2 ` +
-        `bake uses the old two-channel band texture the current shader can't decode — ` +
-        `re-bake with a matching slug-bake, or upgrade @three-flatland/slug.`
+        `(this build supports ${SLUG_FONT_MIN_VERSION}..${SLUG_FONT_VERSION}). ` +
+        `Re-bake with a matching slug-bake, or upgrade @three-flatland/slug.`
     )
   }
 
@@ -273,6 +277,94 @@ export function unpackBaked(asset: GlbView): BakedFontData {
   const kernData = new DataView(kernArr.buffer, kernArr.byteOffset, kernArr.byteLength)
 
   return { glyphs, cmapCodes, cmapGlyphs, kernData, kernCount }
+}
+
+/**
+ * Convert a v1 `FL_slug_font` band texture (RG32Float — raw `[count, offset]`
+ * header texels and raw `[texelX, texelY]` ref texels, 2 floats/texel) into
+ * the v2 R32Float packed layout (`packHeader`/`packRefCoord`, 1 float/texel)
+ * the current fragment shader decodes. The texel GRID is identical between
+ * v1 and v2 — same width/height, same per-glyph `bandLocation` — only the
+ * channel count changed, so this walks each glyph's texel footprint in
+ * place and repacks it; `glyphs` is `unpackBaked`'s result, whose
+ * `bandLocation`/`bands.hBands`/`bands.vBands` come from the structured
+ * `bandData` column and are unaffected by the v1/v2 texture-format bump.
+ *
+ * **Classification.** A glyph's footprint starts at its `bandLocation`
+ * (linear texel index `y * textureWidth + x`). The first `numH + numV`
+ * texels are HEADERS (`numH`/`numV` = `hBands.length`/`vBands.length`).
+ * `offset` in a `[count, offset]` header is already GLYPH-relative — the
+ * writer's cursor starts at `headerTexels`, not 0 — so a header's own
+ * `[offset, offset + count)` range is the exact texel range (headers
+ * included) its ref list occupies. That holds dedup-aware too: a band
+ * reusing an earlier list's storage reports that same range. So the
+ * glyph's total footprint is `max(offset + count)` across all of its
+ * headers, with no dependence on which bands were the original writer vs.
+ * a reuse. Texels past the headers, up to that footprint, are REFS. A
+ * glyph with no bands (`numH + numV === 0`, e.g. a blank glyph) owns zero
+ * texels and needs no conversion.
+ *
+ * **Proof of coverage.** Real (non-empty) glyphs tile the band texture with
+ * no gaps: the baker always advances its write cursor by exactly one
+ * glyph's footprint (zero for an empty glyph), so two glyphs can only share
+ * a start texel if every glyph between them (in write order) is empty. Sorting
+ * the non-empty glyphs by `bandLocation` and asserting each one's computed
+ * footprint exactly abuts the next one's start therefore proves the
+ * classification covers every glyph's texels with no gaps or overlaps.
+ */
+export function convertV1BandTexture(
+  v1BandData: Float32Array,
+  textureWidth: number,
+  glyphs: Map<number, SlugGlyphData>
+): Float32Array {
+  const texelCount = v1BandData.length / 2
+  const v2BandData = new Float32Array(texelCount)
+
+  // Only glyphs that own band texels participate in the footprint layout —
+  // empty glyphs contribute zero length and need no conversion or check.
+  const owners = Array.from(glyphs.values())
+    .map((g) => ({
+      glyphId: g.glyphId,
+      start: g.bandLocation.y * textureWidth + g.bandLocation.x,
+      headerCount: g.bands.hBands.length + g.bands.vBands.length,
+    }))
+    .filter((g) => g.headerCount > 0)
+    .sort((a, b) => a.start - b.start)
+
+  for (let i = 0; i < owners.length; i++) {
+    const { glyphId, start, headerCount } = owners[i]!
+
+    // ── Headers: raw [count, offset] -> packHeader, tracking the glyph's
+    // total footprint from each header's own (offset, count) — `offset` is
+    // already glyph-relative, so it needs no headerCount adjustment. ──
+    let footprint = headerCount
+    for (let h = 0; h < headerCount; h++) {
+      const texel = start + h
+      const count = v1BandData[texel * 2]!
+      const offset = v1BandData[texel * 2 + 1]!
+      v2BandData[texel] = packHeader(count, offset)
+      if (offset + count > footprint) footprint = offset + count
+    }
+
+    // ── Refs: raw [texelX, texelY] -> packRefCoord. ──
+    for (let r = headerCount; r < footprint; r++) {
+      const texel = start + r
+      v2BandData[texel] = packRefCoord(v1BandData[texel * 2]!, v1BandData[texel * 2 + 1]!)
+    }
+
+    // No gaps/overlaps: the next OWNING glyph must begin exactly where this
+    // one's footprint ends (see doc comment above).
+    const next = owners[i + 1]
+    if (next && next.start !== start + footprint) {
+      throw new Error(
+        `convertV1BandTexture: glyph ${glyphId} footprint [${start}, ${start + footprint}) ` +
+          `does not abut next owning glyph ${next.glyphId}'s start ${next.start} — v1 band ` +
+          `texture layout assumption violated`
+      )
+    }
+  }
+
+  return v2BandData
 }
 
 /**

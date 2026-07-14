@@ -10,7 +10,7 @@ import {
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
 import { readGlb } from './glb.js'
 import { SlugFont } from './SlugFont.js'
-import { bakedURLs, unpackBaked } from './baked.js'
+import { bakedURLs, convertV1BandTexture, unpackBaked } from './baked.js'
 import { shapeTextBaked } from './pipeline/textShaperBaked.js'
 import { wrapLinesBaked } from './pipeline/wrapLinesBaked.js'
 import { measureTextBaked } from './pipeline/textMeasureBaked.js'
@@ -146,6 +146,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
       if (!ext) return null
 
       const bakedData = unpackBaked(asset)
+      const version = ext['version'] as number
       const columns = ext['columns'] as Record<string, { accessor: number }>
       const metrics = ext['metrics'] as {
         unitsPerEm: number
@@ -179,7 +180,14 @@ export class SlugFontLoader extends Loader<SlugFont> {
       curveTexture.needsUpdate = true
 
       // ── Band texture: R32F → FloatType (single-channel packed header/ref) ──
-      const bandData = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
+      // A v1 bake's accessor is still RG32Float (2 raw floats/texel, not yet
+      // packed) — convert it to the v2 packed layout so the shader, which
+      // only decodes R32F, reads it unchanged.
+      const bandDataRaw = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
+      const bandData =
+        version === 1
+          ? convertV1BandTexture(bandDataRaw, bandTexMeta.width, bakedData.glyphs)
+          : bandDataRaw
       const bandTexture = new DataTexture(
         bandData,
         bandTexMeta.width,

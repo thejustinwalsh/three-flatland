@@ -26,7 +26,7 @@ describe('unpackBaked version gate', () => {
     )
   })
 
-  it('rejects a FL_slug_font version older than the minimum (stale RG32F bake)', () => {
+  it('rejects a FL_slug_font version older than the minimum', () => {
     expect(() => unpackBaked(stub({ version: SLUG_FONT_MIN_VERSION - 1 }))).toThrow(
       /unsupported FL_slug_font version/
     )
