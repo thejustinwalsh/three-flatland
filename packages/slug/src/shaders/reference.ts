@@ -25,20 +25,16 @@ export function refCalcRootCode(y1: number, y2: number, y3: number): number {
  * guard, ordered t1=(b−d)/a, t2=(b+d)/a.
  */
 function stableRootsRef(a: number, b: number, c: number): [number, number] {
+  // Mirrors the shader's JSlug naive solve: roots (b∓d)/a, d = sqrt(max(disc, 0)); a≈0 → c/2b.
+  // TRADE-OFF vs the former q-form: (b-d)/a suffers catastrophic cancellation when b≈d (small
+  // leading coeff) in float32 — the grazing case the q-form protected. See the perf-plan note.
   if (Math.abs(a) < 1.0 / 65536.0) {
     const t = c / (2 * b)
     return [t, t]
   }
-  const discRaw = b * b - a * c
-  if (discRaw <= 0) {
-    const e = b / a
-    return [e, e]
-  }
-  const d = Math.sqrt(discRaw)
-  const q = b + (b >= 0 ? 1 : -1) * d
-  const rootA = q / a
-  const rootB = c / q
-  return b >= 0 ? [rootB, rootA] : [rootA, rootB]
+  const d = Math.sqrt(Math.max(b * b - a * c, 0))
+  const invA = 1 / a
+  return [(b - d) * invA, (b + d) * invA]
 }
 
 /**

@@ -1,4 +1,4 @@
-import { vec2, select, abs, sqrt, float, If } from 'three/tsl'
+import { vec2, max, abs, sqrt, float, If } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 
 /**
@@ -21,7 +21,11 @@ import type Node from 'three/src/nodes/core/Node.js'
  * Must be called inside a Fn() TSL context.
  */
 function stableRoots(a: Node<'float'>, b: Node<'float'>, c: Node<'float'>) {
-  const discRaw = b.mul(b).sub(a.mul(c))
+  // JSlug's cheaper naive solve: d = sqrt(max(disc, 0)); roots (b∓d)/a; a≈0 → linear c/2b.
+  // (disc<=0 folds in via max→d=0→double root b/a, so no separate tangent branch.) TRADE-OFF:
+  // this drops the q-form's grazing robustness — (b-d)/a suffers catastrophic cancellation when
+  // b≈d (small leading coefficient), where the q-form's q=b+sign(b)·d + c/q stays stable.
+  const d = sqrt(max(b.mul(b).sub(a.mul(c)), 0.0)).toVar()
   const t1 = float(0).toVar()
   const t2 = float(0).toVar()
 
@@ -29,26 +33,11 @@ function stableRoots(a: Node<'float'>, b: Node<'float'>, c: Node<'float'>) {
     const tLin = c.div(b.mul(2.0))
     t1.assign(tLin)
     t2.assign(tLin)
+  }).Else(() => {
+    const invA = float(1.0).div(a).toVar()
+    t1.assign(b.sub(d).mul(invA))
+    t2.assign(b.add(d).mul(invA))
   })
-    .ElseIf(discRaw.lessThanEqual(0.0), () => {
-      const extremum = b.div(a)
-      t1.assign(extremum)
-      t2.assign(extremum)
-    })
-    .Else(() => {
-      // Materialize each shared subexpression with .toVar(). Without it TSL INLINES these
-      // nodes at every use site, and `select(bPos, rootA, rootB)` evaluates BOTH operands —
-      // so d / q / rootA / rootB (and the sqrt) fan out and get recomputed 4× per curve. The
-      // emitted WGSL confirmed 4 sqrt calls here; .toVar() collapses them to 1. Pure codegen
-      // hoist — the values are bit-identical, only the recomputation is removed.
-      const d = sqrt(discRaw).toVar()
-      const bPos = b.greaterThanEqual(0.0).toVar()
-      const q = b.add(select(bPos, float(1.0), float(-1.0)).mul(d)).toVar()
-      const rootA = q.div(a).toVar() // (b+d)/a when b>=0, (b-d)/a when b<0
-      const rootB = c.div(q).toVar() // paired Vieta root
-      t1.assign(select(bPos, rootB, rootA))
-      t2.assign(select(bPos, rootA, rootB))
-    })
 
   return vec2(t1, t2)
 }
