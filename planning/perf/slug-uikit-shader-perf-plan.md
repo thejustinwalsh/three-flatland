@@ -84,7 +84,11 @@ proven on the pinned-clock rig (vsync-off, dpr4, interleaved git-stash):
 - `eac7d015` JSlug naive bezier — **~5%** (near noise), NOT pixel-identical: ~0.08% grazing
   diff (documented trade-off, per request; q-form recoverable from history)
 - `c11bbd92` stroke decoration-rect short-circuit — skip the solve for rects
-- `0e8d9d13` tight glyph quad bounds (exact extremum) — less overdraw
+- `0e8d9d13` tight glyph quad bounds (exact extremum) — less overdraw. Isolated A/B
+  (runtime, dpr4, interleaved): **NEUTRAL on the ladder** (11.27 with vs 11.27 no-#5, within
+  ~0.06ms noise) — Latin glyphs are mostly-filled so the quad margin is a small fraction.
+  Kept: pixel-identical + a real structural fragment cut that pays on LOOSE-control content
+  (curvy SVGs, script fonts, the atom icon — plan est. ~5–30% there), just not Inter.
 - `ad1cd1ce` dedup ALL band lists + fix band-texture over-allocation — **band tex 4MB→2MB**,
   glb 7.5→5.45MB
 
