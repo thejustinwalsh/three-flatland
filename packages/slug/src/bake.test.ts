@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest'
 import { NodeIO } from '@gltf-transform/core'
 import { packBaked, FlSlugFontExtension } from './bake'
 import type { BakeInput } from './baked'
+import { SLUG_FONT_VERSION } from './format'
 import type { SlugGlyphData } from './types'
 
 function makeTinyInput(): BakeInput {
@@ -105,7 +106,7 @@ describe('FlSlugFontExtension — registerable glTF-Transform extension', () => 
     }
 
     // Metadata survives the round-trip too.
-    expect(prop!.getMetadata()['version']).toBe(1)
+    expect(prop!.getMetadata()['version']).toBe(SLUG_FONT_VERSION)
 
     // Re-write to confirm the registered extension round-trips without loss.
     const rewritten = await io.writeBinary(doc)

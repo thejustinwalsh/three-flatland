@@ -14,7 +14,7 @@
  * The extension JSON emitted by `packBaked` has shape:
  * ```json
  * {
- *   "version": 1,
+ *   "version": 2,
  *   "metrics": { ... },
  *   "strokeSets": [...],
  *   "glyphs": { "count": N },
@@ -27,6 +27,11 @@
  *   }
  * }
  * ```
+ *
+ * Format v2 (breaking): the `bandTexture` curve-ref texel packs both curve-texel
+ * coords in R (`texelY*4096 + texelX`) plus the curve's axis hull-max in G, so
+ * the fill shader can early-exit before the curve-texel loads. `unpackBaked`
+ * rejects v1 bakes (unpacked `(texelX, texelY)`, no hull) — re-bake them.
  *
  * ### Glyph ordering convention
  * Glyphs are stored **sorted ascending by glyphId** (the numeric glyph index

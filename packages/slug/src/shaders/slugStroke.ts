@@ -128,8 +128,12 @@ export function slugStroke(
   Loop({ start: 0, end: hCurveCount, type: 'int' }, ({ i }) => {
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, hCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)
-    const curveTexX = int(refData.x)
-    const curveTexY = int(refData.y)
+    // Unpack the packed curve-texel coord (band-ref R channel; format v2). The
+    // fill shader early-exits on refData.y (the axis hull); stroke needs every
+    // curve's distance, so it ignores the hull and just reads the pointer.
+    const packed = int(refData.x).toVar()
+    const curveTexX = packed.bitAnd(TEXTURE_WIDTH_MASK).toVar()
+    const curveTexY = packed.shiftRight(LOG_TEXTURE_WIDTH).toVar()
 
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
     const texel1 = textureLoad(curveTexture, ivec2(curveTexX.add(1), curveTexY))
@@ -165,8 +169,9 @@ export function slugStroke(
   Loop({ start: 0, end: vCurveCount, type: 'int' }, ({ i }) => {
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, vCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)
-    const curveTexX = int(refData.x)
-    const curveTexY = int(refData.y)
+    const packed = int(refData.x).toVar()
+    const curveTexX = packed.bitAnd(TEXTURE_WIDTH_MASK).toVar()
+    const curveTexY = packed.shiftRight(LOG_TEXTURE_WIDTH).toVar()
 
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
     const texel1 = textureLoad(curveTexture, ivec2(curveTexX.add(1), curveTexY))

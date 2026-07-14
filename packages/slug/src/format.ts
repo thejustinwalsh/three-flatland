@@ -17,8 +17,22 @@ export const SLUG_EXTENSION_NAME = 'FL_slug_font'
  * optional accessors/fields) keep this version. A reader refuses a file whose
  * version exceeds what it supports, so a future bump fails loudly with a clear
  * message instead of misreading.
+ *
+ * - v1: band-ref texel = (texelX, texelY), unpacked, no hull.
+ * - v2: band-ref texel = (packRefCoord(texelX,texelY), axisHullMax) — the R
+ *   channel packs both curve-texel coords and the G channel carries the curve's
+ *   axis hull-max so the fragment shader early-exits BEFORE the curve-texel
+ *   loads. A v1 file's band texture is byte-incompatible with the v2 shader, so
+ *   the reader rejects anything below {@link SLUG_FONT_MIN_VERSION}.
  */
-export const SLUG_FONT_VERSION = 1
+export const SLUG_FONT_VERSION = 2
+
+/**
+ * Oldest `FL_slug_font` version this build can read. Below this the on-GPU band
+ * texture layout is incompatible (see the v1→v2 note above), so `unpackBaked`
+ * rejects it with a "re-bake" error rather than rendering corruption.
+ */
+export const SLUG_FONT_MIN_VERSION = 2
 
 /** glTF accessor element type for a column. */
 export type SlugColumnType = 'SCALAR' | 'VEC2' | 'VEC4'

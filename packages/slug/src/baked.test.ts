@@ -30,6 +30,12 @@ describe('unpackBaked version gate', () => {
     expect(() => unpackBaked(stub({}))).toThrow(/unsupported FL_slug_font version/)
   })
 
+  it('rejects a too-old FL_slug_font version (v1 band layout is incompatible)', () => {
+    // v1 stored unpacked (texelX, texelY) refs with no hull — byte-incompatible
+    // with the v2 shader — so it must be rejected before any accessor read.
+    expect(() => unpackBaked(stub({ version: 1 }))).toThrow(/too old/)
+  })
+
   it('throws a clear error when the extension is absent', () => {
     expect(() => unpackBaked(stub(undefined))).toThrow(/FL_slug_font extension not found/)
   })
@@ -147,9 +153,10 @@ describe('packBaked — returns .glb', () => {
     expect(ext).toBeDefined()
   })
 
-  it('extension carries version 1', async () => {
+  it('extension carries the current format version', async () => {
     const { ext } = await bakeAndRead(makeSyntheticInput())
-    expect(ext['version']).toBe(1)
+    expect(ext['version']).toBe(SLUG_FONT_VERSION)
+    expect(SLUG_FONT_VERSION).toBe(2)
   })
 
   it('extension carries metrics', async () => {

@@ -17,7 +17,7 @@
  * The extension JSON emitted by the bake helper has shape:
  * ```json
  * {
- *   "version": 1,
+ *   "version": 2,
  *   "metrics": { ... },
  *   "strokeSets": [...],
  *   "glyphs": { "count": N },
@@ -41,6 +41,17 @@
  *   }
  * }
  * ```
+ *
+ * ### GPU `bandTexture` ref layout (format v2)
+ * The `columns.bandTexture` accessor holds the raw RG32F band texture built by
+ * `packTextures`. Each curve-reference texel packs both curve-texel coords in
+ * the R channel (`texelY*4096 + texelX`) and the curve's axis hull-max in the G
+ * channel (max-x for h-band refs, max-y for v-band refs), letting the fragment
+ * shader early-exit its sorted band loop before the curve-texel loads. This is
+ * the v1→v2 break: a v1 texture stored `(texelX, texelY)` with no hull, so
+ * `unpackBaked` rejects `version < SLUG_FONT_MIN_VERSION`. (The band *structure*
+ * columns `bandData`/`bandOffsets` below — curve INDICES for CPU measurement —
+ * are unchanged.)
  *
  * ### Glyph ordering convention
  * Glyphs are stored **sorted ascending by glyphId** (the numeric glyph index
@@ -67,7 +78,7 @@
 
 import type { GlbView } from './glb.js'
 import type { GlyphBands, SlugGlyphData } from './types.js'
-import { SLUG_EXTENSION_NAME, SLUG_FONT_VERSION } from './format.js'
+import { SLUG_EXTENSION_NAME, SLUG_FONT_MIN_VERSION, SLUG_FONT_VERSION } from './format.js'
 
 /** JSON header shape — kept for backward compat; consumed by unpackBaked (G4.2). */
 export interface BakedJSON {
@@ -179,6 +190,17 @@ export function unpackBaked(asset: GlbView): BakedFontData {
       `unpackBaked: unsupported FL_slug_font version ${String(version)} ` +
         `(this build supports up to ${SLUG_FONT_VERSION}). Re-bake with a matching ` +
         `slug-bake, or upgrade @three-flatland/slug.`
+    )
+  }
+  // Below the min: the on-GPU band-ref layout is byte-incompatible with this
+  // build's shader (v1 stored unpacked (texelX, texelY); v2+ packs the coord
+  // and carries an axis hull). Loading it would misread every ref, so reject
+  // with a clear re-bake message rather than render corruption.
+  if (version < SLUG_FONT_MIN_VERSION) {
+    throw new Error(
+      `unpackBaked: FL_slug_font version ${version} is too old ` +
+        `(this build needs >= ${SLUG_FONT_MIN_VERSION}). The band-texture ref layout ` +
+        `changed; re-bake the .slug.glb with a matching slug-bake.`
     )
   }
 
