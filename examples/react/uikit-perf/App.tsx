@@ -21,12 +21,68 @@ import {
 // twin imports the SAME names from @react-three/uikit-lucide (triangulated meshes). `Map`/`Image`
 // are aliased so they don't shadow the JS globals. See ICON_POOL below.
 import {
-  Activity, Airplay, Anchor, Aperture, Apple, Archive, Atom, Award, BatteryFull, Bell,
-  Book, Box, Camera, Check, Clock, Cloud, Code, Coffee, Compass, Cpu, Crown, Database,
-  Diamond, Feather, Flag, Flame, Flower, Folder, Gem, Gift, Globe, Hammer, Heart, House,
-  Image as ImageIcon, Key, Leaf, Lock, Mail, Map as MapIcon, Moon, Music, Rocket, Save,
-  Search, Send, Settings, Shield, Star, Sun, Tag, Target, Terminal, Trophy, Umbrella,
-  User, Video, Wallet, Wifi, Wind, Wrench, Zap,
+  Activity,
+  Airplay,
+  Anchor,
+  Aperture,
+  Apple,
+  Archive,
+  Atom,
+  Award,
+  BatteryFull,
+  Bell,
+  Book,
+  Box,
+  Camera,
+  Check,
+  Clock,
+  Cloud,
+  Code,
+  Coffee,
+  Compass,
+  Cpu,
+  Crown,
+  Database,
+  Diamond,
+  Feather,
+  Flag,
+  Flame,
+  Flower,
+  Folder,
+  Gem,
+  Gift,
+  Globe,
+  Hammer,
+  Heart,
+  House,
+  Image as ImageIcon,
+  Key,
+  Leaf,
+  Lock,
+  Mail,
+  Map as MapIcon,
+  Moon,
+  Music,
+  Rocket,
+  Save,
+  Search,
+  Send,
+  Settings,
+  Shield,
+  Star,
+  Sun,
+  Tag,
+  Target,
+  Terminal,
+  Trophy,
+  Umbrella,
+  User,
+  Video,
+  Wallet,
+  Wifi,
+  Wind,
+  Wrench,
+  Zap,
 } from '@three-flatland/uikit-lucide/react'
 import { effect, signal } from '@preact/signals-core'
 import { Suspense, use, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
@@ -311,12 +367,68 @@ const ZH_HANZI =
 // twin is a pure import-source swap. Order is load-bearing: the PRNG indexes into it, so both
 // apps MUST keep this list identical for the grids to match.
 const ICON_POOL = [
-  Activity, Airplay, Anchor, Aperture, Apple, Archive, Atom, Award, BatteryFull, Bell,
-  Book, Box, Camera, Check, Clock, Cloud, Code, Coffee, Compass, Cpu, Crown, Database,
-  Diamond, Feather, Flag, Flame, Flower, Folder, Gem, Gift, Globe, Hammer, Heart, House,
-  ImageIcon, Key, Leaf, Lock, Mail, MapIcon, Moon, Music, Rocket, Save, Search, Send,
-  Settings, Shield, Star, Sun, Tag, Target, Terminal, Trophy, Umbrella, User, Video,
-  Wallet, Wifi, Wind, Wrench, Zap,
+  Activity,
+  Airplay,
+  Anchor,
+  Aperture,
+  Apple,
+  Archive,
+  Atom,
+  Award,
+  BatteryFull,
+  Bell,
+  Book,
+  Box,
+  Camera,
+  Check,
+  Clock,
+  Cloud,
+  Code,
+  Coffee,
+  Compass,
+  Cpu,
+  Crown,
+  Database,
+  Diamond,
+  Feather,
+  Flag,
+  Flame,
+  Flower,
+  Folder,
+  Gem,
+  Gift,
+  Globe,
+  Hammer,
+  Heart,
+  House,
+  ImageIcon,
+  Key,
+  Leaf,
+  Lock,
+  Mail,
+  MapIcon,
+  Moon,
+  Music,
+  Rocket,
+  Save,
+  Search,
+  Send,
+  Settings,
+  Shield,
+  Star,
+  Sun,
+  Tag,
+  Target,
+  Terminal,
+  Trophy,
+  Umbrella,
+  User,
+  Video,
+  Wallet,
+  Wifi,
+  Wind,
+  Wrench,
+  Zap,
 ] as const
 
 /**
@@ -352,11 +464,12 @@ function gridCell(i: number, zh: boolean): { Icon: (typeof ICON_POOL)[number]; t
 }
 
 // ── LANGUAGE toggle (?lang=en|zh) ────────────────────────────────────────────
-// A second-pass Simplified-Chinese switch, present in every benchmark's nav. The `zh` RENDER
-// is intentionally NOT wired yet: the R32Float band-atlas repack caps a single glyph page
-// (curve texture ≤4096 rows, band offset <16383), so a CJK repertoire needs multi-page bakes
-// (planning/perf/glyph-paging-design.md). Until paging lands, selecting 简中 keeps the Latin
-// content and raises LangNotice explaining the gate — an honest stop-point, not broken tofu.
+// A second-pass Simplified-Chinese switch, present in every benchmark's nav. `zh` DOES render: a
+// common subset of Noto Sans SC (358 hanzi, 741 glyphs) packs into ONE curve/band page, so the
+// content actually shown needs no paging. The R32Float band-atlas repack still caps a single
+// glyph page (curve texture ≤4096 rows, band offset <16383), so the FULL ~65k-glyph CJK
+// repertoire needs multi-page bakes (planning/perf/glyph-paging-design.md) — that gap is what
+// CostPopover's cost table explains, not a gate on the subset rendered here.
 type Lang = 'en' | 'zh'
 function readLang(): Lang {
   return new URLSearchParams(window.location.search).get('lang') === 'zh' ? 'zh' : 'en'
@@ -372,7 +485,7 @@ const LADDER_HUD_TEXT_HZ = 4
 type LadderMode = '2d' | '3d'
 type LadderParams = {
   rotateDeg: number
-  dpr: number | undefined
+  dpr: number
   wobble: boolean
   mode: LadderMode
 }
@@ -393,9 +506,9 @@ const HUD_ROW: MetricId[] = ['fps', 'gpu', 'mem'] // left→right order in the s
 const HUD_CYCLE: MetricId[] = ['gpu', 'fps', 'mem'] // graph selection cycle; starts at GPU
 
 /**
- * Read the ladder query params ONCE at load: `?rotate=D`, `?dpr=N`, `?wobble=1`. The MODE is
- * derived (reload-based, so each path sets up its whole Canvas differently): any yaw
- * (`wobble` or a nonzero `rotate`) selects the world-space 3D path; otherwise the 2D
+ * Read the ladder query params ONCE at load: `?rotate=D`, `?dpr=N` (default 1), `?wobble=1`.
+ * The MODE is derived (reload-based, so each path sets up its whole Canvas differently): any
+ * yaw (`wobble` or a nonzero `rotate`) selects the world-space 3D path; otherwise the 2D
  * screen-space path.
  */
 function readLadderParams(): LadderParams {
@@ -403,11 +516,12 @@ function readLadderParams(): LadderParams {
   const rotate = Number(params.get('rotate'))
   const rotateDeg = Number.isFinite(rotate) ? rotate : 0
   const dprParam = params.get('dpr')
-  const dpr = dprParam == null ? undefined : Number(dprParam)
+  const dprValue = dprParam == null ? NaN : Number(dprParam)
+  const dpr = Number.isFinite(dprValue) && dprValue > 0 ? dprValue : 1
   const wobble = params.get('wobble') === '1'
   return {
     rotateDeg,
-    dpr: dpr != null && Number.isFinite(dpr) && dpr > 0 ? dpr : undefined,
+    dpr,
     wobble,
     mode: wobble || rotateDeg !== 0 ? '3d' : '2d',
   }
@@ -460,7 +574,7 @@ function LadderApp() {
         events={noEvents}
         style={{ height: '100dvh', touchAction: 'none' }}
         renderer={rendererConfig}
-        // `dpr` omitted (undefined) falls back to R3F's device-dpr default.
+        // `dpr` defaults to 1 (readLadderParams) — device-dpr scaling is opt-in via ?dpr=2.
         dpr={dpr}
         camera={
           is3d
@@ -486,22 +600,23 @@ function LadderApp() {
       {/* Transparent DOM hit-target over the HUD: the Canvas runs events={noEvents} (no
           per-move raycast, benchmark purity), so the graph's click-to-cycle comes from here. */}
       <HudCycleOverlay metricRef={metricRef} />
-      <LangNotice />
+      <CostPopover />
     </>
   )
 }
 
 /**
- * DENSE LABEL-GRID app (?scene=labelgrid). 2D-only (no 3D/orbit) — a screen-space grid of
- * several thousand icon+label cells. Reuses the ladder's whole shell: the same renderer config,
- * the same `LadderBridge`/`PerfHud`/`HudCycleOverlay` perf plumbing, and the same `LadderNav`
- * (which shows the Bench/Grid switch + the Lang toggle). `dpr` is honored so 1×/2× still A/B.
+ * DENSE LABEL-GRID app (?scene=labelgrid) — the ladder's structural twin. Reload-branched 2D/3D
+ * exactly like `LadderApp` (same `readLadderParams`, same camera/dpr/OrbitControls shape), and
+ * reuses the ladder's whole shell: the same renderer config, the same
+ * `LadderBridge`/`PerfHud`/`HudCycleOverlay` perf plumbing, and the same `LadderNav`.
  */
 function LabelGridApp() {
-  const { dpr } = useMemo(() => readLadderParams(), [])
+  const { rotateDeg, dpr, wobble, mode } = useMemo(() => readLadderParams(), [])
   const rendererConfig = useRendererConfig()
   const perfRef = useRef<PerfSample>({ fps: 0, frameMs: 0, gpuMs: 0, drawCalls: 0, memMB: 0 })
   const metricRef = useRef<MetricId>('gpu')
+  const is3d = mode === '3d'
 
   return (
     <>
@@ -510,47 +625,39 @@ function LabelGridApp() {
         style={{ height: '100dvh', touchAction: 'none' }}
         renderer={rendererConfig}
         dpr={dpr}
-        camera={{ position: [0, 0, 900], near: 0.1, far: 5000 }}
+        camera={
+          is3d
+            ? { fov: 45, position: [LADDER_CAM_X, 0, LADDER_CAM_Z], near: 0.1, far: 5000 }
+            : { position: [0, 0, 900], near: 0.1, far: 5000 }
+        }
       >
         <color attach="background" args={[LADDER_BG]} />
         <LadderBridge perfRef={perfRef} />
         <Suspense fallback={null}>
-          <LabelGridScene />
+          {is3d ? <LabelGrid3DScene rotateDeg={rotateDeg} wobble={wobble} /> : <LabelGrid2DScene />}
           <PerfHud perfRef={perfRef} metricRef={metricRef} />
         </Suspense>
+        {is3d && <LadderControls />}
       </Canvas>
       <LadderNav />
       <HudCycleOverlay metricRef={metricRef} />
-      <LangNotice />
+      <CostPopover />
     </>
   )
 }
 
 /**
- * The grid itself: fill the viewport with as many `GRID_CELL_W × GRID_CELL_H` cells as fit,
- * each a hairline-bordered (excel-like) row of one deterministic icon + one ≤6-char label.
- * `flex-wrap` on a full-width Fullscreen packs the cells left-to-right, top-to-bottom. Cell
- * count is derived from the live viewport ONCE at mount — several thousand on a laptop.
+ * One hairline-bordered (excel-like) icon+label cell per grid entry — no Fullscreen/Root
+ * wrapper, just the cells, so both the 2D and 3D grid scenes share this exact markup and only
+ * differ in what wraps it.
  */
-function LabelGridScene() {
-  const font = useContentFont()
-  useBenchReady()
-  const cells = useMemo(() => {
-    const zh = readLang() === 'zh'
-    const cols = Math.max(1, Math.floor(window.innerWidth / GRID_CELL_W))
-    const rows = Math.max(1, Math.floor(window.innerHeight / GRID_CELL_H))
-    const count = cols * rows
-    return Array.from({ length: count }, (_unused, i) => gridCell(i, zh))
-  }, [])
-
+function GridCells({
+  cells,
+}: {
+  cells: Array<{ Icon: (typeof ICON_POOL)[number]; text: string }>
+}) {
   return (
-    <Fullscreen
-      flexDirection="row"
-      flexWrap="wrap"
-      alignContent="flex-start"
-      justifyContent="flex-start"
-      fontFamilies={{ inter: { normal: font } }}
-    >
+    <>
       {cells.map(({ Icon, text }, i) => (
         <Container
           key={i}
@@ -571,6 +678,35 @@ function LabelGridScene() {
           </Text>
         </Container>
       ))}
+    </>
+  )
+}
+
+/**
+ * 2D path — fill the viewport with as many `GRID_CELL_W × GRID_CELL_H` cells as fit. `flex-wrap`
+ * on a full-width Fullscreen packs the cells left-to-right, top-to-bottom. Cell count is derived
+ * from the live viewport ONCE at mount — several thousand on a laptop.
+ */
+function LabelGrid2DScene() {
+  const font = useContentFont()
+  useBenchReady()
+  const cells = useMemo(() => {
+    const zh = readLang() === 'zh'
+    const cols = Math.max(1, Math.floor(window.innerWidth / GRID_CELL_W))
+    const rows = Math.max(1, Math.floor(window.innerHeight / GRID_CELL_H))
+    const count = cols * rows
+    return Array.from({ length: count }, (_unused, i) => gridCell(i, zh))
+  }, [])
+
+  return (
+    <Fullscreen
+      flexDirection="row"
+      flexWrap="wrap"
+      alignContent="flex-start"
+      justifyContent="flex-start"
+      fontFamilies={{ inter: { normal: font } }}
+    >
+      <GridCells cells={cells} />
     </Fullscreen>
   )
 }
@@ -641,6 +777,26 @@ function Ladder2DScene() {
 }
 
 /**
+ * Drives a group's Y yaw as a slow sine wobble when `wobble` is on (ref mutation, never
+ * setState — `delta` is R3F's per-frame seconds, accumulated for the phase). Shared by every 3D
+ * scene so the wobble math lives in exactly one place. When off, the group's static `rotation`
+ * prop stands untouched (and OrbitControls still orbits it).
+ */
+function useWobbleGroup(wobble: boolean): RefObject<Group | null> {
+  const groupRef = useRef<Group>(null)
+  const elapsedRef = useRef(0)
+  useFrame((_frameState, delta) => {
+    const group = groupRef.current
+    if (wobble && group != null) {
+      elapsedRef.current += delta
+      const amp = (LADDER_WOBBLE_AMP_DEG * Math.PI) / 180
+      group.rotation.y = amp * Math.sin((elapsedRef.current / LADDER_WOBBLE_PERIOD_S) * Math.PI * 2)
+    }
+  })
+  return groupRef
+}
+
+/**
  * 3D path — world-space `<Root>` inside the wobble group. Rows are CENTER-aligned and the
  * Root's default center anchor puts the ladder's own middle on the group origin, so the sine
  * yaw (and OrbitControls) pivot on the center of the text block, not a corner. TEXT + ICON
@@ -651,21 +807,7 @@ function Ladder3DScene({ rotateDeg, wobble }: { rotateDeg: number; wobble: boole
   useBenchReady()
   const text = readLang() === 'zh' ? ZH_LADDER_TEXT : LADDER_TEXT
   const yaw = (rotateDeg * Math.PI) / 180
-  const groupRef = useRef<Group>(null)
-  const elapsedRef = useRef(0)
-
-  // Wobble overrides the static `?rotate`: drive the group's Y yaw as a slow sine each frame
-  // (ref mutation, never setState). `delta` is R3F's per-frame seconds; accumulate it for the
-  // phase. When off, the static `rotation` prop stands (and OrbitControls still orbits).
-  useFrame((_frameState, delta) => {
-    const group = groupRef.current
-    if (wobble && group != null) {
-      elapsedRef.current += delta
-      const amp = (LADDER_WOBBLE_AMP_DEG * Math.PI) / 180
-      group.rotation.y =
-        amp * Math.sin((elapsedRef.current / LADDER_WOBBLE_PERIOD_S) * Math.PI * 2)
-    }
-  })
+  const groupRef = useWobbleGroup(wobble)
 
   return (
     <group ref={groupRef} rotation={[0, yaw, 0]}>
@@ -686,6 +828,50 @@ function Ladder3DScene({ rotateDeg, wobble }: { rotateDeg: number; wobble: boole
 }
 
 /**
+ * 3D path for the dense grid — mirrors Ladder3DScene: a world-space `<Root>` in the wobble
+ * group, CENTER-aligned, the same sine-yaw wobble. Cell count is derived from the ROOT's own
+ * size (`LADDER_ROOT_WIDTH`/`HEIGHT`), not the live viewport, so it's fixed regardless of camera
+ * framing — a fixed-size inner `<Container>` does the flex-wrap packing, centered inside Root.
+ */
+function LabelGrid3DScene({ rotateDeg, wobble }: { rotateDeg: number; wobble: boolean }) {
+  const font = useContentFont()
+  useBenchReady()
+  const yaw = (rotateDeg * Math.PI) / 180
+  const groupRef = useWobbleGroup(wobble)
+  const cells = useMemo(() => {
+    const zh = readLang() === 'zh'
+    const cols = Math.max(1, Math.floor(LADDER_ROOT_WIDTH / GRID_CELL_W))
+    const rows = Math.max(1, Math.floor(LADDER_ROOT_HEIGHT / GRID_CELL_H))
+    const count = cols * rows
+    return Array.from({ length: count }, (_unused, i) => gridCell(i, zh))
+  }, [])
+
+  return (
+    <group ref={groupRef} rotation={[0, yaw, 0]}>
+      <Root
+        width={LADDER_ROOT_WIDTH}
+        height={LADDER_ROOT_HEIGHT}
+        justifyContent="center"
+        alignItems="center"
+        overflow="visible"
+        fontFamilies={{ inter: { normal: font } }}
+      >
+        <Container
+          width={LADDER_ROOT_WIDTH}
+          height={LADDER_ROOT_HEIGHT}
+          flexDirection="row"
+          flexWrap="wrap"
+          alignContent="flex-start"
+          justifyContent="flex-start"
+        >
+          <GridCells cells={cells} />
+        </Container>
+      </Root>
+    </group>
+  )
+}
+
+/**
  * Dogfooded uikit perf HUD — a screen-space `<Fullscreen>` pinning a compact TOP-RIGHT panel
  * that survives 2D/3D/orbit (offset down so it clears the DOM nav strip). A single row of three
  * color-coded counters — FPS (green) · GPU (orange) · MEM (purple), refreshed at ~4Hz so the
@@ -699,7 +885,13 @@ function Ladder3DScene({ rotateDeg, wobble }: { rotateDeg: number; wobble: boole
  * creation, no React re-render (a setState here would let build.tsx's per-render resetProperties
  * clobber the imperative bars).
  */
-function PerfHud({ perfRef, metricRef }: { perfRef: RefObject<PerfSample>; metricRef: RefObject<MetricId> }) {
+function PerfHud({
+  perfRef,
+  metricRef,
+}: {
+  perfRef: RefObject<PerfSample>
+  metricRef: RefObject<MetricId>
+}) {
   const font = useSharedFont()
   // One pre-allocated ring per metric (shared head) so cycling shows each metric's own
   // continuous history — no reallocation, no history reset on switch.
@@ -833,7 +1025,8 @@ function HudCycleOverlay({ metricRef }: { metricRef: RefObject<MetricId> }) {
       aria-label="Cycle the perf graph metric (GPU, FPS, MEM)"
       title="Click to cycle the graph metric — GPU → FPS → MEM"
       onClick={() => {
-        metricRef.current = HUD_CYCLE[(HUD_CYCLE.indexOf(metricRef.current) + 1) % HUD_CYCLE.length]!
+        metricRef.current =
+          HUD_CYCLE[(HUD_CYCLE.indexOf(metricRef.current) + 1) % HUD_CYCLE.length]!
       }}
       style={{
         position: 'fixed',
@@ -852,16 +1045,53 @@ function HudCycleOverlay({ metricRef }: { metricRef: RefObject<MetricId> }) {
   )
 }
 
+// GPU curve/band-page memory per CJK coverage tier, for CostPopover's table. Slug's cost model:
+// a page holds a fixed curve/band budget, so cost scales with glyph count, not repertoire size —
+// the common 3,500-hanzi tier is the one this app actually ships (see the language-toggle
+// comment above readLang).
+const ZH_COST_ROWS: Array<{ tier: string; glyphs: string; cost: string }> = [
+  { tier: 'common 3,500', glyphs: '3,500', cost: '12 MB (1 page)' },
+  { tier: 'GB2312', glyphs: '6,763', cost: '24 MB (1 page)' },
+  { tier: 'GBK', glyphs: '21,000', cost: '74 MB (1 page)' },
+  { tier: 'full CJK (Noto SC)', glyphs: '65,535', cost: '229 MB (paged)' },
+]
+const COST_PANEL_FONT = "500 11px/1.4 ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace"
+
 /**
- * Simplified-Chinese info badge (Slug app) — a fixed DOM chip shown ONLY when `?lang=zh`.
- * Chinese RENDERS here via a common subset (Noto Sans SC, OFL): 358 of the most-used hanzi →
- * 741 glyphs → ONE curve/band page, ~2.1MB GPU. No paging needed — a common subset is small;
- * only the full ~65k-glyph repertoire (≈229MB) would need multi-page. The MSDF twin can't do
- * this cheaply, so its `?lang=zh` shows the memory chart instead of rendering.
+ * Simplified-Chinese cost popover (Slug app) — a fixed DOM panel shown ONLY when `?lang=zh`,
+ * breaking down Slug's curve/band GPU-memory cost per CJK coverage tier (see ZH_COST_ROWS).
+ * Dismissible: `×` hides it (local useState, no persistence); a small "cost" chip (bottom-right)
+ * reopens it. Pure DOM, zero render cost — never touches the Canvas.
  */
-function LangNotice() {
+function CostPopover() {
+  const [open, setOpen] = useState(true)
   if (readLang() !== 'zh') {
     return null
+  }
+  if (!open) {
+    return (
+      <button
+        type="button"
+        aria-label="Show Slug's CJK GPU-memory cost table"
+        onClick={() => setOpen(true)}
+        style={{
+          position: 'fixed',
+          right: 16,
+          bottom: 16,
+          padding: '6px 12px',
+          borderRadius: 999,
+          background: 'rgba(11, 14, 19, 0.82)',
+          border: '1px solid rgba(74, 222, 128, 0.4)',
+          color: '#e6edf3',
+          font: COST_PANEL_FONT,
+          cursor: 'pointer',
+          backdropFilter: 'blur(6px)',
+          zIndex: 20,
+        }}
+      >
+        cost
+      </button>
+    )
   }
   return (
     <div
@@ -870,20 +1100,67 @@ function LangNotice() {
         left: '50%',
         bottom: 16,
         transform: 'translateX(-50%)',
-        padding: '7px 14px',
-        borderRadius: 999,
-        background: 'rgba(11, 14, 19, 0.82)',
+        width: 400,
+        maxWidth: 'calc(100vw - 24px)',
+        padding: '10px 14px 12px',
+        borderRadius: 10,
+        background: 'rgba(11, 14, 19, 0.9)',
         border: '1px solid rgba(74, 222, 128, 0.4)',
         color: '#e6edf3',
-        font: "500 11px/1.4 ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace",
-        textAlign: 'center',
+        font: COST_PANEL_FONT,
         backdropFilter: 'blur(6px)',
-        whiteSpace: 'nowrap',
         zIndex: 20,
       }}
     >
-      <strong style={{ color: '#4ade80' }}>简体中文</strong> · common subset (Noto Sans SC, OFL) ·
-      741 glyphs · 1 page · ~2.1&nbsp;MB
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+        }}
+      >
+        <span>
+          <strong style={{ color: '#4ade80' }}>简体中文</strong> · Slug curve-memory cost
+        </span>
+        <button
+          type="button"
+          aria-label="Dismiss the cost table"
+          onClick={() => setOpen(false)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'rgba(230, 237, 243, 0.62)',
+            font: COST_PANEL_FONT,
+            cursor: 'pointer',
+            padding: '0 0 0 8px',
+          }}
+        >
+          ×
+        </button>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ color: 'rgba(230, 237, 243, 0.4)', textAlign: 'left' }}>
+            <th style={{ fontWeight: 500, padding: '2px 6px 4px 0' }}>tier</th>
+            <th style={{ fontWeight: 500, padding: '2px 6px 4px' }}>glyphs</th>
+            <th style={{ fontWeight: 500, padding: '2px 0 4px' }}>Slug (curves)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ZH_COST_ROWS.map((row) => (
+            <tr key={row.tier}>
+              <td style={{ padding: '2px 6px 2px 0' }}>{row.tier}</td>
+              <td style={{ padding: '2px 6px' }}>{row.glyphs}</td>
+              <td style={{ padding: '2px 0' }}>{row.cost}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ marginTop: 8, color: 'rgba(230, 237, 243, 0.62)' }}>
+        Common subset renders here (741 glyphs, 1 page, ~2.1&nbsp;MB). Resolution-independent —
+        crisp at any size.
+      </div>
     </div>
   )
 }
@@ -923,8 +1200,9 @@ function LadderNav() {
   const webgl = params.get('renderer') === 'webgl'
   const zh = params.get('lang') === 'zh'
 
-  // Bench switches scene, Lang switches pass; both are shared with the MSDF twin. The View group
-  // (2D / Off-axis / Wobble) only makes sense for the ladder, so it's hidden in the 2D grid.
+  // Bench switches scene, View sets rotate/wobble, Lang switches pass; ALL groups show on EVERY
+  // route (ladder + grid) so any demo is reachable from any demo. View's rotate/wobble params
+  // apply just as well to the grid's 3D branch as to the ladder's.
   const groups: Array<{
     label: string
     links: Array<{ text: string; href: string; active: boolean }>
@@ -940,26 +1218,22 @@ function LadderNav() {
         },
       ],
     },
-    ...(isGrid
-      ? []
-      : [
-          {
-            label: 'View',
-            links: [
-              {
-                text: '2D',
-                href: withParams({ rotate: null, wobble: null }),
-                active: !rotateOn && !wobbleOn,
-              },
-              { text: 'Off-axis', href: withParams({ rotate: '35', wobble: null }), active: rotateOn },
-              { text: 'Wobble', href: withParams({ wobble: '1', rotate: null }), active: wobbleOn },
-            ],
-          },
-        ]),
+    {
+      label: 'View',
+      links: [
+        {
+          text: '2D',
+          href: withParams({ rotate: null, wobble: null }),
+          active: !rotateOn && !wobbleOn,
+        },
+        { text: 'Off-axis', href: withParams({ rotate: '35', wobble: null }), active: rotateOn },
+        { text: 'Wobble', href: withParams({ wobble: '1', rotate: null }), active: wobbleOn },
+      ],
+    },
     {
       label: 'DPI',
       links: [
-        { text: '1×', href: withParams({ dpr: '1' }), active: dpr === '1' },
+        { text: '1×', href: withParams({ dpr: '1' }), active: dpr == null || dpr === '1' },
         { text: '2×', href: withParams({ dpr: '2' }), active: dpr === '2' },
       ],
     },
