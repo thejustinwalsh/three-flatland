@@ -160,20 +160,18 @@ export function distanceToQuadBezier(
   p1: Node<'vec2'>,
   p2: Node<'vec2'>
 ) {
-  const A = p2.sub(p1.mul(2.0)).add(p0)
-  const D = p1.sub(p0)
-  const M = p0.sub(p)
+  // .toVar(): A/D/M each feed multiple dot products; without it the vec math re-inlines per use.
+  const A = p2.sub(p1.mul(2.0)).add(p0).toVar()
+  const D = p1.sub(p0).toVar()
+  const M = p0.sub(p).toVar()
 
-  const AA = A.dot(A)
-  const AD = A.dot(D)
-  const DD = D.dot(D)
-  const MA = M.dot(A)
-  const MD = M.dot(D)
-
-  const c3 = AA
-  const c2 = float(3.0).mul(AD)
-  const c1 = float(2.0).mul(DD).add(MA)
-  const c0 = MD
+  // Cubic coefficients — .toVar() so the dot products behind them compute ONCE. fEval/fPrime run
+  // 6× each across the 3 Newton iterations; without these vars every call re-expands the whole
+  // A/D/M chain (a cubic code + ALU blowup).
+  const c3 = A.dot(A).toVar()
+  const c2 = float(3.0).mul(A.dot(D)).toVar()
+  const c1 = float(2.0).mul(D.dot(D)).add(M.dot(A)).toVar()
+  const c0 = M.dot(D).toVar()
 
   const fEval = (t: Node<'float'>) =>
     c3.mul(t).mul(t).mul(t).add(c2.mul(t).mul(t)).add(c1.mul(t)).add(c0)
@@ -182,15 +180,17 @@ export function distanceToQuadBezier(
 
   const denomFloor = float(1.0 / (1 << 20))
   const newton = (t: Node<'float'>) => {
-    const fp = fPrime(t)
+    const fp = fPrime(t).toVar() // used twice (sign + abs) → materialize once
     const fpSafe = fp.sign().mul(max(abs(fp), denomFloor))
     return t.sub(fEval(t).div(fpSafe)).clamp(0.0, 1.0)
   }
 
-  // Single seed at t=0.5, 3 Newton refinements.
-  let tMid = newton(float(0.5))
-  tMid = newton(tMid)
-  tMid = newton(tMid)
+  // Single seed at t=0.5, 3 Newton refinements. .toVar() the running t so each newton() step
+  // materializes instead of nesting newton(newton(newton(...))) — otherwise the body triples in
+  // depth per iteration.
+  const tMid = newton(float(0.5)).toVar()
+  tMid.assign(newton(tMid))
+  tMid.assign(newton(tMid))
 
   // Evaluate candidate distances at the refined seed + both endpoints.
   const evalDistSq = (t: Node<'float'>) => {

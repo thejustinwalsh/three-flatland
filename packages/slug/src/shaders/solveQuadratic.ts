@@ -36,11 +36,16 @@ function stableRoots(a: Node<'float'>, b: Node<'float'>, c: Node<'float'>) {
       t2.assign(extremum)
     })
     .Else(() => {
-      const d = sqrt(discRaw)
-      const bPos = b.greaterThanEqual(0.0)
-      const q = b.add(select(bPos, float(1.0), float(-1.0)).mul(d))
-      const rootA = q.div(a) // (b+d)/a when b>=0, (b-d)/a when b<0
-      const rootB = c.div(q) // paired Vieta root
+      // Materialize each shared subexpression with .toVar(). Without it TSL INLINES these
+      // nodes at every use site, and `select(bPos, rootA, rootB)` evaluates BOTH operands —
+      // so d / q / rootA / rootB (and the sqrt) fan out and get recomputed 4× per curve. The
+      // emitted WGSL confirmed 4 sqrt calls here; .toVar() collapses them to 1. Pure codegen
+      // hoist — the values are bit-identical, only the recomputation is removed.
+      const d = sqrt(discRaw).toVar()
+      const bPos = b.greaterThanEqual(0.0).toVar()
+      const q = b.add(select(bPos, float(1.0), float(-1.0)).mul(d)).toVar()
+      const rootA = q.div(a).toVar() // (b+d)/a when b>=0, (b-d)/a when b<0
+      const rootB = c.div(q).toVar() // paired Vieta root
       t1.assign(select(bPos, rootB, rootA))
       t2.assign(select(bPos, rootA, rootB))
     })

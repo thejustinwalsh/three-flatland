@@ -70,20 +70,24 @@ export function slugRender(
   stemDarken?: Node<'float'>,
   thicken?: Node<'float'>
 ) {
-  // Compute pixel footprint in em-space for coverage scaling
-  const emsPerPixel = fwidth(renderCoord)
-  const pixelsPerEmX = float(1.0).div(max(emsPerPixel.x, 1.0 / 65536.0))
-  const pixelsPerEmY = float(1.0).div(max(emsPerPixel.y, 1.0 / 65536.0))
+  // Compute pixel footprint in em-space for coverage scaling. These are per-FRAGMENT invariants
+  // reused inside BOTH band loops; .toVar() forces them to be computed ONCE (hoisted above the
+  // loops) instead of TSL re-inlining them at every iteration — critically fwidth(), a derivative
+  // op that must not be evaluated per-curve.
+  const emsPerPixel = fwidth(renderCoord).toVar()
+  const pixelsPerEmX = float(1.0).div(max(emsPerPixel.x, 1.0 / 65536.0)).toVar()
+  const pixelsPerEmY = float(1.0).div(max(emsPerPixel.y, 1.0 / 65536.0)).toVar()
 
   // Pixels-per-em (isotropic average) for stem darkening and thickening
-  const ppem = pixelsPerEmX.add(pixelsPerEmY).mul(0.5)
+  const ppem = pixelsPerEmX.add(pixelsPerEmY).mul(0.5).toVar()
 
   // Thickening: widen coverage window at small ppem to prevent thin-stroke dropout.
   // Factor ramps from 1+thicken at ppem=0 down to 1.0 at ppem>=thickenPpem (24).
   // At 8px with thicken=1.0: factor = 1 + 1.0 * max(0, 1 - 8/24) = 1.67
   const thickenPpem = float(24.0)
+  // .toVar(): used 4× inside the two loops — hoist so its div/sub/mul/max runs once, not per curve.
   const thickenFactor = thicken
-    ? float(1.0).add(thicken.mul(max(float(0.0), float(1.0).sub(ppem.div(thickenPpem)))))
+    ? float(1.0).add(thicken.mul(max(float(0.0), float(1.0).sub(ppem.div(thickenPpem))))).toVar()
     : float(1.0)
 
   // Determine band indices from band transform
@@ -155,15 +159,17 @@ export function slugRender(
 
     If(rootCode.greaterThan(uint(0)), () => {
       const r = solveHorizPoly(p0, p1, p2)
-      const rpxX = r.x.mul(pixelsPerEmX)
-      const rpxY = r.y.mul(pixelsPerEmX)
+      // .toVar(): each used twice (coverage + weight); without it r.x/r.y — and the whole poly
+      // eval behind them — re-inline per use.
+      const rpxX = r.x.mul(pixelsPerEmX).toVar()
+      const rpxY = r.y.mul(pixelsPerEmX).toVar()
 
       // Coverage from first root (bit 0)
-      const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
+      const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0)).toVar()
       xcov.addAssign(select(hasRoot1, saturate(rpxX.mul(thickenFactor).add(0.5)), 0.0))
 
       // Coverage from second root (bit 8)
-      const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
+      const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0)).toVar()
       xcov.subAssign(select(hasRoot2, saturate(rpxY.mul(thickenFactor).add(0.5)), 0.0))
 
       // Weight: proximity to pixel center
@@ -210,14 +216,15 @@ export function slugRender(
 
     If(rootCode.greaterThan(uint(0)), () => {
       const r = solveVertPoly(p0, p1, p2)
-      const rpyX = r.x.mul(pixelsPerEmY)
-      const rpyY = r.y.mul(pixelsPerEmY)
+      // .toVar(): each used twice (coverage + weight) — see the horizontal pass.
+      const rpyX = r.x.mul(pixelsPerEmY).toVar()
+      const rpyY = r.y.mul(pixelsPerEmY).toVar()
 
       // Vertical band: signs INVERTED vs horizontal per Lengyel's convention
-      const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
+      const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0)).toVar()
       ycov.subAssign(select(hasRoot1, saturate(rpyX.mul(thickenFactor).add(0.5)), 0.0))
 
-      const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
+      const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0)).toVar()
       ycov.addAssign(select(hasRoot2, saturate(rpyY.mul(thickenFactor).add(0.5)), 0.0))
 
       const w1 = saturate(float(1.0).sub(abs(rpyX).mul(2.0)))
