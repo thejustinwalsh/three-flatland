@@ -71,6 +71,37 @@ exactness/atlas-memory; MSDF wins 3D-minification (mipmaps).
   source type: CJK fonts, icon fonts (FA), and intricate SVG shapes.** Packing/hull code is
   recoverable at `185442c3`.
 
+## Overnight compounding run (results)
+
+Worked the backlog one item at a time under the rule: pixel-identical (or a documented
+trade-off) AND perf ≥ in-noise → keep & commit with evidence; compound the total. Shipped,
+all on `feat/uikit-fork`, all pixel-identical unless noted, each A/B-proven or structurally
+proven on the pinned-clock rig (vsync-off, dpr4, interleaved git-stash):
+
+- `24d70399` codegen hoisting sweep — **~12–14%**
+- `d58148ea` R32Float band shrink (bandwidth) — **~5%**
+- `e2d12fc0` panel build-time clip variant (uikit) — instruction cut, 0 clip ops unclipped
+- `eac7d015` JSlug naive bezier — **~5%** (near noise), NOT pixel-identical: ~0.08% grazing
+  diff (documented trade-off, per request; q-form recoverable from history)
+- `c11bbd92` stroke decoration-rect short-circuit — skip the solve for rects
+- `0e8d9d13` tight glyph quad bounds (exact extremum) — less overdraw
+- `ad1cd1ce` dedup ALL band lists + fix band-texture over-allocation — **band tex 4MB→2MB**,
+  glb 7.5→5.45MB
+
+**Compounded: ~19% GPU** on the ladder (dpr4: pre-perf ~13.96ms → HEAD ~11.27ms) + the memory
+halving + the structural panel/stroke/overdraw cuts. 427 slug + 100 uikit tests green.
+
+### Remaining (assessed, deferred with reason)
+- **Curve-texture packing** — marginal: endpoint-sharing already stores ~1 texel/curve, and a
+  quadratic's 3 control points need 2 RGBA16F texels to READ, so per-fragment curve-read
+  bandwidth can't drop below 2 texels/curve. Not worth the bake-format churn.
+- **#6 adaptive per-glyph band count** + **#2 hull-variant** — the real remaining wins, but
+  CJK/dense-only (neutral on the Latin bench). Blocked on standing up a CJK bench (dense-glyph
+  scene + a parseable CJK font — repo has `NotoSansCJK-VF-subset.otf.ttc`). Do these once the
+  CJK bench exists; #2's packing code is at `185442c3`.
+- **#4 non-instanced clip count** — low value (Image panels are rare); the instanced path (the
+  common case) is already handled by `e2d12fc0`.
+
 ## Measurement workflow for the remaining passes
 
 GPU-ms is NOISY on battery (we saw ±2ms swings; upstream MSDF drifting 2.28→1.12 while
