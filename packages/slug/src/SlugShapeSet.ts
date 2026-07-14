@@ -74,6 +74,15 @@ export class SlugShapeSet {
 
     const id = this._nextId++
     const data = buildGpuGlyphData(id, curves, contourStarts, 0, 0)
+    // Snap bounds to float32, same as the control points above. The tight
+    // extremum bound (B(t*)) is a full-precision value, not one of the
+    // float32 control points, so it would otherwise drift in the low bits
+    // across the .glb (float32) bake round-trip and break the shapes
+    // bit-exact contract. Snapping here keeps setA == fromBaked exactly.
+    data.bounds.xMin = Math.fround(data.bounds.xMin)
+    data.bounds.yMin = Math.fround(data.bounds.yMin)
+    data.bounds.xMax = Math.fround(data.bounds.xMax)
+    data.bounds.yMax = Math.fround(data.bounds.yMax)
     // advanceWidth/lsb are font-layout concepts; for shapes, advance = ink
     // width and lsb = ink start, so metrics-driven callers see sane values.
     data.advanceWidth = data.bounds.xMax - data.bounds.xMin

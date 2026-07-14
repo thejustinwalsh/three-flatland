@@ -18,17 +18,86 @@ const unitSquare: QuadCurve[] = [
   { p0x: 0, p0y: 1, p1x: 0, p1y: 0.5, p2x: 0, p2y: 0 },
 ]
 
+// Evaluate a quadratic Bezier axis value at parameter t.
+function quadAt(p0: number, p1: number, p2: number, t: number): number {
+  const mt = 1 - t
+  return mt * mt * p0 + 2 * mt * t * p1 + t * t * p2
+}
+
+// Loose "control hull" bound — the old p1-inclusive box, kept here only
+// as the upper reference the tight bound must never exceed.
+function looseBounds(curves: QuadCurve[]) {
+  let xMin = Infinity,
+    yMin = Infinity,
+    xMax = -Infinity,
+    yMax = -Infinity
+  for (const c of curves) {
+    xMin = Math.min(xMin, c.p0x, c.p1x, c.p2x)
+    yMin = Math.min(yMin, c.p0y, c.p1y, c.p2y)
+    xMax = Math.max(xMax, c.p0x, c.p1x, c.p2x)
+    yMax = Math.max(yMax, c.p0y, c.p1y, c.p2y)
+  }
+  return { xMin, yMin, xMax, yMax }
+}
+
 describe('buildGpuGlyphFromCurves', () => {
   it('computes tight bounds that include control points', () => {
     const g = buildGpuGlyphFromCurves(unitSquare, [0])
     expect(g.bounds).toEqual({ xMin: 0, yMin: 0, xMax: 1, yMax: 1 })
   })
 
-  it('includes p1 in bounds when curve bulges outward', () => {
-    // Arc-like curve with control point above the chord
+  it('bounds the extremum, not the control point, when a curve bulges outward', () => {
+    // Arc-like curve: p1y=2 sits above the chord, but B(t) peaks at the
+    // derivative-zero point t*=(p0-p1)/(p0-2p1+p2)=0.5 → B(0.5)=1. The
+    // curve never reaches p1, so the tight yMax is 1, not the loose 2.
     const arc: QuadCurve[] = [{ p0x: 0, p0y: 0, p1x: 0.5, p1y: 2, p2x: 1, p2y: 0 }]
     const g = buildGpuGlyphFromCurves(arc, [0])
-    expect(g.bounds.yMax).toBe(2) // loose bound, matches what the band math expects
+    expect(g.bounds.yMax).toBeCloseTo(1, 10)
+    expect(g.bounds.yMax).toBeLessThan(looseBounds(arc).yMax) // strictly shrinks the empty margin
+  })
+
+  it('tight bound CONTAINS the whole curve and is ≤ the p1 (loose) bound', () => {
+    // A basketful of curves whose control points bulge every which way,
+    // including asymmetric ones where t* ≠ 0.5, plus a monotone curve
+    // whose extremum falls outside (0,1).
+    const curves: QuadCurve[] = [
+      { p0x: 0, p0y: 0, p1x: 0.5, p1y: 2, p2x: 1, p2y: 0 }, // symmetric bulge up
+      { p0x: 0, p0y: 0, p1x: 3, p1y: -1, p2x: 1, p2y: 1 }, // asymmetric x + y bulge
+      { p0x: -1, p0y: 0.2, p1x: -0.3, p1y: -0.4, p2x: 0.4, p2y: 0.9 }, // mixed
+      { p0x: 0, p0y: 0, p1x: 0.9, p1y: 0.4, p2x: 1, p2y: 1 }, // monotone (t* ∉ (0,1))
+    ]
+    const g = buildGpuGlyphFromCurves(curves, [0])
+    const b = g.bounds
+    const loose = looseBounds(curves)
+
+    // (a) Containment: sample every curve densely; no point may escape.
+    for (const c of curves) {
+      for (let i = 0; i <= 200; i++) {
+        const t = i / 200
+        const px = quadAt(c.p0x, c.p1x, c.p2x, t)
+        const py = quadAt(c.p0y, c.p1y, c.p2y, t)
+        expect(px).toBeGreaterThanOrEqual(b.xMin - 1e-9)
+        expect(px).toBeLessThanOrEqual(b.xMax + 1e-9)
+        expect(py).toBeGreaterThanOrEqual(b.yMin - 1e-9)
+        expect(py).toBeLessThanOrEqual(b.yMax + 1e-9)
+      }
+    }
+
+    // (b) Never looser than the old p1-inclusive bound (valid + tighter).
+    expect(b.xMin).toBeGreaterThanOrEqual(loose.xMin - 1e-12)
+    expect(b.yMin).toBeGreaterThanOrEqual(loose.yMin - 1e-12)
+    expect(b.xMax).toBeLessThanOrEqual(loose.xMax + 1e-12)
+    expect(b.yMax).toBeLessThanOrEqual(loose.yMax + 1e-12)
+
+    // (c) And here it is STRICTLY tighter on at least one edge (real win).
+    expect(b.yMax).toBeLessThan(loose.yMax)
+  })
+
+  it('leaves straight-line (chord-midpoint p1) curves exactly at their endpoints', () => {
+    // Rect edges have p1 at the p0/p2 midpoint → denom 0 → no interior
+    // extremum → bound is the endpoints, identical to the old behavior.
+    const g = buildGpuGlyphFromCurves(unitSquare, [0])
+    expect(g.bounds).toEqual({ xMin: 0, yMin: 0, xMax: 1, yMax: 1 })
   })
 
   it('preserves contourStarts array reference', () => {
