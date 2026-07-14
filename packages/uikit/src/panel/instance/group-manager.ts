@@ -36,7 +36,18 @@ export class PanelGroupManager {
     }
   }
 
-  getGroup({ majorIndex, minorIndex }: OrderInfo, properties: Required<PanelGroupProperties>) {
+  /**
+   * `clipped` splits panels into separate batches by clip status so each batch's
+   * material bakes the matching build-time clip variant (perf win #3): unclipped
+   * panels land in a zero-clip-ALU group, clipped panels in a 4-plane group. It is
+   * part of the group key, so an unclipped batch is never contaminated by a clipped
+   * panel (and vice versa). A panel migrates groups if its clip status flips.
+   */
+  getGroup(
+    { majorIndex, minorIndex }: OrderInfo,
+    properties: Required<PanelGroupProperties>,
+    clipped: boolean
+  ) {
     const materialClass = resolvePanelMaterialClassProperty(properties.panelMaterialClass)
     let groups = this.map.get(materialClass)
     if (groups == null) {
@@ -50,6 +61,7 @@ export class PanelGroupManager {
       properties.depthWrite,
       properties.receiveShadow,
       properties.castShadow,
+      clipped,
     ].join(',')
     let panelGroup = groups.get(key)
     if (panelGroup == null) {
@@ -64,7 +76,8 @@ export class PanelGroupManager {
             majorIndex,
             patchIndex: 0,
           },
-          properties
+          properties,
+          clipped
         ))
       )
     }

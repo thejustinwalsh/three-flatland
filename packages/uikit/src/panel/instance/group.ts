@@ -11,6 +11,7 @@ import type { RootContext } from '../../context.js'
 import { type OrderInfo, setupRenderOrder } from '../../order.js'
 import { createPanelNodeMaterial } from '../material/create.js'
 import { resolvePanelMaterialClassProperty } from '../material/presets.js'
+import { panelClippingLanes } from '../material/shader.js'
 import { InstancedPanelMesh } from './mesh.js'
 import type { InstancedPanel } from './panel.js'
 import type { PanelGroupProperties } from './properties.js'
@@ -71,10 +72,21 @@ export class InstancedPanelGroup {
       'glyphGroupManager' | 'panelGroupManager' | 'shapeGroupManager'
     >,
     private readonly orderInfo: OrderInfo,
-    private readonly panelGroupProperties: Required<PanelGroupProperties>
+    private readonly panelGroupProperties: Required<PanelGroupProperties>,
+    // Whether panels routed into this group clip against a scroll/overflow ancestor.
+    // Fixed at group creation and baked into the material as a build-time clip variant:
+    // unclipped groups emit zero clip-plane ALU (perf win #3). A panel whose clip status
+    // flips migrates between the clipped and unclipped groups (see `setupInstancedPanel`),
+    // so a group's clip status never changes after construction.
+    clipped: boolean
   ) {
     const materialClass = resolvePanelMaterialClassProperty(panelGroupProperties.panelMaterialClass)
-    this.instanceMaterial = createPanelNodeMaterial(materialClass, { type: 'instanced' })
+    // A `ClippingRect` is always four planes, so a clipped batch unrolls all four lanes.
+    const clipPlaneCount = clipped ? panelClippingLanes.length : 0
+    this.instanceMaterial = createPanelNodeMaterial(materialClass, {
+      type: 'instanced',
+      clipPlaneCount,
+    })
     this.instanceMaterial.depthTest = panelGroupProperties.depthTest
     this.instanceMaterial.depthWrite = panelGroupProperties.depthWrite
   }

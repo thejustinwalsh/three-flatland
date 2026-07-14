@@ -1,4 +1,4 @@
-import type { Signal } from '@preact/signals-core'
+import { type Signal, computed } from '@preact/signals-core'
 import type { Matrix4, Vector2Tuple } from 'three'
 import type { ClippingRect } from '../../clipping.js'
 import type { RootContext } from '../../context.js'
@@ -23,16 +23,25 @@ export function setupInstancedPanel(
   materialConfig: PanelMaterialConfig,
   abortSignal: AbortSignal
 ) {
+  // Stable clip-status boolean: the panel is clipped iff a scroll/overflow ancestor
+  // hands it a clipping rect — the SAME condition that decides whether its instance
+  // writes real planes or the `NoClippingPlane` sentinel (see `InstancedPanel`). Deriving
+  // it as a `computed` collapses the per-frame `clippingRect` churn (a fresh rect every
+  // time the panel moves) to a boolean that only flips on structural/overflow changes, so
+  // the effect below re-runs (and the panel migrates groups) only on a real clip toggle.
+  const isClipped = computed(() => clippingRect != null && clippingRect.value != null)
   abortableEffect(() => {
     const isEnabled = properties.enabled.value
     const currentOrderInfo = orderInfo.value
     if (!isEnabled || currentOrderInfo == null) {
       return
     }
+    const clipped = isClipped.value
     const innerAbortController = new AbortController()
     const group = root.value.panelGroupManager.getGroup(
       currentOrderInfo,
-      panelGroupDependencies.value
+      panelGroupDependencies.value,
+      clipped
     )
     new InstancedPanel(
       properties,

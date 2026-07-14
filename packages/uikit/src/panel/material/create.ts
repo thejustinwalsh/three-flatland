@@ -6,12 +6,16 @@ import { createPanelMaterialNodes } from './shader.js'
 export type NodeMaterialClass = { new (): NodeMaterial }
 
 /**
+ * `instanced` materials carry a build-time `clipPlaneCount` (0..4): the group
+ * that owns the batch fixes it — `0` for an all-unclipped batch (zero clip ALU),
+ * `4` for a clipped batch (see perf win #3 / `instancedClipCoverage`).
+ *
  * `normal` (non-instanced) materials may pass live world-space
  * `clippingPlanes` (from `createGlobalClippingPlanes`) to opt into the uniform
  * clip path — the panel clips itself via a coverage multiply in `colorNode`.
  */
 export type PanelMaterialInfo =
-  | { type: 'instanced' }
+  | { type: 'instanced'; clipPlaneCount: number }
   | { type: 'normal'; data: Float32Array; clippingPlanes?: Array<Plane> }
 
 export type PanelMaterial = NodeMaterial

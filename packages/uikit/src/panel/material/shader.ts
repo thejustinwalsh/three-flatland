@@ -83,6 +83,50 @@ export function packClippingPlanes(planes: ReadonlyArray<Plane>, target: Matrix4
   return target
 }
 
+/**
+ * Build-time instanced clip-coverage variant (perf win #3). Emits EXACTLY
+ * `clipPlaneCount` (0..4) attribute-lane clip evaluations. The count is a
+ * STRUCTURAL variant, chosen in JS at material-build time — never a runtime
+ * `select` (TSL guardrail: structural branches are build-time).
+ *
+ * - `0` returns constant full coverage with NO varying, NO `aClipping`
+ *   attribute reads, and — crucially — NO `fwidth`/`smoothstep`. An all-unclipped
+ *   panel batch (every instance holds the `NoClippingPlane` sentinel, i.e. no
+ *   scroll/overflow ancestor) then pays ZERO clip ALU per fragment. This is the
+ *   common case (cards, backgrounds, HUDs), so the group that owns such a batch
+ *   builds the `0` variant.
+ * - `N` unrolls exactly N lanes. A `ClippingRect` is always four planes, so a
+ *   clipped group builds `4`; the parameterisation also lets a caller unroll
+ *   fewer than the four physical lanes without over-unrolling dead planes.
+ *
+ * SAFETY: a group only ever builds `0` when every panel routed into it is
+ * unclipped (`clippingRect` value null) — clipped panels are keyed into a
+ * separate `4` group (see `PanelGroupManager.getGroup`), so `0` is never emitted
+ * for a batch that might clip.
+ */
+export function instancedClipCoverage(clipPlaneCount: number): FloatNode {
+  let clipCoverage: FloatNode = float(1)
+  const lanes = Math.max(0, Math.min(clipPlaneCount, panelClippingLanes.length))
+  if (lanes === 0) {
+    return clipCoverage
+  }
+  // Root-space (instanced) position for the clip planes. three's InstanceNode ALREADY computes
+  // `positionLocal = instanceMatrix × positionLocal` (= instanceMatrix × dilatedPosition), and it
+  // already lane-splits the instance matrix into vec4 attributes for WGSL. So read three's result
+  // directly instead of re-declaring the instance matrix as a SECOND attribute set (`aInstanceMatrix`
+  // lanes) — that duplication took the panel program to 19 vertex attributes, overflowing WebGL2's
+  // 16-attribute cap and dropping every panel under the WebGPU renderer's WebGL2 fallback. Declaring
+  // the varying ONLY on the `lanes > 0` path keeps the unclipped program free of the extra varying.
+  const localPosition = varying(positionLocal)
+  for (let i = 0; i < lanes; i++) {
+    const plane = attribute<'vec4'>(panelClippingLanes[i]!, 'vec4')
+    const distanceToPlane = dot(localPosition, plane.xyz).add(plane.w)
+    const gradient = max(fwidth(distanceToPlane).mul(0.5), 0.00001)
+    clipCoverage = clipCoverage.mul(smoothstep(gradient.negate(), gradient, distanceToPlane))
+  }
+  return clipCoverage
+}
+
 const min4 = (v: Vec4Node): FloatNode => min(min(v.x, v.y), min(v.z, v.w))
 const max4 = (v: Vec4Node): FloatNode => max(max(v.x, v.y), max(v.z, v.w))
 const step4 = (edge: FloatNode, v: Vec4Node): Vec4Node =>
@@ -289,20 +333,9 @@ export function createPanelMaterialNodes(info: PanelMaterialInfo): PanelMaterial
     // positionNode must stay local.
     const dilatedPosition = dilatedPanelPosition(cols[3].zw)
     positionNode = dilatedPosition
-    // Root-space (instanced) position for the clip planes. three's InstanceNode ALREADY computes
-    // `positionLocal = instanceMatrix × positionLocal` (= instanceMatrix × dilatedPosition), and it
-    // already lane-splits the instance matrix into vec4 attributes for WGSL. So read three's result
-    // directly instead of re-declaring the instance matrix as a SECOND attribute set (`aInstanceMatrix`
-    // lanes) — that duplication took the panel program to 19 vertex attributes, overflowing WebGL2's
-    // 16-attribute cap and dropping every panel under the WebGPU renderer's WebGL2 fallback.
-    const localPosition = varying(positionLocal)
-    clipCoverage = float(1)
-    for (const name of panelClippingLanes) {
-      const plane = attribute<'vec4'>(name, 'vec4')
-      const distanceToPlane = dot(localPosition, plane.xyz).add(plane.w)
-      const gradient = max(fwidth(distanceToPlane).mul(0.5), 0.00001)
-      clipCoverage = clipCoverage.mul(smoothstep(gradient.negate(), gradient, distanceToPlane))
-    }
+    // Build-time clip variant (perf win #3): an unclipped batch (`clipPlaneCount === 0`) emits
+    // constant coverage with zero clip-plane ALU; a clipped batch unrolls its lanes.
+    clipCoverage = instancedClipCoverage(info.clipPlaneCount)
   } else {
     const dataMatrix = new Matrix4()
     const dataUniform = uniform(dataMatrix)
