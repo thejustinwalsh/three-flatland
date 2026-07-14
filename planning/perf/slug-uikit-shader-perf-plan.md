@@ -39,6 +39,37 @@ exactness/atlas-memory; MSDF wins 3D-minification (mipmaps).
   `.slug.glb` from an external URL could spin the dynamic loop into a GPU watchdog).
   (c) updated `reference.ts` to mirror the q-form so the tests actually cross-check it +
   added the counterexample as a regression test.
+- **`24d70399`** perf(slug): TSL codegen hoisting sweep across the coverage shaders. TSL
+  inlines any node not `.toVar()`'d and `select()` evaluates BOTH operands, so shared
+  subexpressions + loop-invariants were silently recomputed (one `sqrt` compiled to 4;
+  `fwidth`, a derivative, ran once per curve). `.toVar()` d/q/rootA/rootB; hoist
+  fwidth/pixelsPerEm/thicken above the loops; `.toVar()` the per-root coverage terms,
+  calcCoverage chain, and distanceToQuadBezier cubic coefficients. **~12–14% GPU**,
+  pixel-identical, 55 shader tests green. Method + the `.toVar()` foot-guns are now written
+  into `.claude/skills/tsl/performance.md` (emit the compiled WGSL/GLSL and read it;
+  pinned-clock vsync-off A/B).
+- **`d58148ea`** perf(slug): band texture **RG32Float → R32Float** (8→4 bytes/texel). Pack
+  the header (`count<<14 | offset`) and curve-ref (`texelY<<12 | texelX`) into single
+  24-bit-exact float32s; the shader decodes the R channel (bijective, guarded). Halves the
+  ~2 headers + 1 ref/curve of band reads per fragment — universal (every glyph, every
+  workload). **~5% GPU**, pixel-identical (R32F-vs-RG32F screenshot diff below the AA-jitter
+  floor; 91k re-baked header texels decode 0 mismatches), 424 tests green. FL_slug_font
+  v1→v2. Split validated on Inter: max count 38 / offset 395 / texelY 152 (27–41× headroom).
+
+### Shelved / deferred
+
+- **`185442c3` (reverted `9f668952`) — early hull-bound (#2).** Repacked the ref as
+  (packedCoord, hull) so the shader early-exits BEFORE the terminal culled curve's two
+  texel reads. Correct + pixel-identical, but measured **neutral on Latin** (within the
+  pinned-clock noise floor): a read-COUNT reduction whose per-curve unpack overhead ~cancels
+  the single-curve saving on sparse Latin bands — the win is CJK/dense-only. It is NOT a
+  bandwidth reduction (the band texel stayed 8 bytes; the freed channel was spent on the
+  hull), and it was superseded by `d58148ea` (the actual band-bandwidth cut). **RECHECK a
+  per-source `bandStrategy: 'plain' | 'hull'` variant** — build-time shader branch, tag on
+  the SlugFont/SlugShapeSet by band density; `plain` = the committed shader (zero Latin
+  regression by construction), `hull` = the early-exit — **after benchmarking each DENSE
+  source type: CJK fonts, icon fonts (FA), and intricate SVG shapes.** Packing/hull code is
+  recoverable at `185442c3`.
 
 ## Measurement workflow for the remaining passes
 
