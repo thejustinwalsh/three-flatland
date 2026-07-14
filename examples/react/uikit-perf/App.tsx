@@ -141,6 +141,26 @@ function useSharedFont(): SlugFont {
   return use(interFontPromise)
 }
 
+// Simplified-Chinese content font: a COMMON SUBSET of Noto Sans SC (OFL) — 358 of the most
+// common hanzi + Latin + punctuation, 741 glyphs total. It packs into ONE curve/band page
+// (4096×32, ~2.1MB GPU) — the whole point: a common subset needs no paging, only subsetting.
+// (Full Noto SC is ~65k glyphs ≈ 229MB, which is why you can't hold the whole repertoire.)
+// Loaded lazily and ONLY under ?lang=zh so the Latin path never downloads or packs it.
+let zhFontPromise: Promise<SlugFont> | null = null
+
+/**
+ * The scene's CONTENT font, chosen by the language toggle: the Noto SC subset under
+ * `?lang=zh`, else Inter. `lang` is a reload-scoped URL param (constant for the mount), so a
+ * single unconditional `use()` picks the right promise — no conditional-hook violation.
+ */
+function useContentFont(): SlugFont {
+  const promise =
+    readLang() === 'zh'
+      ? (zhFontPromise ??= SlugFontLoader.load('./NotoSansSC-common.ttf'))
+      : (interFontPromise ??= SlugFontLoader.load('./Inter-Regular.ttf'))
+  return use(promise)
+}
+
 function Scene({
   state,
   preset,
@@ -278,6 +298,13 @@ const GRID_LINE = '#20262e' // excel gridline (a dim hairline on the near-black 
 const GRID_SEED = 0x9e3779b9 // golden-ratio seed, shared by both apps → identical grid
 const GRID_ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
+// Simplified-Chinese content for ?lang=zh. Every character here is inside the baked common
+// subset (NotoSansSC-common.ttf) — the ladder sentence and the grid's random-label pool. The
+// pool is the exact 358 unique hanzi the font was subset to, so nothing renders as notdef.
+const ZH_LADDER_TEXT = '图形渲染是计算机科学中一个重要而有趣的领域'
+const ZH_HANZI =
+  '图形渲染是计算机科学中一个重要而有趣的领域我们使用现代着色器语言来绘制文字和矢量状这库支持网页接口能够在浏览里高效地显示成千上万符性非常关键必须尽减少调数合理利存与带宽体包含大因此只加载子集设师开发者都可以轻松创建漂亮二维场景无论游戏还据视化获得流畅验今天气很好阳光明媚微风吹过小朋友起去公园散步看见许多美丽花草树木他坐长椅聊谈最近读书籍电影时间真快转眼已经到了傍晚分习需坚不懈努力也正确方法良惯每人应该保奇心勇于探索未知三四五六七八九十百颜红橙黄绿青蓝紫黑白灰东西南北春夏秋冬年月日秒国家城市乡村山川河湖海星辰雨雷父母女兄弟姐妹老同医生工农民商吃饭喝水睡觉走路说话听写想做玩笑哭闹跑跳低短慢新旧远深浅冷热干湿济政治教育技艺术历史音乐物外爱平尊自然珍惜命追求团结善诚实守信勤劳节俭助段测试质速度请仔细观察笔画否清晰锐'
+
 // The 62-icon pool, cycled deterministically per cell. Names exist in BOTH
 // @three-flatland/uikit-lucide (analytic) and @react-three/uikit-lucide (mesh), so the MSDF
 // twin is a pure import-source swap. Order is load-bearing: the PRNG indexes into it, so both
@@ -308,15 +335,17 @@ function mulberry32(seed: number): () => number {
 
 /**
  * Deterministic (icon, label) for grid cell `i`: a random icon from ICON_POOL and a random
- * 1–6-char mixed-case ASCII string. PURE — identical in the Slug app and the MSDF twin.
+ * label. `zh` swaps the ASCII alphabet for the common-hanzi pool and shortens the label to 1–3
+ * glyphs (hanzi are full-width, so 3 fit the cell where 6 Latin do). PURE — same grid every run.
  */
-function gridCell(i: number): { Icon: (typeof ICON_POOL)[number]; text: string } {
+function gridCell(i: number, zh: boolean): { Icon: (typeof ICON_POOL)[number]; text: string } {
   const r = mulberry32((GRID_SEED + Math.imul(i, 0x9e3779b9)) | 0)
   const Icon = ICON_POOL[Math.floor(r() * ICON_POOL.length)]!
-  const len = 1 + Math.floor(r() * 6)
+  const pool = zh ? ZH_HANZI : GRID_ALPHA
+  const len = 1 + Math.floor(r() * (zh ? 3 : 6))
   let text = ''
   for (let k = 0; k < len; k++) {
-    text += GRID_ALPHA[Math.floor(r() * GRID_ALPHA.length)]
+    text += pool[Math.floor(r() * pool.length)]
   }
   return { Icon, text }
 }
@@ -503,13 +532,14 @@ function LabelGridApp() {
  * count is derived from the live viewport ONCE at mount — several thousand on a laptop.
  */
 function LabelGridScene() {
-  const font = useSharedFont()
+  const font = useContentFont()
   useBenchReady()
   const cells = useMemo(() => {
+    const zh = readLang() === 'zh'
     const cols = Math.max(1, Math.floor(window.innerWidth / GRID_CELL_W))
     const rows = Math.max(1, Math.floor(window.innerHeight / GRID_CELL_H))
     const count = cols * rows
-    return Array.from({ length: count }, (_unused, i) => gridCell(i))
+    return Array.from({ length: count }, (_unused, i) => gridCell(i, zh))
   }, [])
 
   return (
@@ -550,7 +580,7 @@ function LabelGridScene() {
  * uikit draws nothing but glyphs and the analytic atom shapes. The PARENT sets alignment
  * (2D Fullscreen: top-left; 3D Root: centered), so this stays layout-agnostic.
  */
-function LadderRows() {
+function LadderRows({ text }: { text: string }) {
   return (
     <>
       {LADDER_SIZES.map((size) => (
@@ -563,7 +593,7 @@ function LadderRows() {
             flexShrink={0}
           />
           <Text fontSize={size} fontFamily="inter" color={LADDER_FG} wordBreak="keep-all">
-            {LADDER_TEXT}
+            {text}
           </Text>
         </Container>
       ))}
@@ -592,8 +622,9 @@ function useBenchReady() {
  * zero perspective. The tall bottom rows run past the fold at native size (that's the point).
  */
 function Ladder2DScene() {
-  const font = useSharedFont()
+  const font = useContentFont()
   useBenchReady()
+  const text = readLang() === 'zh' ? ZH_LADDER_TEXT : LADDER_TEXT
   return (
     <Fullscreen
       flexDirection="column"
@@ -603,7 +634,7 @@ function Ladder2DScene() {
       padding={LADDER_2D_PADDING}
       fontFamilies={{ inter: { normal: font } }}
     >
-      <LadderRows />
+      <LadderRows text={text} />
     </Fullscreen>
   )
 }
@@ -615,8 +646,9 @@ function Ladder2DScene() {
  * ONLY; the dark backdrop is the three.js clear color.
  */
 function Ladder3DScene({ rotateDeg, wobble }: { rotateDeg: number; wobble: boolean }) {
-  const font = useSharedFont()
+  const font = useContentFont()
   useBenchReady()
+  const text = readLang() === 'zh' ? ZH_LADDER_TEXT : LADDER_TEXT
   const yaw = (rotateDeg * Math.PI) / 180
   const groupRef = useRef<Group>(null)
   const elapsedRef = useRef(0)
@@ -646,7 +678,7 @@ function Ladder3DScene({ rotateDeg, wobble }: { rotateDeg: number; wobble: boole
         overflow="visible"
         fontFamilies={{ inter: { normal: font } }}
       >
-        <LadderRows />
+        <LadderRows text={text} />
       </Root>
     </group>
   )
@@ -820,10 +852,11 @@ function HudCycleOverlay({ metricRef }: { metricRef: RefObject<MetricId> }) {
 }
 
 /**
- * Simplified-Chinese pending-paging notice — a fixed DOM banner (outside the Canvas, so zero
- * render cost) shown ONLY when `?lang=zh`. The CJK second pass is gated on glyph paging (the
- * R32F band-atlas caps a single page); until that lands, selecting 简中 keeps the Latin scene
- * and surfaces this. That's the deliberate "stop before Chinese" state.
+ * Simplified-Chinese info badge (Slug app) — a fixed DOM chip shown ONLY when `?lang=zh`.
+ * Chinese RENDERS here via a common subset (Noto Sans SC, OFL): 358 of the most-used hanzi →
+ * 741 glyphs → ONE curve/band page, ~2.1MB GPU. No paging needed — a common subset is small;
+ * only the full ~65k-glyph repertoire (≈229MB) would need multi-page. The MSDF twin can't do
+ * this cheaply, so its `?lang=zh` shows the memory chart instead of rendering.
  */
 function LangNotice() {
   if (readLang() !== 'zh') {
@@ -834,24 +867,22 @@ function LangNotice() {
       style={{
         position: 'fixed',
         left: '50%',
-        bottom: 20,
+        bottom: 16,
         transform: 'translateX(-50%)',
-        maxWidth: 560,
-        padding: '10px 16px',
-        borderRadius: 8,
+        padding: '7px 14px',
+        borderRadius: 999,
         background: 'rgba(11, 14, 19, 0.82)',
-        border: '1px solid rgba(245, 165, 36, 0.4)',
+        border: '1px solid rgba(74, 222, 128, 0.4)',
         color: '#e6edf3',
-        font: "500 12px/1.5 ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace",
+        font: "500 11px/1.4 ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace",
         textAlign: 'center',
         backdropFilter: 'blur(6px)',
+        whiteSpace: 'nowrap',
         zIndex: 20,
       }}
     >
-      <strong style={{ color: '#f5a524' }}>简体中文 — pending glyph paging.</strong> The R32Float
-      band-atlas caps a single page (curve texture ≤4096 rows, band offset &lt;16383); a CJK
-      repertoire needs multi-page bakes. Latin still renders.{' '}
-      <span style={{ opacity: 0.8 }}>See planning/perf/glyph-paging-design.md</span>
+      <strong style={{ color: '#4ade80' }}>简体中文</strong> · common subset (Noto Sans SC, OFL) ·
+      741 glyphs · 1 page · ~2.1&nbsp;MB
     </div>
   )
 }
