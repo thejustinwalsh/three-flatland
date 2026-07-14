@@ -409,7 +409,8 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
   }
 
   updateWorldMatrix(updateParents: boolean, updateChildren: boolean): void {
-    const root = this.root.peek().component
+    const rootContext = this.root.peek()
+    const root = rootContext.component
     const rootParent = root.parent
     if (updateParents) {
       rootParent?.updateWorldMatrix(true, false)
@@ -419,14 +420,23 @@ export class Component<OutProperties extends BaseOutProperties = BaseOutProperti
       root.updateMatrix()
     }
 
-    computeWorldToGlobalMatrix(this.root.peek(), worldToGlobalMatrixHelper)
+    computeWorldToGlobalMatrix(rootContext, worldToGlobalMatrixHelper)
+    // Bumping this here (root-only, once per frame) lets `setupMatrixWorldUpdate`
+    // cheaply tell descendants apart from the far more common case where only the
+    // root's own compute ran and nothing under it needs to follow — e.g. a
+    // wobbling/orbiting ancestor group changes this every frame; a static scene
+    // never does.
+    if (this === root && !rootContext.lastWorldToGlobalMatrix.equals(worldToGlobalMatrixHelper)) {
+      rootContext.lastWorldToGlobalMatrix.copy(worldToGlobalMatrixHelper)
+      rootContext.matrixVersion++
+    }
     this.matrixWorld.multiplyMatrices(
       worldToGlobalMatrixHelper,
       this.globalPanelMatrix.peek() ?? IdentityMatrix
     )
 
-    if (updateChildren && this.root.peek().component === this) {
-      for (const update of this.root.value.onUpdateMatrixWorldSet) {
+    if (updateChildren && rootContext.component === this) {
+      for (const update of rootContext.onUpdateMatrixWorldSet) {
         update()
       }
     }

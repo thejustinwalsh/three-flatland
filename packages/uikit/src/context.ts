@@ -34,6 +34,17 @@ export type RootContext = WithReversePainterSortStableCache & {
   onFrameEndSet: Set<(delta: number) => void>
   onUpdateMatrixWorldSet: Set<() => void>
   isUpdateRunning: boolean
+  /**
+   * Bumped whenever the root's own world-to-global transform (the product of
+   * the non-uikit ancestor chain's `matrixWorld` and the root's own local
+   * `matrix`) actually changes — e.g. a wobbling/orbiting ancestor group.
+   * `setupMatrixWorldUpdate` compares this against a per-registration cache to
+   * skip re-deriving a descendant's `matrixWorld` on frames where neither the
+   * root moved nor that descendant's own layout placement changed.
+   */
+  matrixVersion: number
+  /** last root world-to-global matrix seen, kept only to detect the change above */
+  lastWorldToGlobalMatrix: Matrix4
 } & Partial<RenderContext>
 
 export function buildRootContext(
@@ -83,6 +94,8 @@ function createRootContext(component: Component, renderContext: RenderContext | 
       renderContext?.requestFrame()
     },
     onUpdateMatrixWorldSet: new Set<() => void>(),
+    matrixVersion: 0,
+    lastWorldToGlobalMatrix: new Matrix4(),
     requestCalculateLayout: () => {},
     component,
   }

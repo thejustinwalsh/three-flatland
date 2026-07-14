@@ -192,13 +192,19 @@ for (let i = 0; i < 4; i++) {
 
 export function createGlobalClippingPlanes(component: Component) {
   const getGlobalMatrix = () => component.root.peek().component.parent?.matrixWorld
+  // `matrixWorld` above is mutated in place (an ancestor moving never changes its
+  // reference), so it can't be compared directly — `matrixVersion` is the cheap
+  // per-root stand-in, bumped whenever that combined world transform actually
+  // changes (see `Component.updateWorldMatrix`).
+  const getMatrixVersion = () => component.root.peek().matrixVersion
   const planes = new Array(4)
     .fill(undefined)
     .map<Plane>(
       (_, i) =>
         new RelativePlane(
           () => component.parentContainer.peek()?.clippingRect.value?.planes[i],
-          getGlobalMatrix
+          getGlobalMatrix,
+          getMatrixVersion
         )
     )
   return planes
@@ -208,27 +214,61 @@ const helperPlane = new Plane()
 
 class RelativePlane implements Plane {
   get normal(): Vector3 {
-    this.computeInto(helperPlane)
-    return helperPlane.normal
+    this.refresh()
+    return this.resolved.normal
   }
   get constant(): number {
-    this.computeInto(helperPlane)
-    return helperPlane.constant
+    this.refresh()
+    return this.resolved.constant
   }
   isPlane = true as const
 
+  /** last resolved (local plane × global matrix) result — see `refresh` */
+  private readonly resolved = new Plane()
+  private cachedLocalPlane: Plane | undefined
+  private cachedGlobalMatrix: Matrix4 | undefined
+  private cachedMatrixVersion = -1
+  private initialized = false
+
   constructor(
     private getLocalPlane: () => Plane | undefined,
-    private getGlobalMatrix: () => Matrix4 | undefined
+    private getGlobalMatrix: () => Matrix4 | undefined,
+    private getMatrixVersion: () => number
   ) {}
 
-  private computeInto(target: Plane): Plane {
+  /**
+   * Recomputes `resolved` only when the local plane reference or the root's
+   * world transform actually changed since the last call — a clipping plane
+   * is read (normal + constant, often both) once per rendered descendant
+   * every frame, so an unmemoized `applyMatrix4` here is O(descendants) work
+   * repeated for content that never moved.
+   */
+  private refresh(): void {
     const localPlane = this.getLocalPlane()
     const globalMatrix = this.getGlobalMatrix()
-    if (localPlane == null || globalMatrix == null) {
-      return target.copy(NoClippingPlane)
+    const matrixVersion = this.getMatrixVersion()
+    if (
+      this.initialized &&
+      localPlane === this.cachedLocalPlane &&
+      globalMatrix === this.cachedGlobalMatrix &&
+      matrixVersion === this.cachedMatrixVersion
+    ) {
+      return
     }
-    return target.copy(localPlane).applyMatrix4(globalMatrix)
+    this.initialized = true
+    this.cachedLocalPlane = localPlane
+    this.cachedGlobalMatrix = globalMatrix
+    this.cachedMatrixVersion = matrixVersion
+    if (localPlane == null || globalMatrix == null) {
+      this.resolved.copy(NoClippingPlane)
+      return
+    }
+    this.resolved.copy(localPlane).applyMatrix4(globalMatrix)
+  }
+
+  private computeInto(target: Plane): Plane {
+    this.refresh()
+    return target.copy(this.resolved)
   }
 
   set(_normal: Vector3, _constant: number): Plane {

@@ -214,7 +214,30 @@ export function setupMatrixWorldUpdate(
     if (root.component === component) {
       return
     }
-    const updateMatrixWorld = component.updateWorldMatrix.bind(component, false, true)
+    // Dirty-gate: every Content/Custom/Image instance in the tree registers here,
+    // and the root re-invokes the whole set unconditionally every frame (see
+    // `Component.updateWorldMatrix`). Recomputing `matrixWorld` is only ever
+    // necessary when either (a) the root's own world-to-global transform changed
+    // (`matrixVersion`, bumped once per frame root-side — covers a wobbling or
+    // orbiting ANCESTOR, which this component's own signals never see) or (b)
+    // this component's own layout placement changed (`globalPanelMatrix` is a
+    // memoized signal, so an unchanged layout returns the SAME Matrix4 reference).
+    // Components with children are excluded: `Content` recurses into arbitrary
+    // (possibly independently-animated) embedded content, which neither check
+    // above observes, so those must always recompute.
+    let lastMatrixVersion = -1
+    let lastPanelMatrix: Matrix4 | undefined
+    const updateMatrixWorld = () => {
+      if (component.children.length === 0) {
+        const panelMatrix = component.globalPanelMatrix.peek()
+        if (root.matrixVersion === lastMatrixVersion && panelMatrix === lastPanelMatrix) {
+          return
+        }
+        lastMatrixVersion = root.matrixVersion
+        lastPanelMatrix = panelMatrix
+      }
+      component.updateWorldMatrix(false, true)
+    }
     root.onUpdateMatrixWorldSet.add(updateMatrixWorld)
     return () => root.onUpdateMatrixWorldSet.delete(updateMatrixWorld)
   }, abortSignal)

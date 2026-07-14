@@ -2,7 +2,7 @@ import { expect } from 'chai'
 import { Container, Image, Text, Content, Custom } from '../index.js'
 import { InstancedPanelMesh } from '../panel/instance/mesh.js'
 import { InstancedGlyphMesh } from '../text/render/instanced-glyph-group.js'
-import { InstancedBufferAttribute, Object3D, Group } from 'three'
+import { InstancedBufferAttribute, Object3D, Group, Matrix4 } from 'three'
 import { Component } from '../components/component.js'
 import { RootContext } from '../context.js'
 
@@ -13,7 +13,10 @@ function createMockRootContext(): Omit<
   return {
     isUpdateRunning: false,
     onFrameSet: new Set(),
+    onFrameEndSet: new Set(),
     onUpdateMatrixWorldSet: new Set(),
+    matrixVersion: 0,
+    lastWorldToGlobalMatrix: new Matrix4(),
     requestCalculateLayout: () => {},
     requestRender: () => {},
     component: new Container(),
