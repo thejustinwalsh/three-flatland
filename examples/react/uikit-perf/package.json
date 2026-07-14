@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "bake": "node scripts/bake.mjs",
+    "predev": "node scripts/bake.mjs",
+    "prebuild": "node scripts/bake.mjs",
     "dev": "vite dev --port ${TURBO_MFE_PORT:-5179}",
     "build": "vite build",
     "preview": "vite preview",
