@@ -239,7 +239,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
       response,
       opentype,
       { parseFont },
-      { packTextures },
+      { packTextures, singlePageOrThrow },
       { shapeText },
       { wrapLines },
       { measureText },
@@ -267,7 +267,10 @@ export class SlugFontLoader extends Loader<SlugFont> {
     const buffer = await response.arrayBuffer()
     const parsed = parseFont(buffer)
     const { glyphs } = parsed
-    const textures = packTextures(glyphs)
+    // Multi-page rendering (SlugFont binding >1 curve/band pair) is a later
+    // milestone; until then a font must fit one page. singlePageOrThrow makes
+    // an over-cap font fail loudly instead of silently dropping glyphs.
+    const textures = singlePageOrThrow(packTextures(glyphs), `SlugFontLoader "${url}"`)
     const otFont = opentype.parse(buffer)
 
     return SlugFont._createRuntime(

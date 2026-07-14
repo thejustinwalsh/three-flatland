@@ -27,6 +27,7 @@ function makeTinyInput(): BakeInput {
     curves: [],
     contourStarts: [],
     bounds: { xMin: 0, yMin: 0, xMax: 1, yMax: 1 },
+    page: 0,
     bandLocation: { x: 0, y: 0 },
     curveLocation: { x: 0, y: 0 },
     advanceWidth: 1,

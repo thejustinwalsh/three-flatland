@@ -240,6 +240,9 @@ export function unpackBaked(asset: GlbView): BakedFontData {
       bands: { hBands, vBands },
       advanceWidth: advanceWidthArr[i]!,
       lsb: lsbArr[i]!,
+      // TODO(paging M3): the baked container doesn't carry a page column yet
+      // — every baked font is single-page until then.
+      page: 0,
       curveLocation: { x: 0, y: 0 },
     })
     // hasOutlineArr[i] is available if callers ever need it, but SlugGlyphData

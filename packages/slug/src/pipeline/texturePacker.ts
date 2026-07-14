@@ -7,10 +7,19 @@ import {
   RedFormat,
   RGBAFormat,
 } from 'three'
-import type { Band, SlugGlyphData, SlugTextureData } from '../types.js'
+import type { Band, PagedTextureData, SlugGlyphData, SlugTextureData } from '../types.js'
 
 /** Default texture width in texels (must be power of 2). */
 const TEXTURE_WIDTH = 4096
+
+/**
+ * Per-page budget on a page's estimated curve-texel rows (texel-estimate /
+ * TEXTURE_WIDTH), well under the 4096-row hard cap `packRefCoord` enforces —
+ * a single glyph's own texel footprint never approaches this, so the budget
+ * check in `packTextures` only ever closes a page BETWEEN glyphs, never
+ * mid-glyph. A glyph's curves + bands always land entirely on one page.
+ */
+const PAGE_CURVE_ROW_BUDGET = 2048
 
 // ── Band texel packing (R32Float, single channel) ──────────────────────────
 // Every band texel packs two small non-negative integers into ONE float32.
@@ -161,7 +170,99 @@ function nextPow2(n: number): number {
 }
 
 /**
- * Pack all glyph curve and band data into GPU DataTextures.
+ * Upper-bound estimate of a glyph's curve-texel footprint: endpoint sharing
+ * means each contour of N curves needs N+1 texels, plus +1 per curve for
+ * worst-case row-boundary padding. The SAME formula the page-assignment
+ * budget check and each page's size pre-pass both use, so they agree on
+ * cost exactly.
+ */
+function estimateGlyphCurveTexels(glyph: SlugGlyphData): number {
+  let texels = 0
+  const starts = glyph.contourStarts
+  for (let c = 0; c < starts.length; c++) {
+    const contourStart = starts[c]!
+    const contourEnd = c + 1 < starts.length ? starts[c + 1]! : glyph.curves.length
+    const contourCurves = contourEnd - contourStart
+    texels += contourCurves * 2 + 1
+  }
+  return texels
+}
+
+/**
+ * Pack all glyph curve and band data into GPU DataTextures, split across as
+ * many PAGES as needed to keep every page's curve texture under the
+ * 4096-row cap `packRefCoord` enforces — a dense glyph set (CJK) can exceed
+ * 4096 rows in one page; every Latin font today fits in one.
+ *
+ * Page assignment is greedy: glyphs are walked in Map iteration order and
+ * appended to the current page until the next glyph would push the page's
+ * estimated curve-texel rows past `PAGE_CURVE_ROW_BUDGET`, at which point
+ * the page closes and a new one starts. A glyph's curves + bands always
+ * land entirely on ONE page — pages never split a glyph. Each page is then
+ * packed independently by `packPage`, whose curve/band offset counters
+ * start fresh at 0 — so a glyph's `curveLocation`/`bandLocation` are
+ * PAGE-RELATIVE texel coordinates, and `packRefCoord`'s texelY guard is
+ * checked against that page's own height, never the combined total.
+ *
+ * When every glyph fits on one page (every Latin font today), `packPage` —
+ * unchanged from the pre-paging packer, just scoped to a glyph subset —
+ * produces byte-identical output to the original single-texture pack.
+ */
+export function packTextures(glyphs: Map<number, SlugGlyphData>): PagedTextureData {
+  const pageGroups: Map<number, SlugGlyphData>[] = []
+  let current = new Map<number, SlugGlyphData>()
+  let currentTexels = 0
+
+  for (const [glyphId, glyph] of glyphs) {
+    const glyphTexels = estimateGlyphCurveTexels(glyph)
+    const wouldBeRows = Math.ceil((currentTexels + glyphTexels) / TEXTURE_WIDTH)
+    if (current.size > 0 && wouldBeRows > PAGE_CURVE_ROW_BUDGET) {
+      pageGroups.push(current)
+      current = new Map()
+      currentTexels = 0
+    }
+    current.set(glyphId, glyph)
+    currentTexels += glyphTexels
+  }
+  // Always emit at least one page, even for an empty glyph set — matches
+  // packPage's own empty-input handling (a minimal 1x1-texel page).
+  if (current.size > 0 || pageGroups.length === 0) pageGroups.push(current)
+
+  const pages = pageGroups.map((pageGlyphs, pageIndex) => {
+    const page = packPage(pageGlyphs)
+    for (const glyph of pageGlyphs.values()) glyph.page = pageIndex
+    return page
+  })
+
+  return { pages, textureWidth: TEXTURE_WIDTH }
+}
+
+/**
+ * Extract the single page of a pack, or throw a clear error when the glyph set
+ * spilled onto more than one. Callers that still bind ONE curve/band texture
+ * pair (SlugFont/SlugText render, the bake CLI, SlugShapeSet) use this instead
+ * of silently taking `pages[0]` and dropping every glyph past the first — that
+ * silent-drop was the failure mode multi-page rendering (a later milestone)
+ * will remove. Until then, subset the font/shape set to fit one page (≈16k
+ * glyphs / under the 4096-row curve-texture cap). See
+ * planning/perf/glyph-paging-design.md.
+ */
+export function singlePageOrThrow(paged: PagedTextureData, context: string): SlugTextureData {
+  if (paged.pages.length !== 1) {
+    throw new Error(
+      `${context}: glyph set spans ${paged.pages.length} texture pages, but multi-page ` +
+        `rendering is not yet implemented. Subset the font/shapes to fit one page ` +
+        `(≈16k glyphs, under the 4096-row curve-texture cap). See ` +
+        `planning/perf/glyph-paging-design.md.`
+    )
+  }
+  return paged.pages[0]!
+}
+
+/**
+ * Pack one page's worth of glyphs into a single curve/band DataTexture
+ * pair. `curveOffset`/`bandOffset` start at 0, so every `curveLocation`/
+ * `bandLocation` this writes is page-relative.
  *
  * Curve Texture (RGBA16F — HalfFloatType):
  *   - 2 texels per curve: [p0x, p0y, p1x, p1y] + [p2x, p2y, 0, 0]
@@ -180,7 +281,7 @@ function nextPow2(n: number): number {
  *   - 4 bytes per texel vs 8 for the old RG32F — halves every band read
  *     (~2 headers + 1 ref-per-curve per fragment). Universal bandwidth win.
  */
-export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureData {
+function packPage(glyphs: Map<number, SlugGlyphData>): SlugTextureData {
   // First pass: calculate total sizes
   let totalCurveTexels = 0
   let totalBandTexels = 0
@@ -190,15 +291,7 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
   const bandPlans: BandLayout[] = []
 
   for (const glyph of glyphs.values()) {
-    // Endpoint sharing: each contour of N curves needs N+1 texels.
-    // Add +1 per curve for worst-case row-boundary padding.
-    const starts = glyph.contourStarts
-    for (let c = 0; c < starts.length; c++) {
-      const contourStart = starts[c]!
-      const contourEnd = c + 1 < starts.length ? starts[c + 1]! : glyph.curves.length
-      const contourCurves = contourEnd - contourStart
-      totalCurveTexels += contourCurves * 2 + 1 // worst case: every curve needs a pad
-    }
+    totalCurveTexels += estimateGlyphCurveTexels(glyph)
 
     // Band headers + deduped curve reference lists (planned once, reused below).
     const plan = planGlyphBands(glyph.bands.hBands, glyph.bands.vBands)

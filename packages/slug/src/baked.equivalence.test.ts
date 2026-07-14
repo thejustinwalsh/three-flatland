@@ -85,8 +85,11 @@ beforeAll(async () => {
   id0 = otFont.charToGlyph('0').index
   idSpace = otFont.charToGlyph(' ').index
 
-  // Pack textures — this mutates glyphs in-place (bandLocation / curveLocation)
-  const textures = packTextures(parsed.glyphs)
+  // Pack textures — this mutates glyphs in-place (bandLocation / curveLocation).
+  // Every glyph in this fixture fits on page 0 (paging only kicks in for
+  // dense sets like CJK), which the "reconstructed glyph count" assertions
+  // below implicitly prove.
+  const textures = packTextures(parsed.glyphs).pages[0]!
   const curveImage = textures.curveTexture.image as {
     data: Uint16Array
     width: number

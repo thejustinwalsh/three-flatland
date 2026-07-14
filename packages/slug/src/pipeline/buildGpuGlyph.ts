@@ -47,6 +47,7 @@ export function buildGpuGlyphData(
     bounds: gpu.bounds,
     advanceWidth: advanceWidthEm,
     lsb: lsbEm,
+    page: 0,
     bandLocation: { x: 0, y: 0 },
     curveLocation: { x: 0, y: 0 },
   }
@@ -69,6 +70,7 @@ export function buildAdvanceOnlyGlyph(
     contourStarts: [],
     bands: { hBands: [], vBands: [] },
     bounds: { xMin: 0, yMin: 0, xMax: 0, yMax: 0 },
+    page: 0,
     bandLocation: { x: 0, y: 0 },
     curveLocation: { x: 0, y: 0 },
     advanceWidth: advanceWidthEm,

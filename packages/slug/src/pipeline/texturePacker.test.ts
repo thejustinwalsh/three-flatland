@@ -26,7 +26,7 @@ function loadAndPack() {
 describe('texturePacker', () => {
   it('creates power-of-2 textures', () => {
     const { textures } = loadAndPack()
-    const { curveTexture, bandTexture } = textures
+    const { curveTexture, bandTexture } = textures.pages[0]!
 
     const cw = curveTexture.image.width
     const ch = curveTexture.image.height
@@ -42,8 +42,13 @@ describe('texturePacker', () => {
   it('sets texture width to 4096', () => {
     const { textures } = loadAndPack()
     expect(textures.textureWidth).toBe(4096)
-    expect(textures.curveTexture.image.width).toBe(4096)
-    expect(textures.bandTexture.image.width).toBe(4096)
+    expect(textures.pages[0]!.curveTexture.image.width).toBe(4096)
+    expect(textures.pages[0]!.bandTexture.image.width).toBe(4096)
+  })
+
+  it('packs every glyph of a Latin font onto a single page', () => {
+    const { textures } = loadAndPack()
+    expect(textures.pages.length).toBe(1)
   })
 
   it('assigns valid band locations to all glyphs', () => {
@@ -66,7 +71,7 @@ describe('texturePacker', () => {
 
   it('stores curve data as finite float values', () => {
     const { textures } = loadAndPack()
-    const data = textures.curveTexture.image.data as Float32Array
+    const data = textures.pages[0]!.curveTexture.image.data as Float32Array
     // Spot check first 1000 values — all should be finite
     for (let i = 0; i < Math.min(data.length, 1000); i++) {
       expect(isFinite(data[i]!)).toBe(true)
@@ -75,7 +80,7 @@ describe('texturePacker', () => {
 
   it('stores band data as non-negative integer-valued floats', () => {
     const { textures } = loadAndPack()
-    const data = textures.bandTexture.image.data as Float32Array
+    const data = textures.pages[0]!.bandTexture.image.data as Float32Array
     // Band data encodes integers as floats — all should be >= 0 and integer-valued
     for (let i = 0; i < Math.min(data.length, 1000); i++) {
       const v = data[i]!
@@ -90,7 +95,7 @@ describe('texturePacker', () => {
     const { glyphs, textures } = loadAndPack()
     const h = glyphs.get(161)! // H glyph
     // Curve texture is RGBA16F — decode Uint16 half-float bits back to Float32.
-    const data = textures.curveTexture.image.data as Uint16Array
+    const data = textures.pages[h.page]!.curveTexture.image.data as Uint16Array
     const width = textures.textureWidth
 
     const cx = h.curveLocation.x
@@ -190,6 +195,7 @@ describe('band texel packing (R32F, packed single channel)', () => {
       bounds: { xMin: 0, yMin: 0, xMax: 1, yMax: 1 },
       advanceWidth: 1,
       lsb: 0,
+      page: 0,
       bandLocation: { x: 0, y: 0 },
       curveLocation: { x: 0, y: 0 },
     }
@@ -203,7 +209,8 @@ describe('band texel packing (R32F, packed single channel)', () => {
       [{ curveIndices: [0, 1] }, { curveIndices: [2] }, { curveIndices: [0, 1] }],
       [{ curveIndices: [0, 1] }]
     )
-    const { bandTexture, textureWidth } = packTextures(new Map([[1, glyph]]))
+    const { pages, textureWidth } = packTextures(new Map([[1, glyph]]))
+    const { bandTexture } = pages[0]!
     const data = bandTexture.image.data as Float32Array
     const base = glyph.bandLocation.y * textureWidth + glyph.bandLocation.x
 
@@ -239,7 +246,7 @@ describe('band texel packing (R32F, packed single channel)', () => {
 
   it('every real-font band texel decodes to valid (count,offset) or (x,y) ranges', () => {
     const { textures } = loadAndPack()
-    const data = textures.bandTexture.image.data as Float32Array
+    const data = textures.pages[0]!.bandTexture.image.data as Float32Array
     // Spot-check the first 2000 populated texels: each is either a header or a
     // curve-ref, and both decodes must land inside their field bounds.
     for (let i = 0; i < Math.min(data.length, 2000); i++) {
@@ -252,6 +259,54 @@ describe('band texel packing (R32F, packed single channel)', () => {
       expect(h.offset).toBeLessThanOrEqual(16383)
       expect(r.x).toBeLessThanOrEqual(4095)
       expect(r.y).toBeLessThanOrEqual(4095)
+    }
+  })
+})
+
+describe('texturePacker paging (dense glyph sets exceeding one page)', () => {
+  // A CJK-sized font can push the curve texture past the 4096-row hard cap
+  // `packRefCoord` guards. Synthesize enough curve-texel volume to exceed
+  // `PAGE_CURVE_ROW_BUDGET` (2048 rows = 2048*4096 texels) so the greedy
+  // pager is forced to split — no real font is loaded, just enough glyphs
+  // with dense-enough contours to blow the per-page budget.
+  const NUM_GLYPHS = 2800
+  const CURVES_PER_GLYPH = 1500 // texels/glyph = 1500*2+1 = 3001
+
+  function makeDenseGlyph(id: number): SlugGlyphData {
+    const curves = []
+    for (let i = 0; i < CURVES_PER_GLYPH; i++) {
+      curves.push({ p0x: 0, p0y: 0, p1x: 0.1, p1y: 0.1, p2x: 0.2, p2y: 0.2 })
+    }
+    return {
+      glyphId: id,
+      curves,
+      contourStarts: [0],
+      bands: { hBands: [], vBands: [] },
+      bounds: { xMin: 0, yMin: 0, xMax: 1, yMax: 1 },
+      advanceWidth: 1,
+      lsb: 0,
+      page: 0,
+      bandLocation: { x: 0, y: 0 },
+      curveLocation: { x: 0, y: 0 },
+    }
+  }
+
+  it('splits a glyph set whose total curve rows exceed the page budget across multiple pages', () => {
+    const glyphs = new Map<number, SlugGlyphData>()
+    for (let i = 0; i < NUM_GLYPHS; i++) glyphs.set(i, makeDenseGlyph(i))
+
+    const { pages } = packTextures(glyphs)
+
+    expect(pages.length).toBeGreaterThanOrEqual(2)
+    for (const page of pages) {
+      expect(page.curveTexture.image.height).toBeLessThanOrEqual(4096)
+    }
+
+    for (const glyph of glyphs.values()) {
+      expect(glyph.page).toBeGreaterThanOrEqual(0)
+      expect(glyph.page).toBeLessThan(pages.length)
+      const pageHeight = pages[glyph.page]!.curveTexture.image.height
+      expect(glyph.curveLocation.y).toBeLessThan(pageHeight)
     }
   })
 })

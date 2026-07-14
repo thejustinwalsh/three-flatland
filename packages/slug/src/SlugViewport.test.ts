@@ -23,7 +23,7 @@ let font: SlugFont
 
 beforeAll(() => {
   const parsed = parseFont(arrayBuffer)
-  const textures = packTextures(parsed.glyphs)
+  const textures = packTextures(parsed.glyphs).pages[0]!
   const otFont = opentype.parse(arrayBuffer)
   font = SlugFont._createRuntime(
     parsed.glyphs,

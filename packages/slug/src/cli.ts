@@ -32,7 +32,7 @@ import { pathToFileURL } from 'node:url'
 import opentype from 'opentype.js'
 import type { Baker } from '@three-flatland/bake'
 import { parseFont } from './pipeline/fontParser.js'
-import { packTextures } from './pipeline/texturePacker.js'
+import { packTextures, singlePageOrThrow } from './pipeline/texturePacker.js'
 import { bakeStrokeForGlyph } from './pipeline/strokeOffsetter.js'
 import type { CapStyle, JoinStyle } from './pipeline/strokeOffsetter.js'
 import { packBaked } from './bake.js'
@@ -177,6 +177,7 @@ async function bakeFont(
       contourStarts: [],
       bands: { hBands: [], vBands: [] },
       bounds: { xMin: 0, yMin: 0, xMax: 0, yMax: 0 },
+      page: 0,
       bandLocation: { x: 0, y: 0 },
       curveLocation: { x: 0, y: 0 },
       advanceWidth: (otGlyph.advanceWidth ?? 0) / unitsPerEm,
@@ -233,7 +234,10 @@ async function bakeFont(
   }
 
   console.log('  Packing textures...')
-  const textures = packTextures(glyphs)
+  // The .slug.glb container is still single-page; baking all pages is a later
+  // milestone. singlePageOrThrow makes an over-cap font fail the bake loudly
+  // (subset it) rather than silently dropping glyphs past the first page.
+  const textures = singlePageOrThrow(packTextures(glyphs), `bake "${fontPath}"`)
 
   // Density advisory. The shader now loops each band by its runtime curve count
   // (no fixed bound), so a dense band renders CORRECTLY — no truncation. But per-

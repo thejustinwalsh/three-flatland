@@ -21,7 +21,7 @@ let otFont: opentype.Font
 
 beforeAll(() => {
   const parsed = parseFont(arrayBuffer)
-  const textures = packTextures(parsed.glyphs)
+  const textures = packTextures(parsed.glyphs).pages[0]!
   otFont = opentype.parse(arrayBuffer)
   inter = SlugFont._createRuntime(
     parsed.glyphs,

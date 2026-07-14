@@ -1,6 +1,6 @@
 import type { DataTexture } from 'three'
 import { buildGpuGlyphData } from './pipeline/buildGpuGlyph.js'
-import { packTextures } from './pipeline/texturePacker.js'
+import { packTextures, singlePageOrThrow } from './pipeline/texturePacker.js'
 import { readGlb } from './glb.js'
 import { readBandWords } from './baked.js'
 import { SLUG_SHAPES_EXTENSION_NAME, SLUG_SHAPES_VERSION } from './format.js'
@@ -140,7 +140,9 @@ export class SlugShapeSet {
     // packTextures fills each shape's bandLocation/curveLocation in place.
     // Insertion order is stable and new shapes append, so previously packed
     // shapes land on identical texels (see class doc growth invariant).
-    this._textures = packTextures(this.glyphs)
+    // Multi-page shape rendering is a later milestone; singlePageOrThrow makes
+    // an over-cap shape set fail loudly rather than dropping shapes past page 0.
+    this._textures = singlePageOrThrow(packTextures(this.glyphs), 'SlugShapeSet')
     this._dirty = false
     this._version++
   }
@@ -239,6 +241,9 @@ export class SlugShapeSet {
         bounds,
         advanceWidth: bounds.xMax - bounds.xMin,
         lsb: bounds.xMin,
+        // TODO(paging M4): the baked shapes container doesn't carry a page
+        // column yet — every baked icon set is single-page until then.
+        page: 0,
         bandLocation: { x: 0, y: 0 },
         curveLocation: { x: 0, y: 0 },
       })
