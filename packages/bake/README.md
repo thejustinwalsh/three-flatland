@@ -123,7 +123,7 @@ Not a dev-iteration knob — the default path (probe → generate on miss + warn
 
 ## Documentation
 
-Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**
+Full docs, interactive examples, and API reference at **[tjw.dev/three-flatland](https://tjw.dev/three-flatland/)**
 
 ## License
 
