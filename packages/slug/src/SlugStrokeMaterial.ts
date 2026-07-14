@@ -1,7 +1,7 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { Vector2, Vector4, Color, Matrix4, FrontSide, NormalBlending } from 'three'
 import type { Camera, Object3D } from 'three'
-import { Fn, float, sign, vec2, vec3, vec4, attribute, uniform, varyingProperty } from 'three/tsl'
+import { Fn, If, float, sign, vec2, vec3, vec4, attribute, uniform, varyingProperty } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { slugStroke } from './shaders/slugStroke.js'
 import { slugDilate } from './shaders/slugDilate.js'
@@ -211,19 +211,28 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
       // only via the fill pass.
       const isRect = vNumVBands.lessThan(float(0))
 
-      const coverage = slugStroke(
-        curveTexture,
-        bandTexture,
-        renderCoord,
-        vGlyphLocX,
-        vGlyphLocY,
-        vNumHBands,
-        vNumVBands,
-        glyphBand,
-        strokeHalfWidthUniform
-      )
-
-      const rectCoverage = isRect.select(float(0.0), coverage)
+      // Skip the entire stroke solve (both band walks + distance-to-Bézier) for decoration
+      // rects via a real If/Else — the old `isRect.select(0, coverage)` still evaluated
+      // slugStroke() before discarding it. isRect derives from a per-instance attribute, so it's
+      // uniform within any rasterized primitive → the fwidth inside slugStroke stays well-defined.
+      const rectCoverage = float(0.0).toVar()
+      If(isRect, () => {
+        rectCoverage.assign(float(0.0))
+      }).Else(() => {
+        rectCoverage.assign(
+          slugStroke(
+            curveTexture,
+            bandTexture,
+            renderCoord,
+            vGlyphLocX,
+            vGlyphLocY,
+            vNumHBands,
+            vNumVBands,
+            glyphBand,
+            strokeHalfWidthUniform
+          )
+        )
+      })
 
       // Per-instance clip: coverage multiply, unconditional fwidth (Q2).
       const finalCoverage = vClipDist ? rectCoverage.mul(clipCoverage(vClipDist)) : rectCoverage
