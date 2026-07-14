@@ -4,6 +4,7 @@ import { resolve } from 'path'
 import { DataUtils } from 'three'
 import { parseFont } from './fontParser'
 import { packHeader, packRefCoord, packTextures } from './texturePacker'
+import type { Band, SlugGlyphData } from '../types'
 
 // Mirror the shader decode (shaders/slugFragment.ts + slugStroke.ts):
 //   header  = curveCount << 14 | curveListOffset
@@ -167,6 +168,73 @@ describe('band texel packing (R32F, packed single channel)', () => {
     expect(() => packRefCoord(0, 4096)).toThrow(RangeError) // texelY > 4095
     expect(() => packRefCoord(0, -1)).toThrow(RangeError)
     expect(() => packRefCoord(0, 1.5)).toThrow(RangeError)
+  })
+
+  // Build a single synthetic glyph whose bands reference three curves laid out
+  // as one contour, so curveTexelMap is [0, 1, 2] → packRefCoord decodes to
+  // x = curve index, y = 0. Lets a test read a band's refs back as curve indices.
+  const curve = (i: number) => ({
+    p0x: i,
+    p0y: 0,
+    p1x: i + 0.1,
+    p1y: 0.1,
+    p2x: i + 0.2,
+    p2y: 0.2,
+  })
+  function makeGlyph(hBands: Band[], vBands: Band[]): SlugGlyphData {
+    return {
+      glyphId: 1,
+      curves: [curve(0), curve(1), curve(2)],
+      contourStarts: [0],
+      bands: { hBands, vBands },
+      bounds: { xMin: 0, yMin: 0, xMax: 1, yMax: 1 },
+      advanceWidth: 1,
+      lsb: 0,
+      bandLocation: { x: 0, y: 0 },
+      curveLocation: { x: 0, y: 0 },
+    }
+  }
+
+  it('dedups ANY identical curve-ref list (not just adjacent); distinct lists stay distinct', () => {
+    // hBand[0] and hBand[2] are identical but NON-adjacent (the old adjacent-only
+    // dedup would re-emit hBand[2]); hBand[1] is distinct; the vBand repeats the
+    // same list across the h/v group boundary.
+    const glyph = makeGlyph(
+      [{ curveIndices: [0, 1] }, { curveIndices: [2] }, { curveIndices: [0, 1] }],
+      [{ curveIndices: [0, 1] }]
+    )
+    const { bandTexture, textureWidth } = packTextures(new Map([[1, glyph]]))
+    const data = bandTexture.image.data as Float32Array
+    const base = glyph.bandLocation.y * textureWidth + glyph.bandLocation.x
+
+    // Header layout: 3 hBand headers, then 1 vBand header.
+    const h0 = decodeHeader(data[base + 0]!)
+    const h1 = decodeHeader(data[base + 1]!)
+    const h2 = decodeHeader(data[base + 2]!)
+    const v0 = decodeHeader(data[base + 3]!)
+
+    // Counts are untouched by dedup.
+    expect(h0.count).toBe(2)
+    expect(h1.count).toBe(1)
+    expect(h2.count).toBe(2)
+    expect(v0.count).toBe(2)
+
+    // Identical lists share ONE offset — non-adjacent (h2) and cross-group (v0).
+    expect(h2.offset).toBe(h0.offset)
+    expect(v0.offset).toBe(h0.offset)
+    // A distinct list gets its own offset.
+    expect(h1.offset).not.toBe(h0.offset)
+
+    // The shared offset decodes to exactly curve indices [0, 1]; the distinct
+    // one to [2] — dedup shares storage without changing what a band resolves to.
+    expect(decodeRef(data[base + h0.offset]!)).toEqual({ x: 0, y: 0 })
+    expect(decodeRef(data[base + h0.offset + 1]!)).toEqual({ x: 1, y: 0 })
+    expect(decodeRef(data[base + h1.offset]!)).toEqual({ x: 2, y: 0 })
+
+    // Only two distinct lists are emitted (2 + 1 ref texels) after the 4 headers,
+    // so the whole glyph occupies 7 band texels — the [0,1] list is stored once.
+    expect(h0.offset).toBe(4) // first ref list starts right after the 4 headers
+    expect(h1.offset).toBe(6) // [0,1] took texels 4-5, [2] starts at 6
   })
 
   it('every real-font band texel decodes to valid (count,offset) or (x,y) ranges', () => {

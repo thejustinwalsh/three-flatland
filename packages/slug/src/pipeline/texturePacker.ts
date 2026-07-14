@@ -7,7 +7,7 @@ import {
   RedFormat,
   RGBAFormat,
 } from 'three'
-import type { SlugGlyphData, SlugTextureData } from '../types.js'
+import type { Band, SlugGlyphData, SlugTextureData } from '../types.js'
 
 /** Default texture width in texels (must be power of 2). */
 const TEXTURE_WIDTH = 4096
@@ -76,6 +76,78 @@ export function packRefCoord(texelX: number, texelY: number): number {
   return texelY * (TEXTURE_WIDTH_MASK + 1) + texelX
 }
 
+/**
+ * A glyph's band-texel layout after full (non-adjacent) curve-list dedup.
+ *
+ * `hOffsets[b]` / `vOffsets[b]` are the glyph-relative curve-list offsets
+ * written into each band's header. Identical curve-index lists ANYWHERE in the
+ * glyph — across hBands AND vBands, not merely adjacent — resolve to the same
+ * offset, so their refs are emitted once. `emits` is the set of ref lists to
+ * write, in ascending offset order; `total` is the glyph's whole band span
+ * (headers + deduped refs).
+ *
+ * Deterministic from the curve-index sequences alone — independent of where the
+ * referenced curves land in the curve texture — so the size pre-pass and the
+ * write pass build an identical layout and agree on `total` exactly.
+ */
+interface BandLayout {
+  hOffsets: number[]
+  vOffsets: number[]
+  emits: { start: number; indices: number[] }[]
+  total: number
+}
+
+/**
+ * Plan a glyph's band layout, deduplicating EVERY identical curve-ref list —
+ * not just the previous band's. A per-glyph map from the full ordered
+ * curve-index list (a stable joined key) to its already-written glyph-relative
+ * offset lets any later band with the same list reuse that storage instead of
+ * re-emitting refs. Decoded `(count, offset)` still resolves to the same curve
+ * indices — only storage is shared.
+ *
+ * Scope is per glyph on purpose: the shader decodes a header's offset relative
+ * to the glyph's own band location, and a ref texel is a glyph-local curve
+ * pointer, so a match only shares storage correctly WITHIN one glyph.
+ */
+function planGlyphBands(hBands: Band[], vBands: Band[]): BandLayout {
+  const headerTexels = hBands.length + vBands.length
+  const seen = new Map<string, number>()
+  const hOffsets = new Array<number>(hBands.length)
+  const vOffsets = new Array<number>(vBands.length)
+  const emits: { start: number; indices: number[] }[] = []
+  let cursor = headerTexels // ref lists begin immediately after the headers
+
+  const place = (bands: Band[], offsets: number[]) => {
+    for (let b = 0; b < bands.length; b++) {
+      const indices = bands[b]!.curveIndices
+      const key = indices.join(',')
+      const shared = seen.get(key)
+      // Reuse an earlier identical list, but only if its offset still fits the
+      // 14-bit header field. A reused offset is always ≤ the current cursor, so
+      // it satisfies the guard whenever a fresh write here would — the check is
+      // belt-and-suspenders: dedup never emits an out-of-range header (it falls
+      // back to a fresh copy instead of throwing).
+      if (shared !== undefined && shared <= HEADER_OFFSET_MASK) {
+        offsets[b] = shared
+      } else {
+        const offset = cursor
+        offsets[b] = offset
+        emits.push({ start: offset, indices })
+        cursor += indices.length
+        // Record for later reuse only when the offset is addressable. An offset
+        // past the guard is a genuine per-glyph capacity overflow the writer
+        // surfaces via packHeader, not something dedup should hand out.
+        if (offset <= HEADER_OFFSET_MASK) seen.set(key, offset)
+      }
+    }
+  }
+
+  place(hBands, hOffsets)
+  place(vBands, vOffsets)
+
+  return { hOffsets, vOffsets, emits, total: cursor }
+}
+
 /** Round up to next power of 2. */
 function nextPow2(n: number): number {
   if (n <= 0) return 1
@@ -112,6 +184,10 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
   // First pass: calculate total sizes
   let totalCurveTexels = 0
   let totalBandTexels = 0
+  // Band layout is planned once per glyph here (dedup-aware) and reused by the
+  // write pass, so the allocated band texture is sized to the deduped footprint
+  // rather than the no-dedup upper bound.
+  const bandPlans: BandLayout[] = []
 
   for (const glyph of glyphs.values()) {
     // Endpoint sharing: each contour of N curves needs N+1 texels.
@@ -124,19 +200,10 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
       totalCurveTexels += contourCurves * 2 + 1 // worst case: every curve needs a pad
     }
 
-    // Band headers + curve reference lists
-    const numHBands = glyph.bands.hBands.length
-    const numVBands = glyph.bands.vBands.length
-    let bandTexels = numHBands + numVBands // headers
-
-    for (const band of glyph.bands.hBands) {
-      bandTexels += band.curveIndices.length
-    }
-    for (const band of glyph.bands.vBands) {
-      bandTexels += band.curveIndices.length
-    }
-
-    totalBandTexels += bandTexels
+    // Band headers + deduped curve reference lists (planned once, reused below).
+    const plan = planGlyphBands(glyph.bands.hBands, glyph.bands.vBands)
+    bandPlans.push(plan)
+    totalBandTexels += plan.total
   }
 
   // Calculate texture heights — round up to next power of 2 for GPU compression support
@@ -151,6 +218,7 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
 
   let curveOffset = 0 // texel offset into curve texture
   let bandOffset = 0 // texel offset into band texture
+  let glyphIndex = 0 // consumes bandPlans in the same glyph order as the pre-pass
 
   for (const glyph of glyphs.values()) {
     // Record glyph's curve location
@@ -210,54 +278,41 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
       curveOffset++
     }
 
-    // Pack band data
+    // Pack band data using the pre-planned, dedup-aware layout. `planGlyphBands`
+    // shares one copy of storage across ALL identical curve-ref lists in the
+    // glyph (hBands + vBands, non-adjacent), so headers may point at an earlier
+    // list; only distinct lists are emitted.
     const glyphBandStart = bandOffset
-    const numHBands = glyph.bands.hBands.length
-    const numVBands = glyph.bands.vBands.length
+    const plan = bandPlans[glyphIndex++]!
+    const hBands = glyph.bands.hBands
+    const vBands = glyph.bands.vBands
+    const numHBands = hBands.length
 
-    // Reserve space for headers
-    const hHeaderStart = bandOffset
-    bandOffset += numHBands
-    const vHeaderStart = bandOffset
-    bandOffset += numVBands
+    // Headers: hBand headers first, then vBand headers — one packed R32F texel
+    // each, carrying (curveCount, glyph-relative curve-list offset).
+    for (let b = 0; b < hBands.length; b++) {
+      bandData[glyphBandStart + b] = packHeader(hBands[b]!.curveIndices.length, plan.hOffsets[b]!)
+    }
+    for (let b = 0; b < vBands.length; b++) {
+      bandData[glyphBandStart + numHBands + b] = packHeader(
+        vBands[b]!.curveIndices.length,
+        plan.vOffsets[b]!
+      )
+    }
 
-    // Pack band curve reference lists with deduplication.
-    // Adjacent bands with identical curve index lists share data.
-    function packBandGroup(bands: typeof glyph.bands.hBands, headerStart: number) {
-      let prevIndicesKey = ''
-      let prevListOffset = 0
-
-      for (let b = 0; b < bands.length; b++) {
-        const band = bands[b]!
-        const headerIdx = headerStart + b // one R32F texel per header
-        const count = band.curveIndices.length
-
-        // Check if this band's curve list matches the previous band's
-        const indicesKey = band.curveIndices.join(',')
-        if (b > 0 && indicesKey === prevIndicesKey) {
-          // Reuse previous band's data offset
-          bandData[headerIdx] = packHeader(count, prevListOffset)
-        } else {
-          // Write new curve reference list
-          const listOffset = bandOffset - glyphBandStart
-          bandData[headerIdx] = packHeader(count, listOffset)
-          prevListOffset = listOffset
-
-          for (const curveIdx of band.curveIndices) {
-            const curveTexelOffset = curveTexelMap[curveIdx]!
-            bandData[bandOffset] = packRefCoord(
-              curveTexelOffset % TEXTURE_WIDTH,
-              Math.floor(curveTexelOffset / TEXTURE_WIDTH)
-            )
-            bandOffset++
-          }
-        }
-        prevIndicesKey = indicesKey
+    // Curve-ref lists — one copy per distinct list, at its planned offset.
+    for (const emit of plan.emits) {
+      let w = glyphBandStart + emit.start
+      for (const curveIdx of emit.indices) {
+        const curveTexelOffset = curveTexelMap[curveIdx]!
+        bandData[w++] = packRefCoord(
+          curveTexelOffset % TEXTURE_WIDTH,
+          Math.floor(curveTexelOffset / TEXTURE_WIDTH)
+        )
       }
     }
 
-    packBandGroup(glyph.bands.hBands, hHeaderStart)
-    packBandGroup(glyph.bands.vBands, vHeaderStart)
+    bandOffset = glyphBandStart + plan.total
   }
 
   // Curve texture — RGBA16F (half-float).
