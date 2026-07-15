@@ -1,0 +1,98 @@
+@stylex;
+
+/*
+ * Hide the native scrollbar on opt-in containers. StyleX's pseudo-element
+ * support doesn't cover `::-webkit-scrollbar`, so this is the global
+ * fallback. Used by the AnimationTimeline track so the only visible
+ * scroll affordance is our custom overlay indicator — without all
+ * three rules below, some platforms (notably macOS with non-overlay
+ * scrollbars) still reserve a layout track for the bar even with
+ * `display: none`.
+ */
+[data-no-scrollbar] {
+  scrollbar-width: none; /* Firefox / standard */
+  -ms-overflow-style: none; /* IE / legacy Edge */
+}
+[data-no-scrollbar]::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/*
+ * VSCode Elements <vscode-tabs> and <vscode-tab-panel> are `display: block`
+ * by default in their shadow DOM. Without further help, slotted panels
+ * size to their content — they don't fill the remaining viewport height.
+ *
+ * The fix has three required levels:
+ *   1. <vscode-tabs> becomes a flex column so its slotted panels (default
+ *      slot) get a flex layout context. The shadow renders `.header` div
+ *      first (intrinsic height) followed by the default <slot> (panels).
+ *      In a column-flex host the .header takes its content height as a
+ *      flex child and the active panel grows into the remaining space.
+ *   2. <vscode-tab-panel> is a flex child of <vscode-tabs> that grows
+ *      (flex: 1) and is itself a flex column so its single slotted child
+ *      gets a layout context.
+ *   3. The slotted child declares min-height/min-width: 0 so flex shrink
+ *      math doesn't get blocked by intrinsic content sizes (long names,
+ *      large SVGs).
+ *
+ * Don't add `display: flex` on the slotted child here — many tools render
+ * their own flex/grid layout directly via stylex; double-applying display
+ * from outside fights local layout decisions.
+ */
+vscode-tabs {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+vscode-tab-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/*
+ * The shadow's `:host([hidden]) { display: none }` is overridden by our
+ * outside `display: flex` rule above — outside CSS always wins over
+ * shadow CSS for host styling, regardless of specificity. Re-assert
+ * `display: none` here so inactive panels actually hide and tab
+ * switching works.
+ */
+vscode-tab-panel[hidden] {
+  display: none;
+}
+/*
+ * The slotted child of <vscode-tab-panel> decides its own *main-axis*
+ * (vertical) sizing — typically `flex: 1` or `height: 100%` from local
+ * stylex. But cross-axis (horizontal) stretching through the Lit shadow
+ * is unreliable: the shadow renders as ` <slot></slot> ` with whitespace
+ * text nodes around the slot, which become anonymous flex items in the
+ * flex-column host and can interfere with align-items: stretch on the
+ * slotted child. Force it to fill width explicitly. Pair with min-* so
+ * shrink math isn't blocked by intrinsic content.
+ */
+vscode-tab-panel > * {
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+/*
+ * <vscode-collapsible> is `display: block` by default — correct for the
+ * common case where multiple collapsibles stack inside a flex-column
+ * Panel body (atlas frames panel). Don't override globally — that gave
+ * every collapsible flex: 1 1 auto and caused them to claim equal
+ * shares of available height, opening big gaps between groups.
+ *
+ * Where a single collapsible needs to fill its parent (e.g. merge
+ * MergedView's Animations panel), apply the flex sizing inline via the
+ * Lit element's `style` prop on that specific instance.
+ *
+ * The `[hidden]` rule has to live outside the shadow because outside
+ * CSS overrides shadow CSS for host styling.
+ */
+vscode-collapsible[hidden] {
+  display: none;
+}

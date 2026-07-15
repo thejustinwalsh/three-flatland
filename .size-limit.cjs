@@ -246,4 +246,6 @@ const allChecks = [
   })(),
 ]
 
-module.exports = filter ? allChecks.filter((c) => c.name.includes(filter)) : allChecks
+module.exports = filter
+  ? allChecks.filter((c) => c.name.toLowerCase().includes(filter.toLowerCase()))
+  : allChecks

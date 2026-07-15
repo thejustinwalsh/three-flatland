@@ -3,7 +3,7 @@ import { Sprite2D } from './Sprite2D'
 import { AnimationController } from '../animation/AnimationController'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { MaterialEffect } from '../materials/MaterialEffect'
-import type { SpriteSheet, SpriteFrame } from './types'
+import type { SpriteSheet, SpriteAnimation, SpriteFrame } from './types'
 import type { SortLayerValue } from '../pipeline/sortLayers'
 import type { Animation, AnimationSetDefinition, PlayOptions } from '../animation/types'
 
@@ -118,6 +118,11 @@ export class AnimatedSprite2D extends Sprite2D {
 
     if (options.animationSet) {
       this.loadAnimationSet(options.animationSet)
+    } else if (options.spriteSheet?.animations && options.spriteSheet.animations.size > 0) {
+      // Atlas-sourced animations: derive the set from the sheet's named
+      // animations (parsed from `meta.animations` / Aseprite `frameTags`)
+      // when no explicit animationSet is supplied.
+      this.loadAnimationSet(sheetAnimationsToDefinition(options.spriteSheet.animations))
     }
 
     // Play initial animation
@@ -173,6 +178,16 @@ export class AnimatedSprite2D extends Sprite2D {
       } else if (shouldReplaceAlpha) {
         this.alphaMap = null
         this._usesSpriteSheetAlphaMap = false
+      }
+      // Atlas-sourced animations: populate the controller from the sheet's
+      // named animations (`meta.animations` / Aseprite `frameTags`) when
+      // nothing has been loaded yet. An explicit `animationSet` set first wins.
+      if (
+        value.animations &&
+        value.animations.size > 0 &&
+        this.controller.getAnimationNames().length === 0
+      ) {
+        this.loadAnimationSet(sheetAnimationsToDefinition(value.animations))
       }
     }
   }
@@ -453,4 +468,36 @@ export class AnimatedSprite2D extends Sprite2D {
     this.controller.dispose()
     super.dispose()
   }
+}
+
+/**
+ * Convert a SpriteSheet's named animations (parsed by `SpriteSheetLoader`
+ * from `meta.animations` or Aseprite `frameTags`) into the
+ * `AnimationSetDefinition` shape `loadAnimationSet` consumes.
+ */
+function sheetAnimationsToDefinition(
+  animations: ReadonlyMap<string, SpriteAnimation>,
+): AnimationSetDefinition {
+  const out: AnimationSetDefinition['animations'] = {}
+  for (const [name, anim] of animations) {
+    out[name] = {
+      frames: [...anim.frames],
+      fps: anim.fps,
+      loop: anim.loop,
+      pingPong: anim.pingPong,
+      ...(anim.events ? { events: stringKeysToNumberKeys(anim.events) } : {}),
+    }
+  }
+  return { animations: out }
+}
+
+/** `SpriteAnimation.events` is keyed by stringified frame index; the
+ * `AnimationSetDefinition` events map is number-keyed. */
+function stringKeysToNumberKeys(events: Record<string, string>): Record<number, string> {
+  const out: Record<number, string> = {}
+  for (const [k, v] of Object.entries(events)) {
+    const n = Number(k)
+    if (Number.isFinite(n)) out[n] = v
+  }
+  return out
 }

@@ -44,7 +44,17 @@ env:
     - Test coverage for new/changed behavior
     - Whether package/version sync or React subpath wrappers need regeneration
 
-    Use these repository checks as the source of truth when relevant:
+    This repo's own CI (ci.yml) already runs build, typecheck, lint, the
+    full test suite, smoke tests, and every sync:*:verify check in
+    parallel for this exact PR and reports each as a named status check —
+    check those results first (gh pr checks <number>, or the PR's Checks
+    tab) rather than re-running any of them yourself. Re-running a cold
+    pnpm build alone costs 20-25+ minutes on a large PR, which starves the
+    time you actually need for reading and reasoning about the diff — the
+    part of this review only you can do. Only run one of the commands
+    below yourself to investigate a SPECIFIC question CI's pass/fail
+    signal doesn't answer (e.g. why one particular type error occurs, not
+    a blanket re-verification pass):
     - pnpm sync:pack:verify examples minis
     - pnpm sync:react:verify
     - pnpm sync:versions:verify
@@ -109,7 +119,18 @@ jobs:
   fro-bot:
     name: Fro Bot
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 30m was tuned for a normal-sized PR. This job's own PR_REVIEW_PROMPT
+    # requires running pnpm build (observed 20-25m alone on this repo's
+    # regular CI for a large PR) plus typecheck/test/smoke on top of the
+    # actual AI review reasoning — 30m leaves no real room once build alone
+    # eats most of it. First bumped to 60m, which was still not enough: the
+    # "Run Fro Bot" step has its OWN separate inner timeout (see that
+    # step's `timeout` input below) that a 60m job ceiling doesn't touch at
+    # all. 90m gives ~9m of observed setup-step overhead plus the step's
+    # own 80m budget room to actually finish, with cleanup/upload buffer
+    # left over. Revisit if this becomes the norm rather than the
+    # exception for large-diff PRs.
+    timeout-minutes: 90
     if: >-
       (
         github.event.pull_request == null ||
@@ -213,3 +234,14 @@ jobs:
           auth-json: ${{ secrets.OPENCODE_AUTH_JSON }}
           model: ${{ vars.FRO_BOT_MODEL }}
           prompt: ${{ env.PROMPT }}
+          # fro-bot/agent's OWN action.yaml default is 1800000ms (30m),
+          # entirely separate from this job's `timeout-minutes` above --
+          # bumping only the job-level timeout (as an earlier fix here did)
+          # was not sufficient: a real run on this PR hit exactly this
+          # inner 30m ceiling mid-execution ("Poll timeout reached",
+          # elapsedMs: 1800336) and failed via a cascading "response file
+          # never written" error, despite the outer job having 60m to
+          # spare. 4800000ms (80m) leaves headroom under the 90m job
+          # timeout below for the ~9m of setup steps that run before this
+          # one and cleanup/artifact-upload after.
+          timeout: '4800000'
