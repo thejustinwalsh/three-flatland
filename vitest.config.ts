@@ -18,6 +18,9 @@ export default defineConfig({
       'packages/*/src/**/*.test.tsx',
       'packages/starlight-theme/**/*.test.ts',
       'scripts/**/*.test.ts',
+      'tools/*/src/**/*.test.ts',
+      'tools/vscode/webview/**/*.test.ts',
+      'tools/vscode/extension/**/*.test.ts',
     ],
     exclude: ['packages/skia/**', 'packages/devtools/**', '**/node_modules/**'],
     setupFiles: ['./vitest.setup.ts'],
@@ -28,10 +31,7 @@ export default defineConfig({
       exclude: ['**/*.test.ts', '**/*.test.tsx', '**/index.ts'],
     },
     typecheck: {
-      include: [
-        'packages/*/src/**/*.test-d.ts',
-        'packages/*/src/**/*.test-d.tsx',
-      ],
+      include: ['packages/*/src/**/*.test-d.ts', 'packages/*/src/**/*.test-d.tsx'],
       exclude: ['packages/skia/**', 'packages/tweakpane/**', '**/node_modules/**'],
       tsconfig: './packages/three-flatland/tsconfig.json',
     },

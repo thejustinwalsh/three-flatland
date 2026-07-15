@@ -83,6 +83,37 @@ describe('AnimatedSprite2D', () => {
     }
   })
 
+  // A sheet carrying named animations as `SpriteSheetLoader` would emit them
+  // from `meta.animations` / Aseprite `frameTags`.
+  const sheetWithAnimations = (): SpriteSheet => ({
+    ...spriteSheet,
+    animations: new Map([
+      ['idle', { frames: ['idle_0', 'idle_1'], fps: 8, loop: true, pingPong: false }],
+      ['walk', { frames: ['walk_0', 'walk_1'], fps: 12, loop: true, pingPong: false }],
+    ]),
+  })
+
+  it('derives animations from sheet.animations when no animationSet is given', () => {
+    const sprite = new AnimatedSprite2D({ spriteSheet: sheetWithAnimations() })
+    expect(sprite.controller.getAnimationNames().sort()).toEqual(['idle', 'walk'])
+  })
+
+  it('derives animations from sheet.animations via the spriteSheet setter', () => {
+    const sprite = new AnimatedSprite2D()
+    sprite.spriteSheet = sheetWithAnimations()
+    expect(sprite.controller.getAnimationNames()).toContain('idle')
+  })
+
+  it('explicit animationSet takes precedence over sheet.animations', () => {
+    const sprite = new AnimatedSprite2D({
+      spriteSheet: sheetWithAnimations(),
+      animationSet: { animations: { custom: { frames: ['idle_0'], fps: 5 } } },
+    })
+    const names = sprite.controller.getAnimationNames()
+    expect(names).toContain('custom')
+    expect(names).not.toContain('walk')
+  })
+
   it('should create with animation set', () => {
     const sprite = new AnimatedSprite2D({
       spriteSheet,

@@ -13,12 +13,15 @@ graph TD
         CIChanges --> CIBuild["build.yml (matrix: lts/*, lts/-1)"]
         CIChanges --> CISmoke["smoke.yml"]
         CIChanges --> CISize["size.yml (PRs only)"]
+        CIChanges --> CIVscodeE2E["vscode-e2e.yml (xvfb)"]
         CIBuild --> Gate["ci-passed (gate)"]
         CISmoke --> Gate
         CISize --> Gate
+        CIVscodeE2E --> Gate
         CIBuild --> ChangesetJob["changeset (PRs only)"]
         CISmoke --> ChangesetJob
         CISize --> ChangesetJob
+        CIVscodeE2E --> ChangesetJob
     end
     ChangesetJob -->|"pushes .changeset/ files (PAT) → re-runs CI, instapasses"| PR
 
@@ -52,23 +55,24 @@ graph TD
 
 `ci.yml` and `docs.yml` are slim orchestrators. The actual work lives in reusable workflows that orchestrators call via `uses: ./.github/workflows/<name>.yml`. Each reusable workflow declares `on: workflow_call:` only — they don't trigger directly.
 
-| File | Role | Trigger |
-|---|---|---|
-| `ci.yml` | Orchestrator: paths-filter → build matrix → smoke/size → changeset → gate | `push`, `pull_request` |
-| `docs.yml` | Orchestrator: paths-filter → smoke → build-pages → deploy | `push` to `main`, `workflow_dispatch` |
-| `changes.yml` | dorny/paths-filter; emits `packages` / `minis` / `examples` / `docs` / `configs` / `ci` bucket outputs | `workflow_call` |
-| `build.yml` | Build + typecheck + lint + test + skia test (single node version, takes `node-version` + `node-tag` inputs) | `workflow_call` |
-| `smoke.yml` | Playwright smoke tests against built docs site | `workflow_call` |
-| `size.yml` | Bundle size diff via size-limit; comments on PR | `workflow_call` |
-| `changeset.yml` | Generate + Copilot-enhance + push the release changeset (via `CHANGESET_PAT`) | `workflow_call` |
+| File             | Role                                                                                                              | Trigger                               |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `ci.yml`         | Orchestrator: paths-filter → build matrix → smoke/size/vscode-e2e → changeset → gate                              | `push`, `pull_request`                |
+| `docs.yml`       | Orchestrator: paths-filter → smoke → build-pages → deploy                                                         | `push` to `main`, `workflow_dispatch` |
+| `changes.yml`    | dorny/paths-filter; emits `packages` / `minis` / `examples` / `docs` / `configs` / `vscode` / `ci` bucket outputs | `workflow_call`                       |
+| `build.yml`      | Build + typecheck + lint + test + skia test (single node version, takes `node-version` + `node-tag` inputs)       | `workflow_call`                       |
+| `smoke.yml`      | Playwright smoke tests against built docs site                                                                    | `workflow_call`                       |
+| `size.yml`       | Bundle size diff via size-limit; comments on PR                                                                   | `workflow_call`                       |
+| `vscode-e2e.yml` | VS Code extension e2e (real Electron build under Playwright, via `xvfb-run`)                                      | `workflow_call`                       |
+| `changeset.yml`  | Generate + Copilot-enhance + push the release changeset (via `CHANGESET_PAT`)                                     | `workflow_call`                       |
 
 The matrix lives at the orchestrator layer (`ci.yml`) — `build.yml` is single-node and reusable. Release could call it directly for a clean publish build if we ever want to dedupe `release.yml`.
 
 ## Repository Ruleset
 
-Branch protection is a **repository ruleset** with a single required status check: **`CI passed`** (the `ci-passed` job in `ci.yml`). That job runs after `changes`, `build`, `smoke`, and `size`, and succeeds when each upstream job is either `success` or `skipped` — only `failure` or `cancelled` makes it fail.
+Branch protection is a **repository ruleset** with a single required status check: **`CI passed`** (the `ci-passed` job in `ci.yml`). That job runs after `changes`, `build`, `smoke`, `size`, and `vscode-e2e`, and succeeds when each upstream job is either `success` or `skipped` — only `failure` or `cancelled` makes it fail.
 
-Doc-only or meta-only PRs (where build / smoke / size are skipped via paths-filter gating) still produce a passing `CI passed` check and can merge. Code-changing PRs wait for the real jobs to complete before `CI passed` resolves.
+Doc-only or meta-only PRs (where build / smoke / size / vscode-e2e are skipped via paths-filter gating) still produce a passing `CI passed` check and can merge. Code-changing PRs wait for the real jobs to complete before `CI passed` resolves.
 
 The `changeset` job is **not** required and is **not** in `ci-passed`'s `needs` — changeset generation is best-effort and never gates merge. The changeset bot's own `ci: generate changesets` commit instapasses: `changes.yml` flags it `changeset_only`, build / smoke / size skip, and `CI passed` resolves green in seconds. See [Changeset-only skip](#changeset-only-skip).
 
@@ -76,38 +80,41 @@ The `changeset` job is **not** required and is **not** in `ci-passed`'s `needs` 
 
 ## Workflows
 
-| Workflow | File | Triggers | Purpose |
-|---|---|---|---|
-| **CI** | `ci.yml` (+ `changes.yml`, `build.yml`, `smoke.yml`, `size.yml`) | push to `main`, pull requests | Build matrix, lint, test, typecheck, smoke (Playwright), bundle size, gated by `ci-passed`; on PRs, generates the release changeset (Copilot-enhanced) as the final `changeset` job after the gate jobs pass |
-| **Release** | `release.yml` | after CI succeeds on `main`, manual | Publish packages to npm via changesets |
-| **Deploy Docs** | `docs.yml` (+ `changes.yml`, `smoke.yml`) | push to `main`, manual | Self-gated docs deploy: runs paths-filter + smoke before building the Pages artifact and deploying |
+| Workflow                      | File                                                                               | Triggers                                                    | Purpose                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CI**                        | `ci.yml` (+ `changes.yml`, `build.yml`, `smoke.yml`, `size.yml`, `vscode-e2e.yml`) | push to `main`, pull requests                               | Build matrix, lint, test, typecheck, smoke (Playwright), bundle size, VS Code extension e2e (real Electron under Playwright via xvfb), gated by `ci-passed`; on PRs, generates the release changeset (Copilot-enhanced) as the final `changeset` job after the gate jobs pass                                                             |
+| **Release**                   | `release.yml`                                                                      | after CI succeeds on `main`, manual                         | Publish packages to npm via changesets                                                                                                                                                                                                                                                                                                    |
+| **Publish VS Code Extension** | `publish-vscode.yml`                                                               | push to `main` touching `tools/vscode/package.json`, manual | Version-gated (skips unless the local version differs from what's live); builds a native codelens-service binary per platform (6-leg matrix, no cross-compilation — darwin x2, linux x2, win32 x2), merges them into one universal VSIX (mirrors audio-play's own all-platforms-in-one-package precedent), publishes it once to both the VS Code Marketplace and Open VSX |
+| **Deploy Docs**               | `docs.yml` (+ `changes.yml`, `smoke.yml`)                                          | push to `main`, manual                                      | Self-gated docs deploy: runs paths-filter + smoke before building the Pages artifact and deploying                                                                                                                                                                                                                                        |
 
 ## Path Filtering (CI)
 
 `changes.yml` uses [`dorny/paths-filter`](https://github.com/dorny/paths-filter) to bucket the PR diff (or the latest push's diff). Each bucket is a boolean output consumed by downstream jobs in `ci.yml` and `docs.yml`.
 
-| Bucket | Patterns |
-|---|---|
-| `packages` | `packages/**`, `skills/**` |
-| `minis` | `minis/**` |
-| `examples` | `examples/**`, `e2e/**`, `playwright.config.*` |
-| `docs` | `docs/**` |
-| `configs` | `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `eslint.config.*`, `vitest.config.*`, `scripts/**` |
-| `ci` | `.github/workflows/**` |
+| Bucket     | Patterns                                                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages` | `packages/**`, `skills/**`                                                                                                                  |
+| `minis`    | `minis/**`                                                                                                                                  |
+| `examples` | `examples/**`, `e2e/**`, `playwright.config.*`                                                                                              |
+| `docs`     | `docs/**`                                                                                                                                   |
+| `configs`  | `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `eslint.config.*`, `vitest.config.*`, `scripts/**` |
+| `vscode`   | `tools/**`                                                                                                                                  |
+| `ci`       | `.github/workflows/**`                                                                                                                      |
 
-(`skills/` is `@three-flatland/skills`, a publishable workspace package outside `packages/`. `scripts/` contains CI verification helpers, size-limit, changeset generator, and a vitest-collected test — all affect build behavior, so they live in `configs`.)
+(`skills/` is `@three-flatland/skills`, a publishable workspace package outside `packages/`. `scripts/` contains CI verification helpers, size-limit, changeset generator, and a vitest-collected test — all affect build behavior, so they live in `configs`. `vscode` covers all of `tools/` — not just `tools/vscode/` itself, since the extension's e2e build pulls in its `workspace:*` siblings there too — `tools/bridge`, `tools/design-system`, `tools/preview`, `tools/io`.)
 
 Job gating:
 
-| Job | Runs when |
-|---|---|
-| `ci.build` (matrix) | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — lint/typecheck/test are too valuable to bucket-gate; turbo cache makes the no-ops cheap |
-| `ci.smoke` | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` (and upstream `build` didn't fail) |
-| `ci.size` | `packages` ∨ `configs` ∨ `ci` (PR events only; size-limit only tracks published packages) |
-| `ci.changeset` | PR events only, when `build` succeeded and `smoke` / `size` didn't fail, and not `changeset_only` — generates + pushes the release changeset after the gate jobs pass |
-| `ci-passed` | always — gates the merge |
-| `docs.smoke` | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — docs#build pulls in all of them (API reference from `packages`, showcases from `minis`, embedded demos from `examples`) |
-| `docs.build-pages` / `docs.deploy` | gated on `docs.smoke` success |
+| Job                                | Runs when                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ci.build` (matrix)                | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `vscode` ∨ `ci` — lint/typecheck/test are too valuable to bucket-gate; turbo cache makes the no-ops cheap                                                                                                                                                                                                                                                     |
+| `ci.smoke`                         | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` (and upstream `build` didn't fail)                                                                                                                                                                                                                                                                                                                       |
+| `ci.size`                          | `packages` ∨ `configs` ∨ `ci` (PR events only; size-limit only tracks published packages)                                                                                                                                                                                                                                                                                                                              |
+| `ci.vscode-e2e`                    | `vscode` ∨ `packages` ∨ `ci` (and upstream `build` didn't fail) — real VS Code (Electron) launched under Playwright via `xvfb-run`, see `tools/vscode/e2e/README.md`. `packages` is included because the extension's real `workspace:*` dependency closure reaches into `packages/schemas`, `packages/normals`, `packages/bake`, `packages/image`, `packages/atlas`, and `three-flatland` itself — not just `tools/**` |
+| `ci.changeset`                     | PR events only, when `build` succeeded and `smoke` / `size` / `vscode-e2e` didn't fail, and not `changeset_only` — generates + pushes the release changeset after the gate jobs pass                                                                                                                                                                                                                                   |
+| `ci-passed`                        | always — gates the merge                                                                                                                                                                                                                                                                                                                                                                                               |
+| `docs.smoke`                       | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — docs#build pulls in all of them (API reference from `packages`, showcases from `minis`, embedded demos from `examples`)                                                                                                                                                                                                                                |
+| `docs.build-pages` / `docs.deploy` | gated on `docs.smoke` success                                                                                                                                                                                                                                                                                                                                                                                          |
 
 A change in `ci` or `configs` triggers everything — CI/config changes need to validate themselves.
 
@@ -118,27 +125,28 @@ The `changeset` job pushes a `.changeset/`-only commit on top of each code commi
 - On a `pull_request` synchronize, it compares the pushed delta (`before...after` via the compare API). If **every** changed file is under `.changeset/` **and** the base commit's `CI passed` was green, `changeset_only = true`.
 - `build` / `smoke` / `size` gate on `changeset_only != 'true'`, so they skip; `ci-passed` (skipped = success) resolves green in seconds — the bot commit instapasses instead of re-running the full pipeline.
 
-The flag keys on the **file delta**, not the commit message, so it can't be spoofed, and the base-passed guard means a changeset stacked on a red commit never gets green-lit. Because the `changeset` job runs only *after* the gate jobs pass, the bot commit always lands on an already-green base, so its run cancels nothing — `cancel-in-progress` stays on.
+The flag keys on the **file delta**, not the commit message, so it can't be spoofed, and the base-passed guard means a changeset stacked on a red commit never gets green-lit. Because the `changeset` job runs only _after_ the gate jobs pass, the bot commit always lands on an already-green base, so its run cancels nothing — `cancel-in-progress` stays on.
 
 ## Node Version Policy
 
-| Slot | Resolves to (May 2026) | Purpose |
-|---|---|---|
-| `lts/*` | Node 22 | Release target. `release.yml` ships from this. |
-| `lts/-1` | Node 20 | Compatibility canary. Catches breakage for users on the older still-supported LTS before it bites them. |
+| Slot     | Resolves to (May 2026) | Purpose                                                                                                 |
+| -------- | ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| `lts/*`  | Node 22                | Release target. `release.yml` ships from this.                                                          |
+| `lts/-1` | Node 20                | Compatibility canary. Catches breakage for users on the older still-supported LTS before it bites them. |
 
 `package.json` declares `engines.node: >=20.0.0`, matching the older end of the matrix.
 
 ## Turbo Cache
 
-| Job | Cache key | Notes |
-|---|---|---|
-| `build (lts/*, current)` | `Linux-turbo-current-${sha}` | Per-node-version namespace |
-| `build (lts/-1, previous)` | `Linux-turbo-previous-${sha}` | `pnpm install` resolves different platform deps per node version |
-| `smoke` | `Linux-turbo-current-${sha}` | Shares with `current` build leg — primary-key hit |
-| `size` | `Linux-turbo-current-${sha}` | Shares with `current` build leg |
-| `release` | `Linux-turbo-current-${sha}` | Shares with `current` build leg |
-| `docs.build-pages` | `Linux-turbo-current-${sha}` | Shares with `current` build leg; usually a cache hit since `smoke` already built `docs#build` |
+| Job                        | Cache key                     | Notes                                                                                                                                                                                                   |
+| -------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `build (lts/*, current)`   | `Linux-turbo-current-${sha}`  | Per-node-version namespace                                                                                                                                                                              |
+| `build (lts/-1, previous)` | `Linux-turbo-previous-${sha}` | `pnpm install` resolves different platform deps per node version                                                                                                                                        |
+| `smoke`                    | `Linux-turbo-current-${sha}`  | Shares with `current` build leg — primary-key hit                                                                                                                                                       |
+| `size`                     | `Linux-turbo-current-${sha}`  | Shares with `current` build leg                                                                                                                                                                         |
+| `vscode-e2e`               | `Linux-turbo-current-${sha}`  | Shares with `current` build leg — the job's own `pnpm --filter "@three-flatland/vscode..." -r run build` step (see `tools/vscode/e2e/global-setup.ts`) hits cache for anything `ci.build` already built |
+| `release`                  | `Linux-turbo-current-${sha}`  | Shares with `current` build leg                                                                                                                                                                         |
+| `docs.build-pages`         | `Linux-turbo-current-${sha}`  | Shares with `current` build leg; usually a cache hit since `smoke` already built `docs#build`                                                                                                           |
 
 Restore-keys mirror the primary key prefix so a fresh SHA inherits from the nearest prior commit's cache via prefix fallback; turbo's content-hashing decides per-task hits.
 
@@ -157,11 +165,11 @@ graph LR
 
 ## Concurrency Controls
 
-| Workflow | Concurrency Group | Behavior |
-|---|---|---|
-| CI | `ci-{PR number or ref}` | Latest push cancels in-progress run for same PR. Safe with the `changeset` job: it pushes its commit only after the gate jobs finish, so the bot commit's run cancels nothing. |
-| Release | `Release-refs/heads/main` | Only one release at a time per branch |
-| Deploy Docs | `pages` | Latest deploy cancels in-progress deploys |
+| Workflow    | Concurrency Group         | Behavior                                                                                                                                                                       |
+| ----------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CI          | `ci-{PR number or ref}`   | Latest push cancels in-progress run for same PR. Safe with the `changeset` job: it pushes its commit only after the gate jobs finish, so the bot commit's run cancels nothing. |
+| Release     | `Release-refs/heads/main` | Only one release at a time per branch                                                                                                                                          |
+| Deploy Docs | `pages`                   | Latest deploy cancels in-progress deploys                                                                                                                                      |
 
 ## Manual Triggers
 
@@ -231,19 +239,19 @@ Follow these rules when modifying or creating workflows:
 
 COMPOSABLE LAYOUT
 - ci.yml is a slim orchestrator. Real work lives in reusable workflows declared with `on: workflow_call:` only
-- Reusable workflows in this repo: changes.yml, build.yml, smoke.yml, size.yml, changeset.yml
+- Reusable workflows in this repo: changes.yml, build.yml, smoke.yml, size.yml, vscode-e2e.yml, changeset.yml
 - The orchestrator calls them via `uses: ./.github/workflows/<name>.yml` and passes inputs/secrets
 - New steps that fit an existing reusable workflow go there; otherwise add a new reusable workflow and call it from ci.yml
 - Matrix lives at the orchestrator layer — reusable workflows are single-instance and take parameters as inputs
 
 BRANCH PROTECTION
 - The repository ruleset requires ONE status check: `CI passed` (the ci-passed job in ci.yml)
-- ci-passed runs `if: always()`, needs [changes, build, smoke, size], and succeeds when each upstream job is success or skipped (fails only on failure or cancelled)
+- ci-passed runs `if: always()`, needs [changes, build, smoke, size, vscode-e2e], and succeeds when each upstream job is success or skipped (fails only on failure or cancelled)
 - New jobs that should block merge must be added to ci-passed's `needs` AND its gate-check loop
 - Do NOT introduce per-job required checks in the ruleset — ci-passed is the single gate
 
 PATH FILTERING & JOB GATING
-- changes.yml uses dorny/paths-filter@v3 to emit per-bucket booleans: packages, minis, examples, docs, configs, ci
+- changes.yml uses dorny/paths-filter@v3 to emit per-bucket booleans: packages, minis, examples, docs, configs, vscode, ci
 - Downstream jobs in ci.yml gate via `if:` expressions on those bucket outputs
 - A bucket change in `ci` (.github/workflows/**) triggers everything so a CI change validates itself
 - When adding a new job, decide which bucket(s) should trigger it and write the `if:` accordingly
@@ -260,7 +268,7 @@ NODE VERSION & MATRIX
 
 TURBO CACHE
 - Per-node-version cache namespace: `${{ runner.os }}-turbo-${{ inputs.node-tag }}-${{ github.sha }}` in build.yml
-- Smoke, size, release, and any new single-node-version job pin to the `current` leg's namespace: `${{ runner.os }}-turbo-current-${{ github.sha }}`
+- Smoke, size, vscode-e2e, release, and any new single-node-version job pin to the `current` leg's namespace: `${{ runner.os }}-turbo-current-${{ github.sha }}`
 - Restore-keys use the same prefix so prefix-fallback inherits from prior SHAs; turbo content-hashing decides per-task hits
 
 WORKFLOW DEPENDENCIES

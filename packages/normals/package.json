@@ -55,6 +55,7 @@
     "three": ">=0.170.0"
   },
   "devDependencies": {
+    "@three-flatland/schemas": "workspace:*",
     "@types/pngjs": "catalog:",
     "@types/three": "catalog:",
     "three": "catalog:"
