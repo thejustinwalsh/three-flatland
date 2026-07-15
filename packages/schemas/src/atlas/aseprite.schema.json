@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Aseprite JSON export (strict)",
+  "description": "Test-only schema — NOT the schema used to validate arbitrary input on load (see schema.json, our own permissive superset, for that). This one exists to prove `buildAsepriteJson`'s output is a genuinely faithful Aseprite JSON export: it rejects our own extensions (`meta.sources`, `meta.animations`) and TexturePacker-only polygon-trim fields (`Frame.vertices`/`verticesUV`/`triangles`, `Frame.mesh`) that a real Aseprite consumer wouldn't understand.",
+  "type": "object",
+  "required": ["meta", "frames"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": { "$ref": "#/$defs/Meta" },
+    "frames": {
+      "type": "object",
+      "patternProperties": {
+        "^.+$": { "$ref": "#/$defs/Frame" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "Meta": {
+      "type": "object",
+      "required": ["image", "size"],
+      "additionalProperties": false,
+      "properties": {
+        "app": { "type": "string" },
+        "version": { "type": "string" },
+        "image": { "type": "string" },
+        "size": { "$ref": "#/$defs/Size" },
+        "scale": { "type": "string" },
+        "format": { "type": "string" },
+        "frameTags": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/AsepriteFrameTag" }
+        }
+      }
+    },
+    "Size": {
+      "type": "object",
+      "required": ["w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "w": { "type": "integer", "minimum": 1 },
+        "h": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "Rect": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "w": { "type": "integer", "minimum": 0 },
+        "h": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "Vec2": {
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "Frame": {
+      "type": "object",
+      "required": ["frame", "rotated", "trimmed", "spriteSourceSize", "sourceSize"],
+      "additionalProperties": false,
+      "properties": {
+        "frame": { "$ref": "#/$defs/Rect" },
+        "rotated": { "type": "boolean" },
+        "trimmed": { "type": "boolean" },
+        "spriteSourceSize": { "$ref": "#/$defs/Rect" },
+        "sourceSize": { "$ref": "#/$defs/Size" },
+        "pivot": { "$ref": "#/$defs/Vec2" },
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "AsepriteFrameTag": {
+      "type": "object",
+      "required": ["name", "from", "to"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "from": { "type": "integer", "minimum": 0 },
+        "to": { "type": "integer", "minimum": 0 },
+        "direction": {
+          "type": "string",
+          "enum": ["forward", "reverse", "pingpong", "pingpong_reverse"]
+        },
+        "color": { "type": "string" },
+        "repeat": { "type": "string" },
+        "data": { "type": "string" }
+      }
+    }
+  }
+}

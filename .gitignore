@@ -17,8 +17,11 @@ docs/src/content/docs/api/
 
 # IDE
 .idea/
-.vscode/
+.vscode/*
 !.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
 *.swp
 *.swo
 
@@ -36,6 +39,7 @@ coverage/
 playwright-report/
 test-results/
 .playwright/
+.vscode-test/
 
 # Turbo
 .turbo/
@@ -61,6 +65,8 @@ settings.local.json
 
 # Vendor Library for examples to pull from
 vendor/
+!packages/image/vendor/
+!packages/image/vendor/**
 
 # Profile traces
 traces/
@@ -77,3 +83,15 @@ tsconfig.madge.json
 .restruct/
 !.restruct/verify.yaml
 !.restruct/permissions.yaml
+.superpowers/
+
+# Impeccable — local design-review hook cache, per-machine and per-session
+.impeccable/
+
+# VS Code extension packaging — sidecar binaries (bundle-sidecars.mjs),
+# the packaged VSIX itself, and the LICENSE copy package-vsix.mjs
+# regenerates from the repo root's real one on every run.
+tools/vscode/bin/
+tools/vscode/audio-play/
+tools/vscode/*.vsix
+tools/vscode/LICENSE

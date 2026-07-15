@@ -28,6 +28,7 @@ jobs:
         needs.changes.outputs.examples == 'true' ||
         needs.changes.outputs.docs == 'true' ||
         needs.changes.outputs.configs == 'true' ||
+        needs.changes.outputs.vscode == 'true' ||
         needs.changes.outputs.ci == 'true'
       )
     strategy:
@@ -67,6 +68,16 @@ jobs:
     uses: ./.github/workflows/size.yml
     secrets: inherit
 
+  vscode-e2e:
+    needs: [changes, build]
+    if: |
+      !cancelled() && needs.build.result != 'failure' &&
+      needs.changes.outputs.changeset_only != 'true' &&
+      (needs.changes.outputs.vscode == 'true' ||
+       needs.changes.outputs.packages == 'true' ||
+       needs.changes.outputs.ci == 'true')
+    uses: ./.github/workflows/vscode-e2e.yml
+
   # Generate the release changeset only AFTER the gate jobs pass, as the final
   # step of CI rather than a parallel workflow. Sequencing it here means the
   # bot's `ci: generate changesets` commit is created on an already-green base —
@@ -75,20 +86,21 @@ jobs:
   # stays safe). Not a dependency of `ci-passed`: changeset generation is
   # best-effort and never gates merge.
   changeset:
-    needs: [changes, build, smoke, size]
+    needs: [changes, build, smoke, size, vscode-e2e]
     if: |
       github.event_name == 'pull_request' &&
       needs.changes.outputs.changeset_only != 'true' &&
       needs.build.result == 'success' &&
       needs.smoke.result != 'failure' &&
-      needs.size.result != 'failure'
+      needs.size.result != 'failure' &&
+      needs.vscode-e2e.result != 'failure'
     uses: ./.github/workflows/changeset.yml
     secrets: inherit
 
   ci-passed:
     name: CI passed
     if: always()
-    needs: [changes, build, smoke, size]
+    needs: [changes, build, smoke, size, vscode-e2e]
     runs-on: ubuntu-latest
     steps:
       - name: Gate
@@ -98,7 +110,8 @@ jobs:
               "changes:${{ needs.changes.result }}" \
               "build:${{ needs.build.result }}" \
               "smoke:${{ needs.smoke.result }}" \
-              "size:${{ needs.size.result }}"; do
+              "size:${{ needs.size.result }}" \
+              "vscode-e2e:${{ needs.vscode-e2e.result }}"; do
             name="${job_result%%:*}"
             result="${job_result##*:}"
             case "$result" in

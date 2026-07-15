@@ -1,0 +1,73 @@
+{
+  "name": "@three-flatland/image",
+  "version": "0.0.0",
+  "private": true,
+  "description": "WASM image encoder package — PNG/WebP/AVIF/KTX2 with browser+Node+CLI surfaces",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "node": {
+        "types": "./dist/node.d.ts",
+        "import": "./dist/node.js"
+      },
+      "browser": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    },
+    "./node": {
+      "source": "./src/node.ts",
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    },
+    "./cli": {
+      "source": "./src/cli.ts",
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
+    },
+    "./loaders/ktx2": {
+      "source": "./src/loaders/Ktx2Loader.ts",
+      "types": "./dist/loaders/Ktx2Loader.d.ts",
+      "import": "./dist/loaders/Ktx2Loader.js"
+    }
+  },
+  "peerDependencies": {
+    "three": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "three": { "optional": true }
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "libs"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "build:wasm": "PATH=\"$PWD/node_modules/.bin:$PATH\" zig build",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@three-flatland/bake": "workspace:*",
+    "@jsquash/png": "catalog:",
+    "@jsquash/webp": "catalog:",
+    "@jsquash/avif": "catalog:",
+    "uwasi": "catalog:"
+  },
+  "devDependencies": {
+    "binaryen": "^123.0.0",
+    "three": "catalog:",
+    "@types/three": "catalog:"
+  },
+  "flatland": {
+    "bake": [
+      { "name": "encode", "description": "Encode image to PNG/WebP/AVIF/KTX2", "entry": "./dist/cli.js" }
+    ]
+  }
+}
