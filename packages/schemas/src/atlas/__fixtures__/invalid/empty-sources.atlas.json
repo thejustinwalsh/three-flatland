@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "app": "a",
+    "version": "1",
+    "size": { "w": 64, "h": 64 },
+    "scale": "1",
+    "sources": []
+  },
+  "frames": {}
+}

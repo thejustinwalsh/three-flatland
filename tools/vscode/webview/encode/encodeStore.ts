@@ -1,0 +1,365 @@
+import { create, useStore } from 'zustand'
+import { temporal } from 'zundo'
+import type { TemporalState } from 'zundo'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import type { EncodeFormat } from '@three-flatland/image'
+import { localStorageStorage, webviewStorage } from '../state'
+
+export interface GpuStats {
+  /** THREE format constant, or null when the texture is uncompressed (RGBA8 fallback / CanvasTexture). */
+  format: number | null
+  /** Human-readable label, e.g. "BC7", "ASTC 4×4", "RGBA8". */
+  formatLabel: string
+  /** Per-mip dimensions + uploaded byte counts. Single entry for non-mipmapped textures. */
+  mips: { width: number; height: number; bytes: number }[]
+}
+
+// ─── Slice types ─────────────────────────────────────────────────────────────
+
+interface DocSlice {
+  format: 'webp' | 'avif' | 'ktx2'
+  webp: { quality: number }
+  avif: { quality: number }
+  ktx2: { mode: 'etc1s' | 'uastc'; quality: number; mipmaps: boolean; uastcLevel: 0 | 1 | 2 | 3 | 4 }
+}
+
+interface SessionSlice {
+  // fileName survives session reloads; sourceBytes are NOT persisted (cost +
+  // serialize) — the host re-emits them via loadInit on every panel open.
+  fileName: string
+  // sourceBytes is runtime-only even though it logically belongs to the
+  // session; storing it in the RuntimeSlice keeps JSON persistence clean.
+  // mipLevel: which mip to inspect; persisted per-session so reopening the
+  // panel for the same file returns to the inspected mip.
+  mipLevel: number
+  // mode: 'encode' for PNG sources (full pipeline), 'inspect' for already-
+  // encoded files (.webp/.avif/.ktx2) — slider hidden, knobs+save disabled.
+  mode: 'encode' | 'inspect'
+}
+
+interface PrefsSlice {
+  // Slider position is a per-machine preference — saved cross-session.
+  compareSplitU: number
+  // Filter style for the canvas. true → nearest (pixel-art friendly,
+  // crisp at any zoom level — the default for sprite work). false →
+  // bilinear. Mirrors the atlas tool's `pixelArt` pref shape so the
+  // EncodeMenu's Segmented control behaves the same way.
+  pixelArt: boolean
+  // Resizable info-panel sidebar width (px). Persisted cross-session
+  // alongside the other splitter prefs in atlas/merge.
+  splits: { infoPanelWidth: number }
+  // Per-section accordion state for the info panel. Persisted so the
+  // user can collapse sections they don't care about (e.g. host GPU)
+  // and have that state survive panel close + restart.
+  infoSections: {
+    source: boolean
+    wire: boolean
+    cpu: boolean
+    gpu: boolean
+    hostGpu: boolean
+  }
+}
+
+export type InfoSectionKey = keyof PrefsSlice['infoSections']
+
+interface RuntimeSlice {
+  sourceBytes: Uint8Array | null
+  sourceImage: ImageData | null
+  encodedBytes: Uint8Array | null
+  // Format the encodedBytes were produced with. Tracked separately from the
+  // doc-slice `format` because a user can flip `format` while a slow encode
+  // is still in flight — the texture-decode hook in ComparePreview must use
+  // the format the bytes were ACTUALLY encoded with, not the doc-slice one
+  // (otherwise we hand WebP bytes to KTX2Loader and get "Missing KTX 2.0
+  // identifier" errors during the in-flight window).
+  //
+  // Wider than DocSlice['format'] because @three-flatland/image's EncodeFormat
+  // includes 'png' too — keeping the type aligned with what encodeImage()
+  // actually emits avoids a cast at the pipeline assignment site.
+  encodedFormat: EncodeFormat | null
+  encodedImage: ImageData | null  // null when format=ktx2 (no decode support)
+  encodedSize: number
+  isEncoding: boolean
+  encodeError: string | null
+  encodeReqId: number
+  // Derived from the loaded CompressedTexture's mipmap chain; used by T11's
+  // mip-stepper for upper-bound clamping.
+  encodedMipCount: number
+  // GPU-side breakdown of the currently-displayed encoded texture. Null
+  // until the encode resolves (or whenever the encode is restarted).
+  gpuStats: GpuStats | null
+}
+
+// ─── Full store state ─────────────────────────────────────────────────────────
+
+export type EncodeStoreState = DocSlice &
+  SessionSlice &
+  PrefsSlice &
+  RuntimeSlice & {
+    // Actions — doc
+    setFormat: (format: DocSlice['format']) => void
+    setWebpQuality: (quality: number) => void
+    setAvifQuality: (quality: number) => void
+    setKtx2Mode: (mode: DocSlice['ktx2']['mode']) => void
+    setKtx2Quality: (quality: number) => void
+    setKtx2Mipmaps: (mipmaps: boolean) => void
+    setKtx2UastcLevel: (level: DocSlice['ktx2']['uastcLevel']) => void
+    // Actions — prefs
+    setCompareSplitU: (u: number) => void
+    setPixelArt: (v: boolean) => void
+    setInfoSection: (key: InfoSectionKey, open: boolean) => void
+    // Actions — session
+    setMipLevel: (n: number) => void
+    setMode: (m: 'encode' | 'inspect') => void
+    // Actions — runtime
+    setGpuStats: (stats: GpuStats) => void
+    setInfoPanelWidth: (px: number) => void
+    // Actions — lifecycle
+    loadInit: (p: { fileName: string; sourceBytes: Uint8Array; sourceImage: ImageData | null; mode: 'encode' | 'inspect' }) => void
+    // Actions — runtime
+    setRuntimeFields: (p: Partial<RuntimeSlice>) => void
+    bumpEncodeReqId: () => number
+  }
+
+// ─── Content-equality helpers ─────────────────────────────────────────────────
+
+// Shallow content equality for the partialized doc state. Reference checks
+// alone fire history entries on every action because setters return fresh
+// objects even when nothing changed. Compare values field-by-field.
+function docEqual(a: DocSlice, b: DocSlice): boolean {
+  return (
+    a.format === b.format &&
+    a.webp.quality === b.webp.quality &&
+    a.avif.quality === b.avif.quality &&
+    a.ktx2.mode === b.ktx2.mode &&
+    a.ktx2.quality === b.ktx2.quality &&
+    a.ktx2.mipmaps === b.ktx2.mipmaps &&
+    a.ktx2.uastcLevel === b.ktx2.uastcLevel
+  )
+}
+
+// ─── Store ────────────────────────────────────────────────────────────────────
+
+export const useEncodeStore = create<EncodeStoreState>()(
+  temporal(
+    // Outer persist: localStorage — cross-session user prefs
+    persist(
+      // Inner persist: webviewStorage — session state (survives tab focus loss)
+      persist(
+        (set, get) => ({
+          // Doc slice defaults
+          format: 'webp' as const,
+          webp: { quality: 80 },
+          avif: { quality: 60 },
+          ktx2: { mode: 'etc1s' as const, quality: 128, mipmaps: true, uastcLevel: 2 as const },
+
+          // Prefs slice defaults
+          compareSplitU: 0.5,
+          pixelArt: true,
+          splits: { infoPanelWidth: 320 },
+          // First-run: every section open. The user can collapse what
+          // they don't care about and the choice survives.
+          infoSections: { source: true, wire: true, cpu: true, gpu: true, hostGpu: true },
+
+          // Session slice defaults
+          fileName: 'image',
+          mipLevel: 0,
+          mode: 'encode' as const,
+
+          // Runtime slice defaults — never persisted
+          sourceBytes: null,
+          sourceImage: null,
+          encodedBytes: null,
+          encodedFormat: null,
+          encodedImage: null,
+          encodedSize: 0,
+          isEncoding: false,
+          encodeError: null,
+          encodeReqId: 0,
+          encodedMipCount: 1,
+          gpuStats: null,
+
+          // Doc actions
+          setFormat: (format) => set((s) => ({ ...s, format })),
+          setWebpQuality: (quality) => set((s) => ({ ...s, webp: { ...s.webp, quality } })),
+          setAvifQuality: (quality) => set((s) => ({ ...s, avif: { ...s.avif, quality } })),
+          setKtx2Mode: (mode) => set((s) => ({ ...s, ktx2: { ...s.ktx2, mode } })),
+          setKtx2Quality: (quality) => set((s) => ({ ...s, ktx2: { ...s.ktx2, quality } })),
+          setKtx2Mipmaps: (mipmaps) => set((s) => ({ ...s, ktx2: { ...s.ktx2, mipmaps } })),
+          setKtx2UastcLevel: (uastcLevel) => set((s) => ({ ...s, ktx2: { ...s.ktx2, uastcLevel } })),
+
+          // Prefs actions
+          setCompareSplitU: (u) => set((s) => ({ ...s, compareSplitU: Math.min(1, Math.max(0, u)) })),
+          setPixelArt: (v) => set((s) => ({ ...s, pixelArt: v })),
+          setInfoSection: (key, open) =>
+            set((s) => ({ ...s, infoSections: { ...s.infoSections, [key]: open } })),
+
+          // Session actions
+          setMipLevel: (n) =>
+            set((s) => ({ ...s, mipLevel: Math.min(Math.max(0, s.encodedMipCount - 1), Math.max(0, n)) })),
+          setMode: (m) => set((s) => ({ ...s, mode: m })),
+
+          // Runtime actions
+          setGpuStats: (stats) =>
+            set((s) => ({
+              ...s,
+              gpuStats: stats,
+              encodedMipCount: stats.mips.length,
+              mipLevel: 0,
+            })),
+          setInfoPanelWidth: (px) =>
+            set((s) => ({
+              ...s,
+              splits: { ...s.splits, infoPanelWidth: Math.max(240, Math.min(480, px)) },
+            })),
+
+          // Lifecycle action — bridge `encode/init` calls this. Sets state and
+          // clears undo history so the user's stack starts empty on each load.
+          loadInit: ({ fileName, sourceBytes, sourceImage, mode }) => {
+            set((s) => ({
+              ...s,
+              fileName,
+              sourceBytes,
+              sourceImage,
+              mode,
+              // Reset encoded output whenever a new source arrives.
+              encodedBytes: null,
+              encodedFormat: null,
+              encodedImage: null,
+              encodedSize: 0,
+              isEncoding: false,
+              encodeError: null,
+              gpuStats: null,
+            }))
+            useEncodeStore.temporal.getState().clear()
+          },
+
+          // Runtime action — encode pipeline calls this to drop results.
+          setRuntimeFields: (p) => set((s) => ({ ...s, ...p })),
+
+          // Race-id: increment + return new id so caller can detect stale
+          // responses (older encode jobs that arrive after a newer one started).
+          bumpEncodeReqId: () => {
+            const next = get().encodeReqId + 1
+            set((s) => ({ ...s, encodeReqId: next }))
+            return next
+          },
+        }),
+        {
+          // Session state: survives tab focus loss + dev reload, lost on panel close.
+          name: 'fl-encode-session',
+          storage: createJSONStorage(() => webviewStorage),
+          partialize: (s) => ({
+            format: s.format,
+            webp: s.webp,
+            avif: s.avif,
+            ktx2: s.ktx2,
+            fileName: s.fileName,
+            mipLevel: s.mipLevel,
+            mode: s.mode,
+          }),
+        },
+      ),
+      {
+        // Cross-session prefs: survive panel close + VSCode restart.
+        name: 'fl-encode-prefs',
+        storage: createJSONStorage(() => localStorageStorage),
+        partialize: (s) => ({
+          compareSplitU: s.compareSplitU,
+          pixelArt: s.pixelArt,
+          splits: s.splits,
+          infoSections: s.infoSections,
+        }),
+      },
+    ),
+    {
+      // Track only doc fields in undo history. UI / runtime fields are not
+      // undoable. On undo, setState fires from inside zundo and our actions
+      // don't run — no re-derive needed here (no computed fields in DocSlice).
+      partialize: (s): DocSlice => ({
+        format: s.format,
+        webp: s.webp,
+        avif: s.avif,
+        ktx2: s.ktx2,
+      }),
+      limit: 50,
+      // Shallow content equality on the partialized state. Reference equality
+      // alone produces spurious history entries because every setter returns
+      // fresh objects even when content is identical (e.g. clicking the
+      // dropdown's already-selected value, blurring a number field unchanged).
+      equality: (a, b) => docEqual(a, b),
+      // Coalesce bursts of rapid set calls (NumberField drag, hot-key repeats)
+      // into a single undo entry. Trailing-edge debounce: the history entry is
+      // recorded 100 ms after the last change in the burst, capturing the prior
+      // state so one undo rewinds the whole burst. 100 ms is below
+      // human-perceptible undo latency.
+      handleSet: (handleSet) => {
+        let timer: ReturnType<typeof setTimeout> | null = null
+        return (pastState) => {
+          if (timer !== null) clearTimeout(timer)
+          timer = setTimeout(() => {
+            handleSet(pastState)
+            timer = null
+          }, 100)
+        }
+      },
+    },
+  ),
+)
+
+// Convenience hook matching peer-store API.
+export function useEncodeState(): EncodeStoreState {
+  return useStore(useEncodeStore)
+}
+
+// Convenience action namespace for callers that don't subscribe to the store.
+export const encodeActions = {
+  setFormat: (format: DocSlice['format']) =>
+    useEncodeStore.getState().setFormat(format),
+  setWebpQuality: (quality: number) =>
+    useEncodeStore.getState().setWebpQuality(quality),
+  setAvifQuality: (quality: number) =>
+    useEncodeStore.getState().setAvifQuality(quality),
+  setKtx2Mode: (mode: DocSlice['ktx2']['mode']) =>
+    useEncodeStore.getState().setKtx2Mode(mode),
+  setKtx2Quality: (quality: number) =>
+    useEncodeStore.getState().setKtx2Quality(quality),
+  setKtx2Mipmaps: (mipmaps: boolean) =>
+    useEncodeStore.getState().setKtx2Mipmaps(mipmaps),
+  setKtx2UastcLevel: (level: DocSlice['ktx2']['uastcLevel']) =>
+    useEncodeStore.getState().setKtx2UastcLevel(level),
+  setCompareSplitU: (u: number) =>
+    useEncodeStore.getState().setCompareSplitU(u),
+  setPixelArt: (v: boolean) =>
+    useEncodeStore.getState().setPixelArt(v),
+  setInfoSection: (key: InfoSectionKey, open: boolean) =>
+    useEncodeStore.getState().setInfoSection(key, open),
+  setMipLevel: (n: number) =>
+    useEncodeStore.getState().setMipLevel(n),
+  setGpuStats: (stats: GpuStats) =>
+    useEncodeStore.getState().setGpuStats(stats),
+  setInfoPanelWidth: (px: number) =>
+    useEncodeStore.getState().setInfoPanelWidth(px),
+  // Bridge `encode/init` should call this — sets source + fileName AND clears
+  // any history accumulated from rehydration / earlier inits. The user's undo
+  // stack starts empty when they first see the panel content.
+  loadInit: (p: { fileName: string; sourceBytes: Uint8Array; sourceImage: ImageData | null; mode: 'encode' | 'inspect' }) =>
+    useEncodeStore.getState().loadInit(p),
+  setRuntimeFields: (p: Partial<RuntimeSlice>) =>
+    useEncodeStore.getState().setRuntimeFields(p),
+  bumpEncodeReqId: () =>
+    useEncodeStore.getState().bumpEncodeReqId(),
+}
+
+// Undo/redo helpers exposed for keyboard handling and UI.
+export const encodeHistory = {
+  undo: () => useEncodeStore.temporal.getState().undo(),
+  redo: () => useEncodeStore.temporal.getState().redo(),
+  canUndo: () => useEncodeStore.temporal.getState().pastStates.length > 0,
+  canRedo: () => useEncodeStore.temporal.getState().futureStates.length > 0,
+}
+
+// Re-export the temporal store so UI can subscribe to canUndo/canRedo.
+export function useEncodeHistoryStore(): TemporalState<DocSlice> {
+  return useStore(useEncodeStore.temporal)
+}

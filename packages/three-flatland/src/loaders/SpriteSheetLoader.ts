@@ -7,6 +7,9 @@ import type {
   SpriteSheetFrameMeshJSON,
   SpriteSheetJSONHash,
   SpriteSheetJSONArray,
+  SpriteAnimation,
+  AsepriteFrameTag,
+  AtlasAnimation,
 } from '../sprites/types'
 import { degradeAtlasMesh, registerAtlasMesh } from './atlasMeshRegistry'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
@@ -204,8 +207,22 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     const resolved = resolveTextureOptions(options?.texture, this.options)
     const texture = await this.loadTexture(textureUrl, resolved)
 
+    // Animation source priority — highest first:
+    //   1. `meta.animations` (our richer shape; preferred when present)
+    //   2. `meta.frameTags` + per-frame `duration` (Aseprite shape)
+    //   3. none (TexturePacker output without extensions)
+    const orderedFrameNames = parsed.orderedFrameNames
+    const frameDurations = parsed.frameDurations
+    const animations = parseAnimations(json.meta, orderedFrameNames, frameDurations)
+
     // Create SpriteSheet
-    const sheet = this.createSpriteSheet(texture, parsed.frames, parsed.width, parsed.height)
+    const sheet = this.createSpriteSheet(
+      texture,
+      parsed.frames,
+      animations,
+      parsed.width,
+      parsed.height
+    )
 
     // Resolve normal map — probe baked sibling, fall back to in-memory bake.
     if (options?.normals) {
@@ -272,10 +289,15 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   }
 
   /**
-   * Parse JSON Hash format.
+   * Parse JSON Hash format. Returns the ordered frame names + per-frame
+   * durations alongside the frame map so the animation parser can
+   * resolve Aseprite `frameTags` (which use integer indices into the
+   * frames array — relies on insertion order being preserved).
    */
   private static parseJSONHash(json: SpriteSheetJSONHash) {
     const frames = new Map<string, SpriteFrame>()
+    const orderedFrameNames: string[] = []
+    const frameDurations = new Map<string, number>()
     const { w: atlasWidth, h: atlasHeight } = json.meta.size
 
     for (const [name, data] of Object.entries(json.frames)) {
@@ -312,11 +334,17 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       frame.mesh = SpriteSheetLoader.parseFrameMesh(data, frame)
 
       frames.set(name, frame)
+      orderedFrameNames.push(name)
+      if (typeof data.duration === 'number' && data.duration > 0) {
+        frameDurations.set(name, data.duration)
+      }
     }
 
     return {
       frames,
-      imagePath: json.meta.image,
+      orderedFrameNames,
+      frameDurations,
+      imagePath: json.meta.sources?.[0]?.uri ?? json.meta.image ?? '',
       width: atlasWidth,
       height: atlasHeight,
     }
@@ -327,6 +355,8 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
    */
   private static parseJSONArray(json: SpriteSheetJSONArray) {
     const frames = new Map<string, SpriteFrame>()
+    const orderedFrameNames: string[] = []
+    const frameDurations = new Map<string, number>()
     const { w: atlasWidth, h: atlasHeight } = json.meta.size
 
     for (const data of json.frames) {
@@ -360,11 +390,17 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       frame.mesh = SpriteSheetLoader.parseFrameMesh(data, frame)
 
       frames.set(data.filename, frame)
+      orderedFrameNames.push(data.filename)
+      if (typeof data.duration === 'number' && data.duration > 0) {
+        frameDurations.set(data.filename, data.duration)
+      }
     }
 
     return {
       frames,
-      imagePath: json.meta.image,
+      orderedFrameNames,
+      frameDurations,
+      imagePath: json.meta.sources?.[0]?.uri ?? json.meta.image ?? '',
       width: atlasWidth,
       height: atlasHeight,
     }
@@ -383,12 +419,14 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   private static createSpriteSheet(
     texture: Texture,
     frames: Map<string, SpriteFrame>,
+    animations: Map<string, SpriteAnimation>,
     width: number,
     height: number
   ): SpriteSheet {
     const sheet: SpriteSheet = {
       texture,
       frames,
+      animations,
       width,
       height,
       getFrame(name: string): SpriteFrame {
@@ -400,6 +438,12 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
       },
       getFrameNames(): string[] {
         return Array.from(frames.keys())
+      },
+      getAnimation(name: string): SpriteAnimation | undefined {
+        return animations.get(name)
+      },
+      getAnimationNames(): string[] {
+        return Array.from(animations.keys())
       },
     }
 
@@ -535,4 +579,92 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   static preload(urls: string[], options?: SpriteSheetLoaderOptions): Promise<SpriteSheet[]> {
     return Promise.all(urls.map((url) => this.load(url, options)))
   }
+}
+
+/**
+ * Normalize the source JSON metadata into a Map of `SpriteAnimation`s,
+ * regardless of whether the source uses our `meta.animations` shape or
+ * Aseprite's `meta.frameTags` + per-frame durations. Returns an empty
+ * Map for plain TexturePacker output (no animation metadata).
+ *
+ * Source priority:
+ *   1. `meta.animations` (our shape) — preferred when present.
+ *   2. `meta.frameTags` (Aseprite shape) — converted to our shape via
+ *      direction → loop/pingPong, integer indices → frame names,
+ *      median per-frame duration → fps.
+ */
+function parseAnimations(
+  meta: SpriteSheetJSONHash["meta"],
+  orderedFrameNames: readonly string[],
+  frameDurations: ReadonlyMap<string, number>
+): Map<string, SpriteAnimation> {
+  const out = new Map<string, SpriteAnimation>()
+
+  // Preferred source: our richer `meta.animations`.
+  if (meta.animations && Object.keys(meta.animations).length > 0) {
+    for (const [name, anim] of Object.entries(meta.animations)) {
+      out.set(name, atlasAnimationToSpriteAnimation(anim))
+    }
+    return out
+  }
+
+  // Fallback: Aseprite-style `meta.frameTags` + per-frame `duration`.
+  if (meta.frameTags && meta.frameTags.length > 0) {
+    for (const tag of meta.frameTags) {
+      const sa = frameTagToSpriteAnimation(tag, orderedFrameNames, frameDurations)
+      if (sa) out.set(tag.name, sa)
+    }
+  }
+  return out
+}
+
+function atlasAnimationToSpriteAnimation(anim: AtlasAnimation): SpriteAnimation {
+  // Dereference indexed wire format → flat name-based playback
+  // sequence. Out-of-bounds indices are skipped with a console
+  // warning — schema validation should catch these upstream.
+  const frames: string[] = []
+  for (const idx of anim.frames) {
+    const name = anim.frameSet[idx]
+    if (name == null) {
+      console.warn(
+        `[three-flatland] AtlasAnimation: frame index ${idx} out of bounds ` +
+          `for frameSet (length ${anim.frameSet.length}); skipping.`,
+      )
+      continue
+    }
+    frames.push(name)
+  }
+  return {
+    frames,
+    fps: anim.fps ?? 12,
+    loop: anim.loop ?? true,
+    pingPong: anim.pingPong ?? false,
+    ...(anim.events ? { events: { ...anim.events } } : {}),
+  }
+}
+
+function frameTagToSpriteAnimation(
+  tag: AsepriteFrameTag,
+  orderedFrameNames: readonly string[],
+  frameDurations: ReadonlyMap<string, number>
+): SpriteAnimation | null {
+  if (tag.from < 0 || tag.to >= orderedFrameNames.length || tag.from > tag.to) return null
+  const slice = orderedFrameNames.slice(tag.from, tag.to + 1)
+  if (slice.length === 0) return null
+
+  const dir = tag.direction ?? "forward"
+  const reverseInPlace = dir === "reverse" || dir === "pingpong_reverse"
+  const isPingPong = dir === "pingpong" || dir === "pingpong_reverse"
+  const frames = reverseInPlace ? [...slice].reverse() : slice
+
+  // Median per-frame duration (ms) → fps. Frames without a recorded
+  // duration default to 100ms (10 fps) — the typical Aseprite default.
+  const durations = slice
+    .map((n) => frameDurations.get(n))
+    .filter((d): d is number => typeof d === "number" && d > 0)
+    .sort((a, b) => a - b)
+  const medianMs = durations.length > 0 ? durations[Math.floor(durations.length / 2)]! : 100
+  const fps = Math.max(1, Math.round(1000 / medianMs))
+
+  return { frames, fps, loop: true, pingPong: isPingPong }
 }

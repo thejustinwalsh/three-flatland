@@ -5,8 +5,12 @@ packages:
   - minis/*
   - docs
   - skills
+  - tools/*
 
 catalog:
+  '@jsquash/avif': ^2.1.1
+  '@jsquash/png': ^3.1.1
+  '@jsquash/webp': ^1.5.0
   '@tweakpane/core': ^2.0.5
   '@tweakpane/plugin-essentials': ^0.2.1
   tweakpane: ^4.0.5
@@ -19,6 +23,19 @@ catalog:
   # playback.
   '@zzfx-studio/zzfxm': ^0.1.5
   zzfx: ^1.3.2
+  # Real Web Audio in Node (napi-rs/Rust/cpal) — tools/audio-play's inline
+  # (no-panel) sidecar's AudioContext, a separate Node-only consumer from
+  # the browser audio engine above (native napi module, not resolved into
+  # the same install). Ships ALL platform .node binaries in the one
+  # package (5-7MB each); VSIX packaging strips unused platforms (#24).
+  node-web-audio-api: ^2.0.0
+  # tools/audio-play's Tone/Wad synth findings (#47) — versions pinned
+  # exactly (no caret) to the prototype-gate-validated versions, not a
+  # semver range, since the gate's findings (Tone.setContext behavior,
+  # Wad's private-AudioContext monkey-patch ordering) were verified
+  # against these specific builds.
+  tone: 15.1.22
+  web-audio-daw: 4.13.4
   # Pinned (no caret) — `^10.0.0-alpha.2` semver-matches `10.0.0-canary.X`
   # because canary > alpha alphabetically on the same 10.0.0 base. Our
   # local pnpm lockfile holds alpha.2, but a fresh `npm install` (e.g. in
@@ -27,6 +44,8 @@ catalog:
   # `three/webgpu` which no released three.js exports. Pin until alpha.3+
   # ships and Renovate can propose the bump.
   '@react-three/fiber': 10.0.0-alpha.2
+  '@stylexjs/stylex': ^0.18.3
+  '@stylexjs/unplugin': ^0.18.3
   '@types/pngjs': ^6.0.5
   '@types/react': ^19.0.2
   '@types/react-dom': ^19.0.2
@@ -38,5 +57,9 @@ catalog:
   react-dom: ^19.2.0
   three: ^0.183.1
   typescript: ^5.7.3
+  uwasi: ^1.4.1
   vite: ^6.4.3
   '@gltf-transform/core': ^4.3.0
+  zundo: ^2.3.0
+  zustand: ^5.0.0
+  ts-json-schema-generator: ^2.9.0

@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "app": "fl-sprite-atlas",
+    "version": "1.0",
+    "size": { "w": 1020, "h": 364 },
+    "scale": "1",
+    "sources": [
+      { "format": "webp", "uri": "sprites.webp" },
+      { "format": "png", "uri": "sprites.png" },
+      { "format": "avif", "uri": "sprites.avif" },
+      { "format": "ktx2", "uri": "sprites.ktx2" }
+    ]
+  },
+  "frames": {
+    "castle": {
+      "frame": { "x": 2, "y": 2, "w": 296, "h": 205 },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 296, "h": 205 },
+      "sourceSize": { "w": 296, "h": 205 }
+    }
+  }
+}

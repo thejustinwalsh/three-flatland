@@ -59,6 +59,11 @@ export default tseslint.config(
       '**/*.test.ts',
       '**/*.test.tsx',
       'examples/**',
+      // Deliberately outside any tsconfig — sample/test data scanned by our
+      // own Rust codelens sidecar's parser, not by tsc. Without this,
+      // typescript-eslint's project service flags every fixture .ts file as
+      // "not found by the project service" whenever opened in this workspace.
+      'tools/vscode/e2e/fixtures/**',
     ],
   }
 )

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://three-flatland.dev/schemas/atlas.v1.json",
+  "meta": {
+    "app": "fl-sprite-atlas",
+    "version": "1.0",
+    "sources": [
+      {
+        "format": "png",
+        "uri": "Dungeon_Tileset.png"
+      }
+    ],
+    "size": {
+      "w": 160,
+      "h": 160
+    },
+    "scale": "1",
+    "image": "Dungeon_Tileset.png"
+  },
+  "frames": {
+    "dungeon": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 160,
+        "h": 160
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 160,
+        "h": 160
+      },
+      "sourceSize": {
+        "w": 160,
+        "h": 160
+      }
+    }
+  }
+}
