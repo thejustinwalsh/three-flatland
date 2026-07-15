@@ -30,7 +30,15 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, test } from '../fixtures'
+import { expect, skipIfAudioDeviceDeaf, test } from '../fixtures'
+
+// Real-audio spec: skip (loudly, with the environmental evidence) when the
+// warmup's oracle proved the OS audio device transiently deaf — see
+// fixtures.ts's warmUpAudioPipeline. CI runs FL_E2E_REQUIRE_AUDIO=1 and
+// hard-fails instead.
+test.beforeEach(({ _sharedWindow }) => {
+  skipIfAudioDeviceDeaf(_sharedWindow)
+})
 
 const SOUNDS_FILE = 'src/audio-sources.ts'
 
