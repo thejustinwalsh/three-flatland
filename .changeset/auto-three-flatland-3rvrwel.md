@@ -7,9 +7,12 @@
 
 ## Fixes
 
-- `Flatland` now auto-derives the camera aspect ratio from the render surface (renderer viewport, or the `RenderTarget` when rendering to texture) on every render, instead of defaulting to a static `1` and requiring a manual `resize()` call. Fixes scenes rendering at the wrong scale when nothing calls `resize()` (e.g. under R3F, where there was no natural place to wire a resize handler).
-- `aspect` is now a real get/set accessor (previously constructor-only), so it can be assigned via property-setting, including from JSX under R3F.
-- Setting `aspect` explicitly, or calling `resize()`, permanently switches Flatland to manual aspect control — auto-sync only applies when `aspect` is omitted, so existing manual callers are unaffected.
-- Unchanged renderer/render-target sizes short-circuit the aspect recompute, avoiding unnecessary `LightEffect` tile buffer reallocation. Zero/negative/NaN dimensions are ignored rather than latching a broken frustum, so a `0x0` initial frame self-heals automatically.
+- `Flatland` now auto-derives the camera aspect ratio from the render surface each frame, instead of defaulting to `1` until an explicit `resize()` call. Previously, R3F consumers had no obvious lifecycle hook to trigger `resize()`, so scenes could render squashed/stretched (e.g. an 800-unit frustum rendered 1.78x too large on a 1280x720 canvas) until the app manually synced camera and renderer size.
+  - Aspect now tracks the `RenderTarget`'s dimensions when rendering to texture, or the renderer's size otherwise. Unchanged sizes short-circuit, so tile buffers (e.g. `LightEffect`) don't reallocate needlessly.
+  - Calling `resize()` or setting `aspect` explicitly still switches to manual mode permanently — existing callers are unaffected.
+  - Zero/negative/NaN dimensions are now a no-op rather than latching a broken frustum, so transient 0x0 sizes self-heal on the next frame.
+- `aspect` is now a real accessor (previously constructor-only), making it settable via JSX property-setting under R3F's no-arg-construction pattern.
 
-Verified on WebGPU: React and three.js example twins now render pixel-identical geometry with no example-side changes required.
+Verified pixel-identical rendering between the React and three.js examples/uikit twins on WebGPU, with no example-side changes required. Test suite grew from 792 to 803 tests.
+
+This release fixes a class of aspect-ratio bugs affecting React Three Fiber consumers of `Flatland` and makes `aspect` reactively settable as a JSX prop.
