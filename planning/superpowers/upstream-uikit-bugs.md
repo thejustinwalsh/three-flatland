@@ -156,6 +156,60 @@ the fix; the three touched files are type-clean.
 
 ---
 
+## 5. Per-frame CPU cost — two optimizations (found benchmarking the dense grid) — FIXED in fork
+
+Surfaced 2026-07-14 profiling `examples/react/uikit-perf` `?scene=labelgrid` (a ~7,800-node
+grid). The fork ran the dense grid at **~38 fps**; both fixes together took it to **~102 fps**.
+One is fork-specific (a fiber-migration regression), one is **shared debt present at upstream
+HEAD** and is a genuine upstream candidate.
+
+### 5.1 Per-node matrix/clip recompute runs every frame regardless of change — **UPSTREAM CANDIDATE**
+
+**`packages/uikit/src/context.ts` / `utils.ts`** (`setupMatrixWorldUpdate` fan-out) and
+**`packages/uikit/src/clipping.ts`** (`RelativePlane.computeInto`).
+
+Every frame, the root's `onUpdateMatrixWorldSet` fan-out calls `updateWorldMatrix` for **every**
+`Content`/`Svg` node (~1,290/frame on the grid), and `RelativePlane.computeInto` recomputes the
+clip planes on **every getter read** (~2.3M/s), even when nothing in the subtree moved. This is
+pure per-node work proportional to node count, paid on static frames.
+
+**Impact:** the ceiling on any dense uikit scene is O(node-count) per-frame recompute that a
+static tree does not need. Present on a pristine fork of upstream HEAD — not a vendoring
+artifact; upstream pays the same cost.
+
+**Fix (fork commit `a922d9bb`):** a root-level `matrixVersion`, bumped only when the root's
+world→global matrix actually changes (compared via `Matrix4.equals`), plus each node's
+`globalPanelMatrix` signal ref, gate the recompute. A **childless** `Content` skips the
+recompute when unchanged; a `Content` wrapping embedded content is conservatively excluded
+(always recomputes) so animated children never freeze. `RelativePlane.computeInto` is memoized
+on the same version. Grid 72→~102 fps; wobble/orbit stay pixel-correct (moving nodes still
+recompute — verified ~99% frame-diff). **This is the one worth a PR** — it helps every uikit
+consumer, WebGL or WebGPU.
+
+### 5.2 One rAF job registered per component instead of per root — **FORK-ONLY (fiber-10 migration note)**
+
+**`packages/uikit/src/react/build.tsx`** (`useSetup`).
+
+The fork's `useSetup()` called `useFrame(...)` **unconditionally for every component**, so R3F's
+scheduler ticked **one job per node** (~7,800 on the grid) and ~99.99% no-op'd — only the root's
+`Component.update()` does real work (it pumps the whole subtree). **Upstream does NOT have this
+bug:** it gates the *registration* behind a signals `effect()` that early-returns before
+subscribing, riding `@react-three/fiber` **9**'s `internal.subscribe`. The fork lost that gating
+when it migrated to fiber **10**, where `internal.subscribe` was removed and was replaced with an
+ungated `useFrame`.
+
+**Fix (fork commit `ea33424b`):** drive a signals `effect()` keyed on `component.root`; only while
+`component.root.value.component === component` register a job via fiber 10's
+`scheduler.register` (the primitive `useFrame` itself uses), unregister when root-ness flips. Job
+count 7,831 → 10 (flat = root count). Grid 38→72 fps.
+
+**Not an upstream bug today** — but a **migration note**: when upstream moves to fiber 10 it will
+lose `internal.subscribe` too and needs exactly this `scheduler.register`-based gating to keep the
+root-only pump. Record so the pattern isn't rediscovered the hard way. (Cross-ref: §4's fork-only
+measure-request relayout gate is adjacent per-frame-cost territory.)
+
+---
+
 ## Suggested filing
 
 One issue per bug, or a single issue with three sections. Bugs 1 and 2 share a root cause
