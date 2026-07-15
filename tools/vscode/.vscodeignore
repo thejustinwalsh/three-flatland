@@ -5,7 +5,8 @@
 #
 # Runtime-needed and therefore NEVER excluded: dist/, bin/, audio-play/,
 # grammars/, icons/ (contributes.grammars / contributes.languages /
-# the marketplace icon all reference these directly).
+# the marketplace icon all reference these directly) — EXCEPT
+# icons/readme/, see below.
 
 # Source — compiled into dist/ by `pnpm build`
 extension/**
@@ -16,13 +17,21 @@ scripts/**
 esbuild.config.mjs
 vite.config.ts
 tsconfig.json
+.turbo/**
 
-# Marketing screenshots — vsce rewrites README.md's relative image paths
-# to raw.githubusercontent.com URLs for the marketplace listing (see
-# scripts/package-vsix.mjs's --githubBranch comment), so nothing at
-# runtime ever loads these from inside the package. Shipping them would
-# just be 1.7MB of dead weight in every user's download.
+# Marketing screenshots + banner — vsce rewrites README.md's relative
+# image paths to raw.githubusercontent.com URLs for the marketplace
+# listing (see scripts/package-vsix.mjs's --githubBranch comment), so
+# nothing at runtime ever loads these from inside the package. Shipping
+# them would just be dead weight in every user's download.
 docs/**
+
+# Same reasoning as docs/** above — these are README section-header
+# icons, only ever referenced via relative <img> tags in README.md, never
+# by package.json contributes or extension runtime code. icon.png and the
+# fl-atlas grammar icons directly above this stay (those ARE referenced
+# at runtime), only this subdirectory is README-only decoration.
+icons/readme/**
 
 # Tests
 e2e/**
