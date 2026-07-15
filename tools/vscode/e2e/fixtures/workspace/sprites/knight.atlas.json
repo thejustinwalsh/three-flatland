@@ -1,0 +1,41 @@
+{
+  "$schema": "https://three-flatland.dev/schemas/atlas.v1.json",
+  "meta": {
+    "app": "fl-sprite-atlas",
+    "version": "1.0",
+    "sources": [
+      {
+        "format": "png",
+        "uri": "knight.png"
+      }
+    ],
+    "size": {
+      "w": 256,
+      "h": 256
+    },
+    "scale": "1",
+    "image": "knight.png"
+  },
+  "frames": {
+    "knight": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      }
+    }
+  }
+}

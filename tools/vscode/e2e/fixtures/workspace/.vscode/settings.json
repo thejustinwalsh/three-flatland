@@ -1,0 +1,13 @@
+{
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none",
+  "extensions.autoCheckUpdates": false,
+  "workbench.enableExperiments": false,
+  "workbench.settings.enableNaturalLanguageSearch": false,
+  "workbench.startupEditor": "none",
+  "security.workspace.trust.enabled": false,
+  "window.confirmSaveUntitledWorkspace": false,
+  "files.autoSave": "off",
+  "git.enabled": false,
+  "extensions.ignoreRecommendations": true
+}

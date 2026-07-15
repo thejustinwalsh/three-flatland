@@ -16,10 +16,12 @@ checks:
     globs:
       - "packages/nodes/**/*.{ts,tsx}"
       - "packages/presets/**/*.{ts,tsx}"
+      - "packages/schemas/**/*.{ts,tsx,json}"
       - "packages/slug/**/*.{ts,tsx}"
       - "packages/three-flatland/**/*.{ts,tsx}"
       - "packages/tweakpane/**/*.{ts,tsx}"
       - "minis/**/*.{ts,tsx}"
+      - "tools/io/**/*.{ts,tsx}"
   - name: test-skia
     command: "pnpm test:skia"
     globs:

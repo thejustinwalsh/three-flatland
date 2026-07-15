@@ -1,0 +1,313 @@
+{
+  "name": "@three-flatland/vscode",
+  "displayName": "Flatland Tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Visual editors for game and multimedia assets, right in your editor. Sprite atlas packing, GPU image encoding, normal-map baking, and inline audio playback. Built by the three-flatland team; every tool works standalone.",
+  "publisher": "three-flatland",
+  "icon": "icons/icon.png",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "license": "MIT",
+  "pricing": "Free",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "tools/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/thejustinwalsh/three-flatland/issues"
+  },
+  "homepage": "https://github.com/thejustinwalsh/three-flatland/tree/main/tools/vscode#readme",
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "three.js",
+    "webgpu",
+    "webgl",
+    "tsl",
+    "game development",
+    "gamedev",
+    "2d game dev",
+    "html5 game",
+    "indie game dev",
+    "sprite atlas",
+    "spritesheet",
+    "texture packer",
+    "aseprite",
+    "pixel art",
+    "ktx2",
+    "texture compression",
+    "basis universal",
+    "webp",
+    "avif",
+    "image encoder",
+    "normal map",
+    "tilemap",
+    "zzfx",
+    "chiptune",
+    "game audio",
+    "sound design",
+    "audio"
+  ],
+  "galleryBanner": {
+    "color": "#111418",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "activationEvents": [
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "threeFlatland.atlas.openEditor",
+        "title": "Open in Sprite Atlas"
+      },
+      {
+        "command": "threeFlatland.merge.openMergeTool",
+        "title": "Merge Atlases…"
+      },
+      {
+        "command": "threeFlatland.wasmTest.open",
+        "title": "WASM Contract Test"
+      },
+      {
+        "command": "threeFlatland.encode.open",
+        "title": "Open in Image Encoder"
+      },
+      {
+        "command": "threeFlatland.audio.playAtCursor",
+        "title": "Play ZzFX at Cursor"
+      },
+      {
+        "command": "threeFlatland.audio.openEditor",
+        "title": "Open ZzFX Editor"
+      },
+      {
+        "command": "threeFlatland.normalBaker.open",
+        "title": "Open in Normal Baker"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "threeFlatland.atlas",
+        "displayName": "FL Sprite Atlas",
+        "selector": [
+          {
+            "filenamePattern": "*.png"
+          }
+        ],
+        "priority": "option"
+      },
+      {
+        "viewType": "threeFlatland.encode",
+        "displayName": "FL KTX2 Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.ktx2"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configuration": {
+      "title": "Flatland Tools",
+      "properties": {
+        "threeFlatland.tools.spriteAtlas.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable FL Sprite Atlas (packing + animation editor for sprite sheets)."
+        },
+        "threeFlatland.tools.imageEncoder.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable FL Image Encoder (PNG/WebP/AVIF/KTX2 comparison + encoding)."
+        },
+        "threeFlatland.tools.atlasMerge.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable FL Atlas Merge (combine multiple .atlas.json sprite sheets)."
+        },
+        "threeFlatland.tools.normalBaker.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable FL Normal Baker (region editor for baking normal maps from PNG source art)."
+        },
+        "threeFlatland.tools.audio.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable FL Audio (CodeLens playback for zzfx/zzfxm/Wad/Tone.js/audio-file calls, plus the ZzFX Studio tuner panel for zzfx() sound-effect calls). Changing this setting requires a window reload."
+        },
+        "threeFlatland.audio.inlinePlayback.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Play audio via a lightweight background process instead of the editor panel. Turning this off disables inline audio playback."
+        },
+        "threeFlatland.audio.playbackVolume": {
+          "type": "number",
+          "default": 0,
+          "minimum": -12,
+          "maximum": 12,
+          "description": "Playback volume adjustment for FL Audio preview sounds, in dB relative to the default loudness. 0 keeps the built-in baseline; positive is louder, negative quieter (±12 dB ≈ ×4 / ×0.25). Applies to the inline ▶ Play route for every audio kind, and to the ZzFX Studio tuner panel."
+        }
+      }
+    },
+    "submenus": [
+      {
+        "id": "threeFlatland.flatlandMenu",
+        "label": "Flatland Tools",
+        "icon": "$(package)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "submenu": "threeFlatland.flatlandMenu",
+          "group": "navigation@10",
+          "when": "(threeFlatland.tool.spriteAtlas.enabled && (resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/)) || (threeFlatland.tool.imageEncoder.enabled && (resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2)) || (threeFlatland.tool.atlasMerge.enabled && resourceFilename =~ /\\.atlas\\.json$/) || (threeFlatland.tool.normalBaker.enabled && (resourceExtname == .png || resourceFilename =~ /\\.normal\\.json$/))"
+        }
+      ],
+      "threeFlatland.flatlandMenu": [
+        {
+          "command": "threeFlatland.atlas.openEditor",
+          "when": "threeFlatland.tool.spriteAtlas.enabled && (resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/)",
+          "group": "1_authoring@1"
+        },
+        {
+          "command": "threeFlatland.normalBaker.open",
+          "when": "threeFlatland.tool.normalBaker.enabled && (resourceExtname == .png || resourceFilename =~ /\\.normal\\.json$/)",
+          "group": "1_authoring@2"
+        },
+        {
+          "command": "threeFlatland.encode.open",
+          "when": "threeFlatland.tool.imageEncoder.enabled && (resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2)",
+          "group": "2_convert@1"
+        },
+        {
+          "command": "threeFlatland.merge.openMergeTool",
+          "when": "threeFlatland.tool.atlasMerge.enabled && resourceFilename =~ /\\.atlas\\.json$/",
+          "group": "3_combine@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "threeFlatland.atlas.openEditor",
+          "when": "threeFlatland.tool.spriteAtlas.enabled && (resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/)"
+        },
+        {
+          "command": "threeFlatland.merge.openMergeTool",
+          "when": "threeFlatland.tool.atlasMerge.enabled && resourceFilename =~ /\\.atlas\\.json$/"
+        },
+        {
+          "command": "threeFlatland.encode.open",
+          "when": "threeFlatland.tool.imageEncoder.enabled && (resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2)"
+        },
+        {
+          "command": "threeFlatland.normalBaker.open",
+          "when": "threeFlatland.tool.normalBaker.enabled && (resourceExtname == .png || resourceFilename =~ /\\.normal\\.json$/)"
+        },
+        {
+          "command": "threeFlatland.audio.playAtCursor",
+          "when": "threeFlatland.tool.audio.enabled && (resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact)"
+        },
+        {
+          "command": "threeFlatland.audio.openEditor",
+          "when": "threeFlatland.tool.audio.enabled && (resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact)"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "fl-atlas",
+        "aliases": [
+          "FL Atlas"
+        ],
+        "filenamePatterns": [
+          "*.atlas.json"
+        ],
+        "icon": {
+          "light": "./icons/atlas-light.svg",
+          "dark": "./icons/atlas-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "fl-atlas",
+        "scopeName": "source.fl-atlas",
+        "path": "./grammars/fl-atlas.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "pnpm run build:webview && pnpm run build:host",
+    "build:host": "node esbuild.config.mjs",
+    "build:webview": "vite build",
+    "dev": "concurrently -n host,webview -c blue,magenta --prefix \"[{name}]\" \"pnpm run dev:host\" \"pnpm run dev:webview\"",
+    "dev:host": "node esbuild.config.mjs --watch",
+    "dev:webview": "vite build --watch",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
+    "clean": "rm -rf dist bin audio-play *.vsix",
+    "bundle:sidecars": "node scripts/bundle-sidecars.mjs",
+    "package": "node scripts/package-vsix.mjs package --no-dependencies",
+    "publish:vscode": "node scripts/package-vsix.mjs publish --no-dependencies",
+    "publish:openvsx": "ovsx publish",
+    "test:e2e": "playwright test --config=e2e/playwright.config.ts"
+  },
+  "dependencies": {
+    "@jsquash/webp": "catalog:",
+    "@stylexjs/stylex": "catalog:",
+    "@three-flatland/bake": "workspace:*",
+    "@three-flatland/bridge": "workspace:*",
+    "@three-flatland/codelens-service": "workspace:*",
+    "@three-flatland/image": "workspace:*",
+    "@three-flatland/design-system": "workspace:*",
+    "@three-flatland/io": "workspace:*",
+    "@three-flatland/normals": "workspace:*",
+    "@three-flatland/preview": "workspace:*",
+    "@three-flatland/schemas": "workspace:*",
+    "@three-flatland/audio-play": "workspace:*",
+    "@react-three/fiber": "catalog:",
+    "@vscode-elements/elements": "^2.5.1",
+    "@vscode-elements/react-elements": "^2.4.0",
+    "@vscode/codicons": "^0.0.44",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "three": "catalog:",
+    "three-flatland": "workspace:*",
+    "zundo": "catalog:",
+    "zustand": "catalog:",
+    "zzfx": "catalog:"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@stylexjs/unplugin": "catalog:",
+    "@types/node": "^22.10.0",
+    "@types/pngjs": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/three": "catalog:",
+    "@types/vscode": "^1.94.0",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "catalog:",
+    "@vscode/test-electron": "^3.0.0",
+    "@vscode/vsce": "^3.9.2",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.25.0",
+    "ovsx": "^1.0.2",
+    "pngjs": "catalog:",
+    "sharp": "^0.33.5",
+    "tsx": "^4.21.0",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "ws": "^8.21.0"
+  }
+}
