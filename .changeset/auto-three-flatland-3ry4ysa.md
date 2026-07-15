@@ -5,32 +5,25 @@
 > Branch: preview/tools-combined
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/172
 
-## Atlas schema & validation
+## Atlas schema & sprite-sheet loader
 
-- New `@three-flatland/schemas` package: canonical `schema.json` + Ajv validators for the atlas format, silo'd out of `three-flatland` runtime (removes Ajv from the bundle — full build drops 56.91 kB → 22.26 kB brotli, -34.65 kB)
-- Atlas schema JSON hosted from the docs site for external `$ref` consumers
-- `scripts/gen-schema-types.ts` codegens `atlas.types.gen.ts` from schema.json into both `three-flatland` and `tools/io`; committed so a fresh checkout builds without the codegen toolchain; `pnpm gen:types:verify` now wired into CI's build/verify step to catch drift
-- Relaxed atlas `meta` requiredness: only `size` is required now, `meta.sources` and legacy `meta.image` both validate via `anyOf` — fixes raw TexturePacker/Aseprite exports (image-only meta) failing validation and crashing `validateAtlas()`
-- Added per-frame polygon fields to `Frame`: baked `mesh` (verts/indices) plus TexturePacker's `vertices`/`verticesUV`/`triangles`, with `mesh` preferred on read
-- Fixed a schema/codegen bug where nesting `sources`/`image` `anyOf` directly inside `meta`'s subschema collapsed generated `AtlasJson` typing to a bare index signature, silently dropping every typed `meta.*` field (including `animations`)
-- `validateAtlas`/`assertValidAtlas`/`formatAtlasErrors` centralized with a format-uniqueness check; `tools/vscode` validator now re-exports from `@three-flatland/schemas/atlas` instead of duplicating the implementation
+- Added `atlas.schema.json` (JSON Schema) for the sprite-atlas sidecar format, superset of TexturePacker's JSON-Hash format, with additive `meta.app`/`meta.version`/`meta.sources`/`meta.normal`/`meta.animations` fields
+- Added atlas sidecar save from the VSCode atlas editor (`<basename>.atlas.json`), with dedupe-safe frame naming, Cmd/Ctrl+S support, and a themed save-status indicator
+- Centralized atlas schema validation (`validateAtlas`/`assertValidAtlas`/`formatAtlasErrors`) into a new `@three-flatland/schemas` package, published separately from the runtime so ajv no longer ships in the `three-flatland` bundle (~35 kB brotli removed; full bundle now 22.26 kB brotli, down from 56.91 kB)
+- Added codegen (`pnpm gen:types` / `gen:types:verify`) that generates `atlas.types.gen.ts` from `schema.json` for both `three-flatland` and `tools/io`, wired into CI so generated types can't silently drift from the schema
+- Relaxed `meta` requiredness in the atlas schema (only `size` required) and added `anyOf(sources, image)` so both TexturePacker/Aseprite raw exports (`meta.image`) and the newer `meta.sources` shape validate
+- Added per-frame polygon mesh fields to the `Frame` schema: baked `mesh` (verts/indices) and TexturePacker's `vertices`/`verticesUV`/`triangles`, with `mesh` preferred on read
+- `SpriteSheetLoader` and `AnimatedSprite2D` now support both the legacy `meta.image` string and the new `meta.sources[0].uri` atlas format
+- Atlas-sourced animations: when a loaded `SpriteSheet` carries named animations (`meta.animations` / Aseprite `frameTags`) and no explicit `animationSet` is given, `AnimatedSprite2D`'s controller auto-populates from them; an explicit `animationSet` still takes precedence
 
-## Sprite animations
+## Fixes
 
-- `AnimatedSprite2D` now auto-populates its animation controller from a loaded `SpriteSheet`'s named animations (`meta.animations` / Aseprite `frameTags`) via `sheetAnimationsToDefinition()` when no explicit `animationSet` is given — in both the constructor and the `spriteSheet` setter. An explicit `animationSet` still takes priority
-- Fixed a crash in `new AnimatedSprite2D({})` caused by missing optional chaining on `options.spriteSheet.animations`
-- `SpriteSheetLoader` now tolerates legacy `meta.image` atlases (`meta.sources?.[0]?.uri ?? meta.image`), fixing a runtime crash ("Cannot read properties of undefined (reading '0')") on any sidecar without `meta.sources`
-
-## Editor tooling (atlas panel)
-
-- Atlas sidecar save workflow: `<basename>.atlas.json` written next to the source image via the new `atlas.schema.json` ($id `https://three-flatland.dev/schemas/atlas.v1.json`), a superset of TexturePacker's JSON-Hash format
-- Editor Save button + Cmd/Ctrl+S write the sidecar, with a themed status chip ("Saving atlas…" → "Saved N frames → knight.atlas.json", auto-hiding) and error state on failure
-- Canvas import restructuring and UI responsiveness improvements across the atlas/animation preview tooling
+- Fixed a schema regression where nesting the `sources`/`image` `anyOf` inside `meta`'s own subschema collapsed codegen for the whole `meta` object, silently dropping all typed fields (including `animations`) from the generated `AtlasJson` type
+- Fixed `AnimatedSprite2D` crashing on `new AnimatedSprite2D({})` due to a missing optional-chain on `options.spriteSheet.animations`
+- Fixed `SpriteSheetLoader` throwing on atlases using legacy `meta.image` instead of `meta.sources`
 
 ## BREAKING CHANGES
 
-- `three-flatland`'s `./sprites/atlas` and `./sprites/atlas.schema.json` subpath exports are removed; atlas schema validation now lives in `@three-flatland/schemas` (`@three-flatland/schemas/atlas`) instead
+- `three-flatland`'s atlas schema JSON and validator (`sprites/atlas`, `sprites/atlas.schema.json`) have moved to the new `@three-flatland/schemas` package; import atlas validation from `@three-flatland/schemas/atlas` instead
 
-## Summary
-
-Atlas schema validation moves to a dedicated `@three-flatland/schemas` package (dropping ~35 kB of Ajv from the runtime bundle), atlas `meta` becomes more permissive to support real-world TexturePacker/Aseprite exports, sprites gain automatic animation population from atlas metadata, and the VSCode atlas editor gains a full sidecar save workflow.
+Ships atlas-format flexibility (TexturePacker/Aseprite legacy support), atlas-driven sprite animations, an editor-side atlas sidecar save flow, and a leaner runtime bundle by moving schema validation out of `three-flatland` and into `@three-flatland/schemas`.
