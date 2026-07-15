@@ -1,9 +1,11 @@
 import { execFileSync, spawnSync } from 'node:child_process'
+import { rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as esbuild from 'esbuild'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const EXTENSION_ROOT = path.join(__dirname, '..')
 const REPO_ROOT = path.join(__dirname, '..', '..', '..')
 const CODELENS_SIDECAR_DIR = path.join(REPO_ROOT, 'tools', 'codelens-service', 'sidecar')
 const CARGO_AVAILABLE = spawnSync('cargo', ['--version'], { stdio: 'ignore' }).status === 0
@@ -33,6 +35,21 @@ const CARGO_AVAILABLE = spawnSync('cargo', ['--version'], { stdio: 'ignore' }).s
  * not something this harness needs to depend on or fix.
  */
 export default async function globalSetup(): Promise<void> {
+  // Stale-artifact hermeticity: `tools/vscode/audio-play/` and
+  // `tools/vscode/bin/` are gitignored local PACKAGING output
+  // (scripts/bundle-sidecars.mjs), regenerable via
+  // `node scripts/bundle-sidecars.mjs`. The e2e must NEVER resolve them:
+  // a frozen audio-play bundle silently diverged from the client's wire
+  // protocol once (2026-07-15 — the ExtensionMode.Test resolution gap;
+  // the pre-id-echo bundle answered no correlated stats request, every
+  // getStats hit its 10s bound, 25/25 tests failed deterministically).
+  // The managers' `!== Production` dev-first ordering routes around
+  // stale artifacts; deleting them here makes the harness hermetic even
+  // if that logic ever regresses.
+  console.log('[e2e] removing local packaging artifacts (audio-play/, bin/) …')
+  rmSync(path.join(EXTENSION_ROOT, 'audio-play'), { recursive: true, force: true })
+  rmSync(path.join(EXTENSION_ROOT, 'bin'), { recursive: true, force: true })
+
   console.log('[e2e] pnpm --filter "@three-flatland/vscode..." -r run build …')
   execFileSync('pnpm', ['--filter', '@three-flatland/vscode...', '-r', 'run', 'build'], {
     cwd: REPO_ROOT,

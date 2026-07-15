@@ -30,8 +30,18 @@ export function getPlaySidecarClient(context: vscode.ExtensionContext): PlaySide
     return null
   }
 
+  // Provenance: name WHICH artifact runs (fresh dev dist vs packaged
+  // bundle) — a stale packaged bundle once silently shadowed the dev
+  // build and diverged from the client's wire protocol; this line makes
+  // that class of failure a one-grep diagnosis in any context.
+  log(`audio-play: sidecar resolved → ${sidecarPath}`)
+
   const created = new PlaySidecarClient({ execPath: process.execPath, sidecarPath })
   created.onError((err) => log(`audio-play: ${err.message}`))
+  // Same convention as sidecarManager.ts's `zzfx sidecar[stderr]` — the
+  // sidecar's ready line (with AudioContext state), resume()/state-change
+  // logs, and native load errors were previously discarded unread.
+  created.onStderr((line) => log(`audio-play[stderr]: ${line}`))
   created.onExit((code, signal) => {
     log(`audio-play: sidecar exited (code=${code}, signal=${signal})`)
     // Let the next getPlaySidecarClient() call respawn rather than
@@ -67,7 +77,23 @@ function devSidecarPath(context: vscode.ExtensionContext): string {
 }
 
 function resolveSidecarPath(context: vscode.ExtensionContext): string | null {
-  for (const candidate of [productionSidecarPath(context), devSidecarPath(context)]) {
+  // Any host running from the SOURCE TREE — a dev launch
+  // (--extensionDevelopmentPath, ExtensionMode.Development) OR the e2e
+  // suite (--extensionTestsPath, ExtensionMode.Test) — prefers the freshly
+  // built sibling dist. `tools/vscode/audio-play/` is gitignored local
+  // PACKAGING output (scripts/bundle-sidecars.mjs) that only refreshes when
+  // that flow re-runs, so letting it shadow the dev build means source-tree
+  // runs silently execute a STALE bundle: the e2e ran in Test mode (NOT
+  // Development), so an earlier `=== Development` check sent it to the stale
+  // production bundle and every getStats hung on a client/sidecar protocol
+  // mismatch until this was widened to `!== Production`. Only a real
+  // installed extension (Production) is production-first; there the dev
+  // path doesn't exist anyway.
+  const candidates =
+    context.extensionMode !== vscode.ExtensionMode.Production
+      ? [devSidecarPath(context), productionSidecarPath(context)]
+      : [productionSidecarPath(context), devSidecarPath(context)]
+  for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate
   }
   return null

@@ -47,8 +47,8 @@
 //   node scripts/bundle-sidecars.mjs --codelens-only   # CI build leg
 //   node scripts/bundle-sidecars.mjs --audio-play-only # CI assemble job
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as esbuild from 'esbuild'
 
@@ -109,6 +109,45 @@ async function bundleAudioPlay() {
   mkdirSync(dirname(nativeModuleDest), { recursive: true })
   cpSync(nativeModuleSrc, nativeModuleDest, { recursive: true, dereference: true })
   console.log(`[bundle-sidecars] copied node-web-audio-api → ${nativeModuleDest}`)
+
+  // node-web-audio-api is ESM with real runtime dependencies (`caller`,
+  // `node-fetch`, `webidl-conversions` — plus THEIR transitive deps), and
+  // its import graph loads them eagerly, so the packaged layout needs the
+  // full closure next to it, not just the one package. Missing even one
+  // (observed: `caller`) crashes the packaged sidecar with
+  // ERR_MODULE_NOT_FOUND at import time — before it ever reads stdin.
+  copyDependencyClosure(nativeModuleSrc, join(outDir, 'node_modules'), new Set())
+}
+
+/** Recursively copies `pkgDir`'s runtime `dependencies` (flat, siblings of
+ * node-web-audio-api's copy — Node's walk-up resolution finds them there). */
+function copyDependencyClosure(pkgDir, destModulesDir, seen) {
+  const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
+  for (const dep of Object.keys(pkgJson.dependencies ?? {})) {
+    if (seen.has(dep)) continue
+    seen.add(dep)
+    const depDir = resolvePackageDir(pkgDir, dep)
+    cpSync(depDir, join(destModulesDir, dep), { recursive: true, dereference: true })
+    console.log(`[bundle-sidecars] copied ${dep} → ${join(destModulesDir, dep)}`)
+    copyDependencyClosure(depDir, destModulesDir, seen)
+  }
+}
+
+/** Node's own resolution walk — nearest `node_modules/<name>` at or above
+ * `fromDir`, realpath'd first so pnpm's virtual-store sibling layout
+ * (`.pnpm/<pkg>@<v>/node_modules/<dep>`) is reachable. */
+function resolvePackageDir(fromDir, name) {
+  let dir = realpathSync(fromDir)
+  while (true) {
+    const candidate =
+      basename(dir) === 'node_modules' ? join(dir, name) : join(dir, 'node_modules', name)
+    if (existsSync(candidate)) return realpathSync(candidate)
+    const parent = dirname(dir)
+    if (parent === dir) {
+      throw new Error(`[bundle-sidecars] cannot resolve dependency ${name} from ${fromDir}`)
+    }
+    dir = parent
+  }
 }
 
 const codelensOnly = process.argv.includes('--codelens-only')

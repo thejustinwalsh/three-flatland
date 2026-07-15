@@ -95,10 +95,20 @@ async function startSidecar(
 
   let binaryPath: string
   try {
-    binaryPath = resolveBinary({
-      candidates: [...productionCandidates(context), ...devCandidates(context)],
-      includeDevFallback: false,
-    })
+    // Any source-tree host — dev launch (Development) OR e2e
+    // (--extensionTestsPath, Test) — prefers the fresh cargo build over
+    // `tools/vscode/bin/` (gitignored local packaging output that can go
+    // stale). `!== Production` covers both; only a real installed extension
+    // is production-first. Same stale-artifact-shadowing reasoning (and the
+    // same Test-mode gap) as playSidecarManager.ts's resolveSidecarPath.
+    const candidates =
+      context.extensionMode !== vscode.ExtensionMode.Production
+        ? [...devCandidates(context), ...productionCandidates(context)]
+        : [...productionCandidates(context), ...devCandidates(context)]
+    binaryPath = resolveBinary({ candidates, includeDevFallback: false })
+    // Provenance — same reasoning as playSidecarManager.ts's
+    // `sidecar resolved →` line: name which artifact actually runs.
+    log(`zzfx sidecar: binary resolved → ${binaryPath}`)
   } catch (err) {
     log(
       `zzfx sidecar: binary not found — CodeLenses disabled: ${err instanceof Error ? err.message : err}`
