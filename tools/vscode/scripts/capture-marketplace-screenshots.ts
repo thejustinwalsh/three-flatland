@@ -20,6 +20,10 @@
  *
  * Usage: npx tsx scripts/capture-marketplace-screenshots.ts
  * Output: docs/marketplace/*.png
+ *
+ * Set FL_SHOTS_ONLY=atlas-merge,audio to run a subset of shots (comma-
+ * separated names) instead of the full set — useful when only one or two
+ * assets need to be redone and the rest are already accepted.
  */
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -77,9 +81,57 @@ async function main() {
   const baseDir = path.join(await fs.realpath(scratchParent), 'sprite-project')
   await fs.cp(FIXTURE_WORKSPACE, baseDir, { recursive: true })
 
+  // Synthetic second atlas source for the 'atlas-merge' shot below — a
+  // visually distinct image (Dungeon_Tileset.png, already in the fixture
+  // workspace) that happens to reuse the SAME frame name ("knight") as
+  // sprites/knight.atlas.json, so merging the two produces a real
+  // frame-name conflict for the screenshot to show: two unrelated sprite
+  // sheets that collided on a generic name, which is exactly the case
+  // this tool exists for. (knight-aseprite.png / knight-tp.png are the
+  // SAME underlying character art as knight.png under different export
+  // formats — visually identical, so they'd make a confusing merge demo.)
+  // Written into the scratch copy only; the tracked e2e fixtures are
+  // untouched.
+  await fs.writeFile(
+    path.join(baseDir, 'sprites', 'knight-variant.atlas.json'),
+    JSON.stringify(
+      {
+        $schema: 'https://three-flatland.dev/schemas/atlas.v1.json',
+        meta: {
+          app: 'fl-sprite-atlas',
+          version: '1.0',
+          sources: [{ format: 'png', uri: 'Dungeon_Tileset.png' }],
+          size: { w: 160, h: 160 },
+          scale: '1',
+          image: 'Dungeon_Tileset.png',
+        },
+        frames: {
+          knight: {
+            frame: { x: 0, y: 0, w: 160, h: 160 },
+            rotated: false,
+            trimmed: false,
+            spriteSourceSize: { x: 0, y: 0, w: 160, h: 160 },
+            sourceSize: { w: 160, h: 160 },
+          },
+        },
+      },
+      null,
+      2
+    ) + '\n'
+  )
+
   const settingsPath = path.join(baseDir, '.vscode', 'settings.json')
   const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8')) as Record<string, unknown>
   settings['workbench.colorTheme'] = THEME_ID
+  // Display-only, scoped to this scratch copy — the fixture's audio.file
+  // varRef test cases (see audio-sources.ts's own doc comment) deliberately
+  // call zzfxm() against a simplified ambient `declare function zzfxm`
+  // signature that doesn't match, which is real and correct for what the
+  // codelens-service scanner is testing but reads as squiggly-red-error
+  // noise in a marketing screenshot. Tracked fixtures stay untouched.
+  settings['typescript.validate.enable'] = false
+  settings['javascript.validate.enable'] = false
+  settings['problems.decorations.enabled'] = false
   await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2))
 
   const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fl-vscode-screenshots-userdata-'))
@@ -134,7 +186,7 @@ async function main() {
         )
       }
 
-      const shots: Array<{ name: string; capture: () => Promise<void> }> = [
+      const shots: Array<{ name: string; capture: () => Promise<void>; settleMs?: number }> = [
         {
           name: 'atlas',
           capture: async () => {
@@ -162,31 +214,45 @@ async function main() {
         },
         {
           name: 'audio',
+          // The real FL Audio experience: inline ▶ Play / ⏹ Stop CodeLenses
+          // rendered directly above zzfx()/zzfxm()/Tone.*/Wad(...) call
+          // sites — no panel opens. audio-sources.ts's zzfx.call +
+          // zzfxm.song section (its own doc comment has the full coverage
+          // map) gives two different call kinds close together in one
+          // screen. (The ZzFX Studio tuner panel has its own screenshot:
+          // zzfx-studio.png.)
+          settleMs: 4000, // codelens-service (Rust sidecar) cold-start scan
           capture: async () => {
             await bridge.evaluate(async (vscode) => {
               const [folder] = vscode.workspace.workspaceFolders ?? []
-              const uri = vscode.Uri.joinPath(folder!.uri, 'src/sounds.ts')
+              const uri = vscode.Uri.joinPath(folder!.uri, 'src/audio-sources.ts')
               const doc = await vscode.workspace.openTextDocument(uri)
-              await vscode.window.showTextDocument(doc)
-              const lenses = (await vscode.commands.executeCommand(
-                'vscode.executeCodeLensProvider',
-                uri,
-                100
-              )) as { command?: { command: string; arguments?: unknown[] } }[]
-              const editLens = lenses.find(
-                (l) => l.command?.command === 'threeFlatland.audio.openEditor'
-              )
-              await vscode.commands.executeCommand(
-                editLens!.command!.command,
-                ...(editLens!.command!.arguments ?? [])
-              )
+              const editor = await vscode.window.showTextDocument(doc)
+              editor.revealRange(new vscode.Range(93, 0, 93, 0), vscode.TextEditorRevealType.AtTop)
             })
-            await workbox.getByRole('tab', { name: /^ZzFX:/ }).waitFor({ state: 'visible' })
+            await workbox
+              .getByRole('tab', { name: 'audio-sources.ts' })
+              .waitFor({ state: 'visible' })
+          },
+        },
+        {
+          name: 'atlas-merge',
+          capture: async () => {
+            await openCommand('threeFlatland.merge.openMergeTool', [
+              'sprites/knight.atlas.json',
+              'sprites/knight-variant.atlas.json',
+            ])
+            await workbox.getByRole('tab', { name: /^Merge:/ }).waitFor({ state: 'visible' })
           },
         },
       ]
 
-      for (const { name, capture } of shots) {
+      const only = process.env.FL_SHOTS_ONLY?.split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+
+      for (const { name, capture, settleMs } of shots) {
+        if (only && !only.includes(name)) continue
         console.log(`[screenshots] capturing ${name}…`)
         await capture()
         // Generous, fixed settle time rather than a tight poll — this is
@@ -195,7 +261,9 @@ async function main() {
         // opened this session, so its lazy-loaded canvas chunk (see
         // tools/vscode/CLAUDE.md's "Bundle size & loading") is a genuine
         // cold start; every tool after it reuses the already-warm chunk.
-        await workbox.waitForTimeout(2000)
+        // Individual shots can override via settleMs (e.g. audio's
+        // codelens-service sidecar cold-start).
+        await workbox.waitForTimeout(settleMs ?? 2000)
         // A workspace-settings write races this launch (harmless, but a
         // visible toast in every screenshot) — clear it right before
         // capturing rather than root-causing it, since this script only
@@ -219,7 +287,8 @@ async function main() {
         })
       }
 
-      console.log(`[screenshots] done — wrote ${shots.length} screenshots to ${OUT_DIR}`)
+      const captured = only ? shots.filter((s) => only.includes(s.name)) : shots
+      console.log(`[screenshots] done — wrote ${captured.length} screenshots to ${OUT_DIR}`)
     } finally {
       bridge.close()
     }
