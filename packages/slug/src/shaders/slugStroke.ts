@@ -3,19 +3,18 @@ import {
   vec2,
   int,
   Loop,
-  Break,
   textureLoad,
   ivec2,
   fwidth,
   max,
   min,
   clamp,
+  select,
   smoothstep,
-  If,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { DataTexture } from 'three'
-import { distanceToQuadBezier } from './distanceToQuadBezier'
+import { distanceToQuadBezier } from './distanceToQuadBezier.js'
 
 /**
  * Phase 4 stroke fragment shader — analytic distance-to-curve, runtime-
@@ -41,11 +40,18 @@ import { distanceToQuadBezier } from './distanceToQuadBezier'
  * driven multi-band halo probe for thick shape strokes.
  */
 
-/** Mirrors the bound in slugFragment.ts so bake-time warnings apply to both. */
-const MAX_CURVES_PER_BAND = 40
-
 const LOG_TEXTURE_WIDTH = 12
 const TEXTURE_WIDTH_MASK = (1 << LOG_TEXTURE_WIDTH) - 1
+
+/** Band texel is a single packed R32F float (see `pipeline/texturePacker.ts` /
+ *  `slugFragment.ts`): header = count << 14 | offset, curveRef = texelY << 12 |
+ *  texelX. Decoding is exact (packed ints ≤ 2^24-1, representable in float32). */
+const HEADER_OFFSET_BITS = 14
+const HEADER_OFFSET_MASK = (1 << HEADER_OFFSET_BITS) - 1 // 16383
+
+/** Defensive per-fragment loop cap — see slugFragment.ts. Guards a corrupt/hostile
+ * baked band count from spinning the dynamic loop into a GPU watchdog reset. */
+const MAX_SAFE_BAND_CURVES = 512
 
 function wrapTexCoord(baseX: Node<'int'>, baseY: Node<'int'>, offset: Node<'int'>) {
   const linearX = baseX.add(offset)
@@ -114,19 +120,24 @@ export function slugStroke(
 
   // --- Horizontal band pass ---
   const hBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(bandIdxY))
-  const hBandHeader = textureLoad(bandTexture, hBandCoord)
-  const hCurveCount = int(hBandHeader.x)
-  const hCurveListOffset = int(hBandHeader.y)
+  // Packed R32F header → decode count (high bits) + offset (low bits).
+  const hHeaderPacked = int(textureLoad(bandTexture, hBandCoord).x).toVar()
+  const hRawCount = hHeaderPacked.shiftRight(HEADER_OFFSET_BITS)
+  const hCurveCount = select(
+    hRawCount.greaterThan(int(MAX_SAFE_BAND_CURVES)),
+    int(MAX_SAFE_BAND_CURVES),
+    hRawCount
+  )
+  const hCurveListOffset = hHeaderPacked.bitAnd(HEADER_OFFSET_MASK).toVar()
 
-  Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    If(i.greaterThanEqual(hCurveCount), () => {
-      Break()
-    })
-
+  // Dynamic loop bound — per-band curve count, matching slugFragment.ts (removes
+  // fixed-bound register pressure and the former 40-curve truncation cap).
+  Loop({ start: 0, end: hCurveCount, type: 'int' }, ({ i }) => {
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, hCurveListOffset.add(i))
-    const refData = textureLoad(bandTexture, refCoord)
-    const curveTexX = int(refData.x)
-    const curveTexY = int(refData.y)
+    // Packed R32F curve-ref → decode texelX (low 12) + texelY (high bits).
+    const refPacked = int(textureLoad(bandTexture, refCoord).x).toVar()
+    const curveTexX = refPacked.bitAnd(TEXTURE_WIDTH_MASK)
+    const curveTexY = refPacked.shiftRight(LOG_TEXTURE_WIDTH)
 
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
     const texel1 = textureLoad(curveTexture, ivec2(curveTexX.add(1), curveTexY))
@@ -149,19 +160,22 @@ export function slugStroke(
   // (e.g. curves with large vertical extent). Union with h-band reproduces
   // the fill shader's coverage of "any curve near the fragment".
   const vBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(numHBands).add(int(bandIdxX)))
-  const vBandHeader = textureLoad(bandTexture, vBandCoord)
-  const vCurveCount = int(vBandHeader.x)
-  const vCurveListOffset = int(vBandHeader.y)
+  // Packed R32F header — see the horizontal pass for the layout + .toVar() rationale.
+  const vHeaderPacked = int(textureLoad(bandTexture, vBandCoord).x).toVar()
+  const vRawCount = vHeaderPacked.shiftRight(HEADER_OFFSET_BITS)
+  const vCurveCount = select(
+    vRawCount.greaterThan(int(MAX_SAFE_BAND_CURVES)),
+    int(MAX_SAFE_BAND_CURVES),
+    vRawCount
+  )
+  const vCurveListOffset = vHeaderPacked.bitAnd(HEADER_OFFSET_MASK).toVar()
 
-  Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    If(i.greaterThanEqual(vCurveCount), () => {
-      Break()
-    })
-
+  // Dynamic loop bound — see the horizontal pass above.
+  Loop({ start: 0, end: vCurveCount, type: 'int' }, ({ i }) => {
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, vCurveListOffset.add(i))
-    const refData = textureLoad(bandTexture, refCoord)
-    const curveTexX = int(refData.x)
-    const curveTexY = int(refData.y)
+    const refPacked = int(textureLoad(bandTexture, refCoord).x).toVar()
+    const curveTexX = refPacked.bitAnd(TEXTURE_WIDTH_MASK)
+    const curveTexY = refPacked.shiftRight(LOG_TEXTURE_WIDTH)
 
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
     const texel1 = textureLoad(curveTexture, ivec2(curveTexX.add(1), curveTexY))

@@ -20,6 +20,24 @@ export function refCalcRootCode(y1: number, y2: number, y3: number): number {
 }
 
 /**
+ * Numerically-stable quadratic roots of `a·t² − 2b·t + c = 0` — CPU mirror of the
+ * shader's `stableRoots` (solveQuadratic.ts): q-form + pre-clamp-discriminant grazing
+ * guard, ordered t1=(b−d)/a, t2=(b+d)/a.
+ */
+function stableRootsRef(a: number, b: number, c: number): [number, number] {
+  // Mirrors the shader's JSlug naive solve: roots (b∓d)/a, d = sqrt(max(disc, 0)); a≈0 → c/2b.
+  // TRADE-OFF vs the former q-form: (b-d)/a suffers catastrophic cancellation when b≈d (small
+  // leading coeff) in float32 — the grazing case the q-form protected. See the perf-plan note.
+  if (Math.abs(a) < 1.0 / 65536.0) {
+    const t = c / (2 * b)
+    return [t, t]
+  }
+  const d = Math.sqrt(Math.max(b * b - a * c, 0))
+  const invA = 1 / a
+  return [(b - d) * invA, (b + d) * invA]
+}
+
+/**
  * Reference implementation of solveHorizPoly.
  * Returns [x1, x2] intersection coordinates for a horizontal ray at y=0.
  */
@@ -38,18 +56,7 @@ export function refSolveHorizPoly(
   const ax = p0x - 2 * p1x + p2x
   const bx = p0x - p1x
 
-  const disc = Math.max(b * b - a * c, 0)
-  const d = Math.sqrt(disc)
-
-  const nearLinear = Math.abs(a) < 1.0 / 65536.0
-
-  let t1: number, t2: number
-  if (nearLinear) {
-    t1 = t2 = c / (2 * b)
-  } else {
-    t1 = (b - d) / a
-    t2 = (b + d) / a
-  }
+  const [t1, t2] = stableRootsRef(a, b, c)
 
   const x1 = (ax * t1 - bx * 2) * t1 + p0x
   const x2 = (ax * t2 - bx * 2) * t2 + p0x
@@ -76,18 +83,7 @@ export function refSolveVertPoly(
   const ay = p0y - 2 * p1y + p2y
   const by = p0y - p1y
 
-  const disc = Math.max(b * b - a * c, 0)
-  const d = Math.sqrt(disc)
-
-  const nearLinear = Math.abs(a) < 1.0 / 65536.0
-
-  let t1: number, t2: number
-  if (nearLinear) {
-    t1 = t2 = c / (2 * b)
-  } else {
-    t1 = (b - d) / a
-    t2 = (b + d) / a
-  }
+  const [t1, t2] = stableRootsRef(a, b, c)
 
   const y1 = (ay * t1 - by * 2) * t1 + p0y
   const y2 = (ay * t2 - by * 2) * t2 + p0y

@@ -4,7 +4,7 @@
 
 - `pnpm dev` — docs (port 4000) + examples MPA (port 5174) behind microfrontends proxy at http://localhost:5173
 - `pnpm --filter=example-react-tilemap dev` — run a single example
-- `pnpm sync:pack` — sync example/mini package.json deps with the workspace catalog after editing `pnpm-workspace.yaml`
+- `pnpm sync:pack examples minis` — sync example/mini package.json deps with the workspace catalog after editing `pnpm-workspace.yaml`. **The bare form exits 1**: `scripts/sync-pack.ts` requires explicit directory args (`pnpm sync:pack <dir> [<dir>…]`), which is how `lefthook.yml` invokes it.
 - `pnpm sync:react` — regenerate React subpath wrappers after touching `packages/three-flatland/src/*/index.ts`
 
 ## Code Style
@@ -15,17 +15,19 @@
 
 ## Architecture
 
-- WebGPU + TSL (Three Shader Language) exclusively — no WebGL, no GLSL
+- **WebGPU + WebGL2 via TSL** (Three Shader Language). One shader graph compiles to WGSL and GLSL ES 3.0, so both backends ship from the same source. WebGL2 is reached only through `WebGPURenderer`'s fallback backend — never the legacy `WebGLRenderer`.
 - R3F examples import from `@react-three/fiber/webgpu`, not `@react-three/fiber`
 - Three.js users: `import from 'three-flatland'` — R3F users: `import from 'three-flatland/react'` (all packages follow this `/react` subpath pattern, incl. `@three-flatland/devtools/react`)
 - Shared versions in `pnpm-workspace.yaml` catalog; `pnpm.overrides` maps `@three-flatland/*` to `workspace:*`
+- Text and vector shapes go through `@three-flatland/slug` — analytic Bézier evaluation, instanced, resolution-independent, no atlas. See [packages/slug/CLAUDE.md](packages/slug/CLAUDE.md).
+- `@three-flatland/skia` (Skia WASM; Ganesh/WebGL + Graphite/WebGPU) is the escape hatch for raster and complex-vector work Slug cannot express — gradients, filters, blurs. It is never on the hot path, and never one render target per element.
 
 ## Examples
 
 - Examples always exist in **pairs** — Three.js + React. Create both or neither.
 - `examples/three/` = plain Three.js, `examples/react/` = React Three Fiber
 - R3F classes must be registered with `extend()` before use in JSX
-- All Three.js objects used as R3F JSX elements need: optional constructor params, property setters, array-compatible setters
+- All Three.js objects used as R3F JSX elements need: optional constructor params, property setters, array-compatible setters — except ported packages, which keep upstream signatures and use R3F's `args` (see Constraints)
 
 ## Planning
 
@@ -44,12 +46,13 @@
 ## Constraints
 
 - Performance is critical — minimize draw calls, batch sprites via SpriteGroup, watch frame budgets
-- All custom Three.js classes must work with R3F's no-arg construction + property-setting pattern
+- All custom Three.js classes must work with R3F's no-arg construction + property-setting pattern. This is an **ergonomic convention for classes we author**, so consumers never reach for R3F's `args` prop — it is not an R3F requirement. **Ported packages are exempt**: `@three-flatland/uikit` preserves `@pmndrs/uikit`'s constructor signatures verbatim (e.g. `Fullscreen(renderer, ...)`) and passes them through R3F's `args`, which is the sanctioned mechanism. API compatibility beats convention. Do not "fix" a ported constructor to be no-arg.
 
 ## Do NOT
 
 - Use GLSL or `onBeforeCompile` — all shaders use TSL node materials
-- Use `WebGLRenderTarget` — use renderer-agnostic `RenderTarget`
+- Use the legacy `WebGLRenderer` — target `WebGPURenderer`; its WebGL2 backend is the fallback
+- Use `WebGLRenderTarget` — use renderer-agnostic `RenderTarget` (exported from `three`). Audited 2026-07-10: no site in this repo needs the WebGL-specific class, so there is no carve-out, not even for Skia's Ganesh backend.
 - Use Web Awesome (`@awesome.me/webawesome`) — examples use Tweakpane (`@three-flatland/devtools/react`) now
 - Add `declare global { namespace JSX }` — use `ThreeElements` interface augmentation via `three-flatland/react`
 

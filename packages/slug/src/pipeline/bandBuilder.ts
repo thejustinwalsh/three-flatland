@@ -1,4 +1,4 @@
-import type { QuadCurve, GlyphBounds, GlyphBands, Band } from '../types'
+import type { QuadCurve, GlyphBounds, GlyphBands, Band } from '../types.js'
 
 /**
  * Default number of bands per axis. Doubled from 8 → 16 as a pure-data

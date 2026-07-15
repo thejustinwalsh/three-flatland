@@ -1,5 +1,5 @@
-import { buildBands } from './bandBuilder'
-import type { QuadCurve, GlyphBands, GlyphBounds, SlugGlyphData } from '../types'
+import { buildBands } from './bandBuilder.js'
+import type { QuadCurve, GlyphBands, GlyphBounds, SlugGlyphData } from '../types.js'
 
 /**
  * Shared curves → GPU-glyph pipeline. Takes em-space quadratic Beziers
@@ -47,6 +47,7 @@ export function buildGpuGlyphData(
     bounds: gpu.bounds,
     advanceWidth: advanceWidthEm,
     lsb: lsbEm,
+    page: 0,
     bandLocation: { x: 0, y: 0 },
     curveLocation: { x: 0, y: 0 },
   }
@@ -69,6 +70,7 @@ export function buildAdvanceOnlyGlyph(
     contourStarts: [],
     bands: { hBands: [], vBands: [] },
     bounds: { xMin: 0, yMin: 0, xMax: 0, yMax: 0 },
+    page: 0,
     bandLocation: { x: 0, y: 0 },
     curveLocation: { x: 0, y: 0 },
     advanceWidth: advanceWidthEm,
@@ -77,30 +79,59 @@ export function buildAdvanceOnlyGlyph(
 }
 
 /**
- * Bounding box of a set of quadratic Beziers. Includes all three
- * control points per curve — p1 can extend past the hull of p0/p2 when
- * the curve bulges outward. Tight bounds would require evaluating the
- * derivative-zero point per axis; this is correct-but-loose and matches
- * what the fill shader's band math already assumes.
+ * Tight bounding box of a set of quadratic Beziers — the exact ink
+ * extent, not the p0/p1/p2 control hull.
+ *
+ * A quadratic B(t) = (1-t)²·p0 + 2(1-t)t·p1 + t²·p2 never reaches its
+ * control point p1, so folding p1 into the bounds over-sizes the glyph
+ * quad and rasterizes empty fragments (overdraw). Per axis the curve's
+ * extremum sits where B'(t) = 0, i.e. t* = (p0-p1)/(p0-2p1+p2); the
+ * bound is the min/max over {p0, p2, and B(t*) when t* ∈ (0,1)}. Because
+ * B(t*) always lies between the p0/p2 hull and the p1-inclusive hull,
+ * this is a strictly VALID bound (it still contains every point of the
+ * curve, never clips ink) that is never larger than the old p1 bound.
+ *
+ * The half-pixel AA skirt is added on top of this in the vertex shader
+ * (`slugDilate`, screen-space), so tightening here shrinks only the
+ * empty margin — the rendered ink + AA is unchanged.
  */
 function computeBounds(curves: QuadCurve[]): GlyphBounds {
-  let xMin = Infinity,
-    yMin = Infinity,
-    xMax = -Infinity,
-    yMax = -Infinity
+  const x = { min: Infinity, max: -Infinity }
+  const y = { min: Infinity, max: -Infinity }
   for (const c of curves) {
-    if (c.p0x < xMin) xMin = c.p0x
-    if (c.p1x < xMin) xMin = c.p1x
-    if (c.p2x < xMin) xMin = c.p2x
-    if (c.p0x > xMax) xMax = c.p0x
-    if (c.p1x > xMax) xMax = c.p1x
-    if (c.p2x > xMax) xMax = c.p2x
-    if (c.p0y < yMin) yMin = c.p0y
-    if (c.p1y < yMin) yMin = c.p1y
-    if (c.p2y < yMin) yMin = c.p2y
-    if (c.p0y > yMax) yMax = c.p0y
-    if (c.p1y > yMax) yMax = c.p1y
-    if (c.p2y > yMax) yMax = c.p2y
+    extendAxisBounds(c.p0x, c.p1x, c.p2x, x)
+    extendAxisBounds(c.p0y, c.p1y, c.p2y, y)
   }
-  return { xMin, yMin, xMax, yMax }
+  return { xMin: x.min, yMin: y.min, xMax: x.max, yMax: y.max }
+}
+
+/**
+ * Fold one quadratic segment's exact per-axis extent into `acc`. The
+ * endpoints p0/p2 are always on the curve; the interior extremum at
+ * t* = (p0-p1)/(p0-2p1+p2) is included only when it lands in the open
+ * interval (0,1) — otherwise the curve is monotone on this axis and the
+ * endpoints already bound it. A zero denominator means the axis is
+ * linear (p1 is the p0/p2 midpoint), so there is no interior extremum.
+ */
+function extendAxisBounds(
+  p0: number,
+  p1: number,
+  p2: number,
+  acc: { min: number; max: number }
+): void {
+  if (p0 < acc.min) acc.min = p0
+  if (p0 > acc.max) acc.max = p0
+  if (p2 < acc.min) acc.min = p2
+  if (p2 > acc.max) acc.max = p2
+
+  const denom = p0 - 2 * p1 + p2
+  if (denom !== 0) {
+    const t = (p0 - p1) / denom
+    if (t > 0 && t < 1) {
+      const mt = 1 - t
+      const ext = mt * mt * p0 + 2 * mt * t * p1 + t * t * p2
+      if (ext < acc.min) acc.min = ext
+      if (ext > acc.max) acc.max = ext
+    }
+  }
 }

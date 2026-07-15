@@ -3,6 +3,13 @@
 /**
  * CLI tool to pre-bake SlugFont data from a font file.
  *
+ * Runnable two ways:
+ *   - `flatland-bake font <font-file> [options]` — via the unified
+ *     `@three-flatland/bake` dispatcher (registered as `font` in this
+ *     package's `flatland.bake` field).
+ *   - `slug-bake <font-file> [options]` (or `node dist/cli.js ...`) — the
+ *     standalone bin, a thin wrapper around the same `baker.run()`.
+ *
  * Usage:
  *   slug-bake Inter-Regular.ttf
  *   slug-bake Inter-Regular.ttf --range latin --range 0x2000-0x206F
@@ -21,15 +28,17 @@
 
 import { readFileSync } from 'node:fs'
 import { basename, dirname, join, extname } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import opentype from 'opentype.js'
-import { parseFont } from './pipeline/fontParser'
-import { packTextures } from './pipeline/texturePacker'
-import { bakeStrokeForGlyph } from './pipeline/strokeOffsetter'
-import type { CapStyle, JoinStyle } from './pipeline/strokeOffsetter'
-import { packBaked } from './bake'
-import type { BakedJSON } from './baked'
+import type { Baker } from '@three-flatland/bake'
+import { parseFont } from './pipeline/fontParser.js'
+import { packTextures, singlePageOrThrow } from './pipeline/texturePacker.js'
+import { bakeStrokeForGlyph } from './pipeline/strokeOffsetter.js'
+import type { CapStyle, JoinStyle } from './pipeline/strokeOffsetter.js'
+import { packBaked } from './bake.js'
+import type { BakedJSON } from './baked.js'
 import { writeFile } from 'node:fs/promises'
-import type { SlugGlyphData } from './types'
+import type { SlugGlyphData } from './types.js'
 
 // --- Predefined Unicode ranges ---
 
@@ -168,6 +177,7 @@ async function bakeFont(
       contourStarts: [],
       bands: { hBands: [], vBands: [] },
       bounds: { xMin: 0, yMin: 0, xMax: 0, yMax: 0 },
+      page: 0,
       bandLocation: { x: 0, y: 0 },
       curveLocation: { x: 0, y: 0 },
       advanceWidth: (otGlyph.advanceWidth ?? 0) / unitsPerEm,
@@ -224,36 +234,41 @@ async function bakeFont(
   }
 
   console.log('  Packing textures...')
-  const textures = packTextures(glyphs)
+  // The .slug.glb container is still single-page; baking all pages is a later
+  // milestone. singlePageOrThrow makes an over-cap font fail the bake loudly
+  // (subset it) rather than silently dropping glyphs past the first page.
+  const textures = singlePageOrThrow(packTextures(glyphs), `bake "${fontPath}"`)
 
-  // Shader loop bound — keep in sync with MAX_CURVES_PER_BAND in
-  // src/shaders/slugFragment.ts. Bands exceeding this cap get truncated
-  // at render time, which is a correctness bug — warn the user so they
-  // can either raise the shader bound or subset to fit.
-  const SHADER_MAX_CURVES_PER_BAND = 40
+  // Density advisory. The shader now loops each band by its runtime curve count
+  // (no fixed bound), so a dense band renders CORRECTLY — no truncation. But per-
+  // fragment GPU cost scales with band fill, so flag unusually dense bands: the
+  // author can add bands (`buildBands` bandCount) or subset the font to bring the
+  // per-fragment curve-eval cost down.
+  const DENSE_BAND_THRESHOLD = 40
   let maxBandFill = 0
-  let overBudgetBands = 0
+  let denseBands = 0
   for (const glyph of glyphs.values()) {
     for (const band of glyph.bands.hBands) {
       if (band.curveIndices.length > maxBandFill) maxBandFill = band.curveIndices.length
-      if (band.curveIndices.length > SHADER_MAX_CURVES_PER_BAND) overBudgetBands++
+      if (band.curveIndices.length > DENSE_BAND_THRESHOLD) denseBands++
     }
     for (const band of glyph.bands.vBands) {
       if (band.curveIndices.length > maxBandFill) maxBandFill = band.curveIndices.length
-      if (band.curveIndices.length > SHADER_MAX_CURVES_PER_BAND) overBudgetBands++
+      if (band.curveIndices.length > DENSE_BAND_THRESHOLD) denseBands++
     }
   }
-  if (overBudgetBands > 0) {
+  if (denseBands > 0) {
     console.warn(
-      `  WARNING: ${overBudgetBands} bands exceed MAX_CURVES_PER_BAND (${SHADER_MAX_CURVES_PER_BAND}); ` +
-        `max observed ${maxBandFill}. Those glyphs will render incorrectly. ` +
-        `Increase the shader bound or drop the affected glyphs from the subset.`
+      `  NOTE: ${denseBands} bands exceed the density advisory (${DENSE_BAND_THRESHOLD}); ` +
+        `max observed ${maxBandFill}. These render correctly (dynamic loop) but cost more ` +
+        `per-fragment GPU — consider more bands or subsetting to reduce it.`
     )
   } else {
-    console.log(`  max band fill: ${maxBandFill} / ${SHADER_MAX_CURVES_PER_BAND}`)
+    console.log(`  max band fill: ${maxBandFill} (advisory ${DENSE_BAND_THRESHOLD})`)
   }
 
-  // Curve data is Uint16Array (half-float RGBA). Band data is Float32Array (RG).
+  // Curve data is Uint16Array (half-float RGBA). Band data is Float32Array (R,
+  // single-channel packed header/ref — see texturePacker packHeader/packRefCoord).
   // Three's `DataTexture.image` is `{ data, width, height }` but typed as the
   // generic `Texture['image']` union. Narrow once for downstream packing.
   const curveImage = textures.curveTexture.image as {
@@ -324,69 +339,8 @@ async function bakeFont(
   console.log(`  ${glbPath} (${glbMB} MB)`)
 }
 
-const args = process.argv.slice(2)
-const fontFiles: string[] = []
-const rangeArgs: string[] = []
-let outputBase: string | undefined
-const strokeWidthArgs: number[] = []
-let strokeJoin: JoinStyle = 'miter'
-let strokeCap: CapStyle = 'flat'
-let miterLimit = 4
-
-function expectValue(flag: string, i: number): string {
-  if (i >= args.length) {
-    console.error(`${flag} requires a value`)
-    process.exit(1)
-  }
-  return args[i]!
-}
-
-// Parse args
-for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--range' || args[i] === '-r') {
-    i++
-    rangeArgs.push(expectValue('--range', i))
-  } else if (args[i] === '--output' || args[i] === '-o') {
-    i++
-    outputBase = expectValue('--output', i)
-  } else if (args[i] === '--stroke-widths' || args[i] === '--stroke-width') {
-    // Comma-separated list of em-space half-widths.
-    i++
-    const raw = expectValue(args[i - 1]!, i)
-    for (const part of raw.split(',')) {
-      const n = Number(part.trim())
-      if (!Number.isFinite(n) || n <= 0) {
-        console.error(`Invalid stroke width: "${part}". Expect positive number in em.`)
-        process.exit(1)
-      }
-      strokeWidthArgs.push(n)
-    }
-  } else if (args[i] === '--stroke-join') {
-    i++
-    const raw = expectValue('--stroke-join', i)
-    if (raw !== 'miter' && raw !== 'round' && raw !== 'bevel') {
-      console.error(`--stroke-join must be miter | round | bevel (got "${raw}")`)
-      process.exit(1)
-    }
-    strokeJoin = raw
-  } else if (args[i] === '--stroke-cap') {
-    i++
-    const raw = expectValue('--stroke-cap', i)
-    if (raw !== 'flat' && raw !== 'square' && raw !== 'round' && raw !== 'triangle') {
-      console.error(`--stroke-cap must be flat | square | round | triangle (got "${raw}")`)
-      process.exit(1)
-    }
-    strokeCap = raw
-  } else if (args[i] === '--miter-limit') {
-    i++
-    const n = Number(expectValue('--miter-limit', i))
-    if (!Number.isFinite(n) || n < 1) {
-      console.error('--miter-limit must be a number >= 1')
-      process.exit(1)
-    }
-    miterLimit = n
-  } else if (args[i] === '--help' || args[i] === '-h') {
-    console.log(`Usage: slug-bake <font-file> [options]
+const USAGE = `Usage: slug-bake <font-file> [options]
+  (also: flatland-bake font <font-file> [options])
 
 Options:
   --range, -r <range>   Unicode range to include (repeatable)
@@ -418,38 +372,141 @@ Examples:
   slug-bake Inter.ttf -r latin -r 0x2000-0x206F  # Latin + punctuation
   slug-bake Inter.ttf -r 0x41-0x5A -o Inter-Caps # Different output name
   slug-bake Inter.ttf --stroke-widths 0.025     # Baked stroke at 0.025 em
-  slug-bake Inter.ttf --stroke-widths 0.02,0.05,0.1 --stroke-join round`)
-    process.exit(0)
-  } else {
-    fontFiles.push(args[i]!)
+  slug-bake Inter.ttf --stroke-widths 0.02,0.05,0.1 --stroke-join round`
+
+/**
+ * Parse args + bake every listed font file. Extracted from what used to
+ * be top-level script code so it can run either as the `slug-bake` bin's
+ * entry point or as this package's `font` baker under `flatland-bake`
+ * (see `baker` below).
+ */
+async function run(args: string[]): Promise<number> {
+  const fontFiles: string[] = []
+  const rangeArgs: string[] = []
+  let outputBase: string | undefined
+  const strokeWidthArgs: number[] = []
+  let strokeJoin: JoinStyle = 'miter'
+  let strokeCap: CapStyle = 'flat'
+  let miterLimit = 4
+
+  function expectValue(flag: string, i: number): string {
+    if (i >= args.length) {
+      console.error(`${flag} requires a value`)
+      process.exit(1)
+    }
+    return args[i]!
   }
-}
 
-const strokeConfigs: StrokeSetConfig[] = strokeWidthArgs.map((width) => ({
-  width,
-  joinStyle: strokeJoin,
-  capStyle: strokeCap,
-  miterLimit,
-}))
+  // Parse args
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--range' || args[i] === '-r') {
+      i++
+      rangeArgs.push(expectValue('--range', i))
+    } else if (args[i] === '--output' || args[i] === '-o') {
+      i++
+      outputBase = expectValue('--output', i)
+    } else if (args[i] === '--stroke-widths' || args[i] === '--stroke-width') {
+      // Comma-separated list of em-space half-widths.
+      i++
+      const raw = expectValue(args[i - 1]!, i)
+      for (const part of raw.split(',')) {
+        const n = Number(part.trim())
+        if (!Number.isFinite(n) || n <= 0) {
+          console.error(`Invalid stroke width: "${part}". Expect positive number in em.`)
+          process.exit(1)
+        }
+        strokeWidthArgs.push(n)
+      }
+    } else if (args[i] === '--stroke-join') {
+      i++
+      const raw = expectValue('--stroke-join', i)
+      if (raw !== 'miter' && raw !== 'round' && raw !== 'bevel') {
+        console.error(`--stroke-join must be miter | round | bevel (got "${raw}")`)
+        process.exit(1)
+      }
+      strokeJoin = raw
+    } else if (args[i] === '--stroke-cap') {
+      i++
+      const raw = expectValue('--stroke-cap', i)
+      if (raw !== 'flat' && raw !== 'square' && raw !== 'round' && raw !== 'triangle') {
+        console.error(`--stroke-cap must be flat | square | round | triangle (got "${raw}")`)
+        process.exit(1)
+      }
+      strokeCap = raw
+    } else if (args[i] === '--miter-limit') {
+      i++
+      const n = Number(expectValue('--miter-limit', i))
+      if (!Number.isFinite(n) || n < 1) {
+        console.error('--miter-limit must be a number >= 1')
+        process.exit(1)
+      }
+      miterLimit = n
+    } else if (args[i] === '--help' || args[i] === '-h') {
+      console.log(USAGE)
+      return 0
+    } else {
+      fontFiles.push(args[i]!)
+    }
+  }
 
-if (fontFiles.length === 0) {
-  console.error('No font files specified. Use --help for usage.')
-  process.exit(1)
-}
+  const strokeConfigs: StrokeSetConfig[] = strokeWidthArgs.map((width) => ({
+    width,
+    joinStyle: strokeJoin,
+    capStyle: strokeCap,
+    miterLimit,
+  }))
 
-const ranges = parseRanges(rangeArgs)
-if (ranges) {
-  const desc = rangeArgs.join(', ')
-  console.log(`Glyph ranges: ${desc}`)
-}
-
-for (const fontFile of fontFiles) {
-  try {
-    await bakeFont(fontFile, ranges, outputBase, strokeConfigs)
-  } catch (err) {
-    console.error(`Error processing ${fontFile}:`, err)
+  if (fontFiles.length === 0) {
+    console.error('No font files specified. Use --help for usage.')
     process.exit(1)
   }
+
+  const ranges = parseRanges(rangeArgs)
+  if (ranges) {
+    const desc = rangeArgs.join(', ')
+    console.log(`Glyph ranges: ${desc}`)
+  }
+
+  for (const fontFile of fontFiles) {
+    try {
+      await bakeFont(fontFile, ranges, outputBase, strokeConfigs)
+    } catch (err) {
+      console.error(`Error processing ${fontFile}:`, err)
+      process.exit(1)
+    }
+  }
+
+  console.log('Done.')
+  return 0
 }
 
-console.log('Done.')
+/**
+ * `@three-flatland/bake` baker contract — registered as `font` in this
+ * package's `flatland.bake` field, so `flatland-bake font <args>` reaches
+ * the same `run()` the `slug-bake` bin uses below.
+ */
+const baker: Baker = {
+  name: 'font',
+  description: 'Bake SlugFont data (.slug.glb) from a TTF/OTF font',
+  usage() {
+    return USAGE
+  },
+  run,
+}
+
+export default baker
+
+// Thin bin wrapper: only self-invoke when this module is the process
+// entry point (`slug-bake` / `node dist/cli.js`), not when `flatland-bake`
+// dynamically imports it purely to read the default export.
+const isMain =
+  typeof process.argv[1] === 'string' && import.meta.url === pathToFileURL(process.argv[1]).href
+if (isMain) {
+  baker.run(process.argv.slice(2)).then(
+    (code) => process.exit(code),
+    (err) => {
+      console.error(err)
+      process.exit(1)
+    }
+  )
+}

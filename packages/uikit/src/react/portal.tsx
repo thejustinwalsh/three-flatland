@@ -1,0 +1,330 @@
+import { Signal, computed, effect } from '@preact/signals-core'
+import {
+  type ReactNode,
+  type RefObject,
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from 'react'
+import {
+  HalfFloatType,
+  LinearFilter,
+  Scene,
+  RenderTarget,
+  PerspectiveCamera,
+  Raycaster,
+  Vector2,
+  Vector3,
+  type OrthographicCamera,
+} from 'three'
+import { Image, type ImageProperties, type VanillaImage } from './index.js'
+import {
+  type InjectState,
+  type RootState,
+  reconciler,
+  useFrame,
+  useStore,
+  context,
+} from '@react-three/fiber'
+import type { DomEvent, EventManager } from '@react-three/fiber'
+import { create } from 'zustand'
+import { forwardObjectEvents } from '@pmndrs/pointer-events'
+
+// Keys that shouldn't be copied between R3F stores
+export const privateKeys = [
+  'set',
+  'get',
+  'setSize',
+  'setFrameloop',
+  'setDpr',
+  'events',
+  'invalidate',
+  'advance',
+  'size',
+  'viewport',
+]
+
+type Camera = OrthographicCamera | PerspectiveCamera
+const isOrthographicCamera = (def: Camera): def is OrthographicCamera =>
+  def && (def as OrthographicCamera).isOrthographicCamera
+
+type BasePortalProperties = Omit<ImageProperties, 'src' | 'objectFit'>
+
+export type PortalProperties = {
+  frames?: number
+  renderPriority?: number
+  eventPriority?: number
+  /**
+   * ratio between the size (in pixels) and the size of the render target (in pixels)
+   * higher dpr means higher resolution of the render target
+   */
+  dpr?: number
+  children?: ReactNode
+} & BasePortalProperties & {
+    children?: ReactNode
+  }
+
+export const Portal = forwardRef<VanillaImage, PortalProperties>(
+  ({ children, dpr, frames = Infinity, renderPriority = 0, eventPriority = 0, ...props }, ref) => {
+    const fbo = useMemo(() => new Signal<RenderTarget | undefined>(undefined), [])
+    const imageRef = useRef<VanillaImage>(null)
+    const previousRoot = useStore()
+    dpr ??= previousRoot.getState().viewport.dpr
+    useImperativeHandle(ref, () => imageRef.current!, [])
+    const texture = useMemo(() => computed(() => fbo.value?.texture), [fbo])
+
+    const usePortalStore = useMemo(() => {
+      let previousState = previousRoot.getState()
+      // We have our own camera in here, separate from the main scene.
+      const camera = new PerspectiveCamera(50, 1, 0.1, 1000)
+      camera.position.set(0, 0, 5)
+      const pointer = new Vector2()
+      const ownState = {
+        events: { compute: uvCompute.bind(null, imageRef), priority: eventPriority },
+        size: { width: 1, height: 1, left: 0, top: 0 },
+        camera,
+        scene: new Scene(),
+        raycaster: new Raycaster(),
+        pointer: pointer,
+        mouse: pointer,
+        previousRoot,
+      }
+      //we now merge in order previousState, injectState, ownState
+      const store = create<RootState & { setPreviousState: (prevState: RootState) => void }>(
+        (innerSet, get) => {
+          const merge = () => {
+            const result = {} as any
+            for (const key in previousState) {
+              if (privateKeys.includes(key)) {
+                continue
+              }
+              result[key as keyof RootState] = previousState[key as keyof RootState] as never
+            }
+            return Object.assign(result, ownState, {
+              events: { ...previousState.events, ...ownState.events },
+              viewport: Object.assign(
+                {},
+                previousState.viewport,
+                previousState.viewport.getCurrentViewport(camera, new Vector3(), ownState.size)
+              ),
+            })
+          }
+          const update = () => innerSet(merge())
+          return {
+            ...previousState,
+            // Set and get refer to this root-state
+            set(newOwnState: Partial<InjectState> | ((s: InjectState) => Partial<InjectState>)) {
+              if (typeof newOwnState === 'function') {
+                newOwnState = newOwnState(get())
+              }
+              Object.assign(ownState, newOwnState)
+              update()
+            },
+            setPreviousState(prevState: RootState) {
+              previousState = prevState
+              update()
+            },
+            get,
+            // Layers are allowed to override events
+            setEvents(events: Partial<EventManager<any>>) {
+              Object.assign(ownState.events, events)
+              update()
+            },
+            ...merge(),
+          }
+        }
+      )
+      return Object.assign(store, {
+        setState(state: Partial<RootState>) {
+          store.getState().set(state as any)
+        },
+      })
+    }, [eventPriority, previousRoot])
+
+    //syncing up previous store with the current store
+    useEffect(
+      () => previousRoot.subscribe(usePortalStore.getState().setPreviousState),
+      [previousRoot, usePortalStore]
+    )
+
+    //set up the pmndrs/pointer-events forwarding
+    const updateRef = useRef<(() => void) | undefined>(undefined)
+    useEffect(() => {
+      if (imageRef.current == null) {
+        return
+      }
+      const { destroy, update } = forwardObjectEvents(
+        imageRef.current,
+        () => usePortalStore.getState().camera,
+        usePortalStore.getInitialState().scene
+      )
+      updateRef.current = update
+      return () => {
+        updateRef.current = undefined
+        destroy()
+      }
+    }, [imageRef, usePortalStore])
+    useFrame(() => updateRef.current?.())
+
+    useEffect(() => {
+      if (imageRef.current == null) {
+        return
+      }
+      const renderTarget = (fbo.value = new RenderTarget(1, 1, {
+        minFilter: LinearFilter,
+        magFilter: LinearFilter,
+        type: HalfFloatType,
+      }))
+      const { size } = imageRef.current
+      const unsubscribeSetSize = effect(() => {
+        if (size.value == null) {
+          return
+        }
+        const [width, height] = size.value
+        renderTarget.setSize(width * dpr, height * dpr)
+        usePortalStore.setState({
+          size: { width, height, top: 0, left: 0 },
+          viewport: { ...previousRoot.getState().viewport, width, height, aspect: width / height },
+        })
+        //we invalidate because we need to re-render the image's framebuffer now because it's size was changed
+        usePortalStore.getState().invalidate()
+      })
+      return () => {
+        unsubscribeSetSize()
+        renderTarget.dispose()
+      }
+    }, [fbo, previousRoot, usePortalStore, dpr])
+
+    return (
+      <>
+        {reconciler.createPortal(
+          <context.Provider value={usePortalStore}>
+            <ChildrenToFBO
+              renderPriority={renderPriority}
+              frames={frames}
+              fbo={fbo}
+              imageRef={imageRef}
+            >
+              {children}
+              {/* Without an element that receives pointer events state.pointer will always be 0/0 */}
+              <group onPointerOver={() => null} />
+            </ChildrenToFBO>
+          </context.Provider>,
+          usePortalStore,
+          null
+        )}
+        <Image src={texture} objectFit="fill" keepAspectRatio={false} {...props} ref={imageRef} />
+      </>
+    )
+  }
+)
+
+function uvCompute(
+  { current }: RefObject<VanillaImage | null>,
+  event: DomEvent,
+  state: RootState,
+  previous?: RootState
+) {
+  if (current == null || previous == null) {
+    return false
+  }
+  // First we call the previous state-onion-layers compute, this is what makes it possible to nest portals
+  if (!previous.raycaster.camera)
+    previous.events.compute?.(event, previous, previous.previousRoot?.getState())
+  // We run a quick check against the parent, if it isn't hit there's no need to raycast at all
+  const [intersection] = previous.raycaster.intersectObject(current)
+  if (!intersection) return false
+  // We take that hits uv coords, set up this layers raycaster, et voilà, we have raycasting on arbitrary surfaces
+  const uv = intersection.uv
+  if (!uv) return false
+  state.raycaster.setFromCamera(state.pointer.set(uv.x * 2 - 1, uv.y * 2 - 1), state.camera)
+}
+
+/** The slice of the renderer `ChildrenToFBO` drives, satisfied by both backends. */
+interface PortalRenderer {
+  autoClear: boolean
+  xr: { enabled: boolean; isPresenting: boolean }
+  getRenderTarget(): RenderTarget | null
+  setRenderTarget(target: RenderTarget | null): void
+  render(scene: Scene, camera: Camera): void
+}
+
+function ChildrenToFBO({
+  frames,
+  renderPriority,
+  children,
+  fbo,
+  imageRef,
+}: {
+  frames: number
+  renderPriority: number
+  children: ReactNode
+  fbo: Signal<RenderTarget | undefined>
+  imageRef: RefObject<VanillaImage | null>
+}) {
+  const store = useStore()
+
+  useEffect(() => {
+    return store.subscribe((state, prevState) => {
+      const { size, camera } = state
+      if (size) {
+        if (isOrthographicCamera(camera)) {
+          camera.left = size.width / -2
+          camera.right = size.width / 2
+          camera.top = size.height / 2
+          camera.bottom = size.height / -2
+        } else {
+          camera.aspect = size.width / size.height
+        }
+        if (size !== prevState.size || camera !== prevState.camera) {
+          camera.updateProjectionMatrix()
+          // https://github.com/pmndrs/react-three-fiber/issues/178
+          // Update matrix world since the renderer is a frame late
+          camera.updateMatrixWorld()
+        }
+      }
+    })
+  }, [store])
+
+  let count = 0
+  let oldAutoClear: boolean
+  let oldXrEnabled: boolean
+  let oldIsPresenting: boolean
+  let oldRenderTarget: RenderTarget | null
+  useFrame((state) => {
+    // `@react-three/fiber@10` types `RootState.gl` as `WebGLRenderer` even from
+    // its `/webgpu` entry, but this repo only ever constructs a `WebGPURenderer`.
+    // Both satisfy this slice, and the renderer we actually run takes the
+    // renderer-agnostic `RenderTarget` — hence the structural narrowing rather
+    // than a cast to a `WebGLRenderTarget` we never allocate.
+    const gl = state.gl as unknown as PortalRenderer
+    const currentFBO = fbo.peek()
+    //we only render if we have a framebuffer to write to and if the portal is not clipped
+    if (currentFBO == null || imageRef.current?.isVisible?.peek() != true) {
+      return
+    }
+    // Check if the render target has a valid size to prevent GL_INVALID_FRAMEBUFFER_OPERATION errors
+    if (currentFBO.width <= 0 || currentFBO.height <= 0) {
+      return
+    }
+    if (frames === Infinity || count < frames) {
+      oldAutoClear = gl.autoClear
+      oldXrEnabled = gl.xr.enabled
+      oldIsPresenting = gl.xr.isPresenting
+      oldRenderTarget = gl.getRenderTarget()
+      gl.autoClear = true
+      gl.xr.enabled = false
+      gl.xr.isPresenting = false
+      gl.setRenderTarget(currentFBO)
+      gl.render(state.scene, state.camera)
+      gl.setRenderTarget(oldRenderTarget)
+      gl.autoClear = oldAutoClear
+      gl.xr.enabled = oldXrEnabled
+      gl.xr.isPresenting = oldIsPresenting
+      count++
+    }
+  }, renderPriority)
+  return <>{children}</>
+}

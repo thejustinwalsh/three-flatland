@@ -1,4 +1,9 @@
-export { parseFont } from './fontParser'
-export { buildBands } from './bandBuilder'
-export { packTextures } from './texturePacker'
-export { shapeText } from './textShaper'
+export {
+  parseFont,
+  lineToQuadratic,
+  cubicToQuadratics,
+  cubicToQuadraticsAdaptive,
+} from './fontParser.js'
+export { buildBands } from './bandBuilder.js'
+export { packTextures } from './texturePacker.js'
+export { shapeText } from './textShaper.js'

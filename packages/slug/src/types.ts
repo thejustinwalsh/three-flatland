@@ -1,7 +1,7 @@
 import type { Color, DataTexture } from 'three'
 import type { Font as OpenTypeFont } from 'opentype.js'
-import type { SlugFont } from './SlugFont'
-import type { BakedFontData } from './baked'
+import type { SlugFont } from './SlugFont.js'
+import type { BakedFontData } from './baked.js'
 
 /** A quadratic Bezier curve defined by three control points in em-space. */
 export interface QuadCurve {
@@ -15,6 +15,13 @@ export interface QuadCurve {
   p2x: number
   p2y: number
 }
+
+/**
+ * One closed contour: an ordered list of quadratic curves where each
+ * curve's end point is the next curve's start point (and the last closes
+ * back to the first). The unit `SlugShapeSet.registerShape` ingests.
+ */
+export type QuadContour = QuadCurve[]
 
 /** Bounding box in em-space. */
 export interface GlyphBounds {
@@ -52,10 +59,39 @@ export interface SlugGlyphData {
   advanceWidth: number
   /** Left side bearing in em-space */
   lsb: number
-  /** Location of this glyph's band data in the band texture (texel x, y) */
+  /**
+   * Index into `PagedTextureData.pages` holding this glyph's curve/band
+   * data. `bandLocation`/`curveLocation` are texel coordinates within
+   * THAT page's textures, not a combined atlas — always page-relative.
+   */
+  page: number
+  /** Location of this glyph's band data in the band texture (texel x, y), page-relative */
   bandLocation: { x: number; y: number }
-  /** Location of this glyph's first curve in the curve texture (texel x, y) */
+  /** Location of this glyph's first curve in the curve texture (texel x, y), page-relative */
   curveLocation: { x: number; y: number }
+}
+
+/**
+ * Public, em-normalized metrics for one glyph — the surface a text-layout
+ * consumer needs without touching `SlugGlyphData` internals. Returned by
+ * `SlugFont.getGlyphMetrics`/`getGlyphMetricsForChar`; a fresh value object
+ * per call, safe to mutate.
+ */
+export interface SlugGlyphMetrics {
+  /** Glyph ID resolved from the codepoint. */
+  glyphId: number
+  /** Horizontal advance width, em-space (unitsPerEm-normalized). */
+  advanceWidth: number
+  /**
+   * Advertised left side bearing, em-space. Layout engines position by this,
+   * not by `bounds.xMin` — the two coincide for TrueType but diverge for
+   * CFF/OTF, where `xMin` is where ink actually starts.
+   */
+  lsb: number
+  /** Outline bounding box, em-space. All-zero for outline-less glyphs (space, tab). */
+  bounds: GlyphBounds
+  /** False for outline-less glyphs (space, tab, zero-width controls) — same heuristic `measureTextBaked` uses (non-zero bounds area). */
+  hasOutline: boolean
 }
 
 /** A positioned glyph in a shaped text run. */
@@ -112,13 +148,47 @@ export interface DecorationRect {
   height: number
 }
 
-/** Packed GPU textures for all glyphs in a font. */
+/**
+ * Anything that can bind Slug curve/band textures to a material —
+ * satisfied by both `SlugFont` and `SlugShapeSet`. `SlugMaterial` and
+ * `SlugStrokeMaterial` only ever read these three fields.
+ */
+export interface SlugCurveSource {
+  curveTexture: DataTexture
+  bandTexture: DataTexture
+  textureWidth: number
+}
+
+/**
+ * A curve source that also resolves ids to `SlugGlyphData` records — the
+ * structural contract `SlugBatch`'s writer needs. `SlugFont` (glyph ids)
+ * and `SlugShapeSet` (shape handles) both satisfy it.
+ */
+export interface SlugGlyphSource extends SlugCurveSource {
+  glyphs: Map<number, SlugGlyphData>
+}
+
+/** Packed GPU textures for one page's worth of glyphs. */
 export interface SlugTextureData {
   /** RGBA16F — Bezier control points (2 texels per curve, with endpoint sharing). */
   curveTexture: DataTexture
-  /** RG32F — Band headers + curve reference lists. */
+  /** R32F — Band headers + curve reference lists, each packed into one float32. */
   bandTexture: DataTexture
   /** Width of the textures in texels. */
+  textureWidth: number
+}
+
+/**
+ * Packed GPU textures for an entire glyph set, split across pages so no
+ * single curve texture exceeds the 4096-row cap `packRefCoord` enforces.
+ * Every font/shape-set fits in `pages[0]` today; multi-page output only
+ * appears for glyph sets dense enough to exceed the per-page budget (e.g.
+ * CJK). `SlugGlyphData.page` says which entry of `pages` a glyph's
+ * `curveLocation`/`bandLocation` are relative to.
+ */
+export interface PagedTextureData {
+  pages: SlugTextureData[]
+  /** Width of every page's textures in texels (shared across pages). */
   textureWidth: number
 }
 
@@ -140,7 +210,16 @@ export interface SlugTextOptions {
   thicken?: number
   /** Enable 2x2 supersampling (expensive). */
   supersample?: boolean
-  /** Snap glyph positions to pixel grid. Default true. */
+  /**
+   * Snap glyph positions to the pixel grid. Default **false**.
+   *
+   * Slug's coverage is analytic and resolution-independent, so snapping is off by
+   * default — it quantizes sub-pixel placement (uneven advances, shimmer when text
+   * moves) and buys nothing at typical sizes. Opt in only for static text at very
+   * small sizes on a DPR-1 display, where aligning stems to the pixel grid can read
+   * marginally crisper. The snap grid follows the material's viewport, which must be
+   * in device pixels for the snap (and the AA dilation) to be correct on retina.
+   */
   pixelSnap?: boolean
   /** Style spans (underline / strike / sub-super) applied to character ranges. */
   styles?: readonly StyleSpan[]

@@ -1,7 +1,7 @@
 import opentype from 'opentype.js'
 import type { PathCommand } from 'opentype.js'
-import type { QuadCurve, SlugGlyphData } from '../types'
-import { buildAdvanceOnlyGlyph, buildGpuGlyphData } from './buildGpuGlyph'
+import type { QuadCurve, SlugGlyphData } from '../types.js'
+import { buildAdvanceOnlyGlyph, buildGpuGlyphData } from './buildGpuGlyph.js'
 
 /**
  * Epsilon for converting straight lines to degenerate quadratics.
@@ -226,8 +226,13 @@ function extractCurves(
  * Convert a line segment to a degenerate quadratic Bezier.
  * Adds slight bowing for diagonal lines to prevent scanline dropout.
  * Axis-aligned lines get exact midpoints.
+ *
+ * `emScale` converts the fixed bowing epsilon (raw font units) into the
+ * caller's coordinate space — pass `1 / unitsPerEm` for font outlines.
+ * SVG contours normalized to unit space use an equivalent magnitude
+ * (`slug/svg` passes `1 / 1024`).
  */
-function lineToQuadratic(
+export function lineToQuadratic(
   x0: number,
   y0: number,
   x1: number,
@@ -265,12 +270,71 @@ function lineToQuadratic(
   }
 }
 
+/** A cubic Bezier as a flat control-point record (shared converter core). */
+interface Cubic {
+  x0: number
+  y0: number
+  c1x: number
+  c1y: number
+  c2x: number
+  c2y: number
+  x3: number
+  y3: number
+}
+
+/** Best-fit single-quadratic approximation of a cubic: q = (-a + 3b + 3c - d) / 4. */
+function fitQuadratic(c: Cubic): QuadCurve {
+  return {
+    p0x: c.x0,
+    p0y: c.y0,
+    p1x: (-c.x0 + 3 * c.c1x + 3 * c.c2x - c.x3) * 0.25,
+    p1y: (-c.y0 + 3 * c.c1y + 3 * c.c2y - c.y3) * 0.25,
+    p2x: c.x3,
+    p2y: c.y3,
+  }
+}
+
+/** De Casteljau split at t=0.5 into two sub-cubics. */
+function splitCubic(c: Cubic): [Cubic, Cubic] {
+  const m01x = (c.x0 + c.c1x) * 0.5
+  const m01y = (c.y0 + c.c1y) * 0.5
+  const m12x = (c.c1x + c.c2x) * 0.5
+  const m12y = (c.c1y + c.c2y) * 0.5
+  const m23x = (c.c2x + c.x3) * 0.5
+  const m23y = (c.c2y + c.y3) * 0.5
+  const m012x = (m01x + m12x) * 0.5
+  const m012y = (m01y + m12y) * 0.5
+  const m123x = (m12x + m23x) * 0.5
+  const m123y = (m12y + m23y) * 0.5
+  const midx = (m012x + m123x) * 0.5
+  const midy = (m012y + m123y) * 0.5
+  return [
+    { x0: c.x0, y0: c.y0, c1x: m01x, c1y: m01y, c2x: m012x, c2y: m012y, x3: midx, y3: midy },
+    { x0: midx, y0: midy, c1x: m123x, c1y: m123y, c2x: m23x, c2y: m23y, x3: c.x3, y3: c.y3 },
+  ]
+}
+
+/**
+ * Max deviation between a cubic and its best-fit quadratic (`fitQuadratic`):
+ * (√3 / 36) · |p3 − 3·p2 + 3·p1 − p0|. Standard tight bound — the deviation
+ * D(t) = P(t) − Q(t) is proportional to the cubic's third-difference vector.
+ */
+function cubicFitError(c: Cubic): number {
+  const dx = c.x3 - 3 * c.c2x + 3 * c.c1x - c.x0
+  const dy = c.y3 - 3 * c.c2y + 3 * c.c1y - c.y0
+  return (Math.sqrt(3) / 36) * Math.sqrt(dx * dx + dy * dy)
+}
+
 /**
  * Split a cubic Bezier at t=0.5 into two sub-cubics via De Casteljau,
  * then approximate each as a quadratic using the best-fit control point:
  * q = (-a + 3b + 3c - d) / 4 for cubic (a, b, c, d).
+ *
+ * Fixed, non-adaptive — always emits exactly 2 quadratics. Adequate for
+ * em-normalized font outlines (short, low-curvature segments). Arbitrary
+ * SVG cubics should use `cubicToQuadraticsAdaptive` instead.
  */
-function cubicToQuadratics(
+export function cubicToQuadratics(
   x0: number,
   y0: number,
   c1x: number,
@@ -280,39 +344,46 @@ function cubicToQuadratics(
   x3: number,
   y3: number
 ): QuadCurve[] {
-  // De Casteljau at t=0.5
-  const m01x = (x0 + c1x) * 0.5
-  const m01y = (y0 + c1y) * 0.5
-  const m12x = (c1x + c2x) * 0.5
-  const m12y = (c1y + c2y) * 0.5
-  const m23x = (c2x + x3) * 0.5
-  const m23y = (c2y + y3) * 0.5
-  const m012x = (m01x + m12x) * 0.5
-  const m012y = (m01y + m12y) * 0.5
-  const m123x = (m12x + m23x) * 0.5
-  const m123y = (m12y + m23y) * 0.5
-  const midx = (m012x + m123x) * 0.5
-  const midy = (m012y + m123y) * 0.5
+  const [a, b] = splitCubic({ x0, y0, c1x, c1y, c2x, c2y, x3, y3 })
+  return [fitQuadratic(a), fitQuadratic(b)]
+}
 
-  // First half cubic: (x0, m01, m012, mid)
-  // Second half cubic: (mid, m123, m23, x3)
-  // Best-fit quadratic control point: q = (-a + 3b + 3c - d) / 4
-  return [
-    {
-      p0x: x0,
-      p0y: y0,
-      p1x: (-x0 + 3 * m01x + 3 * m012x - midx) * 0.25,
-      p1y: (-y0 + 3 * m01y + 3 * m012y - midy) * 0.25,
-      p2x: midx,
-      p2y: midy,
-    },
-    {
-      p0x: midx,
-      p0y: midy,
-      p1x: (-midx + 3 * m123x + 3 * m23x - x3) * 0.25,
-      p1y: (-midy + 3 * m123y + 3 * m23y - y3) * 0.25,
-      p2x: x3,
-      p2y: y3,
-    },
-  ]
+/**
+ * Adaptive cubic → quadratic conversion: the SAME De Casteljau split +
+ * best-fit core as `cubicToQuadratics`, wrapped in recursion — split while
+ * the analytic deviation bound (`cubicFitError`) exceeds `tolerance`, then
+ * emit one best-fit quadratic per leaf. The error bound shrinks 8× per
+ * split (it is proportional to the third difference, which scales by
+ * (1/2)³), so convergence is fast; `maxDepth` caps pathological input at
+ * 2^maxDepth quadratics per cubic.
+ *
+ * `tolerance` is in the caller's coordinate space — for shapes normalized
+ * to a unit box, `slug/svg` defaults it to 0.25% of the viewBox diagonal.
+ */
+export function cubicToQuadraticsAdaptive(
+  x0: number,
+  y0: number,
+  c1x: number,
+  c1y: number,
+  c2x: number,
+  c2y: number,
+  x3: number,
+  y3: number,
+  tolerance: number,
+  maxDepth = 10,
+  out: QuadCurve[] = []
+): QuadCurve[] {
+  const cubic: Cubic = { x0, y0, c1x, c1y, c2x, c2y, x3, y3 }
+  emitAdaptive(cubic, tolerance, maxDepth, out)
+  return out
+}
+
+function emitAdaptive(c: Cubic, tolerance: number, depth: number, out: QuadCurve[]): void {
+  if (depth <= 0 || cubicFitError(c) <= tolerance) {
+    out.push(fitQuadratic(c))
+    return
+  }
+  const [a, b] = splitCubic(c)
+  emitAdaptive(a, tolerance, depth - 1, out)
+  emitAdaptive(b, tolerance, depth - 1, out)
 }

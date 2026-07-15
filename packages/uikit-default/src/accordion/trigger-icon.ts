@@ -1,0 +1,51 @@
+import type { z } from 'zod'
+import { SvgPropertiesSchema } from '@three-flatland/uikit'
+import {
+  searchFor,
+  type SvgOutProperties,
+  type SvgProperties,
+  type InProperties,
+  type RenderContext,
+  type BaseOutProperties,
+} from '@three-flatland/uikit'
+import { ChevronDown } from '@three-flatland/uikit-lucide'
+import { computed } from '@preact/signals-core'
+import { Accordion } from './index.js'
+import { AccordionItem } from './item.js'
+import { colors, contentDefaults } from '../theme.js'
+export const AccordionTriggerIconPropertiesSchema = SvgPropertiesSchema
+
+export type AccordionTriggerIconProperties = z.input<typeof AccordionTriggerIconPropertiesSchema>
+
+export class AccordionTriggerIcon extends ChevronDown<SvgOutProperties> {
+  constructor(
+    inputProperties?: InProperties<SvgOutProperties>,
+    initialClasses?: Array<BaseOutProperties | string>,
+    config?: {
+      renderContext?: RenderContext
+      defaultOverrides?: InProperties<SvgOutProperties>
+    }
+  ) {
+    super(inputProperties, initialClasses, {
+      defaults: contentDefaults,
+      ...config,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        width: 16,
+        height: 16,
+        flexShrink: 0,
+        transformRotateZ: computed(() => {
+          const item = searchFor(this, AccordionItem, 2)
+          if (item == null) {
+            return 0
+          }
+          const accordion = searchFor(item, Accordion, 2)
+          return item.properties.value.value === accordion?.openItemValue.value ? 180 : 0
+        }),
+        ...config?.defaultOverrides,
+      },
+    })
+  }
+}

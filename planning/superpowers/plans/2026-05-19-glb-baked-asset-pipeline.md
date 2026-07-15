@@ -61,7 +61,7 @@ packages/gltf/                    (renamed from packages/pak; flpak src removed)
   - `accessor(i)`: read `json.accessors[i]` → its `bufferView` → `byteOffset` (bufferView + accessor) → absolute = `binByteOffset + bvOffset + accOffset`; element count = `count × components(type)`; construct the typed array (`COMPONENT_TYPE_CTORS[componentType]`) as a view into `buf`.
   - `bufferView(i)`: `new Uint8Array(buf, binByteOffset + bv.byteOffset, bv.byteLength)`.
   - `ext(name)`: `json.extensions?.[name]`.
-  Define `COMPONENT_TYPE_CTORS` ({5120:Int8Array,5121:Uint8Array,5122:Int16Array,5123:Uint16Array,5125:Uint32Array,5126:Float32Array}) and `TYPE_COMPONENTS` ({SCALAR:1,VEC2:2,VEC3:3,VEC4:4,MAT2:4,MAT3:9,MAT4:16}). Throw `AssetError` on unknown index/type. All zero-copy.
+    Define `COMPONENT_TYPE_CTORS` ({5120:Int8Array,5121:Uint8Array,5122:Int16Array,5123:Uint16Array,5125:Uint32Array,5126:Float32Array}) and `TYPE_COMPONENTS` ({SCALAR:1,VEC2:2,VEC3:3,VEC4:4,MAT2:4,MAT3:9,MAT4:16}). Throw `AssetError` on unknown index/type. All zero-copy.
 - [ ] **Step 4:** Run → pass; export `readAsset`, `FlatlandAsset`, `AssetError` from `index.ts`; typecheck 0.
 - [ ] **Step 5:** Commit: `feat(asset): readAsset — zero-copy accessor/bufferView/extension reader`.
 
@@ -138,6 +138,7 @@ packages/gltf/                    (renamed from packages/pak; flpak src removed)
 ---
 
 ## Self-review checklist
+
 - **Spec coverage:** native-first rule → all phases; GLB reader → Phase 1; bake helpers + extension → Phase 2; conformance + validator → Phase 3; slug `.slug.glb` → Phase 4; integration → Phase 5. Composition (`FL_pak`/`FL_asset_ref`) is documented (spec) and deferred (no task) until a compose tool is real — by design.
 - **No format invention:** the only framing parsed is the standard GLB container; writing is glTF-Transform. Data is native accessors + bufferViews + extension JSON.
 - **No dead salvage:** flpak `pack`/`unpack`/`record`/`cursor`/`layout` are deleted (Phase 0), not carried as unused code.

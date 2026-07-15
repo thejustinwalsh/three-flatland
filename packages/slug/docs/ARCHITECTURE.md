@@ -68,16 +68,16 @@ Texel layout per curve (2 texels with endpoint sharing across adjacent curves):
 
 Half-float is sufficient — em-space curve coordinates are normalized to `[0, 1]` and the small loss in precision is invisible at any practical zoom. 8 bytes per texel halves bandwidth vs the original RGBA32F layout.
 
-**Band Texture** (RG32F / `FloatType`, 2-channel, 4096 × N):
+**Band Texture** (R32F / `FloatType`, single-channel, 4096 × N):
 
 ```
 Per glyph:
-  [hBand headers × numHBands]    (curveCount, offset)
-  [vBand headers × numVBands]    (curveCount, offset)
-  [curve ref lists]              (curveTexX, curveTexY) → pointer into curve texture
+  [hBand headers × numHBands]    packHeader(curveCount, offset)
+  [vBand headers × numVBands]    packHeader(curveCount, offset)
+  [curve ref lists]              packRefCoord(curveTexX, curveTexY) → pointer into curve texture
 ```
 
-Two channels store integer pairs; values are always small non-negative integers within Float32's 24-bit mantissa range (max ~4096 for coordinates, ~40 for curve counts). 8 bytes per texel vs 16 — half the band bandwidth.
+Each texel packs two small non-negative integers into ONE float32: a header is `curveCount << 14 | offset` (count high 10 bits, offset low 14), a curve ref is `texelY << 12 | texelX`. Max packed value is `2^24-1`, exactly representable in Float32's 24-bit mantissa, so the shader decode (`>> 14 / & 16383`, `& 4095 / >> 12`) is bit-exact. 4 bytes per texel vs the old RG32F's 8 — halves every band read (~2 headers + 1 ref-per-curve per fragment), a universal bandwidth win.
 
 Both textures use `NearestFilter` (no interpolation — data is accessed by exact texel coordinate via `textureLoad`).
 
@@ -230,7 +230,7 @@ Each glyph instance uses 5 x vec4 (80 bytes):
    [bandBuilder] ───────────────|──> GlyphBands (sorted)            |
          |                       |                                   |
    [texturePacker] ─────────────|──> curveTexture (RGBA16F) ──────> textureLoad()
-         |                       |   bandTexture  (RG32F)   ──────> textureLoad()
+         |                       |   bandTexture  (R32F)    ──────> textureLoad()
          |                       |                                   |
    [textShaper] ────────────────|──> PositionedGlyph[]              |
          |                       |                                   |

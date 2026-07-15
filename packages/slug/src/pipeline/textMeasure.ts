@@ -1,5 +1,5 @@
 import type { Font } from 'opentype.js'
-import type { SlugGlyphData, TextMetrics } from '../types'
+import type { SlugGlyphData, TextMetrics } from '../types.js'
 
 /**
  * Measure a single unwrapped line of text via opentype.js Font.

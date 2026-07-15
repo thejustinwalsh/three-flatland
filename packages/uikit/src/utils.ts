@@ -1,0 +1,405 @@
+import { computed, effect, type ReadonlySignal, Signal } from '@preact/signals-core'
+import type {
+  Object3D,
+  Vector2Tuple,
+  Color,
+  Vector3Tuple,
+  Vector3,
+  Matrix4,
+  Vector4Tuple,
+} from 'three'
+import type { Inset } from './flex/node.js'
+import type { BaseOutProperties, Properties } from './properties/index.js'
+import type { EventHandlersProperties } from './events.js'
+import { addActiveHandlers } from './active.js'
+import { addHoverHandlers } from './hover.js'
+import type { AllowedPointerEventsType } from './panel/interaction/pointer-events.js'
+import { Component } from './components/component.js'
+import type { Container } from './components/container.js'
+import type { RootContext } from './context.js'
+import { writeColor } from './panel/material/color.js'
+import { parseNumberValue, parseAbsoluteLengthValue } from './properties/values.js'
+
+export type Fix_TS_56_Float32Array = Float32Array
+
+export function searchFor<T>(
+  from: Component | Object3D,
+  _class: { new (...args: Array<any>): T },
+  maxSteps: number,
+  allowNonUikit = false
+): T | undefined {
+  if (from instanceof _class) {
+    return from
+  }
+  let parent: Object3D | undefined | null
+  if (from instanceof Component) {
+    parent = from.parentContainer.value
+  }
+  if (allowNonUikit) {
+    parent ??= from.parent
+  }
+  if (maxSteps === 0 || parent == null) {
+    return undefined
+  }
+  return searchFor(parent, _class, maxSteps - 1, allowNonUikit)
+}
+
+export function computedGlobalMatrix(
+  parentMatrix: Signal<Matrix4 | undefined>,
+  localMatrix: Signal<Matrix4 | undefined>
+): Signal<Matrix4 | undefined> {
+  return computed(() => {
+    const local = localMatrix.value
+    const parent = parentMatrix.value
+    if (local == null || parent == null) {
+      return undefined
+    }
+    return parent.clone().multiply(local)
+  })
+}
+
+export type VisibilityProperties = {
+  visibility?: 'visible' | 'hidden'
+}
+
+export function computedIsVisible(
+  component: Component,
+  isClipped: Signal<boolean> | undefined,
+  properties: Properties
+) {
+  return computed(
+    () =>
+      component.displayed.value &&
+      (isClipped == null || !isClipped?.value) &&
+      properties.value.visibility === 'visible'
+  )
+}
+
+export function loadResourceWithParams<P, R, A extends Array<unknown>>(
+  target: Signal<R | undefined>,
+  fn: (param: P, ...additional: A) => Promise<R>,
+  cleanup: ((value: R) => void) | undefined,
+  abortSignal: AbortSignal,
+  param: Signal<P> | P,
+  ...additionals: A
+): void {
+  abortableEffect(() => {
+    let canceled = false
+    let current: R | undefined
+    fn(readReactive(param), ...additionals)
+      .then((value) => {
+        if (!canceled) {
+          target.value = current = value
+        }
+      })
+      .catch(console.error)
+    return () => {
+      canceled = true
+      if (current != null && cleanup != null) {
+        cleanup(current)
+      }
+    }
+  }, abortSignal)
+}
+
+const eventHandlerKeys: Array<keyof EventHandlersProperties> = [
+  'onClick',
+  'onContextMenu',
+  'onDblClick',
+  'onPointerCancel',
+  'onPointerDown',
+  'onPointerEnter',
+  'onPointerLeave',
+  'onPointerMove',
+  'onPointerOut',
+  'onPointerOver',
+  'onPointerUp',
+  'onWheel',
+]
+
+export function computedHandlers(
+  properties: Properties,
+  starProperties: Properties,
+  hoveredSignal: Signal<Array<number>>,
+  activeSignal: Signal<Array<number>>,
+  dynamicHandlers?: Signal<EventHandlersProperties | undefined>
+) {
+  return computed(() => {
+    if (!properties.enabled.value) {
+      return {}
+    }
+    const handlers: EventHandlersProperties = {}
+    for (const key of eventHandlerKeys) {
+      const handler = properties.value[key]
+      if (handler != null) {
+        handlers[key] = handler as any
+      }
+    }
+    addHandlers(handlers, dynamicHandlers?.value)
+    addHoverHandlers(
+      handlers,
+      properties,
+      hoveredSignal,
+      properties.usedConditionals.hover,
+      starProperties.usedConditionals.hover
+    )
+    addActiveHandlers(
+      handlers,
+      properties,
+      activeSignal,
+      properties.usedConditionals.active,
+      starProperties.usedConditionals.active
+    )
+    return handlers
+  })
+}
+
+export function computedAncestorsHaveListeners(
+  parent: Signal<Container | undefined>,
+  handlers: ReadonlySignal<EventHandlersProperties>
+) {
+  return computed(
+    () =>
+      (parent.value?.ancestorsHaveListenersSignal.value ?? false) ||
+      Object.keys(handlers.value).length > 0
+  )
+}
+
+export function addHandlers(
+  target: EventHandlersProperties,
+  handlers: EventHandlersProperties | undefined
+): void {
+  for (const key in handlers) {
+    addHandler(
+      key as keyof EventHandlersProperties,
+      target,
+      handlers[key as keyof EventHandlersProperties]
+    )
+  }
+}
+
+export function addHandler<T extends { [Key in string]?: (e: any) => void }, K extends keyof T>(
+  key: K,
+  target: T,
+  handler: T[K]
+): void {
+  if (handler == null) {
+    return
+  }
+  const existingHandler = target[key]
+  if (existingHandler == null) {
+    target[key] = handler
+    return
+  }
+  target[key] = ((e) => {
+    existingHandler(e)
+    handler(e)
+  }) as T[K]
+}
+
+export function setupMatrixWorldUpdate(
+  component: Component,
+  rootSignal: Signal<RootContext>,
+  globalPanelMatrixSignal: Signal<Matrix4 | undefined> | undefined,
+  abortSignal: AbortSignal
+): void {
+  if (globalPanelMatrixSignal != null && !abortSignal.aborted) {
+    const unsubscribe = globalPanelMatrixSignal.subscribe(() => {
+      rootSignal.peek().requestRender?.()
+    })
+    abortSignal.addEventListener('abort', unsubscribe)
+  }
+  abortableEffect(() => {
+    const root = rootSignal.value
+    if (root.component === component) {
+      return
+    }
+    // Dirty-gate: every Content/Custom/Image instance in the tree registers here,
+    // and the root re-invokes the whole set unconditionally every frame (see
+    // `Component.updateWorldMatrix`). Recomputing `matrixWorld` is only ever
+    // necessary when either (a) the root's own world-to-global transform changed
+    // (`matrixVersion`, bumped once per frame root-side — covers a wobbling or
+    // orbiting ANCESTOR, which this component's own signals never see) or (b)
+    // this component's own layout placement changed (`globalPanelMatrix` is a
+    // memoized signal, so an unchanged layout returns the SAME Matrix4 reference).
+    // Components with children are excluded: `Content` recurses into arbitrary
+    // (possibly independently-animated) embedded content, which neither check
+    // above observes, so those must always recompute.
+    let lastMatrixVersion = -1
+    let lastPanelMatrix: Matrix4 | undefined
+    const updateMatrixWorld = () => {
+      if (component.children.length === 0) {
+        const panelMatrix = component.globalPanelMatrix.peek()
+        if (root.matrixVersion === lastMatrixVersion && panelMatrix === lastPanelMatrix) {
+          return
+        }
+        lastMatrixVersion = root.matrixVersion
+        lastPanelMatrix = panelMatrix
+      }
+      component.updateWorldMatrix(false, true)
+    }
+    root.onUpdateMatrixWorldSet.add(updateMatrixWorld)
+    return () => root.onUpdateMatrixWorldSet.delete(updateMatrixWorld)
+  }, abortSignal)
+}
+
+export type OutgoingDefaultProperties = {
+  renderOrder: ReadonlySignal<number>
+  depthTest: ReadonlySignal<boolean>
+  depthWrite: ReadonlySignal<boolean>
+  pointerEvents: ReadonlySignal<'none' | 'auto' | 'listener'>
+  pointerEventsType: ReadonlySignal<AllowedPointerEventsType>
+  pointerEventsOrder: ReadonlySignal<number>
+}
+
+export function setupPointerEvents(component: Component, canHaveNonUikitChildren: boolean) {
+  component.defaultPointerEvents = 'auto'
+  abortableEffect(() => {
+    component.ancestorsHaveListeners = component.ancestorsHaveListenersSignal.value
+    component.pointerEvents = component.isVisible.value
+      ? component.properties.value.pointerEvents
+      : 'none'
+    component.pointerEventsOrder = parseNumberValue(
+      component.properties.value.pointerEventsOrder ?? 0
+    )
+    component.pointerEventsType = component.properties.value.pointerEventsType
+  }, component.abortSignal)
+  abortableEffect(() => {
+    if (!component.properties.enabled.value) {
+      return
+    }
+    const rootComponent = component.root.value.component
+    component.intersectChildren = canHaveNonUikitChildren || rootComponent === component
+
+    if (!canHaveNonUikitChildren && component.properties.value.pointerEvents === 'none') {
+      return
+    }
+    if (rootComponent === component) {
+      //we must not add the component itself to its interactable descendants
+      return
+    }
+    rootComponent.interactableDescendants ??= []
+    const interactableDescendants = rootComponent.interactableDescendants
+    interactableDescendants.push(component)
+    return () => {
+      const index = interactableDescendants.indexOf(component)
+      if (index === -1) {
+        return
+      }
+      interactableDescendants.splice(index, 1)
+    }
+  }, component.abortSignal)
+}
+
+export type ColorRepresentation = Color | string | number | Vector3Tuple | Vector4Tuple
+
+export function abortableEffect(fn: Parameters<typeof effect>[0], abortSignal: AbortSignal): void {
+  if (abortSignal.aborted) {
+    return
+  }
+  const unsubscribe = effect(fn)
+  abortSignal.addEventListener('abort', unsubscribe)
+}
+
+export const alignmentXMap = { left: 0.5, center: 0, middle: 0, right: -0.5 }
+export const alignmentYMap = { top: -0.5, center: 0, middle: 0, bottom: 0.5 }
+export const alignmentZMap = { back: -0.5, center: 0, middle: 0, front: 0.5 }
+
+/**
+ * calculates the offsetX, offsetY, and scale to fit content with size [aspectRatio, 1] inside
+ */
+export function fitNormalizedContentInside(
+  offsetTarget: Vector3,
+  scaleTarget: Vector3,
+  size: Signal<Vector2Tuple | undefined>,
+  paddingInset: Signal<Inset | undefined>,
+  borderInset: Signal<Inset | undefined>,
+  pixelSize: number,
+  aspectRatio: number
+): void {
+  const sizeValue = size.value
+  const paddingInsetValue = paddingInset.value
+  const borderInsetValue = borderInset.value
+  if (sizeValue == null || paddingInsetValue == null || borderInsetValue == null) {
+    return
+  }
+  const [width, height] = sizeValue
+  const [pTop, pRight, pBottom, pLeft] = paddingInsetValue
+  const [bTop, bRight, bBottom, bLeft] = borderInsetValue
+  const topInset = pTop + bTop
+  const rightInset = pRight + bRight
+  const bottomInset = pBottom + bBottom
+  const leftInset = pLeft + bLeft
+  offsetTarget.set(
+    (leftInset - rightInset) * 0.5 * pixelSize,
+    (bottomInset - topInset) * 0.5 * pixelSize,
+    0
+  )
+
+  const innerWidth = width - leftInset - rightInset
+  const innerHeight = height - topInset - bottomInset
+  const flexRatio = innerWidth / innerHeight
+  if (flexRatio > aspectRatio) {
+    scaleTarget.setScalar(innerHeight * pixelSize)
+    return
+  }
+  scaleTarget.setScalar((innerWidth * pixelSize) / aspectRatio)
+}
+
+export function readReactive<T>(value: T | 'initial' | ReadonlySignal<T | 'initial'>): T {
+  value = value instanceof Signal ? value.value : value
+  if (value === 'initial') {
+    return undefined as T
+  }
+  return value as T
+}
+
+export function computedBorderInset(
+  properties: Properties,
+  keys: ReadonlyArray<string>
+): Signal<Inset> {
+  return computed(
+    () =>
+      keys.map((key) => {
+        const value = properties.value[key as keyof BaseOutProperties]
+        return value == null ? 0 : parseAbsoluteLengthValue(value as any)
+      }) as Inset
+  )
+}
+
+export function withOpacity(
+  value: ReadonlySignal<ColorRepresentation> | ColorRepresentation,
+  opacity: number | Signal<number>
+) {
+  return computed<ColorRepresentation>(() => {
+    const result: Vector4Tuple = [0, 0, 0, 0]
+    writeColor(result, 0, readReactive(value), readReactive(opacity))
+    return result
+  })
+}
+
+type UnionToIntersection<U> = (U extends any ? (x: U) => void : never) extends (x: infer I) => void
+  ? I
+  : never
+type IntersectValues<T extends Record<PropertyKey, unknown>> = UnionToIntersection<T[keyof T]>
+type RecursivePartial<T> =
+  T extends Signal<unknown> ? T : { [K in keyof T]?: RecursivePartial<T[K]> }
+export type UnionizeVariants<T extends Record<PropertyKey, unknown>> = Record<
+  keyof T,
+  RecursivePartial<IntersectValues<T>>
+>
+
+/**
+ * assumes component.root.component.parent.matrixWorld and component.root.component.matrix is updated
+ */
+export function computeWorldToGlobalMatrix(
+  root: Pick<RootContext, 'component'>,
+  target: Matrix4
+): void {
+  const rootComponent = root.component
+  if (rootComponent.parent == null) {
+    target.copy(rootComponent.matrix)
+    return
+  }
+  target.multiplyMatrices(rootComponent.parent.matrixWorld, rootComponent.matrix)
+}

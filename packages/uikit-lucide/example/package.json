@@ -1,0 +1,31 @@
+{
+  "name": "@three-flatland/uikit-lucide-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@preact/signals-core": "catalog:",
+    "@react-three/fiber": "catalog:",
+    "@three-flatland/slug": "workspace:*",
+    "@three-flatland/uikit": "workspace:*",
+    "@three-flatland/uikit-default": "workspace:*",
+    "@three-flatland/uikit-lucide": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "suspend-react": "catalog:",
+    "three": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/three": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "babel-plugin-react-compiler": "1.0.0",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}

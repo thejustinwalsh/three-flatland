@@ -1,6 +1,6 @@
-import { cmapLookup, kernLookup } from '../baked'
-import type { BakedFontData } from '../baked'
-import type { SlugGlyphData } from '../types'
+import { cmapLookup, kernLookup } from '../baked.js'
+import type { BakedFontData } from '../baked.js'
+import type { SlugGlyphData } from '../types.js'
 
 /**
  * Wrap a string into lines using the same word-boundary + hard-break-fallback

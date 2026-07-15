@@ -37,18 +37,18 @@ Font data container. Holds parsed glyphs, GPU textures, text shaping, measuremen
 
 ### Properties
 
-| Property                                          | Type                         | Description                                                                 |
-| ------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------- |
-| `glyphs`                                          | `Map<number, SlugGlyphData>` | Glyph data indexed by glyph ID.                                             |
-| `curveTexture`                                    | `DataTexture`                | RGBA16F (`HalfFloatType`). Two texels per quadratic, with endpoint sharing. |
-| `bandTexture`                                     | `DataTexture`                | RG32F (`FloatType`). Band headers + curve reference lists.                  |
-| `textureWidth`                                    | `number`                     | Texture width in texels (typically 4096).                                   |
-| `unitsPerEm`                                      | `number`                     | Font design units per em.                                                   |
-| `ascender`                                        | `number`                     | Ascender in em-space.                                                       |
-| `descender`                                       | `number`                     | Descender in em-space (typically negative).                                 |
-| `capHeight`                                       | `number`                     | Cap height in em-space.                                                     |
-| `underlinePosition`, `underlineThickness`         | `number`                     | em-space metrics from OpenType `post` table (used by decoration emit).      |
-| `strikethroughPosition`, `strikethroughThickness` | `number`                     | em-space metrics from `os/2` table.                                         |
+| Property                                          | Type                         | Description                                                                             |
+| ------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
+| `glyphs`                                          | `Map<number, SlugGlyphData>` | Glyph data indexed by glyph ID.                                                         |
+| `curveTexture`                                    | `DataTexture`                | RGBA16F (`HalfFloatType`). Two texels per quadratic, with endpoint sharing.             |
+| `bandTexture`                                     | `DataTexture`                | R32F (`FloatType`). Band headers + curve reference lists, each packed into one float32. |
+| `textureWidth`                                    | `number`                     | Texture width in texels (typically 4096).                                               |
+| `unitsPerEm`                                      | `number`                     | Font design units per em.                                                               |
+| `ascender`                                        | `number`                     | Ascender in em-space.                                                                   |
+| `descender`                                       | `number`                     | Descender in em-space (typically negative).                                             |
+| `capHeight`                                       | `number`                     | Cap height in em-space.                                                                 |
+| `underlinePosition`, `underlineThickness`         | `number`                     | em-space metrics from OpenType `post` table (used by decoration emit).                  |
+| `strikethroughPosition`, `strikethroughThickness` | `number`                     | em-space metrics from `os/2` table.                                                     |
 
 ### Methods
 
@@ -303,6 +303,192 @@ geometry.setGlyphs(positioned, font, { r: 1, g: 1, b: 1, a: 1 })
 
 ---
 
+## SlugBatch
+
+Cross-component glyph batch: many text runs, ONE draw call. Duck-typed instanced
+mesh over an interleaved instance buffer that extends `SlugGeometry`'s five vec4
+lanes with a per-instance transform (`glyphMtx0..3`, folded into the dilation MVP
+so the screen-space Jacobian stays exact per instance) and a per-instance 4-plane
+clip (`glyphClip0..3`, applied as an antialiased coverage multiply — never a
+discard).
+
+```ts
+new SlugBatch(options?: SlugBatchOptions)
+// { font?, capacity? = 256, clip? = true, material? }
+```
+
+### Writer contract (allocator-compatible with sorted bucket layouts)
+
+#### `ensureCapacity(n): void` — grow to ≥ n instances (1.5×, contents preserved)
+
+#### `writeGlyph(index, glyphId, font, opts?): void`
+
+`opts`: `{ x?, y?, fontSize?, matrix?, clip?, color?, opacity? }`. `matrix` is the
+per-instance transform (glyph → batch-local); `clip` is a `Matrix4` whose ROWS are
+plane equations `(nx, ny, nz, d)` — a point survives when `dot(n, p) + d >= 0` for
+all four rows; `null` writes the bit-exact disabled sentinel `(0, 0, 0, 1)`.
+
+#### `writeRect(index, rect, opts?): void` — solid-rect sentinel path (decorations, `renderSolid`)
+
+#### `copyWithin(target, start, end): void` — bucket compaction
+
+#### `count` — live instance count; drives the instanced draw
+
+`pixelSnap` is force-disabled in batch mode (snap math assumes an axis-aligned
+ortho MVP). Call `update(camera)` once per frame and `setViewportSize(w, h)` on
+resize, exactly like `SlugText`.
+
+---
+
+## SlugShapeSet
+
+"A font whose glyphs are SVG paths." Incremental registry of closed
+quadratic-Bezier contours sharing one curve/band `DataTexture` pair — the same
+`curveTexture`/`bandTexture` contract `SlugFont` exposes (`SlugCurveSource`), so
+materials bind either interchangeably. Zero render targets anywhere in the
+pipeline; the "atlas" is data textures of curve control points.
+
+```ts
+const set = new SlugShapeSet()
+const handle = set.registerShape(contours) // QuadContour[] → SlugShapeHandle
+```
+
+#### `registerShape(contours: QuadContour[]): SlugShapeHandle`
+
+Registers one shape (holes = counter-wound or nested contours, per fill rule).
+The handle IS the shape's `SlugGlyphData` record (`glyphId` = handle id).
+Coordinates are quantized to float32 at the door (bit-exact serialization) and
+should stay within ~[-2, 2] (half-float curve texture precision).
+
+#### `curveTexture` / `bandTexture` / `textureWidth`
+
+Pack lazily on first access after a registration. **Growth invariant:** shapes
+pack in insertion order and new shapes only append, so a repack never moves
+previously registered shapes — already-written batch instances stay valid; only
+the texture objects are new (`version` increments; `SlugShapeBatch.update`
+re-binds automatically).
+
+#### `version` / `shapeCount` / `getShape(id)` / `dispose()` / `meta`
+
+#### `SlugShapeSet.fromBaked(buffer: ArrayBuffer): SlugShapeSet`
+
+Rehydrate a set baked by `packShapeSet` — no SVG parsing, no band building;
+renders pixel-identically to runtime registration and stays growable (ids
+continue after the baked range). `meta` carries the baker's free-form JSON.
+
+---
+
+## SlugShapeBatch
+
+`SlugBatch` over a `SlugShapeSet`: identical per-instance layout (transform,
+clip, color), one draw call for any number of shape instances. Nothing is
+forked — the writer just points at shape handles.
+
+```ts
+new SlugShapeBatch(options?: SlugShapeBatchOptions)
+// { shapes?, capacity?, clip?, material? }  — material.evenOdd = batch-level fill rule
+```
+
+#### `shapes: SlugShapeSet | null` — the bound set (binding via `font` throws)
+
+#### `writeShape(index, handle | id, opts?): void`
+
+`opts`: `{ x?, y?, scale? = 1, matrix?, clip?, color?, opacity? }`. `scale` is the
+shape analogue of `fontSize` — a `slug/svg` shape occupies a y-up unit box, so
+`scale: 64` renders it 64 world units. Unknown ids write a hidden degenerate so
+allocator slots stay dense.
+
+#### `update(camera): void`
+
+Per-frame MVP push + staleness check: re-binds the material when the set has
+repacked since the last bind. Fill rule is batch-level v1
+(`material: { evenOdd: true }`); per-shape fill rule is a documented v2 item.
+
+---
+
+## SVG loading (`slug/svg`)
+
+Uses three's `SVGLoader.parse` **as a parser only** — no tessellation. Cubics go
+through `cubicToQuadraticsAdaptive` (the font parser's De Casteljau + best-fit
+core wrapped in adaptive recursion; split until the analytic deviation bound
+`(√3/36)·|third difference|` drops under the tolerance — default 0.25% of the
+viewBox diagonal, depth-capped). Arcs/ellipses go through smooth cubic-Hermite
+segmentation, lines through the shared bowed-degenerate converter.
+
+#### `parseSVG(svgText, options?): ParsedSVG`
+
+`{ shapes: QuadContour[][], fills: ParsedSVGFill[], viewBox }` — parallel arrays,
+one entry per painted path. Shapes are normalized to a y-up unit box (viewBox
+longer side = 1, aspect preserved). `fills[i]` carries `{ color, rule }`;
+`fill="none"` paths still emit (matching upstream uikit — stroke-to-fill icon
+pipelines inherit `fill="none"` from the svg root) with a white default color so
+consumer tints work. Requires a DOM (`DOMParser`).
+
+#### `registerSVG(set, parsed): RegisteredSVG` — register every painted path; returns `{ set, handles, fills, viewBox }`
+
+#### `loadSVGShapes(source, set?, options?): Promise<RegisteredSVG>`
+
+`source` = SVG markup (detected by `<svg`/`<?xml` prefix) or a URL to fetch. Pass
+one `set` across many calls to accumulate an icon atlas.
+
+---
+
+## Layout engine (`layout/*`) and queries (`query/*`)
+
+Standalone text layout over `SlugFont` metrics — no dependency on the render classes.
+Ported from `@pmndrs/uikit`'s text layout onto Slug's em-space, baseline-relative
+font contract. All functions consume the structural `SlugLayoutFont` interface
+(`ascender`, `descender`, `getGlyphMetricsForChar`, `getKerning`) — `SlugFont`
+satisfies it; tests can stub it.
+
+```ts
+interface SlugGlyphLayoutProperties {
+  text: string
+  font: SlugLayoutFont
+  fontSize?: number // default 16
+  letterSpacing?: number // default 0
+  lineHeight?: number | `${number}%` // default (ascender - descender) * fontSize
+  wordBreak?: 'keep-all' | 'break-all' | 'break-word' // default 'break-word'
+  whiteSpace?: 'normal' | 'collapse' | 'pre' | 'pre-line' // default 'normal'
+  tabSize?: number // default 8
+}
+
+measureGlyphLayout(props, availableWidth?): { width, height, lineCount }
+buildGlyphLayout(props, availableWidth?, availableHeight?): GlyphLayout
+buildPositionedGlyphLayout(props, {
+  availableWidth?, availableHeight?, // default: intrinsic size
+  textAlign?,     // 'left' | 'center' | 'right' | 'justify', default 'left'
+  verticalAlign?, // 'top' | 'center' | 'middle' | 'bottom', default 'top'
+}): PositionedGlyphLayout
+
+getCharIndex(layout, x, y, 'between' | 'on'): number
+getCaretTransformation(layout, charIndex): CaretTransformation | undefined
+getSelectionTransformations(layout, [start, end]): { caret, selections }
+```
+
+- **Whitespace is normalized before wrapping** (`normalizeWhitespace`); all
+  `charIndex` values refer to the normalized text carried on the layout as
+  `layout.text`.
+- **Whitespace entries are preserved** in positioned lines — caret placement after
+  a space works, unlike `shapeText` output which drops outline-less glyphs.
+- **Coordinates:** positioned entries and caret/selection outputs are y-up with the
+  origin at the center of the `availableWidth × availableHeight` box. Glyph entries
+  carry the ink box (`x`, `y`, `width`) plus `penX`; lines carry `y` (line-box top)
+  and `baselineY` (consecutive baselines are exactly `lineHeight` apart).
+  `getCharIndex` alone takes pointer input measured from the box's top-left
+  (x rightward from the left edge, y downward as negative values) — uikit's pointer
+  convention, kept so its selection/input consumers port mechanically.
+- **Baseline math lives in one place** (`layout/baseline.ts`):
+  `getEmBoxTopOffset`, `getLineBaselineOffset`, `getGlyphTopOffset`. With
+  `lineHeight === fontSize` the first baseline sits exactly
+  `ascender * fontSize` (= `fontBoundingBoxAscent`) below the line-box top.
+- **Wrappers** (`WordWrapper`, `BreakallWrapper`, `NowrapWrapper`, `glyphWrappers`)
+  measure with advances + `letterSpacing`; kerning is applied at positioning time
+  (upstream parity).
+
+Non-goals (unchanged package-wide): GSUB/ligatures, bidi, complex scripts,
+astral-plane clusters, UAX-14.
+
 ## CLI: `slug-bake`
 
 Pre-process fonts offline. Eliminates opentype.js at runtime and lets you subset glyphs.
@@ -327,6 +513,32 @@ npx slug-bake Inter-Regular.ttf \
 ```
 
 `--stroke-widths` × `--stroke-joins` × `--stroke-caps` is bakedas a cartesian product; the runtime `SlugFont.getStrokeGlyph(...)` matches against the pre-baked variants. The runtime swap path (texture-pool + async `SlugBaker`) and the consumer wiring on `SlugText.outline` arrive in Phase 5 ([#37](https://github.com/thejustinwalsh/three-flatland/issues/37)).
+
+## Baked shape sets: `packShapeSet` / `FL_slug_shapes`
+
+`packShapeSet(set, meta?)` (Node-only, `@three-flatland/slug/bake`) serializes a
+`SlugShapeSet` into a GLB carrying the `FL_slug_shapes` root extension —
+consumed by `uikit-bake icons` and rehydrated at runtime with
+`SlugShapeSet.fromBaked(buffer)`.
+
+The format is **geometry-complete** (schema v1, `format.ts` is the source of
+truth): SoA accessor columns over shapes sorted ascending by id —
+
+| Column                             | Type           | Contents                                                                                |
+| ---------------------------------- | -------------- | --------------------------------------------------------------------------------------- |
+| `shapeId`                          | FLOAT SCALAR   | ascending handle ids                                                                    |
+| `bounds`                           | FLOAT VEC4     | xMin yMin xMax yMax (normalized shape space)                                            |
+| `curveOffsets` / `curveData`       | FLOAT SCALAR   | CSR prefix-sum (in curves) + flat `p0x p0y p1x p1y p2x p2y` per curve                   |
+| `contourOffsets` / `contourStarts` | FLOAT SCALAR   | CSR prefix-sum + per-shape contour start indices                                        |
+| `bandOffsets` / `bandData`         | FLOAT / USHORT | CSR word offsets + `FL_slug_font`-layout band words (`[numH, numV, counts…, indices…]`) |
+
+Because curves, contour starts, and prebuilt bands round-trip losslessly (and
+`registerShape` quantizes to float32 at registration), a loaded set repacks to
+**bit-identical GPU textures** — pixel-identical rendering — with no SVG parsing
+and no band building at load; only the linear-copy texture pack runs. The loaded
+set stays growable. Free-form `meta` JSON rides in the extension and surfaces as
+`SlugShapeSet.meta`. Register `FlSlugShapesExtension` on a gltf-transform
+`NodeIO`/`WebIO` to round-trip the file with external tooling.
 
 ---
 

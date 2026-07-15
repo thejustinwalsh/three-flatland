@@ -23,13 +23,27 @@
   "cacheMaxSize": "2GB",
   "tasks": {
     "build": {
-      "dependsOn": ["^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build", "@three-flatland/skia#build"],
+      "dependsOn": [
+        "^build",
+        "three-flatland#build",
+        "@three-flatland/nodes#build",
+        "@three-flatland/presets#build",
+        "@three-flatland/skia#build"
+      ],
       "outputs": ["dist/**"]
     },
     "@three-flatland/skia#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"],
-      "inputs": ["src/**", "wit/**", "build.zig", "build.zig.zon", "tsup.config.ts", "tsconfig.json", "package.json"]
+      "inputs": [
+        "src/**",
+        "wit/**",
+        "build.zig",
+        "build.zig.zon",
+        "tsup.config.ts",
+        "tsconfig.json",
+        "package.json"
+      ]
     },
     "three-flatland#build": {
       "dependsOn": ["^build"],
@@ -40,6 +54,26 @@
       "outputs": ["dist/**"]
     },
     "@three-flatland/presets#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/slug#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/uikit#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/uikit-lucide#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/uikit-default#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/uikit-horizon#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
@@ -58,11 +92,7 @@
     "@three-flatland/devtools#build:bundle": {
       "dependsOn": ["^build"],
       "outputs": ["bundle/**"],
-      "inputs": [
-        "src/dashboard/**",
-        "vite.config.bundle.ts",
-        "package.json"
-      ]
+      "inputs": ["src/dashboard/**", "vite.config.bundle.ts", "package.json"]
     },
     "dev": {
       "cache": false,
@@ -73,22 +103,16 @@
       "cache": false
     },
     "//#lint": {
-      "inputs": [
-        "packages/*/src/**",
-        "minis/*/src/**",
-        "eslint.config.*",
-        "package.json"
-      ],
+      "inputs": ["packages/*/src/**", "minis/*/src/**", "eslint.config.*", "package.json"],
       "outputs": []
     },
     "//#test": {
-      "dependsOn": ["three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build"],
-      "inputs": [
-        "packages/*/src/**",
-        "packages/*/test/**",
-        "vitest.config.*",
-        "package.json"
+      "dependsOn": [
+        "three-flatland#build",
+        "@three-flatland/nodes#build",
+        "@three-flatland/presets#build"
       ],
+      "inputs": ["packages/*/src/**", "packages/*/test/**", "vitest.config.*", "package.json"],
       "outputs": []
     },
     "test": {
@@ -96,6 +120,14 @@
       "outputs": []
     },
     "typecheck": {
+      "outputs": []
+    },
+    "@three-flatland/uikit-default#typecheck": {
+      "dependsOn": ["@three-flatland/uikit-lucide#build"],
+      "outputs": []
+    },
+    "@three-flatland/uikit-horizon#typecheck": {
+      "dependsOn": ["@three-flatland/uikit-lucide#build"],
       "outputs": []
     },
     "clean": {
@@ -116,6 +148,7 @@
         "example-three-tilemap#build",
         "example-three-tsl-nodes#build",
         "example-three-slug-text#build",
+        "example-three-uikit#build",
         "example-react-animation#build",
         "example-react-basic-sprite#build",
         "example-react-batch-demo#build",
@@ -124,6 +157,7 @@
         "example-react-tilemap#build",
         "example-react-tsl-nodes#build",
         "example-react-slug-text#build",
+        "example-react-uikit#build",
         "example-three-skia#build",
         "example-react-skia#build",
         "example-three-lighting#build",
@@ -133,12 +167,7 @@
         "@three-flatland/devtools#build:bundle"
       ],
       "outputs": ["dist/**"],
-      "inputs": [
-        "src/**",
-        "public/**",
-        "astro.config.mjs",
-        "tsconfig.json"
-      ]
+      "inputs": ["src/**", "public/**", "astro.config.mjs", "tsconfig.json"]
     },
     "docs#dev": {
       "cache": false,

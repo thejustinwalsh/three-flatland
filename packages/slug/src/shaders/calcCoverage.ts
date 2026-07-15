@@ -28,13 +28,17 @@ export function calcCoverage(
   const weighted = abs(xcov.mul(xwgt).add(ycov.mul(ywgt))).div(max(xwgt.add(ywgt), epsilon))
 
   const fallback = min(abs(xcov), abs(ycov))
-  const rawCoverage = max(weighted, fallback)
+  // .toVar(): rawCoverage feeds both branches of the select below (select evaluates both), so
+  // without it the weighted+fallback chain computes twice.
+  const rawCoverage = max(weighted, fallback).toVar()
 
   const nonzeroCov = saturate(rawCoverage)
   const evenOddCov = float(1.0).sub(abs(float(1.0).sub(rawCoverage.mul(0.5).fract().mul(2.0))))
 
-  let filledCov = select(evenOdd, evenOddCov, nonzeroCov)
-  filledCov = select(weightBoost, sqrt(filledCov), filledCov)
+  // .toVar() + .assign(): both selects evaluate both operands and filledCov is reused across the
+  // stem-darken math — a plain `let` re-inlines the whole chain at each reference.
+  const filledCov = select(evenOdd, evenOddCov, nonzeroCov).toVar()
+  filledCov.assign(select(weightBoost, sqrt(filledCov), filledCov))
 
   // Stem darkening: boost semi-transparent pixels at small ppem.
   // Ramps from full strength at ppem=0 down to zero at ppem>=24.
@@ -43,7 +47,7 @@ export function calcCoverage(
   if (stemDarken && ppem) {
     const darkenPpem = float(24.0)
     const darken = stemDarken.mul(max(float(0.0), float(1.0).sub(ppem.div(darkenPpem))))
-    filledCov = min(filledCov.add(darken.mul(filledCov).mul(float(1.0).sub(filledCov))), float(1.0))
+    filledCov.assign(min(filledCov.add(darken.mul(filledCov).mul(float(1.0).sub(filledCov))), float(1.0)))
   }
 
   return filledCov

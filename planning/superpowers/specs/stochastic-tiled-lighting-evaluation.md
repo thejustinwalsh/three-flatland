@@ -1,7 +1,7 @@
 # Stochastic Tile-Based Lighting — Evaluation vs. PR #17 Forward+
 
 **Date:** 2026-04-13
-**Scope:** Research-only. Evaluates SIGGRAPH 2025 *Stochastic Tile-Based Lighting in HypeHype* (J. Lempiäinen) against the current 2D lighting system in PR #17 (`feat-lighting-postprocess-flatland`). Recommends targeted adoptions for issues #12, #14, #16.
+**Scope:** Research-only. Evaluates SIGGRAPH 2025 _Stochastic Tile-Based Lighting in HypeHype_ (J. Lempiäinen) against the current 2D lighting system in PR #17 (`feat-lighting-postprocess-flatland`). Recommends targeted adoptions for issues #12, #14, #16.
 
 ## 1. Source material
 
@@ -12,12 +12,12 @@
 
 Two-stage screen-space tile pipeline. No 3D clusters required.
 
-| Stage | Tile size | Output | Cost model |
-|---|---|---|---|
-| Big-tile SRS | 128×128 px | 16 unique lights/reservoir via A-Chao 1-sample-stream × 16 | Scene-wide constant (~0.02 ms for 500 lights) |
-| Small-tile resample | Interleaved 32×32 footprint (covers 256 px) | 1–4 lights/pixel | Fixed-cost per pixel |
-| Decoupled shadow | 2×2 quad resolution | 8-bit shadow atlas, dynamic pow-2 tiles | 0.5–2 MB @ 1080p |
-| Lighting | Per-pixel | BRDF accumulation over 1–4 lights | Fixed cost |
+| Stage               | Tile size                                   | Output                                                     | Cost model                                    |
+| ------------------- | ------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------- |
+| Big-tile SRS        | 128×128 px                                  | 16 unique lights/reservoir via A-Chao 1-sample-stream × 16 | Scene-wide constant (~0.02 ms for 500 lights) |
+| Small-tile resample | Interleaved 32×32 footprint (covers 256 px) | 1–4 lights/pixel                                           | Fixed-cost per pixel                          |
+| Decoupled shadow    | 2×2 quad resolution                         | 8-bit shadow atlas, dynamic pow-2 tiles                    | 0.5–2 MB @ 1080p                              |
+| Lighting            | Per-pixel                                   | BRDF accumulation over 1–4 lights                          | Fixed cost                                    |
 
 - **Big-tile PDF**: omni illuminance at nearest point on min/max-depth segment of tile — non-zero everywhere (unbiased).
 - **Small-tile PDF**: shadowed illuminance × cheap Lambert+Blinn-Phong averaged over 4-of-64 quad points. Monochromatic (luminous-efficiency) to cut VGPR.
@@ -45,6 +45,7 @@ Known gaps per planning docs: proxy light clustering, SDF occlusion test, cascad
 ## 4. Applicability to 2D
 
 **Algorithm is 2D-compatible.** STB is screen-space tile, not cluster-based. In 2D:
+
 - Big-tile PDF collapses: segment → single depth plane, distance metric becomes light-vs-tile-AABB.
 - Small-tile BRDF term works with flat or sprite-derived normals.
 - Shadow atlas idea maps cleanly onto the existing `SDFGenerator` output.
@@ -53,14 +54,15 @@ Known gaps per planning docs: proxy light clustering, SDF occlusion test, cascad
 
 ## 5. Recommended adoptions (ranked)
 
-### 5.1 Reservoir-based tile-overflow ordering  [adopt]
+### 5.1 Reservoir-based tile-overflow ordering [adopt]
+
 Replace "silently skip at light #17" with a 16-slot importance reservoir keyed on `illuminance_at_tile_center × enabled`. Eliminates tile-edge flicker when the cap is hit — which is the specific artifact STB exists to fix, without needing stochastic shading.
 
 - Scope: ~20 lines in `ForwardPlusLighting.ts:98–114`
 - Risk: low — pure CPU-side sort, deterministic
 - Fits issue #12
 
-### 5.2 Quad-resolution decoupled shadow pass  [**required — Phase 2 of the SDF shadow rollout**]
+### 5.2 Quad-resolution decoupled shadow pass [**required — Phase 2 of the SDF shadow rollout**]
 
 Evaluate SDF sphere traces once per 2×2 quad into an 8-bit atlas, then sample in the light loop. STB's core bandwidth-saving idea, orthogonal to stochastic sampling, directly applicable to 2D SDF shadows.
 
@@ -69,15 +71,18 @@ Evaluate SDF sphere traces once per 2×2 quad into an 8-bit atlas, then sample i
 - Fits issues #11 and #14
 - **Committed spec**: `planning/experiments/SDF-Shadow-Atlas.md` — the atlas is the explicit next phase after baseline inline-trace shadow ships (Phase 1 in `SDF-Shadow-Plumbing.md`). It is **not** an optional optimization; the plan is Phase 1 → validate → Phase 2, not "Phase 1 and maybe Phase 2 if we feel like it."
 
-### 5.3 Per-tile illuminance-based early cull  [adopt]
-Use a cheap 2D light-vs-tile-AABB illuminance score to drop lights below a threshold *before* tile list insertion. The planning docs describe SDF-aware culling; this is a simpler prerequisite that works without SDF.
+### 5.3 Per-tile illuminance-based early cull [adopt]
+
+Use a cheap 2D light-vs-tile-AABB illuminance score to drop lights below a threshold _before_ tile list insertion. The planning docs describe SDF-aware culling; this is a simpler prerequisite that works without SDF.
 
 - Fits issue #12 planning doc (Hybrid-SDF-Shadow-System.md Phase 3)
 
-### 5.4 Hierarchical tile coarsening (128/32 two-stage)  [defer]
+### 5.4 Hierarchical tile coarsening (128/32 two-stage) [defer]
+
 Only worth it if raising the global cap beyond ~1k lights and once TAA lands.
 
-### 5.5 Full stochastic 1–4-lights-per-pixel sampling  [defer]
+### 5.5 Full stochastic 1–4-lights-per-pixel sampling [defer]
+
 Requires TAA. Flickers visibly without it. Own team admits splotch problem is open.
 
 ## 6. What not to adopt

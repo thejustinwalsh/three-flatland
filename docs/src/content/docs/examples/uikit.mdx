@@ -1,0 +1,141 @@
+---
+title: uikit
+description: A fullscreen game front-end built from reactive uikit components over a lit three-flatland scene.
+template: splash
+sort: 12
+---
+
+import { Tabs, TabItem } from 'starlight-theme/components'
+import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
+import { loadExample } from '../../../utils/loadExample'
+
+export const threeFiles = loadExample('three', 'uikit')
+export const reactFiles = loadExample('react', 'uikit')
+
+<ExampleDetailLayout slug="uikit" threeFiles={threeFiles} reactFiles={reactFiles}>
+
+## What This Example Shows
+
+This example builds a fullscreen game front-end — the menu you'd meet before a run starts — from our fork of [`uikit`](https://github.com/pmndrs/uikit) and its shadcn-flavoured component kit, `@three-flatland/uikit-default`. The UI floats over a live three-flatland scene (a `TileMap2D` dungeon lit by two flickering `Light2D` torches), because the whole point is interop: uikit's flexbox layout and reactive components draw through Flatland's batched, TSL-native pipeline instead of MSDF atlases and per-component draw calls.
+
+| Feature               | Demonstrated                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Component kit         | `Tabs`, `Button`, `Slider`, `Switch`, `Checkbox`, `RadioGroup`, `Progress`, `Input` from `@three-flatland/uikit-default` |
+| Live text input       | A real caret, click-to-place, drag-to-select — backed by a hidden DOM input, rendered on the GPU                         |
+| Scrolling + clipping  | A save-slot list with `overflow: 'scroll'` — glyphs and icons clip per-instance at the container edge                    |
+| Hover / active states | Buttons and tab triggers restyle on hover and press, driven by uikit's reactive property system                          |
+| Realtime readouts     | FPS, a ticking credit counter, and an animated stamina bar update every frame from the render loop                       |
+| Icon batching         | lucide icons throughout, batched through Slug's instanced shape pipeline — icons share draw calls, not multiply them     |
+| Interop               | The menu shares a scene, camera, and frame budget with a lit `TileMap2D` + `Light2D` dungeon                             |
+
+## Why It Matters
+
+Most game UI either lives in a DOM overlay (fighting the canvas for z-order and losing the scene's lighting and post-processing) or comes from a bespoke in-engine widget toolkit you have to learn from scratch. uikit gives you the layout model and component vocabulary you already know from the web — flexbox, tabs, sliders, inputs — and our fork retargets every pixel it draws through Flatland's existing batching machinery. A settings panel's rounded background and a `Sprite2D` are the same material family; a save-slot label and a damage number are the same glyph pipeline. Text input is the acid test: the caret, the selection rects, the focus handling all work, on the GPU, batched.
+
+## Pointer Events
+
+Interaction is wired with `@pmndrs/pointer-events` — the same library upstream uikit uses. Forward the canvas's HTML events into the scene that contains the camera-parented UI, and hover, click, drag, and text selection all work:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    import { forwardHtmlEvents } from '@pmndrs/pointer-events'
+
+    const { update: updateEvents } = forwardHtmlEvents(
+      renderer.domElement,
+      flatland.camera,
+      flatland.scene
+    )
+
+    function animate(delta: number) {
+      updateEvents()
+      menu.update(delta)
+      flatland.render(renderer)
+    }
+    ```
+
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    import { forwardHtmlEvents } from '@pmndrs/pointer-events'
+
+    useEffect(() => {
+      const { destroy, update } = forwardHtmlEvents(gl.domElement, camera, scene)
+      updateRef.current = update
+      return destroy
+    }, [gl, camera, scene])
+
+    useFrame(() => updateRef.current?.())
+    ```
+
+  </TabItem>
+</Tabs>
+
+## Composing the Menu
+
+The kit components compose exactly like their shadcn counterparts — `Tabs` hosts `TabsList` / `TabsTrigger` / `TabsContent`, and everything lays out with flexbox properties:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    import { Tabs, TabsList, TabsTrigger, TabsContent, Input, Slider } from '@three-flatland/uikit-default'
+
+    const tabs = new Tabs({ defaultValue: 'play', width: 520 })
+    const list = new TabsList()
+    list.add(new TabsTrigger({ value: 'play' }), new TabsTrigger({ value: 'settings' }))
+    tabs.add(list)
+
+    const settings = new TabsContent({ value: 'settings', flexDirection: 'column', gap: 12 })
+    settings.add(
+      new Input({ placeholder: 'Player name' }),
+      new Slider({ defaultValue: 80, onValueChange: (v) => setMasterVolume(v) })
+    )
+    tabs.add(settings)
+    ```
+
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    import { Tabs, TabsList, TabsTrigger, TabsContent, Input, Slider } from '@three-flatland/uikit-default/react'
+    import { Text } from '@three-flatland/uikit/react'
+
+    function Settings() {
+      const [volume, setVolume] = useState(80)
+      return (
+        <Tabs defaultValue="play" width={520}>
+          <TabsList>
+            <TabsTrigger value="play"><Text>Play</Text></TabsTrigger>
+            <TabsTrigger value="settings"><Text>Settings</Text></TabsTrigger>
+          </TabsList>
+          <TabsContent value="settings" flexDirection="column" gap={12}>
+            <Input placeholder="Player name" />
+            <Slider value={volume} onValueChange={setVolume} />
+          </TabsContent>
+        </Tabs>
+      )
+    }
+    ```
+
+  </TabItem>
+</Tabs>
+
+## Scrolling Clips Per Instance
+
+A `Container` with `overflow: 'scroll'` clips its children on the GPU — each glyph and icon instance carries its clip rect, so a save-slot list scrolls without breaking batching:
+
+```tsx
+<Container height={180} overflow="scroll" flexDirection="column" gap={8}>
+  {saves.map((save) => (
+    <SaveSlotRow key={save.id} {...save} />
+  ))}
+  {/* rows clip at the container edge — no spill, no extra draw calls */}
+</Container>
+```
+
+## Further Reading
+
+- [Slug Text Guide](../../guides/slug-text/) — the Bézier text pipeline every `Text` and `Input` renders through.
+- [Slug Text Example](../slug-text/) — the same rendering approach without uikit's layout layer.
+- [TSL Nodes](../tsl-nodes/) — the shader graphs backing panel and text materials.
+
+</ExampleDetailLayout>

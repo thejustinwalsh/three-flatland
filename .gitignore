@@ -59,6 +59,9 @@ temp/
 # Agents
 settings.local.json
 
+# Impeccable copy-edit tool caches
+.impeccable/
+
 # Vendor Library for examples to pull from
 vendor/
 

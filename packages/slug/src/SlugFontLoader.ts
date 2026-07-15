@@ -4,16 +4,16 @@ import {
   HalfFloatType,
   Loader,
   NearestFilter,
+  RedFormat,
   RGBAFormat,
-  RGFormat,
 } from 'three'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
-import { readGlb } from './glb'
-import { SlugFont } from './SlugFont'
-import { bakedURLs, unpackBaked } from './baked'
-import { shapeTextBaked } from './pipeline/textShaperBaked'
-import { wrapLinesBaked } from './pipeline/wrapLinesBaked'
-import { measureTextBaked } from './pipeline/textMeasureBaked'
+import { readGlb } from './glb.js'
+import { SlugFont } from './SlugFont.js'
+import { bakedURLs, convertV1BandTexture, unpackBaked } from './baked.js'
+import { shapeTextBaked } from './pipeline/textShaperBaked.js'
+import { wrapLinesBaked } from './pipeline/wrapLinesBaked.js'
+import { measureTextBaked } from './pipeline/textMeasureBaked.js'
 
 /**
  * The single entry point for loading SlugFont data.
@@ -146,6 +146,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
       if (!ext) return null
 
       const bakedData = unpackBaked(asset)
+      const version = ext['version'] as number
       const columns = ext['columns'] as Record<string, { accessor: number }>
       const metrics = ext['metrics'] as {
         unitsPerEm: number
@@ -178,13 +179,20 @@ export class SlugFontLoader extends Loader<SlugFont> {
       curveTexture.minFilter = NearestFilter
       curveTexture.needsUpdate = true
 
-      // ── Band texture: RG32F → FloatType ──
-      const bandData = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
+      // ── Band texture: R32F → FloatType (single-channel packed header/ref) ──
+      // A v1 bake's accessor is still RG32Float (2 raw floats/texel, not yet
+      // packed) — convert it to the v2 packed layout so the shader, which
+      // only decodes R32F, reads it unchanged.
+      const bandDataRaw = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
+      const bandData =
+        version === 1
+          ? convertV1BandTexture(bandDataRaw, bandTexMeta.width, bakedData.glyphs)
+          : bandDataRaw
       const bandTexture = new DataTexture(
         bandData,
         bandTexMeta.width,
         bandTexMeta.height,
-        RGFormat,
+        RedFormat,
         FloatType
       )
       bandTexture.magFilter = NearestFilter
@@ -239,24 +247,38 @@ export class SlugFontLoader extends Loader<SlugFont> {
       response,
       opentype,
       { parseFont },
-      { packTextures },
+      { packTextures, singlePageOrThrow },
       { shapeText },
       { wrapLines },
       { measureText },
     ] = await Promise.all([
       fetch(url),
       import('opentype.js'),
-      import('./pipeline/fontParser'),
-      import('./pipeline/texturePacker'),
-      import('./pipeline/textShaper'),
-      import('./pipeline/wrapLines'),
-      import('./pipeline/textMeasure'),
+      import('./pipeline/fontParser.js'),
+      import('./pipeline/texturePacker.js'),
+      import('./pipeline/textShaper.js'),
+      import('./pipeline/wrapLines.js'),
+      import('./pipeline/textMeasure.js'),
     ])
+
+    // `fetch` only rejects on a network failure, so a 404 arrives here as a
+    // resolved response with an empty body. Handing that to opentype.js reads
+    // offset 0 of a zero-length DataView and throws `RangeError: Offset is
+    // outside the bounds of the DataView` from deep inside the parser — which
+    // says nothing about the URL that was wrong.
+    if (!response.ok) {
+      throw new Error(
+        `[slug] Failed to fetch font "${url}": HTTP ${response.status} ${response.statusText}`
+      )
+    }
 
     const buffer = await response.arrayBuffer()
     const parsed = parseFont(buffer)
     const { glyphs } = parsed
-    const textures = packTextures(glyphs)
+    // Multi-page rendering (SlugFont binding >1 curve/band pair) is a later
+    // milestone; until then a font must fit one page. singlePageOrThrow makes
+    // an over-cap font fail loudly instead of silently dropping glyphs.
+    const textures = singlePageOrThrow(packTextures(glyphs), `SlugFontLoader "${url}"`)
     const otFont = opentype.parse(buffer)
 
     return SlugFont._createRuntime(

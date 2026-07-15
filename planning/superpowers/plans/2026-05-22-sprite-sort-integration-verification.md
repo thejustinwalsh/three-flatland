@@ -2,7 +2,7 @@
 
 **Authored:** 2026-05-22, before integrating 123 commits of `main` into the lighting PR.
 
-**Companion to:** the rebase guide at `fix-sprite-sort/.../2026-05-19-rebase-lighting-onto-sprite-sort.md` (covers ~5 of 28 conflict files; this plan covers verifying the *whole* integrated state).
+**Companion to:** the rebase guide at `fix-sprite-sort/.../2026-05-19-rebase-lighting-onto-sprite-sort.md` (covers ~5 of 28 conflict files; this plan covers verifying the _whole_ integrated state).
 
 ## Backup / rollback (already in place)
 
@@ -14,9 +14,10 @@
 
 ## What "correct final state" means
 
-Goal is correctness of the *merged end state*, not a faithful commit replay. Two intents must both survive:
+Goal is correctness of the _merged end state_, not a faithful commit replay. Two intents must both survive:
 
 ### From `main` (must NOT be lost in resolution)
+
 - [ ] Sort-correctness regression suite passes (`test(ecs): sort-correctness regression suite`, `test(ecs): guard batch sort/swap buffer consistency`) — the reason this landed first.
 - [ ] `bufferSyncSystem.ts` stays **deleted**; its responsibilities live in the rewritten batch systems.
 - [ ] Anchor-in-matrix: `updateAnchor()` is gone; `(0.5 - this._anchor.x)` / `.y` arithmetic present in `Sprite2D.updateMatrix`.
@@ -25,6 +26,7 @@ Goal is correctness of the *merged end state*, not a faithful commit replay. Two
 - [ ] `codemod` skill present; `skills/package.json` validate loop fix present.
 
 ### From this branch (must NOT be lost)
+
 - [ ] Lighting bisect intact: `presets/lighting` exports only `DefaultLightEffect` + `NormalMapProvider` (Radiance/Direct/Simple remain OUT — they live on PR #72).
 - [ ] Normals: unified `forceRuntime` flag, lazy-loaded baker, `NormalMapLoader` descriptor route, descriptor-hash cache key, `BakedAssetLoaderOptions` structural option type.
 - [ ] Greptile fixes: `queueMicrotask` torch toggle in `examples/react/lighting/App.tsx`; `flatland.bake` in `bake/cli.ts` USAGE; `if (!header.ok)` in `bake/sidecar.ts`.
@@ -32,6 +34,7 @@ Goal is correctness of the *merged end state*, not a faithful commit replay. Two
 - [ ] devtools enablement, graph/size scripts, Astro 6 docs config.
 
 ### Semantic merges (two rewrites of one file — combine, don't pick a side)
+
 - [ ] `transformSyncSystem` / `SpriteBatch`: my interleaved-buffer + `pz` depth packing AND main's "re-sort instance slots by zIndex each frame." Sort tests pass AND lighting renders.
 - [ ] `EffectMaterial` / `Sprite2DMaterial`: enable-bit gating + main's material changes.
 - [ ] `Sprite2D`: anchor-in-matrix (main) + lighting additions (mine) both present.
@@ -53,6 +56,7 @@ pnpm --filter=docs build                        # docs pages build clean
 ```bash
 pnpm dev
 ```
+
 - [ ] **lighting** — normals load/bake, Forward+ tiles, shadows; no console errors.
 - [ ] **batch-demo** — tiles render, shadows correct, tree scale right, **sprite sort order correct** (the original regression).
 - [ ] **knightmark / animation** — runs ~12 fps, no frame-float / stuck frame (anchor-in-matrix sanity).

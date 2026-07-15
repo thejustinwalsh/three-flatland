@@ -19,7 +19,7 @@ function makeTinyInput(): BakeInput {
   for (let i = 0; i < curveData.length; i++) curveData[i] = i + 1
 
   const bandTextureHeight = 1
-  const bandData = new Float32Array(textureWidth * bandTextureHeight * 2)
+  const bandData = new Float32Array(textureWidth * bandTextureHeight * 1) // R32F, 1 ch
   for (let i = 0; i < bandData.length; i++) bandData[i] = (i + 1) * 0.5
 
   const glyph: SlugGlyphData = {
@@ -27,6 +27,7 @@ function makeTinyInput(): BakeInput {
     curves: [],
     contourStarts: [],
     bounds: { xMin: 0, yMin: 0, xMax: 1, yMax: 1 },
+    page: 0,
     bandLocation: { x: 0, y: 0 },
     curveLocation: { x: 0, y: 0 },
     advanceWidth: 1,
@@ -78,13 +79,11 @@ describe('FlSlugFontExtension — registerable glTF-Transform extension', () => 
 
     // The extension property must be attached to the root with all accessor
     // refs resolved back into the property graph (not dropped).
-    const prop = doc
-      .getRoot()
-      .getExtension<{
-        listAccessorSemantics(): string[]
-        getAccessorRef(semantic: string): unknown
-        getMetadata(): Record<string, unknown>
-      }>('FL_slug_font')
+    const prop = doc.getRoot().getExtension<{
+      listAccessorSemantics(): string[]
+      getAccessorRef(semantic: string): unknown
+      getMetadata(): Record<string, unknown>
+    }>('FL_slug_font')
     expect(prop, 'FL_slug_font property attached to root').toBeTruthy()
 
     const semantics = prop!.listAccessorSemantics()
@@ -107,7 +106,7 @@ describe('FlSlugFontExtension — registerable glTF-Transform extension', () => 
     }
 
     // Metadata survives the round-trip too.
-    expect(prop!.getMetadata()['version']).toBe(1)
+    expect(prop!.getMetadata()['version']).toBe(2)
 
     // Re-write to confirm the registered extension round-trips without loss.
     const rewritten = await io.writeBinary(doc)

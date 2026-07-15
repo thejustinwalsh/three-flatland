@@ -1,10 +1,12 @@
-import { InstancedMesh, InstancedBufferAttribute, Color } from 'three'
+import { InstancedMesh, InstancedBufferAttribute, Color, Vector2 } from 'three'
 import type { Camera } from 'three'
-import type { SlugFont } from './SlugFont'
-import { SlugMaterial } from './SlugMaterial'
-import { SlugStrokeMaterial } from './SlugStrokeMaterial'
-import { SlugGeometry } from './SlugGeometry'
-import type { SlugOutlineOptions, SlugTextOptions, StyleSpan } from './types'
+import type { SlugFont } from './SlugFont.js'
+import { SlugMaterial } from './SlugMaterial.js'
+import { SlugStrokeMaterial } from './SlugStrokeMaterial.js'
+import { SlugGeometry } from './SlugGeometry.js'
+import type { SlugOutlineOptions, SlugTextOptions, StyleSpan } from './types.js'
+
+const _drawingBufferSize = new Vector2()
 
 /**
  * High-level text rendering object using the Slug algorithm.
@@ -32,7 +34,7 @@ export class SlugText extends InstancedMesh {
   private _stemDarken = 0
   private _thicken = 0
   private _supersample = false
-  private _pixelSnap = true
+  private _pixelSnap = false
   private _styles: readonly StyleSpan[] = []
   private _dirty = true
 
@@ -162,6 +164,11 @@ export class SlugText extends InstancedMesh {
     // mesh (this) renders on top courtesy of both materials having
     // depthWrite=false + transparent alpha blending.
     this._outlineMesh.renderOrder = -1
+    // The stroke child renders as its own object (and draws BEFORE the
+    // fill via renderOrder) — give it the same drawing-buffer viewport
+    // hook so its dilation viewport is device-pixel-correct on the very
+    // draw it participates in, not one frame late.
+    this._outlineMesh.onBeforeRender = this.onBeforeRender
     this.add(this._outlineMesh)
 
     this._syncOutline()
@@ -440,7 +447,28 @@ export class SlugText extends InstancedMesh {
     this._syncOutline()
   }
 
-  /** Update viewport size for dilation calculations. */
+  /**
+   * Feed the dilation viewport from the renderer's DRAWING BUFFER size —
+   * device pixels, `width × height × pixelRatio`. Consumers historically
+   * passed CSS pixels to `setViewportSize`, which over-expands the
+   * vertex-stage AA footprint by the device pixel ratio on retina
+   * displays (text reads soft/bold at DPR 2) and misaligns the pixelSnap
+   * grid. At DPR 1 device px == CSS px, so this is bit-identical there.
+   */
+  override onBeforeRender = (
+    renderer: { getDrawingBufferSize(target: Vector2): Vector2 },
+    _scene: unknown,
+    _camera: Camera
+  ): void => {
+    renderer.getDrawingBufferSize(_drawingBufferSize)
+    this.setViewportSize(_drawingBufferSize.width, _drawingBufferSize.height)
+  }
+
+  /**
+   * Update viewport size for dilation calculations. Render-time viewport
+   * comes from `onBeforeRender` (drawing-buffer device pixels); this
+   * remains as the headless/pre-render seed.
+   */
   setViewportSize(width: number, height: number): void {
     this._viewportWidth = width
     this._viewportHeight = height

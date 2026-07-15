@@ -12,14 +12,22 @@ import {
   bool,
   round,
   dot,
-  select,
   fwidth,
   varyingProperty,
+  If,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { slugRender } from './shaders/slugFragment'
-import { slugDilate } from './shaders/slugDilate'
-import type { SlugFont } from './SlugFont'
+import { slugRender } from './shaders/slugFragment.js'
+import { slugDilate } from './shaders/slugDilate.js'
+import {
+  clipCoverage,
+  clipDistances,
+  clipPlaneLanes,
+  composeInstanceMatrix,
+  foldInstanceRow,
+  instanceMatrixLanes,
+} from './shaders/slugInstance.js'
+import type { SlugCurveSource } from './types.js'
 
 export interface SlugMaterialOptions {
   color?: number | Color
@@ -35,6 +43,21 @@ export interface SlugMaterialOptions {
   supersample?: boolean
   /** Snap glyph positions to pixel grid for crisp small text. Default true. */
   pixelSnap?: boolean
+  /**
+   * Read a per-instance transform from the `glyphMtx0..3` vec4 lanes
+   * (SlugBatch). Folds each instance's matrix into the dilation MVP so the
+   * screen-space Jacobian is exact per instance. Disables `pixelSnap`
+   * (grid snapping is ill-defined across heterogeneous per-instance
+   * transforms). Default false — the SlugText path is untouched.
+   */
+  instanceTransform?: boolean
+  /**
+   * Apply a per-instance 4-plane clip from the `glyphClip0..3` vec4 lanes
+   * (SlugBatch) as an antialiased coverage multiply — never a discard.
+   * The sentinel plane `(0, 0, 0, 1)` disables clipping bit-exactly.
+   * Default false.
+   */
+  instanceClip?: boolean
 }
 
 const _mvp = new Matrix4()
@@ -47,7 +70,7 @@ const _mvp = new Matrix4()
  *   via dual-axis ray casting, producing antialiased coverage.
  */
 export class SlugMaterial extends MeshBasicNodeMaterial {
-  private _font: SlugFont
+  private _font: SlugCurveSource
   private _colorUniform
   private _opacityUniform
   private _viewportUniform
@@ -60,15 +83,20 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
   private _weightBoost: boolean
   private _supersample: boolean
   private _pixelSnap: boolean
+  private _instanceTransform: boolean
+  private _instanceClip: boolean
 
-  constructor(font: SlugFont, options: SlugMaterialOptions = {}) {
+  /** `font` is any curve/band texture source — a `SlugFont` or a `SlugShapeSet`. */
+  constructor(font: SlugCurveSource, options: SlugMaterialOptions = {}) {
     super()
 
     this._font = font
     this._evenOdd = options.evenOdd ?? false
     this._weightBoost = options.weightBoost ?? false
     this._supersample = options.supersample ?? false
-    this._pixelSnap = options.pixelSnap ?? true
+    this._pixelSnap = options.pixelSnap ?? false
+    this._instanceTransform = options.instanceTransform ?? false
+    this._instanceClip = options.instanceClip ?? false
 
     const color =
       options.color instanceof Color ? options.color : new Color(options.color ?? 0xffffff)
@@ -109,6 +137,14 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     const vNumHBands = varyingProperty('float', 'vNumHBands')
     const vNumVBands = varyingProperty('float', 'vNumVBands')
 
+    // Opt-in per-instance groups (SlugBatch). When disabled the node graph
+    // is identical to the non-batched material — zero cost for SlugText.
+    const mtxLanes = this._instanceTransform ? instanceMatrixLanes() : null
+    const clipLanes = this._instanceClip ? clipPlaneLanes() : null
+    // Plane distances are affine in position, so vertex-stage evaluation +
+    // varying interpolation is exact — one vec4 varying carries all 4 planes.
+    const vClipDist = clipLanes ? varyingProperty('vec4', 'vClipDist') : null
+
     // Capture for closures
     const curveTexture = font.curveTexture
     const bandTexture = font.bandTexture
@@ -147,15 +183,22 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
         emCenter.y.add(basePos.y.mul(emHalfH.mul(2.0)))
       )
 
+      // Per-instance Jacobian: fold the instance matrix into the MVP rows
+      // so dilation measures THIS instance's screen-space footprint. With
+      // no instance transform these are the plain mesh-level rows.
+      const dilateRow0: Node<'vec4'> = mtxLanes ? foldInstanceRow(mvpRow0, mtxLanes) : mvpRow0
+      const dilateRow1: Node<'vec4'> = mtxLanes ? foldInstanceRow(mvpRow1, mtxLanes) : mvpRow1
+      const dilateRow3: Node<'vec4'> = mtxLanes ? foldInstanceRow(mvpRow3, mtxLanes) : mvpRow3
+
       // Dynamic dilation — expands quad by half a pixel in screen space
       const dilated = slugDilate(
         objPos,
         normal,
         emCoord,
         invScale,
-        mvpRow0,
-        mvpRow1,
-        mvpRow3,
+        dilateRow0,
+        dilateRow1,
+        dilateRow3,
         viewportUniform
       )
 
@@ -165,7 +208,9 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       // Pixel-grid snapping: snap glyph center to nearest pixel boundary.
       // Only applied to the center vertex offset (basePos = 0,0 doesn't exist,
       // but all 4 corners shift by the same amount since we snap the center).
-      if (this._pixelSnap) {
+      // Skipped in batch mode — the snap math assumes an axis-aligned ortho
+      // MVP, which heterogeneous per-instance transforms break.
+      if (this._pixelSnap && !mtxLanes) {
         // Compute clip-space position using our MVP uniforms
         const clipX = dot(mvpRow0, vec4(finalPos.x, finalPos.y, float(0), float(1)))
         const clipY = dot(mvpRow1, vec4(finalPos.x, finalPos.y, float(0), float(1)))
@@ -201,7 +246,21 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       vNumHBands.assign(glyphJac.z)
       vNumVBands.assign(glyphJac.w)
 
-      return vec3(finalPos.x, finalPos.y, float(0.0))
+      // Per-instance transform: glyph space → batch-local space
+      let outPos: Node<'vec3'> = vec3(finalPos.x, finalPos.y, float(0.0))
+      if (mtxLanes) {
+        const local = composeInstanceMatrix(mtxLanes).mul(
+          vec4(finalPos.x, finalPos.y, float(0.0), float(1.0))
+        )
+        outPos = vec3(local.x, local.y, local.z)
+      }
+
+      // Per-instance clip: signed plane distances in batch-local space
+      if (clipLanes && vClipDist) {
+        vClipDist.assign(clipDistances(outPos, clipLanes))
+      }
+
+      return outPos
     })() as typeof this.positionNode
 
     // --- Fragment shader ---
@@ -225,8 +284,6 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       )
     }
 
-    const supersampleNode = bool(this._supersample)
-
     this.colorNode = Fn(() => {
       const renderCoord = vRenderCoord
 
@@ -237,22 +294,47 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       // numVBands information (none needed here) without a separate attr.
       const isRect = vNumVBands.lessThan(float(0))
 
-      // Single-sample coverage (default path)
-      const single = evalCoverage(renderCoord)
+      // Rect and glyph coverage both need a REAL per-fragment branch, not a
+      // `select()`-composed ternary: `select(cond, a, b)` builds BOTH `a`
+      // and `b` into the graph before choosing between them (they're plain
+      // Node objects by the time `select` sees them, and nothing downstream
+      // folds away the unused one) — so a plain `select(isRect, 1, curveCoverage)`
+      // still ran the full analytic Bézier band loops for every rect
+      // instance (underline/strikethrough), work whose result it then threw
+      // away. TSL's imperative `If/Else` defers its callback's node-building
+      // until the matching WGSL branch is generated, so the loops only
+      // compile into the non-rect arm. Same root cause independently sank
+      // the supersample toggle below: `select(bool(this._supersample), ss,
+      // single)` silently compiled 5 calls to `evalCoverage` (the single +
+      // all 4 supersample taps) — 10 band loops, 40 texture-load sites —
+      // into every default (non-supersample) fragment shader. Confirmed via
+      // `renderer.debug.getShaderAsync`.
+      const baseCoverage = float(0.0).toVar()
+      If(isRect, () => {
+        // Rect instances short-circuit to full coverage.
+        baseCoverage.assign(1.0)
+      }).Else(() => {
+        // `_supersample` is a constructor-time JS boolean, not a runtime
+        // uniform — branch in JS too, so only ONE of the two coverage graphs
+        // is ever built for the non-rect arm.
+        if (this._supersample) {
+          // 2x2 supersampled coverage: evaluate at quarter-pixel offsets and average.
+          // fwidth gives the em-space size of one pixel; mul(0.25) → quarter-pixel jitter.
+          const hp = fwidth(renderCoord).mul(0.25)
+          const ss = evalCoverage(renderCoord.add(hp.mul(vec2(-1, -1))))
+            .add(evalCoverage(renderCoord.add(hp.mul(vec2(1, -1)))))
+            .add(evalCoverage(renderCoord.add(hp.mul(vec2(-1, 1)))))
+            .add(evalCoverage(renderCoord.add(hp.mul(vec2(1, 1)))))
+            .mul(0.25)
+          baseCoverage.assign(ss)
+        } else {
+          baseCoverage.assign(evalCoverage(renderCoord))
+        }
+      })
 
-      // 2x2 supersampled coverage: evaluate at quarter-pixel offsets and average.
-      // fwidth gives the em-space size of one pixel; mul(0.25) → quarter-pixel jitter.
-      const hp = fwidth(renderCoord).mul(0.25)
-      const ss = evalCoverage(renderCoord.add(hp.mul(vec2(-1, -1))))
-        .add(evalCoverage(renderCoord.add(hp.mul(vec2(1, -1)))))
-        .add(evalCoverage(renderCoord.add(hp.mul(vec2(-1, 1)))))
-        .add(evalCoverage(renderCoord.add(hp.mul(vec2(1, 1)))))
-        .mul(0.25)
-
-      // Compile-time bool: dead-code eliminates the unused path
-      const curveCoverage = select(supersampleNode, ss, single)
-      // Rect instances short-circuit to full coverage.
-      const coverage = select(isRect, float(1.0), curveCoverage)
+      // Per-instance clip: coverage multiply AFTER the rect select so
+      // decoration rects clip too. Unconditional fwidth, no discard (Q2).
+      const coverage = vClipDist ? baseCoverage.mul(clipCoverage(vClipDist)) : baseCoverage
 
       // Final color: glyph color * material color * coverage
       return vec4(
@@ -299,7 +381,8 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     this._thickenUniform.value = value
   }
 
-  get font(): SlugFont {
+  /** The bound curve/band texture source (`SlugFont` or `SlugShapeSet`). */
+  get font(): SlugCurveSource {
     return this._font
   }
 }

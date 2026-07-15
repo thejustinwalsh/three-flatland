@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>uikit-perf - React Three Fiber</title>
+    <style>
+      /* Body background — matches the scene's own clear color (#eef3f7),
+         not the docs `--card` near-black default other examples use. This
+         scene renders a light "load shape" performance lab UI, so a dark
+         body would flash before the first WebGPU frame instead of blending
+         into it. */
+      html,
+      body,
+      #root {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #eef3f7;
+      }
+      canvas {
+        display: block;
+        /* Layer-promote so Safari gives the canvas its own GPU layer
+           — without this, 60fps canvas paints co-paint with adjacent
+           DOM and drop the iframe rAF to ~30. */
+        transform: translateZ(0);
+        will-change: transform;
+        isolation: isolate;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+# Generated build products. `scripts/convert.ts` fetches lucide-static and runs
+# oslllo-svg-fixer to convert stroke paths into filled paths; `scripts/generate.ts`
+# then emits one `XIcon extends Svg` class per icon. Upstream pmndrs/uikit
+# gitignores both, and they weigh ~20MB. Run `pnpm run ensure` to (re)build them.
+icons/*
+!icons/.gitkeep
+src/*
+!src/.gitkeep
+!src/react.ts

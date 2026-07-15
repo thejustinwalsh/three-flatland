@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { readGlb, type GlbView } from './glb'
 import { unpackBaked, bakedURLs, cmapLookup, kernLookup } from './baked'
 import type { BakeInput } from './baked'
-import { SLUG_FONT_VERSION } from './format'
+import { SLUG_FONT_MIN_VERSION, SLUG_FONT_VERSION } from './format'
 import { packBaked } from './bake'
 import type { SlugGlyphData, QuadCurve } from './types'
 
@@ -22,7 +22,13 @@ describe('unpackBaked version gate', () => {
 
   it('rejects a FL_slug_font version newer than supported', () => {
     expect(() => unpackBaked(stub({ version: SLUG_FONT_VERSION + 1 }))).toThrow(
-      /unsupported FL_slug_font version/,
+      /unsupported FL_slug_font version/
+    )
+  })
+
+  it('rejects a FL_slug_font version older than the minimum', () => {
+    expect(() => unpackBaked(stub({ version: SLUG_FONT_MIN_VERSION - 1 }))).toThrow(
+      /unsupported FL_slug_font version/
     )
   })
 
@@ -50,9 +56,9 @@ function makeSyntheticInput(): BakeInput {
   const curveData = new Uint16Array(textureWidth * curveTextureHeight * 4)
   for (let i = 0; i < curveData.length; i++) curveData[i] = i + 1
 
-  // Tiny 4×1 RG-F32 band texture (4 × 1 × 2ch × 4 bytes = 32 bytes)
+  // Tiny 4×1 R-F32 band texture (4 × 1 × 1ch × 4 bytes = 16 bytes)
   const bandTextureHeight = 1
-  const bandData = new Float32Array(textureWidth * bandTextureHeight * 2)
+  const bandData = new Float32Array(textureWidth * bandTextureHeight * 1)
   for (let i = 0; i < bandData.length; i++) bandData[i] = (i + 1) * 0.5
 
   const glyph0: SlugGlyphData = {
@@ -60,6 +66,7 @@ function makeSyntheticInput(): BakeInput {
     curves: [],
     contourStarts: [],
     bounds: { xMin: 0.1, yMin: 0.2, xMax: 0.8, yMax: 0.9 },
+    page: 0,
     bandLocation: { x: 0.0, y: 0.0 },
     curveLocation: { x: 0.0, y: 0.0 },
     advanceWidth: 0.5,
@@ -75,6 +82,7 @@ function makeSyntheticInput(): BakeInput {
     curves: [{ p0x: 0, p0y: 0, p1x: 0.5, p1y: 1, p2x: 1, p2y: 0 } satisfies QuadCurve],
     contourStarts: [0],
     bounds: { xMin: 0.0, yMin: 0.0, xMax: 1.0, yMax: 1.0 },
+    page: 0,
     bandLocation: { x: 0.25, y: 0.0 },
     curveLocation: { x: 0.0, y: 0.0 },
     advanceWidth: 1.0,
@@ -147,9 +155,9 @@ describe('packBaked — returns .glb', () => {
     expect(ext).toBeDefined()
   })
 
-  it('extension carries version 1', async () => {
+  it('extension carries version 2', async () => {
     const { ext } = await bakeAndRead(makeSyntheticInput())
-    expect(ext['version']).toBe(1)
+    expect(ext['version']).toBe(2)
   })
 
   it('extension carries metrics', async () => {
@@ -186,7 +194,7 @@ describe('packBaked — returns .glb', () => {
     const bt = ext['bandTexture'] as Record<string, unknown>
     expect(bt['width']).toBe(4)
     expect(bt['height']).toBe(1)
-    expect(bt['format']).toBe('rg32f')
+    expect(bt['format']).toBe('r32f')
   })
 
   it('extension carries bands.glyphCount', async () => {
@@ -315,7 +323,7 @@ describe('packBaked — returns .glb', () => {
     const { asset, columns } = await bakeAndRead(input)
     const view = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
     expect(view).toBeInstanceOf(Float32Array)
-    expect(view.length).toBe(4 * 1 * 2) // width × height × 2 channels
+    expect(view.length).toBe(4 * 1 * 1) // width × height × 1 channel (R32F)
     for (let i = 0; i < view.length; i++) {
       expect(view[i]).toBeCloseTo((i + 1) * 0.5, 5)
     }

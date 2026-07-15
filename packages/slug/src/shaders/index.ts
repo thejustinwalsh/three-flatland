@@ -1,6 +1,15 @@
-export { calcRootCode } from './calcRootCode'
-export { solveHorizPoly, solveVertPoly } from './solveQuadratic'
-export { calcCoverage } from './calcCoverage'
-export { slugRender } from './slugFragment'
-export { slugDilate } from './slugDilate'
-export { buildSlugVertexNodes } from './slugVertex'
+export { calcRootCode } from './calcRootCode.js'
+export { solveHorizPoly, solveVertPoly } from './solveQuadratic.js'
+export { calcCoverage } from './calcCoverage.js'
+export { slugRender } from './slugFragment.js'
+export { slugDilate } from './slugDilate.js'
+export { buildSlugVertexNodes } from './slugVertex.js'
+export {
+  instanceMatrixLanes,
+  composeInstanceMatrix,
+  foldInstanceRow,
+  clipPlaneLanes,
+  clipDistances,
+  clipCoverage,
+} from './slugInstance.js'
+export type { InstanceMatrixLanes, ClipPlaneLanes } from './slugInstance.js'

@@ -1,10 +1,19 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { Vector2, Vector4, Color, Matrix4, FrontSide, NormalBlending } from 'three'
 import type { Camera, Object3D } from 'three'
-import { Fn, float, sign, vec2, vec3, vec4, attribute, uniform, varyingProperty } from 'three/tsl'
-import { slugStroke } from './shaders/slugStroke'
-import { slugDilate } from './shaders/slugDilate'
-import type { SlugFont } from './SlugFont'
+import { Fn, If, float, sign, vec2, vec3, vec4, attribute, uniform, varyingProperty } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
+import { slugStroke } from './shaders/slugStroke.js'
+import { slugDilate } from './shaders/slugDilate.js'
+import {
+  clipCoverage,
+  clipDistances,
+  clipPlaneLanes,
+  composeInstanceMatrix,
+  foldInstanceRow,
+  instanceMatrixLanes,
+} from './shaders/slugInstance.js'
+import type { SlugFont } from './SlugFont.js'
 
 export interface SlugStrokeMaterialOptions {
   color?: number | Color
@@ -12,6 +21,10 @@ export interface SlugStrokeMaterialOptions {
   transparent?: boolean
   /** Stroke half-width in em-space. Runtime-uniform. Default 0.025 (≈0.05 em total width). */
   strokeHalfWidth?: number
+  /** Per-instance transform from `glyphMtx0..3` lanes (SlugBatch). Default false. */
+  instanceTransform?: boolean
+  /** Per-instance 4-plane coverage clip from `glyphClip0..3` lanes (SlugBatch). Default false. */
+  instanceClip?: boolean
 }
 
 const _mvp = new Matrix4()
@@ -40,11 +53,15 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
   private _mvpRow1Uniform
   private _mvpRow3Uniform
   private _strokeHalfWidthUniform
+  private _instanceTransform: boolean
+  private _instanceClip: boolean
 
   constructor(font: SlugFont, options: SlugStrokeMaterialOptions = {}) {
     super()
 
     this._font = font
+    this._instanceTransform = options.instanceTransform ?? false
+    this._instanceClip = options.instanceClip ?? false
 
     const color =
       options.color instanceof Color ? options.color : new Color(options.color ?? 0x000000)
@@ -80,6 +97,12 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
     const vGlyphLocY = varyingProperty('float', 'vGlyphLocY')
     const vNumHBands = varyingProperty('float', 'vNumHBands')
     const vNumVBands = varyingProperty('float', 'vNumVBands')
+
+    // Opt-in per-instance groups (SlugBatch) — see SlugMaterial for the
+    // derivation; the stroke pass folds the same matrix and clip lanes.
+    const mtxLanes = this._instanceTransform ? instanceMatrixLanes() : null
+    const clipLanes = this._instanceClip ? clipPlaneLanes() : null
+    const vClipDist = clipLanes ? varyingProperty('vec4', 'vClipDist') : null
 
     const curveTexture = font.curveTexture
     const bandTexture = font.bandTexture
@@ -140,14 +163,20 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
         basePos.y.mul(halfSize.y.mul(2.0).add(signY.mul(strokeObj)))
       )
 
+      // Per-instance Jacobian: fold the instance matrix into the MVP rows
+      // (identical derivation to SlugMaterial).
+      const dilateRow0: Node<'vec4'> = mtxLanes ? foldInstanceRow(mvpRow0, mtxLanes) : mvpRow0
+      const dilateRow1: Node<'vec4'> = mtxLanes ? foldInstanceRow(mvpRow1, mtxLanes) : mvpRow1
+      const dilateRow3: Node<'vec4'> = mtxLanes ? foldInstanceRow(mvpRow3, mtxLanes) : mvpRow3
+
       const dilated = slugDilate(
         expandedObjPos,
         expandedNormal,
         expandedEmCoord,
         invScale,
-        mvpRow0,
-        mvpRow1,
-        mvpRow3,
+        dilateRow0,
+        dilateRow1,
+        dilateRow3,
         viewportUniform
       )
 
@@ -157,7 +186,20 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
       vNumHBands.assign(glyphJac.z)
       vNumVBands.assign(glyphJac.w)
 
-      return vec3(dilated.vpos.x, dilated.vpos.y, float(0.0))
+      // Per-instance transform: glyph space → batch-local space
+      let outPos: Node<'vec3'> = vec3(dilated.vpos.x, dilated.vpos.y, float(0.0))
+      if (mtxLanes) {
+        const local = composeInstanceMatrix(mtxLanes).mul(
+          vec4(dilated.vpos.x, dilated.vpos.y, float(0.0), float(1.0))
+        )
+        outPos = vec3(local.x, local.y, local.z)
+      }
+
+      if (clipLanes && vClipDist) {
+        vClipDist.assign(clipDistances(outPos, clipLanes))
+      }
+
+      return outPos
     })() as typeof this.positionNode
 
     this.colorNode = Fn(() => {
@@ -169,19 +211,31 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
       // only via the fill pass.
       const isRect = vNumVBands.lessThan(float(0))
 
-      const coverage = slugStroke(
-        curveTexture,
-        bandTexture,
-        renderCoord,
-        vGlyphLocX,
-        vGlyphLocY,
-        vNumHBands,
-        vNumVBands,
-        glyphBand,
-        strokeHalfWidthUniform
-      )
+      // Skip the entire stroke solve (both band walks + distance-to-Bézier) for decoration
+      // rects via a real If/Else — the old `isRect.select(0, coverage)` still evaluated
+      // slugStroke() before discarding it. isRect derives from a per-instance attribute, so it's
+      // uniform within any rasterized primitive → the fwidth inside slugStroke stays well-defined.
+      const rectCoverage = float(0.0).toVar()
+      If(isRect, () => {
+        rectCoverage.assign(float(0.0))
+      }).Else(() => {
+        rectCoverage.assign(
+          slugStroke(
+            curveTexture,
+            bandTexture,
+            renderCoord,
+            vGlyphLocX,
+            vGlyphLocY,
+            vNumHBands,
+            vNumVBands,
+            glyphBand,
+            strokeHalfWidthUniform
+          )
+        )
+      })
 
-      const finalCoverage = isRect.select(float(0.0), coverage)
+      // Per-instance clip: coverage multiply, unconditional fwidth (Q2).
+      const finalCoverage = vClipDist ? rectCoverage.mul(clipCoverage(vClipDist)) : rectCoverage
 
       return vec4(
         colorUniform.x.mul(glyphColorAttr.x),

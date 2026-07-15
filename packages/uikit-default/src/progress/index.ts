@@ -1,0 +1,95 @@
+import { object } from 'zod'
+import type { z } from 'zod'
+import {
+  type BaseOutProperties,
+  Container,
+  type InProperties,
+  type RenderContext,
+  baseOutPropertyShape,
+  createInPropertiesSchema,
+  defineSchema,
+  numberOrPercentageValueSchema,
+  type NumberOrPercentageValue,
+} from '@three-flatland/uikit'
+import { computed } from '@preact/signals-core'
+import { colors, componentDefaults } from '../theme.js'
+export const ProgressOutPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
+  object({
+    ...baseOutPropertyShape,
+    value: numberOrPercentageValueSchema.optional(),
+  }).strict()
+)
+
+export const ProgressPropertiesSchema = /* @__PURE__ */ defineSchema(() =>
+  createInPropertiesSchema(ProgressOutPropertiesSchema)
+)
+
+export type ProgressOutProperties = BaseOutProperties & z.output<typeof ProgressOutPropertiesSchema>
+
+export type ProgressProperties = z.input<typeof ProgressPropertiesSchema>
+
+function formatProgressWidth(value: NumberOrPercentageValue | undefined): `${number}%` {
+  if (value == null) {
+    return '0%'
+  }
+  if (typeof value === 'string' && value.endsWith('%')) {
+    return value as `${number}%`
+  }
+  return `${Number(value)}%`
+}
+
+export class Progress extends Container<ProgressOutProperties> {
+  public readonly fill: Container
+  constructor(
+    inputProperties?: InProperties<ProgressOutProperties>,
+    initialClasses?: Array<InProperties<BaseOutProperties> | string>,
+    config?: {
+      defaultOverrides?: InProperties<ProgressOutProperties>
+      renderContext?: RenderContext
+    }
+  ) {
+    super(inputProperties, initialClasses, {
+      defaults: componentDefaults,
+      ...config,
+      defaultOverrides: {
+        '*': {
+          borderColor: colors.border,
+        },
+        height: 16,
+        width: '100%',
+        borderBottomLeftRadius: 1000,
+        borderBottomRightRadius: 1000,
+        borderTopRightRadius: 1000,
+        borderTopLeftRadius: 1000,
+        backgroundColor: colors.secondary,
+        ...config?.defaultOverrides,
+      },
+    })
+    super.add(
+      (this.fill = new Container(undefined, undefined, {
+        defaults: componentDefaults,
+        defaultOverrides: {
+          '*': {
+            borderColor: colors.border,
+          },
+          height: '100%',
+          borderBottomLeftRadius: 1000,
+          borderBottomRightRadius: 1000,
+          borderTopRightRadius: 1000,
+          borderTopLeftRadius: 1000,
+          backgroundColor: colors.primary,
+          width: computed(() => formatProgressWidth(this.properties.value.value)),
+        },
+      }))
+    )
+  }
+
+  dispose(): void {
+    this.fill.dispose()
+    super.dispose()
+  }
+
+  add(): this {
+    throw new Error(`the progress component can not have any children`)
+  }
+}

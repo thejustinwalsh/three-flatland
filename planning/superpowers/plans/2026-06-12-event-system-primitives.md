@@ -14,16 +14,16 @@
 
 ## File structure
 
-| File | Responsibility |
-|---|---|
-| Create `packages/three-flatland/src/events/HitTestMode.ts` | Mode union + `resolveHitTestMode` fallback (port of PoC, unchanged semantics) |
-| Create `packages/three-flatland/src/events/raycastHelpers.ts` | `rayPlaneZ0` (local Z=0 intersection, near/far) + `createIntersection` (cloned point per hit — spec §11.2) |
-| Create `packages/three-flatland/src/events/AlphaMap.ts` | CPU alpha store: `sampleAtlasUV` (Y-flip), `sampleFrame` (frame-rect mapping), `fromTexture` runtime fallback |
-| Create `packages/three-flatland/src/events/index.ts` | Barrel |
-| Modify `packages/three-flatland/src/sprites/Sprite2D.ts` | `hitTestMode`/`hitRadius`/`alphaMap`/`alphaThreshold` + `raycast()` override |
-| Modify `packages/three-flatland/src/tilemap/TileMap2D.ts` | `raycast()` override (returns `false`) + `tileFromIntersection()` |
-| Modify `packages/three-flatland/src/index.ts` | `export * from './events'` |
-| Tests | `src/events/*.test.ts`, `src/sprites/Sprite2D.raycast.test.ts`, `src/tilemap/TileMap2D.raycast.test.ts` |
+| File                                                          | Responsibility                                                                                                |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Create `packages/three-flatland/src/events/HitTestMode.ts`    | Mode union + `resolveHitTestMode` fallback (port of PoC, unchanged semantics)                                 |
+| Create `packages/three-flatland/src/events/raycastHelpers.ts` | `rayPlaneZ0` (local Z=0 intersection, near/far) + `createIntersection` (cloned point per hit — spec §11.2)    |
+| Create `packages/three-flatland/src/events/AlphaMap.ts`       | CPU alpha store: `sampleAtlasUV` (Y-flip), `sampleFrame` (frame-rect mapping), `fromTexture` runtime fallback |
+| Create `packages/three-flatland/src/events/index.ts`          | Barrel                                                                                                        |
+| Modify `packages/three-flatland/src/sprites/Sprite2D.ts`      | `hitTestMode`/`hitRadius`/`alphaMap`/`alphaThreshold` + `raycast()` override                                  |
+| Modify `packages/three-flatland/src/tilemap/TileMap2D.ts`     | `raycast()` override (returns `false`) + `tileFromIntersection()`                                             |
+| Modify `packages/three-flatland/src/index.ts`                 | `export * from './events'`                                                                                    |
+| Tests                                                         | `src/events/*.test.ts`, `src/sprites/Sprite2D.raycast.test.ts`, `src/tilemap/TileMap2D.raycast.test.ts`       |
 
 All commands run from the repo root. The three-flatland package dir is `packages/three-flatland`.
 
@@ -32,6 +32,7 @@ All commands run from the repo root. The three-flatland package dir is `packages
 ### Task 1: HitTestMode module
 
 **Files:**
+
 - Create: `packages/three-flatland/src/events/HitTestMode.ts`
 - Test: `packages/three-flatland/src/events/HitTestMode.test.ts`
 
@@ -117,6 +118,7 @@ git commit -m "feat(events): hit-test mode union with resolve fallback"
 ### Task 2: raycastHelpers — local Z=0 plane intersection
 
 **Files:**
+
 - Create: `packages/three-flatland/src/events/raycastHelpers.ts`
 - Test: `packages/three-flatland/src/events/raycastHelpers.test.ts`
 
@@ -269,6 +271,7 @@ git commit -m "feat(events): ray-to-local-plane helpers with per-hit point cloni
 ### Task 3: AlphaMap
 
 **Files:**
+
 - Create: `packages/three-flatland/src/events/AlphaMap.ts`
 - Test: `packages/three-flatland/src/events/AlphaMap.test.ts`
 
@@ -283,12 +286,7 @@ import type { SpriteFrame } from '../sprites/types'
 
 // 4×4 alpha data, row-major from the TOP (like canvas getImageData):
 // top half opaque (255), bottom half transparent (0)
-const data = new Uint8Array([
-  255, 255, 255, 255,
-  255, 255, 255, 255,
-  0, 0, 0, 0,
-  0, 0, 0, 0,
-])
+const data = new Uint8Array([255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0])
 
 describe('AlphaMap', () => {
   const map = new AlphaMap(data, 4, 4)
@@ -367,9 +365,7 @@ export class AlphaMap {
    * or the canvas is tainted.
    */
   static fromTexture(texture: Texture): AlphaMap | null {
-    const image = texture.image as
-      | { width: number; height: number }
-      | undefined
+    const image = texture.image as { width: number; height: number } | undefined
     if (!image || !image.width || !image.height) return null
     try {
       const canvas =
@@ -415,6 +411,7 @@ git commit -m "feat(events): AlphaMap CPU alpha store with frame-rect sampling"
 ### Task 4: events barrel + root export + react subpath
 
 **Files:**
+
 - Create: `packages/three-flatland/src/events/index.ts`
 - Modify: `packages/three-flatland/src/index.ts` (after the `// Color`-style section pattern — insert after `export * from './GlobalUniforms'`)
 - Modify: `packages/three-flatland/package.json` (exports map — add `./events` + `./events/*` entries following the exact shape of the `./tilemap` + `./tilemap/*` entries at lines ~175–196)
@@ -459,6 +456,7 @@ git commit -m "feat(events): export events module + react subpath wrapper"
 ### Task 5: Sprite2D hit-test fields and the `'none'` raycast-null trick
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/sprites/Sprite2D.ts` (fields near `_anchor` at ~line 96; imports at top)
 - Test: `packages/three-flatland/src/sprites/Sprite2D.raycast.test.ts` (new file)
 
@@ -582,6 +580,7 @@ git commit -m "feat(sprites): Sprite2D hitTestMode plumbing with raycast-null no
 ### Task 6: Sprite2D.raycast() — radius and bounds modes
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/sprites/Sprite2D.ts`
 - Test: `packages/three-flatland/src/sprites/Sprite2D.raycast.test.ts`
 
@@ -764,6 +763,7 @@ git commit -m "feat(sprites): Sprite2D.raycast with radius/bounds modes on the l
 ### Task 7: Sprite2D alpha mode
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/sprites/Sprite2D.raycast.test.ts` (tests only — implementation landed in Task 6)
 
 - [ ] **Step 1: Write the failing tests**
@@ -771,38 +771,38 @@ git commit -m "feat(sprites): Sprite2D.raycast with radius/bounds modes on the l
 Add `import { AlphaMap } from '../events/AlphaMap'` to the imports at the top of the file, then append inside the `Sprite2D.raycast` describe:
 
 ```ts
-  it('alpha mode rejects transparent pixels and accepts opaque ones', () => {
-    const sprite = makeSprite()
-    sprite.hitTestMode = 'alpha'
-    // 2×2: top row opaque, bottom row transparent (data is top-first)
-    sprite.alphaMap = new AlphaMap(new Uint8Array([255, 255, 0, 0]), 2, 2)
-    sprite.scale.set(20, 20, 1)
-    sprite.updateMatrixWorld(true)
-    expect(makeRaycaster(0, 5).intersectObject(sprite)).toHaveLength(1) // upper half
-    expect(makeRaycaster(0, -5).intersectObject(sprite)).toHaveLength(0) // lower half
-  })
+it('alpha mode rejects transparent pixels and accepts opaque ones', () => {
+  const sprite = makeSprite()
+  sprite.hitTestMode = 'alpha'
+  // 2×2: top row opaque, bottom row transparent (data is top-first)
+  sprite.alphaMap = new AlphaMap(new Uint8Array([255, 255, 0, 0]), 2, 2)
+  sprite.scale.set(20, 20, 1)
+  sprite.updateMatrixWorld(true)
+  expect(makeRaycaster(0, 5).intersectObject(sprite)).toHaveLength(1) // upper half
+  expect(makeRaycaster(0, -5).intersectObject(sprite)).toHaveLength(0) // lower half
+})
 
-  it('alphaThreshold gates the sample', () => {
-    const sprite = makeSprite()
-    sprite.hitTestMode = 'alpha'
-    sprite.alphaMap = new AlphaMap(new Uint8Array([100, 100, 100, 100]), 2, 2)
-    sprite.updateMatrixWorld(true)
-    sprite.alphaThreshold = 0.5 // 100 < 127.5 → miss
-    expect(makeRaycaster(0, 0).intersectObject(sprite)).toHaveLength(0)
-    sprite.alphaThreshold = 0.3 // 100 >= 76.5 → hit
-    expect(makeRaycaster(0, 0).intersectObject(sprite)).toHaveLength(1)
-  })
+it('alphaThreshold gates the sample', () => {
+  const sprite = makeSprite()
+  sprite.hitTestMode = 'alpha'
+  sprite.alphaMap = new AlphaMap(new Uint8Array([100, 100, 100, 100]), 2, 2)
+  sprite.updateMatrixWorld(true)
+  sprite.alphaThreshold = 0.5 // 100 < 127.5 → miss
+  expect(makeRaycaster(0, 0).intersectObject(sprite)).toHaveLength(0)
+  sprite.alphaThreshold = 0.3 // 100 >= 76.5 → hit
+  expect(makeRaycaster(0, 0).intersectObject(sprite)).toHaveLength(1)
+})
 
-  it('alpha mode without an alphaMap falls back to bounds with one warning', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const sprite = makeSprite()
-    sprite.hitTestMode = 'alpha'
-    sprite.updateMatrixWorld(true)
-    expect(makeRaycaster(0, 0).intersectObject(sprite)).toHaveLength(1) // bounds result
-    makeRaycaster(0, 0).intersectObject(sprite)
-    expect(warn).toHaveBeenCalledTimes(1) // one-shot latch
-    warn.mockRestore()
-  })
+it('alpha mode without an alphaMap falls back to bounds with one warning', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const sprite = makeSprite()
+  sprite.hitTestMode = 'alpha'
+  sprite.updateMatrixWorld(true)
+  expect(makeRaycaster(0, 0).intersectObject(sprite)).toHaveLength(1) // bounds result
+  makeRaycaster(0, 0).intersectObject(sprite)
+  expect(warn).toHaveBeenCalledTimes(1) // one-shot latch
+  warn.mockRestore()
+})
 ```
 
 Add `vi` to the vitest import at the top of the file.
@@ -824,6 +824,7 @@ git commit -m "test(sprites): alpha hit-test mode coverage (threshold, fallback 
 ### Task 8: TileMap2D.raycast() + tileFromIntersection
 
 **Files:**
+
 - Modify: `packages/three-flatland/src/tilemap/TileMap2D.ts`
 - Test: `packages/three-flatland/src/tilemap/TileMap2D.raycast.test.ts` (new file)
 

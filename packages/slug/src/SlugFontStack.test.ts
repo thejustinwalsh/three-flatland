@@ -10,6 +10,7 @@ import { measureText } from './pipeline/textMeasure'
 import { shapeStackText } from './pipeline/textShaperStack'
 import { SlugFont } from './SlugFont'
 import { SlugFontStack } from './SlugFontStack'
+import type { SlugTypeface } from './text/types'
 
 const FONT_PATH = resolve(__dirname, '../../../examples/three/slug-text/public/Inter-Regular.ttf')
 const buf = readFileSync(FONT_PATH)
@@ -20,7 +21,7 @@ let otFont: opentype.Font
 
 beforeAll(() => {
   const parsed = parseFont(arrayBuffer)
-  const textures = packTextures(parsed.glyphs)
+  const textures = packTextures(parsed.glyphs).pages[0]!
   otFont = opentype.parse(arrayBuffer)
   inter = SlugFont._createRuntime(
     parsed.glyphs,
@@ -70,6 +71,18 @@ describe('SlugFontStack', () => {
     const stack = new SlugFontStack([inter])
     const out = stack.resolveText('AB')
     expect(out).toEqual(new Uint8Array([0, 0]))
+  })
+
+  it('satisfies SlugTypeface — block metrics from the primary, glyphs via the chain', () => {
+    const stack = new SlugFontStack([inter])
+    const typeface: SlugTypeface = stack
+    expect(typeface.unitsPerEm).toBe(inter.unitsPerEm)
+    expect(typeface.ascender).toBe(inter.ascender)
+    expect(typeface.descender).toBe(inter.descender)
+    expect(typeface.getGlyphMetrics(0x41)).toEqual(inter.getGlyphMetrics(0x41))
+    const a = inter.getGlyphMetrics(0x41)!.glyphId
+    const v = inter.getGlyphMetrics(0x56)!.glyphId
+    expect(typeface.getKerning(a, v)).toBe(inter.getKerning(a, v))
   })
 })
 

@@ -1,5 +1,5 @@
 import type { Font } from 'opentype.js'
-import type { PositionedGlyph } from '../types'
+import type { PositionedGlyph } from '../types.js'
 
 /**
  * Shape a text string into positioned glyphs using an opentype.js Font.

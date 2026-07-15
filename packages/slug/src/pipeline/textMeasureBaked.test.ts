@@ -97,7 +97,7 @@ describe('measureTextBaked', () => {
    * actualBoundingBox. The measure code must use bounds-area instead.
    */
   it('roundtrip via pack/unpack still produces non-zero ink bounds', async () => {
-    const textures = packTextures(glyphs)
+    const textures = packTextures(glyphs).pages[0]!
     const curveData = (textures.curveTexture.image as { data: Uint16Array }).data
     const bandData = (textures.bandTexture.image as { data: Float32Array }).data
     const curveHeight = (textures.curveTexture.image as { height: number }).height

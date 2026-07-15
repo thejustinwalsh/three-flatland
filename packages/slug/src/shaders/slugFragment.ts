@@ -16,27 +16,34 @@ import {
   If,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { calcRootCode } from './calcRootCode'
-import { solveHorizPoly, solveVertPoly } from './solveQuadratic'
-import { calcCoverage } from './calcCoverage'
+import { calcRootCode } from './calcRootCode.js'
+import { solveHorizPoly, solveVertPoly } from './solveQuadratic.js'
+import { calcCoverage } from './calcCoverage.js'
 
 import type { DataTexture } from 'three'
-
-/**
- * Maximum curves per band the shader iterates. The loop has an early-exit
- * on `i >= curveCount`, so under-filled bands pay the branch cost but not
- * the body cost. WGSL/GLSL compilers still reserve registers for the full
- * bound, so keeping this tight reduces register pressure.
- *
- * Chosen to cover 100% of Inter Regular's full 2849-glyph corpus (max
- * observed band fill: 38 curves, p999: 25). Baked fonts that exceed 40
- * emit a bake-time warning.
- */
-const MAX_CURVES_PER_BAND = 40
 
 /** log2(TEXTURE_WIDTH) for row-wrapping bit ops. */
 const LOG_TEXTURE_WIDTH = 12 // 2^12 = 4096
 const TEXTURE_WIDTH_MASK = (1 << LOG_TEXTURE_WIDTH) - 1 // 4095
+
+/**
+ * Band texel is a single packed R32F float (see `pipeline/texturePacker.ts`):
+ *   - header  = curveCount << 14 | curveListOffset  (count high 10, offset low 14)
+ *   - curveRef = texelY << 12 | texelX              (texelX low 12, texelY high)
+ * Decoding is exact — the packed ints are ≤ 2^24-1, representable in float32.
+ */
+const HEADER_OFFSET_BITS = 14
+const HEADER_OFFSET_MASK = (1 << HEADER_OFFSET_BITS) - 1 // 16383
+
+/**
+ * Defensive per-fragment loop cap. The band curve count is read straight from a
+ * texture, and baked fonts can be fetched from external URLs — a corrupt/hostile
+ * `.slug.glb` could carry a garbage count and spin the (now dynamic) loop into a GPU
+ * watchdog / device loss. Clamp far above any real font's densest band (even adaptive
+ * CJK bands stay well under this) so legitimate glyphs never truncate — only runaway
+ * data. `min(read, cap)` is still a runtime bound, so the loop stays dynamic (no unroll).
+ */
+const MAX_SAFE_BAND_CURVES = 512
 
 /**
  * Wrap a linear texel offset into (x, y) coordinates for a 4096-wide texture.
@@ -72,20 +79,30 @@ export function slugRender(
   stemDarken?: Node<'float'>,
   thicken?: Node<'float'>
 ) {
-  // Compute pixel footprint in em-space for coverage scaling
-  const emsPerPixel = fwidth(renderCoord)
-  const pixelsPerEmX = float(1.0).div(max(emsPerPixel.x, 1.0 / 65536.0))
-  const pixelsPerEmY = float(1.0).div(max(emsPerPixel.y, 1.0 / 65536.0))
+  // Compute pixel footprint in em-space for coverage scaling. These are per-FRAGMENT invariants
+  // reused inside BOTH band loops; .toVar() forces them to be computed ONCE (hoisted above the
+  // loops) instead of TSL re-inlining them at every iteration — critically fwidth(), a derivative
+  // op that must not be evaluated per-curve.
+  const emsPerPixel = fwidth(renderCoord).toVar()
+  const pixelsPerEmX = float(1.0)
+    .div(max(emsPerPixel.x, 1.0 / 65536.0))
+    .toVar()
+  const pixelsPerEmY = float(1.0)
+    .div(max(emsPerPixel.y, 1.0 / 65536.0))
+    .toVar()
 
   // Pixels-per-em (isotropic average) for stem darkening and thickening
-  const ppem = pixelsPerEmX.add(pixelsPerEmY).mul(0.5)
+  const ppem = pixelsPerEmX.add(pixelsPerEmY).mul(0.5).toVar()
 
   // Thickening: widen coverage window at small ppem to prevent thin-stroke dropout.
   // Factor ramps from 1+thicken at ppem=0 down to 1.0 at ppem>=thickenPpem (24).
   // At 8px with thicken=1.0: factor = 1 + 1.0 * max(0, 1 - 8/24) = 1.67
   const thickenPpem = float(24.0)
+  // .toVar(): used 4× inside the two loops — hoist so its div/sub/mul/max runs once, not per curve.
   const thickenFactor = thicken
-    ? float(1.0).add(thicken.mul(max(float(0.0), float(1.0).sub(ppem.div(thickenPpem)))))
+    ? float(1.0)
+        .add(thicken.mul(max(float(0.0), float(1.0).sub(ppem.div(thickenPpem)))))
+        .toVar()
     : float(1.0)
 
   // Determine band indices from band transform
@@ -112,21 +129,32 @@ export function slugRender(
   // --- Horizontal band pass ---
   // Band header at (glyphLoc + bandIdxY)
   const hBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(bandIdxY))
-  const hBandHeader = textureLoad(bandTexture, hBandCoord)
-  const hCurveCount = int(hBandHeader.x)
-  const hCurveListOffset = int(hBandHeader.y)
+  // Single packed R32F texel → decode count (high bits) + offset (low bits).
+  // .toVar(): read once, unpacked twice (count + offset).
+  const hHeaderPacked = int(textureLoad(bandTexture, hBandCoord).x).toVar()
+  const hRawCount = hHeaderPacked.shiftRight(HEADER_OFFSET_BITS)
+  const hCurveCount = select(
+    hRawCount.greaterThan(int(MAX_SAFE_BAND_CURVES)),
+    int(MAX_SAFE_BAND_CURVES),
+    hRawCount
+  )
+  // .toVar(): loop-invariant reused every iteration (hCurveListOffset.add(i)).
+  const hCurveListOffset = hHeaderPacked.bitAnd(HEADER_OFFSET_MASK).toVar()
 
-  Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    // Early exit when past curve count
-    If(i.greaterThanEqual(hCurveCount), () => {
-      Break()
-    })
-
-    // Read curve reference with row wrapping
+  // Dynamic loop bound: iterate exactly this band's curve count (from the band
+  // header), like Lengyel's/JSlug's reference. A compile-time bound forced the
+  // compiler to reserve registers for the worst case on EVERY fragment; a runtime
+  // bound can't be unrolled, so register pressure tracks the real (small) per-band
+  // count. It also removes the old truncation risk — a band denser than the former
+  // 40-curve cap now renders correctly instead of dropping curves.
+  Loop({ start: 0, end: hCurveCount, type: 'int' }, ({ i }) => {
+    // Read curve reference with row wrapping. Single packed R32F texel →
+    // decode texelX (low 12 bits) + texelY (high bits). .toVar(): read once,
+    // unpacked twice (mask + shift).
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, hCurveListOffset.add(i))
-    const refData = textureLoad(bandTexture, refCoord)
-    const curveTexX = int(refData.x)
-    const curveTexY = int(refData.y)
+    const refPacked = int(textureLoad(bandTexture, refCoord).x).toVar()
+    const curveTexX = refPacked.bitAnd(TEXTURE_WIDTH_MASK)
+    const curveTexY = refPacked.shiftRight(LOG_TEXTURE_WIDTH)
 
     // Load 3 control points from curve texture (2 consecutive texels)
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
@@ -151,15 +179,17 @@ export function slugRender(
 
     If(rootCode.greaterThan(uint(0)), () => {
       const r = solveHorizPoly(p0, p1, p2)
-      const rpxX = r.x.mul(pixelsPerEmX)
-      const rpxY = r.y.mul(pixelsPerEmX)
+      // .toVar(): each used twice (coverage + weight); without it r.x/r.y — and the whole poly
+      // eval behind them — re-inline per use.
+      const rpxX = r.x.mul(pixelsPerEmX).toVar()
+      const rpxY = r.y.mul(pixelsPerEmX).toVar()
 
       // Coverage from first root (bit 0)
-      const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
+      const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0)).toVar()
       xcov.addAssign(select(hasRoot1, saturate(rpxX.mul(thickenFactor).add(0.5)), 0.0))
 
       // Coverage from second root (bit 8)
-      const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
+      const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0)).toVar()
       xcov.subAssign(select(hasRoot2, saturate(rpxY.mul(thickenFactor).add(0.5)), 0.0))
 
       // Weight: proximity to pixel center
@@ -173,19 +203,22 @@ export function slugRender(
   // --- Vertical band pass ---
   // Band header at (glyphLoc + numHBands + bandIdxX)
   const vBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(numHBands).add(int(bandIdxX)))
-  const vBandHeader = textureLoad(bandTexture, vBandCoord)
-  const vCurveCount = int(vBandHeader.x)
-  const vCurveListOffset = int(vBandHeader.y)
+  // Packed R32F header — see the horizontal pass for the layout + .toVar() rationale.
+  const vHeaderPacked = int(textureLoad(bandTexture, vBandCoord).x).toVar()
+  const vRawCount = vHeaderPacked.shiftRight(HEADER_OFFSET_BITS)
+  const vCurveCount = select(
+    vRawCount.greaterThan(int(MAX_SAFE_BAND_CURVES)),
+    int(MAX_SAFE_BAND_CURVES),
+    vRawCount
+  )
+  const vCurveListOffset = vHeaderPacked.bitAnd(HEADER_OFFSET_MASK).toVar()
 
-  Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    If(i.greaterThanEqual(vCurveCount), () => {
-      Break()
-    })
-
+  // Dynamic loop bound — see the horizontal pass above.
+  Loop({ start: 0, end: vCurveCount, type: 'int' }, ({ i }) => {
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, vCurveListOffset.add(i))
-    const refData = textureLoad(bandTexture, refCoord)
-    const curveTexX = int(refData.x)
-    const curveTexY = int(refData.y)
+    const refPacked = int(textureLoad(bandTexture, refCoord).x).toVar()
+    const curveTexX = refPacked.bitAnd(TEXTURE_WIDTH_MASK)
+    const curveTexY = refPacked.shiftRight(LOG_TEXTURE_WIDTH)
 
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
     const texel1 = textureLoad(curveTexture, ivec2(curveTexX.add(1), curveTexY))
@@ -204,14 +237,15 @@ export function slugRender(
 
     If(rootCode.greaterThan(uint(0)), () => {
       const r = solveVertPoly(p0, p1, p2)
-      const rpyX = r.x.mul(pixelsPerEmY)
-      const rpyY = r.y.mul(pixelsPerEmY)
+      // .toVar(): each used twice (coverage + weight) — see the horizontal pass.
+      const rpyX = r.x.mul(pixelsPerEmY).toVar()
+      const rpyY = r.y.mul(pixelsPerEmY).toVar()
 
       // Vertical band: signs INVERTED vs horizontal per Lengyel's convention
-      const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
+      const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0)).toVar()
       ycov.subAssign(select(hasRoot1, saturate(rpyX.mul(thickenFactor).add(0.5)), 0.0))
 
-      const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
+      const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0)).toVar()
       ycov.addAssign(select(hasRoot2, saturate(rpyY.mul(thickenFactor).add(0.5)), 0.0))
 
       const w1 = saturate(float(1.0).sub(abs(rpyX).mul(2.0)))

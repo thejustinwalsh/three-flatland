@@ -96,6 +96,18 @@ describe('solveHorizPoly', () => {
     expect(isFinite(x1)).toBe(true)
     expect(isFinite(x2)).toBe(true)
   })
+
+  it('preserves distinct roots when the leading coefficient is tiny (grazing-guard regression)', () => {
+    // Adversarial-review counterexample: a tiny `a` yields a tiny discriminant `d`
+    // even though the roots (t=0.25, 0.75) are well separated (separation is 2d/|a|).
+    // A grazing guard keyed on |d| (rather than the pre-clamp discriminant) wrongly
+    // collapses them to a double root at t=0.5 → x1==x2. The correct guard keeps them.
+    const a = Math.pow(2, -16)
+    const [x1, x2] = refSolveHorizPoly(-0.5, (3 * a) / 16, 0, (-5 * a) / 16, 0.5, (3 * a) / 16)
+    expect(x1).toBeCloseTo(-0.25, 6)
+    expect(x2).toBeCloseTo(0.25, 6)
+    expect(Math.abs(x1 - x2)).toBeGreaterThan(0.4) // NOT collapsed to a double root
+  })
 })
 
 describe('solveVertPoly', () => {

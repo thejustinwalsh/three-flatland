@@ -33,9 +33,9 @@ When an `FL_*` extension is used, it is always a **thin semantic overlay + refer
 **Classification — extension vs. native + `extras`.** The rule above splits baked outputs into two kinds, and the kind decides how the data lives in glTF:
 
 - **Opaque baked data** (slug SDF tables, half-float data textures — nothing standard renders it) → a `FL_*` root extension, `extensionsRequired`, consumed only by our runtime/pak. Off-the-shelf glTF optimizers refuse it — acceptable, because such a file has no native content for them to optimize anyway. The extension is the GC root that keeps the accessors reachable; `extensionsRequired` makes compliant tools refuse-rather-than-strip.
-- **Renderable content** (a sprite + its atlas: real geometry + a real texture) → **native glTF + `extras`, no extension**. It stays portable, opens in any viewer, and *benefits* from off-the-shelf optimization (e.g. KTX2 on the atlas). The runtime reads the `extras` markers and swaps in its optimized representation at load; not running the swap still renders valid static content. (Sprite/atlas authoring is designed but not yet built — see Open/future.)
+- **Renderable content** (a sprite + its atlas: real geometry + a real texture) → **native glTF + `extras`, no extension**. It stays portable, opens in any viewer, and _benefits_ from off-the-shelf optimization (e.g. KTX2 on the atlas). The runtime reads the `extras` markers and swaps in its optimized representation at load; not running the swap still renders valid static content. (Sprite/atlas authoring is designed but not yet built — see Open/future.)
 
-The discriminator: *does the runtime depend on this surviving a round-trip through tools that don't understand it?* Opaque-yes → extension. Renderable, carried-along → native + `extras`.
+The discriminator: _does the runtime depend on this surviving a round-trip through tools that don't understand it?_ Opaque-yes → extension. Renderable, carried-along → native + `extras`.
 
 ---
 
@@ -52,9 +52,10 @@ The discriminator: *does the runtime depend on this surviving a round-trip throu
 ### Bake side — Node, glTF-Transform (dev/CLI only)
 
 Build a glTF `Document`, emit one `.glb`. **All baked numeric data is native glTF accessors** — no raw bufferViews, no glTF-Transform internal APIs:
+
 - **Tabular data** (glyph columns, cmap, kern) → **accessors** (SoA — one accessor per column).
 - **Ragged data** (slug bands) → a flat **`USHORT` accessor** (the concatenated band words) + a **FLOAT offset accessor** (count = N+1, CSR/prefix-sum; FLOAT because `UNSIGNED_INT` accessors are spec-restricted to mesh indices, and FLOAT holds exact integers to 2²⁴).
-- **Data textures** (curve RGBA16F, band RG-F32) → **accessors carrying the raw bytes**: the half-float curve texture is a `USHORT` accessor (the 16-bit half-float *bits*, stored losslessly; the extension records `format: "rgba16f"` + dims), the band texture a `FLOAT` accessor. This is fully native and validator-clean — a `USHORT` accessor is a standard glTF accessor; storing half-float bits in it is a normal data-packing use, with the true format declared in the extension. (NOT glTF images: a custom-MIME image is non-conformant. NOT raw bufferViews: that would require glTF-Transform's semi-internal `otherBufferViews` path — accessors avoid it.)
+- **Data textures** (curve RGBA16F, band RG-F32) → **accessors carrying the raw bytes**: the half-float curve texture is a `USHORT` accessor (the 16-bit half-float _bits_, stored losslessly; the extension records `format: "rgba16f"` + dims), the band texture a `FLOAT` accessor. This is fully native and validator-clean — a `USHORT` accessor is a standard glTF accessor; storing half-float bits in it is a normal data-packing use, with the true format declared in the extension. (NOT glTF images: a custom-MIME image is non-conformant. NOT raw bufferViews: that would require glTF-Transform's semi-internal `otherBufferViews` path — accessors avoid it.)
 - **Standard images / sampleable textures** (sprite atlases) → native glTF `image`/`texture` (PNG; KTX2-Basis via `KHR_texture_basisu`).
 - **Geometry** (sprite hull meshes, scene meshes) → native `mesh`/`primitive`/accessors (read by `GLTFLoader` for free).
 - **Semantic layer** (kind/version, name→accessor map, metrics, strokeSets) → the `FL_*` extension JSON, nested in the glTF JSON document, referencing the accessors **by index**.
@@ -68,14 +69,14 @@ A ~80-line reader, no glTF-Transform, no three. It parses the standard GLB conta
 ```ts
 function readAsset(buf: ArrayBuffer): FlatlandAsset
 interface FlatlandAsset {
-  json: GlTFJson                            // the parsed glTF document
-  accessor(index: number): ArrayBufferView   // zero-copy view by glTF accessor index
-  bufferView(index: number): Uint8Array      // zero-copy raw bytes by bufferView index
-  ext<T = unknown>(name: string): T | undefined  // root extension object, e.g. ext('FL_slug_font')
+  json: GlTFJson // the parsed glTF document
+  accessor(index: number): ArrayBufferView // zero-copy view by glTF accessor index
+  bufferView(index: number): Uint8Array // zero-copy raw bytes by bufferView index
+  ext<T = unknown>(name: string): T | undefined // root extension object, e.g. ext('FL_slug_font')
 }
 ```
 
-Domain loaders (e.g. `SlugFontLoader`) build on `readAsset`: read `ext('FL_slug_font')`, follow its accessor indices to typed views, upload the data-texture bufferViews to `DataTexture`s. **Why a custom reader, not `GLTFLoader`:** `GLTFLoader` interprets a GLB as a renderable *scene* and won't surface free-floating data accessors; for baked data the tiny reader is the fast path. For baked *geometry*, `GLTFLoader` remains correct — both read the same standard GLB.
+Domain loaders (e.g. `SlugFontLoader`) build on `readAsset`: read `ext('FL_slug_font')`, follow its accessor indices to typed views, upload the data-texture bufferViews to `DataTexture`s. **Why a custom reader, not `GLTFLoader`:** `GLTFLoader` interprets a GLB as a renderable _scene_ and won't surface free-floating data accessors; for baked data the tiny reader is the fast path. For baked _geometry_, `GLTFLoader` remains correct — both read the same standard GLB.
 
 ---
 
@@ -87,35 +88,35 @@ The extension is a JSON object nested in the glTF JSON chunk under `extensions`.
 {
   "asset": { "version": "2.0", "generator": "slug-bake" },
   "extensionsUsed": ["FL_slug_font"],
-  "extensionsRequired": ["FL_slug_font"],          // see "required vs used" below
+  "extensionsRequired": ["FL_slug_font"], // see "required vs used" below
   "buffers": [{ "byteLength": 1328720 }],
   "bufferViews": [
-    { "buffer": 0, "byteOffset": 0,       "byteLength": 1048576 },  // curve texture (RGBA16F bytes)
-    { "buffer": 0, "byteOffset": 1048576, "byteLength": 262144  },  // band texture (RG-F32 bytes)
-    { "buffer": 0, "byteOffset": 1310720, "byteLength": 18000   },  // ragged band data
-    { "buffer": 0, "byteOffset": 1328720, "byteLength": "..."   }   // accessor-backed columns…
+    { "buffer": 0, "byteOffset": 0, "byteLength": 1048576 }, // curve texture (RGBA16F bytes)
+    { "buffer": 0, "byteOffset": 1048576, "byteLength": 262144 }, // band texture (RG-F32 bytes)
+    { "buffer": 0, "byteOffset": 1310720, "byteLength": 18000 }, // ragged band data
+    { "buffer": 0, "byteOffset": 1328720, "byteLength": "..." }, // accessor-backed columns…
   ],
   "accessors": [
-    { "bufferView": 3, "componentType": 5126, "type": "SCALAR", "count": 512 },   // glyph advanceWidth
+    { "bufferView": 3, "componentType": 5126, "type": "SCALAR", "count": 512 }, // glyph advanceWidth
     /* …other glyph columns… */
-    { "bufferView": "...", "componentType": 5123, "type": "VEC2",   "count": 1280 }, // cmap [u16,u16]
-    { "bufferView": "...", "componentType": 5122, "type": "SCALAR", "count": 600 },  // kern flat [g1,g2,val]×N
-    { "bufferView": "...", "componentType": 5126, "type": "SCALAR", "count": 513 }   // band offsets (FLOAT, N+1)
+    { "bufferView": "...", "componentType": 5123, "type": "VEC2", "count": 1280 }, // cmap [u16,u16]
+    { "bufferView": "...", "componentType": 5122, "type": "SCALAR", "count": 600 }, // kern flat [g1,g2,val]×N
+    { "bufferView": "...", "componentType": 5126, "type": "SCALAR", "count": 513 }, // band offsets (FLOAT, N+1)
   ],
   "extensions": {
     "FL_slug_font": {
       "version": 1,
       "name": "Inter-Regular",
-      "metrics": { "unitsPerEm": 2048, "ascender": 1984, "descender": -494, "...": "..." },  // plain JSON
-      "strokeSets": [],                                                                       // plain JSON
+      "metrics": { "unitsPerEm": 2048, "ascender": 1984, "descender": -494, "...": "..." }, // plain JSON
+      "strokeSets": [], // plain JSON
       "glyphs": { "count": 512, "fields": { "advanceWidth": { "accessor": 0 }, "...": "..." } },
       "cmap": { "accessor": 10 },
       "kern": { "accessor": 11, "stride": 3 },
       "bands": { "offsetAccessor": 12, "dataAccessor": 13 },
-      "curveTexture": { "accessor": 14, "width": 2048, "height": 128, "format": "rgba16f" },  // USHORT accessor, half-float bits
-      "bandTexture":  { "accessor": 15, "width": 2048, "height": 32,  "format": "rg32f" }     // FLOAT accessor
-    }
-  }
+      "curveTexture": { "accessor": 14, "width": 2048, "height": 128, "format": "rgba16f" }, // USHORT accessor, half-float bits
+      "bandTexture": { "accessor": 15, "width": 2048, "height": 32, "format": "rg32f" }, // FLOAT accessor
+    },
+  },
 }
 ```
 
@@ -140,7 +141,7 @@ A level pack `.glb` is then: native meshes/materials (the scene, viewable in any
 
 ## Package shape
 
-There is **no separate runtime package.** Slug owns its baked-asset plumbing inline — it's thin loader/baker code, and a separate published package for ~150 lines (justified only by a hypothetical second consumer) is a premature abstraction *and* a published-package dependency we don't want.
+There is **no separate runtime package.** Slug owns its baked-asset plumbing inline — it's thin loader/baker code, and a separate published package for ~150 lines (justified only by a hypothetical second consumer) is a premature abstraction _and_ a published-package dependency we don't want.
 
 ```
 packages/slug/src
@@ -157,21 +158,21 @@ packages/slug/src
 
 **Per-format contract.** Each baker owns a single-source-of-truth contract module — `packages/slug/src/format.ts`: `SLUG_FONT_VERSION`, `SLUG_EXTENSION_NAME`, and the ordered `SLUG_COLUMNS` (name → glTF accessor type) list. The baker emits exactly `SLUG_COLUMNS` (its column loop is driven by it) and the reader resolves each by name, so read and write cannot drift.
 
-**When to factor a shared package.** Only when a real second consumer (e.g. an atlas baker) exists *and* the shared surface is proven — then extract the common GLB loader + extension-authoring into a shared `@three-flatland/bake`-style package. Until then, a little copying beats a speculative dependency.
+**When to factor a shared package.** Only when a real second consumer (e.g. an atlas baker) exists _and_ the shared surface is proven — then extract the common GLB loader + extension-authoring into a shared `@three-flatland/bake`-style package. Until then, a little copying beats a speculative dependency.
 
 ---
 
 ## Slug migration: `.slug.glb`
 
-| Today (`baked.ts`) | In the GLB |
-|---|---|
-| curve texture (Uint16 RGBA16F) | `USHORT` accessor (half-float bits), referenced by `FL_slug_font.curveTexture` (+ dims/format) |
-| band texture (Float32 RG) | `FLOAT` accessor, referenced by `FL_slug_font.bandTexture` (+ dims) |
-| glyph table (10×f32) | 10 SoA FLOAT SCALAR accessors, named columns under `glyphs.fields` |
-| cmap [u16,u16] | USHORT VEC2 accessor |
-| kern [u16,u16,i16] | SHORT SCALAR accessor, stride 3 |
-| band section (ragged) | flat USHORT accessor + FLOAT offset accessor (N+1, CSR) |
-| metrics, strokeSets, textureWidth | `FL_slug_font` JSON (metrics, strokeSets, texture dims/formats); `kind`/`version` |
+| Today (`baked.ts`)                | In the GLB                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- |
+| curve texture (Uint16 RGBA16F)    | `USHORT` accessor (half-float bits), referenced by `FL_slug_font.curveTexture` (+ dims/format) |
+| band texture (Float32 RG)         | `FLOAT` accessor, referenced by `FL_slug_font.bandTexture` (+ dims)                            |
+| glyph table (10×f32)              | 10 SoA FLOAT SCALAR accessors, named columns under `glyphs.fields`                             |
+| cmap [u16,u16]                    | USHORT VEC2 accessor                                                                           |
+| kern [u16,u16,i16]                | SHORT SCALAR accessor, stride 3                                                                |
+| band section (ragged)             | flat USHORT accessor + FLOAT offset accessor (N+1, CSR)                                        |
+| metrics, strokeSets, textureWidth | `FL_slug_font` JSON (metrics, strokeSets, texture dims/formats); `kind`/`version`              |
 
 `slug-bake` and the `./bake` export author the GLB directly against `@gltf-transform/core`. `SlugFontLoader` fetches one `.slug.glb`, parses it with slug's internal GLB loader (`glb.ts`), follows `FL_slug_font`, builds curve/band `DataTexture`s from the accessor bytes (zero-copy). opentype.js stays unloaded.
 

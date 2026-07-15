@@ -18,8 +18,8 @@ content folder.
 
 ### Archetype (Diátaxis)
 
-**Explanation**, held throughout — understanding-oriented, persuasive: *why*
-web games, *why* now. The sizzle section (slides 6–8) bends toward
+**Explanation**, held throughout — understanding-oriented, persuasive: _why_
+web games, _why_ now. The sizzle section (slides 6–8) bends toward
 demonstration but never breaks the persuasive throughline. Register:
 confident-technical and welcoming-collaborative (the brand voice), no
 marketing froth.
@@ -27,6 +27,7 @@ marketing froth.
 ## Phase 1 scope
 
 **In scope — must be complete this phase:**
+
 - The standalone Astro route and page shell (unlinked, not surfaced in docs nav).
 - The reusable **deck engine** (`components/deck/`): reveal.js mount, R3F canvas,
   shared store, scene director, typography primitives.
@@ -36,6 +37,7 @@ marketing froth.
   beats fire on slide change (placeholder geometry/sprites are fine).
 
 **Deliberately deferred (later iteration):**
+
 - Polished three-flatland scene content per beat (real sprite batches, tilemap,
   lighting, radiance cascades demos). Scaffold now, dogfood for real later.
 - GO NATIVE device showcase: Steam Deck / iPhone **textured 3D models** (assets
@@ -52,6 +54,7 @@ Each slide carries: eyebrow, headline, optional subline, **speaker notes**
 Copy below is near-final; implementation should treat it as the content of record.
 
 ### 1 — MAKE WEB GAMES (cold open)
+
 - **Eyebrow:** —
 - **Headline:** MAKE WEB GAMES
 - **Notes:** Who I am, the provocation. This room ships on Unity and Unreal.
@@ -59,6 +62,7 @@ Copy below is near-final; implementation should treat it as the content of recor
 - **Scene beat:** single hero sprite, calm idle; camera framed tight.
 
 ### 2 — The web is the most frictionless platform in games
+
 - **Eyebrow:** THE PITCH
 - **Headline:** No install. No store. One URL.
 - **Subline:** Your game is one click from every player on Earth.
@@ -67,6 +71,7 @@ Copy below is near-final; implementation should treat it as the content of recor
 - **Scene beat:** camera pulls back slightly; parallax hint.
 
 ### 3 — USE THE PLATFORM (reach + revenue)
+
 - **Eyebrow:** USE THE PLATFORM
 - **Headline:** The web is already the biggest game platform.
 - **Stats (3):**
@@ -78,14 +83,16 @@ Copy below is near-final; implementation should treat it as the content of recor
 - **Scene beat:** sprites multiply across the field.
 
 ### 4 — The objection
+
 - **Eyebrow:** THE CATCH
-- **Headline:** "But the web can't make *real* games."
+- **Headline:** "But the web can't make _real_ games."
 - **Subline:** That was true. It isn't anymore.
 - **Notes:** Name the Unity/Unreal skepticism directly and respect it. The turn:
   WebGPU + TSL changed the rendering ceiling. Set up the toolkit.
 - **Scene beat:** scene desaturates / stutters — the "toy" feeling — then holds.
 
 ### 5 — FIRST CLASS 2D
+
 - **Eyebrow:** FIRST CLASS 2D
 - **Headline:** three-flatland
 - **Subline:** Spartan development. One library. All you need.
@@ -95,6 +102,7 @@ Copy below is near-final; implementation should treat it as the content of recor
 - **Scene beat:** scene snaps back to full color; camera settles into the "stage".
 
 ### 6 — Sizzle: sprites at scale
+
 - **Eyebrow:** SIZZLE
 - **Headline:** 100,000 sprites. One draw call.
 - **Notes:** SpriteGroup batching, GPU-driven. The thing that's hard in 2D —
@@ -102,6 +110,7 @@ Copy below is near-final; implementation should treat it as the content of recor
 - **Scene beat:** SpriteGroup batch floods in; perf counter visible.
 
 ### 7 — Sizzle: tilemaps + dynamic lighting
+
 - **Eyebrow:** SIZZLE
 - **Headline:** Tilemaps. Real-time 2D lights. Soft shadows.
 - **Notes:** Tiled Forward+ lighting and dynamic shadows — lighting tech that
@@ -109,6 +118,7 @@ Copy below is near-final; implementation should treat it as the content of recor
 - **Scene beat:** tilemap builds; a light sweeps casting real shadows.
 
 ### 8 — Sizzle: radiance cascades
+
 - **Eyebrow:** SIZZLE
 - **Headline:** Radiance cascades. Global illumination in 2D.
 - **Subline:** Light that bounces. In a browser.
@@ -117,6 +127,7 @@ Copy below is near-final; implementation should treat it as the content of recor
 - **Scene beat:** GI bounce lights the scene — the "previously PC-only" payoff.
 
 ### 9 — GO NATIVE
+
 - **Eyebrow:** GO NATIVE
 - **Headline:** You're not trapped in a browser.
 - **Bullets:** NativeScript + three.js · ANGLE → native WebGL2 · Steam Deck
@@ -126,11 +137,12 @@ Copy below is near-final; implementation should treat it as the content of recor
   publish once, ship everywhere — mention it here as the trajectory, not a slide.
 - **Scene beat (target):** camera zooms out; the canvas reframed inside a
   Steam Deck / iPhone **device model**, three-flatland demo rendered to its screen
-  texture (see Assets for the screen-swap mechanism). *(Phase 1: placeholder framing.)*
+  texture (see Assets for the screen-swap mechanism). _(Phase 1: placeholder framing.)_
 - **Credits:** CC-BY models require visible attribution — small credit line on
   this slide (and full strings in notes). See Assets.
 
 ### 10 — AI / agents (the provocation)
+
 - **Eyebrow:** THE QUESTION (turquoize)
 - **Headline:** Your next teammate is an agent.
 - **Subline:** It already speaks the web — and reaches for three-flatland. As AI
@@ -139,11 +151,12 @@ Copy below is near-final; implementation should treat it as the content of recor
   for the web (the platform they know best) and can drive the whole loop themselves —
   write, open a browser, test, ship — no GUI editor in the way. Evidence to cite: one
   AI game jam pulled 1,000+ games, browser-only, three.js the default. The honest
-  nuance: LLMs autocomplete C# *inside* Unity; agents build *whole games* on the web.
+  nuance: LLMs autocomplete C# _inside_ Unity; agents build _whole games_ on the web.
   Deliberately left as an open question to seed Q&A. See "Research note" below.
 - **Scene beat:** camera pushes head-on to center (`[0,0,7]`) — direct, confrontational.
 
 ### 11 — Close / CTA
+
 - **Eyebrow:** —
 - **Headline:** three-flatland
 - **Subline:** Make web games. First-class 2D. Go anywhere.
@@ -155,10 +168,11 @@ Copy below is near-final; implementation should treat it as the content of recor
 
 ## Research note — the AI/agents bet (slide 10)
 
-The bet is forward-looking but has real, current support — and is honestly *not*
+The bet is forward-looking but has real, current support — and is honestly _not_
 settled, which is what makes it a good provocation to leave hanging for Q&A.
 
 Supporting signal:
+
 - **The Vibe Coding Game Jam** (Levels.io, sponsored by Bolt.new + CodeRabbit) drew
   **1,000+ AI-built game submissions**, with a browser-only rule (no downloads/login)
   and Three.js as the recommended/de-facto engine. Large-scale evidence that
@@ -174,7 +188,8 @@ Supporting signal:
 - "Vibe coding" coined by Karpathy; AI-driven development is rising (the second bet).
 
 Honest counter-signal (keep the slide a question, not a claim):
-- Unity isn't abandoned — there's a healthy **LLM-*inside*-Unity** tooling layer
+
+- Unity isn't abandoned — there's a healthy **LLM-_inside_-Unity** tooling layer
   (LLMUnity, Unity Asset Store LLM packages, C# autocomplete). AI game-dev tooling is
   partly engine-agnostic today.
 - The sharp distinction the slide rests on: **LLMs autocomplete C# inside Unity;
@@ -193,7 +208,7 @@ container so they share a module-level store. Reveal handles all navigation
 `ready` / `slidechanged` / `fragmentshown` events and writes `{ slideIndex,
 fragment }` into the store. A `<SceneDirector>` in the R3F tree reads the store
 and eases the camera + scene state to the active **beat**. Clean seam: reveal
-owns *position*; the scene is *derived*. Swapping BG elements per slide is just
+owns _position_; the scene is _derived_. Swapping BG elements per slide is just
 data in the beat table.
 
 Rejected: **B** (React-controlled reveal) fights reveal's built-in navigation
@@ -225,7 +240,7 @@ Future decks add a route + a content folder and reuse all of `deck/`.
 ### Component responsibilities
 
 - **`Presentation`** — mounts reveal.js (config: notes plugin, transitions),
-  renders `DeckCanvas` as a fixed fullscreen layer *behind* the reveal DOM,
+  renders `DeckCanvas` as a fixed fullscreen layer _behind_ the reveal DOM,
   wires reveal events → `presentationStore`. Takes `slides` and `scene` as props
   so it is deck-agnostic.
 - **`presentationStore`** — module-level external store; `subscribe` + `getSnapshot`
@@ -247,6 +262,7 @@ prop), so the director keeps the look target fixed (origin) for Phase 1 and appl
 it in a light `useFrame`; later beats can tween a look-target proxy. This replaces
 hand-rolled damping — anime.js owns the deck's motion, dogfooding a clean R3F + anime
 integration.
+
 - **`primitives/`** — `Slide`, `Eyebrow`, `Headline`, `Subline` — typography
   components carrying the bold-minimalist style and gem-palette tokens, so deck
   content stays declarative.
@@ -268,7 +284,7 @@ integration.
 - **Headlines:** Public Sans 700 — clean, bold, tight tracking. Bold minimalism.
 - **Eyebrows:** uppercase label, gem-accent color (taxonomy: each section/eyebrow
   can carry its own gem — e.g. USE THE PLATFORM in one gem, SIZZLE in another).
-- **Backdrop:** the near-black live scene *is* the background; slides sit over it
+- **Backdrop:** the near-black live scene _is_ the background; slides sit over it
   with minimal chrome. Sub-perceptual grain optional, inherited from theme.
 - All color via existing `starlight-theme` gem tokens; light/dark not required for
   a presentation (dark-only is fine for a projected talk) — confirm if otherwise.
@@ -286,6 +302,7 @@ so the deck drives it directly. `zzfx` and `@zzfx-studio/zzfxm` are already docs
 dependencies; the music library loads from `public/audio/tracks.json` (route-agnostic).
 
 Behavior, honoring the repo's audio principle (never autoplay; always respect mute):
+
 - **Transition SFX** — a subtle zzfx blip on slide advance/retreat, via `createZzfxProxy()`
   (master-mute aware, unlocks the AudioContext on the first navigation gesture).
 - **Ambient music (zzfx-studio)** — reuses the bridge's existing "auto-start on first
@@ -303,6 +320,7 @@ Two CC-BY-4.0 glTF device models are vaulted in the worktree at
 `scene.gltf` + `scene.bin` + textures.
 
 ### steam-deck (`assets-src/devices/steam-deck/`)
+
 - Screen is **cleanly isolable**: material `steam_deck_mat03` (material 0) is the
   screen only, on its own mesh node `steam_deck_steam_deck_mat03_0` (mesh 0,
   node 4), emissive-lit (`emissiveFactor [1,1,1]`, emissiveTexture).
@@ -310,6 +328,7 @@ Two CC-BY-4.0 glTF device models are vaulted in the worktree at
   color/emissive samples the flatland `RenderTarget`. Trivial, well-bounded.
 
 ### iphone-16-pro-max (`assets-src/devices/iphone-16-pro-max/`)
+
 - **Replaces the earlier iPhone 14 Pro** (which had a single shared material and an
   unseparable screen). This model is properly split: the screen is its **own
   material** `screen.001` (material 6) on its **own mesh node**
@@ -321,20 +340,23 @@ Two CC-BY-4.0 glTF device models are vaulted in the worktree at
   the 14 Pro's ~15 MB).
 
 ### Optimization (plan task)
+
 Raw is ~40 MB. Before committing: gltf-transform pass — meshopt/draco geometry
 compression, resize + KTX2 textures, **drop the baked screen textures** (the
 render target replaces them). Target a lean `.glb` per device in `docs/public/`.
 
 ### Attribution (mandatory — CC-BY-4.0)
+
 Visible credit required wherever shared. Exact strings (from each `license.txt`):
-- Steam Deck: *This work is based on "Steam Deck"
+
+- Steam Deck: _This work is based on "Steam Deck"
   (https://sketchfab.com/3d-models/steam-deck-502407f2dab048728e1b63699bf99d45)
   by VM-Models (https://sketchfab.com/vm-models) licensed under CC-BY-4.0
-  (http://creativecommons.org/licenses/by/4.0/)*
-- iPhone 16 Pro Max: *This work is based on "iPhone 16 Pro Max"
+  (http://creativecommons.org/licenses/by/4.0/)_
+- iPhone 16 Pro Max: _This work is based on "iPhone 16 Pro Max"
   (https://sketchfab.com/3d-models/iphone-16-pro-max-41a071ae12794b668502f58d1e0fd1a3)
   by MajdyModels (https://sketchfab.com/MG990) licensed under CC-BY-4.0
-  (http://creativecommons.org/licenses/by/4.0/)*
+  (http://creativecommons.org/licenses/by/4.0/)_
 - Placement: a small persistent credit line on slide 9 (GO NATIVE) plus the full
   strings in that slide's speaker notes, and a `CREDITS` entry in the deck folder.
 

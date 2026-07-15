@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>uikit - Three.js</title>
+    <style>
+      /* Body background — matches the docs `--card` surface color
+         (oklch 20% 0.008 250 ≈ #16191e). Static so there's no flash
+         between page load and first WebGPU frame. Tweak per-example
+         only if the scene specifically benefits from a different
+         backdrop; the gem-tinted identity lives on the canvas via
+         scene.backgroundNode (see GemBackground.ts). */
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #16191e;
+      }
+      canvas {
+        display: block;
+        /* Layer-promote so Safari gives the canvas its own GPU layer
+           — without this, 60fps canvas paints co-paint with adjacent
+           DOM (Tweakpane, overlays) and drop the iframe rAF to ~30. */
+        transform: translateZ(0);
+        will-change: transform;
+        isolation: isolate;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

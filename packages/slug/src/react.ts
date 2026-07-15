@@ -5,7 +5,7 @@
 import './react/types'
 
 // React-specific utilities
-export * from './react/index'
+export * from './react/index.js'
 
 // Re-export everything from core so R3F users only need one import
-export * from './index'
+export * from './index.js'

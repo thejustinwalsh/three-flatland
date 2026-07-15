@@ -1,0 +1,39 @@
+{
+  "name": "example-react-uikit-perf",
+  "version": "0.0.1-alpha.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bake": "node scripts/bake.mjs",
+    "predev": "node scripts/bake.mjs",
+    "prebuild": "node scripts/bake.mjs",
+    "dev": "vite dev --port ${TURBO_MFE_PORT:-5179}",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "bench": "node bench/run.mjs && node bench/report.mjs",
+    "bench:report": "node bench/report.mjs",
+    "bench:text": "node bench/text-bench.mjs && node bench/text-report.mjs"
+  },
+  "dependencies": {
+    "@preact/signals-core": "^1.5.1",
+    "@react-three/drei": "11.0.0-alpha.5",
+    "@react-three/fiber": "10.0.0-alpha.2",
+    "@three-flatland/slug": "^0.1.0-alpha.3",
+    "@three-flatland/uikit": "^0.1.0-alpha.0",
+    "@three-flatland/uikit-lucide": "^0.1.0-alpha.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "three": "^0.183.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@types/three": "^0.183.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "babel-plugin-react-compiler": "1.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.4.3"
+  }
+}

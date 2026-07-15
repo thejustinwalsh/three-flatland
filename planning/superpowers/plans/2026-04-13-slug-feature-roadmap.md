@@ -5,6 +5,7 @@
 **Goal:** Address the feature requests from @astralarya on https://github.com/thejustinwalsh/three-flatland/pull/20 by extending `@three-flatland/slug` with font fallback, measurement, styles, stroked outlines, generic vector shapes, and a rich-text API.
 
 **Architecture:** Current package already renders fills via winding-number coverage and has a baked/runtime shaper, notdef fallback, pixel snap, dilation, stem-darkening/thickening, and instanced per-glyph attributes (`glyphPos`/`glyphTex`/`glyphJac`/`glyphBand`/`glyphColor`). Each feature is layered on top:
+
 - Measurement exposes the existing shaper data through a pure API.
 - Multi-font fallback lives in shaping (composite `SlugFontStack`), leaving the single-font GPU path untouched by rendering differently-textured glyphs as multiple draw calls (one `SlugText` instance per font in the stack, unified by a parent `Object3D`).
 - Styles (underline/strike/super/sub) are implemented as extra positioned primitives (rects + glyph offsets/scales) fed through the same `SlugGeometry`/`SlugMaterial` — no shader change.
@@ -17,14 +18,14 @@
 
 **Package feature status (audited 2026-04-13 on `feat-slug` @ rebased HEAD):**
 
-| Feedback item | Current state | Notes |
-|---|---|---|
-| Multiple fonts / glyph fallback | Only notdef rect fallback (`textShaperBaked.ts:52`, `cli.ts:131`). No multi-font composition. | Need `SlugFontStack` |
-| Font metrics / measurement | Metrics live on `SlugFont` (`unitsPerEm`, `ascender`, `descender`, `capHeight`) but no public `measureText()` / `measureSpan()` API. Line/span widths are computed privately inside both shapers. | Extract + expose |
-| Font outlines (Slug manual p.45) | Not implemented. Roadmap item: "General shape rendering (SVG paths, icons)". Only fill winding-number path exists. | New shader path |
-| Vector graphics fill+stroke (Slug manual ch.3) | Not implemented. | New package module |
-| Font styles (underline / strike / super / sub) | Not implemented. | Data model + layout |
-| Rich text | Not implemented. | New API atop shaper |
+| Feedback item                                  | Current state                                                                                                                                                                                     | Notes                |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| Multiple fonts / glyph fallback                | Only notdef rect fallback (`textShaperBaked.ts:52`, `cli.ts:131`). No multi-font composition.                                                                                                     | Need `SlugFontStack` |
+| Font metrics / measurement                     | Metrics live on `SlugFont` (`unitsPerEm`, `ascender`, `descender`, `capHeight`) but no public `measureText()` / `measureSpan()` API. Line/span widths are computed privately inside both shapers. | Extract + expose     |
+| Font outlines (Slug manual p.45)               | Not implemented. Roadmap item: "General shape rendering (SVG paths, icons)". Only fill winding-number path exists.                                                                                | New shader path      |
+| Vector graphics fill+stroke (Slug manual ch.3) | Not implemented.                                                                                                                                                                                  | New package module   |
+| Font styles (underline / strike / super / sub) | Not implemented.                                                                                                                                                                                  | Data model + layout  |
+| Rich text                                      | Not implemented.                                                                                                                                                                                  | New API atop shaper  |
 
 ---
 
@@ -32,18 +33,18 @@
 
 The package shipped its first alpha (`@three-flatland/slug@0.1.0-alpha.1`) covering Phase 0; this branch (`feat-slug`, PR #20) consolidates Phases 0z – 4 and the Phase 5 stroke-offsetter foundation (Tasks 15 – 17) for the next alpha snapshot. Phase 5 (Tasks 18 – 23), Phase 6, and Phase 7 are tracked as GitHub epics:
 
-| Phase | Status | Tracking |
-|---|---|---|
-| 0z — Relocate vanilla → three | ✅ Shipped | — |
-| 0a — Tweakpane migration | ✅ Shipped | — |
-| 0 — Rebase ship-check | ✅ Shipped | — |
-| 1 — Font metrics & measurement | ✅ Shipped (`measureText`, `measureParagraph`, `wrapText`) | — |
-| 2 — Font styles (underline / strike / super / sub) | ✅ Shipped (`StyleSpan`) | — |
-| 3 — Glyph fallback (`SlugFontStack`, `SlugStackText`) | ✅ Shipped | — |
-| 4 — Analytic stroked text (dynamic, bevel-via-min) | ✅ Shipped (`SlugText.outline`, `SlugStrokeMaterial`) | — |
-| 5 — Generic vector graphics (baked-as-fill) | 🟡 Partial — Tasks 15 – 17 done; 18 – 23 pending | [#37](https://github.com/thejustinwalsh/three-flatland/issues/37) |
-| 6 — Rich text | ⬜ Pending | [#38](https://github.com/thejustinwalsh/three-flatland/issues/38) |
-| 7 — Release & roadmap maintenance | 🟡 Ongoing — alpha cadence | [#39](https://github.com/thejustinwalsh/three-flatland/issues/39) |
+| Phase                                                 | Status                                                     | Tracking                                                          |
+| ----------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------- |
+| 0z — Relocate vanilla → three                         | ✅ Shipped                                                 | —                                                                 |
+| 0a — Tweakpane migration                              | ✅ Shipped                                                 | —                                                                 |
+| 0 — Rebase ship-check                                 | ✅ Shipped                                                 | —                                                                 |
+| 1 — Font metrics & measurement                        | ✅ Shipped (`measureText`, `measureParagraph`, `wrapText`) | —                                                                 |
+| 2 — Font styles (underline / strike / super / sub)    | ✅ Shipped (`StyleSpan`)                                   | —                                                                 |
+| 3 — Glyph fallback (`SlugFontStack`, `SlugStackText`) | ✅ Shipped                                                 | —                                                                 |
+| 4 — Analytic stroked text (dynamic, bevel-via-min)    | ✅ Shipped (`SlugText.outline`, `SlugStrokeMaterial`)      | —                                                                 |
+| 5 — Generic vector graphics (baked-as-fill)           | 🟡 Partial — Tasks 15 – 17 done; 18 – 23 pending           | [#37](https://github.com/thejustinwalsh/three-flatland/issues/37) |
+| 6 — Rich text                                         | ⬜ Pending                                                 | [#38](https://github.com/thejustinwalsh/three-flatland/issues/38) |
+| 7 — Release & roadmap maintenance                     | 🟡 Ongoing — alpha cadence                                 | [#39](https://github.com/thejustinwalsh/three-flatland/issues/39) |
 
 Sub-task checkboxes below reflect this status: `[x]` = done, `[ ]` = pending.
 
@@ -52,6 +53,7 @@ Sub-task checkboxes below reflect this status: `[x]` = done, `[ ]` = pending.
 ## Phase 0z — Relocate Example to `examples/three/` (before Tweakpane migration)
 
 The PR-20 branch put the Three-side example under `examples/three/slug-text/` and registered both slug-text examples as standalone microfrontends. Post-rename on `main`:
+
 - Vanilla → Three: examples live at `examples/three/<name>/` alongside `examples/react/<name>/` (CLAUDE.md: "`examples/three/` = plain Three.js, `examples/react/` = React Three Fiber").
 - Standalone MFEs were consolidated — the shared `examples/` app (port 5174) auto-discovers every `examples/{three,react}/*/index.html` via `examples/vite.config.ts:discoverExamples()` and serves them at `/three/<name>` and `/react/<name>`. Individual example packages still have their own `package.json`, but they do **not** get their own `microfrontends.json` entry.
 
@@ -65,7 +67,7 @@ The PR-20 branch put the Three-side example under `examples/three/slug-text/` an
   - `packages/slug/src/pipeline/textShaper.test.ts:7`
   - `packages/slug/src/pipeline/texturePacker.test.ts:7`
   - `packages/slug/src/pipeline/fontParser.test.ts:6`
-  Replace `examples/vanilla/slug-text` with `examples/three/slug-text` (exact string) in each.
+    Replace `examples/vanilla/slug-text` with `examples/three/slug-text` (exact string) in each.
 - [x] **Step 0z.1.5** — `pnpm install` to regenerate `pnpm-lock.yaml` entries keyed by the new package name. `pnpm sync:pack:verify`.
 - [x] **Step 0z.1.6** — Verify: `pnpm --filter=example-three-slug-text typecheck`, `pnpm --filter=@three-flatland/slug test`. `pnpm dev` should expose the example at `/three/slug-text` with no 404 and no console errors.
 - [x] **Step 0z.1.7** — Commit: `refactor(example-slug-text): relocate vanilla→three, remove standalone MFE entries`
@@ -77,10 +79,12 @@ The PR-20 branch put the Three-side example under `examples/three/slug-text/` an
 The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main`. Both slug-text examples still import `@awesome.me/webawesome` — forbidden by `examples/react/CLAUDE.md` ("Do NOT use Web Awesome") and the root CLAUDE.md. The React example also has no `useStatsMonitor`, which every example is required to have.
 
 **Reference patterns (verified against `main`):**
+
 - React canonical: `examples/react/pass-effects/App.tsx` — `usePane`/`useStatsMonitor`/`usePaneFolder`/`usePaneInput`/`usePaneButton` from `@three-flatland/tweakpane/react`, `<StatsTracker>` child component inside Canvas calling `useStatsMonitor(stats)`.
 - Three canonical: `examples/three/pass-effects/main.ts` — `createPane({ scene })` from `@three-flatland/tweakpane`, `pane.addFolder` / `addBinding` with `{ min, max, step }`, `stats.begin()` / `stats.end()` wrapping the render loop, monitor bindings with `readonly: true` for diagnostics, `pane.refresh()` on a throttled timer.
 
 **Non-negotiables per `examples/react/CLAUDE.md`:**
+
 - No `@awesome.me/webawesome` imports (runtime or CSS).
 - `usePane()` + `useStatsMonitor(stats)` in every example; `trackTimestamp: true` on `renderer` so GPU-timestamp mode works.
 - Orthographic camera, `<color attach="background" args={['#00021c']} />`.
@@ -89,6 +93,7 @@ The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main
 ### Task 0a.1 — React slug-text migration
 
 **Files:**
+
 - Modify: `examples/react/slug-text/App.tsx`
 - Modify: `examples/react/slug-text/package.json` — drop `@awesome.me/webawesome` dep; pnpm-workspace catalog already has `@three-flatland/tweakpane`.
 - Run: `pnpm sync:pack` after editing package.json.
@@ -96,7 +101,13 @@ The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main
 - [x] **Step 0a.1.1** — Remove all Web Awesome imports (`@awesome.me/webawesome` CSS + JS + React components). Delete `useWrappingGroup`. Delete the inline-styled status and UI panel `<div>`s.
 - [x] **Step 0a.1.2** — Add tweakpane imports:
   ```tsx
-  import { usePane, usePaneFolder, usePaneInput, usePaneList, useStatsMonitor } from '@three-flatland/tweakpane/react'
+  import {
+    usePane,
+    usePaneFolder,
+    usePaneInput,
+    usePaneList,
+    useStatsMonitor,
+  } from '@three-flatland/tweakpane/react'
   import type { StatsHandle } from '@three-flatland/tweakpane/react'
   ```
 - [x] **Step 0a.1.3** — Restructure `App` to match `pass-effects/App.tsx`:
@@ -115,6 +126,7 @@ The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main
 ### Task 0a.2 — Three.js slug-text migration
 
 **Files:**
+
 - Modify: `examples/three/slug-text/main.ts`
 - Modify: `examples/three/slug-text/index.html` — delete all Web Awesome UI markup (`<wa-radio-group>`, `<wa-slider>`, compare-mode buttons, words/darken/thicken sliders, runtime checkbox). Keep `<canvas id="compare-canvas">`, `<div id="split-handle">`, labels, `<div id="status">`, `<div id="computing">`.
 - Modify: `examples/three/slug-text/package.json` — drop `@awesome.me/webawesome`, add `@three-flatland/tweakpane` via catalog.
@@ -147,6 +159,7 @@ The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main
 - [x] Rebase `feat-slug` onto `main` (resolved `package.json`, `pnpm-lock.yaml`, `docs/astro.config.mjs`). Branch is 14 commits ahead of `main`.
 
 **Files:**
+
 - Modify: `package.json` (merged `@three-flatland/slug` into overrides alongside new `skia`/`skills`/`tweakpane` entries from main)
 - Modify: `docs/astro.config.mjs` (added Slug Text guide + example entries next to Skia)
 - Regenerated: `pnpm-lock.yaml`
@@ -177,6 +190,7 @@ git push --force-with-lease origin feat-slug
 Mirror the existing split **exactly**: two peer files under `pipeline/`, loaded the same way as `textShaper.ts` / `textShaperBaked.ts`.
 
 **Files:**
+
 - Create: `packages/slug/src/pipeline/textMeasure.ts` — opentype-backed measurement (runtime path only)
 - Create: `packages/slug/src/pipeline/textMeasureBaked.ts` — baked-data measurement (zero opentype)
 - Create: `packages/slug/src/pipeline/textMeasure.test.ts`
@@ -239,7 +253,7 @@ export function measureTextBaked(
   ascender: number,
   descender: number,
   text: string,
-  fontSize: number,
+  fontSize: number
 ): TextMetrics {
   // Sum advances + kerning across codepoints (no wrap, no newline handling — single line per browser semantics).
   // Track tight bounds: for each glyph, expand actualBoundingBox by (cursorX + glyph.bounds * scale).
@@ -306,8 +320,9 @@ return SlugFont._createBaked(glyphs, textures, metrics, bakedData, shapeTextBake
   - Toggle `Show Font Bounds` — overlays a second rectangle using `fontBoundingBoxAscent/Descent` (font-level, glyph-independent).
   - Readonly monitor `Width (px)` — live `font.measureText(text, fontSize).width`.
   - Readonly monitor `Ink (px)` — `actualBoundingBoxRight − actualBoundingBoxLeft`.
-  
+
   Overlay is drawn in the R3F scene (a `<mesh>` with `LineSegments` or a thin wireframe box) so it moves with the text and respects camera. Vanilla mirrors with a Three `LineSegments`. Must visibly track every change to `text`, `fontSize`, or selected font.
+
 - [x] **Step 5.2:** Add a "Measuring text" section to `packages/slug/README.md` and `docs/src/content/docs/guides/slug-text.mdx` — one example showing `font.measureText(...)` returning `TextMetrics`, mirroring the example control's behavior.
 - [x] **Step 5.3: Interactive verification** — run `pnpm --filter=examples dev`, open `/three/slug-text` and `/react/slug-text`, toggle `Show Bounds` on, verify the overlay rect exactly matches the rendered text extent at multiple font sizes and text strings.
 - [x] **Step 5.4: Commit.** `feat(example-slug-text): interactive measureText visualization`
@@ -324,6 +339,7 @@ return SlugFont._createBaked(glyphs, textures, metrics, bakedData, shapeTextBake
 Pure-CPU/geometry feature: layout emits extra rectangle primitives and adjusts positioned-glyph scale/offset. No shader changes.
 
 **Files:**
+
 - Create: `packages/slug/src/pipeline/decorations.ts`
 - Modify: `packages/slug/src/pipeline/textShaper.ts` — accept `StyleSpan[]`, emit decoration rects
 - Modify: `packages/slug/src/pipeline/textShaperBaked.ts` — same
@@ -360,11 +376,13 @@ Pure-CPU/geometry feature: layout emits extra rectangle primitives and adjusts p
 Scope: "render this string with font A; for any codepoint A lacks, try B, then C; if none have it, draw notdef". **Per-codepoint**, **automatic**, **author never tags runs**. All fonts are user-loaded (`SlugFontLoader.load(...)`) and resident on the GPU — there is no system-font access in the browser, and Slug itself doesn't do system-font access either (the manual's fallback chain assumes you've loaded every font you want in the chain; §4.6, p.40-43).
 
 Explicitly **out of scope for this phase**:
-- *Rich-text run selection* — the "this span uses font A, this span uses font B" feature where the author tags spans. That's Phase 6 (rich text). Rich-text runs can each *carry* a `SlugFontStack`, but choosing between runs is an author decision, not a per-codepoint fallback decision.
-- *Color emoji* (COLR/CPAL/CBDT bitmap tables). Emoji falls back to the emoji font's outline if present, else notdef. Tracked as a future roadmap item.
-- *System fonts*. Not a thing — all fonts must be explicitly loaded.
+
+- _Rich-text run selection_ — the "this span uses font A, this span uses font B" feature where the author tags spans. That's Phase 6 (rich text). Rich-text runs can each _carry_ a `SlugFontStack`, but choosing between runs is an author decision, not a per-codepoint fallback decision.
+- _Color emoji_ (COLR/CPAL/CBDT bitmap tables). Emoji falls back to the emoji font's outline if present, else notdef. Tracked as a future roadmap item.
+- _System fonts_. Not a thing — all fonts must be explicitly loaded.
 
 **Files:**
+
 - Create: `packages/slug/src/SlugFontStack.ts` + test
 - Create: `packages/slug/src/pipeline/shaperStack.ts` + test
 - Modify: `packages/slug/src/SlugText.ts` — accept `font: SlugFont | SlugFontStack`
@@ -391,7 +409,7 @@ Explicitly **out of scope for this phase**:
 - [x] **Step 8.3: Example** — `examples/react/slug-text/App.tsx` loads Inter + an emoji font (e.g. `NotoColorEmoji-Regular.ttf`) and renders `'Flatland 🔺'`.
 - [x] **Step 8.4: Docs + commit.**
 
-> **Scope cutoff:** color emoji (COLR/CPAL/CBDT) rendering is *out of scope*. Emoji glyphs are rendered as their outline if present, or as notdef otherwise. Add a roadmap entry.
+> **Scope cutoff:** color emoji (COLR/CPAL/CBDT) rendering is _out of scope_. Emoji glyphs are rendered as their outline if present, or as notdef otherwise. Add a roadmap entry.
 
 ---
 
@@ -407,13 +425,13 @@ Explicitly **out of scope for this phase**:
 
 ### Crispness matrix (this phase must deliver all green for text)
 
-| | Phase 4 deliverable |
-|---|---|
-| Body text outlines (≤0.05 em) | ✅ Indistinguishable from baked-reference crisp |
-| Display text outlines (0.05–0.15 em) | ✅ Sharp tips on A/V/W via bevel-via-min, crisp serif ends |
-| Curved letters (O, S, C) | ✅ Smooth always |
-| Interior angles (inside of H crossbar, etc.) | ✅ Crisp — distance field handles natively |
-| Sub-pixel hairlines | ✅ Crispness gate widens coverage so 0.5px strokes don't disappear |
+|                                              | Phase 4 deliverable                                                |
+| -------------------------------------------- | ------------------------------------------------------------------ |
+| Body text outlines (≤0.05 em)                | ✅ Indistinguishable from baked-reference crisp                    |
+| Display text outlines (0.05–0.15 em)         | ✅ Sharp tips on A/V/W via bevel-via-min, crisp serif ends         |
+| Curved letters (O, S, C)                     | ✅ Smooth always                                                   |
+| Interior angles (inside of H crossbar, etc.) | ✅ Crisp — distance field handles natively                         |
+| Sub-pixel hairlines                          | ✅ Crispness gate widens coverage so 0.5px strokes don't disappear |
 
 Explicit miter joins, round joins, caps, dashing — all in **Phase 5**.
 
@@ -449,12 +467,14 @@ Per-curve storage stays at 2 texels (p0, p1, p2 with endpoint sharing). **Neighb
 ### `distanceToQuadBezier` implementation
 
 Closest point on a quadratic Bezier = cubic root-find (`∂|B(t)−p|²/∂t = 0`). Two paths:
+
 - **Closed-form Cardano** — ~3× the work of `solveQuadratic`, no iteration, handles all cases deterministically.
 - **Newton refinement** from `solveQuadratic`'s derivative roots as initial guesses, 3–4 iterations — cheaper, well-initialized, converges reliably.
 
 POC uses Newton. Benchmark both in Task 10.3; pick winner.
 
 **Files (Phase 4):**
+
 - Create: `packages/slug/src/shaders/distanceToQuadBezier.ts` — TSL `Fn` + pure-JS twin. Returns `(distance, t)`.
 - Create: `packages/slug/src/shaders/distanceToQuadBezier.test.ts`.
 - Create: `packages/slug/src/shaders/slugStroke.ts` — TSL `Fn` reading `(curveTexture, bandTexture, coord, glyphLocX, glyphLocY, numHBands, numVBands, glyphBand, strokeHalfWidth)`. Halo-aware band iteration, `min(distance)` across curves, crispness-gated smoothstep. Leaves a labeled extension point (`// Phase 5: join classifier dispatches here`) where miter/round/bevel/cap logic hooks in.
@@ -513,11 +533,13 @@ This task is the gate. Phase 4 does not ship until all rows of the crispness mat
 **Re-scoped (2026-04-14, round 2):** Phase 4 shipped a dynamic analytic-distance stroke shader — useful for dev iteration, **not the ship path.** Benching against M2 text budgets and re-reading the Slug manual made the runtime numbers clear: Slug's reference doesn't run a distance-to-curve shader in production. It **bakes strokes as offset contours that render through the fill shader** (manual §4430, §4714). That's the path Phase 5 commits to.
 
 **Why this is the right call:**
+
 - Per-fragment cost of baked-as-fill = 1× fill (what text already pays). Dynamic `slugStroke` = ~2.6× fill. On M2 text already eats 3–4 ms/frame; games can't afford another 2× on top.
 - What users actually animate in strokes (audited on real product use cases): dash offset (marching ants), color, opacity, transform, pre-baked width swap. None of those need the dynamic shader — they're all bake-compatible.
 - Continuous width scrubbing is the only dynamic-exclusive knob. Covered by a runtime fallback (JS offsetter + texture-pool upload) that warms into the fast path after one frame.
 
 **Architecture:**
+
 1. **`slug-bake` CLI grows a quadratic-Bezier contour offsetter.** CPU, build-time. Emits offset contours for a user-configured set of stroke widths × join × cap variants. Store as additional closed contours in the baked file, packed into the same curve/band textures the fill shader already reads.
 2. **Offset contours reference the glyph's curves by offset metadata, not copy.** Per-glyph "stroke set" = (width, joinStyle, capStyle) → (extra curve table, extra band table). Switching width = swap the stroke-set reference via instance-attribute or uniform. Glyph curve data itself is untouched. Never re-process glyph geometry when the stroke width changes.
 3. **Same fill shader (`slugRender`) renders stroked text and stroked shapes.** Zero new fragment path. No miter/cap/distance math at runtime. Join and cap geometry are decided at bake time.
@@ -526,6 +548,7 @@ This task is the gate. Phase 4 does not ship until all rows of the crispness mat
 6. **Dynamic stroke shader (`slugStroke`) stays as `outline: { mode: 'dynamic' }` opt-in** — no miter/cap/dash work goes into it. Bevel-via-min forever. Documented as a dev/tinker mode with honest cost. Phase 4's shipping implementation stays intact.
 
 **Why keep the dynamic path at all:**
+
 - Dev/demo tool — scrubbing width live to see what a design looks like is valuable during iteration.
 - Runtime fallback if async offsetter hasn't finished (one frame of bevel-via-min beats a missing stroke).
 - No ongoing cost — the shader is already written and the uniform slots reserved.
@@ -534,26 +557,27 @@ This task is the gate. Phase 4 does not ship until all rows of the crispness mat
 
 Audit driving the re-scope. ✅ = ship-path (via baked-as-fill). `dyn` = dynamic-only.
 
-| Property | Text | Shapes | Path |
-|---|---|---|---|
-| Fill color | ✅ | ✅ | uniform |
-| Opacity | ✅ | ✅ | uniform |
-| Transform (pos/rot/scale) | ✅ | ✅ | MVP |
-| Stem-darken / thicken | ✅ | ✅ | uniform |
-| Stroke color | ✅ | ✅ | uniform |
-| **Stroke width — swap among pre-baked set** | ✅ | ✅ | instance attr / uniform |
-| **Dash offset (marching ants)** | ✅ | ✅ | uniform |
-| Dash array structure | — | ✅ | dash-array texture rebind |
-| Stroke width — continuous scrub | dyn | dyn | slugStroke (dev) / async offsetter (prod) |
-| Join style (miter/round/bevel) | dyn | dyn | rebake, or dynamic-mode runtime |
-| Cap style (flat/square/round/triangle) | — | dyn | rebake, or dynamic-mode runtime |
-| Miter limit | dyn | dyn | rebake, or dynamic-mode runtime |
+| Property                                    | Text | Shapes | Path                                      |
+| ------------------------------------------- | ---- | ------ | ----------------------------------------- |
+| Fill color                                  | ✅   | ✅     | uniform                                   |
+| Opacity                                     | ✅   | ✅     | uniform                                   |
+| Transform (pos/rot/scale)                   | ✅   | ✅     | MVP                                       |
+| Stem-darken / thicken                       | ✅   | ✅     | uniform                                   |
+| Stroke color                                | ✅   | ✅     | uniform                                   |
+| **Stroke width — swap among pre-baked set** | ✅   | ✅     | instance attr / uniform                   |
+| **Dash offset (marching ants)**             | ✅   | ✅     | uniform                                   |
+| Dash array structure                        | —    | ✅     | dash-array texture rebind                 |
+| Stroke width — continuous scrub             | dyn  | dyn    | slugStroke (dev) / async offsetter (prod) |
+| Join style (miter/round/bevel)              | dyn  | dyn    | rebake, or dynamic-mode runtime           |
+| Cap style (flat/square/round/triangle)      | —    | dyn    | rebake, or dynamic-mode runtime           |
+| Miter limit                                 | dyn  | dyn    | rebake, or dynamic-mode runtime           |
 
 Conclusion: the full realtime-animatable set ships through the fill pipeline at fill cost. The dynamic path serves exactly the scrub-and-iterate dev workflow.
 
 ### Scope delta vs the previous Phase-5 sketch
 
 **Deleted:**
+
 - Full miter/round/bevel extension of `slugStroke.ts` with in-shader classifier dispatch (Task 18)
 - Cap-style shader logic (Task 19)
 - In-shader distance-based dashing via arc-length tables (Task 20)
@@ -561,6 +585,7 @@ Conclusion: the full realtime-animatable set ships through the fill pipeline at 
 - `SlugStrokeMaterial` extension with join/cap/dash uniforms (same reason)
 
 **Added:**
+
 - CPU quadratic-Bezier contour offsetter (build-time, in `slug-bake`)
 - Stroke-set data model in the baked format (per-width, per-(join,cap) variant)
 - Stroke-set runtime swap API (`SlugText.outline.width` picks from pre-baked set, or triggers async offset)
@@ -568,12 +593,14 @@ Conclusion: the full realtime-animatable set ships through the fill pipeline at 
 - Dash offset / dash-array uniform modifier on `SlugMaterial` (fill shader)
 
 **Kept:**
+
 - `SlugShapeBatch` — retained-mode batch allocator (unchanged)
 - SVG path-d parser
 - Texture pool for dynamic curve/band append
 - Shared contour → GPU data pipeline refactor
 
 **Added (addendum 2026-04-14 round 3):**
+
 - **`SlugStackText` outline support.** The stack renderer has no outline path today — Phase 4 shipped outline only on `SlugText`. Phase 5 lands stack outline as part of Task 19: per-font stroke sets are baked alongside each font, and `SlugStackText` dispatches per-glyph to the corresponding font's stroke-set texture exactly like it dispatches per-glyph curve data today.
 - **Regression test gating between every task.** Phase 5 touches the baked-file format, the fontParser pipeline, the fill shader, and example wiring. One careless change breaks text rendering in ways pure-unit-tests can miss (shader uniform wiring, texture format mismatches, UV math). Explicit gates below.
 
@@ -582,11 +609,13 @@ Conclusion: the full realtime-animatable set ships through the fill pipeline at 
 Phase 5 is the first phase that refactors load-bearing font-rendering code paths. Every task commits behind this gate:
 
 **Automated gate (runs via `pnpm test + pnpm typecheck`):**
+
 - All 140+ existing slug unit tests pass unchanged.
 - All example typechecks pass.
 - Any new tests introduced by the task are passing.
 
 **Manual gate (human verification in `pnpm dev` before each commit):**
+
 1. **Lorem scene** — default font size, forceRuntime both on and off. Compare side-by-side (onion mode) — must visually match Canvas2D. Wrap correctly at multiple viewport widths.
 2. **Icons scene** — SlugStackText with FA fallback. Lorem + icons display identically to pre-task rendering. Canvas2D compare stays aligned.
 3. **Outline Fill/Outline/Both** — Phase 4 dynamic path must still work. Width slider still live-updates. Color picker still works.
@@ -595,12 +624,14 @@ Phase 5 is the first phase that refactors load-bearing font-rendering code paths
 6. **Runtime font swap** — flip forceRuntime on/off mid-session. No crash, no visual change.
 
 **Pre-merge gate (Phase 5 shipping):**
+
 - Everything above, plus new Phase 5 features (baked stroke width swap, dash offset animation, SlugShapeBatch).
 - Bake the checked-in fixtures with at least 2 stroke variants; confirm file-size growth is acceptable (< 2× for a 2-variant bake).
 
 ### Pre-Phase-5 baseline capture (Task 14.5 — prerequisite)
 
 Before Task 15 touches the pipeline, snapshot the current rendered output of both examples at default settings so later regressions are detectable:
+
 - Playwright / headless WebGPU screenshot of the `three/slug-text` example at Lorem default, Icons default, Outline=Both + width=0.05.
 - Store as PNG goldens under `packages/slug/test/golden/phase-4-baseline/`.
 - Each task's manual gate includes a diff check against these goldens; material differences require justification in the commit message.
@@ -609,7 +640,7 @@ Before Task 15 touches the pipeline, snapshot the current rendered output of bot
 
 ### Curve offsetting (the core new piece)
 
-Quadratic Bezier offsetting is *not* closed-form — the parallel curve of a quadratic is a higher-order curve. Production approach:
+Quadratic Bezier offsetting is _not_ closed-form — the parallel curve of a quadratic is a higher-order curve. Production approach:
 
 1. **Adaptive subdivision.** Split each quadratic at points of high curvature until each segment's offset can be approximated by a single quadratic within tolerance ε.
 2. **Per-segment offset.** For each subdivided quadratic, construct the offset-segment control points using the normal at p0, p1, p2 at the offset distance `±halfWidth`.
@@ -648,13 +679,13 @@ A glyph/shape may carry multiple stroke sets — one per configured (width, join
 ```ts
 // Per-instance on SlugShapeBatch + SlugText.outline config:
 interface StrokeSpec {
-  width: number                      // em-space
+  width: number // em-space
   color?: Color | number | string
   join?: 'miter' | 'round' | 'bevel' // bake-time choice, swapping needs rebake
-  cap?: 'flat' | 'square' | 'round' | 'triangle'  // same
-  miterLimit?: number                // same
-  dashArray?: number[]               // runtime — uniform array, cheap
-  dashOffset?: number                // runtime — single float uniform
+  cap?: 'flat' | 'square' | 'round' | 'triangle' // same
+  miterLimit?: number // same
+  dashArray?: number[] // runtime — uniform array, cheap
+  dashOffset?: number // runtime — single float uniform
 }
 
 // Material selection:
@@ -789,10 +820,17 @@ The core new build-time piece. Slug keeps this proprietary; ours is the open imp
   ```ts
   class SlugShapeBatch extends InstancedMesh {
     constructor(options?: { capacity?: number })
-    add(shape: SlugShape, transform: {
-      x, y, scale?, rotation?, color?,
-      stroke?: StrokeSpec,  // see earlier — width/join/cap/dash
-    }): ShapeHandle
+    add(
+      shape: SlugShape,
+      transform: {
+        x
+        y
+        scale?
+        rotation?
+        color?
+        stroke?: StrokeSpec // see earlier — width/join/cap/dash
+      }
+    ): ShapeHandle
     remove(handle: ShapeHandle): void
     update(renderer: Renderer, camera?: Camera): void
     dispose(): void
@@ -827,6 +865,7 @@ The core new build-time piece. Slug keeps this proprietary; ours is the open imp
 Own data model on top of the above primitives. No new GPU work.
 
 **Files:**
+
 - Create: `packages/slug/src/rich/RichText.ts` — data model + compiler
 - Create: `packages/slug/src/rich/RichText.test.ts`
 - Create: `packages/slug/src/rich/SlugRichText.ts` — `Object3D` wrapper creating per-run `SlugText` children
@@ -838,12 +877,17 @@ Own data model on top of the above primitives. No new GPU work.
 ```ts
 export type RichRun = {
   text: string
-  font?: SlugFont | SlugFontStack      // inherits if omitted
+  font?: SlugFont | SlugFontStack // inherits if omitted
   fontSize?: number
   color?: number | Color
-  styles?: StyleFlags                  // bold-via-weightBoost, italic offset, underline, strike, super, sub
+  styles?: StyleFlags // bold-via-weightBoost, italic offset, underline, strike, super, sub
 }
-export type RichText = { runs: RichRun[]; align?: 'left'|'center'|'right'; lineHeight?: number; maxWidth?: number }
+export type RichText = {
+  runs: RichRun[]
+  align?: 'left' | 'center' | 'right'
+  lineHeight?: number
+  maxWidth?: number
+}
 ```
 
 - [ ] **Step 22.1: Test** — `compileRichText(rt, defaults)` produces the same positioning as shaping the concatenated string when all runs share font/size.
@@ -880,16 +924,19 @@ export type RichText = { runs: RichRun[]; align?: 'left'|'center'|'right'; lineH
 | Rich text | Phase 6 |
 
 **Phase 4 ↔ Phase 5 handshake (re-scoped 2026-04-14 round 2 — runtime-cost pivot):**
+
 - Phase 4 shipped the dynamic analytic-distance stroke shader (`slugStroke` + `SlugStrokeMaterial`). Works end-to-end, nice for dev iteration. **Kept as `outline: { mode: 'dynamic' }` opt-in forever; no more invested in it after Phase 4.**
 - Phase 5 commits to the ship path: **offset-contour bake at build time, rendered through the fill shader.** 1× fill cost for stroked text, same as glyph fills. Join/cap/miterLimit baked; width is a per-stroke-set lookup (pre-baked set → instant swap, unbaked → async CPU offsetter warms the cache). Dashing = fill-shader modifier (one float uniform).
 - Why this pivot after Phase 4 shipped dynamic: M2 benching showed ~2.6× fill cost for dynamic stroke per fragment, which is unaffordable on top of the existing 3–4ms text budget once gameplay is added. The realtime-animatable audit (see Phase 5 preamble) confirms that no real product use case needs the dynamic shader except continuous width scrubbing, which the async offsetter path handles via 1-frame fallback.
 
 **What stays dynamic in Phase 5:**
+
 - Dash offset (marching ants) — single float uniform on the fill shader.
 - Pre-baked stroke width swap — texture-slot swap, no shader cost.
 - All the existing SlugMaterial uniforms (color, opacity, stem-darken, thicken, viewport, MVP).
 
 **What requires rebake (dev-mode or build-time):**
+
 - Continuous stroke width — async offsetter fallback on first use; cached thereafter.
 - Join style / cap style / miterLimit — rebake-only in v1; exposed in examples as dev-mode controls that trigger async offsetter.
 

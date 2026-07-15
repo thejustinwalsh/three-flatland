@@ -1,0 +1,48 @@
+import type { z } from 'zod'
+import {
+  type BaseOutProperties,
+  componentDefaults,
+  Container,
+  type InProperties,
+  type RenderContext,
+  type WithSignal,
+} from '@three-flatland/uikit'
+import { computed } from '@preact/signals-core'
+import { Dropdown } from './index.js'
+import { Avatar, type AvatarOutProperties, AvatarPropertiesSchema } from '../avatar/index.js'
+export const DropdownAvatarPropertiesSchema = AvatarPropertiesSchema
+
+export type DropdownAvatarOutProperties = AvatarOutProperties
+
+export type DropdownAvatarProperties = z.input<typeof DropdownAvatarPropertiesSchema>
+
+export class DropdownAvatar extends Avatar {
+  constructor(
+    inputProperties?: InProperties<DropdownAvatarOutProperties>,
+    initialClasses?: Array<InProperties<BaseOutProperties> | string>,
+    config?: {
+      renderContext?: RenderContext
+      defaultOverrides?: InProperties<DropdownAvatarOutProperties>
+      defaults?: WithSignal<DropdownAvatarOutProperties>
+    }
+  ) {
+    super(inputProperties, initialClasses, {
+      defaults: componentDefaults,
+      ...config,
+      defaultOverrides: {
+        size: computed(() => {
+          const dropdown = this.parentContainer.value
+          if (!(dropdown instanceof Dropdown)) {
+            return 'sm'
+          }
+          const size = dropdown.properties.value.size ?? 'lg'
+          if (size === 'lg') {
+            return 'sm'
+          }
+          return 'xs'
+        }),
+        ...config?.defaultOverrides,
+      },
+    })
+  }
+}

@@ -37,6 +37,7 @@ class Light2D extends Object3D {
 ```
 
 Wire through:
+
 - `Light2DUniforms` interface (add `castsShadow: boolean`)
 - `getUniforms()` (include it)
 - `clone()` (preserve it)
@@ -45,15 +46,15 @@ Wire through:
 
 Row 3 of the lights DataTexture currently has two unused columns:
 
-| Row | R    | G       | B | A |
-|-----|------|---------|---|---|
-| 3   | type | enabled | 0 | 0 |
+| Row | R    | G       | B   | A   |
+| --- | ---- | ------- | --- | --- |
+| 3   | type | enabled | 0   | 0   |
 
 Pack `castsShadow` into column B:
 
-| Row | R    | G       | B           | A |
-|-----|------|---------|-------------|---|
-| 3   | type | enabled | castsShadow | 0 |
+| Row | R    | G       | B           | A   |
+| --- | ---- | ------- | ----------- | --- |
+| 3   | type | enabled | castsShadow | 0   |
 
 Values: `1.0` for casting, `0.0` for not. Stored as float, read by the shader via `row3.b`.
 
@@ -62,7 +63,7 @@ Update `sync()` at `packages/three-flatland/src/lights/LightStore.ts:163`:
 ```ts
 data[3 * lineSize + offset + 0] = lightType
 data[3 * lineSize + offset + 1] = light.enabled ? 1 : 0
-data[3 * lineSize + offset + 2] = light.castsShadow ? 1 : 0   // NEW
+data[3 * lineSize + offset + 2] = light.castsShadow ? 1 : 0 // NEW
 data[3 * lineSize + offset + 3] = 0
 ```
 
@@ -76,10 +77,11 @@ Extend `shouldTrace` in `packages/presets/src/lighting/DefaultLightEffect.ts` (p
 
 ```ts
 const lightCastsShadow = row3.b
-const shouldTrace = isAmbient.not()
+const shouldTrace = isAmbient
+  .not()
   .and(NdotL.greaterThan(float(0)))
   .and(atten.greaterThan(float(0.01)))
-  .and(lightCastsShadow.greaterThan(float(0.5)))   // NEW
+  .and(lightCastsShadow.greaterThan(float(0.5))) // NEW
 ```
 
 Threshold `0.5` is standard for float-as-bool comparison — the stored value is exactly 0 or 1, so the midpoint is safe. GPU gate, physically skipped on the shader.
@@ -94,7 +96,7 @@ Set `castsShadow={false}` on the per-slime `<light2D>` at line ~924. Torches and
 <light2D
   key={`slime-light-${i}`}
   // ...existing props
-  castsShadow={false}   // NEW — slime glows are cosmetic fills
+  castsShadow={false} // NEW — slime glows are cosmetic fills
 />
 ```
 
@@ -103,6 +105,7 @@ Set `castsShadow={false}` on the per-slime `<light2D>` at line ~924. Torches and
 ### 3.1 `Light2D.test.ts`
 
 Add cases:
+
 - Default `castsShadow` is `true`.
 - Custom `castsShadow: false` round-trips through constructor → property.
 - `clone()` preserves `castsShadow`.
@@ -111,6 +114,7 @@ Add cases:
 ### 3.2 `LightStore.test.ts`
 
 Add cases:
+
 - After `sync()` with a `castsShadow: true` light, the DataTexture's row3 column B equals `1.0` at that light's index.
 - After `sync()` with a `castsShadow: false` light, the DataTexture's row3 column B equals `0.0`.
 - Sync preserves existing `enabled` column G behavior (regression guard on the row3 packing).
@@ -118,6 +122,7 @@ Add cases:
 ### 3.3 Shader-level verification
 
 Not unit-testable (TSL fragment code). Visual verification via the lighting example: toggle slime lights with/without the flag and confirm:
+
 - With `castsShadow={true}` (old default) + 200 slimes: frame time high, shadows visible on slime-lit walls.
 - With `castsShadow={false}` (new default for slimes) + 200 slimes: frame time lower, slime glows remain visually distinct but their near-light shadows disappear.
 

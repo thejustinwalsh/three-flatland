@@ -17,7 +17,14 @@ import { packTextures } from './pipeline/texturePacker'
 import { unpackBaked, cmapLookup, kernLookup } from './baked'
 import type { BakeInput, BakedFontData } from './baked'
 import { packBaked } from './bake'
-import type { SlugGlyphData } from './types'
+import type { SlugGlyphData, SlugTextureData } from './types'
+import { SlugFont } from './SlugFont'
+import { shapeText } from './pipeline/textShaper'
+import { wrapLines } from './pipeline/wrapLines'
+import { measureText } from './pipeline/textMeasure'
+import { shapeTextBaked } from './pipeline/textShaperBaked'
+import { wrapLinesBaked } from './pipeline/wrapLinesBaked'
+import { measureTextBaked } from './pipeline/textMeasureBaked'
 
 // ---------------------------------------------------------------------------
 // Font fixture — same file used by all other slug tests
@@ -47,6 +54,13 @@ let idG: number
 let id0: number
 let idSpace: number
 
+// SlugFont instances built on each backend from the same source data, for
+// getKerning/getGlyphMetrics parity assertions (§ below). Textures are
+// stubbed — nothing under test touches curveTexture/bandTexture.
+let runtimeFont: SlugFont
+let bakedFont: SlugFont
+const stubTextures = {} as unknown as SlugTextureData
+
 beforeAll(async () => {
   const buf = readFileSync(FONT_PATH)
   const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
@@ -71,8 +85,11 @@ beforeAll(async () => {
   id0 = otFont.charToGlyph('0').index
   idSpace = otFont.charToGlyph(' ').index
 
-  // Pack textures — this mutates glyphs in-place (bandLocation / curveLocation)
-  const textures = packTextures(parsed.glyphs)
+  // Pack textures — this mutates glyphs in-place (bandLocation / curveLocation).
+  // Every glyph in this fixture fits on page 0 (paging only kicks in for
+  // dense sets like CJK), which the "reconstructed glyph count" assertions
+  // below implicitly prove.
+  const textures = packTextures(parsed.glyphs).pages[0]!
   const curveImage = textures.curveTexture.image as {
     data: Uint16Array
     width: number
@@ -134,6 +151,28 @@ beforeAll(async () => {
   glyphG = input.glyphs.get(idG)!
   glyph0 = input.glyphs.get(id0)!
   glyphSpace = input.glyphs.get(idSpace)!
+
+  // Same font data through both `_backend` paths — `input.metrics` and
+  // `input.glyphs`/`data.glyphs` are the exact structures each backend's
+  // real loader path constructs from.
+  runtimeFont = SlugFont._createRuntime(
+    input.glyphs,
+    stubTextures,
+    input.metrics,
+    otFont,
+    shapeText,
+    wrapLines,
+    measureText
+  )
+  bakedFont = SlugFont._createBaked(
+    data.glyphs,
+    stubTextures,
+    input.metrics,
+    data,
+    shapeTextBaked,
+    wrapLinesBaked,
+    measureTextBaked
+  )
 })
 
 // ---------------------------------------------------------------------------
@@ -303,7 +342,118 @@ describe('real-font equivalence — kern lookups', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 6. Texture byte-exact round-trip
+// 6. SlugFont.getKerning — runtime vs baked parity (public API)
+// ---------------------------------------------------------------------------
+
+describe('SlugFont.getKerning — runtime/baked parity', () => {
+  it('agrees with the source kern table (em-normalized) on every packed pair', () => {
+    if (input.kern.length === 0) {
+      // Inter's ASCII subset may have zero kerning pairs — cover the
+      // "no kerning data" case explicitly rather than skipping silently.
+      expect(bakedFont.getKerning(idA, idLa)).toBe(0)
+      expect(runtimeFont.getKerning(idA, idLa)).toBe(0)
+      return
+    }
+    for (const [g1, g2, v] of input.kern.slice(0, 20)) {
+      const expected = v / input.metrics.unitsPerEm
+      expect(bakedFont.getKerning(g1, g2), `baked kern(${g1},${g2})`).toBeCloseTo(expected, 5)
+      expect(runtimeFont.getKerning(g1, g2), `runtime kern(${g1},${g2})`).toBeCloseTo(expected, 5)
+    }
+  })
+
+  it('runtime and baked agree with each other for every packed pair', () => {
+    for (const [g1, g2] of input.kern.slice(0, 20)) {
+      expect(runtimeFont.getKerning(g1, g2)).toBeCloseTo(bakedFont.getKerning(g1, g2), 5)
+    }
+  })
+
+  it('returns 0 for an unkerned pair (notdef, notdef) on both backends', () => {
+    expect(runtimeFont.getKerning(0, 0)).toBe(0)
+    expect(bakedFont.getKerning(0, 0)).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 7. SlugFont.getGlyphId / getGlyphMetrics — runtime vs baked parity
+// ---------------------------------------------------------------------------
+
+describe('SlugFont.getGlyphId — runtime/baked parity', () => {
+  const SPOT_CHARS = 'Aa0g '
+
+  it('resolves the same glyph id as opentype.js on both backends', () => {
+    for (const ch of SPOT_CHARS) {
+      const codepoint = ch.charCodeAt(0)
+      const expected = otFont.charToGlyph(ch).index
+      expect(runtimeFont.getGlyphId(codepoint), `runtime '${ch}'`).toBe(expected)
+      expect(bakedFont.getGlyphId(codepoint), `baked '${ch}'`).toBe(expected)
+    }
+  })
+
+  it('returns 0 for a codepoint outside the cmap', () => {
+    expect(runtimeFont.getGlyphId(0x0001)).toBe(0)
+    expect(bakedFont.getGlyphId(0x0001)).toBe(0)
+  })
+})
+
+describe('SlugFont.getGlyphMetrics — runtime/baked parity', () => {
+  function checkMetricsParity(label: string, codepoint: number) {
+    const rt = runtimeFont.getGlyphMetrics(codepoint)
+    const bk = bakedFont.getGlyphMetrics(codepoint)
+    expect(rt, `${label}: runtime metrics missing`).toBeDefined()
+    expect(bk, `${label}: baked metrics missing`).toBeDefined()
+
+    expect(bk!.glyphId).toBe(rt!.glyphId)
+    expect(bk!.hasOutline).toBe(rt!.hasOutline)
+    expect(bk!.advanceWidth).toBeCloseTo(rt!.advanceWidth, 5)
+    // lsb is the layout-positioning bearing; it must survive the .slug.glb
+    // round-trip, and it is NOT interchangeable with bounds.xMin for CFF/OTF.
+    expect(bk!.lsb).toBeCloseTo(rt!.lsb, 5)
+    expect(bk!.bounds.xMin).toBeCloseTo(rt!.bounds.xMin, 5)
+    expect(bk!.bounds.yMin).toBeCloseTo(rt!.bounds.yMin, 5)
+    expect(bk!.bounds.xMax).toBeCloseTo(rt!.bounds.xMax, 5)
+    expect(bk!.bounds.yMax).toBeCloseTo(rt!.bounds.yMax, 5)
+  }
+
+  it('"A" metrics agree between backends', () => checkMetricsParity('A', 'A'.charCodeAt(0)))
+  it('"a" metrics agree between backends', () => checkMetricsParity('a', 'a'.charCodeAt(0)))
+  it('"g" metrics agree between backends', () => checkMetricsParity('g', 'g'.charCodeAt(0)))
+  it('"0" metrics agree between backends', () => checkMetricsParity('0', '0'.charCodeAt(0)))
+
+  it('space (0x20) returns an outline-less entry with a positive advance on both backends', () => {
+    // Plan acceptance: getGlyphMetrics(0x20) must return advances — the
+    // shapeText outline filter (package CLAUDE.md "Known gaps") must not
+    // block this metrics-level lookup.
+    const rt = runtimeFont.getGlyphMetrics(0x20)
+    const bk = bakedFont.getGlyphMetrics(0x20)
+    expect(rt).toBeDefined()
+    expect(bk).toBeDefined()
+    expect(rt!.hasOutline).toBe(false)
+    expect(bk!.hasOutline).toBe(false)
+    expect(rt!.advanceWidth).toBeGreaterThan(0)
+    expect(bk!.advanceWidth).toBeCloseTo(rt!.advanceWidth, 5)
+    // Note: tab (0x09) is not covered here — Inter-Regular.ttf (this
+    // suite's fixture) has no cmap entry for it, so `hasCharCode(0x09)`
+    // is false on both backends and `getGlyphMetrics` correctly returns
+    // `undefined` for it, same as any other unmapped codepoint.
+  })
+
+  it('returns undefined for a codepoint outside the cmap, on both backends', () => {
+    expect(runtimeFont.getGlyphMetrics(0x0001)).toBeUndefined()
+    expect(bakedFont.getGlyphMetrics(0x0001)).toBeUndefined()
+  })
+
+  it('getGlyphMetricsForChar matches getGlyphMetrics(codepoint)', () => {
+    expect(runtimeFont.getGlyphMetricsForChar('A')).toEqual(
+      runtimeFont.getGlyphMetrics('A'.charCodeAt(0))
+    )
+    expect(bakedFont.getGlyphMetricsForChar('A')).toEqual(
+      bakedFont.getGlyphMetrics('A'.charCodeAt(0))
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 8. Texture byte-exact round-trip
 // ---------------------------------------------------------------------------
 
 describe('real-font equivalence — texture byte-exact round-trip', () => {
