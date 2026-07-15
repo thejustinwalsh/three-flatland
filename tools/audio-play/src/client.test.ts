@@ -108,6 +108,7 @@ describe('PlaySidecarClient', () => {
       playing: true,
       durationSeconds: 2,
       elapsedSeconds: 0.5,
+      contextState: 'running',
     })
     expect(client.isRunning).toBe(true)
   })
@@ -132,9 +133,80 @@ describe('PlaySidecarClient', () => {
     expect(second.status).toBe('rejected') // still REACHED the sidecar — not stuck behind the first
   })
 
+  it('a getStats() whose response never arrives rejects after its timeout — and does NOT wedge the queue for callers behind or after it', async () => {
+    // The CI-observed failure mode: one lost/never-sent stats response
+    // used to leave requestStats() unsettled forever, and since every
+    // caller chains onto statsChain, ONE lost response permanently hung
+    // every later getStats() for the instance's whole lifetime.
+    client = spawnFake({ ...process.env, FAKE_PLAY_SIDECAR_DROP_FIRST_STATS: '1' })
+    // B is queued behind A BEFORE A times out — the strictest unwedge proof.
+    const [a, b] = await Promise.allSettled([client.getStats(250), client.getStats()])
+    expect(a.status).toBe('rejected')
+    expect((a as PromiseRejectedResult).reason.message).toMatch(/no stats response within 250ms/)
+    expect(b.status).toBe('fulfilled')
+    // elapsedSeconds=1 proves B got the response to the SECOND request —
+    // a real fresh round trip, not a late leftover of A's.
+    expect((b as PromiseFulfilledResult<{ elapsedSeconds: number }>).value.elapsedSeconds).toBe(1)
+
+    // And a brand-new caller after the dust settles works too.
+    const later = await client.getStats()
+    expect(later.playing).toBe(true)
+  })
+
+  it('a LATE response (arriving after its caller timed out) cannot shift later callers stale — every subsequent caller still gets ITS OWN response', async () => {
+    // The codex-flagged hole in content-only correlation: a response that
+    // is merely SLOW (not dropped) arrives after its caller's timeout
+    // removed the listener — and the NEXT caller's listener, matching on
+    // cmd alone, would consume it, leaving every subsequent same-command
+    // response one stale FOREVER (caller N reads response N-1). Request
+    // ids make the late orphan un-matchable instead.
+    client = spawnFake({ ...process.env, FAKE_PLAY_SIDECAR_DELAY_FIRST_STATS: '600' })
+    await expect(client.getStats(250)).rejects.toThrow(/no stats response within 250ms/)
+
+    // Caller #2 attaches its listener well before #1's late response
+    // lands (~600ms) — and, per the sidecar's strict response ordering,
+    // that late response arrives FIRST. #2 must skip it and resolve with
+    // its own (elapsedSeconds=1), not #1's stale 0.5.
+    const second = await client.getStats()
+    expect(second.elapsedSeconds).toBe(1)
+
+    // And the stream stays correctly paired afterwards.
+    const third = await client.getStats()
+    expect(third.elapsedSeconds).toBe(1.5)
+  })
+
+  it('a playToneSynthAwaitable() whose response never arrives rejects after its timeout — and the tone queue unwedges', async () => {
+    client = spawnFake({ ...process.env, FAKE_PLAY_SIDECAR_DROP_FIRST_TONE: '1' })
+    await expect(
+      client.playToneSynthAwaitable(
+        { synthType: 'Synth', note: 'C4', duration: '8n' },
+        undefined,
+        250
+      )
+    ).rejects.toThrow(/no playToneSynth response within 250ms/)
+    const result = await client.playToneSynthAwaitable({
+      synthType: 'Synth',
+      note: 'C4',
+      duration: '8n',
+    })
+    expect(result).toEqual({ ok: true })
+  })
+
   it('getStats() rejects when the sidecar Nacks the stats query', async () => {
     client = spawnFake({ ...process.env, FAKE_PLAY_SIDECAR_STATS_ERROR: '1' })
     await expect(client.getStats()).rejects.toThrow(/analyser unavailable/)
+  })
+
+  it('onStderr delivers the sidecar process stderr lines, and returns an unsubscribe function', async () => {
+    // The sidecar's stderr carries its only out-of-band diagnostics — the
+    // ready line (with AudioContext state), resume()/state-change logs.
+    // Before this hook existed those lines were discarded unread.
+    client = spawnFake()
+    const lines: string[] = []
+    const off = client.onStderr((line) => lines.push(line))
+    client.play([1, 0, 440])
+    await vi.waitFor(() => expect(lines.join('\n')).toMatch(/fakePlaySidecar: ready/))
+    expect(() => off()).not.toThrow()
   })
 
   it('onError fires when the sidecar responds with a Nack', async () => {

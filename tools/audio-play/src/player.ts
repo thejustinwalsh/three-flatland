@@ -57,6 +57,32 @@ export type PlaySampleChannelsOptions = {
 
 const analysers = new WeakMap<AudioContext, AnalyserNode>()
 
+/** EVERY still-ringing source this module started on a context — unlike
+ * the single-slot `playbacks` record below (last-started-wins), this is
+ * overlap-correct: a long song holds its entry until its OWN `onended`,
+ * however many one-shots layer over it. It exists for the idle-release
+ * close gate ("is anything still ringing?"), which the single record
+ * structurally cannot answer. Blind spot: Tone/Wad-internal nodes never
+ * pass through this module — the close gate covers those with the
+ * playback record + analyser belts. */
+const liveSources = new WeakMap<AudioContext, Set<AudioBufferSourceNode>>()
+
+function getLiveSources(ctx: AudioContext): Set<AudioBufferSourceNode> {
+  let set = liveSources.get(ctx)
+  if (!set) {
+    set = new Set()
+    liveSources.set(ctx, set)
+  }
+  return set
+}
+
+/** How many of this module's sources are still ringing on `ctx` —
+ * overlap-correct, fed by each source's own `onended` (natural end or
+ * explicit `stop()`). */
+export function liveSourceCount(ctx: AudioContext): number {
+  return liveSources.get(ctx)?.size ?? 0
+}
+
 /** The most recently started source's timing, per context — what lets
  * `getPlaybackStats` report exact `playing`/`durationSeconds`/
  * `elapsedSeconds` (#43) instead of callers guessing with magic
@@ -157,8 +183,13 @@ export function playSampleChannels(
   gainNode.gain.value = masterVolume
   source.connect(gainNode)
   gainNode.connect(getAnalyser(ctx))
+  const live = getLiveSources(ctx)
+  live.add(source)
   const ended = new Promise<void>((resolve) => {
-    source.onended = () => resolve()
+    source.onended = () => {
+      live.delete(source)
+      resolve()
+    }
   })
   // Duration from the synthesis inputs directly (sample count ÷ declared
   // rate, playback-rate-adjusted) rather than trusting a buffer.duration
@@ -198,8 +229,13 @@ export function playBuffer(
   gainNode.gain.value = masterVolume
   source.connect(gainNode)
   gainNode.connect(getAnalyser(ctx))
+  const live = getLiveSources(ctx)
+  live.add(source)
   const ended = new Promise<void>((resolve) => {
-    source.onended = () => resolve()
+    source.onended = () => {
+      live.delete(source)
+      resolve()
+    }
   })
   // `decodeAudioData`'s buffer knows its own exact duration.
   trackPlayback(ctx, ended, audioBuffer.duration)
@@ -237,7 +273,14 @@ export function getPlaybackStats(ctx: AudioContext): PlaybackStats {
   // (even a quiet one-shot) clears this by orders of magnitude; the
   // pre-fix bug produced EXACT zeros (an untouched, never-written
   // buffer), not merely quiet ones.
-  return { peak, silent: peak < 1e-6, playing, durationSeconds, elapsedSeconds }
+  return {
+    peak,
+    silent: peak < 1e-6,
+    playing,
+    durationSeconds,
+    elapsedSeconds,
+    contextState: ctx.state,
+  }
 }
 
 /**

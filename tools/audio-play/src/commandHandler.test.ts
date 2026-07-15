@@ -15,6 +15,7 @@ const SILENT_STATS: PlaybackStats = {
   playing: false,
   durationSeconds: 0,
   elapsedSeconds: 0,
+  contextState: 'running',
 }
 
 function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
@@ -147,6 +148,28 @@ describe('createCommandHandler', () => {
     // The second handle is the one now "current" — proven below by stopSong
     // only stopping it once, not the (already-stopped) first handle again.
     expect(backend.songHandles[1]!.stop).not.toHaveBeenCalled()
+  })
+
+  it('a stale handle whose stop() THROWS cannot Nack a new play that already succeeded, nor orphan its handle', () => {
+    // Reachable once the context lifecycle can close a context under a
+    // still-held handle (idle-release/reacquire): stopping a source whose
+    // context is gone may throw. That throw must not (a) Nack the NEW
+    // play — which already started — or (b) skip adopting the new handle,
+    // which would leave the new source playing with nothing to stop it.
+    const backend = fakeBackend()
+    const handler = createCommandHandler(backend)
+    handler.handleCommand({ cmd: 'playSong', song: SONG })
+    backend.songHandles[0]!.stop.mockImplementation(() => {
+      throw new Error('source context is closed')
+    })
+
+    const response = handler.handleCommand({ cmd: 'playSong', song: { ...SONG, bpm: 140 } })
+    expect(response).toEqual({ ok: true, cmd: 'playSong' })
+
+    // The NEW handle was adopted despite the old one's throwing stop —
+    // an explicit stop reaches IT.
+    handler.handleCommand({ cmd: 'stopSong' })
+    expect(backend.songHandles[1]!.stop).toHaveBeenCalledTimes(1)
   })
 
   it('stopSong stops the current song and clears it', () => {

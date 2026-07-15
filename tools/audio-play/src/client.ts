@@ -44,10 +44,12 @@ export class PlaySidecarExitedError extends Error {
 export class PlaySidecarClient {
   private child: ChildProcessWithoutNullStreams | undefined
   private rl: readline.Interface | undefined
+  private stderrRl: readline.Interface | undefined
   private readonly exitListeners = new Set<
     (code: number | null, signal: NodeJS.Signals | null) => void
   >()
   private readonly errorListeners = new Set<(err: Error) => void>()
+  private readonly stderrListeners = new Set<(line: string) => void>()
   private exited = false
 
   constructor(private readonly options: PlaySidecarOptions) {}
@@ -115,11 +117,26 @@ export class PlaySidecarClient {
       }
     })
 
+    // The sidecar's stderr is its only out-of-band diagnostic channel —
+    // the ready line (with AudioContext state), resume()/state-change
+    // logs, native module load errors. This listener lives HERE, not on a
+    // `client.stderr` accessor the owner wires up (codelens-service's
+    // pattern), because this client spawns lazily: at creation time there
+    // is no child yet for an owner to attach to, and the first lines
+    // (spawn crash stack, the ready line) land before any post-hoc attach
+    // could. Forwarded per line via `onStderr`.
+    this.stderrRl = readline.createInterface({ input: child.stderr })
+    this.stderrRl.on('line', (line) => {
+      for (const listener of this.stderrListeners) listener(line)
+    })
+
     child.on('exit', (code, signal) => {
       this.exited = true
       this.child = undefined
       this.rl?.close()
       this.rl = undefined
+      this.stderrRl?.close()
+      this.stderrRl = undefined
       for (const listener of this.exitListeners) listener(code, signal)
     })
     child.on('error', (err) => {
@@ -142,6 +159,58 @@ export class PlaySidecarClient {
       throw new Error('audio-play: sidecar is not running')
     }
     this.child.stdin.write(`${JSON.stringify(command)}\n`)
+  }
+
+  /** Correlation tokens for awaited requests (`stats`/`playToneSynth`) —
+   * monotonic per instance; the sidecar echoes them back (protocol.ts). */
+  private nextRequestId = 1
+
+  /**
+   * Resolves with the response line matching `cmd` AND `id` (the
+   * sidecar's echo of this request's own correlation token), or REJECTS
+   * after `timeoutMs`. The timeout is the escape hatch for a response
+   * that never arrives at all: without it, an unsettled promise here
+   * wedges the caller's serialization chain (`statsChain`/
+   * `toneSynthChain`) permanently, starving every later caller for the
+   * instance's whole lifetime (observed for real: one lost first-ever
+   * stats response early in an e2e session failed every stats poll in
+   * the entire run).
+   *
+   * The id match is what makes the timeout SAFE: matching on cmd alone,
+   * a merely LATE response (slow, not dropped) arriving after its
+   * caller's timeout would be consumed by the NEXT caller's listener —
+   * shifting every subsequent same-command response one stale, forever.
+   * With ids, a late orphan matches no waiter and falls through
+   * harmlessly.
+   */
+  private waitForResponse<R extends Response>(
+    rl: readline.Interface,
+    cmd: Command['cmd'],
+    id: number,
+    timeoutMs: number
+  ): Promise<R> {
+    return new Promise<R>((resolve, reject) => {
+      const onLine = (line: string): void => {
+        let parsed: Response
+        try {
+          parsed = JSON.parse(line) as Response
+        } catch {
+          return
+        }
+        if (parsed.cmd !== cmd || parsed.id !== id) return
+        cleanup()
+        resolve(parsed as R)
+      }
+      const timer = setTimeout(() => {
+        cleanup()
+        reject(new Error(`audio-play: no ${cmd} response within ${timeoutMs}ms`))
+      }, timeoutMs)
+      const cleanup = (): void => {
+        clearTimeout(timer)
+        rl.off('line', onLine)
+      }
+      rl.on('line', onLine)
+    })
   }
 
   /** Plays a one-shot zzfx sound. Spawns the sidecar on first call.
@@ -190,54 +259,51 @@ export class PlaySidecarClient {
    * `getStats().playing`, which reflects the whole context's shared
    * "most-recently-started source" record and can read `true` off an
    * unrelated, still-audible one-shot that has nothing to do with this
-   * call. Safe (not a race against the sidecar's own cold-spawn time, no
-   * timeout window) because the sidecar processes stdin strictly
-   * sequentially (see `protocol.ts`'s doc comment): attaching a listener
-   * for the next `cmd: 'playToneSynth'` response line, before sending,
-   * always resolves with THIS call's own response, however long the
-   * sidecar takes to produce it.
+   * call. Not a race against the sidecar's own cold-spawn time, because
+   * the sidecar processes stdin strictly sequentially (see `protocol.ts`'s
+   * doc comment): attaching a listener for the next `cmd: 'playToneSynth'`
+   * response line, before sending, always pairs with THIS call's own
+   * response, however long the sidecar takes to produce it.
    *
    * Concurrent callers are SERIALIZED via `toneSynthChain`, same
    * reasoning (and same known one-in-flight limitation) as `getStats`.
+   * A response that never arrives at all rejects after `timeoutMs`
+   * instead of wedging the chain forever — see `waitForResponse`.
    */
   async playToneSynthAwaitable(
     cmd: Omit<PlayToneSynthCommand, 'cmd'>,
-    volume?: number
+    volume?: number,
+    timeoutMs = 10_000
   ): Promise<{ ok: true } | { ok: false; error: string; code?: string }> {
-    const run = this.toneSynthChain.then(() => this.requestPlayToneSynth(cmd, volume))
+    const run = this.toneSynthChain.then(() => this.requestPlayToneSynth(cmd, volume, timeoutMs))
     this.toneSynthChain = run.catch(() => undefined)
     return run
   }
 
   private async requestPlayToneSynth(
     cmd: Omit<PlayToneSynthCommand, 'cmd'>,
-    volume?: number
+    volume: number | undefined,
+    timeoutMs: number
   ): Promise<{ ok: true } | { ok: false; error: string; code?: string }> {
     this.start()
     if (!this.rl) {
       throw new Error('audio-play: sidecar is not running')
     }
-    const rl = this.rl
 
-    const responsePromise = new Promise<Nack | Ack>((resolve) => {
-      const onLine = (line: string): void => {
-        let parsed: Response
-        try {
-          parsed = JSON.parse(line) as Response
-        } catch {
-          return
-        }
-        if (parsed.cmd !== 'playToneSynth') return
-        rl.off('line', onLine)
-        resolve(parsed)
-      }
-      rl.on('line', onLine)
-    })
-
+    const id = this.nextRequestId++
+    const responsePromise = this.waitForResponse<Nack | Ack>(
+      this.rl,
+      'playToneSynth',
+      id,
+      timeoutMs
+    )
     this.send({
       cmd: 'playToneSynth',
       ...cmd,
       ...(volume !== undefined ? { volume } : {}),
+      // Last, so a caller-supplied `id` riding in on `cmd` can never
+      // desynchronize the correlation.
+      id,
     })
     const response = await responsePromise
     if (!response.ok) {
@@ -280,52 +346,45 @@ export class PlaySidecarClient {
    * `PlaybackStats`). Spawns the sidecar on first call, like `play`/
    * `playSong`. Unlike every other command here, `stats` genuinely needs
    * its response observed rather than just its ack/nack, so this attaches
-   * a dedicated, self-removing `line` listener *before* sending — see
-   * `protocol.ts`'s doc comment for why content-filtering (the next
-   * `cmd: 'stats'` line) is a safe way to correlate it without a formal
-   * request id.
+   * a dedicated, self-removing `line` listener *before* sending,
+   * correlated by a request id the sidecar echoes back (see
+   * `waitForResponse` for why ids, not content-matching — a merely LATE
+   * response must not shift later callers stale).
    *
-   * That correlation is only safe for ONE in-flight query at a time, so
-   * concurrent callers are SERIALIZED (#46): with two outstanding, both
-   * listeners resolve on the first response line and the second response
-   * arrives orphaned — to be swallowed by whichever query attaches next,
-   * leaving every later caller one full response STALE. With #46's
-   * auto-revert watcher polling in the background alongside e2e polls,
-   * that staleness (~a poll period) is wider than a short one-shot's
-   * entire audible window — a real, observed miss, not a theoretical one.
+   * Concurrent callers are still SERIALIZED (#46): ids make overlap
+   * correlation-safe, but one-in-flight keeps the sidecar's response
+   * ordering trivially reasoned about and matches how every caller
+   * (poll loops) actually uses this. History: pre-id content matching
+   * made overlap actively unsafe — with two outstanding, both listeners
+   * resolved on the first response line, leaving every later caller one
+   * full response STALE, wider than a short one-shot's entire audible
+   * window (a real, observed miss with #46's auto-revert watcher).
+   *
+   * A response that never arrives at all rejects after `timeoutMs`
+   * instead of wedging `statsChain` (and with it every future caller)
+   * forever — see `waitForResponse`. The default outlasts a legitimate
+   * cold-start round trip (native module load + real `AudioContext`
+   * through cpal/ALSA/PulseAudio — several seconds on a loaded CI
+   * runner) with room to spare.
    */
-  async getStats(): Promise<PlaybackStats> {
+  async getStats(timeoutMs = 10_000): Promise<PlaybackStats> {
     // statsChain is always the caught tail, so it never rejects — one
     // fulfillment handler is enough, and one failed query can't poison
     // the queue for the callers behind it.
-    const run = this.statsChain.then(() => this.requestStats())
+    const run = this.statsChain.then(() => this.requestStats(timeoutMs))
     this.statsChain = run.catch(() => undefined)
     return run
   }
 
-  private async requestStats(): Promise<PlaybackStats> {
+  private async requestStats(timeoutMs: number): Promise<PlaybackStats> {
     this.start()
     if (!this.rl) {
       throw new Error('audio-play: sidecar is not running')
     }
-    const rl = this.rl
 
-    const responsePromise = new Promise<Nack | StatsAck>((resolve) => {
-      const onLine = (line: string): void => {
-        let parsed: Response
-        try {
-          parsed = JSON.parse(line) as Response
-        } catch {
-          return
-        }
-        if (parsed.cmd !== 'stats') return
-        rl.off('line', onLine)
-        resolve(parsed)
-      }
-      rl.on('line', onLine)
-    })
-
-    this.send({ cmd: 'stats' })
+    const id = this.nextRequestId++
+    const responsePromise = this.waitForResponse<Nack | StatsAck>(this.rl, 'stats', id, timeoutMs)
+    this.send({ cmd: 'stats', id })
     const response = await responsePromise
     if (!response.ok) {
       throw new Error(`audio-play: stats failed: ${response.error}`)
@@ -373,5 +432,15 @@ export class PlaySidecarClient {
   onError(listener: (err: Error) => void): () => void {
     this.errorListeners.add(listener)
     return () => this.errorListeners.delete(listener)
+  }
+
+  /** Sidecar-process stderr, one line per call — diagnostics only (ready
+   * line incl. AudioContext state, resume()/state-change logs); stdout
+   * stays the exclusive JSON response channel. Subscribe BEFORE the first
+   * play — the listener set is drained from spawn time, so early lines
+   * aren't lost to lazy-spawn timing. Returns an unsubscribe function. */
+  onStderr(listener: (line: string) => void): () => void {
+    this.stderrListeners.add(listener)
+    return () => this.stderrListeners.delete(listener)
   }
 }

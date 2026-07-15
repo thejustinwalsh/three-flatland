@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   getPlaybackStats,
+  liveSourceCount,
   playBuffer,
   playSampleChannels,
   playToneSynth,
@@ -52,6 +53,7 @@ function fakeAudioContext(): {
 
   const ctx = {
     destination: {},
+    state: 'running',
     // Mutable so tests can advance the clock — trackPlayback stamps
     // startedAt from it and getPlaybackStats derives elapsed against it.
     currentTime: 0,
@@ -255,6 +257,7 @@ describe('getPlaybackStats', () => {
       playing: false,
       durationSeconds: 0,
       elapsedSeconds: 0,
+      contextState: 'running',
     })
   })
 
@@ -299,6 +302,40 @@ describe('getPlaybackStats', () => {
       const stats = getPlaybackStats(ctx)
       expect(stats.playing).toBe(true)
       expect(stats.durationSeconds).toBeCloseTo(0.1)
+    })
+
+    it('liveSourceCount tracks EVERY ringing source under overlap — not just the most recent record (idle-release close gate)', async () => {
+      // The single-slot playbacks record is overwritten per play: a long
+      // song followed by a short one-shot reads playing:false 0.5s later
+      // while the song still rings. The live-source set is the
+      // overlap-correct "is anything still ringing" primitive the idle
+      // close gate needs.
+      const { ctx, sources } = fakeAudioContext()
+      expect(liveSourceCount(ctx)).toBe(0)
+
+      playSampleChannels(ctx, [new Array(88200).fill(0.1)], 44100, 0.3) // "song"
+      playSampleChannels(ctx, [new Array(4410).fill(0.1)], 44100, 0.3) // overlapping one-shot
+      playBuffer(ctx, fakeDecodedBufferOfDuration(0.1), 0.3)
+      expect(liveSourceCount(ctx)).toBe(3)
+
+      // The SHORT one-shot ends first — the record now says not-playing,
+      // but two sources are still live and the count must say so.
+      sources[1]!.onended?.()
+      await Promise.resolve()
+      expect(liveSourceCount(ctx)).toBe(2)
+
+      sources[0]!.onended?.()
+      sources[2]!.onended?.()
+      await Promise.resolve()
+      expect(liveSourceCount(ctx)).toBe(0)
+    })
+
+    it('liveSourceCount is per-context — no cross-context leakage', () => {
+      const a = fakeAudioContext()
+      const b = fakeAudioContext()
+      playSampleChannels(a.ctx, [new Array(4410).fill(0.1)], 44100, 0.3)
+      expect(liveSourceCount(a.ctx)).toBe(1)
+      expect(liveSourceCount(b.ctx)).toBe(0)
     })
 
     it('flips playing:false the moment the source ends — natural completion or an explicit stop()', async () => {

@@ -40,8 +40,10 @@ import { ZZFX } from 'zzfx'
 import { ZZFXM } from '@zzfx-studio/zzfxm'
 import type { Command, Response } from './protocol.js'
 import { createCommandHandler } from './commandHandler.js'
+import { createContextLifecycle } from './contextLifecycle.js'
 import {
   getPlaybackStats,
+  liveSourceCount,
   playBuffer,
   playSampleChannels,
   playToneSynth,
@@ -49,6 +51,8 @@ import {
   type ToneEngine,
   type WadConstructor,
 } from './player.js'
+
+const nodeRequire = createRequire(import.meta.url)
 
 // `tone`'s AudioWorklet-based nodes (`Tone.PluckSynth`'s internal
 // `LowpassCombFilter`) go through `standardized-audio-context`, a
@@ -118,13 +122,24 @@ function send(response: Response): void {
 // slow) Nacks the same way, never taking down zzfx/zzfxm/file playback.
 let toneEngine: ToneEngine | undefined
 let toneEnginePromise: Promise<ToneEngine> | undefined
+/** The slice of the Tone module the context lifecycle needs to re-bind
+ * a reacquired context (Tone captured the old one via setContext). */
+let toneApi:
+  | { setContext: (ctx: AudioContext) => void; getContext: () => { dispose(): void } }
+  | undefined
 
 function loadToneEngine(): Promise<ToneEngine> {
   if (!toneEnginePromise) {
     toneEnginePromise = import('tone').then((Tone) => {
-      // Tone.Context runs a lookAhead ticker — set the real context ONCE,
-      // the moment Tone is first actually needed, never per-play (a
-      // fresh context per play would leak native resources).
+      // Tone.Context runs a lookAhead ticker — set the real context ONCE
+      // per CONTEXT, the moment Tone is first actually needed, never
+      // per-play (a fresh Tone context per play would leak native
+      // resources). Re-bound by the lifecycle's onReacquired when the
+      // underlying context is swapped.
+      toneApi = {
+        setContext: (ctx) => Tone.setContext(ctx),
+        getContext: () => Tone.getContext(),
+      }
       Tone.setContext(ZZFX.audioContext)
       const engine: ToneEngine = {
         classes: {
@@ -245,8 +260,7 @@ function loadWadConstructor(): WadConstructor {
     return buffer
   }) as typeof realCreateBuffer
 
-  const require = createRequire(import.meta.url)
-  wadCtor = require('web-audio-daw') as WadConstructor
+  wadCtor = nodeRequire('web-audio-daw') as WadConstructor
 
   ZZFX.audioContext.createBuffer = realCreateBuffer
   if (capturedNoiseBuffer) {
@@ -342,10 +356,120 @@ const handler = createCommandHandler({
     const WadCtor = loadWadConstructor()
     return playWadSynth(ZZFX.audioContext, WadCtor, config, ZZFX.volume * volume)
   },
-  getStats: () => getPlaybackStats(ZZFX.audioContext),
+  getStats: () => {
+    // A closed (idle-released or dead) context reports honestly WITHOUT
+    // touching the analyser (createAnalyser/getFloatTimeDomainData can
+    // throw on a closed context) and without acquiring one — never
+    // acquire a context just to ask, the same symmetry as
+    // playSidecarManager's "never spawns one just to ask".
+    if (ZZFX.audioContext.state === 'closed') {
+      return {
+        peak: 0,
+        silent: true,
+        playing: false,
+        durationSeconds: 0,
+        elapsedSeconds: 0,
+        contextState: 'closed' as const,
+      }
+    }
+    return getPlaybackStats(ZZFX.audioContext)
+  },
 })
 
 const rl = readline.createInterface({ input: process.stdin })
+
+const PLAY_COMMANDS: ReadonlySet<Command['cmd']> = new Set([
+  'play',
+  'playSong',
+  'playFile',
+  'playToneSynth',
+  'playWadSynth',
+])
+
+// Serializes command handling so the lifecycle's awaited resume/close/
+// reacquire cannot reorder responses relative to their commands — the
+// strict stdin-order guarantee is what makes response ordering trivially
+// reasoned about (see protocol.ts's doc comment). Always the caught
+// tail, so one failed link can't halt the chain. The idle close runs
+// through this same chain (see contextLifecycle.ts), which makes
+// close-vs-play races impossible by construction.
+let commandChain: Promise<void> = Promise.resolve()
+
+const log = (message: string): void => {
+  process.stderr.write(`audio-play: ${message}\n`)
+}
+
+// State transitions, on stderr — the native binding wires `onstatechange`
+// through; with the client forwarding stderr (PlaySidecarClient.onStderr)
+// a late suspend/interruption is visible instead of silent. Re-wired for
+// every reacquired context.
+function wireStateLogging(ctx: AudioContext): void {
+  ctx.onstatechange = () => {
+    log(`AudioContext state changed → '${ctx.state}'`)
+  }
+}
+wireStateLogging(ZZFX.audioContext)
+
+/** Reacquire-as-default context lifecycle — see contextLifecycle.ts. */
+const lifecycle = createContextLifecycle({
+  getCurrent: () => ZZFX.audioContext,
+  setCurrent: (ctx) => {
+    ZZFX.audioContext = ctx
+    wireStateLogging(ctx)
+  },
+  createContext: () => new AudioContext(),
+  // Each engine's rebind is guarded INDEPENDENTLY — one engine failing
+  // must not skip the other's rebind (and the lifecycle guards the whole
+  // hook too, so ensureRunning's never-throws contract holds regardless).
+  onReacquired: (ctx) => {
+    // Tone captured the old context via setContext at engine load —
+    // re-bind, disposing the old wrapper's lookAhead ticker first (its
+    // raw context is already closed; dispose failures are non-fatal).
+    if (toneApi) {
+      try {
+        toneApi.getContext().dispose()
+      } catch (err) {
+        log(`tone context dispose failed (non-fatal): ${err instanceof Error ? err.message : err}`)
+      }
+      try {
+        toneApi.setContext(ctx)
+      } catch (err) {
+        log(
+          `tone setContext failed — Tone stays bound to the OLD (dead) context; tone plays will Nack until it rebinds: ${err instanceof Error ? err.message : err}`
+        )
+      }
+    }
+    // Wad captured the old context PERMANENTLY at its CJS module load
+    // (window.AudioContext read once — see loadWadConstructor). The only
+    // cure is a cache bust: the next playWadSynth re-runs the full
+    // adoption dance (FakeAudioContext + noise re-commit) against the
+    // fresh context. `wadCtor = undefined` sits OUTSIDE the try so the
+    // stale ctor is invalidated even if the cache delete throws.
+    if (wadCtor) {
+      wadCtor = undefined
+      try {
+        delete nodeRequire.cache[nodeRequire.resolve('web-audio-daw')]
+      } catch (err) {
+        log(`wad cache bust failed: ${err instanceof Error ? err.message : err}`)
+      }
+    }
+  },
+  isQuiet: () => {
+    const stats = getPlaybackStats(ZZFX.audioContext)
+    return {
+      liveSources: liveSourceCount(ZZFX.audioContext),
+      playing: stats.playing,
+      silent: stats.silent,
+    }
+  },
+  enqueue: (fn) => {
+    commandChain = commandChain.then(fn).catch((err: unknown) => {
+      log(`idle-release error: ${err instanceof Error ? err.message : String(err)}`)
+    })
+  },
+  log,
+  idleMs: Number(process.env.FL_AUDIO_IDLE_RELEASE_MS ?? 45_000),
+})
 
 rl.on('line', (line) => {
   const trimmed = line.trim()
@@ -361,16 +485,33 @@ rl.on('line', (line) => {
     return
   }
 
-  const response = handler.handleCommand(command)
-  send(response)
-  if (command.cmd === 'shutdown') process.exit(0)
+  commandChain = commandChain
+    .then(async () => {
+      if (PLAY_COMMANDS.has(command.cmd)) await lifecycle.ensureRunning(command.cmd)
+      const response = handler.handleCommand(command)
+      // Echo the request's correlation id, if it carried one — see
+      // protocol.ts's `Response` doc for why awaited responses need it.
+      const id = 'id' in command ? command.id : undefined
+      send(id !== undefined ? { ...response, id } : response)
+      if (command.cmd === 'shutdown') {
+        lifecycle.dispose()
+        process.exit(0)
+      }
+    })
+    .catch((err: unknown) => {
+      process.stderr.write(
+        `audio-play: command chain error: ${err instanceof Error ? err.message : String(err)}\n`
+      )
+    })
 })
 
 // stdin closing means the parent (extension host) is gone or the pipe
-// broke — exit rather than lingering as an orphan holding a real audio
-// device open.
+// broke — drain whatever commands are already queued on the chain, then
+// exit rather than lingering as an orphan holding a real audio device
+// open.
 rl.on('close', () => {
-  process.exit(0)
+  lifecycle.dispose()
+  void commandChain.finally(() => process.exit(0))
 })
 
 // Surface that this connected to a real device, on stderr only (never

@@ -105,18 +105,22 @@ Unlike `@three-flatland/codelens-service` (LSP `Content-Length` framing,
 needed because it ships large source-file text payloads),
 `src/protocol.ts` is deliberately simple: one JSON object per line on
 stdin (commands) and stdout (responses), fire-and-forget for
-`play`/`playSong`/`stopSong`/`stop`/`shutdown` — commands carry no `id`,
-responses aren't correlated back to a specific request. A caller that
-needs to know a `play`/`playSong` failed listens for an error response via
-`client.onError()`; there's nothing meaningful to return on success.
+`play`/`playSong`/`stopSong`/`stop`/`shutdown` — those commands carry no
+`id`, their responses aren't correlated back to a specific request. A
+caller that needs to know a `play`/`playSong` failed listens for an error
+response via `client.onError()`; there's nothing meaningful to return on
+success.
 
-`stats` (see "Audibility regression guard" below) is the one exception —
-it exists purely to hand data back, so `client.ts`'s `getStats()`
-correlates its response by content (the next `cmd: 'stats'` line on
-stdout) rather than a formal request id, which is safe only because the
-sidecar processes stdin lines strictly sequentially (`sidecar.ts`'s
-`rl.on('line', ...)`) — responses can never arrive out of order relative
-to the commands that produced them.
+The two AWAITED commands — `stats` (see "Audibility regression guard"
+below) and `playToneSynth` (the cold-start-retry correlation, #47/#49) —
+carry a numeric `id` the sidecar echoes back on the response, and the
+client matches on `cmd` + `id`. This replaced the original content-based
+correlation ("the next `cmd: 'stats'` line"): content matching relied on
+strict stdin-order processing alone, which is still guaranteed, but once
+an awaiter can TIME OUT (see `waitForResponse` in `client.ts`) a merely
+LATE response would be consumed by the next caller's listener, shifting
+every subsequent same-command response one stale, permanently. The id
+makes a late orphan un-matchable; it falls through harmlessly.
 
 Commands: `play {params}` (one-shot), `playSong {song}` / `stopSong`
 (ZzFXM), `stop` (currently identical to `stopSong` — see the comment on
@@ -260,6 +264,34 @@ command, `PlaySidecarClient.getStats()`, `playSidecarManager.ts`'s
 real sidecar and assert real, nonzero output. **This proof only holds at
 the e2e tier** — see "This bug is Electron-specific" above for why a
 vitest-level real-sidecar test cannot substitute for it.
+
+## Context lifecycle — reacquire as the default (`src/contextLifecycle.ts`)
+
+Desktop audio devices are volatile (device switches, sleep/wake,
+exclusive-mode grabs, OS interruptions), so the sidecar does NOT hold one
+`AudioContext` open forever. `contextLifecycle.ts` (DI'd and unit-tested
+like `commandHandler.ts`) owns two moves, both wired in `sidecar.ts`:
+
+- **Acquire ladder**, awaited before every play-kind command on the
+  serialized command chain: running → use; suspended/interrupted → ONE
+  bounded `resume()`; still not running (or closed) → reacquire — bounded
+  close, fresh `new AudioContext()` assigned to `ZZFX.audioContext`, and
+  the engine re-bind hook (Tone `setContext` re-call + `web-audio-daw`
+  require-cache bust, since Wad captures its context permanently at CJS
+  module load).
+- **Idle-release** (`FL_AUDIO_IDLE_RELEASE_MS`, default 45s; the e2e
+  harness runs at 5s so reacquire is exercised constantly): after an idle
+  window, the context is closed IF the triple gate passes —
+  `liveSourceCount` (player.ts's overlap-correct still-ringing set) is 0,
+  the playback record's `playing` is false, AND the analyser reads silent
+  across a multi-sample window (each signal covers the others' blind
+  spot; Tone/Wad-internal nodes never pass through player.ts). The close
+  runs ON the command chain — close-vs-play races are impossible.
+  "Released" = the CLOSED context stays assigned; `stats` then reports a
+  synthetic honest `{silent:true, contextState:'closed'}` without
+  touching the analyser and WITHOUT acquiring (never acquire just to
+  ask). Every resume/close is bounded — a wedged device call must never
+  stall the command chain.
 
 ## Lifecycle — mirrors `sidecarManager.ts`
 

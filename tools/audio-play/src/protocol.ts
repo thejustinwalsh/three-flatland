@@ -54,8 +54,12 @@ export type StopSongCommand = { cmd: 'stopSong' }
 /** Stops everything currently audible (today: equivalent to `stopSong` — one-shots have no persistent handle to interrupt mid-flight, see commandHandler.ts). */
 export type StopCommand = { cmd: 'stop' }
 export type ShutdownCommand = { cmd: 'shutdown' }
-/** Audibility regression guard — see `PlaybackStats`. */
-export type StatsCommand = { cmd: 'stats' }
+/** Audibility regression guard — see `PlaybackStats`. `id` is the
+ * response-correlation token (echoed back on the response) for the two
+ * commands whose response a caller actually AWAITS — see `Response`'s
+ * doc for why content-matching alone isn't sound once awaiters can time
+ * out. Fire-and-forget commands stay id-less. */
+export type StatsCommand = { cmd: 'stats'; id?: number }
 
 /** The narrow, statically-parseable Tone.js instrument subset this sidecar
  * supports — see `tools/audio-play/CLAUDE.md`/#47 for why Tone's imperative
@@ -94,6 +98,8 @@ export type PlayToneSynthCommand = {
   note?: string | number | (string | number)[]
   duration: string | number
   volume?: number
+  /** Response-correlation token, echoed on the response — see `StatsCommand.id`. */
+  id?: number
 }
 
 export type WadSynthSource = 'sine' | 'square' | 'sawtooth' | 'triangle' | 'noise'
@@ -145,14 +151,32 @@ export type PlaybackStats = {
   /** Seconds since the current source started, clamped to
    * `durationSeconds`. */
   elapsedSeconds: number
+  /** The shared `AudioContext`'s state AT QUERY TIME — not just at
+   * startup (the sidecar's stderr ready line). A context stuck in
+   * `'suspended'` is the standard Web Audio mechanism behind "plays ack
+   * clean but nothing renders"; surfacing it per query lets a caller
+   * distinguish a deaf context from a merely quiet analyser window.
+   * (`'interrupted'` is in the spec's state set too — iOS-style device
+   * preemption — so it's representable here even though macOS/Linux
+   * sidecars are unlikely to ever report it.) */
+  contextState: 'suspended' | 'running' | 'closed' | 'interrupted'
 }
 
-export type Ack = { ok: true; cmd: Exclude<Command['cmd'], 'stats'> }
+/** `id` on a response echoes the request's correlation token (see
+ * `StatsCommand.id`) for the two AWAITED command kinds. Content-matching
+ * "the next line of this cmd" alone is NOT sound once the awaiter can
+ * time out: a merely LATE response (slow, not dropped) arriving after
+ * its caller gave up would be consumed by the NEXT caller's listener,
+ * shifting every subsequent same-command response one stale, permanently.
+ * The echoed id makes a late orphan un-matchable. Absent on
+ * fire-and-forget responses (incl. `playFile`'s async decode-failure
+ * Nack, which correlates to no awaited request). */
+export type Ack = { ok: true; cmd: Exclude<Command['cmd'], 'stats'>; id?: number }
 /** `code` is a machine-readable tag for a specific, callers-may-need-to-
  * react-to failure mode — currently only `'TONE_LOADING'` (see
  * `sidecar.ts`'s `playToneSynth` cold-start Nack). Absent for every other
  * failure; never parsed out of `error`'s message text — the code IS the
  * contract, the message is for humans. */
-export type Nack = { ok: false; cmd: Command['cmd']; error: string; code?: string }
-export type StatsAck = { ok: true; cmd: 'stats'; stats: PlaybackStats }
+export type Nack = { ok: false; cmd: Command['cmd']; error: string; code?: string; id?: number }
+export type StatsAck = { ok: true; cmd: 'stats'; stats: PlaybackStats; id?: number }
 export type Response = Ack | Nack | StatsAck

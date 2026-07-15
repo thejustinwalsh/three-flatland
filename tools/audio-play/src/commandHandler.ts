@@ -82,7 +82,15 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
     // on it a second time.
     const old = currentSource
     currentSource = undefined
-    old?.stop()
+    try {
+      old?.stop()
+    } catch {
+      // A STALE handle's stop() may throw (its source's context was
+      // closed underneath it — reachable via the context lifecycle's
+      // idle-release/reacquire). The old source is dead either way;
+      // propagating would Nack a NEW play that already succeeded and
+      // skip adopting its handle, leaving it unstoppable.
+    }
   }
 
   // Try-then-replace: call the backend FIRST, and only stop the old
