@@ -23,6 +23,7 @@ export type {
   ScrollListenersProperties as ScrollListeners,
 } from './listeners.js'
 export * from './components/index.js'
+export * from './a11y/index.js'
 export {
   type ColorRepresentation,
   readReactive,
