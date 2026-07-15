@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TexturePacker JSON-Hash export (strict)",
+  "description": "Test-only schema — NOT the schema used to validate arbitrary input on load (see schema.json, our own permissive superset, for that). This one exists to prove `buildTexturePackerJson`'s output is a genuinely faithful TexturePacker JSON-Hash export: it rejects our own extensions (`meta.sources`, `meta.animations`, `meta.frameTags`, `Frame.duration`, `Frame.mesh`) that a real TexturePacker/Pixi/Cocos consumer wouldn't understand. JSON-Hash only (not JSON-Array) — matches what this repo's `AtlasJson.frames`/`SpriteSheetLoader` already assume structurally.",
+  "type": "object",
+  "required": ["meta", "frames"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": { "$ref": "#/$defs/Meta" },
+    "frames": {
+      "type": "object",
+      "patternProperties": {
+        "^.+$": { "$ref": "#/$defs/Frame" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "Meta": {
+      "type": "object",
+      "required": ["image", "size"],
+      "additionalProperties": false,
+      "properties": {
+        "app": { "type": "string" },
+        "version": { "type": "string" },
+        "image": { "type": "string" },
+        "size": { "$ref": "#/$defs/Size" },
+        "scale": { "type": "string" },
+        "format": { "type": "string" }
+      }
+    },
+    "Size": {
+      "type": "object",
+      "required": ["w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "w": { "type": "integer", "minimum": 1 },
+        "h": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "Rect": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "w": { "type": "integer", "minimum": 0 },
+        "h": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "Vec2": {
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "Vec2Tuple": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "Frame": {
+      "type": "object",
+      "required": ["frame", "rotated", "trimmed", "spriteSourceSize", "sourceSize"],
+      "additionalProperties": false,
+      "properties": {
+        "frame": { "$ref": "#/$defs/Rect" },
+        "rotated": { "type": "boolean" },
+        "trimmed": { "type": "boolean" },
+        "spriteSourceSize": { "$ref": "#/$defs/Rect" },
+        "sourceSize": { "$ref": "#/$defs/Size" },
+        "pivot": { "$ref": "#/$defs/Vec2" },
+        "vertices": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Vec2Tuple" }
+        },
+        "verticesUV": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Vec2Tuple" }
+        },
+        "triangles": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0 },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        }
+      }
+    }
+  }
+}

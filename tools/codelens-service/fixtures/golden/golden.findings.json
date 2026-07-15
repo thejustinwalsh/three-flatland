@@ -1,0 +1,920 @@
+[
+  {
+    "byteRange": {
+      "end": 515,
+      "start": 495
+    },
+    "id": "1e3a0d7981aaf20c",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 21,
+          "line": 10
+        },
+        "start": {
+          "character": 7,
+          "line": 10
+        }
+      },
+      "params": [],
+      "varRef": {
+        "defRange": {
+          "end": {
+            "character": 43,
+            "line": 7
+          },
+          "start": {
+            "character": 20,
+            "line": 7
+          }
+        },
+        "defUri": "file:///golden.ts",
+        "name": "laserPreset"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 22,
+        "line": 10
+      },
+      "start": {
+        "character": 2,
+        "line": 10
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 915,
+      "start": 891
+    },
+    "id": "ec5ed962000d2ec8",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 25,
+          "line": 20
+        },
+        "start": {
+          "character": 7,
+          "line": 20
+        }
+      },
+      "params": [],
+      "varRef": {
+        "defRange": {
+          "end": {
+            "character": 59,
+            "line": 17
+          },
+          "start": {
+            "character": 34,
+            "line": 17
+          }
+        },
+        "defUri": "file:///golden.ts",
+        "name": "explosionPreset"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 26,
+        "line": 20
+      },
+      "start": {
+        "character": 2,
+        "line": 20
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 967,
+      "start": 950
+    },
+    "id": "886367db35013063",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 18,
+          "line": 24
+        },
+        "start": {
+          "character": 7,
+          "line": 24
+        }
+      },
+      "params": [1.0, 0.1, 440.0]
+    },
+    "range": {
+      "end": {
+        "character": 19,
+        "line": 24
+      },
+      "start": {
+        "character": 2,
+        "line": 24
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1029,
+      "start": 1007
+    },
+    "id": "bb5905744fc94b62",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 23,
+          "line": 28
+        },
+        "start": {
+          "character": 11,
+          "line": 28
+        }
+      },
+      "params": [1.0, -0.5, 0.2]
+    },
+    "range": {
+      "end": {
+        "character": 24,
+        "line": 28
+      },
+      "start": {
+        "character": 2,
+        "line": 28
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1108,
+      "start": 1094
+    },
+    "id": "4a2e7976ffd20855",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 15,
+          "line": 32
+        },
+        "start": {
+          "character": 7,
+          "line": 32
+        }
+      },
+      "params": [],
+      "varRef": {
+        "name": "myPreset"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 16,
+        "line": 32
+      },
+      "start": {
+        "character": 2,
+        "line": 32
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1214,
+      "start": 1208
+    },
+    "id": "50fd9b0b5a45f07c",
+    "kind": "zzfx.call",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 7,
+          "line": 37
+        },
+        "start": {
+          "character": 7,
+          "line": 37
+        }
+      },
+      "params": []
+    },
+    "range": {
+      "end": {
+        "character": 8,
+        "line": 37
+      },
+      "start": {
+        "character": 2,
+        "line": 37
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1504,
+      "start": 1461
+    },
+    "id": "c569c54afccc30df",
+    "kind": "zzfxm.song",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 44,
+          "line": 45
+        },
+        "start": {
+          "character": 8,
+          "line": 45
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 45,
+        "line": 45
+      },
+      "start": {
+        "character": 2,
+        "line": 45
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1560,
+      "start": 1544
+    },
+    "id": "9d85f4dd14822a73",
+    "kind": "zzfxm.song",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 17,
+          "line": 49
+        },
+        "start": {
+          "character": 8,
+          "line": 49
+        }
+      },
+      "varRef": {
+        "defRange": {
+          "end": {
+            "character": 56,
+            "line": 42
+          },
+          "start": {
+            "character": 18,
+            "line": 42
+          }
+        },
+        "defUri": "file:///golden.ts",
+        "name": "laserSong"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 18,
+        "line": 49
+      },
+      "start": {
+        "character": 2,
+        "line": 49
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1841,
+      "start": 1822
+    },
+    "id": "b86e2b29af652634",
+    "kind": "zzfxm.song",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 20,
+          "line": 56
+        },
+        "start": {
+          "character": 8,
+          "line": 56
+        }
+      },
+      "varRef": {
+        "defRange": {
+          "end": {
+            "character": 56,
+            "line": 42
+          },
+          "start": {
+            "character": 18,
+            "line": 42
+          }
+        },
+        "defUri": "file:///golden.ts",
+        "name": "laserSong"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 21,
+        "line": 56
+      },
+      "start": {
+        "character": 2,
+        "line": 56
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 1952,
+      "start": 1926
+    },
+    "id": "1a7379c024fa0940",
+    "kind": "audio.file",
+    "payload": {
+      "path": "explosion.mp3",
+      "pathRange": {
+        "end": {
+          "character": 26,
+          "line": 61
+        },
+        "start": {
+          "character": 13,
+          "line": 61
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 28,
+        "line": 61
+      },
+      "start": {
+        "character": 2,
+        "line": 61
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 2197,
+      "start": 2148
+    },
+    "id": "5d64fdae953d1c57",
+    "kind": "audio.file",
+    "payload": {
+      "path": "ambient.ogg",
+      "pathRange": {
+        "end": {
+          "character": 31,
+          "line": 67
+        },
+        "start": {
+          "character": 20,
+          "line": 67
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 51,
+        "line": 67
+      },
+      "start": {
+        "character": 2,
+        "line": 67
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 2197,
+      "start": 2148
+    },
+    "id": "1b276f803efe889f",
+    "kind": "audio.file",
+    "payload": {
+      "path": "ambient.mp3",
+      "pathRange": {
+        "end": {
+          "character": 46,
+          "line": 67
+        },
+        "start": {
+          "character": 35,
+          "line": 67
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 51,
+        "line": 67
+      },
+      "start": {
+        "character": 2,
+        "line": 67
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 2490,
+      "start": 2452
+    },
+    "id": "ca77c4a4a32796fd",
+    "kind": "audio.file",
+    "payload": {
+      "path": "sounds/jump.wav",
+      "pathRange": {
+        "end": {
+          "character": 36,
+          "line": 74
+        },
+        "start": {
+          "character": 21,
+          "line": 74
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 40,
+        "line": 74
+      },
+      "start": {
+        "character": 2,
+        "line": 74
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 3015,
+      "start": 2988
+    },
+    "id": "752171965e94eeb1",
+    "kind": "wad.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 28,
+          "line": 85
+        },
+        "start": {
+          "character": 10,
+          "line": 85
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 29,
+        "line": 85
+      },
+      "start": {
+        "character": 2,
+        "line": 85
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 3319,
+      "start": 3277
+    },
+    "id": "770613f4579d364c",
+    "kind": "audio.file",
+    "payload": {
+      "path": "ir.wav",
+      "pathRange": {
+        "end": {
+          "character": 38,
+          "line": 92
+        },
+        "start": {
+          "character": 32,
+          "line": 92
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 44,
+        "line": 92
+      },
+      "start": {
+        "character": 2,
+        "line": 92
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 3923,
+      "start": 3846
+    },
+    "id": "311ca98275742e40",
+    "kind": "audio.file",
+    "payload": {
+      "path": "riff.mp3",
+      "pathRange": {
+        "end": {
+          "character": 43,
+          "line": 103
+        },
+        "start": {
+          "character": 35,
+          "line": 103
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 79,
+        "line": 103
+      },
+      "start": {
+        "character": 2,
+        "line": 103
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 3919,
+      "start": 3890
+    },
+    "id": "a2ecf616244337f7",
+    "kind": "wad.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 74,
+          "line": 103
+        },
+        "start": {
+          "character": 54,
+          "line": 103
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 75,
+        "line": 103
+      },
+      "start": {
+        "character": 46,
+        "line": 103
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 4361,
+      "start": 4330
+    },
+    "id": "f201be0520ad5a29",
+    "kind": "wad.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 32,
+          "line": 112
+        },
+        "start": {
+          "character": 10,
+          "line": 112
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 33,
+        "line": 112
+      },
+      "start": {
+        "character": 2,
+        "line": 112
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 4402,
+      "start": 4371
+    },
+    "id": "9b287edc057fc8da",
+    "kind": "wad.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 32,
+          "line": 113
+        },
+        "start": {
+          "character": 10,
+          "line": 113
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 33,
+        "line": 113
+      },
+      "start": {
+        "character": 2,
+        "line": 113
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 4440,
+      "start": 4412
+    },
+    "id": "47a64a4ecbffd1ca",
+    "kind": "wad.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 29,
+          "line": 114
+        },
+        "start": {
+          "character": 10,
+          "line": 114
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 30,
+        "line": 114
+      },
+      "start": {
+        "character": 2,
+        "line": 114
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 5087,
+      "start": 5058
+    },
+    "id": "f7f01a33ca5f1c67",
+    "kind": "wad.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 30,
+          "line": 133
+        },
+        "start": {
+          "character": 10,
+          "line": 133
+        }
+      }
+    },
+    "range": {
+      "end": {
+        "character": 31,
+        "line": 133
+      },
+      "start": {
+        "character": 2,
+        "line": 133
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 5585,
+      "start": 5568
+    },
+    "id": "f2a75aa0d503a1da",
+    "kind": "wad.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 18,
+          "line": 144
+        },
+        "start": {
+          "character": 10,
+          "line": 144
+        }
+      },
+      "varRef": {
+        "defRange": {
+          "end": {
+            "character": 36,
+            "line": 142
+          },
+          "start": {
+            "character": 17,
+            "line": 142
+          }
+        },
+        "defUri": "file:///golden.ts",
+        "name": "laserOsc"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 19,
+        "line": 144
+      },
+      "start": {
+        "character": 2,
+        "line": 144
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 6012,
+      "start": 5947
+    },
+    "id": "8516ea5e9ad500fd",
+    "kind": "tone.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 66,
+          "line": 153
+        },
+        "start": {
+          "character": 56,
+          "line": 153
+        }
+      },
+      "synthType": "Synth"
+    },
+    "range": {
+      "end": {
+        "character": 67,
+        "line": 153
+      },
+      "start": {
+        "character": 2,
+        "line": 153
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 6304,
+      "start": 6240
+    },
+    "id": "b19eeb549a962216",
+    "kind": "tone.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 65,
+          "line": 160
+        },
+        "start": {
+          "character": 61,
+          "line": 160
+        }
+      },
+      "synthType": "NoiseSynth"
+    },
+    "range": {
+      "end": {
+        "character": 66,
+        "line": 160
+      },
+      "start": {
+        "character": 2,
+        "line": 160
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 6688,
+      "start": 6593
+    },
+    "id": "038b944c1fa33772",
+    "kind": "tone.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 96,
+          "line": 168
+        },
+        "start": {
+          "character": 72,
+          "line": 168
+        }
+      },
+      "synthType": "PolySynth",
+      "voiceType": "FMSynth"
+    },
+    "range": {
+      "end": {
+        "character": 97,
+        "line": 168
+      },
+      "start": {
+        "character": 2,
+        "line": 168
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 7119,
+      "start": 7047
+    },
+    "id": "2aebebbb877c9831",
+    "kind": "tone.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 73,
+          "line": 179
+        },
+        "start": {
+          "character": 56,
+          "line": 179
+        }
+      },
+      "synthType": "Synth",
+      "varRef": {
+        "defRange": {
+          "end": {
+            "character": 24,
+            "line": 176
+          },
+          "start": {
+            "character": 20,
+            "line": 176
+          }
+        },
+        "defUri": "file:///golden.ts",
+        "name": "dynamicNote"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 74,
+        "line": 179
+      },
+      "start": {
+        "character": 2,
+        "line": 179
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 7634,
+      "start": 7569
+    },
+    "id": "103d95b07cea7cac",
+    "kind": "tone.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 66,
+          "line": 189
+        },
+        "start": {
+          "character": 56,
+          "line": 189
+        }
+      },
+      "synthType": "Synth",
+      "varRef": {
+        "name": "note"
+      }
+    },
+    "range": {
+      "end": {
+        "character": 67,
+        "line": 189
+      },
+      "start": {
+        "character": 2,
+        "line": 189
+      }
+    }
+  }
+]

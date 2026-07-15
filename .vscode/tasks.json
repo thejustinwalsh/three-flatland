@@ -1,0 +1,38 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "FL: build",
+      "detail": "One-shot extension + webview build. Used by 'FL Tools (build)' launch.",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["exec", "pnpm", "run", "build"],
+      "options": { "cwd": "${workspaceFolder}/tools/vscode" },
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent", "panel": "dedicated" }
+    },
+    {
+      "label": "FL: dev",
+      "detail": "Watch host (esbuild) + webview (vite build --watch). On webview change the extension host fs-watches dist/webview and nudges open panels to reload (PWA-style). On extension code change, Cmd+R the Extension Development Host to pick up.",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["exec", "pnpm", "run", "dev"],
+      "options": { "cwd": "${workspaceFolder}/tools/vscode" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "fl-dev",
+        "pattern": [
+          { "regexp": "^.*$", "file": 1, "location": 2, "message": 3 }
+        ],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^.*\\[host\\].*$",
+          "//": "Match either esbuild's 'watching extension host' OR Vite's 'built in' — whichever comes first signals ready. We rely on vite.config.ts's `emptyOutDir: !isWatchMode` so launching before vite finishes is safe (previous build's chunks stay in dist/webview/ and the dev/reload path nudges the panel once the new build lands). Without the OR-pattern the launch hangs whenever one of the two output streams is buffered/styled in a way the regex doesn't catch.",
+          "endsPattern": "^.*(watching extension host|built in ).*$"
+        }
+      },
+      "presentation": { "panel": "dedicated", "reveal": "always" }
+    }
+  ]
+}

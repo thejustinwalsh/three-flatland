@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "app": "http://www.aseprite.org/",
+    "version": "1.3.2-x64",
+    "image": "hero.png",
+    "size": { "w": 48, "h": 16 },
+    "scale": "1",
+    "frameTags": [{ "name": "walk", "from": 0, "to": 2, "direction": "forward" }]
+  },
+  "frames": {
+    "walk_0": {
+      "frame": { "x": 0, "y": 0, "w": 16, "h": 16 },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 16, "h": 16 },
+      "sourceSize": { "w": 16, "h": 16 },
+      "duration": 100
+    },
+    "walk_1": {
+      "frame": { "x": 16, "y": 0, "w": 16, "h": 16 },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 16, "h": 16 },
+      "sourceSize": { "w": 16, "h": 16 },
+      "duration": 100
+    },
+    "walk_2": {
+      "frame": { "x": 32, "y": 0, "w": 16, "h": 16 },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 16, "h": 16 },
+      "sourceSize": { "w": 16, "h": 16 },
+      "duration": 150
+    }
+  }
+}
