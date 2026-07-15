@@ -5,13 +5,13 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-## Flight recorder (Phase C) support
+## Flight recorder — registry checkpoints and buffer ring (#29 Phase C)
 
-- Added `checkpoint`/`partial` flags to `RegistryPayload` and `DebugRegistry` so the devtools dashboard can periodically re-send full registry snapshots instead of only incremental deltas
-- Registry checkpoints that would otherwise degrade an oversized entry to metadata-only no longer falsely claim `checkpoint: true` — they retry and mark `partial: true` once bounded retries are exhausted, so time-travel reconstruction can skip partial anchors and fall back to the nearest complete one
-- Tightened the VP9 encoder's keyframe cadence from 2000ms to 500ms in `bus-worker.ts` so a frozen buffer scrub cursor is never far from a decodable keyframe
-- Exported a shared registry-delta fold function so the live client and the devtools reconstruction core apply deltas identically and can't diverge
+- Registry payloads now periodically re-send every registered entry as a full checkpoint (`RegistryPayload.checkpoint: true`, additive), so time-travel reconstruction only has to replay forward from the nearest checkpoint instead of the whole session.
+- Added an always-on rolling ring buffer for encoded chunks and stats, windowed by wall-clock time, so a frozen frame can always decode from its own start.
+- Tightened the VP9 encoder keyframe cadence from 2000ms to 500ms so a scrub cursor is never far from a decodable frame.
+- Fixed: a registry checkpoint that had to degrade an entry to metadata-only no longer falsely reports as a complete checkpoint — it retries and marks itself `partial: true`; reconstruction skips partial checkpoints and falls back to the nearest complete one.
+- Fixed: protocol log persistence to IndexedDB no longer depends on the Protocol Log panel being mounted or unpaused — it's now unconditional at dashboard bootstrap.
+- Fixed: registry reconstruction now re-queries after a write batch actually commits to IndexedDB, closing a race that could show stale state right after freezing.
 
-### Summary
-
-Lays the groundwork in `three-flatland`'s debug protocol and registry for the devtools flight recorder: checkpointed registry snapshots, safer partial-checkpoint handling, and a tighter keyframe cadence for scrub playback.
+Devtools consumers get more reliable flight-recorder scrubbing and registry time-travel; no action needed for typical library usage.
