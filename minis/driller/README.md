@@ -11,7 +11,7 @@ A self-running mini-game for the three-flatland docs hero (and a standalone `/pl
 - **Tap intact ceiling** to trigger a sag (free, evil) — force a controlled collapse
 - **Tap the driller** to pet them — but over-pet and they get annoyed!
 
-The AI's mood (greed/fear/drive) drifts and reacts to events; it picks one of three planners (greedy descender / gem seeker / cautious miner) with hysteresis so behavior is *human-flawed*, not mechanically optimal.
+The AI's mood (greed/fear/drive) drifts and reacts to events; it picks one of three planners (greedy descender / gem seeker / cautious miner) with hysteresis so behavior is _human-flawed_, not mechanically optimal.
 
 ## Modes
 
@@ -20,9 +20,9 @@ The AI's mood (greed/fear/drive) drifts and reacts to events; it picks one of th
 <Driller mode="full" zzfx={zzfxFn} />     // title screen + 3 lives + leaderboard
 ```
 
-| Mode | Behavior |
-|------|----------|
-| `hero` | Embedded loop. No chrome. Driller never permanently dies. When the driller crosses ~250m the world rotates: new seed, depth resets, `worldNumber` ticks up. |
+| Mode   | Behavior                                                                                                                                                      |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hero` | Embedded loop. No chrome. Driller never permanently dies. When the driller crosses ~250m the world rotates: new seed, depth resets, `worldNumber` ticks up.   |
 | `full` | Title attract screen → tap to begin → 3 lives. Crush deaths decrement lives; on third death a leaderboard prompt collects a name and saves to `localStorage`. |
 
 ## Run it
@@ -55,8 +55,11 @@ pnpm --filter @three-flatland/mini-driller typecheck
 `art/source/driller-concept-sheet.png` (1536×1024) is the single source of truth for the presentation art. `art/extract-manifest.json` defines nonuniform source cuts and the shared character anchor. The extraction and pixel-fixer tools turn those cuts into the aligned runtime atlases under `src/assets/driller/`; the full presentation sheet is never bundled with the game.
 
 ```bash
+node tools/extract-concept-art.mjs --check-paths
 node tools/extract-concept-art.mjs --stage-fixer-inputs
-python3 tools/run-pixel-fixer.py
+python3 tools/run-pixel-fixer.py \
+  --pixel-fixer-root /absolute/path/to/pixel-art-fixer \
+  --source-revision <pixel-fixer-commit>
 node tools/extract-concept-art.mjs
 ```
 

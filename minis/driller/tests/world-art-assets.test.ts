@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
+import gemAtlasManifest from '../src/assets/driller/gem-pickups-atlas.json'
 import { GEM_RENDER_SIZE_PX, gemFrame, gemRenderScale } from '../src/lib/gem-frames'
 import { RENDER_LAYERS } from '../src/lib/render-layers'
 import type { GemColor, GemSize } from '../src/traits'
@@ -18,6 +19,8 @@ const characterAtlas = fileURLToPath(
 
 describe('world tile atlas', () => {
   it('renders the smallest gem at a readable pickup size', () => {
+    expect(gemAtlasManifest.renderedSizes).toEqual(Object.values(GEM_RENDER_SIZE_PX))
+    expect(gemAtlasManifest.frames).toBe('tight-alpha-bounds')
     expect(GEM_RENDER_SIZE_PX.small).toBeGreaterThanOrEqual(8)
     expect(GEM_RENDER_SIZE_PX.medium).toBeGreaterThan(GEM_RENDER_SIZE_PX.small)
 

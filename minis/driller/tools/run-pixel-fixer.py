@@ -6,22 +6,50 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("input", type=Path)
-    parser.add_argument("output", type=Path)
-    parser.add_argument("--pixel-fixer-root", type=Path, required=True)
+    parser.add_argument(
+        "input",
+        nargs="?",
+        type=Path,
+        default=ROOT / "art/pixel-fixer/input",
+    )
+    parser.add_argument(
+        "output",
+        nargs="?",
+        type=Path,
+        default=ROOT / "art/pixel-fixer/output",
+    )
+    pixel_fixer_root = os.environ.get("PIXEL_FIXER_ROOT")
+    parser.add_argument(
+        "--pixel-fixer-root",
+        type=Path,
+        default=Path(pixel_fixer_root) if pixel_fixer_root else None,
+        required=pixel_fixer_root is None,
+    )
     parser.add_argument("--source-revision", default="unknown")
     args = parser.parse_args()
 
+    if not args.input.is_dir():
+        parser.error(f"fixer input directory does not exist: {args.input}")
+
+    if args.pixel_fixer_root is None:
+        parser.error("--pixel-fixer-root or PIXEL_FIXER_ROOT is required")
+
     python_root = args.pixel_fixer_root / "python"
+    if not (python_root / "pixelfixer/api.py").is_file():
+        parser.error(f"pixel fixer Python package not found under: {python_root}")
+
     sys.path.insert(0, str(python_root))
     from pixelfixer.api import process
     from pixelfixer.reconstruct import two_stage_pack

@@ -32,14 +32,51 @@
       "east": 4,
       "west": 8
     },
-    "maskToColumn": [11, 14, 2, 14, 13, 12, 3, 6, 13, 12, 3, 6, 8, 10, 0, 15],
-    "flipXMaskValues": [8, 9, 10, 11]
+    "maskToColumn": [
+      11,
+      14,
+      2,
+      14,
+      13,
+      12,
+      3,
+      6,
+      13,
+      12,
+      3,
+      6,
+      8,
+      10,
+      0,
+      15
+    ],
+    "flipXMaskValues": [
+      8,
+      9,
+      10,
+      11
+    ]
   },
   "fixtures": {
     "row": 10,
-    "boneColumns": [0, 1, 2, 3],
-    "mushroomColumns": [4, 5, 6, 7],
-    "crystalColumns": [8, 9, 10, 11],
+    "boneColumns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "mushroomColumns": [
+      4,
+      5,
+      6,
+      7
+    ],
+    "crystalColumns": [
+      8,
+      9,
+      10,
+      11
+    ],
     "pillarColumn": 12,
     "crateColumn": 13,
     "torchColumn": 14,

@@ -8,70 +8,100 @@
       "frames": 4,
       "frameSize": 68,
       "padding": 2,
-      "anchor": [38, 42]
+      "anchor": [
+        38,
+        42
+      ]
     },
     "walk": {
       "row": 1,
       "frames": 6,
       "frameSize": 68,
       "padding": 2,
-      "anchor": [38, 42]
+      "anchor": [
+        38,
+        42
+      ]
     },
     "drillDown": {
       "row": 2,
       "frames": 5,
       "frameSize": 68,
       "padding": 2,
-      "anchor": [38, 42]
+      "anchor": [
+        38,
+        42
+      ]
     },
     "drillUp": {
       "row": 3,
       "frames": 5,
       "frameSize": 68,
       "padding": 2,
-      "anchor": [38, 42]
+      "anchor": [
+        38,
+        42
+      ]
     },
     "drillLeft": {
       "row": 4,
       "frames": 4,
       "frameSize": 68,
       "padding": 2,
-      "anchor": [38, 42]
+      "anchor": [
+        38,
+        42
+      ]
     },
     "drillRight": {
       "row": 5,
       "frames": 4,
       "frameSize": 68,
       "padding": 2,
-      "anchor": [38, 42]
+      "anchor": [
+        38,
+        42
+      ]
     },
     "trip": {
       "row": 6,
       "frames": 5,
       "frameSize": 68,
       "padding": 2,
-      "anchor": [38, 42]
+      "anchor": [
+        38,
+        42
+      ]
     },
     "dodge": {
       "row": 7,
       "frames": 4,
       "frameSize": 68,
       "padding": 2,
-      "anchor": [38, 42]
+      "anchor": [
+        38,
+        42
+      ]
     },
     "fall": {
       "row": 8,
       "frames": 5,
       "frameSize": 68,
       "padding": 2,
-      "anchor": [38, 42]
+      "anchor": [
+        38,
+        42
+      ]
     },
     "ghost": {
       "row": 9,
       "frames": 4,
       "frameSize": 68,
       "padding": 2,
-      "anchor": [38, 42]
+      "anchor": [
+        38,
+        42
+      ]
     }
   }
 }

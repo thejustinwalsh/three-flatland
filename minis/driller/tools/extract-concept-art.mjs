@@ -1,10 +1,11 @@
-import { readFile, mkdir, writeFile } from 'node:fs/promises'
+import { access, readFile, mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const manifest = JSON.parse(await readFile(join(ROOT, 'art/extract-manifest.json'), 'utf8'))
+const manifestPath = join(ROOT, 'art/extract-manifest.json')
+const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
 const source = join(ROOT, 'art', manifest.source)
 const outDir = join(ROOT, 'src/assets/driller')
 const fixerInputDir = join(ROOT, 'art/pixel-fixer/input')
@@ -14,6 +15,17 @@ const atlasPadding = 2
 const atlasFrameSize = frameSize + atlasPadding * 2
 const columns = Math.max(...Object.values(manifest.animations).map((frames) => frames.length))
 const rows = Object.keys(manifest.animations).length
+
+await access(source)
+
+if (process.argv.includes('--check-paths')) {
+  console.log(`manifest: ${manifestPath}`)
+  console.log(`source: ${source}`)
+  console.log(`fixer input: ${fixerInputDir}`)
+  console.log(`fixer output: ${fixerOutputDir}`)
+  console.log(`runtime output: ${outDir}`)
+  process.exit(0)
+}
 
 await mkdir(outDir, { recursive: true })
 
@@ -58,7 +70,7 @@ const fixtureCells = [
 ]
 
 const GEM_CELL_SIZE = 24
-const GEM_RENDERED_SIZES = [10, 13, 16, 20]
+const GEM_RENDERED_SIZES = [8, 11, 16, 22]
 const gemRows = [382, 436, 489, 542]
 const gemColumns = [
   [1221, 30],
@@ -129,6 +141,7 @@ await writeFile(
       columns: ['small', 'medium', 'large', 'huge'],
       rows: ['emerald', 'topaz', 'ruby', 'amethyst'],
       renderedSizes: GEM_RENDERED_SIZES,
+      frames: 'tight-alpha-bounds',
     },
     null,
     2
