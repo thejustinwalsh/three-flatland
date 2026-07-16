@@ -43,17 +43,34 @@ export type AudioBackend = {
    * a superseded play). Never called on a read/decode failure.
    */
   playFile(path: string, volume: number, onStarted: (handle: { stop(): void }) => void): void
-  /** Synchronous construction like `playSong`, not async like `playFile`
-   * — neither Tone's nor Wad's constructors involve an async decode
-   * step. */
-  playToneSynth(cmd: Omit<PlayToneSynthCommand, 'cmd'>, volume: number): { stop(): void }
+  /**
+   * Construction, like `playSong` — but MAY be asynchronous, unlike
+   * `playSong`/`playWadSynth`: the real `sidecar.ts` backend awaits the
+   * lazily-loaded Tone.js engine (bounded — see `loadToneEngineBounded`)
+   * before constructing the synth, so the command's own Ack/Nack reflects
+   * whether the engine actually became ready, not just "accepted." A
+   * fake/test backend may still return synchronously — `handleCommand`
+   * awaits either shape.
+   */
+  playToneSynth(
+    cmd: Omit<PlayToneSynthCommand, 'cmd'>,
+    volume: number
+  ): { stop(): void } | Promise<{ stop(): void }>
   playWadSynth(config: PlayWadSynthCommand['config'], volume: number): { stop(): void }
   getStats(): PlaybackStats
 }
 
 export type CommandHandler = {
-  /** Executes one command against the backend and returns the response to send. Never throws — a backend error becomes a `Nack`. */
-  handleCommand(command: Command): Response
+  /**
+   * Executes one command against the backend and returns the response to
+   * send. Never throws — a backend error becomes a `Nack`. Always
+   * returns a Promise — most commands settle on the same microtask, but
+   * `playToneSynth`'s backend call can genuinely await (see
+   * `AudioBackend.playToneSynth`'s doc comment), and a single async
+   * function is simpler than a per-command sync/async split for the one
+   * branch that needs it.
+   */
+  handleCommand(command: Command): Promise<Response>
 }
 
 /**
@@ -95,10 +112,9 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
 
   // Try-then-replace: call the backend FIRST, and only stop the old
   // source + adopt the new handle once the backend call has actually
-  // succeeded. A throwing backend call (e.g. playToneSynth's cold-start
-  // Nack, which fires on literally every session's first Tone play — see
-  // tools/audio-play/CLAUDE.md) must never have side effects on whatever
-  // is currently playing.
+  // succeeded (awaited to completion for playToneSynth — see
+  // handleCommand's playToneSynth case). A throwing/rejecting backend
+  // call must never have side effects on whatever is currently playing.
   function playAndReplace(next: { stop(): void }): void {
     replaceCurrentSource()
     currentSource = next
@@ -113,7 +129,7 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
     replaceCurrentSource()
   }
 
-  function handleCommand(command: Command): Response {
+  async function handleCommand(command: Command): Promise<Response> {
     try {
       switch (command.cmd) {
         case 'play':
@@ -138,7 +154,13 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
           return { ok: true, cmd: 'playFile' }
         }
         case 'playToneSynth': {
-          playAndReplace(backend.playToneSynth(command, command.volume ?? 1))
+          // Awaited BEFORE playAndReplace touches the current source — a
+          // backend that rejects (engine never became ready) must never
+          // stop whatever's currently playing, same try-then-replace
+          // contract every other play kind gets (see playAndReplace's own
+          // doc comment).
+          const handle = await backend.playToneSynth(command, command.volume ?? 1)
+          playAndReplace(handle)
           return { ok: true, cmd: 'playToneSynth' }
         }
         case 'playWadSynth': {
@@ -164,9 +186,12 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
       }
     } catch (err) {
       // Generic — never special-cased to a particular backend method. Any
-      // thrown error carrying a `.code` (currently only playToneSynth's
-      // cold-start Nack, see sidecar.ts) propagates it onto the Nack;
-      // every other failure just omits the field.
+      // thrown/rejected error carrying a `.code` (e.g. playToneSynth's
+      // TONE_LOAD_FAILED or AUDIO_DEVICE_UNAVAILABLE, see sidecar.ts)
+      // propagates it onto the Nack; every other failure just omits the
+      // field. `await` inside the `try` above funnels a rejected
+      // `backend.playToneSynth(...)` promise through this same path —
+      // no separate async error channel needed.
       const code =
         err instanceof Error && 'code' in err ? String((err as { code?: unknown }).code) : undefined
       return {

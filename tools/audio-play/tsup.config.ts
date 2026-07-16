@@ -10,6 +10,8 @@ export default defineConfig({
     'src/player.ts',
     'src/protocol.ts',
     'src/sidecar.ts',
+    'src/toneEngineLoader.ts',
+    'src/wadLoader.ts',
   ],
   format: ['esm'],
   dts: true,

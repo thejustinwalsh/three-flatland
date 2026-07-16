@@ -166,6 +166,15 @@ async function teardownWindow(win: CachedWindow | undefined): Promise<void> {
  *    disabled for every spec after it).
  * 3. Wipes + recopies `baseDir` back to the pristine fixture workspace, so
  *    a previous test's sidecar/encode/merge output can't leak forward.
+ * 4. Calls the extension's `ExtensionApi.reset()` (finding #7,
+ *    planning/testing/pr188-adversarial-review.md) — without it, whether
+ *    a later test exercises the audio-play sidecar's reacquire-a-context
+ *    path vs. its already-warm path depends on how long PRECEDING tests
+ *    happened to run against the shrunk `FL_AUDIO_IDLE_RELEASE_MS` window
+ *    below (direct timer/order dependence, not determinism). `reset()`
+ *    kills any running sidecar and clears its session caches outright, so
+ *    every test starts from the same known state regardless of elapsed
+ *    time.
  *
  * Not called after a fresh `launchWindow` — there's nothing to reset yet.
  */
@@ -180,6 +189,12 @@ async function resetWindowWorkspace(win: CachedWindow): Promise<void> {
       if (config.inspect(key)?.workspaceValue !== undefined) {
         await config.update(key, undefined, vscode.ConfigurationTarget.Workspace)
       }
+    }
+
+    if (ext) {
+      if (!ext.isActive) await ext.activate()
+      const api = ext.exports as { reset?: () => Promise<void> }
+      await api.reset?.()
     }
   })
   await fs.rm(win.baseDir, { recursive: true, force: true })

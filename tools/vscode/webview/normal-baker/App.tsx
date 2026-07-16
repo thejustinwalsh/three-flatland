@@ -151,6 +151,24 @@ const s = stylex.create({
     fontSize: '12px',
     flexShrink: 0,
   },
+  // Toolbar save-status readout, next to the Save button. Doubles as the
+  // e2e-observable completion signal for the async bridge round-trip (see
+  // handleSave) — this text only renders once `normalBaker/save` has
+  // resolved, so a test can await it instead of polling the filesystem.
+  saveStatusText: {
+    fontSize: '11px',
+    color: vscode.descriptionFg,
+    paddingInlineEnd: space.md,
+    display: 'flex',
+    alignItems: 'center',
+  },
+  saveStatusTextError: {
+    fontSize: '11px',
+    color: vscode.errorFg,
+    paddingInlineEnd: space.md,
+    display: 'flex',
+    alignItems: 'center',
+  },
 })
 
 /** Mounted inside `<CanvasStage>` to surface its decoded ImageData up to App-level state (App renders sibling panels outside CanvasStage's provider tree). Same pattern as atlas's `<ImageDataSink>`. */
@@ -532,6 +550,13 @@ export function App() {
           onClick={() => (mode.kind === 'grid' ? exitGrid() : enterGrid())}
         />
         <span {...stylex.props(s.toolbarSpacer)} />
+        {saveStatus.kind === 'saved' ? (
+          <span {...stylex.props(s.saveStatusText)}>Saved</span>
+        ) : saveStatus.kind === 'error' ? (
+          <span {...stylex.props(s.saveStatusTextError)} title={saveStatus.message}>
+            Save failed
+          </span>
+        ) : null}
         <ToolbarButton
           icon="save"
           title="Save (.normal.png + .normal.json)"
