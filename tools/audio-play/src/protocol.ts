@@ -61,6 +61,18 @@ export type ShutdownCommand = { cmd: 'shutdown' }
  * out. Fire-and-forget commands stay id-less. */
 export type StatsCommand = { cmd: 'stats'; id?: number }
 
+/** Device-independent liveness probe — proves the sidecar PROCESS is up
+ * and responding over the wire protocol WITHOUT touching `AudioContext`
+ * at all: `sidecar.ts`'s `PLAY_COMMANDS` set deliberately excludes
+ * `'ping'`, so it skips `contextLifecycle`'s acquire ladder entirely and
+ * `commandHandler.ts` answers it without calling into the `AudioBackend`.
+ * Exists so a caller (e2e process-lifecycle assertions) can prove the
+ * child process is alive and responsive on a device-less runner, where
+ * every audio-touching command legitimately Nacks (see
+ * `tools/audio-play/CLAUDE.md`'s device-tolerance section). `id`-correlated
+ * like `stats`/`playToneSynth` — see `StatsCommand`'s doc for why. */
+export type PingCommand = { cmd: 'ping'; id?: number }
+
 /** The narrow, statically-parseable Tone.js instrument subset this sidecar
  * supports — see `tools/audio-play/CLAUDE.md`/#47 for why Tone's imperative
  * method-chain API only gets a fixed allowlist rather than arbitrary
@@ -117,6 +129,7 @@ export type Command =
   | StopCommand
   | ShutdownCommand
   | StatsCommand
+  | PingCommand
   | PlayToneSynthCommand
   | PlayWadSynthCommand
 
@@ -173,10 +186,13 @@ export type PlaybackStats = {
  * Nack, which correlates to no awaited request). */
 export type Ack = { ok: true; cmd: Exclude<Command['cmd'], 'stats'>; id?: number }
 /** `code` is a machine-readable tag for a specific, callers-may-need-to-
- * react-to failure mode — currently only `'TONE_LOADING'` (see
- * `sidecar.ts`'s `playToneSynth` cold-start Nack). Absent for every other
- * failure; never parsed out of `error`'s message text — the code IS the
- * contract, the message is for humans. */
+ * react-to failure mode — `'TONE_LOADING'` (see `sidecar.ts`'s
+ * `playToneSynth` cold-start Nack) and `'AUDIO_DEVICE_UNAVAILABLE'` (see
+ * `audioContextGuard.ts`'s `assertAudioDeviceAvailable`, thrown by every
+ * play-kind backend when the native `AudioContext` never acquired a real
+ * output device). Absent for every other failure; never parsed out of
+ * `error`'s message text — the code IS the contract, the message is for
+ * humans. */
 export type Nack = { ok: false; cmd: Command['cmd']; error: string; code?: string; id?: number }
 export type StatsAck = { ok: true; cmd: 'stats'; stats: PlaybackStats; id?: number }
 export type Response = Ack | Nack | StatsAck

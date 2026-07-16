@@ -30,7 +30,13 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: IS_CI,
-  retries: IS_CI ? 1 : 0,
+  // Zero retries, everywhere: a retry re-running the SAME already-warm
+  // shared window/sidecars can mask a genuine first-attempt failure
+  // rather than proving anything was flaky (planning/testing/
+  // test-determinism-audit.md). Every audio test that used to need a
+  // retry to shake real-device/timing flakiness has been redesigned to
+  // not depend on a real device at all — see specs/audio-render-gate.spec.ts.
+  retries: 0,
   reporter: IS_CI
     ? [
         ['github'],
