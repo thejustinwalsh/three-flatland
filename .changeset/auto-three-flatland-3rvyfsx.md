@@ -5,10 +5,16 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-Debug-protocol and registry changes powering the new devtools flight recorder:
+## Flight recorder (debug protocol)
 
-- `RegistryPayload` gains periodic full checkpoints (`checkpoint: true`) so devtools time-travel reconstruction never has to replay further back than one cadence window
-- Checkpoints that must degrade an entry to metadata-only (pool overflow) no longer falsely report as complete — they retry and settle as `partial: true` instead of starving on an oversized entry
-- `bus-worker.ts` tightens the VP9 encoder's keyframe cadence from 2000ms to 500ms so a scrub cursor is never far from a decodable anchor, and adds the encoded-chunk stream the flight recorder's ring buffer consumes
+- Add registry checkpoint snapshots: periodic full re-sends of registry state (`checkpoint: true` on `RegistryPayload`) so time-travel reconstruction never replays further back than one cadence window.
+- Fix checkpoints that had to degrade an entry to metadata-only (pool overflow): no longer falsely claim `checkpoint: true`; retry, then settle on `checkpoint: true, partial: true` instead of starving. Reconstruction skips partial checkpoints as anchors and falls back to the nearest complete one.
+- Tighten VP9 encoder keyframe cadence from 2000ms to 500ms so scrub playback is never far from a decodable anchor.
 
-Summary: extends `DebugRegistry`/`debug-protocol` with checkpointing and faster keyframe cadence to support devtools' new flight-recorder (record/freeze/scrub) feature.
+## Bug fixes
+
+- Share one fold function between the live client and reconstruction core for registry deltas, preventing divergence between them.
+
+## Summary
+
+Adds checkpoint-based registry snapshots and hardens the flight-recorder's debug protocol against partial-checkpoint and keyframe-cadence edge cases.
