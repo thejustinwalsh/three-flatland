@@ -6,7 +6,10 @@ import { getPlaySidecarClient, shutdownPlaySidecar } from './playSidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
 import { ActivePlayback, watchPlaybackEnd } from './activePlayback'
 import { AudioFileResolver } from './audioFileResolver'
-import { createSourceEditorBindingHandlers } from './sourceEditorBinding'
+import {
+  createSourceEditorBindingHandlers,
+  registerSourceEditorBinding,
+} from './sourceEditorBinding'
 import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
 import { resolveSong } from './resolveSong'
@@ -295,22 +298,23 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
 
   // Source-editor binding (#46): a playing sound belongs to its source
   // document — see sourceEditorBinding.ts's file doc comment for the full
-  // rationale and sourceEditorBinding.test.ts for its unit coverage
-  // (finding #6, planning/testing/pr188-adversarial-review.md). These
-  // three listeners just adapt the real vscode events down to the
-  // URI/callback primitives the extracted handlers take.
-  const sourceEditorBinding = createSourceEditorBindingHandlers({
-    activePlayback,
-    stop: stopActivePlayback,
-    isDocumentOpenInSomeTab,
-  })
+  // rationale, sourceEditorBinding.test.ts for the decision-logic unit
+  // coverage (finding #6, planning/testing/pr188-adversarial-review.md),
+  // and its "wiring" describe block for coverage of THIS registration —
+  // the event→handler→URI adaptation (finding #4 of the same review) —
+  // via fake event emitters instead of only e2e.
   disposables.push(
-    vscode.window.onDidChangeActiveTextEditor((editor) =>
-      sourceEditorBinding.onDidChangeActiveTextEditor(editor?.document.uri.toString())
-    ),
-    vscode.window.tabGroups.onDidChangeTabs(() => sourceEditorBinding.onDidChangeTabs()),
-    vscode.workspace.onDidCloseTextDocument((document) =>
-      sourceEditorBinding.onDidCloseTextDocument(document.uri.toString())
+    registerSourceEditorBinding(
+      {
+        onDidChangeActiveTextEditor: vscode.window.onDidChangeActiveTextEditor,
+        onDidChangeTabs: vscode.window.tabGroups.onDidChangeTabs,
+        onDidCloseTextDocument: vscode.workspace.onDidCloseTextDocument,
+      },
+      createSourceEditorBindingHandlers({
+        activePlayback,
+        stop: stopActivePlayback,
+        isDocumentOpenInSomeTab,
+      })
     )
   )
 

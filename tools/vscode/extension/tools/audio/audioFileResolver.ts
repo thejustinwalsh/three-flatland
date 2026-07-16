@@ -87,6 +87,13 @@ export class AudioFileResolver {
   private readonly searches = new Map<string, Promise<string | undefined>>()
   private readonly misses = new Set<string>()
   private readonly exists: (p: string) => boolean
+  /** Bumped by `clear()`. Each `startSearch` call captures the epoch it
+   * started under; before writing back to `cache`/`misses` or firing
+   * `onDidUpdate`, it checks the epoch is still current. A search that
+   * was in flight when `clear()` ran is now obsolete — it belongs to a
+   * workspace fixture that's already been swapped out — so it returns
+   * without mutating anything. See `clear()` below. */
+  private epoch = 0
 
   constructor(private readonly deps: AudioFileResolverDeps) {
     this.exists = deps.exists ?? fs.existsSync
@@ -166,11 +173,16 @@ export class AudioFileResolver {
    * cache/search/miss record so a later test's `getLensState`/
    * `resolveForPlay` calls can't see resolved paths left over from a
    * previous test's (by then recopied) workspace fixture. An in-flight
-   * search whose promise was already running keeps running — its own
-   * `startSearch` closure only touches `this.searches`/`this.cache` by
-   * key, so a late resolution after `clear()` just repopulates the fresh
-   * cache rather than throwing. */
+   * search whose promise was already running keeps running, but bumping
+   * `epoch` here makes it obsolete: `startSearch`'s continuation checks
+   * the epoch before it writes back to `cache`/`misses` or fires
+   * `onDidUpdate`, so a late resolution after `clear()` is a no-op
+   * instead of repopulating the map with a previous fixture's stale hit
+   * or miss (finding #3, adversarial review of PR #188 — a search
+   * against the previous test's workspace could otherwise install a
+   * stale entry after the pristine fixture was already restored). */
   clear(): void {
+    this.epoch++
     this.cache.clear()
     this.searches.clear()
     this.misses.clear()
@@ -178,6 +190,7 @@ export class AudioFileResolver {
 
   private startSearch(key: string, refPath: string): Promise<string | undefined> {
     const basename = path.basename(refPath)
+    const startEpoch = this.epoch
     const search = (async () => {
       let found: string | undefined
       try {
@@ -188,6 +201,10 @@ export class AudioFileResolver {
       } catch {
         found = undefined
       }
+      // `clear()` ran while this search was in flight — it belongs to a
+      // workspace that's already been torn down. Don't touch the fresh
+      // maps and don't fire a refresh for a result nobody's waiting on.
+      if (this.epoch !== startEpoch) return found
       this.searches.delete(key)
       if (found) {
         this.cache.set(key, found)

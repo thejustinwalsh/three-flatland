@@ -69,13 +69,21 @@ const TONE_VAR_UNRESOLVABLE_LINE = lineOf("triggerAttackRelease(note, '8n')")
 type LensCommand = { command: string; title: string; arguments?: unknown[] }
 type ResolvedLens = { range: { start: { line: number } }; command?: LensCommand }
 
-/** `zzfxPlay.shutdown()` forces a fresh sidecar (Part A cold-start);
- * `ping()` is the device-INDEPENDENT liveness signal the Tone tests below
- * assert on — it proves the sidecar process survived a play attempt (a
- * crash/hang fails the ping) WITHOUT depending on a working audio device,
- * which is what a device-less CI runner lacks. `getStats`/`getActivePid`
- * are gone: no test below polls the analyser or asserts device-dependent
- * playback success anymore. */
+/** `zzfxPlay.shutdown()` forces a fresh sidecar process; `ping()` is the
+ * device-INDEPENDENT liveness signal the Tone tests below assert on — it
+ * proves the sidecar process survived a play attempt (a crash/hang fails
+ * the ping) WITHOUT depending on a working audio device, which is what a
+ * device-less CI runner lacks. `getStats`/`getActivePid` are gone: no test
+ * below polls the analyser or asserts device-dependent playback success
+ * anymore. IMPORTANT: on a device-less runner, `assertAudioDeviceAvailable()`
+ * Nacks EVERY `playToneSynth` call before `import('tone')`/AudioWorklet
+ * code ever runs — the PluckSynth and cold-start-labeled tests below are
+ * therefore device-tolerance/ping-liveness proofs, not AudioWorklet or
+ * Tone-import regression guards (see each test's own comment). The real,
+ * device-independent AudioWorklet regression guard lives at
+ * `audio-render-gate.spec.ts`'s offline `PluckSynth` render, which calls
+ * `toneEngineLoader.ts`'s production `loadToneEngine`/
+ * `setupToneEnvironment` directly against an `OfflineAudioContext`. */
 type ExtensionApi = {
   zzfxPlay: {
     shutdown: () => Promise<void>
@@ -328,27 +336,40 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 
-  // Regression guard: PluckSynth is the ONE allowlisted class whose
-  // internal LowpassCombFilter constructs an AudioWorkletNode through
-  // standardized-audio-context — none of the other 8 do. That path used
-  // to throw inside an unawaited .then() (window.isSecureContext
-  // undefined in our shim window), an unhandled rejection Node treats as
-  // fatal — one PluckSynth play took down the ENTIRE sidecar process,
-  // silently killing every other in-flight sound with it, not a clean
-  // Nack (see sidecar.ts's module-scope fix comment).
+  // HONEST SCOPE (adversarial-review finding #2, fix/deterministic-tests-p1):
+  // this is a device-tolerance / CodeLens-dispatch / ping-liveness test —
+  // NOT an AudioWorklet regression guard. On a device-less CI runner (the
+  // ONLY environment this spec's blocking suite runs in),
+  // `assertAudioDeviceAvailable()` — the very first line of `sidecar.ts`'s
+  // `playToneSynth` backend — Nacks BEFORE `import('tone')` or any
+  // AudioWorklet/`standardized-audio-context` code ever runs. That means
+  // `PluckSynth`'s `LowpassCombFilter` → `ToneAudioWorklet` →
+  // `AudioWorkletNode` path — the ONE allowlisted class whose construction
+  // used to throw inside an unawaited `.then()` (`window.isSecureContext`
+  // undefined in our shim `window`) and crash the ENTIRE sidecar process,
+  // silently killing every other in-flight sound with it (see
+  // `tools/audio-play/CLAUDE.md`'s AudioWorklet section) — is structurally
+  // UNREACHABLE from this test on a device-less runner. A regression that
+  // deleted the `isSecureContext`/`self` fix (`toneEngineLoader.ts`'s
+  // `setupToneEnvironment`) entirely would still pass THIS test, because
+  // the Nack happens first every time.
   //
-  // Proving "the process is still alive and responsive" without polling
-  // the analyser: `playToneSynth` is already an ID-correlated awaited
-  // command (`playToneSynthAwaitable`, #47/#49) — the sidecar's own
-  // backend awaits its bounded, lazily-loaded Tone.js engine before
-  // Acking/Nacking (see `tools/audio-play/CLAUDE.md`'s "Tone.js: lazy
-  // load, bounded await"), and register.ts's handler shows a user-visible
-  // error only on that ONE awaited response's Nack — no client-side retry
-  // in between. So issuing a second, unrelated Tone play and asserting NO
-  // error surfaced is a deterministic "the sidecar answered a fresh
-  // command" proof, bounded entirely by the sidecar's own load timeout —
-  // not a test-authored poll.
-  test('tone.synth PluckSynth: AudioWorkletNode construction does not crash the sidecar process', async ({
+  // The REAL, device-independent AudioWorkletNode regression guard now
+  // lives at `tools/vscode/e2e/specs/audio-render-gate.spec.ts`'s
+  // "playToneSynth PluckSynth" test, which renders a real `Tone.PluckSynth`
+  // through an `OfflineAudioContext` (no device needed — AudioWorklet is
+  // native-Worker-thread-based, independent of any output device) and
+  // asserts non-silent, non-crashed output — see that spec + probe
+  // (`offlineTonePluckProbe.mjs`) for the break-and-revert proof.
+  //
+  // What THIS test still legitimately proves, and why it's still worth
+  // keeping: the `▶ Play` CodeLens for a PluckSynth call resolves and
+  // dispatches (`playToneSynth` command, correct command id/args), the
+  // sidecar's device-unavailable Nack path for `playToneSynth` doesn't
+  // hang or crash the process on a cold/device-less runner, and the
+  // process keeps answering `ping` afterward — real coverage, just not the
+  // coverage its old name/comment claimed.
+  test('tone.synth PluckSynth: CodeLens dispatches and the sidecar stays alive on a device-less runner (device-tolerance, not an AudioWorklet regression guard — see audio-render-gate.spec.ts for that)', async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
@@ -362,22 +383,19 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     )
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
 
-    // The process survived the PluckSynth play attempt — prove it
+    // The process survived dispatching the command — prove it
     // device-INDEPENDENTLY via the sidecar's `ping` liveness command (a
-    // real correlated signal, not a poll). This is the deterministic core
-    // of the AudioWorkletNode-doesn't-crash guard: on a device-less runner
-    // the play Nacks (no output device) but the process must stay alive and
-    // answering; a crash or a hung request from a bad AudioWorklet
-    // construction would drop the connection and fail this ping. (Whether
-    // the AudioWorklet was actually reached and rendered sound is
-    // device-dependent — that path runs where a real device exists, e.g.
-    // local/manual, and is not a blocking-CI concern.)
+    // real correlated signal, not a poll). On a device-less runner the play
+    // Nacks immediately (no output device, before Tone/AudioWorklet code
+    // ever runs) but the process must stay alive and answering; a crash or
+    // a hung request anywhere in that dispatch path would drop the
+    // connection and fail this ping.
     const alive = await evaluateInVSCode(async (vscode) => {
       const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
       if (ext && !ext.isActive) await ext.activate()
       return (ext!.exports as ExtensionApi).zzfxPlay.ping()
     })
-    expect(alive, 'the sidecar must still answer ping after PluckSynth — not crashed/hung').toBe(
+    expect(alive, 'the sidecar must still answer ping after dispatching PluckSynth — not crashed/hung').toBe(
       true
     )
   })
@@ -450,19 +468,24 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     expect(unresolvedLens.command?.command).toBe('')
   })
 
-  // Part A: the very FIRST command a freshly-spawned sidecar receives is
-  // a Tone play — the deterministic once-per-session cold-start path
-  // (`import('tone')` hasn't resolved yet). Forces a genuinely fresh
-  // sidecar (shutdown, so the next play respawns one with
-  // `toneEnginePromise` module state reset) rather than relying on
-  // test-execution order. `playToneSynth` is already an ID-correlated
-  // awaited command, and the sidecar's own backend now AWAITS the bounded
-  // Tone.js load before Acking/Nacking (see `tools/audio-play/CLAUDE.md`'s
-  // "Tone.js: lazy load, bounded await") — so the single awaited
-  // executeCommand() below already reflects the real outcome by the time
-  // it resolves, no client-side retry involved. No polling: this asserts
-  // the command completed and the sidecar survived cold start.
-  test('Part A cold-start: the first Tone play against a fresh sidecar keeps the process alive (no crash/hang on cold start)', async ({
+  // HONEST SCOPE (adversarial-review finding #2, fix/deterministic-tests-p1):
+  // this is a shutdown+respawn / device-tolerance / ping-liveness test —
+  // NOT proof that the sidecar's cold-start `import('tone')` path (or, a
+  // fortiori, any AudioWorklet setup — `TONE_NOTE_LINE` is a plain
+  // `Tone.Synth` note, which never touches AudioWorklet even with a real
+  // device) actually ran. `assertAudioDeviceAvailable()` — the first line
+  // of `sidecar.ts`'s `playToneSynth` backend — Nacks on a device-less
+  // runner BEFORE `loadToneEngineBounded()`/`import('tone')` is ever
+  // reached, cold sidecar or not. What this test verifies is real and
+  // still worth keeping: `zzfxPlay.shutdown()` + a following `playToneSynth`
+  // dispatch against the freshly-respawned process + `ping()` all complete
+  // without hanging or crashing the sidecar. It does NOT prove
+  // `toneEngineLoader.ts`'s `loadToneEngine` (the real `import('tone')` +
+  // `Tone.setContext` + engine-table construction) executes correctly on a
+  // device-less runner — that coverage comes from
+  // `audio-render-gate.spec.ts`'s offline probes instead, which call that
+  // exact production helper directly, no device or sidecar process needed.
+  test('Tone play against a freshly respawned sidecar: shutdown+respawn dispatches and the process stays alive (device-tolerance, not a cold-start import(\'tone\') proof)', async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
@@ -476,27 +499,28 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as ExtensionApi
 
-        // Force a genuinely fresh sidecar — its toneEnginePromise module
-        // state resets, so the very next playToneSynth is the
-        // deterministic once-per-session cold-start path (import('tone')
-        // + AudioWorklet setup) this test targets.
+        // Force a genuinely fresh sidecar process (not just fresh Tone
+        // module state — the whole process respawns) rather than relying
+        // on test-execution order.
         await api.zzfxPlay.shutdown()
         await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
 
-        // Device-INDEPENDENT success criterion: the sidecar survived cold
-        // start and still answers `ping`. A crash during Tone's import /
-        // AudioWorklet setup, or a hung request, would fail this. Whether
-        // the play itself became audible is device-dependent — on a
-        // device-less runner it Nacks, which is correct, not a failure —
-        // so that's a manual/smoke concern, not a blocking-CI one.
+        // Device-INDEPENDENT success criterion: the freshly-respawned
+        // sidecar answers `ping` after dispatching the command. A crash or
+        // hung request anywhere in that dispatch path — Nack included —
+        // would fail this. Whether the play itself became audible is
+        // device-dependent — on a device-less runner it Nacks immediately,
+        // which is correct, not a failure — so that's a manual/smoke
+        // concern, not a blocking-CI one.
         return api.zzfxPlay.ping()
       },
       { command: playLens.command!.command, args: playLens.command!.arguments }
     )
 
-    expect(alive, 'the sidecar must survive the cold-start Tone play and still answer ping').toBe(
-      true
-    )
+    expect(
+      alive,
+      'the freshly-respawned sidecar must survive dispatching the Tone play and still answer ping'
+    ).toBe(true)
 
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })

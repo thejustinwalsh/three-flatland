@@ -28,6 +28,17 @@ const AUDIT_DIR = process.env.FL_AUDIT_DIR ?? 'design-audit'
 const OUT_DIR = path.join(__dirname, '..', 'test-results', AUDIT_DIR)
 
 test.describe('Z8 design audit screenshots', () => {
+  // Screenshots are MANUAL artifacts, not a determinism gate: this harness
+  // captures full-window images for a human side-by-side idiom comparison,
+  // and native-workbench surfaces (Settings/Extensions) can't be pinned to a
+  // deterministic "content settled" signal anyway. CI never sets
+  // FL_AUDIT_DIR, so skip the whole harness there; run it explicitly with
+  // FL_AUDIT_DIR set (see the file header) to capture.
+  test.skip(
+    !process.env.FL_AUDIT_DIR,
+    'manual screenshot capture harness — set FL_AUDIT_DIR to run'
+  )
+
   test('zzfx tuner', async ({ evaluateInVSCode, webviewFrame, workbox }) => {
     await evaluateInVSCode(async (vscode) => {
       const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
