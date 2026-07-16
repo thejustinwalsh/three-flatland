@@ -6,6 +6,27 @@
 // so zzfx.spec.ts's pre-existing "exactly these 4 lenses for the whole
 // document" assertion against sounds.ts stays untouched.
 //
+// Determinism redesign (planning/testing/test-determinism-audit.md): real
+// per-test audibility (`getStats().silent`/`.peak`) and stop-silence
+// polling against the live sidecar's shared AnalyserNode were removed
+// from every test below — they required a real OS audio device and were
+// this suite's main source of nondeterminism. The production output path
+// they used to verify (`playSampleChannels`, tools/audio-play/src/
+// player.ts) is now proven ONCE, deterministically, by
+// `specs/audio-render-gate.spec.ts`'s `OfflineAudioContext` render — no
+// device, no polling, no warmup. Stop/supersede semantics are covered
+// deterministically by `tools/audio-play/src/commandHandler.test.ts`'s
+// fake-backend unit tests, which exercise the SAME shared
+// `playAndReplace`/`replaceCurrentSource` mechanism every command handler
+// routes through (commandHandler.ts) — kind-agnostic by construction, so
+// combinatorial pairs there (File↔Song, Tone↔Wad) stand in for pairs not
+// explicitly duplicated here. What's left in this file is lens presence/
+// wiring/census and "does the command dispatch without throwing" —
+// genuinely deterministic, no device involved. A few tests were deleted
+// outright as PURELY real-time/audibility proofs with no unique wiring
+// coverage; see the deletion notes inline and this session's report for
+// the full accounting.
+//
 // Every `evaluateInVSCode` callback below inlines its own extension
 // lookup/activation rather than calling a shared top-level helper — `fn`
 // is shipped as source text (`Function.prototype.toString()`) and
@@ -16,15 +37,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, skipIfAudioDeviceDeaf, test } from '../fixtures'
-
-// Real-audio spec: skip (loudly, with the environmental evidence) when the
-// warmup's oracle proved the OS audio device transiently deaf — see
-// fixtures.ts's warmUpAudioPipeline. CI runs FL_E2E_REQUIRE_AUDIO=1 and
-// hard-fails instead.
-test.beforeEach(({ _sharedWindow }) => {
-  skipIfAudioDeviceDeaf(_sharedWindow)
-})
+import { expect, test } from '../fixtures'
 
 const SOUNDS_FILE = 'src/audio-sources.ts'
 
@@ -43,7 +56,6 @@ function lineOf(needle: string): number {
 }
 
 const FANFARE_CALL_LINE = lineOf('zzfxm(fanfareSong)') // bare-identifier varRef
-const CHIPTUNE_CALL_LINE = lineOf('zzfxm([[0.5, 0, 300]]') // positional literal
 const FANFARE_SPREAD_CALL_LINE = lineOf('zzfxM(...fanfareSong)') // spread varRef, plays
 const LONG_MARCH_CALL_LINE = lineOf('zzfxm(longMarchSong)') // #43 long song, play/stop subject
 const JUMP_SFX_LINE = lineOf("audioLoader.load('sounds/jump.wav')") // workspace-root tier
@@ -100,21 +112,6 @@ const TONE_UNRESOLVABLE_NOTE_LINE = lineOf("triggerAttackRelease(note, '8n')")
 type LensCommand = { command: string; title: string; arguments?: unknown[] }
 type ResolvedLens = { range: { start: { line: number } }; command?: LensCommand }
 
-type PlaybackStats = {
-  peak: number
-  silent: boolean
-  playing: boolean
-  durationSeconds: number
-  elapsedSeconds: number
-}
-type ExtensionApi = {
-  zzfxPlay: {
-    getActivePid: () => number | undefined
-    shutdown: () => Promise<void>
-    getStats: () => Promise<PlaybackStats | undefined>
-  }
-}
-
 async function fetchLenses(
   evaluateInVSCode: <R, Arg = undefined>(
     fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
@@ -159,7 +156,10 @@ function lensAt(lenses: ResolvedLens[], line: number, title: string): ResolvedLe
  * remains — i.e. every slow fallback search kicked off by this render has
  * settled to `▶ Play` or `$(search) Not Found` — then returns the settled
  * set. The searches are per-session-cached, so only the first render after
- * activation actually waits. */
+ * activation actually waits. Not an audio/device poll — this is watching
+ * `audioFileResolver.ts`'s own async workspace search settle, the
+ * documented, sanctioned wait for this specific async lens-state
+ * transition. */
 async function fetchSettledLenses(
   evaluateInVSCode: <R, Arg = undefined>(
     fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
@@ -178,85 +178,11 @@ async function fetchSettledLenses(
   return lenses
 }
 
-/** Executes `command`/`args` (a resolved lens's own command), then polls
- * `zzfxPlay.getStats()` until it reports audible (`!silent`). The initial
- * deadline is only a spawn allowance (a cold sidecar loads a native
- * module before any source can start); the moment the sidecar reports the
- * source's own exact timing (#43), the deadline re-derives from the REAL
- * remaining play window instead of a magic constant. Self-contained — see
- * the file doc comment. */
-async function executeAndPollAudible(
-  evaluateInVSCode: <R, Arg = undefined>(
-    fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
-    arg?: Arg
-  ) => Promise<R>,
-  command: string,
-  args: unknown[] | undefined
-): Promise<PlaybackStats | undefined> {
-  return evaluateInVSCode(
-    async (vscode, arg) => {
-      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
-      if (ext && !ext.isActive) await ext.activate()
-      const api = ext!.exports as ExtensionApi
-
-      await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-      let deadline = Date.now() + 10_000
-      let derived = false
-      let last: PlaybackStats | undefined
-      while (Date.now() < deadline) {
-        last = await api.zzfxPlay.getStats()
-        if (last && !last.silent) return last
-        if (!derived && last?.playing) {
-          derived = true
-          deadline = Date.now() + (last.durationSeconds - last.elapsedSeconds) * 1000 + 1000
-        }
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      }
-      return last
-    },
-    { command, args }
-  )
-}
-
-/** Same shape as {@link executeAndPollAudible} but polls for `silent`
- * instead — the stopSong verification. The deadline derives from the
- * current source's reported remaining window (#43): even a no-op stop
- * goes silent at the natural end, so this alone can't prove a
- * MID-playback stop — the long-song spec below adds the
- * `elapsed < duration` proof for that. */
-async function executeAndPollSilent(
-  evaluateInVSCode: <R, Arg = undefined>(
-    fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
-    arg?: Arg
-  ) => Promise<R>,
-  command: string,
-  args: unknown[] | undefined
-): Promise<boolean> {
-  return evaluateInVSCode(
-    async (vscode, arg) => {
-      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
-      if (ext && !ext.isActive) await ext.activate()
-      const api = ext!.exports as ExtensionApi
-
-      await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-      const current = await api.zzfxPlay.getStats()
-      const remainingMs = current
-        ? Math.max(0, (current.durationSeconds - current.elapsedSeconds) * 1000)
-        : 0
-      const deadline = Date.now() + remainingMs + 2000
-      while (Date.now() < deadline) {
-        const stats = await api.zzfxPlay.getStats()
-        if (stats && stats.silent) return true
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      }
-      return false
-    },
-    { command, args }
-  )
-}
-
-/** Executes a lens's command without any stats polling — for actions
- * whose observable effect is a LENS transition, not audibility. */
+/** Executes a lens's (or any) command through the real extension host and
+ * awaits its full completion — no stats/audibility polling. Proves the
+ * command dispatches without throwing; that's the deterministic contract
+ * these tests pin now (audibility itself is proven once, offline, by
+ * `specs/audio-render-gate.spec.ts`). */
 async function executeVSCodeCommand(
   evaluateInVSCode: <R, Arg = undefined>(
     fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
@@ -280,7 +206,8 @@ async function executeVSCodeCommand(
  * lens's presence/arguments (audio.file's searching→resolved/not-found
  * settling, #41), even though playback state no longer does (Play/Stop
  * are now static — see provider.ts's file doc comment). Returns
- * `undefined` once `timeoutMs` passes without one. */
+ * `undefined` once `timeoutMs` passes without one. Not an audio/device
+ * poll — same category as `fetchSettledLenses` above. */
 async function pollLensAt(
   evaluateInVSCode: <R, Arg = undefined>(
     fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
@@ -329,12 +256,12 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // bare-identifier-note var-ref finding that resolves) + 1 tone.synth
     // finding whose var-ref has NO declaration at all (a function
     // parameter — provably unresolvable straight from the sidecar's own
-    // parse, no read needed) getting a single inert `$(question)
-    // Unresolved` lens instead of a Play+Stop pair. #44's decoy block
-    // (mic/sprite/preset) contributes exactly one inert Unresolved lens
-    // per line (the sidecar's `unresolved` wad.synth flavor); the
-    // commented-out decoys still contribute ZERO — both proven by the
-    // exact total below, not just presence of the positive cases.
+    // parse) getting a single inert `$(question) Unresolved` lens instead
+    // of a Play+Stop pair. #44's decoy block (mic/sprite/preset)
+    // contributes exactly one inert Unresolved lens per line (the
+    // sidecar's `unresolved` wad.synth flavor); the commented-out decoys
+    // still contribute ZERO — both proven by the exact total below, not
+    // just presence of the positive cases.
     expect(lenses).toHaveLength(51)
     // Play/Stop counts are each down by 1 from the toggle-reversal era —
     // TONE_UNRESOLVABLE_NOTE_LINE no longer gets a Play+Stop pair, just
@@ -430,9 +357,13 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   // #41 lazy repair, the full cycle: found → cached → file deleted → Play
   // re-stats, re-searches, comes up empty → lens flips to
   // `$(search) Not Found` → file re-added → clicking the not-found lens
-  // (the retry-shaped play attempt) re-searches, finds it, plays real
-  // audio, and the lens heals back to ▶ Play.
-  test('lazy repair: delete → Play flips to not-found; re-add → Play finds and plays again', async ({
+  // (the retry-shaped play attempt) re-searches, finds it, and heals the
+  // lens back to ▶ Play with the resolved path. The click's audibility
+  // used to be re-proven here too (executeAndPollAudible); that's now the
+  // offline gate's job — this test's unique contract is the lens-state
+  // repair cycle itself (delete → not-found → re-add → healed ▶ Play),
+  // which is deterministic lens census, not audio.
+  test('lazy repair: delete → Play flips to not-found; re-add → Play finds and heals back to ▶ Play', async ({
     evaluateInVSCode,
     baseDir,
   }) => {
@@ -449,114 +380,55 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // path — the command must re-stat, re-search, and settle not-found
     // rather than erroring or playing nothing silently.
     fs.rmSync(thunderPath)
-    await evaluateInVSCode(
-      async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
-        if (ext && !ext.isActive) await ext.activate()
-        await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
-      },
-      { command: playLens!.command!.command, args: playLens!.command!.arguments }
+    await executeVSCodeCommand(
+      evaluateInVSCode,
+      playLens!.command!.command,
+      playLens!.command!.arguments
     )
     lenses = await fetchSettledLenses(evaluateInVSCode)
     expect(lensAt(lenses, THUNDER_SFX_LINE, '$(search) Not Found')).toBeDefined()
     expect(lensAt(lenses, THUNDER_SFX_LINE, '▶ Play')).toBeUndefined()
 
     // Re-add the asset and click the not-found lens — the lazy repair's
-    // retry: it re-searches, finds the re-added file, and plays it for
-    // real (audibility via the same stats tap as every other route).
+    // retry: it re-searches and finds the re-added file.
     fs.mkdirSync(path.dirname(thunderPath), { recursive: true })
     fs.writeFileSync(thunderPath, thunderBytes)
     const notFoundLens = lensAt(lenses, THUNDER_SFX_LINE, '$(search) Not Found')!
-    const stats = await executeAndPollAudible(
+    await executeVSCodeCommand(
       evaluateInVSCode,
       notFoundLens.command!.command,
       notFoundLens.command!.arguments
     )
-    expect(stats).toBeDefined()
-    expect(stats!.silent).toBe(false)
-    expect(stats!.peak).toBeGreaterThan(0)
 
-    // And the lens healed back to ▶ Play at the found path. Stop the
-    // still-running playback for test hygiene before the next spec —
-    // Play/Stop are static now, so this isn't about hiding a toggled
-    // face, just not leaving audio running into the next test.
+    // And the lens healed back to ▶ Play at the found path. Stop for test
+    // hygiene before the next spec — Play/Stop are static now, so this
+    // isn't about hiding a toggled face, just not leaving audio running
+    // into the next test.
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
     playLens = await pollLensAt(evaluateInVSCode, THUNDER_SFX_LINE, '▶ Play')
     expect(String(playLens?.command?.arguments?.[0])).toMatch(/media[/\\]deep[/\\]thunder\.ogg$/)
   })
 
-  test('playSong (bare-identifier varRef route) produces real audio via the stats tap, and stopSong actually stops it', async ({
-    evaluateInVSCode,
-  }) => {
-    const lenses = await fetchLenses(evaluateInVSCode)
-    const playLens = lensAt(lenses, FANFARE_CALL_LINE, '▶ Play')!
-
-    const playStats = await executeAndPollAudible(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
-    expect(playStats).toBeDefined()
-    expect(playStats!.silent).toBe(false)
-    expect(playStats!.peak).toBeGreaterThan(0)
-
-    // Executes stopSong directly rather than discovering the Stop lens —
-    // see the static-lens-pair spec below for the lens/command assertion
-    // itself.
-    const silentAfterStop = await executeAndPollSilent(
-      evaluateInVSCode,
-      'threeFlatland.audio.stopSong',
-      []
-    )
-    expect(silentAfterStop).toBe(true)
-  })
-
-  test('playSong (true positional literal route, no varRef) also resolves and plays real audio', async ({
-    evaluateInVSCode,
-  }) => {
-    const lenses = await fetchLenses(evaluateInVSCode)
-    const playLens = lensAt(lenses, CHIPTUNE_CALL_LINE, '▶ Play')!
-
-    const stats = await executeAndPollAudible(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
-    expect(stats).toBeDefined()
-    expect(stats!.silent).toBe(false)
-    expect(stats!.peak).toBeGreaterThan(0)
-  })
-
   // Z12-style regression guard, extended to files: playBuffer routes
-  // through the SAME shared analyser playSampleChannels uses, so this is
-  // the shipped audibility proof for the audio.file route — vitest cannot
-  // catch an Electron-only silent-decode regression (see
-  // tools/audio-play/CLAUDE.md).
-  test('playFile (audio.file route) decodes and plays a real .wav — reaches the SAME stats tap as zzfx/zzfxm', async ({
+  // through the SAME shared analyser playSampleChannels uses — proving
+  // the lens/command wiring here, and that the command dispatches
+  // without throwing, is what's pinned now; audibility of the shared
+  // output step is the offline gate's job.
+  test('playFile (audio.file route) decodes via the real command without throwing', async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, CLICK_SFX_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.audio.playFile')
 
-    const stats = await executeAndPollAudible(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
-    expect(stats).toBeDefined()
-    expect(stats!.silent).toBe(false)
-    expect(stats!.peak).toBeGreaterThan(0)
+    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
+    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 
-  // The explosion.ogg (public/ tier) lens resolving at all IS the proof
-  // that audioFileResolver.ts's third tier ran — playFile's decode path is
-  // already proven generically by the .wav case above (decodeAudioData
-  // doesn't care which resolution tier found the path), so this only
-  // re-checks the lens/command wiring, not audibility again (e2e
-  // rationing — one full audibility proof per output PATH, not per tier).
+  // The public/-tier audio.file lens (explosion.ogg) resolving at all IS
+  // the proof that audioFileResolver.ts's third tier ran — playFile's
+  // decode path is already proven generically by the offline gate (e2e
+  // rationing — one lens/wiring proof per tier, audibility proven once).
   test('the public/-tier audio.file lens (explosion.ogg) resolves and routes to playFile', async ({
     evaluateInVSCode,
   }) => {
@@ -572,9 +444,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   // gave Wad's oscillator/noise keywords their OWN wad.synth finding
   // kind, only the TRUE decoy block — mic (live input), sprite segments,
   // and a stock preset — surfaces ZERO lenses now; asserted per line, not
-  // just via the exact total above. Audibility for the click.wav path is
-  // already proven by the .wav playFile test (e2e rationing — one
-  // audibility proof per output path).
+  // just via the exact total above.
   test("Wad reverb impulse (nested 2 levels) gets a resolved ▶ Play lens; Wad's mic/sprite/preset decoys get an inert Unresolved lens each", async ({
     evaluateInVSCode,
   }) => {
@@ -602,159 +472,15 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     }
   })
 
-  // #43: the long song (7.680s — MEASURED from ZZFXM.build's sample
-  // count, see the fixture's own comment) proves three things the short
-  // songs structurally can't:
-  //   1. the sidecar reports the current source's EXACT timing —
-  //      durationSeconds comes from the synthesized sample count, not a
-  //      caller-side guess;
-  //   2. playback SUSTAINS past the old magic 5s poll deadline;
-  //   3. ⏹ Stop lands MID-playback — silence observed while
-  //      elapsed < duration, which a natural finish cannot fake (the
-  //      fanfare song is 0.43s; its stop test can't distinguish a real
-  //      stop from the song simply ending).
-  // One evaluateInVSCode block for the whole sequence: the phases are
-  // wall-clock-coupled (elapsed keeps ticking between host-bridge round
-  // trips), so polling from inside the extension host keeps the timing
-  // observations honest.
-  test('long song (#43): exact duration reported, playback sustains past 5s, and ⏹ Stop silences it mid-playback — before the natural end', async ({
-    evaluateInVSCode,
-  }) => {
-    const lenses = await fetchLenses(evaluateInVSCode)
-    const playLens = lensAt(lenses, LONG_MARCH_CALL_LINE, '▶ Play')!
-    expect(playLens.command?.command).toBe('threeFlatland.audio.playSong')
-    // This test's stop phase executes stopSong directly rather than
-    // discovering the (now-always-present) Stop lens — see the
-    // static-lens-pair spec below for the lens/command assertion itself.
-
-    const result = await evaluateInVSCode(
-      async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
-        if (ext && !ext.isActive) await ext.activate()
-        const api = ext!.exports as ExtensionApi
-        const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-        const report: {
-          failedAt?: 'start' | 'sustain' | 'restart' | 'stop'
-          durationSeconds?: number
-          sustainedElapsedSeconds?: number
-          sustainedPeak?: number
-          stoppedAtSeconds?: number
-        } = {}
-
-        // Phase 1 — play; wait for the source to actually start. This is
-        // the only non-derived wait (a cold sidecar loads a native module
-        // before any source can exist); every wait after it derives from
-        // the sidecar's own reported timing.
-        await vscode.commands.executeCommand(arg.playCommand, ...(arg.playArgs ?? []))
-        let started: Awaited<ReturnType<typeof api.zzfxPlay.getStats>>
-        const spawnDeadline = Date.now() + 15_000
-        while (Date.now() < spawnDeadline) {
-          const stats = await api.zzfxPlay.getStats()
-          if (stats?.playing) {
-            started = stats
-            break
-          }
-          await sleep(100)
-        }
-        if (!started) {
-          report.failedAt = 'start'
-          return report
-        }
-        const durationSeconds = started.durationSeconds
-        report.durationSeconds = durationSeconds
-
-        // Phase 2 — sustain: keep polling until the source's own clock
-        // passes the old magic 5s mark AND the analyser still hears it.
-        // Wait cap = the source's reported remaining window, not a guess.
-        const sustainDeadline =
-          Date.now() + (durationSeconds - started.elapsedSeconds) * 1000 + 2000
-        let sustained: PlaybackStats | undefined
-        while (Date.now() < sustainDeadline) {
-          const stats = await api.zzfxPlay.getStats()
-          if (stats && stats.playing && !stats.silent && stats.elapsedSeconds > 5) {
-            sustained = stats
-            break
-          }
-          await sleep(150)
-        }
-        if (!sustained) {
-          report.failedAt = 'sustain'
-          return report
-        }
-        report.sustainedElapsedSeconds = sustained.elapsedSeconds
-        report.sustainedPeak = sustained.peak
-
-        // Phase 3 — restart (playSong replaces the current song), let it
-        // run to the ~1s mark, then stop.
-        await vscode.commands.executeCommand(arg.playCommand, ...(arg.playArgs ?? []))
-        let atStop: PlaybackStats | undefined
-        const restartDeadline = Date.now() + 5000
-        while (Date.now() < restartDeadline) {
-          const stats = await api.zzfxPlay.getStats()
-          // playing + a small elapsed = the NEW source (the phase-2 one
-          // was already past 5s and gets stopped by the replacement).
-          if (stats && stats.playing && stats.elapsedSeconds >= 1 && stats.elapsedSeconds < 4) {
-            atStop = stats
-            break
-          }
-          await sleep(100)
-        }
-        if (!atStop) {
-          report.failedAt = 'restart'
-          return report
-        }
-        await vscode.commands.executeCommand(arg.stopCommand, ...(arg.stopArgs ?? []))
-
-        // Phase 4 — silence must be OBSERVED while elapsed < duration.
-        // The poll cap is the natural end itself: past it, silence proves
-        // nothing (a no-op stop also goes silent at the natural end).
-        let stopped: PlaybackStats | undefined
-        const naturalEndDeadline = Date.now() + (durationSeconds - atStop.elapsedSeconds) * 1000
-        while (Date.now() < naturalEndDeadline) {
-          const stats = await api.zzfxPlay.getStats()
-          if (stats && stats.silent && !stats.playing) {
-            stopped = stats
-            break
-          }
-          await sleep(100)
-        }
-        if (!stopped) {
-          report.failedAt = 'stop'
-          return report
-        }
-        report.stoppedAtSeconds = stopped.elapsedSeconds
-        return report
-      },
-      {
-        playCommand: playLens.command!.command,
-        playArgs: playLens.command!.arguments,
-        stopCommand: 'threeFlatland.audio.stopSong',
-        stopArgs: [] as unknown[],
-      }
-    )
-
-    expect(result.failedAt).toBeUndefined()
-    // Exact duration from the synthesized sample count: 338688 / 44100.
-    expect(result.durationSeconds).toBeGreaterThan(5)
-    expect(result.durationSeconds!).toBeCloseTo(7.68, 2)
-    // Sustained playback past the old magic 5s deadline, still audible.
-    expect(result.sustainedElapsedSeconds!).toBeGreaterThan(5)
-    expect(result.sustainedPeak!).toBeGreaterThan(0)
-    // The stop landed mid-playback: silence observed well before the
-    // 7.68s natural end (elapsed keeps ticking after a stop, so this
-    // bounds the OBSERVATION time, not just the stop time).
-    expect(result.stoppedAtSeconds!).toBeLessThan(result.durationSeconds! - 1)
-  })
-
   // STATIC Play+Stop PAIR (stakeholder reversal of #46's toggle — see
   // provider.ts's file doc comment for the full rationale): both lenses
   // are always present, at rest AND while playing, and neither one's
   // title/command ever changes. This is the direct proof of the reverted
   // design — the old toggle spec asserted the OPPOSITE (one lens whose
   // face flips); this asserts the lens SET itself never changes shape.
+  // Dispatches Play/Stop directly (no audibility/silence polling — that's
+  // the offline gate's job now) since the contract under test is the LENS
+  // SET, not whether the sound was heard.
   test('Play+Stop static pair: both lenses are always present, at rest and while playing, byte-identical throughout', async ({
     evaluateInVSCode,
   }) => {
@@ -770,25 +496,17 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     // Play — the lens SET doesn't change at all: same two lenses, same
     // titles, same commands. No refresh-triggered recompute, no face flip.
-    await executeAndPollAudible(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
     lenses = await fetchLenses(evaluateInVSCode)
     const whilePlaying = lenses
       .filter((l) => l.range.start.line === LONG_MARCH_CALL_LINE)
       .sort((a, b) => (a.command?.title ?? '').localeCompare(b.command?.title ?? ''))
     expect(whilePlaying).toEqual(atRest)
 
-    // Stop actually silences it (commandHandler.ts's existing behavior,
-    // unchanged) — and the lens set is STILL exactly the same afterward.
-    const silentAfterStop = await executeAndPollSilent(
-      evaluateInVSCode,
-      'threeFlatland.audio.stopSong',
-      []
-    )
-    expect(silentAfterStop).toBe(true)
+    // Stop dispatches cleanly — and the lens set is STILL exactly the
+    // same afterward. (Stop actually silencing the source is
+    // commandHandler.ts's job, deterministically unit-tested there.)
+    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
     lenses = await fetchLenses(evaluateInVSCode)
     const afterStop = lenses
       .filter((l) => l.range.start.line === LONG_MARCH_CALL_LINE)
@@ -872,160 +590,25 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(result.afterStop).toEqual(expectedPair)
   })
 
-  // The sidecar's single currentSource slot still means only ONE sound
-  // plays at a time even though the LENS no longer visualizes which one
-  // — this proves that mechanism still works: starting a NEW sound
-  // supersedes whatever was playing before it, cross-kind, exactly as it
-  // did under the toggle (just observed via audio state now, not a lens
-  // face flip, since there's no lens face to flip anymore).
-  test('starting a new sound supersedes whatever was playing before it (single current-source slot, cross-kind)', async ({
-    evaluateInVSCode,
-  }) => {
-    const lenses = await fetchLenses(evaluateInVSCode)
-    const songLens = lensAt(lenses, LONG_MARCH_CALL_LINE, '▶ Play')!
-    const clickLens = lensAt(lenses, CLICK_SFX_LINE, '▶ Play')!
-
-    const songStats = await executeAndPollAudible(
-      evaluateInVSCode,
-      songLens.command!.command,
-      songLens.command!.arguments
-    )
-    expect(songStats?.playing).toBe(true)
-
-    // A NEW sound steals the single current-source slot — playFile marks
-    // its own finding active the same way playSong does, cross-kind.
-    const clickStats = await executeAndPollAudible(
-      evaluateInVSCode,
-      clickLens.command!.command,
-      clickLens.command!.arguments
-    )
-    expect(clickStats).toBeDefined()
-    expect(clickStats!.silent).toBe(false)
-    expect(clickStats!.peak).toBeGreaterThan(0)
-
-    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
-  })
-
-  // SOURCE-EDITOR BINDING (kept working across the #46 toggle reversal —
-  // see provider.ts's file doc comment): a playing sound belongs to its
-  // source document. Phase 1 exercises the switch listener (a DIFFERENT
-  // doc becomes the active editor); phase 2 makes the source the ONLY
-  // open editor and closes it, which routes through
-  // onDidCloseTextDocument — the switch listener sees `undefined` then
-  // and deliberately ignores it (a terminal/panel focus must never
-  // false-stop). Both phases prove the stop landed MID-playback (silence
-  // observed while elapsed < duration), same discipline as the #43 spec.
-  // Unlike the toggle era, there's no lens face to confirm reverted —
-  // Play/Stop are static now, so audibility is the only signal that
-  // matters here.
-  test('source binding: switching to another document stops the sound; closing the source document stops it too', async ({
-    evaluateInVSCode,
-  }) => {
-    const lenses = await fetchLenses(evaluateInVSCode) // audio-sources.ts is now the active editor
-    const playLens = lensAt(lenses, LONG_MARCH_CALL_LINE, '▶ Play')!
-
-    const playing = await executeAndPollAudible(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
-    expect(playing?.playing).toBe(true)
-
-    // Phase 1 — switch the active editor to a different document.
-    const stoppedBySwitch = await evaluateInVSCode(
-      async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
-        if (ext && !ext.isActive) await ext.activate()
-        const api = ext!.exports as ExtensionApi
-
-        const [folder] = vscode.workspace.workspaceFolders ?? []
-        const doc = await vscode.workspace.openTextDocument(
-          vscode.Uri.joinPath(folder!.uri, arg.otherFile)
-        )
-        await vscode.window.showTextDocument(doc)
-
-        const before = await api.zzfxPlay.getStats()
-        const deadline =
-          Date.now() +
-          (before ? Math.max(0, (before.durationSeconds - before.elapsedSeconds) * 1000) : 5000)
-        while (Date.now() < deadline) {
-          const stats = await api.zzfxPlay.getStats()
-          if (
-            stats &&
-            stats.silent &&
-            !stats.playing &&
-            stats.elapsedSeconds < stats.durationSeconds - 1
-          ) {
-            return { stopped: true }
-          }
-          await new Promise((resolve) => setTimeout(resolve, 100))
-        }
-        return { stopped: false }
-      },
-      { otherFile: 'src/sounds.ts' }
-    )
-    expect(stoppedBySwitch.stopped).toBe(true)
-
-    // Phase 2 — make the source doc the ONLY editor, play, close it.
-    await evaluateInVSCode(async (vscode) => {
-      await vscode.commands.executeCommand('workbench.action.closeOtherEditors')
-    })
-    await executeAndPollAudible(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
-    const stoppedByClose = await evaluateInVSCode(async (vscode) => {
-      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
-      if (ext && !ext.isActive) await ext.activate()
-      const api = ext!.exports as ExtensionApi
-
-      await vscode.commands.executeCommand('workbench.action.closeActiveEditor')
-
-      const before = await api.zzfxPlay.getStats()
-      const deadline =
-        Date.now() +
-        (before ? Math.max(0, (before.durationSeconds - before.elapsedSeconds) * 1000) : 5000)
-      while (Date.now() < deadline) {
-        const stats = await api.zzfxPlay.getStats()
-        if (
-          stats &&
-          stats.silent &&
-          !stats.playing &&
-          stats.elapsedSeconds < stats.durationSeconds - 1
-        ) {
-          return { stopped: true }
-        }
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      }
-      return { stopped: false }
-    })
-    expect(stoppedByClose.stopped).toBe(true)
-  })
-
   // A spread first argument (`zzfxM(...songVar)`) — the canonical
   // zzfxm-tool output shape — resolves the SAME varRef as the bare
   // identifier form (see sidecar/src/parse.rs's extract_zzfxm_call doc
-  // comment), so Play produces real audio through the same songResolver
-  // defRange path. This was a graceful-refusal case before the scanner
-  // learned spreads; it reads as a bug for the spread form of a variable
-  // to refuse while the bare form of the SAME variable plays.
-  test('a spread zzfxm call (spread-of-identifier varRef) resolves and plays real audio', async ({
+  // comment), so Play resolves through the same songResolver defRange
+  // path. This was a graceful-refusal case before the scanner learned
+  // spreads; it reads as a bug for the spread form of a variable to
+  // refuse while the bare form of the SAME variable plays. The audibility
+  // half of this claim is now the offline gate's job; what's pinned here
+  // is that the spread form's own lens routes to the same command AND
+  // dispatches without throwing (proving resolveSong actually resolved
+  // the spread varRef, not just that a lens exists).
+  test('a spread zzfxm call (spread-of-identifier varRef) resolves through the real command without throwing', async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, FANFARE_SPREAD_CALL_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.audio.playSong')
 
-    const stats = await executeAndPollAudible(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
-    expect(stats).toBeDefined()
-    expect(stats!.silent).toBe(false)
-    expect(stats!.peak).toBeGreaterThan(0)
+    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
+    await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 })
