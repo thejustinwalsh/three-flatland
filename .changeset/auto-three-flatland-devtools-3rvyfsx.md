@@ -5,36 +5,23 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-## Flight recorder (#29 Phase C, epic #116)
+## Flight recorder (Phase C, epic #116)
 
-- Rolling ring buffer for encoded buffer chunks plus a stats-arrival log, windowed by wall-clock time (10s chunks, 30s stats)
-- Freeze/unfreeze scrubbing: freezing clones the ring(s) and parks the frame cursor while live ingest keeps recording underneath; unfreeze wired into all existing "go live" affordances (LIVE button, double-click, Esc)
-- Frozen buffers panel decodes the actual frame at the scrub cursor instead of showing a placeholder notice
-- Multi-buffer support: mark and view several buffers at once on a responsive grid layout (1/2/2x2/3x2/3x3) with per-cell decode and a soft guardrail past ~4 concurrent streams
-- Registry panel gains multi-select via a pinned-tabs strip (Ctrl/Cmd-click to pin), each pinned entry staying scrub-consistent while parked
-- Registry checkpoint snapshots let time-travel reconstruction replay no further back than one cadence window, reconstructing parked state from the nearest checkpoint plus forward deltas
-- Tightened VP9 keyframe cadence (2000ms -> 500ms) so scrubbing is never far from a decodable anchor
-- Docs updated for the multi-buffer flight recorder workflow
+- Adds a size-based IndexedDB quota + pruning policy for the protocol store, so a long dashboard session no longer grows storage unbounded; pruning is throttled, oldest-first, and never touches a provider's pinned tail window
+- Adds an always-on rolling ring buffer for encoded buffer chunks plus a windowed stats-arrival log; freeze clones the ring and parks the cursor, enabling scrub playback while frozen without interrupting live ingest
+- Tightens VP9 encoder keyframe cadence from 2000ms to 500ms so a scrub cursor is always near a decodable anchor
+- Adds periodic registry checkpoint snapshots so time-travel reconstruction never replays further back than one cadence window
+- Generalizes the flight recorder to multi-buffer: buffers panel supports marking multiple buffers with a responsive grid layout (1/2/2x2/3x2/3x3) and a soft GPU-cost guardrail past ~4 concurrent streams; registry panel gains multi-select via pinned tabs (Ctrl/Cmd-click)
 
-### Fixes
+## Fixes
 
-- Frozen scrub range now correctly intersects marked buffers' chunk ranges with the stats ring's range instead of unioning them, so the scrubber can no longer claim frames a buffer can't actually decode
-- Scrub decode outputs are now correlated to their originating request via a FIFO tracker, preventing a superseded request's late output from being drawn as the wrong frame during rapid cursor movement
-- Checkpoints that would degrade an oversized registry entry to metadata-only now retry instead of silently claiming a complete checkpoint, falling back to `partial: true` after bounded attempts; reconstruction skips partial checkpoints as anchors
-- Protocol-store persistence moved to dashboard bootstrap, independent of the Protocol Log panel's mount/pause state, so recording is never an implicit side effect of one panel's display toggle
-- Registry reconstruction re-queries when a write batch actually commits to IndexedDB, closing a race where a debounce could fire before the newest rows were durably queryable
+- Fixes the frozen scrubber's claimable frame range being incorrectly widened by a union with the stats ring instead of intersected, which could let the slider claim frames a buffer couldn't actually decode
+- Fixes out-of-order scrub decode outputs during rapid cursor movement by correlating each decoded frame to the request that issued it (FIFO tracking) instead of a raw counter
+- Fixes six protocol-store quota/pruning issues: per-provider tail windows are now pinned by retained id count (not a global id span), in-memory accounting rolls back on failed writes, a one-shot timer arms pruning after a throttled burst, `dispose()` cleans up timers/connections, `total` is derived from retained ids instead of drifting, and `retainedRange().oldestFrame` recovers correctly when a prune stops early
+- Fixes a registry checkpoint edge case where an entry degraded to metadata-only (pool overflow) could get permanently stuck; it now retries and marks itself `partial` so reconstruction can skip it and fall back to the nearest complete checkpoint
+- Fixes protocol-store persistence being an implicit side effect of the Protocol Log panel's mount/pause state; ingest now runs unconditionally from dashboard bootstrap
+- Adds a flush-listener so parked registry reconstruction re-queries once a write batch is durably committed, closing a debounce race against fresh data
 
-## Protocol store quota and pruning
+## Summary
 
-- Added a byte-budget policy for IndexedDB persistence (`navigator.storage.estimate()`, capped/overridable, with a fixed fallback) and throttled oldest-first pruning so long dashboard sessions no longer grow the store unbounded
-- `retainedRange()` exposes what actually survives per provider for the flight recorder's scrubber
-- Each provider's protected tail window is now pinned by its own retained id count rather than a global id span, fixing under-protection when providers are interleaved
-- In-memory accounting rolls back when a write-batch transaction fails to commit; a one-shot timer ensures a throttled over-budget push still gets pruned; `dispose()` added to cancel timers and close the IDB connection cleanly
-- `statsFor().total` and `retainedRange().oldestFrame` are now derived from actual retained state instead of separately tracked counters, preventing drift
-
-Files: packages/devtools/src/dashboard/flight-ring.ts, panels/buffers.tsx, panels/scrubber.tsx, panels/registry.tsx, panels/protocol-log.tsx, grid-layout.ts, hooks.ts, log-ingest.ts, protocol-store.ts, registry-reconstruction.ts, scrub-request-tracker.ts, devtools-client.ts, registry-delta.ts, index.html, docs/src/content/docs/guides/devtools.mdx, packages/three-flatland/src/debug-protocol.ts, debug/DebugRegistry.ts, debug/DevtoolsProvider.ts, debug/bus-worker.ts, packages/devtools/package.json, pnpm-lock.yaml (+ tests)
-Stats: 9 commits, 44 files changed (net across commits), ~4384 insertions(+), ~458 deletions(-)
-
----
-
-Ships the flight recorder feature end-to-end for the devtools dashboard (recording, freeze/scrub, multi-buffer grid, registry checkpoints) plus reliability and correctness fixes for scrub playback and protocol-store storage quota/pruning.
+Completes the devtools flight recorder: persistent, quota-bounded protocol logging, multi-buffer ring recording with scrub playback, and consistent registry reconstruction while frozen.
