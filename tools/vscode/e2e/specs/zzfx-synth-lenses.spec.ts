@@ -112,7 +112,11 @@ async function fetchLenses(
 }
 
 function lensAt(lenses: ResolvedLens[], line: number, title: string): ResolvedLens | undefined {
-  return lenses.find((l) => l.range.start.line === line && l.command?.title === title)
+  // Compare titles with whitespace runs collapsed — codicon lens titles
+  // (`$(question) Unresolved` etc.) carry cosmetic icon-to-label spacing that
+  // isn't part of the contract, so the exact space count must not be pinned.
+  const norm = (t: string | undefined) => (t ?? '').replace(/\s+/g, ' ')
+  return lenses.find((l) => l.range.start.line === line && norm(l.command?.title) === norm(title))
 }
 
 async function executeAndPollAudible(
