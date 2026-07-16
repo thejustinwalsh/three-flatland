@@ -18,11 +18,27 @@ in a browser.
    `tools/vscode/package.json`. If that exact ID is taken, you'll need to either negotiate for it
    or change `package.json`'s `publisher` field to match whatever you actually register (and update
    the marketplace badge URL in `README.md` to match).
-3. Generate a Personal Access Token at <https://dev.azure.com> (any organization, or "All accessible
-   organizations"): **User Settings → Personal Access Tokens → New Token**, scope
-   **Marketplace → Manage**, expiration however long you're comfortable with (these can be rotated
-   later without re-touching CI — just update the GitHub secret).
-4. This is your `VSCE_PAT`.
+3. **Set up Microsoft Entra ID auth. Azure DevOps Personal Access Tokens are END OF LIFE — there is
+   no `VSCE_PAT` anymore.** CI publishes via an Entra service principal with an OIDC federated
+   credential: nothing is stored in the repo, nothing expires or needs rotating. In the Azure portal
+   (<https://portal.azure.com> → Microsoft Entra ID):
+   1. **App registrations → New registration** (single-tenant is fine). Record its **Application
+      (client) ID** and the **Directory (tenant) ID** — these are the two values CI needs.
+   2. On that app → **Certificates & secrets → Federated credentials → Add credential → "GitHub
+      Actions deploying Azure resources"**. Set Organization `thejustinwalsh`, Repository
+      `three-flatland`, Entity **Environment**, Environment name **`release`** (subject
+      `repo:thejustinwalsh/three-flatland:environment:release`). This is what lets `azure/login` sign
+      in with **no client secret** — do NOT create a client secret.
+   3. **Grant that service principal publish rights on the `three-flatland` Marketplace publisher** —
+      the one genuinely fiddly grant. On
+      <https://marketplace.visualstudio.com/manage/publishers/three-flatland>, add the app
+      registration as a publisher member (equivalently: add the service principal to the Azure DevOps
+      organization backing the publisher, with Marketplace publish access). Without this the Entra
+      token is valid but the publish 403s.
+
+   To publish **locally** (bypassing CI) the same mechanism works interactively: `az login` with an
+   account that's a publisher member, then from `tools/vscode/`:
+   `npx vsce publish --azure-credential --packagePath *.vsix --skip-duplicate`.
 
 ### 2. Register the Open VSX namespace
 
@@ -41,15 +57,20 @@ auto-deploy story for all of them at once.
    - Locally: `npx ovsx create-namespace three-flatland -p <OVSX_PAT>` (run from anywhere — this
      talks to the registry directly, not tied to this repo).
 
-### 3. Add both tokens as GitHub secrets
+### 3. Add the credentials as GitHub secrets
 
 `publish-vscode.yml`'s `publish` job runs under `environment: release` — the **same environment**
-`release.yml` already uses for the npm publish token, so if that's already configured you're just
-adding two more secrets to it.
+`release.yml` already uses for the npm publish token, so you're just adding to it.
 
 1. Repo → **Settings → Environments → release** (create it first if `release.yml`'s own npm publish
    hasn't been set up yet — it should already exist).
-2. Add environment secrets: `VSCE_PAT` and `OVSX_PAT` (the two values from steps 1–2).
+2. Add environment secrets:
+   - `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` — the Application (client) ID and Directory (tenant) ID
+     from the Entra app registration in step 1.3. (These aren't sensitive per se, but keeping them as
+     environment secrets matches the scoping of everything else here.) There is **no `VSCE_PAT`** —
+     the publish job's `permissions: id-token: write` + `azure/login` OIDC handle Marketplace auth.
+   - `OVSX_PAT` — the Open VSX token from step 2. Open VSX is an Eclipse Foundation registry, entirely
+     separate from Entra/Azure DevOps and unaffected by the PAT deprecation, so it still uses a token.
 
 Do **not** add these as repo-wide secrets — the `release` environment scoping means only jobs that
 explicitly declare `environment: release` can read them, which is why `check-version` and
@@ -124,9 +145,18 @@ erroring on a version that's already live. If you see a hard failure here anyway
 signal something's wrong (a network issue, an expired/revoked token, a marketplace-side outage) —
 don't just re-run it blindly; check the actual error first.
 
-**A token needs rotating.** Generate a new one (same steps as initial setup above), update the
-GitHub environment secret, done — nothing in the workflow itself references the token's value, it's
-only ever read from `secrets.VSCE_PAT`/`secrets.OVSX_PAT` at publish time.
+**Marketplace publish fails auth (401/403) even though the token step "succeeded".** With Entra
+there's no token to rotate — check the two things that actually break: (a) `azure/login` succeeded
+but the service principal isn't a member of the `three-flatland` publisher (step 1.3) → 403 on
+publish; (b) the federated credential's subject doesn't match — it must be
+`repo:thejustinwalsh/three-flatland:environment:release`, so the job MUST keep `environment: release`
+and `permissions: id-token: write`. A 401 usually means the federated credential/tenant/client IDs
+don't line up; a 403 means auth worked but the identity lacks publisher rights.
+
+**The Open VSX token needs rotating.** Generate a new one at
+<https://open-vsx.org/user-settings/tokens>, update the `OVSX_PAT` environment secret, done — the
+workflow only ever reads it from `secrets.OVSX_PAT` at publish time. (The Marketplace side has no
+equivalent — it's Entra OIDC now, nothing stored.)
 
 **FL Audio's CodeLenses never appear after installing from the marketplace, but work fine in a dev
 build.** This was a real bug in the first version of this pipeline: `actions/upload-artifact` /
