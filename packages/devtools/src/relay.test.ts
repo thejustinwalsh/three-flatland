@@ -126,11 +126,14 @@ class FrameReader {
     }
   }
 
-  next(timeoutMs = 2000): Promise<WsFrame> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('timed out waiting for a frame')), timeoutMs)
+  /**
+   * Resolves with the next frame as it completes. No internal deadline —
+   * if the relay never sends a frame, the promise never settles and
+   * vitest's own per-test timeout is the sole hard-failure ceiling.
+   */
+  next(): Promise<WsFrame> {
+    return new Promise((resolve) => {
       this.waiting.push((frame) => {
-        clearTimeout(timer)
         resolve(frame)
       })
       this.flush()
@@ -138,12 +141,14 @@ class FrameReader {
   }
 }
 
-/** Waits for a socket's `close` event (used to assert the relay destroyed a connection). */
-function waitClose(socket: Socket, timeoutMs = 2000): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timed out waiting for socket close')), timeoutMs)
+/**
+ * Waits for a socket's `close` event (used to assert the relay destroyed a
+ * connection). No internal deadline — vitest's per-test timeout is the only
+ * ceiling if the socket never closes.
+ */
+function waitClose(socket: Socket): Promise<void> {
+  return new Promise((resolve) => {
     socket.once('close', () => {
-      clearTimeout(timer)
       resolve()
     })
   })
@@ -380,9 +385,23 @@ describe('flatland-devtools-relay', () => {
 
     a.socket.write(buildUnmaskedFrame(0x2, Buffer.from('unmasked')))
 
+    // A's close is the signal that the server has fully processed (and
+    // rejected) the unmasked frame — the relay destroys the socket
+    // synchronously within the same `data` handler that detects the
+    // missing mask bit, before any broadcast could occur.
     await waitClose(a.socket)
-    // Nothing should have reached B — the frame must be rejected outright, not relayed.
-    await expect(b.reader.next(300)).rejects.toThrow()
+
+    // Prove absence with a signal rather than an elapsed-time no-show: a
+    // fresh client sends a known-good frame *after* A's rejection is
+    // confirmed. If the relay had incorrectly broadcast A's payload, it
+    // would arrive at B first and this equality check would fail
+    // deterministically — no timing dependency either way.
+    const c = await openClient(port)
+    const probe = Buffer.from('probe-after-reject')
+    c.socket.write(buildClientFrame(0x2, probe))
+
+    const frame = await b.reader.next()
+    expect(frame.payload.equals(probe)).toBe(true)
   })
 
   it('destroys the connection for a malformed control frame (fragmented or oversized ping)', async () => {

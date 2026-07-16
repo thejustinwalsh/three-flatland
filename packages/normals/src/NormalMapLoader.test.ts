@@ -46,7 +46,12 @@ describe('NormalMapLoader', () => {
     const loadSpy = vi
       .spyOn(TextureLoader.prototype, 'load')
       .mockImplementation((_url, onLoad) => {
-        if (onLoad) setTimeout(() => onLoad(fakeTexture as never), 0)
+        // Invoke the callback directly — `_tryLoadBaked` wraps this in a
+        // `new Promise((resolve) => loader.load(...))`, so `resolve` is
+        // already bound by the time this mock runs and a synchronous call
+        // resolves the promise on this tick. No timer needed to simulate
+        // "eventually calls back": the signal *is* the callback firing.
+        onLoad?.(fakeTexture as never)
         return fakeTexture as never
       })
 
@@ -105,7 +110,10 @@ describe('NormalMapLoader', () => {
     const { TextureLoader } = await import('three')
     vi.spyOn(TextureLoader.prototype, 'load').mockImplementation(
       (_url, _onLoad, _onProgress, onError) => {
-        if (onError) setTimeout(() => onError(new Error('decode failed')), 0)
+        // Same reasoning as the onLoad mock above: call the error callback
+        // directly instead of scheduling it — the callback firing is the
+        // signal, not the delay before it fires.
+        onError?.(new Error('decode failed'))
         return fakeTexture as never
       }
     )
