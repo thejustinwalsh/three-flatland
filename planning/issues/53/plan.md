@@ -10,7 +10,7 @@ Build the driller mini-game (Mr. Driller × tamagotchi) — autonomous chibi cha
 ## Approach
 - Implementation follows the canonical task-by-task plan: `planning/superpowers/plans/2026-05-07-driller-mini-plan.md` (50 tasks across 13 phases + 5 deferred lighting sub-issues).
 - Spec: `planning/superpowers/specs/2026-05-07-driller-mini-design.md` (17 sections).
-- Visual asset: `planning/superpowers/specs/2026-05-07-driller-mini-tileset.png` (1536×1024 PNG with all sprites).
+- Visual asset: `minis/driller/art/source/driller-concept-sheet.png` (1536×1024 PNG with all sprites); see `minis/driller/README.md` for the extraction pipeline.
 - All phases land on `mini-game-showcase` branch and the existing draft PR #59. No new PRs per phase.
 - Atomic commits per logical change; no squashing.
 - TDD where it adds confidence (RNG, scale picker, autotile, chunk-detect, mood drift); manual + dev-server verification for visual/integration work.
@@ -119,7 +119,7 @@ F. **Fixture placeholder color — unified amber tint.** Single guaranteed-disti
 
 G. **Unify `TILE_ROCK` + `TILE_STONE`** into one tile. Multi-hit health on ALL stones (drill = +1 hit, fall-crush = +1 hit). Driller can drill a 1hp rock to save themselves at the last second.
 
-H. **`RockCluster` entities + 4×4 max cluster cap.** Persistent cluster identity via entities (mirroring SaggingChunk pattern, NOT per-cell IDs). Bottom-up bounding-box capture at cluster-creation. Once a cluster reaches 4 wide OR 4 tall, it locks; new rocks touching a locked cluster are independent. Renderer wires the placeholder `rock-autotile.svg` atlas — cross-cluster boundaries render with strokes on both sides, visible 1-cell air gap.
+H. **`RockCluster` entities + 4×4 max cluster cap.** Persistent cluster identity via entities (mirroring SaggingChunk pattern, NOT per-cell IDs). Bottom-up bounding-box capture at cluster-creation. Once a cluster reaches 4 wide OR 4 tall, it locks; new rocks touching a locked cluster are independent. Renderer uses the packed stone variants in `src/assets/driller/world-tiles.png`; cross-cluster boundaries remain visually distinct.
 
 I. **World-gen rules** (fairness-driven).
 - No two telegraphing clusters within 4 columns of each other.

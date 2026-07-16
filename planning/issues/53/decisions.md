@@ -176,7 +176,7 @@ Implementation: repurposed `FLAG_FALLING` (was declared but never set) to mark i
 
 **Why:** Three reviewers (art, engineering, designer) converged. Rocks autotile cleanly into deterministic shapes — player predicts cluster behavior visually. Fixtures' artistic variation makes a unified rock-glom visual language hard, so fixtures stay decorative. The 4×4 cap bounds worst-case danger to a recognizable "doom block" — fairness primitive without relying on level-design constraints alone.
 
-**Status:** Locked. Implementation in Phase 2 (G + H + I); placeholder atlas already shipped at `minis/driller/src/assets/rock-autotile.svg`.
+**Status:** Locked and implemented. Production stone variants are packed into `minis/driller/src/assets/driller/world-tiles.png`; the superseded placeholder atlas was removed.
 
 ## Integration tests via vitexec are evidence-of-completeness alongside unit tests
 **File:** `minis/driller/tests/integration/`, `minis/driller/vitest.integration.config.ts`

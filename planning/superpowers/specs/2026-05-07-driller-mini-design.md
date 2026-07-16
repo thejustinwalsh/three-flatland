@@ -353,9 +353,9 @@ For each new chunk `(seed, chunkY)`:
 
 The hand-authored visual reference for the entire mini lives at:
 
-**`planning/superpowers/specs/2026-05-07-driller-mini-tileset.png`** (1536 × 1024, 8-bit RGB)
+**`minis/driller/art/source/driller-concept-sheet.png`** (1536 × 1024)
 
-This is the source of truth for all sprite content. The implementation slices regions out of this PNG into a runtime atlas; do not re-author. Contents (regions tagged in the asset itself):
+This is the source of truth for all sprite content. The reproducible pipeline described in `minis/driller/README.md` slices, repairs, aligns, and packs regions from this PNG into runtime atlases; the presentation sheet itself is not bundled. Contents (regions tagged in the asset itself):
 
 - **Driller sprite sheet** (16×16 frames): Idle, Walk cycle (right; flip H for left), Drill down, Drill up, Drill left, Drill right, Trip/stumble, Dodge/narrow miss, Fall/death, Ghost float-up.
 - **Tileset (16×16)**: SOIL (top cap + inner soil with autotile edges), STONE (anchor variants), FIXTURES (dino bones, mushroom shelf, crystal cluster), AIR (sentinel empty cell).

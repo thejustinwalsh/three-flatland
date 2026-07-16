@@ -50,14 +50,17 @@ pnpm --filter @three-flatland/mini-driller typecheck
 - **Generation** (`src/systems/generation.ts`): five biome bands (topsoil → deep-dirt → stoneworks → crystal-caverns → core), 32-row streamed chunks, cellular-automata caves, biome-weighted gem palette (4 colors: emerald/topaz/ruby/amethyst), seedable.
 - **Audio**: `systems/sounds.ts` exports ZzFX param presets (`dig`, `gemCollect`, `sagWarning`, `chunkImpact`, `brace`, `trigger`, `pet`, `overPetGrunt`, `crush`, `respawn`, `worldFall`); the App-level `zzfx` prop is the bridge.
 
-## Source asset
+## Art pipeline
 
-`planning/superpowers/specs/2026-05-07-driller-mini-tileset.png` (1536×1024) is the canonical visual asset (driller sprites, tileset, fixtures, gems, biome variants, title art). It's copied to `src/assets/tileset.png` and inlined via Vite's `?inline` for library-mode bundling. The atlas region map (`src/atlas-regions.ts`) currently uses **placeholder coordinates** — sprites render as solid-color tints until the regions are dialed in. Tracked as sub-issue #60.
+`art/source/driller-concept-sheet.png` (1536×1024) is the single source of truth for the presentation art. `art/extract-manifest.json` defines nonuniform source cuts and the shared character anchor. The extraction and pixel-fixer tools turn those cuts into the aligned runtime atlases under `src/assets/driller/`; the full presentation sheet is never bundled with the game.
 
-## Deferred work
+```bash
+node tools/extract-concept-art.mjs --stage-fixer-inputs
+python3 tools/run-pixel-fixer.py
+node tools/extract-concept-art.mjs
+```
 
-- **#60** — Measure tileset atlas regions, replace placeholder tints with real art
-- **#54-#58** — Lighting integration (driller headlamp, per-gem point lights, crystal ambient lights, surface sun, perf pass) — gated on `feat-lighting-postprocess-flatland` merge
+The checked-in `art/pixel-fixer/input` and `art/pixel-fixer/output` files are deliberate pipeline stages, not independent source assets. Runtime code loads the packed character, world-tile, gem, and title atlases only.
 
 ## License
 

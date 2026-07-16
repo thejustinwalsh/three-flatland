@@ -6,31 +6,9 @@ import worldTilesUrl from './assets/driller/world-tiles.png?inline'
 import gemPickupsUrl from './assets/driller/gem-pickups-atlas.png?inline'
 
 /**
- * Tile-class palette — used for placeholder solid-color sprites until the
- * tileset PNG is sliced (follow-up sub-issue #60). Hex strings match
- * spec §11.1.
- */
-export const TILE_COLORS = {
-  soilTop: '#5fa847',
-  soilEdge: '#6b4a2b',
-  soilDeep: '#5d3f24',
-  stone: '#71717a',
-  // Unified amber placeholder — fixtures all render the same colour
-  // until per-variant sprites land with the art pass. See
-  // TileRenderer's TINT_FIXTURE for the matching tint vector.
-  fixture: '#e0bd66',
-  gemEmerald: '#34d399',
-  gemTopaz: '#fcd34d',
-  gemRuby: '#f43f5e',
-  gemAmethyst: '#a78bfa',
-  driller: '#fcd34d',
-  ghost: '#bfdbfe',
-} as const
-
-/**
  * 1×1 fully-opaque white texture so sprites have something to sample.
- * Combined with the per-sprite `tint` color this renders as a flat solid.
- * When sub-issue #60 lands, this is replaced by the sliced atlas texture.
+ * Combined with a per-sprite tint, this supplies solid-color UI and effect
+ * primitives without loading another bitmap asset.
  */
 function createWhiteTexture(): DataTexture {
   const data = new Uint8Array([255, 255, 255, 255])
@@ -42,11 +20,7 @@ function createWhiteTexture(): DataTexture {
   return tex
 }
 
-/**
- * Single shared material — sprites tint to their target color via the
- * Sprite2D `tint` prop. Once the atlas regions are dialed in this gets a
- * real tileset texture and sprites pick UV ranges per cell.
- */
+/** Shared white-pixel material for tintable UI and effect primitives. */
 export function useDrillerMaterial(): Sprite2DMaterial {
   return useMemo(() => new Sprite2DMaterial({ map: createWhiteTexture(), transparent: true }), [])
 }

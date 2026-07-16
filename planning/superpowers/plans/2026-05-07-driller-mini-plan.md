@@ -1139,30 +1139,34 @@ git commit -m "feat(driller): deadzone camera follow"
 
 ### Task 13: Slice the source tileset PNG into atlas regions
 
-**Source asset (canonical):** `planning/superpowers/specs/2026-05-07-driller-mini-tileset.png` (1536 × 1024). Contains driller sprite sheet, tileset (SOIL/STONE/FIXTURES/AIR), themed props, gem pickups (4 colors × 4 sizes), per-biome tile variants, in-game moments, and title art. **Do not re-author** — slice this PNG.
+**Source asset (canonical):** `minis/driller/art/source/driller-concept-sheet.png` (1536 × 1024). Contains driller sprite sheet, tileset (SOIL/STONE/FIXTURES/AIR), themed props, gem pickups (4 colors × 4 sizes), per-biome tile variants, in-game moments, and title art. **Do not re-author** — use the extraction pipeline documented in `minis/driller/README.md`.
 
 **Files:**
-- Create: `minis/driller/src/textures.ts` — inlines the source PNG as a data URL
-- Create: `minis/driller/src/atlas-regions.ts` — named region map `{ name: [x, y, w, h] }`
-- Copy: source PNG into `minis/driller/src/assets/` (or reference via build) — see Step 1
+- Create: `minis/driller/art/extract-manifest.json` — nonuniform source cuts and shared anchors
+- Create: `minis/driller/tools/extract-concept-art.mjs` — stages fixer inputs and packs runtime atlases
+- Generate: `minis/driller/src/assets/driller/` — packed runtime atlases and metadata
 
-- [ ] **Step 1: Bring the source PNG into the package**
+- [ ] **Step 1: Stage, repair, and pack the source art**
 
-Copy the canonical asset into the package so it's part of the bundle and won't be lost if the planning doc moves:
+Keep the canonical presentation sheet under `art/source`; do not copy or bundle the full sheet. Generate only the production atlases:
 
 ```bash
-mkdir -p minis/driller/src/assets
-cp planning/superpowers/specs/2026-05-07-driller-mini-tileset.png minis/driller/src/assets/tileset.png
+cd minis/driller
+node tools/extract-concept-art.mjs --stage-fixer-inputs
+python3 tools/run-pixel-fixer.py
+node tools/extract-concept-art.mjs
 ```
 
-- [ ] **Step 2: Inline the PNG as a data URL — `src/textures.ts`**
+- [ ] **Step 2: Inline the packed runtime atlases**
 
-Vite's `?inline` query encodes assets at import time as base64 data URLs (no network fetch at runtime, works in library mode per the mini-game skill rule):
+Vite's `?inline` query encodes each packed runtime atlas at import time as a base64 data URL (no network fetch at runtime, works in library mode):
 
 ```typescript
-import tilesetUrl from './assets/tileset.png?inline'
+import drillerAnimationsUrl from './assets/driller/driller-animations.png?inline'
+import worldTilesUrl from './assets/driller/world-tiles.png?inline'
+import gemPickupsUrl from './assets/driller/gem-pickups-atlas.png?inline'
 
-export const TILESET_URL: string = tilesetUrl
+// Configure one nearest-filtered material per packed atlas.
 ```
 
 - [ ] **Step 3: Build the named region map — `src/atlas-regions.ts`**
@@ -1235,69 +1239,62 @@ Drop a temporary `<DebugAtlas />` component into the dev `App.tsx` that renders 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add minis/driller/src/textures.ts minis/driller/src/atlas-regions.ts minis/driller/src/assets
+git add minis/driller/art minis/driller/tools minis/driller/src/assets/driller
 git commit -m "feat(driller): slice source tileset PNG into named atlas regions"
 ```
 
-### Task 14: Sprite2DMaterial from single tileset texture
+### Task 14: Sprite2DMaterial from packed runtime atlases
 
-Single shared `Sprite2DMaterial` references the whole tileset texture; sprites pick their visible window via UV ranges derived from the atlas region map.
+One shared `Sprite2DMaterial` per packed atlas keeps runtime sampling focused on production art without bundling the presentation sheet. Sprites pick their visible window from atlas-specific frame metadata.
 
 **Files:**
 - Create: `minis/driller/src/materials.ts`
 
-- [ ] **Step 1: Load the tileset texture once and build the shared material**
+- [ ] **Step 1: Load each packed atlas once and build shared materials**
 
 ```typescript
 import { useMemo } from 'react'
 import { TextureLoader, NearestFilter, SRGBColorSpace, type Texture } from 'three'
 import { Sprite2DMaterial } from 'three-flatland/react'
-import { TILESET_URL } from './textures'
+import worldTilesUrl from './assets/driller/world-tiles.png?inline'
 
-function loadTilesetTexture(): Texture {
-  const t = new TextureLoader().load(TILESET_URL)
+function loadPixelTexture(url: string): Texture {
+  const t = new TextureLoader().load(url)
   t.minFilter = NearestFilter
   t.magFilter = NearestFilter
   t.colorSpace = SRGBColorSpace
-  t.flipY = true   // standard for 2D sprites
+  t.generateMipmaps = false
   return t
 }
 
 /**
- * Single texture, shared by every sprite in the game. Per-sprite UV ranges
- * derived from atlas-regions.ts at sprite emission time (in Scene.tsx).
+ * Shared by every world tile. Character and gem renderers use equivalent
+ * materials backed by their own packed atlases.
  */
 export function useDrillerMaterial() {
   return useMemo(() => {
-    const tex = loadTilesetTexture()
+    const tex = loadPixelTexture(worldTilesUrl)
     return new Sprite2DMaterial({ map: tex })
   }, [])
 }
 ```
 
-- [ ] **Step 2: Helper — convert a region rect into UV bounds**
+- [ ] **Step 2: Helper — convert a top-left pixel rect into a sprite frame**
 
 In `src/lib/atlas-uv.ts`:
 
 ```typescript
 import type { Rect } from '../atlas-regions'
 
-const TILESET_W = 1536
-const TILESET_H = 1024
-
-export interface UvRect { u0: number; v0: number; u1: number; v1: number }
-
-export function rectToUv(r: Rect): UvRect {
+export function rectToFrame(r: Rect, sheetWidth: number, sheetHeight: number): SpriteFrame {
   return {
-    u0: r.x / TILESET_W,
-    v0: 1 - (r.y + r.h) / TILESET_H,
-    u1: (r.x + r.w) / TILESET_W,
-    v1: 1 - r.y / TILESET_H,
+    x: r.x / sheetWidth,
+    y: (sheetHeight - r.y - r.h) / sheetHeight,
+    width: r.w / sheetWidth,
+    height: r.h / sheetHeight,
+    sourceWidth: r.w,
+    sourceHeight: r.h,
   }
-}
-
-export function frameUv(stripRect: Rect, frameIndex: number, frameW: number): UvRect {
-  return rectToUv({ ...stripRect, x: stripRect.x + frameIndex * frameW, w: frameW })
 }
 ```
 
