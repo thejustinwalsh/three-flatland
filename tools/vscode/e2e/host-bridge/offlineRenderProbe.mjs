@@ -58,4 +58,10 @@ console.log(
     ? `RENDER_OK peak=${peak.toFixed(4)} energy=${energy.toFixed(1)} frames=${out.length}`
     : `RENDER_SILENT peak=${peak.toFixed(6)} energy=${energy.toFixed(6)}`
 )
-process.exit(0)
+// No process.exit() here: Node does not guarantee pending stdout writes are
+// flushed by process.exit(), and the parent (audio-render-gate.spec.ts)
+// settles on the child's 'close' event — which only fires after stdio is
+// drained — rather than 'exit', which can precede it. Falling off the end
+// of the module with no pending work exits naturally with code 0, the same
+// successful status process.exit(0) used to force.
+process.exitCode = 0

@@ -9,6 +9,11 @@ import type { RelayHandle } from './relay'
 // boundary tests below need it to size their payloads).
 const MAX_PAYLOAD = 16 * 1024 * 1024
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+// RFC 6455 section 1.3's own worked example Sec-WebSocket-Key — fixed
+// rather than Math.random()-generated, since nothing in these tests
+// depends on key uniqueness (no test compares two handshakes' keys/accept
+// values against each other) and a random key buys no coverage here.
+const FIXED_WS_KEY = 'dGhlIHNhbXBsZSBub25jZQ=='
 
 // ============================================
 // Frame plumbing — hand-rolled RFC 6455, independent of relay.ts's own
@@ -160,7 +165,7 @@ async function handshake(
   port: number,
   version = '13'
 ): Promise<{ statusLine: string; key: string; accept: string | null; leftover: Buffer }> {
-  const key = Buffer.from(Math.random().toString(36).slice(2, 18)).toString('base64')
+  const key = FIXED_WS_KEY
   const req =
     'GET / HTTP/1.1\r\n' +
     `Host: 127.0.0.1:${port}\r\n` +
@@ -258,7 +263,7 @@ describe('flatland-devtools-relay', () => {
     const socket = await connectSocket(port)
     cleanup.push(() => socket.destroy())
 
-    const key = Buffer.from(Math.random().toString(36).slice(2, 18)).toString('base64')
+    const key = FIXED_WS_KEY
     const req =
       'GET / HTTP/1.1\r\n' +
       `Host: 127.0.0.1:${port}\r\n` +

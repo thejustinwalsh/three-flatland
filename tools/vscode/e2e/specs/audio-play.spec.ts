@@ -15,8 +15,24 @@
 // `specs/audio-render-gate.spec.ts`'s `OfflineAudioContext` render (no
 // device, no polling, no warmup). The `skipIfAudioDeviceDeaf` guard the
 // deleted spec needed is gone too — every test below only needs the
-// sidecar process to exist and respond to pid/shutdown queries, not to
-// produce audible output.
+// sidecar process to exist and respond to pid/shutdown/ping queries, not
+// to produce audible output.
+//
+// P0 device-less-startup fix (planning/testing/pr188-adversarial-review.md
+// finding #1): a CI runner with no audio output device used to crash the
+// sidecar at import time (zzfx's top-level `new AudioContext` — see
+// `tools/audio-play/src/audioContextGuard.ts`). The sidecar is now
+// device-tolerant — a missing device degrades `play` to a clean Nack
+// instead of taking the process down — but `getActivePid()` ALONE is
+// still not the deterministic liveness proof these tests want: the
+// client records the child's pid synchronously at spawn, before the
+// child has actually processed anything, so a bare pid only proves "a
+// process was spawned," not "the process is alive and answering the wire
+// protocol." Every test below calls `ping()` (id-correlated, answered by
+// `commandHandler.ts` without ever touching `AudioContext` — see
+// `tools/audio-play/CLAUDE.md`'s device-tolerance section) to prove
+// PROCESS liveness first, deterministically, with or without a real
+// audio device, before/alongside any pid-based assertion.
 import { expect, test } from '../fixtures'
 
 const LITERAL_PARAMS = [0.5, 0, 300, 0, 0.02, 0.05, 1]
@@ -25,6 +41,7 @@ type ExtensionApi = {
   zzfxPlay: {
     getActivePid: () => number | undefined
     shutdown: () => Promise<void>
+    ping: () => Promise<boolean>
   }
 }
 
@@ -35,16 +52,23 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
   }) => {
     const tabsBefore = await workbox.getByRole('tab').allTextContents()
 
-    await evaluateInVSCode(
+    const alive = await evaluateInVSCode(
       async (vscode, arg) => {
         const ext = vscode.extensions.all.find(
           (e) => e.packageJSON.name === '@three-flatland/vscode'
         )
         if (ext && !ext.isActive) await ext.activate()
+        const api = ext!.exports as ExtensionApi
         await vscode.commands.executeCommand('threeFlatland.audio.playParams', arg.params)
+        // Device-independent proof the play command actually reached a
+        // live, responding sidecar process — not just that
+        // executeCommand() didn't throw (a device-less play Nacks
+        // quietly; ping still acks regardless).
+        return api.zzfxPlay.ping()
       },
       { params: LITERAL_PARAMS }
     )
+    expect(alive).toBe(true)
 
     // The awaited executeCommand() above only resolves once the whole
     // command handler has run to completion — inline-vs-panel routing
@@ -59,7 +83,7 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
   test('the sidecar process spawns once and is reused across repeated plays', async ({
     evaluateInVSCode,
   }) => {
-    const pids = await evaluateInVSCode(
+    const { pids, pings } = await evaluateInVSCode(
       async (vscode, arg) => {
         const ext = vscode.extensions.all.find(
           (e) => e.packageJSON.name === '@three-flatland/vscode'
@@ -67,20 +91,29 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as ExtensionApi
 
-        const collected: (number | undefined)[] = []
+        const collectedPids: (number | undefined)[] = []
+        const collectedPings: boolean[] = []
         for (let i = 0; i < 3; i++) {
           // spawn() assigns the child's pid synchronously (client.ts's
           // start()), and tryPlayInline calls play() synchronously too —
           // by the time this awaited executeCommand() resolves, the pid
           // is already set. No settle delay needed.
           await vscode.commands.executeCommand('threeFlatland.audio.playParams', arg.params)
-          collected.push(api.zzfxPlay.getActivePid())
+          // ping() is the deterministic proof for THIS iteration: the
+          // process is alive and has processed everything queued ahead
+          // of it on the sidecar's serialized command chain (including
+          // this iteration's play), regardless of device presence. A
+          // bare pid alone can't distinguish "reused, healthy process"
+          // from "reused pid number, process wedged."
+          collectedPings.push(await api.zzfxPlay.ping())
+          collectedPids.push(api.zzfxPlay.getActivePid())
         }
-        return collected
+        return { pids: collectedPids, pings: collectedPings }
       },
       { params: LITERAL_PARAMS }
     )
 
+    expect(pings).toEqual([true, true, true])
     expect(pids[0]).toBeGreaterThan(0)
     // Same pid across all three calls — a fresh spawn per play would give
     // three different pids instead.
@@ -103,7 +136,11 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
         // resolves — see the spawn-once-reused test's comment above.
         await vscode.commands.executeCommand('threeFlatland.audio.playParams', arg.params)
         const pid = api.zzfxPlay.getActivePid()
-        if (!pid) return { pid: undefined, aliveAfterShutdown: undefined }
+        if (!pid) return { pid: undefined, aliveBeforeShutdown: false, aliveAfterShutdown: undefined }
+
+        // Prove the process is genuinely up BEFORE shutdown — device-
+        // independent, unlike trusting the pid number alone.
+        const aliveBeforeShutdown = await api.zzfxPlay.ping()
 
         await api.zzfxPlay.shutdown()
 
@@ -115,12 +152,13 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
         } catch {
           aliveAfterShutdown = false
         }
-        return { pid, aliveAfterShutdown }
+        return { pid, aliveBeforeShutdown, aliveAfterShutdown }
       },
       { params: LITERAL_PARAMS }
     )
 
     expect(result.pid).toBeGreaterThan(0)
+    expect(result.aliveBeforeShutdown).toBe(true)
     expect(result.aliveAfterShutdown).toBe(false)
   })
 })

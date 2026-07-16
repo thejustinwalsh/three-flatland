@@ -12,10 +12,20 @@
  * `tools/audio-play/CLAUDE.md` for the full prototype-gate writeup — this
  * comment is the load-bearing "why," not decoration.
  *
- * Importing the polyfill FIRST (before `zzfx`/`@zzfx-studio/zzfxm`) is
- * required: `zzfx`'s `ZZFX.audioContext = new AudioContext` runs at
- * *module load time*, so `AudioContext` must already be a real global by
- * then.
+ * Importing `./audioContextGuard.js` FIRST (before `zzfx`/`@zzfx-studio/
+ * zzfxm`) is required for two layered reasons: `zzfx`'s `ZZFX.audioContext
+ * = new AudioContext` runs at *module load time*, so `AudioContext` must
+ * already be a real global by then (that module owns the `node-web-
+ * audio-api/polyfill.js` import itself, for exactly this ordering) — AND
+ * that same global must already be the GUARDED constructor, not the raw
+ * native one, because `node-web-audio-api`'s native constructor throws
+ * SYNCHRONOUSLY on a device-less runner (no cpal/ALSA output device),
+ * and zzfx's top-level `new AudioContext` call is completely outside any
+ * try/catch this package controls — an unguarded throw there would abort
+ * zzfx's module evaluation and crash this whole process before a single
+ * line below has run. See `audioContextGuard.ts`'s file doc comment for
+ * the full mechanism (and `tools/audio-play/CLAUDE.md`'s device-tolerance
+ * section for the production rationale).
  *
  * Synthesis stays real, unmodified upstream zzfx/zzfxm — `ZZFX.buildSamples`
  * and `ZZFXM.build` are pure numeric waveform generation, no AudioContext
@@ -32,7 +42,7 @@
  * without a real `AudioContext`. This file is only the stdin/stdout
  * wiring + the one real backend implementation.
  */
-import 'node-web-audio-api/polyfill.js'
+import { assertAudioDeviceAvailable, isAudioDeviceAvailable } from './audioContextGuard.js'
 import * as fs from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import * as readline from 'node:readline'
@@ -292,7 +302,15 @@ const handler = createCommandHandler({
   // `volume` is the wire command's user-trim multiplier (handler defaults
   // it to 1) — applied on top of ZZFX.volume so 1 is byte-for-byte
   // today's baseline loudness.
+  //
+  // Every play-kind backend below starts with `assertAudioDeviceAvailable()`
+  // — see that function's doc comment in `audioContextGuard.ts` for why
+  // this exists on top of (not instead of) the guarded `AudioContext`
+  // itself never throwing: a clear, labeled Nack instead of an incidental
+  // TypeError, and skipping synthesis/engine-loading work whose outcome
+  // is already known.
   play: (params, volume) => {
+    assertAudioDeviceAvailable()
     playSampleChannels(
       ZZFX.audioContext,
       [ZZFX.buildSamples(...params)],
@@ -300,13 +318,15 @@ const handler = createCommandHandler({
       ZZFX.volume * volume
     )
   },
-  playSong: (song, volume) =>
-    playSampleChannels(
+  playSong: (song, volume) => {
+    assertAudioDeviceAvailable()
+    return playSampleChannels(
       ZZFX.audioContext,
       ZZFXM.build(song.instruments, song.patterns, song.sequence, song.bpm),
       ZZFX.sampleRate,
       ZZFX.volume * volume
-    ),
+    )
+  },
   // Fire-and-forget: `fs.readFile` + `decodeAudioData` are both async,
   // but `handleCommand` (and the `rl.on('line', ...)` loop it runs
   // inside) must never block on them — see `tools/audio-play/CLAUDE.md`'s
@@ -319,6 +339,7 @@ const handler = createCommandHandler({
   playFile: (filePath, volume, onStarted) => {
     void (async () => {
       try {
+        assertAudioDeviceAvailable()
         const bytes = await fs.readFile(filePath)
         const arrayBuffer = bytes.buffer.slice(
           bytes.byteOffset,
@@ -327,15 +348,24 @@ const handler = createCommandHandler({
         const audioBuffer = await ZZFX.audioContext.decodeAudioData(arrayBuffer)
         onStarted(playBuffer(ZZFX.audioContext, audioBuffer, ZZFX.volume * volume))
       } catch (err) {
+        // `.code` rides along the same way the synchronous Nack path
+        // does (see `commandHandler.ts`'s catch) — `assertAudioDeviceAvailable`
+        // throws with a `.code` of `AUDIO_DEVICE_UNAVAILABLE`; a real
+        // read/decode failure has none, and this omits the field rather
+        // than fabricating one.
+        const code =
+          err instanceof Error && 'code' in err ? String((err as { code?: unknown }).code) : undefined
         send({
           ok: false,
           cmd: 'playFile',
           error: err instanceof Error ? err.message : String(err),
+          ...(code !== undefined ? { code } : {}),
         })
       }
     })()
   },
   playToneSynth: (cmd, volume) => {
+    assertAudioDeviceAvailable()
     if (!toneEngine) {
       // Kick off the load (idempotent — see loadToneEngine's cache) and
       // Nack this attempt rather than blocking handleCommand on an
@@ -353,6 +383,7 @@ const handler = createCommandHandler({
     return playToneSynth(ZZFX.audioContext, toneEngine, cmd, ZZFX.volume * volume)
   },
   playWadSynth: (config, volume) => {
+    assertAudioDeviceAvailable()
     const WadCtor = loadWadConstructor()
     return playWadSynth(ZZFX.audioContext, WadCtor, config, ZZFX.volume * volume)
   },
@@ -514,7 +545,14 @@ rl.on('close', () => {
   void commandChain.finally(() => process.exit(0))
 })
 
-// Surface that this connected to a real device, on stderr only (never
+// Surface whether this connected to a real device, on stderr only (never
 // stdout — stdout is exclusively the newline-JSON response channel the
-// client parses line-by-line).
-process.stderr.write(`audio-play: ready (AudioContext state: ${ZZFX.audioContext.state})\n`)
+// client parses line-by-line). `device: unavailable` here means zzfx's
+// own import-time `new AudioContext` already hit the guarded fallback
+// (see `audioContextGuard.ts`) — the process is still alive and will
+// answer `ping`; only audio-touching commands will Nack.
+process.stderr.write(
+  `audio-play: ready (AudioContext state: ${ZZFX.audioContext.state}, device: ${
+    isAudioDeviceAvailable() ? 'available' : 'unavailable'
+  })\n`
+)

@@ -321,48 +321,58 @@ describe('remote bridges over a socket pair', () => {
   })
 
   it('wire-borne reposts are never re-forwarded (same-context echo guard)', async () => {
-    const [providerSocket, consumerSocket] = socketPair()
+    const [providerSocket] = socketPair()
     const providerBridge = createProviderRemoteBridge({
       remote: providerSocket,
       dataChannelName: 'fl-data-echo',
       discoveryChannelName: 'fl-discovery-echo',
     })
-    const consumerBridge = createConsumerRemoteBridge({
-      remote: consumerSocket,
-      discoveryChannelName: 'fl-discovery-echo',
-    })
 
-    // A remote data frame arrives at the consumer bridge, which reposts
-    // it locally — the provider bridge tap in the SAME context must not
-    // send it back out (infinite relay ping-pong otherwise).
+    // Drive the provider bridge's dataTap directly with a hand-stamped
+    // FROM_WIRE marker — the same private marker createConsumerRemoteBridge
+    // applies (bus-websocket.ts's FROM_WIRE_KEY) to every message it
+    // reposts locally — instead of routing through a real consumer bridge
+    // to produce it. That lets the marked frame and the barrier that
+    // proves it was processed travel through the SAME BroadcastChannel
+    // object: real BroadcastChannel delivery only guarantees ordering for
+    // messages posted by the SAME sending object, not across independent
+    // senders (a previous version of this test posted the barrier from a
+    // second, unrelated BroadcastChannel instance fed by the consumer
+    // bridge's internal channel — an invalid barrier that could pass even
+    // if the echo guard were broken, since nothing orders two different
+    // senders' deliveries relative to each other). Routing both messages
+    // through consumerBridge isn't an option either: every message it
+    // reposts gets marked FROM_WIRE, so there would be no way to produce
+    // an un-marked, forwardable barrier through that same object.
     const sentBefore = providerSocket.sent.length
-    consumerSocket.peer = providerSocket // wire back
-    providerSocket.send(
-      encodeDebugMessage(
-        { v: 1, ts: 9, type: 'ping', payload: {} } as unknown as DebugMessage,
-        'fl-data-echo'
-      )
-    )
+    const driverChannel = new BroadcastChannel('fl-data-echo')
 
-    // Negative-test barrier: post a second, NOT-from-wire frame on the
-    // same local channel and wait for IT to cross the wire. Real
-    // BroadcastChannel delivery preserves posting order, so the barrier's
-    // arrival proves the first (wire-borne) repost was already dispatched
-    // to the provider tap and silently dropped by the echo guard — a
-    // deterministic drained-queue signal instead of "nothing happened for
-    // N ms".
-    const barrierChannel = new BroadcastChannel('fl-data-echo')
     const barrierCrossed = nextSend(providerSocket)
-    barrierChannel.postMessage({ v: 1, ts: 10, type: 'ping', payload: {} })
+    driverChannel.postMessage({
+      v: 1,
+      ts: 9,
+      type: 'ping',
+      payload: {},
+      __flFromWire: true,
+    } as unknown as DebugMessage)
+    // Same object, posted immediately after — if this barrier crosses the
+    // wire, the marked message above (posted first, from the same
+    // sender, so FIFO holds) was necessarily already dispatched to the
+    // provider tap's listener and dropped by the echo guard.
+    driverChannel.postMessage({
+      v: 1,
+      ts: 10,
+      type: 'ping',
+      payload: {},
+    } as unknown as DebugMessage)
     await barrierCrossed
-    barrierChannel.close()
+    driverChannel.close()
 
-    // Exactly the manual send plus the barrier crossing — no echo copies
-    // queued in between.
-    expect(providerSocket.sent.length).toBe(sentBefore + 2)
+    // Only the unmarked barrier crossed — the FROM_WIRE-marked message
+    // was silently dropped, not re-forwarded.
+    expect(providerSocket.sent.length).toBe(sentBefore + 1)
 
     providerBridge.dispose()
-    consumerBridge.dispose()
   })
 
   it('marker-shaped user payloads survive the codec untouched (path table)', () => {

@@ -56,15 +56,18 @@ test.describe('FL Audio: offline render audibility gate', () => {
             stderr += String(d)
           })
           child.on('error', (err) => reject(err))
-          // The probe prints exactly one verdict line and calls
-          // process.exit(0) itself — the child's 'exit' event IS the
-          // completion signal here, the same way offline.startRendering()
-          // resolving is the completion signal inside the probe. No
+          // The probe prints exactly one verdict line and does NOT call
+          // process.exit() itself (removed — Node doesn't guarantee
+          // pending stdout writes are flushed by process.exit()). Settle
+          // on 'close', not 'exit': 'close' only fires after the child's
+          // stdio streams are fully drained, so every 'data' event above
+          // is guaranteed to have already landed by the time this runs —
+          // 'exit' offers no such guarantee and can fire first. No
           // timeout/poll needed on this side: a genuine hang fails the
           // whole test via Playwright's own test timeout, which is the
           // correct place for that bound to live, not a test-authored
           // setTimeout race.
-          child.on('exit', (code) => {
+          child.on('close', (code) => {
             if (!/RENDER_OK|RENDER_SILENT/.test(stdout)) {
               reject(
                 new Error(
@@ -87,6 +90,31 @@ test.describe('FL Audio: offline render audibility gate', () => {
 
     const match = result.stdout.match(/RENDER_OK peak=([\d.]+) energy=([\d.]+) frames=(\d+)/)
     expect(match, `expected a parseable RENDER_OK line, got: ${result.stdout}`).not.toBeNull()
-    expect(Number(match![1])).toBeGreaterThan(0)
+    const peak = Number(match![1])
+    const energy = Number(match![2])
+    const frames = Number(match![3])
+
+    // The probe renders exactly sampleRate(44100) * 0.2s of frames — a
+    // wrong count means the offline graph rendered the wrong buffer
+    // length entirely (resampling, a miscomputed OfflineAudioContext
+    // size), not just a wrong signal.
+    expect(frames).toBe(8820)
+
+    // The fixture is a pure 440Hz sine at amplitude 0.5 fed through
+    // unity gain (masterVolume=1, no ramps/taper — playSampleChannels
+    // applies a single static GainNode value and nothing else). Peak
+    // must land tight around 0.5: `peak > 0` alone would also pass for a
+    // DC offset, a wrong gain, or a mostly-corrupt render.
+    expect(peak).toBeGreaterThanOrEqual(0.45)
+    expect(peak).toBeLessThanOrEqual(0.55)
+
+    // Energy (sum of squares) of a full-buffer amplitude-0.5 sine over
+    // 8820 frames is 0.5^2/2 * 8820 ≈ 1102.5. A DC-offset render (peak
+    // still ~0.5 but constant, energy ≈ 0.25 * 8820 = 2205) or a
+    // mostly-zero/single-impulse render (peak could still pass, energy
+    // near zero) would land far outside this window even though peak
+    // alone would not catch it.
+    expect(energy).toBeGreaterThanOrEqual(900)
+    expect(energy).toBeLessThanOrEqual(1300)
   })
 })

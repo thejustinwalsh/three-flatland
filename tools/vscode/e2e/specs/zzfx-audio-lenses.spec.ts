@@ -152,30 +152,98 @@ function lensAt(lenses: ResolvedLens[], line: number, title: string): ResolvedLe
   return lenses.find((l) => l.range.start.line === line && sameTitle(l.command?.title, title))
 }
 
-/** Polls {@link fetchLenses} until no `$(search) Searching…` resolving lens
- * remains — i.e. every slow fallback search kicked off by this render has
- * settled to `▶ Play` or `$(search) Not Found` — then returns the settled
- * set. The searches are per-session-cached, so only the first render after
- * activation actually waits. Not an audio/device poll — this is watching
- * `audioFileResolver.ts`'s own async workspace search settle, the
- * documented, sanctioned wait for this specific async lens-state
- * transition. */
+/** Waits until no `$(search) Searching…` resolving lens remains — i.e.
+ * every slow fallback search kicked off by this render has settled to
+ * `▶ Play` or `$(search) Not Found` — then returns the settled set. The
+ * searches are per-session-cached, so only the first render after
+ * activation actually waits.
+ *
+ * This is a single `evaluateInVSCode` call (not a Node-side poll loop):
+ * it subscribes to the zzfx CodeLens provider's own `onDidChangeCodeLenses`
+ * event — exposed for e2e via `ExtensionApi.zzfxCodeLens`
+ * (`tools/vscode/extension/index.ts`) — which is the exact signal
+ * `audioFileResolver.ts` fires when its async workspace search settles
+ * (see `provider.ts`'s `refresh()`). The subscription is registered
+ * BEFORE each re-check of the lens state, so a settle that races the
+ * check can never be missed and silently hang the wait forever. No
+ * timer/deadline: a genuine hang (a real regression where the search
+ * never settles) fails via Playwright's own test timeout, same as
+ * `audio-render-gate.spec.ts`'s child-process wait. */
 async function fetchSettledLenses(
   evaluateInVSCode: <R, Arg = undefined>(
     fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
     arg?: Arg
   ) => Promise<R>
 ): Promise<ResolvedLens[]> {
-  const deadline = Date.now() + 15_000
-  let lenses = await fetchLenses(evaluateInVSCode)
-  while (
-    lenses.some((l) => sameTitle(l.command?.title, '$(search) Searching…')) &&
-    Date.now() < deadline
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 150))
-    lenses = await fetchLenses(evaluateInVSCode)
-  }
-  return lenses
+  return evaluateInVSCode(
+    async (vscode, arg) => {
+      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
+      if (ext && !ext.isActive) await ext.activate()
+      const api = ext!.exports as {
+        zzfxCodeLens: { onDidChangeCodeLenses: (listener: () => void) => import('vscode').Disposable }
+      }
+
+      const [folder] = vscode.workspace.workspaceFolders ?? []
+      const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+      const doc = await vscode.workspace.openTextDocument(uri)
+      await vscode.window.showTextDocument(doc)
+
+      type Lens = {
+        range: { start: { line: number } }
+        command?: { title: string; command: string; arguments?: unknown[] }
+      }
+      const fetchNow = async (): Promise<Lens[]> => {
+        const raw = (await vscode.commands.executeCommand(
+          'vscode.executeCodeLensProvider',
+          uri,
+          100
+        )) as Lens[]
+        return raw.map((l) => ({ range: { start: { line: l.range.start.line } }, command: l.command }))
+      }
+      const isSearching = (lenses: Lens[]): boolean =>
+        lenses.some((l) => (l.command?.title ?? '').replace(/\s+/g, ' ') === '$(search) Searching…')
+      // Subscribes first, THEN returns a promise that resolves on the
+      // next refresh — anything that fires while a caller's `fetchNow()`
+      // is in flight is still caught, because the listener is already
+      // attached before that fetch begins.
+      const nextRefresh = (): { promise: Promise<void>; cancel: () => void } => {
+        let disposed = false
+        let sub: import('vscode').Disposable
+        const promise = new Promise<void>((resolve) => {
+          sub = api.zzfxCodeLens.onDidChangeCodeLenses(() => {
+            if (!disposed) {
+              disposed = true
+              sub.dispose()
+            }
+            resolve()
+          })
+        })
+        return {
+          promise,
+          cancel: () => {
+            if (!disposed) {
+              disposed = true
+              sub.dispose()
+            }
+          },
+        }
+      }
+
+      let lenses = await fetchNow()
+      while (isSearching(lenses)) {
+        const { promise, cancel } = nextRefresh()
+        lenses = await fetchNow()
+        if (!isSearching(lenses)) {
+          cancel()
+          break
+        }
+        await promise
+        lenses = await fetchNow()
+      }
+      return lenses
+    },
+    { file: SOUNDS_FILE }
+  )
 }
 
 /** Executes a lens's (or any) command through the real extension host and
@@ -201,30 +269,97 @@ async function executeVSCodeCommand(
   )
 }
 
-/** Polls {@link fetchLenses} until a lens titled `title` exists at
- * `line` — still needed for the async resolution states that DO change a
- * lens's presence/arguments (audio.file's searching→resolved/not-found
- * settling, #41), even though playback state no longer does (Play/Stop
- * are now static — see provider.ts's file doc comment). Returns
- * `undefined` once `timeoutMs` passes without one. Not an audio/device
- * poll — same category as `fetchSettledLenses` above. */
+/** Waits until a lens titled `title` exists at `line` — still needed for
+ * the async resolution states that DO change a lens's presence/arguments
+ * (audio.file's searching→resolved/not-found settling, #41), even though
+ * playback state no longer does (Play/Stop are now static — see
+ * provider.ts's file doc comment).
+ *
+ * Same causal signal as {@link fetchSettledLenses}: subscribes to the
+ * zzfx CodeLens provider's `onDidChangeCodeLenses` event (registered
+ * BEFORE each re-check, so a settle racing the check can't be missed)
+ * instead of polling to a wall-clock deadline. No fallback return value —
+ * every call site expects the lens to eventually appear, so a genuine
+ * failure to appear is a real regression and should fail the test via
+ * Playwright's own test timeout, not resolve to a silently-wrong
+ * `undefined`. */
 async function pollLensAt(
   evaluateInVSCode: <R, Arg = undefined>(
     fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
     arg?: Arg
   ) => Promise<R>,
   line: number,
-  title: string,
-  timeoutMs = 5000
-): Promise<ResolvedLens | undefined> {
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
-    const lenses = await fetchLenses(evaluateInVSCode)
-    const lens = lensAt(lenses, line, title)
-    if (lens) return lens
-    if (Date.now() > deadline) return undefined
-    await new Promise((resolve) => setTimeout(resolve, 200))
-  }
+  title: string
+): Promise<ResolvedLens> {
+  return evaluateInVSCode(
+    async (vscode, arg) => {
+      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
+      if (ext && !ext.isActive) await ext.activate()
+      const api = ext!.exports as {
+        zzfxCodeLens: { onDidChangeCodeLenses: (listener: () => void) => import('vscode').Disposable }
+      }
+      const [folder] = vscode.workspace.workspaceFolders ?? []
+      const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
+
+      type Lens = {
+        range: { start: { line: number } }
+        command?: { title: string; command: string; arguments?: unknown[] }
+      }
+      const fetchNow = async (): Promise<Lens[]> => {
+        const raw = (await vscode.commands.executeCommand(
+          'vscode.executeCodeLensProvider',
+          uri,
+          100
+        )) as Lens[]
+        return raw.map((l) => ({ range: { start: { line: l.range.start.line } }, command: l.command }))
+      }
+      const find = (lenses: Lens[]): Lens | undefined =>
+        lenses.find(
+          (l) =>
+            l.range.start.line === arg.line &&
+            l.command?.title !== undefined &&
+            l.command.title.replace(/\s+/g, ' ') === arg.title.replace(/\s+/g, ' ')
+        )
+      const nextRefresh = (): { promise: Promise<void>; cancel: () => void } => {
+        let disposed = false
+        let sub: import('vscode').Disposable
+        const promise = new Promise<void>((resolve) => {
+          sub = api.zzfxCodeLens.onDidChangeCodeLenses(() => {
+            if (!disposed) {
+              disposed = true
+              sub.dispose()
+            }
+            resolve()
+          })
+        })
+        return {
+          promise,
+          cancel: () => {
+            if (!disposed) {
+              disposed = true
+              sub.dispose()
+            }
+          },
+        }
+      }
+
+      let lenses = await fetchNow()
+      for (;;) {
+        const found = find(lenses)
+        if (found) return found
+        const { promise, cancel } = nextRefresh()
+        lenses = await fetchNow()
+        const foundAfterSubscribe = find(lenses)
+        if (foundAfterSubscribe) {
+          cancel()
+          return foundAfterSubscribe
+        }
+        await promise
+        lenses = await fetchNow()
+      }
+    },
+    { file: SOUNDS_FILE, line, title }
+  )
 }
 
 test.describe('FL Audio: multi-library Play/Stop lenses', () => {
