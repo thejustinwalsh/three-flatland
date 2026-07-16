@@ -30,7 +30,15 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, test } from '../fixtures'
+import { expect, skipIfAudioDeviceDeaf, test } from '../fixtures'
+
+// Real-audio spec: skip (loudly, with the environmental evidence) when the
+// warmup's oracle proved the OS audio device transiently deaf — see
+// fixtures.ts's warmUpAudioPipeline. CI runs FL_E2E_REQUIRE_AUDIO=1 and
+// hard-fails instead.
+test.beforeEach(({ _sharedWindow }) => {
+  skipIfAudioDeviceDeaf(_sharedWindow)
+})
 
 const SOUNDS_FILE = 'src/audio-sources.ts'
 
@@ -104,7 +112,11 @@ async function fetchLenses(
 }
 
 function lensAt(lenses: ResolvedLens[], line: number, title: string): ResolvedLens | undefined {
-  return lenses.find((l) => l.range.start.line === line && l.command?.title === title)
+  // Compare titles with whitespace runs collapsed — codicon lens titles
+  // (`$(question) Unresolved` etc.) carry cosmetic icon-to-label spacing that
+  // isn't part of the contract, so the exact space count must not be pinned.
+  const norm = (t: string | undefined) => (t ?? '').replace(/\s+/g, ' ')
+  return lenses.find((l) => l.range.start.line === line && norm(l.command?.title) === norm(title))
 }
 
 async function executeAndPollAudible(
