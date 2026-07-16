@@ -24,14 +24,22 @@ export function preferNewest(paths: string[]): string[] {
   // Stat each path exactly ONCE up front — a sort comparator runs O(n log n)
   // times, so calling statSync inside it would repeat the syscall per element
   // (and a mid-sort mtime change could even make the comparator inconsistent).
-  // -1, not -Infinity: two missing paths must compare equal (a NaN from
-  // `-Infinity - -Infinity` would poison the comparator). Array.sort is
+  // Any stat failure — missing (ENOENT), unreadable (EACCES), or removed
+  // between check and stat — maps to -1 so that path sorts LAST and resolution
+  // never crashes. -1, not -Infinity: two such paths must compare equal (a NaN
+  // from `-Infinity - -Infinity` would poison the comparator). Array.sort is
   // stable, so ties/all-missing keep the caller's order.
-  const withMtime = paths.map((path) => ({
-    path,
-    mtimeMs: existsSync(path) ? statSync(path).mtimeMs : -1,
-  }))
-  return withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs).map((e) => e.path)
+  const mtimeOf = (path: string): number => {
+    try {
+      return statSync(path).mtimeMs
+    } catch {
+      return -1
+    }
+  }
+  return paths
+    .map((path) => ({ path, mtimeMs: mtimeOf(path) }))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .map((e) => e.path)
 }
 
 /**
