@@ -28,15 +28,15 @@ async function readFile(
 // The canvas image (a lazy-loaded chunk decoding a texture) can still be
 // mid-load right after the toolbar mounts — a Save clicked before then
 // correctly refuses with "image not loaded yet" rather than silently
-// racing. Retry the click until it lands, rather than asserting a fixed
-// wait: which test happens to give the canvas enough incidental time
-// (menu clicks, badge-visibility checks) before its first real save is
-// timing-dependent, not something to hardcode per test.
+// racing. Rather than retrying the click until it happens to land (timing-
+// dependent, and it masks the "image not loaded yet" refusal path instead
+// of avoiding it), wait for the "Image size" badge App.tsx renders once
+// CanvasStage's onImageReady fires — the same `imageSize` signal
+// handleSave itself gates on — then click exactly once.
 async function saveAndWaitForSaved(frame: FrameLocator, button: Locator): Promise<void> {
-  await expect(async () => {
-    await button.click()
-    await expect(frame.getByText(/Saved/)).toBeVisible({ timeout: 1000 })
-  }).toPass({ timeout: 15000 })
+  await expect(frame.getByTitle('Image size')).toBeVisible()
+  await button.click()
+  await expect(frame.getByText(/Saved/)).toBeVisible()
 }
 
 test('opening a bare TexturePacker-shaped sidecar shows the TexturePacker badge', async ({

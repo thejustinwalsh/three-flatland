@@ -10,7 +10,7 @@ import {
   pingPlaySidecar,
   shutdownPlaySidecar,
 } from './tools/audio/playSidecarManager'
-import { getZzfxCodeLensProvider } from './tools/audio/register'
+import { getZzfxCodeLensProvider, resetAudioToolState } from './tools/audio/register'
 import { shutdownSidecar } from './tools/audio/sidecarManager'
 import { activateTools, watchToolConfiguration } from './toolRegistry'
 import { getChannel, log } from './log'
@@ -65,6 +65,17 @@ export type ExtensionApi = {
   zzfxCodeLens: {
     onDidChangeCodeLenses: (listener: () => void) => vscode.Disposable
   }
+  /** e2e/test-only determinism seam (finding #7,
+   * planning/testing/pr188-adversarial-review.md): the shared e2e window
+   * survives across every test, so without an explicit reset a later
+   * test's audio-play sidecar reacquire-vs-warm-start behavior would
+   * depend on how long PRECEDING tests happened to run against the
+   * fixture's shrunk idle-release window. Kills any running audio-play
+   * sidecar and clears its session caches (`ActivePlayback`,
+   * `audioFileResolver`) — see `tools/audio/register.ts`'s
+   * `resetAudioToolState`. Safe to call whether or not the audio tool is
+   * currently registered. */
+  reset: () => Promise<void>
 }
 
 export function activate(context: vscode.ExtensionContext): ExtensionApi {
@@ -102,6 +113,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
         return provider.onDidChangeCodeLenses(listener)
       },
     },
+    reset: resetAudioToolState,
   }
 }
 

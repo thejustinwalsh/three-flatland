@@ -186,13 +186,14 @@ export type PlaybackStats = {
  * Nack, which correlates to no awaited request). */
 export type Ack = { ok: true; cmd: Exclude<Command['cmd'], 'stats'>; id?: number }
 /** `code` is a machine-readable tag for a specific, callers-may-need-to-
- * react-to failure mode — `'TONE_LOADING'` (see `sidecar.ts`'s
- * `playToneSynth` cold-start Nack) and `'AUDIO_DEVICE_UNAVAILABLE'` (see
- * `audioContextGuard.ts`'s `assertAudioDeviceAvailable`, thrown by every
- * play-kind backend when the native `AudioContext` never acquired a real
- * output device). Absent for every other failure; never parsed out of
- * `error`'s message text — the code IS the contract, the message is for
- * humans. */
+ * react-to failure mode — `'TONE_LOAD_FAILED'` (see `sidecar.ts`'s
+ * `playToneSynth` backend: the lazily-loaded Tone.js engine either
+ * rejected or didn't finish within its bounded timeout) and
+ * `'AUDIO_DEVICE_UNAVAILABLE'` (see `audioContextGuard.ts`'s
+ * `assertAudioDeviceAvailable`, thrown by every play-kind backend when
+ * the native `AudioContext` never acquired a real output device). Absent
+ * for every other failure; never parsed out of `error`'s message text —
+ * the code IS the contract, the message is for humans. */
 export type Nack = { ok: false; cmd: Command['cmd']; error: string; code?: string; id?: number }
 export type StatsAck = { ok: true; cmd: 'stats'; stats: PlaybackStats; id?: number }
 export type Response = Ack | Nack | StatsAck

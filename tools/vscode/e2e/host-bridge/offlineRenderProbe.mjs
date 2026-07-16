@@ -16,11 +16,12 @@
 // It imports and executes the REAL production function — it does not
 // duplicate the write logic — so a real regression is caught, not mimicked.
 //
-// Prints exactly one verdict line on stdout:
-//   RENDER_OK peak=<n> energy=<n> frames=<n>
+// Prints exactly one verdict line on stdout (`offlineRenderOracle.mjs`):
+//   RENDER_OK peak=<n> energy=<n> frames=<n> zeroCrossings=<n>
 //   RENDER_SILENT peak=<n> energy=<n>
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
+import { analyzeRenderedBuffer, printVerdict } from './offlineRenderOracle.mjs'
 
 // host-bridge -> e2e -> vscode -> (sibling) audio-play.
 const requireFromAudioPlay = createRequire(new URL('../../../audio-play/package.json', import.meta.url))
@@ -43,21 +44,9 @@ const offline = new OfflineAudioContext(1, frames, sampleRate)
 playSampleChannels(offline, [samples], sampleRate, 1)
 const rendered = await offline.startRendering() // <- the deterministic signal
 
-const out = new Float32Array(rendered.length)
-rendered.copyFromChannel(out, 0) // read side also avoids getChannelData
-let peak = 0
-let energy = 0
-for (const v of out) {
-  const a = Math.abs(v)
-  if (a > peak) peak = a
-  energy += v * v
-}
-
-console.log(
-  peak > 1e-3
-    ? `RENDER_OK peak=${peak.toFixed(4)} energy=${energy.toFixed(1)} frames=${out.length}`
-    : `RENDER_SILENT peak=${peak.toFixed(6)} energy=${energy.toFixed(6)}`
-)
+// `analyzeRenderedBuffer` reads via `copyFromChannel` (read side also
+// avoids `getChannelData`, same rationale as the write side).
+printVerdict(analyzeRenderedBuffer(rendered))
 // No process.exit() here: Node does not guarantee pending stdout writes are
 // flushed by process.exit(), and the parent (audio-render-gate.spec.ts)
 // settles on the child's 'close' event — which only fires after stdio is
