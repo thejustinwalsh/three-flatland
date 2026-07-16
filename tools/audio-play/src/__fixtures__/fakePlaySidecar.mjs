@@ -111,6 +111,12 @@ rl.on('line', (line) => {
     case 'stop':
       send({ ok: true, cmd: 'stop' })
       return
+    case 'ping':
+      // Mirrors the real sidecar's commandHandler.ts: answered
+      // unconditionally, never touches "audio" (this fixture has none to
+      // touch anyway) — proves only that the wire protocol round-trips.
+      send(withEcho(command, { ok: true, cmd: 'ping' }))
+      return
     case 'shutdown':
       send({ ok: true, cmd: 'shutdown' })
       if (!HANG_ON_SHUTDOWN) process.stdout.end(() => process.exit(0))

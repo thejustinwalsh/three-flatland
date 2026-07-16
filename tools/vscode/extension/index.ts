@@ -7,8 +7,10 @@ import { getZzfxHistoryStore } from './tools/audio/history/store'
 import {
   getActivePlaySidecarPid,
   getPlaySidecarStats,
+  pingPlaySidecar,
   shutdownPlaySidecar,
 } from './tools/audio/playSidecarManager'
+import { getZzfxCodeLensProvider } from './tools/audio/register'
 import { shutdownSidecar } from './tools/audio/sidecarManager'
 import { activateTools, watchToolConfiguration } from './toolRegistry'
 import { getChannel, log } from './log'
@@ -25,13 +27,19 @@ import { getChannel, log } from './log'
  * makes on a real deactivation, not a separate test-only path. `getStats`
  * is the audibility regression guard (see `tools/audio-play/src/player.ts`)
  * — an e2e test drives it to prove a played sound actually reaches the
- * output, not just that `play` acked clean.
+ * output, not just that `play` acked clean. `ping` is the device-independent
+ * counterpart (see `tools/audio-play/CLAUDE.md`'s device-tolerance
+ * section): proves the sidecar PROCESS is alive and responding over the
+ * wire protocol without touching `AudioContext` at all, so it stays
+ * meaningful even on a device-less runner where `getStats`/a real `play`
+ * legitimately Nacks.
  */
 export type ExtensionApi = {
   zzfxPlay: {
     getActivePid: () => number | undefined
     shutdown: () => Promise<void>
     getStats: () => Promise<PlaybackStats | undefined>
+    ping: () => Promise<boolean>
   }
   /** e2e seeding/verification seam for the AI candidate history — the
    * SAME singleton store instance the zzfx panels use (not a parallel
@@ -44,6 +52,18 @@ export type ExtensionApi = {
     keyFor: typeof historyKeyFor
     getBatches: (key: string) => Promise<ZzfxHistoryBatch[]>
     append: (key: string, batch: ZzfxHistoryBatch) => Promise<ZzfxHistoryBatch[]>
+  }
+  /** e2e determinism seam (planning/testing/test-determinism-audit.md):
+   * subscribes to the zzfx CodeLens provider's own `onDidChangeCodeLenses`
+   * refresh signal — fired when `audioFileResolver.ts`'s async fallback
+   * search settles or a play-time repair changes an answer (see
+   * `tools/audio/provider.ts`). Lets e2e specs await the CAUSAL "lenses
+   * changed" event instead of polling `vscode.executeCodeLensProvider` to
+   * a wall-clock deadline. Throws if the audio tool isn't currently
+   * registered (disabled via settings) rather than returning a listener
+   * that would silently never fire. */
+  zzfxCodeLens: {
+    onDidChangeCodeLenses: (listener: () => void) => vscode.Disposable
   }
 }
 
@@ -64,11 +84,23 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
       getActivePid: getActivePlaySidecarPid,
       shutdown: shutdownPlaySidecar,
       getStats: getPlaySidecarStats,
+      ping: pingPlaySidecar,
     },
     zzfxHistory: {
       keyFor: historyKeyFor,
       getBatches: (key) => getZzfxHistoryStore(context).getBatches(key),
       append: (key, batch) => getZzfxHistoryStore(context).append(key, batch),
+    },
+    zzfxCodeLens: {
+      onDidChangeCodeLenses: (listener) => {
+        const provider = getZzfxCodeLensProvider()
+        if (!provider) {
+          throw new Error(
+            'zzfxCodeLens.onDidChangeCodeLenses: audio tool is not active — no CodeLens provider registered.'
+          )
+        }
+        return provider.onDidChangeCodeLenses(listener)
+      },
     },
   }
 }

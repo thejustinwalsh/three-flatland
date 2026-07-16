@@ -22,6 +22,22 @@ import { INLINE_PLAYBACK_SETTING } from './settings'
  * past "enough candidates to rank" (see pickBestMatch). */
 const MAX_AUDIO_SEARCH_RESULTS = 32
 
+/** The most recently registered `ZzfxCodeLensProvider`, mirroring the
+ * `sidecarManager.ts`/`playSidecarManager.ts` singleton-getter pattern —
+ * lets `index.ts`'s `ExtensionApi` (and e2e tests through it) subscribe
+ * to `onDidChangeCodeLenses` without needing `registerAudioTool`'s own
+ * return type (a single aggregate `vscode.Disposable`, per the tool
+ * registry contract) to carry it out. */
+let activeProvider: ZzfxCodeLensProvider | null = null
+
+/** e2e/diagnostic seam — see `index.ts`'s `ExtensionApi.zzfxCodeLens`.
+ * Lets tests await the CodeLens provider's own refresh signal (fired when
+ * `audioFileResolver.ts`'s async search settles, or a Tier-3 edit refresh
+ * lands — see provider.ts) instead of polling to a wall-clock deadline. */
+export function getZzfxCodeLensProvider(): ZzfxCodeLensProvider | null {
+  return activeProvider
+}
+
 type ZzfxCallFinding = Extract<Finding, { kind: 'zzfx.call' }>
 type ZzfxmSongFinding = Extract<Finding, { kind: 'zzfxm.song' }>
 type WadSynthFinding = Extract<Finding, { kind: 'wad.synth' }>
@@ -197,9 +213,15 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
   // for a state no lens face reads.
   const activePlayback = new ActivePlayback(() => {})
   const provider = new ZzfxCodeLensProvider(() => getSidecarClient(context), audioResolver)
+  activeProvider = provider
   disposables.push(
     vscode.languages.registerCodeLensProvider(ZZFX_DOCUMENT_SELECTOR, provider),
-    provider
+    provider,
+    {
+      dispose: () => {
+        if (activeProvider === provider) activeProvider = null
+      },
+    }
   )
 
   /** Marks `source` as the active playback (for the source-editor-tab-

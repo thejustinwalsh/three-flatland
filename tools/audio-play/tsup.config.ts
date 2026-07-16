@@ -3,6 +3,7 @@ import { defineConfig } from 'tsup'
 export default defineConfig({
   entry: [
     'src/index.ts',
+    'src/audioContextGuard.ts',
     'src/client.ts',
     'src/commandHandler.ts',
     'src/contextLifecycle.ts',

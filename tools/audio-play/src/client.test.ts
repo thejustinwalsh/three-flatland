@@ -99,6 +99,19 @@ describe('PlaySidecarClient', () => {
     expect(client.isRunning).toBe(false)
   })
 
+  it('ping() spawns lazily and resolves true — proves process liveness without touching audio', async () => {
+    client = spawnFake()
+    const alive = await client.ping()
+    expect(alive).toBe(true)
+    expect(client.isRunning).toBe(true)
+  })
+
+  it('concurrent ping() calls are serialized and each resolves true — same id-correlation discipline as getStats', async () => {
+    client = spawnFake()
+    const results = await Promise.all([client.ping(), client.ping(), client.ping()])
+    expect(results).toEqual([true, true, true])
+  })
+
   it('getStats() spawns lazily and resolves with the sidecar-reported PlaybackStats', async () => {
     client = spawnFake()
     const stats = await client.getStats()
@@ -311,7 +324,7 @@ describe('PlaySidecarClient', () => {
     expect(client.isRunning).toBe(false)
   })
 
-  it('once exited, this instance never silently respawns — start()/play()/getStats() throw PlaySidecarExitedError instead', async () => {
+  it('once exited, this instance never silently respawns — start()/play()/getStats()/ping() throw PlaySidecarExitedError instead', async () => {
     client = spawnFake()
     client.play([1, 0, 440])
     await vi.waitFor(() => expect(client!.isRunning).toBe(true))
@@ -328,6 +341,7 @@ describe('PlaySidecarClient', () => {
     expect(() => client!.start()).toThrow(PlaySidecarExitedError)
     expect(() => client!.play([1, 0, 220])).toThrow(PlaySidecarExitedError)
     await expect(client!.getStats()).rejects.toThrow(PlaySidecarExitedError)
+    await expect(client!.ping()).rejects.toThrow(PlaySidecarExitedError)
 
     // No new process was spawned by any of the above.
     expect(client.pid).toBeUndefined()

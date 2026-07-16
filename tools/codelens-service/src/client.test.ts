@@ -250,10 +250,22 @@ describe('CodelensServiceClient', () => {
   it('exposes the sidecar stderr stream', async () => {
     client = spawnFake()
     await client.start()
-    const stderrChunks: string[] = []
-    client.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk.toString('utf8')))
+    // Wait on the stderr SIGNAL itself, not on a cross-stream proxy. The
+    // sidecar logs `didChange: <uri>` to STDERR; awaiting the parse() reply
+    // (which arrives on STDOUT) proves nothing about when the STDERR pipe
+    // has delivered to us — the two streams have no cross-ordering guarantee,
+    // so scraping stderrChunks right after parse() was a race (observed empty
+    // in CI: "expected '' to contain 'didChange: file:///a.ts'"). Resolve
+    // exactly when the line is seen; vitest's per-test timeout is the only
+    // (hard-failure) ceiling, never a guess.
+    let stderrBuf = ''
+    const sawDidChange = new Promise<void>((resolve) => {
+      client!.stderr!.on('data', (chunk: Buffer) => {
+        stderrBuf += chunk.toString('utf8')
+        if (stderrBuf.includes('didChange: file:///a.ts')) resolve()
+      })
+    })
     client.didChange({ uri: 'file:///a.ts', text: 'zzfx(1,2,3);' })
-    await client.parse({ uri: 'file:///a.ts', text: 'zzfx(1,2,3);' }) // ensures the didChange line was flushed first
-    expect(stderrChunks.join('')).toContain('didChange: file:///a.ts')
+    await sawDidChange
   })
 })
