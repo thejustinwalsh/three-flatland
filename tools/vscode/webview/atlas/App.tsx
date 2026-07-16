@@ -2087,6 +2087,17 @@ export function App() {
                     {FORMAT_LABEL[outputFormat]}
                   </span>
                 ) : null}
+                {imageSize ? (
+                  // Only renders once CanvasStage's onImageReady has fired —
+                  // the canvas image is a lazy-loaded chunk that can still be
+                  // mid-decode right after the toolbar mounts. Doubles as an
+                  // e2e-observable "image decoded" signal (see handleSave's
+                  // `imageSize` gate above) so a Save doesn't have to be
+                  // retried against the "image not loaded yet" refusal.
+                  <span {...stylex.props(s.formatBadge)} title="Image size">
+                    {imageSize.w}×{imageSize.h}
+                  </span>
+                ) : null}
                 <AtlasMenu
                   prefs={prefs}
                   outputFormat={outputFormat}

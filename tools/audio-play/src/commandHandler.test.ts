@@ -105,43 +105,43 @@ function fakeBackend(stats: PlaybackStats = SILENT_STATS): AudioBackend & {
 }
 
 describe('createCommandHandler', () => {
-  it('play forwards params to the backend, defaulting the volume multiplier to 1, and acks', () => {
+  it('play forwards params to the backend, defaulting the volume multiplier to 1, and acks', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    const response = handler.handleCommand({ cmd: 'play', params: [1, 0, 440] })
+    const response = await handler.handleCommand({ cmd: 'play', params: [1, 0, 440] })
     expect(response).toEqual({ ok: true, cmd: 'play' })
     expect(backend.playCalls).toEqual([{ params: [1, 0, 440], volume: 1 }])
   })
 
-  it('play passes an explicit volume multiplier through unchanged — the user trim reaches the output gain', () => {
+  it('play passes an explicit volume multiplier through unchanged — the user trim reaches the output gain', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    handler.handleCommand({ cmd: 'play', params: [1, 0, 440], volume: 0.25 })
+    await handler.handleCommand({ cmd: 'play', params: [1, 0, 440], volume: 0.25 })
     expect(backend.playCalls).toEqual([{ params: [1, 0, 440], volume: 0.25 }])
   })
 
-  it('playSong starts the song via the backend (volume defaulted to 1) and acks', () => {
+  it('playSong starts the song via the backend (volume defaulted to 1) and acks', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    const response = handler.handleCommand({ cmd: 'playSong', song: SONG })
+    const response = await handler.handleCommand({ cmd: 'playSong', song: SONG })
     expect(response).toEqual({ ok: true, cmd: 'playSong' })
     expect(backend.playSongCalls).toEqual([{ song: SONG, volume: 1 }])
     expect(backend.songHandles[0]!.stop).not.toHaveBeenCalled()
   })
 
-  it('playSong passes an explicit volume multiplier through — both play paths carry the same trim', () => {
+  it('playSong passes an explicit volume multiplier through — both play paths carry the same trim', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    handler.handleCommand({ cmd: 'playSong', song: SONG, volume: 2 })
+    await handler.handleCommand({ cmd: 'playSong', song: SONG, volume: 2 })
     expect(backend.playSongCalls).toEqual([{ song: SONG, volume: 2 }])
   })
 
-  it('a second playSong stops the first song before starting the new one — never stacks', () => {
+  it('a second playSong stops the first song before starting the new one — never stacks', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    handler.handleCommand({ cmd: 'playSong', song: SONG })
+    await handler.handleCommand({ cmd: 'playSong', song: SONG })
     const firstHandle = backend.songHandles[0]!
-    handler.handleCommand({ cmd: 'playSong', song: { ...SONG, bpm: 140 } })
+    await handler.handleCommand({ cmd: 'playSong', song: { ...SONG, bpm: 140 } })
 
     expect(firstHandle.stop).toHaveBeenCalledTimes(1)
     expect(backend.playSongCalls).toHaveLength(2)
@@ -150,7 +150,7 @@ describe('createCommandHandler', () => {
     expect(backend.songHandles[1]!.stop).not.toHaveBeenCalled()
   })
 
-  it('a stale handle whose stop() THROWS cannot Nack a new play that already succeeded, nor orphan its handle', () => {
+  it('a stale handle whose stop() THROWS cannot Nack a new play that already succeeded, nor orphan its handle', async () => {
     // Reachable once the context lifecycle can close a context under a
     // still-held handle (idle-release/reacquire): stopping a source whose
     // context is gone may throw. That throw must not (a) Nack the NEW
@@ -158,79 +158,83 @@ describe('createCommandHandler', () => {
     // which would leave the new source playing with nothing to stop it.
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    handler.handleCommand({ cmd: 'playSong', song: SONG })
+    await handler.handleCommand({ cmd: 'playSong', song: SONG })
     backend.songHandles[0]!.stop.mockImplementation(() => {
       throw new Error('source context is closed')
     })
 
-    const response = handler.handleCommand({ cmd: 'playSong', song: { ...SONG, bpm: 140 } })
+    const response = await handler.handleCommand({ cmd: 'playSong', song: { ...SONG, bpm: 140 } })
     expect(response).toEqual({ ok: true, cmd: 'playSong' })
 
     // The NEW handle was adopted despite the old one's throwing stop —
     // an explicit stop reaches IT.
-    handler.handleCommand({ cmd: 'stopSong' })
+    await handler.handleCommand({ cmd: 'stopSong' })
     expect(backend.songHandles[1]!.stop).toHaveBeenCalledTimes(1)
   })
 
-  it('stopSong stops the current song and clears it', () => {
+  it('stopSong stops the current song and clears it', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    handler.handleCommand({ cmd: 'playSong', song: SONG })
-    const response = handler.handleCommand({ cmd: 'stopSong' })
+    await handler.handleCommand({ cmd: 'playSong', song: SONG })
+    const response = await handler.handleCommand({ cmd: 'stopSong' })
     expect(response).toEqual({ ok: true, cmd: 'stopSong' })
     expect(backend.songHandles[0]!.stop).toHaveBeenCalledTimes(1)
   })
 
-  it('stopSong with no song playing is a no-op that still acks', () => {
+  it('stopSong with no song playing is a no-op that still acks', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    const response = handler.handleCommand({ cmd: 'stopSong' })
+    const response = await handler.handleCommand({ cmd: 'stopSong' })
     expect(response).toEqual({ ok: true, cmd: 'stopSong' })
   })
 
-  it('stopSong after a song already stopped does not double-stop the handle', () => {
+  it('stopSong after a song already stopped does not double-stop the handle', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    handler.handleCommand({ cmd: 'playSong', song: SONG })
-    handler.handleCommand({ cmd: 'stopSong' })
-    handler.handleCommand({ cmd: 'stopSong' })
+    await handler.handleCommand({ cmd: 'playSong', song: SONG })
+    await handler.handleCommand({ cmd: 'stopSong' })
+    await handler.handleCommand({ cmd: 'stopSong' })
     expect(backend.songHandles[0]!.stop).toHaveBeenCalledTimes(1)
   })
 
-  it('stop stops the current song the same way stopSong does', () => {
+  it('stop stops the current song the same way stopSong does', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    handler.handleCommand({ cmd: 'playSong', song: SONG })
-    const response = handler.handleCommand({ cmd: 'stop' })
+    await handler.handleCommand({ cmd: 'playSong', song: SONG })
+    const response = await handler.handleCommand({ cmd: 'stop' })
     expect(response).toEqual({ ok: true, cmd: 'stop' })
     expect(backend.songHandles[0]!.stop).toHaveBeenCalledTimes(1)
   })
 
-  it('playFile forwards path/volume to the backend, defaulting volume to 1, and acks synchronously — it never blocks/awaits the decode', () => {
+  it('playFile forwards path/volume to the backend, defaulting volume to 1, and acks synchronously — it never blocks/awaits the decode', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    const response = handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
+    const response = await handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
     expect(response).toEqual({ ok: true, cmd: 'playFile' })
     expect(backend.playFileCalls).toEqual([{ path: '/tmp/x.wav', volume: 1 }])
   })
 
-  it('playFile passes an explicit volume multiplier through unchanged', () => {
+  it('playFile passes an explicit volume multiplier through unchanged', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav', volume: 0.5 })
+    await handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav', volume: 0.5 })
     expect(backend.playFileCalls).toEqual([{ path: '/tmp/x.wav', volume: 0.5 }])
   })
 
-  it("an async decode failure surfaces through the backend's own async-error channel, not swallowed — and handleCommand already returned before it fires", async () => {
+  it("an async decode failure surfaces through the backend's own async-error channel, not swallowed by handleCommand's own (unrelated) awaited playToneSynth case", async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    const response = handler.handleCommand({ cmd: 'playFile', path: 'FAIL_ASYNC' })
+    const response = await handler.handleCommand({ cmd: 'playFile', path: 'FAIL_ASYNC' })
     expect(response).toEqual({ ok: true, cmd: 'playFile' })
-    // Nothing async has had a chance to run yet at this point — proves
-    // handleCommand returned before the microtask playFile() queued
-    // could flush.
-    expect(backend.asyncPlayFileErrors).toEqual([])
-
+    // Proven by waiting for it to show up, not by asserting it hasn't
+    // yet: `handleCommand` returns a Promise for every command now (see
+    // commandHandler.ts's doc comment — `playToneSynth`'s bounded engine
+    // await is what requires this), so even the playFile case's own
+    // fully-synchronous branch resolves via at least one microtask tick
+    // in the CALLER. Asserting an exact microtask count against this
+    // fake's `queueMicrotask`-based simulation would be pinning
+    // incidental interleaving, not the real "does it ever surface, or
+    // does it get swallowed" contract.
     await vi.waitFor(() => expect(backend.asyncPlayFileErrors).toHaveLength(1))
     expect(backend.asyncPlayFileErrors[0]).toMatch(/decode failed/)
   })
@@ -240,58 +244,58 @@ describe('createCommandHandler', () => {
   // stop actually stops it), every play route replaces the previous
   // source, and the async decode can't resurrect a superseded play.
   describe('playFile as the current stoppable source (#46)', () => {
-    it("a decoded file's source registers as current — stopSong stops it", () => {
+    it("a decoded file's source registers as current — stopSong stops it", async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
+      await handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
       const handle = backend.startFile(0)
 
-      handler.handleCommand({ cmd: 'stopSong' })
+      await handler.handleCommand({ cmd: 'stopSong' })
       expect(handle.stop).toHaveBeenCalledTimes(1)
     })
 
-    it('stop stops a playing file the same way stopSong does', () => {
+    it('stop stops a playing file the same way stopSong does', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
+      await handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
       const handle = backend.startFile(0)
 
-      handler.handleCommand({ cmd: 'stop' })
+      await handler.handleCommand({ cmd: 'stop' })
       expect(handle.stop).toHaveBeenCalledTimes(1)
     })
 
-    it('playFile replaces the current song — one sound at a time, never stacked', () => {
+    it('playFile replaces the current song — one sound at a time, never stacked', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({ cmd: 'playSong', song: SONG })
+      await handler.handleCommand({ cmd: 'playSong', song: SONG })
       const songHandle = backend.songHandles[0]!
 
-      handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
+      await handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
       expect(songHandle.stop).toHaveBeenCalledTimes(1)
 
       // The decoded file is now the current source, not the (stopped) song.
       const fileHandle = backend.startFile(0)
-      handler.handleCommand({ cmd: 'stopSong' })
+      await handler.handleCommand({ cmd: 'stopSong' })
       expect(fileHandle.stop).toHaveBeenCalledTimes(1)
       expect(songHandle.stop).toHaveBeenCalledTimes(1)
     })
 
-    it('playSong replaces a playing file', () => {
+    it('playSong replaces a playing file', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
+      await handler.handleCommand({ cmd: 'playFile', path: '/tmp/x.wav' })
       const fileHandle = backend.startFile(0)
 
-      handler.handleCommand({ cmd: 'playSong', song: SONG })
+      await handler.handleCommand({ cmd: 'playSong', song: SONG })
       expect(fileHandle.stop).toHaveBeenCalledTimes(1)
       expect(backend.songHandles[0]!.stop).not.toHaveBeenCalled()
     })
 
-    it('a decode that lands AFTER a newer play stops its own late source and never clobbers the current one', () => {
+    it('a decode that lands AFTER a newer play stops its own late source and never clobbers the current one', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({ cmd: 'playFile', path: '/tmp/slow.wav' })
-      handler.handleCommand({ cmd: 'playSong', song: SONG })
+      await handler.handleCommand({ cmd: 'playFile', path: '/tmp/slow.wav' })
+      await handler.handleCommand({ cmd: 'playSong', song: SONG })
 
       // The slow decode finishes now — its source would layer over the
       // song if it started; the handler must stop it on arrival instead.
@@ -299,15 +303,15 @@ describe('createCommandHandler', () => {
       expect(lateHandle.stop).toHaveBeenCalledTimes(1)
 
       // And the song is still the current source.
-      handler.handleCommand({ cmd: 'stopSong' })
+      await handler.handleCommand({ cmd: 'stopSong' })
       expect(backend.songHandles[0]!.stop).toHaveBeenCalledTimes(1)
     })
 
-    it('a decode that lands after an explicit stop is stopped on arrival too', () => {
+    it('a decode that lands after an explicit stop is stopped on arrival too', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({ cmd: 'playFile', path: '/tmp/slow.wav' })
-      handler.handleCommand({ cmd: 'stopSong' })
+      await handler.handleCommand({ cmd: 'playFile', path: '/tmp/slow.wav' })
+      await handler.handleCommand({ cmd: 'stopSong' })
 
       const lateHandle = backend.startFile(0)
       expect(lateHandle.stop).toHaveBeenCalledTimes(1)
@@ -315,14 +319,19 @@ describe('createCommandHandler', () => {
   })
 
   // #47 — Tone.js/Wad synth findings join the same one-current-source
-  // lifecycle as playSong/playFile: synchronous construction (mirrors
-  // playSong exactly, neither backend call involves an async decode
-  // step), replace-never-stack, stoppable via stopSong/stop.
+  // lifecycle as playSong/playFile: try-then-replace (mirrors playSong),
+  // replace-never-stack, stoppable via stopSong/stop. Unlike
+  // playSong/playWadSynth, the real sidecar.ts backend for playToneSynth
+  // is asynchronous — it awaits the lazily-loaded Tone.js engine (bounded)
+  // before constructing the synth — so `handleCommand` itself is async and
+  // every call below is awaited; the fake backend here still returns
+  // synchronously (a plain value satisfies the `{stop():void} |
+  // Promise<{stop():void}>` union just as well as a Promise would).
   describe('playToneSynth', () => {
-    it('forwards the command to the backend, defaulting volume to 1, and acks', () => {
+    it('forwards the command to the backend, defaulting volume to 1, and acks', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      const response = handler.handleCommand({
+      const response = await handler.handleCommand({
         cmd: 'playToneSynth',
         synthType: 'Synth',
         note: 'C4',
@@ -341,10 +350,10 @@ describe('createCommandHandler', () => {
       ])
     })
 
-    it('passes an explicit volume multiplier through unchanged', () => {
+    it('passes an explicit volume multiplier through unchanged', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({
+      await handler.handleCommand({
         cmd: 'playToneSynth',
         synthType: 'NoiseSynth',
         duration: 0.05,
@@ -353,17 +362,17 @@ describe('createCommandHandler', () => {
       expect(backend.playToneSynthCalls[0]!.volume).toBe(0.4)
     })
 
-    it('a second playToneSynth stops the first — never stacks', () => {
+    it('a second playToneSynth stops the first — never stacks', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({
+      await handler.handleCommand({
         cmd: 'playToneSynth',
         synthType: 'Synth',
         note: 'C4',
         duration: '8n',
       })
       const firstHandle = backend.toneSynthHandles[0]!
-      handler.handleCommand({
+      await handler.handleCommand({
         cmd: 'playToneSynth',
         synthType: 'Synth',
         note: 'E4',
@@ -374,21 +383,21 @@ describe('createCommandHandler', () => {
       expect(backend.toneSynthHandles[1]!.stop).not.toHaveBeenCalled()
     })
 
-    it('stopSong stops the current tone synth', () => {
+    it('stopSong stops the current tone synth', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({
+      await handler.handleCommand({
         cmd: 'playToneSynth',
         synthType: 'Synth',
         note: 'C4',
         duration: '8n',
       })
-      const response = handler.handleCommand({ cmd: 'stopSong' })
+      const response = await handler.handleCommand({ cmd: 'stopSong' })
       expect(response).toEqual({ ok: true, cmd: 'stopSong' })
       expect(backend.toneSynthHandles[0]!.stop).toHaveBeenCalledTimes(1)
     })
 
-    it('a backend that throws produces a Nack, not an uncaught exception', () => {
+    it('a backend that throws produces a Nack, not an uncaught exception', async () => {
       const handler = createCommandHandler({
         play: vi.fn(),
         playSong: () => ({ stop: vi.fn() }),
@@ -399,7 +408,7 @@ describe('createCommandHandler', () => {
         playWadSynth: () => ({ stop: vi.fn() }),
         getStats: () => SILENT_STATS,
       })
-      const response = handler.handleCommand({
+      const response = await handler.handleCommand({
         cmd: 'playToneSynth',
         synthType: 'PolySynth',
         voiceType: 'PluckSynth',
@@ -413,20 +422,20 @@ describe('createCommandHandler', () => {
       })
     })
 
-    it('a backend error carrying a .code property propagates it onto the Nack (#47 cold-start retry correlation) — generic, not special-cased to playToneSynth', () => {
+    it('a backend error carrying a .code property propagates it onto the Nack — generic, not special-cased to playToneSynth', async () => {
       const handler = createCommandHandler({
         play: vi.fn(),
         playSong: () => ({ stop: vi.fn() }),
         playFile: vi.fn(),
         playToneSynth: () => {
-          throw Object.assign(new Error('Tone.js is still loading — try again in a moment'), {
-            code: 'TONE_LOADING',
+          throw Object.assign(new Error('Tone.js did not finish loading within 10000ms'), {
+            code: 'TONE_LOAD_FAILED',
           })
         },
         playWadSynth: () => ({ stop: vi.fn() }),
         getStats: () => SILENT_STATS,
       })
-      const response = handler.handleCommand({
+      const response = await handler.handleCommand({
         cmd: 'playToneSynth',
         synthType: 'Synth',
         note: 'C4',
@@ -435,29 +444,30 @@ describe('createCommandHandler', () => {
       expect(response).toEqual({
         ok: false,
         cmd: 'playToneSynth',
-        error: 'Tone.js is still loading — try again in a moment',
-        code: 'TONE_LOADING',
+        error: 'Tone.js did not finish loading within 10000ms',
+        code: 'TONE_LOAD_FAILED',
       })
     })
 
-    it("a cold-start TONE_LOADING throw does NOT stop a currently-playing source — the exact collateral-stop bug: every session's first Tone click must not kill a looping song", () => {
+    it('a rejecting playToneSynth backend (bounded Tone-load failure) does NOT stop a currently-playing source — the exact collateral-stop bug: a failed Tone load must not kill a looping song', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler({
         play: backend.play,
         playSong: backend.playSong,
         playFile: backend.playFile,
-        playToneSynth: () => {
-          throw Object.assign(new Error('Tone.js is still loading — try again in a moment'), {
-            code: 'TONE_LOADING',
-          })
-        },
+        playToneSynth: () =>
+          Promise.reject(
+            Object.assign(new Error('Tone.js did not finish loading within 10000ms'), {
+              code: 'TONE_LOAD_FAILED',
+            })
+          ),
         playWadSynth: backend.playWadSynth,
         getStats: backend.getStats,
       })
-      handler.handleCommand({ cmd: 'playSong', song: SONG })
+      await handler.handleCommand({ cmd: 'playSong', song: SONG })
       const songHandle = backend.songHandles[0]!
 
-      const response = handler.handleCommand({
+      const response = await handler.handleCommand({
         cmd: 'playToneSynth',
         synthType: 'Synth',
         note: 'C4',
@@ -466,27 +476,27 @@ describe('createCommandHandler', () => {
       expect(response).toEqual({
         ok: false,
         cmd: 'playToneSynth',
-        error: 'Tone.js is still loading — try again in a moment',
-        code: 'TONE_LOADING',
+        error: 'Tone.js did not finish loading within 10000ms',
+        code: 'TONE_LOAD_FAILED',
       })
 
-      // The song must still be playing — the throw happened BEFORE any
-      // audio-graph mutation, so it never touched currentSource.
+      // The song must still be playing — the rejection happened BEFORE
+      // any audio-graph mutation, so it never touched currentSource.
       expect(songHandle.stop).not.toHaveBeenCalled()
 
       // currentSource is still the song, not cleared/corrupted by the
       // failed attempt — stopSong stops the ORIGINAL sound, not nothing.
-      const stopSongResponse = handler.handleCommand({ cmd: 'stopSong' })
+      const stopSongResponse = await handler.handleCommand({ cmd: 'stopSong' })
       expect(stopSongResponse).toEqual({ ok: true, cmd: 'stopSong' })
       expect(songHandle.stop).toHaveBeenCalledTimes(1)
     })
   })
 
   describe('playWadSynth', () => {
-    it('forwards the config to the backend, defaulting volume to 1, and acks', () => {
+    it('forwards the config to the backend, defaulting volume to 1, and acks', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      const response = handler.handleCommand({
+      const response = await handler.handleCommand({
         cmd: 'playWadSynth',
         config: { source: 'square' },
       })
@@ -494,40 +504,40 @@ describe('createCommandHandler', () => {
       expect(backend.playWadSynthCalls).toEqual([{ config: { source: 'square' }, volume: 1 }])
     })
 
-    it('passes an explicit volume multiplier through unchanged', () => {
+    it('passes an explicit volume multiplier through unchanged', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'noise' }, volume: 0.7 })
+      await handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'noise' }, volume: 0.7 })
       expect(backend.playWadSynthCalls[0]!.volume).toBe(0.7)
     })
 
-    it('a second playWadSynth stops the first — never stacks', () => {
+    it('a second playWadSynth stops the first — never stacks', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'square' } })
+      await handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'square' } })
       const firstHandle = backend.wadSynthHandles[0]!
-      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'sawtooth' } })
+      await handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'sawtooth' } })
 
       expect(firstHandle.stop).toHaveBeenCalledTimes(1)
       expect(backend.wadSynthHandles[1]!.stop).not.toHaveBeenCalled()
     })
 
-    it('stop stops the current wad synth the same way stopSong does', () => {
+    it('stop stops the current wad synth the same way stopSong does', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'triangle' } })
-      const response = handler.handleCommand({ cmd: 'stop' })
+      await handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'triangle' } })
+      const response = await handler.handleCommand({ cmd: 'stop' })
       expect(response).toEqual({ ok: true, cmd: 'stop' })
       expect(backend.wadSynthHandles[0]!.stop).toHaveBeenCalledTimes(1)
     })
 
-    it('playToneSynth replaces a playing wad synth and vice versa — one current source across both engines', () => {
+    it('playToneSynth replaces a playing wad synth and vice versa — one current source across both engines', async () => {
       const backend = fakeBackend()
       const handler = createCommandHandler(backend)
-      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'square' } })
+      await handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'square' } })
       const wadHandle = backend.wadSynthHandles[0]!
 
-      handler.handleCommand({
+      await handler.handleCommand({
         cmd: 'playToneSynth',
         synthType: 'Synth',
         note: 'C4',
@@ -537,7 +547,7 @@ describe('createCommandHandler', () => {
       expect(backend.toneSynthHandles[0]!.stop).not.toHaveBeenCalled()
     })
 
-    it('a backend that throws on playWadSynth() produces a Nack and does NOT stop the currently-playing source — try-then-replace', () => {
+    it('a backend that throws on playWadSynth() produces a Nack and does NOT stop the currently-playing source — try-then-replace', async () => {
       const backend = fakeBackend()
       let shouldThrow = false
       const throwing: AudioBackend = {
@@ -552,29 +562,32 @@ describe('createCommandHandler', () => {
         getStats: backend.getStats,
       }
       const handler = createCommandHandler(throwing)
-      handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'square' } })
+      await handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'square' } })
       const firstHandle = backend.wadSynthHandles[0]!
 
       shouldThrow = true
-      const response = handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'noise' } })
+      const response = await handler.handleCommand({
+        cmd: 'playWadSynth',
+        config: { source: 'noise' },
+      })
       expect(response).toEqual({ ok: false, cmd: 'playWadSynth', error: 'wad config invalid' })
 
       expect(firstHandle.stop).not.toHaveBeenCalled()
 
-      const stopResponse = handler.handleCommand({ cmd: 'stop' })
+      const stopResponse = await handler.handleCommand({ cmd: 'stop' })
       expect(stopResponse).toEqual({ ok: true, cmd: 'stop' })
       expect(firstHandle.stop).toHaveBeenCalledTimes(1)
     })
   })
 
-  it("shutdown just acks — process teardown is the wiring layer's job, not the handler's", () => {
+  it("shutdown just acks — process teardown is the wiring layer's job, not the handler's", async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    const response = handler.handleCommand({ cmd: 'shutdown' })
+    const response = await handler.handleCommand({ cmd: 'shutdown' })
     expect(response).toEqual({ ok: true, cmd: 'shutdown' })
   })
 
-  it('a backend that throws on play() produces a Nack, not an uncaught exception', () => {
+  it('a backend that throws on play() produces a Nack, not an uncaught exception', async () => {
     const handler = createCommandHandler({
       play: () => {
         throw new Error('boom')
@@ -585,11 +598,11 @@ describe('createCommandHandler', () => {
       playWadSynth: () => ({ stop: vi.fn() }),
       getStats: () => SILENT_STATS,
     })
-    const response = handler.handleCommand({ cmd: 'play', params: [1] })
+    const response = await handler.handleCommand({ cmd: 'play', params: [1] })
     expect(response).toEqual({ ok: false, cmd: 'play', error: 'boom' })
   })
 
-  it('a backend that throws on playSong() produces a Nack and does NOT stop the currently-playing song — try-then-replace', () => {
+  it('a backend that throws on playSong() produces a Nack and does NOT stop the currently-playing song — try-then-replace', async () => {
     const backend = fakeBackend()
     let shouldThrow = false
     const throwing: AudioBackend = {
@@ -604,11 +617,11 @@ describe('createCommandHandler', () => {
       getStats: backend.getStats,
     }
     const handler = createCommandHandler(throwing)
-    handler.handleCommand({ cmd: 'playSong', song: SONG })
+    await handler.handleCommand({ cmd: 'playSong', song: SONG })
     const firstHandle = backend.songHandles[0]!
 
     shouldThrow = true
-    const response = handler.handleCommand({ cmd: 'playSong', song: SONG })
+    const response = await handler.handleCommand({ cmd: 'playSong', song: SONG })
     expect(response).toEqual({ ok: false, cmd: 'playSong', error: 'song failed' })
 
     // The backend call happens BEFORE the old source is touched — a
@@ -618,12 +631,12 @@ describe('createCommandHandler', () => {
 
     // currentSource must still point at the ORIGINAL handle after the
     // throw, so a subsequent stopSong correctly stops it, not nothing.
-    const stopSongResponse = handler.handleCommand({ cmd: 'stopSong' })
+    const stopSongResponse = await handler.handleCommand({ cmd: 'stopSong' })
     expect(stopSongResponse).toEqual({ ok: true, cmd: 'stopSong' })
     expect(firstHandle.stop).toHaveBeenCalledTimes(1)
   })
 
-  it('stats returns the backend-reported PlaybackStats verbatim', () => {
+  it('stats returns the backend-reported PlaybackStats verbatim', async () => {
     const audible: PlaybackStats = {
       peak: 0.42,
       silent: false,
@@ -632,17 +645,17 @@ describe('createCommandHandler', () => {
       elapsedSeconds: 0.5,
     }
     const handler = createCommandHandler(fakeBackend(audible))
-    const response = handler.handleCommand({ cmd: 'stats' })
+    const response = await handler.handleCommand({ cmd: 'stats' })
     expect(response).toEqual({ ok: true, cmd: 'stats', stats: audible })
   })
 
-  it('stats reflects a silent backend the same way — no play() call needed to ask', () => {
+  it('stats reflects a silent backend the same way — no play() call needed to ask', async () => {
     const handler = createCommandHandler(fakeBackend(SILENT_STATS))
-    const response = handler.handleCommand({ cmd: 'stats' })
+    const response = await handler.handleCommand({ cmd: 'stats' })
     expect(response).toEqual({ ok: true, cmd: 'stats', stats: SILENT_STATS })
   })
 
-  it('a backend that throws on getStats() produces a Nack, not an uncaught exception', () => {
+  it('a backend that throws on getStats() produces a Nack, not an uncaught exception', async () => {
     const handler = createCommandHandler({
       play: vi.fn(),
       playSong: () => ({ stop: vi.fn() }),
@@ -653,14 +666,14 @@ describe('createCommandHandler', () => {
         throw new Error('analyser unavailable')
       },
     })
-    const response = handler.handleCommand({ cmd: 'stats' })
+    const response = await handler.handleCommand({ cmd: 'stats' })
     expect(response).toEqual({ ok: false, cmd: 'stats', error: 'analyser unavailable' })
   })
 
-  it('ping acks unconditionally, never reaching the backend — device-independent liveness probe', () => {
+  it('ping acks unconditionally, never reaching the backend — device-independent liveness probe', async () => {
     const backend = fakeBackend()
     const handler = createCommandHandler(backend)
-    const response = handler.handleCommand({ cmd: 'ping' })
+    const response = await handler.handleCommand({ cmd: 'ping' })
     expect(response).toEqual({ ok: true, cmd: 'ping' })
     // Every backend method stayed untouched — ping is answered entirely
     // inside the handler, matching protocol.ts's PingCommand contract.
@@ -676,7 +689,7 @@ describe('createCommandHandler', () => {
   // backend error — a clean, coded Nack, no uncaught exception — and that
   // `ping` keeps answering afterward on the very same handler instance,
   // proving the process itself never went down.
-  it('a backend that throws AUDIO_DEVICE_UNAVAILABLE on play() produces a coded Nack, and ping still acks on the same handler', () => {
+  it('a backend that throws AUDIO_DEVICE_UNAVAILABLE on play() produces a coded Nack, and ping still acks on the same handler', async () => {
     const deviceUnavailable = () =>
       Object.assign(new Error('audio-play: no audio output device available'), {
         code: 'AUDIO_DEVICE_UNAVAILABLE',
@@ -705,7 +718,7 @@ describe('createCommandHandler', () => {
       }),
     })
 
-    const playResponse = handler.handleCommand({ cmd: 'play', params: [1] })
+    const playResponse = await handler.handleCommand({ cmd: 'play', params: [1] })
     expect(playResponse).toEqual({
       ok: false,
       cmd: 'play',
@@ -715,25 +728,30 @@ describe('createCommandHandler', () => {
 
     // The handler (and, in the real process, the sidecar) is still alive
     // and responsive — a device-less start degrades play, not the process.
-    const pingResponse = handler.handleCommand({ cmd: 'ping' })
+    const pingResponse = await handler.handleCommand({ cmd: 'ping' })
     expect(pingResponse).toEqual({ ok: true, cmd: 'ping' })
 
     // Every play kind, not just `play`, Nacks the same coded way.
-    expect(handler.handleCommand({ cmd: 'playSong', song: SONG })).toEqual({
+    expect(await handler.handleCommand({ cmd: 'playSong', song: SONG })).toEqual({
       ok: false,
       cmd: 'playSong',
       error: 'audio-play: no audio output device available',
       code: 'AUDIO_DEVICE_UNAVAILABLE',
     })
     expect(
-      handler.handleCommand({ cmd: 'playToneSynth', synthType: 'Synth', note: 'C4', duration: '8n' })
+      await handler.handleCommand({
+        cmd: 'playToneSynth',
+        synthType: 'Synth',
+        note: 'C4',
+        duration: '8n',
+      })
     ).toEqual({
       ok: false,
       cmd: 'playToneSynth',
       error: 'audio-play: no audio output device available',
       code: 'AUDIO_DEVICE_UNAVAILABLE',
     })
-    expect(handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'sine' } })).toEqual({
+    expect(await handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'sine' } })).toEqual({
       ok: false,
       cmd: 'playWadSynth',
       error: 'audio-play: no audio output device available',
@@ -743,7 +761,7 @@ describe('createCommandHandler', () => {
     // stats stays honest and non-throwing too (mirrors sidecar.ts's
     // closed-context branch) — a device-less sidecar never crashes on
     // ANY command, not just play/ping.
-    expect(handler.handleCommand({ cmd: 'stats' })).toEqual({
+    expect(await handler.handleCommand({ cmd: 'stats' })).toEqual({
       ok: true,
       cmd: 'stats',
       stats: {
