@@ -180,7 +180,9 @@ async function fetchSettledLenses(
       const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
       if (ext && !ext.isActive) await ext.activate()
       const api = ext!.exports as {
-        zzfxCodeLens: { onDidChangeCodeLenses: (listener: () => void) => import('vscode').Disposable }
+        zzfxCodeLens: {
+          onDidChangeCodeLenses: (listener: () => void) => import('vscode').Disposable
+        }
       }
 
       const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -198,7 +200,10 @@ async function fetchSettledLenses(
           uri,
           100
         )) as Lens[]
-        return raw.map((l) => ({ range: { start: { line: l.range.start.line } }, command: l.command }))
+        return raw.map((l) => ({
+          range: { start: { line: l.range.start.line } },
+          command: l.command,
+        }))
       }
       const isSearching = (lenses: Lens[]): boolean =>
         lenses.some((l) => (l.command?.title ?? '').replace(/\s+/g, ' ') === '$(search) Searching…')
@@ -296,7 +301,9 @@ async function pollLensAt(
       const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
       if (ext && !ext.isActive) await ext.activate()
       const api = ext!.exports as {
-        zzfxCodeLens: { onDidChangeCodeLenses: (listener: () => void) => import('vscode').Disposable }
+        zzfxCodeLens: {
+          onDidChangeCodeLenses: (listener: () => void) => import('vscode').Disposable
+        }
       }
       const [folder] = vscode.workspace.workspaceFolders ?? []
       const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
@@ -311,7 +318,10 @@ async function pollLensAt(
           uri,
           100
         )) as Lens[]
-        return raw.map((l) => ({ range: { start: { line: l.range.start.line } }, command: l.command }))
+        return raw.map((l) => ({
+          range: { start: { line: l.range.start.line } },
+          command: l.command,
+        }))
       }
       const find = (lenses: Lens[]): Lens | undefined =>
         lenses.find(
@@ -467,12 +477,13 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     // No declaration/initializer at all for this var-ref (a function
     // parameter) — provably never playable, so no Play/Stop pair, just a
-    // single inert lens with an empty command.
+    // single Unresolved lens wired to `explainUnresolved` (clicking pops an
+    // info message about why there's no preview, never a Play that fails).
     expect(lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '▶ Play')).toBeUndefined()
     expect(lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '⏹ Stop')).toBeUndefined()
     expect(
       lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '$(question) Unresolved')?.command?.command
-    ).toBe('')
+    ).toBe('threeFlatland.audio.explainUnresolved')
   })
 
   // #41 slow tier: thunder.ogg misses every fast tier (it lives only at
@@ -556,7 +567,11 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const playLens = lensAt(lenses, CLICK_SFX_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.audio.playFile')
 
-    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
+    await executeVSCodeCommand(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
+    )
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 
@@ -577,9 +592,15 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   // reference TWO object levels down — {reverb:{impulse}}) gets a ▶ Play
   // lens with the resolved real path baked into its arguments. Since #47
   // gave Wad's oscillator/noise keywords their OWN wad.synth finding
-  // kind, only the TRUE decoy block — mic (live input), sprite segments,
-  // and a stock preset — surfaces ZERO lenses now; asserted per line, not
-  // just via the exact total above.
+  // kind, the TRUE decoy block — mic (live input), sprite segments, and a
+  // stock preset — each surfaces exactly one inert `$(question) Unresolved`
+  // lens (the sidecar's unresolved wad.synth flavor), asserted per line
+  // below. The title uses a NON-BREAKING space between the codicon and text
+  // (provider.ts) — a regular space collapses in VS Code's CodeLens
+  // rendering, leaving a bare, invisible icon. The general matchers here
+  // normalize `\s+` (which includes the nbsp), so the loop ALSO pins the
+  // exact U+00A0 (a `toContain` below) to fail on a regression to a plain
+  // space rather than only catching it on a human's screen.
   test("Wad reverb impulse (nested 2 levels) gets a resolved ▶ Play lens; Wad's mic/sprite/preset decoys get an inert Unresolved lens each", async ({
     evaluateInVSCode,
   }) => {
@@ -591,8 +612,9 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     // Recognized-but-unplayable Wad instantiations surface an
     // informational signal, never silence and never a Play that would
-    // always fail (#41's principle): exactly one INERT lens per decoy —
-    // Unresolved title, empty command id, nothing to click.
+    // always fail (#41's principle): exactly one lens per decoy — an
+    // Unresolved title wired to `explainUnresolved`, which pops an info
+    // message about why there's no preview (never a Play that would fail).
     for (const line of SYNTH_DECOY_LINES) {
       const decoyLenses = lenses.filter((l) => l.range.start.line === line)
       expect(
@@ -600,10 +622,16 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
         `synthesis decoy on fixture line ${line} must surface exactly one lens`
       ).toHaveLength(1)
       expect(decoyLenses[0]?.command?.title).toMatch(/\$\(question\)\s+Unresolved/)
+      // Exact non-breaking-space guard (CodeRabbit): the `\s+` matcher above
+      // would still pass if the provider regressed to a REGULAR space — the
+      // exact rendering bug this fixes (VS Code collapses a regular space
+      // after a `$(icon)`, hiding the label). Pin the literal U+00A0 so a
+      // regression to a plain space fails here, not just on a human's screen.
+      expect(decoyLenses[0]?.command?.title).toContain('$(question)\u00A0Unresolved')
       expect(
         decoyLenses[0]?.command?.command,
-        'the Unresolved lens is inert — empty command id'
-      ).toBe('')
+        'the Unresolved lens is clickable — explains why via an info message'
+      ).toBe('threeFlatland.audio.explainUnresolved')
     }
   })
 
@@ -631,7 +659,11 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     // Play — the lens SET doesn't change at all: same two lenses, same
     // titles, same commands. No refresh-triggered recompute, no face flip.
-    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
+    await executeVSCodeCommand(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
+    )
     lenses = await fetchLenses(evaluateInVSCode)
     const whilePlaying = lenses
       .filter((l) => l.range.start.line === LONG_MARCH_CALL_LINE)
@@ -743,7 +775,11 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const playLens = lensAt(lenses, FANFARE_SPREAD_CALL_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.audio.playSong')
 
-    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
+    await executeVSCodeCommand(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
+    )
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 })
