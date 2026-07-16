@@ -208,7 +208,11 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     expect(playLens.command?.command).toBe('threeFlatland.audio.playWadSynth')
     expect(stopLens.command?.command).toBe('threeFlatland.audio.stopSong')
 
-    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
+    await executeVSCodeCommand(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
+    )
     // The lens SET doesn't change while playing — same two lenses.
     lenses = await fetchLenses(evaluateInVSCode)
     const whilePlaying = lenses
@@ -295,7 +299,11 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     expect(playLens.command?.command).toBe('threeFlatland.audio.playToneSynth')
     expect(stopLens.command?.command).toBe('threeFlatland.audio.stopSong')
 
-    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
+    await executeVSCodeCommand(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
+    )
     lenses = await fetchLenses(evaluateInVSCode)
     const whilePlaying = lenses
       .filter((l) => l.range.start.line === TONE_NOTE_LINE)
@@ -395,9 +403,10 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
       if (ext && !ext.isActive) await ext.activate()
       return (ext!.exports as ExtensionApi).zzfxPlay.ping()
     })
-    expect(alive, 'the sidecar must still answer ping after dispatching PluckSynth — not crashed/hung').toBe(
-      true
-    )
+    expect(
+      alive,
+      'the sidecar must still answer ping after dispatching PluckSynth — not crashed/hung'
+    ).toBe(true)
   })
 
   // #47's wad.synth var-ref cases, driven end to end: the scanner always
@@ -460,12 +469,13 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     )
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
 
-    // No Play/Stop pair at all for this line — just the one inert lens.
+    // No Play/Stop pair at all for this line — just the one Unresolved lens,
+    // clickable to an info message (never a Play that would fail).
     expect(lensAt(lenses, TONE_VAR_UNRESOLVABLE_LINE, '▶ Play')).toBeUndefined()
     expect(lensAt(lenses, TONE_VAR_UNRESOLVABLE_LINE, '⏹ Stop')).toBeUndefined()
     const unresolvedLens = lensAt(lenses, TONE_VAR_UNRESOLVABLE_LINE, '$(question) Unresolved')!
     expect(unresolvedLens).toBeDefined()
-    expect(unresolvedLens.command?.command).toBe('')
+    expect(unresolvedLens.command?.command).toBe('threeFlatland.audio.explainUnresolved')
   })
 
   // HONEST SCOPE (adversarial-review finding #2, fix/deterministic-tests-p1):
@@ -485,7 +495,7 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
   // device-less runner — that coverage comes from
   // `audio-render-gate.spec.ts`'s offline probes instead, which call that
   // exact production helper directly, no device or sidecar process needed.
-  test('Tone play against a freshly respawned sidecar: shutdown+respawn dispatches and the process stays alive (device-tolerance, not a cold-start import(\'tone\') proof)', async ({
+  test("Tone play against a freshly respawned sidecar: shutdown+respawn dispatches and the process stays alive (device-tolerance, not a cold-start import('tone') proof)", async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchLenses(evaluateInVSCode)

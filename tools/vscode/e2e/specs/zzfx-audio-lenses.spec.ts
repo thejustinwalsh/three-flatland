@@ -180,7 +180,9 @@ async function fetchSettledLenses(
       const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
       if (ext && !ext.isActive) await ext.activate()
       const api = ext!.exports as {
-        zzfxCodeLens: { onDidChangeCodeLenses: (listener: () => void) => import('vscode').Disposable }
+        zzfxCodeLens: {
+          onDidChangeCodeLenses: (listener: () => void) => import('vscode').Disposable
+        }
       }
 
       const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -198,7 +200,10 @@ async function fetchSettledLenses(
           uri,
           100
         )) as Lens[]
-        return raw.map((l) => ({ range: { start: { line: l.range.start.line } }, command: l.command }))
+        return raw.map((l) => ({
+          range: { start: { line: l.range.start.line } },
+          command: l.command,
+        }))
       }
       const isSearching = (lenses: Lens[]): boolean =>
         lenses.some((l) => (l.command?.title ?? '').replace(/\s+/g, ' ') === '$(search) Searching…')
@@ -296,7 +301,9 @@ async function pollLensAt(
       const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
       if (ext && !ext.isActive) await ext.activate()
       const api = ext!.exports as {
-        zzfxCodeLens: { onDidChangeCodeLenses: (listener: () => void) => import('vscode').Disposable }
+        zzfxCodeLens: {
+          onDidChangeCodeLenses: (listener: () => void) => import('vscode').Disposable
+        }
       }
       const [folder] = vscode.workspace.workspaceFolders ?? []
       const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
@@ -311,7 +318,10 @@ async function pollLensAt(
           uri,
           100
         )) as Lens[]
-        return raw.map((l) => ({ range: { start: { line: l.range.start.line } }, command: l.command }))
+        return raw.map((l) => ({
+          range: { start: { line: l.range.start.line } },
+          command: l.command,
+        }))
       }
       const find = (lenses: Lens[]): Lens | undefined =>
         lenses.find(
@@ -467,12 +477,13 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     // No declaration/initializer at all for this var-ref (a function
     // parameter) — provably never playable, so no Play/Stop pair, just a
-    // single inert lens with an empty command.
+    // single Unresolved lens wired to `explainUnresolved` (clicking pops an
+    // info message about why there's no preview, never a Play that fails).
     expect(lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '▶ Play')).toBeUndefined()
     expect(lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '⏹ Stop')).toBeUndefined()
     expect(
       lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '$(question) Unresolved')?.command?.command
-    ).toBe('')
+    ).toBe('threeFlatland.audio.explainUnresolved')
   })
 
   // #41 slow tier: thunder.ogg misses every fast tier (it lives only at
@@ -556,7 +567,11 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const playLens = lensAt(lenses, CLICK_SFX_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.audio.playFile')
 
-    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
+    await executeVSCodeCommand(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
+    )
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 
@@ -596,8 +611,9 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     // Recognized-but-unplayable Wad instantiations surface an
     // informational signal, never silence and never a Play that would
-    // always fail (#41's principle): exactly one INERT lens per decoy —
-    // Unresolved title, empty command id, nothing to click.
+    // always fail (#41's principle): exactly one lens per decoy — an
+    // Unresolved title wired to `explainUnresolved`, which pops an info
+    // message about why there's no preview (never a Play that would fail).
     for (const line of SYNTH_DECOY_LINES) {
       const decoyLenses = lenses.filter((l) => l.range.start.line === line)
       expect(
@@ -607,8 +623,8 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
       expect(decoyLenses[0]?.command?.title).toMatch(/\$\(question\)\s+Unresolved/)
       expect(
         decoyLenses[0]?.command?.command,
-        'the Unresolved lens is inert — empty command id'
-      ).toBe('')
+        'the Unresolved lens is clickable — explains why via an info message'
+      ).toBe('threeFlatland.audio.explainUnresolved')
     }
   })
 
@@ -636,7 +652,11 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     // Play — the lens SET doesn't change at all: same two lenses, same
     // titles, same commands. No refresh-triggered recompute, no face flip.
-    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
+    await executeVSCodeCommand(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
+    )
     lenses = await fetchLenses(evaluateInVSCode)
     const whilePlaying = lenses
       .filter((l) => l.range.start.line === LONG_MARCH_CALL_LINE)
@@ -748,7 +768,11 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const playLens = lensAt(lenses, FANFARE_SPREAD_CALL_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.audio.playSong')
 
-    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
+    await executeVSCodeCommand(
+      evaluateInVSCode,
+      playLens.command!.command,
+      playLens.command!.arguments
+    )
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 })
