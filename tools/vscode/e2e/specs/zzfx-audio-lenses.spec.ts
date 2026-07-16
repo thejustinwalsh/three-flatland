@@ -577,9 +577,14 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   // reference TWO object levels down — {reverb:{impulse}}) gets a ▶ Play
   // lens with the resolved real path baked into its arguments. Since #47
   // gave Wad's oscillator/noise keywords their OWN wad.synth finding
-  // kind, only the TRUE decoy block — mic (live input), sprite segments,
-  // and a stock preset — surfaces ZERO lenses now; asserted per line, not
-  // just via the exact total above.
+  // kind, the TRUE decoy block — mic (live input), sprite segments, and a
+  // stock preset — each surfaces exactly one inert `$(question) Unresolved`
+  // lens (the sidecar's unresolved wad.synth flavor), asserted per line
+  // below. NOTE: this used a NON-BREAKING space between the codicon and
+  // text (provider.ts) — a regular space collapses in VS Code's CodeLens
+  // rendering, leaving a bare, invisible icon. The matchers here normalize
+  // `\s+` (which includes the nbsp), so they don't pin that distinction —
+  // only a human/rendered check catches a regression to a plain space.
   test("Wad reverb impulse (nested 2 levels) gets a resolved ▶ Play lens; Wad's mic/sprite/preset decoys get an inert Unresolved lens each", async ({
     evaluateInVSCode,
   }) => {

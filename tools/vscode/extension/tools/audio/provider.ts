@@ -239,7 +239,15 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
       // fallback search: the identifier provably has no declaration/
       // initializer to read (see provideCodeLenses), so there's nothing
       // to retry.
-      codeLens.command = { title: '$(question)  Unresolved', command: '' }
+      // \u00A0 (non-breaking space) between the codicon and the label:
+      // VS Code collapses a regular space that follows a `$(icon)` in a
+      // CodeLens title, which rendered this as a bare, near-invisible icon
+      // with no visible text in the shipped build (the old title had a
+      // DOUBLE space, both collapsed). A non-breaking space survives it.
+      // The e2e reads the lens OBJECT via executeCodeLensProvider, never
+      // VS Code's painted output, so it could not catch this; spec matchers
+      // normalize \s+ (which includes \u00A0), so they stay green.
+      codeLens.command = { title: '$(question)\u00A0Unresolved', command: '' }
       return codeLens
     }
 
@@ -324,12 +332,12 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
         // Not clickable while the fallback search is in flight — the
         // empty command id renders an inert lens; onDidChangeCodeLenses
         // fires when it settles.
-        codeLens.command = { title: '$(search)  Searching…', command: '' }
+        codeLens.command = { title: '$(search)\u00A0Searching…', command: '' }
       } else {
         // The retry click carries `source` too — a successful lazy-repair
         // play is a real playback and must mark its finding active.
         codeLens.command = {
-          title: '$(search)  Not Found',
+          title: '$(search)\u00A0Not Found',
           command: 'threeFlatland.audio.playFile',
           arguments: [undefined, ref, source],
         }
