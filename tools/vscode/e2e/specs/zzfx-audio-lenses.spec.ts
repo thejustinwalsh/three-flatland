@@ -595,11 +595,12 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   // kind, the TRUE decoy block — mic (live input), sprite segments, and a
   // stock preset — each surfaces exactly one inert `$(question) Unresolved`
   // lens (the sidecar's unresolved wad.synth flavor), asserted per line
-  // below. NOTE: this used a NON-BREAKING space between the codicon and
-  // text (provider.ts) — a regular space collapses in VS Code's CodeLens
-  // rendering, leaving a bare, invisible icon. The matchers here normalize
-  // `\s+` (which includes the nbsp), so they don't pin that distinction —
-  // only a human/rendered check catches a regression to a plain space.
+  // below. The title uses a NON-BREAKING space between the codicon and text
+  // (provider.ts) — a regular space collapses in VS Code's CodeLens
+  // rendering, leaving a bare, invisible icon. The general matchers here
+  // normalize `\s+` (which includes the nbsp), so the loop ALSO pins the
+  // exact U+00A0 (a `toContain` below) to fail on a regression to a plain
+  // space rather than only catching it on a human's screen.
   test("Wad reverb impulse (nested 2 levels) gets a resolved ▶ Play lens; Wad's mic/sprite/preset decoys get an inert Unresolved lens each", async ({
     evaluateInVSCode,
   }) => {
@@ -621,6 +622,12 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
         `synthesis decoy on fixture line ${line} must surface exactly one lens`
       ).toHaveLength(1)
       expect(decoyLenses[0]?.command?.title).toMatch(/\$\(question\)\s+Unresolved/)
+      // Exact non-breaking-space guard (CodeRabbit): the `\s+` matcher above
+      // would still pass if the provider regressed to a REGULAR space — the
+      // exact rendering bug this fixes (VS Code collapses a regular space
+      // after a `$(icon)`, hiding the label). Pin the literal U+00A0 so a
+      // regression to a plain space fails here, not just on a human's screen.
+      expect(decoyLenses[0]?.command?.title).toContain('$(question)\u00A0Unresolved')
       expect(
         decoyLenses[0]?.command?.command,
         'the Unresolved lens is clickable — explains why via an info message'
