@@ -75,18 +75,13 @@ test('Save re-bakes .normal.png and re-stamps its content-hash', async ({
   await frame.getByTitle('Save (.normal.png + .normal.json)').click()
 
   // The bake itself is synchronous Node fs inside the host's bridge
-  // handler, but the bridge round-trip (webview request → host → response)
-  // is async — poll for the output file rather than asserting immediately.
-  await expect
-    .poll(
-      () =>
-        fs
-          .stat(pngOut)
-          .then(() => true)
-          .catch(() => false),
-      { timeout: 15_000 }
-    )
-    .toBe(true)
+  // handler (saveNormalDescriptor — sidecar.ts), so by the time the
+  // bridge round-trip (webview request → host → response) resolves, both
+  // output files are already on disk. App.tsx's handleSave only renders
+  // the "Saved" status once that `bridge.request('normalBaker/save', …)`
+  // promise resolves, so this is a real causal signal, not a guess about
+  // timing — no need to poll the filesystem.
+  await expect(frame.getByText('Saved', { exact: true })).toBeVisible()
 
   const pngBytes = await fs.readFile(pngOut)
   expect(Array.from(pngBytes.subarray(0, 8))).toEqual([
@@ -256,19 +251,16 @@ test('split: 2×2 on a tilted region replaces it with 4 children inheriting exac
   // and nothing it merely inherited (pitch/bump/strength stay omitted so
   // they keep tracking the descriptor default live).
   await frame.getByTitle('Save (.normal.png + .normal.json)').click()
-  const jsonOut = path.join(baseDir, 'sprites', 'Dungeon_Tileset.normal.json')
-  await expect
-    .poll(async () => {
-      try {
-        const d = JSON.parse(await fs.readFile(jsonOut, 'utf8')) as NormalSourceDescriptor
-        return d.regions?.length ?? 0
-      } catch {
-        return 0
-      }
-    })
-    .toBe(125)
 
+  // Same causal signal as the round-trip test above: "Saved" only renders
+  // after the `normalBaker/save` bridge response lands, and the host's
+  // write is synchronous fs, so the sidecar is guaranteed to be on disk
+  // by the time this resolves — read it once rather than polling.
+  await expect(frame.getByText('Saved', { exact: true })).toBeVisible()
+
+  const jsonOut = path.join(baseDir, 'sprites', 'Dungeon_Tileset.normal.json')
   const descriptor = JSON.parse(await fs.readFile(jsonOut, 'utf8')) as NormalSourceDescriptor
+  expect(descriptor.regions).toHaveLength(125)
   const children = descriptor.regions!.filter((r) => r.w === 8 && r.h === 6)
   expect(children).toHaveLength(4)
   expect(children.map((r) => `${r.x},${r.y}`).sort()).toEqual(['16,10', '16,4', '24,10', '24,4'])

@@ -226,4 +226,73 @@ describe('AudioFileResolver', () => {
       path: '/ws/a/boom.wav',
     })
   })
+
+  describe('clear() epoch guard (finding #3, adversarial review of PR #188)', () => {
+    /** A promise this test resolves explicitly, standing in for a
+     * workspace-wide `findByBasename` scan that's still running when
+     * `clear()` fires. Driving it by hand (never a timer) is the signal
+     * that lets the assertions run strictly after the stale search's
+     * continuation has had its chance to mutate state. */
+    function createDeferred<T>() {
+      let resolve!: (value: T) => void
+      const promise = new Promise<T>((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
+
+    /** Mirrors the private `key()` format in audioFileResolver.ts
+     * (`workspaceRoot\0sourceDir\0refPath`) so the test can read the
+     * resolver's internal maps directly without reaching for a private
+     * method. */
+    const keyFor = (refPath: string) => `${WORKSPACE_ROOT} ${SOURCE_DIR} ${refPath}`
+
+    it('a search started before clear() does not write its result or fire onDidUpdate after it resolves', async () => {
+      const onDidUpdate = vi.fn()
+      const deferred = createDeferred<string[]>()
+      const findByBasename = vi.fn(() => deferred.promise)
+      const resolver = new AudioFileResolver({ exists: () => false, findByBasename, onDidUpdate })
+      const internals = resolver as unknown as {
+        cache: Map<string, string>
+        searches: Map<string, Promise<string | undefined>>
+        misses: Set<string>
+      }
+      const key = keyFor('boom.wav')
+
+      // Fast tiers miss, path is search-eligible → kicks off the slow
+      // search and captures epoch 0.
+      expect(resolver.getLensState('boom.wav', SOURCE_DIR, WORKSPACE_ROOT)).toEqual({
+        state: 'searching',
+      })
+      expect(findByBasename).toHaveBeenCalledTimes(1)
+      const staleSearch = internals.searches.get(key)
+      expect(staleSearch).toBeDefined()
+
+      // The per-test reset: bumps the epoch and empties every map before
+      // the pristine fixture is recopied in.
+      resolver.clear()
+      expect(internals.cache.size).toBe(0)
+      expect(internals.searches.size).toBe(0)
+      expect(internals.misses.size).toBe(0)
+
+      // Only now does the previous workspace's findFiles scan settle —
+      // as if it had been in flight the whole time clear() ran.
+      deferred.resolve(['/ws/media/boom.wav'])
+      await staleSearch
+
+      // The obsolete search must not have repopulated the fresh maps or
+      // fired a refresh for a result nobody's waiting on.
+      expect(internals.cache.size).toBe(0)
+      expect(internals.searches.size).toBe(0)
+      expect(internals.misses.size).toBe(0)
+      expect(onDidUpdate).not.toHaveBeenCalled()
+
+      // Production behavior for the normal path is untouched: a fresh
+      // lookup after the reset starts its own, independent search.
+      expect(resolver.getLensState('boom.wav', SOURCE_DIR, WORKSPACE_ROOT)).toEqual({
+        state: 'searching',
+      })
+      expect(findByBasename).toHaveBeenCalledTimes(2)
+    })
+  })
 })

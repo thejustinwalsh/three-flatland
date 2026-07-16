@@ -105,10 +105,13 @@ export class PlaySidecarClient {
         return
       }
       if (!response.ok) {
-        // `response.code` (e.g. `'TONE_LOADING'`) rides along on the
-        // emitted Error as a `.code` property, not parsed back out of the
-        // message — lets a caller (register.ts's cold-start retry)
-        // correlate a specific failure mode without a formal request id.
+        // `response.code` (e.g. `'AUDIO_DEVICE_UNAVAILABLE'`, or
+        // `'TONE_LOAD_FAILED'` for a fire-and-forget `playToneSynth()`
+        // call — see {@link playToneSynthAwaitable} for the correlated
+        // variant callers should prefer) rides along on the emitted Error
+        // as a `.code` property, not parsed back out of the message —
+        // lets a listener react to a specific failure mode without a
+        // formal request id.
         this.emitError(
           Object.assign(new Error(`audio-play: ${response.cmd} failed: ${response.error}`), {
             ...(response.code !== undefined ? { code: response.code } : {}),
@@ -253,17 +256,26 @@ export class PlaySidecarClient {
   private toneSynthChain: Promise<unknown> = Promise.resolve()
 
   /**
-   * Correlated variant of {@link playToneSynth} (toneColdStartRetry.ts's
-   * cold-start retry, #47/#49) — awaits THIS SPECIFIC call's own Ack/Nack
-   * response, rather than a caller inferring success from
-   * `getStats().playing`, which reflects the whole context's shared
-   * "most-recently-started source" record and can read `true` off an
-   * unrelated, still-audible one-shot that has nothing to do with this
+   * Correlated variant of {@link playToneSynth} (#47/#49) — awaits THIS
+   * SPECIFIC call's own Ack/Nack response, rather than a caller inferring
+   * success from `getStats().playing`, which reflects the whole context's
+   * shared "most-recently-started source" record and can read `true` off
+   * an unrelated, still-audible one-shot that has nothing to do with this
    * call. Not a race against the sidecar's own cold-spawn time, because
    * the sidecar processes stdin strictly sequentially (see `protocol.ts`'s
    * doc comment): attaching a listener for the next `cmd: 'playToneSynth'`
    * response line, before sending, always pairs with THIS call's own
    * response, however long the sidecar takes to produce it.
+   *
+   * The sidecar's own `playToneSynth` backend awaits its lazily-loaded
+   * Tone.js engine (bounded, `TONE_LOAD_TIMEOUT_MS` in `sidecar.ts`)
+   * before Acking/Nacking, so this call's own round trip can legitimately
+   * take that long on a cold sidecar's first Tone play — the caller
+   * (`register.ts`) awaits this ONE response directly rather than
+   * retrying on a fixed schedule; `timeoutMs`'s default below leaves
+   * headroom above the sidecar's own bound so it only fires as an outer
+   * safety net (a dropped response, a wedged sidecar), never in the
+   * normal bounded-wait path.
    *
    * Concurrent callers are SERIALIZED via `toneSynthChain`, same
    * reasoning (and same known one-in-flight limitation) as `getStats`.
@@ -273,7 +285,7 @@ export class PlaySidecarClient {
   async playToneSynthAwaitable(
     cmd: Omit<PlayToneSynthCommand, 'cmd'>,
     volume?: number,
-    timeoutMs = 10_000
+    timeoutMs = 15_000
   ): Promise<{ ok: true } | { ok: false; error: string; code?: string }> {
     const run = this.toneSynthChain.then(() => this.requestPlayToneSynth(cmd, volume, timeoutMs))
     this.toneSynthChain = run.catch(() => undefined)
