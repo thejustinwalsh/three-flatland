@@ -51,10 +51,11 @@
 // count (`offlineRenderOracle.mjs`) — a wrong-frequency, phase-corrupted,
 // or equal-energy-noise-burst render can share peak/energy with the
 // correct one while crossing zero a completely different number of times.
-// Every fixture here is deterministic (byte-stable across repeated runs)
-// EXCEPT PluckSynth, whose Karplus-Strong excitation is genuinely
-// randomized by Tone itself — see that test's own comment for how its
-// bounds account for that.
+// Every fixture here is deterministic (byte-stable across repeated runs) —
+// including PluckSynth, whose Karplus-Strong excitation is randomized by
+// Tone itself but pinned by seeding `Math.random` in the probe before
+// `import('tone')` (`toneOfflineEnv.mjs`), so its bounds are a tight
+// two-sided box like the others rather than a probabilistic floor.
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '../fixtures'
@@ -125,9 +126,12 @@ async function runOfflineProbe(
  * closures/sharing rules apply (unlike `runOfflineProbe` above).
  * `zeroCrossings` is what lets the assertions below go beyond peak/energy
  * — see each test's comment for why that matters per fixture. */
-function parseRenderOk(
-  stdout: string
-): { peak: number; energy: number; frames: number; zeroCrossings: number } {
+function parseRenderOk(stdout: string): {
+  peak: number
+  energy: number
+  frames: number
+  zeroCrossings: number
+} {
   const match = stdout.match(
     /RENDER_OK peak=([\d.]+) energy=([\d.]+) frames=(\d+) zeroCrossings=(\d+)/
   )
@@ -341,24 +345,31 @@ test.describe('FL Audio: offline render audibility gate', () => {
 
     expect(frames).toBe(22050)
 
-    // Unlike every other fixture in this file, PluckSynth's
-    // Karplus-Strong excitation (`Tone.Noise`'s `_start` picks
-    // `Math.random() * (buffer.duration - 0.001)` as its noise-buffer
-    // start offset) is genuinely non-deterministic run to run — peak,
-    // energy, AND zero-crossing count all vary (empirically observed
-    // across 15+ real runs under this exact binary: peak 0.19–0.42,
-    // energy 2.1–12.7, zeroCrossings 74–4513). These bounds are
-    // deliberately loose — proving "real, oscillating, comb-filtered
-    // audio came out," not pinning an exact waveform — but still a real
-    // guard: a broken AudioWorklet path renders exact silence (peak≈0,
-    // zeroCrossings≈0), which the wide floor below still catches.
-    expect(peak).toBeGreaterThanOrEqual(0.05)
-    expect(peak).toBeLessThanOrEqual(0.6)
-    expect(energy).toBeGreaterThanOrEqual(0.5)
-    expect(energy).toBeLessThanOrEqual(30)
-    // A real comb-filtered pluck oscillates far more than a handful of
-    // times over 0.5s — a silent-but-nonzero-peak render (e.g. a DC
-    // offset slipping past the peak floor above) would land near 0.
-    expect(zeroCrossings).toBeGreaterThanOrEqual(50)
+    // PluckSynth's Karplus-Strong excitation (`Tone.Noise`'s noise buffer
+    // + its `Math.random()`-chosen start offset) is the ONLY
+    // nondeterministic input to the otherwise bit-deterministic
+    // comb-filter DSP — and `offlineTonePluckProbe.mjs` now seeds
+    // `Math.random` (mulberry32, `toneOfflineEnv.mjs`) before
+    // `import('tone')`, so the render is reproducible run to run. Measured
+    // seeded values under this binary: peak≈0.211, energy≈3.03,
+    // zeroCrossings=3069 — byte-stable across repeated local runs. The
+    // bounds below are TIGHT TWO-SIDED boxes around those (not a
+    // probabilistic floor that could false-fail on an unlucky run): the
+    // slack absorbs only cross-platform libm epsilon in the amplitude
+    // envelope, nothing else. peak+energy carry the tight-oracle load; a
+    // broken AudioWorklet path renders exact silence (peak≈0), a DC offset
+    // renders zeroCrossings≈0, a plain-tone leak (envelope only, no comb
+    // filter) renders zeroCrossings≈78 — all fall outside these boxes.
+    expect(peak).toBeGreaterThanOrEqual(0.16)
+    expect(peak).toBeLessThanOrEqual(0.27)
+    expect(energy).toBeGreaterThanOrEqual(2.2)
+    expect(energy).toBeLessThanOrEqual(4.0)
+    // Two-sided (Codex finding): the floor rejects silence/DC (≈0) and a
+    // plain-tone leak (≈78); the ceiling rejects raw unfiltered noise
+    // (≈half the samples ≈ 11000). Wider slack than peak/energy because
+    // near-zero tail crossings in the decay are the most FP-sensitive
+    // metric cross-platform — still a real comb-filtered-pluck shape gate.
+    expect(zeroCrossings).toBeGreaterThanOrEqual(1200)
+    expect(zeroCrossings).toBeLessThanOrEqual(4500)
   })
 })

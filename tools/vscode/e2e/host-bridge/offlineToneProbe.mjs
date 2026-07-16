@@ -55,6 +55,18 @@
 // unrelated reacquire-after-device-loss case, just triggered here by
 // import-time eagerness instead of a context swap.
 //
+// --- Why that eager construction must be given an offline-backed context ---
+// That same import-time `new window.AudioContext()` is ALSO why this
+// probe can't just run as-is on a device-less runner: the guard hands
+// back a degraded stand-in with no `.destination`, and `standardized-
+// audio-context` crashes reading `destination.channelCount` while
+// building the eager context — before this probe renders a single sample.
+// `installOfflineEagerAudioContext` (`toneOfflineEnv.mjs`, called below
+// before `import('tone')`) backs that throwaway construction with an
+// `OfflineAudioContext` instead, which needs no device and has a real
+// `.destination`. That is what makes "No audio device" above actually
+// true on CI, not just on a dev box that happens to have one.
+//
 // This probe's OWN `import('tone')` (used only to grab+dispose that eager
 // context) happens BEFORE `toneEngineLoader.ts`'s `loadToneEngine` ever
 // runs — so it must call the shared `setupToneEnvironment` explicitly
@@ -82,9 +94,12 @@
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { analyzeRenderedBuffer, printVerdict } from './offlineRenderOracle.mjs'
+import { installOfflineEagerAudioContext } from './toneOfflineEnv.mjs'
 
 // host-bridge -> e2e -> vscode -> (sibling) audio-play.
-const requireFromAudioPlay = createRequire(new URL('../../../audio-play/package.json', import.meta.url))
+const requireFromAudioPlay = createRequire(
+  new URL('../../../audio-play/package.json', import.meta.url)
+)
 
 // Real `globalThis.window` (via `node-web-audio-api/polyfill.js`), same
 // module `sidecar.ts` imports first.
@@ -108,7 +123,15 @@ globalThis.cancelAnimationFrame ??= (id) => clearTimeout(id)
 const { OfflineAudioContext } = await import(
   pathToFileURL(requireFromAudioPlay.resolve('node-web-audio-api')).href
 )
-const { playToneSynth } = await import(pathToFileURL(requireFromAudioPlay.resolve('./dist/player.js')).href)
+const { playToneSynth } = await import(
+  pathToFileURL(requireFromAudioPlay.resolve('./dist/player.js')).href
+)
+
+// Back Tone's UNAVOIDABLE eager import-time realtime-context construction
+// with an OfflineAudioContext — MUST precede `import('tone')`. Without it
+// this probe crashes at import on a device-less runner (the guard's
+// degraded stand-in has no `.destination`). See `toneOfflineEnv.mjs`.
+installOfflineEagerAudioContext(OfflineAudioContext)
 
 const Tone = await import(pathToFileURL(requireFromAudioPlay.resolve('tone')).href)
 

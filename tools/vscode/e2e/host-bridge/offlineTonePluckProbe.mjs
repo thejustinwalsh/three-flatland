@@ -17,9 +17,13 @@
 // closes that gap: it renders a real `Tone.PluckSynth` play — genuinely
 // constructing a native `AudioWorkletNode` via
 // `standardized-audio-context` — through an `OfflineAudioContext`, and
-// asserts the known non-zero samples survive. No audio device needed:
-// `node-web-audio-api`'s AudioWorklet mechanism is native Worker-thread
-// based, independent of any actual output device.
+// asserts the rendered samples land in a tight two-sided box. No audio
+// device needed: `node-web-audio-api`'s AudioWorklet mechanism is native
+// Worker-thread based, independent of any actual output device — AND the
+// import-time eager realtime context that would otherwise crash a
+// device-less runner is backed by an `OfflineAudioContext`
+// (`installOfflineEagerAudioContext`, see "Determinism + device-
+// independence" below).
 //
 // It calls the REAL production `loadToneEngine`/`setupToneEnvironment`
 // (`tools/audio-play/src/toneEngineLoader.ts`) and `playToneSynth`
@@ -62,15 +66,32 @@
 // and the `requestAnimationFrame`/`cancelAnimationFrame` shims — both
 // repeated here unchanged, for the same reasons.
 //
+// --- Determinism + device-independence ---
+// Unlike every other fixture in this family, `PluckSynth`'s Karplus-Strong
+// excitation (`Tone.Noise`'s noise buffer + its `Math.random()`-chosen
+// start offset) is the sole nondeterministic input to the otherwise
+// bit-deterministic comb-filter DSP. `seedMathRandom` (below, before
+// `import('tone')`) pins it, so peak/energy/zeroCrossings are
+// reproducible run to run and the spec asserts tight two-sided bounds — a
+// real oracle, not a probabilistic empirical floor that could false-fail
+// on an unlucky run. Separately, `installOfflineEagerAudioContext` backs
+// Tone's unavoidable import-time realtime-context construction with an
+// `OfflineAudioContext` so this probe survives a device-less runner (the
+// guard's degraded stand-in has no `.destination`). Both live in
+// `toneOfflineEnv.mjs` and both MUST run before `import('tone')`.
+//
 // Prints exactly one verdict line on stdout (`offlineRenderOracle.mjs`):
 //   RENDER_OK peak=<n> energy=<n> frames=<n> zeroCrossings=<n>
 //   RENDER_SILENT peak=<n> energy=<n>
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { analyzeRenderedBuffer, printVerdict } from './offlineRenderOracle.mjs'
+import { installOfflineEagerAudioContext, seedMathRandom } from './toneOfflineEnv.mjs'
 
 // host-bridge -> e2e -> vscode -> (sibling) audio-play.
-const requireFromAudioPlay = createRequire(new URL('../../../audio-play/package.json', import.meta.url))
+const requireFromAudioPlay = createRequire(
+  new URL('../../../audio-play/package.json', import.meta.url)
+)
 
 await import(pathToFileURL(requireFromAudioPlay.resolve('./dist/audioContextGuard.js')).href)
 
@@ -84,6 +105,12 @@ const { loadToneEngine, setupToneEnvironment } = await import(
 // later) also calls this itself; redundant-safe (idempotent).
 setupToneEnvironment()
 
+// Make this probe's render DETERMINISTIC (see file header): seed
+// `Math.random` before `import('tone')`, so `PluckSynth`'s Karplus-Strong
+// noise excitation is bit-reproducible and the gate can assert tight
+// two-sided bounds instead of a probabilistic floor. See `toneOfflineEnv.mjs`.
+seedMathRandom(0x51ff)
+
 // Probe-only environment shims for Tone's context-dispose teardown
 // (Draw.js) — see offlineToneProbe.mjs's header comment.
 globalThis.requestAnimationFrame ??= (cb) => setTimeout(cb, 16)
@@ -92,7 +119,15 @@ globalThis.cancelAnimationFrame ??= (id) => clearTimeout(id)
 const { OfflineAudioContext } = await import(
   pathToFileURL(requireFromAudioPlay.resolve('node-web-audio-api')).href
 )
-const { playToneSynth } = await import(pathToFileURL(requireFromAudioPlay.resolve('./dist/player.js')).href)
+const { playToneSynth } = await import(
+  pathToFileURL(requireFromAudioPlay.resolve('./dist/player.js')).href
+)
+
+// Back Tone's UNAVOIDABLE eager import-time realtime-context construction
+// with an OfflineAudioContext — MUST precede `import('tone')`. Without it
+// this probe crashes at import on a device-less runner (the guard's
+// degraded stand-in has no `.destination`). See `toneOfflineEnv.mjs`.
+installOfflineEagerAudioContext(OfflineAudioContext)
 
 const Tone = await import(pathToFileURL(requireFromAudioPlay.resolve('tone')).href)
 
