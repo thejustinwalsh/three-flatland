@@ -369,17 +369,33 @@ describe('Sort correctness — regression guards', () => {
   // surfaced here. Spawn 10 sprites at random Y, simulate motion for a
   // burst of frames, assert final slot order matches descending Y.
   it('keeps Y-as-zIndex sprites sorted across many frames of motion', () => {
-    const sprites = Array.from({ length: 10 }, () => new Sprite2D({ texture, material }))
-    for (const s of sprites) {
-      s.position.y = (Math.random() - 0.5) * 200
+    // Fixed, hand-authored adversarial position/velocity table — replaces
+    // the previous unseeded Math.random() inputs so the test reads the
+    // same answer every run. Chosen to exercise the same edge cases the
+    // random version could stumble into, deterministically:
+    //  - indices 2/3: an exact initial Y tie (stable sort under equal
+    //    zIndex, then the pair diverges in opposite directions),
+    //  - index 8: a fully stationary sprite (v=0) embedded among movers,
+    //    which sprite 9 crosses mid-simulation,
+    //  - indices 0/1 and 4/5 and 6/7: mirrored pairs on large-magnitude
+    //    opposite extremes that sweep across zero (Math.floor sign flip)
+    //    and toward each other over the run,
+    //  - fractional starting Y values (42.5, -42.5, 99.9, -99.9, 3.2,
+    //    -3.2) so Math.floor boundaries land on non-trivial frames rather
+    //    than every frame.
+    const initialY = [80, -80, 0, 0, 42.5, -42.5, 99.9, -99.9, 3.2, -3.2]
+    const velocities = [-2.7, 2.7, 1.3, -1.3, -3.1, 3.1, -4.4, 4.4, 0, 1.9]
+
+    const sprites = initialY.map(() => new Sprite2D({ texture, material }))
+    sprites.forEach((s, i) => {
+      s.position.y = initialY[i]!
       s.zIndex = -Math.floor(s.position.y)
       group.add(s)
-    }
+    })
     runSystems(group)
 
-    // Simulate 30 frames of motion: random Y velocity per sprite,
+    // Simulate 30 frames of motion with the fixed velocity table above;
     // zIndex re-derived each frame.
-    const velocities = sprites.map(() => (Math.random() - 0.5) * 5)
     for (let frame = 0; frame < 30; frame++) {
       sprites.forEach((s, i) => {
         s.position.y += velocities[i]!

@@ -656,4 +656,104 @@ describe('createCommandHandler', () => {
     const response = handler.handleCommand({ cmd: 'stats' })
     expect(response).toEqual({ ok: false, cmd: 'stats', error: 'analyser unavailable' })
   })
+
+  it('ping acks unconditionally, never reaching the backend — device-independent liveness probe', () => {
+    const backend = fakeBackend()
+    const handler = createCommandHandler(backend)
+    const response = handler.handleCommand({ cmd: 'ping' })
+    expect(response).toEqual({ ok: true, cmd: 'ping' })
+    // Every backend method stayed untouched — ping is answered entirely
+    // inside the handler, matching protocol.ts's PingCommand contract.
+    expect(backend.playCalls).toEqual([])
+    expect(backend.playSongCalls).toEqual([])
+  })
+
+  // Simulates the P0 device-less-startup fix (audioContextGuard.ts,
+  // sidecar.ts): on a device-less runner every play-kind backend call
+  // throws a labeled AUDIO_DEVICE_UNAVAILABLE error BEFORE touching real
+  // audio (see assertAudioDeviceAvailable's doc comment). This proves the
+  // handler survives that shape of failure exactly like any other thrown
+  // backend error — a clean, coded Nack, no uncaught exception — and that
+  // `ping` keeps answering afterward on the very same handler instance,
+  // proving the process itself never went down.
+  it('a backend that throws AUDIO_DEVICE_UNAVAILABLE on play() produces a coded Nack, and ping still acks on the same handler', () => {
+    const deviceUnavailable = () =>
+      Object.assign(new Error('audio-play: no audio output device available'), {
+        code: 'AUDIO_DEVICE_UNAVAILABLE',
+      })
+    const handler = createCommandHandler({
+      play: () => {
+        throw deviceUnavailable()
+      },
+      playSong: () => {
+        throw deviceUnavailable()
+      },
+      playFile: vi.fn(),
+      playToneSynth: () => {
+        throw deviceUnavailable()
+      },
+      playWadSynth: () => {
+        throw deviceUnavailable()
+      },
+      getStats: () => ({
+        peak: 0,
+        silent: true,
+        playing: false,
+        durationSeconds: 0,
+        elapsedSeconds: 0,
+        contextState: 'closed',
+      }),
+    })
+
+    const playResponse = handler.handleCommand({ cmd: 'play', params: [1] })
+    expect(playResponse).toEqual({
+      ok: false,
+      cmd: 'play',
+      error: 'audio-play: no audio output device available',
+      code: 'AUDIO_DEVICE_UNAVAILABLE',
+    })
+
+    // The handler (and, in the real process, the sidecar) is still alive
+    // and responsive — a device-less start degrades play, not the process.
+    const pingResponse = handler.handleCommand({ cmd: 'ping' })
+    expect(pingResponse).toEqual({ ok: true, cmd: 'ping' })
+
+    // Every play kind, not just `play`, Nacks the same coded way.
+    expect(handler.handleCommand({ cmd: 'playSong', song: SONG })).toEqual({
+      ok: false,
+      cmd: 'playSong',
+      error: 'audio-play: no audio output device available',
+      code: 'AUDIO_DEVICE_UNAVAILABLE',
+    })
+    expect(
+      handler.handleCommand({ cmd: 'playToneSynth', synthType: 'Synth', note: 'C4', duration: '8n' })
+    ).toEqual({
+      ok: false,
+      cmd: 'playToneSynth',
+      error: 'audio-play: no audio output device available',
+      code: 'AUDIO_DEVICE_UNAVAILABLE',
+    })
+    expect(handler.handleCommand({ cmd: 'playWadSynth', config: { source: 'sine' } })).toEqual({
+      ok: false,
+      cmd: 'playWadSynth',
+      error: 'audio-play: no audio output device available',
+      code: 'AUDIO_DEVICE_UNAVAILABLE',
+    })
+
+    // stats stays honest and non-throwing too (mirrors sidecar.ts's
+    // closed-context branch) — a device-less sidecar never crashes on
+    // ANY command, not just play/ping.
+    expect(handler.handleCommand({ cmd: 'stats' })).toEqual({
+      ok: true,
+      cmd: 'stats',
+      stats: {
+        peak: 0,
+        silent: true,
+        playing: false,
+        durationSeconds: 0,
+        elapsedSeconds: 0,
+        contextState: 'closed',
+      },
+    })
+  })
 })

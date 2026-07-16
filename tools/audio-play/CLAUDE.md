@@ -111,8 +111,9 @@ caller that needs to know a `play`/`playSong` failed listens for an error
 response via `client.onError()`; there's nothing meaningful to return on
 success.
 
-The two AWAITED commands — `stats` (see "Audibility regression guard"
-below) and `playToneSynth` (the cold-start-retry correlation, #47/#49) —
+The three AWAITED commands — `stats` (see "Audibility regression guard"
+below), `playToneSynth` (the cold-start-retry correlation, #47/#49), and
+`ping` (see "`ping` — a device-independent liveness probe" above) —
 carry a numeric `id` the sidecar echoes back on the response, and the
 client matches on `cmd` + `id`. This replaced the original content-based
 correlation ("the next `cmd: 'stats'` line"): content matching relied on
@@ -125,8 +126,9 @@ makes a late orphan un-matchable; it falls through harmlessly.
 Commands: `play {params}` (one-shot), `playSong {song}` / `stopSong`
 (ZzFXM), `stop` (currently identical to `stopSong` — see the comment on
 `handleStop` in `commandHandler.ts` for why it's a separate command
-anyway), `shutdown`, `stats` (audibility snapshot). `stopSong`/`stop`
-stop the CURRENT SOURCE — a song or a decoded file (#46): `playFile`'s
+anyway), `shutdown`, `stats` (audibility snapshot), `ping` (device-
+independent liveness probe — never reaches the `AudioBackend`). `stopSong`/
+`stop` stop the CURRENT SOURCE — a song or a decoded file (#46): `playFile`'s
 decoded source registers via an `onStarted` callback, generation-guarded
 so a decode landing after a newer play is stopped on arrival instead of
 layering.
@@ -189,13 +191,92 @@ imports nothing from `zzfx` — see its file doc comment — which is also
 what makes `player.test.ts`'s fake-`AudioContext` unit tests possible
 under plain-Node `vitest`.
 
-`sidecar.ts` still imports `node-web-audio-api/polyfill.js` **before**
-`zzfx` — `zzfx`'s `ZZFX.audioContext = new AudioContext` runs at _module
-load time_ (`node_modules/zzfx/ZzFX.js`), so `AudioContext` has to already
-be a real global by the time `zzfx` is imported (the polyfill provides
-this via `Object.assign(globalThis, webaudio)`). `player.ts` reuses that
-same `ZZFX.audioContext` for both one-shots and songs — no dual-context
-juggling needed.
+`sidecar.ts` still imports `./audioContextGuard.js` **before** `zzfx` —
+`zzfx`'s `ZZFX.audioContext = new AudioContext` runs at _module load
+time_ (`node_modules/zzfx/ZzFX.js`), so `AudioContext` has to already be a
+real, GUARDED global by the time `zzfx` is imported. `audioContextGuard.ts`
+owns the `node-web-audio-api/polyfill.js` import itself (the polyfill
+provides the raw native constructor via `Object.assign(globalThis,
+webaudio)`) specifically so nothing can construct a real `AudioContext`
+before the guard described below is in place — see "Device tolerance"
+for why this ordering is load-bearing, not just a style preference.
+`player.ts` reuses that same `ZZFX.audioContext` for both one-shots and
+songs — no dual-context juggling needed.
+
+## Device tolerance (`src/audioContextGuard.ts`) — a missing device must never crash the process
+
+**The P0 bug this fixes:** `node-web-audio-api`'s native `AudioContext`
+constructor throws SYNCHRONOUSLY when there's no output device to open
+(cpal/ALSA finds nothing — the exact situation on a device-less Linux CI
+runner, e.g. after `vscode-e2e.yml` stopped provisioning a PulseAudio null
+sink). `zzfx`'s own module top-level does `audioContext: new AudioContext`
+completely outside any try/catch this package controls
+(`node_modules/zzfx/ZzFX.js`) — an unguarded throw there aborts zzfx's
+ENTIRE module evaluation, which (ES modules: a dependency's top-level
+throw propagates straight out of the importing `import` statement) aborts
+`sidecar.ts`'s own module evaluation before a single line of this
+package's code has run. There is no `try {} catch {}` a _consumer_ of
+`zzfx` can wrap around that from the outside — the only fix is to make
+the CONSTRUCTOR ITSELF never throw.
+
+**The fix:** `audioContextGuard.ts` replaces the global `AudioContext` —
+both `globalThis.AudioContext` and `globalThis.window.AudioContext` (the
+polyfill installs it on both as genuinely SEPARATE properties, not
+aliases — see `loadWadConstructor`'s doc comment below for why) — with a
+guarded wrapper, reused for EVERY `new AudioContext()` call anywhere in
+this process: zzfx's own top-level one, and every acquire/reacquire
+attempt `contextLifecycle.ts` makes. Real construction is attempted EVERY
+time (never cached as "permanently unavailable") — so a device that
+appears after a device-less start is picked up on the very next play,
+the same reacquire-as-default philosophy `contextLifecycle.ts` already
+applies to a device that disappears mid-session (see "Context lifecycle"
+below). A failure flips `isAudioDeviceAvailable()` false and returns a
+minimal, inert stand-in — `state: 'closed'`, deliberately, so it reuses
+the SAME "nothing to release, report honestly, don't touch the analyser"
+handling `contextLifecycle.ts`'s `ensureRunning`/`gatedIdleClose` and
+`sidecar.ts`'s `getStats` closed-branch already have for the (previously
+only) idle-release case — instead of throwing.
+
+Every play-kind backend in `sidecar.ts` (`play`, `playSong`, `playFile`,
+`playToneSynth`, `playWadSynth`) calls `assertAudioDeviceAvailable()`
+first, before touching `ZZFX.audioContext` — not strictly load-bearing
+for crash-safety by itself (the guarded constructor already guarantees
+`ZZFX.audioContext` is never `undefined`, and calling a real Web Audio
+method on the degraded stand-in throws a plain `TypeError` that
+`commandHandler.ts`'s existing try/catch already turns into a Nack
+regardless), but it gives a CLEAR, intentional Nack — `code:
+'AUDIO_DEVICE_UNAVAILABLE'` — instead of an incidental "`createBufferSource`
+is not a function", and skips synthesis/engine-loading work whose outcome
+is already known. Belt and suspenders, not either/or.
+
+**The protocol stays alive regardless.** The stdin/stdout newline-JSON
+loop, the command chain, and the process itself are completely
+independent of whether `AudioContext` ever acquired a real device — a
+device-less sidecar Nacks every audio-touching command cleanly and keeps
+answering `stats` (honestly, `contextState: 'closed'`) and `ping` (see
+below) for its entire lifetime.
+
+## `ping` — a device-independent liveness probe
+
+Alongside `stats`/`playToneSynth`, `ping` is the third `id`-correlated
+awaited command (`protocol.ts`'s `PingCommand`) — but unlike every other
+command, `commandHandler.ts` answers it directly, WITHOUT calling into
+the injected `AudioBackend` at all, and `sidecar.ts`'s `PLAY_COMMANDS` set
+deliberately excludes it, so it also skips `contextLifecycle.ts`'s
+acquire ladder. The result: `ping` proves the sidecar PROCESS is alive
+and processing its command chain — the same one every other command runs
+through, so a `ping` that Acks proves everything queued ahead of it on
+that chain has already been handled — without ever touching
+`AudioContext`, real or degraded. Wired end to end: `protocol.ts` →
+`commandHandler.ts` → `PlaySidecarClient.ping()` (`client.ts`) →
+`pingPlaySidecar()` (`tools/vscode/extension/tools/audio/
+playSidecarManager.ts`) → `ExtensionApi.zzfxPlay.ping`
+(`tools/vscode/extension/index.ts`). Exists specifically for e2e
+process-lifecycle assertions (`tools/vscode/e2e/specs/audio-play.spec.ts`'s
+pid tests) that need a deterministic "the process is up and responding"
+signal independent of whether the test environment has a real audio
+device — a bare pid alone only proves "a process was spawned," not "the
+process is alive and answering the wire protocol."
 
 ## This bug is Electron-specific — it will NOT reproduce under plain Node
 
@@ -229,13 +310,24 @@ guard that can't fail when the regression is present is worse than no
 guard: it looks like protection while providing none. **Do not add a
 vitest-level test in this package that spawns `dist/sidecar.js` via plain
 `process.execPath` and claims to prove audibility** — it structurally
-cannot, regardless of how the assertion is tuned. The only valid
-audibility proof is `tools/vscode/e2e/specs/audio-play.spec.ts`, which
-drives the real sidecar through a real running extension host, and
-therefore through the real `Code Helper (Plugin)` binary. That spec has
-been verified in both directions: it passes with `copyToChannel` in place
-and **fails** (`stats.silent === true`) when `getChannelData().set()` is
-reintroduced — that's what makes it a real guard, not a decorative one.
+cannot, regardless of how the assertion is tuned. **[Updated by the P0
+audio-e2e determinism redesign, planning/testing/test-determinism-
+audit.md]** The one valid audibility proof is now
+`tools/vscode/e2e/specs/audio-render-gate.spec.ts`, which spawns
+`tools/vscode/e2e/host-bridge/offlineRenderProbe.mjs` from inside a real
+running extension host (`process.execPath` +
+`ELECTRON_RUN_AS_NODE=1` — the same mechanism the real sidecar itself is
+spawned with) and renders the production `playSampleChannels` graph
+through a real `OfflineAudioContext` under the real `Code Helper
+(Plugin)` binary. It has been verified in both directions: `copyToChannel`
+in place renders `peak≈0.5` (`RENDER_OK`); reintroducing
+`getChannelData().set()` renders exact zeros (`RENDER_SILENT`) — that's
+what makes it a real guard, not a decorative one, and it needs no audio
+device, PulseAudio, warmup, or analyser polling to do it. The formerly
+live-sidecar-plus-`stats`-polling proof that used to live in
+`tools/vscode/e2e/specs/audio-play.spec.ts` was deleted as part of that
+redesign — it required a real OS audio device and was the audio e2e
+suite's main source of nondeterminism.
 
 If this gate is ever in doubt again, re-run the waveform-shape comparison
 above (a known sine, zero-crossing count, not just peak) under both a
@@ -258,12 +350,15 @@ to `{ peak, silent }`, plus the current source's exact timing
 (`playing`/`durationSeconds`/`elapsedSeconds`, from a per-context
 last-started-wins playback record — #43) so e2e waits derive from the
 real play window instead of magic timeouts. This is wired through the `stats` protocol
-command, `PlaySidecarClient.getStats()`, `playSidecarManager.ts`'s
-`getPlaySidecarStats()`, and `extension/index.ts`'s `ExtensionApi` so
-`tools/vscode/e2e/specs/audio-play.spec.ts` can play a sound through the
-real sidecar and assert real, nonzero output. **This proof only holds at
-the e2e tier** — see "This bug is Electron-specific" above for why a
-vitest-level real-sidecar test cannot substitute for it.
+command, `PlaySidecarClient.getStats()`, and `playSidecarManager.ts`'s
+`getPlaySidecarStats()` — still real, live production plumbing (e.g.
+`activePlayback.ts`'s source-editor tab-binding watches it), but **no
+longer the audio e2e suite's audibility proof**: the P0 determinism
+redesign (planning/testing/test-determinism-audit.md) deleted every
+per-test `getStats()`-polling assertion in favor of the one deterministic
+offline-render gate — see "This bug is Electron-specific" above for where
+that proof lives now and why a vitest-level real-sidecar test still can't
+substitute for it.
 
 ## Context lifecycle — reacquire as the default (`src/contextLifecycle.ts`)
 
@@ -325,12 +420,30 @@ follow imports to inline them). `dist/sidecar.js` is the file actually
 passed to `child_process.spawn()` — it must exist as a real file on disk,
 it's never imported as a module by the extension host itself.
 
-## Tests — three tiers, no real audio in any of them
+## Tests — four tiers, no real audio in any of them
 
 - **`src/commandHandler.test.ts`** — the state machine (song replacement,
   stop semantics, error-to-Nack) against a fake `AudioBackend`. No
   process, no `AudioContext`, no `node-web-audio-api` — fast, always
-  runs.
+  runs. Includes the P0 device-tolerance regression guard: a fake
+  backend that throws the same `AUDIO_DEVICE_UNAVAILABLE`-coded error
+  `assertAudioDeviceAvailable()` would produce on every play kind,
+  asserting the handler survives (a clean, coded Nack, never an uncaught
+  exception) and that `ping`/`stats` keep answering on the SAME handler
+  instance afterward — proof the process itself never went down. Also
+  covers `ping` acking unconditionally without ever touching the backend.
+- **`src/audioContextGuard.test.ts`** — the guard's own try/catch logic
+  in isolation, with `node-web-audio-api/polyfill.js` mocked (a fake,
+  throwable native `AudioContext` class stands in for "no output
+  device") rather than depending on a real missing device, which a
+  plain-Node `vitest` run can't reliably simulate either way. Proves: a
+  failed native construction never throws out of the guarded wrapper,
+  `isAudioDeviceAvailable()`/`assertAudioDeviceAvailable()` reflect that
+  failure, the degraded stand-in reports `state: 'closed'`, a later
+  successful construction flips availability back to `true`
+  (reacquire-as-default, not a permanent trip), and — load-bearing for
+  "don't break the working-device path" — a successful construction
+  returns the REAL instance completely untouched.
 - **`src/client.test.ts`** — `PlaySidecarClient`'s spawn/reuse/lifecycle
   plumbing, run against `src/__fixtures__/fakePlaySidecar.mjs` (mirrors
   `tools/codelens-service`'s `fakeSidecar.mjs` pattern: a from-scratch
@@ -342,7 +455,11 @@ it's never imported as a module by the extension host itself.
   `shutdown()` with the `SIGKILL` fallback (via a
   `FAKE_PLAY_SIDECAR_HANG_ON_SHUTDOWN` env var — `PlaySidecarOptions` has
   no CLI-args passthrough, unlike codelens-service's client, so the
-  fixture's hang-mode switch goes through `env` instead of an arg).
+  fixture's hang-mode switch goes through `env` instead of an arg). Also
+  covers `ping()`'s id-correlated request/response round trip
+  (`fakePlaySidecar.mjs` answers `ping` unconditionally, mirroring
+  `commandHandler.ts`) and that it throws `PlaySidecarExitedError` like
+  every other entry point once the instance has exited.
 - **`src/player.test.ts`** — `playSampleChannels`/`getPlaybackStats`
   against a fake `AudioContext` (plain object literals + `vi.fn()`, no
   real Web Audio anywhere). Proves the **code path** — every channel goes
@@ -357,48 +474,40 @@ it's never imported as a module by the extension host itself.
 
 None of these three tiers prove the _real_ `sidecar.ts` + real
 `node-web-audio-api` combination is actually audible — that's what the
-hard prototype gate above and `tools/vscode/e2e/specs/audio-play.spec.ts`
-(driven against the real built extension, through the real `Code Helper
-(Plugin)` binary) are for, and per "This bug is Electron-specific" above,
-**that e2e tier is not optional or redundant with a vitest-level
-real-process test** — it's the only tier capable of catching this
-specific class of regression at all.
+hard prototype gate above is for, now expressed as
+`tools/vscode/e2e/specs/audio-render-gate.spec.ts`'s `OfflineAudioContext`
+render (driven against the real built extension, through the real `Code
+Helper (Plugin)` binary), per "This bug is Electron-specific" above:
+**that gate is not optional or redundant with a vitest-level real-process
+test** — it's the only tier capable of catching this specific class of
+regression at all. **Unlike the live-sidecar `audio-play.spec.ts` proof
+this replaced (P0 determinism redesign,
+planning/testing/test-determinism-audit.md), it needs no real OS audio
+device at all** — `OfflineAudioContext` never opens an output stream, so
+it's immune to the CI/device pitfalls the next section used to describe.
 
 ## Common pitfalls
 
 - **Linux CI (`ubuntu-latest`) has no audio device by default — `xvfb-run`
   only virtualizes the DISPLAY, not sound.** `node-web-audio-api` (via
   Rust's `cpal`, which uses ALSA on Linux) has nothing to open in a bare
-  runner: real-audio-dependent e2e specs (anything waiting on
-  `stats.playing`, or a decoded `.wav`/song/synth actually reaching the
-  analyser tap) either hang until their 60s timeout or the sidecar itself
-  fails during `AudioContext` construction (observed as a `null`/
-  `undefined` pid on the very first `audio-play.spec.ts` assertion — the
-  child process never stabilizes). `tools/vscode/.github/workflows/
-vscode-e2e.yml` installs and starts PulseAudio with a null sink
-  (`pactl load-module module-null-sink`) before the e2e run specifically
-  for this — ALSA's `pulse` plugin then has a real, functioning (silent)
-  default device to open. This was never exercised until #47 (Tone/Wad
-  synthesis) landed and the workflow ran on Linux CI for the first time;
-  every previous "green e2e" in this epic's history was verified locally
-  on macOS, which has a real audio device. If a real-audio e2e spec times
-  out or gets a null pid in CI specifically (not locally), check this
-  step exists and actually ran before suspecting the test or the sidecar
-  logic itself.
-- **The PulseAudio null sink is not perfectly reliable under CI load —
-  seen one flaked run where several `stats.silent`-polling tests
-  (`zzfx-audio-lenses.spec.ts`) genuinely ran out their full 10s poll
-  budget and returned silent, immediately followed by a clean 65/65 pass
-  on an unmodified re-run of the identical commit.** This is consistent
-  with PulseAudio/ALSA startup-readiness jitter under a loaded runner,
-  not a deterministic bug in the poll helper (`executeAndPollAudible`
-  already polls properly, not a fixed delay — checked before concluding
-  this). If `vscode-e2e` fails on `stats.silent`/`stats.peak` assertions
-  specifically (not a pid/spawn failure — see above), re-run the job
-  before assuming a real regression; if it fails reproducibly across
-  multiple re-runs with no code change in between, that's the signal
-  something else is actually broken.
-- Forgetting the `node-web-audio-api/polyfill.js` import order relative to
+  runner. This no longer matters for the blocking e2e gate itself
+  (`audio-render-gate.spec.ts` renders offline, no device needed) — **and
+  it no longer crashes the real, non-offline sidecar either** (see
+  "Device tolerance" above): `audioContextGuard.ts` catches the
+  device-less `new AudioContext` failure at zzfx's own import time, so
+  `tryPlayInline`/`audio-play.spec.ts`'s pid tests spawn a process that
+  stays up and Nacks audio-touching commands cleanly instead of crashing
+  or failing to stabilize. Those tests now assert liveness via `ping()`
+  (device-independent — never touches `AudioContext`) rather than trusting
+  a bare pid alone. CI's `vscode-e2e.yml` no longer sets up a PulseAudio
+  null sink (removed in the P0 determinism redesign, since the blocking
+  gate doesn't need one, and the P0 device-less-startup fix means the pid
+  tests don't need one either) — if a pid/ping test still flakes or fails
+  specifically in CI (not locally, where a real device exists), re-check
+  `audioContextGuard.ts`'s guard is actually installed before `zzfx`'s
+  import (the import-order pitfall below) before assuming a device issue.
+- Forgetting the `./audioContextGuard.js` import order relative to
   `zzfx`/`@zzfx-studio/zzfxm` imports in `sidecar.ts` — `zzfx`'s top-level
   `new AudioContext` would throw (`AudioContext is not defined`) if the
   polyfill hasn't installed the global yet.
@@ -545,8 +654,11 @@ theWindow.BaseAudioContext` throws again (`TypeError`, RHS of
   reflects whatever the analyser's current window sees, so a query issued
   before the sidecar has actually spawned (cold start includes native
   module load) or before the sound has started rendering will correctly,
-  and unhelpfully, report silence. Poll for a bit rather than a single
-  fixed-delay check — see the Z12 e2e spec's polling loop.
+  and unhelpfully, report silence. This no longer matters for the e2e
+  audibility gate itself (`audio-render-gate.spec.ts` awaits
+  `offline.startRendering()`'s own promise — a real completion signal,
+  not a query against a live analyser), but still applies to any live
+  production caller of `getStats()`/the `stats` wire command.
 - **Adding a vitest-level test that spawns `dist/sidecar.js` via plain
   `process.execPath` and asserts on `stats.peak`/`stats.silent` to "prove
   audibility."** It cannot — `getChannelData().set()` plays back
@@ -556,9 +668,9 @@ theWindow.BaseAudioContext` throws again (`TypeError`, RHS of
   Electron-specific" above). This looks like a regression guard and
   isn't one. `src/player.test.ts`'s fake-`AudioContext` unit tests are
   the right vitest-tier check (proves the _code_ calls the right API);
-  `tools/vscode/e2e/specs/audio-play.spec.ts` is the right audibility
-  check (proves the _output_ is real, through the real `Code Helper
-(Plugin)` path).
+  `tools/vscode/e2e/specs/audio-render-gate.spec.ts` is the right
+  audibility check (proves the _output_ is real, through the real `Code
+  Helper (Plugin)` path, via `OfflineAudioContext` — no device needed).
 
 ## Reference
 
@@ -566,13 +678,27 @@ theWindow.BaseAudioContext` throws again (`TypeError`, RHS of
   Command state machine (DI'd, unit-tested): `src/commandHandler.ts`.
   Output path + analyser tap (`playSampleChannels`, `getPlaybackStats`):
   `src/player.ts`. Client: `src/client.ts`. Protocol: `src/protocol.ts`.
+  Device-tolerant `AudioContext` guard (see "Device tolerance" above):
+  `src/audioContextGuard.ts`.
 - `zzfx` has no shipped `.d.ts` — `src/zzfx.d.ts` is copied from
   `tools/vscode/webview/audio/zzfx.d.ts`; keep in sync if the pinned `zzfx`
   version changes.
 - Extension-side wiring: `tools/vscode/extension/tools/audio/
 playSidecarManager.ts` (mirrors `sidecarManager.ts`, exposes
-  `getPlaySidecarStats()`), `register.ts` (routes
+  `getPlaySidecarStats()`/`pingPlaySidecar()`), `register.ts` (routes
   `threeFlatland.audio.playParams` here instead of a panel, with a
-  remote/spawn-failure fallback back to the panel path).
-- e2e coverage, including the Z12 audibility regression guard:
-  `tools/vscode/e2e/specs/audio-play.spec.ts`.
+  remote/spawn-failure fallback back to the panel path). `ping` is also
+  surfaced on `ExtensionApi.zzfxPlay.ping` (`tools/vscode/extension/
+index.ts`) alongside `getActivePid`/`shutdown`/`getStats`.
+- e2e coverage: the deterministic offline audibility gate lives at
+  `tools/vscode/e2e/specs/audio-render-gate.spec.ts`
+  (`tools/vscode/e2e/host-bridge/offlineRenderProbe.mjs` is the probe it
+  spawns). `tools/vscode/e2e/specs/audio-play.spec.ts`,
+  `zzfx-audio-lenses.spec.ts`, and `zzfx-synth-lenses.spec.ts` cover
+  sidecar process lifecycle and CodeLens wiring/dispatch, deliberately
+  without any live-audio polling — see
+  `planning/testing/test-determinism-audit.md` for the redesign this
+  followed. `audio-play.spec.ts`'s three process-lifecycle tests now
+  assert liveness via `ping()` (device-independent) before/alongside any
+  pid-based assertion — see "Device tolerance"/"`ping`" above for why a
+  bare pid alone isn't sufficient proof on a device-less runner.
