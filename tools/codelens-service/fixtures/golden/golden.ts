@@ -105,10 +105,12 @@ export function playIterated() {
 }
 
 // The REST of Wad's synthesis vocabulary — oscillator shapes, noise, live
-// mic input. sawtooth/triangle/noise are wad.synth findings (same as
-// 'sine' above); NONE of the four are audio.file findings (no file is
-// loaded); 'mic' is live input and is the one keyword that produces NO
-// finding of EITHER kind — proven by the golden full-array equality.
+// mic input. sawtooth/triangle/noise are PLAYABLE wad.synth findings
+// (same as 'sine' above); NONE of the four are audio.file findings (no
+// file is loaded); 'mic' is live input — a recognized Wad instantiation
+// with no statically playable config, so it is the UNRESOLVED wad.synth
+// flavor (payload.unresolved: true) — proven by the golden full-array
+// equality.
 export function synthVoices() {
   new Wad({ source: 'sawtooth' }).play()
   new Wad({ source: 'triangle' }).play()
@@ -117,13 +119,15 @@ export function synthVoices() {
 }
 
 // An audio sprite alone maps names to [start, duration] SEGMENTS of the
-// source — numbers, not files. NOT a finding.
+// source — numbers, not files. Never audio.file; an UNRESOLVED wad.synth
+// finding (recognized Wad, unplayable config).
 export function spriteOnly() {
   new Wad({ sprite: { hello: [0, 0.4] } }).play()
 }
 
 // A stock preset via member expression — no string literal in the
-// arguments at all. NOT a finding.
+// arguments at all. Never audio.file; an UNRESOLVED wad.synth finding
+// (config not statically readable).
 export function hiHat() {
   new Wad(Wad.presets.hiHatClosed).play()
 }

@@ -292,7 +292,10 @@ test.describe('FL tool settings', () => {
     const fetchTitles = async () => {
       const deadline = Date.now() + 15_000
       let titles = await fetchTitlesOnce()
-      while (titles.includes('$(search) Searching…') && Date.now() < deadline) {
+      while (
+        titles.some((t) => t.replace(/\s+/g, ' ') === '$(search) Searching…') &&
+        Date.now() < deadline
+      ) {
         await new Promise((resolve) => setTimeout(resolve, 150))
         titles = await fetchTitlesOnce()
       }
@@ -303,7 +306,7 @@ test.describe('FL tool settings', () => {
     // Unresolved lens set, matching zzfx-audio-lenses.spec.ts's own
     // count for this fixture.
     const before = await fetchTitles()
-    expect(before).toHaveLength(48)
+    expect(before).toHaveLength(51)
     expect(before.filter((t) => t === '▶ Play').length).toBeGreaterThan(0)
 
     await evaluateInVSCode(
@@ -330,7 +333,7 @@ test.describe('FL tool settings', () => {
     )
 
     const reenabled = await fetchTitles()
-    expect(reenabled).toHaveLength(48)
+    expect(reenabled).toHaveLength(51)
     expect(reenabled.filter((t) => t === '▶ Play').length).toBeGreaterThan(0)
   })
 })
