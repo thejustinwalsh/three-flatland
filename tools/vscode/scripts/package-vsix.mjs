@@ -23,7 +23,7 @@
 // than slicing from the first/last one) makes this robust to that no
 // matter how many separators end up in argv.
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -100,6 +100,38 @@ if (!hasImagesBase) {
     '--baseImagesUrl',
     'https://raw.githubusercontent.com/thejustinwalsh/three-flatland/main/tools/vscode'
   )
+}
+
+// GUARD: never ship a sidecar-less VSIX. `vsce` packages whatever files
+// are on disk and NEVER errors on a missing sidecar — so a package/publish
+// run on a tree where `bundle:sidecars` and/or `build` didn't run produces
+// a VSIX that installs fine but has NO working CodeLens (bin/) or FL Audio
+// (audio-play/), silently. This already bit once: a hand-built 0.0.0 VSIX
+// shipped without either. Verify the built artifacts exist and abort loudly
+// otherwise, for BOTH a bare local `pnpm run package` and the CI publish
+// path (whose assemble-and-package job builds these in dedicated steps
+// before calling `pnpm run package`). This only VERIFIES — it must NOT
+// build the sidecars itself: CI assembles all six platforms' codelens
+// binaries into bin/ before this point, and a current-platform-only
+// `bundle:sidecars` here would clobber that universal set down to one.
+const codelensBin = `bin/${process.platform}-${process.arch}/codelens-service${
+  process.platform === 'win32' ? '.exe' : ''
+}`
+const requiredArtifacts = [
+  ['dist/extension.js', 'pnpm --filter @three-flatland/vscode build'],
+  [codelensBin, 'pnpm run bundle:sidecars'],
+  ['audio-play/sidecar.js', 'pnpm run bundle:sidecars'],
+]
+const missingArtifacts = requiredArtifacts.filter(([rel]) => !existsSync(join(VSCODE_ROOT, rel)))
+if (missingArtifacts.length > 0) {
+  console.error(
+    `[package-vsix] Refusing to ${vsceCommand} — the VSIX would ship WITHOUT working ` +
+      `CodeLens/FL Audio. Missing build artifacts:\n` +
+      missingArtifacts.map(([rel, how]) => `  - ${rel}   (build with: ${how})`).join('\n') +
+      `\nRun \`pnpm run bundle:sidecars && pnpm --filter @three-flatland/vscode build\` first. ` +
+      `(CI's assemble-and-package job does this before \`pnpm run package\`.)`
+  )
+  process.exit(1)
 }
 
 try {
