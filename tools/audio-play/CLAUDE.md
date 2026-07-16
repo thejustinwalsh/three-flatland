@@ -112,8 +112,8 @@ response via `client.onError()`; there's nothing meaningful to return on
 success.
 
 The three AWAITED commands — `stats` (see "Audibility regression guard"
-below), `playToneSynth` (the cold-start-retry correlation, #47/#49), and
-`ping` (see "`ping` — a device-independent liveness probe" above) —
+below), `playToneSynth` (see "Tone.js: lazy load, bounded await" below, #47/#49),
+and `ping` (see "`ping` — a device-independent liveness probe" above) —
 carry a numeric `id` the sidecar echoes back on the response, and the
 client matches on `cmd` + `id`. This replaced the original content-based
 correlation ("the next `cmd: 'stats'` line"): content matching relied on
@@ -255,6 +255,53 @@ independent of whether `AudioContext` ever acquired a real device — a
 device-less sidecar Nacks every audio-touching command cleanly and keeps
 answering `stats` (honestly, `contextState: 'closed'`) and `ping` (see
 below) for its entire lifetime.
+
+## Tone.js: lazy load, bounded await (#47/#49)
+
+`tone` is pure ESM (no synchronous CJS load path — contrast with
+`loadWadConstructor`'s synchronous `require()` for `web-audio-daw` below),
+so a genuinely lazy "only import on first use" load is inherently
+asynchronous. `sidecar.ts`'s `loadToneEngine()` caches the dynamic
+`import('tone')` in a module-scope `toneEnginePromise` — idempotent,
+every call after the first (cold or not) reuses the same promise.
+
+**The `playToneSynth` `AudioBackend` method is allowed to be
+asynchronous** (`{ stop(): void } | Promise<{ stop(): void }>` —
+`commandHandler.ts`'s `AudioBackend` type), and `sidecar.ts`'s real
+backend uses that: it `assertAudioDeviceAvailable()`s first (fast-fail on
+a device-less runner without paying for an import that would be moot
+anyway), then `await`s `loadToneEngineBounded()` — a bounded race against
+`TONE_LOAD_TIMEOUT_MS` (env `FL_AUDIO_TONE_LOAD_TIMEOUT_MS`, default
+10s) — before ever constructing the synth. `commandHandler.ts`'s
+`handleCommand` is correspondingly `async` and `await`s that call inside
+its `playToneSynth` case, so the command's own Ack/Nack (echoed with its
+correlation `id` — see "Wire protocol" above) always reflects whether the
+engine actually became ready.
+
+**Losing the bounded race does not cancel or reset `toneEnginePromise`**
+— dynamic imports aren't cancellable, and there's no reason to throw away
+in-flight work. A timed-out attempt Nacks with a `TONE_LOAD_FAILED` code;
+the import keeps racing in the background and warms the cache for the
+very next `playToneSynth` call. This is what makes the design
+self-healing WITHOUT any retry logic on the caller's side: a
+slow-but-not-hung first attempt Nacks once, and the next click (whenever
+the user issues it) finds the engine already loaded.
+
+**The extension side (`tools/vscode/extension/tools/audio/register.ts`)
+does not retry.** It `await`s `PlaySidecarClient.playToneSynthAwaitable`
+(id-correlated, `client.ts`) once and shows a single graceful error
+message on a Nack — no fixed-backoff retry loop. This replaced an earlier
+design (`toneColdStartRetry.ts`, since deleted) that retried on a timer
+schedule (~250/500/1000/2000ms) whenever the sidecar Nacked a
+synchronous, not-yet-loaded "still loading" response: that budget could
+be exceeded on a slow runner (adversarial review finding #8,
+`planning/testing/pr188-adversarial-review.md`), and — independent of
+timing — it could never distinguish "still loading" from "genuinely
+failed to load," since the sidecar itself didn't know either until this
+fix made it actually wait. `playToneSynthAwaitable`'s default `timeoutMs`
+(15s) is deliberately larger than the sidecar's own `TONE_LOAD_TIMEOUT_MS`
+(10s) bound, so it only fires as an outer safety net for a dropped
+response or a wedged sidecar — never in the normal bounded-wait path.
 
 ## `ping` — a device-independent liveness probe
 

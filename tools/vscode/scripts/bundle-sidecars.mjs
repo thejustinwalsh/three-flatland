@@ -120,7 +120,7 @@ async function bundleAudioPlay() {
   copyDependencyClosure(nativeModuleSrc, join(outDir, 'node_modules'), seen)
 
   // web-audio-daw (Wad synthesis) is loaded via `createRequire(...)` at
-  // RUNTIME (see sidecar.ts's `loadWadConstructor` — it's a CJS/UMD bundle
+  // RUNTIME (see wadLoader.ts's `loadWadConstructor` — it's a CJS/UMD bundle
   // that must be require()d AFTER the AudioContext monkey-patch is
   // installed, so it can't be a static import). esbuild's `bundle: true`
   // inlines the dynamic `import('tone')` but CANNOT follow a createRequire,
