@@ -6,7 +6,15 @@
 // dies when the extension's real deactivation path runs — not a mocked
 // stand-in for that path, the literal function `context.subscriptions`'
 // dispose handler calls (see `extension/index.ts`'s `ExtensionApi`).
-import { expect, test } from '../fixtures'
+import { expect, skipIfAudioDeviceDeaf, test } from '../fixtures'
+
+// Real-audio spec: skip (loudly, with the environmental evidence) when the
+// warmup's oracle proved the OS audio device transiently deaf — see
+// fixtures.ts's warmUpAudioPipeline. CI runs FL_E2E_REQUIRE_AUDIO=1 and
+// hard-fails instead.
+test.beforeEach(({ _sharedWindow }) => {
+  skipIfAudioDeviceDeaf(_sharedWindow)
+})
 
 const LITERAL_PARAMS = [0.5, 0, 300, 0, 0.02, 0.05, 1]
 // Long sustain/release (~2s total) so there's a comfortable window to poll
