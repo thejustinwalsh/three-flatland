@@ -5,16 +5,17 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-## Flight recorder (Phase C)
+## Flight recorder — core registry checkpointing
 
-- Adds periodic registry checkpoint snapshots so time-travel reconstruction never replays further back than one cadence window
-- Adds an always-on rolling ring buffer for the selected buffer's encoded video chunks plus a windowed stats-arrival log, enabling scrub playback while frozen
-- Freeze/unfreeze now clones the ring and parks the frame cursor without interrupting live ingest; all existing "go live" actions (LIVE button, double-click, Esc) unfreeze
-- Tightens VP9 encoder keyframe cadence from 2000ms to 500ms so scrub cursors stay close to a decodable anchor
-- Fixes a race where a registry checkpoint could get stuck claiming completeness after degrading an oversized entry to metadata-only; reconstruction now retries and correctly skips partial checkpoints when picking an anchor
-- Fixes protocol-store persistence being tied to the Protocol Log panel's mount/pause state; ingest now runs unconditionally from dashboard bootstrap
-- Adds a flush-listener hook so parked registry reconstruction re-queries once writes are durably committed, closing a debounce race
+- Registry feature now periodically emits full checkpoint snapshots (`checkpoint: true` on `RegistryPayload`), so time-travel reconstruction never has to replay further back than one cadence window
+- Buffer encoder tightens keyframe cadence from 2000ms to 500ms so a scrub cursor is never far from a decodable anchor
+- Checkpoints that would otherwise degrade an entry to metadata-only (pool overflow) now retry, settling on `checkpoint: true, partial: true` instead of never completing; reconstruction skips partial checkpoints and falls back to the nearest complete one
+- Registry reconstruction and the live client now share a single fold function, preventing the two from drifting apart
+
+## Fixes
+
+- `DebugRegistry` protocol payloads gain checkpoint metadata used by both live updates and historical reconstruction
 
 ## Summary
 
-Lays the groundwork for the devtools flight recorder: persistent protocol logging, rolling buffer playback, and consistent registry state reconstruction while frozen and scrubbing.
+Lays the debug-protocol groundwork for the devtools flight recorder: periodic registry checkpoints with partial-checkpoint retry/fallback, and a fold function shared between live and replayed registry state.

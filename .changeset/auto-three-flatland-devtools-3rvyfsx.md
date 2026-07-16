@@ -5,23 +5,31 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-## Flight recorder (Phase C, epic #116)
+## Flight recorder — multi-buffer scrub playback (#29, epic #116)
 
-- Adds a size-based IndexedDB quota + pruning policy for the protocol store, so a long dashboard session no longer grows storage unbounded; pruning is throttled, oldest-first, and never touches a provider's pinned tail window
-- Adds an always-on rolling ring buffer for encoded buffer chunks plus a windowed stats-arrival log; freeze clones the ring and parks the cursor, enabling scrub playback while frozen without interrupting live ingest
-- Tightens VP9 encoder keyframe cadence from 2000ms to 500ms so a scrub cursor is always near a decodable anchor
-- Adds periodic registry checkpoint snapshots so time-travel reconstruction never replays further back than one cadence window
-- Generalizes the flight recorder to multi-buffer: buffers panel supports marking multiple buffers with a responsive grid layout (1/2/2x2/3x2/3x3) and a soft GPU-cost guardrail past ~4 concurrent streams; registry panel gains multi-select via pinned tabs (Ctrl/Cmd-click)
+- New always-on rolling ring buffer for encoded video chunks + stats arrivals, windowed by wall-clock time (10s chunks, 30s stats); chunk eviction never evicts past the newest keyframe still outside the window so a frozen snapshot can always decode from its own start
+- Freeze/unfreeze: freezing clones the ring and parks the frame cursor while live ingest keeps writing underneath; unfreeze is wired into every existing "go live" affordance (LIVE button, double-click, Esc)
+- Buffers panel now decodes actual frames while frozen via a dedicated scrub decoder, replacing the old "no playback yet" placeholder
+- Generalized from single-buffer to multi-buffer: mark several buffers at once, laid out on a responsive grid (1/2/2x2/3x2/3x3) with a soft GPU-cost guardrail past ~4 concurrent streams; freeze clones every marked ring atomically
+- Registry panel gains multi-select via a pinned-tabs strip (Ctrl/Cmd-click to pin), reusing whole-registry reconstruction so every pinned entry stays scrub-consistent while parked
+- Registry feature now periodically emits full checkpoint snapshots so time-travel reconstruction never has to replay further back than one cadence window; a checkpoint that would otherwise degrade to metadata-only (pool overflow) retries instead of starving, settling on a partial-checkpoint state that reconstruction skips as an anchor
+- Protocol store persistence moved to dashboard bootstrap, independent of the Protocol Log panel's mount/pause state
+- Tightened VP9 encoder keyframe cadence from 2000ms to 500ms so a scrub cursor is never far from a decodable anchor
+
+## Protocol store — size-based quota and pruning
+
+- Added a byte-budget policy (`navigator.storage.estimate()`, capped and overridable, with a fixed fallback) and throttled oldest-first pruning so long dashboard sessions no longer grow IndexedDB storage unbounded
+- `retainedRange()` exposes what actually survives per provider for honest scrubber bounds
+- Added `dispose()` to cancel background timers and close the IDB connection cleanly
+- Added `addFlushListener`, firing after a write batch's IDB transaction commits, so parked reconstructions re-query once new rows are durably queryable
 
 ## Fixes
 
-- Fixes the frozen scrubber's claimable frame range being incorrectly widened by a union with the stats ring instead of intersected, which could let the slider claim frames a buffer couldn't actually decode
-- Fixes out-of-order scrub decode outputs during rapid cursor movement by correlating each decoded frame to the request that issued it (FIFO tracking) instead of a raw counter
-- Fixes six protocol-store quota/pruning issues: per-provider tail windows are now pinned by retained id count (not a global id span), in-memory accounting rolls back on failed writes, a one-shot timer arms pruning after a throttled burst, `dispose()` cleans up timers/connections, `total` is derived from retained ids instead of drifting, and `retainedRange().oldestFrame` recovers correctly when a prune stops early
-- Fixes a registry checkpoint edge case where an entry degraded to metadata-only (pool overflow) could get permanently stuck; it now retries and marks itself `partial` so reconstruction can skip it and fall back to the nearest complete checkpoint
-- Fixes protocol-store persistence being an implicit side effect of the Protocol Log panel's mount/pause state; ingest now runs unconditionally from dashboard bootstrap
-- Adds a flush-listener so parked registry reconstruction re-queries once a write batch is durably committed, closing a debounce race against fresh data
+- Fixed frozen claimable frame range: a single marked buffer with a narrow chunk window could be overridden by a much wider stats window, letting the scrubber claim frames a buffer could never resolve; the range is now the marked-buffer union intersected with the stats bound (`frozenClaimableFrameRange`, renamed from `frozenUnionFrameRange`)
+- Fixed scrub decode output correlation: a rapid cursor move during a frozen scrub could let a superseded decode request's late output get drawn as the wrong frame; outputs are now tracked via a FIFO correlated to their originating request
+- Fixed six quota-pruning edge cases: per-provider tail windows now pinned by each provider's own retained ids (not a global id span), in-memory accounting rolls back on failed writes, a one-shot timer catches throttled bursts followed by silence, `statsFor().total` derives from retained ids so it can't drift, and `retainedRange().oldestFrame` recovers from cache instead of pointing at a deleted row
+- Registry reconstruction and the live client now share one fold function so they can't diverge
 
 ## Summary
 
-Completes the devtools flight recorder: persistent, quota-bounded protocol logging, multi-buffer ring recording with scrub playback, and consistent registry reconstruction while frozen.
+Completes the devtools flight recorder (#29 Phase C, epic #116): multi-buffer scrub playback with a responsive grid, registry checkpointing and multi-select, and a size-bounded protocol store with several adversarial-review correctness fixes.
