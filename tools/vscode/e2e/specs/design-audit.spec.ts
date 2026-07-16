@@ -88,7 +88,12 @@ test.describe('Z8 design audit screenshots', () => {
       await vscode.commands.executeCommand('workbench.action.openSettings', 'volume')
     })
     await workbox.locator('.settings-editor').waitFor({ state: 'visible' })
-    await workbox.waitForTimeout(500)
+    // `.settings-editor` becomes visible before the (filtered, virtualized)
+    // settings tree has actually rendered any rows into it — wait for a
+    // real `.setting-item` row (VS Code's own workbench class, confirmed
+    // against the bundled workbench.desktop.main.js) instead of guessing
+    // how long that takes with a fixed delay.
+    await workbox.locator('.settings-editor .setting-item').first().waitFor({ state: 'visible' })
     await workbox.screenshot({ path: path.join(OUT_DIR, 'native-settings.png') })
   })
 
@@ -97,7 +102,14 @@ test.describe('Z8 design audit screenshots', () => {
       await vscode.commands.executeCommand('workbench.view.extensions')
     })
     await workbox.locator('.extensions-viewlet').waitFor({ state: 'visible' })
-    await workbox.waitForTimeout(500)
+    // Same idea as the settings editor above: the viewlet container mounts
+    // before the installed-extensions query resolves and the list actually
+    // renders rows. Wait for a real `.extension-list-item` row instead of a
+    // fixed delay.
+    await workbox
+      .locator('.extensions-viewlet .extension-list-item')
+      .first()
+      .waitFor({ state: 'visible' })
     await workbox.screenshot({ path: path.join(OUT_DIR, 'native-extensions.png') })
   })
 })

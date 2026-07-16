@@ -6,12 +6,12 @@ import { getPlaySidecarClient, shutdownPlaySidecar } from './playSidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
 import { ActivePlayback, watchPlaybackEnd } from './activePlayback'
 import { AudioFileResolver } from './audioFileResolver'
+import { createSourceEditorBindingHandlers } from './sourceEditorBinding'
 import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
 import { resolveSong } from './resolveSong'
 import { resolveWadSynth } from './resolveWadSynth'
 import { resolveToneSynth } from './resolveToneSynth'
-import { playToneSynthWithColdStartRetry } from './toneColdStartRetry'
 import { getPlaybackVolumeMultiplier } from './playbackVolume'
 import { isToolEnabled } from '../../toolRegistry'
 import { log } from '../../log'
@@ -36,6 +36,36 @@ let activeProvider: ZzfxCodeLensProvider | null = null
  * lands — see provider.ts) instead of polling to a wall-clock deadline. */
 export function getZzfxCodeLensProvider(): ZzfxCodeLensProvider | null {
   return activeProvider
+}
+
+/** e2e/test-only determinism seam (finding #7,
+ * planning/testing/pr188-adversarial-review.md) — mirrors `activeProvider`
+ * above so `resetAudioToolState` can reach the live `ActivePlayback` /
+ * `AudioFileResolver` instances without `registerAudioTool` exposing its
+ * whole closure. */
+let activeAudioState: { activePlayback: ActivePlayback; audioResolver: AudioFileResolver } | null =
+  null
+
+/**
+ * e2e/test-only determinism seam (finding #7,
+ * planning/testing/pr188-adversarial-review.md): fully resets the audio
+ * tool's session state so a later test's behavior can't depend on how
+ * long an earlier test happened to run. `e2e/fixtures.ts` shrinks the
+ * audio-play sidecar's idle-release window (`FL_AUDIO_IDLE_RELEASE_MS`)
+ * for the whole session — that timer lives INSIDE the sidecar process
+ * (see `tools/audio-play/src/contextLifecycle.ts`) with no external
+ * cancel, so shutting the process down outright is the only way to
+ * guarantee no leftover idle state survives into the next test; the next
+ * `play()` call spawns a fresh sidecar. Also clears the active-playback
+ * record and the per-session `audio.file` resolver cache so neither
+ * carries state from a previous test's (recopied) workspace fixture.
+ * Every step here already no-ops when nothing is running/registered, so
+ * this is safe to call whether or not the audio tool is currently
+ * enabled. */
+export async function resetAudioToolState(): Promise<void> {
+  await shutdownPlaySidecar()
+  activeAudioState?.activePlayback.clear()
+  activeAudioState?.audioResolver.clear()
 }
 
 type ZzfxCallFinding = Extract<Finding, { kind: 'zzfx.call' }>
@@ -214,12 +244,14 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
   const activePlayback = new ActivePlayback(() => {})
   const provider = new ZzfxCodeLensProvider(() => getSidecarClient(context), audioResolver)
   activeProvider = provider
+  activeAudioState = { activePlayback, audioResolver }
   disposables.push(
     vscode.languages.registerCodeLensProvider(ZZFX_DOCUMENT_SELECTOR, provider),
     provider,
     {
       dispose: () => {
         if (activeProvider === provider) activeProvider = null
+        if (activeAudioState?.activePlayback === activePlayback) activeAudioState = null
       },
     }
   )
@@ -247,11 +279,12 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
   }
 
   /** Whether any tab in any group still shows `uri` — the reliable
-   * "source document is still open" signal. `onDidCloseTextDocument`
-   * alone can't carry the close half of the binding: VS Code disposes
-   * TextDocuments lazily, so closing a tab is NOT guaranteed to fire it
-   * (per its own API docs) — proven live by the e2e close test, where
-   * the event never arrived inside the playback window. */
+   * "source document is still open" signal, injected into the binding
+   * below. `onDidCloseTextDocument` alone can't carry the close half of
+   * the binding: VS Code disposes TextDocuments lazily, so closing a tab
+   * is NOT guaranteed to fire it (per its own API docs) — proven live by
+   * the e2e close test, where the event never arrived inside the
+   * playback window. */
   function isDocumentOpenInSomeTab(uri: string): boolean {
     return vscode.window.tabGroups.all.some((group) =>
       group.tabs.some(
@@ -261,28 +294,24 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
   }
 
   // Source-editor binding (#46): a playing sound belongs to its source
-  // document. Switching the active editor to a DIFFERENT document, or
-  // closing the source document's tab, stops it. An `undefined` active
-  // editor (focus moved to a terminal/panel/webview) is deliberately not
-  // a switch — the sound keeps playing; the tab check is what
-  // distinguishes "focus left the editor area" from "the source tab is
-  // actually gone."
+  // document — see sourceEditorBinding.ts's file doc comment for the full
+  // rationale and sourceEditorBinding.test.ts for its unit coverage
+  // (finding #6, planning/testing/pr188-adversarial-review.md). These
+  // three listeners just adapt the real vscode events down to the
+  // URI/callback primitives the extracted handlers take.
+  const sourceEditorBinding = createSourceEditorBindingHandlers({
+    activePlayback,
+    stop: stopActivePlayback,
+    isDocumentOpenInSomeTab,
+  })
   disposables.push(
-    vscode.window.onDidChangeActiveTextEditor((editor) => {
-      const current = activePlayback.current
-      if (!current || !editor) return
-      if (editor.document.uri.toString() === current.sourceUri) return
-      stopActivePlayback()
-    }),
-    vscode.window.tabGroups.onDidChangeTabs(() => {
-      const current = activePlayback.current
-      if (!current || isDocumentOpenInSomeTab(current.sourceUri)) return
-      stopActivePlayback()
-    }),
-    vscode.workspace.onDidCloseTextDocument((document) => {
-      if (document.uri.toString() !== activePlayback.current?.sourceUri) return
-      stopActivePlayback()
-    })
+    vscode.window.onDidChangeActiveTextEditor((editor) =>
+      sourceEditorBinding.onDidChangeActiveTextEditor(editor?.document.uri.toString())
+    ),
+    vscode.window.tabGroups.onDidChangeTabs(() => sourceEditorBinding.onDidChangeTabs()),
+    vscode.workspace.onDidCloseTextDocument((document) =>
+      sourceEditorBinding.onDidCloseTextDocument(document.uri.toString())
+    )
   )
 
   // Tier 1 (shallow workspace scan): warm the sidecar's SQLite cache on
@@ -495,11 +524,19 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
   )
 
   // CodeLens-only, like playSong — re-parses fresh, resolves the Tone.js
-  // playback args via toneSynthResolver.ts, then plays it THROUGH the
-  // Part-A cold-start retry (see toneColdStartRetry.ts): the sidecar's
-  // Tone engine loads lazily on the session's first Tone play, so the
-  // very first click deterministically Nacks once without the retry.
-  // `trackPlayback` fires exactly once, only after a successful send.
+  // playback args via toneSynthResolver.ts, then plays it through the
+  // id-correlated `playToneSynthAwaitable` command (#47/#49). The
+  // sidecar's own `playToneSynth` backend awaits its lazily-loaded Tone.js
+  // engine (bounded — see `tools/audio-play/src/sidecar.ts`'s
+  // `loadToneEngineBounded`) before Acking/Nacking, so the session's very
+  // first Tone play genuinely waits for the engine instead of Nacking
+  // once and requiring a client-side retry — this handler just awaits
+  // THAT one response and shows a single graceful error on a genuine
+  // Nack. `.catch` normalizes a transport-level rejection (sidecar not
+  // running, response timeout — see `waitForResponse` in `client.ts`)
+  // into the same shape as a remote Nack, so both failure modes land on
+  // the one error path below. `trackPlayback` fires exactly once, only
+  // after a successful response.
   disposables.push(
     vscode.commands.registerCommand(
       'threeFlatland.audio.playToneSynth',
@@ -534,20 +571,22 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
         // allowlist sidecar-side (tone.synth's fully-static-or-nothing
         // detection) — safe to narrow the resolver's plain `string` back
         // to the wire's ToneSynthType here.
-        const ok = await playToneSynthWithColdStartRetry(
-          playClient,
-          {
-            synthType: resolved.synthType as ToneSynthType,
-            voiceType: resolved.voiceType as ToneSynthType | undefined,
-            note: resolved.note,
-            duration: resolved.duration,
-          },
-          getPlaybackVolumeMultiplier()
-        )
-        if (!ok) {
-          void vscode.window.showErrorMessage(
-            'FL Audio: Tone.js failed to load in time — try Play again.'
+        const response = await playClient
+          .playToneSynthAwaitable(
+            {
+              synthType: resolved.synthType as ToneSynthType,
+              voiceType: resolved.voiceType as ToneSynthType | undefined,
+              note: resolved.note,
+              duration: resolved.duration,
+            },
+            getPlaybackVolumeMultiplier()
           )
+          .catch((error: unknown): { ok: false; error: string } => ({
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          }))
+        if (!response.ok) {
+          void vscode.window.showErrorMessage(`FL Audio: ${response.error}`)
           return
         }
         // Marks this finding as the active playback for the source-editor

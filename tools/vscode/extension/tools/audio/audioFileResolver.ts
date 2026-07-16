@@ -161,6 +161,21 @@ export class AudioFileResolver {
     return this.searches.get(key) ?? this.startSearch(key, refPath)
   }
 
+  /** e2e/test-only reset (finding #7,
+   * planning/testing/pr188-adversarial-review.md): empties every
+   * cache/search/miss record so a later test's `getLensState`/
+   * `resolveForPlay` calls can't see resolved paths left over from a
+   * previous test's (by then recopied) workspace fixture. An in-flight
+   * search whose promise was already running keeps running — its own
+   * `startSearch` closure only touches `this.searches`/`this.cache` by
+   * key, so a late resolution after `clear()` just repopulates the fresh
+   * cache rather than throwing. */
+  clear(): void {
+    this.cache.clear()
+    this.searches.clear()
+    this.misses.clear()
+  }
+
   private startSearch(key: string, refPath: string): Promise<string | undefined> {
     const basename = path.basename(refPath)
     const search = (async () => {

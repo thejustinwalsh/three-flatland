@@ -123,14 +123,15 @@ function send(response: Response): void {
 // --- Tone.js: lazy, dynamic import (#47). `tone` is pure ESM (no
 // synchronous CJS load path — see `loadWadConstructor` below for the
 // contrast), so a genuinely lazy "only import on first use" load is
-// inherently asynchronous, which collides with `AudioBackend.playToneSynth`'s
-// synchronous `{stop():void}` contract. Resolved by: a cache that's
-// synchronous once warm, and — on the very first `playToneSynth` command
-// against a cold sidecar, before the import has resolved — a clean Nack
-// ("still loading") rather than blocking `handleCommand` or crashing the
-// process. The import itself is wrapped so a genuine failure (not just
-// slow) Nacks the same way, never taking down zzfx/zzfxm/file playback.
-let toneEngine: ToneEngine | undefined
+// inherently asynchronous. `AudioBackend.playToneSynth` is allowed to be
+// async precisely for this reason (see `commandHandler.ts`'s doc
+// comment): the backend AWAITS `toneEnginePromise` (bounded, see
+// `loadToneEngineBounded` below) before ever constructing a synth, so the
+// command's own Ack/Nack always reflects whether the engine actually
+// became ready — never a "still loading, try again" Nack that pushes the
+// retry burden onto the caller. `toneEnginePromise` is cached and
+// idempotent — every call after the first (cold or not) reuses the same
+// promise (already-resolved, in the overwhelmingly common case).
 let toneEnginePromise: Promise<ToneEngine> | undefined
 /** The slice of the Tone module the context lifecycle needs to re-bind
  * a reacquired context (Tone captured the old one via setContext). */
@@ -170,11 +171,59 @@ function loadToneEngine(): Promise<ToneEngine> {
         },
         Time: (value) => Tone.Time(value),
       }
-      toneEngine = engine
       return engine
     })
   }
   return toneEnginePromise
+}
+
+/** How long `playToneSynth` will wait for the Tone.js engine before
+ * Nacking with `TONE_LOAD_FAILED` — overridable like
+ * `FL_AUDIO_IDLE_RELEASE_MS` for e2e tuning. Bounded so a wedged
+ * `import('tone')` (broken fs, corrupted install) can never stall the
+ * sidecar's serialized command chain forever — the same "never hang"
+ * posture `contextLifecycle.ts`'s `bounded()` applies to native device
+ * calls, just for a module import instead of a device operation. */
+const TONE_LOAD_TIMEOUT_MS = Number(process.env.FL_AUDIO_TONE_LOAD_TIMEOUT_MS ?? 10_000)
+
+/**
+ * Races `loadToneEngine()` against `TONE_LOAD_TIMEOUT_MS`. A timeout (or
+ * a genuine `import('tone')` rejection) rejects with a `TONE_LOAD_FAILED`-
+ * coded error — `commandHandler.ts`'s catch turns that into a Nack, never
+ * an uncaught exception. Losing the race does NOT cancel or reset
+ * `toneEnginePromise` — it keeps racing in the background (dynamic
+ * imports aren't cancellable, and there's no reason to throw away
+ * in-flight work), so a late resolution still warms the cache for the
+ * very next `playToneSynth` call. That's what makes this self-healing
+ * without any retry logic on the caller's side: a slow-but-not-hung
+ * first attempt Nacks once, and the second attempt (whenever the user
+ * clicks Play again) finds the engine already loaded.
+ */
+function loadToneEngineBounded(): Promise<ToneEngine> {
+  return new Promise<ToneEngine>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        Object.assign(
+          new Error(`Tone.js did not finish loading within ${TONE_LOAD_TIMEOUT_MS}ms`),
+          { code: 'TONE_LOAD_FAILED' }
+        )
+      )
+    }, TONE_LOAD_TIMEOUT_MS)
+    loadToneEngine().then(
+      (engine) => {
+        clearTimeout(timer)
+        resolve(engine)
+      },
+      (err: unknown) => {
+        clearTimeout(timer)
+        reject(
+          Object.assign(new Error(err instanceof Error ? err.message : String(err)), {
+            code: 'TONE_LOAD_FAILED',
+          })
+        )
+      }
+    )
+  })
 }
 
 // --- Wad: `web-audio-daw` is a plain CJS/UMD bundle (no `"type"` field
@@ -364,23 +413,13 @@ const handler = createCommandHandler({
       }
     })()
   },
-  playToneSynth: (cmd, volume) => {
+  // Device check FIRST (fast-fail on a device-less runner without paying
+  // for a Tone.js import that would be moot anyway), THEN await the
+  // bounded engine load — see loadToneEngineBounded's doc comment.
+  playToneSynth: async (cmd, volume) => {
     assertAudioDeviceAvailable()
-    if (!toneEngine) {
-      // Kick off the load (idempotent — see loadToneEngine's cache) and
-      // Nack this attempt rather than blocking handleCommand on an
-      // inherently-async dynamic import. A genuine import failure lands
-      // here too, on stderr only — never crashes the sidecar.
-      void loadToneEngine().catch((err) => {
-        process.stderr.write(
-          `audio-play: tone failed to load: ${err instanceof Error ? err.message : String(err)}\n`
-        )
-      })
-      throw Object.assign(new Error('Tone.js is still loading — try again in a moment'), {
-        code: 'TONE_LOADING',
-      })
-    }
-    return playToneSynth(ZZFX.audioContext, toneEngine, cmd, ZZFX.volume * volume)
+    const engine = await loadToneEngineBounded()
+    return playToneSynth(ZZFX.audioContext, engine, cmd, ZZFX.volume * volume)
   },
   playWadSynth: (config, volume) => {
     assertAudioDeviceAvailable()
@@ -519,7 +558,15 @@ rl.on('line', (line) => {
   commandChain = commandChain
     .then(async () => {
       if (PLAY_COMMANDS.has(command.cmd)) await lifecycle.ensureRunning(command.cmd)
-      const response = handler.handleCommand(command)
+      // Awaited — `handleCommand` always returns a Promise now (see
+      // commandHandler.ts's doc comment); `playToneSynth` is the one
+      // command whose backend call genuinely awaits (the bounded Tone
+      // engine load), so this line can legitimately take a while on a
+      // cold sidecar's first Tone play. That's fine: the command chain
+      // is already strictly serialized, and a queued command behind it
+      // just waits its turn like it always has for any bounded
+      // lifecycle/device operation.
+      const response = await handler.handleCommand(command)
       // Echo the request's correlation id, if it carried one — see
       // protocol.ts's `Response` doc for why awaited responses need it.
       const id = 'id' in command ? command.id : undefined

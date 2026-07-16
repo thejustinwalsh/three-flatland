@@ -339,13 +339,15 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
   //
   // Proving "the process is still alive and responsive" without polling
   // the analyser: `playToneSynth` is already an ID-correlated awaited
-  // command (`playToneSynthAwaitable`, #47/#49's cold-start retry) —
-  // register.ts's handler only shows a user-visible error once that
-  // retry's own fixed ~4s backoff (toneColdStartRetry.ts) is exhausted.
-  // So issuing a second, unrelated Tone play and asserting NO error
-  // surfaced is a deterministic "the sidecar answered a fresh command"
-  // proof, bounded entirely by production retry logic — not a
-  // test-authored poll.
+  // command (`playToneSynthAwaitable`, #47/#49) — the sidecar's own
+  // backend awaits its bounded, lazily-loaded Tone.js engine before
+  // Acking/Nacking (see `tools/audio-play/CLAUDE.md`'s "Tone.js: lazy
+  // load, bounded await"), and register.ts's handler shows a user-visible
+  // error only on that ONE awaited response's Nack — no client-side retry
+  // in between. So issuing a second, unrelated Tone play and asserting NO
+  // error surfaced is a deterministic "the sidecar answered a fresh
+  // command" proof, bounded entirely by the sidecar's own load timeout —
+  // not a test-authored poll.
   test('tone.synth PluckSynth: AudioWorkletNode construction does not crash the sidecar process', async ({
     evaluateInVSCode,
   }) => {
@@ -449,16 +451,17 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
   })
 
   // Part A: the very FIRST command a freshly-spawned sidecar receives is
-  // a Tone play — the deterministic once-per-session cold-start Nack.
-  // Forces a genuinely fresh sidecar (shutdown, so the next play respawns
-  // one with `toneEngine`/`toneEnginePromise` module state reset) rather
-  // than relying on test-execution order. `playToneSynth` is already an
-  // ID-correlated awaited command — `playToneSynthWithColdStartRetry`
-  // (toneColdStartRetry.ts) is fully run and settled, including every
-  // retry in its own fixed ~4s backoff schedule, by the time the single
-  // awaited executeCommand() below resolves. No polling: this asserts
-  // BOTH that the command completed AND that the retry stayed invisible
-  // to the user (no error message shown) — the whole point of the fix.
+  // a Tone play — the deterministic once-per-session cold-start path
+  // (`import('tone')` hasn't resolved yet). Forces a genuinely fresh
+  // sidecar (shutdown, so the next play respawns one with
+  // `toneEnginePromise` module state reset) rather than relying on
+  // test-execution order. `playToneSynth` is already an ID-correlated
+  // awaited command, and the sidecar's own backend now AWAITS the bounded
+  // Tone.js load before Acking/Nacking (see `tools/audio-play/CLAUDE.md`'s
+  // "Tone.js: lazy load, bounded await") — so the single awaited
+  // executeCommand() below already reflects the real outcome by the time
+  // it resolves, no client-side retry involved. No polling: this asserts
+  // the command completed and the sidecar survived cold start.
   test('Part A cold-start: the first Tone play against a fresh sidecar keeps the process alive (no crash/hang on cold start)', async ({
     evaluateInVSCode,
   }) => {
@@ -473,10 +476,10 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as ExtensionApi
 
-        // Force a genuinely fresh sidecar — its toneEngine/
-        // toneEnginePromise module state resets, so the very next
-        // playToneSynth is the deterministic once-per-session cold-start
-        // path (import('tone') + AudioWorklet setup) this test targets.
+        // Force a genuinely fresh sidecar — its toneEnginePromise module
+        // state resets, so the very next playToneSynth is the
+        // deterministic once-per-session cold-start path (import('tone')
+        // + AudioWorklet setup) this test targets.
         await api.zzfxPlay.shutdown()
         await vscode.commands.executeCommand(arg.command, ...(arg.args ?? []))
 
