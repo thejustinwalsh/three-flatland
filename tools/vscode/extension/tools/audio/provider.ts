@@ -170,6 +170,14 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
           // so it gets a single inert `$(question) Unresolved` lens
           // instead of a Play that would always fail with the same
           // error resolveSong/resolveWadSynth/resolveToneSynth throw.
+          // A wad.synth the sidecar already classified as unplayable (the
+          // mic/sprite/preset decoys — see WadSynthPayload.unresolved)
+          // gets the same inert lens; no client-side re-parse needed, the
+          // refusal reason was known at parse time.
+          if (finding.kind === 'wad.synth' && finding.payload.unresolved) {
+            lenses.push(new ZzfxCodeLens(range, finding, 'unresolved', document.uri))
+            break
+          }
           const varRef = finding.payload.varRef
           if (varRef && (!varRef.defUri || !varRef.defRange)) {
             lenses.push(new ZzfxCodeLens(range, finding, 'unresolved', document.uri))

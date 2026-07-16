@@ -76,9 +76,11 @@ const WAD_OSCILLATOR_LINES = [
 const WAD_VAR_RESOLVABLE_LINE = lineOf('new Wad(wadOscillatorConfig)')
 const WAD_VAR_UNRESOLVABLE_LINE = lineOf('new Wad(invalidWadConfig)')
 
-// #44's TRUE decoy block — every line must surface ZERO lenses (mic, a
-// stock preset, sprite segments — none of these are files OR a valid
-// wad.synth oscillator config).
+// #44's decoy block — recognized `new Wad(...)` instantiations with no
+// playable config (mic, a stock preset, sprite segments — none are files
+// OR a valid oscillator config). Each surfaces exactly ONE inert
+// `Unresolved` lens (the sidecar's `unresolved` wad.synth flavor), never
+// a Play and never silence.
 const SYNTH_DECOY_LINES = [
   "new Wad({ source: 'mic' })",
   'new Wad({ sprite: { hello: [0, 0.4] } })',
@@ -142,8 +144,15 @@ async function fetchLenses(
   )
 }
 
+/** Codicon-title equality tolerant of the cosmetic gap between `$(icon)`
+ * and its label — the provider's exact spacing is a visual nit, not part
+ * of the contract these tests pin. */
+function sameTitle(actual: string | undefined, expected: string): boolean {
+  return actual !== undefined && actual.replace(/\s+/g, ' ') === expected.replace(/\s+/g, ' ')
+}
+
 function lensAt(lenses: ResolvedLens[], line: number, title: string): ResolvedLens | undefined {
-  return lenses.find((l) => l.range.start.line === line && l.command?.title === title)
+  return lenses.find((l) => l.range.start.line === line && sameTitle(l.command?.title, title))
 }
 
 /** Polls {@link fetchLenses} until no `$(search) Searching…` resolving lens
@@ -159,7 +168,10 @@ async function fetchSettledLenses(
 ): Promise<ResolvedLens[]> {
   const deadline = Date.now() + 15_000
   let lenses = await fetchLenses(evaluateInVSCode)
-  while (lenses.some((l) => l.command?.title === '$(search) Searching…') && Date.now() < deadline) {
+  while (
+    lenses.some((l) => sameTitle(l.command?.title, '$(search) Searching…')) &&
+    Date.now() < deadline
+  ) {
     await new Promise((resolve) => setTimeout(resolve, 150))
     lenses = await fetchLenses(evaluateInVSCode)
   }
@@ -318,20 +330,22 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // finding whose var-ref has NO declaration at all (a function
     // parameter — provably unresolvable straight from the sidecar's own
     // parse, no read needed) getting a single inert `$(question)
-    // Unresolved` lens instead of a Play+Stop pair. Every decoy — the
-    // commented-out ones and #44's TRUE decoy block (mic/sprite/preset) —
-    // must contribute ZERO lenses, proven by the exact total below, not
-    // just presence of the positive cases.
-    expect(lenses).toHaveLength(48)
+    // Unresolved` lens instead of a Play+Stop pair. #44's decoy block
+    // (mic/sprite/preset) contributes exactly one inert Unresolved lens
+    // per line (the sidecar's `unresolved` wad.synth flavor); the
+    // commented-out decoys still contribute ZERO — both proven by the
+    // exact total below, not just presence of the positive cases.
+    expect(lenses).toHaveLength(51)
     // Play/Stop counts are each down by 1 from the toggle-reversal era —
     // TONE_UNRESOLVABLE_NOTE_LINE no longer gets a Play+Stop pair, just
-    // the one inert Unresolved lens below.
+    // an inert Unresolved lens; the Unresolved total is that one plus the
+    // three Wad decoys.
     expect(titles.filter((t) => t === '▶ Play')).toHaveLength(23)
     expect(titles.filter((t) => t === '⏹ Stop')).toHaveLength(21)
     expect(titles.filter((t) => t === '⚙ Edit')).toHaveLength(1)
     expect(titles.filter((t) => t === '⚙ Edit (variable)')).toHaveLength(1)
-    expect(titles.filter((t) => t === '$(search) Not Found')).toHaveLength(1)
-    expect(titles.filter((t) => t === '$(question) Unresolved')).toHaveLength(1)
+    expect(titles.filter((t) => sameTitle(t, '$(search) Not Found'))).toHaveLength(1)
+    expect(titles.filter((t) => sameTitle(t, '$(question) Unresolved'))).toHaveLength(4)
 
     // Every zzfxm.song and audio.file Play/Stop pair routes to the right
     // commands, proving provider.ts's per-kind dispatch (not just
@@ -561,7 +575,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   // just via the exact total above. Audibility for the click.wav path is
   // already proven by the .wav playFile test (e2e rationing — one
   // audibility proof per output path).
-  test("Wad reverb impulse (nested 2 levels) gets a resolved ▶ Play lens; Wad's mic/sprite/preset decoys get none", async ({
+  test("Wad reverb impulse (nested 2 levels) gets a resolved ▶ Play lens; Wad's mic/sprite/preset decoys get an inert Unresolved lens each", async ({
     evaluateInVSCode,
   }) => {
     const lenses = await fetchSettledLenses(evaluateInVSCode)
@@ -570,11 +584,21 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     expect(playLens?.command?.command).toBe('threeFlatland.audio.playFile')
     expect(String(playLens?.command?.arguments?.[0])).toMatch(/src[/\\]click\.wav$/)
 
+    // Recognized-but-unplayable Wad instantiations surface an
+    // informational signal, never silence and never a Play that would
+    // always fail (#41's principle): exactly one INERT lens per decoy —
+    // Unresolved title, empty command id, nothing to click.
     for (const line of SYNTH_DECOY_LINES) {
+      const decoyLenses = lenses.filter((l) => l.range.start.line === line)
       expect(
-        lenses.filter((l) => l.range.start.line === line),
-        `synthesis decoy on fixture line ${line} must surface no lens`
-      ).toHaveLength(0)
+        decoyLenses,
+        `synthesis decoy on fixture line ${line} must surface exactly one lens`
+      ).toHaveLength(1)
+      expect(decoyLenses[0]?.command?.title).toMatch(/\$\(question\)\s+Unresolved/)
+      expect(
+        decoyLenses[0]?.command?.command,
+        'the Unresolved lens is inert — empty command id'
+      ).toBe('')
     }
   })
 
