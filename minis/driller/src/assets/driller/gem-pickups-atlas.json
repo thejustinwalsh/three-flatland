@@ -1,0 +1,8 @@
+{
+  "image": "gem-pickups-atlas.png",
+  "cellSize": 24,
+  "columns": ["small", "medium", "large", "huge"],
+  "rows": ["emerald", "topaz", "ruby", "amethyst"],
+  "renderedSizes": [8, 11, 16, 22],
+  "frames": "tight-alpha-bounds"
+}

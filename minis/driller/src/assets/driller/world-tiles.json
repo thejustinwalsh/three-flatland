@@ -1,0 +1,48 @@
+{
+  "image": "world-tiles.png",
+  "tileSize": 16,
+  "columns": 16,
+  "rows": 11,
+  "biomes": {
+    "topsoil": {
+      "soilRow": 0,
+      "stoneRow": 5
+    },
+    "deep-dirt": {
+      "soilRow": 1,
+      "stoneRow": 6
+    },
+    "stoneworks": {
+      "soilRow": 2,
+      "stoneRow": 7
+    },
+    "crystal-caverns": {
+      "soilRow": 3,
+      "stoneRow": 8
+    },
+    "core": {
+      "soilRow": 4,
+      "stoneRow": 9
+    }
+  },
+  "autotile": {
+    "maskBits": {
+      "north": 1,
+      "south": 2,
+      "east": 4,
+      "west": 8
+    },
+    "maskToColumn": [11, 14, 2, 14, 13, 12, 3, 6, 13, 12, 3, 6, 8, 10, 0, 15],
+    "flipXMaskValues": [8, 9, 10, 11]
+  },
+  "fixtures": {
+    "row": 10,
+    "boneColumns": [0, 1, 2, 3],
+    "mushroomColumns": [4, 5, 6, 7],
+    "crystalColumns": [8, 9, 10, 11],
+    "pillarColumn": 12,
+    "crateColumn": 13,
+    "torchColumn": 14,
+    "explosiveColumn": 15
+  }
+}
