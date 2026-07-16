@@ -5,9 +5,9 @@
 > Branch: codex/driller-refresh
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/189
 
-### Fixes
+### Bug Fixes
 
-- Fix sprite lighting/shadows drifting out of sync with sprites while the camera scrolls — `worldOffset` now includes camera translation instead of only local frustum edges (`Flatland`, `lightEffectSystem`)
-- Fix `Sprite2D` effects (e.g. lighting/shadow variants) silently falling back to an untextured white material when a sprite is constructed with an explicit `material` prop instead of a `texture` prop (common with R3F) — variant resolution now falls back to the material's own texture
+- Fix lighting/shadows drifting out of alignment with sprites as the camera scrolls — the world offset used by lights, SDF shadows, and radiance cascades now accounts for camera translation instead of only the local frustum extents.
+- Fix sprites losing their texture when an explicit `material` prop (common in R3F usage) resolves an effect variant — the variant resolver now falls back to the material's own texture instead of assuming `null`.
 
-Sprite lighting stays correctly positioned during camera scrolling, and effect-driven material variants now resolve correctly for sprites configured via an explicit material rather than a texture prop.
+**Summary:** Sprites now keep correct lighting/shadow alignment while scrolling, and effect-variant materials no longer drop textures when supplied explicitly (e.g. via R3F).
