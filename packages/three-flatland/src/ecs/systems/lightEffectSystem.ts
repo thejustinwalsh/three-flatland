@@ -2,20 +2,10 @@ import type { World } from 'koota'
 import { LightingContext, ShadowPipeline } from '../traits'
 import type { LightEffectRuntimeContext } from '../../lights/LightEffect'
 
-// Module-scoped scratch reused every frame — mutated in place so the
-// per-frame update path stays zero-alloc past warmup (matches the perf
-// conventions in transformSyncSystem / OcclusionPass). Field shape mirrors
-// LightEffectRuntimeContext exactly; every field is reassigned below before
-// the context is handed to the effect, so the null/[] seeds never leak.
-const _runtimeCtx = {
-  renderer: null,
-  camera: null,
-  lightStore: null,
-  sdfGenerator: null,
-  lights: [],
-  worldSize: null,
-  worldOffset: null,
-} as unknown as LightEffectRuntimeContext
+// Module-scoped scratch reused every frame. It is initialized from the first
+// complete lighting context, then mutated in place so the hot path stays
+// zero-allocation without placeholder values or type assertions.
+let _runtimeCtx: LightEffectRuntimeContext | null = null
 
 /**
  * Run LightEffect lifecycle: lazy init + per-frame update.
@@ -47,23 +37,34 @@ export function lightEffectSystem(world: World): void {
   const worldOffset = ctx.worldOffset
 
   worldSize.set(cam.right - cam.left, cam.top - cam.bottom)
-  worldOffset.set(cam.left, cam.bottom)
+  // `left` / `bottom` are local frustum extents; Forward+ compares this
+  // offset with absolute sprite/light positions. Include camera motion so
+  // lights stay inside the culling grid as the world scrolls.
+  worldOffset.set(cam.position.x + cam.left, cam.position.y + cam.bottom)
 
-  // Mutate the module-scoped scratch in place — no per-frame allocation.
-  _runtimeCtx.renderer = ctx.renderer
-  _runtimeCtx.camera = cam
-  _runtimeCtx.lightStore = ctx.lightStore
-  _runtimeCtx.sdfGenerator = sdfGenerator
-  _runtimeCtx.lights = ctx.lights
-  _runtimeCtx.worldSize = worldSize
-  _runtimeCtx.worldOffset = worldOffset
+  const runtimeCtx = (_runtimeCtx ??= {
+    renderer: ctx.renderer,
+    camera: cam,
+    lightStore: ctx.lightStore,
+    sdfGenerator,
+    lights: ctx.lights,
+    worldSize,
+    worldOffset,
+  })
+  runtimeCtx.renderer = ctx.renderer
+  runtimeCtx.camera = cam
+  runtimeCtx.lightStore = ctx.lightStore
+  runtimeCtx.sdfGenerator = sdfGenerator
+  runtimeCtx.lights = ctx.lights
+  runtimeCtx.worldSize = worldSize
+  runtimeCtx.worldOffset = worldOffset
 
   // Lazy init on first render
   if (!ctx.initialized) {
-    ctx.effect.init(_runtimeCtx)
+    ctx.effect.init(runtimeCtx)
     ctx.initialized = true
   }
 
   // Per-frame update (tiling, SDF shadows, radiance cascades, etc.)
-  ctx.effect.update(_runtimeCtx)
+  ctx.effect.update(runtimeCtx)
 }

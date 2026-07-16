@@ -1599,18 +1599,24 @@ export class Sprite2D extends Mesh {
         ...this.material.variantOptions,
         effectsKey: this._buildEffectsKey(),
       }
+      // R3F commonly supplies an explicit `material` prop instead of a
+      // `texture` prop. In that form `_texture` is null even though the
+      // material has a live atlas. Constants-bearing providers resolve a
+      // material variant, so use the effective material texture or the
+      // variant silently falls back to an untextured white material.
+      const texture = this._texture ?? this.material.getTexture()
 
       // Resolve through the sprite's world/registry when enrolled, so
       // two worlds sharing a texture+effectsKey combination get distinct
       // material instances (effect registration / dispose stay
       // isolated); fall back to the module-global shared cache only
       // pre-enrollment.
-      const worldVariant = this._texture
-        ? this._resolveWorldEffectVariant(this._texture, options)
+      const worldVariant = texture
+        ? this._resolveWorldEffectVariant(texture, options)
         : null
       const newMaterial =
         worldVariant ??
-        Sprite2DMaterial.getShared({ map: this._texture ?? undefined, ...options })
+        Sprite2DMaterial.getShared({ map: texture ?? undefined, ...options })
 
       if (newMaterial !== this.material) {
         this._switchToMaterial(newMaterial)
