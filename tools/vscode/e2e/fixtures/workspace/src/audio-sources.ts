@@ -226,12 +226,16 @@ export function playWadUnresolvable() {
   new Wad(invalidWadConfig).play()
 }
 
-// Negative cases: live mic input (not statically playable), sprite
-// segments (numbers, not a source keyword), and a stock preset (member
-// expression, no object literal for the scanner to read) — none match
-// wad.synth's `{source: <oscillator keyword>}` shape, and none end in a
-// recognized audio extension either. ZERO lenses for this entire block,
-// proven by the spec's exact-total assertion and per-line checks.
+// TRUE decoys: live mic input (not statically playable), sprite segments
+// (numbers, not a source keyword), and a stock preset (member expression,
+// no object literal for the scanner to read). None match wad.synth's
+// `{source: <oscillator keyword>}` shape and none end in a recognized audio
+// extension — but each is still a recognized `new Wad(...)` instantiation,
+// so the sidecar emits an UNRESOLVED wad.synth finding and each surfaces
+// exactly ONE inert `$(question) Unresolved` lens (signal over silence, #41),
+// asserted per line in zzfx-audio-lenses.spec.ts. (This block previously
+// claimed "ZERO lenses" — stale; the decoy-Unresolved feature made these
+// three inert lenses, not nothing.)
 export function synthDecoys() {
   new Wad({ source: 'mic' }).play()
   new Wad({ sprite: { hello: [0, 0.4] } }).play()

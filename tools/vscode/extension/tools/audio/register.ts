@@ -395,6 +395,22 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
     )
   )
 
+  // The inert `$(question) Unresolved` lens (provider.ts) is now clickable:
+  // instead of doing nothing, it explains WHY there's no Play — the call
+  // was recognized but its sound can't be determined by static analysis
+  // (a wad.synth decoy like mic/sprite/preset, or a var-ref with no findable
+  // declaration such as a function parameter). No tool/sidecar needed — it's
+  // a pure informational message, so no `isToolEnabled`/client guards.
+  disposables.push(
+    vscode.commands.registerCommand('threeFlatland.audio.explainUnresolved', () => {
+      void vscode.window.showInformationMessage(
+        "FL Audio can't preview this call — it reads sounds statically from your source, and " +
+          "this one can't be resolved without running the code (e.g. live mic input, a sprite or " +
+          'preset reference, or a value that only exists at runtime like a function parameter).'
+      )
+    })
+  )
+
   disposables.push(
     vscode.commands.registerCommand('threeFlatland.audio.playAtCursor', async () => {
       // Defense in depth — see atlas/register.ts's identical guard comment.
