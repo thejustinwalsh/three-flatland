@@ -52,6 +52,93 @@ function socketPair(): [FakeSocket, FakeSocket] {
   return [a, b]
 }
 
+/**
+ * Resolves the first time `channel` receives a message matching
+ * `predicate`. Attach this BEFORE the action that will post the awaited
+ * message — the returned promise is the signal, never a timer.
+ */
+function waitForMessage(
+  channel: BroadcastChannel,
+  predicate: (msg: DebugMessage) => boolean
+): Promise<DebugMessage> {
+  return new Promise((resolve) => {
+    const onMessage = (ev: MessageEvent): void => {
+      const msg = ev.data as DebugMessage
+      if (!predicate(msg)) return
+      channel.removeEventListener('message', onMessage)
+      resolve(msg)
+    }
+    channel.addEventListener('message', onMessage)
+  })
+}
+
+/**
+ * Resolves with the frame the next time `socket.send()` is called — the
+ * deterministic "this crossed the wire" signal, in place of waiting a
+ * fixed delay and then inspecting `socket.sent`.
+ *
+ * Only valid as a POSITIVE-path barrier ("prove this message crossed").
+ * As a "drained queue" barrier ahead of a negative assertion (`sent
+ * .length` stayed put), it's a false barrier: it resolves on whichever
+ * send happens to land FIRST, so an erroneous forward that should have
+ * been dropped satisfies it instead of the intended barrier message,
+ * and the length check that follows can't tell the difference. Use
+ * `nextSendMatching` for that case.
+ */
+function nextSend(socket: FakeSocket): Promise<ArrayBuffer> {
+  return new Promise((resolve) => {
+    const original = socket.send.bind(socket)
+    socket.send = (data: ArrayBuffer): void => {
+      socket.send = original
+      original(data)
+      resolve(data)
+    }
+  })
+}
+
+/**
+ * Resolves the first time `socket.send()` is called with a frame whose
+ * decoded message satisfies `predicate` — a barrier tied to a SPECIFIC
+ * message's identity rather than "whatever sends first". Every send
+ * (matching or not) still runs through to `socket.sent`, so a preceding
+ * erroneous send — the exact bug a negative-guard test exists to catch —
+ * is captured before the length assertion that follows the barrier runs.
+ */
+function nextSendMatching(
+  socket: FakeSocket,
+  predicate: (msg: DebugMessage) => boolean
+): Promise<ArrayBuffer> {
+  return new Promise((resolve) => {
+    const original = socket.send.bind(socket)
+    socket.send = (data: ArrayBuffer): void => {
+      original(data)
+      const { message } = decodeDebugMessage(data)
+      if (predicate(message)) {
+        socket.send = original
+        resolve(data)
+      }
+    }
+  })
+}
+
+/**
+ * Resolves the first time an event listener of `type` is registered on
+ * `socket` — used to detect the moment a queued send (against a
+ * CONNECTING socket) registers its flush-on-open callback.
+ */
+function waitForListenerRegistered(socket: FakeSocket, type: string): Promise<void> {
+  return new Promise((resolve) => {
+    const originalAdd = socket.addEventListener.bind(socket)
+    socket.addEventListener = (listenerType: string, listener: (ev: never) => void): void => {
+      originalAdd(listenerType, listener)
+      if (listenerType === type) {
+        socket.addEventListener = originalAdd
+        resolve()
+      }
+    }
+  })
+}
+
 describe('wire codec — round-trip parity', () => {
   it('stats data payload with typed arrays survives encode → decode', () => {
     const samples = new Float32Array([16.6, 16.9, 17.1, 15.8])
@@ -76,7 +163,9 @@ describe('wire codec — round-trip parity', () => {
     expect(message.ts).toBe(1234567890123)
     const decoded = (
       message as unknown as {
-        payload: { features: { stats: { samples: Float32Array; frames: Uint32Array; fps: number } } }
+        payload: {
+          features: { stats: { samples: Float32Array; frames: Uint32Array; fps: number } }
+        }
       }
     ).payload.features.stats
     expect(decoded.samples).toBeInstanceOf(Float32Array)
@@ -155,12 +244,14 @@ describe('remote bridges over a socket pair', () => {
     // Dashboard-side listener (what a consumer would see locally)
     const consumerSeen: DebugMessage[] = []
     const dashboardDiscovery = new BroadcastChannel('fl-discovery-test')
-    dashboardDiscovery.addEventListener('message', (ev) => {
-      consumerSeen.push(ev.data as DebugMessage)
+    const dashboardSawAnnounce = waitForMessage(dashboardDiscovery, (msg) => {
+      consumerSeen.push(msg)
+      return msg.type === 'provider:announce'
     })
 
     // Provider announces on ITS discovery channel (as DevtoolsProvider does)
     const providerDiscovery = new BroadcastChannel('fl-discovery-test')
+    const announceCrossedWire = nextSend(providerSocket)
     providerDiscovery.postMessage({
       v: 1,
       ts: 1,
@@ -168,12 +259,11 @@ describe('remote bridges over a socket pair', () => {
       payload: { id: 'remote1', name: 'game', kind: 'user' },
     })
 
-    // BroadcastChannel delivery is a macrotask
-    await new Promise((resolve) => setTimeout(resolve, 20))
-
     // NOTE: the local dashboardDiscovery ALSO hears the direct local
     // announce (same process in tests). The wire path is proven by the
-    // provider socket having sent an encoded frame:
+    // provider socket actually having sent an encoded frame — awaited
+    // directly instead of assumed after a fixed delay.
+    await Promise.all([dashboardSawAnnounce, announceCrossedWire])
     expect(providerSocket.sent.length).toBeGreaterThanOrEqual(1)
     const wireAnnounce = decodeDebugMessage(providerSocket.sent[0]!)
     expect(wireAnnounce.message.type).toBe('provider:announce')
@@ -183,18 +273,22 @@ describe('remote bridges over a socket pair', () => {
     const dashboardData = new BroadcastChannel('fl-data-remote1')
     const providerReceived: DebugMessage[] = []
     const providerData = new BroadcastChannel('fl-data-remote1')
-    providerData.addEventListener('message', (ev) => {
-      providerReceived.push(ev.data as DebugMessage)
+    const subscribeSeen = waitForMessage(providerData, (msg) => {
+      providerReceived.push(msg)
+      return msg.type === 'subscribe'
     })
 
-    // Consumer bridge learns the data channel from a data frame first
+    // Consumer bridge learns the data channel from a data frame first.
+    // FakeSocket.send() is synchronous end-to-end (unlike a real
+    // BroadcastChannel post), so the consumer bridge has already opened
+    // the 'fl-data-remote1' channel by the time send() returns — no wait
+    // needed here.
     providerSocket.send(
       encodeDebugMessage(
         { v: 1, ts: 2, type: 'ping', payload: {} } as unknown as DebugMessage,
         'fl-data-remote1'
       )
     )
-    await new Promise((resolve) => setTimeout(resolve, 20))
 
     dashboardData.postMessage({
       v: 1,
@@ -202,7 +296,7 @@ describe('remote bridges over a socket pair', () => {
       type: 'subscribe',
       payload: { providerId: 'remote1', features: ['stats'] },
     })
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await subscribeSeen
 
     expect(providerReceived.some((m) => m.type === 'subscribe')).toBe(true)
 
@@ -241,10 +335,13 @@ describe('remote bridges over a socket pair', () => {
       discoveryChannelName: 'fl-discovery-conn',
       providerId: 'conn1',
     })
-    // A provider message queues against the connecting socket…
+    // A provider message queues against the connecting socket — the
+    // sender registers an 'open' listener to flush it once the socket
+    // connects. That registration is the signal the frame was queued.
+    const queued = waitForListenerRegistered(socket, 'open')
     const local = new BroadcastChannel('fl-data-conn')
     local.postMessage({ v: 1, ts: 1, type: 'ping', payload: {} })
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await queued
 
     bridge.dispose() // …then the bridge dies before the socket opens
 
@@ -257,35 +354,63 @@ describe('remote bridges over a socket pair', () => {
   })
 
   it('wire-borne reposts are never re-forwarded (same-context echo guard)', async () => {
-    const [providerSocket, consumerSocket] = socketPair()
+    const [providerSocket] = socketPair()
     const providerBridge = createProviderRemoteBridge({
       remote: providerSocket,
       dataChannelName: 'fl-data-echo',
       discoveryChannelName: 'fl-discovery-echo',
     })
-    const consumerBridge = createConsumerRemoteBridge({
-      remote: consumerSocket,
-      discoveryChannelName: 'fl-discovery-echo',
-    })
 
-    // A remote data frame arrives at the consumer bridge, which reposts
-    // it locally — the provider bridge tap in the SAME context must not
-    // send it back out (infinite relay ping-pong otherwise).
+    // Drive the provider bridge's dataTap directly with a hand-stamped
+    // FROM_WIRE marker — the same private marker createConsumerRemoteBridge
+    // applies (bus-websocket.ts's FROM_WIRE_KEY) to every message it
+    // reposts locally — instead of routing through a real consumer bridge
+    // to produce it. That lets the marked frame and the barrier that
+    // proves it was processed travel through the SAME BroadcastChannel
+    // object: real BroadcastChannel delivery only guarantees ordering for
+    // messages posted by the SAME sending object, not across independent
+    // senders (a previous version of this test posted the barrier from a
+    // second, unrelated BroadcastChannel instance fed by the consumer
+    // bridge's internal channel — an invalid barrier that could pass even
+    // if the echo guard were broken, since nothing orders two different
+    // senders' deliveries relative to each other). Routing both messages
+    // through consumerBridge isn't an option either: every message it
+    // reposts gets marked FROM_WIRE, so there would be no way to produce
+    // an un-marked, forwardable barrier through that same object.
     const sentBefore = providerSocket.sent.length
-    consumerSocket.peer = providerSocket // wire back
-    providerSocket.send(
-      encodeDebugMessage(
-        { v: 1, ts: 9, type: 'ping', payload: {} } as unknown as DebugMessage,
-        'fl-data-echo'
-      )
-    )
-    await new Promise((resolve) => setTimeout(resolve, 30))
+    const driverChannel = new BroadcastChannel('fl-data-echo')
 
-    // Exactly the frame we sent — no echo copies queued afterwards.
+    // Matched on the barrier's own unique `ts` (10), not "whichever send
+    // happens first" — if the echo guard were broken and forwarded the
+    // marked message too, that erroneous send (ts: 9) would still land in
+    // `providerSocket.sent` but would NOT satisfy this predicate, so the
+    // length assertion below would correctly see it.
+    const barrierCrossed = nextSendMatching(providerSocket, (msg) => msg.ts === 10)
+    driverChannel.postMessage({
+      v: 1,
+      ts: 9,
+      type: 'ping',
+      payload: {},
+      __flFromWire: true,
+    } as unknown as DebugMessage)
+    // Same object, posted immediately after — if this barrier crosses the
+    // wire, the marked message above (posted first, from the same
+    // sender, so FIFO holds) was necessarily already dispatched to the
+    // provider tap's listener and dropped by the echo guard.
+    driverChannel.postMessage({
+      v: 1,
+      ts: 10,
+      type: 'ping',
+      payload: {},
+    } as unknown as DebugMessage)
+    await barrierCrossed
+    driverChannel.close()
+
+    // Only the unmarked barrier crossed — the FROM_WIRE-marked message
+    // was silently dropped, not re-forwarded.
     expect(providerSocket.sent.length).toBe(sentBefore + 1)
 
     providerBridge.dispose()
-    consumerBridge.dispose()
   })
 
   it('marker-shaped user payloads survive the codec untouched (path table)', () => {
@@ -339,9 +464,24 @@ describe('remote bridges over a socket pair', () => {
     local.postMessage({ v: 1, ts: 1, type: 'subscribe', payload: { providerId: 'x' } })
     // An rpc consumer↔consumer message must not cross either
     local.postMessage({ v: 1, ts: 2, type: 'rpc:ui:expand', payload: {} })
-    await new Promise((resolve) => setTimeout(resolve, 20))
 
-    expect(providerSocket.sent.length).toBe(0)
+    // Negative-test barrier: post a forwardable frame after the two that
+    // must be dropped, and wait for IT — specifically, by its unique `ts`
+    // (3) — to cross the wire. BroadcastChannel delivery preserves posting
+    // order, so the barrier crossing proves the two prior messages were
+    // already dispatched to the provider tap and silently ignored — a
+    // deterministic drained-queue signal instead of "nothing happened for
+    // N ms". Matching on identity (not "whichever send happens first")
+    // matters here: if the filter were broken and forwarded the subscribe
+    // or rpc message too, that erroneous send would land in
+    // `providerSocket.sent` but not satisfy this predicate, so the length
+    // assertion below would still see it.
+    const barrierCrossed = nextSendMatching(providerSocket, (msg) => msg.ts === 3)
+    local.postMessage({ v: 1, ts: 3, type: 'ping', payload: {} })
+    await barrierCrossed
+
+    // Only the barrier itself crossed — the subscribe/rpc messages did not.
+    expect(providerSocket.sent.length).toBe(1)
 
     bridge.dispose()
     local.close()

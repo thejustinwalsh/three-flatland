@@ -335,6 +335,49 @@ export class PlaySidecarClient {
     this.send({ cmd: 'stop' })
   }
 
+  /** Serializes `ping` callers — same one-in-flight reasoning as
+   * `statsChain`/`toneSynthChain` below (the id is what makes overlap
+   * correlation-safe; the queue keeps response ordering trivial to
+   * reason about regardless). Independent of the other two chains — the
+   * three command kinds never share a queue. */
+  private pingChain: Promise<unknown> = Promise.resolve()
+
+  /**
+   * Device-independent liveness probe (id-correlated like `stats`/
+   * `playToneSynth`) — resolves `true` once the sidecar PROCESS has
+   * echoed THIS SPECIFIC `ping` back over the wire protocol, proving
+   * it's alive and responsive WITHOUT needing a working audio backend:
+   * `ping` never appears in `sidecar.ts`'s `PLAY_COMMANDS` set, so it
+   * skips `contextLifecycle`'s acquire ladder entirely (see
+   * `tools/audio-play/CLAUDE.md`'s device-tolerance section) and
+   * `commandHandler.ts` answers it without touching `ZZFX.audioContext`
+   * at all. Spawns the sidecar on first call, like every other command
+   * here. Exists specifically so a caller (e2e process-lifecycle
+   * assertions) can prove the child process is up on a device-less
+   * runner, where every audio-touching command legitimately Nacks.
+   *
+   * A response that never arrives at all rejects after `timeoutMs`
+   * instead of wedging `pingChain` forever — see `waitForResponse`.
+   */
+  async ping(timeoutMs = 10_000): Promise<boolean> {
+    const run = this.pingChain.then(() => this.requestPing(timeoutMs))
+    this.pingChain = run.catch(() => undefined)
+    return run
+  }
+
+  private async requestPing(timeoutMs: number): Promise<boolean> {
+    this.start()
+    if (!this.rl) {
+      throw new Error('audio-play: sidecar is not running')
+    }
+
+    const id = this.nextRequestId++
+    const responsePromise = this.waitForResponse<Nack | Ack>(this.rl, 'ping', id, timeoutMs)
+    this.send({ cmd: 'ping', id })
+    const response = await responsePromise
+    return response.ok
+  }
+
   /** Serializes `getStats` callers — see its doc comment for why
    * content-based correlation makes overlap unsafe. */
   private statsChain: Promise<unknown> = Promise.resolve()

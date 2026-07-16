@@ -6,36 +6,42 @@
 // dies when the extension's real deactivation path runs — not a mocked
 // stand-in for that path, the literal function `context.subscriptions`'
 // dispose handler calls (see `extension/index.ts`'s `ExtensionApi`).
-import { expect, skipIfAudioDeviceDeaf, test } from '../fixtures'
-
-// Real-audio spec: skip (loudly, with the environmental evidence) when the
-// warmup's oracle proved the OS audio device transiently deaf — see
-// fixtures.ts's warmUpAudioPipeline. CI runs FL_E2E_REQUIRE_AUDIO=1 and
-// hard-fails instead.
-test.beforeEach(({ _sharedWindow }) => {
-  skipIfAudioDeviceDeaf(_sharedWindow)
-})
+//
+// Determinism redesign (planning/testing/test-determinism-audit.md): the
+// fourth spec that used to live here — playing SUSTAINED_PARAMS and
+// polling the real sidecar's live AnalyserNode via `getStats()` for
+// `{silent:false, peak>0}` — was deleted. That real-device, real-analyser
+// audibility proof is now covered ONCE, deterministically, by
+// `specs/audio-render-gate.spec.ts`'s `OfflineAudioContext` render (no
+// device, no polling, no warmup). The `skipIfAudioDeviceDeaf` guard the
+// deleted spec needed is gone too — every test below only needs the
+// sidecar process to exist and respond to pid/shutdown/ping queries, not
+// to produce audible output.
+//
+// P0 device-less-startup fix (planning/testing/pr188-adversarial-review.md
+// finding #1): a CI runner with no audio output device used to crash the
+// sidecar at import time (zzfx's top-level `new AudioContext` — see
+// `tools/audio-play/src/audioContextGuard.ts`). The sidecar is now
+// device-tolerant — a missing device degrades `play` to a clean Nack
+// instead of taking the process down — but `getActivePid()` ALONE is
+// still not the deterministic liveness proof these tests want: the
+// client records the child's pid synchronously at spawn, before the
+// child has actually processed anything, so a bare pid only proves "a
+// process was spawned," not "the process is alive and answering the wire
+// protocol." Every test below calls `ping()` (id-correlated, answered by
+// `commandHandler.ts` without ever touching `AudioContext` — see
+// `tools/audio-play/CLAUDE.md`'s device-tolerance section) to prove
+// PROCESS liveness first, deterministically, with or without a real
+// audio device, before/alongside any pid-based assertion.
+import { expect, test } from '../fixtures'
 
 const LITERAL_PARAMS = [0.5, 0, 300, 0, 0.02, 0.05, 1]
-// Long sustain/release (~2s total) so there's a comfortable window to poll
-// for stats mid-playback — LITERAL_PARAMS' ~70ms one-shot is far too short
-// to reliably land a query inside its audible window, especially against
-// a cold sidecar spawn (native module load included).
-const SUSTAINED_PARAMS = [0.5, 0, 300, 0, 1, 1, 1]
-
-type PlaybackStats = {
-  peak: number
-  silent: boolean
-  playing: boolean
-  durationSeconds: number
-  elapsedSeconds: number
-}
 
 type ExtensionApi = {
   zzfxPlay: {
     getActivePid: () => number | undefined
     shutdown: () => Promise<void>
-    getStats: () => Promise<PlaybackStats | undefined>
+    ping: () => Promise<boolean>
   }
 }
 
@@ -46,21 +52,29 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
   }) => {
     const tabsBefore = await workbox.getByRole('tab').allTextContents()
 
-    await evaluateInVSCode(
+    const alive = await evaluateInVSCode(
       async (vscode, arg) => {
         const ext = vscode.extensions.all.find(
           (e) => e.packageJSON.name === '@three-flatland/vscode'
         )
         if (ext && !ext.isActive) await ext.activate()
+        const api = ext!.exports as ExtensionApi
         await vscode.commands.executeCommand('threeFlatland.audio.playParams', arg.params)
+        // Device-independent proof the play command actually reached a
+        // live, responding sidecar process — not just that
+        // executeCommand() didn't throw (a device-less play Nacks
+        // quietly; ping still acks regardless).
+        return api.zzfxPlay.ping()
       },
       { params: LITERAL_PARAMS }
     )
+    expect(alive).toBe(true)
 
-    // Give an incorrect panel-open path a moment to actually manifest
-    // before asserting its absence.
-    await new Promise((resolve) => setTimeout(resolve, 500))
-
+    // The awaited executeCommand() above only resolves once the whole
+    // command handler has run to completion — inline-vs-panel routing
+    // (register.ts's tryPlayInline) is entirely synchronous within that
+    // handler, so the panel-absence check is safe immediately, with no
+    // settle delay.
     const tabsAfter = await workbox.getByRole('tab').allTextContents()
     expect(tabsAfter).toEqual(tabsBefore)
     await expect(workbox.getByRole('tab', { name: /^ZzFX:/ })).toHaveCount(0)
@@ -69,7 +83,7 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
   test('the sidecar process spawns once and is reused across repeated plays', async ({
     evaluateInVSCode,
   }) => {
-    const pids = await evaluateInVSCode(
+    const { pids, pings } = await evaluateInVSCode(
       async (vscode, arg) => {
         const ext = vscode.extensions.all.find(
           (e) => e.packageJSON.name === '@three-flatland/vscode'
@@ -77,18 +91,29 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as ExtensionApi
 
-        const collected: (number | undefined)[] = []
+        const collectedPids: (number | undefined)[] = []
+        const collectedPings: boolean[] = []
         for (let i = 0; i < 3; i++) {
+          // spawn() assigns the child's pid synchronously (client.ts's
+          // start()), and tryPlayInline calls play() synchronously too —
+          // by the time this awaited executeCommand() resolves, the pid
+          // is already set. No settle delay needed.
           await vscode.commands.executeCommand('threeFlatland.audio.playParams', arg.params)
-          // Settle so the first call's child has actually spawned before reading its pid.
-          await new Promise((resolve) => setTimeout(resolve, 300))
-          collected.push(api.zzfxPlay.getActivePid())
+          // ping() is the deterministic proof for THIS iteration: the
+          // process is alive and has processed everything queued ahead
+          // of it on the sidecar's serialized command chain (including
+          // this iteration's play), regardless of device presence. A
+          // bare pid alone can't distinguish "reused, healthy process"
+          // from "reused pid number, process wedged."
+          collectedPings.push(await api.zzfxPlay.ping())
+          collectedPids.push(api.zzfxPlay.getActivePid())
         }
-        return collected
+        return { pids: collectedPids, pings: collectedPings }
       },
       { params: LITERAL_PARAMS }
     )
 
+    expect(pings).toEqual([true, true, true])
     expect(pids[0]).toBeGreaterThan(0)
     // Same pid across all three calls — a fresh spawn per play would give
     // three different pids instead.
@@ -107,10 +132,15 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as ExtensionApi
 
+        // pid is already set synchronously by the time executeCommand
+        // resolves — see the spawn-once-reused test's comment above.
         await vscode.commands.executeCommand('threeFlatland.audio.playParams', arg.params)
-        await new Promise((resolve) => setTimeout(resolve, 300))
         const pid = api.zzfxPlay.getActivePid()
-        if (!pid) return { pid: undefined, aliveAfterShutdown: undefined }
+        if (!pid) return { pid: undefined, aliveBeforeShutdown: false, aliveAfterShutdown: undefined }
+
+        // Prove the process is genuinely up BEFORE shutdown — device-
+        // independent, unlike trusting the pid number alone.
+        const aliveBeforeShutdown = await api.zzfxPlay.ping()
 
         await api.zzfxPlay.shutdown()
 
@@ -122,63 +152,13 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
         } catch {
           aliveAfterShutdown = false
         }
-        return { pid, aliveAfterShutdown }
+        return { pid, aliveBeforeShutdown, aliveAfterShutdown }
       },
       { params: LITERAL_PARAMS }
     )
 
     expect(result.pid).toBeGreaterThan(0)
+    expect(result.aliveBeforeShutdown).toBe(true)
     expect(result.aliveAfterShutdown).toBe(false)
-  })
-
-  // Z12 regression guard: node-web-audio-api's getChannelData() returns a
-  // detached copy, so writing samples into it (the pre-fix code path)
-  // acked clean and spawned a real process, but never actually reached
-  // the output — dead silent, with nothing in the previous three specs
-  // above able to detect it. This drives the real sidecar end-to-end and
-  // asserts real, nonzero audio via the AnalyserNode-backed `stats`
-  // command, so a regression back to the get-then-mutate pattern fails
-  // this test instead of shipping silently.
-  //
-  // Polls rather than sleeping a fixed delay: the prior spec shut the
-  // sidecar down, so this test's `play` has to cold-spawn a fresh
-  // process — native module load included — before audio starts
-  // rendering at all, and that startup time isn't fixed.
-  test('playing a sound actually reaches the output — not just an ack — per the stats AnalyserNode tap', async ({
-    evaluateInVSCode,
-  }) => {
-    const stats = await evaluateInVSCode(
-      async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
-        if (ext && !ext.isActive) await ext.activate()
-        const api = ext!.exports as ExtensionApi
-
-        await vscode.commands.executeCommand('threeFlatland.audio.playParams', arg.params)
-
-        // Spawn allowance only — the moment the sidecar reports the
-        // source's own exact timing (#43), the deadline re-derives from
-        // the REAL remaining play window instead of a magic constant.
-        let deadline = Date.now() + 10_000
-        let derived = false
-        let last: Awaited<ReturnType<typeof api.zzfxPlay.getStats>>
-        while (Date.now() < deadline) {
-          last = await api.zzfxPlay.getStats()
-          if (last && !last.silent) return last
-          if (!derived && last?.playing) {
-            derived = true
-            deadline = Date.now() + (last.durationSeconds - last.elapsedSeconds) * 1000 + 1000
-          }
-          await new Promise((resolve) => setTimeout(resolve, 100))
-        }
-        return last
-      },
-      { params: SUSTAINED_PARAMS }
-    )
-
-    expect(stats).toBeDefined()
-    expect(stats!.silent).toBe(false)
-    expect(stats!.peak).toBeGreaterThan(0)
   })
 })

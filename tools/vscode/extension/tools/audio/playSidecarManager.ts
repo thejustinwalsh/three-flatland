@@ -115,6 +115,18 @@ export async function getPlaySidecarStats(): Promise<PlaybackStats | undefined> 
   return client.getStats()
 }
 
+/**
+ * Device-independent liveness probe — proves the sidecar PROCESS is up
+ * and responding over the wire protocol, without touching `AudioContext`
+ * at all (see `PlaySidecarClient.ping`). Same "never spawns one just to
+ * ask" contract as `getPlaySidecarStats`: `false` if nothing is running
+ * yet, rather than spawning a sidecar solely to answer this.
+ */
+export async function pingPlaySidecar(): Promise<boolean> {
+  if (!client) return false
+  return client.ping()
+}
+
 /** Graceful shutdown, called from the extension's `deactivate()`. */
 export async function shutdownPlaySidecar(): Promise<void> {
   if (!client) return

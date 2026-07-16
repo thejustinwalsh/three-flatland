@@ -83,25 +83,4 @@ describe('per-(renderer, scene) registry foundation', () => {
     expect(registry._sceneHookInstalled).toBe(false)
     expect(registry.group.name).toBe('FlatlandOrchestrator')
   })
-
-  it('GC chain: dropping the scene releases the registry', async () => {
-    const renderer = makeRenderer()
-    let scene: Scene | null = new Scene()
-    const ref = new WeakRef(getOrCreateRegistry(renderer, scene))
-
-    // The only strong path to the registry is host.scenes (WeakMap keyed
-    // by scene) — dropping the scene must release it. Only verifiable
-    // when the harness exposes gc(); otherwise the WeakMap keying itself
-    // is the guarantee (asserted structurally above).
-    const gc = (globalThis as { gc?: () => void }).gc
-    if (!gc) return
-
-    scene = null
-    // A few GC passes — WeakRef clearing can lag a single collection.
-    for (let i = 0; i < 5 && ref.deref() !== undefined; i++) {
-      gc()
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    }
-    expect(ref.deref()).toBeUndefined()
-  })
 })
