@@ -116,7 +116,26 @@ async function bundleAudioPlay() {
   // full closure next to it, not just the one package. Missing even one
   // (observed: `caller`) crashes the packaged sidecar with
   // ERR_MODULE_NOT_FOUND at import time — before it ever reads stdin.
-  copyDependencyClosure(nativeModuleSrc, join(outDir, 'node_modules'), new Set())
+  const seen = new Set()
+  copyDependencyClosure(nativeModuleSrc, join(outDir, 'node_modules'), seen)
+
+  // web-audio-daw (Wad synthesis) is loaded via `createRequire(...)` at
+  // RUNTIME (see sidecar.ts's `loadWadConstructor` — it's a CJS/UMD bundle
+  // that must be require()d AFTER the AudioContext monkey-patch is
+  // installed, so it can't be a static import). esbuild's `bundle: true`
+  // inlines the dynamic `import('tone')` but CANNOT follow a createRequire,
+  // so — unlike Tone — web-audio-daw and its closure (`lodash`, `tunajs`)
+  // must ship in node_modules for the packaged createRequire to resolve
+  // them, exactly like the dev sibling does. Without this the packaged
+  // sidecar throws `Cannot find module 'web-audio-daw'` on the first Wad
+  // play (MODULE_NOT_FOUND), while every other audio kind works — the e2e
+  // never caught it because e2e runs the dev sidecar (`bundle: false`)
+  // against the real sibling node_modules.
+  const wadSrc = resolvePackageDir(AUDIO_PLAY_DIR, 'web-audio-daw')
+  const wadDest = join(outDir, 'node_modules', 'web-audio-daw')
+  cpSync(wadSrc, wadDest, { recursive: true, dereference: true })
+  console.log(`[bundle-sidecars] copied web-audio-daw → ${wadDest}`)
+  copyDependencyClosure(wadSrc, join(outDir, 'node_modules'), seen)
 }
 
 /** Recursively copies `pkgDir`'s runtime `dependencies` (flat, siblings of
