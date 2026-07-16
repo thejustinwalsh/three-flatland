@@ -7,6 +7,7 @@ export type {
   Nack,
   Pattern,
   PlaybackStats,
+  PingCommand,
   PlayCommand,
   PlayFileCommand,
   PlaySongCommand,
