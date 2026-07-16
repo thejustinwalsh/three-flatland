@@ -233,13 +233,20 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
     const source = { uri: docUri.toString(), findingId: finding.id }
 
     if (variant === 'unresolved') {
-      // Not clickable — same inert shape as audio.file's `$(search)
-      // Searching…` lens (empty command id). Unlike a searching/not-found
-      // audio.file reference, this can never become resolved by a later
-      // fallback search: the identifier provably has no declaration/
-      // initializer to read (see provideCodeLenses), so there's nothing
-      // to retry.
-      codeLens.command = { title: '$(question)  Unresolved', command: '' }
+      // Clickable, but never a Play — this reference can never resolve (the
+      // identifier provably has no declaration/initializer, or the sidecar
+      // already classified the call as an unplayable mic/sprite/preset decoy
+      // at parse time; see provideCodeLenses). Instead of doing nothing,
+      // clicking it explains WHY there's no preview (`explainUnresolved`,
+      // register.ts). The title uses a NON-BREAKING space (\\u00A0) between
+      // the codicon and the text: VS Code collapses a regular space after a
+      // `$(icon)` in a CodeLens title, which rendered this as a bare,
+      // near-invisible icon with no label in the shipped build. The e2e reads
+      // the lens OBJECT (executeCodeLensProvider), never the painted output.
+      codeLens.command = {
+        title: '$(question)\u00A0Unresolved',
+        command: 'threeFlatland.audio.explainUnresolved',
+      }
       return codeLens
     }
 
@@ -324,12 +331,12 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
         // Not clickable while the fallback search is in flight — the
         // empty command id renders an inert lens; onDidChangeCodeLenses
         // fires when it settles.
-        codeLens.command = { title: '$(search)  Searching…', command: '' }
+        codeLens.command = { title: '$(search)\u00A0Searching…', command: '' }
       } else {
         // The retry click carries `source` too — a successful lazy-repair
         // play is a real playback and must mark its finding active.
         codeLens.command = {
-          title: '$(search)  Not Found',
+          title: '$(search)\u00A0Not Found',
           command: 'threeFlatland.audio.playFile',
           arguments: [undefined, ref, source],
         }
