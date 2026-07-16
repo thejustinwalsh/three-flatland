@@ -138,7 +138,7 @@ fn document_parse_matches_the_golden_fixture_exactly() {
     );
     assert_eq!(
         actual_findings.len(),
-        27,
+        30,
         "golden.ts's total finding count changed — update this expectation (and \
          src/goldenFixture.test.ts's matching one) together with any fixture edit"
     );
@@ -323,21 +323,39 @@ fn document_parse_matches_the_golden_fixture_exactly() {
         );
     }
 
-    // wad.synth: every oscillator/noise keyword IS a wad.synth finding now
-    // (a dedicated kind — see tools/codelens-service/CLAUDE.md), proven by
-    // arg_range slice-equality against the real source text, same
-    // discipline as the audio.file positives above. 'mic' remains the one
-    // keyword that is a finding of NEITHER kind.
+    // wad.synth: every oscillator/noise keyword IS a PLAYABLE wad.synth
+    // finding (a dedicated kind — see tools/codelens-service/CLAUDE.md),
+    // proven by arg_range slice-equality against the real source text, same
+    // discipline as the audio.file positives above. The three decoys —
+    // 'mic' (live input), the sprite-only map, and the Wad.presets member
+    // expression — are wad.synth findings of the UNRESOLVED flavor
+    // (recognized Wad instantiation, no statically playable config).
     let wad_synth_findings: Vec<_> = actual_findings
         .iter()
         .filter(|f| f.kind() == WAD_SYNTH_KIND)
         .collect();
     assert_eq!(
         wad_synth_findings.len(),
-        7,
+        10,
         "expected sine (beep), sawtooth/triangle/noise (synthVoices), the inline square \
          inside playIterated's SoundIterator, playSquareSynth's square, and playLaserOsc's \
-         var-ref noise — 7 total wad.synth findings"
+         var-ref noise — 7 playable — plus the mic/sprite/preset decoys as the unresolved \
+         flavor — 10 total wad.synth findings"
+    );
+    let unresolved: Vec<_> = wad_synth_findings
+        .iter()
+        .filter(|f| f.as_wad_synth().unwrap().unresolved == Some(true))
+        .collect();
+    assert_eq!(
+        unresolved.len(),
+        3,
+        "exactly the mic/sprite/preset decoys carry unresolved: true"
+    );
+    assert!(
+        unresolved
+            .iter()
+            .all(|f| f.as_wad_synth().unwrap().var_ref.is_none()),
+        "unresolved and varRef never coexist on a wad.synth payload"
     );
     for oscillator in ["sine", "square", "sawtooth", "triangle", "noise"] {
         let object_text = format!("{{ source: '{oscillator}' }}");

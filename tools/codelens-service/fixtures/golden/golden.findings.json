@@ -582,151 +582,244 @@
   },
   {
     "byteRange": {
-      "end": 4361,
-      "start": 4330
+      "end": 4452,
+      "start": 4421
     },
-    "id": "f201be0520ad5a29",
+    "id": "9df32f5119efe393",
     "kind": "wad.synth",
     "payload": {
       "argRange": {
         "end": {
           "character": 32,
-          "line": 112
+          "line": 114
         },
         "start": {
           "character": 10,
-          "line": 112
+          "line": 114
         }
       }
     },
     "range": {
       "end": {
         "character": 33,
-        "line": 112
+        "line": 114
       },
       "start": {
         "character": 2,
-        "line": 112
+        "line": 114
       }
     }
   },
   {
     "byteRange": {
-      "end": 4402,
-      "start": 4371
+      "end": 4493,
+      "start": 4462
     },
-    "id": "9b287edc057fc8da",
+    "id": "b8cd49fecd5d5873",
     "kind": "wad.synth",
     "payload": {
       "argRange": {
         "end": {
           "character": 32,
-          "line": 113
+          "line": 115
         },
         "start": {
           "character": 10,
-          "line": 113
+          "line": 115
         }
       }
     },
     "range": {
       "end": {
         "character": 33,
-        "line": 113
+        "line": 115
       },
       "start": {
         "character": 2,
-        "line": 113
+        "line": 115
       }
     }
   },
   {
     "byteRange": {
-      "end": 4440,
-      "start": 4412
+      "end": 4531,
+      "start": 4503
     },
-    "id": "47a64a4ecbffd1ca",
+    "id": "60706133d6b0ce3e",
     "kind": "wad.synth",
     "payload": {
       "argRange": {
         "end": {
           "character": 29,
-          "line": 114
+          "line": 116
         },
         "start": {
           "character": 10,
-          "line": 114
+          "line": 116
         }
       }
     },
     "range": {
       "end": {
         "character": 30,
-        "line": 114
+        "line": 116
       },
       "start": {
         "character": 2,
-        "line": 114
+        "line": 116
       }
     }
   },
   {
     "byteRange": {
-      "end": 5087,
-      "start": 5058
+      "end": 4567,
+      "start": 4541
     },
-    "id": "f7f01a33ca5f1c67",
+    "id": "52873dff6bc530db",
+    "kind": "wad.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 27,
+          "line": 117
+        },
+        "start": {
+          "character": 10,
+          "line": 117
+        }
+      },
+      "unresolved": true
+    },
+    "range": {
+      "end": {
+        "character": 28,
+        "line": 117
+      },
+      "start": {
+        "character": 2,
+        "line": 117
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 4848,
+      "start": 4808
+    },
+    "id": "ab1fd7f56536c567",
+    "kind": "wad.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 41,
+          "line": 124
+        },
+        "start": {
+          "character": 10,
+          "line": 124
+        }
+      },
+      "unresolved": true
+    },
+    "range": {
+      "end": {
+        "character": 42,
+        "line": 124
+      },
+      "start": {
+        "character": 2,
+        "line": 124
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 5096,
+      "start": 5064
+    },
+    "id": "ebd3efc229490c04",
+    "kind": "wad.synth",
+    "payload": {
+      "argRange": {
+        "end": {
+          "character": 33,
+          "line": 131
+        },
+        "start": {
+          "character": 10,
+          "line": 131
+        }
+      },
+      "unresolved": true
+    },
+    "range": {
+      "end": {
+        "character": 34,
+        "line": 131
+      },
+      "start": {
+        "character": 2,
+        "line": 131
+      }
+    }
+  },
+  {
+    "byteRange": {
+      "end": 5325,
+      "start": 5296
+    },
+    "id": "ed2b00637cdd3f32",
     "kind": "wad.synth",
     "payload": {
       "argRange": {
         "end": {
           "character": 30,
-          "line": 133
+          "line": 137
         },
         "start": {
           "character": 10,
-          "line": 133
+          "line": 137
         }
       }
     },
     "range": {
       "end": {
         "character": 31,
-        "line": 133
+        "line": 137
       },
       "start": {
         "character": 2,
-        "line": 133
+        "line": 137
       }
     }
   },
   {
     "byteRange": {
-      "end": 5585,
-      "start": 5568
+      "end": 5823,
+      "start": 5806
     },
-    "id": "f2a75aa0d503a1da",
+    "id": "f29da04fb7c33e84",
     "kind": "wad.synth",
     "payload": {
       "argRange": {
         "end": {
           "character": 18,
-          "line": 144
+          "line": 148
         },
         "start": {
           "character": 10,
-          "line": 144
+          "line": 148
         }
       },
       "varRef": {
         "defRange": {
           "end": {
             "character": 36,
-            "line": 142
+            "line": 146
           },
           "start": {
             "character": 17,
-            "line": 142
+            "line": 146
           }
         },
         "defUri": "file:///golden.ts",
@@ -736,30 +829,30 @@
     "range": {
       "end": {
         "character": 19,
-        "line": 144
+        "line": 148
       },
       "start": {
         "character": 2,
-        "line": 144
+        "line": 148
       }
     }
   },
   {
     "byteRange": {
-      "end": 6012,
-      "start": 5947
+      "end": 6250,
+      "start": 6185
     },
-    "id": "8516ea5e9ad500fd",
+    "id": "6ab678606f200632",
     "kind": "tone.synth",
     "payload": {
       "argRange": {
         "end": {
           "character": 66,
-          "line": 153
+          "line": 157
         },
         "start": {
           "character": 56,
-          "line": 153
+          "line": 157
         }
       },
       "synthType": "Synth"
@@ -767,30 +860,30 @@
     "range": {
       "end": {
         "character": 67,
-        "line": 153
+        "line": 157
       },
       "start": {
         "character": 2,
-        "line": 153
+        "line": 157
       }
     }
   },
   {
     "byteRange": {
-      "end": 6304,
-      "start": 6240
+      "end": 6542,
+      "start": 6478
     },
-    "id": "b19eeb549a962216",
+    "id": "79de5ebdfc8ee62d",
     "kind": "tone.synth",
     "payload": {
       "argRange": {
         "end": {
           "character": 65,
-          "line": 160
+          "line": 164
         },
         "start": {
           "character": 61,
-          "line": 160
+          "line": 164
         }
       },
       "synthType": "NoiseSynth"
@@ -798,30 +891,30 @@
     "range": {
       "end": {
         "character": 66,
-        "line": 160
+        "line": 164
       },
       "start": {
         "character": 2,
-        "line": 160
+        "line": 164
       }
     }
   },
   {
     "byteRange": {
-      "end": 6688,
-      "start": 6593
+      "end": 6926,
+      "start": 6831
     },
-    "id": "038b944c1fa33772",
+    "id": "94f3d395ddc3551e",
     "kind": "tone.synth",
     "payload": {
       "argRange": {
         "end": {
           "character": 96,
-          "line": 168
+          "line": 172
         },
         "start": {
           "character": 72,
-          "line": 168
+          "line": 172
         }
       },
       "synthType": "PolySynth",
@@ -830,30 +923,30 @@
     "range": {
       "end": {
         "character": 97,
-        "line": 168
+        "line": 172
       },
       "start": {
         "character": 2,
-        "line": 168
+        "line": 172
       }
     }
   },
   {
     "byteRange": {
-      "end": 7119,
-      "start": 7047
+      "end": 7357,
+      "start": 7285
     },
-    "id": "2aebebbb877c9831",
+    "id": "a3768440ced26891",
     "kind": "tone.synth",
     "payload": {
       "argRange": {
         "end": {
           "character": 73,
-          "line": 179
+          "line": 183
         },
         "start": {
           "character": 56,
-          "line": 179
+          "line": 183
         }
       },
       "synthType": "Synth",
@@ -861,11 +954,11 @@
         "defRange": {
           "end": {
             "character": 24,
-            "line": 176
+            "line": 180
           },
           "start": {
             "character": 20,
-            "line": 176
+            "line": 180
           }
         },
         "defUri": "file:///golden.ts",
@@ -875,30 +968,30 @@
     "range": {
       "end": {
         "character": 74,
-        "line": 179
+        "line": 183
       },
       "start": {
         "character": 2,
-        "line": 179
+        "line": 183
       }
     }
   },
   {
     "byteRange": {
-      "end": 7634,
-      "start": 7569
+      "end": 7872,
+      "start": 7807
     },
-    "id": "103d95b07cea7cac",
+    "id": "ced28035079d0bbd",
     "kind": "tone.synth",
     "payload": {
       "argRange": {
         "end": {
           "character": 66,
-          "line": 189
+          "line": 193
         },
         "start": {
           "character": 56,
-          "line": 189
+          "line": 193
         }
       },
       "synthType": "Synth",
@@ -909,11 +1002,11 @@
     "range": {
       "end": {
         "character": 67,
-        "line": 189
+        "line": 193
       },
       "start": {
         "character": 2,
-        "line": 189
+        "line": 193
       }
     }
   }

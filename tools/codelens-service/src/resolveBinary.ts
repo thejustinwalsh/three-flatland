@@ -6,21 +6,54 @@
  * top without this package needing to know about VSIX layout at all.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const BINARY_NAME = process.platform === 'win32' ? 'codelens-service.exe' : 'codelens-service'
 
 /**
- * The locally `cargo build`-produced binary paths, release preferred over
- * debug. `src/` and `dist/` are siblings directly under
+ * Orders dev-build candidate paths so existing binaries come first, newest
+ * build (mtime) winning. A fresh `cargo build`/`cargo test` debug binary
+ * must never lose to a week-old `--release` artifact left behind by a
+ * packaging run — the same stale-artifact-shadowing class the VS Code
+ * extension's Test-mode resolution fix covers, one directory deeper.
+ * Stable-sorts, so ties and all-missing keep the caller's order.
+ */
+export function preferNewest(paths: string[]): string[] {
+  // Stat each path exactly ONCE up front — a sort comparator runs O(n log n)
+  // times, so calling statSync inside it would repeat the syscall per element
+  // (and a mid-sort mtime change could even make the comparator inconsistent).
+  // Any stat failure — missing (ENOENT), unreadable (EACCES), or removed
+  // between check and stat — maps to -1 so that path sorts LAST and resolution
+  // never crashes. -1, not -Infinity: two such paths must compare equal (a NaN
+  // from `-Infinity - -Infinity` would poison the comparator). Array.sort is
+  // stable, so ties/all-missing keep the caller's order.
+  const mtimeOf = (path: string): number => {
+    try {
+      return statSync(path).mtimeMs
+    } catch {
+      return -1
+    }
+  }
+  return paths
+    .map((path) => ({ path, mtimeMs: mtimeOf(path) }))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .map((e) => e.path)
+}
+
+/**
+ * The locally `cargo build`-produced binary paths, newest build preferred
+ * (see {@link preferNewest}). `src/` and `dist/` are siblings directly under
  * `tools/codelens-service/`, so this resolves correctly whether called from
  * source (vitest/tsx) or from the compiled `dist/` output.
  */
 export function devBinaryCandidates(): string[] {
   const sidecarTarget = fileURLToPath(new URL('../sidecar/target', import.meta.url))
-  return [join(sidecarTarget, 'release', BINARY_NAME), join(sidecarTarget, 'debug', BINARY_NAME)]
+  return preferNewest([
+    join(sidecarTarget, 'release', BINARY_NAME),
+    join(sidecarTarget, 'debug', BINARY_NAME),
+  ])
 }
 
 export interface ResolveBinaryOptions {
@@ -43,7 +76,7 @@ export interface ResolveBinaryOptions {
 
 /**
  * Resolution precedence: `explicitPath` (if given) > first existing entry in
- * `candidates` > (if `includeDevFallback`, the default) first existing
+ * `candidates` > (if `includeDevFallback`, the default) newest existing
  * dev-mode `target/{release,debug}` build. Throws with every path it looked
  * at if nothing resolves — a silent `undefined` here just becomes a
  * confusing ENOENT three calls later.

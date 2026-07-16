@@ -282,18 +282,40 @@ fn extract_wad_synth(node: Node, text: &str, line_index: &LineIndex, uri: &str) 
     }
     let arg = named[0];
 
+    // Partition rule for the sole argument:
+    //   1. oscillator-source object  → playable wad.synth (may COEXIST with
+    //      audio.file findings for e.g. a reverb impulse — that pairing is
+    //      pinned by #44's tests and stays);
+    //   2. bare identifier           → wad.synth + varRef (the client
+    //      resolves; a broken defRange already renders Unresolved);
+    //   3. contains an audio-extension string ANYWHERE in its subtree →
+    //      no wad.synth of any flavor: `audio.file`'s independent scanner
+    //      arm owns the lens (playable file OR `Not Found`, existence is
+    //      the client's call) — emitting an unresolved finding here would
+    //      double-lens the same call;
+    //   4. anything else             → UNRESOLVED wad.synth: a recognized
+    //      Wad instantiation with no statically playable config (mic,
+    //      sprite maps, `Wad.presets.X`, arbitrary strings, ...) surfaces
+    //      an inert informational lens instead of nothing (#41).
+    // Case 3's predicate deliberately composes the SAME helpers
+    // `extract_audio_file` emits on (`string_literal_interior` +
+    // `has_audio_extension`, template gating via
+    // `is_zero_substitution_template`) — if the checks ever diverged, the
+    // never-double/never-zero invariant would silently break.
+    let mut unresolved = None;
     let var_ref = match arg.kind() {
-        "object" => {
-            if !object_has_oscillator_source(arg, text) {
-                return None;
-            }
-            None
-        }
+        "object" if object_has_oscillator_source(arg, text) => None,
         "identifier" => {
             let name = node_text(arg, text).to_string();
             Some(resolve_var_ref(name, arguments, text, uri))
         }
-        _ => return None,
+        _ => {
+            if subtree_contains_audio_file_string(arg, text) {
+                return None;
+            }
+            unresolved = Some(true);
+            None
+        }
     };
 
     let arg_range = Range {
@@ -315,8 +337,38 @@ fn extract_wad_synth(node: Node, text: &str, line_index: &LineIndex, uri: &str) 
         id,
         range,
         byte_range,
-        payload: FindingPayload::WadSynth(WadSynthPayload { arg_range, var_ref }),
+        payload: FindingPayload::WadSynth(WadSynthPayload {
+            arg_range,
+            var_ref,
+            unresolved,
+        }),
     })
+}
+
+/// True when any string (or zero-substitution template) anywhere in
+/// `node`'s subtree would qualify as an `audio.file` finding — the exact
+/// per-node acceptance [`extract_audio_file`] uses, composed from the same
+/// helpers so the two arms provably cannot diverge (see the partition rule
+/// in [`extract_wad_synth`]).
+fn subtree_contains_audio_file_string(node: Node, text: &str) -> bool {
+    let qualifies = match node.kind() {
+        "string" => true,
+        "template_string" => is_zero_substitution_template(node),
+        _ => false,
+    };
+    if qualifies {
+        let (value, _, _) = string_literal_interior(node, text);
+        if has_audio_extension(&value) {
+            return true;
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if subtree_contains_audio_file_string(child, text) {
+            return true;
+        }
+    }
+    false
 }
 
 /// True only when `object` (a `new Wad(...)`'s sole object-literal argument)
@@ -1419,9 +1471,10 @@ mod tests {
     #[test]
     fn wad_every_synthesis_mode_source_is_not_an_audio_file_finding() {
         // The full synthesis vocabulary, not just 'sine' (pinned above):
-        // oscillator shapes and noise are wad.synth findings, never
-        // audio.file (no file is loaded); live mic input is the one
-        // keyword that produces no finding of EITHER kind.
+        // oscillator shapes and noise are PLAYABLE wad.synth findings,
+        // never audio.file (no file is loaded); live mic input is the one
+        // keyword that is a wad.synth finding of the UNRESOLVED flavor —
+        // never audio.file, never playable.
         for source in ["square", "sawtooth", "triangle", "noise"] {
             let src = format!("new Wad({{source:'{source}'}});");
             let f = call("a.ts", &src);
@@ -1430,29 +1483,41 @@ mod tests {
                 WAD_SYNTH_KIND,
                 "source:'{source}' must be a wad.synth finding"
             );
+            assert_eq!(
+                f.as_wad_synth().unwrap().unresolved,
+                None,
+                "source:'{source}' must be playable — no unresolved marker"
+            );
         }
-        let mic = findings("a.ts", "new Wad({source:'mic'});");
+        let mic = call("a.ts", "new Wad({source:'mic'});");
         assert!(
-            mic.is_empty(),
-            "source:'mic' must not be a finding of either kind"
+            mic.as_wad_synth().unwrap().unresolved == Some(true),
+            "source:'mic' must be the UNRESOLVED wad.synth flavor — not playable, not audio.file"
         );
     }
 
     #[test]
-    fn wad_sprite_segments_alone_are_not_findings() {
+    fn wad_sprite_segments_alone_are_not_audio_file_findings() {
         // An audio sprite maps names to [start, duration] SEGMENTS of the
         // source — numbers, not separate files. Nothing here has an audio
-        // extension, so the sprite map alone contributes no finding.
+        // extension, so no audio.file finding; the recognized-but-unplayable
+        // Wad instantiation surfaces as ONE unresolved wad.synth instead.
         let f = findings("a.ts", "new Wad({sprite:{hello:[0,0.4]}});");
-        assert!(f.is_empty());
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].kind(), WAD_SYNTH_KIND);
+        assert_eq!(f[0].as_wad_synth().unwrap().unresolved, Some(true));
     }
 
     #[test]
-    fn wad_preset_member_expression_is_not_a_finding() {
+    fn wad_preset_member_expression_is_not_an_audio_file_finding() {
         // `new Wad(Wad.presets.hiHatClosed)` — a member expression, no
-        // string literal anywhere in the arguments; no user file involved.
+        // string literal anywhere in the arguments; no user file involved,
+        // so never audio.file. It IS a recognized-but-unreadable Wad
+        // config, so it surfaces as the unresolved wad.synth flavor.
         let f = findings("a.ts", "new Wad(Wad.presets.hiHatClosed);");
-        assert!(f.is_empty());
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].kind(), WAD_SYNTH_KIND);
+        assert_eq!(f[0].as_wad_synth().unwrap().unresolved, Some(true));
     }
 
     #[test]
@@ -1573,12 +1638,16 @@ export function sfx() { new Audio('explosion.mp3'); }
     }
 
     #[test]
-    fn mic_source_produces_no_wad_synth_finding() {
-        // Live mic input names no file and is not synthesizable statically
-        // — the one oscillator-adjacent keyword that produces NO finding of
-        // either kind.
-        let f = findings("a.ts", "new Wad({source:'mic'}).play();");
-        assert!(f.is_empty());
+    fn mic_source_produces_an_unresolved_wad_synth_finding() {
+        // Live mic input names no file and is not synthesizable statically.
+        // It IS a recognized Wad instantiation though, so it surfaces as an
+        // UNRESOLVED wad.synth finding — an informational signal over
+        // silent absence (#41's principle) — never a playable one.
+        let f = call("a.ts", "new Wad({source:'mic'}).play();");
+        assert_eq!(f.kind(), WAD_SYNTH_KIND);
+        let payload = f.as_wad_synth().unwrap();
+        assert_eq!(payload.unresolved, Some(true));
+        assert!(payload.var_ref.is_none());
     }
 
     #[test]
@@ -1602,15 +1671,54 @@ export function sfx() { new Audio('explosion.mp3'); }
     }
 
     #[test]
-    fn sprite_only_config_produces_no_wad_synth_finding() {
-        let f = findings("a.ts", "new Wad({sprite:{hello:[0,0.4]}}).play();");
-        assert!(f.is_empty());
+    fn sprite_only_config_produces_an_unresolved_wad_synth_finding() {
+        // No `source` key — a sprite maps names to time segments, not a
+        // synthesizable oscillator. Recognized Wad, unplayable config →
+        // unresolved.
+        let f = call("a.ts", "new Wad({sprite:{hello:[0,0.4]}}).play();");
+        assert_eq!(f.as_wad_synth().unwrap().unresolved, Some(true));
     }
 
     #[test]
-    fn wad_presets_member_expression_produces_no_wad_synth_finding() {
-        let f = findings("a.ts", "new Wad(Wad.presets.hiHatClosed).play();");
-        assert!(f.is_empty());
+    fn wad_presets_member_expression_produces_an_unresolved_wad_synth_finding() {
+        // `Wad.presets.X` is a member expression — not statically readable
+        // as a config. Recognized Wad, unreadable config → unresolved.
+        let f = call("a.ts", "new Wad(Wad.presets.hiHatClosed).play();");
+        assert_eq!(f.as_wad_synth().unwrap().unresolved, Some(true));
+    }
+
+    #[test]
+    fn arbitrary_non_extension_string_source_produces_an_unresolved_wad_synth_finding() {
+        // The rule is "all unplayable one-arg Wad shapes", not a shape
+        // allowlist: an arbitrary source string that is neither an
+        // oscillator keyword nor an audio-extension path is unresolved too.
+        let f = call("a.ts", "new Wad({source:'wobble'}).play();");
+        assert_eq!(f.as_wad_synth().unwrap().unresolved, Some(true));
+    }
+
+    #[test]
+    fn mixed_mic_source_with_reverb_impulse_defers_entirely_to_audio_file() {
+        // The suppression + coexistence invariant in one case: the argument
+        // subtree contains an audio-extension string, so audio.file owns
+        // the lens — EXACTLY one audio.file finding, ZERO wad.synth
+        // findings of either flavor. This is the case most likely to
+        // regress if the suppression is ever "simplified" to only inspect
+        // the top-level `source` key.
+        let f = findings(
+            "a.ts",
+            "new Wad({source:'mic', reverb:{impulse:'ir.wav'}}).play();",
+        );
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].kind(), AUDIO_FILE_KIND);
+    }
+
+    #[test]
+    fn zero_and_multi_arg_wad_constructors_stay_silent() {
+        // The one-argument shape IS the wad library's constructor API —
+        // other arities are likely a different `Wad` symbol entirely, and
+        // lensing them would be noise, not signal.
+        assert!(findings("a.ts", "new Wad().play();").is_empty());
+        assert!(findings("a.ts", "new Wad({source:'sine'}, extra).play();").is_empty());
     }
 
     #[test]
