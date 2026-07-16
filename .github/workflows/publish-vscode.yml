@@ -224,6 +224,14 @@ jobs:
     needs: [check-version, assemble-and-package]
     runs-on: ubuntu-latest
     environment: release
+    permissions:
+      # Azure DevOps Personal Access Tokens are END OF LIFE — the VS Code
+      # Marketplace publish uses Microsoft Entra ID instead (see the
+      # `--azure-credential` step below). `id-token: write` lets `azure/login`
+      # mint a short-lived OIDC federated token, so there is NO long-lived
+      # secret to store or rotate. `contents: read` is for the checkout.
+      id-token: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -249,6 +257,23 @@ jobs:
       - name: List downloaded package
         run: ls -la tools/vscode/*.vsix
 
+      # Microsoft Entra ID auth — Azure DevOps PATs (the old `VSCE_PAT`) are
+      # end of life, so `vsce publish` authenticates via Entra instead.
+      # OIDC federated credential: the Entra app registration trusts this
+      # repo's `release` environment, so nothing is stored here — GitHub
+      # mints a short-lived token per run. `az login` establishes the
+      # credential that `vsce publish --azure-credential` (via
+      # @azure/identity) exchanges for an Azure DevOps access token.
+      # `allow-no-subscriptions` because publishing touches no Azure
+      # subscription/ARM — the service principal only needs to be a member
+      # of the `three-flatland` Marketplace publisher (see PUBLISHING.md).
+      - name: Azure login (Entra ID via OIDC — no PAT)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
       # --skip-duplicate: idempotent re-runs (a retried job, or this
       # workflow re-triggering on an unrelated package.json edit that
       # didn't actually change the version) fail silently instead of
@@ -256,9 +281,7 @@ jobs:
       # it if both somehow both let a run through.
       - name: Publish to VS Code Marketplace
         working-directory: tools/vscode
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx vsce publish --packagePath *.vsix --skip-duplicate
+        run: npx vsce publish --azure-credential --packagePath *.vsix --skip-duplicate
 
       - name: Publish to Open VSX
         working-directory: tools/vscode
