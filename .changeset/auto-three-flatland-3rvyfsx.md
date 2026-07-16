@@ -5,13 +5,19 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-## Flight recorder — registry checkpoints and buffer ring (#29 Phase C)
+## Flight recorder (#29 Phase C)
 
-- Registry payloads now periodically re-send every registered entry as a full checkpoint (`RegistryPayload.checkpoint: true`, additive), so time-travel reconstruction only has to replay forward from the nearest checkpoint instead of the whole session.
-- Added an always-on rolling ring buffer for encoded chunks and stats, windowed by wall-clock time, so a frozen frame can always decode from its own start.
-- Tightened the VP9 encoder keyframe cadence from 2000ms to 500ms so a scrub cursor is never far from a decodable frame.
-- Fixed: a registry checkpoint that had to degrade an entry to metadata-only no longer falsely reports as a complete checkpoint — it retries and marks itself `partial: true`; reconstruction skips partial checkpoints and falls back to the nearest complete one.
-- Fixed: protocol log persistence to IndexedDB no longer depends on the Protocol Log panel being mounted or unpaused — it's now unconditional at dashboard bootstrap.
-- Fixed: registry reconstruction now re-queries after a write batch actually commits to IndexedDB, closing a race that could show stale state right after freezing.
+- Rolling ring buffer for the selected debug buffer's encoded chunks plus a stats-arrival log, windowed by wall-clock time (10s chunks, 30s stats)
+- Freeze/unfreeze scrubbing: freezing clones the ring and parks the frame cursor while live ingest keeps recording underneath; unfreeze wired into all existing "go live" affordances (LIVE button, double-click, Esc)
+- Frozen buffers panel decodes the actual frame at the scrub cursor instead of showing a placeholder notice
+- Tightened VP9 keyframe cadence (2000ms -> 500ms) so scrubbing is never far from a decodable anchor
+- Registry panel gains periodic checkpoint snapshots so time-travel reconstruction never replays further back than one cadence window, reconstructing parked state from the nearest checkpoint plus forward deltas
+- Checkpoints that would degrade an oversized entry to metadata-only now retry instead of silently claiming a complete checkpoint, falling back to `partial: true` after bounded attempts; reconstruction skips partial checkpoints as anchors
+- Protocol-store persistence moved to dashboard bootstrap, independent of the Protocol Log panel's mount/pause state, so recording is never an implicit side effect of one panel's display toggle
+- Registry reconstruction now re-queries when a write batch actually commits to IndexedDB, closing a race where a debounce could fire before the newest rows were durably queryable
+Files: packages/devtools/src/dashboard/flight-ring.ts, panels/buffers.tsx, panels/scrubber.tsx, panels/registry.tsx, panels/protocol-log.tsx, hooks.ts, log-ingest.ts, protocol-store.ts, registry-reconstruction.ts, devtools-client.ts, registry-delta.ts, packages/three-flatland/src/debug-protocol.ts, debug/DebugRegistry.ts, debug/DevtoolsProvider.ts, debug/bus-worker.ts (+ tests)
+Stats: 3 commits, 28 files changed, 2257 insertions(+), 193 deletions(-)
 
-Devtools consumers get more reliable flight-recorder scrubbing and registry time-travel; no action needed for typical library usage.
+---
+
+Adds the flight recorder's core recording, freeze, and time-travel scrub/checkpoint capabilities to the devtools dashboard, plus reliability fixes for checkpoint persistence and reconstruction timing.
