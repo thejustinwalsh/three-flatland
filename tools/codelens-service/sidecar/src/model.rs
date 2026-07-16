@@ -100,6 +100,18 @@ pub struct WadSynthPayload {
     pub arg_range: Range,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub var_ref: Option<VarRef>,
+    /// `Some(true)` when this is a RECOGNIZED bare `new Wad(...)` whose
+    /// sole argument provably carries no playable oscillator config (live
+    /// `mic` input, a sprite-only map, a member-expression preset, an
+    /// arbitrary non-file string, ...) — the provider renders an inert
+    /// `Unresolved` lens instead of a Play that would always fail (#41's
+    /// informational-signal-over-silent-absence principle). Never set
+    /// alongside `var_ref` (identifier args stay the permissive var-ref
+    /// path), and never set when the argument contains an audio-extension
+    /// string (`audio.file` owns that lens — see
+    /// [`crate::parse::extract_wad_synth`]'s partition rule).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub unresolved: Option<bool>,
 }
 
 /// Payload for a Tone.js (tonejs.github.io) `new Tone.<Class>(...)
@@ -359,12 +371,17 @@ mod tests {
                     end: pos(0, 26),
                 },
                 var_ref: None,
+                unresolved: None,
             }),
         };
         let json = serde_json::to_value(&finding).unwrap();
         assert_eq!(json["kind"], "wad.synth");
         assert_eq!(json["payload"]["argRange"]["start"]["character"], 8);
         assert!(json["payload"].get("varRef").is_none());
+        assert!(
+            json["payload"].get("unresolved").is_none(),
+            "a playable wad.synth payload must omit the unresolved key entirely, not carry false"
+        );
         assert!(
             json["payload"].get("params").is_none(),
             "wad.synth payload must never have a params key — the config is a plain object, not a flat numeric list"
@@ -390,6 +407,7 @@ mod tests {
                     start: pos(1, 8),
                     end: pos(1, 11),
                 },
+                unresolved: None,
                 var_ref: Some(VarRef {
                     name: "cfg".to_string(),
                     def_uri: Some("a.ts".to_string()),

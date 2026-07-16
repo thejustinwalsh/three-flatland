@@ -1,13 +1,14 @@
-import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { existsSync, statSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { devBinaryCandidates, resolveBinary } from './resolveBinary.js'
+import { devBinaryCandidates, preferNewest, resolveBinary } from './resolveBinary.js'
 
-async function touch(path: string): Promise<void> {
+async function touch(path: string, mtimeMs?: number): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, '')
+  if (mtimeMs !== undefined) await utimes(path, mtimeMs / 1000, mtimeMs / 1000)
 }
 
 describe('resolveBinary', () => {
@@ -55,19 +56,43 @@ describe('resolveBinary', () => {
     ).toThrow(new RegExp(`${missingA}[\\s\\S]*${missingB}`))
   })
 
-  it('devBinaryCandidates() points inside sidecar/target, release before debug', () => {
-    const [release, debug] = devBinaryCandidates()
-    expect(release).toMatch(/sidecar[/\\]target[/\\]release[/\\]codelens-service/)
-    expect(debug).toMatch(/sidecar[/\\]target[/\\]debug[/\\]codelens-service/)
+  it('preferNewest() puts the freshest existing binary first, missing paths last', async () => {
+    const stale = join(dir, 'release', 'codelens-service')
+    const fresh = join(dir, 'debug', 'codelens-service')
+    const missing = join(dir, 'nope', 'codelens-service')
+    await touch(stale, Date.UTC(2026, 0, 1))
+    await touch(fresh, Date.UTC(2026, 6, 1))
+    expect(preferNewest([stale, fresh, missing])).toEqual([fresh, stale, missing])
+    // Stable when nothing exists — the caller's order is the tiebreak.
+    expect(preferNewest([missing, stale + '-also-missing'])).toEqual([
+      missing,
+      stale + '-also-missing',
+    ])
+  })
+
+  it('devBinaryCandidates() points inside sidecar/target, covering release and debug', () => {
+    const candidates = devBinaryCandidates()
+    expect(
+      candidates.some((c) => /sidecar[/\\]target[/\\]release[/\\]codelens-service/.test(c))
+    ).toBe(true)
+    expect(
+      candidates.some((c) => /sidecar[/\\]target[/\\]debug[/\\]codelens-service/.test(c))
+    ).toBe(true)
   })
 
   it('falls back to the dev-mode build actually on disk in this checkout', () => {
-    // This checkout has a cargo-built debug binary (Z1's `cargo build`/`cargo
-    // test` runs produced it) and no release build, so resolveBinary() with
-    // no explicit/extra candidates must land on the debug path — proving the
-    // dev-mode fallback is really wired in, not just declared.
-    const [, debugCandidate] = devBinaryCandidates()
-    expect(existsSync(debugCandidate)).toBe(true)
-    expect(resolveBinary()).toBe(debugCandidate)
+    // This checkout always has a cargo-built debug binary (`cargo build`/
+    // `cargo test` runs produce it); a RELEASE build may or may not also
+    // exist (scripts/bundle-sidecars.mjs's `cargo build --release` leaves
+    // one behind). resolveBinary() must land on the NEWEST existing dev
+    // candidate — a stale packaging-leftover release build must never
+    // shadow a fresh debug build (this silently ran pre-change parsing in
+    // a real e2e run once) — proving the dev-mode fallback is really
+    // wired in, without depending on whether packaging ever ran here.
+    const candidates = devBinaryCandidates()
+    const existing = candidates.filter((c) => existsSync(c))
+    expect(existing.length).toBeGreaterThan(0)
+    const expected = existing.reduce((a, b) => (statSync(a).mtimeMs >= statSync(b).mtimeMs ? a : b))
+    expect(resolveBinary()).toBe(expected)
   })
 })

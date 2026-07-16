@@ -89,7 +89,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     expect(
       result.findings,
       "golden.ts's total finding count changed — update this expectation (and sidecar/tests/golden.rs's matching one) together with any fixture edit"
-    ).toHaveLength(27)
+    ).toHaveLength(30)
 
     // The specific regression this fixture exists to prevent: a
     // type-annotated declarator's defRange must land INSIDE the
@@ -207,16 +207,30 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
       ).toBeUndefined()
     }
 
-    // wad.synth: every oscillator/noise keyword IS a wad.synth finding now
-    // (a dedicated kind — see tools/codelens-service/CLAUDE.md), proven by
-    // argRange slice-equality against the real source text, the TS twin of
-    // golden.rs's same block. 'mic' remains the one keyword that is a
-    // finding of NEITHER kind.
+    // wad.synth: every oscillator/noise keyword IS a PLAYABLE wad.synth
+    // finding (a dedicated kind — see tools/codelens-service/CLAUDE.md),
+    // proven by argRange slice-equality against the real source text, the
+    // TS twin of golden.rs's same block. The three decoys — 'mic' (live
+    // input), the sprite-only map, and the Wad.presets member expression —
+    // are wad.synth findings of the UNRESOLVED flavor.
     const wadSynthFindings = result.findings.filter((f) => f.kind === 'wad.synth')
     expect(
       wadSynthFindings,
-      "expected sine (beep), sawtooth/triangle/noise (synthVoices), the inline square inside playIterated's SoundIterator, playSquareSynth's square, and playLaserOsc's var-ref noise — 7 total wad.synth findings"
-    ).toHaveLength(7)
+      "expected sine (beep), sawtooth/triangle/noise (synthVoices), the inline square inside playIterated's SoundIterator, playSquareSynth's square, and playLaserOsc's var-ref noise — 7 playable — plus the mic/sprite/preset decoys as the unresolved flavor — 10 total wad.synth findings"
+    ).toHaveLength(10)
+    const unresolvedWads = wadSynthFindings.filter(
+      (f) => f.kind === 'wad.synth' && f.payload.unresolved
+    )
+    expect(
+      unresolvedWads,
+      'exactly the mic/sprite/preset decoys carry unresolved: true'
+    ).toHaveLength(3)
+    for (const f of unresolvedWads) {
+      expect(
+        f.kind === 'wad.synth' && f.payload.varRef,
+        'unresolved and varRef never coexist on a wad.synth payload'
+      ).toBeUndefined()
+    }
     for (const oscillator of ['sine', 'square', 'sawtooth', 'triangle', 'noise']) {
       const objectText = `{ source: '${oscillator}' }`
       const found = wadSynthFindings.some((f) => {
