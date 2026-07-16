@@ -66,7 +66,7 @@ describe('audioContextGuard', () => {
   })
 
   it('does not throw when the native constructor fails — the crash this whole module exists to prevent', async () => {
-    const guard = await import('./audioContextGuard.js')
+    await import('./audioContextGuard.js')
     expect(() => new (globalThis as unknown as { AudioContext: new () => unknown }).AudioContext()).not.toThrow()
   })
 

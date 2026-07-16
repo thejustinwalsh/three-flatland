@@ -76,6 +76,14 @@ function waitForMessage(
  * Resolves with the frame the next time `socket.send()` is called — the
  * deterministic "this crossed the wire" signal, in place of waiting a
  * fixed delay and then inspecting `socket.sent`.
+ *
+ * Only valid as a POSITIVE-path barrier ("prove this message crossed").
+ * As a "drained queue" barrier ahead of a negative assertion (`sent
+ * .length` stayed put), it's a false barrier: it resolves on whichever
+ * send happens to land FIRST, so an erroneous forward that should have
+ * been dropped satisfies it instead of the intended barrier message,
+ * and the length check that follows can't tell the difference. Use
+ * `nextSendMatching` for that case.
  */
 function nextSend(socket: FakeSocket): Promise<ArrayBuffer> {
   return new Promise((resolve) => {
@@ -84,6 +92,31 @@ function nextSend(socket: FakeSocket): Promise<ArrayBuffer> {
       socket.send = original
       original(data)
       resolve(data)
+    }
+  })
+}
+
+/**
+ * Resolves the first time `socket.send()` is called with a frame whose
+ * decoded message satisfies `predicate` — a barrier tied to a SPECIFIC
+ * message's identity rather than "whatever sends first". Every send
+ * (matching or not) still runs through to `socket.sent`, so a preceding
+ * erroneous send — the exact bug a negative-guard test exists to catch —
+ * is captured before the length assertion that follows the barrier runs.
+ */
+function nextSendMatching(
+  socket: FakeSocket,
+  predicate: (msg: DebugMessage) => boolean
+): Promise<ArrayBuffer> {
+  return new Promise((resolve) => {
+    const original = socket.send.bind(socket)
+    socket.send = (data: ArrayBuffer): void => {
+      original(data)
+      const { message } = decodeDebugMessage(data)
+      if (predicate(message)) {
+        socket.send = original
+        resolve(data)
+      }
     }
   })
 }
@@ -347,7 +380,12 @@ describe('remote bridges over a socket pair', () => {
     const sentBefore = providerSocket.sent.length
     const driverChannel = new BroadcastChannel('fl-data-echo')
 
-    const barrierCrossed = nextSend(providerSocket)
+    // Matched on the barrier's own unique `ts` (10), not "whichever send
+    // happens first" — if the echo guard were broken and forwarded the
+    // marked message too, that erroneous send (ts: 9) would still land in
+    // `providerSocket.sent` but would NOT satisfy this predicate, so the
+    // length assertion below would correctly see it.
+    const barrierCrossed = nextSendMatching(providerSocket, (msg) => msg.ts === 10)
     driverChannel.postMessage({
       v: 1,
       ts: 9,
@@ -428,12 +466,17 @@ describe('remote bridges over a socket pair', () => {
     local.postMessage({ v: 1, ts: 2, type: 'rpc:ui:expand', payload: {} })
 
     // Negative-test barrier: post a forwardable frame after the two that
-    // must be dropped, and wait for IT to cross the wire. BroadcastChannel
-    // delivery preserves posting order, so the barrier crossing proves the
-    // two prior messages were already dispatched to the provider tap and
-    // silently ignored — a deterministic drained-queue signal instead of
-    // "nothing happened for N ms".
-    const barrierCrossed = nextSend(providerSocket)
+    // must be dropped, and wait for IT — specifically, by its unique `ts`
+    // (3) — to cross the wire. BroadcastChannel delivery preserves posting
+    // order, so the barrier crossing proves the two prior messages were
+    // already dispatched to the provider tap and silently ignored — a
+    // deterministic drained-queue signal instead of "nothing happened for
+    // N ms". Matching on identity (not "whichever send happens first")
+    // matters here: if the filter were broken and forwarded the subscribe
+    // or rpc message too, that erroneous send would land in
+    // `providerSocket.sent` but not satisfy this predicate, so the length
+    // assertion below would still see it.
+    const barrierCrossed = nextSendMatching(providerSocket, (msg) => msg.ts === 3)
     local.postMessage({ v: 1, ts: 3, type: 'ping', payload: {} })
     await barrierCrossed
 
