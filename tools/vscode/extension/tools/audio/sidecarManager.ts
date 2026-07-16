@@ -5,7 +5,11 @@
 // rather than throwing — a missing/unbuilt sidecar must not crash
 // extension activation or block the other three tools.
 import * as vscode from 'vscode'
-import { CodelensServiceClient, resolveBinary } from '@three-flatland/codelens-service'
+import {
+  CodelensServiceClient,
+  preferNewest,
+  resolveBinary,
+} from '@three-flatland/codelens-service'
 import { log } from '../../log'
 
 let clientPromise: Promise<CodelensServiceClient | null> | null = null
@@ -78,10 +82,14 @@ function devCandidates(context: vscode.ExtensionContext): string[] {
     'sidecar',
     'target'
   )
-  return [
+  // preferNewest, not release-then-debug: a stale week-old `--release`
+  // build (packaging leftover) must never shadow the fresh debug binary a
+  // `cargo build`/`cargo test` iteration just produced — a real e2e run
+  // silently tested pre-change parsing exactly this way.
+  return preferNewest([
     vscode.Uri.joinPath(sidecarTarget, 'release', BINARY_NAME).fsPath,
     vscode.Uri.joinPath(sidecarTarget, 'debug', BINARY_NAME).fsPath,
-  ]
+  ])
 }
 
 async function startSidecar(

@@ -68,7 +68,7 @@ const binaryPath = resolveBinary({
 })
 ```
 
-Resolution order: `explicitPath` (if given, returned unchecked) > first existing entry in `candidates` > (unless `includeDevFallback: false`) first existing `target/{release,debug}` dev build. Throws — listing every path it looked at — if nothing resolves.
+Resolution order: `explicitPath` (if given, returned unchecked) > first existing entry in `candidates` > (unless `includeDevFallback: false`) **newest** existing `target/{release,debug}` dev build (`preferNewest` — a stale packaging-leftover release build must never shadow a fresh `cargo build`/`cargo test` debug build). Throws — listing every path it looked at — if nothing resolves.
 
 ## API
 

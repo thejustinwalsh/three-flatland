@@ -6,21 +6,39 @@
  * top without this package needing to know about VSIX layout at all.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const BINARY_NAME = process.platform === 'win32' ? 'codelens-service.exe' : 'codelens-service'
 
 /**
- * The locally `cargo build`-produced binary paths, release preferred over
- * debug. `src/` and `dist/` are siblings directly under
+ * Orders dev-build candidate paths so existing binaries come first, newest
+ * build (mtime) winning. A fresh `cargo build`/`cargo test` debug binary
+ * must never lose to a week-old `--release` artifact left behind by a
+ * packaging run — the same stale-artifact-shadowing class the VS Code
+ * extension's Test-mode resolution fix covers, one directory deeper.
+ * Stable-sorts, so ties and all-missing keep the caller's order.
+ */
+export function preferNewest(paths: string[]): string[] {
+  // -1, not -Infinity: two missing paths must compare equal (a NaN from
+  // `-Infinity - -Infinity` would make the comparator inconsistent).
+  const mtime = (path: string) => (existsSync(path) ? statSync(path).mtimeMs : -1)
+  return [...paths].sort((a, b) => mtime(b) - mtime(a))
+}
+
+/**
+ * The locally `cargo build`-produced binary paths, newest build preferred
+ * (see {@link preferNewest}). `src/` and `dist/` are siblings directly under
  * `tools/codelens-service/`, so this resolves correctly whether called from
  * source (vitest/tsx) or from the compiled `dist/` output.
  */
 export function devBinaryCandidates(): string[] {
   const sidecarTarget = fileURLToPath(new URL('../sidecar/target', import.meta.url))
-  return [join(sidecarTarget, 'release', BINARY_NAME), join(sidecarTarget, 'debug', BINARY_NAME)]
+  return preferNewest([
+    join(sidecarTarget, 'release', BINARY_NAME),
+    join(sidecarTarget, 'debug', BINARY_NAME),
+  ])
 }
 
 export interface ResolveBinaryOptions {
@@ -43,7 +61,7 @@ export interface ResolveBinaryOptions {
 
 /**
  * Resolution precedence: `explicitPath` (if given) > first existing entry in
- * `candidates` > (if `includeDevFallback`, the default) first existing
+ * `candidates` > (if `includeDevFallback`, the default) newest existing
  * dev-mode `target/{release,debug}` build. Throws with every path it looked
  * at if nothing resolves — a silent `undefined` here just becomes a
  * confusing ENOENT three calls later.
