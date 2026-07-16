@@ -106,7 +106,20 @@ async function runOfflineProbe(
     // fails the whole test via Playwright's own test timeout, which is the
     // correct place for that bound to live, not a test-authored setTimeout
     // race.
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
+      // A verdict line alone is not enough: a probe that prints RENDER_OK
+      // and THEN throws during teardown (e.g. the eager-context dispose or
+      // an unhandled rejection after rendering) exits non-zero, and that
+      // is a real failure the gate must not swallow. Require a clean exit
+      // first, then a valid verdict.
+      if (code !== 0) {
+        reject(
+          new Error(
+            `probe exited unsuccessfully (exit=${code}, signal=${signal}): stdout=${stdout} stderr=${stderr}`
+          )
+        )
+        return
+      }
       if (!/RENDER_OK|RENDER_SILENT/.test(stdout)) {
         reject(
           new Error(

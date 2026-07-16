@@ -50,6 +50,7 @@ export function loadWadConstructor(context: AudioContext): WadConstructor {
   const realWindowAudioContext = globalThis.window.AudioContext
   const realWindowWebkitAudioContext = (globalThis.window as { webkitAudioContext?: unknown })
     .webkitAudioContext
+  const realCreateBuffer = context.createBuffer.bind(context)
   // The explicit-object-return `new` trick: a constructor that returns
   // an object explicitly makes `new Ctor()` use that object instead of
   // the newly allocated one — Wad has no constructor-injection point for
@@ -58,65 +59,78 @@ export function loadWadConstructor(context: AudioContext): WadConstructor {
     return context
   }
 
-  globalThis.document ??= { querySelector: () => null } as unknown as Document
-  globalThis.window.addEventListener ??= () => {}
-  globalThis.window.removeEventListener ??= () => {}
-  Object.defineProperty(globalThis.window, 'navigator', {
-    value: {},
-    configurable: true,
-    writable: true,
-  })
-  globalThis.AudioContext = FakeAudioContext as unknown as typeof AudioContext
-  ;(globalThis as { webkitAudioContext?: unknown }).webkitAudioContext = FakeAudioContext
-  globalThis.window.AudioContext = FakeAudioContext as unknown as typeof AudioContext
-  ;(globalThis.window as { webkitAudioContext?: unknown }).webkitAudioContext = FakeAudioContext
+  // try/finally so a throw in the `require`/repair block below can NEVER
+  // leave `context.createBuffer` or the `AudioContext` globals patched —
+  // a leaked `AudioContext = FakeAudioContext` would make every later
+  // `new AudioContext()` (e.g. `contextLifecycle.ts`'s device reacquire)
+  // return this one stale context instead of a fresh one. The additive
+  // `??=` environment shims (document/addEventListener/navigator) are
+  // intentionally NOT restored — same as before — they set nothing that
+  // was previously meaningful.
+  try {
+    globalThis.document ??= { querySelector: () => null } as unknown as Document
+    globalThis.window.addEventListener ??= () => {}
+    globalThis.window.removeEventListener ??= () => {}
+    Object.defineProperty(globalThis.window, 'navigator', {
+      value: {},
+      configurable: true,
+      writable: true,
+    })
+    globalThis.AudioContext = FakeAudioContext as unknown as typeof AudioContext
+    ;(globalThis as { webkitAudioContext?: unknown }).webkitAudioContext = FakeAudioContext
+    globalThis.window.AudioContext = FakeAudioContext as unknown as typeof AudioContext
+    ;(globalThis.window as { webkitAudioContext?: unknown }).webkitAudioContext = FakeAudioContext
 
-  // Wad's own bundle pre-renders a shared noise buffer at import time
-  // (`build/wad.js`: `noiseBuffer.getChannelData(0)` then `output[i] =
-  // ...` in a fill loop) — a DETACHED COPY under `node-web-audio-api`, so
-  // the writes never reach the real buffer and every `source:'noise'` Wad
-  // plays silence. We can't patch Wad's bundled source (vendored npm
-  // dependency), and its `noiseBuffer` variable is closed over inside the
-  // webpack bundle — not reachable from the public `Wad` export. Fix:
-  // intercept the ONE `createBuffer` call Wad's import-time IIFE makes
-  // (nothing else in Wad's top-level module code creates a buffer),
-  // capture the actual buffer object (a reference, not a copy — writing
-  // into IT is what Wad's own closure will play back), and immediately
-  // re-commit real noise samples into it via `copyToChannel`.
-  let capturedNoiseBuffer: AudioBuffer | undefined
-  const realCreateBuffer = context.createBuffer.bind(context)
-  context.createBuffer = ((...args: Parameters<typeof realCreateBuffer>) => {
-    const buffer = realCreateBuffer(...args)
-    capturedNoiseBuffer ??= buffer
-    return buffer
-  }) as typeof realCreateBuffer
+    // Wad's own bundle pre-renders a shared noise buffer at import time
+    // (`build/wad.js`: `noiseBuffer.getChannelData(0)` then `output[i] =
+    // ...` in a fill loop) — a DETACHED COPY under `node-web-audio-api`, so
+    // the writes never reach the real buffer and every `source:'noise'` Wad
+    // plays silence. We can't patch Wad's bundled source (vendored npm
+    // dependency), and its `noiseBuffer` variable is closed over inside the
+    // webpack bundle — not reachable from the public `Wad` export. Fix:
+    // intercept the ONE `createBuffer` call Wad's import-time IIFE makes
+    // (nothing else in Wad's top-level module code creates a buffer),
+    // capture the actual buffer object (a reference, not a copy — writing
+    // into IT is what Wad's own closure will play back), and immediately
+    // re-commit real noise samples into it via `copyToChannel`.
+    let capturedNoiseBuffer: AudioBuffer | undefined
+    context.createBuffer = ((...args: Parameters<typeof realCreateBuffer>) => {
+      const buffer = realCreateBuffer(...args)
+      capturedNoiseBuffer ??= buffer
+      return buffer
+    }) as typeof realCreateBuffer
 
-  wadCtor = nodeRequire('web-audio-daw') as WadConstructor
+    const loaded = nodeRequire('web-audio-daw') as WadConstructor
 
-  context.createBuffer = realCreateBuffer
-  if (capturedNoiseBuffer) {
-    let seed = 6
-    const seededRandom = () => {
-      seed = (seed * 9301 + 49297) % 233280
-      return seed / 233280
+    if (capturedNoiseBuffer) {
+      let seed = 6
+      const seededRandom = () => {
+        seed = (seed * 9301 + 49297) % 233280
+        return seed / 233280
+      }
+      const noise = new Float32Array(capturedNoiseBuffer.length)
+      for (let i = 0; i < noise.length; i++) noise[i] = seededRandom() * 2 - 1
+      capturedNoiseBuffer.copyToChannel(noise, 0)
     }
-    const noise = new Float32Array(capturedNoiseBuffer.length)
-    for (let i = 0; i < noise.length; i++) noise[i] = seededRandom() * 2 - 1
-    capturedNoiseBuffer.copyToChannel(noise, 0)
+
+    // Cache ONLY after the require + noise repair both succeed — a throw
+    // in either leaves `wadCtor` undefined so the next call retries the
+    // full dance instead of returning a half-initialized constructor.
+    wadCtor = loaded
+    return wadCtor
+  } finally {
+    // Restore unconditionally — on the success path Wad's module-scope
+    // `context` reference is already captured permanently by this point
+    // (its bundle reads `window.AudioContext` once, at its own module-load
+    // time), so this isn't load-bearing there; on a throw it's what stops
+    // the FakeAudioContext/createBuffer patches from leaking process-wide.
+    context.createBuffer = realCreateBuffer
+    globalThis.AudioContext = realAudioContext
+    ;(globalThis as { webkitAudioContext?: unknown }).webkitAudioContext = realWebkitAudioContext
+    globalThis.window.AudioContext = realWindowAudioContext
+    ;(globalThis.window as { webkitAudioContext?: unknown }).webkitAudioContext =
+      realWindowWebkitAudioContext
   }
-
-  // Restore the real constructors for hygiene — Wad's own module-scope
-  // `context` reference is already captured permanently by this point
-  // (its bundle reads `window.AudioContext` once, at its own
-  // module-load time), so this isn't load-bearing, just avoids leaving a
-  // surprising global patch in place for any unrelated future code.
-  globalThis.AudioContext = realAudioContext
-  ;(globalThis as { webkitAudioContext?: unknown }).webkitAudioContext = realWebkitAudioContext
-  globalThis.window.AudioContext = realWindowAudioContext
-  ;(globalThis.window as { webkitAudioContext?: unknown }).webkitAudioContext =
-    realWindowWebkitAudioContext
-
-  return wadCtor
 }
 
 /**

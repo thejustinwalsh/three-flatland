@@ -112,9 +112,8 @@ response via `client.onError()`; there's nothing meaningful to return on
 success.
 
 The three AWAITED commands — `stats` (see "Audibility regression guard"
-below), `playToneSynth` (see "Tone.js: lazy load, bounded await" below,
-#47/#49), and `ping` (see "`ping` — a device-independent liveness probe"
-above) —
+below), `playToneSynth` (see "Tone.js: lazy load, bounded await" below, #47/#49),
+and `ping` (see "`ping` — a device-independent liveness probe" above) —
 carry a numeric `id` the sidecar echoes back on the response, and the
 client matches on `cmd` + `id`. This replaced the original content-based
 correlation ("the next `cmd: 'stats'` line"): content matching relied on
