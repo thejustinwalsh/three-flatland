@@ -155,6 +155,12 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
           return { ok: true, cmd: 'shutdown' }
         case 'stats':
           return { ok: true, cmd: 'stats', stats: backend.getStats() }
+        // Device-independent liveness probe — deliberately never touches
+        // `backend` (see protocol.ts's `PingCommand` doc). Answered here,
+        // not delegated, so it stays true regardless of what the real
+        // `sidecar.ts` backend's AudioContext is doing.
+        case 'ping':
+          return { ok: true, cmd: 'ping' }
       }
     } catch (err) {
       // Generic — never special-cased to a particular backend method. Any

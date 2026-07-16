@@ -77,82 +77,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-vscode-test-
 
-      # ubuntu-latest runners have no sound hardware and no audio device is
-      # configured by default -- xvfb (above) virtualizes the DISPLAY only.
-      # node-web-audio-api (tools/audio-play's sidecar, via Rust's cpal,
-      # which uses ALSA on Linux) needs somewhere to actually open a
-      # device; with nothing present, PlaySidecarClient-backed tests that
-      # wait on real audio output (stats.playing, decoded .wav/song/synth
-      # playback) either time out or the sidecar itself fails during
-      # AudioContext construction. A PulseAudio null sink gives ALSA's
-      # `pulse` plugin a real, functioning (silent) default device to open
-      # -- the standard fix for headless Web Audio API testing in CI (the
-      # same approach Chromium/Playwright's own CI uses).
-      - name: Set up a virtual audio device (PulseAudio null sink)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pulseaudio
-          pulseaudio -D --exit-idle-time=-1 --disallow-exit
-          # `-D` forks and returns as soon as the daemon PROCESS exists, not
-          # once it's actually ready to accept connections -- racing pactl
-          # (here) or the real sidecar's first AudioContext open (later, in
-          # the actual e2e run) against that startup window is the
-          # documented source of intermittent stats.silent/stats.peak
-          # failures under a loaded runner (tools/audio-play/CLAUDE.md,
-          # "Common pitfalls" -- "PulseAudio null sink is not perfectly
-          # reliable under CI load"). Poll for real readiness instead of
-          # assuming the fork already means ready.
-          for i in $(seq 1 30); do
-            pactl info >/dev/null 2>&1 && break
-            sleep 0.5
-          done
-          pactl info >/dev/null 2>&1 || { echo "::error::pulseaudio did not become ready within 15s"; exit 1; }
-          pactl load-module module-null-sink sink_name=DummyOutput
-          pactl set-default-sink DummyOutput
-          # Same readiness concern one level down: the null sink module was
-          # just requested, not necessarily fully attached and routable the
-          # instant `load-module` returns. Confirm it's actually the
-          # default sink and enumerable before trusting ALSA's `pulse`
-          # plugin can open it.
-          for i in $(seq 1 20); do
-            pactl get-default-sink 2>/dev/null | grep -q DummyOutput && break
-            sleep 0.25
-          done
-          pactl get-default-sink 2>/dev/null | grep -q DummyOutput || { echo "::error::DummyOutput sink did not become the default sink in time"; exit 1; }
-
-      # xvfb ships preinstalled on the ubuntu-latest runner image — this is
-      # the same minimal invocation as microsoft/vscode-test's own sample CI
-      # workflow (github.com/microsoft/vscode-test/blob/main/sample/.github/
+      # Determinism redesign (planning/testing/test-determinism-audit.md):
+      # no PulseAudio/virtual-audio-device setup here anymore. The one
+      # audibility proof for the whole audio e2e suite
+      # (specs/audio-render-gate.spec.ts) renders through an
+      # `OfflineAudioContext`, which never opens a real output stream and
+      # so has nothing to do with whatever sound hardware (or lack of it)
+      # this runner has. Every other audio spec only proves lens wiring
+      # and "does the command dispatch without throwing" — also
+      # device-independent. xvfb ships preinstalled on the ubuntu-latest
+      # runner image — this is the same minimal invocation as
+      # microsoft/vscode-test's own sample CI workflow
+      # (github.com/microsoft/vscode-test/blob/main/sample/.github/
       # workflows/ci.yml): no extra system packages needed on top of it.
       #
-      # Wrapped in a job-level retry (not relying on Playwright's own
-      # in-process test retry alone): tools/audio-play/CLAUDE.md documents
-      # residual PulseAudio/ALSA jitter under a loaded runner even with the
-      # daemon confirmed ready (see the readiness wait above) — real,
-      # occasional silence on an otherwise-correct audio path, not a
-      # deterministic bug (confirmed: workers: 1 below rules out cross-test
-      # audio contention, and which specific test catches it varies run to
-      # run). Playwright's own retry reuses the SAME already-running VS
-      # Code instance and sidecar process for its retry attempt, so it
-      # can't shake a glitch tied to that process's audio state; retrying
-      # the whole step gets a genuinely fresh xvfb + VS Code + sidecar +
-      # AudioContext each attempt, which is a materially stronger reset.
+      # No job-level retry either: a retry re-running the SAME
+      # already-warm shared window/sidecars can mask a genuine
+      # first-attempt failure rather than proving anything was flaky. Run
+      # once; if this suite is red, that's a real signal.
       - name: Run VS Code extension e2e tests
-        uses: nick-fields/retry@v3
-        env:
-          # CI must HARD-FAIL on unverified audio, never skip: locally the
-          # warmup's environmental-deafness verdict (fixtures.ts) skips
-          # audio specs when the OS device is transiently dead, but CI's
-          # PulseAudio null sink should always work — a deaf device-oracle
-          # here means a real substrate problem (e.g. a node-web-audio-api
-          # lockfile regression), which is exactly what CI must catch. This
-          # is what makes CI the backstop for the one failure class the
-          # local oracle cannot distinguish.
-          FL_E2E_REQUIRE_AUDIO: '1'
-        with:
-          timeout_minutes: 15
-          max_attempts: 2
-          command: xvfb-run -a pnpm --filter @three-flatland/vscode test:e2e
+        run: xvfb-run -a pnpm --filter @three-flatland/vscode test:e2e
 
       - name: Upload Playwright report
         if: failure()
