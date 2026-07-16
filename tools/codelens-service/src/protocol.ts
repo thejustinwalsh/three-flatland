@@ -73,6 +73,15 @@ export interface AudioFilePayload {
 export interface WadSynthPayload {
   argRange: Range
   varRef?: VarRef
+  /** `true` when this is a RECOGNIZED bare `new Wad(...)` whose sole
+   * argument provably carries no playable oscillator config (live `mic`
+   * input, a sprite-only map, a member-expression preset, an arbitrary
+   * non-file string, ...) — the provider renders an inert `Unresolved`
+   * lens instead of a Play that would always fail. Never present
+   * alongside `varRef`, and never set when the argument contains an
+   * audio-extension string (`audio.file` owns that lens — see
+   * `extract_wad_synth`'s partition rule in `sidecar/src/parse.rs`). */
+  unresolved?: true
 }
 
 /**

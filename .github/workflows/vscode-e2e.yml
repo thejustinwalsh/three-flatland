@@ -139,6 +139,16 @@ jobs:
       # AudioContext each attempt, which is a materially stronger reset.
       - name: Run VS Code extension e2e tests
         uses: nick-fields/retry@v3
+        env:
+          # CI must HARD-FAIL on unverified audio, never skip: locally the
+          # warmup's environmental-deafness verdict (fixtures.ts) skips
+          # audio specs when the OS device is transiently dead, but CI's
+          # PulseAudio null sink should always work — a deaf device-oracle
+          # here means a real substrate problem (e.g. a node-web-audio-api
+          # lockfile regression), which is exactly what CI must catch. This
+          # is what makes CI the backstop for the one failure class the
+          # local oracle cannot distinguish.
+          FL_E2E_REQUIRE_AUDIO: '1'
         with:
           timeout_minutes: 15
           max_attempts: 2

@@ -22,8 +22,8 @@
 //
 // `audio.file` is the one kind whose LENS SHAPE (not just its command)
 // depends on work done in `provideCodeLenses` — the fast/slow resolution
-// state decides between `▶ Play`, a `$(search) Searching…` resolving lens, a
-// `$(search) Not Found` lens, and (for URLs/absolute paths the workspace
+// state decides between `▶ Play`, a `$(search)  Searching…` resolving lens, a
+// `$(search)  Not Found` lens, and (for URLs/absolute paths the workspace
 // search can't meaningfully hunt for) no lens at all, which can't be
 // deferred to `resolveCodeLens` (that only fills in an already-emitted
 // lens's command). See `audioFileResolver.ts` for the whole fast→slow →
@@ -167,9 +167,17 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
           // protocol.ts) — no I/O needed to know a bare-identifier
           // reference has no findable declaration/initializer at all
           // (e.g. a function parameter). That's provably never playable,
-          // so it gets a single inert `$(question) Unresolved` lens
+          // so it gets a single inert `$(question)  Unresolved` lens
           // instead of a Play that would always fail with the same
           // error resolveSong/resolveWadSynth/resolveToneSynth throw.
+          // A wad.synth the sidecar already classified as unplayable (the
+          // mic/sprite/preset decoys — see WadSynthPayload.unresolved)
+          // gets the same inert lens; no client-side re-parse needed, the
+          // refusal reason was known at parse time.
+          if (finding.kind === 'wad.synth' && finding.payload.unresolved) {
+            lenses.push(new ZzfxCodeLens(range, finding, 'unresolved', document.uri))
+            break
+          }
           const varRef = finding.payload.varRef
           if (varRef && (!varRef.defUri || !varRef.defRange)) {
             lenses.push(new ZzfxCodeLens(range, finding, 'unresolved', document.uri))
@@ -185,7 +193,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
           // `▶ Play` + `⏹ Stop` pair immediately; a fast miss on a
           // searchable (plainly-relative) path shows `$(search)
           // Searching…` while the workspace-wide fallback runs, then the
-          // Play+Stop pair or `$(search) Not Found` once it settles. Only
+          // Play+Stop pair or `$(search)  Not Found` once it settles. Only
           // an INELIGIBLE reference (URL/absolute — the search couldn't
           // mean anything) gets no lens at all.
           const resolution = this.audioResolver.getLensState(
@@ -231,7 +239,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
       // fallback search: the identifier provably has no declaration/
       // initializer to read (see provideCodeLenses), so there's nothing
       // to retry.
-      codeLens.command = { title: '$(question) Unresolved', command: '' }
+      codeLens.command = { title: '$(question)  Unresolved', command: '' }
       return codeLens
     }
 
@@ -316,12 +324,12 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
         // Not clickable while the fallback search is in flight — the
         // empty command id renders an inert lens; onDidChangeCodeLenses
         // fires when it settles.
-        codeLens.command = { title: '$(search) Searching…', command: '' }
+        codeLens.command = { title: '$(search)  Searching…', command: '' }
       } else {
         // The retry click carries `source` too — a successful lazy-repair
         // play is a real playback and must mark its finding active.
         codeLens.command = {
-          title: '$(search) Not Found',
+          title: '$(search)  Not Found',
           command: 'threeFlatland.audio.playFile',
           arguments: [undefined, ref, source],
         }

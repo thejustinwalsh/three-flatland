@@ -6,5 +6,5 @@ export {
 export type { CodelensServiceClientOptions } from './client.js'
 export { encodeMessage, MessageDecoder } from './framing.js'
 export * from './protocol.js'
-export { devBinaryCandidates, resolveBinary } from './resolveBinary.js'
+export { devBinaryCandidates, preferNewest, resolveBinary } from './resolveBinary.js'
 export type { ResolveBinaryOptions } from './resolveBinary.js'
