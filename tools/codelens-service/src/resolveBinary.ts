@@ -21,10 +21,17 @@ const BINARY_NAME = process.platform === 'win32' ? 'codelens-service.exe' : 'cod
  * Stable-sorts, so ties and all-missing keep the caller's order.
  */
 export function preferNewest(paths: string[]): string[] {
+  // Stat each path exactly ONCE up front — a sort comparator runs O(n log n)
+  // times, so calling statSync inside it would repeat the syscall per element
+  // (and a mid-sort mtime change could even make the comparator inconsistent).
   // -1, not -Infinity: two missing paths must compare equal (a NaN from
-  // `-Infinity - -Infinity` would make the comparator inconsistent).
-  const mtime = (path: string) => (existsSync(path) ? statSync(path).mtimeMs : -1)
-  return [...paths].sort((a, b) => mtime(b) - mtime(a))
+  // `-Infinity - -Infinity` would poison the comparator). Array.sort is
+  // stable, so ties/all-missing keep the caller's order.
+  const withMtime = paths.map((path) => ({
+    path,
+    mtimeMs: existsSync(path) ? statSync(path).mtimeMs : -1,
+  }))
+  return withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs).map((e) => e.path)
 }
 
 /**

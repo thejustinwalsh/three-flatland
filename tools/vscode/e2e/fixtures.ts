@@ -230,7 +230,9 @@ async function warmUpAudioPipeline(bridge: HostBridgeClient): Promise<WarmupVerd
         trace.push(`+${((Date.now() - t0) / 1000).toFixed(1)}s ${entry}`)
       }
 
-      const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
+      const ext = vscode.extensions.all.find(
+        (e) => (e.packageJSON as { name?: string }).name === '@three-flatland/vscode'
+      )
       if (ext && !ext.isActive) await withTimeout(ext.activate(), 20_000, 'extension activate()')
       mark('activated')
       const api = ext!.exports as {
@@ -265,9 +267,20 @@ async function warmUpAudioPipeline(bridge: HostBridgeClient): Promise<WarmupVerd
         playCommand = lenses.find((l) => l.command?.title === '▶ Play')?.command
         if (!playCommand) await new Promise((resolve) => setTimeout(resolve, 150))
       }
-      mark(playCommand ? `lens found (${playCommand.command})` : 'NO ▶ Play lens within 15s')
+      if (!playCommand) {
+        // A missing ▶ Play lens means the CodeLens provider (or its sidecar)
+        // never produced one — a code/infra regression, NOT a dead audio
+        // device. Hard-fail here instead of skipping the audibility test and
+        // falling through to `{ ok: true }`, which would make this warmup a
+        // gate that can't fail when the extension itself is broken.
+        throw new Error(
+          `[e2e warmup] no ▶ Play CodeLens appeared within 15s for src/audio-sources.ts.\n` +
+            `[e2e warmup] trace: ${trace.join(' | ')}`
+        )
+      }
+      mark(`lens found (${playCommand.command})`)
 
-      if (playCommand) {
+      {
         // getStats() round-trips through the audio-play sidecar's own IPC —
         // on a cold spawn that process has to load a native module and
         // construct a real AudioContext through cpal/ALSA/PulseAudio before
@@ -433,25 +446,45 @@ async function warmUpAudioPipeline(bridge: HostBridgeClient): Promise<WarmupVerd
               })
               let out = ''
               let errTail = ''
+              let settled = false
+              const settle = (result: { kind: string; detail: string }): void => {
+                if (settled) return
+                settled = true
+                // The verdict is authoritative the moment it's printed; the
+                // probe logs ORACLE_AUDIBLE/ORACLE_DEAF BEFORE it closes its
+                // AudioContext, so don't let a slow/hung ctx.close() hold us
+                // past it (that would misreport an already-received verdict as
+                // 'wedged'). Kill the child if it hasn't exited on its own; the
+                // fallback timer is unref'd, so a late fire is a harmless
+                // guarded no-op — no clearTimeout needed.
+                if (child.exitCode === null) child.kill('SIGKILL')
+                resolve(result)
+              }
+              const checkVerdict = (): void => {
+                if (out.includes('ORACLE_AUDIBLE')) settle({ kind: 'audible', detail: out.trim() })
+                else if (out.includes('ORACLE_DEAF')) settle({ kind: 'deaf', detail: out.trim() })
+              }
               child.stdout.on('data', (d: Buffer) => {
                 out += String(d)
+                checkVerdict()
               })
               child.stderr.on('data', (d: Buffer) => {
                 errTail = (errTail + String(d)).slice(-400)
               })
-              const timer = setTimeout(() => {
-                child.kill('SIGKILL')
-                resolve({ kind: 'wedged', detail: 'no verdict within 5000ms' })
-              }, 5_000)
+              const timer = setTimeout(
+                () => settle({ kind: 'wedged', detail: 'no verdict within 5000ms' }),
+                5_000
+              )
+              timer.unref()
               child.on('error', (err) => {
-                clearTimeout(timer)
-                resolve({ kind: 'crashed', detail: err.message })
+                settle({ kind: 'crashed', detail: err.message })
               })
               child.on('exit', (code) => {
-                clearTimeout(timer)
-                if (out.includes('ORACLE_AUDIBLE')) resolve({ kind: 'audible', detail: out.trim() })
-                else if (out.includes('ORACLE_DEAF')) resolve({ kind: 'deaf', detail: out.trim() })
-                else resolve({ kind: 'crashed', detail: `exit=${code} stderr=${errTail}` })
+                // A printed verdict already settled us via the stdout handler;
+                // re-check in case the final chunk landed alongside 'exit',
+                // then fall back to a genuine no-output crash.
+                checkVerdict()
+                settle({ kind: 'crashed', detail: `exit=${code} stderr=${errTail}` })
               })
             })
 
