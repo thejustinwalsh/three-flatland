@@ -180,13 +180,35 @@ export function watchToolConfiguration(context: vscode.ExtensionContext): void {
         if (action === 'noop') continue
 
         if (action === 'register') {
-          const disposable = descriptor.register(context)
-          live.set(descriptor.id, disposable)
-          context.subscriptions.push(disposable)
-          log(`toolRegistry: ${descriptor.label} enabled live`)
+          // Isolate, same as activateTools: a throw here would crash the
+          // onDidChangeConfiguration handler and stop later tools in this loop
+          // from reacting to the same config change.
+          try {
+            const disposable = descriptor.register(context)
+            live.set(descriptor.id, disposable)
+            context.subscriptions.push(disposable)
+            log(`toolRegistry: ${descriptor.label} enabled live`)
+          } catch (err) {
+            log(
+              `toolRegistry: ${descriptor.label} failed to register live — skipping. ` +
+                (err instanceof Error ? (err.stack ?? err.message) : String(err))
+            )
+          }
         } else if (action === 'dispose') {
-          live.get(descriptor.id)?.dispose()
+          const disposable = live.get(descriptor.id)
+          try {
+            disposable?.dispose()
+          } catch (err) {
+            log(`toolRegistry: ${descriptor.label} failed to dispose cleanly: ${err}`)
+          }
           live.delete(descriptor.id)
+          // Also drop it from context.subscriptions (it was pushed there on
+          // register): leaving disposed entries accumulates them across every
+          // off/on cycle and double-disposes each at deactivate().
+          if (disposable) {
+            const i = context.subscriptions.indexOf(disposable)
+            if (i !== -1) context.subscriptions.splice(i, 1)
+          }
           log(`toolRegistry: ${descriptor.label} disabled live`)
         } else {
           // 'reload-prompt-enable' | 'reload-prompt-disable' — context key
