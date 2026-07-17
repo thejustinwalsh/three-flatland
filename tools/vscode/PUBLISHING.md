@@ -20,18 +20,20 @@ in a browser.
    the marketplace badge URL in `README.md` to match).
 3. That's all the Marketplace needs up front. **Publishing is manual** (CI only builds the VSIX —
    see below), and the simplest way to authenticate a manual publish is `az login` (interactive, in
-   your browser): `vsce publish --azure-credential` rides that logged-in session. **No Personal
-   Access Token, no Entra app registration, no federated credential** — those were only ever for
-   automated CI publishing, which this repo intentionally does not do (Azure DevOps PATs are
-   end-of-life and the Entra-ID CI story is painful to wire up).
+   your browser): `vsce publish --azure-credential` rides that logged-in session — no Personal
+   Access Token, no Entra app registration, no federated credential needed. (A Marketplace-scoped
+   PAT still works for a manual `vsce publish -p <PAT>` if you prefer, but Microsoft is retiring
+   full-scoped/global Azure DevOps PATs and tightening PAT policies, and automating publish via
+   Entra-ID in CI is painful — so `az login` + `--azure-credential` is the path of least resistance,
+   and why this repo doesn't publish from CI at all.)
 
 ### 2. Register the Open VSX namespace
 
 This is also the step that covers Cursor, Windsurf, Trae, Google Antigravity, AWS Kiro, VSCodium,
-Gitpod, and Eclipse Theia — every VS Code fork that isn't VS Code itself now runs on Open VSX as
-its actual extension registry (not a fallback, not a mirror). There is no separate "Cursor
-marketplace" to publish to and no extra step for it — a single `ovsx publish` of the built VSIX
-(see the manual-publish steps below) covers all of them at once.
+Gitpod, and Eclipse Theia — many VS Code forks use Open VSX as their actual extension registry
+(not a fallback, not a mirror). For those clients there's no separate marketplace to publish to and
+no extra step — a single `ovsx publish` of the built VSIX (see the manual-publish steps below)
+covers all of them at once.
 
 1. Go to <https://open-vsx.org> and sign in with GitHub.
 2. Go to <https://open-vsx.org/user-settings/tokens> and generate an access token. This is your
@@ -127,8 +129,10 @@ If it did and nothing appeared, read the `release` job's "Detect a new FL Tools 
 output (it prints why it decided to skip or build).
 
 **One of the 6 `build-codelens-service` legs fails.** `fail-fast: false` means the other 5 keep
-running — re-run just the failed job from the Actions UI once you've fixed whatever broke, rather
-than re-running the whole workflow. `assemble-and-package` won't start until all 6 succeed.
+running. If it's a **transient** runner/cache failure, re-run just the failed job from the Actions
+UI (a job re-run reuses the original commit, so this is only valid for flakes — not code fixes). If
+it needs a **code fix**, push a new commit and let a fresh run rebuild. `assemble-and-package` won't
+start until all 6 succeed.
 
 **`vsce publish` says the version already exists.** You already published this version — bump
 `tools/vscode/package.json` (via a changeset release), rebuild the artifact, and publish that. Add
