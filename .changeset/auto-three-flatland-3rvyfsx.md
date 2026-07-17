@@ -5,19 +5,14 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-## Flight recorder — registry checkpoints and time-travel reconstruction
+## Registry checkpoint snapshots (flight recorder)
 
-- Registry panel can now reconstruct state at any parked frame using periodic full checkpoint snapshots plus forward deltas, instead of approximating from the nearest delta.
-- Checkpoints that would otherwise degrade an entry to metadata-only (pool overflow) retry and settle as a partial checkpoint rather than never completing; reconstruction skips partial checkpoints as anchors and falls back to the nearest complete one.
-- Protocol-store persistence now runs unconditionally at dashboard bootstrap instead of depending on the Protocol Log panel being mounted or un-paused — Pause now only affects that panel's own list.
-- Registry reconstruction re-queries as soon as a write batch is durably committed, closing a race where a debounce could fire before the newest rows were queryable.
-- Live client and reconstruction logic now share a single fold function, so they can't drift apart.
+- `DebugRegistry` now periodically emits full checkpoint snapshots (`checkpoint: true` on `RegistryPayload`) so devtools time-travel reconstruction never replays further back than one cadence window
+- Checkpoints that would degrade an entry to metadata-only (pool overflow) now retry and settle on `checkpoint: true, partial: true` instead of silently claiming a complete snapshot or starving forever
 
-## Flight recorder — ring buffer, freeze, and scrub playback
+## Fixes
 
-- Adds an always-on rolling ring of encoded chunks (10s) and stats (30s) for the selected buffer, enabling frame-accurate scrub playback while frozen.
-- Freezing clones the ring and parks the frame cursor while live ingest continues underneath; unfreezing works from any existing "go live" entry point (LIVE button, double-click, Esc).
-- While frozen, the buffers panel decodes actual frames from the ring instead of showing a "no playback yet" placeholder.
-- VP9 encoder keyframe cadence tightened from 2000ms to 500ms so scrub cursors are always near a decodable anchor.
+- Registry reconstruction now skips partial checkpoints as anchors, falling back to the nearest complete one; live client and reconstruction core share one fold function so they can't diverge
+- Protocol-store ingest moved to dashboard bootstrap — persistence no longer depends on the Protocol Log panel being mounted or unpaused (Pause now only freezes that panel's own list)
 
-A summary of related fixes and follow-on work for `@three-flatland/devtools` is tracked in that package's own changeset.
+A summary of underlying flight-recorder groundwork (rolling ring buffer, freeze/scrub playback, tighter VP9 keyframe cadence) lands alongside these registry changes to support scrub-through-time debugging.

@@ -5,20 +5,25 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-## Flight recorder (epic #116, #29 Phase C)
+## Flight recorder (Phase C, epic #116)
 
-Multi-slice feature adding time-travel debugging to the devtools dashboard: freeze the live stream, scrub back through recorded frames, and replay decoded buffer video and registry state at any point.
+New always-on recording and time-travel debugging for the devtools dashboard:
 
-- **Ring buffer + scrub playback**: always-on rolling ring of encoded chunks (10s window) and stats (30s window) per buffer. Freeze clones the ring and parks the frame cursor while live ingest keeps writing underneath; unfreeze works from any existing "go live" entry point (LIVE button, double-click, Esc). While frozen, the buffers panel decodes real frames from the ring via a dedicated scrub decoder. VP9 keyframe cadence tightened from 2000ms to 500ms so the scrub cursor is always near a decodable anchor.
-- **Registry checkpoint snapshots**: periodic full re-sends of registry state (`checkpoint: true`) so reconstructing state at a parked frame never has to replay further back than one cadence window. The registry panel reconstructs from the nearest checkpoint plus forward deltas instead of approximating from the nearest delta.
-- **Multi-buffer grid + multi-select registry (slice 4)**: buffers panel supports marking several buffers at once on a responsive grid layout (1/2/2x2/3x2/3x3) with per-cell decode and a GPU-cost guardrail past ~4 concurrent streams. Registry panel supports multi-select via a pinned-tabs strip (Ctrl/Cmd-click to pin), reusing the existing reconstruction so every pinned entry stays scrub-consistent.
-- **Size-based IDB quota + pruning**: the protocol store now enforces a byte budget (via `navigator.storage.estimate()`, capped/overridable) with throttled oldest-first pruning that never touches a provider's pinned tail window, plus a self-heal retry for passes that under-deliver. `retainedRange()` exposes what actually survives per provider so the scrubber has an honest claimable range.
+- Rolling ring buffer records each buffer's encoded video chunks and stats arrivals on a wall-clock window (10s chunks, 30s stats), evicting oldest data first while always preserving the newest keyframe so a frozen snapshot can decode from its own start
+- Freeze/unfreeze scrubbing: freezing clones the ring and parks the frame cursor while live ingest keeps writing underneath; unfreeze is wired into every existing "go live" action (LIVE button, double-click, Esc)
+- Buffers panel decodes the frozen ring's keyframe-anchored chain for the scrubbed frame instead of showing "no playback yet"
+- Multi-buffer support: mark several buffers at once, laid out on a responsive grid (1 / 2 / 2x2 / 3x2 / 3x3) with per-cell decode and a soft guardrail past ~4 concurrent streams
+- Registry panel gains multi-select via pinned tabs (Ctrl/Cmd-click), reconstructing every pinned entry consistently while parked
+- Registry now emits periodic full checkpoint snapshots (`checkpoint: true`) so time-travel reconstruction never replays further back than one cadence window; partial checkpoints (from pool overflow) are retried and skipped as anchors in favor of the nearest complete one
+- Protocol store adds size-based IndexedDB quota + pruning (byte-budget policy via `navigator.storage.estimate()`, throttled oldest-first eviction that never touches a provider's pinned tail window) so long dashboard sessions no longer grow the store unbounded
+- VP9 encoder keyframe cadence tightened from 2000ms to 500ms so a scrub cursor is never far from a decodable anchor
 
 ## Fixes
 
-- Scrub decode outputs are now correlated to the request that issued them (`ScrubRequestTracker`), preventing a superseded request's late output from being drawn as the wrong frame during rapid cursor movement.
-- Frozen claimable frame range is now correctly intersected against the primary stats ring instead of unioned away — a narrow marked-buffer chunk window could previously be overridden by a much wider stats window, letting the scrubber claim frames that couldn't actually be decoded.
-- Protocol store quota pruning: per-provider tail windows are now pinned by each provider's own retained id count (not a shared global id span), in-memory accounting rolls back on failed writes, a one-shot timer catches bursts followed by silence, `dispose()` cleans up timers/IDB connections, and `retainedRange().oldestFrame` recovers correctly when a prune pass stops early.
-- Protocol-store persistence now runs unconditionally at dashboard bootstrap rather than depending on the Protocol Log panel's mount/pause state; a registry checkpoint that would degrade to metadata-only now retries and settles as a partial checkpoint instead of never completing; live client and reconstruction logic share one fold function to prevent drift.
+- Frozen scrubber range is now correctly intersected (not unioned) against the stats ring's bounds, so a narrow marked-buffer window can no longer be overridden by a wider stats window and claim frames that buffer can't decode
+- Scrub decode outputs are now correlated to their originating request via a FIFO tracker, preventing a superseded request's late output from being drawn as the wrong frame during rapid cursor moves
+- Protocol-store quota pruning: per-provider tail windows are now sized by each provider's own retained id count rather than a shared global id span; in-memory accounting rolls back on failed writes; a one-shot timer ensures a throttled prune still runs after a burst; `dispose()` closes the IDB connection and cancels timers; `retainedRange()` no longer points at deleted rows
+- Protocol-store ingest moved to dashboard bootstrap so persistence no longer depends on the Protocol Log panel being mounted or unpaused
+- `ProtocolStore` adds `addFlushListener`, firing after a write batch commits, so the registry panel's parked reconstruction re-queries once new rows are durably queryable instead of racing a debounce
 
-This release delivers the full flight-recorder feature set (record, freeze, scrub, multi-buffer/multi-registry playback) along with the quota management and correctness fixes needed to make it reliable under sustained sessions.
+This release completes the flight recorder's core feature set: continuous recording, freeze/scrub playback, multi-buffer and multi-registry review, and durable, bounded persistence for long dashboard sessions.
