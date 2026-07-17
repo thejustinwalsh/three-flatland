@@ -11,8 +11,12 @@
     "react-hooks/exhaustive-deps": "warn"
   },
   "ignorePatterns": [
+    "**/node_modules/**",
     "**/dist/**",
+    "**/third_party/**",
+    "**/vendor/**",
     "**/*.gen.ts",
+    "**/*.generated.ts",
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.test-d.ts",

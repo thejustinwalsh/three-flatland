@@ -23,7 +23,7 @@
     "build": "tsdown",
     "build:app": "vite build",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint --type-aware src",
+    "lint": "oxlint --type-aware src '!**/node_modules/**' '!**/dist/**'",
     "lint:fix": "eslint src --fix",
     "clean": "rm -rf dist"
   },
