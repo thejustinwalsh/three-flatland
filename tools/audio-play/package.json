@@ -20,8 +20,8 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "test": "vitest run --root ../.. tools/audio-play/src",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"

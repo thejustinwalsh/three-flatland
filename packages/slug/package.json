@@ -9,10 +9,6 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
       }
     },
     "./react": {
@@ -20,10 +16,6 @@
       "import": {
         "types": "./dist/react.d.ts",
         "default": "./dist/react.js"
-      },
-      "require": {
-        "types": "./dist/react.d.cts",
-        "default": "./dist/react.cjs"
       }
     },
     "./react/*": {
@@ -31,10 +23,6 @@
       "import": {
         "types": "./dist/react/*.d.ts",
         "default": "./dist/react/*.js"
-      },
-      "require": {
-        "types": "./dist/react/*.d.cts",
-        "default": "./dist/react/*.cjs"
       }
     },
     "./bake": {
@@ -42,10 +30,6 @@
       "import": {
         "types": "./dist/bake.d.ts",
         "default": "./dist/bake.js"
-      },
-      "require": {
-        "types": "./dist/bake.d.cts",
-        "default": "./dist/bake.cjs"
       }
     },
     "./pipeline": {
@@ -53,10 +37,6 @@
       "import": {
         "types": "./dist/pipeline/index.d.ts",
         "default": "./dist/pipeline/index.js"
-      },
-      "require": {
-        "types": "./dist/pipeline/index.d.cts",
-        "default": "./dist/pipeline/index.cjs"
       }
     },
     "./pipeline/*": {
@@ -64,10 +44,6 @@
       "import": {
         "types": "./dist/pipeline/*.d.ts",
         "default": "./dist/pipeline/*.js"
-      },
-      "require": {
-        "types": "./dist/pipeline/*.d.cts",
-        "default": "./dist/pipeline/*.cjs"
       }
     },
     "./shaders": {
@@ -75,10 +51,6 @@
       "import": {
         "types": "./dist/shaders/index.d.ts",
         "default": "./dist/shaders/index.js"
-      },
-      "require": {
-        "types": "./dist/shaders/index.d.cts",
-        "default": "./dist/shaders/index.cjs"
       }
     },
     "./shaders/*": {
@@ -86,17 +58,13 @@
       "import": {
         "types": "./dist/shaders/*.d.ts",
         "default": "./dist/shaders/*.js"
-      },
-      "require": {
-        "types": "./dist/shaders/*.d.cts",
-        "default": "./dist/shaders/*.cjs"
       }
     }
   },
   "bin": {
     "slug-bake": "./dist/cli.js"
   },
-  "main": "./dist/index.cjs",
+  "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
@@ -108,8 +76,8 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

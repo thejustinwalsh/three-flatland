@@ -1,7 +1,7 @@
 {
   "name": "@three-flatland/devtools",
   "version": "1.0.0-alpha.4",
-  "description": "Dev-time introspection toolkit for three-flatland \u2014 Tweakpane v4 UI plugin, stats monitor, and buffer inspection",
+  "description": "Dev-time introspection toolkit for three-flatland — Tweakpane v4 UI plugin, stats monitor, and buffer inspection",
   "type": "module",
   "exports": {
     ".": {
@@ -9,10 +9,6 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
       }
     },
     "./react": {
@@ -20,10 +16,6 @@
       "import": {
         "types": "./dist/react.d.ts",
         "default": "./dist/react.js"
-      },
-      "require": {
-        "types": "./dist/react.d.cts",
-        "default": "./dist/react.cjs"
       }
     },
     "./react/*": {
@@ -31,10 +23,6 @@
       "import": {
         "types": "./dist/react/*.d.ts",
         "default": "./dist/react/*.js"
-      },
-      "require": {
-        "types": "./dist/react/*.d.cts",
-        "default": "./dist/react/*.cjs"
       }
     },
     "./vite": {
@@ -42,14 +30,10 @@
       "import": {
         "types": "./dist/vite-plugin.d.ts",
         "default": "./dist/vite-plugin.js"
-      },
-      "require": {
-        "types": "./dist/vite-plugin.d.cts",
-        "default": "./dist/vite-plugin.cjs"
       }
     }
   },
-  "main": "./dist/index.cjs",
+  "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
@@ -57,9 +41,9 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
+    "build": "tsdown",
     "build:bundle": "vite build --config vite.config.bundle.ts",
-    "dev": "tsup --watch",
+    "dev": "tsdown --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/dashboard/tsconfig.json",

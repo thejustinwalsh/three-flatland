@@ -11,7 +11,7 @@
   // silently fall back to 5174 and the override is a no-op — pass it
   // through so docs + examples stay on the same origin when it's set.
   // EXAMPLES_PORT: see note above. NODE_OPTIONS: forwarded so the heap bump
-  // set by the root `build` script reaches each package's tsup build — the
+  // set by the root `build` script reaches each package's tsdown build — the
   // three-flatland DTS pass (bundle:false over all of src/**) otherwise OOMs
   // the rollup-plugin-dts worker on the default Node heap.
   "globalPassThroughEnv": ["EXAMPLES_PORT", "NODE_OPTIONS"],
@@ -48,7 +48,7 @@
         "wit/**",
         "build.zig",
         "build.zig.zon",
-        "tsup.config.ts",
+        "tsdown.config.ts",
         "tsconfig.json",
         "package.json"
       ]
