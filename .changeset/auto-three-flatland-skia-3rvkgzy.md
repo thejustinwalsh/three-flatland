@@ -5,8 +5,8 @@
 > Branch: claude/skia-rendering-regression-b1d604
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/186
 
-- Fix blank/broken Skia rendering in Safari caused by a WASM init failure on MIME-type fallback paths (e.g. behind a cross-origin redirect)
-  - `instantiateWasm` now streams from `res.clone()` so the original response body stays unread, letting the `res.arrayBuffer()` fallback succeed instead of throwing `TypeError: body stream already read`
-  - Added regression tests modeling real single-read `Response` body semantics
+- Fix Safari blank-render regression when loading the Skia WASM module. `WebAssembly.instantiateStreaming` locked the response body; on a MIME rejection (Safari rejects streaming for non-`application/wasm` MIME types where Chrome accepts it) or a cross-origin redirect, the fallback tried to re-read the same drained body and threw `TypeError: body stream already read`, aborting Skia init entirely.
+- Now streams from `res.clone()` so the original body stays intact for the `arrayBuffer()` fallback.
+- Adds a regression test modeling browser single-read body semantics.
 
-Fixes a Safari-specific blank render bug in `@three-flatland/skia`'s WASM loader where the MIME-type fallback path crashed instead of recovering.
+Fixes a real-world blank render seen on the deployed docs demo in Safari.
