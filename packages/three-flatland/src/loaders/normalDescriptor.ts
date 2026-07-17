@@ -12,12 +12,7 @@
  * the contract without pulling each other's runtime.
  */
 
-import type {
-  NormalBump,
-  NormalDirection,
-  NormalRegion,
-  NormalSourceDescriptor,
-} from '@three-flatland/normals'
+import type { NormalBump, NormalDirection, NormalRegion, NormalSourceDescriptor } from '@three-flatland/normals'
 
 export type { NormalDirection, NormalBump, NormalRegion, NormalSourceDescriptor }
 
@@ -281,10 +276,7 @@ export function tileToRegions(
 
   // Face = cell minus union(capRects), decomposed into non-overlapping
   // rectangles. Each gets the tile's direction / pitch / bump / strength.
-  const faceRects = subtractRects(
-    { x: cell.x, y: cell.y, w: cell.w, h: cell.h },
-    capRects
-  )
+  const faceRects = subtractRects({ x: cell.x, y: cell.y, w: cell.w, h: cell.h }, capRects)
 
   // Caps bake at full elevation (1 = top of wall). Face regions get
   // the tile's `tileElevation` override if set, otherwise

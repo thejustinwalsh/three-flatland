@@ -53,11 +53,7 @@ function injectTextChunk(pngBuffer: Buffer, keyword: string, value: string): Buf
   const ihdrLength = pngBuffer.readUInt32BE(sigLen)
   const ihdrEnd = sigLen + 8 + ihdrLength + 4 // length(4) + type(4) + data + CRC(4)
 
-  const textData = Buffer.concat([
-    Buffer.from(keyword, 'latin1'),
-    Buffer.from([0]),
-    Buffer.from(value, 'latin1'),
-  ])
+  const textData = Buffer.concat([Buffer.from(keyword, 'latin1'), Buffer.from([0]), Buffer.from(value, 'latin1')])
   const textType = Buffer.from('tEXt', 'latin1')
   const textLen = Buffer.alloc(4)
   textLen.writeUInt32BE(textData.length, 0)

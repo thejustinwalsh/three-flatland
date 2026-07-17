@@ -118,10 +118,7 @@ export function parseFont(buffer: ArrayBuffer): {
     const { curves, contourStarts } = extractCurves(glyph.path.commands, unitsPerEm)
     if (curves.length === 0) continue
 
-    glyphs.set(
-      glyph.index,
-      buildGpuGlyphData(glyph.index, curves, contourStarts, advanceWidthEm, lsbEm)
-    )
+    glyphs.set(glyph.index, buildGpuGlyphData(glyph.index, curves, contourStarts, advanceWidthEm, lsbEm))
   }
 
   return {
@@ -149,10 +146,7 @@ export async function loadFont(url: string): Promise<ReturnType<typeof parseFont
 }
 
 /** Extract quadratic Bezier curves from an opentype.js path, tracking contour boundaries. */
-function extractCurves(
-  commands: PathCommand[],
-  unitsPerEm: number
-): { curves: QuadCurve[]; contourStarts: number[] } {
+function extractCurves(commands: PathCommand[], unitsPerEm: number): { curves: QuadCurve[]; contourStarts: number[] } {
   const curves: QuadCurve[] = []
   const contourStarts: number[] = []
   let cx = 0
@@ -227,13 +221,7 @@ function extractCurves(
  * Adds slight bowing for diagonal lines to prevent scanline dropout.
  * Axis-aligned lines get exact midpoints.
  */
-function lineToQuadratic(
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  emScale: number
-): QuadCurve {
+function lineToQuadratic(x0: number, y0: number, x1: number, y1: number, emScale: number): QuadCurve {
   const mx = (x0 + x1) * 0.5
   const my = (y0 + y1) * 0.5
 

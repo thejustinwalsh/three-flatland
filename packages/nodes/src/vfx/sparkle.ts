@@ -117,11 +117,7 @@ export function sparkleStar(
   )
 
   // 4-point star shape
-  const star = rotatedUV.x
-    .abs()
-    .add(rotatedUV.y.abs())
-    .pow(0.5)
-    .max(rotatedUV.x.abs().max(rotatedUV.y.abs()).mul(0.7))
+  const star = rotatedUV.x.abs().add(rotatedUV.y.abs()).pow(0.5).max(rotatedUV.x.abs().max(rotatedUV.y.abs()).mul(0.7))
 
   const starIntensity = float(1)
     .sub(star.mul(3))

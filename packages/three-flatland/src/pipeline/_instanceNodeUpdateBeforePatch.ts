@@ -86,7 +86,10 @@ if (!proto[PATCH_FLAG]) {
 
   // (b) Velocity snapshot only — phase unchanged (FRAME). Range propagation is
   // removed from here; updateBefore owns it now.
-  proto.update = function (this: InstanceNodeInternals, frame: { object: { previousInstanceMatrix: { array: { set(src: ArrayLike<number>): void } } } }) {
+  proto.update = function (
+    this: InstanceNodeInternals,
+    frame: { object: { previousInstanceMatrix: { array: { set(src: ArrayLike<number>): void } } } }
+  ) {
     if (this.previousInstanceMatrixNode !== null) {
       frame.object.previousInstanceMatrix.array.set(this.instanceMatrix.array)
     }

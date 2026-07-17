@@ -14,9 +14,7 @@ export function postPassSystem(world: World): PassFn[] | null {
   const registryEntities = world.query(PostPassRegistry)
   if (registryEntities.length === 0) return null
 
-  const registryData = registryEntities[0]!.get(PostPassRegistry) as
-    | { dirty: boolean }
-    | undefined
+  const registryData = registryEntities[0]!.get(PostPassRegistry) as { dirty: boolean } | undefined
   if (!registryData || !registryData.dirty) return null
 
   // Clear dirty flag
@@ -27,9 +25,7 @@ export function postPassSystem(world: World): PassFn[] | null {
   const passes: { fn: PassFn; order: number }[] = []
 
   for (const entity of passEntities) {
-    const data = entity.get(PostPassTrait) as
-      | { fn: PassFn | null; order: number; enabled: boolean }
-      | undefined
+    const data = entity.get(PostPassTrait) as { fn: PassFn | null; order: number; enabled: boolean } | undefined
     if (data && data.enabled && data.fn) {
       passes.push({ fn: data.fn, order: data.order })
     }

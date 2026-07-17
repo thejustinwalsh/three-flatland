@@ -12,13 +12,13 @@ export function registerWasmTest(context: vscode.ExtensionContext): void {
           enableScripts: true,
           retainContextWhenHidden: false,
           localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist')],
-        },
+        }
       )
       panel.webview.html = await composeToolHtml({
         webview: panel.webview,
         tool: '_wasm-test',
         extensionUri: context.extensionUri,
       })
-    }),
+    })
   )
 }

@@ -114,9 +114,7 @@ function send(response: Response): void {
 let toneEnginePromise: Promise<ToneEngine> | undefined
 /** The slice of the Tone module the context lifecycle needs to re-bind
  * a reacquired context (Tone captured the old one via setContext). */
-let toneApi:
-  | { setContext: (ctx: AudioContext) => void; getContext: () => { dispose(): void } }
-  | undefined
+let toneApi: { setContext: (ctx: AudioContext) => void; getContext: () => { dispose(): void } } | undefined
 
 function loadToneEngine(): Promise<ToneEngine> {
   if (!toneEnginePromise) {
@@ -128,12 +126,10 @@ function loadToneEngine(): Promise<ToneEngine> {
     // (`toneEngineLoader.ts`) owns the env shims + `import('tone')` +
     // `Tone.setContext` + engine-table construction — this closure only
     // adds the sidecar's own caching + `toneApi` bookkeeping on top.
-    toneEnginePromise = loadToneEngineForContext(ZZFX.audioContext).then(
-      ({ engine, setContext, getContext }) => {
-        toneApi = { setContext, getContext }
-        return engine
-      }
-    )
+    toneEnginePromise = loadToneEngineForContext(ZZFX.audioContext).then(({ engine, setContext, getContext }) => {
+      toneApi = { setContext, getContext }
+      return engine
+    })
   }
   return toneEnginePromise
 }
@@ -164,10 +160,9 @@ function loadToneEngineBounded(): Promise<ToneEngine> {
   return new Promise<ToneEngine>((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(
-        Object.assign(
-          new Error(`Tone.js did not finish loading within ${TONE_LOAD_TIMEOUT_MS}ms`),
-          { code: 'TONE_LOAD_FAILED' }
-        )
+        Object.assign(new Error(`Tone.js did not finish loading within ${TONE_LOAD_TIMEOUT_MS}ms`), {
+          code: 'TONE_LOAD_FAILED',
+        })
       )
     }, TONE_LOAD_TIMEOUT_MS)
     loadToneEngine().then(
@@ -215,12 +210,7 @@ const handler = createCommandHandler({
   // is already known.
   play: (params, volume) => {
     assertAudioDeviceAvailable()
-    playSampleChannels(
-      ZZFX.audioContext,
-      [ZZFX.buildSamples(...params)],
-      ZZFX.sampleRate,
-      ZZFX.volume * volume
-    )
+    playSampleChannels(ZZFX.audioContext, [ZZFX.buildSamples(...params)], ZZFX.sampleRate, ZZFX.volume * volume)
   },
   playSong: (song, volume) => {
     assertAudioDeviceAvailable()
@@ -245,10 +235,7 @@ const handler = createCommandHandler({
       try {
         assertAudioDeviceAvailable()
         const bytes = await fs.readFile(filePath)
-        const arrayBuffer = bytes.buffer.slice(
-          bytes.byteOffset,
-          bytes.byteOffset + bytes.byteLength
-        )
+        const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
         const audioBuffer = await ZZFX.audioContext.decodeAudioData(arrayBuffer)
         onStarted(playBuffer(ZZFX.audioContext, audioBuffer, ZZFX.volume * volume))
       } catch (err) {
@@ -257,8 +244,7 @@ const handler = createCommandHandler({
         // throws with a `.code` of `AUDIO_DEVICE_UNAVAILABLE`; a real
         // read/decode failure has none, and this omits the field rather
         // than fabricating one.
-        const code =
-          err instanceof Error && 'code' in err ? String((err as { code?: unknown }).code) : undefined
+        const code = err instanceof Error && 'code' in err ? String((err as { code?: unknown }).code) : undefined
         send({
           ok: false,
           cmd: 'playFile',
@@ -424,9 +410,7 @@ rl.on('line', (line) => {
       }
     })
     .catch((err: unknown) => {
-      process.stderr.write(
-        `audio-play: command chain error: ${err instanceof Error ? err.message : String(err)}\n`
-      )
+      process.stderr.write(`audio-play: command chain error: ${err instanceof Error ? err.message : String(err)}\n`)
     })
 })
 

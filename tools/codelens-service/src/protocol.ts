@@ -148,12 +148,7 @@ export interface ToneSynthFinding extends FindingBase {
  * A discriminated union on `kind` — narrow with `finding.kind === ZZFX_CALL_KIND`
  * (etc.) before accessing `finding.payload`'s kind-specific fields.
  */
-export type Finding =
-  | ZzfxCallFinding
-  | ZzfxmSongFinding
-  | AudioFileFinding
-  | WadSynthFinding
-  | ToneSynthFinding
+export type Finding = ZzfxCallFinding | ZzfxmSongFinding | AudioFileFinding | WadSynthFinding | ToneSynthFinding
 
 export interface Capabilities {
   scan: boolean

@@ -14,10 +14,7 @@ async function run() {
     data[i + 3] = 255
   }
   const t0 = performance.now()
-  const out = await encode(
-    { data, width: w, height: h, colorSpace: 'srgb' } as ImageData,
-    { quality: 80 },
-  )
+  const out = await encode({ data, width: w, height: h, colorSpace: 'srgb' } as ImageData, { quality: 80 })
   const ms = performance.now() - t0
   root.textContent = `OK: encoded 64×64 to ${out.byteLength} bytes in ${ms.toFixed(0)}ms — WASM works in webview`
 }

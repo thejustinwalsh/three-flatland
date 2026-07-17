@@ -5,7 +5,11 @@ import { createClientBridge } from '@three-flatland/bridge/client'
 import { useEncodeStore, encodeHistory, encodeActions } from './encodeStore'
 import { Knobs } from './Knobs'
 
-interface SaveResult { ok: boolean; cancelled?: boolean; savedUri?: string }
+interface SaveResult {
+  ok: boolean
+  cancelled?: boolean
+  savedUri?: string
+}
 
 const styles = stylex.create({
   spacer: { flex: 1 },
@@ -53,18 +57,8 @@ export function Toolbar() {
   return (
     <DSToolbar>
       {/* History (left, matches merge tool) */}
-      <ToolbarButton
-        icon="discard"
-        title="Undo (⌘Z)"
-        disabled={past === 0}
-        onClick={() => encodeHistory.undo()}
-      />
-      <ToolbarButton
-        icon="redo"
-        title="Redo (⌘⇧Z)"
-        disabled={future === 0}
-        onClick={() => encodeHistory.redo()}
-      />
+      <ToolbarButton icon="discard" title="Undo (⌘Z)" disabled={past === 0} onClick={() => encodeHistory.undo()} />
+      <ToolbarButton icon="redo" title="Redo (⌘⇧Z)" disabled={future === 0} onClick={() => encodeHistory.redo()} />
       <Divider />
       {/* Configuration: format + format-specific quality knobs */}
       <Knobs />
@@ -76,10 +70,7 @@ export function Toolbar() {
         disabled={!hasMips || mipLevel <= 0}
         onClick={decMip}
       />
-      <span
-        {...stylex.props(styles.mipReadout)}
-        style={{ opacity: hasMips ? 1 : 0.4 }}
-      >
+      <span {...stylex.props(styles.mipReadout)} style={{ opacity: hasMips ? 1 : 0.4 }}>
         {hasMips ? `Mip ${mipLevel} / ${encodedMipCount - 1}` : 'Mip — / —'}
       </span>
       <ToolbarButton
@@ -93,7 +84,9 @@ export function Toolbar() {
       <Divider />
       <ToolbarButton
         icon="save"
-        title={mode === 'inspect' ? 'Save disabled in inspect mode' : encodedBytes ? 'Save…' : 'Encode an image to save'}
+        title={
+          mode === 'inspect' ? 'Save disabled in inspect mode' : encodedBytes ? 'Save…' : 'Encode an image to save'
+        }
         disabled={!encodedBytes || mode === 'inspect'}
         onClick={onSave}
       />

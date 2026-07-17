@@ -31,11 +31,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-export function audioFileCandidates(
-  refPath: string,
-  sourceDir: string,
-  workspaceRoot: string
-): string[] {
+export function audioFileCandidates(refPath: string, sourceDir: string, workspaceRoot: string): string[] {
   return [
     path.resolve(sourceDir, refPath),
     path.resolve(workspaceRoot, refPath),
@@ -139,11 +135,7 @@ export class AudioFileResolver {
    * re-renders at its new state. Returns the playable absolute path, or
    * `undefined` when the reference genuinely resolves nowhere.
    */
-  async resolveForPlay(
-    refPath: string,
-    sourceDir: string,
-    workspaceRoot: string
-  ): Promise<string | undefined> {
+  async resolveForPlay(refPath: string, sourceDir: string, workspaceRoot: string): Promise<string | undefined> {
     const key = this.key(refPath, sourceDir, workspaceRoot)
     const cached = this.cache.get(key)
     if (cached && this.exists(cached)) return cached
@@ -194,9 +186,7 @@ export class AudioFileResolver {
     const search = (async () => {
       let found: string | undefined
       try {
-        const matches = (await this.deps.findByBasename(basename)).filter(
-          (p) => path.basename(p) === basename
-        )
+        const matches = (await this.deps.findByBasename(basename)).filter((p) => path.basename(p) === basename)
         found = pickBestMatch(matches, refPath)
       } catch {
         found = undefined

@@ -26,9 +26,7 @@ export function colorReplace(
   replaceColor: Vec3Input,
   tolerance: FloatInput = 0.1
 ): Node<'vec4'> {
-  const targetNode = Array.isArray(targetColor)
-    ? vec3(targetColor[0], targetColor[1], targetColor[2])
-    : targetColor
+  const targetNode = Array.isArray(targetColor) ? vec3(targetColor[0], targetColor[1], targetColor[2]) : targetColor
   const replaceNode = Array.isArray(replaceColor)
     ? vec3(replaceColor[0], replaceColor[1], replaceColor[2])
     : replaceColor
@@ -67,9 +65,7 @@ export function colorReplaceHard(
   replaceColor: Vec3Input,
   tolerance: FloatInput = 0.01
 ): Node<'vec4'> {
-  const targetNode = Array.isArray(targetColor)
-    ? vec3(targetColor[0], targetColor[1], targetColor[2])
-    : targetColor
+  const targetNode = Array.isArray(targetColor) ? vec3(targetColor[0], targetColor[1], targetColor[2]) : targetColor
   const replaceNode = Array.isArray(replaceColor)
     ? vec3(replaceColor[0], replaceColor[1], replaceColor[2])
     : replaceColor

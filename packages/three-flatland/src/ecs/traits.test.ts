@@ -453,4 +453,3 @@ describe('ECS traits — snapshot lifecycle', () => {
     expect(sprite.flipY).toBe(true)
   })
 })
-

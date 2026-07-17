@@ -13,8 +13,4 @@ export type { CreatePaneOptions, PaneBundle } from './create-pane.js'
 // Advanced: re-export the bus consumer so callers can spin up extra
 // consumers next to the one that `usePane` already manages.
 export { DevtoolsClient } from './devtools-client.js'
-export type {
-  DevtoolsClientOptions,
-  DevtoolsState,
-  DevtoolsStateListener,
-} from './devtools-client.js'
+export type { DevtoolsClientOptions, DevtoolsState, DevtoolsStateListener } from './devtools-client.js'

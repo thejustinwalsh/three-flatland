@@ -30,12 +30,12 @@ function resolveSupercompression(opts: Ktx2Options): 0 | 1 {
 function writeOpts(exports: BasisExports, opts: Ktx2Options): number {
   const ptr = exports.fl_basis_alloc(OPTS_BYTES)
   const view = new DataView(exports.memory.buffer, ptr, OPTS_BYTES)
-  view.setUint32(0, opts.mode === 'uastc' ? 1 : 0, true)   // uastc
-  view.setUint32(4, opts.mipmaps ? 1 : 0, true)            // mipmaps
-  view.setUint32(8, opts.quality ?? 128, true)             // quality
-  view.setUint32(12, opts.uastcLevel ?? 2, true)           // uastc_level
-  view.setUint32(16, 1, true)                              // check_for_alpha
-  view.setUint32(20, resolveSupercompression(opts), true)  // supercompression
+  view.setUint32(0, opts.mode === 'uastc' ? 1 : 0, true) // uastc
+  view.setUint32(4, opts.mipmaps ? 1 : 0, true) // mipmaps
+  view.setUint32(8, opts.quality ?? 128, true) // quality
+  view.setUint32(12, opts.uastcLevel ?? 2, true) // uastc_level
+  view.setUint32(16, 1, true) // check_for_alpha
+  view.setUint32(20, resolveSupercompression(opts), true) // supercompression
   return ptr
 }
 
@@ -61,11 +61,7 @@ export async function encodeKtx2(image: ImageData, opts: Ktx2Options = {}): Prom
  * instance. Worker-friendly: the worker holds its own BasisExports
  * (instantiated once at init time) and reuses it across many encodes.
  */
-export function encodeKtx2WithExports(
-  image: ImageData,
-  opts: Ktx2Options,
-  exports: BasisExports,
-): Promise<Uint8Array> {
+export function encodeKtx2WithExports(image: ImageData, opts: Ktx2Options, exports: BasisExports): Promise<Uint8Array> {
   const w = image.width
   const h = image.height
   const inLen = w * h * 4
@@ -81,7 +77,7 @@ export function encodeKtx2WithExports(
   }
   try {
     new Uint8Array(exports.memory.buffer, inPtr, inLen).set(
-      new Uint8Array(image.data.buffer, image.data.byteOffset, image.data.byteLength),
+      new Uint8Array(image.data.buffer, image.data.byteOffset, image.data.byteLength)
     )
     const rc = exports.fl_basis_encode(enc, inPtr, w, h, optsPtr, outBoxPtr, outBoxPtr + 4)
     if (rc !== 0) throw new Error(`fl_basis_encode failed: ${rc}`)

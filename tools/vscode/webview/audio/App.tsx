@@ -1,13 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import {
-  Toolbar,
-  ToolbarButton,
-  Divider,
-  Panel,
-  Splitter,
-  DevReloadToast,
-} from '@three-flatland/design-system'
+import { Toolbar, ToolbarButton, Divider, Panel, Splitter, DevReloadToast } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { useZzfxSession } from './useZzfxSession'
@@ -18,15 +11,7 @@ import { SourceLink } from './SourceLink'
 import { useSidebarWidth } from './useSidebarWidth'
 import { WaveformPreview } from './WaveformPreview'
 import { playParams, setPlaybackVolume, type PlaybackHandle } from './audio'
-import {
-  CATEGORIES,
-  fromArgs,
-  MAX_STYLES,
-  PARAM_GROUPS,
-  STYLES,
-  type Category,
-  type Style,
-} from './params'
+import { CATEGORIES, fromArgs, MAX_STYLES, PARAM_GROUPS, STYLES, type Category, type Style } from './params'
 
 const styles = stylex.create({
   root: {
@@ -177,9 +162,7 @@ export function App() {
       : session.sourcePath !== null && session.sourceLine !== null
         ? `${session.sourcePath.split(/[\\/]/).pop() ?? session.sourcePath}:${session.sourceLine + 1}`
         : null
-  const sourceTitle = session.def
-    ? `${session.def.path}:${session.def.line + 1}`
-    : session.sourcePath
+  const sourceTitle = session.def ? `${session.def.path}:${session.def.line + 1}` : session.sourcePath
 
   return (
     <div {...stylex.props(styles.root)}>
@@ -197,9 +180,7 @@ export function App() {
                   ? 'Save (unsaved changes)'
                   : 'Save'
           }
-          disabled={
-            session.standalone || session.saving || !session.findingId || Boolean(session.loadError)
-          }
+          disabled={session.standalone || session.saving || !session.findingId || Boolean(session.loadError)}
           onClick={() => void session.save()}
         />
         <div {...stylex.props(styles.spacer)} />
@@ -217,8 +198,7 @@ export function App() {
 
       {session.standalone && (
         <div {...stylex.props(styles.banner, styles.infoBanner)}>
-          Standalone mode — not connected to a host. Play works with default params; Save is
-          disabled.
+          Standalone mode — not connected to a host. Play works with default params; Save is disabled.
         </div>
       )}
       {session.loadError && (
@@ -226,13 +206,9 @@ export function App() {
           {session.loadError} Showing defaults — Save is disabled until the source is fixed.
         </div>
       )}
-      {playError && (
-        <div {...stylex.props(styles.banner, styles.errorBanner)}>Play failed: {playError}</div>
-      )}
+      {playError && <div {...stylex.props(styles.banner, styles.errorBanner)}>Play failed: {playError}</div>}
       {session.saveError && (
-        <div {...stylex.props(styles.banner, styles.errorBanner)}>
-          Save failed: {session.saveError}
-        </div>
+        <div {...stylex.props(styles.banner, styles.errorBanner)}>Save failed: {session.saveError}</div>
       )}
 
       <div ref={workAreaRef} {...stylex.props(styles.workArea)}>
@@ -241,12 +217,7 @@ export function App() {
           <Panel title="Parameters" bodyPadding="normal" style={styles.paramsPanel}>
             <div {...stylex.props(styles.paramsBody)}>
               {PARAM_GROUPS.map((g) => (
-                <ParamGroup
-                  key={g.key}
-                  groupKey={g.key}
-                  params={session.params}
-                  onChangeParam={session.setParam}
-                />
+                <ParamGroup key={g.key} groupKey={g.key} params={session.params} onChangeParam={session.setParam} />
               ))}
             </div>
           </Panel>

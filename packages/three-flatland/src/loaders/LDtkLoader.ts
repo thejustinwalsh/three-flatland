@@ -8,10 +8,7 @@ import type {
   TileMapObject,
 } from '../tilemap/types'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
-import {
-  resolveNormalMap,
-  type NormalSourceDescriptor,
-} from '@three-flatland/normals'
+import { resolveNormalMap, type NormalSourceDescriptor } from '@three-flatland/normals'
 import { type TexturePreset, type TextureOptions, resolveTextureOptions } from './texturePresets'
 import { TextureLoader } from './TextureLoader'
 import { tilesetToRegions, type TileNormalCustomData, type TilesetCell } from './normalDescriptor'
@@ -263,11 +260,7 @@ export class LDtkLoader extends Loader<TileMapData> {
   /**
    * Load a single level from an LDtk project (static method for Three.js usage).
    */
-  static async load(
-    url: string,
-    levelId?: string | number,
-    options?: LDtkLoaderOptions
-  ): Promise<TileMapData> {
+  static async load(url: string, levelId?: string | number, options?: LDtkLoaderOptions): Promise<TileMapData> {
     const project = await this.loadProject(url)
     const baseUrl = url.substring(0, url.lastIndexOf('/') + 1)
     const resolved = resolveTextureOptions(options?.texture, this.options)
@@ -330,9 +323,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     }
   ): Promise<TileMapData> {
     // Calculate map size in tiles (use first tile layer's grid)
-    const firstTileLayer = level.layerInstances?.find(
-      (l) => l.__type === 'Tiles' || l.__type === 'AutoLayer'
-    )
+    const firstTileLayer = level.layerInstances?.find((l) => l.__type === 'Tiles' || l.__type === 'AutoLayer')
     const gridSize = firstTileLayer?.__gridSize ?? project.defaultGridSize
     const widthInTiles = Math.ceil(level.pxWid / gridSize)
     const heightInTiles = Math.ceil(level.pxHei / gridSize)
@@ -351,13 +342,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     for (const tsDef of project.defs.tilesets) {
       if (!usedTilesetUids.has(tsDef.uid)) continue
 
-      const tileset = await this.parseTileset(
-        tsDef,
-        baseUrl,
-        firstGid,
-        textureOptions,
-        normalsContext
-      )
+      const tileset = await this.parseTileset(tsDef, baseUrl, firstGid, textureOptions, normalsContext)
       tilesets.push(tileset)
       firstGid += tileset.tileCount
     }
@@ -515,8 +500,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     }
     const synthesized = tilesetToRegions(cells)
 
-    const base: NormalSourceDescriptor =
-      optionDescriptor === true ? {} : optionDescriptor
+    const base: NormalSourceDescriptor = optionDescriptor === true ? {} : optionDescriptor
     const descriptor: NormalSourceDescriptor = {
       ...base,
       // User-provided regions win; otherwise use the synthesized list.
@@ -600,9 +584,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     }
 
     const offset =
-      layer.pxOffsetX !== 0 || layer.pxOffsetY !== 0
-        ? { x: layer.pxOffsetX, y: layer.pxOffsetY }
-        : undefined
+      layer.pxOffsetX !== 0 || layer.pxOffsetY !== 0 ? { x: layer.pxOffsetX, y: layer.pxOffsetY } : undefined
 
     return subLayers.map((data, i) => ({
       name: subLayers.length > 1 ? `${layer.__identifier}_${i}` : layer.__identifier,
@@ -638,10 +620,7 @@ export class LDtkLoader extends Loader<TileMapData> {
       name: layer.__identifier,
       id: layer.layerDefUid,
       objects,
-      offset:
-        layer.pxOffsetX !== 0 || layer.pxOffsetY !== 0
-          ? { x: layer.pxOffsetX, y: layer.pxOffsetY }
-          : undefined,
+      offset: layer.pxOffsetX !== 0 || layer.pxOffsetY !== 0 ? { x: layer.pxOffsetX, y: layer.pxOffsetY } : undefined,
       visible: layer.visible,
     }
   }
@@ -654,7 +633,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     const gridCsv = layer.intGridCsv ?? []
 
     // Build value→identifier lookup from layer definition
-    const layerDef = project.defs.layers.find(l => l.uid === layer.layerDefUid)
+    const layerDef = project.defs.layers.find((l) => l.uid === layer.layerDefUid)
     const valueNames = new Map<number, string>()
     if (layerDef && 'intGridValues' in layerDef) {
       for (const v of (layerDef as { intGridValues: Array<{ value: number; identifier: string }> }).intGridValues) {
@@ -695,9 +674,7 @@ export class LDtkLoader extends Loader<TileMapData> {
   /**
    * Parse field instances to properties.
    */
-  private static parseFieldInstances(
-    fields?: LDtkFieldInstance[]
-  ): Record<string, unknown> | undefined {
+  private static parseFieldInstances(fields?: LDtkFieldInstance[]): Record<string, unknown> | undefined {
     if (!fields || fields.length === 0) return undefined
 
     const result: Record<string, unknown> = {}

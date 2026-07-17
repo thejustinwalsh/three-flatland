@@ -90,9 +90,7 @@ export function run(argv: string[]): void {
     process.exit(1)
   }
 
-  const sources = files.map((f) =>
-    decodePng(basename(f, extname(f)), readFileSync(join(inputDir, f)))
-  )
+  const sources = files.map((f) => decodePng(basename(f, extname(f)), readFileSync(join(inputDir, f))))
 
   const outJson = resolve(args.out)
   const imageName = basename(outJson, extname(outJson)) + '.png'

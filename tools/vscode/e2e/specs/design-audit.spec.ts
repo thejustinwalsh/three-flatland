@@ -34,10 +34,7 @@ test.describe('Z8 design audit screenshots', () => {
   // deterministic "content settled" signal anyway. CI never sets
   // FL_AUDIT_DIR, so skip the whole harness there; run it explicitly with
   // FL_AUDIT_DIR set (see the file header) to capture.
-  test.skip(
-    !process.env.FL_AUDIT_DIR,
-    'manual screenshot capture harness — set FL_AUDIT_DIR to run'
-  )
+  test.skip(!process.env.FL_AUDIT_DIR, 'manual screenshot capture harness — set FL_AUDIT_DIR to run')
 
   test('zzfx tuner', async ({ evaluateInVSCode, webviewFrame, workbox }) => {
     await evaluateInVSCode(async (vscode) => {
@@ -47,16 +44,11 @@ test.describe('Z8 design audit screenshots', () => {
       const uri = vscode.Uri.joinPath(folder!.uri, 'src/sounds.ts')
       const doc = await vscode.workspace.openTextDocument(uri)
       await vscode.window.showTextDocument(doc)
-      const lenses = (await vscode.commands.executeCommand(
-        'vscode.executeCodeLensProvider',
-        uri,
-        100
-      )) as { command?: { command: string; arguments?: unknown[] } }[]
+      const lenses = (await vscode.commands.executeCommand('vscode.executeCodeLensProvider', uri, 100)) as {
+        command?: { command: string; arguments?: unknown[] }
+      }[]
       const editLens = lenses.find((l) => l.command?.command === 'threeFlatland.audio.openEditor')
-      await vscode.commands.executeCommand(
-        editLens!.command!.command,
-        ...(editLens!.command!.arguments ?? [])
-      )
+      await vscode.commands.executeCommand(editLens!.command!.command, ...(editLens!.command!.arguments ?? []))
     })
     const frame = await webviewFrame(/^ZzFX:/)
     await frame.locator('text=Category').first().waitFor({ state: 'visible' })
@@ -78,10 +70,7 @@ test.describe('Z8 design audit screenshots', () => {
   })
 
   test('merge tool', async ({ openCommand, webviewFrame, workbox }) => {
-    await openCommand('threeFlatland.merge.openMergeTool', [
-      'sprites/knight.atlas.json',
-      'sprites/dungeon.atlas.json',
-    ])
+    await openCommand('threeFlatland.merge.openMergeTool', ['sprites/knight.atlas.json', 'sprites/dungeon.atlas.json'])
     const frame = await webviewFrame(/^Merge:/)
     await frame.locator('#root').waitFor({ state: 'visible' })
     await workbox.screenshot({ path: path.join(OUT_DIR, 'merge.png') })
@@ -117,10 +106,7 @@ test.describe('Z8 design audit screenshots', () => {
     // before the installed-extensions query resolves and the list actually
     // renders rows. Wait for a real `.extension-list-item` row instead of a
     // fixed delay.
-    await workbox
-      .locator('.extensions-viewlet .extension-list-item')
-      .first()
-      .waitFor({ state: 'visible' })
+    await workbox.locator('.extensions-viewlet .extension-list-item').first().waitFor({ state: 'visible' })
     await workbox.screenshot({ path: path.join(OUT_DIR, 'native-extensions.png') })
   })
 })

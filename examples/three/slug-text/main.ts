@@ -38,8 +38,7 @@ const ICON = {
   book: '\uf02d',
 }
 const ICON_DEMO =
-  `Built with ${ICON.code} and ${ICON.heart}\n` +
-  `${ICON.coffee} brewed  ${ICON.rocket} launched  ${ICON.bolt} fast`
+  `Built with ${ICON.code} and ${ICON.heart}\n` + `${ICON.coffee} brewed  ${ICON.rocket} launched  ${ICON.bolt} fast`
 
 type CompareMode = 'off' | 'onion' | 'diff' | 'split'
 
@@ -121,17 +120,7 @@ function drawDiff(
   const cw = compareCtx.canvas.width
   const ch = compareCtx.canvas.height
 
-  drawCompareText(
-    compareCtx,
-    font,
-    text,
-    fontSize,
-    maxWidth,
-    lineHeight,
-    'diff',
-    fontFamily,
-    preWrappedLines
-  )
+  drawCompareText(compareCtx, font, text, fontSize, maxWidth, lineHeight, 'diff', fontFamily, preWrappedLines)
   const canvasPixels = compareCtx.getImageData(0, 0, cw, ch)
 
   const tempCanvas = document.createElement('canvas')
@@ -206,8 +195,9 @@ async function main() {
   const scene = new Scene()
   // Gem-tinted L2 backdrop — matches the masonry tile poster CSS so the
   // captured screenshot agrees with the pre-load fallback.
-  ;(scene as unknown as { backgroundNode?: ReturnType<typeof gemGradientNode> }).backgroundNode =
-    gemGradientNode({ gem: GEM })
+  ;(scene as unknown as { backgroundNode?: ReturnType<typeof gemGradientNode> }).backgroundNode = gemGradientNode({
+    gem: GEM,
+  })
 
   const w = window.innerWidth
   const h = window.innerHeight
@@ -449,8 +439,7 @@ async function main() {
     // In icons mode, pre-wrap through the stack so Canvas2D breaks
     // exactly where `SlugStackText` does — `font.wrapText` uses the
     // primary only and can't account for FA advance widths.
-    const preWrappedLines =
-      params.icons && stack ? stack.wrapText(compareText, params.size, maxWidth) : null
+    const preWrappedLines = params.icons && stack ? stack.wrapText(compareText, params.size, maxWidth) : null
 
     if (params.compare === 'diff') {
       computingEl.setAttribute('data-visible', '')
@@ -826,10 +815,7 @@ async function main() {
     format: fmt,
   })
 
-  await Promise.allSettled([
-    document.fonts.load('48px Inter-Slug'),
-    document.fonts.load('48px FA-Solid'),
-  ])
+  await Promise.allSettled([document.fonts.load('48px Inter-Slug'), document.fonts.load('48px FA-Solid')])
   await loadFont()
 
   // Default-to-icons initial pump — radio grid's `value: 'icons'`

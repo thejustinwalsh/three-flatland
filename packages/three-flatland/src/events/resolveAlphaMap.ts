@@ -19,11 +19,7 @@ export interface ResolveAlphaMapOptions {
 }
 
 /** Build an AlphaMap from decoded RGBA pixels (alpha lives in R). */
-export function decodeAlphaPng(
-  rgba: Uint8ClampedArray | Uint8Array,
-  width: number,
-  height: number
-): AlphaMap {
+export function decodeAlphaPng(rgba: Uint8ClampedArray | Uint8Array, width: number, height: number): AlphaMap {
   const alpha = new Uint8Array(width * height)
   for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4] ?? 0
   return new AlphaMap(alpha, width, height)
@@ -35,10 +31,7 @@ export function decodeAlphaPng(
  * it on a match, otherwise fall back to runtime extraction with a
  * devtime warning. Mirrors resolveNormalMap. Spec §10.
  */
-export async function resolveAlphaMap(
-  sourceURL: string,
-  options: ResolveAlphaMapOptions
-): Promise<AlphaMap | null> {
+export async function resolveAlphaMap(sourceURL: string, options: ResolveAlphaMapOptions): Promise<AlphaMap | null> {
   if (!options.forceRuntime) {
     const bakedURL = bakedSiblingURL(sourceURL, '.alpha.png')
     const probe = await probeBakedSibling(bakedURL, {

@@ -50,10 +50,7 @@ export function preferNewest(paths: string[]): string[] {
  */
 export function devBinaryCandidates(): string[] {
   const sidecarTarget = fileURLToPath(new URL('../sidecar/target', import.meta.url))
-  return preferNewest([
-    join(sidecarTarget, 'release', BINARY_NAME),
-    join(sidecarTarget, 'debug', BINARY_NAME),
-  ])
+  return preferNewest([join(sidecarTarget, 'release', BINARY_NAME), join(sidecarTarget, 'debug', BINARY_NAME)])
 }
 
 export interface ResolveBinaryOptions {

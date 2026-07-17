@@ -3,12 +3,7 @@ import { useRef, useEffect } from 'react'
 import { convertToTexture } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
-import {
-  Flatland,
-  Sprite2D,
-  TextureLoader,
-  createPassEffect,
-} from 'three-flatland/react'
+import { Flatland, Sprite2D, TextureLoader, createPassEffect } from 'three-flatland/react'
 import type { PassEffect } from 'three-flatland/react'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
@@ -39,81 +34,103 @@ const CRTPass = createPassEffect({
     bloomIntensity: 0.15,
     colorBleed: 0.0012,
   },
-  pass: ({ uniforms }) => (input, uv) => {
-    const tex = convertToTexture(input) as TextureNode<'vec4'>
-    return crtComplete(tex, uv, {
-      curvature: uniforms.curvature,
-      scanlineIntensity: uniforms.scanlineIntensity,
-      vignetteIntensity: uniforms.vignetteIntensity,
-      bloomIntensity: uniforms.bloomIntensity,
-      colorBleed: uniforms.colorBleed,
-    })
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      const tex = convertToTexture(input) as TextureNode<'vec4'>
+      return crtComplete(tex, uv, {
+        curvature: uniforms.curvature,
+        scanlineIntensity: uniforms.scanlineIntensity,
+        vignetteIntensity: uniforms.vignetteIntensity,
+        bloomIntensity: uniforms.bloomIntensity,
+        colorBleed: uniforms.colorBleed,
+      })
+    },
 })
 
 const LCDGridPass = createPassEffect({
   name: 'lcdGrid',
   schema: { resolution: 200, gridIntensity: 0.18, subpixelIntensity: 0.12 },
-  pass: ({ uniforms }) => (input, uv) =>
-    lcdGrid(input, uv, uniforms.resolution, uniforms.gridIntensity, uniforms.subpixelIntensity),
+  pass:
+    ({ uniforms }) =>
+    (input, uv) =>
+      lcdGrid(input, uv, uniforms.resolution, uniforms.gridIntensity, uniforms.subpixelIntensity),
 })
 
 const PosterizePass = createPassEffect({
   name: 'posterize',
   schema: { bands: 6 },
-  pass: ({ uniforms }) => (input) => posterize(input, uniforms.bands),
+  pass:
+    ({ uniforms }) =>
+    (input) =>
+      posterize(input, uniforms.bands),
 })
 
 const QuantizePass = createPassEffect({
   name: 'quantize',
   schema: { levels: 8 },
-  pass: ({ uniforms }) => (input) => quantize(input, uniforms.levels),
+  pass:
+    ({ uniforms }) =>
+    (input) =>
+      quantize(input, uniforms.levels),
 })
 
 const ScanlinesPass = createPassEffect({
   name: 'scanlines',
   schema: { resolution: 300, intensity: 0.2 },
-  pass: ({ uniforms }) => (input, uv) =>
-    scanlinesSmooth(input, uv, uniforms.resolution, uniforms.intensity),
+  pass:
+    ({ uniforms }) =>
+    (input, uv) =>
+      scanlinesSmooth(input, uv, uniforms.resolution, uniforms.intensity),
 })
 
 const VHSPass = createPassEffect({
   name: 'vhs',
   schema: { time: 0, intensity: 0.012, noiseAmount: 0.05 },
-  pass: ({ uniforms }) => (input, uv) => {
-    const tex = convertToTexture(input) as TextureNode<'vec4'>
-    return vhsDistortion(tex, uv, uniforms.time, uniforms.intensity, uniforms.noiseAmount)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      const tex = convertToTexture(input) as TextureNode<'vec4'>
+      return vhsDistortion(tex, uv, uniforms.time, uniforms.intensity, uniforms.noiseAmount)
+    },
 })
 
 const StaticPass = createPassEffect({
   name: 'static',
   schema: { time: 0, intensity: 0.04 },
-  pass: ({ uniforms }) => (input, uv) =>
-    staticNoise(input, uv, uniforms.time, uniforms.intensity),
+  pass:
+    ({ uniforms }) =>
+    (input, uv) =>
+      staticNoise(input, uv, uniforms.time, uniforms.intensity),
 })
 
 const AberrationPass = createPassEffect({
   name: 'aberration',
   schema: { amount: 0.003 },
-  pass: ({ uniforms }) => (input, uv) => {
-    const tex = convertToTexture(input) as TextureNode<'vec4'>
-    return chromaticAberration(tex, uv, uniforms.amount)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      const tex = convertToTexture(input) as TextureNode<'vec4'>
+      return chromaticAberration(tex, uv, uniforms.amount)
+    },
 })
 
 const VignettePass = createPassEffect({
   name: 'vignette',
   schema: { intensity: 0.4, curvature: 2 },
-  pass: ({ uniforms }) => (input, uv) =>
-    crtVignette(input, uv, uniforms.intensity, uniforms.curvature),
+  pass:
+    ({ uniforms }) =>
+    (input, uv) =>
+      crtVignette(input, uv, uniforms.intensity, uniforms.curvature),
 })
 
 const BacklightPass = createPassEffect({
   name: 'backlight',
   schema: { intensity: 0.12 },
-  pass: ({ uniforms }) => (input, uv) =>
-    lcdBacklightBleed(input, uv, uniforms.intensity),
+  pass:
+    ({ uniforms }) =>
+    (input, uv) =>
+      lcdBacklightBleed(input, uv, uniforms.intensity),
 })
 
 // ─── Preset Types ───────────────────────────────────────────────────────────
@@ -146,10 +163,7 @@ function createPreset(name: PresetName): ActivePreset {
       const aber = new AberrationPass()
       return {
         passes: [vhs, noise, aber],
-        timeDriven: [
-          { pass: vhs as PassEffect & { time: number } },
-          { pass: noise as PassEffect & { time: number } },
-        ],
+        timeDriven: [{ pass: vhs as PassEffect & { time: number } }, { pass: noise as PassEffect & { time: number } }],
       }
     }
     case 'retro': {
@@ -239,12 +253,15 @@ function FlatlandScene({ preset }: { preset: PresetName }) {
 
   // Render in the 'render' phase so R3F skips its own render.
   const size = useThree((s) => s.size)
-  useFrame(() => {
-    const flatland = flatlandRef.current
-    if (!flatland) return
-    flatland.resize(size.width, size.height)
-    flatland.render(gl as unknown as WebGPURenderer)
-  }, { phase: 'render' })
+  useFrame(
+    () => {
+      const flatland = flatlandRef.current
+      if (!flatland) return
+      flatland.resize(size.width, size.height)
+      flatland.render(gl as unknown as WebGPURenderer)
+    },
+    { phase: 'render' }
+  )
 
   return (
     <flatland ref={flatlandRef} viewSize={400} clearColor={0x1a1a2e}>

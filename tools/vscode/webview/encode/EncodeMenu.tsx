@@ -250,12 +250,7 @@ export function EncodeMenu() {
           <div {...stylex.props(s.divider)} />
 
           <div {...stylex.props(s.sectionLabel)}>Compare</div>
-          <button
-            type="button"
-            role="menuitem"
-            {...stylex.props(s.actionRow)}
-            onClick={onResetSlider}
-          >
+          <button type="button" role="menuitem" {...stylex.props(s.actionRow)} onClick={onResetSlider}>
             Reset slider to center
           </button>
 
@@ -263,7 +258,9 @@ export function EncodeMenu() {
             type="button"
             role="menuitem"
             {...stylex.props(s.actionRow)}
-            onClick={() => { void onOpenSaveFolder() }}
+            onClick={() => {
+              void onOpenSaveFolder()
+            }}
           >
             Open save folder
           </button>

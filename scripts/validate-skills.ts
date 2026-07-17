@@ -40,7 +40,10 @@ for (const entry of readdirSync(skillsDir)) {
   if (!fm.description) {
     issues.push({ skill: entry, message: 'frontmatter missing `description`' })
   } else if (!/^use when\b/i.test(fm.description)) {
-    issues.push({ skill: entry, message: `description must begin with "Use when…" (got: "${fm.description.slice(0, 60)}…")` })
+    issues.push({
+      skill: entry,
+      message: `description must begin with "Use when…" (got: "${fm.description.slice(0, 60)}…")`,
+    })
   }
 }
 
@@ -49,4 +52,6 @@ if (issues.length > 0) {
   for (const { skill, message } of issues) console.error(`  [${skill}] ${message}`)
   process.exit(1)
 }
-console.log(`✓ validated ${readdirSync(skillsDir).filter(e => statSync(join(skillsDir, e)).isDirectory() && !e.startsWith('.')).length} skill(s)`)
+console.log(
+  `✓ validated ${readdirSync(skillsDir).filter((e) => statSync(join(skillsDir, e)).isDirectory() && !e.startsWith('.')).length} skill(s)`
+)

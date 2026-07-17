@@ -4,7 +4,14 @@ import { cp } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 export default defineConfig({
-  entry: ['src/**/*.ts', 'src/**/*.tsx', '!src/**/*.test.ts', '!src/**/*.test-d.ts', '!src/**/*.test.tsx', '!src/dashboard/**/*'],
+  entry: [
+    'src/**/*.ts',
+    'src/**/*.tsx',
+    '!src/**/*.test.ts',
+    '!src/**/*.test-d.ts',
+    '!src/**/*.test.tsx',
+    '!src/dashboard/**/*',
+  ],
   format: ['esm'],
   dts: true,
   sourcemap: true,

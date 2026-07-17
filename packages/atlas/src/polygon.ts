@@ -173,21 +173,13 @@ function convexHullYDown(points: [number, number][]): [number, number][] {
     (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
   const lower: [number, number][] = []
   for (const point of unique) {
-    while (
-      lower.length >= 2 &&
-      cross(lower[lower.length - 2]!, lower[lower.length - 1]!, point) <= 0
-    )
-      lower.pop()
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, point) <= 0) lower.pop()
     lower.push(point)
   }
   const upper: [number, number][] = []
   for (let i = unique.length - 1; i >= 0; i--) {
     const point = unique[i]!
-    while (
-      upper.length >= 2 &&
-      cross(upper[upper.length - 2]!, upper[upper.length - 1]!, point) <= 0
-    )
-      upper.pop()
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, point) <= 0) upper.pop()
     upper.push(point)
   }
   lower.pop()
@@ -196,13 +188,7 @@ function convexHullYDown(points: [number, number][]): [number, number][] {
 }
 
 /** Moore-Neighbor tracing over a border-padded binary mask. */
-function traceContour(
-  mask: Uint8Array,
-  mw: number,
-  mh: number,
-  fromX?: number,
-  fromY?: number
-): [number, number][] {
+function traceContour(mask: Uint8Array, mw: number, mh: number, fromX?: number, fromY?: number): [number, number][] {
   // Clockwise Moore neighborhood, starting west.
   const neighbors = [
     [-1, 0],
@@ -264,12 +250,7 @@ function traceContour(
 }
 
 /** Outward padding by scaling around the outline's own bbox center. */
-function padOutline(
-  outline: [number, number][],
-  padding: number,
-  width: number,
-  height: number
-): [number, number][] {
+function padOutline(outline: [number, number][], padding: number, width: number, height: number): [number, number][] {
   let minX = Infinity
   let minY = Infinity
   let maxX = -Infinity

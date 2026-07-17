@@ -78,8 +78,7 @@ describe('polygonizeAlpha — review regressions', () => {
     const h = 24
     const rgba = new Uint8Array(w * h * 4)
     const fill = (x0: number, y0: number) => {
-      for (let y = y0; y < y0 + 8; y++)
-        for (let x = x0; x < x0 + 8; x++) rgba[(y * w + x) * 4 + 3] = 255
+      for (let y = y0; y < y0 + 8; y++) for (let x = x0; x < x0 + 8; x++) rgba[(y * w + x) * 4 + 3] = 255
     }
     fill(2, 8)
     fill(52, 8)
@@ -131,10 +130,7 @@ describe('earClip — review regressions', () => {
     // partial index list (still >= 3 long), which slipped past
     // polygonizeAlpha's `triangles.length < 3` guard as a valid-looking
     // but incomplete mesh.
-    const outline: [number, number][] = Array.from({ length: 12 }, (_, i) => [
-      i,
-      i % 2 === 0 ? 0 : 10,
-    ])
+    const outline: [number, number][] = Array.from({ length: 12 }, (_, i) => [i, i % 2 === 0 ? 0 : 10])
     outline.push([12, 5])
 
     const triangles = earClip(outline)
@@ -169,8 +165,7 @@ describe('packRects', () => {
       expect(a.y + a.height).toBeLessThanOrEqual(result.height)
       for (const b of result.rects) {
         if (a === b) continue
-        const overlap =
-          a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+        const overlap = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
         expect(overlap).toBe(false)
       }
     }

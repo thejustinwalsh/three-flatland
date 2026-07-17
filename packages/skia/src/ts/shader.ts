@@ -2,8 +2,8 @@ import type { SkiaContext } from './context'
 import type { SkiaImage } from './image'
 import { type BlendMode, BLEND_MODE } from './types'
 
-const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => drop(handle),
+const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) =>
+  drop(handle)
 )
 
 /** Tile mode for image shaders */
@@ -31,13 +31,25 @@ export class SkiaShader {
   }
 
   /** Procedural fractal noise pattern */
-  static fractalNoise(context: SkiaContext, freqX: number, freqY: number, octaves: number, seed: number): SkiaShader | null {
+  static fractalNoise(
+    context: SkiaContext,
+    freqX: number,
+    freqY: number,
+    octaves: number,
+    seed: number
+  ): SkiaShader | null {
     const h = context._exports.skia_shader_fractal_noise(freqX, freqY, octaves, seed)
     return h ? new SkiaShader(context, h) : null
   }
 
   /** Procedural turbulence pattern */
-  static turbulence(context: SkiaContext, freqX: number, freqY: number, octaves: number, seed: number): SkiaShader | null {
+  static turbulence(
+    context: SkiaContext,
+    freqX: number,
+    freqY: number,
+    octaves: number,
+    seed: number
+  ): SkiaShader | null {
     const h = context._exports.skia_shader_turbulence(freqX, freqY, octaves, seed)
     return h ? new SkiaShader(context, h) : null
   }
@@ -55,7 +67,15 @@ export class SkiaShader {
   }
 
   /** Linear gradient shader (standalone, not paint-bound) */
-  static linearGradient(context: SkiaContext, x0: number, y0: number, x1: number, y1: number, colors: number[], stops: number[]): SkiaShader | null {
+  static linearGradient(
+    context: SkiaContext,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    colors: number[],
+    stops: number[]
+  ): SkiaShader | null {
     const colorsPtr = context._writeU32(colors)
     const stopsPtr = context._writeF32(stops)
     const h = context._exports.skia_shader_linear_gradient(x0, y0, x1, y1, colorsPtr, stopsPtr, colors.length)
@@ -63,7 +83,14 @@ export class SkiaShader {
   }
 
   /** Radial gradient shader (standalone, not paint-bound) */
-  static radialGradient(context: SkiaContext, cx: number, cy: number, r: number, colors: number[], stops: number[]): SkiaShader | null {
+  static radialGradient(
+    context: SkiaContext,
+    cx: number,
+    cy: number,
+    r: number,
+    colors: number[],
+    stops: number[]
+  ): SkiaShader | null {
     const colorsPtr = context._writeU32(colors)
     const stopsPtr = context._writeF32(stops)
     const h = context._exports.skia_shader_radial_gradient(cx, cy, r, colorsPtr, stopsPtr, colors.length)
@@ -71,7 +98,13 @@ export class SkiaShader {
   }
 
   /** Sweep gradient shader (standalone, not paint-bound) */
-  static sweepGradient(context: SkiaContext, cx: number, cy: number, colors: number[], stops: number[]): SkiaShader | null {
+  static sweepGradient(
+    context: SkiaContext,
+    cx: number,
+    cy: number,
+    colors: number[],
+    stops: number[]
+  ): SkiaShader | null {
     const colorsPtr = context._writeU32(colors)
     const stopsPtr = context._writeF32(stops)
     const h = context._exports.skia_shader_sweep_gradient(cx, cy, colorsPtr, stopsPtr, colors.length)
@@ -79,15 +112,40 @@ export class SkiaShader {
   }
 
   /** Two-point conical gradient shader (standalone, not paint-bound) */
-  static twoPointConicalGradient(context: SkiaContext, sx: number, sy: number, sr: number, ex: number, ey: number, er: number, colors: number[], stops: number[]): SkiaShader | null {
+  static twoPointConicalGradient(
+    context: SkiaContext,
+    sx: number,
+    sy: number,
+    sr: number,
+    ex: number,
+    ey: number,
+    er: number,
+    colors: number[],
+    stops: number[]
+  ): SkiaShader | null {
     const colorsPtr = context._writeU32(colors)
     const stopsPtr = context._writeF32(stops)
-    const h = context._exports.skia_shader_two_point_conical_gradient(sx, sy, sr, ex, ey, er, colorsPtr, stopsPtr, colors.length)
+    const h = context._exports.skia_shader_two_point_conical_gradient(
+      sx,
+      sy,
+      sr,
+      ex,
+      ey,
+      er,
+      colorsPtr,
+      stopsPtr,
+      colors.length
+    )
     return h ? new SkiaShader(context, h) : null
   }
 
   /** Tile an image as a repeating pattern */
-  static image(context: SkiaContext, img: SkiaImage, tileModeX: TileMode = 'clamp', tileModeY: TileMode = 'clamp'): SkiaShader | null {
+  static image(
+    context: SkiaContext,
+    img: SkiaImage,
+    tileModeX: TileMode = 'clamp',
+    tileModeY: TileMode = 'clamp'
+  ): SkiaShader | null {
     const h = context._exports.skia_shader_image(img._handle, TILE_MODE[tileModeX], TILE_MODE[tileModeY])
     return h ? new SkiaShader(context, h) : null
   }

@@ -44,9 +44,7 @@ describe('discoverBakers', () => {
     expect(bakers).toHaveLength(1)
     expect(bakers[0]!.name).toBe('font')
     expect(bakers[0]!.packageName).toBe('fake-slug')
-    expect(bakers[0]!.resolvedEntry.endsWith('fake-slug/dist/cli.js')).toBe(
-      true
-    )
+    expect(bakers[0]!.resolvedEntry.endsWith('fake-slug/dist/cli.js')).toBe(true)
   })
 
   it('picks up a baker from a scoped package', () => {
@@ -106,9 +104,7 @@ describe('discoverBakers', () => {
     writePkg(tmp, {
       name: 'self-pkg',
       flatland: {
-        bake: [
-          { name: 'self', description: 'Self baker', entry: './dist/cli.js' },
-        ],
+        bake: [{ name: 'self', description: 'Self baker', entry: './dist/cli.js' }],
       },
     })
 
@@ -132,9 +128,7 @@ describe('discoverBakers', () => {
     writePkg(join(tmp, 'node_modules', 'legacy-pkg'), {
       name: 'legacy-pkg',
       flatland: {
-        bakers: [
-          { name: 'legacy', description: 'Legacy', entry: './dist/baker.js' },
-        ],
+        bakers: [{ name: 'legacy', description: 'Legacy', entry: './dist/baker.js' }],
       },
     })
 
@@ -152,9 +146,7 @@ describe('discoverBakers', () => {
       name: 'mixed-pkg',
       flatland: {
         bake: [{ name: 'new', description: 'New', entry: './dist/cli.js' }],
-        bakers: [
-          { name: 'old', description: 'Old', entry: './dist/baker.js' },
-        ],
+        bakers: [{ name: 'old', description: 'Old', entry: './dist/baker.js' }],
       },
     })
 

@@ -10,9 +10,7 @@
 // copy on the receive side either.
 
 type DecodeRequest = { id: number; bitmap: ImageBitmap }
-type DecodeResponse =
-  | { id: number; data: ImageData }
-  | { id: number; error: string }
+type DecodeResponse = { id: number; data: ImageData } | { id: number; error: string }
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope
 

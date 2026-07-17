@@ -58,11 +58,7 @@ export function buildGpuGlyphData(
  * width lookups via `glyphs.get(id)` resolve — notably `shapeStackText`
  * uses this path for every char.
  */
-export function buildAdvanceOnlyGlyph(
-  glyphId: number,
-  advanceWidthEm: number,
-  lsbEm: number
-): SlugGlyphData {
+export function buildAdvanceOnlyGlyph(glyphId: number, advanceWidthEm: number, lsbEm: number): SlugGlyphData {
   return {
     glyphId,
     curves: [],

@@ -60,13 +60,7 @@ export type CompareLayerProps = {
 // ---------------------------------------------------------------------------
 
 /** Inner component for URL-loaded textures (uses useLoader, can suspend). */
-function UrlLoaded({
-  url,
-  onTexture,
-}: {
-  url: string
-  onTexture: (t: Texture) => void
-}) {
+function UrlLoaded({ url, onTexture }: { url: string; onTexture: (t: Texture) => void }) {
   const tex = useLoader(TextureLoader, url) as Texture
   useEffect(() => {
     onTexture(tex)
@@ -124,10 +118,7 @@ type CompressedTextureWithMips = Texture & {
   mipmaps?: Array<{ width: number; height: number }>
 }
 
-function resolveDims(
-  source: ImageSource,
-  tex: Texture | null,
-): { w: number; h: number } | null {
+function resolveDims(source: ImageSource, tex: Texture | null): { w: number; h: number } | null {
   if (source.kind === 'texture' && source.width && source.height) {
     return { w: source.width, h: source.height }
   }
@@ -167,12 +158,8 @@ function CompareScene({
   compareLoading: boolean
   onPrimaryReady?: (size: { w: number; h: number }) => void
 }) {
-  const [primaryTex, setPrimaryTex] = useState<Texture | null>(
-    primary.kind === 'texture' ? primary.texture : null,
-  )
-  const [compareTex, setCompareTex] = useState<Texture | null>(
-    compare?.kind === 'texture' ? compare.texture : null,
-  )
+  const [primaryTex, setPrimaryTex] = useState<Texture | null>(primary.kind === 'texture' ? primary.texture : null)
+  const [compareTex, setCompareTex] = useState<Texture | null>(compare?.kind === 'texture' ? compare.texture : null)
 
   useEffect(() => {
     if (primary.kind === 'texture') setPrimaryTex(primary.texture)
@@ -195,9 +182,7 @@ function CompareScene({
   // interpolates through levels rather than popping between nearest mips).
   useEffect(() => {
     const filter = pixelArt ? NearestFilter : LinearFilter
-    const minFilterWithMips = pixelArt
-      ? NearestMipmapNearestFilter
-      : LinearMipmapLinearFilter
+    const minFilterWithMips = pixelArt ? NearestMipmapNearestFilter : LinearMipmapLinearFilter
     if (primaryTex) {
       primaryTex.minFilter = filter
       primaryTex.magFilter = filter
@@ -286,9 +271,7 @@ function CompareScene({
     // For non-CompressedTextures (CanvasTexture) the uniform is 0, so the
     // result is equivalent to texture() at full resolution.
     const isCompareCompressed = !!(compareTex as { isCompressedTexture?: boolean } | null)?.isCompressedTexture
-    const compareUV = isCompareCompressed
-      ? vec2(uv().x, float(1).sub(uv().y))
-      : uv()
+    const compareUV = isCompareCompressed ? vec2(uv().x, float(1).sub(uv().y)) : uv()
     const compareSample = compareTex ? textureLevel(compareTex, compareUV, mipLevelBNode) : a
 
     // Loading-state visualization: while a re-encode is in flight, force
@@ -322,32 +305,17 @@ function CompareScene({
     // Render UrlLoaded helpers even before we have dims so loading can proceed.
     return (
       <>
-        {primary.kind === 'url' && (
-          <UrlLoaded url={primary.url} onTexture={setPrimaryTex} />
-        )}
-        {compare?.kind === 'url' && (
-          <UrlLoaded url={compare.url} onTexture={setCompareTex} />
-        )}
+        {primary.kind === 'url' && <UrlLoaded url={primary.url} onTexture={setPrimaryTex} />}
+        {compare?.kind === 'url' && <UrlLoaded url={compare.url} onTexture={setCompareTex} />}
       </>
     )
   }
 
   return (
     <>
-      {primary.kind === 'url' && (
-        <UrlLoaded url={primary.url} onTexture={setPrimaryTex} />
-      )}
-      {compare?.kind === 'url' && (
-        <UrlLoaded url={compare.url} onTexture={setCompareTex} />
-      )}
-      <OrthoFitCamera
-        imgW={dims.w}
-        imgH={dims.h}
-        margin={fitMargin}
-        zoom={zoom}
-        panX={panX}
-        panY={panY}
-      />
+      {primary.kind === 'url' && <UrlLoaded url={primary.url} onTexture={setPrimaryTex} />}
+      {compare?.kind === 'url' && <UrlLoaded url={compare.url} onTexture={setCompareTex} />}
+      <OrthoFitCamera imgW={dims.w} imgH={dims.h} margin={fitMargin} zoom={zoom} panX={panX} panY={panY} />
       {/* Sized plane at the image's aspect ratio. OrthoFitCamera handles fit. */}
       <mesh>
         <planeGeometry args={[dims.w, dims.h]} />

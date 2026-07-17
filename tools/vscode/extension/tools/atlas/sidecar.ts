@@ -55,10 +55,7 @@ export function sidecarUriForImage(imageUri: vscode.Uri): vscode.Uri {
   return imageUri.with({ path: `${dir}/${base}.atlas.json` })
 }
 
-export async function writeAtlasSidecar(
-  imageUri: vscode.Uri,
-  json: AtlasJson
-): Promise<vscode.Uri> {
+export async function writeAtlasSidecar(imageUri: vscode.Uri, json: AtlasJson): Promise<vscode.Uri> {
   assertValidAtlas(json)
   const uri = sidecarUriForImage(imageUri)
   const text = JSON.stringify(json, null, 2) + '\n'

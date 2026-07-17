@@ -151,8 +151,7 @@ export function shapeStackText(
       }
     }
 
-    const visible =
-      glyphData != null && glyphId !== 0 && glyphData.bounds.xMax > glyphData.bounds.xMin
+    const visible = glyphData != null && glyphId !== 0 && glyphData.bounds.xMax > glyphData.bounds.xMin
 
     if (visible) {
       currentLine.push({

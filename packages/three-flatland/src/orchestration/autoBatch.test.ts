@@ -253,9 +253,7 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     group.add(sprite)
     group.update()
 
-    const data = (
-      group as unknown as { _getRegistry(): RegistryData | null }
-    )._getRegistry()!
+    const data = (group as unknown as { _getRegistry(): RegistryData | null })._getRegistry()!
     const mesh = data.batchSlots.find((m) => m !== null)!
     expect(mesh.maxSize).toBe(8192)
 

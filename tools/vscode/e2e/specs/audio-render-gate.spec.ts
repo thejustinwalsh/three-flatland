@@ -114,18 +114,12 @@ async function runOfflineProbe(
       // first, then a valid verdict.
       if (code !== 0) {
         reject(
-          new Error(
-            `probe exited unsuccessfully (exit=${code}, signal=${signal}): stdout=${stdout} stderr=${stderr}`
-          )
+          new Error(`probe exited unsuccessfully (exit=${code}, signal=${signal}): stdout=${stdout} stderr=${stderr}`)
         )
         return
       }
       if (!/RENDER_OK|RENDER_SILENT/.test(stdout)) {
-        reject(
-          new Error(
-            `probe produced no verdict line (exit=${code}): stdout=${stdout} stderr=${stderr}`
-          )
-        )
+        reject(new Error(`probe produced no verdict line (exit=${code}): stdout=${stdout} stderr=${stderr}`))
         return
       }
       resolve({ stdout, stderr })
@@ -145,9 +139,7 @@ function parseRenderOk(stdout: string): {
   frames: number
   zeroCrossings: number
 } {
-  const match = stdout.match(
-    /RENDER_OK peak=([\d.]+) energy=([\d.]+) frames=(\d+) zeroCrossings=(\d+)/
-  )
+  const match = stdout.match(/RENDER_OK peak=([\d.]+) energy=([\d.]+) frames=(\d+) zeroCrossings=(\d+)/)
   expect(match, `expected a parseable RENDER_OK line, got: ${stdout}`).not.toBeNull()
   return {
     peak: Number(match![1]),

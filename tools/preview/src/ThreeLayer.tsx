@@ -108,13 +108,7 @@ function OrthoFitCamera({
   )
 }
 
-function Sprite({
-  imageUri,
-  onReady,
-}: {
-  imageUri: string
-  onReady?: (size: { w: number; h: number }) => void
-}) {
+function Sprite({ imageUri, onReady }: { imageUri: string; onReady?: (size: { w: number; h: number }) => void }) {
   const texture = useLoader(TextureLoader, imageUri)
   const img = texture.image as { width?: number; height?: number } | null | undefined
   const w = img?.width ?? 64

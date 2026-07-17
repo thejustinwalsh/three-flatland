@@ -61,7 +61,9 @@ function parseArgs(argv: string[]): Args {
 const baker: Baker = {
   name: 'encode',
   description: 'Encode image to PNG/WebP/AVIF/KTX2',
-  usage() { return USAGE },
+  usage() {
+    return USAGE
+  },
 
   async run(rawArgs) {
     let args: Args
@@ -83,9 +85,10 @@ const baker: Baker = {
       format: args.format,
       quality: args.quality,
       mode: args.mode,
-      basis: args.basisMode || args.uastcLevel !== undefined || args.mipmaps
-        ? { mode: args.basisMode, mipmaps: args.mipmaps, uastcLevel: args.uastcLevel }
-        : undefined,
+      basis:
+        args.basisMode || args.uastcLevel !== undefined || args.mipmaps
+          ? { mode: args.basisMode, mipmaps: args.mipmaps, uastcLevel: args.uastcLevel }
+          : undefined,
     }
 
     if (args.batch) {
@@ -106,7 +109,8 @@ const baker: Baker = {
         output: join(args.outDir!, basename(f, extname(f)) + '.' + args.format),
         opts,
       }))
-      let okCount = 0, errCount = 0
+      let okCount = 0,
+        errCount = 0
       for await (const r of encodeImageBatch(items, 4)) {
         const tag = r.status === 'ok' ? 'ok' : 'err'
         process.stdout.write(`[encode] ${tag} ${r.input} ${r.error ?? r.output ?? ''}\n`)

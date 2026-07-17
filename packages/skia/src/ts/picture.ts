@@ -1,7 +1,7 @@
 import type { SkiaContext } from './context'
 
-const picRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => drop(handle),
+const picRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) =>
+  drop(handle)
 )
 
 /**
@@ -28,8 +28,8 @@ export class SkiaPicture {
   }
 }
 
-const recRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => drop(handle),
+const recRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) =>
+  drop(handle)
 )
 
 /**
@@ -52,7 +52,11 @@ export class SkiaPictureRecorder {
   constructor(context: SkiaContext) {
     this._ctx = context
     this._handle = context._exports.skia_picture_recorder_create()
-    recRegistry.register(this, { handle: this._handle, drop: (h: number) => context._exports.skia_picture_recorder_destroy(h) }, this)
+    recRegistry.register(
+      this,
+      { handle: this._handle, drop: (h: number) => context._exports.skia_picture_recorder_destroy(h) },
+      this
+    )
   }
 
   /** Begin recording. Returns a canvas handle for the recording context. */

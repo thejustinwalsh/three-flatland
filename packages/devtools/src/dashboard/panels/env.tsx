@@ -39,13 +39,12 @@ export function EnvPopover() {
     }
   }, [open])
 
-  const canvas = s.canvasWidth !== undefined && s.canvasHeight !== undefined
-    ? `${s.canvasWidth}×${s.canvasHeight}${s.canvasPixelRatio !== undefined ? ` @${s.canvasPixelRatio}x` : ''}`
-    : '—'
+  const canvas =
+    s.canvasWidth !== undefined && s.canvasHeight !== undefined
+      ? `${s.canvasWidth}×${s.canvasHeight}${s.canvasPixelRatio !== undefined ? ` @${s.canvasPixelRatio}x` : ''}`
+      : '—'
 
-  const summary = s.backendName !== undefined
-    ? s.backendName
-    : 'Env'
+  const summary = s.backendName !== undefined ? s.backendName : 'Env'
 
   return (
     <div class="env-popover" ref={rootRef}>

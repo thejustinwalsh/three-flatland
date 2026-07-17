@@ -42,7 +42,7 @@ export type CanvasBackgroundStyle = 'solid' | 'checker' | 'gradient'
  */
 export function canvasBackgroundStyle(
   mode: CanvasBackgroundStyle,
-  solidColor: string,
+  solidColor: string
 ): Pick<CSSProperties, 'backgroundColor' | 'backgroundImage' | 'backgroundSize'> {
   if (mode === 'checker') {
     return {

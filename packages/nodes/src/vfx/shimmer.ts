@@ -46,10 +46,7 @@ export function shimmer(
   const dist = dir.sub(shimmerPos).abs()
 
   // Smooth shimmer falloff
-  const shimmerIntensity = float(1)
-    .sub(dist.div(widthNode).clamp(0, 1))
-    .pow(2)
-    .mul(intensityNode)
+  const shimmerIntensity = float(1).sub(dist.div(widthNode).clamp(0, 1)).pow(2).mul(intensityNode)
 
   const finalRGB = inputColor.rgb.add(colorVec.mul(shimmerIntensity))
 
@@ -84,7 +81,9 @@ export function shimmerWave(
   const colorVec = Array.isArray(shimmerColor) ? vec3(...shimmerColor) : shimmerColor
 
   // Multiple sine waves at different phases
-  const wave1 = sin(uv.x.mul(6.28).mul(wavesNode).add(timeNode.mul(speedNode))).mul(0.5).add(0.5)
+  const wave1 = sin(uv.x.mul(6.28).mul(wavesNode).add(timeNode.mul(speedNode)))
+    .mul(0.5)
+    .add(0.5)
   const wave2 = sin(
     uv.x
       .mul(6.28)
@@ -130,7 +129,12 @@ export function shimmerHolographic(
   const b = sin(angle.add(4.189)).mul(0.5).add(0.5)
 
   // Modulate by shimmer band
-  const shimmerBand = sin(uv.x.sub(uv.y).mul(3).add(timeNode.mul(speedNode.mul(2))))
+  const shimmerBand = sin(
+    uv.x
+      .sub(uv.y)
+      .mul(3)
+      .add(timeNode.mul(speedNode.mul(2)))
+  )
     .mul(0.5)
     .add(0.5)
     .pow(4)

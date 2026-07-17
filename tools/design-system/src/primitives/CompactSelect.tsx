@@ -250,7 +250,7 @@ export function CompactSelect<V extends string = string>(props: CompactSelectPro
                 </div>
               ))}
             </div>,
-            document.body,
+            document.body
           )
         : null}
     </div>

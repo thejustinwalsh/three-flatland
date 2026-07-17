@@ -54,9 +54,7 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
 
     const alive = await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as ExtensionApi
         await vscode.commands.executeCommand('threeFlatland.audio.playParams', arg.params)
@@ -80,14 +78,10 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
     await expect(workbox.getByRole('tab', { name: /^ZzFX:/ })).toHaveCount(0)
   })
 
-  test('the sidecar process spawns once and is reused across repeated plays', async ({
-    evaluateInVSCode,
-  }) => {
+  test('the sidecar process spawns once and is reused across repeated plays', async ({ evaluateInVSCode }) => {
     const { pids, pings } = await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as ExtensionApi
 
@@ -126,9 +120,7 @@ test.describe('FL ZzFX inline play sidecar (Z9)', () => {
   }) => {
     const result = await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as ExtensionApi
 

@@ -168,9 +168,7 @@ export class FlSlugFontExtension extends Extension {
 
   /** @hidden */
   public read(context: ReaderContext): this {
-    const extJson = context.jsonDoc.json.extensions?.[SLUG_EXTENSION_NAME] as
-      | Record<string, unknown>
-      | undefined
+    const extJson = context.jsonDoc.json.extensions?.[SLUG_EXTENSION_NAME] as Record<string, unknown> | undefined
     if (!extJson) return this
 
     const columns = extJson['columns'] as Record<string, { accessor: number }> | undefined
@@ -249,11 +247,9 @@ function writeBandWords(g: SlugGlyphData, dst: Uint16Array, wordOffset: number):
   dst[w++] = assertUint16(hBands.length, 'hBand count')
   dst[w++] = assertUint16(vBands.length, 'vBand count')
   for (const band of hBands) dst[w++] = assertUint16(band.curveIndices.length, 'hBand curve count')
-  for (const band of hBands)
-    for (const idx of band.curveIndices) dst[w++] = assertUint16(idx, 'curve index')
+  for (const band of hBands) for (const idx of band.curveIndices) dst[w++] = assertUint16(idx, 'curve index')
   for (const band of vBands) dst[w++] = assertUint16(band.curveIndices.length, 'vBand curve count')
-  for (const band of vBands)
-    for (const idx of band.curveIndices) dst[w++] = assertUint16(idx, 'curve index')
+  for (const band of vBands) for (const idx of band.curveIndices) dst[w++] = assertUint16(idx, 'curve index')
   return w - wordOffset
 }
 
@@ -264,17 +260,8 @@ function writeBandWords(g: SlugGlyphData, dst: Uint16Array, wordOffset: number):
  * **Band offsets:** word offsets (u16 element indices), CSR prefix-sum, N+1 entries.
  */
 export async function packBaked(input: BakeInput): Promise<Uint8Array> {
-  const {
-    metrics,
-    textureWidth,
-    curveTextureHeight,
-    curveData,
-    bandTextureHeight,
-    bandData,
-    glyphs,
-    cmap,
-    kern,
-  } = input
+  const { metrics, textureWidth, curveTextureHeight, curveData, bandTextureHeight, bandData, glyphs, cmap, kern } =
+    input
 
   // ── Sort glyphs ascending by glyphId ──
   const sortedGlyphs = Array.from(glyphs.values()).sort((a, b) => a.glyphId - b.glyphId)
@@ -349,16 +336,8 @@ export async function packBaked(input: BakeInput): Promise<Uint8Array> {
     kern: kernArr,
     bandOffsets,
     bandData: bandDataArr,
-    curveTexture: new Uint16Array(
-      curveData.buffer as ArrayBuffer,
-      curveData.byteOffset,
-      curveData.length
-    ),
-    bandTexture: new Float32Array(
-      bandData.buffer as ArrayBuffer,
-      bandData.byteOffset,
-      bandData.length
-    ),
+    curveTexture: new Uint16Array(curveData.buffer as ArrayBuffer, curveData.byteOffset, curveData.length),
+    bandTexture: new Float32Array(bandData.buffer as ArrayBuffer, bandData.byteOffset, bandData.length),
   }
 
   // ── FL_slug_font extension ──

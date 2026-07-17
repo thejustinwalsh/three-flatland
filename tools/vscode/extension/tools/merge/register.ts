@@ -12,9 +12,9 @@ export function registerMergeTool(context: vscode.ExtensionContext): vscode.Disp
         void vscode.window.showInformationMessage('FL Atlas Merge is disabled in Settings.')
         return
       }
-      const uris = (
-        allSelected && allSelected.length > 0 ? allSelected : clicked ? [clicked] : []
-      ).filter((u) => u.path.endsWith('.atlas.json'))
+      const uris = (allSelected && allSelected.length > 0 ? allSelected : clicked ? [clicked] : []).filter((u) =>
+        u.path.endsWith('.atlas.json')
+      )
       if (uris.length === 0) {
         void vscode.window.showErrorMessage('FL Merge: select one or more .atlas.json files first.')
         return

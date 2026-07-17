@@ -1,8 +1,8 @@
 import type { SkiaContext } from './context'
 import type { SkiaPath } from './path'
 
-const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => drop(handle),
+const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) =>
+  drop(handle)
 )
 
 /**
@@ -23,7 +23,11 @@ export class SkiaPathMeasure {
   constructor(context: SkiaContext, path: SkiaPath, forceClosed = false) {
     this._ctx = context
     this._handle = context._exports.skia_path_measure_create(path._handle, forceClosed ? 1 : 0)
-    registry.register(this, { handle: this._handle, drop: (h: number) => context._exports.skia_path_measure_destroy(h) }, this)
+    registry.register(
+      this,
+      { handle: this._handle, drop: (h: number) => context._exports.skia_path_measure_destroy(h) },
+      this
+    )
   }
 
   /** Total arc length of the path */
@@ -39,8 +43,10 @@ export class SkiaPathMeasure {
     if (!ok) return null
     const view = new DataView(this._ctx._memory.buffer)
     return {
-      x: view.getFloat32(posPtr, true), y: view.getFloat32(posPtr + 4, true),
-      tx: view.getFloat32(tanPtr, true), ty: view.getFloat32(tanPtr + 4, true),
+      x: view.getFloat32(posPtr, true),
+      y: view.getFloat32(posPtr + 4, true),
+      tx: view.getFloat32(tanPtr, true),
+      ty: view.getFloat32(tanPtr + 4, true),
     }
   }
 

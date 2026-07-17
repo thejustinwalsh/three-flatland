@@ -2,12 +2,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { convertToTexture } from 'three/tsl'
 import { Color } from 'three'
 import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
-import {
-  Flatland,
-  Sprite2D,
-  TextureLoader,
-  createPassEffect,
-} from 'three-flatland'
+import { Flatland, Sprite2D, TextureLoader, createPassEffect } from 'three-flatland'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 import type { PassEffect } from 'three-flatland'
@@ -46,16 +41,18 @@ const CRTPass = createPassEffect({
     bloomIntensity: 0.15,
     colorBleed: 0.0012,
   },
-  pass: ({ uniforms }) => (input, uv) => {
-    const tex = convertToTexture(input) as TextureNode<'vec4'>
-    return crtComplete(tex, uv, {
-      curvature: uniforms.curvature,
-      scanlineIntensity: uniforms.scanlineIntensity,
-      vignetteIntensity: uniforms.vignetteIntensity,
-      bloomIntensity: uniforms.bloomIntensity,
-      colorBleed: uniforms.colorBleed,
-    })
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      const tex = convertToTexture(input) as TextureNode<'vec4'>
+      return crtComplete(tex, uv, {
+        curvature: uniforms.curvature,
+        scanlineIntensity: uniforms.scanlineIntensity,
+        vignetteIntensity: uniforms.vignetteIntensity,
+        bloomIntensity: uniforms.bloomIntensity,
+        colorBleed: uniforms.colorBleed,
+      })
+    },
 })
 
 /**
@@ -69,9 +66,11 @@ const LCDGridPass = createPassEffect({
     gridIntensity: 0.18,
     subpixelIntensity: 0.12,
   },
-  pass: ({ uniforms }) => (input, uv) => {
-    return lcdGrid(input, uv, uniforms.resolution, uniforms.gridIntensity, uniforms.subpixelIntensity)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      return lcdGrid(input, uv, uniforms.resolution, uniforms.gridIntensity, uniforms.subpixelIntensity)
+    },
 })
 
 /**
@@ -81,9 +80,11 @@ const LCDGridPass = createPassEffect({
 const PosterizePass = createPassEffect({
   name: 'posterize',
   schema: { bands: 6 },
-  pass: ({ uniforms }) => (input, _uv) => {
-    return posterize(input, uniforms.bands)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, _uv) => {
+      return posterize(input, uniforms.bands)
+    },
 })
 
 /**
@@ -92,9 +93,11 @@ const PosterizePass = createPassEffect({
 const QuantizePass = createPassEffect({
   name: 'quantize',
   schema: { levels: 8 },
-  pass: ({ uniforms }) => (input, _uv) => {
-    return quantize(input, uniforms.levels)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, _uv) => {
+      return quantize(input, uniforms.levels)
+    },
 })
 
 /**
@@ -106,9 +109,11 @@ const ScanlinesPass = createPassEffect({
     resolution: 300,
     intensity: 0.2,
   },
-  pass: ({ uniforms }) => (input, uv) => {
-    return scanlinesSmooth(input, uv, uniforms.resolution, uniforms.intensity)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      return scanlinesSmooth(input, uv, uniforms.resolution, uniforms.intensity)
+    },
 })
 
 /**
@@ -122,10 +127,12 @@ const VHSPass = createPassEffect({
     intensity: 0.012,
     noiseAmount: 0.05,
   },
-  pass: ({ uniforms }) => (input, uv) => {
-    const tex = convertToTexture(input) as TextureNode<'vec4'>
-    return vhsDistortion(tex, uv, uniforms.time, uniforms.intensity, uniforms.noiseAmount)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      const tex = convertToTexture(input) as TextureNode<'vec4'>
+      return vhsDistortion(tex, uv, uniforms.time, uniforms.intensity, uniforms.noiseAmount)
+    },
 })
 
 /**
@@ -137,9 +144,11 @@ const StaticPass = createPassEffect({
     time: 0,
     intensity: 0.04,
   },
-  pass: ({ uniforms }) => (input, uv) => {
-    return staticNoise(input, uv, uniforms.time, uniforms.intensity)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      return staticNoise(input, uv, uniforms.time, uniforms.intensity)
+    },
 })
 
 /**
@@ -148,10 +157,12 @@ const StaticPass = createPassEffect({
 const AberrationPass = createPassEffect({
   name: 'aberration',
   schema: { amount: 0.003 },
-  pass: ({ uniforms }) => (input, uv) => {
-    const tex = convertToTexture(input) as TextureNode<'vec4'>
-    return chromaticAberration(tex, uv, uniforms.amount)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      const tex = convertToTexture(input) as TextureNode<'vec4'>
+      return chromaticAberration(tex, uv, uniforms.amount)
+    },
 })
 
 /**
@@ -163,9 +174,11 @@ const VignettePass = createPassEffect({
     intensity: 0.4,
     curvature: 2,
   },
-  pass: ({ uniforms }) => (input, uv) => {
-    return crtVignette(input, uv, uniforms.intensity, uniforms.curvature)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      return crtVignette(input, uv, uniforms.intensity, uniforms.curvature)
+    },
 })
 
 /**
@@ -174,9 +187,11 @@ const VignettePass = createPassEffect({
 const BacklightPass = createPassEffect({
   name: 'backlight',
   schema: { intensity: 0.12 },
-  pass: ({ uniforms }) => (input, uv) => {
-    return lcdBacklightBleed(input, uv, uniforms.intensity)
-  },
+  pass:
+    ({ uniforms }) =>
+    (input, uv) => {
+      return lcdBacklightBleed(input, uv, uniforms.intensity)
+    },
 })
 
 // ─── Preset Configurations ──────────────────────────────────────────────────
@@ -215,10 +230,7 @@ function createPreset(name: PresetName): ActivePreset {
       const aber = new AberrationPass()
       return {
         passes: [vhs, noise, aber],
-        timeDriven: [
-          { pass: vhs as PassEffect & { time: number } },
-          { pass: noise as PassEffect & { time: number } },
-        ],
+        timeDriven: [{ pass: vhs as PassEffect & { time: number } }, { pass: noise as PassEffect & { time: number } }],
       }
     }
 
@@ -265,13 +277,13 @@ const RETRO_DEFAULTS = {
 
 /** Sprite arrangement — a small grid of tinted sprites like game pickups */
 const SPRITE_LAYOUT = [
-  { x: 0, y: 0, scale: 120, tint: 0xffffff },       // Center — white
-  { x: -100, y: 60, scale: 60, tint: 0xff6b9d },     // Top-left — pink
-  { x: 100, y: 60, scale: 60, tint: 0x47cca9 },      // Top-right — teal
-  { x: -100, y: -60, scale: 60, tint: 0xffd166 },     // Bottom-left — gold
-  { x: 100, y: -60, scale: 60, tint: 0x6b9dff },      // Bottom-right — blue
-  { x: 0, y: 120, scale: 40, tint: 0xbb86fc },        // Top — purple
-  { x: 0, y: -120, scale: 40, tint: 0xff8a65 },       // Bottom — orange
+  { x: 0, y: 0, scale: 120, tint: 0xffffff }, // Center — white
+  { x: -100, y: 60, scale: 60, tint: 0xff6b9d }, // Top-left — pink
+  { x: 100, y: 60, scale: 60, tint: 0x47cca9 }, // Top-right — teal
+  { x: -100, y: -60, scale: 60, tint: 0xffd166 }, // Bottom-left — gold
+  { x: 100, y: -60, scale: 60, tint: 0x6b9dff }, // Bottom-right — blue
+  { x: 0, y: 120, scale: 40, tint: 0xbb86fc }, // Top — purple
+  { x: 0, y: -120, scale: 40, tint: 0xff8a65 }, // Bottom — orange
 ]
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
@@ -382,8 +394,10 @@ async function main() {
 
   lcdFolder.on('change', () => {
     // LCD preset: [posterize, lcdGrid, backlight, vignette]
-    const post = activePreset.passes[0] as PassEffect & { bands: number } | undefined
-    const grid = activePreset.passes[1] as PassEffect & { resolution: number; gridIntensity: number; subpixelIntensity: number } | undefined
+    const post = activePreset.passes[0] as (PassEffect & { bands: number }) | undefined
+    const grid = activePreset.passes[1] as
+      | (PassEffect & { resolution: number; gridIntensity: number; subpixelIntensity: number })
+      | undefined
     if (post) post.bands = lcdParams.bands
     if (grid) {
       grid.resolution = lcdParams.resolution
@@ -401,8 +415,8 @@ async function main() {
 
   vhsFolder.on('change', () => {
     // VHS preset: [vhs, static, aberration]
-    const vhs = activePreset.passes[0] as PassEffect & { intensity: number; noiseAmount: number } | undefined
-    const aber = activePreset.passes[2] as PassEffect & { amount: number } | undefined
+    const vhs = activePreset.passes[0] as (PassEffect & { intensity: number; noiseAmount: number }) | undefined
+    const aber = activePreset.passes[2] as (PassEffect & { amount: number }) | undefined
     if (vhs) {
       vhs.intensity = vhsParams.intensity
       vhs.noiseAmount = vhsParams.noiseAmount
@@ -419,8 +433,8 @@ async function main() {
 
   retroFolder.on('change', () => {
     // Retro preset: [quantize, scanlines, vignette]
-    const quant = activePreset.passes[0] as PassEffect & { levels: number } | undefined
-    const scan = activePreset.passes[1] as PassEffect & { resolution: number; intensity: number } | undefined
+    const quant = activePreset.passes[0] as (PassEffect & { levels: number }) | undefined
+    const scan = activePreset.passes[1] as (PassEffect & { resolution: number; intensity: number }) | undefined
     if (quant) quant.levels = retroParams.levels
     if (scan) {
       scan.resolution = retroParams.scanResolution
@@ -532,9 +546,11 @@ async function main() {
   // To keep both videos animation-phase-aligned, the capture resets
   // `elapsed` (which drives sprite float + VHS/static pass time) so
   // both clips start at t=0.
-  ;(window as Window & {
-    __captureScene?: (name: string, durationMs?: number) => Promise<void>
-  }).__captureScene = async function captureScene(name: string, durationMs = 3000): Promise<void> {
+  ;(
+    window as Window & {
+      __captureScene?: (name: string, durationMs?: number) => Promise<void>
+    }
+  ).__captureScene = async function captureScene(name: string, durationMs = 3000): Promise<void> {
     if (!name || typeof name !== 'string') {
       console.error('[captureScene] usage: __captureScene("passfx-off", 3000)')
       return
@@ -543,12 +559,7 @@ async function main() {
     const mainCanvas = renderer.domElement as HTMLCanvasElement
 
     function pickMimeType(): string {
-      const candidates = [
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/webm',
-        'video/mp4',
-      ]
+      const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']
       for (const m of candidates) {
         if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) return m
       }

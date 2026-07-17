@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClientBridge, type ClientBridge } from '@three-flatland/bridge/client'
-import {
-  defaultParams,
-  fromArgs,
-  toArgs,
-  clampParam,
-  type ParamKey,
-  type ZzfxParams,
-} from './params'
+import { defaultParams, fromArgs, toArgs, clampParam, type ParamKey, type ZzfxParams } from './params'
 import type {
   ZzfxCandidate,
   ZzfxConfigEvent,
@@ -153,9 +146,7 @@ export function useZzfxSession(): ZzfxSessionState {
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [generateStream, setGenerateStream] = useState('')
   const [candidates, setCandidates] = useState<ZzfxCandidate[]>([])
-  const [lastGenerateSource, setLastGenerateSource] = useState<
-    ZzfxGenerateResultEvent['source'] | null
-  >(null)
+  const [lastGenerateSource, setLastGenerateSource] = useState<ZzfxGenerateResultEvent['source'] | null>(null)
   const [playRequest, setPlayRequest] = useState<{
     params: (number | null | undefined)[]
     requestId: number

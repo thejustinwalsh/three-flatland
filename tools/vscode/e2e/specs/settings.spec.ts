@@ -49,9 +49,7 @@ test.describe('FL tool settings', () => {
 
     await evaluateInVSCode(
       async (vscode, arg) => {
-        await vscode.workspace
-          .getConfiguration()
-          .update(arg.setting, false, vscode.ConfigurationTarget.Workspace)
+        await vscode.workspace.getConfiguration().update(arg.setting, false, vscode.ConfigurationTarget.Workspace)
       },
       { setting: SETTING }
     )
@@ -79,9 +77,7 @@ test.describe('FL tool settings', () => {
 
     await evaluateInVSCode(
       async (vscode, arg) => {
-        await vscode.workspace
-          .getConfiguration()
-          .update(arg.setting, true, vscode.ConfigurationTarget.Workspace)
+        await vscode.workspace.getConfiguration().update(arg.setting, true, vscode.ConfigurationTarget.Workspace)
       },
       { setting: SETTING }
     )
@@ -122,9 +118,7 @@ test.describe('FL tool settings', () => {
 
     await evaluateInVSCode(
       async (vscode, arg) => {
-        await vscode.workspace
-          .getConfiguration()
-          .update(arg.setting, false, vscode.ConfigurationTarget.Workspace)
+        await vscode.workspace.getConfiguration().update(arg.setting, false, vscode.ConfigurationTarget.Workspace)
       },
       { setting: SETTING }
     )
@@ -137,9 +131,7 @@ test.describe('FL tool settings', () => {
 
     await evaluateInVSCode(
       async (vscode, arg) => {
-        await vscode.workspace
-          .getConfiguration()
-          .update(arg.setting, true, vscode.ConfigurationTarget.Workspace)
+        await vscode.workspace.getConfiguration().update(arg.setting, true, vscode.ConfigurationTarget.Workspace)
       },
       { setting: SETTING }
     )
@@ -213,19 +205,15 @@ test.describe('FL tool settings', () => {
       try {
         const lenses = await bridge.evaluate(
           async (vscode, arg) => {
-            const ext = vscode.extensions.all.find(
-              (e) => e.packageJSON.name === '@three-flatland/vscode'
-            )
+            const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
             if (ext && !ext.isActive) await ext.activate()
             const [folder] = vscode.workspace.workspaceFolders ?? []
             const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
             const doc = await vscode.workspace.openTextDocument(uri)
             await vscode.window.showTextDocument(doc)
-            const result = (await vscode.commands.executeCommand(
-              'vscode.executeCodeLensProvider',
-              uri,
-              100
-            )) as { command?: { command: string } }[]
+            const result = (await vscode.commands.executeCommand('vscode.executeCodeLensProvider', uri, 100)) as {
+              command?: { command: string }
+            }[]
             return result.map((l) => l.command?.command ?? null)
           },
           { file: 'src/sounds.ts' }
@@ -275,11 +263,9 @@ test.describe('FL tool settings', () => {
           const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
           const doc = await vscode.workspace.openTextDocument(uri)
           await vscode.window.showTextDocument(doc)
-          const lenses = (await vscode.commands.executeCommand(
-            'vscode.executeCodeLensProvider',
-            uri,
-            1000
-          )) as { command?: { title: string } }[]
+          const lenses = (await vscode.commands.executeCommand('vscode.executeCodeLensProvider', uri, 1000)) as {
+            command?: { title: string }
+          }[]
           return lenses.map((l) => l.command?.title ?? null).filter((t): t is string => t !== null)
         },
         { file: 'src/audio-sources.ts' }
@@ -292,10 +278,7 @@ test.describe('FL tool settings', () => {
     const fetchTitles = async () => {
       const deadline = Date.now() + 15_000
       let titles = await fetchTitlesOnce()
-      while (
-        titles.some((t) => t.replace(/\s+/g, ' ') === '$(search) Searching…') &&
-        Date.now() < deadline
-      ) {
+      while (titles.some((t) => t.replace(/\s+/g, ' ') === '$(search) Searching…') && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 150))
         titles = await fetchTitlesOnce()
       }
@@ -311,9 +294,7 @@ test.describe('FL tool settings', () => {
 
     await evaluateInVSCode(
       async (vscode, arg) => {
-        await vscode.workspace
-          .getConfiguration()
-          .update(arg.setting, false, vscode.ConfigurationTarget.Workspace)
+        await vscode.workspace.getConfiguration().update(arg.setting, false, vscode.ConfigurationTarget.Workspace)
       },
       { setting: SETTING }
     )
@@ -325,9 +306,7 @@ test.describe('FL tool settings', () => {
 
     await evaluateInVSCode(
       async (vscode, arg) => {
-        await vscode.workspace
-          .getConfiguration()
-          .update(arg.setting, true, vscode.ConfigurationTarget.Workspace)
+        await vscode.workspace.getConfiguration().update(arg.setting, true, vscode.ConfigurationTarget.Workspace)
       },
       { setting: SETTING }
     )

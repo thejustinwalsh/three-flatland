@@ -29,9 +29,7 @@ function pendingForever<T>(): Promise<T> {
 // `useThree(selector)` invokes the selector with a stub state that exposes a
 // fake `gl` renderer object — useSkiaContext only reads `s.gl`.
 vi.mock('@react-three/fiber', () => ({
-  useThree: vi.fn(<T,>(selector: (state: { gl: object }) => T) =>
-    selector({ gl: { __mock: 'renderer' } }),
-  ),
+  useThree: vi.fn(<T,>(selector: (state: { gl: object }) => T) => selector({ gl: { __mock: 'renderer' } })),
 }))
 
 // Mock the SkiaContext module to control the singleton via test helpers.
@@ -114,11 +112,7 @@ function Probe() {
 }
 
 function withSuspense(children: React.ReactNode) {
-  return (
-    <Suspense fallback={<div data-testid="loading">loading</div>}>
-      {children}
-    </Suspense>
-  )
+  return <Suspense fallback={<div data-testid="loading">loading</div>}>{children}</Suspense>
 }
 
 describe('useSkiaContext', () => {
@@ -131,11 +125,7 @@ describe('useSkiaContext', () => {
 
   it('case 1: returns the nearest React context value when provided', () => {
     const fake = { id: 'nearest', isDestroyed: false } as unknown as SkiaContext
-    render(
-      <SkiaReactContext.Provider value={fake}>
-        {withSuspense(<Probe />)}
-      </SkiaReactContext.Provider>,
-    )
+    render(<SkiaReactContext.Provider value={fake}>{withSuspense(<Probe />)}</SkiaReactContext.Provider>)
 
     expect(screen.getByTestId('result').textContent).toBe('nearest')
     expect(Skia.init).not.toHaveBeenCalled()
@@ -239,11 +229,7 @@ describe('useSkiaContext', () => {
     // circuits the function.
     const fake = { id: 'nearest', isDestroyed: false } as unknown as SkiaContext
 
-    render(
-      <SkiaReactContext.Provider value={fake}>
-        {withSuspense(<Probe />)}
-      </SkiaReactContext.Provider>,
-    )
+    render(<SkiaReactContext.Provider value={fake}>{withSuspense(<Probe />)}</SkiaReactContext.Provider>)
 
     expect(useThree).toHaveBeenCalled()
   })

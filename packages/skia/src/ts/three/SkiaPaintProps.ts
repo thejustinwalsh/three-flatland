@@ -24,12 +24,7 @@ export interface SkiaPaintProps {
 
 function colorToRGBA(c: SkiaColor): [number, number, number, number] {
   if (Array.isArray(c)) return c
-  return [
-    ((c >> 16) & 0xff) / 255,
-    ((c >> 8) & 0xff) / 255,
-    (c & 0xff) / 255,
-    ((c >> 24) & 0xff) / 255,
-  ]
+  return [((c >> 16) & 0xff) / 255, ((c >> 8) & 0xff) / 255, (c & 0xff) / 255, ((c >> 24) & 0xff) / 255]
 }
 
 /**

@@ -12,9 +12,7 @@ describe('encodeMessage', () => {
   it('prefixes a byte-count Content-Length header', () => {
     const frame = encodeMessage({ hello: true })
     const json = Buffer.from(JSON.stringify({ hello: true }), 'utf8')
-    expect(frame.toString('utf8')).toBe(
-      `Content-Length: ${json.byteLength}\r\n\r\n${json.toString('utf8')}`
-    )
+    expect(frame.toString('utf8')).toBe(`Content-Length: ${json.byteLength}\r\n\r\n${json.toString('utf8')}`)
   })
 
   it('counts UTF-8 bytes, not UTF-16 string length, for multi-byte content', () => {
@@ -83,10 +81,7 @@ describe('MessageDecoder', () => {
   it('ignores unrelated headers preceding Content-Length', () => {
     const json = Buffer.from(JSON.stringify({ ok: true }), 'utf8')
     const raw = Buffer.concat([
-      Buffer.from(
-        `Content-Type: application/json\r\nContent-Length: ${json.byteLength}\r\n\r\n`,
-        'ascii'
-      ),
+      Buffer.from(`Content-Type: application/json\r\nContent-Length: ${json.byteLength}\r\n\r\n`, 'ascii'),
       json,
     ])
     const [body] = decodeAll([raw])
@@ -95,10 +90,7 @@ describe('MessageDecoder', () => {
 
   it('matches the Content-Length header name case-insensitively', () => {
     const json = Buffer.from(JSON.stringify({ ok: true }), 'utf8')
-    const raw = Buffer.concat([
-      Buffer.from(`content-length: ${json.byteLength}\r\n\r\n`, 'ascii'),
-      json,
-    ])
+    const raw = Buffer.concat([Buffer.from(`content-length: ${json.byteLength}\r\n\r\n`, 'ascii'), json])
     const [body] = decodeAll([raw])
     expect(JSON.parse(body!.toString('utf8'))).toEqual({ ok: true })
   })

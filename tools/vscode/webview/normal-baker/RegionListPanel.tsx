@@ -6,11 +6,7 @@ import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import type { NormalBakerDefaults } from './normalBakerStore'
 import { directionColor } from './direction'
 import { resolveDirection } from './fieldResolution'
-import {
-  presentationDragMoveArgs,
-  presentationStepMoveArgs,
-  toPresentationOrder,
-} from './presentationOrder'
+import { presentationDragMoveArgs, presentationStepMoveArgs, toPresentationOrder } from './presentationOrder'
 import type { EditableRegion } from './regionOps'
 
 const s = stylex.create({
@@ -156,9 +152,7 @@ export function RegionListPanel({
   }, [selectedIds])
 
   const computeDropBeforeIndex = (clientY: number): number => {
-    const rows = presentation
-      .map((r) => rowRefs.current.get(r.id))
-      .filter((el): el is HTMLLIElement => el != null)
+    const rows = presentation.map((r) => rowRefs.current.get(r.id)).filter((el): el is HTMLLIElement => el != null)
     for (let i = 0; i < rows.length; i++) {
       const rect = rows[i]!.getBoundingClientRect()
       if (clientY < rect.top + rect.height / 2) return i
@@ -208,12 +202,7 @@ export function RegionListPanel({
       headerActions={
         <>
           <ToolbarButton icon="add" title="Add region" onClick={onAdd} />
-          <ToolbarButton
-            icon="trash"
-            title="Delete selected"
-            onClick={onDelete}
-            disabled={selectedIds.size === 0}
-          />
+          <ToolbarButton icon="trash" title="Delete selected" onClick={onDelete} disabled={selectedIds.size === 0} />
         </>
       }
     >
@@ -247,10 +236,7 @@ export function RegionListPanel({
                 >
                   <Icon name="gripper" />
                 </span>
-                <span
-                  {...stylex.props(s.swatch)}
-                  style={{ backgroundColor: directionColor(direction) }}
-                />
+                <span {...stylex.props(s.swatch)} style={{ backgroundColor: directionColor(direction) }} />
                 <span {...stylex.props(s.label)}>region {descriptorIndex}</span>
                 <span {...stylex.props(s.coords)}>
                   {r.x},{r.y} {r.w}×{r.h}
@@ -272,10 +258,7 @@ export function RegionListPanel({
                     disabled={i === presentation.length - 1}
                     onClick={(e) => {
                       e.stopPropagation()
-                      const { fromIndex, toIndex } = presentationStepMoveArgs(
-                        descriptorIndex,
-                        'down'
-                      )
+                      const { fromIndex, toIndex } = presentationStepMoveArgs(descriptorIndex, 'down')
                       onMove(fromIndex, toIndex)
                     }}
                   />
@@ -284,11 +267,7 @@ export function RegionListPanel({
             )
           })}
           {drag ? (
-            <DropIndicator
-              dropBeforeIndex={drag.dropBeforeIndex}
-              rowRefs={rowRefs}
-              presentation={presentation}
-            />
+            <DropIndicator dropBeforeIndex={drag.dropBeforeIndex} rowRefs={rowRefs} presentation={presentation} />
           ) : null}
         </ul>
       )}
@@ -317,9 +296,6 @@ function DropIndicator({
       ? rowRefs.current?.get(presentation[dropBeforeIndex]!.id)
       : rowRefs.current?.get(presentation[presentation.length - 1]!.id)
   if (!targetRow) return null
-  const top =
-    dropBeforeIndex < presentation.length
-      ? targetRow.offsetTop
-      : targetRow.offsetTop + targetRow.offsetHeight
+  const top = dropBeforeIndex < presentation.length ? targetRow.offsetTop : targetRow.offsetTop + targetRow.offsetHeight
   return <div {...stylex.props(s.dropIndicator)} style={{ top }} />
 }

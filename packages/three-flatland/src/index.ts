@@ -47,10 +47,7 @@ export {
 } from './debug/debug-sink'
 
 // Devtools provider helper for non-Flatland three.js apps
-export {
-  createDevtoolsProvider,
-  type DevtoolsProviderHandle,
-} from './debug/createDevtoolsProvider'
+export { createDevtoolsProvider, type DevtoolsProviderHandle } from './debug/createDevtoolsProvider'
 
 // Remote-debugging bridges (#114) — WebSocket wire transport over the
 // bus-frame binary format. Provider side is usually reached via
@@ -73,4 +70,3 @@ export { isDevtoolsActive } from './debug-protocol'
 
 // Observable mutation strategies for three.js value types
 export * from './observable'
-

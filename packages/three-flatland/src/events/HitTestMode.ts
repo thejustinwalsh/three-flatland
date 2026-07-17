@@ -20,15 +20,9 @@ export function resolveHitTestMode(
     throw new Error(`three-flatland: ${className} has no supported hitTestModes`)
   }
   if (supported.includes(requested)) return requested
-  const fallback = supported.includes('bounds')
-    ? 'bounds'
-    : supported.includes('radius')
-      ? 'radius'
-      : supported[0]!
+  const fallback = supported.includes('bounds') ? 'bounds' : supported.includes('radius') ? 'radius' : supported[0]!
   if (process.env.NODE_ENV !== 'production') {
-    console.warn(
-      `three-flatland: ${className} does not support hitTestMode '${requested}', using '${fallback}'`
-    )
+    console.warn(`three-flatland: ${className} does not support hitTestMode '${requested}', using '${fallback}'`)
   }
   return fallback
 }

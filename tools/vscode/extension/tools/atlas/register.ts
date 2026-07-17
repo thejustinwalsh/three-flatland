@@ -44,11 +44,7 @@ export function registerAtlasTool(context: vscode.ExtensionContext): vscode.Disp
         void vscode.window.showErrorMessage(`FL Sprite Atlas: no matching image found for ${name}.`)
         return
       }
-      await vscode.commands.executeCommand(
-        'vscode.openWith',
-        resolved,
-        AtlasCustomEditorProvider.viewType
-      )
+      await vscode.commands.executeCommand('vscode.openWith', resolved, AtlasCustomEditorProvider.viewType)
     })
   )
 

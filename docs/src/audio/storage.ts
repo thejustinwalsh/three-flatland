@@ -18,10 +18,10 @@ export type VolumeLevel = 0 | 1 | 2 | 3
 
 /** Master volume scaling — applied to BOTH SFX and music bus master gain. */
 export const VOLUME_LEVELS: Record<VolumeLevel, number> = {
-    0: 0, // mute
-    1: 0.3, // low (30% master)
-    2: 0.6, // medium
-    3: 1.0, // high (full)
+  0: 0, // mute
+  1: 0.3, // low (30% master)
+  2: 0.6, // medium
+  3: 1.0, // high (full)
 }
 
 const KEY_VOLUME = 'flatland-sound-volume'
@@ -35,75 +35,74 @@ const KEY_MUSIC_TRACK = 'flatland-music-track'
 export const DEFAULT_MUSIC_VOLUME = 0.3
 
 export function loadVolumeLevel(): VolumeLevel {
-    if (typeof localStorage === 'undefined') return 0
-    const stored = localStorage.getItem(KEY_VOLUME)
-    if (stored !== null) {
-        const n = parseInt(stored, 10)
-        if (n >= 0 && n <= 3) return n as VolumeLevel
-    }
-    const legacy = localStorage.getItem(KEY_VOLUME_LEGACY)
-    if (legacy === 'true') {
-        localStorage.removeItem(KEY_VOLUME_LEGACY)
-        return 2
-    }
-    if (legacy === 'false') {
-        localStorage.removeItem(KEY_VOLUME_LEGACY)
-        return 0
-    }
+  if (typeof localStorage === 'undefined') return 0
+  const stored = localStorage.getItem(KEY_VOLUME)
+  if (stored !== null) {
+    const n = parseInt(stored, 10)
+    if (n >= 0 && n <= 3) return n as VolumeLevel
+  }
+  const legacy = localStorage.getItem(KEY_VOLUME_LEGACY)
+  if (legacy === 'true') {
+    localStorage.removeItem(KEY_VOLUME_LEGACY)
+    return 2
+  }
+  if (legacy === 'false') {
+    localStorage.removeItem(KEY_VOLUME_LEGACY)
     return 0
+  }
+  return 0
 }
 
 export function saveVolumeLevel(level: VolumeLevel): void {
-    if (typeof localStorage === 'undefined') return
-    localStorage.setItem(KEY_VOLUME, String(level))
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(KEY_VOLUME, String(level))
 }
 
 export function hasVolumePreference(): boolean {
-    if (typeof localStorage === 'undefined') return false
-    return localStorage.getItem(KEY_VOLUME) !== null || localStorage.getItem(KEY_VOLUME_LEGACY) !== null
+  if (typeof localStorage === 'undefined') return false
+  return localStorage.getItem(KEY_VOLUME) !== null || localStorage.getItem(KEY_VOLUME_LEGACY) !== null
 }
 
 export function loadMusicVolume(): number {
-    if (typeof localStorage === 'undefined') return DEFAULT_MUSIC_VOLUME
-    const stored = localStorage.getItem(KEY_MUSIC_VOLUME)
-    if (stored === null) return DEFAULT_MUSIC_VOLUME
-    const n = parseFloat(stored)
-    if (Number.isFinite(n) && n >= 0 && n <= 1) return n
-    return DEFAULT_MUSIC_VOLUME
+  if (typeof localStorage === 'undefined') return DEFAULT_MUSIC_VOLUME
+  const stored = localStorage.getItem(KEY_MUSIC_VOLUME)
+  if (stored === null) return DEFAULT_MUSIC_VOLUME
+  const n = parseFloat(stored)
+  if (Number.isFinite(n) && n >= 0 && n <= 1) return n
+  return DEFAULT_MUSIC_VOLUME
 }
 
 export function saveMusicVolume(v: number): void {
-    if (typeof localStorage === 'undefined') return
-    const clamped = Math.max(0, Math.min(1, v))
-    localStorage.setItem(KEY_MUSIC_VOLUME, String(clamped))
+  if (typeof localStorage === 'undefined') return
+  const clamped = Math.max(0, Math.min(1, v))
+  localStorage.setItem(KEY_MUSIC_VOLUME, String(clamped))
 }
 
 export function loadMusicUserStopped(): boolean {
-    if (typeof localStorage === 'undefined') return false
-    return localStorage.getItem(KEY_MUSIC_USER_STOPPED) === 'true'
+  if (typeof localStorage === 'undefined') return false
+  return localStorage.getItem(KEY_MUSIC_USER_STOPPED) === 'true'
 }
 
 export function saveMusicUserStopped(stopped: boolean): void {
-    if (typeof localStorage === 'undefined') return
-    if (stopped) localStorage.setItem(KEY_MUSIC_USER_STOPPED, 'true')
-    else localStorage.removeItem(KEY_MUSIC_USER_STOPPED)
+  if (typeof localStorage === 'undefined') return
+  if (stopped) localStorage.setItem(KEY_MUSIC_USER_STOPPED, 'true')
+  else localStorage.removeItem(KEY_MUSIC_USER_STOPPED)
 }
 
 export function loadMusicTrackIndex(): number {
-    if (typeof localStorage === 'undefined') return 0
-    const stored = localStorage.getItem(KEY_MUSIC_TRACK)
-    if (stored === null) return 0
-    const n = parseInt(stored, 10)
-    return Number.isFinite(n) && n >= 0 ? n : 0
+  if (typeof localStorage === 'undefined') return 0
+  const stored = localStorage.getItem(KEY_MUSIC_TRACK)
+  if (stored === null) return 0
+  const n = parseInt(stored, 10)
+  return Number.isFinite(n) && n >= 0 ? n : 0
 }
 
 export function saveMusicTrackIndex(index: number): void {
-    if (typeof localStorage === 'undefined') return
-    localStorage.setItem(KEY_MUSIC_TRACK, String(Math.max(0, Math.floor(index))))
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(KEY_MUSIC_TRACK, String(Math.max(0, Math.floor(index))))
 }
-
 
 /* Accept HMR — keep audio state alive across dev iterations. */
 if (import.meta.hot) {
-    import.meta.hot.accept()
+  import.meta.hot.accept()
 }

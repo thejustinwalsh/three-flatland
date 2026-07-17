@@ -17,9 +17,7 @@ let lastErrors: string[] = []
 export function validateAtlas(json: unknown): boolean {
   lastErrors = []
   if (!ajvValidate(json)) {
-    lastErrors = (ajvValidate.errors ?? []).map(
-      (e) => `${e.instancePath || '/'} ${e.message ?? 'invalid'}`
-    )
+    lastErrors = (ajvValidate.errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message ?? 'invalid'}`)
     return false
   }
   const sources = (json as { meta: { sources?: { format: string }[] } }).meta.sources
@@ -76,9 +74,7 @@ export function formatTexturePackerAtlasErrors(): string {
 
 export function assertValidTexturePackerAtlas(json: unknown): void {
   if (!validateTexturePackerAtlas(json)) {
-    throw new Error(
-      `TexturePacker atlas JSON failed strict schema: ${formatTexturePackerAtlasErrors()}`
-    )
+    throw new Error(`TexturePacker atlas JSON failed strict schema: ${formatTexturePackerAtlasErrors()}`)
   }
 }
 

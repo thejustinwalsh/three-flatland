@@ -41,7 +41,11 @@ const TF_RGBA32 = 13
 interface ThreeKtx2File {
   isValid(): boolean
   startTranscoding(): boolean
-  getImageLevelInfo(mip: number, layer: number, face: number): { width: number; height: number; origWidth: number; origHeight: number }
+  getImageLevelInfo(
+    mip: number,
+    layer: number,
+    face: number
+  ): { width: number; height: number; origWidth: number; origHeight: number }
   getImageTranscodedSizeInBytes(mip: number, layer: number, face: number, fmt: number): number
   transcodeImage(
     dst: Uint8Array,
@@ -51,7 +55,7 @@ interface ThreeKtx2File {
     fmt: number,
     decodeFlags: number,
     channel0: number,
-    channel1: number,
+    channel1: number
   ): boolean
   close(): void
   delete(): void
@@ -110,10 +114,13 @@ async function transcodeViaOurs(ktx2: Uint8Array): Promise<Uint8Array> {
     try {
       const rc = t.fl_ktx2_transcode_level(
         transcoder,
-        0, 0, 0,
+        0,
+        0,
+        0,
         TF_RGBA32,
-        outPtr, totalPixels,
-        0, // decode_flags
+        outPtr,
+        totalPixels,
+        0 // decode_flags
       )
       if (rc !== FL_TRANSCODER_E_OK) throw new Error(`ours: transcode_level rc=${rc}`)
       return new Uint8Array(t.memory.buffer, outPtr, totalPixels * 4).slice()

@@ -5,11 +5,7 @@
 // rather than throwing — a missing/unbuilt sidecar must not crash
 // extension activation or block the other three tools.
 import * as vscode from 'vscode'
-import {
-  CodelensServiceClient,
-  preferNewest,
-  resolveBinary,
-} from '@three-flatland/codelens-service'
+import { CodelensServiceClient, preferNewest, resolveBinary } from '@three-flatland/codelens-service'
 import { log } from '../../log'
 
 let clientPromise: Promise<CodelensServiceClient | null> | null = null
@@ -21,14 +17,10 @@ let clientPromise: Promise<CodelensServiceClient | null> | null = null
  * any reason: no workspace open, binary not found (not `cargo build`-ed
  * locally), or the `initialize` handshake failing.
  */
-export function getSidecarClient(
-  context: vscode.ExtensionContext
-): Promise<CodelensServiceClient | null> {
+export function getSidecarClient(context: vscode.ExtensionContext): Promise<CodelensServiceClient | null> {
   if (!clientPromise)
     clientPromise = startSidecar(context).catch((err) => {
-      log(
-        `zzfx sidecar: unexpected error starting: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
-      )
+      log(`zzfx sidecar: unexpected error starting: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`)
       return null
     })
   return clientPromise
@@ -75,13 +67,7 @@ function productionCandidates(context: vscode.ExtensionContext): string[] {
  * the extension root reaches it directly.
  */
 function devCandidates(context: vscode.ExtensionContext): string[] {
-  const sidecarTarget = vscode.Uri.joinPath(
-    context.extensionUri,
-    '..',
-    'codelens-service',
-    'sidecar',
-    'target'
-  )
+  const sidecarTarget = vscode.Uri.joinPath(context.extensionUri, '..', 'codelens-service', 'sidecar', 'target')
   // preferNewest, not release-then-debug: a stale week-old `--release`
   // build (packaging leftover) must never shadow the fresh debug binary a
   // `cargo build`/`cargo test` iteration just produced — a real e2e run
@@ -92,9 +78,7 @@ function devCandidates(context: vscode.ExtensionContext): string[] {
   ])
 }
 
-async function startSidecar(
-  context: vscode.ExtensionContext
-): Promise<CodelensServiceClient | null> {
+async function startSidecar(context: vscode.ExtensionContext): Promise<CodelensServiceClient | null> {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
   if (!workspaceRoot) {
     log('zzfx sidecar: no workspace folder open — CodeLenses disabled')
@@ -118,9 +102,7 @@ async function startSidecar(
     // `sidecar resolved →` line: name which artifact actually runs.
     log(`zzfx sidecar: binary resolved → ${binaryPath}`)
   } catch (err) {
-    log(
-      `zzfx sidecar: binary not found — CodeLenses disabled: ${err instanceof Error ? err.message : err}`
-    )
+    log(`zzfx sidecar: binary not found — CodeLenses disabled: ${err instanceof Error ? err.message : err}`)
     return null
   }
 
@@ -139,19 +121,13 @@ async function startSidecar(
 
   try {
     const init = await client.start()
-    log(
-      `zzfx sidecar: started v${init.version}${init.degraded ? ' (degraded — in-memory cache)' : ''}`
-    )
+    log(`zzfx sidecar: started v${init.version}${init.degraded ? ' (degraded — in-memory cache)' : ''}`)
   } catch (err) {
-    log(
-      `zzfx sidecar: failed to start — CodeLenses disabled: ${err instanceof Error ? err.message : err}`
-    )
+    log(`zzfx sidecar: failed to start — CodeLenses disabled: ${err instanceof Error ? err.message : err}`)
     return null
   }
 
-  client.stderr?.on('data', (chunk: Buffer) =>
-    log(`zzfx sidecar[stderr]: ${chunk.toString('utf8').trim()}`)
-  )
+  client.stderr?.on('data', (chunk: Buffer) => log(`zzfx sidecar[stderr]: ${chunk.toString('utf8').trim()}`))
   client.onError((err) => log(`zzfx sidecar: ${err.message}`))
   client.onExit((code, signal) => {
     log(`zzfx sidecar: exited (code=${code}, signal=${signal})`)

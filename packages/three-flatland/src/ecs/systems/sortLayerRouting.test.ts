@@ -55,9 +55,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     const registry = getRegistry(group)
     expect(registry.activeBatches.length).toBe(3)
 
-    const masks = registry.activeBatches
-      .map((e) => e.get(BatchMeta)!.layersMask)
-      .sort((x, y) => x - y)
+    const masks = registry.activeBatches.map((e) => e.get(BatchMeta)!.layersMask).sort((x, y) => x - y)
     expect(masks).toEqual([1, 4, 8]) // Layers.set(n) = 1 << n
 
     // The batch meshes inherit their run's camera mask

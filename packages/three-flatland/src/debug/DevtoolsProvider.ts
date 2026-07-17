@@ -11,13 +11,7 @@ import type {
   RegistryPayload,
   StatsPayload,
 } from '../debug-protocol'
-import {
-  DISCOVERY_CHANNEL,
-  IDLE_PING_MS,
-  STATS_BATCH_MS,
-  providerChannelName,
-  stampMessage,
-} from '../debug-protocol'
+import { DISCOVERY_CHANNEL, IDLE_PING_MS, STATS_BATCH_MS, providerChannelName, stampMessage } from '../debug-protocol'
 import type { RegistryData } from '../ecs/batchUtils'
 import { SubscriberRegistry } from './SubscriberRegistry'
 import { StatsCollector } from './StatsCollector'
@@ -37,11 +31,7 @@ import { PERF_TRACK, perfMeasure } from './perf-track'
 import type { BufferCursor } from './bus-pool'
 import type { BusTransport } from './bus-transport'
 import { createBusTransport } from './bus-transport'
-import {
-  createProviderRemoteBridge,
-  type RemoteBridgeHandle,
-  type WebSocketLike,
-} from './bus-websocket'
+import { createProviderRemoteBridge, type RemoteBridgeHandle, type WebSocketLike } from './bus-websocket'
 
 export interface DevtoolsProviderOptions {
   /** Human-readable name shown in the consumer UI. */
@@ -497,9 +487,7 @@ export class DevtoolsProvider {
             if (pixels instanceof Uint8Array) {
               new Uint8Array(convBuf).set(pixels)
             } else {
-              new Uint8Array(convBuf).set(
-                new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength)
-              )
+              new Uint8Array(convBuf).set(new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength))
             }
             transport.convert(
               {
@@ -656,12 +644,7 @@ export class DevtoolsProvider {
   private _handleDataMessage(msg: DebugMessage): void {
     switch (msg.type) {
       case 'subscribe': {
-        this._subs.onSubscribe(
-          msg.payload.id,
-          msg.payload.features,
-          msg.payload.registry,
-          msg.payload.buffers
-        )
+        this._subs.onSubscribe(msg.payload.id, msg.payload.features, msg.payload.registry, msg.payload.buffers)
         // Force a keyframe on the next stream frame if any entry in the
         // new subscription asks for stream mode — otherwise the consumer
         // decoder won't be able to decode until the next scheduled key.

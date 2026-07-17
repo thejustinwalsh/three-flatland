@@ -18,11 +18,7 @@ import type { FloatInput } from '../types'
  * // Decrease contrast (flatten)
  * contrast(texture(tex, uv()), 0.5)
  */
-export function contrast(
-  inputColor: Node<'vec4'>,
-  amount: FloatInput,
-  midpoint: FloatInput = 0.5
-): Node<'vec4'> {
+export function contrast(inputColor: Node<'vec4'>, amount: FloatInput, midpoint: FloatInput = 0.5): Node<'vec4'> {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
   const midpointNode = typeof midpoint === 'number' ? float(midpoint) : midpoint
 
@@ -46,9 +42,7 @@ export function contrastSCurve(inputColor: Node<'vec4'>, amount: FloatInput): No
 
   // Compute S-curve: 3x^2 - 2x^3 (smoothstep formula)
   // Then mix with original based on amount
-  const smoothed = inputColor.rgb
-    .mul(inputColor.rgb)
-    .mul(float(3).sub(inputColor.rgb.mul(float(2))))
+  const smoothed = inputColor.rgb.mul(inputColor.rgb).mul(float(3).sub(inputColor.rgb.mul(float(2))))
   const adjustedRGB = mix(inputColor.rgb, smoothed, amountNode)
 
   return vec4(adjustedRGB, inputColor.a)

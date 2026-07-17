@@ -1,5 +1,17 @@
 import { Not, type World } from 'koota'
-import { Position, PrevPosition, Velocity, Ball, Paddle, Block, PaddleState, GameState, Input, Dissolving, AttractAI } from '../traits'
+import {
+  Position,
+  PrevPosition,
+  Velocity,
+  Ball,
+  Paddle,
+  Block,
+  PaddleState,
+  GameState,
+  Input,
+  Dissolving,
+  AttractAI,
+} from '../traits'
 import {
   PADDLE_BUMP_FORCE,
   PADDLE_BUMP_DECAY,
@@ -207,7 +219,10 @@ export function updateAttractAI(world: World, delta: number) {
   const ai = world.get(AttractAI)!
 
   // Find ball state
-  let ballX = 0, ballY = 0, velX = 0, velY = 0
+  let ballX = 0,
+    ballY = 0,
+    velX = 0,
+    velY = 0
   let hasBall = false
   for (const ball of world.query(Ball, Position, Velocity)) {
     const pos = ball.get(Position)!

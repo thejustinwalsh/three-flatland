@@ -73,9 +73,7 @@ export async function playParams(params: ZzfxParams): Promise<PlaybackHandle> {
  * Safe to call outside a user gesture: it never touches the (possibly
  * suspended) AudioContext's output.
  */
-export async function synthesizeSamples(
-  params: ZzfxParams
-): Promise<{ samples: Float32Array; sampleRate: number }> {
+export async function synthesizeSamples(params: ZzfxParams): Promise<{ samples: Float32Array; sampleRate: number }> {
   const { ZZFX } = await loadZzfx()
   return { samples: ZZFX.buildSamples(...toDenseArgs(params)), sampleRate: ZZFX.sampleRate }
 }

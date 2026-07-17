@@ -4,11 +4,7 @@ import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial, Sprite2DMaterialOptions } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { BatchRegistry } from '../ecs/traits'
-import {
-  getWorldDefaultMaterial,
-  getWorldEffectVariant,
-  type RegistryData,
-} from '../ecs/batchUtils'
+import { getWorldDefaultMaterial, getWorldEffectVariant, type RegistryData } from '../ecs/batchUtils'
 import { buildBatchQueryView, type BatchQueryView } from '../pipeline/batchQuery'
 
 /**

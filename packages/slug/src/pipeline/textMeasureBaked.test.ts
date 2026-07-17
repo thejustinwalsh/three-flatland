@@ -12,10 +12,7 @@ import { packBaked } from '../bake'
 import type { BakedFontData } from '../baked'
 import type { SlugGlyphData } from '../types'
 
-const FONT_PATH = resolve(
-  __dirname,
-  '../../../../examples/three/slug-text/public/Inter-Regular.ttf'
-)
+const FONT_PATH = resolve(__dirname, '../../../../examples/three/slug-text/public/Inter-Regular.ttf')
 const buf = readFileSync(FONT_PATH)
 const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
 
@@ -56,24 +53,13 @@ beforeAll(() => {
 describe('measureTextBaked', () => {
   it('width matches the opentype path to within half-float precision', () => {
     const runtime = measureText(otFont, glyphs, 'Hello', 48)
-    const bakedMeasured = measureTextBaked(
-      baked,
-      glyphs,
-      unitsPerEm,
-      ascender,
-      descender,
-      'Hello',
-      48
-    )
+    const bakedMeasured = measureTextBaked(baked, glyphs, unitsPerEm, ascender, descender, 'Hello', 48)
     expect(bakedMeasured.width).toBeCloseTo(runtime.width, 2)
   })
 
   it('fontBoundingBoxAscent + Descent = fontSize * (asc − desc)', () => {
     const m = measureTextBaked(baked, glyphs, unitsPerEm, ascender, descender, 'x', 48)
-    expect(m.fontBoundingBoxAscent + m.fontBoundingBoxDescent).toBeCloseTo(
-      48 * (ascender - descender),
-      3
-    )
+    expect(m.fontBoundingBoxAscent + m.fontBoundingBoxDescent).toBeCloseTo(48 * (ascender - descender), 3)
   })
 
   it('empty string returns zero width + zero ink bounds', () => {
@@ -137,15 +123,7 @@ describe('measureTextBaked', () => {
     const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
     const roundtripped = unpackBaked(readGlb(buf))
 
-    const m = measureTextBaked(
-      roundtripped,
-      roundtripped.glyphs,
-      unitsPerEm,
-      ascender,
-      descender,
-      'Hello',
-      48
-    )
+    const m = measureTextBaked(roundtripped, roundtripped.glyphs, unitsPerEm, ascender, descender, 'Hello', 48)
     expect(m.width).toBeGreaterThan(0)
     // Real ink bounds — cap-height is ~73% of em, should be nonzero
     // and strictly less than the font ascent (48 * 0.97 ≈ 46.5).

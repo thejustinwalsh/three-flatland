@@ -26,13 +26,7 @@
  *                 in marker order
  */
 import { providerChannelName, type DebugMessage } from '../debug-protocol'
-import {
-  BUS_TYPE,
-  FrameReader,
-  FrameWriter,
-  HEADER_BYTES,
-  type BusType,
-} from './bus-frame'
+import { BUS_TYPE, FrameReader, FrameWriter, HEADER_BYTES, type BusType } from './bus-frame'
 
 /** TLV section ids for the WS wire (distinct from data FEATURE_IDs). */
 export const WIRE_SECTION = {
@@ -52,12 +46,7 @@ const PROVIDER_TO_CONSUMER = new Set<string>([
 ])
 
 /** Consumer → provider message types (forwarded consumer-side → WS). */
-const CONSUMER_TO_PROVIDER = new Set<string>([
-  'provider:query',
-  'subscribe',
-  'unsubscribe',
-  'ack',
-])
+const CONSUMER_TO_PROVIDER = new Set<string>(['provider:query', 'subscribe', 'unsubscribe', 'ack'])
 
 export function isProviderToConsumer(type: string): boolean {
   return PROVIDER_TO_CONSUMER.has(type)
@@ -223,12 +212,7 @@ function setAtPath(root: unknown, path: (string | number)[], value: unknown): vo
 
 const MAX_DEPTH = 16
 
-function extractBinaries(
-  value: unknown,
-  out: ExtractedBinary[],
-  path: (string | number)[],
-  depth: number
-): unknown {
+function extractBinaries(value: unknown, out: ExtractedBinary[], path: (string | number)[], depth: number): unknown {
   if (depth > MAX_DEPTH) return value
   if (value instanceof ArrayBuffer) {
     out.push({ bytes: new Uint8Array(value), ctor: 'ArrayBuffer', path: [...path] })
@@ -432,10 +416,7 @@ export function createConsumerRemoteBridge(options: ConsumerBridgeOptions): Remo
 }
 
 function resolveSocket(remote: WebSocketLike | string): WebSocketLike {
-  const socket =
-    typeof remote === 'string'
-      ? (new WebSocket(remote) as unknown as WebSocketLike)
-      : remote
+  const socket = typeof remote === 'string' ? (new WebSocket(remote) as unknown as WebSocketLike) : remote
   socket.binaryType = 'arraybuffer'
   return socket
 }

@@ -23,9 +23,7 @@ describe('BasisU latency benchmark (Path B)', () => {
     const ktx2 = await encodeKtx2(decoded, { mode: 'etc1s', quality: 128, mipmaps: true })
     const ms = performance.now() - t0
 
-    process.stdout.write(
-      `[basisu-bench] 2048² ETC1S+mips: ${ms.toFixed(0)}ms, ${(ktx2.length / 1024).toFixed(0)}KB\n`,
-    )
+    process.stdout.write(`[basisu-bench] 2048² ETC1S+mips: ${ms.toFixed(0)}ms, ${(ktx2.length / 1024).toFixed(0)}KB\n`)
 
     // Correctness: the encode must produce a non-empty KTX2 everywhere.
     expect(ktx2.length).toBeGreaterThan(0)

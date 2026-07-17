@@ -64,8 +64,7 @@ export function litSpecular(
   const lightVec = Array.isArray(lightColor) ? vec3(...lightColor) : lightColor
   const attNode = typeof attenuation === 'number' ? float(attenuation) : attenuation
   const shineNode = typeof shininess === 'number' ? float(shininess) : shininess
-  const strengthNode =
-    typeof specularStrength === 'number' ? float(specularStrength) : specularStrength
+  const strengthNode = typeof specularStrength === 'number' ? float(specularStrength) : specularStrength
 
   // Half-vector for Blinn-Phong
   const halfDir = lightDir.add(viewVec).normalize()

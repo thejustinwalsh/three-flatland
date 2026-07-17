@@ -55,7 +55,7 @@ export class DebugRegistry {
     name: string,
     ref: RegistryEntry['ref'],
     kind: RegistryEntryKind,
-    opts: { label?: string; length?: number } = {},
+    opts: { label?: string; length?: number } = {}
   ): void {
     const length = opts.length ?? ref.length
     const existing = this._entries.get(name)
@@ -144,8 +144,8 @@ export class DebugRegistry {
             if (!e.warnedOversized) {
               console.warn(
                 `[devtools] registry entry '${name}' (${need}B) exceeds remaining ` +
-                `pool buffer space (${have}B). Shipping metadata only. ` +
-                `Bump POOL.large.size in bus-pool.ts if you want this entry visible.`,
+                  `pool buffer space (${have}B). Shipping metadata only. ` +
+                  `Bump POOL.large.size in bus-pool.ts if you want this entry visible.`
               )
               e.warnedOversized = true
             }

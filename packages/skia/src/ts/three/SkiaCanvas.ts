@@ -79,19 +79,25 @@ function restoreGLState(gl: WebGL2RenderingContext, s: SavedGLState): void {
   gl.viewport(s.viewport[0]!, s.viewport[1]!, s.viewport[2]!, s.viewport[3]!)
   gl.scissor(s.scissorBox[0]!, s.scissorBox[1]!, s.scissorBox[2]!, s.scissorBox[3]!)
 
-  if (s.scissorTest) gl.enable(gl.SCISSOR_TEST); else gl.disable(gl.SCISSOR_TEST)
-  if (s.blend) gl.enable(gl.BLEND); else gl.disable(gl.BLEND)
-  if (s.depthTest) gl.enable(gl.DEPTH_TEST); else gl.disable(gl.DEPTH_TEST)
+  if (s.scissorTest) gl.enable(gl.SCISSOR_TEST)
+  else gl.disable(gl.SCISSOR_TEST)
+  if (s.blend) gl.enable(gl.BLEND)
+  else gl.disable(gl.BLEND)
+  if (s.depthTest) gl.enable(gl.DEPTH_TEST)
+  else gl.disable(gl.DEPTH_TEST)
   gl.depthMask(s.depthMask)
-  if (s.cullFace) gl.enable(gl.CULL_FACE); else gl.disable(gl.CULL_FACE)
-  if (s.stencilTest) gl.enable(gl.STENCIL_TEST); else gl.disable(gl.STENCIL_TEST)
+  if (s.cullFace) gl.enable(gl.CULL_FACE)
+  else gl.disable(gl.CULL_FACE)
+  if (s.stencilTest) gl.enable(gl.STENCIL_TEST)
+  else gl.disable(gl.STENCIL_TEST)
 }
 
 /**
  * Renderer type — any Three.js renderer (WebGLRenderer, WebGPURenderer, etc.).
  * Uses a minimal structural type so we don't depend on WebGPURenderer at the type level.
  */
-export interface AnyRenderer extends Record<string, any> { // eslint-disable-line @typescript-eslint/no-explicit-any
+export interface AnyRenderer extends Record<string, any> {
+  // eslint-disable-line @typescript-eslint/no-explicit-any
   getContext(): unknown
   getRenderTarget(): unknown
   setRenderTarget(target: unknown): void
@@ -167,28 +173,36 @@ export class SkiaCanvas extends Object3D {
 
   // ── Public properties ──
 
-  get renderer(): AnyRenderer | null { return this._renderer }
+  get renderer(): AnyRenderer | null {
+    return this._renderer
+  }
   set renderer(v: AnyRenderer | null) {
     if (v === this._renderer) return
     this._renderer = v
     if (v) this._initSkia(v)
   }
 
-  get width(): number { return this._width }
+  get width(): number {
+    return this._width
+  }
   set width(v: number) {
     if (v === this._width) return
     this._width = v
     this._syncRenderTarget()
   }
 
-  get height(): number { return this._height }
+  get height(): number {
+    return this._height
+  }
   set height(v: number) {
     if (v === this._height) return
     this._height = v
     this._syncRenderTarget()
   }
 
-  get overlay(): boolean { return this._overlay }
+  get overlay(): boolean {
+    return this._overlay
+  }
   set overlay(v: boolean) {
     if (v === this._overlay) return
     this._overlay = v
@@ -344,7 +358,6 @@ export class SkiaCanvas extends Object3D {
       }
     }
 
-
     this._needsRedraw = false
   }
 
@@ -369,11 +382,15 @@ export class SkiaCanvas extends Object3D {
       return
     }
 
-    Skia.init(renderer).then((ctx) => {
-      this._skiaContext = ctx
-      this._resolveReady(ctx)
-      this._syncRenderTarget()
-    }).catch((err) => { throw new Error(`Failed to initialize Skia context: ${err instanceof Error ? err.message : String(err)}`) })
+    Skia.init(renderer)
+      .then((ctx) => {
+        this._skiaContext = ctx
+        this._resolveReady(ctx)
+        this._syncRenderTarget()
+      })
+      .catch((err) => {
+        throw new Error(`Failed to initialize Skia context: ${err instanceof Error ? err.message : String(err)}`)
+      })
   }
 
   private _resolveReady(ctx: SkiaContext): void {
@@ -441,7 +458,9 @@ export class SkiaCanvas extends Object3D {
     if (this._glTexId > 0) return this._glTexId
 
     const gl = this._skiaContext?.gl
-    const glState = this._skiaContext?._glState as { textures?: Map<number, WebGLTexture | null>; nextId: number } | undefined
+    const glState = this._skiaContext?._glState as
+      | { textures?: Map<number, WebGLTexture | null>; nextId: number }
+      | undefined
     if (!gl || !glState?.textures || !this._renderTarget) return 0
 
     // Force Three.js to init the render target
@@ -462,8 +481,8 @@ export class SkiaCanvas extends Object3D {
       if (data) {
         // Three.js WebGL backend stores the GL texture — check various key names
         for (const prop of Object.keys(data)) {
-          if ((data)[prop] instanceof WebGLTexture) {
-            glTexture = (data)[prop]
+          if (data[prop] instanceof WebGLTexture) {
+            glTexture = data[prop]
             break
           }
         }
@@ -474,7 +493,10 @@ export class SkiaCanvas extends Object3D {
 
     // Check cache
     const cached = this._glTexHandles.get(glTexture)
-    if (cached) { this._glTexId = cached; return cached }
+    if (cached) {
+      this._glTexId = cached
+      return cached
+    }
 
     // Register in Skia's GL handle table
     const id = glState.nextId++

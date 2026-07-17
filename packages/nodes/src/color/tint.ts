@@ -18,11 +18,7 @@ import type { Vec3Input, FloatInput } from '../types'
  * // Partial tint with uniform
  * tint(texture(tex, uv()), tintColorUniform, 0.5)
  */
-export function tint(
-  inputColor: Node<'vec4'>,
-  tintColor: Vec3Input,
-  strength: FloatInput = 1
-): Node<'vec4'> {
+export function tint(inputColor: Node<'vec4'>, tintColor: Vec3Input, strength: FloatInput = 1): Node<'vec4'> {
   const tintVec = Array.isArray(tintColor) ? vec3(...tintColor) : tintColor
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
@@ -46,11 +42,7 @@ export function tint(
  * // Flash white on hit
  * tintAdditive(texture(tex, uv()), [1, 1, 1], hitFlashUniform)
  */
-export function tintAdditive(
-  inputColor: Node<'vec4'>,
-  addColor: Vec3Input,
-  strength: FloatInput = 1
-): Node<'vec4'> {
+export function tintAdditive(inputColor: Node<'vec4'>, addColor: Vec3Input, strength: FloatInput = 1): Node<'vec4'> {
   const addVec = Array.isArray(addColor) ? vec3(...addColor) : addColor
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 

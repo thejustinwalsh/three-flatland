@@ -78,10 +78,7 @@ export class ZzfxHistoryStore {
    * ONE shared store instance), then merged OVER a fresh disk read so a
    * key written by another process since our load survives instead of
    * being clobbered. */
-  private async write(
-    key: string,
-    apply: (file: HistoryFile) => HistoryFile
-  ): Promise<ZzfxHistoryBatch[]> {
+  private async write(key: string, apply: (file: HistoryFile) => HistoryFile): Promise<ZzfxHistoryBatch[]> {
     const current = await this.load()
     const next = apply(current)
     this.loader!.set(next)

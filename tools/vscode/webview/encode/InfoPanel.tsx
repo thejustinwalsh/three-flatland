@@ -116,7 +116,7 @@ function describeQuality(
   // In inspect mode the doc-slice quality fields don't reflect how the
   // file we're inspecting was actually encoded (we have no way to know);
   // showing them would be misleading, so fall back to the format alone.
-  inspect = false,
+  inspect = false
 ): string {
   if (inspect) return format.toUpperCase()
   if (format === 'webp') return `WebP q=${webp.quality}`
@@ -166,9 +166,7 @@ export function InfoPanel() {
       : null
   const cpuKtx2 = encodedFormat === 'ktx2'
 
-  const totalGpuBytes = gpuStats
-    ? gpuStats.mips.reduce((a, m) => a + m.bytes, 0)
-    : 0
+  const totalGpuBytes = gpuStats ? gpuStats.mips.reduce((a, m) => a + m.bytes, 0) : 0
   const gpuBaseline = sw * sh * 4
   const gpuRatio = gpuBaseline > 0 ? totalGpuBytes / gpuBaseline : 0
 
@@ -183,7 +181,9 @@ export function InfoPanel() {
             </div>
             <div {...stylex.props(s.row)}>
               <span {...stylex.props(s.rowLabel)}>Dimensions</span>
-              <span {...stylex.props(s.rowValue)}>{sw} × {sh}</span>
+              <span {...stylex.props(s.rowValue)}>
+                {sw} × {sh}
+              </span>
             </div>
             <div {...stylex.props(s.row)}>
               <span {...stylex.props(s.rowLabel)}>Original</span>
@@ -206,19 +206,12 @@ export function InfoPanel() {
               <>
                 <div {...stylex.props(s.barWrap)}>
                   <InfoBar ratio={wireRatio} />
-                  <span
-                    {...stylex.props(
-                      s.barCaption,
-                      wireRegressed && s.rowValueOver,
-                    )}
-                  >
+                  <span {...stylex.props(s.barCaption, wireRegressed && s.rowValueOver)}>
                     {sourceLen > 0 ? `${(wireRatio * 100).toFixed(0)}% of original` : ''}
                   </span>
                 </div>
                 <div {...stylex.props(s.row)}>
-                  <span {...stylex.props(s.rowLabel)}>
-                    {wireRegressed ? 'Grew' : 'Saved'}
-                  </span>
+                  <span {...stylex.props(s.rowLabel)}>{wireRegressed ? 'Grew' : 'Saved'}</span>
                   <span {...stylex.props(s.rowValue, wireRegressed && s.rowValueOver)}>
                     {formatBytes(wireRegressed ? encodedLen - sourceLen : wireSavedBytes)}
                   </span>
@@ -237,18 +230,10 @@ export function InfoPanel() {
             <div {...stylex.props(s.row)}>
               <span {...stylex.props(s.rowLabel)}>Decoded RGBA</span>
               <span {...stylex.props(s.rowValue)}>
-                {cpuKtx2
-                  ? 'not allocated'
-                  : cpuDecodedRgba !== null
-                    ? formatBytes(cpuDecodedRgba)
-                    : '—'}
+                {cpuKtx2 ? 'not allocated' : cpuDecodedRgba !== null ? formatBytes(cpuDecodedRgba) : '—'}
               </span>
             </div>
-            {cpuKtx2 && (
-              <div {...stylex.props(s.cpuNote)}>
-                KTX2 transcoder writes GPU-native blocks directly.
-              </div>
-            )}
+            {cpuKtx2 && <div {...stylex.props(s.cpuNote)}>KTX2 transcoder writes GPU-native blocks directly.</div>}
           </div>
         </InfoSection>
 
@@ -256,9 +241,7 @@ export function InfoPanel() {
           <div {...stylex.props(s.sectionBody)}>
             <div {...stylex.props(s.row)}>
               <span {...stylex.props(s.rowLabel)}>Format</span>
-              <span {...stylex.props(s.rowValue)}>
-                {gpuStats?.formatLabel ?? '—'}
-              </span>
+              <span {...stylex.props(s.rowValue)}>{gpuStats?.formatLabel ?? '—'}</span>
             </div>
             {gpuStats && gpuStats.mips.length > 0 && (
               <div {...stylex.props(s.mipsTable)}>
@@ -298,7 +281,9 @@ function MipRow({ index, m }: { index: number; m: { width: number; height: numbe
   return (
     <>
       <span {...stylex.props(s.mipsCellMuted)}>Mip {index}</span>
-      <span {...stylex.props(s.mipsCell)}>{m.width} × {m.height}</span>
+      <span {...stylex.props(s.mipsCell)}>
+        {m.width} × {m.height}
+      </span>
       <span {...stylex.props(s.mipsCell)}>{formatBytes(m.bytes)}</span>
     </>
   )
@@ -308,9 +293,7 @@ function CapRow({ label, supported }: { label: string; supported: boolean }) {
   return (
     <div {...stylex.props(s.row)}>
       <span {...stylex.props(s.rowLabel)}>{label}</span>
-      <span {...stylex.props(supported ? s.capCheck : s.capCross)}>
-        {supported ? '✓' : '✗'}
-      </span>
+      <span {...stylex.props(supported ? s.capCheck : s.capCross)}>{supported ? '✓' : '✗'}</span>
     </div>
   )
 }

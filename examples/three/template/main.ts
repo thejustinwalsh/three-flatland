@@ -47,12 +47,14 @@ async function main() {
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
   const devtools = createDevtoolsProvider({ name: 'template' })
   const params = { tint: '#ffffff' }
-  pane.addBinding(params, 'tint', {
-    label: 'tint',
-    options: { White: '#ffffff', Cyan: '#47cca9', Pink: '#ff6b9d' },
-  }).on('change', (ev) => {
-    sprite.tint.set(ev.value)
-  })
+  pane
+    .addBinding(params, 'tint', {
+      label: 'tint',
+      options: { White: '#ffffff', Cyan: '#47cca9', Pink: '#ff6b9d' },
+    })
+    .on('change', (ev) => {
+      sprite.tint.set(ev.value)
+    })
 
   // Resize
   window.addEventListener('resize', () => {

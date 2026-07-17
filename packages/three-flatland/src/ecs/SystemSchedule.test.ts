@@ -52,9 +52,7 @@ describe('SystemSchedule', () => {
     let count = 0
     const sys = () => count++
     const schedule = new SystemSchedule()
-    schedule
-      .add(sys, { track: PERF_TRACK.Batch, name: 'sys' })
-      .add(sys, { track: PERF_TRACK.Batch, name: 'sys-dup' })
+    schedule.add(sys, { track: PERF_TRACK.Batch, name: 'sys' }).add(sys, { track: PERF_TRACK.Batch, name: 'sys-dup' })
 
     schedule.nextFrame()
     schedule.run(fakeWorld)
@@ -66,10 +64,7 @@ describe('SystemSchedule', () => {
     const a = () => order.push('a')
     const b = () => order.push('b')
     const schedule = new SystemSchedule()
-    schedule
-      .add(a, { track: PERF_TRACK.Batch, name: 'a' })
-      .add(b, { track: PERF_TRACK.Batch, name: 'b' })
-      .remove(a)
+    schedule.add(a, { track: PERF_TRACK.Batch, name: 'a' }).add(b, { track: PERF_TRACK.Batch, name: 'b' }).remove(a)
 
     schedule.nextFrame()
     schedule.run(fakeWorld)

@@ -15,11 +15,7 @@ import type { Vec2Input } from '../types'
  * @example
  * const upscaled = eagle(texture, uv, [1/256, 1/256])
  */
-export function eagle(
-  tex: Texture,
-  uv: Node<'vec2'>,
-  texelSize: Vec2Input = [1 / 256, 1 / 256]
-) {
+export function eagle(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 / 256, 1 / 256]) {
   const texel = Array.isArray(texelSize) ? vec2(...texelSize) : texelSize
 
   // Source pixel position
@@ -82,11 +78,7 @@ export function eagle(
  * @param texelSize - Source texel size
  * @returns Upscaled color
  */
-export function superEagle(
-  tex: Texture,
-  uv: Node<'vec2'>,
-  texelSize: Vec2Input = [1 / 256, 1 / 256]
-) {
+export function superEagle(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 / 256, 1 / 256]) {
   const texel = Array.isArray(texelSize) ? vec2(...texelSize) : texelSize
 
   const srcPixel = floor(uv.div(texel.mul(0.5)))
@@ -134,11 +126,7 @@ export function superEagle(
  * @param texelSize - Source texel size
  * @returns Upscaled color
  */
-export function sai2x(
-  tex: Texture,
-  uv: Node<'vec2'>,
-  texelSize: Vec2Input = [1 / 256, 1 / 256]
-) {
+export function sai2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 / 256, 1 / 256]) {
   const texel = Array.isArray(texelSize) ? vec2(...texelSize) : texelSize
 
   const srcPixel = floor(uv.div(texel.mul(0.5)))
@@ -146,8 +134,7 @@ export function sai2x(
   const localPos = uv.div(texel.mul(0.5)).sub(srcPixel)
 
   // Sample 4x4 for 2xSaI
-  const getPixel = (ox: number, oy: number) =>
-    sampleTexture(tex, srcUV.add(texel.mul(vec2(ox, oy))))
+  const getPixel = (ox: number, oy: number) => sampleTexture(tex, srcUV.add(texel.mul(vec2(ox, oy))))
 
   const _I = getPixel(-1, -1)
   const _E = getPixel(0, -1)
@@ -185,10 +172,7 @@ export function sai2x(
   const bottomLeft = preferBC.select(C.rgb.add(A.rgb).mul(0.5), C)
   const bottomRight = AeqD.and(BeqC).select(
     A.rgb.add(B.rgb).add(C.rgb).add(D.rgb).mul(0.25),
-    preferAD.select(
-      A.rgb.add(D.rgb).mul(0.5),
-      preferBC.select(B.rgb.add(C.rgb).mul(0.5), A)
-    )
+    preferAD.select(A.rgb.add(D.rgb).mul(0.5), preferBC.select(B.rgb.add(C.rgb).mul(0.5), A))
   )
 
   const topRow = isRight.select(vec4(topRight, A.a), topLeft)

@@ -123,11 +123,7 @@ export class SlugFont {
   }> = []
 
   /** @internal — Use SlugFontLoader to create instances. */
-  constructor(
-    glyphs: Map<number, SlugGlyphData>,
-    textures: SlugTextureData,
-    metrics: SlugFontMetrics
-  ) {
+  constructor(glyphs: Map<number, SlugGlyphData>, textures: SlugTextureData, metrics: SlugFontMetrics) {
     this.glyphs = glyphs
     this.curveTexture = textures.curveTexture
     this.bandTexture = textures.bandTexture
@@ -162,15 +158,7 @@ export class SlugFont {
       shapeText: (text, fontSize, options) =>
         shapeTextBaked(bakedData, font.glyphs, font.unitsPerEm, text, fontSize, options),
       measureText: (text, fontSize) =>
-        measureTextBaked(
-          bakedData,
-          font.glyphs,
-          font.unitsPerEm,
-          font.ascender,
-          font.descender,
-          text,
-          fontSize
-        ),
+        measureTextBaked(bakedData, font.glyphs, font.unitsPerEm, font.ascender, font.descender, text, fontSize),
       wrapLines: (text, fontSize, maxWidth) =>
         wrapLinesBaked(bakedData, font.glyphs, font.unitsPerEm, text, fontSize, maxWidth),
     }
@@ -203,8 +191,7 @@ export class SlugFont {
    * backend was bound at load time.
    */
   shapeText(text: string, fontSize: number, options?: ShapeTextOptions): PositionedGlyph[] {
-    if (!this._backend)
-      throw new Error('SlugFont: text shaping not available — load via SlugFontLoader')
+    if (!this._backend) throw new Error('SlugFont: text shaping not available — load via SlugFontLoader')
     return this._backend.shapeText(text, fontSize, options)
   }
 
@@ -219,8 +206,7 @@ export class SlugFont {
    * widths agree across all three APIs.
    */
   measureText(text: string, fontSize: number): TextMetrics {
-    if (!this._backend)
-      throw new Error('SlugFont: text measurement not available — load via SlugFontLoader')
+    if (!this._backend) throw new Error('SlugFont: text measurement not available — load via SlugFontLoader')
     return this._backend.measureText(text, fontSize)
   }
 
@@ -236,11 +222,7 @@ export class SlugFont {
    * - Call with `maxWidth` omitted to measure unwrapped multi-line text
    *   (still honours embedded `\n` as forced breaks via the shaper).
    */
-  measureParagraph(
-    text: string,
-    fontSize: number,
-    options: MeasureParagraphOptions = {}
-  ): ParagraphMetrics {
+  measureParagraph(text: string, fontSize: number, options: MeasureParagraphOptions = {}): ParagraphMetrics {
     const lineHeight = options.lineHeight ?? 1.2
     const lines = this.wrapText(text, fontSize, options.maxWidth)
 
@@ -309,8 +291,7 @@ export class SlugFont {
    * breaks are deterministic across baked and runtime paths.
    */
   wrapText(text: string, fontSize: number, maxWidth?: number): string[] {
-    if (!this._backend)
-      throw new Error('SlugFont: wrapText not available — load via SlugFontLoader')
+    if (!this._backend) throw new Error('SlugFont: wrapText not available — load via SlugFontLoader')
     return this._backend.wrapLines(text, fontSize, maxWidth)
   }
 
@@ -352,12 +333,7 @@ export class SlugFont {
     miterLimit = 4
   ): SlugGlyphData | null {
     for (const s of this.strokeSets) {
-      if (
-        s.width === width &&
-        s.joinStyle === joinStyle &&
-        s.capStyle === capStyle &&
-        s.miterLimit === miterLimit
-      ) {
+      if (s.width === width && s.joinStyle === joinStyle && s.capStyle === capStyle && s.miterLimit === miterLimit) {
         return this.glyphs.get(sourceGlyphId + s.glyphIdOffset) ?? null
       }
     }

@@ -159,11 +159,7 @@ describe('presentationDragMoveArgs — drag-and-drop end-to-end', () => {
     expect(ids(toPresentationOrder(resultA))).toEqual(before)
 
     const dropJustAfterOwnSlot = presentationDragMoveArgs(2, 3, REGIONS.length)
-    const resultB = reorderRegion(
-      REGIONS,
-      dropJustAfterOwnSlot.fromIndex,
-      dropJustAfterOwnSlot.toIndex
-    )
+    const resultB = reorderRegion(REGIONS, dropJustAfterOwnSlot.fromIndex, dropJustAfterOwnSlot.toIndex)
     expect(ids(toPresentationOrder(resultB))).toEqual(before)
   })
 })

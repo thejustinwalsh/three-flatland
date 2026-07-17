@@ -11,9 +11,7 @@ export type RequestMessage = {
   args: unknown[]
 }
 
-export type ResponseMessage =
-  | { id: number; ok: true; result: unknown }
-  | { id: number; ok: false; error: string }
+export type ResponseMessage = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string }
 
 /** Written to stderr once the bridge's WebSocket server is ready to accept a connection. */
 export const LISTENING_PREFIX = 'FL_E2E_BRIDGE_LISTENING'

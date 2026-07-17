@@ -34,9 +34,7 @@ export interface GpuTimingProbeBackend {
   device?: unknown
 }
 
-export function detectGpuTimingActive(
-  backend: GpuTimingProbeBackend | undefined,
-): boolean {
+export function detectGpuTimingActive(backend: GpuTimingProbeBackend | undefined): boolean {
   if (!backend) return false
   if (backend.trackTimestamp !== true) return false
   const name = backend.constructor?.name
@@ -47,9 +45,7 @@ export function detectGpuTimingActive(
   // on adapter support, so the early return above is usually enough.
   // The features.has check covers the pre-init window where
   // trackTimestamp is still optimistic.
-  const device = backend.device as
-    | { features?: { has(name: string): boolean } }
-    | undefined
+  const device = backend.device as { features?: { has(name: string): boolean } } | undefined
   if (device?.features) {
     return device.features.has('timestamp-query')
   }
@@ -78,10 +74,7 @@ export function detectGpuTimingActive(
  *               (no `GPUDevice`) take this path; the resolve side is still
  *               gated by `detectGpuTimingActive`'s `disjoint` check.
  */
-export function resolveTrackTimestamp(
-  want: boolean,
-  backend: GpuTimingProbeBackend | undefined,
-): boolean | null {
+export function resolveTrackTimestamp(want: boolean, backend: GpuTimingProbeBackend | undefined): boolean | null {
   if (!backend) return null
   if (!want) return false
   const device = backend.device as { features?: { has(name: string): boolean } } | undefined

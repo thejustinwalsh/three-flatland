@@ -49,7 +49,12 @@ export function SpriteSizzleStats() {
         <span style={{ whiteSpace: 'nowrap' }}>
           <span
             ref={countRef}
-            style={{ display: 'inline-block', minWidth: '6.2ch', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+            style={{
+              display: 'inline-block',
+              minWidth: '6.2ch',
+              textAlign: 'right',
+              fontVariantNumeric: 'tabular-nums',
+            }}
           >
             0
           </span>{' '}
@@ -58,7 +63,9 @@ export function SpriteSizzleStats() {
       </Headline>
       <Subline>
         Automatic, ECS-driven batching · FPS:{' '}
-        <span style={{ display: 'inline-block', minWidth: '2ch', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        <span
+          style={{ display: 'inline-block', minWidth: '2ch', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+        >
           <span ref={fpsRef}>0</span>
         </span>
       </Subline>

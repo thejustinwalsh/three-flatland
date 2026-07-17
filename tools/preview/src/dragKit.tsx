@@ -67,8 +67,12 @@ type DragApi = {
 }
 
 const EMPTY_STATE: DragState = {
-  payload: null, clientX: 0, clientY: 0,
-  atlasImageUri: null, atlasFrames: null, atlasSize: null,
+  payload: null,
+  clientX: 0,
+  clientY: 0,
+  atlasImageUri: null,
+  atlasFrames: null,
+  atlasSize: null,
 }
 
 const DragContext = createContext<DragApi | null>(null)
@@ -77,18 +81,21 @@ const DragContext = createContext<DragApi | null>(null)
 export function DragProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DragState>(EMPTY_STATE)
 
-  const api = useMemo<DragApi>(() => ({
-    state,
-    start: ({ payload, clientX, clientY, atlasImageUri, atlasFrames, atlasSize }) => {
-      setState({ payload, clientX, clientY, atlasImageUri, atlasFrames, atlasSize })
-    },
-    move: (clientX, clientY) => {
-      setState((s) => (s.payload ? { ...s, clientX, clientY } : s))
-    },
-    end: () => {
-      setState(EMPTY_STATE)
-    },
-  }), [state])
+  const api = useMemo<DragApi>(
+    () => ({
+      state,
+      start: ({ payload, clientX, clientY, atlasImageUri, atlasFrames, atlasSize }) => {
+        setState({ payload, clientX, clientY, atlasImageUri, atlasFrames, atlasSize })
+      },
+      move: (clientX, clientY) => {
+        setState((s) => (s.payload ? { ...s, clientX, clientY } : s))
+      },
+      end: () => {
+        setState(EMPTY_STATE)
+      },
+    }),
+    [state]
+  )
 
   // Window-level move/up so the drag follows the cursor even when it leaves
   // the original source's bounds.
@@ -148,14 +155,14 @@ export function useDragSource() {
         atlasImageUri: string
         atlasFrames: DragAtlasFrame[]
         atlasSize: { w: number; h: number }
-      },
+      }
     ) => {
       if (!api) return
       if (args.atlasFrames.length === 0) return
       e.preventDefault()
       api.start({ ...args, clientX: e.clientX, clientY: e.clientY })
     },
-    [api],
+    [api]
   )
 }
 
@@ -277,11 +284,7 @@ function DragLayer() {
   const wrapperLeft = state.clientX - stackWidth / 2 + CELL_SIZE / 2
 
   return (
-    <div
-      {...stylex.props(s.layer)}
-      style={{ left: wrapperLeft, top: state.clientY }}
-      aria-hidden="true"
-    >
+    <div {...stylex.props(s.layer)} style={{ left: wrapperLeft, top: state.clientY }} aria-hidden="true">
       {visible.map((f, i) => {
         const t = computeThumbStyle(atlasImageUri, atlasSize.w, atlasSize.h, f, CELL_SIZE, CELL_SIZE)
         return (
@@ -310,10 +313,7 @@ function DragLayer() {
         )
       })}
       {total > 1 ? (
-        <span
-          {...stylex.props(s.countBadge)}
-          style={{ left: stackWidth - 8, zIndex: visible.length + 1 }}
-        >
+        <span {...stylex.props(s.countBadge)} style={{ left: stackWidth - 8, zIndex: visible.length + 1 }}>
           {total}
         </span>
       ) : null}

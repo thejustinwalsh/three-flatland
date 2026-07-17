@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
@@ -107,7 +115,7 @@ export function groupCells(frames: readonly string[]): { name: string; count: nu
  */
 function playheadFrameToPx(
   frameIndex: number,
-  groups: readonly { name: string; count: number; startIndex: number }[],
+  groups: readonly { name: string; count: number; startIndex: number }[]
 ): number {
   let x = 0
   let consumed = 0
@@ -519,7 +527,9 @@ export function AnimationTimeline({
   const dragApi = useOptionalDrag()
   const cursorXRef = useRef<number | null>(null)
   useEffect(() => {
-    const onMove = (e: PointerEvent) => { cursorXRef.current = e.clientX }
+    const onMove = (e: PointerEvent) => {
+      cursorXRef.current = e.clientX
+    }
     window.addEventListener('pointermove', onMove)
     return () => window.removeEventListener('pointermove', onMove)
   }, [])
@@ -827,11 +837,7 @@ export function AnimationTimeline({
   // Cursor variant applied to the timeline outer wrapper while space is
   // held (mirrors the CanvasStage's pan-mode cursor). Computed once so
   // every render path (empty / dots / detail) uses the same value.
-  const spaceCursor: 'grab' | 'grabbing' | undefined = isPanning
-    ? 'grabbing'
-    : isSpaceDown
-    ? 'grab'
-    : undefined
+  const spaceCursor: 'grab' | 'grabbing' | undefined = isPanning ? 'grabbing' : isSpaceDown ? 'grab' : undefined
 
   if (frames.length === 0) {
     return (
@@ -952,27 +958,26 @@ export function AnimationTimeline({
             onPointerMove={onCellPointerMove}
             onPointerUp={onCellPointerUpForReorder}
             onPointerCancel={onCellPointerUpForReorder}
-            onContextMenu={onSetEvent ? (e) => {
-              e.preventDefault()
-              const existing = events?.[String(g.startIndex)] ?? ''
-              setEventPopover({
-                frameIndex: g.startIndex,
-                x: e.clientX,
-                y: e.clientY,
-                draft: existing,
-              })
-            } : undefined}
+            onContextMenu={
+              onSetEvent
+                ? (e) => {
+                    e.preventDefault()
+                    const existing = events?.[String(g.startIndex)] ?? ''
+                    setEventPopover({
+                      frameIndex: g.startIndex,
+                      x: e.clientX,
+                      y: e.clientY,
+                      draft: existing,
+                    })
+                  }
+                : undefined
+            }
             title={`${g.name}${renderCount > 1 ? ` ×${renderCount}` : ''}${
               events?.[String(g.startIndex)] ? ` · event: ${events[String(g.startIndex)]}` : ''
             }`}
           >
             {Array.from({ length: renderCount }).map((_, tileIdx) => (
-              <span
-                key={tileIdx}
-                {...stylex.props(s.cellTile)}
-                style={tileBg}
-                aria-hidden="true"
-              />
+              <span key={tileIdx} {...stylex.props(s.cellTile)} style={tileBg} aria-hidden="true" />
             ))}
             {renderCount > 1 ? <span {...stylex.props(s.badge)}>×{renderCount}</span> : null}
             {events?.[String(g.startIndex)] ? (
@@ -1011,19 +1016,21 @@ export function AnimationTimeline({
           }}
         />
       ) : null}
-      {hoverGap != null ? (() => {
-        // Gap pixel = sum of (cell-outer + TRACK_GAP) for cells
-        // before the gap. Center the line in the spread space:
-        // visible gap = TRACK_GAP + GAP_PUSH_PX, so the line sits
-        // at x + (visible-gap)/2 - TRACK_GAP (back off the gutter
-        // we'd already counted toward x).
-        let x = 0
-        for (let i = 0; i < hoverGap && i < groups.length; i++) {
-          x += groups[i]!.count * CELL_BASE + 2 + TRACK_GAP
-        }
-        const left = Math.max(0, x - TRACK_GAP / 2 + GAP_PUSH_PX / 2)
-        return <div {...stylex.props(s.gapLine)} style={{ left }} aria-hidden="true" />
-      })() : null}
+      {hoverGap != null
+        ? (() => {
+            // Gap pixel = sum of (cell-outer + TRACK_GAP) for cells
+            // before the gap. Center the line in the spread space:
+            // visible gap = TRACK_GAP + GAP_PUSH_PX, so the line sits
+            // at x + (visible-gap)/2 - TRACK_GAP (back off the gutter
+            // we'd already counted toward x).
+            let x = 0
+            for (let i = 0; i < hoverGap && i < groups.length; i++) {
+              x += groups[i]!.count * CELL_BASE + 2 + TRACK_GAP
+            }
+            const left = Math.max(0, x - TRACK_GAP / 2 + GAP_PUSH_PX / 2)
+            return <div {...stylex.props(s.gapLine)} style={{ left }} aria-hidden="true" />
+          })()
+        : null}
       {eventPopover != null && onSetEvent ? (
         <div
           data-event-popover=""
@@ -1036,9 +1043,7 @@ export function AnimationTimeline({
             {...stylex.props(s.eventInput)}
             placeholder="event tag"
             value={eventPopover.draft}
-            onChange={(e) =>
-              setEventPopover((prev) => (prev ? { ...prev, draft: e.target.value } : prev))
-            }
+            onChange={(e) => setEventPopover((prev) => (prev ? { ...prev, draft: e.target.value } : prev))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 onSetEvent(eventPopover.frameIndex, eventPopover.draft.trim() || null)

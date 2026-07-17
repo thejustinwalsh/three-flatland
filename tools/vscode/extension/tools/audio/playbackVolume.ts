@@ -13,7 +13,5 @@ export const PLAYBACK_VOLUME_SETTING = 'threeFlatland.audio.playbackVolume'
 
 /** The current trim as a linear gain multiplier — 1.0 at the 0 dB default. */
 export function getPlaybackVolumeMultiplier(): number {
-  return trimToMultiplier(
-    vscode.workspace.getConfiguration().get<number>(PLAYBACK_VOLUME_SETTING, 0)
-  )
+  return trimToMultiplier(vscode.workspace.getConfiguration().get<number>(PLAYBACK_VOLUME_SETTING, 0))
 }

@@ -31,11 +31,7 @@ import {
   BatchRegistry,
 } from '../ecs/traits'
 import { resolveSortLayer, type SortLayerName, type SortLayerValue } from '../pipeline/sortLayers'
-import {
-  getWorldDefaultMaterial,
-  getWorldEffectVariant,
-  type RegistryData,
-} from '../ecs/batchUtils'
+import { getWorldDefaultMaterial, getWorldEffectVariant, type RegistryData } from '../ecs/batchUtils'
 import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 import { observable } from '../observable'
@@ -65,12 +61,7 @@ export {
   ROTATED_FRAME_MASK,
   EFFECT_BIT_OFFSET,
 } from '../materials/effectFlagBits'
-import {
-  LIT_FLAG_MASK,
-  RECEIVE_SHADOWS_MASK,
-  CAST_SHADOW_MASK,
-  ROTATED_FRAME_MASK,
-} from '../materials/effectFlagBits'
+import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, ROTATED_FRAME_MASK } from '../materials/effectFlagBits'
 
 /** Size in floats for each attribute type. */
 const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
@@ -169,12 +160,7 @@ export class Sprite2D extends Mesh {
   // ============================================
 
   /** Hit-test modes supported by this class. See spec §6. */
-  static readonly supportedHitTestModes: readonly HitTestMode[] = [
-    'radius',
-    'bounds',
-    'alpha',
-    'none',
-  ]
+  static readonly supportedHitTestModes: readonly HitTestMode[] = ['radius', 'bounds', 'alpha', 'none']
 
   /** CPU-side alpha data for `'alpha'` hit-test mode. */
   alphaMap: AlphaMap | null = null
@@ -647,10 +633,7 @@ export class Sprite2D extends Mesh {
         3
       )
     )
-    geometry.setAttribute(
-      'uv',
-      new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2)
-    )
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2))
     super(geometry, material)
 
     // Store reference so we can dispose it
@@ -849,13 +832,9 @@ export class Sprite2D extends Mesh {
     if (!bs || bs.batchIdx < 0) return
     const registryEntities = this._flatlandWorld.query(BatchRegistry)
     if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as
-      | { batchSlots: readonly unknown[] }
-      | undefined
+    const registry = registryEntities[0]!.get(BatchRegistry) as { batchSlots: readonly unknown[] } | undefined
     if (!registry) return
-    const mesh = registry.batchSlots[bs.batchIdx] as
-      | { writeShadowRadius(i: number, r: number): void }
-      | undefined
+    const mesh = registry.batchSlots[bs.batchIdx] as { writeShadowRadius(i: number, r: number): void } | undefined
     mesh?.writeShadowRadius(bs.slot, this._resolveShadowRadius())
   }
 
@@ -890,10 +869,7 @@ export class Sprite2D extends Mesh {
    * fallback (`Sprite2DMaterial.getShared`) covers that case instead.
    * @internal
    */
-  private _resolveWorldEffectVariant(
-    texture: Texture,
-    options: Sprite2DMaterialOptions
-  ): Sprite2DMaterial | null {
+  private _resolveWorldEffectVariant(texture: Texture, options: Sprite2DMaterialOptions): Sprite2DMaterial | null {
     if (this._flatlandWorld) {
       const registryEntities = this._flatlandWorld.query(BatchRegistry)
       const registry = registryEntities[0]?.get(BatchRegistry) as RegistryData | undefined
@@ -1005,9 +981,7 @@ export class Sprite2D extends Mesh {
    */
   private _buildEffectsKey(): string {
     return this._effects
-      .filter(
-        (e) => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0
-      )
+      .filter((e) => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0)
       .map((e) => {
         const EC = e.constructor as typeof MaterialEffect
         return `${EC.effectName}:${this._constantsKey(e._constants)}`
@@ -1246,13 +1220,7 @@ export class Sprite2D extends Mesh {
     const i = this._idx
     this._colorA[i] = value
     if (this._batchMesh) {
-      this._batchMesh.writeColor(
-        this._batchSlot,
-        this._colorR[i]!,
-        this._colorG[i]!,
-        this._colorB[i]!,
-        value
-      )
+      this._batchMesh.writeColor(this._batchSlot, this._colorR[i]!, this._colorG[i]!, this._colorB[i]!, value)
     } else if (!this._entity) {
       this._updateOwnColor()
     }
@@ -1502,9 +1470,7 @@ export class Sprite2D extends Mesh {
       const buffer = new Float32Array(4 * size)
 
       // Fill with defaults from schema
-      const values = Array.isArray(config.defaultValue)
-        ? config.defaultValue
-        : [config.defaultValue]
+      const values = Array.isArray(config.defaultValue) ? config.defaultValue : [config.defaultValue]
       for (let v = 0; v < 4; v++) {
         for (let c = 0; c < size; c++) {
           buffer[v * size + c] = values[c] ?? 0
@@ -1605,12 +1571,8 @@ export class Sprite2D extends Mesh {
       // material instances (effect registration / dispose stay
       // isolated); fall back to the module-global shared cache only
       // pre-enrollment.
-      const worldVariant = this._texture
-        ? this._resolveWorldEffectVariant(this._texture, options)
-        : null
-      const newMaterial =
-        worldVariant ??
-        Sprite2DMaterial.getShared({ map: this._texture ?? undefined, ...options })
+      const worldVariant = this._texture ? this._resolveWorldEffectVariant(this._texture, options) : null
+      const newMaterial = worldVariant ?? Sprite2DMaterial.getShared({ map: this._texture ?? undefined, ...options })
 
       if (newMaterial !== this.material) {
         this._switchToMaterial(newMaterial)
@@ -1957,15 +1919,11 @@ export class Sprite2D extends Mesh {
         // Map sprite-local UV through the frame rect so atlas sub-region
         // sprites sample the right pixels; full-texture sprites have a
         // unit frame, making this equivalent to sampleAtlasUV.
-        const sample = this._frame
-          ? this.alphaMap.sampleFrame(u, v, this._frame)
-          : this.alphaMap.sampleAtlasUV(u, v)
+        const sample = this._frame ? this.alphaMap.sampleFrame(u, v, this._frame) : this.alphaMap.sampleAtlasUV(u, v)
         if (sample / 255 < this.alphaThreshold) return
       } else if (!_warnedMissingAlphaMap.has(this) && process.env.NODE_ENV !== 'production') {
         _warnedMissingAlphaMap.add(this)
-        console.warn(
-          "three-flatland: Sprite2D hitTestMode 'alpha' requires an alphaMap — falling back to 'bounds'"
-        )
+        console.warn("three-flatland: Sprite2D hitTestMode 'alpha' requires an alphaMap — falling back to 'bounds'")
       }
     } else {
       // radius — inscribed ellipse: (lx/0.5)^2 + (ly/0.5)^2 <= 1
@@ -2053,9 +2011,7 @@ export class Sprite2D extends Mesh {
     if (!this._entity || !this._flatlandWorld) return
     const registryEntities = this._flatlandWorld.query(BatchRegistry)
     const registry =
-      registryEntities.length > 0
-        ? (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined)
-        : undefined
+      registryEntities.length > 0 ? (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined) : undefined
     this._unenrollFromWorld()
     // SpriteGroup-managed sprites were never in the scene tree — parent
     // them under the group so their own Mesh draw resumes. Auto-managed

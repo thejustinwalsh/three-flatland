@@ -168,9 +168,7 @@ export function createContextLifecycle<C extends LifecycleContext>(
         // The old (dead) context stays assigned; the play command will
         // fail through its own Nack path with the context state visible
         // in stats — strictly more diagnosable than throwing here.
-        log(
-          `reacquire FAILED before ${reason}: ${err instanceof Error ? err.message : String(err)}`
-        )
+        log(`reacquire FAILED before ${reason}: ${err instanceof Error ? err.message : String(err)}`)
         return
       }
       setCurrent(ctx)

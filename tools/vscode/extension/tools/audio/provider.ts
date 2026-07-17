@@ -106,10 +106,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
     this._onDidChangeCodeLenses.fire()
   }
 
-  async provideCodeLenses(
-    document: vscode.TextDocument,
-    _token: vscode.CancellationToken
-  ): Promise<vscode.CodeLens[]> {
+  async provideCodeLenses(document: vscode.TextDocument, _token: vscode.CancellationToken): Promise<vscode.CodeLens[]> {
     const client = await this.getClient()
     if (!client) return []
 
@@ -118,9 +115,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
       const result = await client.parse({ uri: document.uri.toString(), text: document.getText() })
       findings = result.findings
     } catch (err) {
-      log(
-        `zzfx CodeLens: parse failed for ${document.uri.toString()}: ${err instanceof Error ? err.message : err}`
-      )
+      log(`zzfx CodeLens: parse failed for ${document.uri.toString()}: ${err instanceof Error ? err.message : err}`)
       return []
     }
 
@@ -135,9 +130,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
     // inconsistent, hard-to-explain state this setting is meant to avoid —
     // see register.ts's onDidChangeConfiguration, which refreshes every
     // open document's lenses live when this flips.
-    const inlineEnabled = vscode.workspace
-      .getConfiguration()
-      .get<boolean>(INLINE_PLAYBACK_SETTING, true)
+    const inlineEnabled = vscode.workspace.getConfiguration().get<boolean>(INLINE_PLAYBACK_SETTING, true)
 
     for (const finding of findings) {
       const range = rangeFromWire(finding.range)
@@ -196,11 +189,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
           // Play+Stop pair or `$(search)  Not Found` once it settles. Only
           // an INELIGIBLE reference (URL/absolute — the search couldn't
           // mean anything) gets no lens at all.
-          const resolution = this.audioResolver.getLensState(
-            finding.payload.path,
-            sourceDir,
-            workspaceRoot
-          )
+          const resolution = this.audioResolver.getLensState(finding.payload.path, sourceDir, workspaceRoot)
           if (resolution.state === 'ineligible') break
           lenses.push(
             new ZzfxCodeLens(range, finding, 'play', document.uri, {
@@ -223,10 +212,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
     return lenses
   }
 
-  async resolveCodeLens(
-    codeLens: vscode.CodeLens,
-    _token: vscode.CancellationToken
-  ): Promise<vscode.CodeLens> {
+  async resolveCodeLens(codeLens: vscode.CodeLens, _token: vscode.CancellationToken): Promise<vscode.CodeLens> {
     if (!(codeLens instanceof ZzfxCodeLens)) return codeLens
 
     const { finding, variant, docUri } = codeLens

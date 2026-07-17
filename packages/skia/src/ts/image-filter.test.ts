@@ -5,7 +5,9 @@ import { SkiaColorFilter } from './color-filter'
 import { SkiaPaint } from './paint'
 
 let skia: SkiaContext
-beforeAll(async () => { skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext) })
+beforeAll(async () => {
+  skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext)
+})
 
 describe('SkiaImageFilter', () => {
   it('blur', () => {
@@ -63,7 +65,7 @@ describe('SkiaImageFilter', () => {
   })
 
   it('colorFilter as image filter', () => {
-    const cf = SkiaColorFilter.blend(skia, 0xFFFF0000, 'srcOver')!
+    const cf = SkiaColorFilter.blend(skia, 0xffff0000, 'srcOver')!
     const f = SkiaImageFilter.colorFilter(skia, cf)
     expect(f).not.toBeNull()
     f!.dispose()

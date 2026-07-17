@@ -14,7 +14,7 @@ import type { PaneParent } from './use-pane-input.js'
 export function usePaneFolder(
   parent: PaneParent | null,
   title: string,
-  options: Partial<FolderParams> = {},
+  options: Partial<FolderParams> = {}
 ): FolderApi | null {
   const [folder, setFolder] = useState<FolderApi | null>(null)
 

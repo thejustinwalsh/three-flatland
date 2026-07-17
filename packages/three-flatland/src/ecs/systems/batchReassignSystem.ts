@@ -19,12 +19,7 @@ import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
 
-import {
-  computeRunKey,
-  getOrCreateRun,
-  findOrCreateBatch,
-  recycleBatchIfEmpty,
-} from '../batchUtils'
+import { computeRunKey, getOrCreateRun, findOrCreateBatch, recycleBatchIfEmpty } from '../batchUtils'
 import { ENTITY_ID_MASK } from '../snapshot'
 
 /**
@@ -53,10 +48,7 @@ export function createBatchReassignSystem(): (
   const Changed = createChanged()
   const toReassign = new Set<Entity>()
 
-  return function batchReassignSystem(
-    world: World,
-    effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-  ): void {
+  return function batchReassignSystem(world: World, effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>): void {
     const layerChanged = world.query(Changed(SortLayer), IsBatched)
     const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched)
     const maskChanged = world.query(Changed(CameraLayersMask), IsBatched)
@@ -144,13 +136,7 @@ export function createBatchReassignSystem(): (
         version: material._effectSchemaVersion,
       })
 
-      const { run } = getOrCreateRun(
-        registry,
-        newLayer.value,
-        newMatRef.materialId,
-        newMask,
-        material
-      )
+      const { run } = getOrCreateRun(registry, newLayer.value, newMatRef.materialId, newMask, material)
       const newBatchEntity = findOrCreateBatch(world, registry, run)
       const newBatchMesh = newBatchEntity.get(BatchMesh)
       if (!newBatchMesh?.mesh) continue
@@ -209,10 +195,7 @@ function syncAllBuffers(
   // the sprite's lit/shadow state. (Sort swaps preserve them via
   // swapSlots; this covers cross-batch reassignment.)
   mesh.writeSystemFlags(slot, sprite._systemFlags)
-  mesh.writeShadowRadius(
-    slot,
-    sprite.shadowRadius ?? Math.max(Math.abs(sprite.scale.x), Math.abs(sprite.scale.y))
-  )
+  mesh.writeShadowRadius(slot, sprite.shadowRadius ?? Math.max(Math.abs(sprite.scale.x), Math.abs(sprite.scale.y)))
 
   // Sync effects
   const material = sprite.material

@@ -1,8 +1,8 @@
 import type { SkiaContext } from './context'
 import { type BlendMode, BLEND_MODE } from './types'
 
-const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => drop(handle),
+const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) =>
+  drop(handle)
 )
 
 /**
@@ -46,7 +46,12 @@ export class SkiaColorFilter {
   }
 
   /** Blend a solid color using a blend mode */
-  static blend(context: SkiaContext, color: number, blendMode: BlendMode, existing?: SkiaColorFilter | null): SkiaColorFilter | null {
+  static blend(
+    context: SkiaContext,
+    color: number,
+    blendMode: BlendMode,
+    existing?: SkiaColorFilter | null
+  ): SkiaColorFilter | null {
     const params = ['blend', color, blendMode]
     if (this._matches(existing, params)) return existing!
     existing?.dispose()
@@ -90,7 +95,13 @@ export class SkiaColorFilter {
   }
 
   /** Per-channel lookup tables (256 entries each for A, R, G, B) */
-  static tableARGB(context: SkiaContext, a: Uint8Array, r: Uint8Array, g: Uint8Array, b: Uint8Array): SkiaColorFilter | null {
+  static tableARGB(
+    context: SkiaContext,
+    a: Uint8Array,
+    r: Uint8Array,
+    g: Uint8Array,
+    b: Uint8Array
+  ): SkiaColorFilter | null {
     const [aPtr] = context._writeBytes(a)
     const [rPtr] = context._writeBytes(r)
     const [gPtr] = context._writeBytes(g)

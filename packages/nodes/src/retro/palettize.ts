@@ -28,11 +28,7 @@ const LUMA_B = 0.0722
  * // Partial palette effect
  * palettize(color, retroPalette, 0.5)
  */
-export function palettize(
-  inputColor: Node<'vec4'>,
-  paletteTex: Texture,
-  strength: FloatInput = 1
-): Node<'vec4'> {
+export function palettize(inputColor: Node<'vec4'>, paletteTex: Texture, strength: FloatInput = 1): Node<'vec4'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
   // Calculate luminance
@@ -148,11 +144,7 @@ export function palettizeDithered(
  * // Find nearest color in 8-color palette
  * palettizeNearest(color, palette8, 8)
  */
-export function palettizeNearest(
-  inputColor: Node<'vec4'>,
-  paletteTex: Texture,
-  paletteSize: number
-): Node<'vec4'> {
+export function palettizeNearest(inputColor: Node<'vec4'>, paletteTex: Texture, paletteSize: number): Node<'vec4'> {
   // Limit to reasonable palette size to avoid massive shader
   const size = Math.min(paletteSize, 16)
 

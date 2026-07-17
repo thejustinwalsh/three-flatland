@@ -37,7 +37,7 @@ describe('bus-frame', () => {
     it('uint32 / int32 / float64 / string / bytes', () => {
       const buf = new ArrayBuffer(256)
       const w = new FrameWriter(buf)
-      w.writeUint32(0xFEEDF00D)
+      w.writeUint32(0xfeedf00d)
       w.writeInt32(-12345)
       w.writeFloat64(Math.PI)
       w.writeString('hello, ✨ world')
@@ -46,7 +46,7 @@ describe('bus-frame', () => {
       w.finalise(BUS_TYPE.DATA, 42)
 
       const r = new FrameReader(buf)
-      expect(r.readUint32()).toBe(0xFEEDF00D)
+      expect(r.readUint32()).toBe(0xfeedf00d)
       expect(r.readInt32()).toBe(-12345)
       expect(r.readFloat64()).toBeCloseTo(Math.PI, 12)
       expect(r.readString()).toBe('hello, ✨ world')
@@ -94,13 +94,13 @@ describe('bus-frame', () => {
     it('seek lets a section reader skip ahead', () => {
       const buf = new ArrayBuffer(64)
       const w = new FrameWriter(buf)
-      w.writeUint32(0xAAAA) // [16..20]
-      w.writeUint32(0xBBBB) // [20..24]
+      w.writeUint32(0xaaaa) // [16..20]
+      w.writeUint32(0xbbbb) // [20..24]
       w.finalise(BUS_TYPE.DATA, 0)
 
       const r = new FrameReader(buf)
       r.seek(20) // skip the first uint32
-      expect(r.readUint32()).toBe(0xBBBB)
+      expect(r.readUint32()).toBe(0xbbbb)
     })
   })
 })

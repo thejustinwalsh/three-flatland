@@ -112,11 +112,7 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
   }
 
   loadAsync(url: string): Promise<NormalMapResult> {
-    return NormalMapLoader._loadImpl(
-      this.manager.resolveURL(url),
-      this.forceRuntime,
-      this.descriptor
-    )
+    return NormalMapLoader._loadImpl(this.manager.resolveURL(url), this.forceRuntime, this.descriptor)
   }
 
   // ─── Static API (vanilla usage) ───
@@ -131,10 +127,7 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
    */
   private static _cache = new Map<string, Promise<NormalMapResult>>()
 
-  static load(
-    url: string,
-    options?: NormalMapLoaderStaticOptions
-  ): Promise<NormalMapResult> {
+  static load(url: string, options?: NormalMapLoaderStaticOptions): Promise<NormalMapResult> {
     const forceRuntime = options?.forceRuntime ?? false
     const descriptor = options?.descriptor
     // Hash the descriptor so distinct descriptors for the same URL get
@@ -204,10 +197,7 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
         (tex) => resolve(tex as unknown as Texture),
         undefined,
         (err) => {
-          console.warn(
-            `[normal] Found ${bakedURL} via HEAD but TextureLoader failed — falling back to runtime.`,
-            err
-          )
+          console.warn(`[normal] Found ${bakedURL} via HEAD but TextureLoader failed — falling back to runtime.`, err)
           resolve(null)
         }
       )

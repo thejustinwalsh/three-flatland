@@ -9,20 +9,12 @@ import type { Font } from 'opentype.js'
  * useful for external reference renderers (e.g. Canvas2D comparison) that
  * need line-for-line agreement with Slug's shaper output.
  */
-export function wrapLines(
-  font: Font,
-  text: string,
-  fontSize: number,
-  maxWidth: number | undefined
-): string[] {
+export function wrapLines(font: Font, text: string, fontSize: number, maxWidth: number | undefined): string[] {
   const scale = fontSize / font.unitsPerEm
   // Features off — see textShaper.ts for why ligatures break text[i]
   // indexing in this loop.
   const openGlyphs = (
-    font.stringToGlyphs as (
-      s: string,
-      opts?: { features?: unknown[] }
-    ) => ReturnType<Font['stringToGlyphs']>
+    font.stringToGlyphs as (s: string, opts?: { features?: unknown[] }) => ReturnType<Font['stringToGlyphs']>
   )(text, { features: [] })
   const lines: string[] = []
   let lineStart = 0

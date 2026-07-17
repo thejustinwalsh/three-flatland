@@ -96,9 +96,7 @@ export default defineConfig({
   // produces `bg-emerald-soft`/`text-emerald` strings UnoCSS can't statically
   // extract from a template literal).
   safelist: (() => {
-    const gems = [
-      'gold', 'ruby', 'emerald', 'diamond', 'amethyst', 'pink', 'salmon', 'turquoize',
-    ]
+    const gems = ['gold', 'ruby', 'emerald', 'diamond', 'amethyst', 'pink', 'salmon', 'turquoize']
     const out: string[] = []
     for (const g of gems) {
       out.push(`text-${g}`, `bg-${g}`, `bg-${g}-soft`, `border-${g}`, `ring-${g}`)
@@ -106,29 +104,55 @@ export default defineConfig({
     return out
   })().concat([
     // FeatureCard / FeatureList content icons
-    'i-lucide:lightbulb', 'i-lucide:list', 'i-lucide:user', 'i-lucide:play-circle',
-    'i-lucide:sparkles', 'i-lucide:map', 'i-lucide:heart',
+    'i-lucide:lightbulb',
+    'i-lucide:list',
+    'i-lucide:user',
+    'i-lucide:play-circle',
+    'i-lucide:sparkles',
+    'i-lucide:map',
+    'i-lucide:heart',
     // SoundToggle states
-    'i-lucide:volume', 'i-lucide:volume-x', 'i-lucide:volume-1', 'i-lucide:volume-2',
+    'i-lucide:volume',
+    'i-lucide:volume-x',
+    'i-lucide:volume-1',
+    'i-lucide:volume-2',
     // ThemeSelect states
-    'i-lucide:monitor', 'i-lucide:sun', 'i-lucide:moon',
+    'i-lucide:monitor',
+    'i-lucide:sun',
+    'i-lucide:moon',
     // Brand / social
-    'i-lucide:github', 'i-lucide:external-link', 'i-lucide:arrow-right', 'i-lucide:arrow-left',
+    'i-lucide:github',
+    'i-lucide:external-link',
+    'i-lucide:arrow-right',
+    'i-lucide:arrow-left',
     // Sidebar group icons (also referenced statically in astro.config.mjs)
-    'i-lucide:download', 'i-lucide:play', 'i-lucide:rocket', 'i-lucide:palette',
-    'i-lucide:terminal', 'i-lucide:image', 'i-lucide:book-open',
+    'i-lucide:download',
+    'i-lucide:play',
+    'i-lucide:rocket',
+    'i-lucide:palette',
+    'i-lucide:terminal',
+    'i-lucide:image',
+    'i-lucide:book-open',
     // Package-manager / framework tabs — TabItem `icon=` prop produces
     // dynamic class names UnoCSS can't statically extract (`i-${icon}`).
     // simple-icons gives us proper monochrome brand silhouettes that
     // resolve cleanly through `mode: 'mask'` (material-icon-theme's
     // multi-color glyphs lose detail when masked, especially `bun`).
-    'i-simple-icons:npm', 'i-simple-icons:pnpm',
-    'i-simple-icons:yarn', 'i-simple-icons:bun',
-    'i-simple-icons:react', 'i-simple-icons:threedotjs',
+    'i-simple-icons:npm',
+    'i-simple-icons:pnpm',
+    'i-simple-icons:yarn',
+    'i-simple-icons:bun',
+    'i-simple-icons:react',
+    'i-simple-icons:threedotjs',
     // ExampleSplitView toolbar
-    'i-simple-icons:stackblitz', 'i-simple-icons:github',
-    'i-lucide:sparkles', 'i-lucide:wand-sparkles', 'i-lucide:bot',
-    'i-lucide:volume-2', 'i-lucide:volume-x',
-    'i-lucide:chevrons-left', 'i-lucide:chevrons-right',
+    'i-simple-icons:stackblitz',
+    'i-simple-icons:github',
+    'i-lucide:sparkles',
+    'i-lucide:wand-sparkles',
+    'i-lucide:bot',
+    'i-lucide:volume-2',
+    'i-lucide:volume-x',
+    'i-lucide:chevrons-left',
+    'i-lucide:chevrons-right',
   ]),
 })

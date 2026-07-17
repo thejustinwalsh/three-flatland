@@ -32,11 +32,23 @@ const N = 25 // averaged iterations — smooths per-call scheduling jitter
 interface ThreeKtx2File {
   startTranscoding(): boolean
   getImageLevelInfo(mip: number, layer: number, face: number): { width: number; height: number }
-  transcodeImage(dst: Uint8Array, mip: number, layer: number, face: number, fmt: number, decodeFlags: number, c0: number, c1: number): boolean
+  transcodeImage(
+    dst: Uint8Array,
+    mip: number,
+    layer: number,
+    face: number,
+    fmt: number,
+    decodeFlags: number,
+    c0: number,
+    c1: number
+  ): boolean
   close(): void
   delete(): void
 }
-interface ThreeBasisModule { initializeBasis(): void; KTX2File: new (b: Uint8Array) => ThreeKtx2File }
+interface ThreeBasisModule {
+  initializeBasis(): void
+  KTX2File: new (b: Uint8Array) => ThreeKtx2File
+}
 
 afterAll(() => {
   __resetForTest()
@@ -86,7 +98,11 @@ describe('transcode latency — ours vs three.js', () => {
     const code = readFileSync(basisJsPath, 'utf8')
     const mod: { exports: ((o?: { wasmBinary?: ArrayBuffer }) => Promise<ThreeBasisModule>) | object } = { exports: {} }
     new Function('module', 'exports', 'require', '__dirname', '__filename', code)(
-      mod, mod.exports, require, dirname(basisJsPath), basisJsPath,
+      mod,
+      mod.exports,
+      require,
+      dirname(basisJsPath),
+      basisJsPath
     )
     const factory = mod.exports as (o?: { wasmBinary?: ArrayBuffer }) => Promise<ThreeBasisModule>
     const wasmBinary = readFileSync(basisJsPath.replace(/\.js$/, '.wasm'))
@@ -130,7 +146,7 @@ describe('transcode latency — ours vs three.js', () => {
 
     process.stdout.write(
       `[transcode-bench] ours=${oursMs.toFixed(2)}ms  three=${threeMs.toFixed(2)}ms  ` +
-        `ratio=${(oursMs / threeMs).toFixed(3)} (n=${N}, median)\n`,
+        `ratio=${(oursMs / threeMs).toFixed(3)} (n=${N}, median)\n`
     )
 
     // Local gate: we must stay meaningfully ahead of the stock transcoder

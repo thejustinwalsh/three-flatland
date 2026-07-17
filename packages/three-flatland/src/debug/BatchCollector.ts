@@ -254,10 +254,7 @@ export class BatchCollector {
    * the draw. Tile chunks sharing a material collapse into the same
    * run in the panel thanks to the runKey hash.
    */
-  captureAllSources(
-    sources: ReadonlySet<BatchSourceFn>,
-    meshSources: ReadonlySet<MeshBatchSourceFn>,
-  ): void {
+  captureAllSources(sources: ReadonlySet<BatchSourceFn>, meshSources: ReadonlySet<MeshBatchSourceFn>): void {
     if (!this._capturing) return
     for (const src of sources) {
       const reg = src()
@@ -314,9 +311,8 @@ export class BatchCollector {
       info.runKey = ((layerMask & 0xff) << 16) | (matId & 0xffff)
       info.materialId = matId
       info.layer = layerMask
-      info.materialName = matName.length > 0
-        ? `${matType}[${matName}]`
-        : (matType.length > 0 ? matType : `material#${matId}`)
+      info.materialName =
+        matName.length > 0 ? `${matType}[${matName}]` : matType.length > 0 ? matType : `material#${matId}`
       info.spriteCount = mesh.count
       // External meshes don't have a BatchRegistry slot id; use a
       // negative running counter so they sort after ECS batches and
@@ -364,9 +360,12 @@ export class BatchCollector {
       // material with the layer name), fall back to the canonical
       // three.js `type` label, then to a numeric-id placeholder.
       const mat = mesh.spriteMaterial
-      const label = mat.name.length > 0
-        ? `${mat.type}[${mat.name}]`
-        : (mat.type.length > 0 ? mat.type : `material#${meta.materialId}`)
+      const label =
+        mat.name.length > 0
+          ? `${mat.type}[${mat.name}]`
+          : mat.type.length > 0
+            ? mat.type
+            : `material#${meta.materialId}`
       // Numeric surrogate for the wire — the real run key is a string
       // (sortLayer|materialId|mask); the protocol's numeric field keeps
       // the legacy (sortLayer << 16 | materialId) packing for display.

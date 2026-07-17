@@ -78,10 +78,7 @@ export function buildAtlasJson(input: {
 export function baseFramePassthrough(
   r: Pick<RectInput, 'rotated' | 'trimmed' | 'spriteSourceSize' | 'sourceSize' | 'pivot'>,
   fallbackSize: { w: number; h: number }
-): Pick<
-  AtlasJson['frames'][string],
-  'rotated' | 'trimmed' | 'spriteSourceSize' | 'sourceSize' | 'pivot'
-> {
+): Pick<AtlasJson['frames'][string], 'rotated' | 'trimmed' | 'spriteSourceSize' | 'sourceSize' | 'pivot'> {
   return {
     rotated: r.rotated ?? false,
     trimmed: r.trimmed ?? false,
@@ -144,9 +141,7 @@ export function wireAnimationToInput(wire: WireAnimation): AnimationInput {
   for (const idx of wire.frames) {
     const name = wire.frameSet[idx]
     if (name == null) {
-      console.warn(
-        `Atlas: animation frame index ${idx} out of bounds for frameSet (length ${wire.frameSet.length})`
-      )
+      console.warn(`Atlas: animation frame index ${idx} out of bounds for frameSet (length ${wire.frameSet.length})`)
       continue
     }
     frames.push(name)

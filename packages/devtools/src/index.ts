@@ -8,10 +8,6 @@ export { registerPlugins, EssentialsPlugin } from './plugins.js'
 // shared instance under the hood. Exposed for callers who want a
 // secondary consumer on the same bus (e.g., a custom visualisation).
 export { DevtoolsClient } from './devtools-client.js'
-export type {
-  DevtoolsClientOptions,
-  DevtoolsState,
-  DevtoolsStateListener,
-} from './devtools-client.js'
+export type { DevtoolsClientOptions, DevtoolsState, DevtoolsStateListener } from './devtools-client.js'
 export { connectRemoteDevtools } from './remote.js'
 export type { ConnectRemoteDevtoolsOptions } from './remote.js'

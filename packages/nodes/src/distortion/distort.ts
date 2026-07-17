@@ -100,10 +100,7 @@ export function distortTwirl(
   // Apply rotation
   const cosR = cos(rotation)
   const sinR = sin(rotation)
-  const rotated = vec2(
-    toCenter.x.mul(cosR).sub(toCenter.y.mul(sinR)),
-    toCenter.x.mul(sinR).add(toCenter.y.mul(cosR))
-  )
+  const rotated = vec2(toCenter.x.mul(cosR).sub(toCenter.y.mul(sinR)), toCenter.x.mul(sinR).add(toCenter.y.mul(cosR)))
 
   return centerVec.add(rotated)
 }
@@ -121,11 +118,7 @@ export function distortTwirl(
  * // CRT-like barrel distortion
  * const curved = distortBarrel(uv, 0.2)
  */
-export function distortBarrel(
-  uv: Node<'vec2'>,
-  strength: FloatInput = 0.1,
-  zoom: FloatInput = 1
-): Node<'vec2'> {
+export function distortBarrel(uv: Node<'vec2'>, strength: FloatInput = 0.1, zoom: FloatInput = 1): Node<'vec2'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
   const zoomNode = typeof zoom === 'number' ? float(zoom) : zoom
 

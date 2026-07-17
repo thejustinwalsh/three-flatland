@@ -4,14 +4,7 @@ import type { TemporalState } from 'zundo'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import type { NormalBump, NormalDirection } from '@three-flatland/normals'
 import { localStorageStorage, webviewStorage } from '../state'
-import {
-  addRegion,
-  removeRegions,
-  reorderRegion,
-  replaceRegion,
-  updateRegion,
-  type EditableRegion,
-} from './regionOps'
+import { addRegion, removeRegions, reorderRegion, replaceRegion, updateRegion, type EditableRegion } from './regionOps'
 
 /** Descriptor-level defaults — mirrors `NormalSourceDescriptor` minus `version`/`regions`. */
 export type NormalBakerDefaults = {
@@ -40,9 +33,7 @@ export type NormalBakerStoreState = {
   infoSections: Record<InfoSectionKey, boolean>
 
   setRegions: (next: EditableRegion[] | ((prev: EditableRegion[]) => EditableRegion[])) => void
-  setDefaults: (
-    next: NormalBakerDefaults | ((prev: NormalBakerDefaults) => NormalBakerDefaults)
-  ) => void
+  setDefaults: (next: NormalBakerDefaults | ((prev: NormalBakerDefaults) => NormalBakerDefaults)) => void
   setSelectedIds: (next: Set<string> | ((prev: Set<string>) => Set<string>)) => void
   setRegionListPx: (px: number) => void
   setInfoPanelPx: (px: number) => void
@@ -101,11 +92,9 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
           splits: { infoPanelPx: 360 },
           infoSections: { inspector: true, normal: true, lit: true },
 
-          setRegions: (next) =>
-            set((s) => ({ ...s, regions: typeof next === 'function' ? next(s.regions) : next })),
+          setRegions: (next) => set((s) => ({ ...s, regions: typeof next === 'function' ? next(s.regions) : next })),
 
-          setDefaults: (next) =>
-            set((s) => ({ ...s, defaults: typeof next === 'function' ? next(s.defaults) : next })),
+          setDefaults: (next) => set((s) => ({ ...s, defaults: typeof next === 'function' ? next(s.defaults) : next })),
 
           setSelectedIds: (next) =>
             set((s) => ({
@@ -113,8 +102,7 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
               selectedIds: typeof next === 'function' ? next(s.selectedIds) : next,
             })),
 
-          setRegionListPx: (px) =>
-            set((s) => ({ ...s, regionListPx: Math.max(240, Math.min(480, px)) })),
+          setRegionListPx: (px) => set((s) => ({ ...s, regionListPx: Math.max(240, Math.min(480, px)) })),
 
           setInfoPanelPx: (px) =>
             set((s) => ({
@@ -122,8 +110,7 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
               splits: { ...s.splits, infoPanelPx: Math.max(160, Math.min(640, px)) },
             })),
 
-          setInfoSection: (id, open) =>
-            set((s) => ({ ...s, infoSections: { ...s.infoSections, [id]: open } })),
+          setInfoSection: (id, open) => set((s) => ({ ...s, infoSections: { ...s.infoSections, [id]: open } })),
 
           addRegionAction: (region, index) =>
             set((s) => ({
@@ -158,11 +145,9 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
           reorderRegionAction: (fromIndex, toIndex) =>
             set((s) => ({ ...s, regions: reorderRegion(s.regions, fromIndex, toIndex) })),
 
-          updateRegionAction: (id, patch) =>
-            set((s) => ({ ...s, regions: updateRegion(s.regions, id, patch) })),
+          updateRegionAction: (id, patch) => set((s) => ({ ...s, regions: updateRegion(s.regions, id, patch) })),
 
-          replaceRegionAction: (next) =>
-            set((s) => ({ ...s, regions: replaceRegion(s.regions, next) })),
+          replaceRegionAction: (next) => set((s) => ({ ...s, regions: replaceRegion(s.regions, next) })),
 
           loadFromInit: (regions, defaults) => {
             useNormalBakerStore.setState({ regions, defaults, selectedIds: new Set<string>() })
@@ -219,9 +204,7 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
             infoSections: {
               ...current.infoSections,
               ...(legacyPreview !== undefined ? { normal: legacyPreview, lit: legacyPreview } : {}),
-              ...(p.infoSections?.inspector !== undefined
-                ? { inspector: p.infoSections.inspector }
-                : {}),
+              ...(p.infoSections?.inspector !== undefined ? { inspector: p.infoSections.inspector } : {}),
               ...(p.infoSections?.normal !== undefined ? { normal: p.infoSections.normal } : {}),
               ...(p.infoSections?.lit !== undefined ? { lit: p.infoSections.lit } : {}),
             },
@@ -232,8 +215,7 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
     {
       partialize: (s): HistorySlice => ({ regions: s.regions, defaults: s.defaults }),
       limit: 100,
-      equality: (a, b) =>
-        regionsEqual(a.regions, b.regions) && defaultsEqual(a.defaults, b.defaults),
+      equality: (a, b) => regionsEqual(a.regions, b.regions) && defaultsEqual(a.defaults, b.defaults),
       handleSet: (handleSet) => {
         let timer: ReturnType<typeof setTimeout> | null = null
         return (pastState) => {
@@ -269,12 +251,9 @@ export const normalBakerActions = {
     useNormalBakerStore.getState().setSelectedIds(next),
   setRegionListPx: (px: number) => useNormalBakerStore.getState().setRegionListPx(px),
   setInfoPanelPx: (px: number) => useNormalBakerStore.getState().setInfoPanelPx(px),
-  setInfoSection: (id: InfoSectionKey, open: boolean) =>
-    useNormalBakerStore.getState().setInfoSection(id, open),
-  addRegion: (region: EditableRegion, index?: number) =>
-    useNormalBakerStore.getState().addRegionAction(region, index),
-  addRegions: (regions: EditableRegion[]) =>
-    useNormalBakerStore.getState().addRegionsAction(regions),
+  setInfoSection: (id: InfoSectionKey, open: boolean) => useNormalBakerStore.getState().setInfoSection(id, open),
+  addRegion: (region: EditableRegion, index?: number) => useNormalBakerStore.getState().addRegionAction(region, index),
+  addRegions: (regions: EditableRegion[]) => useNormalBakerStore.getState().addRegionsAction(regions),
   splitRegion: (id: string, children: EditableRegion[]) =>
     useNormalBakerStore.getState().splitRegionAction(id, children),
   removeSelected: () => useNormalBakerStore.getState().removeSelected(),

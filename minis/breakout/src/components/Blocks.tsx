@@ -59,10 +59,7 @@ function BlockView({ entity, material }: BlockViewProps) {
       sortLayer={SortLayers.ENTITIES}
       zIndex={10}
     >
-      <blockDissolveEffect
-        attach={attachEffect}
-        ref={effectRef}
-      />
+      <blockDissolveEffect attach={attachEffect} ref={effectRef} />
     </sprite2D>
   )
 }

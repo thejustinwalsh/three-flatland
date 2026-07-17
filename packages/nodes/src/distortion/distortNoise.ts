@@ -55,7 +55,10 @@ function perlinNoise2D(p: Node<'vec2'>): Node<'float'> {
   const f = fract(p)
 
   // Quintic smoothstep for smoother gradients
-  const u = f.mul(f).mul(f).mul(f.mul(f.mul(6).sub(15)).add(10))
+  const u = f
+    .mul(f)
+    .mul(f)
+    .mul(f.mul(f.mul(6).sub(15)).add(10))
 
   // Hash for gradients
   const h00 = hash2D(i)
@@ -105,7 +108,9 @@ export function distortNoise(
 
   // Sample noise for X and Y offsets (use different offsets for variation)
   const noiseX = valueNoise2D(noiseCoord).sub(0.5).mul(2)
-  const noiseY = valueNoise2D(noiseCoord.add(vec2(100, 100))).sub(0.5).mul(2)
+  const noiseY = valueNoise2D(noiseCoord.add(vec2(100, 100)))
+    .sub(0.5)
+    .mul(2)
 
   return uv.add(vec2(noiseX, noiseY).mul(strengthNode))
 }
@@ -146,7 +151,11 @@ export function distortPerlin(
   for (let i = 0; i < octaves; i++) {
     const coord = noiseCoord.mul(frequency)
     noiseX = noiseX.add(perlinNoise2D(coord).sub(0.5).mul(amplitude))
-    noiseY = noiseY.add(perlinNoise2D(coord.add(vec2(50, 50))).sub(0.5).mul(amplitude))
+    noiseY = noiseY.add(
+      perlinNoise2D(coord.add(vec2(50, 50)))
+        .sub(0.5)
+        .mul(amplitude)
+    )
     totalAmplitude = totalAmplitude.add(amplitude)
     amplitude = amplitude.mul(0.5)
     frequency = frequency.mul(2)
@@ -209,8 +218,12 @@ export function distortSimplex(
 
   // Noise contributions
   const n0 = hash2D(vec2(i, j)).sub(0.5).mul(2)
-  const n1 = hash2D(vec2(i.add(i1), j.add(j1))).sub(0.5).mul(2)
-  const n2 = hash2D(vec2(i.add(1), j.add(1))).sub(0.5).mul(2)
+  const n1 = hash2D(vec2(i.add(i1), j.add(j1)))
+    .sub(0.5)
+    .mul(2)
+  const n2 = hash2D(vec2(i.add(1), j.add(1)))
+    .sub(0.5)
+    .mul(2)
 
   // Falloff
   const t0 = float(0.5).sub(x0.mul(x0)).sub(y0.mul(y0)).clamp(0, 1)
@@ -220,7 +233,9 @@ export function distortSimplex(
   const noise = t0.pow(4).mul(n0).add(t1.pow(4).mul(n1)).add(t2.pow(4).mul(n2))
 
   // Second noise sample for Y offset
-  const noiseY = hash2D(noiseCoord.add(vec2(73.156, 91.234))).sub(0.5).mul(2)
+  const noiseY = hash2D(noiseCoord.add(vec2(73.156, 91.234)))
+    .sub(0.5)
+    .mul(2)
 
   return uv.add(vec2(noise, noiseY).mul(strengthNode))
 }
@@ -263,7 +278,12 @@ export function distortTurbulence(
     const coord = uv.mul(frequency).add(timeNode)
     // Use absolute value for turbulence
     noiseX = noiseX.add(valueNoise2D(coord).sub(0.5).abs().mul(amplitude))
-    noiseY = noiseY.add(valueNoise2D(coord.add(vec2(37, 17))).sub(0.5).abs().mul(amplitude))
+    noiseY = noiseY.add(
+      valueNoise2D(coord.add(vec2(37, 17)))
+        .sub(0.5)
+        .abs()
+        .mul(amplitude)
+    )
     totalAmplitude = totalAmplitude.add(amplitude)
     amplitude = amplitude.mul(persistenceNode)
     frequency = frequency.mul(lacunarityNode)

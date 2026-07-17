@@ -5,11 +5,7 @@ import type { PaneParent } from './use-pane-input.js'
  * Add a button to a Tweakpane parent. Uses a ref for the callback to avoid stale closures.
  * Uses deferred disposal to survive React strict mode.
  */
-export function usePaneButton(
-  parent: PaneParent | null,
-  title: string,
-  onClick: () => void,
-): void {
+export function usePaneButton(parent: PaneParent | null, title: string, onClick: () => void): void {
   const callbackRef = useRef(onClick)
   callbackRef.current = onClick
   const buttonRef = useRef<{ dispose(): void } | null>(null)

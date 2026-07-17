@@ -20,10 +20,7 @@ export type ZzfxmSongFinding = Extract<Finding, { kind: 'zzfxm.song' }>
  * `resolveParams`) because a `zzfxm.song` finding never carries pre-
  * extracted values; there is always real text to go read.
  */
-export async function resolveSong(
-  uri: vscode.Uri,
-  finding: ZzfxmSongFinding
-): Promise<ResolvedSong> {
+export async function resolveSong(uri: vscode.Uri, finding: ZzfxmSongFinding): Promise<ResolvedSong> {
   const varRef = finding.payload.varRef
   if (varRef) {
     if (!varRef.defUri || !varRef.defRange) {

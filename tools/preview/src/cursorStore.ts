@@ -71,6 +71,6 @@ export function useCursor(store: CursorStore | null): CursorReading | null {
   return useSyncExternalStore(
     (fn) => (store ? store.subscribe(fn) : () => {}),
     () => (store ? store.get() : null),
-    () => null,
+    () => null
   )
 }

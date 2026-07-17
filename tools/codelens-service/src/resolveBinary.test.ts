@@ -31,9 +31,7 @@ describe('resolveBinary', () => {
     const missing = join(dir, 'missing', 'codelens-service')
     const present = join(dir, 'present', 'codelens-service')
     await touch(present)
-    expect(resolveBinary({ candidates: [missing, present], includeDevFallback: false })).toBe(
-      present
-    )
+    expect(resolveBinary({ candidates: [missing, present], includeDevFallback: false })).toBe(present)
   })
 
   it('prefers earlier candidates over later ones when both exist', async () => {
@@ -51,9 +49,9 @@ describe('resolveBinary', () => {
     // whether the sidecar happens to be cargo-built in the checkout running
     // the test, which is exactly the nondeterminism this option exists to
     // let tests (and production builds) opt out of.
-    expect(() =>
-      resolveBinary({ candidates: [missingA, missingB], includeDevFallback: false })
-    ).toThrow(new RegExp(`${missingA}[\\s\\S]*${missingB}`))
+    expect(() => resolveBinary({ candidates: [missingA, missingB], includeDevFallback: false })).toThrow(
+      new RegExp(`${missingA}[\\s\\S]*${missingB}`)
+    )
   })
 
   it('preferNewest() puts the freshest existing binary first, missing paths last', async () => {
@@ -64,20 +62,13 @@ describe('resolveBinary', () => {
     await touch(fresh, Date.UTC(2026, 6, 1))
     expect(preferNewest([stale, fresh, missing])).toEqual([fresh, stale, missing])
     // Stable when nothing exists — the caller's order is the tiebreak.
-    expect(preferNewest([missing, stale + '-also-missing'])).toEqual([
-      missing,
-      stale + '-also-missing',
-    ])
+    expect(preferNewest([missing, stale + '-also-missing'])).toEqual([missing, stale + '-also-missing'])
   })
 
   it('devBinaryCandidates() points inside sidecar/target, covering release and debug', () => {
     const candidates = devBinaryCandidates()
-    expect(
-      candidates.some((c) => /sidecar[/\\]target[/\\]release[/\\]codelens-service/.test(c))
-    ).toBe(true)
-    expect(
-      candidates.some((c) => /sidecar[/\\]target[/\\]debug[/\\]codelens-service/.test(c))
-    ).toBe(true)
+    expect(candidates.some((c) => /sidecar[/\\]target[/\\]release[/\\]codelens-service/.test(c))).toBe(true)
+    expect(candidates.some((c) => /sidecar[/\\]target[/\\]debug[/\\]codelens-service/.test(c))).toBe(true)
   })
 
   it('falls back to the dev-mode build actually on disk in this checkout', () => {

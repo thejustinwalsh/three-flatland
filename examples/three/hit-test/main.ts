@@ -56,9 +56,9 @@ for (const r of RARITIES) collectedCount[r.name] = 0
 function updateHUD() {
   const el = document.getElementById('collected')
   if (!el) return
-  el.innerHTML = RARITIES.map(
-    (r) => `<span style="color:${r.css}">${r.name}: ${collectedCount[r.name]}</span>`
-  ).join('')
+  el.innerHTML = RARITIES.map((r) => `<span style="color:${r.css}">${r.name}: ${collectedCount[r.name]}</span>`).join(
+    ''
+  )
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────
@@ -209,13 +209,7 @@ async function main() {
   const rng = mulberry32(42)
 
   // Core: build a coin sprite at a given spot and register it as pickable.
-  function addCoin(
-    rarity: (typeof RARITIES)[number],
-    x: number,
-    y: number,
-    z: number,
-    fps: number
-  ): CoinItem {
+  function addCoin(rarity: (typeof RARITIES)[number], x: number, y: number, z: number, fps: number): CoinItem {
     const sprite = new AnimatedSprite2D({
       spriteSheet: coinSheet,
       animationSet: {
@@ -254,13 +248,7 @@ async function main() {
   function createCoin(rarity: (typeof RARITIES)[number], index: number): CoinItem {
     const angle = (index / 14) * Math.PI * 2 + (rng() - 0.5) * 0.5
     const radius = 60 + rng() * 110
-    return addCoin(
-      rarity,
-      Math.cos(angle) * radius,
-      Math.sin(angle) * radius,
-      index * 0.01,
-      8 + rng() * 4
-    )
+    return addCoin(rarity, Math.cos(angle) * radius, Math.sin(angle) * radius, index * 0.01, 8 + rng() * 4)
   }
 
   // Genuinely random coin — used by the periodic spawner. Capped on live
@@ -271,15 +259,7 @@ async function main() {
     const rarity = RARITIES[Math.floor(Math.random() * RARITIES.length)]!
     const angle = Math.random() * Math.PI * 2
     const radius = 60 + Math.random() * 110
-    coins.push(
-      addCoin(
-        rarity,
-        Math.cos(angle) * radius,
-        Math.sin(angle) * radius,
-        0.5,
-        8 + Math.random() * 4
-      )
-    )
+    coins.push(addCoin(rarity, Math.cos(angle) * radius, Math.sin(angle) * radius, 0.5, 8 + Math.random() * 4))
   }
 
   for (const rarity of RARITIES) {
@@ -387,8 +367,7 @@ async function main() {
 
     castFromEvent(e)
     const hits = raycaster.intersectObjects(pickableCoins, false)
-    const hitCoin =
-      hits.length > 0 ? (coins.find((c) => c.sprite === hits[0]!.object) ?? null) : null
+    const hitCoin = hits.length > 0 ? (coins.find((c) => c.sprite === hits[0]!.object) ?? null) : null
     setHover(hitCoin)
     // Grab cursor when hovering the knight (and not already over a coin).
     if (!hitCoin && raycaster.intersectObject(knight, false).length > 0) {

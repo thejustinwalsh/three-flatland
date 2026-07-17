@@ -70,11 +70,7 @@ export interface SubdivideOptions {
  * unchanged (single-element array). For highly-curved inputs,
  * returns 2–N curves, never exceeding 2^maxDepth.
  */
-export function subdivideForOffset(
-  curve: QuadCurve,
-  halfWidth: number,
-  options: SubdivideOptions = {}
-): QuadCurve[] {
+export function subdivideForOffset(curve: QuadCurve, halfWidth: number, options: SubdivideOptions = {}): QuadCurve[] {
   const hw = Math.max(halfWidth, MIN_HALF_WIDTH)
   const epsilon = options.epsilon ?? 0.01 * hw
   const maxDepth = options.maxDepth ?? 8
@@ -341,10 +337,7 @@ export function insertJoin(ctx: JoinContext): QuadCurve[] {
       return [straightQuad(endA.x, endA.y, startB.x, startB.y)]
     }
 
-    return [
-      straightQuad(endA.x, endA.y, miter.x, miter.y),
-      straightQuad(miter.x, miter.y, startB.x, startB.y),
-    ]
+    return [straightQuad(endA.x, endA.y, miter.x, miter.y), straightQuad(miter.x, miter.y, startB.x, startB.y)]
   }
 
   // round
@@ -500,10 +493,7 @@ export function insertCap(ctx: CapContext): QuadCurve[] {
       x: endpointX + tangent[0] * r,
       y: endpointY + tangent[1] * r,
     }
-    return [
-      straightQuad(outerEnd.x, outerEnd.y, apex.x, apex.y),
-      straightQuad(apex.x, apex.y, innerEnd.x, innerEnd.y),
-    ]
+    return [straightQuad(outerEnd.x, outerEnd.y, apex.x, apex.y), straightQuad(apex.x, apex.y, innerEnd.x, innerEnd.y)]
   }
 
   // round — semicircle from outerEnd to innerEnd centered at endpoint.
@@ -761,10 +751,7 @@ export function strokeOffsetter(
  * downstream shaping uses the same advance whether fill or stroke
  * is requested.
  */
-export function bakeStrokeForGlyph(
-  source: SlugGlyphData,
-  options: StrokeOffsetOptions
-): SlugGlyphData | null {
+export function bakeStrokeForGlyph(source: SlugGlyphData, options: StrokeOffsetOptions): SlugGlyphData | null {
   if (source.curves.length === 0) return null
   if (source.contourStarts.length === 0) return null
 
@@ -774,8 +761,7 @@ export function bakeStrokeForGlyph(
 
   for (let i = 0; i < source.contourStarts.length; i++) {
     const start = source.contourStarts[i]!
-    const end =
-      i + 1 < source.contourStarts.length ? source.contourStarts[i + 1]! : source.curves.length
+    const end = i + 1 < source.contourStarts.length ? source.contourStarts[i + 1]! : source.curves.length
     const sourceContour = source.curves.slice(start, end)
 
     // Font contours are closed by convention (TrueType + OpenType
@@ -792,11 +778,5 @@ export function bakeStrokeForGlyph(
 
   if (allOffsetCurves.length === 0) return null
 
-  return buildGpuGlyphData(
-    source.glyphId,
-    allOffsetCurves,
-    newContourStarts,
-    source.advanceWidth,
-    source.lsb
-  )
+  return buildGpuGlyphData(source.glyphId, allOffsetCurves, newContourStarts, source.advanceWidth, source.lsb)
 }

@@ -87,7 +87,7 @@ for (const { name, sourcePath } of sources) {
     immutabilityViolation++
     console.error(
       `  WARN       ${target} — structural diff under unchanged major.\n` +
-        `             If this is a breaking change, bump @three-flatland/schemas major.`,
+        `             If this is a breaking change, bump @three-flatland/schemas major.`
     )
   }
 
@@ -97,8 +97,7 @@ for (const { name, sourcePath } of sources) {
 
 if (verify && drift > 0) {
   console.error(
-    `\n${drift} docs schema file(s) out of sync with source.\n` +
-      `Run \`pnpm sync:schemas\` and commit the result.`,
+    `\n${drift} docs schema file(s) out of sync with source.\n` + `Run \`pnpm sync:schemas\` and commit the result.`
   )
   process.exit(1)
 }

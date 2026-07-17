@@ -49,11 +49,7 @@ export function posterize(inputColor: Node<'vec4'>, bands: FloatInput): Node<'ve
  * // Custom gamma
  * posterizeGamma(color, 4, 1.8)
  */
-export function posterizeGamma(
-  inputColor: Node<'vec4'>,
-  bands: FloatInput,
-  gamma: FloatInput = 2.2
-): Node<'vec4'> {
+export function posterizeGamma(inputColor: Node<'vec4'>, bands: FloatInput, gamma: FloatInput = 2.2): Node<'vec4'> {
   const bandsNode = typeof bands === 'number' ? float(bands) : bands
   const gammaNode = typeof gamma === 'number' ? float(gamma) : gamma
 

@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { Vector2 } from 'three'
-import {
-  ForwardPlusLighting,
-  TILE_SIZE,
-  MAX_LIGHTS_PER_TILE,
-  TILE_TEXTURE_DIM,
-} from './ForwardPlusLighting'
+import { ForwardPlusLighting, TILE_SIZE, MAX_LIGHTS_PER_TILE, TILE_TEXTURE_DIM } from './ForwardPlusLighting'
 import { Light2D } from './Light2D'
 
 describe('ForwardPlusLighting constants', () => {
@@ -72,9 +67,7 @@ describe('ForwardPlusLighting', () => {
     fp.init(64, 64)
     fp.setWorldBounds(new Vector2(64, 64), new Vector2(0, 0))
 
-    const lights = [
-      new Light2D({ type: 'ambient', intensity: 0.3 }),
-    ]
+    const lights = [new Light2D({ type: 'ambient', intensity: 0.3 })]
 
     fp.update(lights)
 
@@ -209,13 +202,9 @@ describe('ForwardPlusLighting', () => {
     // MAX_LIGHTS_PER_TILE dim lights (intensity 0.01) followed by one bright.
     const lights: Light2D[] = []
     for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) {
-      lights.push(
-        new Light2D({ type: 'point', position: [8, 8], intensity: 0.01 })
-      )
+      lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 0.01 }))
     }
-    lights.push(
-      new Light2D({ type: 'point', position: [8, 8], intensity: 100 })
-    )
+    lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 100 }))
 
     fp.update(lights)
 
@@ -237,9 +226,7 @@ describe('ForwardPlusLighting', () => {
     // dropped (no thrash on ties).
     const lights: Light2D[] = []
     for (let i = 0; i < MAX_LIGHTS_PER_TILE + 1; i++) {
-      lights.push(
-        new Light2D({ type: 'point', position: [8, 8], intensity: 1 })
-      )
+      lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1 }))
     }
 
     fp.update(lights)
@@ -311,9 +298,7 @@ describe('ForwardPlusLighting', () => {
     }
     // Incoming light at same position + intensity but importance 100 —
     // should evict one of the fillers.
-    lights.push(
-      new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: true, importance: 100 })
-    )
+    lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: true, importance: 100 }))
     fp.update(lights)
 
     const data = fp.tileTexture!.image.data as Float32Array
@@ -333,9 +318,7 @@ describe('ForwardPlusLighting', () => {
     const FILL_COUNT = 10
     const lights: Light2D[] = []
     for (let i = 0; i < FILL_COUNT; i++) {
-      lights.push(
-        new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false })
-      )
+      lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false }))
     }
     fp.update(lights)
 
@@ -364,14 +347,10 @@ describe('ForwardPlusLighting', () => {
     // categoryHash unit tests would catch it separately.
     const lights: Light2D[] = []
     for (let i = 0; i < 5; i++) {
-      lights.push(
-        new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false, category: 'slime' })
-      )
+      lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false, category: 'slime' }))
     }
     for (let i = 0; i < 5; i++) {
-      lights.push(
-        new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false, category: 'water' })
-      )
+      lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false, category: 'water' }))
     }
     fp.update(lights)
 
@@ -410,14 +389,10 @@ describe('ForwardPlusLighting', () => {
 
     const lights: Light2D[] = []
     for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) {
-      lights.push(
-        new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: true })
-      )
+      lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: true }))
     }
     // Try to crash a fill into the full tile.
-    lights.push(
-      new Light2D({ type: 'point', position: [8, 8], intensity: 1000, castsShadow: false })
-    )
+    lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1000, castsShadow: false }))
 
     fp.update(lights)
 
@@ -450,9 +425,7 @@ describe('ForwardPlusLighting', () => {
 
     const lights: Light2D[] = []
     for (let i = 0; i < 6; i++) {
-      lights.push(
-        new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false, category: 'slime' })
-      )
+      lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false, category: 'slime' }))
     }
     fp.update(lights)
 
@@ -479,9 +452,7 @@ describe('ForwardPlusLighting', () => {
     fp.setFillQuota('slime', 0)
     const lights: Light2D[] = []
     for (let i = 0; i < 5; i++) {
-      lights.push(
-        new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false, category: 'slime' })
-      )
+      lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false, category: 'slime' }))
     }
     fp.update(lights)
 
@@ -532,5 +503,4 @@ describe('ForwardPlusLighting', () => {
       expect(id).toBeLessThanOrEqual(3)
     }
   })
-
 })

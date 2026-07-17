@@ -1,3 +1,3 @@
-import { plugin } from './core/plugin';
+import { plugin } from './core/plugin'
 
-export default plugin;
+export default plugin

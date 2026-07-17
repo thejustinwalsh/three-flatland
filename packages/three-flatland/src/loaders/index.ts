@@ -4,12 +4,7 @@ export type { SpriteSheetLoaderOptions } from './SpriteSheetLoader'
 export { TextureLoader, applyHierarchicalPresets } from './TextureLoader'
 export type { TextureLoaderOptions } from './TextureLoader'
 
-export {
-  TextureConfig,
-  applyTextureOptions,
-  resolveTextureOptions,
-  TEXTURE_PRESETS,
-} from './texturePresets'
+export { TextureConfig, applyTextureOptions, resolveTextureOptions, TEXTURE_PRESETS } from './texturePresets'
 export type { TexturePreset, TextureOptions } from './texturePresets'
 
 // Tilemap loaders — canonical home (moved from src/tilemap/ for symmetry
@@ -21,12 +16,7 @@ export { TiledLoader } from './TiledLoader'
 export type { TiledLoaderOptions } from './TiledLoader'
 
 // Normal descriptor helpers — asset metadata → NormalRegion[].
-export {
-  framesToRegions,
-  wholeTextureRegion,
-  tileToRegions,
-  tilesetToRegions,
-} from './normalDescriptor'
+export { framesToRegions, wholeTextureRegion, tileToRegions, tilesetToRegions } from './normalDescriptor'
 export type {
   TileNormalCustomData,
   TilesetCell,

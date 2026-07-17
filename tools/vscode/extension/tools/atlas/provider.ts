@@ -123,9 +123,7 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
         const animCount = json.meta.animations
           ? Object.keys(json.meta.animations).length
           : (json.meta.frameTags?.length ?? 0)
-        log(
-          `atlas/save wrote ${out.fsPath} (${rects.length} frames, ${animCount} animations, format: ${outputFormat})`
-        )
+        log(`atlas/save wrote ${out.fsPath} (${rects.length} frames, ${animCount} animations, format: ${outputFormat})`)
         return { ok: true, sidecarUri: out.toString(), frameCount: rects.length }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)

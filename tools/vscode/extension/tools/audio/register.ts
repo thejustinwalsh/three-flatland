@@ -6,10 +6,7 @@ import { getPlaySidecarClient, shutdownPlaySidecar } from './playSidecarManager'
 import { ZzfxCodeLensProvider, ZZFX_DOCUMENT_SELECTOR } from './provider'
 import { ActivePlayback, watchPlaybackEnd } from './activePlayback'
 import { AudioFileResolver } from './audioFileResolver'
-import {
-  createSourceEditorBindingHandlers,
-  registerSourceEditorBinding,
-} from './sourceEditorBinding'
+import { createSourceEditorBindingHandlers, registerSourceEditorBinding } from './sourceEditorBinding'
 import { openZzfxEditorPanel, playInAnyOpenPanel, playInEditorPanel } from './host'
 import { resolveParams } from './resolveParams'
 import { resolveSong } from './resolveSong'
@@ -46,8 +43,7 @@ export function getZzfxCodeLensProvider(): ZzfxCodeLensProvider | null {
  * above so `resetAudioToolState` can reach the live `ActivePlayback` /
  * `AudioFileResolver` instances without `registerAudioTool` exposing its
  * whole closure. */
-let activeAudioState: { activePlayback: ActivePlayback; audioResolver: AudioFileResolver } | null =
-  null
+let activeAudioState: { activePlayback: ActivePlayback; audioResolver: AudioFileResolver } | null = null
 
 /**
  * e2e/test-only determinism seam (finding #7,
@@ -76,18 +72,10 @@ type ZzfxmSongFinding = Extract<Finding, { kind: 'zzfxm.song' }>
 type WadSynthFinding = Extract<Finding, { kind: 'wad.synth' }>
 type ToneSynthFinding = Extract<Finding, { kind: 'tone.synth' }>
 
-function findFindingAtPosition(
-  findings: readonly Finding[],
-  position: vscode.Position
-): ZzfxCallFinding | undefined {
+function findFindingAtPosition(findings: readonly Finding[], position: vscode.Position): ZzfxCallFinding | undefined {
   return findings.find((f): f is ZzfxCallFinding => {
     if (f.kind !== 'zzfx.call') return false
-    const range = new vscode.Range(
-      f.range.start.line,
-      f.range.start.character,
-      f.range.end.line,
-      f.range.end.character
-    )
+    const range = new vscode.Range(f.range.start.line, f.range.start.character, f.range.end.line, f.range.end.character)
     return range.contains(position)
   })
 }
@@ -164,13 +152,9 @@ async function resolveToneSynthFindingById(
  * Returns the ready-to-use client, or `undefined` after already showing
  * the appropriate message.
  */
-function getInlinePlayClientOrNotify(
-  context: vscode.ExtensionContext
-): PlaySidecarClient | undefined {
+function getInlinePlayClientOrNotify(context: vscode.ExtensionContext): PlaySidecarClient | undefined {
   if (vscode.env.remoteName) {
-    void vscode.window.showInformationMessage(
-      'FL Audio: inline playback unavailable in remote windows.'
-    )
+    void vscode.window.showInformationMessage('FL Audio: inline playback unavailable in remote windows.')
     return undefined
   }
   if (!vscode.workspace.getConfiguration().get<boolean>(INLINE_PLAYBACK_SETTING, true)) {
@@ -208,9 +192,7 @@ function tryPlayInline(context: vscode.ExtensionContext, params: number[]): bool
     playClient.play(params, getPlaybackVolumeMultiplier())
     return true
   } catch (err) {
-    log(
-      `audio-play: inline play failed, falling back to panel: ${err instanceof Error ? err.message : err}`
-    )
+    log(`audio-play: inline play failed, falling back to panel: ${err instanceof Error ? err.message : err}`)
     return false
   }
 }
@@ -225,11 +207,7 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
   // search can settle before registration completes.
   const audioResolver = new AudioFileResolver({
     findByBasename: async (basename) => {
-      const uris = await vscode.workspace.findFiles(
-        `**/${basename}`,
-        '**/node_modules/**',
-        MAX_AUDIO_SEARCH_RESULTS
-      )
+      const uris = await vscode.workspace.findFiles(`**/${basename}`, '**/node_modules/**', MAX_AUDIO_SEARCH_RESULTS)
       return uris.map((uri) => uri.fsPath)
     },
     onDidUpdate: () => provider.refresh(),
@@ -248,16 +226,12 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
   const provider = new ZzfxCodeLensProvider(() => getSidecarClient(context), audioResolver)
   activeProvider = provider
   activeAudioState = { activePlayback, audioResolver }
-  disposables.push(
-    vscode.languages.registerCodeLensProvider(ZZFX_DOCUMENT_SELECTOR, provider),
-    provider,
-    {
-      dispose: () => {
-        if (activeProvider === provider) activeProvider = null
-        if (activeAudioState?.activePlayback === activePlayback) activeAudioState = null
-      },
-    }
-  )
+  disposables.push(vscode.languages.registerCodeLensProvider(ZZFX_DOCUMENT_SELECTOR, provider), provider, {
+    dispose: () => {
+      if (activeProvider === provider) activeProvider = null
+      if (activeAudioState?.activePlayback === activePlayback) activeAudioState = null
+    },
+  })
 
   /** Marks `source` as the active playback (for the source-editor-tab-
    * binding listeners below) and watches the sidecar's exact timing (#43)
@@ -266,10 +240,7 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
    * anything currently playing for this document" state accurate even
    * when nothing ever clicks Stop. Superseded by a manual stop or a
    * replacement play via the watcher's token. */
-  function trackPlayback(
-    playClient: PlaySidecarClient,
-    source: { uri: string; findingId: string }
-  ): void {
+  function trackPlayback(playClient: PlaySidecarClient, source: { uri: string; findingId: string }): void {
     const token = activePlayback.set({ findingId: source.findingId, sourceUri: source.uri })
     void watchPlaybackEnd(activePlayback, token, () => playClient.getStats())
   }
@@ -290,9 +261,7 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
    * playback window. */
   function isDocumentOpenInSomeTab(uri: string): boolean {
     return vscode.window.tabGroups.all.some((group) =>
-      group.tabs.some(
-        (tab) => tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === uri
-      )
+      group.tabs.some((tab) => tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === uri)
     )
   }
 
@@ -375,21 +344,13 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
           return
         }
         if (source) {
-          await playInEditorPanel(
-            context,
-            client,
-            vscode.Uri.parse(source.uri),
-            source.findingId,
-            params
-          )
+          await playInEditorPanel(context, client, vscode.Uri.parse(source.uri), source.findingId, params)
           return
         }
         // No finding context to open a panel from scratch — reuse
         // whichever zzfx panel is already open, if any.
         if (!(await playInAnyOpenPanel(params))) {
-          void vscode.window.showInformationMessage(
-            'FL ZzFX: open a ZzFX editor (⚙ Edit) first, then Play.'
-          )
+          void vscode.window.showInformationMessage('FL ZzFX: open a ZzFX editor (⚙ Edit) first, then Play.')
         }
       }
     )
@@ -680,9 +641,7 @@ export function registerAudioTool(context: vscode.ExtensionContext): vscode.Disp
   disposables.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration(INLINE_PLAYBACK_SETTING)) return
-      const enabled = vscode.workspace
-        .getConfiguration()
-        .get<boolean>(INLINE_PLAYBACK_SETTING, true)
+      const enabled = vscode.workspace.getConfiguration().get<boolean>(INLINE_PLAYBACK_SETTING, true)
       if (!enabled) void shutdownPlaySidecar()
       provider.refresh()
     })

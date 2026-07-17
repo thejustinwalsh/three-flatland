@@ -121,9 +121,7 @@ for (const e of crossPkg) {
   byPair.set(k, list)
 }
 
-console.log(
-  `.reports/graphs/types.json — ${data.meta.fileCount} files, ${data.meta.edgeCount} type-only edges`,
-)
+console.log(`.reports/graphs/types.json — ${data.meta.fileCount} files, ${data.meta.edgeCount} type-only edges`)
 console.log(`\nCross-package type-only edges (${crossPkg.length} total, ${byPair.size} pkg pairs):`)
 for (const [pair, edges] of [...byPair.entries()].sort()) {
   console.log(`  ${pair}  (${edges.length})`)

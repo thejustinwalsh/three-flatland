@@ -4,7 +4,9 @@ import { SkiaImage } from './image'
 import { SkiaPaint } from './paint'
 
 let skia: SkiaContext
-beforeAll(async () => { skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext) })
+beforeAll(async () => {
+  skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext)
+})
 
 describe('SkiaImage', () => {
   it('creates from pixels', () => {

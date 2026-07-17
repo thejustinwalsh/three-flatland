@@ -146,9 +146,7 @@ function gemModuleSource(gem: Gem | null): string {
     '\n' +
     `import type { Gem } from './GemBackground'\n` +
     '\n' +
-    (gem === null
-      ? `export const GEM: Gem | null = null\n`
-      : `export const GEM = '${gem}' as const satisfies Gem\n`)
+    (gem === null ? `export const GEM: Gem | null = null\n` : `export const GEM = '${gem}' as const satisfies Gem\n`)
   )
 }
 

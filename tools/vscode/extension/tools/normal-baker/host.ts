@@ -7,10 +7,7 @@ import { readNormalDescriptorSidecar, saveNormalDescriptor } from './sidecar'
 
 const TOOL = 'normal-baker'
 
-export async function openNormalBakerPanel(
-  context: vscode.ExtensionContext,
-  imageUri: vscode.Uri
-): Promise<void> {
+export async function openNormalBakerPanel(context: vscode.ExtensionContext, imageUri: vscode.Uri): Promise<void> {
   const fileName = imageUri.path.split('/').pop() ?? 'image.png'
 
   const panel = vscode.window.createWebviewPanel(
@@ -22,10 +19,7 @@ export async function openNormalBakerPanel(
       // State survives via Zustand persist (webviewStorage + localStorage) —
       // see webview/normal-baker/normalBakerStore.ts.
       retainContextWhenHidden: false,
-      localResourceRoots: [
-        vscode.Uri.joinPath(context.extensionUri, 'dist'),
-        vscode.Uri.joinPath(imageUri, '..'),
-      ],
+      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist'), vscode.Uri.joinPath(imageUri, '..')],
     }
   )
 
@@ -51,9 +45,7 @@ export async function openNormalBakerPanel(
       const loaded = await readNormalDescriptorSidecar(imageUri)
       if (loaded) {
         descriptor = loaded.descriptor
-        log(
-          `normalBaker/ready loaded existing descriptor (${loaded.descriptor.regions?.length ?? 0} region(s))`
-        )
+        log(`normalBaker/ready loaded existing descriptor (${loaded.descriptor.regions?.length ?? 0} region(s))`)
       } else {
         log('normalBaker/ready no existing sidecar')
       }

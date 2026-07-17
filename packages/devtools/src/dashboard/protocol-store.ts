@@ -102,12 +102,18 @@ export class ProtocolStore {
 
   addListener(cb: Listener): () => void {
     this._listeners.add(cb)
-    return () => { this._listeners.delete(cb) }
+    return () => {
+      this._listeners.delete(cb)
+    }
   }
 
   private _fire(): void {
     for (const cb of this._listeners) {
-      try { cb() } catch { /* ignore */ }
+      try {
+        cb()
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -149,7 +155,7 @@ export class ProtocolStore {
     if (this._flushTimer === null) {
       this._flushTimer = (globalThis.setTimeout as unknown as (cb: () => void, ms: number) => number)(
         () => this._flush(),
-        WRITE_FLUSH_MS,
+        WRITE_FLUSH_MS
       )
     }
     this._evictIfNeeded(providerId)
@@ -170,7 +176,9 @@ export class ProtocolStore {
       try {
         const tx = this._db.transaction(STORE, 'readwrite')
         tx.objectStore(STORE).clear()
-      } catch { /* db closing */ }
+      } catch {
+        /* db closing */
+      }
     }
     this._fire()
   }
@@ -189,7 +197,10 @@ export class ProtocolStore {
     // Quick hit check.
     let allHit = true
     for (let id = startId; id <= endId; id++) {
-      if (!this._cache.has(cacheKey(providerId, id))) { allHit = false; break }
+      if (!this._cache.has(cacheKey(providerId, id))) {
+        allHit = false
+        break
+      }
     }
     if (allHit) return
     const promise = this._readRange(providerId, startId, endId)
@@ -214,7 +225,7 @@ export class ProtocolStore {
   async queryFiltered(
     providerId: string,
     predicate: (entry: LogEntry) => boolean,
-    signal?: { aborted: boolean },
+    signal?: { aborted: boolean }
   ): Promise<number[]> {
     const db = await this._dbReady
     const out: number[] = []
@@ -224,9 +235,15 @@ export class ProtocolStore {
       const index = store.index(INDEX)
       const req = index.openCursor(IDBKeyRange.only(providerId))
       req.onsuccess = () => {
-        if (signal?.aborted === true) { resolve(); return }
+        if (signal?.aborted === true) {
+          resolve()
+          return
+        }
         const cursor = req.result
-        if (cursor === null) { resolve(); return }
+        if (cursor === null) {
+          resolve()
+          return
+        }
         const entry = cursor.value as LogEntry
         if (predicate(entry)) {
           out.push(entry.id)

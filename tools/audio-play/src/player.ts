@@ -43,12 +43,7 @@
  * surface for a `node-web-audio-api`/browser behavioral difference to
  * hide in.
  */
-import type {
-  PlaybackStats,
-  PlayToneSynthCommand,
-  ToneSynthType,
-  WadSynthSource,
-} from './protocol.js'
+import type { PlaybackStats, PlayToneSynthCommand, ToneSynthType, WadSynthSource } from './protocol.js'
 
 export type PlaySampleChannelsOptions = {
   rate?: number
@@ -217,11 +212,7 @@ export function playSampleChannels(
  * covers file playback too — one audibility regression guard for both
  * output paths, not two.
  */
-export function playBuffer(
-  ctx: AudioContext,
-  audioBuffer: AudioBuffer,
-  masterVolume: number
-): AudioBufferSourceNode {
+export function playBuffer(ctx: AudioContext, audioBuffer: AudioBuffer, masterVolume: number): AudioBufferSourceNode {
   const source = ctx.createBufferSource()
   source.buffer = audioBuffer
 
@@ -264,9 +255,7 @@ export function getPlaybackStats(ctx: AudioContext): PlaybackStats {
 
   const current = playbacks.get(ctx)
   const durationSeconds = current?.durationSeconds ?? 0
-  const elapsedSeconds = current
-    ? Math.min(Math.max(ctx.currentTime - current.startedAt, 0), durationSeconds)
-    : 0
+  const elapsedSeconds = current ? Math.min(Math.max(ctx.currentTime - current.startedAt, 0), durationSeconds) : 0
   const playing = !!current && !current.ended && elapsedSeconds < durationSeconds
 
   // Floating-point noise floor, not a perceptual threshold — real audio
@@ -375,11 +364,7 @@ function toneReleaseSeconds(
   if (synthType === 'PolySynth') {
     const dummyVoice = s._dummyVoice as Record<string, unknown> | undefined
     if (!dummyVoice) return 0
-    return toneReleaseSeconds(
-      Tone,
-      voiceType ?? 'Synth',
-      dummyVoice as unknown as ToneSynthInstance
-    )
+    return toneReleaseSeconds(Tone, voiceType ?? 'Synth', dummyVoice as unknown as ToneSynthInstance)
   }
   if (synthType === 'DuoSynth') {
     const voice0 = s.voice0 as { envelope?: { release?: unknown } } | undefined
@@ -458,16 +443,13 @@ export function playToneSynth(
   trackPlayback(ctx, ended, durationSeconds)
 
   if (cmd.synthType === 'NoiseSynth') {
-    ;(
-      synth as unknown as { triggerAttackRelease(duration: string | number): unknown }
-    ).triggerAttackRelease(cmd.duration)
+    ;(synth as unknown as { triggerAttackRelease(duration: string | number): unknown }).triggerAttackRelease(
+      cmd.duration
+    )
   } else if (cmd.synthType === 'PolySynth') {
     ;(
       synth as unknown as {
-        triggerAttackRelease(
-          notes: string | number | (string | number)[],
-          duration: string | number
-        ): unknown
+        triggerAttackRelease(notes: string | number | (string | number)[], duration: string | number): unknown
       }
     ).triggerAttackRelease(cmd.note as string | number | (string | number)[], cmd.duration)
   } else {

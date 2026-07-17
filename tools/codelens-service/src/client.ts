@@ -115,9 +115,7 @@ export class CodelensServiceClient {
         // catchable type; the original framing error's message is
         // preserved in the wrapper's message for diagnosis.
         const original = error instanceof Error ? error.message : String(error)
-        const wrapped = new CodelensServiceExitedError(
-          `sidecar connection killed by a framing error: ${original}`
-        )
+        const wrapped = new CodelensServiceExitedError(`sidecar connection killed by a framing error: ${original}`)
         this.emitError(wrapped)
         this.failConnection(wrapped)
       }
@@ -140,9 +138,7 @@ export class CodelensServiceClient {
       if (this.exited) return
       this.exited = true
       this.failAllPending(
-        new CodelensServiceExitedError(
-          `sidecar exited before responding (code=${code}, signal=${signal})`
-        )
+        new CodelensServiceExitedError(`sidecar exited before responding (code=${code}, signal=${signal})`)
       )
       for (const handler of this.exitHandlers) handler(code, signal)
     })
@@ -184,11 +180,7 @@ export class CodelensServiceClient {
     try {
       message = JSON.parse(body.toString('utf8')) as RpcResponse
     } catch (error) {
-      this.emitError(
-        new Error(
-          `codelens-service: malformed JSON frame from sidecar: ${(error as Error).message}`
-        )
-      )
+      this.emitError(new Error(`codelens-service: malformed JSON frame from sidecar: ${(error as Error).message}`))
       return
     }
     const pending = this.pending.get(message.id)
@@ -245,9 +237,7 @@ export class CodelensServiceClient {
       return Promise.reject(new CodelensServiceExitedError('call start() before making requests'))
     }
     if (this.exited) {
-      return Promise.reject(
-        new CodelensServiceExitedError(`cannot send "${method}": sidecar has already exited`)
-      )
+      return Promise.reject(new CodelensServiceExitedError(`cannot send "${method}": sidecar has already exited`))
     }
     const child = this.child
     const id = this.nextId++

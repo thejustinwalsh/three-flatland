@@ -1,18 +1,7 @@
 import { Suspense, useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-import {
-  DataTexture,
-  RGBAFormat,
-  NearestFilter,
-  SRGBColorSpace,
-  type OrthographicCamera,
-} from 'three'
-import {
-  TileMap2D,
-  type TileMapData,
-  type TilesetData,
-  type TileLayerData,
-} from 'three-flatland/react'
+import { DataTexture, RGBAFormat, NearestFilter, SRGBColorSpace, type OrthographicCamera } from 'three'
+import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/devtools/react'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
@@ -120,7 +109,11 @@ interface BSPNode {
   room?: { x: number; y: number; w: number; h: number }
 }
 
-function generateDungeon(width: number, height: number, density: string): {
+function generateDungeon(
+  width: number,
+  height: number,
+  density: string
+): {
   ground: Uint32Array
   walls: Uint32Array
   decor: Uint32Array
@@ -295,7 +288,7 @@ function generateDungeon(width: number, height: number, density: string): {
       }
     }
 
-    const numDecorations = Math.floor(room.w * room.h / 40) + 1
+    const numDecorations = Math.floor((room.w * room.h) / 40) + 1
     for (let i = 0; i < numDecorations; i++) {
       if (room.w <= 4 || room.h <= 4) continue
       const rx = room.x + 2 + Math.floor(Math.random() * (room.w - 4))
@@ -362,11 +355,7 @@ function TilemapScene({ mapData, chunkSize, showGround, showWalls, showDecor, on
   // Report stats when tilemap data or chunk size changes
   useEffect(() => {
     if (!tilemapRef.current || !onStats) return
-    onStats(
-      tilemapRef.current.totalTileCount,
-      tilemapRef.current.totalChunkCount,
-      tilemapRef.current.layerCount,
-    )
+    onStats(tilemapRef.current.totalTileCount, tilemapRef.current.totalChunkCount, tilemapRef.current.layerCount)
   }, [mapData, chunkSize, onStats])
 
   // Update layer visibility
@@ -384,16 +373,8 @@ function TilemapScene({ mapData, chunkSize, showGround, showWalls, showDecor, on
     tilemapRef.current?.update(delta * 1000)
   })
 
-  return (
-    <tileMap2D
-      ref={tilemapRef}
-      data={mapData}
-      chunkSize={chunkSize}
-      position={[0, 0, 0]}
-    />
-  )
+  return <tileMap2D ref={tilemapRef} data={mapData} chunkSize={chunkSize} position={[0, 0, 0]} />
 }
-
 
 function OrthoCamera({ viewSize }: { viewSize: number }) {
   const set = useThree((s) => s.set)
@@ -418,7 +399,12 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
   )
 }
 
-function CameraController({ mapSize, zoomRef, zoomSlider, setZoomSlider }: {
+function CameraController({
+  mapSize,
+  zoomRef,
+  zoomSlider,
+  setZoomSlider,
+}: {
   mapSize: number
   zoomRef: React.RefObject<number>
   zoomSlider: number
@@ -612,7 +598,9 @@ export default function App() {
     options: { Sparse: 'sparse', Normal: 'normal', Dense: 'dense', Packed: 'packed' },
   })
   const [seed, setSeed] = usePaneInput<number>(genFolder, 'seed', 42, {
-    min: 0, max: 999999, step: 1,
+    min: 0,
+    max: 999999,
+    step: 1,
   })
   usePaneButton(genFolder, 'Regenerate', () => {
     setSeed(Math.floor(Math.random() * 1000000))
@@ -622,9 +610,18 @@ export default function App() {
   // Add readonly bindings directly to the pane
   useEffect(() => {
     if (!tilesFolder) return
-    const b1 = tilesFolder.addBinding(tileStatsRef.current, 'tiles', { readonly: true, format: (v: number) => v.toFixed(0) })
-    const b2 = tilesFolder.addBinding(tileStatsRef.current, 'chunks', { readonly: true, format: (v: number) => v.toFixed(0) })
-    const b3 = tilesFolder.addBinding(tileStatsRef.current, 'layers', { readonly: true, format: (v: number) => v.toFixed(0) })
+    const b1 = tilesFolder.addBinding(tileStatsRef.current, 'tiles', {
+      readonly: true,
+      format: (v: number) => v.toFixed(0),
+    })
+    const b2 = tilesFolder.addBinding(tileStatsRef.current, 'chunks', {
+      readonly: true,
+      format: (v: number) => v.toFixed(0),
+    })
+    const b3 = tilesFolder.addBinding(tileStatsRef.current, 'layers', {
+      readonly: true,
+      format: (v: number) => v.toFixed(0),
+    })
     return () => {
       b1.dispose()
       b2.dispose()
@@ -647,26 +644,32 @@ export default function App() {
     zoomRef.current = zoomOut * Math.pow(zoomIn / zoomOut, t)
   }, [zoomSlider, zoomOut, zoomIn])
 
-  const handleStats = useCallback((tiles: number, chunks: number, layers: number) => {
-    tileStatsRef.current.tiles = tiles
-    tileStatsRef.current.chunks = chunks
-    tileStatsRef.current.layers = layers
-    pane.refresh()
-  }, [pane])
+  const handleStats = useCallback(
+    (tiles: number, chunks: number, layers: number) => {
+      tileStatsRef.current.tiles = tiles
+      tileStatsRef.current.chunks = chunks
+      tileStatsRef.current.layers = layers
+      pane.refresh()
+    },
+    [pane]
+  )
 
   // Create tileset (memoized, never changes)
-  const tileset = useMemo<TilesetData>(() => ({
-    name: 'dungeon',
-    firstGid: 1,
-    tileWidth: TILE_SIZE,
-    tileHeight: TILE_SIZE,
-    imageWidth: TILESET_COLUMNS * TILE_SIZE,
-    imageHeight: TILESET_ROWS * TILE_SIZE,
-    columns: TILESET_COLUMNS,
-    tileCount: TILESET_COLUMNS * TILESET_ROWS,
-    tiles: new Map(),
-    texture: createProceduralTileset(),
-  }), [])
+  const tileset = useMemo<TilesetData>(
+    () => ({
+      name: 'dungeon',
+      firstGid: 1,
+      tileWidth: TILE_SIZE,
+      tileHeight: TILE_SIZE,
+      imageWidth: TILESET_COLUMNS * TILE_SIZE,
+      imageHeight: TILESET_ROWS * TILE_SIZE,
+      columns: TILESET_COLUMNS,
+      tileCount: TILESET_COLUMNS * TILESET_ROWS,
+      tiles: new Map(),
+      texture: createProceduralTileset(),
+    }),
+    []
+  )
 
   // Generate map data (regenerates when mapSize, density, or seed changes)
   const mapData = useMemo(() => {

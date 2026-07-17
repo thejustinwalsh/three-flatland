@@ -38,7 +38,7 @@ export function computeThumbStyle(
   imageH: number,
   rect: { x: number; y: number; w: number; h: number },
   boxW: number,
-  boxH: number,
+  boxH: number
 ): ThumbStyle {
   const scale = Math.min(boxW / rect.w, boxH / rect.h)
   const displayW = imageW * scale

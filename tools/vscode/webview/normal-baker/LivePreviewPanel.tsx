@@ -21,8 +21,7 @@ const BAKE_DEBOUNCE_MS = 200
 
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(
-    () =>
-      typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   )
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -70,13 +69,7 @@ export type LivePreviewProps = {
 }
 
 /** Shared canvas chrome for both preview sections. */
-function PreviewCanvas({
-  canvasRef,
-  ready,
-}: {
-  canvasRef: React.RefObject<HTMLCanvasElement | null>
-  ready: boolean
-}) {
+function PreviewCanvas({ canvasRef, ready }: { canvasRef: React.RefObject<HTMLCanvasElement | null>; ready: boolean }) {
   if (!ready) {
     return <div {...stylex.props(s.empty)}>Waiting for source image…</div>
   }
@@ -110,12 +103,7 @@ export function LivePreview({ imageData, descriptor }: LivePreviewProps) {
       return
     }
     const timer = setTimeout(() => {
-      const data = bakePreviewNormalMap(
-        imageData.data,
-        imageData.width,
-        imageData.height,
-        descriptor
-      )
+      const data = bakePreviewNormalMap(imageData.data, imageData.width, imageData.height, descriptor)
       setBaked({ data, w: imageData.width, h: imageData.height })
     }, BAKE_DEBOUNCE_MS)
     return () => clearTimeout(timer)

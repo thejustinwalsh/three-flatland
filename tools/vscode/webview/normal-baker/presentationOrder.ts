@@ -46,10 +46,7 @@ export function descriptorMoveArgs(
   fromDescriptorIndex: number,
   toDescriptorIndexFinal: number
 ): { fromIndex: number; toIndex: number } {
-  const toIndex =
-    toDescriptorIndexFinal > fromDescriptorIndex
-      ? toDescriptorIndexFinal + 1
-      : toDescriptorIndexFinal
+  const toIndex = toDescriptorIndexFinal > fromDescriptorIndex ? toDescriptorIndexFinal + 1 : toDescriptorIndexFinal
   return { fromIndex: fromDescriptorIndex, toIndex }
 }
 

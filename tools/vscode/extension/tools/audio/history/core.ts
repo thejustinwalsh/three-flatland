@@ -87,12 +87,7 @@ export function appendBatch(
  * may lag a write from another window — deleting something already gone
  * shouldn't throw). Returns a new file object.
  */
-export function deleteCandidate(
-  file: HistoryFile,
-  key: string,
-  batchTs: number,
-  index: number
-): HistoryFile {
+export function deleteCandidate(file: HistoryFile, key: string, batchTs: number, index: number): HistoryFile {
   const batches = file[key]
   if (!batches) return file
   const next = batches.flatMap((batch) => {
@@ -182,11 +177,7 @@ export function mergeHistoryFiles(onDisk: HistoryFile, inMemory: HistoryFile): H
  * `writtenKey` (clear, or the last candidate's removal drops the key
  * from `inMemory` entirely), the disk copy must not resurrect it.
  */
-export function mergeForWrite(
-  onDisk: HistoryFile,
-  inMemory: HistoryFile,
-  writtenKey: string
-): HistoryFile {
+export function mergeForWrite(onDisk: HistoryFile, inMemory: HistoryFile, writtenKey: string): HistoryFile {
   const merged = mergeHistoryFiles(onDisk, inMemory)
   if (!(writtenKey in inMemory) && writtenKey in merged) {
     const { [writtenKey]: _removed, ...rest } = merged

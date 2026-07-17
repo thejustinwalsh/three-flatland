@@ -14,11 +14,6 @@ export type {
   BakedSidecarMetadata,
 } from './types.js'
 
-export {
-  bakedSiblingURL,
-  probeBakedSibling,
-  readPngTextChunk,
-  hashDescriptor,
-} from './sidecar.js'
+export { bakedSiblingURL, probeBakedSibling, readPngTextChunk, hashDescriptor } from './sidecar.js'
 
 export { devtimeWarn, _resetDevtimeWarnings } from './devtimeWarn.js'

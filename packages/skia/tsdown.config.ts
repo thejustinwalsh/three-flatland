@@ -8,7 +8,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   // Exclude both .test.ts and .test.tsx — the TSX glob would otherwise leak
   // test files (and their vitest / testing-library imports) into dist/.
-  entry: ['src/ts/**/*.ts', 'src/ts/**/*.tsx', '!src/ts/**/*.test.ts', '!src/ts/**/*.test-d.ts', '!src/ts/**/*.test.tsx'],
+  entry: [
+    'src/ts/**/*.ts',
+    'src/ts/**/*.tsx',
+    '!src/ts/**/*.test.ts',
+    '!src/ts/**/*.test-d.ts',
+    '!src/ts/**/*.test.tsx',
+  ],
   format: ['esm'],
   dts: true,
   sourcemap: true,

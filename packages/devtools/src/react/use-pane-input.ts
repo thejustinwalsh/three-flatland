@@ -44,7 +44,7 @@ export function usePaneInput<T>(
   parent: PaneParent | null,
   key: string,
   initialValue: T,
-  options: PaneInputOptions = {},
+  options: PaneInputOptions = {}
 ): [T, (v: T) => void] {
   const [value, setValueState] = useState<T>(initialValue)
   const paramsRef = useRef<Record<string, unknown>>({ [key]: initialValue })
@@ -84,10 +84,7 @@ export function usePaneInput<T>(
       } catch {
         // Parent may have been disposed first (cascade). Ignore.
       }
-      if (
-        bindingRef.current ===
-        (binding as unknown as { refresh(): void; dispose(): void })
-      ) {
+      if (bindingRef.current === (binding as unknown as { refresh(): void; dispose(): void })) {
         bindingRef.current = null
       }
     }
@@ -101,7 +98,7 @@ export function usePaneInput<T>(
       setValueState(v)
       bindingRef.current?.refresh()
     },
-    [key],
+    [key]
   )
 
   return [value, setValue]

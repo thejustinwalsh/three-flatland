@@ -56,7 +56,7 @@ export function advancePlayhead(
   loop: boolean,
   pingPong: boolean,
   /** Direction state (for ping-pong). +1 forward, -1 reverse. */
-  direction: 1 | -1,
+  direction: 1 | -1
 ): { playhead: number; direction: 1 | -1; ended: boolean } {
   if (frameCount <= 0) return { playhead: 0, direction, ended: true }
   if (frameCount === 1) return { playhead: 0, direction, ended: !loop }
@@ -87,7 +87,7 @@ export function advancePlayhead(
   // of which half of the triangle we land on.
   const period = 2 * (frameCount - 1)
   const startPhase = direction === 1 ? current : period - current
-  const newPhase = ((startPhase + step) % period + period) % period
+  const newPhase = (((startPhase + step) % period) + period) % period
   if (newPhase < frameCount) {
     return { playhead: newPhase, direction: 1, ended: false }
   }
@@ -112,7 +112,9 @@ export function createAnimationStore(): AnimationStore {
   // 1 frame at 60fps and ~0.2 frames at 12fps each tick.
   let accum = 0
   const listeners = new Set<() => void>()
-  const emit = () => { for (const l of listeners) l() }
+  const emit = () => {
+    for (const l of listeners) l()
+  }
 
   return {
     get: () => snapshot,
@@ -180,7 +182,9 @@ export function createAnimationStore(): AnimationStore {
     },
     subscribe: (fn) => {
       listeners.add(fn)
-      return () => { listeners.delete(fn) }
+      return () => {
+        listeners.delete(fn)
+      }
     },
   }
 }
@@ -190,6 +194,6 @@ export function useAnimationPlayback(store: AnimationStore | null): PlaybackSnap
   return useSyncExternalStore(
     (fn) => (store ? store.subscribe(fn) : () => {}),
     () => (store ? store.get() : EMPTY_PLAYBACK),
-    () => EMPTY_PLAYBACK,
+    () => EMPTY_PLAYBACK
   )
 }

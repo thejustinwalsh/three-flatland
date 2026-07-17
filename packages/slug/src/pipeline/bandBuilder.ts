@@ -71,10 +71,7 @@ function buildAxisBands(
 
     // Assign curve to all overlapping bands (with epsilon overlap)
     const startBand = Math.max(0, Math.floor((curveMin - bandMin - BAND_EPSILON) / bandSize))
-    const endBand = Math.min(
-      bandCount - 1,
-      Math.floor((curveMax - bandMin + BAND_EPSILON) / bandSize)
-    )
+    const endBand = Math.min(bandCount - 1, Math.floor((curveMax - bandMin + BAND_EPSILON) / bandSize))
 
     for (let b = startBand; b <= endBand; b++) {
       bands[b]!.curveIndices.push(i)

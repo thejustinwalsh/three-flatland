@@ -76,13 +76,17 @@ export interface EffectField {
 // ============================================
 
 /** Map a uniform schema value type to the corresponding parameterized Node type. */
-export type SchemaToNodeType<V extends EffectSchemaValue> =
-  V extends (...args: never[]) => unknown ? never
-  : V extends number ? Node<'float'>
-  : V extends readonly [number, number, number, number] ? Node<'vec4'>
-  : V extends readonly [number, number, number] ? Node<'vec3'>
-  : V extends readonly [number, number] ? Node<'vec2'>
-  : Node<'float'> | Node<'vec2'> | Node<'vec3'> | Node<'vec4'>
+export type SchemaToNodeType<V extends EffectSchemaValue> = V extends (...args: never[]) => unknown
+  ? never
+  : V extends number
+    ? Node<'float'>
+    : V extends readonly [number, number, number, number]
+      ? Node<'vec4'>
+      : V extends readonly [number, number, number]
+        ? Node<'vec3'>
+        : V extends readonly [number, number]
+          ? Node<'vec2'>
+          : Node<'float'> | Node<'vec2'> | Node<'vec3'> | Node<'vec4'>
 
 /** Context passed to an effect's TSL node builder. */
 export interface EffectNodeContext<S extends EffectSchema = EffectSchema> {
@@ -360,7 +364,7 @@ export abstract class MaterialEffect {
     const ctor = this.constructor as typeof MaterialEffect
     if (this._entity && this._entity.has(ctor._trait)) {
       // Read from trait
-      const field = ctor._fields.find(f => f.name === name)!
+      const field = ctor._fields.find((f) => f.name === name)!
       const data = this._entity.get(ctor._trait) as Record<string, number>
       if (field.size === 1) {
         return data[name]!
@@ -387,7 +391,7 @@ export abstract class MaterialEffect {
 
     if (this._entity && this._entity.has(ctor._trait)) {
       // Write to trait — systems will sync to batch buffers
-      const field = ctor._fields.find(f => f.name === name)!
+      const field = ctor._fields.find((f) => f.name === name)!
       const data = this._entity.get(ctor._trait) as Record<string, number>
 
       if (field.size === 1) {
@@ -427,10 +431,7 @@ export abstract class MaterialEffect {
 // ============================================
 
 /** Configuration passed to createMaterialEffect(). */
-interface MaterialEffectConfig<
-  S extends EffectSchema,
-  C extends readonly ChannelName[] = readonly [],
-> {
+interface MaterialEffectConfig<S extends EffectSchema, C extends readonly ChannelName[] = readonly []> {
   /** Unique name for this effect. */
   name: string
   /** Per-sprite data schema — default values define types and initial values. */
@@ -456,11 +457,9 @@ interface MaterialEffectConfig<
    * uncallable by type — a `channelNode` without a `provides` is a
    * compile-time error.
    */
-  channelNode?: C extends readonly [] ? never
-    : (
-        channelName: C[number],
-        context: ChannelNodeContext<S>,
-      ) => ChannelNodeMap[C[number]]
+  channelNode?: C extends readonly []
+    ? never
+    : (channelName: C[number], context: ChannelNodeContext<S>) => ChannelNodeMap[C[number]]
 }
 
 /**
@@ -509,9 +508,7 @@ export type MaterialEffectClass<S extends EffectSchema> = {
 export function createMaterialEffect<
   const S extends EffectSchema,
   const C extends readonly ChannelName[] = readonly [],
->(
-  config: MaterialEffectConfig<S, C>
-): MaterialEffectClass<S> {
+>(config: MaterialEffectConfig<S, C>): MaterialEffectClass<S> {
   const { name, schema, node, provides: channelProvides, channelNode: channelNodeFn } = config
 
   // Create anonymous subclass with static fields
@@ -522,14 +519,13 @@ export function createMaterialEffect<
     // Erase narrowed call-site types back to the storage surface (string, Node)
     // — the runtime dispatcher in buildMaterial() looks up by string channel
     // name and the pipeline resolves node types from ChannelNodeMap.
-    static channelNode: ((ch: string, ctx: ChannelNodeContext) => Node) | null =
-      channelNodeFn
-        ? (ch: string, ctx: ChannelNodeContext) =>
-            (channelNodeFn as unknown as (
-              ch: string,
-              ctx: ChannelNodeContext<S>,
-            ) => Node)(ch, ctx as ChannelNodeContext<S>)
-        : null
+    static channelNode: ((ch: string, ctx: ChannelNodeContext) => Node) | null = channelNodeFn
+      ? (ch: string, ctx: ChannelNodeContext) =>
+          (channelNodeFn as unknown as (ch: string, ctx: ChannelNodeContext<S>) => Node)(
+            ch,
+            ctx as ChannelNodeContext<S>
+          )
+      : null
     static override _initialized: boolean = false
 
     static override buildNode(context: EffectNodeContext): Node<'vec4'> {

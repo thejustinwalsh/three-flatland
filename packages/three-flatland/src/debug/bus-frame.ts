@@ -104,22 +104,19 @@ export class FrameWriter {
   }
 
   writeUint32(v: number): void {
-    if (this._cursor + 4 > this.buffer.byteLength)
-      throw new RangeError('FrameWriter: buffer overflow (uint32)')
+    if (this._cursor + 4 > this.buffer.byteLength) throw new RangeError('FrameWriter: buffer overflow (uint32)')
     this._view.setUint32(this._cursor, v >>> 0, true)
     this._cursor += 4
   }
 
   writeInt32(v: number): void {
-    if (this._cursor + 4 > this.buffer.byteLength)
-      throw new RangeError('FrameWriter: buffer overflow (int32)')
+    if (this._cursor + 4 > this.buffer.byteLength) throw new RangeError('FrameWriter: buffer overflow (int32)')
     this._view.setInt32(this._cursor, v | 0, true)
     this._cursor += 4
   }
 
   writeFloat64(v: number): void {
-    if (this._cursor + 8 > this.buffer.byteLength)
-      throw new RangeError('FrameWriter: buffer overflow (float64)')
+    if (this._cursor + 8 > this.buffer.byteLength) throw new RangeError('FrameWriter: buffer overflow (float64)')
     this._view.setFloat64(this._cursor, v, true)
     this._cursor += 8
   }

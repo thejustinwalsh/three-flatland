@@ -31,19 +31,19 @@
  */
 
 export interface FrameClock {
-    /**
-     * Register a per-frame callback. Returns an unsubscribe function.
-     * Idempotent for the same callback reference. Pass a short `label`
-     * to make this subscriber identifiable in diagnostic logs
-     * (`window.__flatlandFrameClockDebug = true`) and via
-     * `clock.subscribers` for leak-hunting.
-     */
-    subscribe(cb: FrameCallback, label?: string): () => void
-    /** Diagnostic: current subscriber count. */
-    readonly size: number
-    /** Diagnostic: labels of every currently-registered subscriber.
-     *  Subscribers that didn't pass a label show as `'(anonymous)'`. */
-    readonly subscribers: string[]
+  /**
+   * Register a per-frame callback. Returns an unsubscribe function.
+   * Idempotent for the same callback reference. Pass a short `label`
+   * to make this subscriber identifiable in diagnostic logs
+   * (`window.__flatlandFrameClockDebug = true`) and via
+   * `clock.subscribers` for leak-hunting.
+   */
+  subscribe(cb: FrameCallback, label?: string): () => void
+  /** Diagnostic: current subscriber count. */
+  readonly size: number
+  /** Diagnostic: labels of every currently-registered subscriber.
+   *  Subscribers that didn't pass a label show as `'(anonymous)'`. */
+  readonly subscribers: string[]
 }
 
 export type FrameCallback = (timestamp: number) => void
@@ -52,76 +52,72 @@ const GLOBAL_KEY = '__flatlandFrameClock'
 const DEBUG_KEY = '__flatlandFrameClockDebug'
 
 interface FrameClockWindow extends Window {
-    [GLOBAL_KEY]?: FrameClock
-    [DEBUG_KEY]?: boolean
+  [GLOBAL_KEY]?: FrameClock
+  [DEBUG_KEY]?: boolean
 }
 
 function isDebug(): boolean {
-    if (typeof window === 'undefined') return false
-    return Boolean((window as FrameClockWindow)[DEBUG_KEY])
+  if (typeof window === 'undefined') return false
+  return Boolean((window as FrameClockWindow)[DEBUG_KEY])
 }
 
 function createFrameClock(): FrameClock {
-    // Map preserves insertion order AND lets us associate each
-    // callback with a debug label for leak-hunting.
-    const subs = new Map<FrameCallback, string>()
-    let rafId = 0
+  // Map preserves insertion order AND lets us associate each
+  // callback with a debug label for leak-hunting.
+  const subs = new Map<FrameCallback, string>()
+  let rafId = 0
 
-    function tick(t: number): void {
-        // Snapshot to a local array so a subscriber that unsubscribes
-        // mid-iteration doesn't reorder the Map's iterator. Cheap for
-        // the expected handful of subscribers.
-        const local = Array.from(subs.keys())
-        for (const cb of local) {
-            try {
-                cb(t)
-            } catch (err) {
-                console.error('[frameClock] subscriber threw:', err)
-            }
-        }
-        // Re-arm only if subscribers remain. Falls out cleanly when
-        // every subscriber unsubscribed during this tick.
-        if (subs.size > 0) {
-            rafId = requestAnimationFrame(tick)
-        } else {
-            rafId = 0
-            if (isDebug()) console.debug('[frameClock] parked (0 subs)')
-        }
+  function tick(t: number): void {
+    // Snapshot to a local array so a subscriber that unsubscribes
+    // mid-iteration doesn't reorder the Map's iterator. Cheap for
+    // the expected handful of subscribers.
+    const local = Array.from(subs.keys())
+    for (const cb of local) {
+      try {
+        cb(t)
+      } catch (err) {
+        console.error('[frameClock] subscriber threw:', err)
+      }
     }
+    // Re-arm only if subscribers remain. Falls out cleanly when
+    // every subscriber unsubscribed during this tick.
+    if (subs.size > 0) {
+      rafId = requestAnimationFrame(tick)
+    } else {
+      rafId = 0
+      if (isDebug()) console.debug('[frameClock] parked (0 subs)')
+    }
+  }
 
-    return {
-        subscribe(cb, label) {
-            const tag = label ?? '(anonymous)'
-            subs.set(cb, tag)
-            if (isDebug()) {
-                console.debug(
-                    `[frameClock] subscribe "${tag}" — size now ${subs.size}`,
-                )
-            }
-            // 0 → 1+ transition: start the chain. Already-running case
-            // is the `rafId !== 0` guard.
-            if (rafId === 0) {
-                if (isDebug()) console.debug('[frameClock] starting rAF chain')
-                rafId = requestAnimationFrame(tick)
-            }
-            return () => {
-                if (subs.delete(cb) && isDebug()) {
-                    console.debug(
-                        `[frameClock] unsubscribe "${tag}" — size now ${subs.size}`,
-                    )
-                }
-                // Don't cancelAnimationFrame here; the in-flight tick
-                // will detect `subs.size === 0` and naturally stop.
-                // Canceling mid-callback would cut off other subs.
-            }
-        },
-        get size() {
-            return subs.size
-        },
-        get subscribers() {
-            return Array.from(subs.values())
-        },
-    }
+  return {
+    subscribe(cb, label) {
+      const tag = label ?? '(anonymous)'
+      subs.set(cb, tag)
+      if (isDebug()) {
+        console.debug(`[frameClock] subscribe "${tag}" — size now ${subs.size}`)
+      }
+      // 0 → 1+ transition: start the chain. Already-running case
+      // is the `rafId !== 0` guard.
+      if (rafId === 0) {
+        if (isDebug()) console.debug('[frameClock] starting rAF chain')
+        rafId = requestAnimationFrame(tick)
+      }
+      return () => {
+        if (subs.delete(cb) && isDebug()) {
+          console.debug(`[frameClock] unsubscribe "${tag}" — size now ${subs.size}`)
+        }
+        // Don't cancelAnimationFrame here; the in-flight tick
+        // will detect `subs.size === 0` and naturally stop.
+        // Canceling mid-callback would cut off other subs.
+      }
+    },
+    get size() {
+      return subs.size
+    },
+    get subscribers() {
+      return Array.from(subs.values())
+    },
+  }
 }
 
 /**
@@ -136,20 +132,20 @@ function createFrameClock(): FrameClock {
  *   - `window.__flatlandFrameClock.subscribers` → array of labels.
  */
 export function getFrameClock(): FrameClock {
-    if (typeof window === 'undefined') {
-        return {
-            subscribe: () => () => {},
-            get size() {
-                return 0
-            },
-            get subscribers() {
-                return []
-            },
-        }
+  if (typeof window === 'undefined') {
+    return {
+      subscribe: () => () => {},
+      get size() {
+        return 0
+      },
+      get subscribers() {
+        return []
+      },
     }
-    const w = window as FrameClockWindow
-    if (!w[GLOBAL_KEY]) {
-        w[GLOBAL_KEY] = createFrameClock()
-    }
-    return w[GLOBAL_KEY]!
+  }
+  const w = window as FrameClockWindow
+  if (!w[GLOBAL_KEY]) {
+    w[GLOBAL_KEY] = createFrameClock()
+  }
+  return w[GLOBAL_KEY]!
 }

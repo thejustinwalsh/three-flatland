@@ -44,7 +44,7 @@ export interface AddBuffersViewOptions {
 export function addBuffersView(
   parent: Pane | FolderApi,
   client: DevtoolsClient,
-  options: AddBuffersViewOptions = {},
+  options: AddBuffersViewOptions = {}
 ): BuffersViewHandle {
   const blade = parent.addBlade({ view: 'separator' }) as unknown as {
     element: HTMLElement
@@ -80,7 +80,8 @@ export function addBuffersView(
   prevBtn.setAttribute('role', 'button')
   prevBtn.setAttribute('aria-label', 'Previous buffer')
   const nameLabel = document.createElement('span')
-  nameLabel.style.cssText = 'font-weight:500;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none'
+  nameLabel.style.cssText =
+    'font-weight:500;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none'
   const nextBtn = document.createElement('span')
   nextBtn.textContent = '▶'
   nextBtn.style.cssText = arrowStyle
@@ -237,8 +238,14 @@ export function addBuffersView(
     syncSelection()
   }
   header.addEventListener('click', toggleCollapse)
-  prevBtn.addEventListener('click', (e) => { e.stopPropagation(); cycle(-1) })
-  nextBtn.addEventListener('click', (e) => { e.stopPropagation(); cycle(1) })
+  prevBtn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    cycle(-1)
+  })
+  nextBtn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    cycle(1)
+  })
   expandBtn.addEventListener('click', (e) => {
     e.stopPropagation()
     if (activeName !== null && options.onExpand !== undefined) {
@@ -297,7 +304,7 @@ export function addBuffersView(
       const count = width * height
       for (let i = 0; i < count; i++) {
         const o = i * 4
-        out[o]     = Math.round(Math.max(0, Math.min(1, pixels[i * 4]     ?? 0)) * 255)
+        out[o] = Math.round(Math.max(0, Math.min(1, pixels[i * 4] ?? 0)) * 255)
         out[o + 1] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 1] ?? 0)) * 255)
         out[o + 2] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 2] ?? 0)) * 255)
         out[o + 3] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 3] ?? 1)) * 255)
@@ -381,4 +388,3 @@ export function addBuffersView(
     },
   }
 }
-

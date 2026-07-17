@@ -176,15 +176,15 @@ function writeU64(state: WGPUState, ptr: number, value: bigint): void {
 }
 
 // WGPU_WHOLE_SIZE = UINT64_MAX — means "use the whole buffer"
-const WGPU_WHOLE_SIZE = 0xFFFFFFFFFFFFFFFFn
+const WGPU_WHOLE_SIZE = 0xffffffffffffffffn
 // Dawn uses UINT32_MAX as "undefined" sentinel for counts and strides
-const u32OrUndef = (v: number) => v === 0xFFFFFFFF ? undefined : v
+const u32OrUndef = (v: number) => (v === 0xffffffff ? undefined : v)
 
 function readStringView(state: WGPUState, ptr: number): string {
   const dataPtr = readU32(state, ptr)
   if (dataPtr === 0) return ''
   const length = readU32(state, ptr + 4)
-  if (length === 0xFFFFFFFF) {
+  if (length === 0xffffffff) {
     const mem = new Uint8Array(state.memory.buffer)
     let end = dataPtr
     while (mem[end] !== 0) end++
@@ -202,14 +202,22 @@ type LayoutField = { readonly offset: number; readonly size: number; readonly ty
 function field(state: WGPUState, base: number, f: LayoutField): number {
   const addr = base + f.offset
   switch (f.type) {
-    case 'ptr': return readU32(state, addr)
-    case 'u32': return readU32(state, addr)
-    case 'i32': return readI32(state, addr)
-    case 'u16': return new Uint16Array(state.memory.buffer, addr, 1)[0]!
-    case 'f32': return readF32(state, addr)
-    case 'f64': return readF64(state, addr)
-    case 'u64': return Number(readU64(state, addr))
-    default: return readU32(state, addr)
+    case 'ptr':
+      return readU32(state, addr)
+    case 'u32':
+      return readU32(state, addr)
+    case 'i32':
+      return readI32(state, addr)
+    case 'u16':
+      return new Uint16Array(state.memory.buffer, addr, 1)[0]!
+    case 'f32':
+      return readF32(state, addr)
+    case 'f64':
+      return readF64(state, addr)
+    case 'u64':
+      return Number(readU64(state, addr))
+    default:
+      return readU32(state, addr)
   }
 }
 
@@ -283,7 +291,9 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     wgpuAdapterGetLimits: noop,
     wgpuAdapterHasFeature: noop,
     wgpuAdapterRequestDevice: noop,
-    wgpuAdapterAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuAdapterAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuAdapterRelease: noop,
 
     // ── Device: Resource Creation ──
@@ -311,14 +321,17 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       const sampleCount = field(state, ptr, L.tex.sampleCount)
       // Ensure all textures have COPY_SRC | COPY_DST for compositing
       const actualUsage = usage | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST
-      return registerObject(state, dev.createTexture({
-        usage: actualUsage,
-        dimension: enumStr<GPUTextureDimension>(WGPUTextureDimension, dimension),
-        size: { width, height, depthOrArrayLayers },
-        mipLevelCount,
-        sampleCount,
-        format,
-      }))
+      return registerObject(
+        state,
+        dev.createTexture({
+          usage: actualUsage,
+          dimension: enumStr<GPUTextureDimension>(WGPUTextureDimension, dimension),
+          size: { width, height, depthOrArrayLayers },
+          mipLevelCount,
+          sampleCount,
+          format,
+        })
+      )
     },
 
     wgpuDeviceCreateShaderModule(deviceHandle: number, descriptorPtr: number): number {
@@ -372,7 +385,8 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
         // Buffer binding
         const bufBase = e + L.bglEntry.buffer.offset
         const bufType = field(state, bufBase, L.bufBind.type)
-        if (bufType > 1) { // >1 means not Undefined (0 or 1)
+        if (bufType > 1) {
+          // >1 means not Undefined (0 or 1)
           entry.buffer = {
             type: enumStr(WGPUBufferBindingType, bufType),
             hasDynamicOffset: field(state, bufBase, L.bufBind.hasDynamicOffset) !== 0,
@@ -447,7 +461,9 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
         } else if (textureView) {
           entries.push({ binding, resource: textureView })
         } else {
-          console.warn(`[wgpu] createBindGroup entry ${i}: no valid resource (buf=${bufferHandle} sam=${samplerHandle} tv=${textureViewHandle})`)
+          console.warn(
+            `[wgpu] createBindGroup entry ${i}: no valid resource (buf=${bufferHandle} sam=${samplerHandle} tv=${textureViewHandle})`
+          )
         }
       }
 
@@ -475,7 +491,7 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       // Layout (optional — 0 means auto)
       const layoutHandle = field(state, ptr, L.rpDesc.layout)
       const layout: GPUPipelineLayout | 'auto' = layoutHandle
-        ? getObject<GPUPipelineLayout>(state, layoutHandle) ?? 'auto'
+        ? (getObject<GPUPipelineLayout>(state, layoutHandle) ?? 'auto')
         : 'auto'
 
       // Vertex state (inline at rpDesc.vertex.offset)
@@ -630,25 +646,31 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       if (!dev) return 0
       const layoutHandle = field(state, ptr, L.cpDesc.layout)
       const layout: GPUPipelineLayout | 'auto' = layoutHandle
-        ? getObject<GPUPipelineLayout>(state, layoutHandle) ?? 'auto'
+        ? (getObject<GPUPipelineLayout>(state, layoutHandle) ?? 'auto')
         : 'auto'
       const compBase = ptr + L.cpDesc.compute.offset
       const module = getObject<GPUShaderModule>(state, field(state, compBase, L.compState.module))
       if (!module) return 0
       const entryPoint = readStringView(state, compBase + L.compState.entryPoint.offset)
-      return registerObject(state, dev.createComputePipeline({
-        layout,
-        compute: { module, entryPoint: entryPoint || undefined },
-      }))
+      return registerObject(
+        state,
+        dev.createComputePipeline({
+          layout,
+          compute: { module, entryPoint: entryPoint || undefined },
+        })
+      )
     },
 
     wgpuDeviceCreateQuerySet(deviceHandle: number, ptr: number): number {
       const dev = getObject<GPUDevice>(state, deviceHandle)
       if (!dev) return 0
-      return registerObject(state, dev.createQuerySet({
-        type: enumStr(WGPUTextureFormat, field(state, ptr, L.queryDesc.type)),
-        count: field(state, ptr, L.queryDesc.count),
-      }))
+      return registerObject(
+        state,
+        dev.createQuerySet({
+          type: enumStr(WGPUTextureFormat, field(state, ptr, L.queryDesc.type)),
+          count: field(state, ptr, L.queryDesc.count),
+        })
+      )
     },
 
     wgpuDeviceCreateCommandEncoder(deviceHandle: number, _descriptorPtr: number): number {
@@ -668,8 +690,16 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       writeU32(state, limitsPtr + F.maxBindGroups.offset, lim.maxBindGroups)
       writeU32(state, limitsPtr + F.maxBindGroupsPlusVertexBuffers.offset, lim.maxBindGroupsPlusVertexBuffers ?? 24)
       writeU32(state, limitsPtr + F.maxBindingsPerBindGroup.offset, lim.maxBindingsPerBindGroup)
-      writeU32(state, limitsPtr + F.maxDynamicUniformBuffersPerPipelineLayout.offset, lim.maxDynamicUniformBuffersPerPipelineLayout)
-      writeU32(state, limitsPtr + F.maxDynamicStorageBuffersPerPipelineLayout.offset, lim.maxDynamicStorageBuffersPerPipelineLayout)
+      writeU32(
+        state,
+        limitsPtr + F.maxDynamicUniformBuffersPerPipelineLayout.offset,
+        lim.maxDynamicUniformBuffersPerPipelineLayout
+      )
+      writeU32(
+        state,
+        limitsPtr + F.maxDynamicStorageBuffersPerPipelineLayout.offset,
+        lim.maxDynamicStorageBuffersPerPipelineLayout
+      )
       writeU32(state, limitsPtr + F.maxSampledTexturesPerShaderStage.offset, lim.maxSampledTexturesPerShaderStage)
       writeU32(state, limitsPtr + F.maxSamplersPerShaderStage.offset, lim.maxSamplersPerShaderStage)
       writeU32(state, limitsPtr + F.maxStorageBuffersPerShaderStage.offset, lim.maxStorageBuffersPerShaderStage)
@@ -712,7 +742,9 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       return state.queueHandle
     },
     wgpuDeviceTick: noop,
-    wgpuDeviceAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuDeviceAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuDeviceRelease: noop,
     wgpuDeviceSetUncapturedErrorCallback: noop,
     wgpuDeviceSetDeviceLostCallback: noop,
@@ -757,7 +789,7 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       bufferHandle: number,
       bufferOffset: bigint,
       dataPtr: number,
-      size: number,
+      size: number
     ): void {
       const q = getObject<GPUQueue>(state, queueHandle)
       const buf = getObject<GPUBuffer>(state, bufferHandle)
@@ -772,7 +804,7 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       dataPtr: number,
       dataSize: bigint,
       layoutPtr: number,
-      sizePtr: number,
+      sizePtr: number
     ): void {
       const q = getObject<GPUQueue>(state, queueHandle)
       if (!q) return
@@ -799,7 +831,9 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       q.writeTexture(dest, data, dataLayout, size)
     },
 
-    wgpuQueueAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuQueueAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuQueueRelease: noop,
     wgpuQueueOnSubmittedWorkDone(_queueHandle: number, callbackInfoPtr: number): bigint {
       // WGPUQueueWorkDoneCallbackInfo: nextInChain(0), mode(4), callback(8), userdata1(12), userdata2(16)
@@ -823,7 +857,13 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
 
     // ── Buffer ──
 
-    wgpuBufferMapAsync(_bufferHandle: number, _mode: bigint, _offset: number, _size: number, _callbackInfo: number): bigint {
+    wgpuBufferMapAsync(
+      _bufferHandle: number,
+      _mode: bigint,
+      _offset: number,
+      _size: number,
+      _callbackInfo: number
+    ): bigint {
       // TODO: async buffer mapping — not used by Graphite for rendering init
       return 0n
     },
@@ -831,7 +871,7 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       const buf = getObject<GPUBuffer>(state, bufferHandle)
       if (!buf || !state.malloc) return 0
       // size of -1 (0xFFFFFFFF / SIZE_MAX) means entire buffer
-      const actualSize = (size === -1 || size === 0xFFFFFFFF) ? buf.size - offset : size
+      const actualSize = size === -1 || size === 0xffffffff ? buf.size - offset : size
       const jsArrayBuffer = buf.getMappedRange(offset, actualSize)
       const wasmPtr = state.malloc(actualSize)
       if (!wasmPtr) return 0
@@ -867,8 +907,12 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       const buf = getObject<GPUBuffer>(state, bufferHandle)
       return BigInt(buf?.size ?? 0)
     },
-    wgpuBufferAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuBufferRelease(handle: number) { releaseObject(state, handle) },
+    wgpuBufferAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuBufferRelease(handle: number) {
+      releaseObject(state, handle)
+    },
     wgpuBufferDestroy(handle: number) {
       const buf = getObject<GPUBuffer>(state, handle)
       if (buf) buf.destroy()
@@ -928,8 +972,12 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     wgpuTextureGetSampleCount(texHandle: number): number {
       return getObject<GPUTexture>(state, texHandle)?.sampleCount ?? 1
     },
-    wgpuTextureAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuTextureRelease(handle: number) { releaseObject(state, handle) },
+    wgpuTextureAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuTextureRelease(handle: number) {
+      releaseObject(state, handle)
+    },
     wgpuTextureDestroy(handle: number) {
       const tex = getObject<GPUTexture>(state, handle)
       if (tex) tex.destroy()
@@ -937,8 +985,12 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     },
 
     // ── TextureView ──
-    wgpuTextureViewAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuTextureViewRelease(handle: number) { releaseObject(state, handle) },
+    wgpuTextureViewAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuTextureViewRelease(handle: number) {
+      releaseObject(state, handle)
+    },
 
     // ── CommandEncoder ──
 
@@ -983,12 +1035,20 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
           const _depthLoadOpVal = field(state, dsAttachPtr, L.rpDepth.depthLoadOp)
           depthStencilAttachment = {
             view: dsView,
-            depthLoadOp: field(state, dsAttachPtr, L.rpDepth.depthLoadOp) ? enumStr(WGPULoadOp, field(state, dsAttachPtr, L.rpDepth.depthLoadOp)) : undefined,
-            depthStoreOp: field(state, dsAttachPtr, L.rpDepth.depthStoreOp) ? enumStr(WGPUStoreOp, field(state, dsAttachPtr, L.rpDepth.depthStoreOp)) : undefined,
+            depthLoadOp: field(state, dsAttachPtr, L.rpDepth.depthLoadOp)
+              ? enumStr(WGPULoadOp, field(state, dsAttachPtr, L.rpDepth.depthLoadOp))
+              : undefined,
+            depthStoreOp: field(state, dsAttachPtr, L.rpDepth.depthStoreOp)
+              ? enumStr(WGPUStoreOp, field(state, dsAttachPtr, L.rpDepth.depthStoreOp))
+              : undefined,
             depthClearValue: readF32(state, dsAttachPtr + L.rpDepth.depthClearValue.offset),
             depthReadOnly: field(state, dsAttachPtr, L.rpDepth.depthReadOnly) !== 0,
-            stencilLoadOp: field(state, dsAttachPtr, L.rpDepth.stencilLoadOp) ? enumStr(WGPULoadOp, field(state, dsAttachPtr, L.rpDepth.stencilLoadOp)) : undefined,
-            stencilStoreOp: field(state, dsAttachPtr, L.rpDepth.stencilStoreOp) ? enumStr(WGPUStoreOp, field(state, dsAttachPtr, L.rpDepth.stencilStoreOp)) : undefined,
+            stencilLoadOp: field(state, dsAttachPtr, L.rpDepth.stencilLoadOp)
+              ? enumStr(WGPULoadOp, field(state, dsAttachPtr, L.rpDepth.stencilLoadOp))
+              : undefined,
+            stencilStoreOp: field(state, dsAttachPtr, L.rpDepth.stencilStoreOp)
+              ? enumStr(WGPUStoreOp, field(state, dsAttachPtr, L.rpDepth.stencilStoreOp))
+              : undefined,
             stencilClearValue: field(state, dsAttachPtr, L.rpDepth.stencilClearValue),
             stencilReadOnly: field(state, dsAttachPtr, L.rpDepth.stencilReadOnly) !== 0,
           }
@@ -1014,9 +1074,11 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
 
     wgpuCommandEncoderCopyBufferToBuffer(
       encoderHandle: number,
-      srcHandle: number, srcOffset: bigint,
-      dstHandle: number, dstOffset: bigint,
-      size: bigint,
+      srcHandle: number,
+      srcOffset: bigint,
+      dstHandle: number,
+      dstOffset: bigint,
+      size: bigint
     ): void {
       const encoder = getObject<GPUCommandEncoder>(state, encoderHandle)
       const src = getObject<GPUBuffer>(state, srcHandle)
@@ -1026,7 +1088,10 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     },
 
     wgpuCommandEncoderCopyBufferToTexture(
-      encoderHandle: number, srcPtr: number, dstPtr: number, sizePtr: number,
+      encoderHandle: number,
+      srcPtr: number,
+      dstPtr: number,
+      sizePtr: number
     ): void {
       const encoder = getObject<GPUCommandEncoder>(state, encoderHandle)
       if (!encoder) return
@@ -1053,7 +1118,10 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     },
 
     wgpuCommandEncoderCopyTextureToBuffer(
-      encoderHandle: number, srcPtr: number, dstPtr: number, sizePtr: number,
+      encoderHandle: number,
+      srcPtr: number,
+      dstPtr: number,
+      sizePtr: number
     ): void {
       const encoder = getObject<GPUCommandEncoder>(state, encoderHandle)
       if (!encoder) return
@@ -1080,7 +1148,10 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     },
 
     wgpuCommandEncoderCopyTextureToTexture(
-      encoderHandle: number, srcPtr: number, dstPtr: number, sizePtr: number,
+      encoderHandle: number,
+      srcPtr: number,
+      dstPtr: number,
+      sizePtr: number
     ): void {
       const encoder = getObject<GPUCommandEncoder>(state, encoderHandle)
       if (!encoder) return
@@ -1101,9 +1172,7 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       encoder.copyTextureToTexture(readCopyTex(srcPtr), readCopyTex(dstPtr), copySize)
     },
 
-    wgpuCommandEncoderClearBuffer(
-      encoderHandle: number, bufferHandle: number, offset: bigint, size: bigint,
-    ): void {
+    wgpuCommandEncoderClearBuffer(encoderHandle: number, bufferHandle: number, offset: bigint, size: bigint): void {
       const encoder = getObject<GPUCommandEncoder>(state, encoderHandle)
       const buf = getObject<GPUBuffer>(state, bufferHandle)
       if (!encoder || !buf) return
@@ -1115,8 +1184,12 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       if (!encoder) return 0
       return registerObject(state, encoder.finish())
     },
-    wgpuCommandEncoderAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuCommandEncoderRelease(handle: number) { releaseObject(state, handle) },
+    wgpuCommandEncoderAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuCommandEncoderRelease(handle: number) {
+      releaseObject(state, handle)
+    },
 
     // ── RenderPassEncoder ──
 
@@ -1126,8 +1199,11 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       if (pass && pipeline) pass.setPipeline(pipeline)
     },
     wgpuRenderPassEncoderSetBindGroup(
-      passHandle: number, index: number, groupHandle: number,
-      dynOffsetCount: number, dynOffsetPtr: number,
+      passHandle: number,
+      index: number,
+      groupHandle: number,
+      dynOffsetCount: number,
+      dynOffsetPtr: number
     ): void {
       const pass = getObject<GPURenderPassEncoder>(state, passHandle)
       const group = getObject<GPUBindGroup>(state, groupHandle)
@@ -1140,34 +1216,46 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       }
     },
     wgpuRenderPassEncoderSetVertexBuffer(
-      passHandle: number, slot: number, bufferHandle: number, offset: bigint, size: bigint,
+      passHandle: number,
+      slot: number,
+      bufferHandle: number,
+      offset: bigint,
+      size: bigint
     ): void {
       const pass = getObject<GPURenderPassEncoder>(state, passHandle)
       const buf = getObject<GPUBuffer>(state, bufferHandle)
       if (pass && buf) {
-        const s = (size === WGPU_WHOLE_SIZE || size < 0n) ? undefined : Number(size)
+        const s = size === WGPU_WHOLE_SIZE || size < 0n ? undefined : Number(size)
         pass.setVertexBuffer(slot, buf, Number(offset), s)
       }
     },
     wgpuRenderPassEncoderSetIndexBuffer(
-      passHandle: number, bufferHandle: number, format: number, offset: bigint, size: bigint,
+      passHandle: number,
+      bufferHandle: number,
+      format: number,
+      offset: bigint,
+      size: bigint
     ): void {
       const pass = getObject<GPURenderPassEncoder>(state, passHandle)
       const buf = getObject<GPUBuffer>(state, bufferHandle)
       if (pass && buf) {
-        const s = (size === WGPU_WHOLE_SIZE || size < 0n) ? undefined : Number(size)
+        const s = size === WGPU_WHOLE_SIZE || size < 0n ? undefined : Number(size)
         pass.setIndexBuffer(buf, enumStr<GPUIndexFormat>(WGPUIndexFormat, format), Number(offset), s)
       }
     },
     wgpuRenderPassEncoderSetViewport(
-      passHandle: number, x: number, y: number, w: number, h: number, minDepth: number, maxDepth: number,
+      passHandle: number,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      minDepth: number,
+      maxDepth: number
     ): void {
       const pass = getObject<GPURenderPassEncoder>(state, passHandle)
       if (pass) pass.setViewport(x, y, w, h, minDepth, maxDepth)
     },
-    wgpuRenderPassEncoderSetScissorRect(
-      passHandle: number, x: number, y: number, w: number, h: number,
-    ): void {
+    wgpuRenderPassEncoderSetScissorRect(passHandle: number, x: number, y: number, w: number, h: number): void {
       const pass = getObject<GPURenderPassEncoder>(state, passHandle)
       if (pass) pass.setScissorRect(x, y, w, h)
     },
@@ -1182,15 +1270,22 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       })
     },
     wgpuRenderPassEncoderDraw(
-      passHandle: number, vertexCount: number, instanceCount: number,
-      firstVertex: number, firstInstance: number,
+      passHandle: number,
+      vertexCount: number,
+      instanceCount: number,
+      firstVertex: number,
+      firstInstance: number
     ): void {
       const pass = getObject<GPURenderPassEncoder>(state, passHandle)
       if (pass) pass.draw(vertexCount, instanceCount, firstVertex, firstInstance)
     },
     wgpuRenderPassEncoderDrawIndexed(
-      passHandle: number, indexCount: number, instanceCount: number,
-      firstIndex: number, baseVertex: number, firstInstance: number,
+      passHandle: number,
+      indexCount: number,
+      instanceCount: number,
+      firstIndex: number,
+      baseVertex: number,
+      firstInstance: number
     ): void {
       const pass = getObject<GPURenderPassEncoder>(state, passHandle)
       if (pass) pass.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance)
@@ -1209,8 +1304,12 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       const pass = getObject<GPURenderPassEncoder>(state, passHandle)
       if (pass) pass.end()
     },
-    wgpuRenderPassEncoderAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuRenderPassEncoderRelease(handle: number) { releaseObject(state, handle) },
+    wgpuRenderPassEncoderAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuRenderPassEncoderRelease(handle: number) {
+      releaseObject(state, handle)
+    },
 
     // ── ComputePassEncoder ──
 
@@ -1220,8 +1319,11 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       if (pass && pipeline) pass.setPipeline(pipeline)
     },
     wgpuComputePassEncoderSetBindGroup(
-      passHandle: number, index: number, groupHandle: number,
-      dynOffsetCount: number, dynOffsetPtr: number,
+      passHandle: number,
+      index: number,
+      groupHandle: number,
+      dynOffsetCount: number,
+      dynOffsetPtr: number
     ): void {
       const pass = getObject<GPUComputePassEncoder>(state, passHandle)
       const group = getObject<GPUBindGroup>(state, groupHandle)
@@ -1233,15 +1335,11 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
         pass.setBindGroup(index, group)
       }
     },
-    wgpuComputePassEncoderDispatchWorkgroups(
-      passHandle: number, x: number, y: number, z: number,
-    ): void {
+    wgpuComputePassEncoderDispatchWorkgroups(passHandle: number, x: number, y: number, z: number): void {
       const pass = getObject<GPUComputePassEncoder>(state, passHandle)
       if (pass) pass.dispatchWorkgroups(x, y, z)
     },
-    wgpuComputePassEncoderDispatchWorkgroupsIndirect(
-      passHandle: number, bufferHandle: number, offset: bigint,
-    ): void {
+    wgpuComputePassEncoderDispatchWorkgroupsIndirect(passHandle: number, bufferHandle: number, offset: bigint): void {
       const pass = getObject<GPUComputePassEncoder>(state, passHandle)
       const buf = getObject<GPUBuffer>(state, bufferHandle)
       if (pass && buf) pass.dispatchWorkgroupsIndirect(buf, Number(offset))
@@ -1250,16 +1348,28 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       const pass = getObject<GPUComputePassEncoder>(state, passHandle)
       if (pass) pass.end()
     },
-    wgpuComputePassEncoderAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuComputePassEncoderRelease(handle: number) { releaseObject(state, handle) },
+    wgpuComputePassEncoderAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuComputePassEncoderRelease(handle: number) {
+      releaseObject(state, handle)
+    },
 
     // ── CommandBuffer ──
-    wgpuCommandBufferAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuCommandBufferRelease(handle: number) { releaseObject(state, handle) },
+    wgpuCommandBufferAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuCommandBufferRelease(handle: number) {
+      releaseObject(state, handle)
+    },
 
     // ── RenderPipeline ──
-    wgpuRenderPipelineAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuRenderPipelineRelease(handle: number) { releaseObject(state, handle) },
+    wgpuRenderPipelineAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuRenderPipelineRelease(handle: number) {
+      releaseObject(state, handle)
+    },
     wgpuRenderPipelineGetBindGroupLayout(pipelineHandle: number, index: number): number {
       const pipeline = getObject<GPURenderPipeline>(state, pipelineHandle)
       if (!pipeline) return 0
@@ -1267,8 +1377,12 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     },
 
     // ── ComputePipeline ──
-    wgpuComputePipelineAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuComputePipelineRelease(handle: number) { releaseObject(state, handle) },
+    wgpuComputePipelineAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuComputePipelineRelease(handle: number) {
+      releaseObject(state, handle)
+    },
     wgpuComputePipelineGetBindGroupLayout(pipelineHandle: number, index: number): number {
       const pipeline = getObject<GPUComputePipeline>(state, pipelineHandle)
       if (!pipeline) return 0
@@ -1276,12 +1390,20 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     },
 
     // ── Sampler ──
-    wgpuSamplerAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuSamplerRelease(handle: number) { releaseObject(state, handle) },
+    wgpuSamplerAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuSamplerRelease(handle: number) {
+      releaseObject(state, handle)
+    },
 
     // ── ShaderModule ──
-    wgpuShaderModuleAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuShaderModuleRelease(handle: number) { releaseObject(state, handle) },
+    wgpuShaderModuleAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuShaderModuleRelease(handle: number) {
+      releaseObject(state, handle)
+    },
     wgpuShaderModuleGetCompilationInfo(_moduleHandle: number, callbackInfoPtr: number): bigint {
       // WGPUCompilationInfoCallbackInfo: nextInChain(0), mode(4), callback(8), userdata1(12), userdata2(16)
       const callbackFnPtr = readU32(state, callbackInfoPtr + 8)
@@ -1292,7 +1414,7 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       // Allocate a minimal WGPUCompilationInfo in WASM memory: {nextInChain=0, messageCount=0, messages=0}
       const infoPtr = state.malloc ? state.malloc(12) : 0
       if (infoPtr) {
-        writeU32(state, infoPtr, 0)     // nextInChain
+        writeU32(state, infoPtr, 0) // nextInChain
         writeU32(state, infoPtr + 4, 0) // messageCount
         writeU32(state, infoPtr + 8, 0) // messages
       }
@@ -1312,26 +1434,48 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     },
 
     // ── BindGroup / BindGroupLayout ──
-    wgpuBindGroupAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuBindGroupRelease(handle: number) { releaseObject(state, handle) },
-    wgpuBindGroupLayoutAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuBindGroupLayoutRelease(handle: number) { releaseObject(state, handle) },
+    wgpuBindGroupAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuBindGroupRelease(handle: number) {
+      releaseObject(state, handle)
+    },
+    wgpuBindGroupLayoutAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuBindGroupLayoutRelease(handle: number) {
+      releaseObject(state, handle)
+    },
 
     // ── PipelineLayout ──
-    wgpuPipelineLayoutAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuPipelineLayoutRelease(handle: number) { releaseObject(state, handle) },
+    wgpuPipelineLayoutAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuPipelineLayoutRelease(handle: number) {
+      releaseObject(state, handle)
+    },
 
     // ── QuerySet ──
-    wgpuQuerySetAddRef(handle: number) { addRefObject(state, handle) },
-    wgpuQuerySetRelease(handle: number) { releaseObject(state, handle) },
-    wgpuQuerySetDestroy(handle: number) { releaseObject(state, handle) },
+    wgpuQuerySetAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
+    wgpuQuerySetRelease(handle: number) {
+      releaseObject(state, handle)
+    },
+    wgpuQuerySetDestroy(handle: number) {
+      releaseObject(state, handle)
+    },
 
     // ── Surface (not used — Three.js manages surfaces) ──
-    wgpuSurfaceAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuSurfaceAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuSurfaceRelease: noop,
 
     // ── Instance lifecycle ──
-    wgpuInstanceAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuInstanceAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuInstanceRelease: noop,
     wgpuInstanceProcessEvents: noop,
     wgpuInstanceRequestAdapter: noop,
@@ -1360,24 +1504,36 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     wgpuSurfaceCapabilitiesFreeMembers: noop,
 
     // ── Render bundles ──
-    wgpuRenderBundleAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuRenderBundleAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuRenderBundleRelease: noop,
     wgpuRenderBundleEncoderFinish: noop,
-    wgpuRenderBundleEncoderAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuRenderBundleEncoderAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuRenderBundleEncoderRelease: noop,
     wgpuDeviceCreateRenderBundleEncoder: noop,
 
     // ── External textures (Dawn extensions) ──
-    wgpuExternalTextureAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuExternalTextureAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuExternalTextureRelease: noop,
     wgpuDeviceCreateExternalTexture: noop,
 
     // ── Shared resources (Dawn extensions) ──
-    wgpuSharedBufferMemoryAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuSharedBufferMemoryAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuSharedBufferMemoryRelease: noop,
-    wgpuSharedTextureMemoryAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuSharedTextureMemoryAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuSharedTextureMemoryRelease: noop,
-    wgpuSharedFenceAddRef(handle: number) { addRefObject(state, handle) },
+    wgpuSharedFenceAddRef(handle: number) {
+      addRefObject(state, handle)
+    },
     wgpuSharedFenceRelease: noop,
   }
 
@@ -1407,7 +1563,7 @@ export interface SkiaWGPUWasmInstance {
 export async function loadSkiaWGPU(
   wasmUrl: string | URL,
   device: GPUDevice,
-  preloadedResponse?: Promise<Response>,
+  preloadedResponse?: Promise<Response>
 ): Promise<SkiaWGPUWasmInstance> {
   const state = createWGPUState(device)
 
@@ -1430,8 +1586,8 @@ export async function loadSkiaWGPU(
   // Pre-allocate an empty WGPUStringView for callback messages
   if (state.malloc) {
     state.emptyStringViewPtr = state.malloc(8)
-    writeU32(state, state.emptyStringViewPtr, 0)     // data = null
-    writeU32(state, state.emptyStringViewPtr + 4, 0)  // length = 0
+    writeU32(state, state.emptyStringViewPtr, 0) // data = null
+    writeU32(state, state.emptyStringViewPtr + 4, 0) // length = 0
   }
 
   return {

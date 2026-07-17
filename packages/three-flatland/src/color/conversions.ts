@@ -51,11 +51,7 @@ export function linearRgbToOklab(r: number, g: number, b: number): Oklab {
 }
 
 /** Convert OKLAB to linear sRGB using inverse Ottosson matrices. */
-export function oklabToLinearRgb(
-  L: number,
-  a: number,
-  b: number
-): { r: number; g: number; b: number } {
+export function oklabToLinearRgb(L: number, a: number, b: number): { r: number; g: number; b: number } {
   // OKLAB -> LMS'
   const l_ = L + 0.3963377774 * a + 0.2158037573 * b
   const m_ = L - 0.1055613458 * a - 0.0638541728 * b
@@ -117,11 +113,7 @@ export function colorToOklch(color: Color): Oklch {
 export function oklabToColor(L: number, a: number, b: number, target?: Color): Color {
   const rgb = oklabToLinearRgb(L, a, b)
   const out = target ?? new Color()
-  return out.setRGB(
-    Math.max(0, Math.min(1, rgb.r)),
-    Math.max(0, Math.min(1, rgb.g)),
-    Math.max(0, Math.min(1, rgb.b))
-  )
+  return out.setRGB(Math.max(0, Math.min(1, rgb.r)), Math.max(0, Math.min(1, rgb.g)), Math.max(0, Math.min(1, rgb.b)))
 }
 
 /** Convert OKLCH to a Three.js Color. Hue in degrees. Clamps to 0..1. */

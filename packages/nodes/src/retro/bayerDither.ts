@@ -18,11 +18,7 @@ function getBayer2x2(x: Node<'int'>, y: Node<'int'>): Node<'float'> {
   return select(
     index.equal(int(0)),
     float(0 / 4),
-    select(
-      index.equal(int(1)),
-      float(2 / 4),
-      select(index.equal(int(2)), float(3 / 4), float(1 / 4))
-    )
+    select(index.equal(int(1)), float(2 / 4), select(index.equal(int(2)), float(3 / 4), float(1 / 4)))
   )
 }
 
@@ -190,9 +186,7 @@ export function bayerDither2x2(
 
   // Apply dithering: add threshold offset before quantization
   const levelsMinusOne = levelsNode.sub(float(1))
-  const ditheredRGB = floor(
-    inputColor.rgb.mul(levelsMinusOne).add(threshold)
-  ).div(levelsMinusOne)
+  const ditheredRGB = floor(inputColor.rgb.mul(levelsMinusOne).add(threshold)).div(levelsMinusOne)
 
   return vec4(ditheredRGB, inputColor.a)
 }
@@ -230,9 +224,7 @@ export function bayerDither4x4(
   const threshold = getBayer4x4(x, y)
 
   const levelsMinusOne = levelsNode.sub(float(1))
-  const ditheredRGB = floor(
-    inputColor.rgb.mul(levelsMinusOne).add(threshold)
-  ).div(levelsMinusOne)
+  const ditheredRGB = floor(inputColor.rgb.mul(levelsMinusOne).add(threshold)).div(levelsMinusOne)
 
   return vec4(ditheredRGB, inputColor.a)
 }
@@ -270,9 +262,7 @@ export function bayerDither8x8(
   const threshold = getBayer8x8(x, y)
 
   const levelsMinusOne = levelsNode.sub(float(1))
-  const ditheredRGB = floor(
-    inputColor.rgb.mul(levelsMinusOne).add(threshold)
-  ).div(levelsMinusOne)
+  const ditheredRGB = floor(inputColor.rgb.mul(levelsMinusOne).add(threshold)).div(levelsMinusOne)
 
   return vec4(ditheredRGB, inputColor.a)
 }

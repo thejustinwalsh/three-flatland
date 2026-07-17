@@ -80,16 +80,7 @@ async function main() {
           loop: true,
         },
         roll: {
-          frames: [
-            'roll_0',
-            'roll_1',
-            'roll_2',
-            'roll_3',
-            'roll_4',
-            'roll_5',
-            'roll_6',
-            'roll_7',
-          ],
+          frames: ['roll_0', 'roll_1', 'roll_2', 'roll_3', 'roll_4', 'roll_5', 'roll_6', 'roll_7'],
           fps: 15,
           loop: true,
         },
@@ -99,12 +90,7 @@ async function main() {
           loop: false,
         },
         death: {
-          frames: [
-            'death_0',
-            'death_1',
-            'death_2',
-            'death_3',
-          ],
+          frames: ['death_0', 'death_1', 'death_2', 'death_3'],
           fps: 8,
           loop: false,
         },
@@ -154,14 +140,16 @@ async function main() {
 
   const speeds = [0.5, 1, 1.5, 2, 3]
   const speedLabels = ['0.5x', '1x', '1.5x', '2x', '3x']
-  ;(animFolder.addBlade({
-    view: 'radiogrid',
-    groupName: 'speed',
-    size: [5, 1],
-    cells: (x: number) => ({ title: speedLabels[x]!, value: speeds[x]! }),
-    value: 1,
-    label: 'speed',
-  } as any) as any).on('change', (ev: any) => {
+  ;(
+    animFolder.addBlade({
+      view: 'radiogrid',
+      groupName: 'speed',
+      size: [5, 1],
+      cells: (x: number) => ({ title: speedLabels[x]!, value: speeds[x]! }),
+      value: 1,
+      label: 'speed',
+    } as any) as any
+  ).on('change', (ev: any) => {
     knight.speed = ev.value
   })
 

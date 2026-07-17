@@ -4,12 +4,7 @@ import { universe } from 'koota'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from './SpriteGroup'
-import {
-  IsAlphaBlendedBatch,
-  IsAlphaTestedBatch,
-  IsLitBatch,
-  IsUnlitBatch,
-} from './batchQuery'
+import { IsAlphaBlendedBatch, IsAlphaTestedBatch, IsLitBatch, IsUnlitBatch } from './batchQuery'
 import { BatchGeometryStrategy } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
 import { vec4 } from 'three/tsl'
@@ -75,9 +70,7 @@ describe('batch classification traits + query facade', () => {
     group.add(new Sprite2D({ texture }))
     group.update()
 
-    const data = (
-      group as unknown as { _getRegistry(): RegistryData | null }
-    )._getRegistry()!
+    const data = (group as unknown as { _getRegistry(): RegistryData | null })._getRegistry()!
     for (const batchEntity of data.activeBatches) {
       expect(batchEntity.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
     }

@@ -6,9 +6,7 @@ import type { NormalSourceDescriptor } from './descriptor.js'
 // receives a real Texture in the browser; here we just need any object so we
 // can verify the path routing.
 const fakeTexture = { isTexture: true } as unknown as Parameters<
-  Parameters<typeof NormalMapLoader.load>[0] extends string
-    ? (_: unknown) => void
-    : never
+  Parameters<typeof NormalMapLoader.load>[0] extends string ? (_: unknown) => void : never
 >[0]
 
 describe('NormalMapLoader', () => {
@@ -43,17 +41,15 @@ describe('NormalMapLoader', () => {
     // via the prototype so it immediately onLoads with a stub texture.
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
     const { TextureLoader } = await import('three')
-    const loadSpy = vi
-      .spyOn(TextureLoader.prototype, 'load')
-      .mockImplementation((_url, onLoad) => {
-        // Invoke the callback directly — `_tryLoadBaked` wraps this in a
-        // `new Promise((resolve) => loader.load(...))`, so `resolve` is
-        // already bound by the time this mock runs and a synchronous call
-        // resolves the promise on this tick. No timer needed to simulate
-        // "eventually calls back": the signal *is* the callback firing.
-        onLoad?.(fakeTexture as never)
-        return fakeTexture as never
-      })
+    const loadSpy = vi.spyOn(TextureLoader.prototype, 'load').mockImplementation((_url, onLoad) => {
+      // Invoke the callback directly — `_tryLoadBaked` wraps this in a
+      // `new Promise((resolve) => loader.load(...))`, so `resolve` is
+      // already bound by the time this mock runs and a synchronous call
+      // resolves the promise on this tick. No timer needed to simulate
+      // "eventually calls back": the signal *is* the callback firing.
+      onLoad?.(fakeTexture as never)
+      return fakeTexture as never
+    })
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const result = await NormalMapLoader.load('/sprites/knight.png')
@@ -108,15 +104,13 @@ describe('NormalMapLoader', () => {
   it('falls through to runtime when HEAD ok but TextureLoader fails', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
     const { TextureLoader } = await import('three')
-    vi.spyOn(TextureLoader.prototype, 'load').mockImplementation(
-      (_url, _onLoad, _onProgress, onError) => {
-        // Same reasoning as the onLoad mock above: call the error callback
-        // directly instead of scheduling it — the callback firing is the
-        // signal, not the delay before it fires.
-        onError?.(new Error('decode failed'))
-        return fakeTexture as never
-      }
-    )
+    vi.spyOn(TextureLoader.prototype, 'load').mockImplementation((_url, _onLoad, _onProgress, onError) => {
+      // Same reasoning as the onLoad mock above: call the error callback
+      // directly instead of scheduling it — the callback firing is the
+      // signal, not the delay before it fires.
+      onError?.(new Error('decode failed'))
+      return fakeTexture as never
+    })
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const result = await NormalMapLoader.load('/sprites/knight.png')
@@ -153,11 +147,14 @@ describe('NormalMapLoader.load — descriptor route', () => {
       return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200 })
     }) as unknown as typeof fetch
     // Stub createImageBitmap so bakeInMemory gets a 1×1 bitmap
-    ;(global as any).createImageBitmap = vi.fn(async () => ({
-      width: 1,
-      height: 1,
-      close: () => {},
-    } as ImageBitmap))
+    ;(global as any).createImageBitmap = vi.fn(
+      async () =>
+        ({
+          width: 1,
+          height: 1,
+          close: () => {},
+        }) as ImageBitmap
+    )
     // Stub OffscreenCanvas so imageBitmapToRGBA doesn't fall through to document
     ;(global as any).OffscreenCanvas = class {
       width: number
@@ -195,11 +192,14 @@ describe('NormalMapLoader.load — descriptor route', () => {
       fetchCalls.push({ method: init?.method })
       return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200 })
     }) as unknown as typeof fetch
-    ;(global as any).createImageBitmap = vi.fn(async () => ({
-      width: 1,
-      height: 1,
-      close: () => {},
-    } as ImageBitmap))
+    ;(global as any).createImageBitmap = vi.fn(
+      async () =>
+        ({
+          width: 1,
+          height: 1,
+          close: () => {},
+        }) as ImageBitmap
+    )
     ;(global as any).OffscreenCanvas = class {
       width: number
       height: number

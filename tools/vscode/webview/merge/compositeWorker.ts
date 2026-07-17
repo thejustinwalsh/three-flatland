@@ -26,9 +26,7 @@ type CompositeRequest = {
   sources: ReadonlyArray<{ uri: string; blob: Blob }>
 }
 
-type CompositeResponse =
-  | { id: number; blob: Blob }
-  | { id: number; error: string }
+type CompositeResponse = { id: number; blob: Blob } | { id: number; error: string }
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope
 
@@ -58,7 +56,7 @@ ctx.onmessage = async (e: MessageEvent<CompositeRequest>) => {
         p.dstRect.x,
         p.dstRect.y,
         p.dstRect.w,
-        p.dstRect.h,
+        p.dstRect.h
       )
     }
     for (const bmp of bitmapByUri.values()) bmp.close()

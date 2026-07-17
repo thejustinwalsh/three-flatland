@@ -55,10 +55,7 @@ export function CompareLoadingOverlay() {
 
   return (
     <div {...stylex.props(styles.container)}>
-      <div
-        {...stylex.props(styles.spinner)}
-        style={{ left: `${compareMidpoint * 100}%` }}
-      >
+      <div {...stylex.props(styles.spinner)} style={{ left: `${compareMidpoint * 100}%` }}>
         <vscode-progress-ring />
       </div>
     </div>

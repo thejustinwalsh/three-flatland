@@ -228,15 +228,11 @@ describe('real-font equivalence — hBands/vBands for spot-checked glyphs', () =
     expect(dstV.length, `${label}: vBands count`).toBe(srcV.length)
 
     for (let i = 0; i < srcH.length; i++) {
-      expect(dstH[i]!.curveIndices, `${label}: hBands[${i}].curveIndices`).toEqual(
-        srcH[i]!.curveIndices
-      )
+      expect(dstH[i]!.curveIndices, `${label}: hBands[${i}].curveIndices`).toEqual(srcH[i]!.curveIndices)
     }
 
     for (let i = 0; i < srcV.length; i++) {
-      expect(dstV[i]!.curveIndices, `${label}: vBands[${i}].curveIndices`).toEqual(
-        srcV[i]!.curveIndices
-      )
+      expect(dstV[i]!.curveIndices, `${label}: vBands[${i}].curveIndices`).toEqual(srcV[i]!.curveIndices)
     }
   }
 
@@ -320,10 +316,7 @@ describe('real-font equivalence — texture byte-exact round-trip', () => {
     expect(curveAcc.length).toBe(input.curveData.length)
     for (let i = 0; i < input.curveData.length; i++) {
       if (curveAcc[i] !== input.curveData[i]) {
-        throw new Error(
-          `curve texture mismatch at index ${i}: ` +
-            `expected ${input.curveData[i]}, got ${curveAcc[i]}`
-        )
+        throw new Error(`curve texture mismatch at index ${i}: ` + `expected ${input.curveData[i]}, got ${curveAcc[i]}`)
       }
     }
     // If we reach here, all values matched
@@ -342,10 +335,7 @@ describe('real-font equivalence — texture byte-exact round-trip', () => {
     expect(bandAcc.length).toBe(input.bandData.length)
     for (let i = 0; i < input.bandData.length; i++) {
       if (bandAcc[i] !== input.bandData[i]) {
-        throw new Error(
-          `band texture mismatch at index ${i}: ` +
-            `expected ${input.bandData[i]}, got ${bandAcc[i]}`
-        )
+        throw new Error(`band texture mismatch at index ${i}: ` + `expected ${input.bandData[i]}, got ${bandAcc[i]}`)
       }
     }
     expect(true).toBe(true)

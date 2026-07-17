@@ -426,9 +426,7 @@ export type PassEffectClass<S extends EffectSchema> = {
  * v.intensity = 0.8  // zero-cost uniform update
  * ```
  */
-export function createPassEffect<const S extends EffectSchema>(
-  config: PassEffectConfig<S>
-): PassEffectClass<S> {
+export function createPassEffect<const S extends EffectSchema>(config: PassEffectConfig<S>): PassEffectClass<S> {
   const { name, schema, pass: passFn } = config
 
   const EffectClass = class extends PassEffect {

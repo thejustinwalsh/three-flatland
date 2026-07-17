@@ -66,7 +66,7 @@ const MODE_UNITS: Record<Mode, string> = {
 export function addStatsGraph(
   parent: Pane | FolderApi,
   client: DevtoolsClient,
-  options: AddStatsGraphOptions = {},
+  options: AddStatsGraphOptions = {}
 ): StatsGraphHandle {
   const { rows = 2, driver = 'raf' } = options
 
@@ -182,10 +182,7 @@ export function addStatsGraph(
     do {
       modeIndex = (modeIndex + 1) % MODES.length
       mode = MODES[modeIndex]!
-    } while (
-      (mode === 'mem' && state.heapUsedMB === undefined) ||
-      (mode === 'gpu' && !state.gpuModeEnabled)
-    )
+    } while ((mode === 'mem' && state.heapUsedMB === undefined) || (mode === 'gpu' && !state.gpuModeEnabled))
     applyMode()
   })
 
@@ -240,10 +237,14 @@ export function addStatsGraph(
   function seriesFor(m: Mode): DevtoolsSeries {
     const s = client.state.series
     switch (m) {
-      case 'fps': return s.fps
-      case 'ms': return s.cpuMs
-      case 'gpu': return s.gpuMs
-      case 'mem': return s.heapUsedMB
+      case 'fps':
+        return s.fps
+      case 'ms':
+        return s.cpuMs
+      case 'gpu':
+        return s.gpuMs
+      case 'mem':
+        return s.heapUsedMB
     }
   }
 
@@ -327,9 +328,9 @@ export function addStatsGraph(
     const ring = seriesFor(mode)
     const size = ring.data.length
     const max = graphMax[mode] || 1
-    const phase = batchCount * (1 - t)            // continuous 0..batchCount
-    const intPhase = Math.floor(phase)             // integer slide steps remaining
-    const fracPhase = phase - intPhase             // 0..1 sub-step (sub-pixel scroll)
+    const phase = batchCount * (1 - t) // continuous 0..batchCount
+    const intPhase = Math.floor(phase) // integer slide steps remaining
+    const fracPhase = phase - intPhase // 0..1 sub-step (sub-pixel scroll)
 
     const w = cachedW
     const h = cachedH
@@ -396,7 +397,7 @@ export function addStatsGraph(
       else gfx.lineTo(x, y)
     }
     gfx.strokeStyle = color
-    gfx.lineWidth = Math.max(1, (window.devicePixelRatio || 1))
+    gfx.lineWidth = Math.max(1, window.devicePixelRatio || 1)
     gfx.stroke()
 
     if (hasLabel[mode]) {

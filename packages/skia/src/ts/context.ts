@@ -61,7 +61,7 @@ export class SkiaContext {
     memory: WebAssembly.Memory,
     gl?: WebGL2RenderingContext,
     device?: GPUDevice,
-    wgpuState?: { objects: Map<number, unknown>; nextHandle: number },
+    wgpuState?: { objects: Map<number, unknown>; nextHandle: number }
   ) {
     this.backend = backend
     this.gl = gl
@@ -88,12 +88,7 @@ export class SkiaContext {
       const gl = options.gl!
       const wasmUrl = options.wasmUrl ?? new URL('../../dist/skia-gl/skia-gl.wasm', import.meta.url)
       const wasm = await loadSkiaGL(wasmUrl, gl, options.preloadedResponse)
-      const ctx = new SkiaContext(
-        'webgl',
-        wasm.exports as unknown as SkiaExports,
-        wasm.exports.memory,
-        gl,
-      )
+      const ctx = new SkiaContext('webgl', wasm.exports as unknown as SkiaExports, wasm.exports.memory, gl)
       ctx._glState = wasm.glState as unknown as typeof ctx._glState
       ctx._exports.skia_init()
       if (!_instance || _instance._destroyed) _instance = ctx
@@ -109,10 +104,11 @@ export class SkiaContext {
         wasm.exports.memory,
         undefined,
         device,
-        wasm.wgpuState,
+        wasm.wgpuState
       )
       // Initialize Dawn context with device/queue handles
-      const initWithHandles = (wasm.exports as unknown as Record<string, (d: number, q: number) => void>).skia_init_with_handles
+      const initWithHandles = (wasm.exports as unknown as Record<string, (d: number, q: number) => void>)
+        .skia_init_with_handles
       initWithHandles!(wasm.wgpuState.deviceHandle, wasm.wgpuState.queueHandle)
       if (!_instance || _instance._destroyed) _instance = ctx
       return ctx
@@ -158,7 +154,8 @@ export class SkiaContext {
     if (this._drawing) throw new Error('Already in a draw pass — call endDrawing() first')
 
     const fn = (this._exports as unknown as Record<string, unknown>).skia_begin_drawing_gl_texture as
-      ((texId: number, w: number, h: number) => number) | undefined
+      | ((texId: number, w: number, h: number) => number)
+      | undefined
     if (!fn) return null
     const result = fn(textureId, width, height)
     if (!result) return null
@@ -181,12 +178,7 @@ export class SkiaContext {
    * Draw to a target within a callback.
    * Automatically handles beginDrawing/endDrawing with try/finally.
    */
-  drawToFBO(
-    targetHandle: number,
-    width: number,
-    height: number,
-    callback: (ctx: SkiaDrawingContext) => void,
-  ): boolean {
+  drawToFBO(targetHandle: number, width: number, height: number, callback: (ctx: SkiaDrawingContext) => void): boolean {
     const ctx = this.beginDrawing(targetHandle, width, height)
     if (!ctx) return false
     try {

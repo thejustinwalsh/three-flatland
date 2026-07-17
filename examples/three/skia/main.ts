@@ -1,11 +1,31 @@
 import { WebGPURenderer } from 'three/webgpu'
 import {
-  Scene, PerspectiveCamera, OrthographicCamera, Fog,
-  Mesh, PlaneGeometry, MeshBasicMaterial,
-  AmbientLight, DirectionalLight, Color, DoubleSide,
+  Scene,
+  PerspectiveCamera,
+  OrthographicCamera,
+  Fog,
+  Mesh,
+  PlaneGeometry,
+  MeshBasicMaterial,
+  AmbientLight,
+  DirectionalLight,
+  Color,
+  DoubleSide,
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float, smoothstep as tslSmoothstep, length as tslLength } from 'three/tsl'
+import {
+  reflector,
+  color as tslColor,
+  positionWorld,
+  cameraPosition,
+  uv,
+  vec2,
+  hash,
+  float as tslFloat,
+  mx_worley_noise_float,
+  smoothstep as tslSmoothstep,
+  length as tslLength,
+} from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
 import { Skia, SkiaPaint, SkiaPath } from '@three-flatland/skia'
@@ -48,20 +68,43 @@ function isSkiaWasmLoadError(err: unknown): boolean {
 
 function hslToArgb(h: number, s: number, l: number): number {
   const c = (1 - Math.abs(2 * l - 1)) * s
-  const x = c * (1 - Math.abs((h / 60) % 2 - 1))
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
   const m = l - c / 2
   let r: number, g: number, b: number
-  if (h < 60) { r = c; g = x; b = 0 }
-  else if (h < 120) { r = x; g = c; b = 0 }
-  else if (h < 180) { r = 0; g = c; b = x }
-  else if (h < 240) { r = 0; g = x; b = c }
-  else if (h < 300) { r = x; g = 0; b = c }
-  else { r = c; g = 0; b = x }
-  const ri = Math.round((r + m) * 255), gi = Math.round((g + m) * 255), bi = Math.round((b + m) * 255)
-  return (0xFF000000 | (ri << 16) | (gi << 8) | bi) >>> 0
+  if (h < 60) {
+    r = c
+    g = x
+    b = 0
+  } else if (h < 120) {
+    r = x
+    g = c
+    b = 0
+  } else if (h < 180) {
+    r = 0
+    g = c
+    b = x
+  } else if (h < 240) {
+    r = 0
+    g = x
+    b = c
+  } else if (h < 300) {
+    r = x
+    g = 0
+    b = c
+  } else {
+    r = c
+    g = 0
+    b = x
+  }
+  const ri = Math.round((r + m) * 255),
+    gi = Math.round((g + m) * 255),
+    bi = Math.round((b + m) * 255)
+  return (0xff000000 | (ri << 16) | (gi << 8) | bi) >>> 0
 }
 
-function smoothstep(t: number): number { return t * t * (3 - 2 * t) }
+function smoothstep(t: number): number {
+  return t * t * (3 - 2 * t)
+}
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
  * a fresh renderer + animate() loop while the previous one keeps
@@ -144,7 +187,10 @@ async function main() {
   const scale = TEX_W / REF
 
   const bg = new SkiaRect()
-  bg.x = 0; bg.y = 0; bg.width = TEX_W; bg.height = TEX_H
+  bg.x = 0
+  bg.y = 0
+  bg.width = TEX_W
+  bg.height = TEX_H
   bg.fill = [0.06, 0.06, 0.1, 0]
   shapesCanvas.add(bg)
 
@@ -154,27 +200,40 @@ async function main() {
 
   // Colored rectangles
   const sqCols = [
-    [0.9, 0.3, 0.3], [0.3, 0.9, 0.4], [0.3, 0.5, 0.9],
-    [0.9, 0.7, 0.2], [0.7, 0.3, 0.9], [0.2, 0.8, 0.8],
+    [0.9, 0.3, 0.3],
+    [0.3, 0.9, 0.4],
+    [0.3, 0.5, 0.9],
+    [0.9, 0.7, 0.2],
+    [0.7, 0.3, 0.9],
+    [0.2, 0.8, 0.8],
   ]
   const squares: SkiaRect[] = []
   for (let i = 0; i < sqCols.length; i++) {
     const rect = new SkiaRect()
-    rect.x = 30 + i * 78; rect.y = 30; rect.width = 68; rect.height = 68
+    rect.x = 30 + i * 78
+    rect.y = 30
+    rect.width = 68
+    rect.height = 68
     rect.cornerRadius = 10
     rect.fill = [...sqCols[i]!, 1] as [number, number, number, number]
     shapeGroup.add(rect)
     squares.push(rect)
   }
-  let sqSwapA = 0, sqSwapB = 1, sqSwapStart = 0
-  let sqFromA = [...sqCols[0]!], sqFromB = [...sqCols[1]!]
-  let sqToA = [...sqCols[1]!], sqToB = [...sqCols[0]!]
+  let sqSwapA = 0,
+    sqSwapB = 1,
+    sqSwapStart = 0
+  let sqFromA = [...sqCols[0]!],
+    sqFromB = [...sqCols[1]!]
+  let sqToA = [...sqCols[1]!],
+    sqToB = [...sqCols[0]!]
 
   // Circles
   const circles: SkiaCircle[] = []
   for (let i = 0; i < 8; i++) {
     const circle = new SkiaCircle()
-    circle.cx = 64 + i * 56; circle.cy = 140; circle.r = 18
+    circle.cx = 64 + i * 56
+    circle.cy = 140
+    circle.r = 18
     circle.fill = [0.4, 0.4, 0.6, 0.7]
     shapeGroup.add(circle)
     circles.push(circle)
@@ -182,20 +241,32 @@ async function main() {
 
   // Stroked frame
   const strokedFrame = new SkiaRect()
-  strokedFrame.x = 20; strokedFrame.y = 170; strokedFrame.width = 472; strokedFrame.height = 100
-  strokedFrame.stroke = [1, 1, 1, 0.3]; strokedFrame.strokeWidth = 2
+  strokedFrame.x = 20
+  strokedFrame.y = 170
+  strokedFrame.width = 472
+  strokedFrame.height = 100
+  strokedFrame.stroke = [1, 1, 1, 0.3]
+  strokedFrame.strokeWidth = 2
   shapeGroup.add(strokedFrame)
 
   const innerFrame = new SkiaRect()
-  innerFrame.x = 28; innerFrame.y = 176; innerFrame.width = 456; innerFrame.height = 88
-  innerFrame.cornerRadius = 10; innerFrame.stroke = [1, 1, 1, 0.3]; innerFrame.strokeWidth = 2
+  innerFrame.x = 28
+  innerFrame.y = 176
+  innerFrame.width = 456
+  innerFrame.height = 88
+  innerFrame.cornerRadius = 10
+  innerFrame.stroke = [1, 1, 1, 0.3]
+  innerFrame.strokeWidth = 2
   shapeGroup.add(innerFrame)
 
   // Scanner lines
   const lines: SkiaLine[] = []
   for (let i = 0; i < 9; i++) {
     const line = new SkiaLine()
-    line.x1 = 36; line.y1 = 184 + i * 9; line.x2 = 472; line.y2 = 184 + i * 9
+    line.x1 = 36
+    line.y1 = 184 + i * 9
+    line.x2 = 472
+    line.y2 = 184 + i * 9
     line.strokeWidth = 1
     line.stroke = [0.5, 0.8, 0.3, 0.6]
     shapeGroup.add(line)
@@ -204,15 +275,21 @@ async function main() {
 
   // Gradient bars
   const gradColors: [number, number][] = [
-    [0xFFFF4444, 0xFF4444FF], [0xFF44FF44, 0xFFFF44FF],
-    [0xFFFFAA00, 0xFF00AAFF], [0xFF4488FF, 0xFFFF8844],
+    [0xffff4444, 0xff4444ff],
+    [0xff44ff44, 0xffff44ff],
+    [0xffffaa00, 0xff00aaff],
+    [0xff4488ff, 0xffff8844],
   ]
   const gradRects: SkiaRect[] = []
   const gradPaints: SkiaPaint[] = []
   for (let i = 0; i < gradColors.length; i++) {
     const y = 284 + i * 22
     const rect = new SkiaRect()
-    rect.x = 30; rect.y = y; rect.width = 452; rect.height = 16; rect.cornerRadius = 4
+    rect.x = 30
+    rect.y = y
+    rect.width = 452
+    rect.height = 16
+    rect.cornerRadius = 4
     const paint = new SkiaPaint(skia).setFill()
     rect.paint = paint
     shapeGroup.add(rect)
@@ -222,24 +299,31 @@ async function main() {
 
   // PathOps
   const pathOpColors: [number, number, number][] = [
-    [0.9, 0.3, 0.3], [0.3, 0.9, 0.4], [0.3, 0.5, 0.9], [0.9, 0.7, 0.2],
+    [0.9, 0.3, 0.3],
+    [0.3, 0.9, 0.4],
+    [0.3, 0.5, 0.9],
+    [0.9, 0.7, 0.2],
   ]
-  const pathOpNames: Array<'difference' | 'intersect' | 'union' | 'xor'> = [
-    'difference', 'intersect', 'union', 'xor',
-  ]
+  const pathOpNames: Array<'difference' | 'intersect' | 'union' | 'xor'> = ['difference', 'intersect', 'union', 'xor']
   const pathOpData = pathOpNames.map((_, pi) => {
     const resultNode = new SkiaPathNode()
     resultNode.fill = [...pathOpColors[pi]!, 0.9]
     shapeGroup.add(resultNode)
     const ghostANode = new SkiaPathNode()
-    ghostANode.stroke = [1, 1, 1, 0.15]; ghostANode.strokeWidth = 1
+    ghostANode.stroke = [1, 1, 1, 0.15]
+    ghostANode.strokeWidth = 1
     shapeGroup.add(ghostANode)
     const ghostBNode = new SkiaPathNode()
-    ghostBNode.stroke = [1, 1, 1, 0.15]; ghostBNode.strokeWidth = 1
+    ghostBNode.stroke = [1, 1, 1, 0.15]
+    ghostBNode.strokeWidth = 1
     shapeGroup.add(ghostBNode)
     return {
-      resultNode, ghostANode, ghostBNode,
-      pathA: new SkiaPath(skia), pathB: new SkiaPath(skia), resultPath: new SkiaPath(skia),
+      resultNode,
+      ghostANode,
+      ghostBNode,
+      pathA: new SkiaPath(skia),
+      pathB: new SkiaPath(skia),
+      resultPath: new SkiaPath(skia),
     }
   })
 
@@ -257,28 +341,31 @@ async function main() {
   let subtitlePaint: SkiaPaint | null = null
 
   const backendText = new SkiaTextNode()
-  backendText.x = 20; backendText.y = 30
+  backendText.x = 20
+  backendText.y = 30
   backendText.fill = [0.6, 0.6, 0.8, 0.6]
   overlayCanvas.add(backendText)
 
   // ── Load fonts ──
   const FONT_URL = 'https://cdn.jsdelivr.net/gh/rsms/inter@v4.1/docs/font-files/InterVariable.ttf'
-  SkiaFontLoader.load(FONT_URL, skia).then((typeface) => {
-    const titleF = typeface.atSize(32 * dpr)
-    const subF = typeface.atSize(14 * dpr)
-    const fpsF = typeface.atSize(11 * dpr)
+  SkiaFontLoader.load(FONT_URL, skia)
+    .then((typeface) => {
+      const titleF = typeface.atSize(32 * dpr)
+      const subF = typeface.atSize(14 * dpr)
+      const fpsF = typeface.atSize(11 * dpr)
 
-    titleText.font = titleF
-    titleText.x = (pw - titleF.measureText(titleText.text)) / 2
+      titleText.font = titleF
+      titleText.x = (pw - titleF.measureText(titleText.text)) / 2
 
-    subtitleText.font = subF
-    subtitleText.x = (pw - subF.measureText(subtitleText.text)) / 2
-    subtitlePaint = new SkiaPaint(skia).setFill()
-    subtitleText.paint = subtitlePaint
+      subtitleText.font = subF
+      subtitleText.x = (pw - subF.measureText(subtitleText.text)) / 2
+      subtitlePaint = new SkiaPaint(skia).setFill()
+      subtitleText.paint = subtitlePaint
 
-    backendText.font = fpsF
-    backendText.text = `Backend: ${skia.backend.toUpperCase()}`
-  }).catch(e => console.warn('Font load failed:', e))
+      backendText.font = fpsF
+      backendText.text = `Backend: ${skia.backend.toUpperCase()}`
+    })
+    .catch((e) => console.warn('Font load failed:', e))
 
   // ── 3D scene: floating panel with Skia texture ──
   const panelW = 2.8
@@ -302,20 +389,29 @@ async function main() {
   panelCenter.renderOrder = 10
   scene.add(panelCenter)
 
-  const panelMatL = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true, premultipliedAlpha: true })
+  const panelMatL = new MeshBasicMaterial({
+    color: 0xffffff,
+    side: DoubleSide,
+    transparent: true,
+    premultipliedAlpha: true,
+  })
   const panelLeft = new Mesh(panelGeo, panelMatL)
   panelLeft.position.set(-2.6, 1.2, 0.3)
   panelLeft.rotation.y = 0.35
   panelLeft.renderOrder = 10
   scene.add(panelLeft)
 
-  const panelMatR = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true, premultipliedAlpha: true })
+  const panelMatR = new MeshBasicMaterial({
+    color: 0xffffff,
+    side: DoubleSide,
+    transparent: true,
+    premultipliedAlpha: true,
+  })
   const panelRight = new Mesh(panelGeo, panelMatR)
   panelRight.position.set(2.6, 1.2, 0.3)
   panelRight.rotation.y = -0.35
   panelRight.renderOrder = 10
   scene.add(panelRight)
-
 
   // Reflective ground (TSL reflector + blur + distance fade)
   const groundMat = new MeshStandardNodeMaterial()
@@ -336,11 +432,9 @@ async function main() {
   // foreground (sprite panel, etc.) carry the surface character; the
   // dark base lets those reflections pop without competing with a
   // gem-tinted floor.
-  groundMat.colorNode = tslColor(new Color(0x050505))
-    .add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
+  groundMat.colorNode = tslColor(new Color(0x050505)).add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
   // Roughness: sharper under panel, rougher outward
-  groundMat.roughnessNode = tslFloat(0.5)
-    .add(dist.div(5.0).clamp(0.0, 0.5))
+  groundMat.roughnessNode = tslFloat(0.5).add(dist.div(5.0).clamp(0.0, 0.5))
   groundMat.metalness = 0.5
   const ground = new Mesh(new PlaneGeometry(50, 50), groundMat)
   ground.rotation.x = -Math.PI / 2
@@ -391,9 +485,13 @@ async function main() {
       sqCols[sqSwapB] = [...sqToB]
       const a = Math.floor(Math.random() * 6)
       const b2 = (a + 1 + Math.floor(Math.random() * 5)) % 6
-      sqSwapA = a; sqSwapB = b2; sqSwapStart = t
-      sqFromA = [...sqCols[a]!]; sqFromB = [...sqCols[b2]!]
-      sqToA = [...sqCols[b2]!]; sqToB = [...sqCols[a]!]
+      sqSwapA = a
+      sqSwapB = b2
+      sqSwapStart = t
+      sqFromA = [...sqCols[a]!]
+      sqFromB = [...sqCols[b2]!]
+      sqToA = [...sqCols[b2]!]
+      sqToB = [...sqCols[a]!]
       sqT = 0
     }
     for (let i = 0; i < squares.length; i++) {
@@ -405,7 +503,7 @@ async function main() {
 
     // ── Animate circles ──
     for (let i = 0; i < circles.length; i++) {
-      const ct = ((i / 8) + t * 0.0002) % 1.0
+      const ct = (i / 8 + t * 0.0002) % 1.0
       circles[i]!.fill = [0.15 + 0.35 * ct, 0.2 + 0.25 * (1 - ct), 0.3 + 0.4 * Math.sin(ct * Math.PI * 2 + 4), 0.7]
     }
 
@@ -419,7 +517,7 @@ async function main() {
     // ── Animate gradient bars ──
     for (let i = 0; i < gradPaints.length; i++) {
       const y = 284 + i * 22
-      const dir = (i % 2 === 0) ? 1 : -1
+      const dir = i % 2 === 0 ? 1 : -1
       const speed = 0.15 + i * 0.03
       const mid = 0.5 + 0.4 * Math.sin(t * speed * 0.001 * dir)
       const [cA, cB] = gradColors[i]!
@@ -446,8 +544,12 @@ async function main() {
       const hue2 = (hue1 + 120) % 360
       const subW = subtitleText.font.measureText(subtitleText.text)
       subtitlePaint.setLinearGradient(
-        subtitleText.x, 0, subtitleText.x + subW, 0,
-        [hslToArgb(hue1, 0.8, 0.6), hslToArgb(hue2, 0.8, 0.6)], [0, 1],
+        subtitleText.x,
+        0,
+        subtitleText.x + subW,
+        0,
+        [hslToArgb(hue1, 0.8, 0.6), hslToArgb(hue2, 0.8, 0.6)],
+        [0, 1]
       )
     }
 
@@ -467,9 +569,12 @@ async function main() {
     // 2. Apply Skia texture to 3D meshes (once available)
     const skiaTex = shapesCanvas.texture
     if (skiaTex && panelMat.map !== skiaTex) {
-      panelMat.map = skiaTex; panelMat.needsUpdate = true
-      panelMatL.map = skiaTex; panelMatL.needsUpdate = true
-      panelMatR.map = skiaTex; panelMatR.needsUpdate = true
+      panelMat.map = skiaTex
+      panelMat.needsUpdate = true
+      panelMatL.map = skiaTex
+      panelMatL.needsUpdate = true
+      panelMatR.map = skiaTex
+      panelMatR.needsUpdate = true
     }
 
     // 3. Three.js renders 3D scene (panel with Skia texture + reflection + ground)

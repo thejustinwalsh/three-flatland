@@ -1,12 +1,7 @@
 import { Suspense, useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
-import {
-  AnimatedSprite2D,
-  SpriteSheetLoader,
-  SortLayers,
-  type AnimationSetDefinition,
-} from 'three-flatland/react'
+import { AnimatedSprite2D, SpriteSheetLoader, SortLayers, type AnimationSetDefinition } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
@@ -39,8 +34,22 @@ const animationSet: AnimationSetDefinition = {
     },
     run: {
       frames: [
-        'run_0', 'run_1', 'run_2', 'run_3', 'run_4', 'run_5', 'run_6', 'run_7',
-        'run_8', 'run_9', 'run_10', 'run_11', 'run_12', 'run_13', 'run_14', 'run_15',
+        'run_0',
+        'run_1',
+        'run_2',
+        'run_3',
+        'run_4',
+        'run_5',
+        'run_6',
+        'run_7',
+        'run_8',
+        'run_9',
+        'run_10',
+        'run_11',
+        'run_12',
+        'run_13',
+        'run_14',
+        'run_15',
       ],
       fps: 12,
       loop: true,
@@ -132,8 +141,13 @@ function Scene() {
       label: 'anim',
     } as any) as any
     animGridRef.current = blade
-    blade.on('change', (ev: any) => { setAnimation(ev.value) })
-    return () => { blade.dispose(); animGridRef.current = null }
+    blade.on('change', (ev: any) => {
+      setAnimation(ev.value)
+    })
+    return () => {
+      blade.dispose()
+      animGridRef.current = null
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animFolder])
 
@@ -150,7 +164,9 @@ function Scene() {
       value: 1,
       label: 'speed',
     } as any) as any
-    blade.on('change', (ev: any) => { setSpeed(ev.value) })
+    blade.on('change', (ev: any) => {
+      setSpeed(ev.value)
+    })
     return () => blade.dispose()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animFolder])
@@ -167,11 +183,7 @@ function Scene() {
     <>
       <GemBackground gem={GEM} />
       <Suspense fallback={null}>
-        <Knight
-          animation={animation}
-          speed={speed}
-          onAnimationComplete={handleAnimationComplete}
-        />
+        <Knight animation={animation} speed={speed} onAnimationComplete={handleAnimationComplete} />
       </Suspense>
     </>
   )
@@ -195,11 +207,7 @@ export default function App() {
         }}
       >
         Knight sprite by{' '}
-        <a
-          href="https://analogstudios.itch.io/camelot"
-          target="_blank"
-          style={{ color: '#777' }}
-        >
+        <a href="https://analogstudios.itch.io/camelot" target="_blank" style={{ color: '#777' }}>
           analogStudios_
         </a>{' '}
         (CC0)
@@ -212,7 +220,10 @@ export default function App() {
           position: [0, 0, 100],
           near: 0.1,
           far: 1000,
-          left: -1, right: 1, top: 1, bottom: -1,
+          left: -1,
+          right: 1,
+          top: 1,
+          bottom: -1,
         }}
         renderer={{ antialias: false }}
         onCreated={({ gl }) => {

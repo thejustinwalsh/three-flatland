@@ -42,30 +42,27 @@ async function resolveImageForCommand(uri: vscode.Uri): Promise<vscode.Uri | nul
 }
 
 export function registerNormalBakerTool(context: vscode.ExtensionContext): vscode.Disposable {
-  const disposable = vscode.commands.registerCommand(
-    'threeFlatland.normalBaker.open',
-    async (clicked?: vscode.Uri) => {
-      // Defense in depth: the explorer/context and command-palette menu
-      // items are already gated on the tool's context key, but a
-      // keybinding can still invoke the command id directly.
-      if (!isToolEnabled('normalBaker')) {
-        void vscode.window.showInformationMessage('FL Normal Baker is disabled in Settings.')
-        return
-      }
-      const target = clicked ?? vscode.window.activeTextEditor?.document.uri
-      if (!target) {
-        void vscode.window.showErrorMessage('FL Normal Baker: select a PNG file first.')
-        return
-      }
-      const resolved = await resolveImageForCommand(target)
-      if (!resolved) {
-        void vscode.window.showErrorMessage(
-          'FL Normal Baker: select a source PNG (or its .normal.json / .normal.png sidecar) first.'
-        )
-        return
-      }
-      await openNormalBakerPanel(context, resolved)
+  const disposable = vscode.commands.registerCommand('threeFlatland.normalBaker.open', async (clicked?: vscode.Uri) => {
+    // Defense in depth: the explorer/context and command-palette menu
+    // items are already gated on the tool's context key, but a
+    // keybinding can still invoke the command id directly.
+    if (!isToolEnabled('normalBaker')) {
+      void vscode.window.showInformationMessage('FL Normal Baker is disabled in Settings.')
+      return
     }
-  )
+    const target = clicked ?? vscode.window.activeTextEditor?.document.uri
+    if (!target) {
+      void vscode.window.showErrorMessage('FL Normal Baker: select a PNG file first.')
+      return
+    }
+    const resolved = await resolveImageForCommand(target)
+    if (!resolved) {
+      void vscode.window.showErrorMessage(
+        'FL Normal Baker: select a source PNG (or its .normal.json / .normal.png sidecar) first.'
+      )
+      return
+    }
+    await openNormalBakerPanel(context, resolved)
+  })
   return vscode.Disposable.from(disposable)
 }

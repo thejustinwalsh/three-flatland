@@ -1,10 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import {
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-  readFileSync,
-} from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PNG } from 'pngjs'
@@ -67,10 +62,7 @@ describe('flatland-bake normal CLI', () => {
     const output = join(tmp, 'knight.normal.png')
     const buf = readFileSync(output)
     // Output carries a `flatland` tEXt chunk stamping the descriptor hash.
-    const meta = readPngTextChunk(
-      buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-      'flatland'
-    )
+    const meta = readPngTextChunk(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), 'flatland')
     expect(meta).not.toBeNull()
     expect(JSON.parse(meta!)).toMatchObject({ v: 1, hash: expect.any(String) })
   })
@@ -124,17 +116,9 @@ describe('flatland-bake normal CLI', () => {
     const input = join(tmp, 'atlas.png')
     writeSolidPng(input, 4, 4)
     const descriptorPath = join(tmp, 'atlas.normal.json')
-    writeFileSync(
-      descriptorPath,
-      JSON.stringify({ direction: 'south', pitch: 0.5 })
-    )
+    writeFileSync(descriptorPath, JSON.stringify({ direction: 'south', pitch: 0.5 }))
 
-    const onlyDescriptor = await baker.run([
-      input,
-      join(tmp, 'a.normal.png'),
-      '--descriptor',
-      descriptorPath,
-    ])
+    const onlyDescriptor = await baker.run([input, join(tmp, 'a.normal.png'), '--descriptor', descriptorPath])
     expect(onlyDescriptor).toBe(0)
 
     const withFlagOverride = await baker.run([
@@ -148,9 +132,7 @@ describe('flatland-bake normal CLI', () => {
     expect(withFlagOverride).toBe(0)
 
     // Different hashes → override took effect.
-    expect(readMetaHash(join(tmp, 'a.normal.png'))).not.toBe(
-      readMetaHash(join(tmp, 'b.normal.png'))
-    )
+    expect(readMetaHash(join(tmp, 'a.normal.png'))).not.toBe(readMetaHash(join(tmp, 'b.normal.png')))
   })
 
   it('exits 1 with an invalid --direction', async () => {
@@ -172,10 +154,7 @@ describe('flatland-bake normal CLI', () => {
 
 function readMetaHash(pngPath: string): string {
   const buf = readFileSync(pngPath)
-  const meta = readPngTextChunk(
-    buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-    'flatland'
-  )
+  const meta = readPngTextChunk(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), 'flatland')
   if (!meta) throw new Error(`no flatland tEXt in ${pngPath}`)
   return (JSON.parse(meta) as { hash: string }).hash
 }

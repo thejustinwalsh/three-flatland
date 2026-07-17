@@ -7,13 +7,7 @@
 // once Z3 wires this into a live panel.
 import * as vscode from 'vscode'
 import { createHash } from 'node:crypto'
-import {
-  runGeneration,
-  type Candidate,
-  type CacheStore,
-  type GenerateOutcome,
-  type LmSend,
-} from './core'
+import { runGeneration, type Candidate, type CacheStore, type GenerateOutcome, type LmSend } from './core'
 import { createMemoizedLoader } from './memoizedLoader'
 import { log } from '../../../log'
 
@@ -87,9 +81,7 @@ export class ZzfxLmService {
   async generate(args: GenerateArgs, onChunk?: (chunk: string) => void): Promise<GenerateOutcome> {
     const models = await this.selectModels()
     const model = models[0]
-    const send: LmSend = model
-      ? (prompt, cb) => this.sendToModel(model, prompt, cb)
-      : async () => null
+    const send: LmSend = model ? (prompt, cb) => this.sendToModel(model, prompt, cb) : async () => null
 
     return runGeneration({
       category: args.category,
@@ -131,8 +123,7 @@ export class ZzfxLmService {
       const response = await model.sendRequest(
         [vscode.LanguageModelChatMessage.User(prompt)],
         {
-          justification:
-            'Generate ZzFX sound-effect candidate params from the selected category and style tags.',
+          justification: 'Generate ZzFX sound-effect candidate params from the selected category and style tags.',
         },
         cts.token
       )

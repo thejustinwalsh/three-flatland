@@ -111,12 +111,7 @@ function ConflictRow(p: { conflict: NameConflict; kind: 'frames' | 'animations' 
   )
 }
 
-function RenameRow(p: {
-  sourceUri: string
-  alias: string
-  originalName: string
-  kind: 'frames' | 'animations'
-}) {
+function RenameRow(p: { sourceUri: string; alias: string; originalName: string; kind: 'frames' | 'animations' }) {
   const state = useMergeState()
   const src = state.sources.find((s) => s.uri === p.sourceUri)
   const current = src?.renames[p.kind]?.[p.originalName] ?? p.originalName
@@ -139,11 +134,7 @@ function RenameRow(p: {
     <div {...stylex.props(s.renameRow)}>
       <span {...stylex.props(s.renameAlias)}>{p.alias}</span>
       <div {...stylex.props(s.renameField)}>
-        <TextField
-          value={draft}
-          onChange={handleChange}
-          onBlur={handleBlur}
-        />
+        <TextField value={draft} onChange={handleChange} onBlur={handleBlur} />
       </div>
     </div>
   )

@@ -51,15 +51,7 @@ export function PillGroup<T extends string>({
       {options.map((opt) => {
         const active = selected.includes(opt)
         const atMax = multiple && max !== undefined && selected.length >= max
-        return (
-          <Pill
-            key={opt}
-            label={opt}
-            active={active}
-            disabled={atMax && !active}
-            onToggle={() => toggle(opt)}
-          />
-        )
+        return <Pill key={opt} label={opt} active={active} disabled={atMax && !active} onToggle={() => toggle(opt)} />
       })}
     </div>
   )

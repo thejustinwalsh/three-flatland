@@ -15,11 +15,7 @@ import {
   removeMaterialDisposeHooks,
 } from '../ecs/batchUtils'
 import { buildBatchQueryView, type BatchQueryView } from './batchQuery'
-import {
-  _registerBatchSource,
-  _unregisterBatchSource,
-  type BatchSourceFn,
-} from '../debug/debug-sink'
+import { _registerBatchSource, _unregisterBatchSource, type BatchSourceFn } from '../debug/debug-sink'
 import { SystemSchedule } from '../ecs/SystemSchedule'
 import { PERF_TRACK } from '../debug/perf-track'
 import {

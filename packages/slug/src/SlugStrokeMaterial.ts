@@ -46,8 +46,7 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
 
     this._font = font
 
-    const color =
-      options.color instanceof Color ? options.color : new Color(options.color ?? 0x000000)
+    const color = options.color instanceof Color ? options.color : new Color(options.color ?? 0x000000)
 
     this._colorUniform = uniform(color)
     this._opacityUniform = uniform(options.opacity ?? 1.0)
@@ -123,14 +122,8 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
       const signX = sign(basePos.x)
       const signY = sign(basePos.y)
 
-      const expandedObjPos = vec2(
-        baseObjPos.x.add(signX.mul(strokeObj)),
-        baseObjPos.y.add(signY.mul(strokeObj))
-      )
-      const expandedEmCoord = vec2(
-        baseEmCoord.x.add(signX.mul(strokeEm)),
-        baseEmCoord.y.add(signY.mul(strokeEm))
-      )
+      const expandedObjPos = vec2(baseObjPos.x.add(signX.mul(strokeObj)), baseObjPos.y.add(signY.mul(strokeObj)))
+      const expandedEmCoord = vec2(baseEmCoord.x.add(signX.mul(strokeEm)), baseEmCoord.y.add(signY.mul(strokeEm)))
 
       // Outward normal from center to the expanded corner — used by
       // slugDilate for the uniform half-pixel AA margin on top of the

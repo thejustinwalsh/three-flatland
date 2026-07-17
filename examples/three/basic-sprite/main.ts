@@ -152,11 +152,7 @@ async function main() {
     const delta = (now - lastTime) / 1000
     lastTime = now
 
-    const targetScale = isPressed
-      ? params.pressedScale
-      : isHovered
-        ? params.hoverScale
-        : params.baseScale
+    const targetScale = isPressed ? params.pressedScale : isHovered ? params.hoverScale : params.baseScale
     const targetTint = isHovered ? hoverTint : normalTint
 
     const lerpFactor = Math.min(params.lerpSpeed * delta, 1)

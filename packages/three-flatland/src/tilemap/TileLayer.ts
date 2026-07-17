@@ -16,11 +16,7 @@ import {
   type MeshBatchEntry,
   type MeshBatchSourceFn,
 } from '../debug/debug-sink'
-import {
-  LIT_FLAG_MASK,
-  RECEIVE_SHADOWS_MASK,
-  CAST_SHADOW_MASK,
-} from '../materials/effectFlagBits'
+import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK } from '../materials/effectFlagBits'
 import type { Tileset } from './Tileset'
 import type { TileLayerData } from './types'
 
@@ -174,9 +170,7 @@ export class TileLayer extends Group {
     // chunk's geometry (only allocated when an effect needs it).
     const off = mapping.instanceIndex * 16 + 10
     const prev = chunk.instanceData[off] ?? 0
-    chunk.instanceData[off] = value
-      ? prev | CAST_SHADOW_MASK
-      : prev & ~CAST_SHADOW_MASK
+    chunk.instanceData[off] = value ? prev | CAST_SHADOW_MASK : prev & ~CAST_SHADOW_MASK
     // Mark the underlying InstancedInterleavedBuffer dirty — every
     // interleaved attribute (instanceUV/Color/System/Extras) shares
     // the same buffer, so one needsUpdate flag covers all of them.
@@ -234,13 +228,7 @@ export class TileLayer extends Group {
     }
   }
 
-  constructor(
-    data: TileLayerData,
-    tileset: Tileset,
-    tileWidth: number,
-    tileHeight: number,
-    chunkSize: number = 256
-  ) {
+  constructor(data: TileLayerData, tileset: Tileset, tileWidth: number, tileHeight: number, chunkSize: number = 256) {
     super()
 
     this.data = data
@@ -461,10 +449,7 @@ export class TileLayer extends Group {
       const fieldWriters: FieldWriter[] = []
       for (const effectClass of this.material.getEffects()) {
         for (const field of effectClass._fields) {
-          const loc = this.material.getEffectFieldLocation(
-            effectClass.effectName,
-            field.name
-          )
+          const loc = this.material.getEffectFieldLocation(effectClass.effectName, field.name)
           if (!loc) continue
           fieldWriters.push({
             effectName: effectClass.effectName,
@@ -547,11 +532,7 @@ export class TileLayer extends Group {
       for (let i = 0; i < count; i++) {
         const tile = tiles[i]!
         TileLayer.tempMatrix.identity()
-        TileLayer.tempMatrix.makeTranslation(
-          tile.x + this.tileWidth / 2,
-          tile.y + this.tileHeight / 2,
-          0
-        )
+        TileLayer.tempMatrix.makeTranslation(tile.x + this.tileWidth / 2, tile.y + this.tileHeight / 2, 0)
         TileLayer.tempScale.set(this.tileWidth, this.tileHeight, 1)
         TileLayer.tempMatrix.scale(TileLayer.tempScale)
         mesh.setMatrixAt(i, TileLayer.tempMatrix)
@@ -728,7 +709,10 @@ export class TileLayer extends Group {
    * Dispose of all resources.
    */
   dispose(): void {
-    if ((process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') && this._batchMeshSource !== null) {
+    if (
+      (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') &&
+      this._batchMeshSource !== null
+    ) {
       _unregisterMeshBatchSource(this._batchMeshSource)
       this._batchMeshSource = null
     }

@@ -172,13 +172,24 @@ const s = stylex.create({
  */
 export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
   const {
-    expanded, onToggleExpanded,
-    animationNames, activeAnimation,
-    onSelectAnimation, onCreateAnimation, onDeleteAnimation, onRenameAnimation,
-    isPlaying, onTogglePlay,
-    fps, loop, pingPong,
-    onChangeFps, onChangeLoop, onChangePingPong,
-    pipVisible, onTogglePipVisible,
+    expanded,
+    onToggleExpanded,
+    animationNames,
+    activeAnimation,
+    onSelectAnimation,
+    onCreateAnimation,
+    onDeleteAnimation,
+    onRenameAnimation,
+    isPlaying,
+    onTogglePlay,
+    fps,
+    loop,
+    pingPong,
+    onChangeFps,
+    onChangeLoop,
+    onChangePingPong,
+    pipVisible,
+    onTogglePipVisible,
     activeIsEmpty = false,
   } = props
 

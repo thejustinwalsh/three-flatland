@@ -12,7 +12,7 @@ export async function encodeImageFile(
   input: string,
   output: string | null,
   opts: ImageEncodeOptions,
-  fileOpts: FileWriteOptions = {},
+  fileOpts: FileWriteOptions = {}
 ): Promise<string> {
   const target = output ?? defaultOutputPath(input, opts.format)
   if (!fileOpts.force && (await exists(target))) {
@@ -66,10 +66,7 @@ export interface BatchResult {
   ms?: number
 }
 
-export async function* encodeImageBatch(
-  items: BatchItem[],
-  concurrency = 4,
-): AsyncIterable<BatchResult> {
+export async function* encodeImageBatch(items: BatchItem[], concurrency = 4): AsyncIterable<BatchResult> {
   const queue = items.slice()
   const inflight = new Set<Promise<BatchResult>>()
   const yieldQueue: BatchResult[] = []
@@ -78,7 +75,12 @@ export async function* encodeImageBatch(
     const t0 = Date.now()
     const p: Promise<BatchResult> = encodeImageFile(item.input, item.output ?? null, item.opts)
       .then<BatchResult>((out) => ({ input: item.input, status: 'ok', output: out, ms: Date.now() - t0 }))
-      .catch<BatchResult>((err: Error) => ({ input: item.input, status: 'err', error: err.message, ms: Date.now() - t0 }))
+      .catch<BatchResult>((err: Error) => ({
+        input: item.input,
+        status: 'err',
+        error: err.message,
+        ms: Date.now() - t0,
+      }))
     inflight.add(p)
     void p.then((r) => {
       inflight.delete(p)

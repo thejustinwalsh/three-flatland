@@ -95,9 +95,7 @@ export function BatchesPanel() {
       run.batches.push({ batchIdx: b.batchIdx, spriteCount: b.spriteCount, label: b.label })
     }
     const arr = Array.from(m.values())
-    arr.sort((a, b) =>
-      a.kind.localeCompare(b.kind) || a.layer - b.layer || a.materialId - b.materialId,
-    )
+    arr.sort((a, b) => a.kind.localeCompare(b.kind) || a.layer - b.layer || a.materialId - b.materialId)
     return arr
   }, [batches.frame])
 
@@ -131,7 +129,8 @@ export function BatchesPanel() {
       <header class="panel-header batches-header">
         <span>Batches</span>
         <span class="batches-header-meta">
-          frame {batches.frame} · {passTotals.calls} draws · {runs.length} runs · {batches.batches.length} batches · {totalSprites} sprites
+          frame {batches.frame} · {passTotals.calls} draws · {runs.length} runs · {batches.batches.length} batches ·{' '}
+          {totalSprites} sprites
         </span>
       </header>
 
@@ -196,12 +195,7 @@ export function BatchesPanel() {
               <li class="batches-empty">no passes captured</li>
             ) : (
               passRoots.map((root) => (
-                <PassRow
-                  key={root.index}
-                  node={root}
-                  collapsed={collapsedPasses}
-                  onToggle={toggleCollapsed}
-                />
+                <PassRow key={root.index} node={root} collapsed={collapsedPasses} onToggle={toggleCollapsed} />
               ))
             )}
           </ul>
@@ -263,14 +257,7 @@ function PassRow({
         <span class="batches-col-num">{pass.cpuMs.toFixed(2)}</span>
       </li>
       {hasChildren && !isCollapsed
-        ? children.map((c) => (
-            <PassRow
-              key={c.index}
-              node={c}
-              collapsed={collapsed}
-              onToggle={onToggle}
-            />
-          ))
+        ? children.map((c) => <PassRow key={c.index} node={c} collapsed={collapsed} onToggle={onToggle} />)
         : null}
     </>
   )

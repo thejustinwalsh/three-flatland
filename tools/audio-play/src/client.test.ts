@@ -191,11 +191,7 @@ describe('PlaySidecarClient', () => {
   it('a playToneSynthAwaitable() whose response never arrives rejects after its timeout — and the tone queue unwedges', async () => {
     client = spawnFake({ ...process.env, FAKE_PLAY_SIDECAR_DROP_FIRST_TONE: '1' })
     await expect(
-      client.playToneSynthAwaitable(
-        { synthType: 'Synth', note: 'C4', duration: '8n' },
-        undefined,
-        250
-      )
+      client.playToneSynthAwaitable({ synthType: 'Synth', note: 'C4', duration: '8n' }, undefined, 250)
     ).rejects.toThrow(/no playToneSynth response within 250ms/)
     const result = await client.playToneSynthAwaitable({
       synthType: 'Synth',

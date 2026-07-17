@@ -2,7 +2,14 @@ import { defineConfig } from 'tsdown'
 
 export default defineConfig([
   {
-    entry: ['src/**/*.ts', '!src/**/*.test.ts', '!src/**/*.test-d.ts', '!src/**/*.tsx', '!src/**/*.d.ts', '!src/cli.ts'],
+    entry: [
+      'src/**/*.ts',
+      '!src/**/*.test.ts',
+      '!src/**/*.test-d.ts',
+      '!src/**/*.tsx',
+      '!src/**/*.d.ts',
+      '!src/cli.ts',
+    ],
     format: ['esm'],
     dts: true,
     sourcemap: true,

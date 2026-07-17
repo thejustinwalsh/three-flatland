@@ -80,8 +80,7 @@ for (const { schema, type, out } of TARGETS) {
 
 if (verify && drift > 0) {
   console.error(
-    `\n${drift} generated file(s) drifted from their schema source.\n` +
-      `Run \`pnpm gen:types\` and commit the result.`,
+    `\n${drift} generated file(s) drifted from their schema source.\n` + `Run \`pnpm gen:types\` and commit the result.`
   )
   process.exit(1)
 }

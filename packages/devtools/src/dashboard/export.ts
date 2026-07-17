@@ -74,9 +74,7 @@ export async function exportSession(providerId: string | null = null): Promise<v
   const a = document.createElement('a')
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   a.href = url
-  a.download = providerId !== null
-    ? `tf-devtools-${providerId}-${stamp}.json`
-    : `tf-devtools-session-${stamp}.json`
+  a.download = providerId !== null ? `tf-devtools-${providerId}-${stamp}.json` : `tf-devtools-session-${stamp}.json`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

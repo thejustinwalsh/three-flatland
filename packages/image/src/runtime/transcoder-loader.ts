@@ -49,11 +49,7 @@ function isNode(): boolean {
  */
 export async function fetchTranscoderBytes(): Promise<ArrayBuffer> {
   if (isNode()) {
-    const [fs, path, url] = await Promise.all([
-      import('node:fs'),
-      import('node:path'),
-      import('node:url'),
-    ])
+    const [fs, path, url] = await Promise.all([import('node:fs'), import('node:path'), import('node:url')])
     const here = path.dirname(url.fileURLToPath(import.meta.url))
     // dist/runtime/transcoder-loader.js -> ../../libs/basis/basis_transcoder.wasm
     // src/runtime/transcoder-loader.ts (vitest) -> ../../libs/basis/basis_transcoder.wasm

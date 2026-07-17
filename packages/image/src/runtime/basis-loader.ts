@@ -26,11 +26,7 @@ function isNode(): boolean {
  */
 export async function fetchBasisBytes(): Promise<ArrayBuffer> {
   if (isNode()) {
-    const [fs, path, url] = await Promise.all([
-      import('node:fs'),
-      import('node:path'),
-      import('node:url'),
-    ])
+    const [fs, path, url] = await Promise.all([import('node:fs'), import('node:path'), import('node:url')])
     const here = path.dirname(url.fileURLToPath(import.meta.url))
     // dist/runtime/basis-loader.js -> ../../libs/basis/basis_encoder.wasm
     // src/runtime/basis-loader.ts (vitest) -> ../../libs/basis/basis_encoder.wasm

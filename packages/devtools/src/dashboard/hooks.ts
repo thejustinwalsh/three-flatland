@@ -26,14 +26,20 @@ function scheduleFrame(): void {
   requestAnimationFrame(() => {
     _frameScheduled = false
     for (const cb of _frameListeners) {
-      try { cb() } catch { /* listener errors shouldn't break the bus */ }
+      try {
+        cb()
+      } catch {
+        /* listener errors shouldn't break the bus */
+      }
     }
   })
 }
 
 function subscribeFrame(cb: Subscriber): () => void {
   _frameListeners.add(cb)
-  return () => { _frameListeners.delete(cb) }
+  return () => {
+    _frameListeners.delete(cb)
+  }
 }
 
 // Wire the underlying data sources to the shared rAF once. Any event on

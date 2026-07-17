@@ -57,10 +57,7 @@ function socketPair(): [FakeSocket, FakeSocket] {
  * `predicate`. Attach this BEFORE the action that will post the awaited
  * message — the returned promise is the signal, never a timer.
  */
-function waitForMessage(
-  channel: BroadcastChannel,
-  predicate: (msg: DebugMessage) => boolean
-): Promise<DebugMessage> {
+function waitForMessage(channel: BroadcastChannel, predicate: (msg: DebugMessage) => boolean): Promise<DebugMessage> {
   return new Promise((resolve) => {
     const onMessage = (ev: MessageEvent): void => {
       const msg = ev.data as DebugMessage
@@ -104,10 +101,7 @@ function nextSend(socket: FakeSocket): Promise<ArrayBuffer> {
  * erroneous send — the exact bug a negative-guard test exists to catch —
  * is captured before the length assertion that follows the barrier runs.
  */
-function nextSendMatching(
-  socket: FakeSocket,
-  predicate: (msg: DebugMessage) => boolean
-): Promise<ArrayBuffer> {
+function nextSendMatching(socket: FakeSocket, predicate: (msg: DebugMessage) => boolean): Promise<ArrayBuffer> {
   return new Promise((resolve) => {
     const original = socket.send.bind(socket)
     socket.send = (data: ArrayBuffer): void => {
@@ -284,10 +278,7 @@ describe('remote bridges over a socket pair', () => {
     // the 'fl-data-remote1' channel by the time send() returns — no wait
     // needed here.
     providerSocket.send(
-      encodeDebugMessage(
-        { v: 1, ts: 2, type: 'ping', payload: {} } as unknown as DebugMessage,
-        'fl-data-remote1'
-      )
+      encodeDebugMessage({ v: 1, ts: 2, type: 'ping', payload: {} } as unknown as DebugMessage, 'fl-data-remote1')
     )
 
     dashboardData.postMessage({

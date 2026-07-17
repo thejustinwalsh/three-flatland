@@ -8,10 +8,7 @@ import type { AtlasJson, AtlasMergeMeta } from '@three-flatland/io/atlas'
 
 const TOOL = 'merge'
 
-export async function openMergePanel(
-  context: vscode.ExtensionContext,
-  sidecarUris: vscode.Uri[]
-): Promise<void> {
+export async function openMergePanel(context: vscode.ExtensionContext, sidecarUris: vscode.Uri[]): Promise<void> {
   const panel = vscode.window.createWebviewPanel(
     'threeFlatland.merge',
     `Merge: ${sidecarUris.map((u) => labelFor(u)).join(', ')}`,
@@ -70,9 +67,7 @@ export async function openMergePanel(
         // Find the PNG entry in meta.sources (merge needs PNG input today).
         const pngSource = json?.meta?.sources?.find((s) => s.format === 'png')
         if (!pngSource?.uri) {
-          throw new Error(
-            'meta.sources[png] missing — atlas sidecar has no PNG source for merge input',
-          )
+          throw new Error('meta.sources[png] missing — atlas sidecar has no PNG source for merge input')
         }
         const imageUri = vscode.Uri.joinPath(sidecar, '..', pngSource.uri)
         sources.push({

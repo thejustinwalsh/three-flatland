@@ -104,20 +104,11 @@ export function blurGaussian2Pass(
 
   // This is a simplified version - in practice, you'd use two render passes
   // For single-pass approximation, sample in a + pattern
-  const weights = [0.2270270270, 0.3162162162, 0.0702702703] as const
+  const weights = [0.227027027, 0.3162162162, 0.0702702703] as const
 
   let result: Node<'vec4'> = sampleTexture(tex, uv).mul(weights[0])
 
-  const offsets = [
-    vec2(1, 0),
-    vec2(-1, 0),
-    vec2(0, 1),
-    vec2(0, -1),
-    vec2(1, 1),
-    vec2(-1, -1),
-    vec2(1, -1),
-    vec2(-1, 1),
-  ]
+  const offsets = [vec2(1, 0), vec2(-1, 0), vec2(0, 1), vec2(0, -1), vec2(1, 1), vec2(-1, -1), vec2(1, -1), vec2(-1, 1)]
 
   for (let i = 0; i < 4; i++) {
     const offset = offsets[i]!.mul(texelVec).mul(radiusNode.mul(100))

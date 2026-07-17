@@ -24,22 +24,12 @@ export function uvFlip(
   flipY: boolean | FloatInput = false
 ): Node<'vec2'> {
   // Convert boolean to number for TSL
-  const flipXNode =
-    typeof flipX === 'boolean' ? float(flipX ? 1 : 0) : typeof flipX === 'number' ? float(flipX) : flipX
-  const flipYNode =
-    typeof flipY === 'boolean' ? float(flipY ? 1 : 0) : typeof flipY === 'number' ? float(flipY) : flipY
+  const flipXNode = typeof flipX === 'boolean' ? float(flipX ? 1 : 0) : typeof flipX === 'number' ? float(flipX) : flipX
+  const flipYNode = typeof flipY === 'boolean' ? float(flipY ? 1 : 0) : typeof flipY === 'number' ? float(flipY) : flipY
 
   // When flip is 1, use 1 - uv; when 0, use uv
-  const flippedX = select(
-    flipXNode.greaterThan(float(0.5)),
-    float(1).sub(inputUV.x),
-    inputUV.x
-  )
-  const flippedY = select(
-    flipYNode.greaterThan(float(0.5)),
-    float(1).sub(inputUV.y),
-    inputUV.y
-  )
+  const flippedX = select(flipXNode.greaterThan(float(0.5)), float(1).sub(inputUV.x), inputUV.x)
+  const flippedY = select(flipYNode.greaterThan(float(0.5)), float(1).sub(inputUV.y), inputUV.y)
 
   return vec2(flippedX, flippedY)
 }

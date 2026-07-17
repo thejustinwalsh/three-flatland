@@ -1,16 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import {
-  animationInputToFrameTag,
-  buildAsepriteJson,
-  buildTexturePackerJson,
-  detectAtlasFormat,
-} from './formats'
+import { animationInputToFrameTag, buildAsepriteJson, buildTexturePackerJson, detectAtlasFormat } from './formats'
 import { atlasToRects, importAsepriteFrameTags } from './build'
 import type { AnimationInput, AtlasJson } from './types'
-import {
-  assertValidTexturePackerAtlas,
-  assertValidAsepriteAtlas,
-} from '@three-flatland/schemas/atlas'
+import { assertValidTexturePackerAtlas, assertValidAsepriteAtlas } from '@three-flatland/schemas/atlas'
 
 describe('detectAtlasFormat', () => {
   it('detects our own files via meta.app', () => {

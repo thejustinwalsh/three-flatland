@@ -14,10 +14,7 @@ export interface ProviderSwitcherHandle {
   dispose(): void
 }
 
-export function addProviderSwitcher(
-  parent: Pane | FolderApi,
-  client: DevtoolsClient,
-): ProviderSwitcherHandle {
+export function addProviderSwitcher(parent: Pane | FolderApi, client: DevtoolsClient): ProviderSwitcherHandle {
   // Separator-blade shim so the rack ordering stays correct; we swap
   // its innards for our own layout (same pattern as stats-graph / row).
   const blade = parent.addBlade({ view: 'separator' }) as unknown as {
@@ -45,8 +42,7 @@ export function addProviderSwitcher(
     '-webkit-user-select:none',
   ].join(';')
 
-  const arrowStyle =
-    'cursor:pointer;padding:0 4px;opacity:0.8;font-family:ui-monospace,monospace;'
+  const arrowStyle = 'cursor:pointer;padding:0 4px;opacity:0.8;font-family:ui-monospace,monospace;'
   const prevBtn = document.createElement('span')
   prevBtn.textContent = '◀'
   prevBtn.style.cssText = arrowStyle
@@ -71,7 +67,10 @@ export function addProviderSwitcher(
     const providers = client.state.providers
     if (providers.length < 2) return
     const selected = client.state.selectedProviderId
-    const idx = Math.max(0, providers.findIndex((p) => p.id === selected))
+    const idx = Math.max(
+      0,
+      providers.findIndex((p) => p.id === selected)
+    )
     const next = providers[(idx + delta + providers.length) % providers.length]!
     client.selectProvider(next.id)
   }

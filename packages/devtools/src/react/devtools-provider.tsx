@@ -1,10 +1,6 @@
 import { useEffect, useRef, type ReactElement } from 'react'
 import { useFrame } from '@react-three/fiber'
-import {
-  createDevtoolsProvider,
-  isDevtoolsActive,
-  type DevtoolsProviderHandle,
-} from 'three-flatland'
+import { createDevtoolsProvider, isDevtoolsActive, type DevtoolsProviderHandle } from 'three-flatland'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -44,19 +40,13 @@ export interface DevtoolsProviderProps {
  * those cases the inner component never mounts, no `useFrame` is
  * registered, and R3F's normal auto-render path is untouched.
  */
-export function DevtoolsProvider(
-  props: DevtoolsProviderProps,
-): ReactElement | null {
+export function DevtoolsProvider(props: DevtoolsProviderProps): ReactElement | null {
   if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return null
   if (!isDevtoolsActive()) return null
   return <DevtoolsProviderActive {...props} />
 }
 
-function DevtoolsProviderActive({
-  name,
-  id,
-  discoveryChannelName,
-}: DevtoolsProviderProps): null {
+function DevtoolsProviderActive({ name, id, discoveryChannelName }: DevtoolsProviderProps): null {
   // Provider creation lives in `useEffect` only — never in render. R3F's
   // concurrent-rendering + StrictMode double-render can throw away renders
   // before commit, and any side effect we performed in render (like

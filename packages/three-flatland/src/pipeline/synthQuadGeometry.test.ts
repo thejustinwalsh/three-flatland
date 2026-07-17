@@ -7,19 +7,9 @@ import { createSynthQuadGeometry, SYNTH_QUAD_INDEX } from './synthQuadGeometry'
 // position/uv attributes ever drift from the shader's synthesized
 // values, user TSL code calling three's uv()/positionGeometry() breaks
 // silently again (the #141 regression).
-const EXPECTED_POSITIONS = [
-  -0.5, -0.5, 0,
-  0.5, -0.5, 0,
-  -0.5, 0.5, 0,
-  0.5, 0.5, 0,
-]
+const EXPECTED_POSITIONS = [-0.5, -0.5, 0, 0.5, -0.5, 0, -0.5, 0.5, 0, 0.5, 0.5, 0]
 
-const EXPECTED_UVS = [
-  0, 0,
-  1, 0,
-  0, 1,
-  1, 1,
-]
+const EXPECTED_UVS = [0, 0, 1, 0, 0, 1, 1, 1]
 
 describe('createSynthQuadGeometry', () => {
   it('sets the index to the CCW synth-quad winding', () => {

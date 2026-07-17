@@ -12,10 +12,7 @@ import {
   type TileMapObject,
   type AnimationSetDefinition,
 } from 'three-flatland'
-import {
-  DefaultLightEffect,
-  NormalMapProvider,
-} from '@three-flatland/presets'
+import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import { createPane } from '@three-flatland/devtools'
 
 // ============================================
@@ -208,12 +205,7 @@ async function main() {
 
   // Now that the map's world size is known, frame it to the canvas.
   const refitView = () => {
-    flatland.viewSize = fitViewSize(
-      window.innerWidth,
-      window.innerHeight,
-      mapHalfW * 2,
-      mapHalfH * 2
-    )
+    flatland.viewSize = fitViewSize(window.innerWidth, window.innerHeight, mapHalfW * 2, mapHalfH * 2)
     flatland.resize(window.innerWidth, window.innerHeight)
   }
   refitView()
@@ -232,10 +224,12 @@ async function main() {
   tilemap.markOccluders(['collision'])
 
   // ─── Light positions from object layers ─────────────────────────
-  const fixedLightPositions: Array<[number, number]> =
-    extractObjectsByType(mapData, 'light').map((obj) => mapToWorld(obj, mapData, TILE_SCALE))
-  const switchPositions: Array<[number, number]> =
-    extractObjectsByType(mapData, 'torch_switch').map((obj) => mapToWorld(obj, mapData, TILE_SCALE))
+  const fixedLightPositions: Array<[number, number]> = extractObjectsByType(mapData, 'light').map((obj) =>
+    mapToWorld(obj, mapData, TILE_SCALE)
+  )
+  const switchPositions: Array<[number, number]> = extractObjectsByType(mapData, 'torch_switch').map((obj) =>
+    mapToWorld(obj, mapData, TILE_SCALE)
+  )
 
   // ─── Lights ─────────────────────────────────────────────────────
   const ambientLight = new Light2D({
@@ -483,46 +477,62 @@ async function main() {
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
 
   const lightFolder = pane.addFolder({ title: 'Lighting', expanded: true })
-  lightFolder.addBinding(params, 'lightingEnabled', { label: 'enabled' })
-    .on('change', () => {
-      flatland.setLighting(params.lightingEnabled ? lightEffect : null)
-    })
-  lightFolder.addBinding(params, 'bands', { min: 0, max: 8, step: 1 })
-    .on('change', () => { pushUniforms(); pushConstants() })
-  lightFolder.addBinding(params, 'pixelSize', { min: 0, max: 8, step: 1 })
-    .on('change', () => { pushUniforms(); pushConstants() })
-  lightFolder.addBinding(params, 'ambient', { min: 0, max: 3, step: 0.05 })
-    .on('change', () => { ambientLight.intensity = params.ambient })
-  lightFolder.addBinding(params, 'lightHeight', { min: 0, max: 2, step: 0.05 })
-    .on('change', () => pushUniforms())
-  lightFolder.addBinding(params, 'glowRadius', { min: 0, max: 2, step: 0.05 })
-    .on('change', () => { pushUniforms(); pushConstants() })
-  lightFolder.addBinding(params, 'glowIntensity', { min: 0, max: 2, step: 0.05 })
-    .on('change', () => pushUniforms())
-  lightFolder.addBinding(params, 'rimIntensity', { min: 0, max: 2, step: 0.05 })
-    .on('change', () => { pushUniforms(); pushConstants() })
+  lightFolder.addBinding(params, 'lightingEnabled', { label: 'enabled' }).on('change', () => {
+    flatland.setLighting(params.lightingEnabled ? lightEffect : null)
+  })
+  lightFolder.addBinding(params, 'bands', { min: 0, max: 8, step: 1 }).on('change', () => {
+    pushUniforms()
+    pushConstants()
+  })
+  lightFolder.addBinding(params, 'pixelSize', { min: 0, max: 8, step: 1 }).on('change', () => {
+    pushUniforms()
+    pushConstants()
+  })
+  lightFolder.addBinding(params, 'ambient', { min: 0, max: 3, step: 0.05 }).on('change', () => {
+    ambientLight.intensity = params.ambient
+  })
+  lightFolder.addBinding(params, 'lightHeight', { min: 0, max: 2, step: 0.05 }).on('change', () => pushUniforms())
+  lightFolder.addBinding(params, 'glowRadius', { min: 0, max: 2, step: 0.05 }).on('change', () => {
+    pushUniforms()
+    pushConstants()
+  })
+  lightFolder.addBinding(params, 'glowIntensity', { min: 0, max: 2, step: 0.05 }).on('change', () => pushUniforms())
+  lightFolder.addBinding(params, 'rimIntensity', { min: 0, max: 2, step: 0.05 }).on('change', () => {
+    pushUniforms()
+    pushConstants()
+  })
 
   const shadowFolder = pane.addFolder({ title: 'Shadows', expanded: false })
-  shadowFolder.addBinding(params, 'shadowStrength', { min: 0, max: 1, step: 0.05, label: 'strength' })
+  shadowFolder
+    .addBinding(params, 'shadowStrength', { min: 0, max: 1, step: 0.05, label: 'strength' })
     .on('change', () => pushUniforms())
-  shadowFolder.addBinding(params, 'shadowBias', { min: 0, max: 2, step: 0.05, label: 'bias' })
+  shadowFolder
+    .addBinding(params, 'shadowBias', { min: 0, max: 2, step: 0.05, label: 'bias' })
     .on('change', () => pushUniforms())
-  shadowFolder.addBinding(params, 'shadowStartOffsetScale', { min: 0, max: 3, step: 0.05, label: 'startOffsetScale' })
+  shadowFolder
+    .addBinding(params, 'shadowStartOffsetScale', { min: 0, max: 3, step: 0.05, label: 'startOffsetScale' })
     .on('change', () => pushUniforms())
-  shadowFolder.addBinding(params, 'shadowMaxDistance', { min: 0, max: 600, step: 10, label: 'maxDistance' })
+  shadowFolder
+    .addBinding(params, 'shadowMaxDistance', { min: 0, max: 600, step: 10, label: 'maxDistance' })
     .on('change', () => pushUniforms())
-  shadowFolder.addBinding(params, 'shadowPixelSize', { min: 0, max: 8, step: 1, label: 'pixelSize' })
-    .on('change', () => { pushUniforms(); pushConstants() })
+  shadowFolder
+    .addBinding(params, 'shadowPixelSize', { min: 0, max: 8, step: 1, label: 'pixelSize' })
+    .on('change', () => {
+      pushUniforms()
+      pushConstants()
+    })
 
   const torchFolder = pane.addFolder({ title: 'Torches', expanded: false })
   torchFolder.addBinding(params, 'torchIntensity', { min: 0, max: 3, step: 0.05, label: 'intensity' })
   torchFolder.addBinding(params, 'torchDistance', { min: 40, max: 400, step: 10, label: 'distance' })
 
   const slimeFolder = pane.addFolder({ title: 'Slimes', expanded: false })
-  slimeFolder.addBinding(params, 'slimeCount', { min: 0, max: 1000, step: 1, label: 'count' })
+  slimeFolder
+    .addBinding(params, 'slimeCount', { min: 0, max: 1000, step: 1, label: 'count' })
     .on('change', (ev) => setSlimeCount(ev.value))
   slimeFolder.addBinding(params, 'slimeLights', { label: 'lights' })
-  slimeFolder.addBinding(params, 'slimeQuota', { min: 0, max: 16, step: 1, label: 'quota' })
+  slimeFolder
+    .addBinding(params, 'slimeQuota', { min: 0, max: 16, step: 1, label: 'quota' })
     .on('change', (ev) => lightEffect.forwardPlus.setFillQuota('slime', ev.value))
 
   // ─── Input ──────────────────────────────────────────────────────
@@ -561,7 +571,10 @@ async function main() {
         const dot = (dx / dist) * heroFacing.x + (dy / dist) * heroFacing.y
         if (dot < facingThreshold) continue
       }
-      if (dist < bestDist) { bestDist = dist; bestIdx = i }
+      if (dist < bestDist) {
+        bestDist = dist
+        bestIdx = i
+      }
     }
     if (bestIdx < 0) return
     torchEnabled[switchStart + bestIdx] = !torchEnabled[switchStart + bestIdx]
@@ -584,7 +597,10 @@ async function main() {
   })
   window.addEventListener('keyup', (e) => {
     const k = keymap(e)
-    if (k) { heroKeys[k] = false; e.preventDefault() }
+    if (k) {
+      heroKeys[k] = false
+      e.preventDefault()
+    }
   })
 
   renderer.domElement.addEventListener('click', (e) => {
@@ -729,8 +745,13 @@ async function main() {
 
     hero.position.set(heroPos.x, heroPos.y, 0)
     hero.zIndex = -Math.floor(heroPos.y)
-    if (moving && heroAnim !== 'run') { hero.play('run'); heroAnim = 'run' }
-    else if (!moving && heroAnim !== 'idle') { hero.play('idle'); heroAnim = 'idle' }
+    if (moving && heroAnim !== 'run') {
+      hero.play('run')
+      heroAnim = 'run'
+    } else if (!moving && heroAnim !== 'idle') {
+      hero.play('idle')
+      heroAnim = 'idle'
+    }
     if (Math.abs(facingX) > 0.01) hero.flipX = facingX < 0
     hero.update(animDelta * 1000)
 
@@ -771,15 +792,17 @@ async function main() {
         if (s.hopTimer <= 0) {
           if (s.hopPhase === 'hop') {
             s.hopPhase = 'pause'
-            s.hopTimer = s.state === 'excited'
-              ? SLIME_PAUSE_MIN_EXCITED + Math.random() * (SLIME_PAUSE_MAX_EXCITED - SLIME_PAUSE_MIN_EXCITED)
-              : SLIME_PAUSE_MIN_WANDER + Math.random() * (SLIME_PAUSE_MAX_WANDER - SLIME_PAUSE_MIN_WANDER)
+            s.hopTimer =
+              s.state === 'excited'
+                ? SLIME_PAUSE_MIN_EXCITED + Math.random() * (SLIME_PAUSE_MAX_EXCITED - SLIME_PAUSE_MIN_EXCITED)
+                : SLIME_PAUSE_MIN_WANDER + Math.random() * (SLIME_PAUSE_MAX_WANDER - SLIME_PAUSE_MIN_WANDER)
             s.vel.set(0, 0)
           } else {
             s.hopPhase = 'hop'
-            s.hopTimer = s.state === 'excited'
-              ? SLIME_HOP_MIN_EXCITED + Math.random() * (SLIME_HOP_MAX_EXCITED - SLIME_HOP_MIN_EXCITED)
-              : SLIME_HOP_MIN_WANDER + Math.random() * (SLIME_HOP_MAX_WANDER - SLIME_HOP_MIN_WANDER)
+            s.hopTimer =
+              s.state === 'excited'
+                ? SLIME_HOP_MIN_EXCITED + Math.random() * (SLIME_HOP_MAX_EXCITED - SLIME_HOP_MIN_EXCITED)
+                : SLIME_HOP_MIN_WANDER + Math.random() * (SLIME_HOP_MAX_WANDER - SLIME_HOP_MIN_WANDER)
             const angle = Math.random() * Math.PI * 2
             const speed = s.state === 'excited' ? SLIME_SPEED_EXCITED : SLIME_SPEED_WANDER
             s.vel.set(Math.cos(angle) * speed, Math.sin(angle) * speed)
@@ -788,10 +811,22 @@ async function main() {
 
         s.pos.x += s.vel.x * delta
         s.pos.y += s.vel.y * delta
-        if (s.pos.x > slimeBoundX) { s.pos.x = slimeBoundX; s.vel.x = -Math.abs(s.vel.x) }
-        if (s.pos.x < -slimeBoundX) { s.pos.x = -slimeBoundX; s.vel.x = Math.abs(s.vel.x) }
-        if (s.pos.y > slimeBoundY) { s.pos.y = slimeBoundY; s.vel.y = -Math.abs(s.vel.y) }
-        if (s.pos.y < -slimeBoundY) { s.pos.y = -slimeBoundY; s.vel.y = Math.abs(s.vel.y) }
+        if (s.pos.x > slimeBoundX) {
+          s.pos.x = slimeBoundX
+          s.vel.x = -Math.abs(s.vel.x)
+        }
+        if (s.pos.x < -slimeBoundX) {
+          s.pos.x = -slimeBoundX
+          s.vel.x = Math.abs(s.vel.x)
+        }
+        if (s.pos.y > slimeBoundY) {
+          s.pos.y = slimeBoundY
+          s.vel.y = -Math.abs(s.vel.y)
+        }
+        if (s.pos.y < -slimeBoundY) {
+          s.pos.y = -slimeBoundY
+          s.vel.y = Math.abs(s.vel.y)
+        }
 
         if (s.hopPhase === 'hop') {
           const drain = s.state === 'excited' ? SLIME_STAMINA_DRAIN_EXCITED : SLIME_STAMINA_DRAIN_WANDER
@@ -801,8 +836,7 @@ async function main() {
 
       // Animation + transform.
       if (s.sprite) {
-        const wantAnim: 'idle' | 'walk' =
-          s.state !== 'rest' && s.hopPhase === 'hop' ? 'walk' : 'idle'
+        const wantAnim: 'idle' | 'walk' = s.state !== 'rest' && s.hopPhase === 'hop' ? 'walk' : 'idle'
         if (wantAnim !== s.animation) {
           s.sprite.play(wantAnim)
           s.animation = wantAnim
@@ -817,9 +851,7 @@ async function main() {
       if (s.light) {
         s.light.enabled = params.slimeLights
         s.light.position.set(s.pos.x, s.pos.y, 0)
-        s.light.intensity = s.state === 'excited' ? 0.35
-          : s.state === 'rest' ? 0.2
-            : 0.28
+        s.light.intensity = s.state === 'excited' ? 0.35 : s.state === 'rest' ? 0.2 : 0.28
       }
     }
 
@@ -854,10 +886,12 @@ async function main() {
   // captures. Use `__endCapture()` (or just uncheck the Stationary box)
   // when you're done with a capture session — the demo resumes normal
   // entity motion. Lighting state is never touched.
-  ;(window as Window & {
-    __captureScene?: (name: string, durationMs?: number) => Promise<void>
-    __endCapture?: () => void
-  }).__captureScene = async function captureScene(name: string, durationMs = 3000): Promise<void> {
+  ;(
+    window as Window & {
+      __captureScene?: (name: string, durationMs?: number) => Promise<void>
+      __endCapture?: () => void
+    }
+  ).__captureScene = async function captureScene(name: string, durationMs = 3000): Promise<void> {
     if (!name || typeof name !== 'string') {
       console.error('[captureScene] usage: __captureScene("lighting-on", 3000)')
       return
@@ -872,12 +906,7 @@ async function main() {
     const mainCanvas = renderer.domElement as HTMLCanvasElement
 
     function pickMimeType(): string {
-      const candidates = [
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/webm',
-        'video/mp4',
-      ]
+      const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']
       for (const m of candidates) {
         if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) return m
       }
@@ -953,7 +982,7 @@ async function main() {
     // window.__endCapture() to resume normal entity motion when done.
     console.log(
       `[captureScene] done — ${name}.webm + ${name}-poster.jpg in Downloads. ` +
-        `Stationary remains ON; call __endCapture() to resume motion.`,
+        `Stationary remains ON; call __endCapture() to resume motion.`
     )
   }
 

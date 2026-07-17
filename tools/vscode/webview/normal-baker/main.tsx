@@ -52,9 +52,7 @@ function send(level: string, args: unknown[]) {
   })
 }
 
-window.addEventListener('error', (e) =>
-  send('error', [e.message, `${e.filename}:${e.lineno}:${e.colno}`])
-)
+window.addEventListener('error', (e) => send('error', [e.message, `${e.filename}:${e.lineno}:${e.colno}`]))
 window.addEventListener('unhandledrejection', (e) => send('unhandledrejection', [safe(e.reason)]))
 
 send('info', ['webview boot'])

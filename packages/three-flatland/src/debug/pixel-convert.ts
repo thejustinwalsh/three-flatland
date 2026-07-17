@@ -11,20 +11,25 @@
 
 function halfToFloat(h: number): number {
   const s = (h & 0x8000) >> 15
-  const e = (h & 0x7C00) >> 10
-  const f = h & 0x03FF
+  const e = (h & 0x7c00) >> 10
+  const f = h & 0x03ff
   if (e === 0) return (s ? -1 : 1) * 2 ** -14 * (f / 1024)
-  if (e === 31) return f ? NaN : (s ? -Infinity : Infinity)
+  if (e === 31) return f ? NaN : s ? -Infinity : Infinity
   return (s ? -1 : 1) * 2 ** (e - 15) * (1 + f / 1024)
 }
 
 function bytesPerPixel(pixelType: string): number {
   switch (pixelType) {
-    case 'r8': return 1
-    case 'rgba8': return 4
-    case 'rgba16f': return 8
-    case 'rgba32f': return 16
-    default: return 4
+    case 'r8':
+      return 1
+    case 'rgba8':
+      return 4
+    case 'rgba16f':
+      return 8
+    case 'rgba32f':
+      return 16
+    default:
+      return 4
   }
 }
 
@@ -44,7 +49,7 @@ export function convertToRGBA8(
   display: string,
   width: number,
   height: number,
-  dataByteLength?: number,
+  dataByteLength?: number
 ): Uint8Array {
   const count = width * height
   const out = new Uint8Array(count * 4)
@@ -127,35 +132,33 @@ export function convertToRGBA8(
   return out
 }
 
-function stripPadding(
-  src: Uint8Array, width: number, height: number,
-  paddedRowBytes: number, bpp: number,
-): Uint8Array {
+function stripPadding(src: Uint8Array, width: number, height: number, paddedRowBytes: number, bpp: number): Uint8Array {
   const tightRow = width * bpp
   const tight = new Uint8Array(width * height * bpp)
   for (let y = 0; y < height; y++) {
-    tight.set(
-      src.subarray(y * paddedRowBytes, y * paddedRowBytes + tightRow),
-      y * tightRow,
-    )
+    tight.set(src.subarray(y * paddedRowBytes, y * paddedRowBytes + tightRow), y * tightRow)
   }
   return tight
 }
 
-function applyDisplayU8(
-  src: Uint8Array, out: Uint8Array, count: number, stride: number, display: string,
-): void {
+function applyDisplayU8(src: Uint8Array, out: Uint8Array, count: number, stride: number, display: string): void {
   if (display === 'mono') {
     for (let i = 0; i < count; i++) {
       const v = src[i * stride]!
       const o = i * 4
-      out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
+      out[o] = v
+      out[o + 1] = v
+      out[o + 2] = v
+      out[o + 3] = 255
     }
   } else if (display === 'alpha' && stride >= 4) {
     for (let i = 0; i < count; i++) {
       const v = src[i * stride + 3]!
       const o = i * 4
-      out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
+      out[o] = v
+      out[o + 1] = v
+      out[o + 2] = v
+      out[o + 3] = 255
     }
   } else {
     for (let i = 0; i < count; i++) {
@@ -169,14 +172,15 @@ function applyDisplayU8(
   }
 }
 
-function applyDisplayF32(
-  src: Float32Array, out: Uint8Array, count: number, stride: number, display: string,
-): void {
+function applyDisplayF32(src: Float32Array, out: Uint8Array, count: number, stride: number, display: string): void {
   if (display === 'alpha' && stride >= 4) {
     for (let i = 0; i < count; i++) {
       const v = Math.round(Math.max(0, Math.min(1, src[i * stride + 3]!)) * 255)
       const o = i * 4
-      out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
+      out[o] = v
+      out[o + 1] = v
+      out[o + 2] = v
+      out[o + 3] = 255
     }
     return
   }
@@ -186,14 +190,21 @@ function applyDisplayF32(
       const o = i * 4
       if (v >= 0) {
         const c = Math.min(255, v * 255)
-        out[o] = 0; out[o + 1] = c; out[o + 2] = 0; out[o + 3] = 255
+        out[o] = 0
+        out[o + 1] = c
+        out[o + 2] = 0
+        out[o + 3] = 255
       } else {
         const c = Math.min(255, -v * 255)
-        out[o] = c; out[o + 1] = 0; out[o + 2] = 0; out[o + 3] = 255
+        out[o] = c
+        out[o + 1] = 0
+        out[o + 2] = 0
+        out[o + 3] = 255
       }
     }
   } else if (display === 'mono') {
-    let mn = Infinity, mx = -Infinity
+    let mn = Infinity,
+      mx = -Infinity
     for (let i = 0; i < count; i++) {
       const v = src[i * stride]!
       if (v < mn) mn = v
@@ -203,7 +214,10 @@ function applyDisplayF32(
     for (let i = 0; i < count; i++) {
       const v = Math.round(((src[i * stride]! - mn) / range) * 255)
       const o = i * 4
-      out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
+      out[o] = v
+      out[o + 1] = v
+      out[o + 2] = v
+      out[o + 3] = 255
     }
   } else {
     const mins = new Float32Array(stride).fill(Infinity)

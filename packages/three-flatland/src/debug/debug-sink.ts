@@ -66,8 +66,18 @@ const _meshBatchSources = new Set<MeshBatchSourceFn>()
 
 // Queued registrations that arrived before the registry was set.
 // Replayed on _setActive*Registry and cleared.
-type QueuedArray = { name: string; ref: Float32Array | Uint32Array | Int32Array; kind: RegistryEntryKind; opts?: { label?: string; length?: number } }
-type QueuedTexture = { name: string; source: DataTexture | { width: number; height: number; texture: Texture }; pixelType: TexturePixelType; opts?: { label?: string; display?: BufferDisplayMode } }
+type QueuedArray = {
+  name: string
+  ref: Float32Array | Uint32Array | Int32Array
+  kind: RegistryEntryKind
+  opts?: { label?: string; length?: number }
+}
+type QueuedTexture = {
+  name: string
+  source: DataTexture | { width: number; height: number; texture: Texture }
+  pixelType: TexturePixelType
+  opts?: { label?: string; display?: BufferDisplayMode }
+}
 let _pendingArrays: QueuedArray[] | null = null
 let _pendingTextures: QueuedTexture[] | null = null
 
@@ -104,10 +114,13 @@ export function registerDebugArray(
   name: string,
   ref: Float32Array | Uint32Array | Int32Array,
   kind: RegistryEntryKind,
-  opts?: { label?: string; length?: number },
+  opts?: { label?: string; length?: number }
 ): void {
   if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
-  if (_active !== null) { _active.register(name, ref, kind, opts); return }
+  if (_active !== null) {
+    _active.register(name, ref, kind, opts)
+    return
+  }
   if (_pendingArrays === null) _pendingArrays = []
   _pendingArrays.push({ name, ref, kind, opts })
 }
@@ -140,10 +153,13 @@ export function registerDebugTexture(
   name: string,
   source: DataTexture | { width: number; height: number; texture: Texture },
   pixelType: TexturePixelType = 'rgba8',
-  opts?: { label?: string; display?: BufferDisplayMode },
+  opts?: { label?: string; display?: BufferDisplayMode }
 ): void {
   if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
-  if (_activeTextures !== null) { _activeTextures.register(name, source, pixelType, opts); return }
+  if (_activeTextures !== null) {
+    _activeTextures.register(name, source, pixelType, opts)
+    return
+  }
   if (_pendingTextures === null) _pendingTextures = []
   _pendingTextures.push({ name, source, pixelType, opts })
 }

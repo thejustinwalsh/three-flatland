@@ -370,11 +370,7 @@ void main() {
     // Fullscreen quad as a single triangle covering NDC.
     const buf = gl.createBuffer()
     gl.bindBuffer(gl.ARRAY_BUFFER, buf)
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 3, -1, -1, 3]),
-      gl.STATIC_DRAW,
-    )
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW)
     const aPos = gl.getAttribLocation(prog, 'a_pos')
     gl.enableVertexAttribArray(aPos)
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0)
@@ -408,14 +404,14 @@ void main() {
     // bgFallback below to read from --background instead.
     // ────────────────────────────────────────────────────────────────
     const gemUniforms = {
-      gold:     gl.getUniformLocation(prog, 'u_gold'),
-      ruby:     gl.getUniformLocation(prog, 'u_ruby'),
-      emerald:  gl.getUniformLocation(prog, 'u_emerald'),
-      diamond:  gl.getUniformLocation(prog, 'u_diamond'),
+      gold: gl.getUniformLocation(prog, 'u_gold'),
+      ruby: gl.getUniformLocation(prog, 'u_ruby'),
+      emerald: gl.getUniformLocation(prog, 'u_emerald'),
+      diamond: gl.getUniformLocation(prog, 'u_diamond'),
       amethyst: gl.getUniformLocation(prog, 'u_amethyst'),
-      pink:     gl.getUniformLocation(prog, 'u_pink'),
-      salmon:   gl.getUniformLocation(prog, 'u_salmon'),
-      bg:       gl.getUniformLocation(prog, 'u_bg'),
+      pink: gl.getUniformLocation(prog, 'u_pink'),
+      salmon: gl.getUniformLocation(prog, 'u_salmon'),
+      bg: gl.getUniformLocation(prog, 'u_bg'),
     }
 
     /** Fallback sRGB triplets — match the dark-mode OKLCH tokens, so
@@ -423,14 +419,14 @@ void main() {
      * resolved during the first paint) the shader still renders in a
      * sensible palette instead of showing a pure-black canvas. */
     const fallback: Record<string, [number, number, number]> = {
-      gold:     [0.824, 0.605, 0.000],
-      ruby:     [0.922, 0.237, 0.402],
-      emerald:  [0.000, 0.765, 0.546],
-      diamond:  [0.000, 0.770, 0.912],
-      amethyst: [0.598, 0.358, 1.000],
-      pink:     [0.911, 0.459, 0.775],
-      salmon:   [0.954, 0.337, 0.182],
-      bg:       [0.061, 0.070, 0.079],
+      gold: [0.824, 0.605, 0.0],
+      ruby: [0.922, 0.237, 0.402],
+      emerald: [0.0, 0.765, 0.546],
+      diamond: [0.0, 0.77, 0.912],
+      amethyst: [0.598, 0.358, 1.0],
+      pink: [0.911, 0.459, 0.775],
+      salmon: [0.954, 0.337, 0.182],
+      bg: [0.061, 0.07, 0.079],
     }
 
     /** Light-mode shader background — charcoal lifted clearly off pure
@@ -462,9 +458,9 @@ void main() {
       const ll = l_ * l_ * l_
       const mm = m_ * m_ * m_
       const ss = s_ * s_ * s_
-      const r  =  4.0767416621 * ll - 3.3077115913 * mm + 0.2309699292 * ss
-      const g  = -1.2684380046 * ll + 2.6097574011 * mm - 0.3413193965 * ss
-      const bl = -0.0041960863 * ll - 0.7034186147 * mm + 1.7076147010 * ss
+      const r = 4.0767416621 * ll - 3.3077115913 * mm + 0.2309699292 * ss
+      const g = -1.2684380046 * ll + 2.6097574011 * mm - 0.3413193965 * ss
+      const bl = -0.0041960863 * ll - 0.7034186147 * mm + 1.707614701 * ss
       const comp = (x: number): number => {
         if (x <= 0) return 0
         if (x >= 1) return 1
@@ -491,31 +487,33 @@ void main() {
       const set = (name: keyof typeof gemUniforms, rgb: [number, number, number]) => {
         gl.uniform3f(gemUniforms[name], rgb[0], rgb[1], rgb[2])
       }
-      set('gold',     readGemSrgb('gold'))
-      set('ruby',     readGemSrgb('ruby'))
-      set('emerald',  readGemSrgb('emerald'))
-      set('diamond',  readGemSrgb('diamond'))
+      set('gold', readGemSrgb('gold'))
+      set('ruby', readGemSrgb('ruby'))
+      set('emerald', readGemSrgb('emerald'))
+      set('diamond', readGemSrgb('diamond'))
       set('amethyst', readGemSrgb('amethyst'))
-      set('pink',     readGemSrgb('pink'))
-      set('salmon',   readGemSrgb('salmon'))
+      set('pink', readGemSrgb('pink'))
+      set('salmon', readGemSrgb('salmon'))
       // Window global is the source of truth (see astro.config.mjs head
-       // script). `data-theme` on <html> is dead state after the pure-CSS
-       // refactor; reading it would yield 'dark' for OS=light users.
+      // script). `data-theme` on <html> is dead state after the pure-CSS
+      // refactor; reading it would yield 'dark' for OS=light users.
       const isLight =
-        (window as unknown as { __threeFlatlandTheme?: { current: 'light' | 'dark' } })
-          .__threeFlatlandTheme?.current === 'light'
-      set('bg',       isLight ? bgLight : fallback.bg)
+        (window as unknown as { __threeFlatlandTheme?: { current: 'light' | 'dark' } }).__threeFlatlandTheme
+          ?.current === 'light'
+      set('bg', isLight ? bgLight : fallback.bg)
     }
 
     /** Re-seed gem uniforms when the OS theme flips. Subscribe via the
      * theme global; subscribe() fires immediately with the current value
      * and on every subsequent change. Returns an unsubscribe fn. */
-    const themeApi = (window as unknown as {
-      __threeFlatlandTheme?: {
-        current: 'light' | 'dark'
-        subscribe: (cb: (theme: 'light' | 'dark') => void) => () => void
+    const themeApi = (
+      window as unknown as {
+        __threeFlatlandTheme?: {
+          current: 'light' | 'dark'
+          subscribe: (cb: (theme: 'light' | 'dark') => void) => () => void
+        }
       }
-    }).__threeFlatlandTheme
+    ).__threeFlatlandTheme
     const themeUnsubscribe = themeApi?.subscribe(() => updateGemUniforms()) ?? (() => {})
 
     /** Initial seed — without this, uniforms default to vec3(0,0,0) and
@@ -595,9 +593,7 @@ void main() {
     function updateMouseFromEvent(e: PointerEvent): boolean {
       const r = cvs.getBoundingClientRect()
       // Inside the canvas's visual region?
-      const inside =
-        e.clientX >= r.left && e.clientX <= r.right &&
-        e.clientY >= r.top && e.clientY <= r.bottom
+      const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
       if (inside) {
         mouse.x = (e.clientX - r.left) / r.width
         mouse.y = 1 - (e.clientY - r.top) / r.height // flip Y
@@ -683,7 +679,7 @@ void main() {
       gl.uniform1f(uPixelSize, pixelSizeDev)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
     }
-    frameUnsub = getFrameClock().subscribe(frame, "HeroShader")
+    frameUnsub = getFrameClock().subscribe(frame, 'HeroShader')
 
     // Visibility gate via IntersectionObserver — does TWO things when
     // the hero scrolls off-screen:
@@ -700,17 +696,20 @@ void main() {
     //   context alive — only the layer is dropped from the compositor
     //   tree. Resume on scroll-back-up is instant; the canvas shows
     //   its last-drawn content for ~1 frame before the rAF tick.
-    const io = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        const wasVisible = visible
-        visible = e.isIntersecting
-        cvs.style.visibility = visible ? '' : 'hidden'
-        if (visible && !wasVisible && alive && !frameUnsub) {
-          last = performance.now()
-          frameUnsub = getFrameClock().subscribe(frame, "HeroShader")
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const wasVisible = visible
+          visible = e.isIntersecting
+          cvs.style.visibility = visible ? '' : 'hidden'
+          if (visible && !wasVisible && alive && !frameUnsub) {
+            last = performance.now()
+            frameUnsub = getFrameClock().subscribe(frame, 'HeroShader')
+          }
         }
-      }
-    }, { rootMargin: '100px' })
+      },
+      { rootMargin: '100px' }
+    )
     io.observe(cvs)
 
     return () => {

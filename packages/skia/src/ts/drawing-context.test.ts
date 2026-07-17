@@ -28,11 +28,21 @@ describe('SkiaDrawingContext', () => {
     ctx.clear(1, 1, 1) // alpha defaults to 1
   })
 
-  it('drawRect', () => { ctx.drawRect(10, 10, 100, 50, paint) })
-  it('drawRoundRect', () => { ctx.drawRoundRect(10, 10, 100, 50, 8, 8, paint) })
-  it('drawCircle', () => { ctx.drawCircle(100, 100, 50, paint) })
-  it('drawOval', () => { ctx.drawOval(10, 10, 100, 50, paint) })
-  it('drawLine', () => { ctx.drawLine(0, 0, 256, 256, paint) })
+  it('drawRect', () => {
+    ctx.drawRect(10, 10, 100, 50, paint)
+  })
+  it('drawRoundRect', () => {
+    ctx.drawRoundRect(10, 10, 100, 50, 8, 8, paint)
+  })
+  it('drawCircle', () => {
+    ctx.drawCircle(100, 100, 50, paint)
+  })
+  it('drawOval', () => {
+    ctx.drawOval(10, 10, 100, 50, paint)
+  })
+  it('drawLine', () => {
+    ctx.drawLine(0, 0, 256, 256, paint)
+  })
 
   it('drawPath', () => {
     const path = new SkiaPath(skia).moveTo(10, 10).lineTo(100, 50).lineTo(50, 100).close()
@@ -50,22 +60,36 @@ describe('SkiaDrawingContext', () => {
     ctx.restore()
   })
 
-  it('translate', () => { ctx.translate(50, 50) })
-  it('rotate', () => { ctx.rotate(45) })
-  it('scale uniform', () => { ctx.scale(2) })
-  it('scale non-uniform', () => { ctx.scale(2, 0.5) })
-  it('skew', () => { ctx.skew(0.1, 0.2) })
+  it('translate', () => {
+    ctx.translate(50, 50)
+  })
+  it('rotate', () => {
+    ctx.rotate(45)
+  })
+  it('scale uniform', () => {
+    ctx.scale(2)
+  })
+  it('scale non-uniform', () => {
+    ctx.scale(2, 0.5)
+  })
+  it('skew', () => {
+    ctx.skew(0.1, 0.2)
+  })
 
   it('concat 3x3 matrix', () => {
     ctx.concat([1, 0, 0, 0, 1, 0, 0, 0, 1]) // identity
   })
 
   it('concat 4x4 matrix', () => {
-    ctx.concat(new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1])) // identity
+    ctx.concat(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])) // identity
   })
 
-  it('clipRect', () => { ctx.clipRect(10, 10, 200, 200) })
-  it('clipRoundRect', () => { ctx.clipRoundRect(10, 10, 200, 200, 8, 8) })
+  it('clipRect', () => {
+    ctx.clipRect(10, 10, 200, 200)
+  })
+  it('clipRoundRect', () => {
+    ctx.clipRoundRect(10, 10, 200, 200, 8, 8)
+  })
 
   it('clipPath', () => {
     const path = new SkiaPath(skia).moveTo(50, 0).lineTo(100, 100).lineTo(0, 100).close()
@@ -108,7 +132,7 @@ describe('SkiaDrawingContext', () => {
     ctx.drawDRRect(
       { x: 10, y: 10, w: 200, h: 200, rx: 20, ry: 20 },
       { x: 20, y: 20, w: 160, h: 160, rx: 10, ry: 10 },
-      paint,
+      paint
     )
   })
 

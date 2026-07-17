@@ -13,12 +13,7 @@ import {
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
-import {
-  beginDebugPass,
-  endDebugPass,
-  registerDebugTexture,
-  unregisterDebugTexture,
-} from '../debug/debug-sink'
+import { beginDebugPass, endDebugPass, registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
 import { Fn, vec2, vec4, float, select, attribute, uv, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { readCastShadowFlag, readFlip, readRotatedFrameFlag } from '../materials/instanceAttributes'
@@ -292,10 +287,7 @@ export class OcclusionPass {
     mesh.material = occlusion
   }
 
-  private _getOrCreateOcclusionMaterial(
-    texture: Texture,
-    tightMesh: boolean
-  ): MeshBasicNodeMaterial {
+  private _getOrCreateOcclusionMaterial(texture: Texture, tightMesh: boolean): MeshBasicNodeMaterial {
     // Keyed by (texture, geometry strategy): the occlusion shader must
     // mirror the source material's vertex path — vertexIndex synthesis
     // for synth-quad batches, geometry position/uv for tight-mesh ones.
@@ -358,9 +350,7 @@ function buildOcclusionMaterial(texture: Texture, tightMesh = false): MeshBasicN
       select(rotated, flippedUV.y, flippedUV.x),
       select(rotated, float(1).sub(flippedUV.x), flippedUV.y)
     )
-    const atlasUV = frameUV
-      .mul(vec2(instanceUV.z, instanceUV.w))
-      .add(vec2(instanceUV.x, instanceUV.y))
+    const atlasUV = frameUV.mul(vec2(instanceUV.z, instanceUV.w)).add(vec2(instanceUV.x, instanceUV.y))
 
     const alpha = sampleTexture(texture, atlasUV).a
     const casts = readCastShadowFlag()

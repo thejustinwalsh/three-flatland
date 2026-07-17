@@ -44,7 +44,9 @@ export function RegistryPanel() {
   // Opt into the unfiltered drain on mount; reset on unmount.
   useEffect(() => {
     client.setRegistry(null)
-    return () => { client.setRegistry([]) }
+    return () => {
+      client.setRegistry([])
+    }
   }, [client])
 
   const entries = useMemo(() => {
@@ -54,15 +56,17 @@ export function RegistryPanel() {
   }, [state.registry, state.registry.size])
 
   const needle = filter.trim().toLowerCase()
-  const visible = needle.length > 0
-    ? entries.filter((e) => e.name.toLowerCase().includes(needle) || (e.label?.toLowerCase().includes(needle) ?? false))
-    : entries
+  const visible =
+    needle.length > 0
+      ? entries.filter(
+          (e) => e.name.toLowerCase().includes(needle) || (e.label?.toLowerCase().includes(needle) ?? false)
+        )
+      : entries
 
-  const effectiveSelected = selected !== null && visible.some((e) => e.name === selected)
-    ? selected
-    : (visible[0]?.name ?? null)
+  const effectiveSelected =
+    selected !== null && visible.some((e) => e.name === selected) ? selected : (visible[0]?.name ?? null)
 
-  const selectedEntry = effectiveSelected !== null ? state.registry.get(effectiveSelected) ?? null : null
+  const selectedEntry = effectiveSelected !== null ? (state.registry.get(effectiveSelected) ?? null) : null
 
   return (
     <section class="panel registry-panel">
@@ -79,8 +83,7 @@ export function RegistryPanel() {
       </header>
       {getFrameCursor() !== null ? (
         <div class="registry-parked-note">
-          parked — showing the latest registry state (per-frame history
-          needs the Phase C checkpoint snapshots)
+          parked — showing the latest registry state (per-frame history needs the Phase C checkpoint snapshots)
         </div>
       ) : null}
       <div class="registry-layout">
@@ -92,10 +95,7 @@ export function RegistryPanel() {
               <li key={e.name}>
                 <button
                   type="button"
-                  class={
-                    'registry-row' +
-                    (e.name === effectiveSelected ? ' registry-row-selected' : '')
-                  }
+                  class={'registry-row' + (e.name === effectiveSelected ? ' registry-row-selected' : '')}
                   onClick={() => setSelected(e.name)}
                 >
                   <span class="registry-kind">{e.kind}</span>
@@ -146,13 +146,7 @@ function RegistrySparkline({
     if (ctx === null) return
     drawVisualizer(ctx, w, h, entry)
   }, [entry.version, entry.name, width, height])
-  return (
-    <canvas
-      class="registry-sparkline"
-      ref={canvasRef}
-      style={{ width: `${width}px`, height: `${height}px` }}
-    />
-  )
+  return <canvas class="registry-sparkline" ref={canvasRef} style={{ width: `${width}px`, height: `${height}px` }} />
 }
 
 function RegistryDetail({ entry }: { entry: RegistryEntrySnapshot }): preact.JSX.Element {
@@ -178,11 +172,7 @@ function RegistryDetail({ entry }: { entry: RegistryEntrySnapshot }): preact.JSX
   const scrollGridToAxisIdx = (idx: number): void => {
     const el = gridScrollerRef.current
     if (el === null) return
-    const perAxisIdx =
-      entry.kind === 'float2' ? 2 :
-      entry.kind === 'float3' ? 3 :
-      entry.kind === 'float4' ? 4 :
-      1
+    const perAxisIdx = entry.kind === 'float2' ? 2 : entry.kind === 'float3' ? 3 : entry.kind === 'float4' ? 4 : 1
     const scalarIdx = entry.kind === 'bits' ? idx : idx * perAxisIdx
     const rowIdx = Math.floor(scalarIdx / ROW_STRIDE)
     const top = rowIdx * SAMPLE_ROW_HEIGHT
@@ -277,9 +267,7 @@ function RegistryDetail({ entry }: { entry: RegistryEntrySnapshot }): preact.JSX
         <span>v{version}</span>
         <span>{sample.constructor.name}</span>
         {stats.summary !== '' && <span>{stats.summary}</span>}
-        {cursorIdx !== null && (
-          <span class="registry-cursor-label">cursor {cursorIdx}</span>
-        )}
+        {cursorIdx !== null && <span class="registry-cursor-label">cursor {cursorIdx}</span>}
       </div>
       <div class="registry-viz-wrap">
         <div
@@ -296,19 +284,19 @@ function RegistryDetail({ entry }: { entry: RegistryEntrySnapshot }): preact.JSX
         </div>
       </div>
       <div class="registry-detail-body">
-        {sample.length === 0
-          ? <div class="panel-empty">No sample yet.</div>
-          : (
-              <SampleGrid
-                entry={entry}
-                stride={ROW_STRIDE}
-                float={isFloat}
-                pinnedIdx={pinnedIdx}
-                scrollerRef={gridScrollerRef}
-                onPinIdx={(idx) => setPinnedIdx(idx)}
-                onScrollIdx={(idx) => setPinnedIdx(idx)}
-              />
-            )}
+        {sample.length === 0 ? (
+          <div class="panel-empty">No sample yet.</div>
+        ) : (
+          <SampleGrid
+            entry={entry}
+            stride={ROW_STRIDE}
+            float={isFloat}
+            pinnedIdx={pinnedIdx}
+            scrollerRef={gridScrollerRef}
+            onPinIdx={(idx) => setPinnedIdx(idx)}
+            onScrollIdx={(idx) => setPinnedIdx(idx)}
+          />
+        )}
       </div>
     </>
   )
@@ -335,11 +323,7 @@ function SampleGrid({
   onScrollIdx: (i: number) => void
 }): preact.JSX.Element {
   const { kind, sample } = entry
-  const scalarsPerAxisIdx =
-    kind === 'float2' ? 2 :
-    kind === 'float3' ? 3 :
-    kind === 'float4' ? 4 :
-    1
+  const scalarsPerAxisIdx = kind === 'float2' ? 2 : kind === 'float3' ? 3 : kind === 'float4' ? 4 : 1
   const cursorIdx = pinnedIdx
 
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 })
@@ -350,7 +334,7 @@ function SampleGrid({
     setViewport((v) => ({ ...v, height: el.clientHeight }))
     const obs = new ResizeObserver(() => {
       const h = scrollerRef.current?.clientHeight ?? 0
-      setViewport((v) => v.height === h ? v : { ...v, height: h })
+      setViewport((v) => (v.height === h ? v : { ...v, height: h }))
     })
     obs.observe(el)
     return () => obs.disconnect()
@@ -366,9 +350,7 @@ function SampleGrid({
     if (height === 0) return
     const centerRow = Math.floor((scrollTop + height / 2) / SAMPLE_ROW_HEIGHT)
     const centerScalarIdx = centerRow * stride
-    const axisIdx = kind === 'bits'
-      ? centerScalarIdx * 32
-      : Math.floor(centerScalarIdx / scalarsPerAxisIdx)
+    const axisIdx = kind === 'bits' ? centerScalarIdx * 32 : Math.floor(centerScalarIdx / scalarsPerAxisIdx)
     if (axisIdx >= 0) onScrollIdx(axisIdx)
   }
 
@@ -384,14 +366,12 @@ function SampleGrid({
     for (let j = 0; j < stride && i + j < sample.length; j++) {
       const scalarIdx = i + j
       const v = sample[scalarIdx]!
-      const axisIdxForCell = kind === 'bits'
-        ? scalarIdx * 32
-        : Math.floor(scalarIdx / scalarsPerAxisIdx)
-      const inCursor = cursorIdx !== null && (
-        kind === 'bits'
+      const axisIdxForCell = kind === 'bits' ? scalarIdx * 32 : Math.floor(scalarIdx / scalarsPerAxisIdx)
+      const inCursor =
+        cursorIdx !== null &&
+        (kind === 'bits'
           ? cursorIdx >= axisIdxForCell && cursorIdx < axisIdxForCell + 32
-          : axisIdxForCell === cursorIdx
-      )
+          : axisIdxForCell === cursorIdx)
       cells.push(
         <span
           class={`sample-cell${inCursor ? ' sample-cell-cursor' : ''}`}
@@ -399,7 +379,7 @@ function SampleGrid({
           onClick={() => onPinIdx(axisIdxForCell)}
         >
           {float ? fmtFloatFixed(v) : v.toString()}
-        </span>,
+        </span>
       )
     }
     rows.push(
@@ -413,13 +393,13 @@ function SampleGrid({
       >
         <span class="sample-index">{i}</span>
         {cells}
-      </div>,
+      </div>
     )
   }
 
   const onScroll = (e: Event): void => {
     const el = e.currentTarget as HTMLDivElement
-    setViewport((v) => v.scrollTop === el.scrollTop ? v : { ...v, scrollTop: el.scrollTop })
+    setViewport((v) => (v.scrollTop === el.scrollTop ? v : { ...v, scrollTop: el.scrollTop }))
     reportScrollIdx(el.scrollTop, el.clientHeight)
   }
 
@@ -465,7 +445,10 @@ function computeStats(entry: RegistryEntrySnapshot): { summary: string } {
     let ones = 0
     for (let i = 0; i < data.length; i++) {
       let w = data[i]! >>> 0
-      while (w !== 0) { ones += w & 1; w >>>= 1 }
+      while (w !== 0) {
+        ones += w & 1
+        w >>>= 1
+      }
     }
     return { summary: `${ones} / ${count * 32} set` }
   }
@@ -492,9 +475,7 @@ function computeStats(entry: RegistryEntrySnapshot): { summary: string } {
     sum += v
   }
   const mean = sum / n
-  const f = (v: number) => kind === 'uint' || kind === 'int'
-    ? Math.round(v).toString()
-    : v.toFixed(2)
+  const f = (v: number) => (kind === 'uint' || kind === 'int' ? Math.round(v).toString() : v.toFixed(2))
   return { summary: `μ=${f(mean)}  ${f(min)}–${f(max)}` }
 }
 
@@ -509,7 +490,7 @@ function drawVisualizer(
   w: number,
   h: number,
   entry: RegistryEntrySnapshot,
-  cursorIdx: number | null = null,
+  cursorIdx: number | null = null
 ): void {
   ctx.clearRect(0, 0, w, h)
   const { kind, sample } = entry
@@ -558,7 +539,7 @@ function drawBars(
   h: number,
   sample: Float32Array | Int32Array | Uint32Array,
   isSigned: boolean,
-  color: string,
+  color: string
 ): void {
   let min = Infinity
   let max = -Infinity
@@ -571,9 +552,7 @@ function drawBars(
   if (!Number.isFinite(min) || !Number.isFinite(max)) return
 
   const zeroY = isSigned ? h / 2 : h
-  const scale = isSigned
-    ? (h / 2) / Math.max(Math.abs(min), Math.abs(max) || 1)
-    : h / (max || 1)
+  const scale = isSigned ? h / 2 / Math.max(Math.abs(min), Math.abs(max) || 1) : h / (max || 1)
 
   ctx.fillStyle = color
 
@@ -630,7 +609,7 @@ function drawBits(
   h: number,
   sample: Uint32Array,
   count: number,
-  color: string,
+  color: string
 ): void {
   const totalBits = count * 32
   if (totalBits === 0) return

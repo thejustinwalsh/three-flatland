@@ -18,11 +18,7 @@ import type { FloatInput } from '../types'
  * // Wide fade edge
  * fadeEdge(texture(tex, uv()), uv(), 0.3)
  */
-export function fadeEdge(
-  inputColor: Node<'vec4'>,
-  inputUV: Node<'vec2'>,
-  edgeWidth: FloatInput = 0.1
-): Node<'vec4'> {
+export function fadeEdge(inputColor: Node<'vec4'>, inputUV: Node<'vec2'>, edgeWidth: FloatInput = 0.1): Node<'vec4'> {
   const widthNode = typeof edgeWidth === 'number' ? float(edgeWidth) : edgeWidth
 
   // Calculate fade from each edge
