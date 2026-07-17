@@ -180,13 +180,27 @@ export function watchToolConfiguration(context: vscode.ExtensionContext): void {
         if (action === 'noop') continue
 
         if (action === 'register') {
-          const disposable = descriptor.register(context)
-          live.set(descriptor.id, disposable)
-          context.subscriptions.push(disposable)
-          log(`toolRegistry: ${descriptor.label} enabled live`)
+          // Isolate, same as activateTools: a throw here would crash the
+          // onDidChangeConfiguration handler and stop later tools in this loop
+          // from reacting to the same config change.
+          try {
+            const disposable = descriptor.register(context)
+            live.set(descriptor.id, disposable)
+            context.subscriptions.push(disposable)
+            log(`toolRegistry: ${descriptor.label} enabled live`)
+          } catch (err) {
+            log(
+              `toolRegistry: ${descriptor.label} failed to register live — skipping. ` +
+                (err instanceof Error ? (err.stack ?? err.message) : String(err))
+            )
+          }
         } else if (action === 'dispose') {
           const disposable = live.get(descriptor.id)
-          disposable?.dispose()
+          try {
+            disposable?.dispose()
+          } catch (err) {
+            log(`toolRegistry: ${descriptor.label} failed to dispose cleanly: ${err}`)
+          }
           live.delete(descriptor.id)
           // Also drop it from context.subscriptions (it was pushed there on
           // register): leaving disposed entries accumulates them across every

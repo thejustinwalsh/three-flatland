@@ -94,7 +94,7 @@
           {
             "id": "flatland.overview",
             "title": "Five tools, one extension",
-            "description": "Flatland Tools adds five visual editors for game & multimedia assets. They surface two ways: **right-click asset files** in the Explorer, and a **▶ Play** CodeLens above audio calls in your code.\n\n[Open Flatland Tools settings](command:workbench.action.openSettings?%22threeFlatland%22)",
+            "description": "Flatland Tools adds five visual editors for game & multimedia assets. They surface two ways: **right-click asset files** in the Explorer, and a **▶ Play** CodeLens above audio calls in your code.\n\n[Open Flatland Tools settings](command:workbench.action.openSettings?%5B%22threeFlatland%22%5D)",
             "media": { "markdown": "walkthroughs/overview.md" }
           },
           {
