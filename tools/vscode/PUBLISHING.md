@@ -112,7 +112,7 @@ Nothing extra to do beyond normal changeset hygiene:
 1. `tools/vscode` lives outside `packages/`, so — same as `minis/` and `skills/` — it's **never**
    auto-detected by `scripts/generate-changesets.ts`'s commit-scanning bot. Any change you want
    reflected in the next VSIX needs a **hand-written changeset** naming `@three-flatland/vscode`
-   (see `.changeset/CLAUDE.md` for the exact format). Forgetting this doesn't break anything loudly
+   (see `.changeset/README.md` for the exact format). Forgetting this doesn't break anything loudly
    — it just means that change ships in the extension's *code* next time something else triggers a
    release, but never gets its own version bump or CHANGELOG entry of its own.
 2. The build + GitHub Release are automatic: the version bump PR, the merge, `release.yml`'s
