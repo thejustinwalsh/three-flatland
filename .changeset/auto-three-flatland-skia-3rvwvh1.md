@@ -5,9 +5,11 @@
 > Branch: fix/skia-prebuilt-wasm-fallback
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/164
 
-- Fix `skia:fetch-wasm` CLI entrypoint check silently no-op'ing on Windows (raw `file://` string compare replaced with `resolve(argv[1]) === fileURLToPath(url)`)
-- Fix `PATH` augmentation across `build-wasm`, `compare-builds`, `setup`, and `prebuilt-wasm` scripts using a hard-coded `:` separator, breaking on Windows (now uses `path.delimiter`)
-- Fix `fetchPrebuiltWasm` silently accepting a partial variant match — now requires every requested variant to exist in the manifest, or fails clearly instead of reporting false success
-- Add bounded timeouts to external command calls: 15s on the Zig build probe, 60s on `npm pack`, 30s on `tar` extraction, using `execFileSync` (no shell interpolation) instead of `execSync`
+### Fixes
 
-Hardens the `@three-flatland/skia` prebuilt-WASM fallback path against Windows path bugs, partial-fetch false positives, and indefinitely hanging subprocesses.
+- Fix `skia:fetch-wasm` CLI entrypoint check silently no-op'ing on Windows — now uses a portable `resolve(argv[1]) === fileURLToPath(url)` comparison instead of a raw `file://` string match.
+- Fix hard-coded `:` PATH separator across `build-wasm`, `compare-builds`, `setup`, and `prebuilt-wasm` scripts (broke on Windows); now uses `path.delimiter`.
+- Fix `fetchPrebuiltWasm` silently reporting success when only some requested WASM variants were present in the manifest — now requires every requested variant to match before copying, preventing missing artifacts from going unnoticed.
+- Add timeouts to external command invocations (Zig probe: 15s, `npm pack`/`tar`: 60s/30s) and switch to `execFileSync` to avoid shell interpolation and indefinite hangs.
+
+Hardens the prebuilt-WASM fetch path against review feedback: fixes cross-platform bugs and prevents silent partial failures or hung processes during WASM setup.
