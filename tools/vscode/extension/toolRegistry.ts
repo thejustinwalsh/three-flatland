@@ -124,9 +124,19 @@ export function activateTools(context: vscode.ExtensionContext): void {
       log(`toolRegistry: ${descriptor.label} disabled at startup (${descriptor.settingKey})`)
       continue
     }
-    const disposable = descriptor.register(context)
-    live.set(descriptor.id, disposable)
-    context.subscriptions.push(disposable)
+    try {
+      const disposable = descriptor.register(context)
+      live.set(descriptor.id, disposable)
+      context.subscriptions.push(disposable)
+    } catch (err) {
+      // Isolate per tool: one tool's registration throwing (e.g. a viewType
+      // collision) must not reject activate() and take the whole suite down.
+      // Log + skip it; the other tools still register.
+      log(
+        `toolRegistry: ${descriptor.label} failed to register — skipping. ` +
+          (err instanceof Error ? (err.stack ?? err.message) : String(err))
+      )
+    }
   }
 }
 
