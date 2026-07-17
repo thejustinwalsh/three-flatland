@@ -5,16 +5,16 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-## Flight recorder registry checkpoints
+## Flight recorder (devtools) — core support
 
-- Registry feature now emits periodic full-state checkpoints (`checkpoint: true`) so time-travel reconstruction never has to replay further back than one cadence window.
-- `DebugRegistry` and `DevtoolsProvider` gain the checkpoint plumbing needed to support scrub/reconstruction in the devtools dashboard.
-- Checkpoints that had to degrade an entry to metadata-only (pool overflow) no longer falsely claim to be complete — they retry and, if still oversized, settle on a `partial: true` checkpoint that reconstruction correctly skips as an anchor.
+- Ring buffer for encoded chunks + stats log, windowed by wall-clock time, feeding the devtools freeze/scrub playback (`bus-worker.ts`)
+- Registry checkpoint snapshots: periodic full re-sends of the registry feature so time-travel reconstruction never replays past one cadence window (`DebugRegistry`, `DevtoolsProvider`, `debug-protocol.ts`)
+- Checkpoints that would otherwise degrade to metadata-only now retry before falling back to a `partial: true` checkpoint, instead of never completing
+- Shared registry-delta fold logic between the live client and reconstruction so they can't diverge
 
-## Flight recorder ring buffer, freeze, and scrub playback
+## Fixes
 
-- `debug/bus-worker.ts`: tightened the VP9 encoder's keyframe cadence from 2000ms to 500ms so a scrub cursor is always near a decodable anchor.
+- Registry checkpoint reliability: bounded retry + partial-checkpoint fallback for oversized entries
 
 ## Summary
-
-Backing changes in `three-flatland` core (`DebugRegistry`, `DevtoolsProvider`, `debug-protocol`, `bus-worker`) that support the devtools dashboard's new flight-recorder checkpoint/scrub/freeze features — see `@three-flatland/devtools` for the full feature changelog.
+Adds the core (three-flatland) side of the devtools flight recorder — rolling chunk/stats ring and registry checkpoint snapshots — plus reliability fixes so checkpoints never stall on oversized registry entries.
