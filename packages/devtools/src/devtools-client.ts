@@ -23,6 +23,7 @@ import {
   providerChannelName,
 } from 'three-flatland/debug-protocol'
 import { tracePerf } from './perf-trace.js'
+import { applyRegistryEntryDelta } from './registry-delta.js'
 
 /**
  * Construction options for `DevtoolsClient`.
@@ -70,9 +71,6 @@ const QUERY_MAX_RETRIES = 10
  * Float32 × ~9 fields ≈ 36 KB total — negligible.
  */
 const CLIENT_SERIES_SIZE = 1024
-
-/** Shared zero-length placeholder used for metadata-only registry snapshots. */
-const EMPTY_SAMPLE: Float32Array = new Float32Array(0)
 
 /** Per-field time-series ring. */
 export interface DevtoolsSeries {
@@ -899,45 +897,16 @@ export class DevtoolsClient {
   /**
    * Apply a registry delta. `entries[name] === null` → remove;
    * `entries[name]` present → upsert a snapshot keyed by `name`.
-   * A `null` batch (feature cleared) drops every entry.
+   * A `null` batch (feature cleared) drops every entry. Delegates the
+   * actual fold to `applyRegistryEntryDelta`, shared with the
+   * time-travel reconstruction core so the two can't diverge.
    */
   private _applyRegistry(delta: RegistryPayload | null): void {
     if (delta === null) {
       this.state.registry.clear()
       return
     }
-    if (!delta.entries) return
-    const entries = delta.entries
-    // `for…in` to avoid the `Object.entries` array allocation each
-    // batch; mutate existing snapshots in place so steady state is
-    // alloc-free past the first sight of each entry.
-    for (const name in entries) {
-      const d = entries[name]
-      if (d === undefined) continue
-      if (d === null) {
-        this.state.registry.delete(name)
-        continue
-      }
-      let snap = this.state.registry.get(name)
-      const sample = d.sample ?? snap?.sample ?? EMPTY_SAMPLE
-      if (snap === undefined) {
-        snap = {
-          name,
-          kind: d.kind,
-          version: d.version,
-          count: d.count,
-          sample,
-          label: d.label,
-        }
-        this.state.registry.set(name, snap)
-      } else {
-        snap.kind = d.kind
-        snap.version = d.version
-        snap.count = d.count
-        snap.sample = sample
-        snap.label = d.label
-      }
-    }
+    applyRegistryEntryDelta(this.state.registry, delta)
   }
 
   /**

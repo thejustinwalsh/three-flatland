@@ -83,7 +83,13 @@ const ctx = self as unknown as WorkerScope
 // ─── Stream encoder ───────────────────────────────────────────────────────
 
 const VP9_CODEC = 'vp09.00.10.08'
-const KEYFRAME_INTERVAL_MS = 2000
+/** Periodic keyframe cadence (#29 item 9), on top of the subscribe-time
+ *  force-key in `DevtoolsProvider` (`_forceNextKeyFrame`). The flight
+ *  recorder's frozen scrub view can only decode from a keyframe
+ *  forward, so this bounds how far a scrub cursor can land from the
+ *  nearest decodable anchor — tightened from 2000ms to the ~0.5-1s
+ *  issue #29 calls for. */
+const KEYFRAME_INTERVAL_MS = 500
 
 class StreamEncoder {
   private _encoder: VideoEncoder | null = null

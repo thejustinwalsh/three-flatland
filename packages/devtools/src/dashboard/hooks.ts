@@ -11,6 +11,7 @@ import type { DevtoolsState } from '../devtools-client.js'
 import { getClient } from './client.js'
 import { getProtocolStore } from './protocol-store.js'
 import { addFrameCursorListener } from './frame-cursor.js'
+import { wireProtocolIngest } from './log-ingest.js'
 
 type Subscriber = () => void
 
@@ -45,6 +46,11 @@ function ensureSourcesWired(): void {
   getClient().addListener(scheduleFrame)
   getProtocolStore().addListener(scheduleFrame)
   addFrameCursorListener(scheduleFrame)
+  // Persist every bus message into the protocol store, unconditionally
+  // — the flight recorder's history must not depend on which panels
+  // happen to be mounted or on a panel-local pause toggle (#29 Phase C
+  // review fix; see `log-ingest.ts`).
+  wireProtocolIngest(getClient(), getProtocolStore())
 }
 
 /**
