@@ -63,6 +63,7 @@
     "vscode": "^1.94.0"
   },
   "activationEvents": [
+    "onStartupFinished",
     "onLanguage:typescript",
     "onLanguage:typescriptreact",
     "onLanguage:javascript",
