@@ -35,6 +35,7 @@ import {
   useDigitsMaterial,
   useDrillerCharacterMaterial,
   useDrillerMaterial,
+  useActionIconsMaterial,
   useGemMaterial,
   useIconsMaterial,
   useOutlineMaterial,
@@ -54,6 +55,7 @@ import { HazardView } from './HazardView'
 import { TileRenderer } from './TileRenderer'
 import { Compositor } from './Compositor'
 import { DrillerLighting } from './DrillerLighting'
+import { ActionHoverBadgeRenderer } from './ActionHoverBadgeRenderer'
 import { buildBiomeGradientMesh } from '../lib/biome-gradient-material'
 import { shallowEqual } from '../shallow'
 
@@ -116,6 +118,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
   const characterMaterial = useDrillerCharacterMaterial()
   const outlineMaterial = useOutlineMaterial()
   const iconsMaterial = useIconsMaterial()
+  const actionIconsMaterial = useActionIconsMaterial()
   const digitsMaterial = useDigitsMaterial()
   const accumRef = useRef(0)
   const lightingEnabled = readLightingEnabledFromUrl()
@@ -239,8 +242,13 @@ export function Scene({ onShellStateChange }: SceneProps) {
         <DrillerView material={characterMaterial} />
         <GhostBeam material={characterMaterial} />
         <HoverOutlineRenderer outlineMaterial={outlineMaterial} fillMaterial={material} />
+        <ActionHoverBadgeRenderer material={actionIconsMaterial} />
         <GemSpendPopupRenderer iconsMaterial={iconsMaterial} digitsMaterial={digitsMaterial} />
-        <InfoPopupRenderer iconsMaterial={iconsMaterial} barMaterial={material} />
+        <InfoPopupRenderer
+          iconsMaterial={iconsMaterial}
+          actionIconsMaterial={actionIconsMaterial}
+          barMaterial={material}
+        />
         <MoodBubbleRenderer iconsMaterial={iconsMaterial} bubbleMaterial={material} />
         <OverPetRenderer iconsMaterial={iconsMaterial} />
         {shouldShowDebugPanel() && <DebugPanel />}

@@ -1,9 +1,12 @@
 import type { SpriteFrame } from 'three-flatland/react'
 import type { BiomeName } from '../biomes'
+import { AUTOTILE_FRAME_COUNT } from './autotile'
 
-const COLUMNS = 16
+const COLUMNS = AUTOTILE_FRAME_COUNT
 const ROWS = 11
 const TILE_SIZE = 16
+const SLOT_PADDING = 2
+const SLOT_SIZE = TILE_SIZE + SLOT_PADDING * 2
 
 const BIOME_ROW = {
   topsoil: 0,
@@ -13,18 +16,15 @@ const BIOME_ROW = {
   core: 4,
 } satisfies Record<BiomeName, number>
 
-// The concept board lays its 15 edge examples out for readability, not in
-// binary N/S/E/W order. Translate the engine mask to that presentation order.
-const MASK_TO_ART = [11, 14, 2, 14, 13, 12, 3, 6, 13, 12, 3, 6, 8, 10, 0, 15] as const
-const FLIPPED_MASKS = new Set([8, 9, 10, 11])
-
 function atlasFrame(name: string, row: number, column: number): SpriteFrame {
+  const atlasWidth = COLUMNS * SLOT_SIZE
+  const atlasHeight = ROWS * SLOT_SIZE
   return {
     name,
-    x: column / COLUMNS,
-    y: 1 - (row + 1) / ROWS,
-    width: 1 / COLUMNS,
-    height: 1 / ROWS,
+    x: (column * SLOT_SIZE + SLOT_PADDING) / atlasWidth,
+    y: 1 - (row * SLOT_SIZE + SLOT_PADDING + TILE_SIZE) / atlasHeight,
+    width: TILE_SIZE / atlasWidth,
+    height: TILE_SIZE / atlasHeight,
     sourceWidth: TILE_SIZE,
     sourceHeight: TILE_SIZE,
   }
@@ -32,7 +32,9 @@ function atlasFrame(name: string, row: number, column: number): SpriteFrame {
 
 function tileFrames(biome: BiomeName, kind: 'soil' | 'stone'): SpriteFrame[] {
   const row = BIOME_ROW[biome] + (kind === 'stone' ? 5 : 0)
-  return Array.from({ length: 16 }, (_, mask) => atlasFrame(`${biome}-${kind}-${mask}`, row, mask))
+  return Array.from({ length: AUTOTILE_FRAME_COUNT }, (_, index) =>
+    atlasFrame(`${biome}-${kind}-${index}`, row, index)
+  )
 }
 
 const SOIL_FRAMES: Record<BiomeName, SpriteFrame[]> = {
@@ -57,15 +59,11 @@ const FIXTURE_FRAMES = Array.from({ length: 16 }, (_, variant) =>
 const EXPLOSIVE_FRAME = atlasFrame('explosive', 10, 15)
 
 export function soilFrame(biome: BiomeName, mask: number): SpriteFrame {
-  return SOIL_FRAMES[biome][MASK_TO_ART[mask & 0xf] ?? 15]!
+  return SOIL_FRAMES[biome][mask % AUTOTILE_FRAME_COUNT]!
 }
 
 export function stoneFrame(biome: BiomeName, mask: number): SpriteFrame {
-  return STONE_FRAMES[biome][MASK_TO_ART[mask & 0xf] ?? 15]!
-}
-
-export function tileFrameFlipsX(mask: number): boolean {
-  return FLIPPED_MASKS.has(mask & 0xf)
+  return STONE_FRAMES[biome][mask % AUTOTILE_FRAME_COUNT]!
 }
 
 export function fixtureFrame(kind: number, variation = 0): SpriteFrame {

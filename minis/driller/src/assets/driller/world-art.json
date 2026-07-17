@@ -91,22 +91,17 @@
     },
     "title-attract": {
       "image": "title-attract.png",
-      "width": 119,
-      "height": 14,
+      "width": 138,
+      "height": 36,
       "sourceRect": [
-        1172,
-        938,
-        328,
-        75
+        1145,
+        920,
+        380,
+        100
       ],
       "pixelFixer": {
         "step": 2.75,
-        "crop": [
-          0,
-          5,
-          119,
-          14
-        ]
+        "crop": null
       }
     }
   }

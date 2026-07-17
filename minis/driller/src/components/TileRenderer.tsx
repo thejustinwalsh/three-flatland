@@ -28,14 +28,8 @@ import {
   tickDebugRenderFrame,
 } from '../dev/render-instrument'
 import { getRenderMode, heatmapTint } from '../dev/render-mode'
-import { autotileMask } from '../lib/autotile'
-import {
-  explosiveFrame,
-  fixtureFrame,
-  soilFrame,
-  stoneFrame,
-  tileFrameFlipsX,
-} from '../lib/world-tile-frames'
+import { autotileIndex } from '../lib/autotile'
+import { explosiveFrame, fixtureFrame, soilFrame, stoneFrame } from '../lib/world-tile-frames'
 import { RENDER_LAYERS } from '../lib/render-layers'
 
 // Fixed playfield + a small margin for the iteration window's
@@ -123,8 +117,12 @@ interface TileRendererProps {
 export function TileRenderer({ material }: TileRendererProps) {
   const world = useWorld()
   const refs = useRef<(Sprite2DType | null)[]>([])
+  const fixtureDecorRefs = useRef<(Sprite2DType | null)[]>([])
   if (refs.current.length !== POOL_SIZE) {
     refs.current = new Array<Sprite2DType | null>(POOL_SIZE).fill(null)
+  }
+  if (fixtureDecorRefs.current.length !== POOL_SIZE) {
+    fixtureDecorRefs.current = new Array<Sprite2DType | null>(POOL_SIZE).fill(null)
   }
 
   useFrame(() => {
@@ -185,8 +183,10 @@ export function TileRenderer({ material }: TileRendererProps) {
       for (let c = 0; c < cols && slot < POOL_SIZE; c++) {
         const idx = r * cols + c
         const tile = tiles[idx] ?? TILE_AIR
+        const decor = fixtureDecorRefs.current[slot]
         const sprite = pool[slot++]
         if (!sprite) continue
+        if (decor) decor.scale.set(0, 0, 1)
         if (tile === TILE_AIR) {
           // Hide via zero-scale: SpriteBatch's transformSyncSystem writes
           // the instance matrix from sprite.scale; Object3D.visible flag
@@ -226,22 +226,42 @@ export function TileRenderer({ material }: TileRendererProps) {
         }
         const posX = c * TILE_PX + TILE_PX / 2 + jitterX
         const posY = -(r * TILE_PX + TILE_PX / 2) + jitterY
+        let showDecor = false
         if (tile === TILE_SOIL) {
           const mask = frameIndex[idx] ?? 15
           sprite.setFrame(soilFrame(biome.name, mask))
-          sprite.flipX = tileFrameFlipsX(mask)
+          sprite.flipX = false
         } else if (tile === TILE_STONE) {
           const seedCluster = clusterId[idx] ?? 0
           const isMatch = makeIsSameCluster(seedCluster)
-          const mask = autotileMask(c, r, isMatch)
+          const mask = autotileIndex(c, r, isMatch)
           sprite.setFrame(stoneFrame(biome.name, mask))
-          sprite.flipX = tileFrameFlipsX(mask)
-        } else if (isFixtureTile(tile)) {
-          sprite.setFrame(fixtureFrame(tile - TILE_FIXTURE_BASE, c * 3 + r * 5))
-          sprite.flipX = ((c + r) & 1) === 1
-        } else if (tile === TILE_EXPLOSIVE) {
-          sprite.setFrame(explosiveFrame())
           sprite.flipX = false
+        } else if (isFixtureTile(tile)) {
+          const isFixtureNeighbor = (cc: number, rr: number): boolean => {
+            if (cc < 0 || cc >= cols || rr < 0 || rr >= rows) return false
+            return isFixtureTile(tiles[rr * cols + cc] ?? TILE_AIR)
+          }
+          sprite.setFrame(stoneFrame(biome.name, autotileIndex(c, r, isFixtureNeighbor)))
+          sprite.flipX = false
+          // Fixture cells form the immovable stone structure. Their authored
+          // bones, mushrooms, and crystals are sparse decoration overlays,
+          // not wallpaper repeated on every connected cell.
+          const fixtureKind = tile - TILE_FIXTURE_BASE
+          const variation = c * 3 + r * 5
+          showDecor = fixtureKind === 0 ? variation % 3 === 0 : variation % 2 === 0
+          if (decor && showDecor) {
+            decor.setFrame(fixtureFrame(fixtureKind, variation))
+            decor.flipX = ((c + r) & 1) === 1
+          }
+        } else if (tile === TILE_EXPLOSIVE) {
+          sprite.setFrame(stoneFrame(biome.name, 0))
+          sprite.flipX = false
+          showDecor = true
+          if (decor) {
+            decor.setFrame(explosiveFrame())
+            decor.flipX = false
+          }
         }
         sprite.position.set(posX, posY, 0)
         sprite.scale.set(TILE_PX, TILE_PX, 1)
@@ -252,6 +272,13 @@ export function TileRenderer({ material }: TileRendererProps) {
         // every diggable soil cell a caster turns a packed cave into one
         // continuous SDF wall and erases the playable pool of light.
         sprite.castsShadow = tile === TILE_STONE || isFixtureTile(tile)
+        if (decor && showDecor) {
+          decor.position.set(posX, posY, 0)
+          decor.scale.set(TILE_PX, TILE_PX, 1)
+          decor.tint.r = 1
+          decor.tint.g = 1
+          decor.tint.b = 1
+        }
         if (import.meta.env.DEV && debugRender) {
           recordCellRender(debugRender, idx, shaking, jitterX !== 0 || jitterY !== 0)
         }
@@ -261,6 +288,8 @@ export function TileRenderer({ material }: TileRendererProps) {
     for (; slot < POOL_SIZE; slot++) {
       const s = pool[slot]
       if (s) s.scale.set(0, 0, 1)
+      const decor = fixtureDecorRefs.current[slot]
+      if (decor) decor.scale.set(0, 0, 1)
     }
   })
 
@@ -283,6 +312,21 @@ export function TileRenderer({ material }: TileRendererProps) {
         >
           <normalMapProvider attach={attachEffect} normalMap={null} />
         </sprite2D>
+      ))}
+      {slots.map((i) => (
+        <sprite2D
+          key={`fixture-decor-${i}`}
+          ref={(el) => {
+            fixtureDecorRefs.current[i] = el
+          }}
+          material={material}
+          tint="#ffffff"
+          position={[0, 0, 0]}
+          scale={[0, 0, 1]}
+          frame={fixtureFrame(0)}
+          sortLayer={RENDER_LAYERS.fixtureDecor}
+          lit={false}
+        />
       ))}
     </>
   )

@@ -7,11 +7,12 @@
  */
 export const RENDER_LAYERS = {
   terrain: 1,
-  fallingTerrain: 2,
-  pickups: 3,
-  actors: 4,
-  effects: 5,
-  interaction: 6,
-  uiBackground: 7,
-  ui: 8,
+  fixtureDecor: 2,
+  fallingTerrain: 3,
+  pickups: 4,
+  actors: 5,
+  effects: 6,
+  interaction: 7,
+  uiBackground: 8,
+  ui: 9,
 } as const

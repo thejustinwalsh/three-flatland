@@ -1,9 +1,64 @@
 {
   "engine": "Retro-Diffusion/pixel-art-fixer",
   "revision": "ef376e57e1c272633ca2dbf5f29ec3fcf6596465",
-  "input": "art/pixel-fixer/input",
-  "count": 111,
+  "input": "/Volumes/Depot/Developer/three-flatland/minis/driller/art/pixel-fixer/input",
+  "count": 116,
   "results": [
+    {
+      "file": "action-add-support.png",
+      "cols": 10,
+      "rows": 10,
+      "step_x": 2.75,
+      "step_y": 2.75,
+      "consensus": "forced",
+      "confidence": "medium",
+      "detect_s": 0.0,
+      "recon_s": 0.011
+    },
+    {
+      "file": "action-boost-drill.png",
+      "cols": 10,
+      "rows": 10,
+      "step_x": 2.75,
+      "step_y": 2.75,
+      "consensus": "forced",
+      "confidence": "medium",
+      "detect_s": 0.0,
+      "recon_s": 0.002
+    },
+    {
+      "file": "action-chaos-quake.png",
+      "cols": 9,
+      "rows": 10,
+      "step_x": 2.75,
+      "step_y": 2.75,
+      "consensus": "forced",
+      "confidence": "medium",
+      "detect_s": 0.0,
+      "recon_s": 0.002
+    },
+    {
+      "file": "action-drop-rocks.png",
+      "cols": 10,
+      "rows": 10,
+      "step_x": 2.75,
+      "step_y": 2.75,
+      "consensus": "forced",
+      "confidence": "medium",
+      "detect_s": 0.0,
+      "recon_s": 0.002
+    },
+    {
+      "file": "action-shield.png",
+      "cols": 9,
+      "rows": 10,
+      "step_x": 2.75,
+      "step_y": 2.75,
+      "consensus": "forced",
+      "confidence": "medium",
+      "detect_s": 0.0,
+      "recon_s": 0.002
+    },
     {
       "file": "character-dodge-00.png",
       "cols": 19,
@@ -13,7 +68,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.015
+      "recon_s": 0.008
     },
     {
       "file": "character-dodge-01.png",
@@ -24,7 +79,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.017
+      "recon_s": 0.018
     },
     {
       "file": "character-dodge-02.png",
@@ -35,7 +90,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.011
+      "recon_s": 0.01
     },
     {
       "file": "character-dodge-03.png",
@@ -46,7 +101,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.015
+      "recon_s": 0.014
     },
     {
       "file": "character-drillDown-00.png",
@@ -57,7 +112,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.008
+      "recon_s": 0.009
     },
     {
       "file": "character-drillDown-01.png",
@@ -79,7 +134,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.009
+      "recon_s": 0.008
     },
     {
       "file": "character-drillDown-03.png",
@@ -90,7 +145,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.01
+      "recon_s": 0.009
     },
     {
       "file": "character-drillDown-04.png",
@@ -101,7 +156,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.009
+      "recon_s": 0.008
     },
     {
       "file": "character-drillLeft-00.png",
@@ -112,7 +167,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.015
+      "recon_s": 0.013
     },
     {
       "file": "character-drillLeft-01.png",
@@ -123,7 +178,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.009
+      "recon_s": 0.008
     },
     {
       "file": "character-drillLeft-02.png",
@@ -145,7 +200,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.008
+      "recon_s": 0.009
     },
     {
       "file": "character-drillRight-00.png",
@@ -167,7 +222,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.008
+      "recon_s": 0.009
     },
     {
       "file": "character-drillRight-02.png",
@@ -178,7 +233,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.011
+      "recon_s": 0.013
     },
     {
       "file": "character-drillRight-03.png",
@@ -189,7 +244,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.006
+      "recon_s": 0.007
     },
     {
       "file": "character-drillUp-00.png",
@@ -211,7 +266,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.011
+      "recon_s": 0.012
     },
     {
       "file": "character-drillUp-02.png",
@@ -222,7 +277,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.009
+      "recon_s": 0.01
     },
     {
       "file": "character-drillUp-03.png",
@@ -233,7 +288,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.009
+      "recon_s": 0.012
     },
     {
       "file": "character-drillUp-04.png",
@@ -244,7 +299,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.01
+      "recon_s": 0.012
     },
     {
       "file": "character-fall-00.png",
@@ -255,7 +310,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.009
+      "recon_s": 0.011
     },
     {
       "file": "character-fall-01.png",
@@ -266,7 +321,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.009
+      "recon_s": 0.01
     },
     {
       "file": "character-fall-02.png",
@@ -288,7 +343,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.007
+      "recon_s": 0.009
     },
     {
       "file": "character-fall-04.png",
@@ -310,7 +365,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.006
+      "recon_s": 0.007
     },
     {
       "file": "character-ghost-01.png",
@@ -332,7 +387,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.006
+      "recon_s": 0.005
     },
     {
       "file": "character-ghost-03.png",
@@ -343,7 +398,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.005
+      "recon_s": 0.007
     },
     {
       "file": "character-idle-00.png",
@@ -354,7 +409,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.007
+      "recon_s": 0.008
     },
     {
       "file": "character-idle-01.png",
@@ -365,7 +420,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.007
+      "recon_s": 0.009
     },
     {
       "file": "character-idle-02.png",
@@ -376,7 +431,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.008
+      "recon_s": 0.007
     },
     {
       "file": "character-idle-03.png",
@@ -387,7 +442,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.008
+      "recon_s": 0.007
     },
     {
       "file": "character-trip-00.png",
@@ -431,7 +486,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.01
+      "recon_s": 0.008
     },
     {
       "file": "character-trip-04.png",
@@ -464,7 +519,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.009
+      "recon_s": 0.007
     },
     {
       "file": "character-walk-02.png",
@@ -475,7 +530,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.009
+      "recon_s": 0.007
     },
     {
       "file": "character-walk-03.png",
@@ -497,7 +552,7 @@
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.009
+      "recon_s": 0.008
     },
     {
       "file": "character-walk-05.png",
@@ -1088,14 +1143,14 @@
     },
     {
       "file": "title-attract.png",
-      "cols": 119,
-      "rows": 27,
+      "cols": 138,
+      "rows": 36,
       "step_x": 2.75,
       "step_y": 2.75,
       "consensus": "forced",
       "confidence": "medium",
       "detect_s": 0.0,
-      "recon_s": 0.044
+      "recon_s": 0.064
     }
   ]
 }

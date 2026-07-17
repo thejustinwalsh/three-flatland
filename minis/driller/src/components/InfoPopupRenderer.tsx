@@ -11,6 +11,7 @@ import {
 } from '../generated/icons'
 import { RENDER_LAYERS } from '../lib/render-layers'
 import { rectToFrame } from '../lib/atlas-uv'
+import { actionIconFrame } from '../lib/action-icon-frames'
 
 /**
  * Action info-popup — a small icon + status bar rendered next to the
@@ -37,14 +38,18 @@ const SLOT_GAP = 2
 
 interface Props {
   iconsMaterial: Sprite2DMaterial
+  actionIconsMaterial: Sprite2DMaterial
   /** Reused white-pixel material (`useDrillerMaterial`) for the bar. */
   barMaterial: Sprite2DMaterial
 }
 
 const ICON_FRAMES = {
-  drag: rectToFrame(ICON_REGIONS.drag, ICON_SHEET_W, ICON_SHEET_H),
-  paint: rectToFrame(ICON_REGIONS.paint, ICON_SHEET_W, ICON_SHEET_H),
   timer: rectToFrame(ICON_REGIONS.timer, ICON_SHEET_W, ICON_SHEET_H),
+}
+
+const ACTION_FRAMES = {
+  drag: actionIconFrame('shield'),
+  paint: actionIconFrame('drop-rocks'),
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -58,14 +63,15 @@ function hexToRgb(hex: string): [number, number, number] {
 interface PopupInfo {
   col: number
   row: number
-  iconName: keyof typeof ICON_FRAMES
+  iconName: keyof typeof ICON_FRAMES | keyof typeof ACTION_FRAMES
   fill: number // 0..1
   fillHex: string
 }
 
-export function InfoPopupRenderer({ iconsMaterial, barMaterial }: Props) {
+export function InfoPopupRenderer({ iconsMaterial, actionIconsMaterial, barMaterial }: Props) {
   const world = useWorld()
-  const iconRef = useRef<Sprite2DType>(null)
+  const statusIconRef = useRef<Sprite2DType>(null)
+  const actionIconRef = useRef<Sprite2DType>(null)
   const barBgRef = useRef<Sprite2DType>(null)
   const barFillRef = useRef<Sprite2DType>(null)
 
@@ -73,11 +79,13 @@ export function InfoPopupRenderer({ iconsMaterial, barMaterial }: Props) {
     const ptr = world.get(Pointer)
     const gs = world.get(GameState)
     const info = ptr && gs ? pickInfo(world, ptr, gs) : null
-    const icon = iconRef.current
+    const statusIcon = statusIconRef.current
+    const actionIcon = actionIconRef.current
     const barBg = barBgRef.current
     const barFill = barFillRef.current
-    if (!info || !icon || !barBg || !barFill) {
-      if (icon) icon.scale.set(0, 0, 1)
+    if (!info || !statusIcon || !actionIcon || !barBg || !barFill) {
+      if (statusIcon) statusIcon.scale.set(0, 0, 1)
+      if (actionIcon) actionIcon.scale.set(0, 0, 1)
       if (barBg) barBg.scale.set(0, 0, 1)
       if (barFill) barFill.scale.set(0, 0, 1)
       return
@@ -90,7 +98,10 @@ export function InfoPopupRenderer({ iconsMaterial, barMaterial }: Props) {
     // Icon to the left, bar to the right.
     const totalW = ICON_PX + SLOT_GAP + BAR_W
     const leftX = ax - totalW / 2
-    icon.setFrame(ICON_FRAMES[info.iconName])
+    const icon = info.iconName === 'timer' ? statusIcon : actionIcon
+    const hiddenIcon = info.iconName === 'timer' ? actionIcon : statusIcon
+    hiddenIcon.scale.set(0, 0, 1)
+    icon.setFrame(info.iconName === 'timer' ? ICON_FRAMES.timer : ACTION_FRAMES[info.iconName])
     icon.position.set(leftX + ICON_PX / 2, ay, 0)
     icon.scale.set(ICON_PX, ICON_PX, 1)
     icon.alpha = 1
@@ -121,12 +132,22 @@ export function InfoPopupRenderer({ iconsMaterial, barMaterial }: Props) {
   return (
     <>
       <sprite2D
-        ref={iconRef}
+        ref={statusIconRef}
         material={iconsMaterial}
         tint="#ffffff"
         position={[0, 0, 0]}
         scale={[0, 0, 1]}
-        frame={ICON_FRAMES.drag}
+        frame={ICON_FRAMES.timer}
+        sortLayer={RENDER_LAYERS.ui}
+        lit={false}
+      />
+      <sprite2D
+        ref={actionIconRef}
+        material={actionIconsMaterial}
+        tint="#ffffff"
+        position={[0, 0, 0]}
+        scale={[0, 0, 1]}
+        frame={ACTION_FRAMES.drag}
         sortLayer={RENDER_LAYERS.ui}
         lit={false}
       />

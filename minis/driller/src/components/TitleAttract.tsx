@@ -38,26 +38,13 @@ export function TitleAttract({ topScores }: Props) {
       <img
         src={titleAttractUrl}
         alt="Driller Homie — dig deep, get gems, help (or hinder)"
-        width={119}
-        height={14}
+        width={138}
+        height={36}
         className="driller-title-art"
         style={{
           imageRendering: 'pixelated',
         }}
       />
-      <div
-        style={{
-          marginTop: -12,
-          color: '#9db4c4',
-          fontSize: 11,
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          textShadow: '0 2px 0 #080b12',
-        }}
-      >
-        dig deep · get gems · help (or hinder)
-      </div>
-
       {topScores.length > 0 && (
         <div
           style={{
@@ -107,9 +94,9 @@ export function TitleAttract({ topScores }: Props) {
         tap to begin
       </div>
       <style>{`
-        .driller-title-art { width: 476px; height: 56px }
-        @media (max-width: 520px) { .driller-title-art { width: 357px; height: 42px } }
-        @media (max-width: 390px) { .driller-title-art { width: 238px; height: 28px } }
+        .driller-title-art { width: 552px; height: 144px }
+        @media (max-width: 600px) { .driller-title-art { width: 414px; height: 108px } }
+        @media (max-width: 440px) { .driller-title-art { width: 276px; height: 72px } }
         @keyframes driller-blink { 0%,50% { opacity: 0.5 } 51%,100% { opacity: 0.15 } }
       `}</style>
     </div>

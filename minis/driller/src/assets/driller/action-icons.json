@@ -1,0 +1,15 @@
+{
+  "image": "action-icons.png",
+  "tileSize": 16,
+  "padding": 2,
+  "slotSize": 20,
+  "columns": [
+    "add-support",
+    "boost-drill",
+    "shield",
+    "drop-rocks",
+    "chaos-quake"
+  ],
+  "source": "help-sabotage-actions",
+  "frames": "pixel-fixer-output-centered-with-transparent-bleed"
+}

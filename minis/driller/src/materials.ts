@@ -4,6 +4,7 @@ import { Sprite2DMaterial } from 'three-flatland/react'
 import drillerAnimationsUrl from './assets/driller/driller-animations.png?inline'
 import worldTilesUrl from './assets/driller/world-tiles.png?inline'
 import gemPickupsUrl from './assets/driller/gem-pickups-atlas.png?inline'
+import actionIconsUrl from './assets/driller/action-icons.png?inline'
 
 /**
  * 1×1 fully-opaque white texture so sprites have something to sample.
@@ -37,7 +38,7 @@ export function useDrillerCharacterMaterial(): Sprite2DMaterial {
   }, [])
 }
 
-/** One 16×16 atlas for all biome terrain, stone, and fixture sprites. */
+/** One 16×16 atlas for biome terrain plus transparent fixture overlays. */
 export function useWorldTileMaterial(): Sprite2DMaterial {
   return useMemo(() => {
     const tex = new TextureLoader().load(worldTilesUrl)
@@ -60,16 +61,18 @@ export function useGemMaterial(): Sprite2DMaterial {
   }, [])
 }
 
-/**
- * Rock-autotile material. Uses the 320×20 SVG atlas (16 frames
- * indexed by 4-bit mask: low bits N/S/E/W of stone-neighbor presence).
- * Each stone sprite picks its frame via Sprite2D.setFrame() with
- * normalized UVs computed from the slot stride + 2px transparent
- * gutters baked into the asset. The atlas is white-on-transparent
- * with darker strokes only on edges where there's no neighbor, so
- * runtime tinting (TINT_STONE / TINT_DAMAGED_STONE / cracking
- * gradient) recolors the rock body while strokes stay legible.
- */
+/** Pixel-fixed Help / Sabotage badges extracted from the concept sheet. */
+export function useActionIconsMaterial(): Sprite2DMaterial {
+  return useMemo(() => {
+    const tex = new TextureLoader().load(actionIconsUrl)
+    tex.minFilter = NearestFilter
+    tex.magFilter = NearestFilter
+    tex.colorSpace = SRGBColorSpace
+    tex.generateMipmaps = false
+    return new Sprite2DMaterial({ map: tex, transparent: true })
+  }, [])
+}
+
 /**
  * Hollow-square 16×16 texture for the hover-target outline. 1-pixel
  * white border, transparent interior. Tinted per-cell at runtime so

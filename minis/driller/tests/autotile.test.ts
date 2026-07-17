@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { autotileMask, maskToAtlasIndex, isGrassCap, NEIGHBOR_BITS } from '../src/lib/autotile'
+import {
+  AUTOTILE_FRAME_COUNT,
+  AUTOTILE_FRAME_SPECS,
+  CORNER_BITS,
+  NEIGHBOR_BITS,
+  autotileFrameIndex,
+  autotileIndex,
+  autotileMask,
+  eligibleCornerMask,
+  isGrassCap,
+  maskToAtlasIndex,
+} from '../src/lib/autotile'
 
 describe('autotileMask', () => {
   it('returns NSEW (full) when all 4 neighbors are SOIL', () => {
@@ -31,10 +42,42 @@ describe('autotileMask', () => {
 })
 
 describe('maskToAtlasIndex', () => {
-  it('returns the mask itself bounded to 4 bits', () => {
+  it('returns the corner-free frame for a cardinal mask', () => {
     expect(maskToAtlasIndex(0)).toBe(0)
-    expect(maskToAtlasIndex(15)).toBe(15)
-    expect(maskToAtlasIndex(0b11111)).toBe(0b1111)
+    expect(maskToAtlasIndex(15)).toBe(31)
+    expect(maskToAtlasIndex(0b11111)).toBe(maskToAtlasIndex(15))
+  })
+})
+
+describe('47-frame corner-aware atlas', () => {
+  it('enumerates every valid cardinal/corner combination exactly once', () => {
+    expect(AUTOTILE_FRAME_COUNT).toBe(47)
+    expect(
+      new Set(AUTOTILE_FRAME_SPECS.map((spec) => `${spec.cardinalMask}:${spec.missingCornerMask}`))
+        .size
+    ).toBe(47)
+
+    for (const spec of AUTOTILE_FRAME_SPECS) {
+      expect(spec.missingCornerMask & ~eligibleCornerMask(spec.cardinalMask)).toBe(0)
+      expect(autotileFrameIndex(spec.cardinalMask, spec.missingCornerMask)).toBe(
+        AUTOTILE_FRAME_SPECS.indexOf(spec)
+      )
+    }
+  })
+
+  it('distinguishes an inside L from the same cardinals with its diagonal filled', () => {
+    const cells = new Set(['2:2', '2:1', '1:2'])
+    const isMatch = (col: number, row: number) => cells.has(`${col}:${row}`)
+    const missingDiagonal = autotileIndex(2, 2, isMatch)
+
+    cells.add('1:1')
+    const filledDiagonal = autotileIndex(2, 2, isMatch)
+
+    expect(missingDiagonal).toBe(
+      autotileFrameIndex(NEIGHBOR_BITS.N | NEIGHBOR_BITS.W, CORNER_BITS.NW)
+    )
+    expect(filledDiagonal).toBe(autotileFrameIndex(NEIGHBOR_BITS.N | NEIGHBOR_BITS.W, 0))
+    expect(missingDiagonal).not.toBe(filledDiagonal)
   })
 })
 

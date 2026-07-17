@@ -17,6 +17,7 @@ import {
   isFixtureTile,
 } from '../traits'
 import { TILE_PX } from '../constants'
+import { autotileIndex } from '../lib/autotile'
 import { explosiveFrame, fixtureFrame, soilFrame, stoneFrame } from '../lib/world-tile-frames'
 import { RENDER_LAYERS } from '../lib/render-layers'
 
@@ -64,6 +65,7 @@ function FallingChunkSprite({ entity, material }: { entity: Entity; material: Sp
     const baseCellCol = Math.floor(fall.px / TILE_PX)
     const subY = fall.py - baseCellRow * TILE_PX
     const pool = refs.current
+    const tileAt = new Map(fall.cells.map((cell) => [`${cell.col}:${cell.row}`, cell.tile]))
 
     let slot = 0
     for (const cell of fall.cells) {
@@ -80,8 +82,9 @@ function FallingChunkSprite({ entity, material }: { entity: Entity; material: Sp
       // Tint to the tile's biome (using the fall.cells[i].row that was
       // captured at sag time, before the chunk released — biome
       // depends on the original world coords, not the current px/py).
-      const biome = biomeAt(cell.row)
-      const variant = Math.abs((cell.col * 7 + cell.row * 13) & 0xf)
+      const biome = biomeAt(fall.releaseRow + cell.row)
+      const isSameTile = (col: number, row: number) => tileAt.get(`${col}:${row}`) === cell.tile
+      const variant = autotileIndex(cell.col, cell.row, isSameTile)
       if (cell.tile === TILE_SOIL) sprite.setFrame(soilFrame(biome.name, variant))
       else if (cell.tile === TILE_STONE) sprite.setFrame(stoneFrame(biome.name, variant))
       else if (isFixtureTile(cell.tile))

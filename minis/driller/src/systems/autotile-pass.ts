@@ -1,10 +1,10 @@
 import type { World } from 'koota'
 import { FLAG_AUTOTILE_DIRTY, Grid, TILE_AIR, TILE_SOIL } from '../traits'
-import { autotileMask, maskToAtlasIndex } from '../lib/autotile'
+import { autotileIndex } from '../lib/autotile'
 
 /**
  * Sweep the grid: for every cell with FLAG_AUTOTILE_DIRTY set, recompute
- * its autotile bitmask and write the resolved frame index into
+ * its corner-aware autotile index and write the resolved frame into
  * `Grid.frameIndex[i]`. The dirty flag is cleared at the same time.
  *
  * Non-SOIL cells get frame 0 (their atlas region resolves variant
@@ -34,7 +34,7 @@ export function autotilePass(world: World): void {
     }
     const c = i % cols
     const r = Math.floor(i / cols)
-    frameIndex[i] = maskToAtlasIndex(autotileMask(c, r, isSoil))
+    frameIndex[i] = autotileIndex(c, r, isSoil)
     flags[i] = flags[i]! & ~FLAG_AUTOTILE_DIRTY
   }
 }

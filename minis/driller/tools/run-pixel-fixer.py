@@ -57,12 +57,16 @@ def main() -> None:
     args.output.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, object]] = []
     for source in sorted(args.input.glob("*.png")):
-        if source.name.startswith("character-") or source.name == "title-attract.png":
+        if (
+            source.name.startswith("character-")
+            or source.name.startswith("action-")
+            or source.name == "title-attract.png"
+        ):
             # The concept sheet's pseudo-pixels average ~2.75 source pixels.
             # One native output pixel per implied cell yields a ~24 px-tall
             # standing silhouette: 1.5 gameplay tiles, matching arcade norms.
-            # The title uses that same authored pseudo-pixel grid; its native
-            # result is cropped to the production lockup by the atlas script.
+            # The title and authored action badges use that same pseudo-pixel
+            # grid and remain isolated final cutouts through this step.
             result = process(source.read_bytes(), force_step=2.75)
             png = result.pop("png")
         else:
