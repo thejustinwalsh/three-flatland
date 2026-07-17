@@ -2,7 +2,7 @@
 
 Operational guide for shipping `@three-flatland/vscode` to the VS Code Marketplace and Open VSX.
 For the packaging/build mechanics themselves (what the scripts and CI workflow actually do), see
-[`.github/workflows/publish-vscode.yml`](../../.github/workflows/publish-vscode.yml) and
+[`.github/workflows/build-vscode-vsix.yml`](../../.github/workflows/build-vscode-vsix.yml) and
 [`scripts/bundle-sidecars.mjs`](scripts/bundle-sidecars.mjs) — this doc is the human-side setup
 and day-to-day operating checklist, not a design doc.
 
@@ -18,20 +18,22 @@ in a browser.
    `tools/vscode/package.json`. If that exact ID is taken, you'll need to either negotiate for it
    or change `package.json`'s `publisher` field to match whatever you actually register (and update
    the marketplace badge URL in `README.md` to match).
-3. Generate a Personal Access Token at <https://dev.azure.com> (any organization, or "All accessible
-   organizations"): **User Settings → Personal Access Tokens → New Token**, scope
-   **Marketplace → Manage**, expiration however long you're comfortable with (these can be rotated
-   later without re-touching CI — just update the GitHub secret).
-4. This is your `VSCE_PAT`.
+3. That's all the Marketplace needs up front. **Publishing is manual** (CI only builds the VSIX —
+   see below), and the simplest way to authenticate a manual publish is `az login` (interactive, in
+   your browser): `vsce publish --azure-credential` rides that logged-in session — no Personal
+   Access Token, no Entra app registration, no federated credential needed. (A Marketplace-scoped
+   PAT still works for a manual `vsce publish -p <PAT>` if you prefer, but Microsoft is retiring
+   full-scoped/global Azure DevOps PATs and tightening PAT policies, and automating publish via
+   Entra-ID in CI is painful — so `az login` + `--azure-credential` is the path of least resistance,
+   and why this repo doesn't publish from CI at all.)
 
 ### 2. Register the Open VSX namespace
 
 This is also the step that covers Cursor, Windsurf, Trae, Google Antigravity, AWS Kiro, VSCodium,
-Gitpod, and Eclipse Theia — every VS Code fork that isn't VS Code itself now runs on Open VSX as
-its actual extension registry (not a fallback, not a mirror). There is no separate "Cursor
-marketplace" to publish to and no extra step below for it — `publish-vscode.yml`'s existing
-`ovsx publish` call, in the same `publish` job as the VS Code Marketplace publish, is the whole
-auto-deploy story for all of them at once.
+Gitpod, and Eclipse Theia — many VS Code forks use Open VSX as their actual extension registry
+(not a fallback, not a mirror). For those clients there's no separate marketplace to publish to and
+no extra step — a single `ovsx publish` of the built VSIX (see the manual-publish steps below)
+covers all of them at once.
 
 1. Go to <https://open-vsx.org> and sign in with GitHub.
 2. Go to <https://open-vsx.org/user-settings/tokens> and generate an access token. This is your
@@ -41,20 +43,12 @@ auto-deploy story for all of them at once.
    - Locally: `npx ovsx create-namespace three-flatland -p <OVSX_PAT>` (run from anywhere — this
      talks to the registry directly, not tied to this repo).
 
-### 3. Add both tokens as GitHub secrets
+### 3. No CI secrets needed — CI builds, you publish
 
-`publish-vscode.yml`'s `publish` job runs under `environment: release` — the **same environment**
-`release.yml` already uses for the npm publish token, so if that's already configured you're just
-adding two more secrets to it.
-
-1. Repo → **Settings → Environments → release** (create it first if `release.yml`'s own npm publish
-   hasn't been set up yet — it should already exist).
-2. Add environment secrets: `VSCE_PAT` and `OVSX_PAT` (the two values from steps 1–2).
-
-Do **not** add these as repo-wide secrets — the `release` environment scoping means only jobs that
-explicitly declare `environment: release` can read them, which is why `check-version` and
-`build-codelens-service` (jobs that don't need publish credentials) don't have access even though
-they're in the same workflow file.
+`build-vscode-vsix.yml` is a **build-only** workflow: it produces the universal `vsix` artifact and
+stops. It does **not** publish, so it needs no `VSCE_PAT`/`OVSX_PAT` in GitHub secrets. You publish
+the downloaded artifact by hand (next section). The only credential involved is whatever `az login`
+gives you (Marketplace) and, optionally, a local `OVSX_PAT` for Open VSX — neither lives in CI.
 
 ## First release
 
@@ -67,31 +61,48 @@ naming `@three-flatland/vscode: minor`. From here the normal release flow takes 
    and writes `tools/vscode/CHANGELOG.md` for the first time (changesets creates the CHANGELOG file
    if it doesn't exist yet).
 3. Merge that PR. `tools/vscode/package.json`'s version is now live on `main`.
-4. That merge push touches `tools/vscode/package.json`, which triggers `publish-vscode.yml`
-   automatically. Watch it in the **Actions** tab:
-   - `check-version` — compares local vs. published version, should resolve `should_publish=true`
-     (nothing is published yet).
-   - `build-codelens-service` — 6 parallel legs, one per platform (darwin x2, linux x2, win32 x2,
-     the last covering both `windows-latest` for x64 and the native `windows-11-arm` runner for
-     arm64 — Surface/Copilot+ PCs). ~2-5 min each depending on Rust cache state.
-   - `assemble-and-package` — merges all 6 binaries, builds audio-play once, produces the one
-     universal VSIX.
-   - `publish` — publishes to both registries.
+4. Merging the "Version Packages" PR bumps `tools/vscode/package.json`. Once CI passes on `main`,
+   `release.yml` runs, and because this release bumped the extension's version, its VSIX jobs fire
+   (watch the **Actions → Release** run):
+   - `build-vsix` — calls the reusable `build-vscode-vsix.yml`: 6 parallel `build-codelens-service`
+     legs (darwin x2, linux x2, win32 x2 — the last on the native `windows-11-arm` runner), then
+     `assemble-and-package` merges the 6 binaries, builds audio-play once, and packages the one
+     universal VSIX. ~5-10 min depending on Rust cache state.
+   - `attach-vsix` — creates a GitHub Release **`fl-tools-v<version>`** with the `.vsix` attached as
+     a downloadable asset. Idempotent (keyed on whether that release already exists) and gated on a
+     real version bump, so it can't spuriously fire on an unrelated push.
+
+   You can also build the VSIX anytime without a release: **Actions → Build VS Code Extension VSIX →
+   Run workflow** (`workflow_dispatch`) — that produces the `vsix` artifact on the run.
+
+### Publish the built artifact (manual — 2 minutes)
+
+Grab the `.vsix` from the **GitHub Release** the pipeline created
+(<https://github.com/thejustinwalsh/three-flatland/releases> → `fl-tools-v<version>` → assets), or
+from a `workflow_dispatch` run's `vsix` artifact. Then:
+
+- **VS Code Marketplace** (no PAT, no app registration): `az login` — opens your browser; use the
+  account that owns the `three-flatland` publisher — then
+  `npx @vscode/vsce publish --azure-credential --packagePath <the.vsix>`. `--azure-credential` pulls
+  an Entra token off your `az login` session; that's the entire "Entra" story for a manual publish.
+- **Open VSX** (covers Cursor/Windsurf/VSCodium/Theia/etc.):
+  `npx ovsx publish --packagePath <the.vsix> -p <OVSX_PAT>` (token from
+  <https://open-vsx.org/user-settings/tokens>; one-time `npx ovsx create-namespace three-flatland -p <OVSX_PAT>`).
 
 ### Verify it actually worked
 
-- <https://marketplace.visualstudio.com/items?itemName=three-flatland.tools> — listing should be
-  live within a few minutes of the `publish` job succeeding (marketplace indexing has a short
+- <https://marketplace.visualstudio.com/items?itemName=three-flatland.fl-tools> — listing should be
+  live within a few minutes of your `vsce publish` succeeding (marketplace indexing has a short
   delay).
-- <https://open-vsx.org/extension/three-flatland/tools> — same check for Open VSX.
+- <https://open-vsx.org/extension/three-flatland/fl-tools> — same check for Open VSX.
 - Install for real, on a machine that has **never** had this extension in dev mode:
-  `code --install-extension three-flatland.tools`, then open a `.png` and confirm the Flatland
+  `code --install-extension three-flatland.fl-tools`, then open a `.png` and confirm the Flatland
   submenu appears and a tool actually opens. This is the one thing nothing in this whole pipeline
   can verify except an actual installed-from-marketplace run — everything up to this point only
   proves the VSIX *builds*, not that the *published, installed* artifact works end to end.
 - In Cursor (or Windsurf/Trae/any other Open VSX-backed fork): Extensions panel
   (`Cmd+Shift+X`/`Ctrl+Shift+X`) → search "Flatland Tools" → Install. `cursor --install-extension
-  three-flatland.tools` works the same way from the CLI. Same Open VSX listing, same artifact —
+  three-flatland.fl-tools` works the same way from the CLI. Same Open VSX listing, same artifact —
   this isn't a separate publish target, just a separate client reading the one above.
 
 ## Every release after the first
@@ -104,29 +115,35 @@ Nothing extra to do beyond normal changeset hygiene:
    (see `.changeset/CLAUDE.md` for the exact format). Forgetting this doesn't break anything loudly
    — it just means that change ships in the extension's *code* next time something else triggers a
    release, but never gets its own version bump or CHANGELOG entry of its own.
-2. Everything else is automatic: the version bump PR, the merge, the `publish-vscode.yml` trigger,
-   the five-platform build, the publish. You don't need to touch this file's steps again.
+2. The build + GitHub Release are automatic: the version bump PR, the merge, `release.yml`'s
+   `build-vsix`/`attach-vsix` jobs, and the `fl-tools-v<version>` release with the `.vsix` attached.
+   The **publish** step stays manual every time — download the `.vsix` from that release and run the
+   one-liner from "Publish the built artifact" above.
 
 ## Troubleshooting
 
-**`check-version` says `should_publish=false` but you expected a publish.** Run `npx vsce show
-three-flatland.tools --json` locally and compare `versions[0].version` against `tools/vscode/
-package.json`'s `version` by hand — if they already match, the workflow correctly did nothing (it's
-not re-publishing an unchanged version, by design).
+**The Release ran but no `fl-tools-v<version>` release / VSIX appeared.** `attach-vsix` only fires
+when `tools/vscode/package.json`'s version actually bumped this release AND no `fl-tools-v<version>`
+release exists yet (idempotent). If the version didn't change, that's correct — nothing to release.
+If it did and nothing appeared, read the `release` job's "Detect a new FL Tools (VSIX) version" step
+output (it prints why it decided to skip or build).
 
 **One of the 6 `build-codelens-service` legs fails.** `fail-fast: false` means the other 5 keep
-running — re-run just the failed job from the Actions UI once you've fixed whatever broke, rather
-than re-running the whole workflow. `assemble-and-package` won't start until all 6 succeed.
+running. If it's a **transient** runner/cache failure, re-run just the failed job from the Actions
+UI (a job re-run reuses the original commit, so this is only valid for flakes — not code fixes). If
+it needs a **code fix**, push a new commit and let a fresh run rebuild. `assemble-and-package` won't
+start until all 6 succeed.
 
-**`publish` fails with "already exists" / a duplicate-version error.** This shouldn't happen —
-both `vsce publish` and `ovsx publish` are called with `--skip-duplicate`, which no-ops instead of
-erroring on a version that's already live. If you see a hard failure here anyway, that's a real
-signal something's wrong (a network issue, an expired/revoked token, a marketplace-side outage) —
-don't just re-run it blindly; check the actual error first.
+**`vsce publish` says the version already exists.** You already published this version — bump
+`tools/vscode/package.json` (via a changeset release), rebuild the artifact, and publish that. Add
+`--skip-duplicate` if you want a re-run to no-op instead of erroring.
 
-**A token needs rotating.** Generate a new one (same steps as initial setup above), update the
-GitHub environment secret, done — nothing in the workflow itself references the token's value, it's
-only ever read from `secrets.VSCE_PAT`/`secrets.OVSX_PAT` at publish time.
+**`vsce publish --azure-credential` fails auth (401/403).** 401 usually means `az login` didn't
+establish a usable session (run `az account show` to confirm you're logged in), or you logged in
+with the wrong account. 403 means auth worked but that identity isn't a member of the
+`three-flatland` Marketplace publisher — add it at
+<https://marketplace.visualstudio.com/manage>. There is no token to rotate; it's your live
+`az login` session.
 
 **FL Audio's CodeLenses never appear after installing from the marketplace, but work fine in a dev
 build.** This was a real bug in the first version of this pipeline: `actions/upload-artifact` /

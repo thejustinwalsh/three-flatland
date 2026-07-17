@@ -1,0 +1,158 @@
+name: Build VS Code Extension VSIX
+
+# REUSABLE workflow (composable): builds the ONE universal VSIX — every
+# platform's codelens-service binary + audio-play, all in a single .vsix — and
+# uploads it as the `vsix` artifact. `release.yml` calls this on an actual
+# @three-flatland/vscode version bump (and then attaches the artifact to a
+# GitHub Release); `workflow_dispatch` runs it on demand to grab a build.
+#
+# It does NOT publish. The extension is `private: true` (npm-invisible;
+# versioned via hand-written changesets, same as minis/ and skills/ since
+# tools/vscode lives outside packages/). Marketplace publishing is MANUAL:
+# download the release asset and run `vsce publish --azure-credential`
+# (no PAT) or `ovsx publish` — see tools/vscode/PUBLISHING.md.
+#
+# One universal VSIX rather than per-platform targets: sidecarManager.ts's
+# `${process.platform}-${process.arch}` runtime lookup picks the right
+# codelens-service binary at startup, and node-web-audio-api already ships all
+# platforms' native binaries in one install — a deliberate size/simplicity
+# tradeoff (see scripts/bundle-sidecars.mjs).
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  # One native codelens-service build per target platform — Rust can't be
+  # cross-compiled reliably for a "just works everywhere" native binary, so
+  # each leg builds on its own OS. Each uploads ONLY its own
+  # bin/<platform>-<arch>/; audio-play is built once, downstream, in the
+  # assemble job (it's platform-independent — building it 6× here is waste).
+  # win32-arm64 (Surface/Copilot+ PCs) uses GitHub's native windows-11-arm
+  # runner. linux-armhf and alpine (musl) are deliberately not covered:
+  # node-web-audio-api ships zero musl prebuilds, so FL Audio can't work there.
+  build-codelens-service:
+    name: Build codelens-service (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: darwin-arm64
+          - os: macos-13
+            target: darwin-x64
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          - os: windows-latest
+            target: win32-x64
+          - os: windows-11-arm
+            target: win32-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/codelens-service/sidecar
+          key: ${{ matrix.target }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter @three-flatland/vscode
+
+      - name: Build codelens-service
+        working-directory: tools/vscode
+        run: node scripts/bundle-sidecars.mjs --codelens-only
+
+      - name: Upload codelens-service binary
+        uses: actions/upload-artifact@v5
+        with:
+          name: bin-${{ matrix.target }}
+          path: tools/vscode/bin
+          retention-days: 1
+
+  # Merges all 6 platforms' codelens-service binaries into one bin/ tree,
+  # builds audio-play once, builds the extension + webviews, packages the ONE
+  # universal VSIX, and uploads it as the `vsix` artifact.
+  assemble-and-package:
+    name: Assemble + package universal VSIX
+    needs: build-codelens-service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download all platform codelens-service binaries
+        uses: actions/download-artifact@v5
+        with:
+          pattern: bin-*
+          path: tools/vscode/bin
+          merge-multiple: true
+
+      - name: Verify all 6 platform binaries are present
+        working-directory: tools/vscode
+        run: |
+          for t in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64 win32-arm64; do
+            f="bin/$t/codelens-service"
+            case "$t" in win32-*) f="$f.exe" ;; esac
+            if [ ! -f "$f" ]; then
+              echo "::error::missing $f"
+              exit 1
+            fi
+          done
+          echo "all 6 platform binaries present:"
+          find bin -type f
+
+      - name: Build audio-play sidecar
+        working-directory: tools/vscode
+        run: node scripts/bundle-sidecars.mjs --audio-play-only
+
+      - name: Build extension + webviews
+        run: pnpm --filter @three-flatland/vscode build
+
+      - name: Package universal VSIX
+        working-directory: tools/vscode
+        run: pnpm run package
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v5
+        with:
+          name: vsix
+          path: tools/vscode/*.vsix
+          retention-days: 90
