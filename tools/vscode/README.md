@@ -1,8 +1,8 @@
 <div align="center">
   <img src="docs/marketplace/banner.png" alt="Flatland Tools: visual editors for game and multimedia assets, right in the editor." width="100%" />
 
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/three-flatland.tools?label=VS%20Code%20Marketplace&color=0098FF)](https://marketplace.visualstudio.com/items?itemName=three-flatland.tools)
-[![Open VSX Registry](https://img.shields.io/open-vsx/v/three-flatland/tools?label=Open%20VSX&color=C160EF)](https://open-vsx.org/extension/three-flatland/tools)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/three-flatland.fl-tools?label=VS%20Code%20Marketplace&color=0098FF)](https://marketplace.visualstudio.com/items?itemName=three-flatland.fl-tools)
+[![Open VSX Registry](https://img.shields.io/open-vsx/v/three-flatland/fl-tools?label=Open%20VSX&color=C160EF)](https://open-vsx.org/extension/three-flatland/fl-tools)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/thejustinwalsh/three-flatland/blob/main/LICENSE)
 
 **A tools suite for game and multimedia assets that never leaves your editor.**
@@ -79,7 +79,7 @@ hear it.
 **VS Code Marketplace:**
 
 ```
-ext install three-flatland.tools
+ext install three-flatland.fl-tools
 ```
 
 Or search **"Flatland Tools"** in the Extensions view (`Cmd+Shift+X` / `Ctrl+Shift+X`).
@@ -87,7 +87,7 @@ Or search **"Flatland Tools"** in the Extensions view (`Cmd+Shift+X` / `Ctrl+Shi
 **Open VSX** (VSCodium, Gitpod, Eclipse Theia, and other VS Code-compatible editors):
 
 Search **"Flatland Tools"** in your editor's extension marketplace, or install directly from
-[open-vsx.org](https://open-vsx.org/extension/three-flatland/tools).
+[open-vsx.org](https://open-vsx.org/extension/three-flatland/fl-tools).
 
 ## Usage
 

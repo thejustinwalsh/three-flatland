@@ -142,7 +142,7 @@
   <text x="236" y="170" class="wordmark" fill="#f5f6f9" filter="url(#word-glow)">flatland <tspan fill="#f1c45f">tools</tspan></text>
   <text x="244" y="204" class="tagline" fill="#b3b8c4">A tools suite for game and multimedia assets that never leaves your editor.</text>
 
-  <text x="1204" y="104" text-anchor="end" class="chip" fill="#f1c45f" opacity="0.92"># ext install three-flatland.tools</text>
+  <text x="1204" y="104" text-anchor="end" class="chip" fill="#f1c45f" opacity="0.92"># ext install three-flatland.fl-tools</text>
 
   <!-- signal rail: one gem stripe per tool in the suite -->
   <line x1="76" y1="294" x2="1204" y2="294" stroke="#ffffff" stroke-opacity="0.06"/>
