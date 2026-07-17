@@ -69,6 +69,16 @@
     "onLanguage:javascript",
     "onLanguage:javascriptreact"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Flatland Tools runs native sidecar binaries (codelens-service) and executes/plays audio code (ZzFX/ZzFXM/Tone.js/Wad) derived from workspace files, so it requires a trusted workspace."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "The tools read and write files on the local filesystem and spawn native sidecar processes, neither of which is available in virtual workspaces (vscode.dev / github.dev)."
+    }
+  },
   "contributes": {
     "commands": [
       {
@@ -202,6 +212,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "threeFlatland.wasmTest.open",
+          "when": "false"
+        },
         {
           "command": "threeFlatland.atlas.openEditor",
           "when": "threeFlatland.tool.spriteAtlas.enabled && (resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/)"
