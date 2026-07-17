@@ -91,7 +91,7 @@ jobs:
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
-              - 'turbo.json'
+              - 'nx.json'
               - 'tsconfig*.json'
               - '.oxlintrc.json'
               - '.oxfmtrc.json'

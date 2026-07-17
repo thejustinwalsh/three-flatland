@@ -97,7 +97,7 @@ The `changeset` job is **not** required and is **not** in `ci-passed`'s `needs` 
 | `minis`    | `minis/**`                                                                                                                                  |
 | `examples` | `examples/**`, `e2e/**`, `playwright.config.*`                                                                                              |
 | `docs`     | `docs/**`                                                                                                                                   |
-| `configs`  | `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `eslint.config.*`, `vitest.config.*`, `scripts/**` |
+| `configs`  | `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `nx.json`, `tsconfig*.json`, `.oxlintrc.json`, `.oxfmtrc.json`, `vitest.config.*`, `scripts/**` |
 | `vscode`   | `tools/**`                                                                                                                                  |
 | `ci`       | `.github/workflows/**`                                                                                                                      |
 
@@ -107,13 +107,13 @@ Job gating:
 
 | Job                                | Runs when                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ci.build` (matrix)                | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `vscode` ∨ `ci` — lint/typecheck/test are too valuable to bucket-gate; turbo cache makes the no-ops cheap                                                                                                                                                                                                                                                     |
+| `ci.build` (matrix)                | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `vscode` ∨ `ci` — lint/typecheck/test are too valuable to bucket-gate; Nx cache makes the no-ops cheap                                                                                                                                                                                                                                                     |
 | `ci.smoke`                         | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` (and upstream `build` didn't fail)                                                                                                                                                                                                                                                                                                                       |
 | `ci.size`                          | `packages` ∨ `configs` ∨ `ci` (PR events only; size-limit only tracks published packages)                                                                                                                                                                                                                                                                                                                              |
 | `ci.vscode-e2e`                    | `vscode` ∨ `packages` ∨ `ci` (and upstream `build` didn't fail) — real VS Code (Electron) launched under Playwright via `xvfb-run`, see `tools/vscode/e2e/README.md`. `packages` is included because the extension's real `workspace:*` dependency closure reaches into `packages/schemas`, `packages/normals`, `packages/bake`, `packages/image`, `packages/atlas`, and `three-flatland` itself — not just `tools/**` |
 | `ci.changeset`                     | PR events only, when `build` succeeded and `smoke` / `size` / `vscode-e2e` didn't fail, and not `changeset_only` — generates + pushes the release changeset after the gate jobs pass                                                                                                                                                                                                                                   |
 | `ci-passed`                        | always — gates the merge                                                                                                                                                                                                                                                                                                                                                                                               |
-| `docs.smoke`                       | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — docs#build pulls in all of them (API reference from `packages`, showcases from `minis`, embedded demos from `examples`)                                                                                                                                                                                                                                |
+| `docs.smoke`                       | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — docs:build pulls in all of them (API reference from `packages`, showcases from `minis`, embedded demos from `examples`)                                                                                                                                                                                                                                |
 | `docs.build-pages` / `docs.deploy` | gated on `docs.smoke` success                                                                                                                                                                                                                                                                                                                                                                                          |
 
 A change in `ci` or `configs` triggers everything — CI/config changes need to validate themselves.
@@ -136,19 +136,19 @@ The flag keys on the **file delta**, not the commit message, so it can't be spoo
 
 `package.json` declares `engines.node: >=20.0.0`, matching the older end of the matrix.
 
-## Turbo Cache
+## Nx Cache
 
 | Job                        | Cache key                     | Notes                                                                                                                                                                                                   |
 | -------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `build (lts/*, current)`   | `Linux-turbo-current-${sha}`  | Per-node-version namespace                                                                                                                                                                              |
-| `build (lts/-1, previous)` | `Linux-turbo-previous-${sha}` | `pnpm install` resolves different platform deps per node version                                                                                                                                        |
-| `smoke`                    | `Linux-turbo-current-${sha}`  | Shares with `current` build leg — primary-key hit                                                                                                                                                       |
-| `size`                     | `Linux-turbo-current-${sha}`  | Shares with `current` build leg                                                                                                                                                                         |
-| `vscode-e2e`               | `Linux-turbo-current-${sha}`  | Shares with `current` build leg — the job's own `pnpm --filter "@three-flatland/vscode..." -r run build` step (see `tools/vscode/e2e/global-setup.ts`) hits cache for anything `ci.build` already built |
-| `release`                  | `Linux-turbo-current-${sha}`  | Shares with `current` build leg                                                                                                                                                                         |
-| `docs.build-pages`         | `Linux-turbo-current-${sha}`  | Shares with `current` build leg; usually a cache hit since `smoke` already built `docs#build`                                                                                                           |
+| `build (lts/*, current)`   | `Linux-nx-current-${sha}`  | Per-node-version namespace                                                                                                                                                                              |
+| `build (lts/-1, previous)` | `Linux-nx-previous-${sha}` | `pnpm install` resolves different platform deps per node version                                                                                                                                        |
+| `smoke`                    | `Linux-nx-current-${sha}`  | Shares with `current` build leg — primary-key hit                                                                                                                                                       |
+| `size`                     | `Linux-nx-current-${sha}`  | Shares with `current` build leg                                                                                                                                                                         |
+| `vscode-e2e`               | `Linux-nx-current-${sha}`  | Shares with `current` build leg — the job's own `pnpm --filter "@three-flatland/vscode..." -r run build` step (see `tools/vscode/e2e/global-setup.ts`) hits cache for anything `ci.build` already built |
+| `release`                  | `Linux-nx-current-${sha}`  | Shares with `current` build leg                                                                                                                                                                         |
+| `docs.build-pages`         | `Linux-nx-current-${sha}`  | Shares with `current` build leg; usually a cache hit since `smoke` already built `docs:build`                                                                                                           |
 
-Restore-keys mirror the primary key prefix so a fresh SHA inherits from the nearest prior commit's cache via prefix fallback; turbo's content-hashing decides per-task hits.
+Restore-keys mirror the primary key prefix so a fresh SHA inherits from the nearest prior commit's cache via prefix fallback; nx's content-hashing decides per-task hits.
 
 ## Workflow Dependencies
 
@@ -196,7 +196,7 @@ Audit the README against the actual workflow definitions. For each workflow, ver
 - Triggers (on: events, branches, workflow_call) match the documented triggers
 - Composable layout table matches the actual files (orchestrator + reusables)
 - Path-filter bucket patterns and per-job gating match the actual ci.yml `needs` + `if:` against changes.yml outputs
-- Turbo cache key table matches the actual cache key strings used per job
+- Nx cache key table matches the actual cache key strings used per job
 - Node version policy table reflects the actual matrix in ci.yml and engines.node in root package.json
 - Workflow dependency graph (mermaid) reflects actual workflow_run chains
 - Concurrency groups match actual concurrency config
@@ -212,7 +212,7 @@ Preserve the existing document structure:
 4. Workflows table
 5. Path Filtering (bucket table + per-job gating)
 6. Node Version Policy
-7. Turbo Cache (key table)
+7. Nx Cache (key table)
 8. Workflow Dependencies (mermaid graph)
 9. Concurrency Controls
 10. Manual Triggers
@@ -266,10 +266,10 @@ NODE VERSION & MATRIX
 - engines.node in root package.json must match the older end of the matrix (currently >=20.0.0)
 - When the LTS schedule rolls (e.g., Node 24 becomes Active LTS), bump engines accordingly
 
-TURBO CACHE
-- Per-node-version cache namespace: `${{ runner.os }}-turbo-${{ inputs.node-tag }}-${{ github.sha }}` in build.yml
-- Smoke, size, vscode-e2e, release, and any new single-node-version job pin to the `current` leg's namespace: `${{ runner.os }}-turbo-current-${{ github.sha }}`
-- Restore-keys use the same prefix so prefix-fallback inherits from prior SHAs; turbo content-hashing decides per-task hits
+NX CACHE
+- Per-node-version cache namespace: `${{ runner.os }}-nx-${{ inputs.node-tag }}-${{ github.sha }}` in build.yml
+- Smoke, size, vscode-e2e, release, and any new single-node-version job pin to the `current` leg's namespace: `${{ runner.os }}-nx-current-${{ github.sha }}`
+- Restore-keys use the same prefix so prefix-fallback inherits from prior SHAs; nx's content-hashing decides per-task hits
 
 WORKFLOW DEPENDENCIES
 - Use workflow_run to chain workflows that must wait for another to complete

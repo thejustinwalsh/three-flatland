@@ -38,13 +38,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Cache Turbo
+      - name: Cache Nx
         uses: actions/cache@v5
         with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ inputs.node-tag }}-${{ github.sha }}
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-${{ inputs.node-tag }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-turbo-${{ inputs.node-tag }}-
+            ${{ runner.os }}-nx-${{ inputs.node-tag }}-
 
       - name: Cache Skia WASM tools
         uses: actions/cache@v5
@@ -70,7 +70,10 @@ jobs:
         run: pnpm sync:docs:schemas:verify
 
       - name: Lint
-        run: pnpm exec turbo run //#lint
+        run: pnpm lint
+
+      - name: Boundaries
+        run: pnpm boundaries
 
       - name: Typecheck
         run: pnpm typecheck
@@ -83,7 +86,7 @@ jobs:
         run: pnpm build
 
       - name: Test
-        run: pnpm exec turbo run //#test
+        run: pnpm test
 
       - name: Test Skia
-        run: pnpm exec turbo run test --filter=@three-flatland/skia
+        run: pnpm --filter @three-flatland/skia test

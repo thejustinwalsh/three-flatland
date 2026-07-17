@@ -151,7 +151,7 @@ jobs:
       # … — their subpaths (e.g. @three-flatland/bridge/client) resolve to dist
       # for Vite/Rollup, so an unbuilt closure fails the webview build. The `...`
       # suffix builds the real dependency closure in topological order.
-      # Deliberately NOT `turbo run build`, which drags in @three-flatland/skia's
+      # Deliberately NOT the monorepo `nx run-many -t build`, which drags in @three-flatland/skia's
       # build (needs the Zig/WASM toolchain). Mirrors e2e/global-setup.ts.
       - name: Build extension + webviews
         run: pnpm --filter "@three-flatland/vscode..." -r run build

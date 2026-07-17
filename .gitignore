@@ -42,7 +42,6 @@ test-results/
 .vscode-test/
 
 # Turbo
-.turbo/
 
 # Astro
 .astro/

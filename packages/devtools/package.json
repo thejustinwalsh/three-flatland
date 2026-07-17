@@ -107,10 +107,5 @@
   },
   "bin": {
     "flatland-devtools-relay": "./dist/relay.js"
-  },
-  "nx": {
-    "tags": [
-      "scope:sibling"
-    ]
   }
 }
