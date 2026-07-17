@@ -53,7 +53,9 @@ async function main() {
   scene.add(sprite)
 
   // Tweakpane UI
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
 
   // Vanilla three.js apps don't get a devtools provider for free —
   // Flatland constructs one inside `Flatland.render()`. For non-

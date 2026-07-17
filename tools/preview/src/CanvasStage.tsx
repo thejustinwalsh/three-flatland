@@ -1,4 +1,3 @@
-/// <reference path="./vite-env.d.ts" />
 import {
   Suspense,
   use,

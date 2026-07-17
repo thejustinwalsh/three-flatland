@@ -37,26 +37,24 @@ const TILE_SCALE = 2
 // TWEAKPANE
 // ============================================
 
-const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+const paneBundle = createPane({ driver: 'manual' })
+const { pane } = paneBundle
+const updateDevtools = () => paneBundle.update()
 const devtools = createDevtoolsProvider({ name: 'knightmark' })
 
-// Stats monitors — explicitly refreshed each frame via knightStatsBindings
-// below. The default readonly-binding MonitorBinding ticker (200ms) can
-// starve when the main thread is busy (heavy allocs, GC pauses), making
-// the display look frozen while underlying values are updating. Holding
-// the binding refs lets the animate loop force-refresh them per frame.
+// Stats monitors — readonly bindings backed by MonitorBinding's default
+// ticker (~200ms). The animate loop mutates knightStats.knights/batches
+// each frame; the ticker reflects those values into the pane.
 const knightStats = { knights: 0, batches: 0 }
 const statsFolder = pane.addFolder({ title: 'Knights', expanded: false })
-const knightStatsBindings = [
-  statsFolder.addBinding(knightStats, 'knights', {
-    readonly: true,
-    format: (v: number) => v.toFixed(0),
-  }),
-  statsFolder.addBinding(knightStats, 'batches', {
-    readonly: true,
-    format: (v: number) => v.toFixed(0),
-  }),
-]
+statsFolder.addBinding(knightStats, 'knights', {
+  readonly: true,
+  format: (v: number) => v.toFixed(0),
+})
+statsFolder.addBinding(knightStats, 'batches', {
+  readonly: true,
+  format: (v: number) => v.toFixed(0),
+})
 
 // Simulation params — tweakable at runtime (at bottom, collapsed)
 const sim = { speedMin: 30, speedMax: 200, hitRadius: 8, knightScale: 64 }

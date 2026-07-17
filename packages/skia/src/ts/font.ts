@@ -252,7 +252,7 @@ export class SkiaFont {
   getGlyphWidths(glyphIDs: Uint16Array): Float32Array {
     const glyphsPtr = this._ctx._exports.cabi_realloc(0, 0, 2, glyphIDs.byteLength)
     new Uint16Array(this._ctx._memory.buffer, glyphsPtr, glyphIDs.length).set(glyphIDs)
-    const outPtr = this._ctx._writeF32(new Array(glyphIDs.length).fill(0))
+    const outPtr = this._ctx._writeF32(Array.from({ length: glyphIDs.length }, () => 0))
     this._ctx._exports.skia_font_get_glyph_widths(this._handle, glyphsPtr, glyphIDs.length, outPtr)
     return new Float32Array(this._ctx._memory.buffer.slice(outPtr, outPtr + glyphIDs.length * 4))
   }

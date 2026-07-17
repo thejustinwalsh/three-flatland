@@ -439,7 +439,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    */
   _rebuildEffectBufferAttributes(): void {
     // Remove old effect buffer attributes
-    for (const name of [...this._instanceAttributes.keys()]) {
+    for (const name of this._instanceAttributes.keys()) {
       if (name.startsWith('effectBuf')) {
         this._instanceAttributes.delete(name)
       }

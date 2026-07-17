@@ -125,7 +125,7 @@ export async function openMergePanel(context: vscode.ExtensionContext, sidecarUr
       try {
         await vscode.workspace.fs.delete(vscode.Uri.parse(uri), { useTrash: true })
       } catch (err) {
-        log(`merge/save: trash failed ${uri}: ${err instanceof Error ? err.message : err}`)
+        log(`merge/save: trash failed ${uri}: ${err instanceof Error ? err.message : String(err)}`)
         // Best-effort; don't fail the whole save if a delete fails.
       }
     }

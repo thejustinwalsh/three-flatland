@@ -97,7 +97,7 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
     // The shader reads texel[i] and texel[i+1] — works identically.
     //
     // curveTexelMap[curveIndex] = texel offset of that curve's first texel
-    const curveTexelMap = new Array<number>(glyph.curves.length)
+    const curveTexelMap = Array.from<number>({ length: glyph.curves.length })
     const starts = glyph.contourStarts
 
     for (let c = 0; c < starts.length; c++) {

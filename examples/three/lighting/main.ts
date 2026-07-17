@@ -474,7 +474,9 @@ async function main() {
   pushUniforms()
 
   // ─── Tweakpane UI ───────────────────────────────────────────────
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
 
   const lightFolder = pane.addFolder({ title: 'Lighting', expanded: true })
   lightFolder.addBinding(params, 'lightingEnabled', { label: 'enabled' }).on('change', () => {

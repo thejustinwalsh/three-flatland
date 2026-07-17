@@ -44,7 +44,9 @@ async function main() {
   scene.add(sprite)
 
   // Tweakpane UI
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
   const devtools = createDevtoolsProvider({ name: 'template' })
   const params = { tint: '#ffffff' }
   pane

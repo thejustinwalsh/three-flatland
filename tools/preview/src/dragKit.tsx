@@ -276,7 +276,6 @@ function DragLayer() {
   const { atlasImageUri, atlasFrames, atlasSize, payload } = state
   const total = atlasFrames.length
   const visible = atlasFrames.slice(0, MAX_VISIBLE)
-  const overflow = total - visible.length
 
   // We center the cluster on the cursor by offsetting the wrapper left
   // by half the visible stack width.

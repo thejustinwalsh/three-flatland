@@ -54,7 +54,7 @@ function getBayer4x4(x: Node<'int'>, y: Node<'int'>): Node<'float'> {
   const index = iy.mul(int(4)).add(ix)
 
   const values = [
-    0 / 16,
+    0,
     8 / 16,
     2 / 16,
     10 / 16,

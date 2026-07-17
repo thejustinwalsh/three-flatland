@@ -315,7 +315,9 @@ async function main() {
   updateHoverSprite()
 
   // Tweakpane debug UI
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
   const devtools = createDevtoolsProvider({ name: 'batch-demo' })
   const exampleStats = { sprites: 0, batches: 0 }
   const statsFolder = pane.addFolder({ title: 'Batching', expanded: false })

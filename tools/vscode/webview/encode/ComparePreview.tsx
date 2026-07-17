@@ -8,7 +8,7 @@ import {
 } from '@three-flatland/preview/canvas'
 import { decodeImage } from '@three-flatland/image'
 import type { Ktx2Loader as Ktx2LoaderType } from '@three-flatland/image/loaders/ktx2'
-import { useEncodeStore } from './encodeStore'
+import { useEncodeStore, type GpuStats } from './encodeStore'
 import { getKtx2Caps } from './gpuCaps'
 import { extractGpuStats } from './gpuStats'
 
@@ -67,7 +67,7 @@ function useOriginalTexture(image: ImageData | null): THREE.Texture | null {
 // ─── Encoded texture hook ─────────────────────────────────────────────────────
 
 function useEncodedTexture(
-  setGpuStats: (stats: import('./encodeStore').GpuStats) => void,
+  setGpuStats: (stats: GpuStats) => void,
   sourceWidth: number,
   sourceHeight: number
 ): THREE.Texture | null {

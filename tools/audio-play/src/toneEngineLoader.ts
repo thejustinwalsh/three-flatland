@@ -14,9 +14,11 @@
  * `tools/audio-play/CLAUDE.md`'s AudioWorklet section for the full
  * empirical trace this preserves.
  */
+import type * as ToneNamespace from 'tone'
+
 import type { ToneEngine } from './player.js'
 
-type ToneModule = typeof import('tone')
+type ToneModule = typeof ToneNamespace
 
 /**
  * `standardized-audio-context` (a `tone` dependency, NOT

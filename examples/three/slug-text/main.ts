@@ -659,7 +659,9 @@ async function main() {
   }
 
   // --- Tweakpane UI ---
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
   const devtools = createDevtoolsProvider({ name: 'slug-text' })
 
   // Top-of-pane scene toggle — inline radiogrid (essentials). Mirrors

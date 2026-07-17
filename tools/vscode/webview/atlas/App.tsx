@@ -741,10 +741,6 @@ export function App() {
   const [prefixDraft, setPrefixDraft] = useState('')
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null)
   const [mode, setMode] = useState<EditorMode>({ kind: 'normal' })
-  // Fraction of the right sidebar height taken by the Frames panel when a
-  // tool panel is active below it. Persisted in component state only; resets
-  // to default on remount.
-  const [framesFrac, setFramesFrac] = useState(0.5)
   const sidebarRef = useRef<HTMLDivElement>(null)
   // User-resizable width of the Frames sidebar. Persisted to localStorage
   // via the store so it survives panel close.
@@ -888,12 +884,6 @@ export function App() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
-
-  const indexById = useMemo(() => {
-    const m = new Map<string, number>()
-    rects.forEach((r, i) => m.set(r.id, i))
-    return m
-  }, [rects])
 
   // Track whether the bridge has already seeded the store. A second
   // atlas/init (e.g. on dev/reload) would otherwise stomp any local
@@ -2325,12 +2315,6 @@ export function App() {
                     setSelectedIds(next)
                     setFolderSelectionPrefix(null)
                   }}
-                  onSelectGroup={(ids, additive) => {
-                    const next = additive ? new Set(selectedIds) : new Set<string>()
-                    for (const id of ids) next.add(id)
-                    setSelectedIds(next)
-                    setFolderSelectionPrefix(null)
-                  }}
                   onSelectFolder={(prefix, ids) => {
                     setSelectedIds(new Set(ids))
                     setFolderSelectionPrefix(prefix)
@@ -2394,10 +2378,6 @@ export function App() {
       </div>
     </DragProvider>
   )
-
-  // Minor: keep indexById live even if it's not displayed directly —
-  // suppresses 'unused' lint and future frame-index helpers reuse it.
-  void indexById
 }
 
 function InlineRenameInput({
@@ -2456,7 +2436,7 @@ function SaveStatusLine({
    * Called when the user closes the error modal (X button or Esc).
    * Caller should reset its `saveStatus` state to `{ kind: 'idle' }`.
    */
-  onDismiss(): void
+  onDismiss: () => void
 }) {
   const [visible, setVisible] = useState(false)
 
@@ -2729,7 +2709,6 @@ function FramesView({
   folderSelectionPrefix,
   renameMode,
   onSelectRect,
-  onSelectGroup,
   onSelectFolder,
   onStartInlineRename,
   onCommitInlineRename,
@@ -2744,7 +2723,6 @@ function FramesView({
   folderSelectionPrefix: string | null
   renameMode: RenameMode
   onSelectRect: (id: string, additive: boolean) => void
-  onSelectGroup: (ids: string[], additive: boolean) => void
   onSelectFolder: (prefix: string, ids: string[]) => void
   onStartInlineRename: (id: string) => void
   onCommitInlineRename: (id: string, name: string) => void

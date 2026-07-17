@@ -1,4 +1,5 @@
 import { toDenseArgs, type ZzfxParams } from './params'
+import type * as ZzfxModule from 'zzfx'
 
 // `zzfx` constructs its own `AudioContext` as a MODULE-LEVEL side effect
 // (`export const ZZFX = { ..., audioContext: new AudioContext, ... }`).
@@ -12,7 +13,7 @@ import { toDenseArgs, type ZzfxParams } from './params'
 // satisfies the user-gesture requirement, and it's required regardless:
 // some browsers don't auto-resume a context created moments earlier in
 // the same tick even when that construction WAS gesture-adjacent.
-let modulePromise: Promise<typeof import('zzfx')> | null = null
+let modulePromise: Promise<typeof ZzfxModule> | null = null
 
 function loadZzfx() {
   if (!modulePromise) modulePromise = import('zzfx')

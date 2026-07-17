@@ -225,7 +225,11 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
                 'keydown',
                 (e) => {
                     if ((e.metaKey === true || e.ctrlKey === true) && e.key === 'k') {
-                        dialog.open ? closeModal() : openModal();
+                        if (dialog.open) {
+                            closeModal();
+                        } else {
+                            openModal();
+                        }
                         e.preventDefault();
                     }
                 },

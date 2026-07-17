@@ -115,7 +115,9 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
       const result = await client.parse({ uri: document.uri.toString(), text: document.getText() })
       findings = result.findings
     } catch (err) {
-      log(`zzfx CodeLens: parse failed for ${document.uri.toString()}: ${err instanceof Error ? err.message : err}`)
+      log(
+        `zzfx CodeLens: parse failed for ${document.uri.toString()}: ${err instanceof Error ? err.message : String(err)}`
+      )
       return []
     }
 
@@ -360,7 +362,7 @@ export class ZzfxCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
         try {
           client.didChange({ uri: key, text: document.getText() })
         } catch (err) {
-          log(`zzfx CodeLens: didChange notify failed: ${err instanceof Error ? err.message : err}`)
+          log(`zzfx CodeLens: didChange notify failed: ${err instanceof Error ? err.message : String(err)}`)
         }
       }, DIDCHANGE_DEBOUNCE_MS)
     )

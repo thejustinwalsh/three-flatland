@@ -7,7 +7,8 @@
   "rules": {
     "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
     "typescript/consistent-type-imports": ["error", { "prefer": "type-imports", "fixStyle": "inline-type-imports" }],
-    "typescript/no-import-type-side-effects": "error"
+    "typescript/no-import-type-side-effects": "error",
+    "react-hooks/exhaustive-deps": "warn"
   },
   "ignorePatterns": [
     "**/dist/**",

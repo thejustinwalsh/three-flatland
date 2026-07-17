@@ -340,13 +340,13 @@ const lifecycle = createContextLifecycle({
       try {
         toneApi.getContext().dispose()
       } catch (err) {
-        log(`tone context dispose failed (non-fatal): ${err instanceof Error ? err.message : err}`)
+        log(`tone context dispose failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
       }
       try {
         toneApi.setContext(ctx)
       } catch (err) {
         log(
-          `tone setContext failed — Tone stays bound to the OLD (dead) context; tone plays will Nack until it rebinds: ${err instanceof Error ? err.message : err}`
+          `tone setContext failed — Tone stays bound to the OLD (dead) context; tone plays will Nack until it rebinds: ${err instanceof Error ? err.message : String(err)}`
         )
       }
     }

@@ -102,7 +102,7 @@ async function startSidecar(context: vscode.ExtensionContext): Promise<CodelensS
     // `sidecar resolved →` line: name which artifact actually runs.
     log(`zzfx sidecar: binary resolved → ${binaryPath}`)
   } catch (err) {
-    log(`zzfx sidecar: binary not found — CodeLenses disabled: ${err instanceof Error ? err.message : err}`)
+    log(`zzfx sidecar: binary not found — CodeLenses disabled: ${err instanceof Error ? err.message : String(err)}`)
     return null
   }
 
@@ -123,7 +123,7 @@ async function startSidecar(context: vscode.ExtensionContext): Promise<CodelensS
     const init = await client.start()
     log(`zzfx sidecar: started v${init.version}${init.degraded ? ' (degraded — in-memory cache)' : ''}`)
   } catch (err) {
-    log(`zzfx sidecar: failed to start — CodeLenses disabled: ${err instanceof Error ? err.message : err}`)
+    log(`zzfx sidecar: failed to start — CodeLenses disabled: ${err instanceof Error ? err.message : String(err)}`)
     return null
   }
 

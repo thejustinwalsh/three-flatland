@@ -413,7 +413,8 @@ async function main() {
   // ── Tweakpane UI ──────────────────────────────────────────────────────
 
   // Default stats only; this example exposes no custom controls.
-  const { update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const updateDevtools = () => paneBundle.update()
   const devtools = createDevtoolsProvider({ name: 'hit-test' })
 
   // ── Resize ────────────────────────────────────────────────────────────

@@ -100,7 +100,7 @@ export class ZzfxLmService {
     try {
       return await vscode.lm.selectChatModels({ vendor: 'copilot' })
     } catch (err) {
-      log(`zzfx lm: selectChatModels failed: ${err instanceof Error ? err.message : err}`)
+      log(`zzfx lm: selectChatModels failed: ${err instanceof Error ? err.message : String(err)}`)
       return []
     }
   }
@@ -138,7 +138,7 @@ export class ZzfxLmService {
         log(`zzfx lm: ${err.code} — ${err.message}`)
         return null
       }
-      log(`zzfx lm: sendRequest failed: ${err instanceof Error ? err.message : err}`)
+      log(`zzfx lm: sendRequest failed: ${err instanceof Error ? err.message : String(err)}`)
       return null
     } finally {
       clearTimeout(timeout)

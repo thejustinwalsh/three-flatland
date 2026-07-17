@@ -466,7 +466,8 @@ async function main() {
   scene.add(floorEdge)
 
   // ── TweakPane debug controls ──
-  const { update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const updateDevtools = () => paneBundle.update()
   const devtools = createDevtoolsProvider({ name: 'skia' })
 
   // ── Animation loop ──

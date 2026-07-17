@@ -17,7 +17,7 @@ export type CompactSelectOption<V extends string = string> = {
 export type CompactSelectProps<V extends string = string> = {
   value: V
   options: readonly CompactSelectOption<V>[]
-  onChange(next: V): void
+  onChange: (next: V) => void
   /** Optional fixed width. Defaults to auto so the trigger sizes to its label. */
   width?: number | string
   /** Disabled — trigger inert, popover never opens. */

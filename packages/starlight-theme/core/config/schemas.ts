@@ -5,7 +5,7 @@ import { z } from 'zod'
 const linkHTMLAttributesSchema = z.record(
   z.string(),
   z.union([z.string(), z.number(), z.boolean(), z.undefined()])
-) as z.Schema<Omit<HTMLAttributes<'a'>, keyof AstroBuiltinAttributes | 'children'>>
+) as z.Schema<Omit<HTMLAttributes<'a'>, keyof AstroBuiltinAttributes>>
 
 const LinkItemHTMLAttributesSchema = () => linkHTMLAttributesSchema.default({})
 

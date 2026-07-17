@@ -57,7 +57,7 @@ export function buildOurDefs(schema: SchemaNode): SchemaDefs {
  * so it's pulled out here to align with the `ours` side's naming.
  */
 export function buildTheirDefs(generated: SchemaNode): SchemaDefs {
-  const defs = { ...((generated.definitions as SchemaDefs) ?? {}) }
+  const defs = { ...(generated.definitions as SchemaDefs) }
   const atlasJson = defs.AtlasJson as SchemaNode
   const meta = (atlasJson.properties as SchemaNode)?.meta as SchemaNode
   return { ...defs, MetaBase: meta }

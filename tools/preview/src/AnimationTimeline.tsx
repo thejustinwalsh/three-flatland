@@ -48,30 +48,30 @@ export type AnimationTimelineProps = {
    */
   getSmoothPlayhead?: () => number
   /** Click a cell to scrub the playhead there. */
-  onSeekGroup(groupIndex: number): void
+  onSeekGroup: (groupIndex: number) => void
   /**
    * Click on empty timeline space (not a cell) — clears any active
    * cell-highlight state in the App. Wired to the
    * AnimationRectHighlight overlay so the user can dismiss the
    * focused-frame chrome without leaving the timeline.
    */
-  onClearHighlight?(): void
+  onClearHighlight?: () => void
   /** Called with the new hold count for a group (Task 8). */
-  onChangeHold?(groupIndex: number, nextCount: number): void
+  onChangeHold?: (groupIndex: number, nextCount: number) => void
   /**
    * Called when one or more frames are dropped onto the timeline.
    * `insertIndex` is the position in the post-duplication frame
    * array. `frameNames` carries the dragged set (one entry for a
    * single drag, multiple for a multi-selection drag).
    */
-  onDropFrames?(insertIndex: number, frameNames: readonly string[]): void
+  onDropFrames?: (insertIndex: number, frameNames: readonly string[]) => void
   /**
    * Called when a timeline cell was dragged to a new gap. App
    * removes the group at `fromGroupIndex` and re-inserts it at
    * `toGap` atomically (with a one-step adjustment to handle the
    * removal-shift when toGap > fromGroupIndex).
    */
-  onReorderGroup?(fromGroupIndex: number, toGap: number): void
+  onReorderGroup?: (fromGroupIndex: number, toGap: number) => void
   /**
    * Map of frame-index-as-string → event tag, sourced from the
    * animation's `events` block. Cells whose group covers a tagged
@@ -84,7 +84,7 @@ export type AnimationTimelineProps = {
    * Pass an empty / null tag to remove. Caller persists into
    * the sidecar's `meta.animations[name].events`.
    */
-  onSetEvent?(frameIndex: number, tag: string | null): void
+  onSetEvent?: (frameIndex: number, tag: string | null) => void
 }
 
 /**

@@ -7,31 +7,31 @@ import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 
 export type AnimationDrawerHeaderProps = {
   expanded: boolean
-  onToggleExpanded(): void
+  onToggleExpanded: () => void
   /** Animation names in the current sidecar. May be empty. */
   animationNames: readonly string[]
   /** Currently selected animation, or null when none exists. */
   activeAnimation: string | null
-  onSelectAnimation(name: string): void
+  onSelectAnimation: (name: string) => void
   /** Called on +new click. Caller seeds the new animation from current selection. */
-  onCreateAnimation(): void
+  onCreateAnimation: () => void
   /** Called on Delete in the more menu. */
-  onDeleteAnimation(name: string): void
+  onDeleteAnimation: (name: string) => void
   /** Called on inline rename commit. */
-  onRenameAnimation(oldName: string, newName: string): void
+  onRenameAnimation: (oldName: string, newName: string) => void
   /** Playback. */
   isPlaying: boolean
-  onTogglePlay(): void
+  onTogglePlay: () => void
   /** Per-animation knobs. Disabled when no animation selected. */
   fps: number
   loop: boolean
   pingPong: boolean
-  onChangeFps(next: number): void
-  onChangeLoop(next: boolean): void
-  onChangePingPong(next: boolean): void
+  onChangeFps: (next: number) => void
+  onChangeLoop: (next: boolean) => void
+  onChangePingPong: (next: boolean) => void
   /** Floating preview window (PIP) visibility toggle. */
   pipVisible: boolean
-  onTogglePipVisible(): void
+  onTogglePipVisible: () => void
   /**
    * Set when the active animation currently has zero frames. Surfaces
    * a small warning icon next to the dropdown so the user knows the

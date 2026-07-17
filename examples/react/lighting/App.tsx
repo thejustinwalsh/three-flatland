@@ -198,14 +198,6 @@ interface Wanderer {
   retargetTimer: number
 }
 
-function newWanderer(halfW: number, halfH: number): Wanderer {
-  return {
-    pos: new Vector2((Math.random() - 0.5) * halfW * 0.6, (Math.random() - 0.5) * halfH * 0.6),
-    vel: new Vector2(),
-    retargetTimer: Math.random() * 2,
-  }
-}
-
 /**
  * Uniform spawn anywhere inside the playable map interior (the square
  * inside the wall tiles, shrunk by `entityHalf` so the sprite's centre
@@ -225,42 +217,6 @@ function newInteriorWanderer(halfW: number, halfH: number, entityHalf: number, w
     pos: new Vector2((Math.random() * 2 - 1) * mx, (Math.random() * 2 - 1) * my),
     vel: new Vector2(),
     retargetTimer: Math.random() * 2,
-  }
-}
-
-function updateWanderer(
-  w: Wanderer,
-  delta: number,
-  speed: number,
-  halfW: number,
-  halfH: number,
-  entityRadius = 0
-): void {
-  w.retargetTimer -= delta
-  if (w.retargetTimer <= 0) {
-    const a = Math.random() * Math.PI * 2
-    w.vel.set(Math.cos(a) * speed, Math.sin(a) * speed)
-    w.retargetTimer = 1 + Math.random() * 2
-  }
-  w.pos.x += w.vel.x * delta
-  w.pos.y += w.vel.y * delta
-  const mx = halfW - WALL_TILE - entityRadius
-  const my = halfH - WALL_TILE - entityRadius
-  if (w.pos.x > mx) {
-    w.pos.x = mx
-    w.vel.x = -Math.abs(w.vel.x)
-  }
-  if (w.pos.x < -mx) {
-    w.pos.x = -mx
-    w.vel.x = Math.abs(w.vel.x)
-  }
-  if (w.pos.y > my) {
-    w.pos.y = my
-    w.vel.y = -Math.abs(w.vel.y)
-  }
-  if (w.pos.y < -my) {
-    w.pos.y = -my
-    w.vel.y = Math.abs(w.vel.y)
   }
 }
 
@@ -839,8 +795,8 @@ function FlatlandScene(props: SceneProps) {
         }
 
         // Apply velocity (only non-zero during hop phase) + wall bounce.
-        // Bypasses `updateWanderer` because that function continuously
-        // retargets its own velocity; we drive vel explicitly here.
+        // Velocity is driven explicitly per hop above rather than
+        // continuously retargeted, so slimes rest between hops.
         s.anim.pos.x += s.anim.vel.x * delta
         s.anim.pos.y += s.anim.vel.y * delta
         if (s.anim.pos.x > slimeBoundX) {

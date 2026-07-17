@@ -28,7 +28,7 @@ export type AnimationPreviewPipProps = {
   /** Current playhead index (post-duplication). */
   playhead: number
   isPlaying: boolean
-  onTogglePlay(): void
+  onTogglePlay: () => void
   /**
    * Pixel-art filtering. When true, the shared atlas texture's
    * min/mag filter switches to `NearestFilter` (which propagates to
@@ -49,7 +49,7 @@ export type AnimationPreviewPipProps = {
    */
   pipScale?: AnimationPipScale
   /** Click handler for the scale toggle in the transport bar. */
-  onCycleScale?(): void
+  onCycleScale?: () => void
   /**
    * Per-frame event tags from the active animation's `events` block,
    * keyed by post-duplication frame index. When the playhead lands on

@@ -192,7 +192,7 @@ function tryPlayInline(context: vscode.ExtensionContext, params: number[]): bool
     playClient.play(params, getPlaybackVolumeMultiplier())
     return true
   } catch (err) {
-    log(`audio-play: inline play failed, falling back to panel: ${err instanceof Error ? err.message : err}`)
+    log(`audio-play: inline play failed, falling back to panel: ${err instanceof Error ? err.message : String(err)}`)
     return false
   }
 }
