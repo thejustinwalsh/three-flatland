@@ -48,7 +48,7 @@ With `rdynamic = false` (mandatory), wasm-ld roots DCE at these exports only. Ev
 
 ```sh
 pnpm --filter @three-flatland/image build:wasm   # zig build → libs/basis/*.wasm
-pnpm --filter @three-flatland/image build         # tsup → dist/
+pnpm --filter @three-flatland/image build         # tsdown → dist/
 pnpm --filter @three-flatland/image typecheck
 pnpm exec vitest run packages/image/src/...       # see Tests section
 ```
