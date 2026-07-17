@@ -270,7 +270,7 @@ svg = f'''<svg width="{W}" height="{H}" viewBox="0 0 {W} {H}" xmlns="http://www.
   <text x="236" y="170" class="wordmark" fill="{FG}" filter="url(#word-glow)">flatland <tspan fill="{GOLD}">tools</tspan></text>
   <text x="244" y="204" class="tagline" fill="{MUTED}">A tools suite for game and multimedia assets that never leaves your editor.</text>
 
-  <text x="1204" y="104" text-anchor="end" class="chip" fill="{GOLD}" opacity="0.92"># ext install three-flatland.tools</text>
+  <text x="1204" y="104" text-anchor="end" class="chip" fill="{GOLD}" opacity="0.92"># ext install three-flatland.fl-tools</text>
 
   <!-- signal rail: one gem stripe per tool in the suite -->
   <line x1="{RAIL_X}" y1="{SEP_Y}" x2="1204" y2="{SEP_Y}" stroke="#ffffff" stroke-opacity="0.06"/>
