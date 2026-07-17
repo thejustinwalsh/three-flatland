@@ -59,6 +59,10 @@
     "color": "#111418",
     "theme": "dark"
   },
+  "qna": false,
+  "extensionKind": [
+    "workspace"
+  ],
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -80,6 +84,33 @@
     }
   },
   "contributes": {
+    "walkthroughs": [
+      {
+        "id": "flatlandGettingStarted",
+        "title": "Get Started with Flatland Tools",
+        "description": "Sprite atlases, image encoding, normal maps, and inline audio — visual editors right in your editor.",
+        "steps": [
+          {
+            "id": "flatland.overview",
+            "title": "Five tools, one extension",
+            "description": "Flatland Tools adds five visual editors for game & multimedia assets. They surface two ways: **right-click asset files** in the Explorer, and a **▶ Play** CodeLens above audio calls in your code.\n\n[Open Flatland Tools settings](command:workbench.action.openSettings?%22threeFlatland%22)",
+            "media": { "markdown": "walkthroughs/overview.md" }
+          },
+          {
+            "id": "flatland.assets",
+            "title": "Edit sprites, images & normal maps",
+            "description": "Right-click a **.png**, **.ktx2**, or **.atlas.json** in the Explorer → **Flatland Tools** to open the Sprite Atlas, Image Encoder, Normal Baker, or Atlas Merge editor.",
+            "media": { "markdown": "walkthroughs/assets.md" }
+          },
+          {
+            "id": "flatland.audio",
+            "title": "Play audio inline",
+            "description": "Open a **.js** / **.ts** file with a `zzfx(...)`, `Tone`, or `Wad` sound call — a **▶ Play** CodeLens appears above it. Click to hear the sound without running your game.",
+            "media": { "markdown": "walkthroughs/audio.md" }
+          }
+        ]
+      }
+    ],
     "commands": [
       {
         "command": "threeFlatland.atlas.openEditor",

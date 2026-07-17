@@ -185,8 +185,16 @@ export function watchToolConfiguration(context: vscode.ExtensionContext): void {
           context.subscriptions.push(disposable)
           log(`toolRegistry: ${descriptor.label} enabled live`)
         } else if (action === 'dispose') {
-          live.get(descriptor.id)?.dispose()
+          const disposable = live.get(descriptor.id)
+          disposable?.dispose()
           live.delete(descriptor.id)
+          // Also drop it from context.subscriptions (it was pushed there on
+          // register): leaving disposed entries accumulates them across every
+          // off/on cycle and double-disposes each at deactivate().
+          if (disposable) {
+            const i = context.subscriptions.indexOf(disposable)
+            if (i !== -1) context.subscriptions.splice(i, 1)
+          }
           log(`toolRegistry: ${descriptor.label} disabled live`)
         } else {
           // 'reload-prompt-enable' | 'reload-prompt-disable' — context key
