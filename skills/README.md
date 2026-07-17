@@ -62,7 +62,7 @@ Validation combines [`skills-ref`](https://github.com/agentskills/agentskills) (
 
 ## Documentation
 
-Full docs at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**
+Full docs at **[tjw.dev/three-flatland](https://tjw.dev/three-flatland/)**
 
 ## License
 
