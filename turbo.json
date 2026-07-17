@@ -99,7 +99,7 @@
       "cache": false
     },
     "//#lint": {
-      "inputs": ["packages/*/src/**", "minis/*/src/**", "eslint.config.*", "package.json"],
+      "inputs": ["packages/*/src/**", "minis/*/src/**", "tools/*/src/**", "examples/**", ".oxlintrc.json", "package.json"],
       "outputs": []
     },
     "//#test": {

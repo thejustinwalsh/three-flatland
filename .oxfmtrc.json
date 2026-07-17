@@ -1,0 +1,9 @@
+{
+  "semi": false,
+  "singleQuote": true,
+  "tabWidth": 2,
+  "trailingComma": "es5",
+  "printWidth": 120,
+  "sortPackageJson": false,
+  "ignorePatterns": ["**/*.gen.ts", "**/*.generated.ts", "**/gem.ts", "docs/src/data/example-gems.ts"]
+}

@@ -23,7 +23,7 @@
     "build": "tsdown",
     "build:app": "vite build",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
+    "lint": "oxlint --type-aware src",
     "lint:fix": "eslint src --fix",
     "clean": "rm -rf dist"
   },
