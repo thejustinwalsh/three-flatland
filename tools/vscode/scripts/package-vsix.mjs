@@ -111,7 +111,7 @@ if (!hasImagesBase) {
 // otherwise, for BOTH a bare local `pnpm run package` and the CI publish
 // path (whose assemble-and-package job builds these in dedicated steps
 // before calling `pnpm run package`). This only VERIFIES — it must NOT
-// build the sidecars itself: CI assembles all five platforms' codelens
+// build the sidecars itself: CI assembles all six platforms' codelens
 // binaries into bin/ before this point, and a current-platform-only
 // `bundle:sidecars` here would clobber that universal set down to one.
 const codelensBin = `bin/${process.platform}-${process.arch}/codelens-service${
