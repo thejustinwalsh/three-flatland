@@ -19,7 +19,7 @@
 
 import { execSync, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, chmodSync, cpSync, rmSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { canBuildWasm, fetchPrebuiltWasm } from "./prebuilt-wasm.mjs";
@@ -88,7 +88,7 @@ function run(cmd, opts = {}) {
     return execSync(cmd, {
       stdio: opts.silent ? "pipe" : "inherit",
       cwd: opts.cwd || PKG_ROOT,
-      env: { ...process.env, PATH: `${TOOLS_BIN}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${TOOLS_BIN}${delimiter}${process.env.PATH}` },
       ...opts,
     });
   } catch (e) {
@@ -99,7 +99,7 @@ function run(cmd, opts = {}) {
 
 function which(name) {
   try {
-    const p = execSync(`which ${name}`, { stdio: "pipe", env: { ...process.env, PATH: `${TOOLS_BIN}:${process.env.PATH}` } });
+    const p = execSync(`which ${name}`, { stdio: "pipe", env: { ...process.env, PATH: `${TOOLS_BIN}${delimiter}${process.env.PATH}` } });
     return p.toString().trim();
   } catch {
     return null;
@@ -110,7 +110,7 @@ function getVersion(name) {
   try {
     const out = execSync(`${name} --version`, {
       stdio: "pipe",
-      env: { ...process.env, PATH: `${TOOLS_BIN}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${TOOLS_BIN}${delimiter}${process.env.PATH}` },
     });
     return out.toString().trim();
   } catch {

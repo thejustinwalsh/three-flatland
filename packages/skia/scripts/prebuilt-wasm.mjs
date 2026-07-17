@@ -10,7 +10,7 @@
 // the CI-published WASM from npm (integrity-checked against prebuilt-wasm.json)
 // instead of failing.
 
-import { execSync } from 'node:child_process'
+import { execSync, execFileSync } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
@@ -21,7 +21,7 @@ import {
   rmSync,
 } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { resolve, dirname, join } from 'node:path'
+import { resolve, dirname, join, delimiter } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
@@ -33,7 +33,7 @@ const MANIFEST = resolve(PKG_ROOT, 'prebuilt-wasm.json')
 
 // Same PATH augmentation build-wasm.mjs / setup.mjs use, so the probe picks up
 // the pinned Zig in .tools/bin when present.
-const env = { ...process.env, PATH: `${TOOLS_BIN}:${process.env.PATH}` }
+const env = { ...process.env, PATH: `${TOOLS_BIN}${delimiter}${process.env.PATH}` }
 
 /**
  * Can Zig link a trivial native binary on this host? Fast, deterministic, and
@@ -45,7 +45,14 @@ export function canBuildWasm() {
   const dir = mkdtempSync(join(tmpdir(), 'skia-zig-probe-'))
   try {
     writeFileSync(join(dir, 'probe.zig'), 'pub fn main() void {}\n')
-    execSync('zig build-exe probe.zig -femit-bin=probe', { cwd: dir, stdio: 'ignore', env })
+    // Bound the probe so a hung linker (a failure mode this very check guards
+    // against) fails fast into the prebuilt fallback instead of stalling setup.
+    execSync('zig build-exe probe.zig -femit-bin=probe', {
+      cwd: dir,
+      stdio: 'ignore',
+      env,
+      timeout: 15_000,
+    })
     return true
   } catch {
     return false
@@ -74,26 +81,33 @@ export function fetchPrebuiltWasm(variants = ['gl', 'wgpu'], { dist = DIST } = {
   }
   const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'))
   const spec = `${manifest.package}@${manifest.version}`
-  const wanted = variants
-    .map((v) => `skia-${v}/skia-${v}.wasm`)
-    .filter((a) => manifest.artifacts[a])
+  const wanted = variants.map((v) => `skia-${v}/skia-${v}.wasm`)
   if (wanted.length === 0) {
-    console.error('  no matching prebuilt artifacts in the manifest')
+    console.error('  no variants requested')
+    return false
+  }
+  // Require EVERY requested variant to be in the manifest. Silently dropping a
+  // missing one would copy a partial set yet still report success, leaving a
+  // variant's .wasm absent while callers believe prebuilt WASM is in place.
+  const missing = wanted.filter((a) => !manifest.artifacts[a])
+  if (missing.length > 0) {
+    console.error(`  prebuilt manifest is missing artifact(s): ${missing.join(', ')}`)
     return false
   }
   const tmp = mkdtempSync(join(tmpdir(), 'skia-prebuilt-'))
   try {
     console.log(`  fetching prebuilt WASM from ${spec} ...`)
     const packed = JSON.parse(
-      execSync(`npm pack ${spec} --pack-destination ${tmp} --json`, {
+      execFileSync('npm', ['pack', spec, '--pack-destination', tmp, '--json'], {
         cwd: tmp,
         encoding: 'utf8',
         env,
+        timeout: 60_000,
       })
     )
     const tarball = resolve(tmp, packed[0].filename)
-    const members = wanted.map((a) => `package/dist/${a}`).join(' ')
-    execSync(`tar -xzf ${tarball} -C ${tmp} ${members}`, { cwd: tmp })
+    const members = wanted.map((a) => `package/dist/${a}`)
+    execFileSync('tar', ['-xzf', tarball, '-C', tmp, ...members], { cwd: tmp, timeout: 30_000 })
     for (const artifact of wanted) {
       const src = resolve(tmp, 'package/dist', artifact)
       if (!existsSync(src)) {
@@ -122,7 +136,10 @@ export function fetchPrebuiltWasm(variants = ['gl', 'wgpu'], { dist = DIST } = {
 }
 
 // CLI: `node scripts/prebuilt-wasm.mjs [gl|wgpu ...]`
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Portable entrypoint check — comparing a raw `file://` + argv[1] string breaks
+// on Windows paths (backslashes) and isn't guaranteed by Node; resolve both to a
+// canonical form instead.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const variants = process.argv.slice(2).filter((a) => ['gl', 'wgpu'].includes(a))
   process.exit(fetchPrebuiltWasm(variants.length ? variants : ['gl', 'wgpu']) ? 0 : 1)
 }

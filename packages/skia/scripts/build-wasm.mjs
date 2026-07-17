@@ -33,7 +33,7 @@
 
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canBuildWasm, fetchPrebuiltWasm } from "./prebuilt-wasm.mjs";
 
@@ -51,7 +51,7 @@ const witOnly = args.includes("--wit-only");
 const TOOLS_BIN = resolve(PKG_ROOT, ".tools/bin");
 const augmentedEnv = {
   ...process.env,
-  PATH: `${TOOLS_BIN}:${process.env.PATH}`,
+  PATH: `${TOOLS_BIN}${delimiter}${process.env.PATH}`,
   // WSL2: Zig's cache needs atomic renames which fail on NTFS (/mnt/).
   // Redirect both caches to a native Linux tmpdir if we detect WSL.
   ...(process.env.WSL_DISTRO_NAME && !process.env.ZIG_LOCAL_CACHE_DIR
