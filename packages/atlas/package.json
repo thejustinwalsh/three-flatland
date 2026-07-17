@@ -11,6 +11,11 @@
       "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./vite": {
+      "source": "./src/vite-plugin.ts",
+      "types": "./dist/vite-plugin.d.ts",
+      "import": "./dist/vite-plugin.js"
     }
   },
   "module": "./dist/index.js",
@@ -26,10 +31,19 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "pngjs": "^7.0.0"
+    "pngjs": "catalog:"
+  },
+  "peerDependencies": {
+    "vite": "^5.0.0 || ^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@types/pngjs": "^6.0.5"
+    "@types/pngjs": "catalog:",
+    "vite": "catalog:"
   },
   "keywords": [
     "three-flatland",
