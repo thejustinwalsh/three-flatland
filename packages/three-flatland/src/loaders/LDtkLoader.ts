@@ -419,7 +419,7 @@ export class LDtkLoader extends Loader<TileMapData> {
         uv: this.calculateUV(custom.tileId, def),
       }
       const merged: Record<string, unknown> = {
-        ...(existing.properties ?? {}),
+        ...existing.properties,
         customData: custom.data,
       }
       try {

@@ -735,7 +735,7 @@ async function main() {
       updateSplitUI()
     })
   mode.addBinding(params, 'forceRuntime', { label: 'runtime' }).on('change', () => {
-    loadFont()
+    void loadFont()
   })
   mode.addBinding(monitors, 'source', { readonly: true })
   mode.addBinding(monitors, 'glyphs', { readonly: true, format: (v: number) => v.toFixed(0) })
@@ -900,7 +900,7 @@ async function main() {
   animate()
 }
 
-main()
+void main()
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

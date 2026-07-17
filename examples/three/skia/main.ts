@@ -2,7 +2,6 @@ import { WebGPURenderer } from 'three/webgpu'
 import {
   Scene,
   PerspectiveCamera,
-  OrthographicCamera,
   Fog,
   Mesh,
   PlaneGeometry,
@@ -17,12 +16,9 @@ import {
   reflector,
   color as tslColor,
   positionWorld,
-  cameraPosition,
   uv,
   vec2,
-  hash,
   float as tslFloat,
-  mx_worley_noise_float,
   smoothstep as tslSmoothstep,
   length as tslLength,
 } from 'three/tsl'

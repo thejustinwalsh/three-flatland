@@ -12,7 +12,7 @@ import {
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { texture, textureLevel, uv, screenUV, select, uniform, mix, vec2, vec3, vec4, float, dot } from 'three/tsl'
-import { type ImageSource } from './ThreeLayer'
+import type { ImageSource } from './ThreeLayer'
 
 export type { ImageSource }
 

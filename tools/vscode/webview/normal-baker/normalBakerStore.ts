@@ -200,7 +200,7 @@ export const useNormalBakerStore = create<NormalBakerStoreState>()(
           return {
             ...current,
             ...(p.regionListPx !== undefined ? { regionListPx: p.regionListPx } : {}),
-            splits: { ...current.splits, ...(p.splits ?? {}) },
+            splits: { ...current.splits, ...p.splits },
             infoSections: {
               ...current.infoSections,
               ...(legacyPreview !== undefined ? { normal: legacyPreview, lit: legacyPreview } : {}),

@@ -221,7 +221,7 @@ export const useMergeStore = create<MergeStoreState>()(
               set((s) => {
                 const sources = s.sources.map((src) => {
                   if (src.uri !== uri) return src
-                  const next = { ...(src.renames.frames ?? {}) }
+                  const next = { ...src.renames.frames }
                   if (merged === null) delete next[original]
                   else next[original] = merged
                   return { ...src, renames: { ...src.renames, frames: next } }
@@ -239,7 +239,7 @@ export const useMergeStore = create<MergeStoreState>()(
               set((s) => {
                 const sources = s.sources.map((src) => {
                   if (src.uri !== uri) return src
-                  const next = { ...(src.renames.animations ?? {}) }
+                  const next = { ...src.renames.animations }
                   if (merged === null) delete next[original]
                   else next[original] = merged
                   return { ...src, renames: { ...src.renames, animations: next } }

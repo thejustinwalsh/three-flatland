@@ -1,6 +1,6 @@
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { OrthographicCamera } from 'three'
+import type { OrthographicCamera } from 'three'
 import { SlugText, SlugStackText, SlugFontLoader, SlugFontStack } from '@three-flatland/slug/react'
 import type { SlugFont, StyleSpan, TextMetrics } from '@three-flatland/slug/react'
 import {
@@ -984,15 +984,17 @@ export default function App() {
   // overlay aligned with the Slug shaping on first paint.
   useEffect(() => {
     let cancelled = false
-    Promise.allSettled([document.fonts.load('48px Inter-Slug'), document.fonts.load('48px FA-Solid')]).finally(() => {
-      SlugFontLoader.load(FONT_URL, { forceRuntime })
-        .then((f) => {
-          if (!cancelled) setFont(f)
-        })
-        .catch((err) => {
-          if (!cancelled) console.error('[slug-text] Inter load failed:', err)
-        })
-    })
+    void Promise.allSettled([document.fonts.load('48px Inter-Slug'), document.fonts.load('48px FA-Solid')]).finally(
+      () => {
+        SlugFontLoader.load(FONT_URL, { forceRuntime })
+          .then((f) => {
+            if (!cancelled) setFont(f)
+          })
+          .catch((err) => {
+            if (!cancelled) console.error('[slug-text] Inter load failed:', err)
+          })
+      }
+    )
     return () => {
       cancelled = true
     }

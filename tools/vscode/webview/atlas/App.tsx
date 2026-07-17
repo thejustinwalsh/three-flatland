@@ -1295,7 +1295,7 @@ export function App() {
         const anim = prev[activeAnimation]
         if (!anim) return prev
         const key = String(frameIndex)
-        const nextEvents: Record<string, string> = { ...(anim.events ?? {}) }
+        const nextEvents: Record<string, string> = { ...anim.events }
         if (tag == null || tag === '') delete nextEvents[key]
         else nextEvents[key] = tag
         const cleaned = Object.keys(nextEvents).length > 0 ? nextEvents : undefined

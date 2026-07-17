@@ -111,9 +111,10 @@ export class PlaySidecarClient {
         // lets a listener react to a specific failure mode without a
         // formal request id.
         this.emitError(
-          Object.assign(new Error(`audio-play: ${response.cmd} failed: ${response.error}`), {
-            ...(response.code !== undefined ? { code: response.code } : {}),
-          })
+          Object.assign(
+            new Error(`audio-play: ${response.cmd} failed: ${response.error}`),
+            response.code !== undefined ? { code: response.code } : {}
+          )
         )
       }
     })

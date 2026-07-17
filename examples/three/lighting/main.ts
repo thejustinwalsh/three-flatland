@@ -859,7 +859,7 @@ async function main() {
     updateDevtools()
   }
 
-  renderer.setAnimationLoop(animate)
+  void renderer.setAnimationLoop(animate)
 
   // ─── Single-shot scene recorder ──────────────────────────────────
   //
@@ -993,4 +993,4 @@ async function main() {
   }
 }
 
-main()
+void main()

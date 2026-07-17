@@ -288,7 +288,7 @@ export class CodelensServiceClient {
         timedOut = true
         resolve()
       }, timeoutMs)
-      exited.then(() => clearTimeout(handle))
+      void exited.then(() => clearTimeout(handle))
     })
     await Promise.race([exited, timer])
 

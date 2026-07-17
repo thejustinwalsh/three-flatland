@@ -1,4 +1,4 @@
-import * as vscode from 'vscode'
+import type * as vscode from 'vscode'
 import type { PlaybackStats } from '@three-flatland/audio-play'
 import { registerWasmTest } from './tools/_wasm-test/register'
 import type { ZzfxHistoryBatch } from '../webview/audio/protocol'

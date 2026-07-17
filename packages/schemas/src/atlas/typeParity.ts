@@ -46,7 +46,7 @@ export function buildOurDefs(schema: SchemaNode): SchemaDefs {
   const meta = properties.meta as SchemaNode
   const metaRef = (meta.allOf as SchemaNode[] | undefined)?.[0]
   if (metaRef?.$ref) properties.meta = { $ref: metaRef.$ref }
-  return { AtlasJson: { ...root, properties }, ...($defs ?? {}) }
+  return { AtlasJson: { ...root, properties }, ...$defs }
 }
 
 /**
