@@ -121,5 +121,10 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/slug"
+  },
+  "nx": {
+    "tags": [
+      "scope:sibling"
+    ]
   }
 }

@@ -42,5 +42,10 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/atlas"
+  },
+  "nx": {
+    "tags": [
+      "scope:sibling"
+    ]
   }
 }

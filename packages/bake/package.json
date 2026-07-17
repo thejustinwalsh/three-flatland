@@ -56,5 +56,10 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/bake"
+  },
+  "nx": {
+    "tags": [
+      "scope:sibling"
+    ]
   }
 }
