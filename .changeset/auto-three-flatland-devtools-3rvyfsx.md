@@ -5,25 +5,20 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
+## Flight recorder (dashboard)
 
-## Changes
+- Protocol store persists all messages to IndexedDB with size-based quota and throttled pruning, so long sessions no longer grow the store unbounded — each provider keeps its own protected recent-history tail
+- Added an always-on rolling ring buffer for the selected buffer's encoded chunks and stats, windowed by wall-clock time; freezing clones the ring and parks the frame cursor while live ingest continues underneath
+- Buffers panel decodes frozen recordings for scrub playback; unfreeze is wired into every existing "go live" affordance (LIVE button, double-click, Esc)
+- Generalized from single-buffer to multi-buffer: buffers panel supports marking and viewing several buffers at once on a responsive grid (1/2/2x2/3x2/3x3) with a soft guardrail past ~4 concurrent streams
+- Registry panel supports multi-select via a pinned-tabs strip (Ctrl/Cmd-click to pin) and reconstructs state at the parked frame from the nearest checkpoint plus forward deltas
+- Protocol-store ingest moved to dashboard bootstrap, decoupling persistence from the Protocol Log panel's mount/pause state — pause now only freezes that panel's own list
+- `ProtocolStore.addFlushListener` lets the registry panel's parked reconstruction re-query as soon as a write batch durably commits, closing a race with stale reads
 
-**Flight recorder (new)** — pause the live dashboard, scrub back through recent history, and replay decoded buffer frames:
+### Fixes
+- Frozen scrubber claimable range is now correctly intersected against the primary stats ring instead of unioned, so a narrow marked-buffer window can no longer be overridden by a wider stats window
+- Scrub decode outputs are correlated back to their originating request via a FIFO tracker, so a rapid cursor move during scrubbing can no longer draw a stale/superseded frame
+- Protocol store quota pruning: per-provider tail windows are now sized by each provider's own retained id count (not a shared global id span), in-memory counters roll back on failed writes, a one-shot timer catches bursts followed by silence, `dispose()` cleans up timers and the IDB connection, and `retainedRange()` recovers correctly when a prune pass stops early
 
-- Protocol log persistence now runs unconditionally at dashboard bootstrap, independent of any panel's mount state or Pause toggle — Pause only freezes that panel's own list, not the underlying record
-- Size-based IndexedDB quota + pruning for the protocol store: a byte budget (via `navigator.storage.estimate()`, capped/overridable, with a fixed fallback) with throttled oldest-first pruning that never touches a provider's pinned tail window; `retainedRange()` exposes what actually survives per provider
-- Rolling ring buffer for encoded buffer chunks + a stats-arrival log, windowed by wall-clock time (10s chunks, 30s stats), with eviction that never removes the newest keyframe still inside the window
-- Freeze/unfreeze: freezing clones the ring and parks the frame cursor while live ingest continues underneath; unfreeze is wired into every existing "go live" action (LIVE button, double-click, Esc)
-- While frozen, the buffers panel decodes the ring's keyframe-anchored chain for the parked cursor frame via a dedicated scrub decoder, replacing the old "no playback yet" placeholder with an actual frame
-- Registry checkpoint snapshots: periodic full-state resends so reconstructing registry state at a parked frame only has to replay from the nearest checkpoint, not from the start of history
-- Multi-buffer support: mark and view several buffers at once on a responsive grid (1 / 2 / 2x2 / 3x2 / 3x3) with per-cell decode and a soft guardrail past ~4 concurrent streams; registry panel gains multi-select via pinned tabs (Ctrl/Cmd-click to pin)
-
-**Fixes**
-
-- Frozen claimable scrub range is now correctly intersected (not unioned) between marked buffers' chunk ranges and the primary stats ring's range, so the scrubber can no longer claim frames a buffer's decode chain can't resolve
-- Scrub decode outputs are now correlated to the request that issued them (FIFO tracker) instead of a plain counter, preventing a superseded request's late output from being drawn as the wrong frame during rapid cursor movement
-- Protocol store quota pruning: per-provider tail windows are now pinned by each provider's own retained id count (not a shared global id span); in-memory accounting rolls back on failed write-batch commits; a one-shot timer arms pruning after a throttled over-budget push so a quiet period still triggers it; `dispose()` cancels background timers and closes the IDB connection; `statsFor().total` is derived directly from retained ids; `retainedRange().oldestFrame` recovers correctly when a prune pass stops before observing the first survivor
-
-## Summary
-
-Adds a full "flight recorder" to the devtools dashboard — persistent protocol history with quota-based pruning, a rolling chunk ring with freeze/scrub/replay, registry checkpoint snapshots, and multi-buffer grid viewing — plus a run of adversarial-review fixes closing races and correctness gaps across the new persistence, ring, and scrub-decode paths.
+### Summary
+Ships the devtools flight recorder: persisted, quota-managed protocol history with time-travel scrub playback across multiple buffers and multi-select registry reconstruction, plus several correctness fixes found in adversarial review.
