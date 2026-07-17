@@ -7,9 +7,9 @@
 
 ### Fixes
 
-- Fixed `skia:fetch-wasm` silently no-op'ing on Windows by replacing a raw `file://` string compare with a portable CLI entrypoint check (`resolve(argv[1]) === fileURLToPath(url)`).
-- Fixed hard-coded `:` PATH separator across `build-wasm`, `compare-builds`, `prebuilt-wasm`, and `setup` scripts — now uses `path.delimiter` for cross-platform correctness.
-- Fixed `fetchPrebuiltWasm` reporting success on a partial manifest match — it now requires every requested wasm variant to be present before returning true, preventing missing artifacts from going undetected.
-- Bounded external command execution: added a 15s timeout on the Zig probe and 60s/30s timeouts with `execFileSync` (no shell interpolation) on `npm pack`/`tar`, preventing indefinite hangs.
+- Fix `skia:fetch-wasm` CLI entrypoint check silently no-op'ing on Windows — now resolves `argv[1]` and compares against the canonical `fileURLToPath(import.meta.url)` instead of a raw `file://` string concat.
+- Fix `PATH` augmentation in `build-wasm.mjs`, `compare-builds.mjs`, `prebuilt-wasm.mjs`, and `setup.mjs` to use `path.delimiter` instead of a hard-coded `:`, so the pinned Zig toolchain in `.tools/bin` is picked up correctly on Windows.
+- Fix `fetchPrebuiltWasm` silently reporting success on a partial manifest match — it now requires every requested variant (`gl`, `wgpu`) to be present in `prebuilt-wasm.json`, failing loudly instead of leaving a variant's `.wasm` missing.
+- Harden external command execution: 15s timeout on the Zig build probe (fails fast into the prebuilt-wasm fallback instead of hanging on a stuck linker), and `execFileSync` with 60s/30s timeouts for `npm pack` / `tar` (removes shell interpolation and unbounded hangs).
 
-Summary: hardens the skia prebuilt-wasm fetch pipeline against Windows entrypoint detection, PATH handling, partial-manifest false positives, and hung external processes.
+Addresses PR #164 review feedback (CodeRabbit + Fro Bot). Verified via `node --check` on all four scripts, an offline missing-variant guard test, and an end-to-end prebuilt-WASM fetch that writes sha256-verified artifacts.
