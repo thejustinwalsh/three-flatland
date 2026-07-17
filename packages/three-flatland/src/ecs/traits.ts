@@ -272,11 +272,7 @@ export const PostPassRegistry = trait(() => ({
 /** AoS — holds a lighting ColorTransformFn and enabled state. */
 export const LightEffectTrait = trait(() => ({
   fn: null as
-    | ((ctx: {
-        color: Node<'vec4'>
-        atlasUV: Node<'vec2'>
-        worldPosition: Node<'vec2'>
-      }) => Node<'vec4'>)
+    | ((ctx: { color: Node<'vec4'>; atlasUV: Node<'vec2'>; worldPosition: Node<'vec2'> }) => Node<'vec4'>)
     | null,
   enabled: true,
 }))

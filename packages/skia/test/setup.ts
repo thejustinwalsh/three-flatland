@@ -24,24 +24,74 @@ function getWasmImports(data: Buffer): Array<{ module: string; name: string }> {
   const imports: Array<{ module: string; name: string }> = []
   let i = 8
   while (i < data.length) {
-    const sectionId = data[i]!; i++
-    let size = 0, shift = 0
-    while (true) { const b = data[i]!; i++; size |= (b & 0x7f) << shift; shift += 7; if (!(b & 0x80)) break }
+    const sectionId = data[i]!
+    i++
+    let size = 0,
+      shift = 0
+    while (true) {
+      const b = data[i]!
+      i++
+      size |= (b & 0x7f) << shift
+      shift += 7
+      if (!(b & 0x80)) break
+    }
     const sectionEnd = i + size
     if (sectionId === 2) {
-      let count = 0; shift = 0
-      while (true) { const b = data[i]!; i++; count |= (b & 0x7f) << shift; shift += 7; if (!(b & 0x80)) break }
+      let count = 0
+      shift = 0
+      while (true) {
+        const b = data[i]!
+        i++
+        count |= (b & 0x7f) << shift
+        shift += 7
+        if (!(b & 0x80)) break
+      }
       for (let j = 0; j < count; j++) {
-        let modLen = 0; shift = 0
-        while (true) { const b = data[i]!; i++; modLen |= (b & 0x7f) << shift; shift += 7; if (!(b & 0x80)) break }
-        const mod = data.subarray(i, i + modLen).toString('utf-8'); i += modLen
-        let nameLen = 0; shift = 0
-        while (true) { const b = data[i]!; i++; nameLen |= (b & 0x7f) << shift; shift += 7; if (!(b & 0x80)) break }
-        const name = data.subarray(i, i + nameLen).toString('utf-8'); i += nameLen
-        const kind = data[i]!; i++
-        if (kind === 0) { shift = 0; while (true) { const b = data[i]!; i++; if (!(b & 0x80)) break } }
-        else if (kind === 1) { i += 3 } else if (kind === 2) { i += 2 }
-        else if (kind === 3) { i += 2 } else if (kind === 4) { shift = 0; while (true) { const b = data[i]!; i++; if (!(b & 0x80)) break } }
+        let modLen = 0
+        shift = 0
+        while (true) {
+          const b = data[i]!
+          i++
+          modLen |= (b & 0x7f) << shift
+          shift += 7
+          if (!(b & 0x80)) break
+        }
+        const mod = data.subarray(i, i + modLen).toString('utf-8')
+        i += modLen
+        let nameLen = 0
+        shift = 0
+        while (true) {
+          const b = data[i]!
+          i++
+          nameLen |= (b & 0x7f) << shift
+          shift += 7
+          if (!(b & 0x80)) break
+        }
+        const name = data.subarray(i, i + nameLen).toString('utf-8')
+        i += nameLen
+        const kind = data[i]!
+        i++
+        if (kind === 0) {
+          shift = 0
+          while (true) {
+            const b = data[i]!
+            i++
+            if (!(b & 0x80)) break
+          }
+        } else if (kind === 1) {
+          i += 3
+        } else if (kind === 2) {
+          i += 2
+        } else if (kind === 3) {
+          i += 2
+        } else if (kind === 4) {
+          shift = 0
+          while (true) {
+            const b = data[i]!
+            i++
+            if (!(b & 0x80)) break
+          }
+        }
         imports.push({ module: mod, name })
       }
       break
@@ -103,4 +153,6 @@ async function createMockContext(): Promise<SkiaContext> {
 vi.spyOn(SkiaContext, 'create').mockImplementation(createMockContext)
 
 // Log which backend is being tested
-console.log(`\n  Testing with ${BACKEND.toUpperCase()} backend (${BACKEND === 'wgpu' ? 'skia-wgpu.wasm' : 'skia-gl.wasm'})\n`)
+console.log(
+  `\n  Testing with ${BACKEND.toUpperCase()} backend (${BACKEND === 'wgpu' ? 'skia-wgpu.wasm' : 'skia-gl.wasm'})\n`
+)

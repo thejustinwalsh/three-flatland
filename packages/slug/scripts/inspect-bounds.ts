@@ -9,14 +9,7 @@ const { glyphs, unitsPerEm, ascender, descender } = parseFont(ab)
 const font = opentype.parse(ab)
 
 console.log('Font metrics (em):')
-console.log(
-  '  unitsPerEm:',
-  unitsPerEm,
-  'ascender:',
-  ascender.toFixed(3),
-  'descender:',
-  descender.toFixed(3)
-)
+console.log('  unitsPerEm:', unitsPerEm, 'ascender:', ascender.toFixed(3), 'descender:', descender.toFixed(3))
 console.log('  fontBoundingBox span (em):', (ascender - descender).toFixed(3))
 console.log()
 
@@ -70,15 +63,7 @@ const baked = {
   kernCount: 0,
 } as unknown as BakedFontData
 
-const bm = measureTextBaked(
-  baked,
-  glyphs as Map<number, SlugGlyphData>,
-  unitsPerEm,
-  ascender,
-  descender,
-  line,
-  48
-)
+const bm = measureTextBaked(baked, glyphs as Map<number, SlugGlyphData>, unitsPerEm, ascender, descender, line, 48)
 console.log()
 console.log('measureText BAKED path:')
 console.log(`  width=${bm.width.toFixed(2)}`)

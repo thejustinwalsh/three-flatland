@@ -14,11 +14,7 @@ function isNode(): boolean {
 
 async function loadWasmFromDisk(relPath: string): Promise<WebAssembly.Module> {
   // Node-only path. The dynamic imports keep `node:*` out of browser bundles.
-  const [fs, path, url] = await Promise.all([
-    import('node:fs'),
-    import('node:path'),
-    import('node:url'),
-  ])
+  const [fs, path, url] = await Promise.all([import('node:fs'), import('node:path'), import('node:url')])
   const here = path.dirname(url.fileURLToPath(import.meta.url))
   const wasmPath = path.join(here, relPath)
   const bytes = fs.readFileSync(wasmPath)
@@ -32,12 +28,8 @@ function ensureWasm(): Promise<void> {
     // @jsquash/avif ships separate decode + encode WASM modules.
     // Actual filenames: codec/dec/avif_dec.wasm and codec/enc/avif_enc.wasm
     // (avif_enc_mt.wasm is the multi-threaded variant; Node uses the single-threaded one)
-    const decModule = await loadWasmFromDisk(
-      '../../node_modules/@jsquash/avif/codec/dec/avif_dec.wasm',
-    )
-    const encModule = await loadWasmFromDisk(
-      '../../node_modules/@jsquash/avif/codec/enc/avif_enc.wasm',
-    )
+    const decModule = await loadWasmFromDisk('../../node_modules/@jsquash/avif/codec/dec/avif_dec.wasm')
+    const encModule = await loadWasmFromDisk('../../node_modules/@jsquash/avif/codec/enc/avif_enc.wasm')
     await initDecode(decModule)
     await initEncode(encModule)
   })()

@@ -89,16 +89,8 @@ export function slugRender(
     : float(1.0)
 
   // Determine band indices from band transform
-  const bandIdxX = clamp(
-    renderCoord.x.mul(bandTransform.x).add(bandTransform.z),
-    0,
-    numVBands.sub(1)
-  )
-  const bandIdxY = clamp(
-    renderCoord.y.mul(bandTransform.y).add(bandTransform.w),
-    0,
-    numHBands.sub(1)
-  )
+  const bandIdxX = clamp(renderCoord.x.mul(bandTransform.x).add(bandTransform.z), 0, numVBands.sub(1))
+  const bandIdxY = clamp(renderCoord.y.mul(bandTransform.y).add(bandTransform.w), 0, numHBands.sub(1))
 
   const glyphLocXi = int(glyphLocX)
   const glyphLocYi = int(glyphLocY)

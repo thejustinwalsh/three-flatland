@@ -70,25 +70,21 @@ describe('auto-batch tier defaults (batchUtils)', () => {
     expect(meshes[0]!.activeCount).toBe(200)
   })
 
-  it(
-    'bulk prime: 40000 sprites in one pass create exactly 3 batches, all top-tier (16384)',
-    () => {
-      const sprites: Sprite2D[] = []
-      for (let i = 0; i < 40000; i++) {
-        sprites.push(new Sprite2D({ texture, material }))
-      }
-      for (const sprite of sprites) group.add(sprite)
-      group.update()
+  it('bulk prime: 40000 sprites in one pass create exactly 3 batches, all top-tier (16384)', () => {
+    const sprites: Sprite2D[] = []
+    for (let i = 0; i < 40000; i++) {
+      sprites.push(new Sprite2D({ texture, material }))
+    }
+    for (const sprite of sprites) group.add(sprite)
+    group.update()
 
-      const meshes = activeMeshes(group)
-      expect(meshes.length).toBe(3)
-      for (const mesh of meshes) expect(mesh.maxSize).toBe(16384)
+    const meshes = activeMeshes(group)
+    expect(meshes.length).toBe(3)
+    for (const mesh of meshes) expect(mesh.maxSize).toBe(16384)
 
-      const total = meshes.reduce((sum, m) => sum + m.activeCount, 0)
-      expect(total).toBe(40000)
-    },
-    20000
-  )
+    const total = meshes.reduce((sum, m) => sum + m.activeCount, 0)
+    expect(total).toBe(40000)
+  }, 20000)
 
   it('trickle growth: adding 100 at a time up to 6000 ladders 1024 → 4096 → 16384-partial', () => {
     let placed = 0

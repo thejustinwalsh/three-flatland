@@ -3,12 +3,7 @@ import { attribute, vec2, vec3, vec4, float, Fn, mix, floor, mod, positionWorld 
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Texture } from 'three'
 import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
-import type {
-  MaterialEffect,
-  EffectSchemaValue,
-  SchemaToNodeType,
-  ChannelNodeContext,
-} from './MaterialEffect'
+import type { MaterialEffect, EffectSchemaValue, SchemaToNodeType, ChannelNodeContext } from './MaterialEffect'
 import { channelDefaults } from './channels'
 
 import { EFFECT_BIT_OFFSET } from './effectFlagBits'
@@ -51,10 +46,7 @@ export function computeTier(neededFloats: number): number {
  * Get a TSL component accessor from a packed vec4 buffer array.
  * Maps an absolute float offset to the correct bufNode[n].xyzw component.
  */
-export function getPackedComponent(
-  bufNodes: Node<'vec4'>[],
-  absoluteOffset: number
-): Node<'float'> {
+export function getPackedComponent(bufNodes: Node<'vec4'>[], absoluteOffset: number): Node<'float'> {
   const bufIdx = Math.floor(absoluteOffset / 4)
   const comp = absoluteOffset % 4
   const node = bufNodes[bufIdx]!
@@ -447,7 +439,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    */
   _rebuildEffectBufferAttributes(): void {
     // Remove old effect buffer attributes
-    for (const name of [...this._instanceAttributes.keys()]) {
+    for (const name of this._instanceAttributes.keys()) {
       if (name.startsWith('effectBuf')) {
         this._instanceAttributes.delete(name)
       }

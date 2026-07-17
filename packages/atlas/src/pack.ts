@@ -49,12 +49,7 @@ export function packRects(inputs: PackInput[], spacing = 2): PackResult {
   throw new Error('flatland-atlas: packing failed — inputs exceed maximum atlas size')
 }
 
-function tryPack(
-  sorted: PackInput[],
-  width: number,
-  height: number,
-  spacing: number
-): PackedRect[] | null {
+function tryPack(sorted: PackInput[], width: number, height: number, spacing: number): PackedRect[] | null {
   const rects: PackedRect[] = []
   let x = spacing
   let y = spacing

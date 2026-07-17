@@ -23,10 +23,34 @@ function LoadingOverlay({ visible }: { visible: boolean }) {
         zIndex: 1,
       }}
     >
-      <div style={{ position: 'absolute', top: 0, left: 0, width: C, height: C, borderTop: BORDER, borderLeft: BORDER }} />
-      <div style={{ position: 'absolute', top: 0, right: 0, width: C, height: C, borderTop: BORDER, borderRight: BORDER }} />
-      <div style={{ position: 'absolute', bottom: 0, left: 0, width: C, height: C, borderBottom: BORDER, borderLeft: BORDER }} />
-      <div style={{ position: 'absolute', bottom: 0, right: 0, width: C, height: C, borderBottom: BORDER, borderRight: BORDER }} />
+      <div
+        style={{ position: 'absolute', top: 0, left: 0, width: C, height: C, borderTop: BORDER, borderLeft: BORDER }}
+      />
+      <div
+        style={{ position: 'absolute', top: 0, right: 0, width: C, height: C, borderTop: BORDER, borderRight: BORDER }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          width: C,
+          height: C,
+          borderBottom: BORDER,
+          borderLeft: BORDER,
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          right: 0,
+          width: C,
+          height: C,
+          borderBottom: BORDER,
+          borderRight: BORDER,
+        }}
+      />
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <style>{`
           @keyframes grid-pulse {
@@ -36,12 +60,12 @@ function LoadingOverlay({ visible }: { visible: boolean }) {
         `}</style>
         <svg width="40" height="40" viewBox="0 0 22 22" fill="currentColor" style={{ imageRendering: 'pixelated' }}>
           {/* 3x3 grid, 4px squares, 2px gap — spiral from center */}
-          {[0,1,2,3,4,5,6,7,8].map(i => {
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => {
             const x = (i % 3) * 6
             const y = Math.floor(i / 3) * 6
             // Spiral order from center: 4→5→8→7→6→3→0→1→2
-            const order = [6,7,8,5,0,1,4,3,2]
-            const delay = -(order[i] * 2 / 9)
+            const order = [6, 7, 8, 5, 0, 1, 4, 3, 2]
+            const delay = -((order[i] * 2) / 9)
             return (
               <rect
                 key={i}
@@ -76,9 +100,11 @@ function HeroGameInner() {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    import('../scripts/sounds').then((sounds) => {
-      setProxy(() => sounds.createZzfxProxy())
-    }).catch(() => {})
+    import('../scripts/sounds')
+      .then((sounds) => {
+        setProxy(() => sounds.createZzfxProxy())
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -103,20 +129,20 @@ function HeroGameInner() {
   const handleInteraction = useCallback(() => {
     // Lazy-import the audio bridge on first interaction so it stays out
     // of the main bundle. The first call unlocks the AudioContext.
-    import('../scripts/sounds')
-      .then((sounds) => sounds.initAudio())
-      .catch(() => {})
+    import('../scripts/sounds').then((sounds) => sounds.initAudio()).catch(() => {})
   }, [])
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
       <LoadingOverlay visible={!loaded} />
-      <div style={{
-        width: '100%',
-        height: '100%',
-        opacity: loaded ? 1 : 0,
-        transition: 'opacity 0.5s ease-in',
-      }}>
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          opacity: loaded ? 1 : 0,
+          transition: 'opacity 0.5s ease-in',
+        }}
+      >
         <Suspense fallback={null}>
           <NotifyMounted onMount={() => setLoaded(true)}>
             <MiniBreakout

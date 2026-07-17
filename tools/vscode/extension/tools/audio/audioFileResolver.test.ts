@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  AudioFileResolver,
-  audioFileCandidates,
-  isSearchEligible,
-  resolveAudioFilePath,
-} from './audioFileResolver'
+import { AudioFileResolver, audioFileCandidates, isSearchEligible, resolveAudioFilePath } from './audioFileResolver'
 
 const SOURCE_DIR = '/ws/src/sounds'
 const WORKSPACE_ROOT = '/ws'
@@ -83,9 +78,7 @@ describe('AudioFileResolver', () => {
    * scans it like the real findFiles-backed search would. */
   function makeResolver(files: Set<string>) {
     const onDidUpdate = vi.fn()
-    const findByBasename = vi.fn(async (basename: string) =>
-      [...files].filter((p) => p.endsWith(`/${basename}`))
-    )
+    const findByBasename = vi.fn(async (basename: string) => [...files].filter((p) => p.endsWith(`/${basename}`)))
     const resolver = new AudioFileResolver({
       exists: (p) => files.has(p),
       findByBasename,

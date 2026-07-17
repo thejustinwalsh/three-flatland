@@ -219,10 +219,7 @@ const ACCENT_CSS = `
 }
 `
 
-export function applyTheme(
-  element: HTMLElement,
-  theme: Record<string, string> = FLATLAND_THEME,
-): void {
+export function applyTheme(element: HTMLElement, theme: Record<string, string> = FLATLAND_THEME): void {
   for (const [key, value] of Object.entries(theme)) {
     element.style.setProperty(key, value)
   }

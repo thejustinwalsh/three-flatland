@@ -16,7 +16,14 @@ import { SkiaPaint, SkiaPath } from '@three-flatland/skia'
 import type { SkiaCanvas as SkiaCanvasInstance } from '@three-flatland/skia/three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import {
-  reflector, color as tslColor, positionWorld, float as tslFloat, smoothstep as tslSmoothstep, uv, vec2, length as tslLength,
+  reflector,
+  color as tslColor,
+  positionWorld,
+  float as tslFloat,
+  smoothstep as tslSmoothstep,
+  uv,
+  vec2,
+  length as tslLength,
 } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { Color, DoubleSide, Fog, Mesh, PlaneGeometry, type MeshBasicMaterial } from 'three'
@@ -35,15 +42,18 @@ const SCALE = TEX_W / 512
 const FONT_URL = 'https://cdn.jsdelivr.net/gh/rsms/inter@v4.1/docs/font-files/InterVariable.ttf'
 
 const GRAD_COLORS: [number, number][] = [
-  [0xFFFF4444, 0xFF4444FF], [0xFF44FF44, 0xFFFF44FF],
-  [0xFFFFAA00, 0xFF00AAFF], [0xFF4488FF, 0xFFFF8844],
+  [0xffff4444, 0xff4444ff],
+  [0xff44ff44, 0xffff44ff],
+  [0xffffaa00, 0xff00aaff],
+  [0xff4488ff, 0xffff8844],
 ]
 
-const PATH_OP_NAMES: Array<'difference' | 'intersect' | 'union' | 'xor'> = [
-  'difference', 'intersect', 'union', 'xor',
-]
+const PATH_OP_NAMES: Array<'difference' | 'intersect' | 'union' | 'xor'> = ['difference', 'intersect', 'union', 'xor']
 const PATH_OP_COLORS: [number, number, number, number][] = [
-  [0.9, 0.3, 0.3, 0.9], [0.3, 0.9, 0.4, 0.9], [0.3, 0.5, 0.9, 0.9], [0.9, 0.7, 0.2, 0.9],
+  [0.9, 0.3, 0.3, 0.9],
+  [0.3, 0.9, 0.4, 0.9],
+  [0.3, 0.5, 0.9, 0.9],
+  [0.9, 0.7, 0.2, 0.9],
 ]
 
 // ── Utilities ──
@@ -84,9 +94,15 @@ class SkiaErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
     return (
       <div
         style={{
-          position: 'fixed', top: 12, left: 12, zIndex: 100,
-          padding: '8px 14px', background: 'rgba(0, 0, 0, 0.75)',
-          borderRadius: 6, fontSize: 13, fontFamily: 'ui-monospace, monospace',
+          position: 'fixed',
+          top: 12,
+          left: 12,
+          zIndex: 100,
+          padding: '8px 14px',
+          background: 'rgba(0, 0, 0, 0.75)',
+          borderRadius: 6,
+          fontSize: 13,
+          fontFamily: 'ui-monospace, monospace',
           color: '#ff6b6b',
         }}
       >
@@ -100,35 +116,66 @@ class SkiaErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
 
 function hslToArgb(h: number, s: number, l: number): number {
   const c = (1 - Math.abs(2 * l - 1)) * s
-  const x = c * (1 - Math.abs((h / 60) % 2 - 1))
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
   const m = l - c / 2
   let r: number, g: number, b: number
-  if (h < 60) { r = c; g = x; b = 0 }
-  else if (h < 120) { r = x; g = c; b = 0 }
-  else if (h < 180) { r = 0; g = c; b = x }
-  else if (h < 240) { r = 0; g = x; b = c }
-  else if (h < 300) { r = x; g = 0; b = c }
-  else { r = c; g = 0; b = x }
-  const ri = Math.round((r + m) * 255), gi = Math.round((g + m) * 255), bi = Math.round((b + m) * 255)
-  return (0xFF000000 | (ri << 16) | (gi << 8) | bi) >>> 0
+  if (h < 60) {
+    r = c
+    g = x
+    b = 0
+  } else if (h < 120) {
+    r = x
+    g = c
+    b = 0
+  } else if (h < 180) {
+    r = 0
+    g = c
+    b = x
+  } else if (h < 240) {
+    r = 0
+    g = x
+    b = c
+  } else if (h < 300) {
+    r = x
+    g = 0
+    b = c
+  } else {
+    r = c
+    g = 0
+    b = x
+  }
+  const ri = Math.round((r + m) * 255),
+    gi = Math.round((g + m) * 255),
+    bi = Math.round((b + m) * 255)
+  return (0xff000000 | (ri << 16) | (gi << 8) | bi) >>> 0
 }
 
-function smoothstep(t: number): number { return t * t * (3 - 2 * t) }
+function smoothstep(t: number): number {
+  return t * t * (3 - 2 * t)
+}
 
 // ── Self-Animating Shape Components ──
 
 const SQ_INIT = [
-  [0.9, 0.3, 0.3], [0.3, 0.9, 0.4], [0.3, 0.5, 0.9],
-  [0.9, 0.7, 0.2], [0.7, 0.3, 0.9], [0.2, 0.8, 0.8],
+  [0.9, 0.3, 0.3],
+  [0.3, 0.9, 0.4],
+  [0.3, 0.5, 0.9],
+  [0.9, 0.7, 0.2],
+  [0.7, 0.3, 0.9],
+  [0.2, 0.8, 0.8],
 ]
 
 function Squares() {
   const refs = useRef<(SkiaRect | null)[]>([])
   const state = useRef({
-    cols: SQ_INIT.map(c => [...c]),
-    swapA: 0, swapB: 1, swapStart: 0,
-    fromA: [...SQ_INIT[0]!], fromB: [...SQ_INIT[1]!],
-    toA: [...SQ_INIT[1]!], toB: [...SQ_INIT[0]!],
+    cols: SQ_INIT.map((c) => [...c]),
+    swapA: 0,
+    swapB: 1,
+    swapStart: 0,
+    fromA: [...SQ_INIT[0]!],
+    fromB: [...SQ_INIT[1]!],
+    toA: [...SQ_INIT[1]!],
+    toB: [...SQ_INIT[0]!],
   })
 
   useFrame(({ elapsed }) => {
@@ -138,12 +185,17 @@ function Squares() {
     let sqT = Math.min((t - s.swapStart) / sqDur, 1.0)
     sqT = smoothstep(sqT)
     if (sqT >= 1.0 && t > 0) {
-      s.cols[s.swapA] = [...s.toA]; s.cols[s.swapB] = [...s.toB]
+      s.cols[s.swapA] = [...s.toA]
+      s.cols[s.swapB] = [...s.toB]
       const a = Math.floor(Math.random() * 6)
       const b = (a + 1 + Math.floor(Math.random() * 5)) % 6
-      s.swapA = a; s.swapB = b; s.swapStart = t
-      s.fromA = [...s.cols[a]!]; s.fromB = [...s.cols[b]!]
-      s.toA = [...s.cols[b]!]; s.toB = [...s.cols[a]!]
+      s.swapA = a
+      s.swapB = b
+      s.swapStart = t
+      s.fromA = [...s.cols[a]!]
+      s.fromB = [...s.cols[b]!]
+      s.toA = [...s.cols[b]!]
+      s.toB = [...s.cols[a]!]
       sqT = 0
     }
     for (let i = 0; i < 6; i++) {
@@ -156,14 +208,24 @@ function Squares() {
     }
   })
 
-  return <>
-    {SQ_INIT.map((col, i) => (
-      <skiaRect key={i} ref={(el: SkiaRect | null) => { refs.current[i] = el }}
-        x={30 + i * 78} y={30} width={68} height={68} cornerRadius={10}
-        fill={[col[0]!, col[1]!, col[2]!, 1] as [number, number, number, number]}
-      />
-    ))}
-  </>
+  return (
+    <>
+      {SQ_INIT.map((col, i) => (
+        <skiaRect
+          key={i}
+          ref={(el: SkiaRect | null) => {
+            refs.current[i] = el
+          }}
+          x={30 + i * 78}
+          y={30}
+          width={68}
+          height={68}
+          cornerRadius={10}
+          fill={[col[0]!, col[1]!, col[2]!, 1] as [number, number, number, number]}
+        />
+      ))}
+    </>
+  )
 }
 
 function Circles() {
@@ -174,28 +236,51 @@ function Circles() {
     for (let i = 0; i < 8; i++) {
       const node = refs.current[i]
       if (!node) continue
-      const ct = ((i / 8) + t * 0.0002) % 1.0
+      const ct = (i / 8 + t * 0.0002) % 1.0
       node.fill = [0.15 + 0.35 * ct, 0.2 + 0.25 * (1 - ct), 0.3 + 0.4 * Math.sin(ct * Math.PI * 2 + 4), 0.7]
     }
   })
 
-  return <>
-    {Array.from({ length: 8 }, (_, i) => (
-      <skiaCircle key={i} ref={(el: SkiaCircle | null) => { refs.current[i] = el }}
-        cx={64 + i * 56} cy={140} r={18}
-        fill={[0.4, 0.4, 0.6, 0.7] as [number, number, number, number]}
-      />
-    ))}
-  </>
+  return (
+    <>
+      {Array.from({ length: 8 }, (_, i) => (
+        <skiaCircle
+          key={i}
+          ref={(el: SkiaCircle | null) => {
+            refs.current[i] = el
+          }}
+          cx={64 + i * 56}
+          cy={140}
+          r={18}
+          fill={[0.4, 0.4, 0.6, 0.7] as [number, number, number, number]}
+        />
+      ))}
+    </>
+  )
 }
 
 function Frames() {
-  return <>
-    <skiaRect x={20} y={170} width={472} height={100}
-      stroke={[1, 1, 1, 0.3] as [number, number, number, number]} strokeWidth={2} />
-    <skiaRect x={28} y={176} width={456} height={88} cornerRadius={10}
-      stroke={[1, 1, 1, 0.3] as [number, number, number, number]} strokeWidth={2} />
-  </>
+  return (
+    <>
+      <skiaRect
+        x={20}
+        y={170}
+        width={472}
+        height={100}
+        stroke={[1, 1, 1, 0.3] as [number, number, number, number]}
+        strokeWidth={2}
+      />
+      <skiaRect
+        x={28}
+        y={176}
+        width={456}
+        height={88}
+        cornerRadius={10}
+        stroke={[1, 1, 1, 0.3] as [number, number, number, number]}
+        strokeWidth={2}
+      />
+    </>
+  )
 }
 
 function ScannerLines() {
@@ -212,21 +297,30 @@ function ScannerLines() {
     }
   })
 
-  return <>
-    {Array.from({ length: 9 }, (_, i) => (
-      <skiaLine key={i} ref={(el: SkiaLine | null) => { refs.current[i] = el }}
-        x1={36} y1={184 + i * 9} x2={472} y2={184 + i * 9}
-        strokeWidth={1} stroke={[0.5, 0.8, 0.3, 0.6] as [number, number, number, number]}
-      />
-    ))}
-  </>
+  return (
+    <>
+      {Array.from({ length: 9 }, (_, i) => (
+        <skiaLine
+          key={i}
+          ref={(el: SkiaLine | null) => {
+            refs.current[i] = el
+          }}
+          x1={36}
+          y1={184 + i * 9}
+          x2={472}
+          y2={184 + i * 9}
+          strokeWidth={1}
+          stroke={[0.5, 0.8, 0.3, 0.6] as [number, number, number, number]}
+        />
+      ))}
+    </>
+  )
 }
 
 function GradientBars() {
   const skia = useSkiaContext()!
   const refs = useRef<(SkiaRect | null)[]>([])
-  const [paints] = useState(() =>
-    GRAD_COLORS.map(() => new SkiaPaint(skia).setFill()))
+  const [paints] = useState(() => GRAD_COLORS.map(() => new SkiaPaint(skia).setFill()))
 
   // Wire paints to nodes once refs are available
   useFrame(({ elapsed }) => {
@@ -236,7 +330,7 @@ function GradientBars() {
       if (!node) continue
       if (!node.paint) node.paint = paints[i]
       const y = 284 + i * 22
-      const dir = (i % 2 === 0) ? 1 : -1
+      const dir = i % 2 === 0 ? 1 : -1
       const speed = 0.15 + i * 0.03
       const mid = 0.5 + 0.4 * Math.sin(t * speed * 0.001 * dir)
       const [cA, cB] = GRAD_COLORS[i]!
@@ -244,13 +338,23 @@ function GradientBars() {
     }
   })
 
-  return <>
-    {GRAD_COLORS.map((_, i) => (
-      <skiaRect key={i} ref={(el: SkiaRect | null) => { refs.current[i] = el }}
-        x={30} y={284 + i * 22} width={452} height={16} cornerRadius={4}
-      />
-    ))}
-  </>
+  return (
+    <>
+      {GRAD_COLORS.map((_, i) => (
+        <skiaRect
+          key={i}
+          ref={(el: SkiaRect | null) => {
+            refs.current[i] = el
+          }}
+          x={30}
+          y={284 + i * 22}
+          width={452}
+          height={16}
+          cornerRadius={4}
+        />
+      ))}
+    </>
+  )
 }
 
 function PathOpGroup({ index }: { index: number }) {
@@ -259,7 +363,9 @@ function PathOpGroup({ index }: { index: number }) {
   const ghostARef = useRef<SkiaPathNode>(null)
   const ghostBRef = useRef<SkiaPathNode>(null)
   const [paths] = useState(() => ({
-    a: new SkiaPath(skia), b: new SkiaPath(skia), result: new SkiaPath(skia),
+    a: new SkiaPath(skia),
+    b: new SkiaPath(skia),
+    result: new SkiaPath(skia),
   }))
 
   useFrame(({ elapsed }) => {
@@ -316,20 +422,36 @@ function OverlayText() {
       const hue2 = (hue1 + 120) % 360
       const subW = subFont.measureText(sub.text)
       subtitlePaint.setLinearGradient(
-        sub.x, 0, sub.x + subW, 0,
-        [hslToArgb(hue1, 0.8, 0.6), hslToArgb(hue2, 0.8, 0.6)], [0, 1],
+        sub.x,
+        0,
+        sub.x + subW,
+        0,
+        [hslToArgb(hue1, 0.8, 0.6), hslToArgb(hue2, 0.8, 0.6)],
+        [0, 1]
       )
     }
   })
 
-  return <>
-    <skiaTextNode text="@three-flatland/skia" font={titleFont}
-      fill={[1, 1, 1, 1]} x={titleX} y={ph - 90} />
-    <skiaTextNode ref={subtitleRef} text="GPU-accelerated vector graphics in the browser"
-      font={subFont} paint={subtitlePaint} x={subtitleX} y={ph - 40} />
-    <skiaTextNode text={`Backend: ${skia.backend.toUpperCase()}`} font={fpsFont}
-      fill={[0.6, 0.6, 0.8, 0.6]} x={20} y={30} />
-  </>
+  return (
+    <>
+      <skiaTextNode text="@three-flatland/skia" font={titleFont} fill={[1, 1, 1, 1]} x={titleX} y={ph - 90} />
+      <skiaTextNode
+        ref={subtitleRef}
+        text="GPU-accelerated vector graphics in the browser"
+        font={subFont}
+        paint={subtitlePaint}
+        x={subtitleX}
+        y={ph - 40}
+      />
+      <skiaTextNode
+        text={`Backend: ${skia.backend.toUpperCase()}`}
+        font={fpsFont}
+        fill={[0.6, 0.6, 0.8, 0.6]}
+        x={20}
+        y={30}
+      />
+    </>
+  )
 }
 
 // ── 3D Scene Components ──
@@ -347,8 +469,7 @@ function ReflectiveGround() {
     // composed into the floor surface itself. Reflections of the lit
     // foreground panel carry the surface character; the dark base
     // lets those reflections pop without competing with the floor.
-    mat.colorNode = tslColor(new Color(0x050505))
-      .add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
+    mat.colorNode = tslColor(new Color(0x050505)).add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
     mat.roughnessNode = tslFloat(0.5).add(dist.div(5.0).clamp(0.0, 0.5))
     mat.metalness = 0.5
     return { mat, groundReflector }
@@ -359,7 +480,9 @@ function ReflectiveGround() {
     const mesh = meshRef.current
     if (!mesh) return
     mesh.add(groundReflector.target)
-    return () => { mesh.remove(groundReflector.target) }
+    return () => {
+      mesh.remove(groundReflector.target)
+    }
   }, [groundReflector])
 
   return (
@@ -369,7 +492,11 @@ function ReflectiveGround() {
   )
 }
 
-function Controls({ dampingFactor, minDistance, maxDistance }: {
+function Controls({
+  dampingFactor,
+  minDistance,
+  maxDistance,
+}: {
   dampingFactor: number
   minDistance: number
   maxDistance: number
@@ -422,54 +549,73 @@ function Panels() {
     if (rightRef.current) rightRef.current.position.y = 1.2 + hover
 
     // Share texture with side panels
-    const texture = canvasRef.current?.texture ?? null;
+    const texture = canvasRef.current?.texture ?? null
     if (texture) {
       if (leftMatRef.current && leftMatRef.current.map !== texture) {
-        leftMatRef.current.map = texture; leftMatRef.current.needsUpdate = true
+        leftMatRef.current.map = texture
+        leftMatRef.current.needsUpdate = true
       }
       if (rightMatRef.current && rightMatRef.current.map !== texture) {
-        rightMatRef.current.map = texture; rightMatRef.current.needsUpdate = true
+        rightMatRef.current.map = texture
+        rightMatRef.current.needsUpdate = true
       }
     }
   })
 
-  useFrame(() => {
-    canvasRef.current?.render(true)
-  }, { before: 'render' })
+  useFrame(
+    () => {
+      canvasRef.current?.render(true)
+    },
+    { before: 'render' }
+  )
 
   // renderOrder=10 forces the skia panels to draw LAST (after bgPlane,
   // ground, and floorEdge). When the panel's transparent skia regions
   // composite, the framebuffer already contains the gem-tinted bg
   // plane behind them — so transparency reveals the gradient instead
   // of opaque black.
-  return <>
-    <mesh ref={centerRef} position={[0, 1.2, -0.4]} renderOrder={10}>
-      <planeGeometry args={[panelW, panelH]} />
-      <meshBasicMaterial color={0xffffff} side={DoubleSide} transparent premultipliedAlpha>
-        <SkiaCanvas ref={canvasRef as any} attach={attachSkiaTexture} renderer={renderer} width={TEX_W} height={TEX_H}>
-          <skiaRect x={0} y={0} width={TEX_W} height={TEX_H} fill={[0.06, 0.06, 0.1, 0] as [number, number, number, number]} />
-          <skiaGroup scale={[SCALE, SCALE, 1]}>
-            <Squares />
-            <Circles />
-            <Frames />
-            <ScannerLines />
-            <GradientBars />
-            {PATH_OP_NAMES.map((_, i) => (
-              <PathOpGroup key={i} index={i} />
-            ))}
-          </skiaGroup>
-        </SkiaCanvas>
-      </meshBasicMaterial>
-    </mesh>
-    <mesh ref={leftRef} position={[-2.6, 1.2, 0.3]} rotation-y={0.35} renderOrder={10}>
-      <planeGeometry args={[panelW, panelH]} />
-      <meshBasicMaterial ref={leftMatRef} color={0xffffff} side={DoubleSide} transparent premultipliedAlpha />
-    </mesh>
-    <mesh ref={rightRef} position={[2.6, 1.2, 0.3]} rotation-y={-0.35} renderOrder={10}>
-      <planeGeometry args={[panelW, panelH]} />
-      <meshBasicMaterial ref={rightMatRef} color={0xffffff} side={DoubleSide} transparent premultipliedAlpha />
-    </mesh>
-  </>
+  return (
+    <>
+      <mesh ref={centerRef} position={[0, 1.2, -0.4]} renderOrder={10}>
+        <planeGeometry args={[panelW, panelH]} />
+        <meshBasicMaterial color={0xffffff} side={DoubleSide} transparent premultipliedAlpha>
+          <SkiaCanvas
+            ref={canvasRef as any}
+            attach={attachSkiaTexture}
+            renderer={renderer}
+            width={TEX_W}
+            height={TEX_H}
+          >
+            <skiaRect
+              x={0}
+              y={0}
+              width={TEX_W}
+              height={TEX_H}
+              fill={[0.06, 0.06, 0.1, 0] as [number, number, number, number]}
+            />
+            <skiaGroup scale={[SCALE, SCALE, 1]}>
+              <Squares />
+              <Circles />
+              <Frames />
+              <ScannerLines />
+              <GradientBars />
+              {PATH_OP_NAMES.map((_, i) => (
+                <PathOpGroup key={i} index={i} />
+              ))}
+            </skiaGroup>
+          </SkiaCanvas>
+        </meshBasicMaterial>
+      </mesh>
+      <mesh ref={leftRef} position={[-2.6, 1.2, 0.3]} rotation-y={0.35} renderOrder={10}>
+        <planeGeometry args={[panelW, panelH]} />
+        <meshBasicMaterial ref={leftMatRef} color={0xffffff} side={DoubleSide} transparent premultipliedAlpha />
+      </mesh>
+      <mesh ref={rightRef} position={[2.6, 1.2, 0.3]} rotation-y={-0.35} renderOrder={10}>
+        <planeGeometry args={[panelW, panelH]} />
+        <meshBasicMaterial ref={rightMatRef} color={0xffffff} side={DoubleSide} transparent premultipliedAlpha />
+      </mesh>
+    </>
+  )
 }
 
 // ── Main Demo ──
@@ -489,25 +635,30 @@ function SkiaDemo() {
   usePane()
 
   // Render overlay after Three.js render
-  useFrame(() => {
-    overlayRef.current?.render(true)
-  }, { after: 'render' })
+  useFrame(
+    () => {
+      overlayRef.current?.render(true)
+    },
+    { after: 'render' }
+  )
 
   if (!skia) return null
 
-  return <>
-    <ambientLight color={0x404060} intensity={0.5} />
-    <directionalLight color={0xffffff} intensity={0.8} position={[2, 4, 3]} />
-    <Controls dampingFactor={0.05} minDistance={2} maxDistance={10} />
-    <Panels />
-    <ReflectiveGround />
+  return (
+    <>
+      <ambientLight color={0x404060} intensity={0.5} />
+      <directionalLight color={0xffffff} intensity={0.8} position={[2, 4, 3]} />
+      <Controls dampingFactor={0.05} minDistance={2} maxDistance={10} />
+      <Panels />
+      <ReflectiveGround />
 
-    <SkiaCanvas ref={overlayRef as any} renderer={renderer} width={pw} height={ph} overlay>
-      <Suspense fallback={null}>
-        <OverlayText />
-      </Suspense>
-    </SkiaCanvas>
-  </>
+      <SkiaCanvas ref={overlayRef as any} renderer={renderer} width={pw} height={ph} overlay>
+        <Suspense fallback={null}>
+          <OverlayText />
+        </Suspense>
+      </SkiaCanvas>
+    </>
+  )
 }
 
 // ── App Root ──

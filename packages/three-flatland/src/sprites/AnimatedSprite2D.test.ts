@@ -536,7 +536,7 @@ describe('AnimatedSprite2D', () => {
     sprite.dispose()
   })
 
-  it('falls back to the new sheet\'s first frame when the active frame name is absent', () => {
+  it("falls back to the new sheet's first frame when the active frame name is absent", () => {
     const sprite = new AnimatedSprite2D({ spriteSheet })
     sprite.setFrame(spriteSheet.getFrame('walk_0'))
     expect(sprite.frame).toBe(spriteSheet.frames.get('walk_0'))

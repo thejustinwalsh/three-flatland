@@ -113,11 +113,7 @@ export function blurKawaseDown(
  * @param texelSize - Texel size at current resolution
  * @returns Upscaled blurred color
  */
-export function blurKawaseUp(
-  tex: Texture,
-  uv: Node<'vec2'>,
-  texelSize: Vec2Input = [1 / 512, 1 / 512]
-): Node<'vec4'> {
+export function blurKawaseUp(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 / 512, 1 / 512]): Node<'vec4'> {
   const texelVec = Array.isArray(texelSize) ? vec2(...texelSize) : texelSize
 
   const halfTexel = texelVec.mul(0.5)

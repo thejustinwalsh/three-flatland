@@ -74,7 +74,7 @@ export class SubscriberRegistry {
     id: string,
     features: readonly DebugFeature[],
     registry?: readonly string[],
-    buffers?: Record<string, BufferSubscriptionEntry>,
+    buffers?: Record<string, BufferSubscriptionEntry>
   ): void {
     const now = Date.now()
     const regSel = registry === undefined ? null : new Set(registry)

@@ -58,10 +58,7 @@ export interface BuffersModalOptions {
  * imperative handle — the in-pane thumbnail's expand button calls
  * `open(activeName)` to surface it.
  */
-export function createBuffersModal(
-  client: DevtoolsClient,
-  options: BuffersModalOptions = {},
-): BuffersModalHandle {
+export function createBuffersModal(client: DevtoolsClient, options: BuffersModalOptions = {}): BuffersModalHandle {
   // ── Root + overlay ────────────────────────────────────────────────────
 
   const root = document.createElement('div')
@@ -127,10 +124,12 @@ export function createBuffersModal(
   ].join(';')
 
   const main = document.createElement('div')
-  main.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-width:0;min-height:0;overflow:hidden;position:relative'
+  main.style.cssText =
+    'flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-width:0;min-height:0;overflow:hidden;position:relative'
 
   const canvas = document.createElement('canvas')
-  canvas.style.cssText = 'display:block;background:rgba(0,2,28,0.6);image-rendering:pixelated;max-width:100%;max-height:100%'
+  canvas.style.cssText =
+    'display:block;background:rgba(0,2,28,0.6);image-rendering:pixelated;max-width:100%;max-height:100%'
   const ctx = canvas.getContext('2d')
 
   const offscreen = document.createElement('canvas')
@@ -140,25 +139,35 @@ export function createBuffersModal(
   // Zoom info + reset — top-left to avoid conflict with docs page controls
   const zoomBar = document.createElement('div')
   zoomBar.style.cssText = [
-    'position:absolute', 'top:8px', 'left:8px',
-    'display:flex', 'gap:6px', 'align-items:center',
+    'position:absolute',
+    'top:8px',
+    'left:8px',
+    'display:flex',
+    'gap:6px',
+    'align-items:center',
     'z-index:1',
   ].join(';')
 
   const zoomInfo = document.createElement('span')
   zoomInfo.style.cssText = [
-    'padding:3px 8px', 'border-radius:4px',
-    'background:rgba(0,0,0,0.6)', 'color:#aaa',
-    'font:11px/1.4 monospace', 'pointer-events:none',
+    'padding:3px 8px',
+    'border-radius:4px',
+    'background:rgba(0,0,0,0.6)',
+    'color:#aaa',
+    'font:11px/1.4 monospace',
+    'pointer-events:none',
     'user-select:none',
   ].join(';')
   zoomInfo.textContent = '1.0×'
 
   const resetBtn = document.createElement('span')
   resetBtn.style.cssText = [
-    'padding:3px 8px', 'border-radius:4px',
-    'background:rgba(0,0,0,0.6)', 'color:#aaa',
-    'font:11px/1.4 monospace', 'cursor:pointer',
+    'padding:3px 8px',
+    'border-radius:4px',
+    'background:rgba(0,0,0,0.6)',
+    'color:#aaa',
+    'font:11px/1.4 monospace',
+    'cursor:pointer',
     'user-select:none',
   ].join(';')
   resetBtn.textContent = '⟲ Reset'
@@ -218,24 +227,28 @@ export function createBuffersModal(
   }
 
   // Prevent page scroll when pointer is over the main area
-  main.addEventListener('wheel', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
+  main.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault()
+      e.stopPropagation()
 
-    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
-    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor))
-    if (newZoom === zoom) return
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor))
+      if (newZoom === zoom) return
 
-    // Zoom toward cursor position
-    const rect = main.getBoundingClientRect()
-    const mx = e.clientX - rect.left - rect.width / 2
-    const my = e.clientY - rect.top - rect.height / 2
-    const ratio = 1 - newZoom / zoom
-    panX += (mx - panX) * ratio
-    panY += (my - panY) * ratio
-    zoom = newZoom
-    applyTransform()
-  }, { passive: false })
+      // Zoom toward cursor position
+      const rect = main.getBoundingClientRect()
+      const mx = e.clientX - rect.left - rect.width / 2
+      const my = e.clientY - rect.top - rect.height / 2
+      const ratio = 1 - newZoom / zoom
+      panX += (mx - panX) * ratio
+      panY += (my - panY) * ratio
+      zoom = newZoom
+      applyTransform()
+    },
+    { passive: false }
+  )
 
   main.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return
@@ -284,7 +297,8 @@ export function createBuffersModal(
     el.style.cssText = 'margin:6px 0'
     const head = document.createElement('div')
     head.textContent = group
-    head.style.cssText = 'padding:4px 12px;opacity:0.6;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;user-select:none'
+    head.style.cssText =
+      'padding:4px 12px;opacity:0.6;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;user-select:none'
     el.appendChild(head)
     sidebar.appendChild(el)
     groupContainers.set(group, el)
@@ -328,7 +342,8 @@ export function createBuffersModal(
     const { width, height, pixels } = snap
     if (width === 0 || height === 0 || pixels === null) {
       // Size canvas to a placeholder so it still occupies space.
-      canvas.width = 1; canvas.height = 1
+      canvas.width = 1
+      canvas.height = 1
       return
     }
 
@@ -352,7 +367,7 @@ export function createBuffersModal(
       const count = width * height
       for (let i = 0; i < count; i++) {
         const o = i * 4
-        out[o]     = Math.round(Math.max(0, Math.min(1, pixels[i * 4]     ?? 0)) * 255)
+        out[o] = Math.round(Math.max(0, Math.min(1, pixels[i * 4] ?? 0)) * 255)
         out[o + 1] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 1] ?? 0)) * 255)
         out[o + 2] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 2] ?? 0)) * 255)
         out[o + 3] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 3] ?? 1)) * 255)
@@ -523,7 +538,10 @@ export function createBuffersModal(
     waitingForKeyFrame = true
     decoder = new VideoDecoder({
       output: (frame) => {
-        if (ctx === null) { frame.close(); return }
+        if (ctx === null) {
+          frame.close()
+          return
+        }
         if (canvas.width !== frame.codedWidth || canvas.height !== frame.codedHeight) {
           canvas.width = frame.codedWidth
           canvas.height = frame.codedHeight
@@ -547,7 +565,11 @@ export function createBuffersModal(
 
   function stopDecoder(): void {
     if (decoder !== null && decoder.state !== 'closed') {
-      try { decoder.close() } catch { /* may already be errored */ }
+      try {
+        decoder.close()
+      } catch {
+        /* may already be errored */
+      }
     }
     decoder = null
     waitingForKeyFrame = true
@@ -617,7 +639,9 @@ export function createBuffersModal(
   }
 
   return {
-    get isOpen(): boolean { return isOpen },
+    get isOpen(): boolean {
+      return isOpen
+    },
     open,
     close,
     dispose() {
@@ -638,4 +662,3 @@ export function createBuffersModal(
     },
   }
 }
-

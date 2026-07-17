@@ -1,4 +1,3 @@
-/// <reference path="./vite-env.d.ts" />
 import {
   Suspense,
   use,
@@ -35,12 +34,7 @@ import {
 // Re-export so existing root-package consumers (`@three-flatland/preview`)
 // that imported these from `CanvasStage` keep working. The shell entry
 // (`./index.ts`) now sources them from `./CanvasContext` directly.
-export {
-  useCursorStore,
-  useImageData,
-  useViewportController,
-  type ViewportController,
-} from './CanvasContext'
+export { useCursorStore, useImageData, useViewportController, type ViewportController } from './CanvasContext'
 
 export type CanvasStageProps = {
   imageUri: string | null
@@ -202,15 +196,10 @@ function imageSize(uri: string): Promise<{ w: number; h: number }> {
 // means the first decode hits a warm worker (no `new Worker` cold start
 // in the critical path). Subsequent decodes multiplex over the same
 // instance via the request-id + pending-promise table.
-type DecodeResponse =
-  | { id: number; data: ImageData }
-  | { id: number; error: string }
+type DecodeResponse = { id: number; data: ImageData } | { id: number; error: string }
 
 let nextDecodeId = 1
-const pendingDecodes = new Map<
-  number,
-  { resolve: (d: ImageData) => void; reject: (e: Error) => void }
->()
+const pendingDecodes = new Map<number, { resolve: (d: ImageData) => void; reject: (e: Error) => void }>()
 
 const decoderWorker = new ImageDecoderWorker()
 decoderWorker.onmessage = (e: MessageEvent<DecodeResponse>) => {
@@ -245,7 +234,7 @@ function decodeImage(uri: string): Promise<ImageData> {
             // OffscreenCanvas there and transfers the ImageData buffer
             // back, so neither side spends main-thread time on pixels.
             decoderWorker.postMessage({ id, bitmap }, [bitmap])
-          }),
+          })
       )
     decodeCache.set(uri, p)
   }
@@ -259,13 +248,7 @@ function decodeImage(uri: string): Promise<ImageData> {
  * the same frame the sprite first renders rather than one frame after,
  * killing the "sprite appears, then rects pop in" sequence.
  */
-function ImageSizeSink({
-  uri,
-  onChange,
-}: {
-  uri: string
-  onChange: (size: { w: number; h: number }) => void
-}) {
+function ImageSizeSink({ uri, onChange }: { uri: string; onChange: (size: { w: number; h: number }) => void }) {
   const size = use(imageSize(uri))
   useEffect(() => {
     onChange(size)
@@ -280,13 +263,7 @@ function ImageSizeSink({
  * — the decoded `ImageData` is enrichment data used for cursor RGBA
  * sampling and CCL auto-detect, not a render gate.
  */
-function ImageDecodeSink({
-  uri,
-  onChange,
-}: {
-  uri: string
-  onChange: (data: ImageData) => void
-}) {
+function ImageDecodeSink({ uri, onChange }: { uri: string; onChange: (data: ImageData) => void }) {
   const data = use(decodeImage(uri))
   useEffect(() => {
     onChange(data)
@@ -311,8 +288,27 @@ function clampZoom(z: number): number {
  * for the optional snap-to-perfect-zoom behaviour.
  */
 const PIXEL_PERFECT_SCALES = [
-  1 / 16, 1 / 12, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 2 / 3,
-  1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16, 24, 32,
+  1 / 16,
+  1 / 12,
+  1 / 8,
+  1 / 6,
+  1 / 4,
+  1 / 3,
+  1 / 2,
+  2 / 3,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  10,
+  12,
+  16,
+  24,
+  32,
 ] as const
 
 /**
@@ -326,7 +322,7 @@ function scaleAtZoom(
   imageH: number,
   fitMargin: number,
   canvasW: number,
-  canvasH: number,
+  canvasH: number
 ): { scale: number; limitingByW: boolean } {
   const scaleW = (canvasW * zoom) / (imageW * fitMargin)
   const scaleH = (canvasH * zoom) / (imageH * fitMargin)
@@ -342,11 +338,9 @@ function zoomForScale(
   imageH: number,
   fitMargin: number,
   canvasW: number,
-  canvasH: number,
+  canvasH: number
 ): number {
-  return limitingByW
-    ? (scale * imageW * fitMargin) / canvasW
-    : (scale * imageH * fitMargin) / canvasH
+  return limitingByW ? (scale * imageW * fitMargin) / canvasW : (scale * imageH * fitMargin) / canvasH
 }
 
 /**
@@ -362,7 +356,7 @@ function snapZoomStep(
   imageH: number,
   fitMargin: number,
   canvasW: number,
-  canvasH: number,
+  canvasH: number
 ): number {
   if (canvasW <= 0 || canvasH <= 0) return currentZoom
   const { scale, limitingByW } = scaleAtZoom(currentZoom, imageW, imageH, fitMargin, canvasW, canvasH)
@@ -373,12 +367,18 @@ function snapZoomStep(
   let target: number | null = null
   if (direction === 1) {
     for (const lv of PIXEL_PERFECT_SCALES) {
-      if (lv > scale * 1.001) { target = lv; break }
+      if (lv > scale * 1.001) {
+        target = lv
+        break
+      }
     }
   } else {
     for (let i = PIXEL_PERFECT_SCALES.length - 1; i >= 0; i--) {
       const lv = PIXEL_PERFECT_SCALES[i]!
-      if (lv < scale / 1.001) { target = lv; break }
+      if (lv < scale / 1.001) {
+        target = lv
+        break
+      }
     }
   }
   if (target == null) return currentZoom // already at limit
@@ -413,7 +413,7 @@ function snapZoomNearest(
   imageH: number,
   fitMargin: number,
   canvasW: number,
-  canvasH: number,
+  canvasH: number
 ): number {
   if (canvasW <= 0 || canvasH <= 0) return rawZoom
   const { scale, limitingByW } = scaleAtZoom(rawZoom, imageW, imageH, fitMargin, canvasW, canvasH)
@@ -422,7 +422,10 @@ function snapZoomNearest(
   let bestDist = Infinity
   for (const lv of PIXEL_PERFECT_SCALES) {
     const d = Math.abs(Math.log(lv / scale))
-    if (d < bestDist) { bestDist = d; bestScale = lv }
+    if (d < bestDist) {
+      bestDist = d
+      bestScale = lv
+    }
   }
   return zoomForScale(bestScale, limitingByW, imageW, imageH, fitMargin, canvasW, canvasH)
 }
@@ -436,12 +439,9 @@ function snapZoomNearest(
 function clampPan(panX: number, panY: number, vp: Viewport): [number, number] {
   const halfVisibleW = (vp.imageW * vp.fitMargin) / vp.zoom / 2
   const halfVisibleH = (vp.imageH * vp.fitMargin) / vp.zoom / 2
-  const maxPanX = (vp.imageW / 2) + halfVisibleW
-  const maxPanY = (vp.imageH / 2) + halfVisibleH
-  return [
-    Math.max(-maxPanX, Math.min(maxPanX, panX)),
-    Math.max(-maxPanY, Math.min(maxPanY, panY)),
-  ]
+  const maxPanX = vp.imageW / 2 + halfVisibleW
+  const maxPanY = vp.imageH / 2 + halfVisibleH
+  return [Math.max(-maxPanX, Math.min(maxPanX, panX)), Math.max(-maxPanY, Math.min(maxPanY, panY))]
 }
 
 // ---------------------------------------------------------------------------
@@ -524,7 +524,7 @@ export function CanvasStage({
       setSplitUState(clamped)
       onSplitChange?.(clamped)
     },
-    [onSplitChange],
+    [onSplitChange]
   )
 
   // Re-clamp + sync when initialSplitU changes (handles cross-session restore).
@@ -534,14 +534,19 @@ export function CanvasStage({
 
   const compareController: CompareController = useMemo(
     () => ({ splitU, setSplitU, loading: compareLoading ?? false }),
-    [splitU, setSplitU, compareLoading],
+    [splitU, setSplitU, compareLoading]
   )
 
   // Space-key pan tracking
   const spaceDownRef = useRef(false)
   const [isSpaceDown, setIsSpaceDown] = useState(false)
   // Pan drag tracking
-  const panDragRef = useRef<{ startClientX: number; startClientY: number; startPanX: number; startPanY: number } | null>(null)
+  const panDragRef = useRef<{
+    startClientX: number
+    startClientY: number
+    startPanX: number
+    startPanY: number
+  } | null>(null)
   const [isPanning, setIsPanning] = useState(false)
 
   // Build the full Viewport from base + zoom/pan
@@ -590,23 +595,20 @@ export function CanvasStage({
   // up so the user can stop scrolling once their visual target is set.
   // -------------------------------------------------------------------------
   const zoomTargetRef = useRef<number>(1)
-  const tweenAnchorRef = useRef<
-    | {
-        imgX: number
-        imgY: number
-        baseZoom: number
-        basePanX: number
-        basePanY: number
-      }
-    | null
-  >(null)
+  const tweenAnchorRef = useRef<{
+    imgX: number
+    imgY: number
+    baseZoom: number
+    basePanX: number
+    basePanY: number
+  } | null>(null)
   const tweenRafRef = useRef<number | null>(null)
 
   const computeZoomAtAnchor = useCallback(
     (
       zoom: number,
       anchor: NonNullable<typeof tweenAnchorRef.current>,
-      vp: Viewport,
+      vp: Viewport
     ): { panX: number; panY: number } => {
       const oldCenterX = vp.imageW / 2 + anchor.basePanX
       const oldCenterY = vp.imageH / 2 + anchor.basePanY
@@ -617,7 +619,7 @@ export function CanvasStage({
         panY: newCenterY - vp.imageH / 2,
       }
     },
-    [],
+    []
   )
 
   // Frame-by-frame zoom tween. Lerps current → target by 25% per frame
@@ -667,7 +669,7 @@ export function CanvasStage({
     const [cx, cy] = clampPan(panX, panY, vp)
     if (cx !== panX) setPanXState(cx)
     if (cy !== panY) setPanYState(cy)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom]) // only re-clamp when zoom changes (pan changes trigger their own clamp below)
 
   const handleReady = useCallback(
@@ -675,7 +677,7 @@ export function CanvasStage({
       setBaseViewport({ imageW: size.w, imageH: size.h, fitMargin })
       onImageReady?.(size)
     },
-    [onImageReady, fitMargin],
+    [onImageReady, fitMargin]
   )
 
   // Reset stale decode result when the URI clears (file closed). Calling
@@ -722,7 +724,7 @@ export function CanvasStage({
       }
       cursorStore.set({ x, y, inBounds, rgba })
     },
-    [cursorStore, viewport],
+    [cursorStore, viewport]
   )
 
   const handlePointerLeave = useCallback(() => {
@@ -755,12 +757,8 @@ export function CanvasStage({
         // (which may be mid-tween). The rAF tween handles the animation
         // and pan re-anchoring. Multiple fast scrolls accumulate steps;
         // letting go of the wheel lets the tween catch up.
-        const baseTarget = tweenAnchorRef.current
-          ? zoomTargetRef.current
-          : zoomRef.current
-        const newTarget = clampZoom(
-          stepSnap(baseTarget, direction, baseTarget * Math.exp(-e.deltaY * 0.001)),
-        )
+        const baseTarget = tweenAnchorRef.current ? zoomTargetRef.current : zoomRef.current
+        const newTarget = clampZoom(stepSnap(baseTarget, direction, baseTarget * Math.exp(-e.deltaY * 0.001)))
         zoomTargetRef.current = newTarget
         if (m) {
           const local = pt.matrixTransform(m.inverse())
@@ -819,7 +817,7 @@ export function CanvasStage({
       const [cx, cy] = clampPan(newPanX, newPanY, vpForClamp)
       applyZoom(newZoom, cx, cy)
     },
-    [applyZoom, stepSnap, tickZoomTween],
+    [applyZoom, stepSnap, tickZoomTween]
   )
 
   // -------------------------------------------------------------------------
@@ -909,7 +907,7 @@ export function CanvasStage({
       setIsPanning(true)
       cursorStore.freeze()
     },
-    [cursorStore, panMode],
+    [cursorStore, panMode]
   )
 
   const handlePointerMoveForPan = useCallback(
@@ -928,7 +926,7 @@ export function CanvasStage({
       setPanXState(cx)
       setPanYState(cy)
     },
-    [clientDeltaToImageDelta],
+    [clientDeltaToImageDelta]
   )
 
   const endPanDrag = useCallback(
@@ -941,7 +939,7 @@ export function CanvasStage({
       setIsPanning(false)
       cursorStore.unfreeze()
     },
-    [cursorStore],
+    [cursorStore]
   )
 
   // -------------------------------------------------------------------------
@@ -966,11 +964,21 @@ export function CanvasStage({
       })
     }
     return {
-      get zoom() { return zoomRef.current },
-      get panX() { return panXRef.current },
-      get panY() { return panYRef.current },
-      zoomIn() { doStep(1, 1.25) },
-      zoomOut() { doStep(-1, 1 / 1.25) },
+      get zoom() {
+        return zoomRef.current
+      },
+      get panX() {
+        return panXRef.current
+      },
+      get panY() {
+        return panYRef.current
+      },
+      zoomIn() {
+        doStep(1, 1.25)
+      },
+      zoomOut() {
+        doStep(-1, 1 / 1.25)
+      },
       fitToView() {
         setZoomState(1)
         setPanXState(0)
@@ -1011,7 +1019,7 @@ export function CanvasStage({
       handlePointerMoveForPan(e)
       handlePointerMove(e)
     },
-    [handlePointerMoveForPan, handlePointerMove],
+    [handlePointerMoveForPan, handlePointerMove]
   )
 
   const inPanMode = panMode || isSpaceDown
@@ -1025,8 +1033,7 @@ export function CanvasStage({
 
   // When imageSource is not set but imageUri is, synthesize a url ImageSource
   // so both branches receive a consistent effectiveImageSource value.
-  const effectiveImageSource: ImageSource | null =
-    imageSource ?? (imageUri ? { kind: 'url', url: imageUri } : null)
+  const effectiveImageSource: ImageSource | null = imageSource ?? (imageUri ? { kind: 'url', url: imageUri } : null)
 
   // Shared canvas + children tree, optionally wrapped in CompareContext.
   const canvasAndChildren = (
@@ -1128,9 +1135,9 @@ export function CanvasStage({
                 <CompareContext.Provider value={compareController}>
                   {viewport ? children : null}
                 </CompareContext.Provider>
-              ) : (
-                viewport ? children : null
-              )}
+              ) : viewport ? (
+                children
+              ) : null}
             </ViewportControllerContext.Provider>
           </ImageDataContext.Provider>
         </CursorStoreContext.Provider>
@@ -1175,9 +1182,7 @@ export function CanvasStage({
         // HoverFrameChip) can use `@container (max-width: …)` queries to
         // restack themselves when the canvas is narrow.
         containerType: 'inline-size',
-        ...(wrapperPaintsBg
-          ? canvasBackgroundStyle(backgroundStyle, 'var(--vscode-editor-background)')
-          : {}),
+        ...(wrapperPaintsBg ? canvasBackgroundStyle(backgroundStyle, 'var(--vscode-editor-background)') : {}),
       }}
       onPointerMove={combinedPointerMove}
       onPointerLeave={handlePointerLeave}
@@ -1209,7 +1214,14 @@ function ZoomBadge({
   const el = wrapperRef.current
   let ratio: string | null = null
   if (el && el.clientWidth > 0 && el.clientHeight > 0) {
-    const { scale } = scaleAtZoom(zoom, viewport.imageW, viewport.imageH, viewport.fitMargin, el.clientWidth, el.clientHeight)
+    const { scale } = scaleAtZoom(
+      zoom,
+      viewport.imageW,
+      viewport.imageH,
+      viewport.fitMargin,
+      el.clientWidth,
+      el.clientHeight
+    )
     ratio = formatPixelRatio(scale)
   }
   return (

@@ -126,17 +126,11 @@ export function MergedView() {
   }, [result, state.sources, activeTab])
 
   if (result.kind === 'conflicts') {
-    return (
-      <div {...stylex.props(s.emptyState)}>
-        Resolve conflicts to preview the merged atlas.
-      </div>
-    )
+    return <div {...stylex.props(s.emptyState)}>Resolve conflicts to preview the merged atlas.</div>
   }
   if (result.kind === 'nofit') {
     return (
-      <div {...stylex.props(s.errorState)}>
-        Doesn't fit at current max size — try a larger size or reduce padding.
-      </div>
+      <div {...stylex.props(s.errorState)}>Doesn't fit at current max size — try a larger size or reduce padding.</div>
     )
   }
   if (state.sources.length === 0) {
@@ -197,8 +191,8 @@ export function MergedView() {
               <strong>Output</strong>: {w}×{h} · {(result.utilization * 100).toFixed(0)}% used
             </div>
             <div {...stylex.props(s.statsBlock)}>
-              <strong>{Object.keys(result.atlas.frames).length}</strong> frames ·{' '}
-              <strong>{animationCount}</strong> animations
+              <strong>{Object.keys(result.atlas.frames).length}</strong> frames · <strong>{animationCount}</strong>{' '}
+              animations
             </div>
           </div>
           {animationCount > 0 && (

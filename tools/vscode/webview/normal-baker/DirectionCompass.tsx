@@ -92,11 +92,7 @@ export function DirectionCompass({
               cursor: disabled ? 'not-allowed' : 'pointer',
             }}
           >
-            {direction === 'flat' ? (
-              <span {...stylex.props(s.flatGlyph)} />
-            ) : (
-              <span {...stylex.props(s.dot)} />
-            )}
+            {direction === 'flat' ? <span {...stylex.props(s.flatGlyph)} /> : <span {...stylex.props(s.dot)} />}
           </button>
         )
       })}

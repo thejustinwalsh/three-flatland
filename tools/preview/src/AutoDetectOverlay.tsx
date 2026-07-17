@@ -36,11 +36,7 @@ const DEFAULTS = {
  * The caller controls when `connectedComponents()` is invoked and passes the
  * stable result array down.
  */
-export function AutoDetectOverlay({
-  detected,
-  picked,
-  onToggle,
-}: AutoDetectOverlayProps) {
+export function AutoDetectOverlay({ detected, picked, onToggle }: AutoDetectOverlayProps) {
   const vp = useViewport()
   if (!vp || detected.length === 0) return null
 

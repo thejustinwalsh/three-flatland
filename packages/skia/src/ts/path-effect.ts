@@ -1,8 +1,8 @@
 import type { SkiaContext } from './context'
 import type { SkiaPath } from './path'
 
-const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => drop(handle),
+const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) =>
+  drop(handle)
 )
 
 /** Path1D stamp style */
@@ -61,7 +61,13 @@ export class SkiaPathEffect {
   }
 
   /** Stamp a path along the stroke */
-  static path1D(context: SkiaContext, stampPath: SkiaPath, advance: number, phase: number, style: Path1DStyle): SkiaPathEffect | null {
+  static path1D(
+    context: SkiaContext,
+    stampPath: SkiaPath,
+    advance: number,
+    phase: number,
+    style: Path1DStyle
+  ): SkiaPathEffect | null {
     const h = context._exports.skia_patheffect_path1d(stampPath._handle, advance, phase, PATH1D_STYLE[style])
     return h ? new SkiaPathEffect(context, h) : null
   }

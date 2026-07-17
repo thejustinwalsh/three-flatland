@@ -12,9 +12,7 @@ export const SYNTH_QUAD_INDEX: readonly number[] = [0, 1, 2, 2, 1, 3]
 // `synthQuadNodes()`'s synthesized values exactly — the built-in shader
 // keeps reading vertexIndex, but these real attributes are what three's
 // `uv()`/`positionGeometry()` resolve to for user TSL code.
-const SYNTH_QUAD_POSITIONS = new Float32Array([
-  -0.5, -0.5, 0, 0.5, -0.5, 0, -0.5, 0.5, 0, 0.5, 0.5, 0,
-])
+const SYNTH_QUAD_POSITIONS = new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, -0.5, 0.5, 0, 0.5, 0.5, 0])
 const SYNTH_QUAD_UVS = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
 
 /**

@@ -12,10 +12,7 @@ import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import type { SpriteSheet } from '../sprites/types'
 
 function mockLoad(json: unknown): Promise<SpriteSheet> {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(json) })
-  )
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(json) }))
   const texture = new Texture()
   texture.image = { width: 256, height: 256 }
   vi.spyOn(

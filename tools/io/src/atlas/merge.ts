@@ -1,11 +1,6 @@
 import { buildAtlasJson, readAnimationsFromJson } from './build'
 import { packRects } from './maxrects'
-import type {
-  AnimationInput,
-  AtlasJson,
-  AtlasMergeMeta,
-  RectInput,
-} from './types'
+import type { AnimationInput, AtlasJson, AtlasMergeMeta, RectInput } from './types'
 
 // One source contributing frames + animations to the merged output.
 // `renames` carries user-resolved name overrides for that source.

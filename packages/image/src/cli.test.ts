@@ -35,14 +35,7 @@ describe('flatland-bake encode CLI', () => {
 
   it('exits 1 if any batch item fails (b-ii: exit 1 on any failure)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'fl-image-cli-'))
-    const code = await baker.run([
-      '/does/not/exist.png',
-      '--batch',
-      '--format',
-      'webp',
-      '--out-dir',
-      dir,
-    ])
+    const code = await baker.run(['/does/not/exist.png', '--batch', '--format', 'webp', '--out-dir', dir])
     expect(code).toBe(1)
   })
 })

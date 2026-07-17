@@ -42,9 +42,7 @@ describe('buildZzfxPrompt', () => {
   it("matches the planning doc's system-rules shape", () => {
     const prompt = buildZzfxPrompt({ category: 'Blip', styles: [], n: 3, seeds: [] })
     expect(prompt).toContain('You are ZzFX-GPT')
-    expect(prompt).toContain(
-      '{ "candidates": [ { "label": string, "params": number[], "rationale": string } ] }'
-    )
+    expect(prompt).toContain('{ "candidates": [ { "label": string, "params": number[], "rationale": string } ] }')
     expect(prompt).toContain('shape MUST be an integer in 0..4')
     expect(prompt).toContain('Never wrap output in code fences or prose')
   })
@@ -69,9 +67,7 @@ describe('parseCandidates', () => {
   it('accepts a clean, valid response', () => {
     const result = parseCandidates(
       JSON.stringify({
-        candidates: [
-          { label: 'Zap', params: [0.5, 0, 1200, 0, 0.02, 0.1, 2, 1], rationale: 'quick laser' },
-        ],
+        candidates: [{ label: 'Zap', params: [0.5, 0, 1200, 0, 0.02, 0.1, 2, 1], rationale: 'quick laser' }],
       })
     )
     expect(result.ok).toBe(true)
@@ -153,16 +149,12 @@ describe('parseCandidates', () => {
   })
 
   it('fails on zero valid candidates (all dropped)', () => {
-    const result = parseCandidates(
-      JSON.stringify({ candidates: [{ label: 'Bad', params: [1.5, 0, 99999] }] })
-    )
+    const result = parseCandidates(JSON.stringify({ candidates: [{ label: 'Bad', params: [1.5, 0, 99999] }] }))
     expect(result.ok).toBe(false)
   })
 
   it('defaults a missing/blank label to "Untitled" and a missing rationale to ""', () => {
-    const result = parseCandidates(
-      JSON.stringify({ candidates: [{ params: [0.5, 0, 500, 0, 0.1, 0.1, 0, 1] }] })
-    )
+    const result = parseCandidates(JSON.stringify({ candidates: [{ params: [0.5, 0, 500, 0, 0.1, 0.1, 0, 1] }] }))
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.candidates[0]!.label).toBe('Untitled')
@@ -224,9 +216,7 @@ describe('PRESET_LIBRARY', () => {
       const result = parseCandidates(JSON.stringify({ candidates }))
       expect(result.ok, `preset library for "${category}" failed validation`).toBe(true)
       if (result.ok) {
-        expect(result.dropped, `preset library for "${category}" had dropped entries`).toHaveLength(
-          0
-        )
+        expect(result.dropped, `preset library for "${category}" had dropped entries`).toHaveLength(0)
         expect(result.candidates).toHaveLength(PRESET_LIBRARY[category].length)
       }
     }
@@ -493,9 +483,7 @@ describe('runGeneration', () => {
  * "what's really in the file" view, matching how a real test would
  * inspect the actual written JSON blob.
  */
-function fileBackedCachePair(
-  merge: boolean
-): [CacheStore, CacheStore, (key: string) => string | undefined] {
+function fileBackedCachePair(merge: boolean): [CacheStore, CacheStore, (key: string) => string | undefined] {
   const backing: Record<string, string> = {}
   function makeInstance(): CacheStore {
     let local: Record<string, string> | null = null

@@ -118,9 +118,7 @@ function installSceneHook(scene: Scene, state: ScenePrimeState): void {
   // Preserve any real user handler present at install time. Comparing
   // against the prototype method skips a pointless indirect call per
   // render when the slot still holds three's no-op default.
-  const protoOnBeforeRender = (Object.getPrototypeOf(scene) as Record<string, unknown>)[
-    'onBeforeRender'
-  ]
+  const protoOnBeforeRender = (Object.getPrototypeOf(scene) as Record<string, unknown>)['onBeforeRender']
   // eslint-disable-next-line @typescript-eslint/unbound-method -- re-bound with .call(scene) in the chain
   const original = scene.onBeforeRender
   const hasOriginal = typeof original === 'function' && original !== protoOnBeforeRender
@@ -133,13 +131,7 @@ function installSceneHook(scene: Scene, state: ScenePrimeState): void {
   ): void {
     flatlandSceneSweep(renderer as unknown as RendererLike, scene)
     if (hasOriginal) {
-      ;(original as (...args: unknown[]) => void).call(
-        scene,
-        renderer,
-        hookScene,
-        camera,
-        renderTarget
-      )
+      ;(original as (...args: unknown[]) => void).call(scene, renderer, hookScene, camera, renderTarget)
     }
   } as Scene['onBeforeRender']
 
@@ -205,11 +197,7 @@ export function evaluateAutoBatch(registry: Registry): void {
   const byRun = new Map<string, Sprite2D[]>()
   for (const sprite of registry.standalone) {
     if (sprite._renderOrderOverridden) continue // explicit escape hatch
-    const key = computeRunKey(
-      sprite.sortLayerValue,
-      sprite.material.batchId,
-      sprite.layers.mask
-    )
+    const key = computeRunKey(sprite.sortLayerValue, sprite.material.batchId, sprite.layers.mask)
     let bucket = byRun.get(key)
     if (!bucket) {
       bucket = []
@@ -248,9 +236,7 @@ function registerSprite(registry: Registry, sprite: Sprite2D): void {
   if (sprite._materialIsBootstrapDefault && sprite.texture) {
     sprite._resolveDefaultMaterial(registry.getDefaultMaterial(sprite.texture))
   } else if (sprite._materialIsBootstrapVariant && sprite.texture) {
-    sprite._resolveEffectVariantMaterial(
-      registry.getEffectVariant(sprite.texture, sprite._currentVariantOptions())
-    )
+    sprite._resolveEffectVariantMaterial(registry.getEffectVariant(sprite.texture, sprite._currentVariantOptions()))
   }
 
   // Queue for threshold evaluation — the sweep decides standalone vs

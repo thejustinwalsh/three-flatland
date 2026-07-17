@@ -50,15 +50,15 @@ export interface Ktx2Face {
 // three.js texture class (CompressedTexture / CompressedArrayTexture /
 // CompressedCubeTexture).
 export interface Ktx2TranscodeResult {
-  faces: Ktx2Face[]                    // length 1 (2D / array) or 6 (cubemap)
-  width: number                        // physical (block-aligned) width of level 0
-  height: number                       // physical height of level 0
-  origWidth: number                    // original (non-block-aligned) width
-  origHeight: number                   // original height
-  layerCount: number                   // 0 / 1 = non-array; N = array of N
-  faceCount: number                    // 1 = 2D / array; 6 = cubemap
-  format: number                       // three.js engineFormat (e.g. RGBA_BPTC_Format)
-  type: number                         // three.js engineType
+  faces: Ktx2Face[] // length 1 (2D / array) or 6 (cubemap)
+  width: number // physical (block-aligned) width of level 0
+  height: number // physical height of level 0
+  origWidth: number // original (non-block-aligned) width
+  origHeight: number // original height
+  layerCount: number // 0 / 1 = non-array; N = array of N
+  faceCount: number // 1 = 2D / array; 6 = cubemap
+  format: number // three.js engineFormat (e.g. RGBA_BPTC_Format)
+  type: number // three.js engineType
   hasAlpha: boolean
   dfdFlags: number
   dfdColorModel: number
@@ -109,7 +109,7 @@ import {
 
 interface FormatOption {
   cap?: keyof Ktx2Capabilities
-  basis: number[]                      // basis source format(s) this row applies to
+  basis: number[] // basis source format(s) this row applies to
   transcoder: [number] | [number, number] // [opaque] or [opaque, alpha]
   engine: [number] | [number, number]
   type: number
@@ -216,7 +216,7 @@ function selectFormat(
   width: number,
   height: number,
   hasAlpha: boolean,
-  caps: Ktx2Capabilities,
+  caps: Ktx2Capabilities
 ): SelectedFormat {
   const sortKey: keyof FormatOption =
     basisFormat === BasisFormat.ETC1S
@@ -226,7 +226,7 @@ function selectFormat(
         : 'priorityHDR'
 
   const candidates = FORMAT_OPTIONS.filter((o) => o.basis.includes(basisFormat)).sort(
-    (a, b) => ((a[sortKey] as number) ?? Infinity) - ((b[sortKey] as number) ?? Infinity),
+    (a, b) => ((a[sortKey] as number) ?? Infinity) - ((b[sortKey] as number) ?? Infinity)
   )
 
   for (const opt of candidates) {
@@ -258,10 +258,7 @@ function selectFormat(
  * `transcoder-loader.ts` even though the worker only uses
  * `transcodeKtx2WithExports`.
  */
-export async function transcodeKtx2(
-  buffer: ArrayBuffer,
-  caps: Ktx2Capabilities,
-): Promise<Ktx2TranscodeResult> {
+export async function transcodeKtx2(buffer: ArrayBuffer, caps: Ktx2Capabilities): Promise<Ktx2TranscodeResult> {
   const { loadTranscoderWasm } = await import('../runtime/transcoder-loader.js')
   return transcodeKtx2WithExports(buffer, caps, await loadTranscoderWasm())
 }
@@ -275,7 +272,7 @@ export async function transcodeKtx2(
 export function transcodeKtx2WithExports(
   buffer: ArrayBuffer,
   caps: Ktx2Capabilities,
-  t: TranscoderExports,
+  t: TranscoderExports
 ): Ktx2TranscodeResult {
   const memory = t.memory
 
@@ -324,11 +321,7 @@ export function transcodeKtx2WithExports(
     // the value verbatim from basist::ktx2_transcoder.get_basis_tex_format.
     // For the JS-side selection table we condense to ETC1S / UASTC /
     // UASTC_HDR mirroring three's mapping.
-    const basisFormat = header.isEtc1s
-      ? BasisFormat.ETC1S
-      : header.isHdr
-        ? BasisFormat.UASTC_HDR
-        : BasisFormat.UASTC
+    const basisFormat = header.isEtc1s ? BasisFormat.ETC1S : header.isHdr ? BasisFormat.UASTC_HDR : BasisFormat.UASTC
 
     const layerCount = header.layerCount || 1
     const faceCount = header.faceCount
@@ -343,19 +336,14 @@ export function transcodeKtx2WithExports(
       baseLevel.width,
       baseLevel.height,
       header.hasAlpha,
-      caps,
+      caps
     )
 
     const bytesPerBlockOrPixel = t.fl_basis_get_bytes_per_block_or_pixel(transcoderFormat)
     const isUncompressed = t.fl_basis_format_is_uncompressed(transcoderFormat) === 1
 
-    if (
-      header.levelCount > 0 &&
-      (baseLevel.origWidth % 4 !== 0 || baseLevel.origHeight % 4 !== 0)
-    ) {
-      console.warn(
-        'Ktx2Loader: ETC1S and UASTC textures should use multiple-of-four dimensions.',
-      )
+    if (header.levelCount > 0 && (baseLevel.origWidth % 4 !== 0 || baseLevel.origHeight % 4 !== 0)) {
+      console.warn('Ktx2Loader: ETC1S and UASTC textures should use multiple-of-four dimensions.')
     }
 
     const faces: Ktx2Face[] = []
@@ -380,9 +368,7 @@ export function transcodeKtx2WithExports(
 
         // Concatenate all layers for this (mip, face) into one contiguous buffer
         // so three's CompressedArrayTexture sees stride-correct input.
-        const sizeUnits = isUncompressed
-          ? info.width * info.height
-          : info.totalBlocks
+        const sizeUnits = isUncompressed ? info.width * info.height : info.totalBlocks
         const bytesPerLayer = sizeUnits * bytesPerBlockOrPixel
         const totalBytes = bytesPerLayer * layerCount
 
@@ -403,17 +389,14 @@ export function transcodeKtx2WithExports(
               transcoderFormat,
               dstPtr,
               sizeUnits,
-              0, // decode_flags
+              0 // decode_flags
             )
             if (rc !== FL_TRANSCODER_E_OK) {
               throw new Error(`Ktx2Loader: transcode_level rc=${rc} (mip=${mip}, layer=${layer}, face=${face})`)
             }
             // Copy out of wasm memory before any subsequent alloc could
             // grow + relocate it.
-            concatenated.set(
-              new Uint8Array(memory.buffer, dstPtr, bytesPerLayer),
-              layer * bytesPerLayer,
-            )
+            concatenated.set(new Uint8Array(memory.buffer, dstPtr, bytesPerLayer), layer * bytesPerLayer)
           } finally {
             t.fl_transcoder_free(dstPtr)
           }

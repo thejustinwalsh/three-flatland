@@ -26,10 +26,7 @@ export type ToneSynthFinding = Extract<Finding, { kind: 'tone.synth' }>
  * range` guarantees for zzfx/wad.synth), so a straight `slice(name.
  * length)` on the remainder is exact, not a heuristic search.
  */
-export async function resolveToneSynth(
-  uri: vscode.Uri,
-  finding: ToneSynthFinding
-): Promise<ResolvedToneSynth> {
+export async function resolveToneSynth(uri: vscode.Uri, finding: ToneSynthFinding): Promise<ResolvedToneSynth> {
   const varRef = finding.payload.varRef
   try {
     const doc = await vscode.workspace.openTextDocument(uri)
@@ -44,12 +41,7 @@ export async function resolveToneSynth(
       const noteText = defDoc.getText(rangeFromWire(varRef.defRange))
       text = noteText + text.slice(varRef.name.length)
     }
-    return parseToneSynthArgsText(
-      text,
-      finding.payload.synthType,
-      finding.payload.voiceType,
-      'this Tone.js call'
-    )
+    return parseToneSynthArgsText(text, finding.payload.synthType, finding.payload.voiceType, 'this Tone.js call')
   } catch {
     return { loadError: "Can't read this Tone.js call — the source may have changed." }
   }

@@ -13,10 +13,10 @@
  * via UnoCSS preset-icons so colon-prefixed Iconify names like
  * `material-icon-theme:npm` actually render glyphs.
  */
-export * from '@astrojs/starlight/components';
-export { default as Tabs } from './components/custom/Tabs.astro';
-export { default as TabItem } from './components/custom/TabItem.astro';
+export * from '@astrojs/starlight/components'
+export { default as Tabs } from './components/custom/Tabs.astro'
+export { default as TabItem } from './components/custom/TabItem.astro'
 
-export { default as ContainerSection } from './components/custom/ContainerSection.astro';
-export { default as LinkButton } from './components/custom/LinkButton.astro';
-export { default as Dropdown } from './components/custom/dropdown';
+export { default as ContainerSection } from './components/custom/ContainerSection.astro'
+export { default as LinkButton } from './components/custom/LinkButton.astro'
+export { default as Dropdown } from './components/custom/dropdown'

@@ -22,14 +22,7 @@ import type { SDFGenerator } from './SDFGenerator'
 import type { Light2D } from './Light2D'
 
 // Re-export schema types for LightEffect consumers
-export type {
-  EffectSchema,
-  EffectSchemaValue,
-  EffectField,
-  EffectValues,
-  EffectConstants,
-  UniformKeys,
-}
+export type { EffectSchema, EffectSchemaValue, EffectField, EffectValues, EffectConstants, UniformKeys }
 // Re-export channel types for LightEffect consumers
 export type { ChannelName, WithRequiredChannels }
 
@@ -351,9 +344,7 @@ export abstract class LightEffect {
             const warnKey = `${ctor.lightName}.${name}`
             if (!_warnedConstantSetters.has(warnKey)) {
               _warnedConstantSetters.add(warnKey)
-              console.warn(
-                `[three-flatland] ${warnKey} changed at runtime — triggers shader rebuild`
-              )
+              console.warn(`[three-flatland] ${warnKey} changed at runtime — triggers shader rebuild`)
             }
             this._onDirty?.()
             this._flatland?._rebuildLightFn?.()
@@ -572,15 +563,10 @@ export abstract class LightEffect {
 // ============================================
 
 /** Instance type for lifecycle hook `this` binding. */
-type LightEffectInstance<S extends EffectSchema> = LightEffect &
-  EffectValues<S> &
-  EffectConstants<S>
+type LightEffectInstance<S extends EffectSchema> = LightEffect & EffectValues<S> & EffectConstants<S>
 
 /** Configuration passed to createLightEffect(). */
-interface LightEffectConfig<
-  S extends EffectSchema,
-  C extends readonly ChannelName[] = readonly [],
-> {
+interface LightEffectConfig<S extends EffectSchema, C extends readonly ChannelName[] = readonly []> {
   /** Unique name for this light effect. */
   name: string
   /** Per-effect data schema — default values define types and initial values. */
@@ -594,9 +580,7 @@ interface LightEffectConfig<
    * The returned callback's context is narrowed based on `requires` —
    * e.g., `requires: ['normal']` guarantees `ctx.normal` is `Node<'vec3'>`.
    */
-  light: (
-    context: LightEffectBuildContext<S>
-  ) => (ctx: ColorTransformContext & WithRequiredChannels<C>) => Node<'vec4'>
+  light: (context: LightEffectBuildContext<S>) => (ctx: ColorTransformContext & WithRequiredChannels<C>) => Node<'vec4'>
 
   // Lifecycle hooks (optional) — `this` is the effect instance
   /** Initialize GPU resources. Called lazily on first render. */
@@ -650,10 +634,9 @@ export type LightEffectClass<S extends EffectSchema> = {
  * lighting.ambientIntensity = 0.4  // zero-cost uniform update
  * ```
  */
-export function createLightEffect<
-  const S extends EffectSchema,
-  const C extends readonly ChannelName[] = readonly [],
->(config: LightEffectConfig<S, C>): LightEffectClass<S> {
+export function createLightEffect<const S extends EffectSchema, const C extends readonly ChannelName[] = readonly []>(
+  config: LightEffectConfig<S, C>
+): LightEffectClass<S> {
   const {
     name,
     schema,

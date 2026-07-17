@@ -94,12 +94,7 @@ export function claimPane(bundle: PaneBundle): void {
  * ```
  */
 export function createPane(options: CreatePaneOptions = {}): PaneBundle {
-  const {
-    title = 'Controls',
-    expanded = true,
-    driver = 'raf',
-    ...rest
-  } = options
+  const { title = 'Controls', expanded = true, driver = 'raf', ...rest } = options
 
   // Dispose any orphaned pane from a previous (aborted) render attempt.
   if (_unclaimedPane) {
@@ -193,9 +188,11 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
       modeToggle.setAttribute('data-mode', mode)
       modeToggle.setAttribute(
         'aria-label',
-        mode === 'full' ? 'Full pane (click for minimal)'
-        : mode === 'minimal' ? 'Minimal pane (click to collapse)'
-        : 'Collapsed (click to expand)',
+        mode === 'full'
+          ? 'Full pane (click for minimal)'
+          : mode === 'minimal'
+            ? 'Minimal pane (click to collapse)'
+            : 'Collapsed (click to expand)'
       )
     }
     const c = client
@@ -301,9 +298,7 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     // event fires from keyboard ⇥-space or external sets; keep it as a
     // fallback that syncs our mode if something else flips expansion.
     pane.on('fold', (ev) => {
-      const desired: Mode = ev.expanded
-        ? (mode === 'collapsed' ? 'full' : mode)
-        : 'collapsed'
+      const desired: Mode = ev.expanded ? (mode === 'collapsed' ? 'full' : mode) : 'collapsed'
       if (desired !== mode) {
         mode = desired
         applyMode()

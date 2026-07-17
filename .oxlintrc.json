@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "import", "promise"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "typescript/consistent-type-imports": ["error", { "prefer": "type-imports", "fixStyle": "inline-type-imports" }],
+    "typescript/no-import-type-side-effects": "error",
+    "react-hooks/exhaustive-deps": "warn"
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/third_party/**",
+    "**/vendor/**",
+    "**/*.gen.ts",
+    "**/*.generated.ts",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.test-d.ts",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/e2e/**",
+    "**/*.config.ts",
+    "**/*.config.js",
+    "**/*.config.mjs",
+    "**/*.setup.ts",
+    "**/*.bench.ts",
+    "**/fixtures/**"
+  ]
+}

@@ -96,12 +96,7 @@ export function App() {
       if (!(e.metaKey || e.ctrlKey)) return
       // Don't intercept when user is typing in an input/textarea.
       const target = e.target as HTMLElement | null
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable)
-      ) {
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return
       }
       if (e.key === 'z' && !e.shiftKey) {
@@ -165,9 +160,7 @@ export function App() {
   }
 
   const conflictCount =
-    state.result.kind === 'conflicts'
-      ? state.result.frameConflicts.length + state.result.animationConflicts.length
-      : 0
+    state.result.kind === 'conflicts' ? state.result.frameConflicts.length + state.result.animationConflicts.length : 0
 
   const sourcesLabel = `Sources${conflictCount > 0 ? ` (${conflictCount})` : ''}`
 

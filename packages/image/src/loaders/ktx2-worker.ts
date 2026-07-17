@@ -17,11 +17,7 @@
 
 /// <reference lib="webworker" />
 
-import {
-  transcodeKtx2WithExports,
-  transferablesOf,
-  type Ktx2Capabilities,
-} from './ktx2-transcode.js'
+import { transcodeKtx2WithExports, transferablesOf, type Ktx2Capabilities } from './ktx2-transcode.js'
 import { instantiateTranscoder, type TranscoderExports } from '../runtime/transcoder-runtime.js'
 
 interface InitRequest {
@@ -67,10 +63,7 @@ scope.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
       if (!exportsPromise) throw new Error('ktx2-worker: received transcode before init')
       const exports = await exportsPromise
       const result = transcodeKtx2WithExports(msg.buffer, msg.caps, exports)
-      scope.postMessage(
-        { type: 'transcode-done', id: msg.id, result },
-        transferablesOf(result),
-      )
+      scope.postMessage({ type: 'transcode-done', id: msg.id, result }, transferablesOf(result))
     } catch (err) {
       scope.postMessage({
         type: 'transcode-error',

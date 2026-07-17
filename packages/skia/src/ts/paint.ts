@@ -3,10 +3,22 @@ import type { SkiaPathEffect } from './path-effect'
 import type { SkiaShader } from './shader'
 import type { SkiaImageFilter } from './image-filter'
 import type { SkiaColorFilter } from './color-filter'
-import { type StrokeCap, type StrokeJoin, type BlendMode, type BlurStyle, STROKE_CAP, STROKE_JOIN, BLEND_MODE, BLUR_STYLE, BLEND_MODE_REVERSE, STROKE_CAP_REVERSE, STROKE_JOIN_REVERSE } from './types'
+import {
+  type StrokeCap,
+  type StrokeJoin,
+  type BlendMode,
+  type BlurStyle,
+  STROKE_CAP,
+  STROKE_JOIN,
+  BLEND_MODE,
+  BLUR_STYLE,
+  BLEND_MODE_REVERSE,
+  STROKE_CAP_REVERSE,
+  STROKE_JOIN_REVERSE,
+} from './types'
 
-const paintRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => drop(handle),
+const paintRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) =>
+  drop(handle)
 )
 
 /**
@@ -30,7 +42,11 @@ export class SkiaPaint {
   constructor(context: SkiaContext) {
     this._ctx = context
     this._handle = context._exports.skia_paint_new()
-    paintRegistry.register(this, { handle: this._handle, drop: (h: number) => context._exports.skia_paint_delete(h) }, this)
+    paintRegistry.register(
+      this,
+      { handle: this._handle, drop: (h: number) => context._exports.skia_paint_delete(h) },
+      this
+    )
   }
 
   // ── Color ──
@@ -118,39 +134,33 @@ export class SkiaPaint {
    * @param colors - Array of 0xAARRGGBB packed colors
    * @param stops - Array of position values [0..1], same length as colors
    */
-  setLinearGradient(
-    x0: number, y0: number, x1: number, y1: number,
-    colors: number[], stops: number[],
-  ): this {
+  setLinearGradient(x0: number, y0: number, x1: number, y1: number, colors: number[], stops: number[]): this {
     const colorsPtr = this._ctx._writeU32(colors)
     const stopsPtr = this._ctx._writeF32(stops)
     this._ctx._exports.skia_paint_set_linear_gradient_n(
-      this._handle, x0, y0, x1, y1, colorsPtr, stopsPtr, colors.length,
+      this._handle,
+      x0,
+      y0,
+      x1,
+      y1,
+      colorsPtr,
+      stopsPtr,
+      colors.length
     )
     return this
   }
 
-  setRadialGradient(
-    cx: number, cy: number, radius: number,
-    colors: number[], stops: number[],
-  ): this {
+  setRadialGradient(cx: number, cy: number, radius: number, colors: number[], stops: number[]): this {
     const colorsPtr = this._ctx._writeU32(colors)
     const stopsPtr = this._ctx._writeF32(stops)
-    this._ctx._exports.skia_paint_set_radial_gradient(
-      this._handle, cx, cy, radius, colorsPtr, stopsPtr, colors.length,
-    )
+    this._ctx._exports.skia_paint_set_radial_gradient(this._handle, cx, cy, radius, colorsPtr, stopsPtr, colors.length)
     return this
   }
 
-  setSweepGradient(
-    cx: number, cy: number,
-    colors: number[], stops: number[],
-  ): this {
+  setSweepGradient(cx: number, cy: number, colors: number[], stops: number[]): this {
     const colorsPtr = this._ctx._writeU32(colors)
     const stopsPtr = this._ctx._writeF32(stops)
-    this._ctx._exports.skia_paint_set_sweep_gradient(
-      this._handle, cx, cy, colorsPtr, stopsPtr, colors.length,
-    )
+    this._ctx._exports.skia_paint_set_sweep_gradient(this._handle, cx, cy, colorsPtr, stopsPtr, colors.length)
     return this
   }
 
@@ -181,14 +191,28 @@ export class SkiaPaint {
   // ── TwoPointConical Gradient ──
 
   setTwoPointConicalGradient(
-    startX: number, startY: number, startR: number,
-    endX: number, endY: number, endR: number,
-    colors: number[], stops: number[],
+    startX: number,
+    startY: number,
+    startR: number,
+    endX: number,
+    endY: number,
+    endR: number,
+    colors: number[],
+    stops: number[]
   ): this {
     const colorsPtr = this._ctx._writeU32(colors)
     const stopsPtr = this._ctx._writeF32(stops)
     this._ctx._exports.skia_paint_set_two_point_conical_gradient(
-      this._handle, startX, startY, startR, endX, endY, endR, colorsPtr, stopsPtr, colors.length,
+      this._handle,
+      startX,
+      startY,
+      startR,
+      endX,
+      endY,
+      endR,
+      colorsPtr,
+      stopsPtr,
+      colors.length
     )
     return this
   }
@@ -221,7 +245,12 @@ export class SkiaPaint {
     const ptr = this._ctx._writeF32([0, 0, 0, 0])
     this._ctx._exports.skia_paint_get_color(this._handle, ptr)
     const dv = new DataView(this._ctx._memory.buffer)
-    return { r: dv.getFloat32(ptr, true), g: dv.getFloat32(ptr + 4, true), b: dv.getFloat32(ptr + 8, true), a: dv.getFloat32(ptr + 12, true) }
+    return {
+      r: dv.getFloat32(ptr, true),
+      g: dv.getFloat32(ptr + 4, true),
+      b: dv.getFloat32(ptr + 8, true),
+      a: dv.getFloat32(ptr + 12, true),
+    }
   }
 
   getAlpha(): number {
@@ -258,7 +287,11 @@ export class SkiaPaint {
     const paint = Object.create(SkiaPaint.prototype) as SkiaPaint
     ;(paint as unknown as { _ctx: SkiaContext })._ctx = this._ctx
     paint._handle = newHandle
-    paintRegistry.register(paint, { handle: newHandle, drop: (h: number) => this._ctx._exports.skia_paint_delete(h) }, paint)
+    paintRegistry.register(
+      paint,
+      { handle: newHandle, drop: (h: number) => this._ctx._exports.skia_paint_delete(h) },
+      paint
+    )
     return paint
   }
 

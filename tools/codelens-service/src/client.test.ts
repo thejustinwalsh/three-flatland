@@ -1,10 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  CodelensServiceClient,
-  CodelensServiceError,
-  CodelensServiceExitedError,
-} from './client.js'
+import { CodelensServiceClient, CodelensServiceError, CodelensServiceExitedError } from './client.js'
 
 const FAKE_SIDECAR = fileURLToPath(new URL('./__fixtures__/fakeSidecar.mjs', import.meta.url))
 
@@ -40,9 +36,7 @@ describe('CodelensServiceClient', () => {
 
   it('request()/notify() before start() reject/throw cleanly rather than hanging', async () => {
     client = spawnFake()
-    expect(() => client!.didChange({ uri: 'file:///a.ts', text: 'x' })).toThrow(
-      CodelensServiceExitedError
-    )
+    expect(() => client!.didChange({ uri: 'file:///a.ts', text: 'x' })).toThrow(CodelensServiceExitedError)
     await expect(client.scan()).rejects.toBeInstanceOf(CodelensServiceExitedError)
   })
 
@@ -103,9 +97,7 @@ describe('CodelensServiceClient', () => {
   it('an unknown method rejects with the -32601 code', async () => {
     client = spawnFake()
     await client.start()
-    await expect(client.request('totally/bogus' as never, undefined)).rejects.toBeInstanceOf(
-      CodelensServiceError
-    )
+    await expect(client.request('totally/bogus' as never, undefined)).rejects.toBeInstanceOf(CodelensServiceError)
   })
 
   it('onError fires on a malformed message BODY without corrupting the stream (non-fatal)', async () => {

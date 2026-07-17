@@ -64,18 +64,19 @@ export function BuffersPanel() {
   }, [state.buffers, state.buffers.size])
 
   const needle = filter.trim().toLowerCase()
-  const visible = needle.length > 0
-    ? entries.filter((e) => e.name.toLowerCase().includes(needle) || (e.label?.toLowerCase().includes(needle) ?? false))
-    : entries
+  const visible =
+    needle.length > 0
+      ? entries.filter(
+          (e) => e.name.toLowerCase().includes(needle) || (e.label?.toLowerCase().includes(needle) ?? false)
+        )
+      : entries
 
   // Only clear the selection if the currently-selected name has
   // vanished from the registry. Never auto-pick — selection must be
   // explicit so we don't silently subscribe a producer in stream mode
   // the moment a buffer shows up. Unselected = nothing streaming, no
   // GPU readback or VP9 encode on the producer side.
-  const effectiveSelected = selectedName !== null && visible.some((e) => e.name === selectedName)
-    ? selectedName
-    : null
+  const effectiveSelected = selectedName !== null && visible.some((e) => e.name === selectedName) ? selectedName : null
 
   // Subscribe/unsubscribe to stream mode based on selection. The dashboard
   // is a fresh DevtoolsClient consumer so this subscription is additive
@@ -87,7 +88,9 @@ export function BuffersPanel() {
       return
     }
     client.setBuffers({ [effectiveSelected]: { mode: 'stream' } })
-    return () => { client.setBuffers({}) }
+    return () => {
+      client.setBuffers({})
+    }
   }, [client, effectiveSelected])
 
   // WebCodecs decoder lifecycle — one instance per active selection.
@@ -123,7 +126,11 @@ export function BuffersPanel() {
   const stopDecoder = (): void => {
     const d = decoderRef.current
     if (d !== null && d.state !== 'closed') {
-      try { d.close() } catch { /* may already be errored */ }
+      try {
+        d.close()
+      } catch {
+        /* may already be errored */
+      }
     }
     decoderRef.current = null
     decoderDimsRef.current = { w: 0, h: 0 }
@@ -314,7 +321,10 @@ export function BuffersPanel() {
     const rect = canvas.getBoundingClientRect()
     const u = (e.clientX - rect.left) / rect.width
     const v = (e.clientY - rect.top) / rect.height
-    if (u < 0 || u > 1 || v < 0 || v > 1) { setProbe(null); return }
+    if (u < 0 || u > 1 || v < 0 || v > 1) {
+      setProbe(null)
+      return
+    }
     const px = Math.min(canvas.width - 1, Math.max(0, Math.floor(u * canvas.width)))
     const py = Math.min(canvas.height - 1, Math.max(0, Math.floor(v * canvas.height)))
     try {
@@ -333,7 +343,7 @@ export function BuffersPanel() {
     setPan({ x: 0, y: 0 })
   }
 
-  const selectedSnap = effectiveSelected !== null ? state.buffers.get(effectiveSelected) ?? null : null
+  const selectedSnap = effectiveSelected !== null ? (state.buffers.get(effectiveSelected) ?? null) : null
 
   return (
     <section class="panel buffers-panel">
@@ -357,17 +367,13 @@ export function BuffersPanel() {
               <li key={e.name}>
                 <button
                   type="button"
-                  class={
-                    'buffers-row' +
-                    (e.name === effectiveSelected ? ' buffers-row-selected' : '')
-                  }
+                  class={'buffers-row' + (e.name === effectiveSelected ? ' buffers-row-selected' : '')}
                   onClick={() => setSelectedName((prev) => (prev === e.name ? null : e.name))}
                   title={e.name === effectiveSelected ? 'Click again to stop streaming' : 'Stream this buffer'}
                 >
                   <span class="buffers-name">{e.name}</span>
                   <span class="buffers-meta">
-                    {(e.srcWidth > 0 ? e.srcWidth : e.width)}×
-                    {(e.srcHeight > 0 ? e.srcHeight : e.height)} · {e.pixelType}
+                    {e.srcWidth > 0 ? e.srcWidth : e.width}×{e.srcHeight > 0 ? e.srcHeight : e.height} · {e.pixelType}
                   </span>
                 </button>
               </li>
@@ -395,8 +401,7 @@ export function BuffersPanel() {
               />
               {getFrameCursor() !== null ? (
                 <div class="buffers-parked-note">
-                  parked at frame {getFrameCursor()} — no playback yet (flight
-                  recorder lands in Phase C); canvas frozen
+                  parked at frame {getFrameCursor()} — no playback yet (flight recorder lands in Phase C); canvas frozen
                 </div>
               ) : null}
               <div class="buffers-info">
@@ -408,22 +413,25 @@ export function BuffersPanel() {
                 <span>{selectedSnap.pixelType}</span>
                 <span>{selectedSnap.display}</span>
                 {!CODEC_AVAILABLE && <span class="buffers-warn">no WebCodecs — thumbnail fallback</span>}
-                <span class="buffers-zoom">{zoom === 1 ? '1.0×' : `${zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}×`}</span>
+                <span class="buffers-zoom">
+                  {zoom === 1 ? '1.0×' : `${zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}×`}
+                </span>
               </div>
               {probe !== null && (
                 <div class="buffers-probe">
-                  <span>({probe.x}, {probe.y})</span>
+                  <span>
+                    ({probe.x}, {probe.y})
+                  </span>
                   <span class="probe-chip" style={{ background: `rgb(${probe.r}, ${probe.g}, ${probe.b})` }} />
-                  <span>{probe.r} {probe.g} {probe.b} {probe.a}</span>
+                  <span>
+                    {probe.r} {probe.g} {probe.b} {probe.a}
+                  </span>
                 </div>
               )}
               {(zoom !== 1 || pan.x !== 0 || pan.y !== 0) && (
-                <button
-                  type="button"
-                  class="buffers-reset"
-                  onClick={resetView}
-                  title="Reset zoom & pan"
-                >⟲</button>
+                <button type="button" class="buffers-reset" onClick={resetView} title="Reset zoom & pan">
+                  ⟲
+                </button>
               )}
               <button
                 type="button"
@@ -431,7 +439,9 @@ export function BuffersPanel() {
                 onClick={() => setSelectedName(null)}
                 title="Stop streaming"
                 aria-label="Stop streaming"
-              >×</button>
+              >
+                ×
+              </button>
             </>
           )}
         </div>

@@ -164,11 +164,7 @@ export function Panel({
         </div>
       ) : null}
       <div
-        {...stylex.props(
-          s.body,
-          bodyOverflow === 'visible' && s.bodyVisible,
-          bodyPadding === 'normal' && s.bodyPadded
-        )}
+        {...stylex.props(s.body, bodyOverflow === 'visible' && s.bodyVisible, bodyPadding === 'normal' && s.bodyPadded)}
       >
         {children}
       </div>

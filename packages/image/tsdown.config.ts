@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsdown'
 import { mkdirSync, copyFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -30,13 +30,19 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
-  bundle: false,
+  unbundle: true,
+  fixedExtension: false,
   shims: true,
-  onSuccess: async () => {
-    const dest = 'dist/libs/basis'
-    mkdirSync(dest, { recursive: true })
-    for (const f of readdirSync('libs/basis')) {
-      copyFileSync(join('libs/basis', f), join(dest, f))
-    }
+  // Keep Vite worker imports (`./x?worker&inline`, `./x?worker`) external — they're
+  // resolved by the consuming app's Vite worker plugin, not this library build.
+  deps: { neverBundle: [/\?worker/] },
+  hooks: {
+    'build:done'() {
+      const dest = 'dist/libs/basis'
+      mkdirSync(dest, { recursive: true })
+      for (const f of readdirSync('libs/basis')) {
+        copyFileSync(join('libs/basis', f), join(dest, f))
+      }
+    },
   },
 })

@@ -48,11 +48,7 @@ export function lcdGrid(
   const subG = isGSub.select(float(1), reduce)
   const subB = isBSub.select(float(1), reduce)
 
-  const color = vec3(
-    inputColor.r.mul(subR),
-    inputColor.g.mul(subG),
-    inputColor.b.mul(subB)
-  ).mul(gridDarken)
+  const color = vec3(inputColor.r.mul(subR), inputColor.g.mul(subG), inputColor.b.mul(subB)).mul(gridDarken)
 
   return vec4(color, inputColor.a)
 }
@@ -89,9 +85,7 @@ export function dotMatrix(
   const pixelatedUV = floor(uv.mul(resNode)).add(0.5).div(resNode)
 
   // Get the input color — if input supports .sample(), pixelate by snapping UVs
-  const inputColor = 'isTextureNode' in input
-    ? input.sample(pixelatedUV)
-    : input
+  const inputColor = 'isTextureNode' in input ? input.sample(pixelatedUV) : input
 
   // Position within each pixel cell (0 to 1)
   const pixelPos = uv.mul(resNode).fract()
@@ -103,9 +97,11 @@ export function dotMatrix(
 
   // Soft edges simulate slow LCD crystal response time
   const soft = float(0.06)
-  const maskX = pixelPos.x.smoothstep(halfGap.sub(soft), halfGap.add(soft))
+  const maskX = pixelPos.x
+    .smoothstep(halfGap.sub(soft), halfGap.add(soft))
     .mul(float(1).sub(pixelPos.x.smoothstep(upperEdge.sub(soft), upperEdge.add(soft))))
-  const maskY = pixelPos.y.smoothstep(halfGap.sub(soft), halfGap.add(soft))
+  const maskY = pixelPos.y
+    .smoothstep(halfGap.sub(soft), halfGap.add(soft))
     .mul(float(1).sub(pixelPos.y.smoothstep(upperEdge.sub(soft), upperEdge.add(soft))))
   const inPixel = maskX.mul(maskY)
 
@@ -183,11 +179,7 @@ export function lcdMotionGhost(
  * @param intensity - Bleed intensity (default: 0.1)
  * @returns Color with backlight bleed
  */
-export function lcdBacklightBleed(
-  inputColor: Node<'vec4'>,
-  uv: Node<'vec2'>,
-  intensity: FloatInput = 0.1
-) {
+export function lcdBacklightBleed(inputColor: Node<'vec4'>, uv: Node<'vec2'>, intensity: FloatInput = 0.1) {
   const intensityNode = typeof intensity === 'number' ? float(intensity) : intensity
 
   // Uneven lighting pattern (brighter in center, corners darker)

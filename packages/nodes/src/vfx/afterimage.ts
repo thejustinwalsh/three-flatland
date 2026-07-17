@@ -124,9 +124,7 @@ export function ghost(
     const ghostSample = sampleTexture(tex, uv.add(offsetVec))
 
     // Fade based on position in sequence
-    const opacity = fadeWithDistance
-      ? opacityNode.mul(float(1 - i / offsets.length))
-      : opacityNode
+    const opacity = fadeWithDistance ? opacityNode.mul(float(1 - i / offsets.length)) : opacityNode
 
     // Blend ghost under main image
     const blendedRGB = result.rgb.add(ghostSample.rgb.mul(opacity).mul(float(1).sub(result.a)))

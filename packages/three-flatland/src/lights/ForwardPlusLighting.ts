@@ -169,9 +169,7 @@ export class ForwardPlusLighting {
    * Range: `[0, MAX_LIGHTS_PER_TILE]`. Setting to 0 disables that
    * bucket entirely (no fills in that category claim slots).
    */
-  private _fillQuotas: Uint8Array = new Uint8Array(FILL_CATEGORY_COUNT).fill(
-    MAX_FILL_LIGHTS_PER_TILE
-  )
+  private _fillQuotas: Uint8Array = new Uint8Array(FILL_CATEGORY_COUNT).fill(MAX_FILL_LIGHTS_PER_TILE)
 
   private _screenSize = new Vector2()
   private _worldSize = new Vector2()
@@ -192,13 +190,7 @@ export class ForwardPlusLighting {
     // previous `height = tileCount` layout hit at fullscreen.
     const totalTexels = TILE_TEXTURE_DIM * TILE_TEXTURE_DIM
     this._tileData = new Float32Array(totalTexels * 4)
-    this._tileTexture = new DataTexture(
-      this._tileData,
-      TILE_TEXTURE_DIM,
-      TILE_TEXTURE_DIM,
-      RGBAFormat,
-      FloatType
-    )
+    this._tileTexture = new DataTexture(this._tileData, TILE_TEXTURE_DIM, TILE_TEXTURE_DIM, RGBAFormat, FloatType)
     this._tileTexture.minFilter = NearestFilter
     this._tileTexture.magFilter = NearestFilter
     this._tileTexture.needsUpdate = true
@@ -296,9 +288,8 @@ export class ForwardPlusLighting {
    * ```
    */
   setFillQuota(category: string | number, quota: number): void {
-    const bucket = typeof category === 'string'
-      ? categoryToBucket(category)
-      : (category | 0) & (FILL_CATEGORY_COUNT - 1)
+    const bucket =
+      typeof category === 'string' ? categoryToBucket(category) : (category | 0) & (FILL_CATEGORY_COUNT - 1)
     const clamped = quota < 0 ? 0 : quota > MAX_LIGHTS_PER_TILE ? MAX_LIGHTS_PER_TILE : quota
     this._fillQuotas[bucket] = clamped | 0
   }
@@ -321,9 +312,8 @@ export class ForwardPlusLighting {
    * (hashed) or a raw bucket index.
    */
   getFillQuota(category: string | number): number {
-    const bucket = typeof category === 'string'
-      ? categoryToBucket(category)
-      : (category | 0) & (FILL_CATEGORY_COUNT - 1)
+    const bucket =
+      typeof category === 'string' ? categoryToBucket(category) : (category | 0) & (FILL_CATEGORY_COUNT - 1)
     return this._fillQuotas[bucket]!
   }
 
@@ -357,7 +347,9 @@ export class ForwardPlusLighting {
 
     // Accumulate ambient lights into a single uniform — they affect every
     // pixel equally so they don't need Forward+ tile slots.
-    let ambR = 0, ambG = 0, ambB = 0
+    let ambR = 0,
+      ambG = 0,
+      ambB = 0
     for (const light of lights) {
       if (!light.enabled || light.lightType !== 'ambient') continue
       ambR += light.color.r * light.intensity
@@ -430,8 +422,10 @@ export class ForwardPlusLighting {
       let minTy: number
       let maxTy: number
       if (isDirectional || !hasCutoff) {
-        minTx = 0; maxTx = tileCountX - 1
-        minTy = 0; maxTy = tileCountY - 1
+        minTx = 0
+        maxTx = tileCountX - 1
+        minTy = 0
+        maxTy = tileCountY - 1
       } else {
         minTx = Math.max(0, Math.floor((lx - cutoff - worldOffsetX) * tileWorldWidthInv))
         maxTx = Math.min(tileCountX - 1, Math.floor((lx + cutoff - worldOffsetX) * tileWorldWidthInv))
@@ -568,7 +562,7 @@ export class ForwardPlusLighting {
             const elementIdx = count & 3
             this._tileData[texelBase + blockIdx * 4 + elementIdx] = lightIdx + 1
             tileScores[scoreBase + count] = score
-            tileSlotCategory[scoreBase + count] = -1  // hero sentinel
+            tileSlotCategory[scoreBase + count] = -1 // hero sentinel
             lightCounts[tileIdx] = count + 1
             continue
           }

@@ -208,11 +208,7 @@ export const BATCH_TIER_LADDER: readonly number[] = [1024, 4096, 16384]
  * (growth still ratchets). Null ladder → the registry's fixed
  * `maxBatchSize` (explicit SpriteGroup opt-in).
  */
-export function resolveBatchSize(
-  registry: RegistryData,
-  run: BatchRun,
-  pendingCount = 0
-): number {
+export function resolveBatchSize(registry: RegistryData, run: BatchRun, pendingCount = 0): number {
   const ladder = registry.tierLadder
   if (!ladder || ladder.length === 0) return registry.maxBatchSize
   const byGrowth = Math.min(run.batches.length, ladder.length - 1)
@@ -236,12 +232,7 @@ export function resolveBatchSize(
  * about to place in this run during the current pass — see
  * `resolveBatchSize`.
  */
-export function findOrCreateBatch(
-  world: World,
-  registry: RegistryData,
-  run: BatchRun,
-  pendingCount = 0
-): Entity {
+export function findOrCreateBatch(world: World, registry: RegistryData, run: BatchRun, pendingCount = 0): Entity {
   // Check existing batches in this run for free slots
   for (const batchEntity of run.batches) {
     const batchMesh = batchEntity.get(BatchMesh)
@@ -297,12 +288,16 @@ export function findOrCreateBatch(
   }
 
   if (batchEntity.has(BatchMeta)) {
-    batchEntity.set(BatchMeta, {
-      materialId: run.materialId,
-      sortLayer: run.sortLayer,
-      layersMask: run.layersMask,
-      batchIdx,
-    }, false)
+    batchEntity.set(
+      BatchMeta,
+      {
+        materialId: run.materialId,
+        sortLayer: run.sortLayer,
+        layersMask: run.layersMask,
+        batchIdx,
+      },
+      false
+    )
   } else {
     batchEntity.add(
       BatchMeta({
@@ -338,11 +333,7 @@ export function findOrCreateBatch(
  * Recycle a batch entity to the pool if it's empty.
  * Removes it from its run and from activeBatches.
  */
-export function recycleBatchIfEmpty(
-  registry: RegistryData,
-  batchEntity: Entity,
-  run: BatchRun
-): void {
+export function recycleBatchIfEmpty(registry: RegistryData, batchEntity: Entity, run: BatchRun): void {
   const batchMesh = batchEntity.get(BatchMesh)
   if (!batchMesh?.mesh || !batchMesh.mesh.isEmpty) return
 
@@ -417,10 +408,7 @@ interface DisposeHookedMaterial extends Sprite2DMaterial {
  * mount/unmount cycles would retain every dead world through its
  * listener closures.
  */
-const worldDisposeHooks = new WeakMap<
-  World,
-  Array<{ material: Sprite2DMaterial; listener: () => void }>
->()
+const worldDisposeHooks = new WeakMap<World, Array<{ material: Sprite2DMaterial; listener: () => void }>>()
 
 /**
  * Detach every material dispose hook a world installed (world/group
@@ -446,11 +434,7 @@ export function removeMaterialDisposeHooks(world: World): void {
  * isolated. Three's pipeline cache dedupes the compiled shader by
  * source, so the only cost is a JS instance.
  */
-export function getWorldDefaultMaterial(
-  world: World,
-  registry: RegistryData,
-  texture: Texture
-): Sprite2DMaterial {
+export function getWorldDefaultMaterial(world: World, registry: RegistryData, texture: Texture): Sprite2DMaterial {
   let material = registry.defaultMaterials.get(texture)
   if (!material) {
     material = new Sprite2DMaterial({ map: texture, transparent: true })
@@ -496,11 +480,7 @@ export function getWorldEffectVariant(
  * batches referencing freed GPU resources are torn down and
  * default-material sprites resurrect.
  */
-export function ensureMaterialDisposeHook(
-  world: World,
-  registry: RegistryData,
-  material: Sprite2DMaterial
-): void {
+export function ensureMaterialDisposeHook(world: World, registry: RegistryData, material: Sprite2DMaterial): void {
   const hooked = (material as DisposeHookedMaterial)[HOOKED_WORLDS] ?? new WeakSet<World>()
   ;(material as DisposeHookedMaterial)[HOOKED_WORLDS] = hooked
   if (hooked.has(world)) return
@@ -588,11 +568,7 @@ function evictMatchingBatchedEntities(
  * Shared by the tier-upgrade rebuild (material schema changed) and the
  * dispose teardown (material's GPU resources are gone).
  */
-export function evictBatchesForMaterial(
-  world: World,
-  registry: RegistryData,
-  materialId: number
-): void {
+export function evictBatchesForMaterial(world: World, registry: RegistryData, materialId: number): void {
   evictMatchingBatchedEntities(world, registry, (matRef) => matRef.materialId === materialId)
 }
 
@@ -603,11 +579,7 @@ export function evictBatchesForMaterial(
  * custom materials fall back to three's standard "disposed material in
  * use" semantics — restored to visible, unenrolled, and warned about.
  */
-export function handleMaterialDispose(
-  world: World,
-  registry: RegistryData,
-  material: Sprite2DMaterial
-): void {
+export function handleMaterialDispose(world: World, registry: RegistryData, material: Sprite2DMaterial): void {
   // Drop the default-cache entry first so re-resolution mints a fresh
   // material instead of handing the disposed one back out.
   const texture = material.getTexture()
@@ -658,7 +630,7 @@ export function handleMaterialDispose(
   if (orphaned > 0) {
     console.warn(
       `three-flatland: disposed material ${material.name || material.batchId} had ${orphaned} ` +
-        'sprite(s) attached with a user-supplied material — they now render with three.js\'s ' +
+        "sprite(s) attached with a user-supplied material — they now render with three.js's " +
         'standard "disposed material in use" semantics.'
     )
   }

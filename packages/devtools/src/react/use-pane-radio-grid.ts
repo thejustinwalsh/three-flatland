@@ -32,14 +32,15 @@ export interface PaneRadioGridOptions<T> {
  * Disposal is deferred through `setTimeout(0)` so the blade survives
  * React strict-mode's synchronous cleanup/re-mount pair.
  */
-export function usePaneRadioGrid<T>(
-  parent: PaneParent | null,
-  options: PaneRadioGridOptions<T>,
-): [T, (v: T) => void] {
+export function usePaneRadioGrid<T>(parent: PaneParent | null, options: PaneRadioGridOptions<T>): [T, (v: T) => void] {
   const { cells, initialValue, groupName, size } = options
   const [value, setValueState] = useState<T>(initialValue)
 
-  const bladeRef = useRef<{ dispose(): void; on: (ev: string, fn: (e: { value: T }) => void) => unknown; value?: T } | null>(null)
+  const bladeRef = useRef<{
+    dispose(): void
+    on: (ev: string, fn: (e: { value: T }) => void) => unknown
+    value?: T
+  } | null>(null)
   const cellsRef = useRef(cells)
   cellsRef.current = cells
   const mountedRef = useRef(false)
@@ -49,9 +50,11 @@ export function usePaneRadioGrid<T>(
 
     const [cols, rows] = size ?? [cells.length, 1]
     const bag = { value: initialValue }
-    const blade = (parent as unknown as {
-      addBlade: (opts: Record<string, unknown>) => typeof bladeRef.current
-    }).addBlade({
+    const blade = (
+      parent as unknown as {
+        addBlade: (opts: Record<string, unknown>) => typeof bladeRef.current
+      }
+    ).addBlade({
       view: 'radiogrid',
       groupName: groupName ?? `radio-${Math.random().toString(36).slice(2, 10)}`,
       size: [cols, rows],

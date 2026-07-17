@@ -93,7 +93,8 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
               - 'tsconfig*.json'
-              - 'eslint.config.*'
+              - '.oxlintrc.json'
+              - '.oxfmtrc.json'
               - 'vitest.config.*'
               - 'scripts/**'
             vscode:

@@ -1,12 +1,4 @@
-import {
-  DataTexture,
-  FloatType,
-  HalfFloatType,
-  Loader,
-  NearestFilter,
-  RGBAFormat,
-  RGFormat,
-} from 'three'
+import { DataTexture, FloatType, HalfFloatType, Loader, NearestFilter, RGBAFormat, RGFormat } from 'three'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
 import { readGlb } from './glb'
 import { SlugFont } from './SlugFont'
@@ -121,9 +113,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
     }
 
     if (typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') {
-      console.warn(
-        `[slug] Generating font data at runtime. Bake with \`npx slug-bake\` for production.`
-      )
+      console.warn(`[slug] Generating font data at runtime. Bake with \`npx slug-bake\` for production.`)
     }
     return this._loadRuntime(url)
   }
@@ -180,13 +170,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
 
       // ── Band texture: RG32F → FloatType ──
       const bandData = asset.accessor(columns['bandTexture']!.accessor) as Float32Array
-      const bandTexture = new DataTexture(
-        bandData,
-        bandTexMeta.width,
-        bandTexMeta.height,
-        RGFormat,
-        FloatType
-      )
+      const bandTexture = new DataTexture(bandData, bandTexMeta.width, bandTexMeta.height, RGFormat, FloatType)
       bandTexture.magFilter = NearestFilter
       bandTexture.minFilter = NearestFilter
       bandTexture.needsUpdate = true
@@ -235,23 +219,16 @@ export class SlugFontLoader extends Loader<SlugFont> {
     // MUST `await import('./bake.js')` to pull `packBaked` lazily — gated by
     // `forceRuntime`, per the `@three-flatland/normals` `resolveNormalMap`
     // precedent — so the heavy dep never enters the `.` entry's static graph.
-    const [
-      response,
-      opentype,
-      { parseFont },
-      { packTextures },
-      { shapeText },
-      { wrapLines },
-      { measureText },
-    ] = await Promise.all([
-      fetch(url),
-      import('opentype.js'),
-      import('./pipeline/fontParser'),
-      import('./pipeline/texturePacker'),
-      import('./pipeline/textShaper'),
-      import('./pipeline/wrapLines'),
-      import('./pipeline/textMeasure'),
-    ])
+    const [response, opentype, { parseFont }, { packTextures }, { shapeText }, { wrapLines }, { measureText }] =
+      await Promise.all([
+        fetch(url),
+        import('opentype.js'),
+        import('./pipeline/fontParser'),
+        import('./pipeline/texturePacker'),
+        import('./pipeline/textShaper'),
+        import('./pipeline/wrapLines'),
+        import('./pipeline/textMeasure'),
+      ])
 
     const buffer = await response.arrayBuffer()
     const parsed = parseFont(buffer)

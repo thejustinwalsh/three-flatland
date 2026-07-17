@@ -113,13 +113,7 @@ export function bakeAtlas(sources: AtlasSource[], options: BakeAtlasOptions = {}
   return { json, page: { width: packed.width, height: packed.height, rgba: page } }
 }
 
-function blit(
-  source: AtlasSource,
-  page: Uint8Array,
-  pageWidth: number,
-  dx: number,
-  dy: number
-): void {
+function blit(source: AtlasSource, page: Uint8Array, pageWidth: number, dx: number, dy: number): void {
   for (let y = 0; y < source.height; y++) {
     const srcRow = y * source.width * 4
     const dstRow = ((dy + y) * pageWidth + dx) * 4

@@ -4,11 +4,7 @@
  */
 import { useMemo } from 'react'
 import type { Texture } from 'three'
-import {
-  Sprite2DMaterial,
-  createMaterialEffect,
-  type ColorTransformFn,
-} from 'three-flatland/react'
+import { Sprite2DMaterial, createMaterialEffect, type ColorTransformFn } from 'three-flatland/react'
 import { bayerDither4x4, dissolvePixelated } from '@three-flatland/nodes'
 import { uv, vec2, vec3, vec4, mix, float } from 'three/tsl'
 import {
@@ -18,13 +14,7 @@ import {
   createNoiseTexture,
   createWallTexture,
 } from './textures'
-import {
-  BLOCK_WIDTH,
-  BLOCK_HEIGHT,
-  BALL_SIZE,
-  PADDLE_WIDTH,
-  PADDLE_HEIGHT,
-} from './systems/constants'
+import { BLOCK_WIDTH, BLOCK_HEIGHT, BALL_SIZE, PADDLE_WIDTH, PADDLE_HEIGHT } from './systems/constants'
 
 /**
  * Create a dither color transform with square cells for a given sprite size.
@@ -50,11 +40,11 @@ function createDitherTransform(width: number, height: number): ColorTransformFn 
     const diag = cellUV.x.sub(cellUV.y).add(1).mul(0.5)
 
     // Shadow: starts dithering at 60% toward lower-right
-    const shadow = diag.sub(0.40).max(0).mul(4)
+    const shadow = diag.sub(0.4).max(0).mul(4)
     const shadowMask = bayerDither4x4(vec4(shadow, shadow, shadow, float(1)), 2, 1, screenCoord).r
 
     // Highlight: starts dithering at 40% toward upper-left (inverted diagonal)
-    const highlight = float(1).sub(diag).sub(0.40).max(0).mul(4)
+    const highlight = float(1).sub(diag).sub(0.4).max(0).mul(4)
     const highlightMask = bayerDither4x4(vec4(highlight, highlight, highlight, float(1)), 2, 1, screenCoord).r
 
     // Combined: brighten upper-left, darken lower-right

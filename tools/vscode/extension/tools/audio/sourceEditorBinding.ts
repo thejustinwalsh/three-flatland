@@ -53,9 +53,7 @@ export type SourceEditorBindingEvents = {
  * `registerSourceEditorBinding` below, so it too can be exercised with
  * fake event emitters instead of only via e2e.
  */
-export function createSourceEditorBindingHandlers(
-  deps: SourceEditorBindingDeps
-): SourceEditorBindingHandlers {
+export function createSourceEditorBindingHandlers(deps: SourceEditorBindingDeps): SourceEditorBindingHandlers {
   const { activePlayback, stop, isDocumentOpenInSomeTab } = deps
   return {
     onDidChangeActiveTextEditor: (editorUri) => {
@@ -107,9 +105,7 @@ export function registerSourceEditorBinding(
       handlers.onDidChangeActiveTextEditor(editor?.document.uri.toString())
     ),
     events.onDidChangeTabs(() => handlers.onDidChangeTabs()),
-    events.onDidCloseTextDocument((document) =>
-      handlers.onDidCloseTextDocument(document.uri.toString())
-    ),
+    events.onDidCloseTextDocument((document) => handlers.onDidCloseTextDocument(document.uri.toString())),
   ]
   return {
     dispose: () => {

@@ -15,85 +15,80 @@
  * It NEVER fails the git operation it runs from — it logs and exits 0.
  */
 
-import { readdirSync, statSync, rmSync, existsSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { readdirSync, statSync, rmSync, existsSync } from 'node:fs'
+import { resolve, join } from 'node:path'
 
-const ROOT = resolve(import.meta.dirname!, "..");
-const argv = process.argv.slice(2);
-const DRY_RUN = argv.includes("--dry-run");
-const dirArg = argv.indexOf("--dir");
-const CACHE_DIR =
-  dirArg !== -1 && argv[dirArg + 1]
-    ? resolve(argv[dirArg + 1]!)
-    : resolve(ROOT, ".turbo/cache");
+const ROOT = resolve(import.meta.dirname!, '..')
+const argv = process.argv.slice(2)
+const DRY_RUN = argv.includes('--dry-run')
+const dirArg = argv.indexOf('--dir')
+const CACHE_DIR = dirArg !== -1 && argv[dirArg + 1] ? resolve(argv[dirArg + 1]!) : resolve(ROOT, '.turbo/cache')
 
-const MAX_MB = Number(process.env.TURBO_CACHE_MAX_MB ?? "2048");
-const MAX_BYTES = MAX_MB * 1024 * 1024;
-const mb = (n: number): string => (n / 1024 / 1024).toFixed(0);
+const MAX_MB = Number(process.env.TURBO_CACHE_MAX_MB ?? '2048')
+const MAX_BYTES = MAX_MB * 1024 * 1024
+const mb = (n: number): string => (n / 1024 / 1024).toFixed(0)
 
 interface Entry {
-  files: string[];
-  size: number;
-  mtime: number;
+  files: string[]
+  size: number
+  mtime: number
 }
 
 function main(): void {
-  if (!existsSync(CACHE_DIR)) return; // nothing built yet
+  if (!existsSync(CACHE_DIR)) return // nothing built yet
 
   // Group the two files per task hash into one entry.
-  const entries = new Map<string, Entry>();
-  let total = 0;
+  const entries = new Map<string, Entry>()
+  let total = 0
   for (const name of readdirSync(CACHE_DIR)) {
-    const full = join(CACHE_DIR, name);
-    let st;
+    const full = join(CACHE_DIR, name)
+    let st
     try {
-      st = statSync(full);
+      st = statSync(full)
     } catch {
-      continue;
+      continue
     }
-    if (!st.isFile()) continue;
-    const hash = name.replace(/(-meta\.json|\.tar\.zst)$/, "");
-    const e = entries.get(hash) ?? { files: [], size: 0, mtime: 0 };
-    e.files.push(full);
-    e.size += st.size;
-    e.mtime = Math.max(e.mtime, st.mtimeMs);
-    entries.set(hash, e);
-    total += st.size;
+    if (!st.isFile()) continue
+    const hash = name.replace(/(-meta\.json|\.tar\.zst)$/, '')
+    const e = entries.get(hash) ?? { files: [], size: 0, mtime: 0 }
+    e.files.push(full)
+    e.size += st.size
+    e.mtime = Math.max(e.mtime, st.mtimeMs)
+    entries.set(hash, e)
+    total += st.size
   }
 
-  if (total <= MAX_BYTES) return; // under cap — fast no-op
+  if (total <= MAX_BYTES) return // under cap — fast no-op
 
   // Evict oldest-first until back under the cap.
-  const oldestFirst = [...entries.values()].sort((a, b) => a.mtime - b.mtime);
-  let freed = 0;
-  let removed = 0;
+  const oldestFirst = [...entries.values()].sort((a, b) => a.mtime - b.mtime)
+  let freed = 0
+  let removed = 0
   for (const e of oldestFirst) {
-    if (total - freed <= MAX_BYTES) break;
+    if (total - freed <= MAX_BYTES) break
     if (!DRY_RUN) {
       for (const f of e.files) {
         try {
-          rmSync(f, { force: true });
+          rmSync(f, { force: true })
         } catch {
           /* already gone — ignore */
         }
       }
     }
-    freed += e.size;
-    removed++;
+    freed += e.size
+    removed++
   }
 
-  const verb = DRY_RUN ? "would prune" : "pruned";
+  const verb = DRY_RUN ? 'would prune' : 'pruned'
   console.log(
-    `turbo-cache-compact: ${verb} ${removed} entr${removed === 1 ? "y" : "ies"}, ` +
-      `freeing ${mb(freed)} MB (cap ${MAX_MB} MB, was ${mb(total)} MB → ${mb(total - freed)} MB)`,
-  );
+    `turbo-cache-compact: ${verb} ${removed} entr${removed === 1 ? 'y' : 'ies'}, ` +
+      `freeing ${mb(freed)} MB (cap ${MAX_MB} MB, was ${mb(total)} MB → ${mb(total - freed)} MB)`
+  )
 }
 
 try {
-  main();
+  main()
 } catch (err) {
-  console.warn(
-    `turbo-cache-compact: skipped (${err instanceof Error ? err.message : String(err)})`,
-  );
+  console.warn(`turbo-cache-compact: skipped (${err instanceof Error ? err.message : String(err)})`)
 }
-process.exit(0); // never block the git hook
+process.exit(0) // never block the git hook

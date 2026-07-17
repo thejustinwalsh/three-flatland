@@ -49,10 +49,7 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
     // eslint-disable-next-line no-new-func -- this *is* the RPC eval
     // boundary the harness exists to provide; see e2e/fixtures.ts's
     // `evaluateInVSCode`.
-    const evaluator = new Function(`return (${fn})`)() as (
-      vscodeModule: typeof vscode,
-      ...rest: unknown[]
-    ) => unknown
+    const evaluator = new Function(`return (${fn})`)() as (vscodeModule: typeof vscode, ...rest: unknown[]) => unknown
     const result = await evaluator(vscode, ...args)
     response = { id, ok: true, result: result ?? null }
   } catch (err) {

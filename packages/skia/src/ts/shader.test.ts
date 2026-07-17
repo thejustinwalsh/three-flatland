@@ -5,7 +5,9 @@ import { SkiaImage } from './image'
 import { SkiaPaint } from './paint'
 
 let skia: SkiaContext
-beforeAll(async () => { skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext) })
+beforeAll(async () => {
+  skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext)
+})
 
 describe('SkiaShader', () => {
   it('fractalNoise', () => {
@@ -55,28 +57,28 @@ describe('SkiaShader', () => {
   })
 
   it('linearGradient creates gradient shader', () => {
-    const s = SkiaShader.linearGradient(skia, 0, 0, 100, 0, [0xFFFF0000, 0xFF0000FF], [0, 1])
+    const s = SkiaShader.linearGradient(skia, 0, 0, 100, 0, [0xffff0000, 0xff0000ff], [0, 1])
     expect(s).not.toBeNull()
     expect(s!._handle).toBeGreaterThan(0)
     s!.dispose()
   })
 
   it('radialGradient creates gradient shader', () => {
-    const s = SkiaShader.radialGradient(skia, 50, 50, 50, [0xFFFF0000, 0xFF0000FF], [0, 1])
+    const s = SkiaShader.radialGradient(skia, 50, 50, 50, [0xffff0000, 0xff0000ff], [0, 1])
     expect(s).not.toBeNull()
     expect(s!._handle).toBeGreaterThan(0)
     s!.dispose()
   })
 
   it('sweepGradient creates gradient shader', () => {
-    const s = SkiaShader.sweepGradient(skia, 50, 50, [0xFFFF0000, 0xFF00FF00, 0xFF0000FF], [0, 0.5, 1])
+    const s = SkiaShader.sweepGradient(skia, 50, 50, [0xffff0000, 0xff00ff00, 0xff0000ff], [0, 0.5, 1])
     expect(s).not.toBeNull()
     expect(s!._handle).toBeGreaterThan(0)
     s!.dispose()
   })
 
   it('twoPointConicalGradient creates gradient shader', () => {
-    const s = SkiaShader.twoPointConicalGradient(skia, 30, 30, 10, 60, 60, 50, [0xFFFF0000, 0xFF0000FF], [0, 1])
+    const s = SkiaShader.twoPointConicalGradient(skia, 30, 30, 10, 60, 60, 50, [0xffff0000, 0xff0000ff], [0, 1])
     expect(s).not.toBeNull()
     expect(s!._handle).toBeGreaterThan(0)
     s!.dispose()

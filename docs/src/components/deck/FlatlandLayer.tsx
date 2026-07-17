@@ -84,12 +84,25 @@ export function FlatlandLayer({
   const aspect = resolution[0] / resolution[1]
   return (
     <FlatlandActiveContext.Provider value={active}>
-      <flatland ref={flatlandRef} renderTarget={target} viewSize={viewSize} clearColor={clearColor} clearAlpha={clearAlpha}>
+      <flatland
+        ref={flatlandRef}
+        renderTarget={target}
+        viewSize={viewSize}
+        clearColor={clearColor}
+        clearAlpha={clearAlpha}
+      >
         {children}
       </flatland>
       <mesh position={position} rotation={rotation} renderOrder={999}>
         <planeGeometry args={[size * aspect, size]} />
-        <meshBasicNodeMaterial ref={matRef} map={target.texture} transparent opacity={0} toneMapped={false} depthWrite={false} />
+        <meshBasicNodeMaterial
+          ref={matRef}
+          map={target.texture}
+          transparent
+          opacity={0}
+          toneMapped={false}
+          depthWrite={false}
+        />
       </mesh>
     </FlatlandActiveContext.Provider>
   )

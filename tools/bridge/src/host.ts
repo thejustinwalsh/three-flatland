@@ -1,15 +1,10 @@
 import type { BridgeMessage, WebviewLike } from './types'
 
-export type HostHandler<TParams = unknown, TResult = unknown> = (
-  params: TParams
-) => TResult | Promise<TResult>
+export type HostHandler<TParams = unknown, TResult = unknown> = (params: TParams) => TResult | Promise<TResult>
 
 export type HostBridge = {
   emit: (method: string, params?: unknown) => void
-  on: <TParams = unknown, TResult = unknown>(
-    method: string,
-    handler: HostHandler<TParams, TResult>
-  ) => void
+  on: <TParams = unknown, TResult = unknown>(method: string, handler: HostHandler<TParams, TResult>) => void
   dispose: () => void
 }
 

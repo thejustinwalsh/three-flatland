@@ -40,9 +40,7 @@ describe('usePaneInput', () => {
 
   it('setValue updates React state to the new value', () => {
     withParent((bundle) => {
-      const { result } = renderHook(() =>
-        usePaneInput(bundle.pane, 'speed', 1, { min: 0, max: 10 }),
-      )
+      const { result } = renderHook(() => usePaneInput(bundle.pane, 'speed', 1, { min: 0, max: 10 }))
 
       act(() => {
         const [, setValue] = result.current
@@ -56,9 +54,7 @@ describe('usePaneInput', () => {
 
   it('setValue is stable across re-renders (memoized via useCallback)', () => {
     withParent((bundle) => {
-      const { result, rerender } = renderHook(() =>
-        usePaneInput(bundle.pane, 'k', 0),
-      )
+      const { result, rerender } = renderHook(() => usePaneInput(bundle.pane, 'k', 0))
       const firstSetValue = result.current[1]
       rerender()
       expect(result.current[1]).toBe(firstSetValue)
@@ -105,9 +101,7 @@ describe('usePaneInput', () => {
 
   it('survives multiple renders without re-creating the binding', () => {
     withParent((bundle) => {
-      const { result, rerender } = renderHook(() =>
-        usePaneInput(bundle.pane, 'k', 0),
-      )
+      const { result, rerender } = renderHook(() => usePaneInput(bundle.pane, 'k', 0))
 
       const lblvCountAfterFirst = bundle.pane.element.querySelectorAll('.tp-lblv').length
 
@@ -129,9 +123,7 @@ describe('usePaneInput', () => {
     claimPane(b)
 
     let parent: PaneBundle = a
-    const { result, rerender } = renderHook(() =>
-      usePaneInput(parent.pane, 'k', 0, { label: 'Knob' }),
-    )
+    const { result, rerender } = renderHook(() => usePaneInput(parent.pane, 'k', 0, { label: 'Knob' }))
 
     // Initially bound to A
     expect(a.pane.element.textContent).toContain('Knob')

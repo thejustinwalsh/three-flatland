@@ -38,7 +38,7 @@ function ensureWorker(): Worker {
 // for write.
 export async function compositePngBlob(
   result: Extract<MergeResult, { kind: 'ok' }>,
-  sources: MergeState['sources'],
+  sources: MergeState['sources']
 ): Promise<Blob | null> {
   const { atlas, placements } = result
   if (atlas.meta.size.w === 0 || atlas.meta.size.h === 0) return null

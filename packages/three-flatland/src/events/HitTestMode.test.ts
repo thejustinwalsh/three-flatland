@@ -7,9 +7,7 @@ describe('HitTestMode', () => {
   })
 
   it('returns the requested mode when supported', () => {
-    expect(resolveHitTestMode('alpha', ['radius', 'bounds', 'alpha', 'none'], 'Sprite2D')).toBe(
-      'alpha'
-    )
+    expect(resolveHitTestMode('alpha', ['radius', 'bounds', 'alpha', 'none'], 'Sprite2D')).toBe('alpha')
   })
 
   it('falls back to bounds first, then radius, then first supported', () => {

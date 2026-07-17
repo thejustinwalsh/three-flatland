@@ -43,10 +43,7 @@ export function contrastRatio(a: Color, b: Color): number {
  * - AA-large: contrast >= 3:1 (minimum, large text / UI components)
  * - fail: contrast < 3:1
  */
-export function wcagLevel(
-  foreground: Color,
-  background: Color
-): 'AAA' | 'AA' | 'AA-large' | 'fail' {
+export function wcagLevel(foreground: Color, background: Color): 'AAA' | 'AA' | 'AA-large' | 'fail' {
   const ratio = contrastRatio(foreground, background)
   if (ratio >= 7) return 'AAA'
   if (ratio >= 4.5) return 'AA'

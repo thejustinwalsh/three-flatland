@@ -27,13 +27,13 @@
 
 /** Tier sizes / counts. Hard-coded; bump here if we ever see exhaustion. */
 export const POOL = {
-  small: { size: 4 * 1024, count: 8 },         // 32 KB
+  small: { size: 4 * 1024, count: 8 }, // 32 KB
   // The per-flush data packet (stats deltas + batch/registry/env samples).
   // It never belonged in the 16 MB texture tier: sitting there meant the
   // worker's BroadcastChannel re-broadcast cloned the full 16 MB backing
   // buffer per same-page receiver. 256 KB holds the payload with headroom;
   // bump the count if exhaustion warns.
-  medium: { size: 256 * 1024, count: 4 },      // 1 MB, dev-only
+  medium: { size: 256 * 1024, count: 4 }, // 1 MB, dev-only
   // Sized to fit the largest debug buffer we routinely drain. With the
   // consumer-driven subscription model only one texture is usually in
   // flight at a time (the currently-viewed thumbnail or the modal's
@@ -164,7 +164,7 @@ export class BufferPool {
 /** Allocate one tier's worth of fresh buffers — called by the worker at boot. */
 export function allocateTier(tier: PoolTier): ArrayBuffer[] {
   const spec = POOL[tier]
-  const out: ArrayBuffer[] = new Array<ArrayBuffer>(spec.count)
+  const out: ArrayBuffer[] = Array.from<ArrayBuffer>({ length: spec.count })
   for (let i = 0; i < spec.count; i++) out[i] = new ArrayBuffer(spec.size)
   return out
 }
@@ -193,15 +193,14 @@ export interface BufferCursor {
  * queues for each subscriber.
  */
 export function copyTypedTo<
-  T extends Int8Array | Uint8Array | Int16Array | Uint16Array
-       | Int32Array | Uint32Array | Float32Array | Float64Array,
+  T extends Int8Array | Uint8Array | Int16Array | Uint16Array | Int32Array | Uint32Array | Float32Array | Float64Array,
 >(cursor: BufferCursor, src: T): T {
   const len = src.length
   const byteLen = src.byteLength
   if (cursor.byteOffset + byteLen > cursor.buffer.byteLength) {
     throw new RangeError(
       `bus-pool cursor overflow: need ${byteLen}B at offset ${cursor.byteOffset} ` +
-      `(buffer ${cursor.buffer.byteLength}B)`,
+        `(buffer ${cursor.buffer.byteLength}B)`
     )
   }
   const dstU8 = new Uint8Array(cursor.buffer, cursor.byteOffset, byteLen)

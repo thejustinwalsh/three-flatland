@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  framesToRegions,
-  wholeTextureRegion,
-  tileToRegions,
-  tilesetToRegions,
-} from './normalDescriptor'
+import { framesToRegions, wholeTextureRegion, tileToRegions, tilesetToRegions } from './normalDescriptor'
 
 describe('framesToRegions', () => {
   it('emits one region per frame with the same rect', () => {
@@ -150,8 +145,8 @@ describe('tileToRegions', () => {
       tileCapRight: 4,
     })
     expect(regions).toHaveLength(3)
-    expect(regions[0]).toMatchObject({ x: 0, y: 0, w: 16, h: 4 })      // top
-    expect(regions[1]).toMatchObject({ x: 12, y: 4, w: 4, h: 12 })     // right
+    expect(regions[0]).toMatchObject({ x: 0, y: 0, w: 16, h: 4 }) // top
+    expect(regions[1]).toMatchObject({ x: 12, y: 4, w: 4, h: 12 }) // right
     expect(regions[2]).toMatchObject({
       x: 0,
       y: 4,
@@ -168,8 +163,8 @@ describe('tileToRegions', () => {
       tileCapRight: 3,
     })
     expect(regions).toHaveLength(3)
-    expect(regions[0]).toMatchObject({ x: 0, y: 0, w: 3, h: 16 })       // left cap
-    expect(regions[1]).toMatchObject({ x: 13, y: 0, w: 3, h: 16 })      // right cap
+    expect(regions[0]).toMatchObject({ x: 0, y: 0, w: 3, h: 16 }) // left cap
+    expect(regions[1]).toMatchObject({ x: 13, y: 0, w: 3, h: 16 }) // right cap
     expect(regions[2]).toMatchObject({
       x: 3,
       y: 0,
@@ -244,10 +239,7 @@ describe('tileToRegions', () => {
   })
 
   it('respects the cell origin when synthesizing absolute-atlas coords', () => {
-    const regions = tileToRegions(
-      { x: 32, y: 48, w: 16, h: 16 },
-      { tileDir: 'south', tileCapTop: 4 }
-    )
+    const regions = tileToRegions({ x: 32, y: 48, w: 16, h: 16 }, { tileDir: 'south', tileCapTop: 4 })
     expect(regions[0]).toMatchObject({ x: 32, y: 48, w: 16, h: 4 })
     expect(regions[1]).toMatchObject({ x: 32, y: 52, w: 16, h: 12 })
   })
@@ -266,9 +258,7 @@ describe('tileToRegions — corner caps', () => {
     // rects — assert on total covered area instead of exact rect shapes.
     const cap = regions.find((r) => !r.direction)!
     expect(cap).toMatchObject({ x: 0, y: 0, w: 4, h: 4 })
-    const faceArea = regions
-      .filter((r) => r.direction === 'south')
-      .reduce((sum, r) => sum + r.w * r.h, 0)
+    const faceArea = regions.filter((r) => r.direction === 'south').reduce((sum, r) => sum + r.w * r.h, 0)
     expect(faceArea).toBe(16 * 16 - 4 * 4) // 256 − 16 = 240
   })
 
@@ -282,9 +272,7 @@ describe('tileToRegions — corner caps', () => {
     })
     const caps = regions.filter((r) => !r.direction)
     expect(caps).toHaveLength(4)
-    const faceArea = regions
-      .filter((r) => r.direction === 'north')
-      .reduce((sum, r) => sum + r.w * r.h, 0)
+    const faceArea = regions.filter((r) => r.direction === 'north').reduce((sum, r) => sum + r.w * r.h, 0)
     expect(faceArea).toBe(16 * 16 - 4 * 4 * 4) // 256 − 64 = 192
   })
 
@@ -296,9 +284,7 @@ describe('tileToRegions — corner caps', () => {
       tileCapTop: 4,
       tileCapTopLeft: 4,
     })
-    const faceArea = regions
-      .filter((r) => r.direction === 'south')
-      .reduce((sum, r) => sum + r.w * r.h, 0)
+    const faceArea = regions.filter((r) => r.direction === 'south').reduce((sum, r) => sum + r.w * r.h, 0)
     const capUnionArea = 16 * 4 // just the top strip — corner is inside it
     expect(faceArea).toBe(16 * 16 - capUnionArea) // 256 − 64 = 192
   })
@@ -318,10 +304,7 @@ describe('tileToRegions — corner caps', () => {
   })
 
   it('BR corner cap on a cell with non-zero origin computes absolute coords', () => {
-    const regions = tileToRegions(
-      { x: 32, y: 48, w: 16, h: 16 },
-      { tileDir: 'north-west', tileCapBottomRight: 4 }
-    )
+    const regions = tileToRegions({ x: 32, y: 48, w: 16, h: 16 }, { tileDir: 'north-west', tileCapBottomRight: 4 })
     const cap = regions.find((r) => !r.direction)!
     expect(cap).toMatchObject({ x: 44, y: 60, w: 4, h: 4 })
   })

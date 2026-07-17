@@ -1,9 +1,4 @@
-import {
-  BufferGeometry,
-  Float32BufferAttribute,
-  InstancedBufferAttribute,
-  Uint16BufferAttribute,
-} from 'three'
+import { BufferGeometry, Float32BufferAttribute, InstancedBufferAttribute, Uint16BufferAttribute } from 'three'
 import type { SlugFont } from './SlugFont'
 import type { DecorationRect, PositionedGlyph, SlugGlyphData } from './types'
 

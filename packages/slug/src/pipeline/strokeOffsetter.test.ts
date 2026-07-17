@@ -337,10 +337,7 @@ describe('insertJoin', () => {
       cornerX: 0,
       cornerY: 0,
       tangentA: [1, 0],
-      tangentB: [
-        Math.cos(Math.PI - (10 * Math.PI) / 180),
-        Math.sin(Math.PI - (10 * Math.PI) / 180),
-      ],
+      tangentB: [Math.cos(Math.PI - (10 * Math.PI) / 180), Math.sin(Math.PI - (10 * Math.PI) / 180)],
       endA: { x: 0, y: 1 },
       startB: { x: 0, y: 0 }, // placeholder; miter calc doesn't use this directly
       halfWidth: 1,
@@ -668,10 +665,7 @@ describe('bakeStrokeForGlyph', () => {
     expect(stroked!.curves.length).toBeGreaterThan(0)
     for (let i = 0; i < stroked!.contourStarts.length; i++) {
       const start = stroked!.contourStarts[i]!
-      const end =
-        i + 1 < stroked!.contourStarts.length
-          ? stroked!.contourStarts[i + 1]!
-          : stroked!.curves.length
+      const end = i + 1 < stroked!.contourStarts.length ? stroked!.contourStarts[i + 1]! : stroked!.curves.length
       // Adjacent curves in each contour share endpoints (p2 of one
       // equals p0 of the next).
       for (let j = start; j < end - 1; j++) {

@@ -65,9 +65,7 @@ function makeTinyInput(): BakeInput {
 
 describe('FlSlugFontExtension — registerable glTF-Transform extension', () => {
   it('exposes the FL_slug_font extension name', () => {
-    expect((FlSlugFontExtension as unknown as { EXTENSION_NAME: string }).EXTENSION_NAME).toBe(
-      'FL_slug_font'
-    )
+    expect((FlSlugFontExtension as unknown as { EXTENSION_NAME: string }).EXTENSION_NAME).toBe('FL_slug_font')
   })
 
   it('a registered NodeIO round-trips .slug.glb with accessor refs intact', async () => {
@@ -78,13 +76,11 @@ describe('FlSlugFontExtension — registerable glTF-Transform extension', () => 
 
     // The extension property must be attached to the root with all accessor
     // refs resolved back into the property graph (not dropped).
-    const prop = doc
-      .getRoot()
-      .getExtension<{
-        listAccessorSemantics(): string[]
-        getAccessorRef(semantic: string): unknown
-        getMetadata(): Record<string, unknown>
-      }>('FL_slug_font')
+    const prop = doc.getRoot().getExtension<{
+      listAccessorSemantics(): string[]
+      getAccessorRef(semantic: string): unknown
+      getMetadata(): Record<string, unknown>
+    }>('FL_slug_font')
     expect(prop, 'FL_slug_font property attached to root').toBeTruthy()
 
     const semantics = prop!.listAccessorSemantics()

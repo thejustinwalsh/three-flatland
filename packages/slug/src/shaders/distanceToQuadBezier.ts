@@ -154,12 +154,7 @@ export function refDistanceToQuadBezier(
  *
  * Must be called inside a `Fn()` TSL context.
  */
-export function distanceToQuadBezier(
-  p: Node<'vec2'>,
-  p0: Node<'vec2'>,
-  p1: Node<'vec2'>,
-  p2: Node<'vec2'>
-) {
+export function distanceToQuadBezier(p: Node<'vec2'>, p0: Node<'vec2'>, p1: Node<'vec2'>, p2: Node<'vec2'>) {
   const A = p2.sub(p1.mul(2.0)).add(p0)
   const D = p1.sub(p0)
   const M = p0.sub(p)
@@ -175,10 +170,8 @@ export function distanceToQuadBezier(
   const c1 = float(2.0).mul(DD).add(MA)
   const c0 = MD
 
-  const fEval = (t: Node<'float'>) =>
-    c3.mul(t).mul(t).mul(t).add(c2.mul(t).mul(t)).add(c1.mul(t)).add(c0)
-  const fPrime = (t: Node<'float'>) =>
-    float(3.0).mul(c3).mul(t).mul(t).add(float(2.0).mul(c2).mul(t)).add(c1)
+  const fEval = (t: Node<'float'>) => c3.mul(t).mul(t).mul(t).add(c2.mul(t).mul(t)).add(c1.mul(t)).add(c0)
+  const fPrime = (t: Node<'float'>) => float(3.0).mul(c3).mul(t).mul(t).add(float(2.0).mul(c2).mul(t)).add(c1)
 
   const denomFloor = float(1.0 / (1 << 20))
   const newton = (t: Node<'float'>) => {

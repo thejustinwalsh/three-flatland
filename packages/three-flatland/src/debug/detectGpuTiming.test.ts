@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  detectGpuTimingActive,
-  resolveTrackTimestamp,
-  type GpuTimingProbeBackend,
-} from './detectGpuTiming'
+import { detectGpuTimingActive, resolveTrackTimestamp, type GpuTimingProbeBackend } from './detectGpuTiming'
 
 /** WebGPU backend whose device negotiated `timestamp-query`. */
 function webgpuSupported(trackTimestamp: boolean): GpuTimingProbeBackend {

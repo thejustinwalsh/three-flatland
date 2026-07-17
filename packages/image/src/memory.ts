@@ -17,7 +17,7 @@ export function estimateGpuMemory(source: SourceShape, loader: Loader): GpuMemor
   return analytic(source, loader)
 }
 
-function analytic(source: SourceShape, loader: typeof LOADERS[number]): GpuMemoryEstimate[] {
+function analytic(source: SourceShape, loader: (typeof LOADERS)[number]): GpuMemoryEstimate[] {
   const px = source.width * source.height
   if (loader === 'three-default') {
     return [{ loader, gpuFormat: 'RGBA8', bytes: px * 4 }]

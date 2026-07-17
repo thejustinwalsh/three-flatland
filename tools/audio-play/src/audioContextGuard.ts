@@ -152,7 +152,5 @@ globalThis.window.AudioContext = GuardedAudioContext as unknown as typeof AudioC
 // package's CLAUDE.md ("Common pitfalls" / `loadWadConstructor`) for why
 // both the bare-global and `window`-scoped aliases need patching. Not
 // patching this one would let such a fallback bypass the guard entirely.
-;(globalThis as unknown as { webkitAudioContext: unknown }).webkitAudioContext =
-  GuardedAudioContext
-;(globalThis.window as unknown as { webkitAudioContext: unknown }).webkitAudioContext =
-  GuardedAudioContext
+;(globalThis as unknown as { webkitAudioContext: unknown }).webkitAudioContext = GuardedAudioContext
+;(globalThis.window as unknown as { webkitAudioContext: unknown }).webkitAudioContext = GuardedAudioContext

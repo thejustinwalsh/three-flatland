@@ -1,12 +1,6 @@
 import type { Sprite2DMaterial } from 'three-flatland/react'
 import { SortLayers } from 'three-flatland/react'
-import {
-  WORLD_LEFT,
-  WORLD_RIGHT,
-  WORLD_TOP,
-  WORLD_WIDTH,
-  WORLD_HEIGHT,
-} from '../systems/constants'
+import { WORLD_LEFT, WORLD_RIGHT, WORLD_TOP, WORLD_WIDTH, WORLD_HEIGHT } from '../systems/constants'
 
 // Subtle border that frames the play area
 const WALL_THICKNESS = 0.06

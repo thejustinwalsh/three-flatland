@@ -31,9 +31,7 @@ function makeTexture(): Texture {
 function getRegistry(group: SpriteGroup): RegistryData | null {
   const world = group.world
   const entities = world.query(BatchRegistry)
-  return entities.length === 0
-    ? null
-    : (entities[0]!.get(BatchRegistry) as RegistryData)
+  return entities.length === 0 ? null : (entities[0]!.get(BatchRegistry) as RegistryData)
 }
 
 function getBatchForSprite(group: SpriteGroup, sprite: Sprite2D): SpriteBatch | null {
@@ -47,10 +45,7 @@ function getBatchForSprite(group: SpriteGroup, sprite: Sprite2D): SpriteBatch | 
  * Read the per-slot translation (px, py, pz) the GPU will see this frame.
  * Mirrors the transformSyncSystem write layout — col 3 of the 4x4 matrix.
  */
-function readMatrixTranslation(
-  batch: SpriteBatch,
-  slot: number
-): { x: number; y: number; z: number } {
+function readMatrixTranslation(batch: SpriteBatch, slot: number): { x: number; y: number; z: number } {
   const m = batch.instanceMatrix.array as Float32Array
   return { x: m[slot * 16 + 12]!, y: m[slot * 16 + 13]!, z: m[slot * 16 + 14]! }
 }
@@ -112,12 +107,8 @@ describe('sort flash — batch-demo repro', () => {
     for (const sprite of all) {
       const slot = sprite.entity!.get(BatchSlot)!.slot
       const m = readMatrixTranslation(batch, slot)
-      expect(m.x, `slot ${slot} matrix.x mismatch for sprite at world ${sprite.position.x}`).toBe(
-        sprite.position.x
-      )
-      expect(m.y, `slot ${slot} matrix.y mismatch for sprite at world ${sprite.position.y}`).toBe(
-        sprite.position.y
-      )
+      expect(m.x, `slot ${slot} matrix.x mismatch for sprite at world ${sprite.position.x}`).toBe(sprite.position.x)
+      expect(m.y, `slot ${slot} matrix.y mismatch for sprite at world ${sprite.position.y}`).toBe(sprite.position.y)
     }
   })
 

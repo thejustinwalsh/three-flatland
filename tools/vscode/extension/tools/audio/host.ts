@@ -68,8 +68,7 @@ async function resolveFinding(
   const document = await vscode.workspace.openTextDocument(uri)
   const { findings } = await client.parse({ uri: uri.toString(), text: document.getText() })
   const finding = findings.find(
-    (f): f is Extract<typeof f, { kind: 'zzfx.call' }> =>
-      f.kind === 'zzfx.call' && f.id === findingId
+    (f): f is Extract<typeof f, { kind: 'zzfx.call' }> => f.kind === 'zzfx.call' && f.id === findingId
   )
   if (!finding) return undefined
   return { document, finding }
@@ -109,8 +108,7 @@ async function resolveFindingForSave(
     const { findings } = await client.parse({ uri: uri.toString(), text: document.getText() })
     if (document.version !== versionAtParse) continue
     const finding = findings.find(
-      (f): f is Extract<typeof f, { kind: 'zzfx.call' }> =>
-        f.kind === 'zzfx.call' && f.id === findingId
+      (f): f is Extract<typeof f, { kind: 'zzfx.call' }> => f.kind === 'zzfx.call' && f.id === findingId
     )
     if (!finding) return undefined
     return { document, finding }
@@ -128,9 +126,7 @@ export async function openZzfxEditorPanel(
 ): Promise<void> {
   const resolved = await resolveFinding(client, uri, findingId)
   if (!resolved) {
-    void vscode.window.showErrorMessage(
-      'FL ZzFX: this zzfx() call could not be found — the source may have changed.'
-    )
+    void vscode.window.showErrorMessage('FL ZzFX: this zzfx() call could not be found — the source may have changed.')
     return
   }
   const { finding } = resolved
@@ -201,9 +197,7 @@ export async function openZzfxEditorPanel(
       def:
         finding.payload.varRef?.defUri && finding.payload.varRef.defRange
           ? {
-              path: vscode.workspace.asRelativePath(
-                vscode.Uri.parse(finding.payload.varRef.defUri)
-              ),
+              path: vscode.workspace.asRelativePath(vscode.Uri.parse(finding.payload.varRef.defUri)),
               line: finding.payload.varRef.defRange.start.line,
             }
           : undefined,
@@ -279,9 +273,7 @@ export async function openZzfxEditorPanel(
     }
     const current = await resolveFindingForSave(liveClient, uri, fid)
     if (!current) {
-      throw new Error(
-        'This zzfx() call could not be found — the source may have changed since the panel opened.'
-      )
+      throw new Error('This zzfx() call could not be found — the source may have changed since the panel opened.')
     }
     const { document, finding: currentFinding } = current
     // Snapshot right after resolveFindingForSave's own version check has
@@ -334,9 +326,7 @@ export async function openZzfxEditorPanel(
       const currentInitializerText = defDoc.getText(rangeFromWire(varRef.defRange)).trim()
       if (!isNumberArrayLiteralText(currentInitializerText)) {
         const preview =
-          currentInitializerText.length > 40
-            ? `${currentInitializerText.slice(0, 40)}…`
-            : currentInitializerText
+          currentInitializerText.length > 40 ? `${currentInitializerText.slice(0, 40)}…` : currentInitializerText
         throw new Error(
           `Can't save "${varRef.name}" — its declaration is not a plain array literal ` +
             `(found "${preview}"). Edit the source directly for this case.`
@@ -386,8 +376,7 @@ export async function openZzfxEditorPanel(
     // error toast for a navigation click.
     const varRef = finding.payload.varRef
     const targetUri = varRef?.defUri && varRef.defRange ? vscode.Uri.parse(varRef.defUri) : uri
-    const storedLine =
-      varRef?.defUri && varRef.defRange ? varRef.defRange.start.line : finding.range.start.line
+    const storedLine = varRef?.defUri && varRef.defRange ? varRef.defRange.start.line : finding.range.start.line
     const document = await vscode.workspace.openTextDocument(targetUri)
     const line = Math.min(storedLine, document.lineCount - 1)
     await vscode.window.showTextDocument(document, {
@@ -401,9 +390,7 @@ export async function openZzfxEditorPanel(
     return { ok: true }
   })
 
-  const disposeReload = setupDevReload(context.extensionUri, TOOL, () =>
-    bridge.emit('dev/reload', { tool: TOOL })
-  )
+  const disposeReload = setupDevReload(context.extensionUri, TOOL, () => bridge.emit('dev/reload', { tool: TOOL }))
   bridge.on('dev/reload-request', async () => {
     panel.webview.html = await renderHtml()
     return { ok: true }

@@ -14,11 +14,7 @@ function isNode(): boolean {
 
 async function loadWasmFromDisk(relPath: string): Promise<WebAssembly.Module> {
   // Node-only path. The dynamic imports keep `node:*` out of browser bundles.
-  const [fs, path, url] = await Promise.all([
-    import('node:fs'),
-    import('node:path'),
-    import('node:url'),
-  ])
+  const [fs, path, url] = await Promise.all([import('node:fs'), import('node:path'), import('node:url')])
   const here = path.dirname(url.fileURLToPath(import.meta.url))
   const wasmPath = path.join(here, relPath)
   const bytes = fs.readFileSync(wasmPath)
@@ -31,12 +27,8 @@ function ensureWasm(): Promise<void> {
     if (!isNode()) return // browser: @jsquash's default init via fetch() works
     // @jsquash/webp ships separate decode + encode WASM modules.
     // Actual filenames: codec/dec/webp_dec.wasm and codec/enc/webp_enc.wasm
-    const decModule = await loadWasmFromDisk(
-      '../../node_modules/@jsquash/webp/codec/dec/webp_dec.wasm',
-    )
-    const encModule = await loadWasmFromDisk(
-      '../../node_modules/@jsquash/webp/codec/enc/webp_enc.wasm',
-    )
+    const decModule = await loadWasmFromDisk('../../node_modules/@jsquash/webp/codec/dec/webp_dec.wasm')
+    const encModule = await loadWasmFromDisk('../../node_modules/@jsquash/webp/codec/enc/webp_enc.wasm')
     await initDecode(decModule)
     await initEncode(encModule)
   })()

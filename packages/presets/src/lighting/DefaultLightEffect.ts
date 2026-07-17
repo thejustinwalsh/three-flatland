@@ -202,10 +202,7 @@ const _DefaultLightEffect = createLightEffect({
         const totalRim = rimEnabled ? vec3(0, 0, 0).toVar('totalRim') : null
 
         // Compute tile index from world position
-        const screenPos = surfacePos
-          .sub(fp.worldOffsetNode)
-          .div(fp.worldSizeNode)
-          .mul(fp.screenSizeNode)
+        const screenPos = surfacePos.sub(fp.worldOffsetNode).div(fp.worldSizeNode).mul(fp.screenSizeNode)
         const tileX = int(screenPos.x.div(float(TILE_SIZE)).floor())
         const tileY = int(screenPos.y.div(float(TILE_SIZE)).floor())
         const tileIndex = tileY.mul(fp.tileCountXNode).add(tileX)
@@ -234,9 +231,7 @@ const _DefaultLightEffect = createLightEffect({
           const contribution = lightColor.mul(lightIntensityVal).mul(lightEnabled)
 
           // Point light attenuation
-          const effectiveDistance = lightDistance
-            .greaterThan(float(0))
-            .select(lightDistance, float(1e6))
+          const effectiveDistance = lightDistance.greaterThan(float(0)).select(lightDistance, float(1e6))
           const toLight = lightPos.sub(vec2(surfacePos))
           const dist = toLight.length()
           const normalizedDist = dist.div(effectiveDistance).clamp(0, 1)
@@ -274,10 +269,7 @@ const _DefaultLightEffect = createLightEffect({
           // Select attenuation by type
           const isPoint = lightType.lessThan(float(0.5))
           const isSpot = lightType.greaterThan(float(0.5)).and(lightType.lessThan(float(1.5)))
-          const atten = isPoint.select(
-            pointAtten,
-            isSpot.select(pointAtten.mul(coneAtten), float(1))
-          )
+          const atten = isPoint.select(pointAtten, isSpot.select(pointAtten.mul(coneAtten), float(1)))
 
           // Normal-based directional diffuse shading. Ambient lights skip
           // the N·L gate entirely.
@@ -328,24 +320,17 @@ const _DefaultLightEffect = createLightEffect({
                     .floor()
                     .mul(shadowPixelSize)
                 : vec2(surfacePos)
-              const trace = shadowSDF2D(
-                shadowSurfacePos,
-                lightPos,
-                sdfTexture,
-                worldSizeNode,
-                worldOffsetNode,
-                {
-                  eps: shadowBias,
-                  // Per-instance occluder radius × effect-level
-                  // multiplier. The radius auto-tracks each sprite's
-                  // scale (so the knight uses ~64 and the slime uses
-                  // ~32 without manual tuning); the multiplier is a
-                  // scene-wide fine-tune.
-                  startOffset: readShadowRadius().mul(shadowStartOffsetScale),
-                  fragmentCastsShadow: readCastShadowFlag(),
-                  maxShadowDistance: shadowMaxDistance,
-                }
-              )
+              const trace = shadowSDF2D(shadowSurfacePos, lightPos, sdfTexture, worldSizeNode, worldOffsetNode, {
+                eps: shadowBias,
+                // Per-instance occluder radius × effect-level
+                // multiplier. The radius auto-tracks each sprite's
+                // scale (so the knight uses ~64 and the slime uses
+                // ~32 without manual tuning); the multiplier is a
+                // scene-wide fine-tune.
+                startOffset: readShadowRadius().mul(shadowStartOffsetScale),
+                fragmentCastsShadow: readCastShadowFlag(),
+                maxShadowDistance: shadowMaxDistance,
+              })
               // Attenuate by shadowStrength (lerp lit → trace).
               shadow.assign(float(1).sub(float(1).sub(trace).mul(shadowStrength)))
             })
@@ -382,9 +367,7 @@ const _DefaultLightEffect = createLightEffect({
         // JS-time gate on rim — when disabled, no rim accumulator
         // exists so the mix collapses to a passthrough.
         const directLit =
-          rimEnabled && totalRim
-            ? vec3(totalLightLit).add(vec3(totalRim).mul(rimIntensity))
-            : vec3(totalLightLit)
+          rimEnabled && totalRim ? vec3(totalLightLit).add(vec3(totalRim).mul(rimIntensity)) : vec3(totalLightLit)
 
         // Quantize the unshadowed direct to discrete bands. Ambient
         // is added AFTER quantization so it acts as a continuous

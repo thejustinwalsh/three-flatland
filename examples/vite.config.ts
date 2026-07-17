@@ -93,14 +93,7 @@ export default defineConfig({
     // Force a single instance of these libs across the workspace.
     // Without this, pnpm's per-package symlinks create duplicate module
     // instances → React "Invalid hook call" errors.
-    dedupe: [
-      'react',
-      'react-dom',
-      'react/jsx-runtime',
-      'react/jsx-dev-runtime',
-      'three',
-      '@react-three/fiber',
-    ],
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'three', '@react-three/fiber'],
   },
   plugins: [react(), mpaRoutingPlugin(), threeFlatlandDevtools()],
   // Pre-bundle all deps in a single pass at startup by pointing entries

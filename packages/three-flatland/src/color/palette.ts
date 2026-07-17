@@ -9,11 +9,7 @@ import { colorToOklch, oklchToColor } from './conversions'
  * @param count - Number of shades to generate
  * @param range - Lightness range [min, max] (default [0.15, 0.95])
  */
-export function monochromaticPalette(
-  base: Color,
-  count: number,
-  range: [number, number] = [0.15, 0.95]
-): Color[] {
+export function monochromaticPalette(base: Color, count: number, range: [number, number] = [0.15, 0.95]): Color[] {
   const lch = colorToOklch(base)
   const [minL, maxL] = range
   const result: Color[] = []

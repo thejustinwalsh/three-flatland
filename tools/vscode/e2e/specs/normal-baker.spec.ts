@@ -52,11 +52,7 @@ test('FL Normal Baker opens from the baked .normal.png, resolving to its SOURCE 
   await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
 })
 
-test('Save re-bakes .normal.png and re-stamps its content-hash', async ({
-  baseDir,
-  openCommand,
-  webviewFrame,
-}) => {
+test('Save re-bakes .normal.png and re-stamps its content-hash', async ({ baseDir, openCommand, webviewFrame }) => {
   // Delete only the baked PNG output — a successful assertion below then
   // proves Save actually (re)created it (host service ran
   // bakeNormalMapFile), not that it merely survived untouched from the
@@ -84,9 +80,7 @@ test('Save re-bakes .normal.png and re-stamps its content-hash', async ({
   await expect(frame.getByText('Saved', { exact: true })).toBeVisible()
 
   const pngBytes = await fs.readFile(pngOut)
-  expect(Array.from(pngBytes.subarray(0, 8))).toEqual([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-  ])
+  expect(Array.from(pngBytes.subarray(0, 8))).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
   // .normal.json is rewritten too (same descriptor object baked the PNG
   // and got written as JSON — see saveNormalDescriptor) — round-trips the
@@ -145,31 +139,18 @@ test('Save re-bakes .normal.png and re-stamps its content-hash', async ({
   const tiltedRegion = descriptor.regions!.find(
     (r) => r.direction !== undefined && r.direction !== 'flat' && r.elevation !== undefined
   )
-  expect(
-    tiltedRegion,
-    'fixture must contain at least one tilted+elevated region to sample'
-  ).toBeDefined()
+  expect(tiltedRegion, 'fixture must contain at least one tilted+elevated region to sample').toBeDefined()
   const sampleX = tiltedRegion!.x + Math.floor(tiltedRegion!.w / 2)
   const sampleY = tiltedRegion!.y + Math.floor(tiltedRegion!.h / 2)
   const sampleIdx = (sampleY * bakedPng.width + sampleX) * 4
-  const [r, g, b] = [
-    bakedPng.data[sampleIdx]!,
-    bakedPng.data[sampleIdx + 1]!,
-    bakedPng.data[sampleIdx + 2]!,
-  ]
-  expect(
-    r !== 128 || g !== 128,
-    `region ${JSON.stringify(tiltedRegion)} sampled as flat (128,128) in R/G`
-  ).toBe(true)
+  const [r, g, b] = [bakedPng.data[sampleIdx]!, bakedPng.data[sampleIdx + 1]!, bakedPng.data[sampleIdx + 2]!]
+  expect(r !== 128 || g !== 128, `region ${JSON.stringify(tiltedRegion)} sampled as flat (128,128) in R/G`).toBe(true)
   expect(b).toBe(Math.round(tiltedRegion!.elevation! * 255))
 })
 
 // ── Merged inspector + grid mode (redesign, #42) ──────────────────────────
 
-test('inspector is selection-aware and grid mode swaps the Info panel', async ({
-  openCommand,
-  webviewFrame,
-}) => {
+test('inspector is selection-aware and grid mode swaps the Info panel', async ({ openCommand, webviewFrame }) => {
   await openCommand('threeFlatland.normalBaker.open', ['sprites/Dungeon_Tileset.png'])
   const frame = await webviewFrame('Normal Baker: Dungeon_Tileset.png')
   await expect(frame.getByText('Regions (122)')).toBeVisible()
@@ -272,7 +253,5 @@ test('split: 2×2 on a tilted region replaces it with 4 children inheriting exac
     expect('strength' in child).toBe(false)
   }
   // The parent is gone — replaced, not duplicated.
-  expect(descriptor.regions!.some((r) => r.x === 16 && r.y === 4 && r.w === 16 && r.h === 12)).toBe(
-    false
-  )
+  expect(descriptor.regions!.some((r) => r.x === 16 && r.y === 4 && r.w === 16 && r.h === 12)).toBe(false)
 })

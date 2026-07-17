@@ -1,9 +1,5 @@
 import { Group, type Object3D } from 'three'
-import {
-  getSortLayer,
-  resolveSortLayer,
-  type SortLayerName,
-} from './sortLayers'
+import { getSortLayer, resolveSortLayer, type SortLayerName } from './sortLayers'
 
 /**
  * Duck-type for first-party primitives that participate in the
@@ -53,7 +49,7 @@ function isSortLayerParticipant(object: Object3D): object is SortLayerParticipan
  */
 export class SortLayerGroup extends Group {
   /** Backing store for the intercepted `name` accessor. @internal */
-  private declare _sortLayerGroupName?: string
+  declare private _sortLayerGroupName?: string
 
   constructor(options?: { name?: SortLayerName }) {
     super()

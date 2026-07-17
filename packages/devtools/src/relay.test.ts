@@ -79,9 +79,7 @@ function buildOversizeHeader(declaredLength: number): Buffer {
 }
 
 /** Parse one unmasked server→client frame from the front of `buf` (null if incomplete). */
-function parseServerFrame(
-  buf: Buffer
-): { opcode: number; fin: boolean; payload: Buffer; rest: Buffer } | null {
+function parseServerFrame(buf: Buffer): { opcode: number; fin: boolean; payload: Buffer; rest: Buffer } | null {
   if (buf.length < 2) return null
   const fin = (buf[0]! & 0x80) !== 0
   const opcode = buf[0]! & 0x0f
@@ -254,7 +252,9 @@ describe('flatland-devtools-relay', () => {
     const { statusLine, key, accept } = await openClient(port)
 
     expect(statusLine).toContain('101')
-    const expected = createHash('sha1').update(key + WS_GUID).digest('base64')
+    const expected = createHash('sha1')
+      .update(key + WS_GUID)
+      .digest('base64')
     expect(accept).toBe(expected)
   })
 
@@ -365,23 +365,19 @@ describe('flatland-devtools-relay', () => {
     await waitClose(a.socket)
   })
 
-  it(
-    'destroys the socket when accumulated fragment size exceeds the 16 MB cap',
-    async () => {
-      const { port } = await openRelay()
-      const a = await openClient(port)
+  it('destroys the socket when accumulated fragment size exceeds the 16 MB cap', async () => {
+    const { port } = await openRelay()
+    const a = await openClient(port)
 
-      // Each fragment individually sits under MAX_PAYLOAD, but the sum
-      // (18 MB) does not — the relay must track the running total.
-      const first = Buffer.alloc(9 * 1024 * 1024)
-      const second = Buffer.alloc(9 * 1024 * 1024)
-      a.socket.write(buildClientFrame(0x2, first, false))
-      a.socket.write(buildClientFrame(0x0, second, true))
+    // Each fragment individually sits under MAX_PAYLOAD, but the sum
+    // (18 MB) does not — the relay must track the running total.
+    const first = Buffer.alloc(9 * 1024 * 1024)
+    const second = Buffer.alloc(9 * 1024 * 1024)
+    a.socket.write(buildClientFrame(0x2, first, false))
+    a.socket.write(buildClientFrame(0x0, second, true))
 
-      await waitClose(a.socket)
-    },
-    20000
-  )
+    await waitClose(a.socket)
+  }, 20000)
 
   it('destroys the connection when a client frame arrives unmasked, without broadcasting it', async () => {
     const { port } = await openRelay()

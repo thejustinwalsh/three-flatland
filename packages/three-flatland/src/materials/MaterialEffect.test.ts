@@ -621,12 +621,8 @@ describe('Sprite2D.addEffect', () => {
     sprite2.addEffect(d2)
 
     // Both sprites write to same slot layout
-    const array1 = (
-      sprite1.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }
-    ).array
-    const array2 = (
-      sprite2.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }
-    ).array
+    const array1 = (sprite1.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
+    const array2 = (sprite2.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
 
     expect(array1[0]).toBeCloseTo(0.3) // sprite1 progress (slot 0)
     expect(array2[0]).toBeCloseTo(0.7) // sprite2 progress (slot 0)

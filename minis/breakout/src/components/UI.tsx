@@ -71,9 +71,7 @@ export function GameUI({ mode, score, highScore, highScoreLevel, level, lives, m
           <div style={{ lineHeight: 1 }}>
             {displayScore}
             {displayMultiplier > 1 && (
-              <span style={{ color: '#ffd700', marginLeft: '2cqi' }}>
-                x{displayMultiplier}
-              </span>
+              <span style={{ color: '#ffd700', marginLeft: '2cqi' }}>x{displayMultiplier}</span>
             )}
           </div>
           <div style={{ display: 'flex', gap: '0.8cqi', opacity: 0.7 }}>
@@ -134,12 +132,9 @@ export function GameUI({ mode, score, highScore, highScoreLevel, level, lives, m
         >
           <div style={{ fontSize: 'clamp(12px, 4.5cqi, 22px)' }}>GAME OVER</div>
           <div>{displayScore}</div>
-          <div style={{ fontSize: 'clamp(6px, 2.5cqi, 12px)', opacity: 0.7 }}>
-            LV{level}
-          </div>
+          <div style={{ fontSize: 'clamp(6px, 2.5cqi, 12px)', opacity: 0.7 }}>LV{level}</div>
         </div>
       )}
-
     </div>
   )
 }

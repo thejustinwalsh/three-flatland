@@ -25,11 +25,7 @@ export function bakeNormalMapFile(
 ): string {
   const buffer = readFileSync(inputPath)
   const png = PNG.sync.read(buffer)
-  const pixels = new Uint8Array(
-    png.data.buffer,
-    png.data.byteOffset,
-    png.data.byteLength
-  )
+  const pixels = new Uint8Array(png.data.buffer, png.data.byteOffset, png.data.byteLength)
 
   const descriptor = resolveDescriptorInput(descriptorOrOptions)
   const normalPixels = bakeNormalMap(pixels, png.width, png.height, descriptor)

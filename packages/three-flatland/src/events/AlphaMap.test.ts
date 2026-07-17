@@ -63,9 +63,7 @@ describe('AlphaMap', () => {
   describe('rotated frame', () => {
     // 4×4 atlas: left half opaque (255), right half transparent (0)
     // row-major from top: [255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0]
-    const asymmetricData = new Uint8Array([
-      255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0,
-    ])
+    const asymmetricData = new Uint8Array([255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0])
     const asymmetricMap = new AlphaMap(asymmetricData, 4, 4)
 
     // Frame occupies the full atlas, with rotated=true.
@@ -100,9 +98,7 @@ describe('AlphaMap', () => {
         [0.9, 0.9],
         [0.25, 0.75],
       ] as [number, number][]) {
-        expect(asymmetricMap.sampleFrame(u, v, rotatedFrame)).toBe(
-          asymmetricMap.sampleFrame(u, v, plainFrame)
-        )
+        expect(asymmetricMap.sampleFrame(u, v, rotatedFrame)).toBe(asymmetricMap.sampleFrame(u, v, plainFrame))
       }
     })
   })
@@ -165,9 +161,7 @@ describe('AlphaMap', () => {
         [0.5, 0.5],
         [0.9, 0.9],
       ] as [number, number][]) {
-        expect(trimmedMap.sampleFrame(u, v, trimmedFrame)).toBe(
-          trimmedMap.sampleFrame(u, v, plainFrame)
-        )
+        expect(trimmedMap.sampleFrame(u, v, trimmedFrame)).toBe(trimmedMap.sampleFrame(u, v, plainFrame))
       }
     })
   })

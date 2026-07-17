@@ -92,8 +92,7 @@ export function ProtocolLog() {
     // Key the parked cursor by provider AND frame: switching producers while
     // both are parked on the same frame number must still re-scroll.
     const sameCursor =
-      parkedCursorRef.current.providerId === activeProviderId &&
-      parkedCursorRef.current.frame === frameCursor
+      parkedCursorRef.current.providerId === activeProviderId && parkedCursorRef.current.frame === frameCursor
     if (frameCursor === null || sameCursor) {
       parkedCursorRef.current = { providerId: activeProviderId, frame: frameCursor }
       return
@@ -121,11 +120,7 @@ export function ProtocolLog() {
       void store
         .queryFiltered(provider, (entry) => entry.frame !== undefined && entry.frame <= target)
         .then((matchedIds) => {
-          if (
-            parkedCursorRef.current.providerId !== provider ||
-            parkedCursorRef.current.frame !== target
-          )
-            return
+          if (parkedCursorRef.current.providerId !== provider || parkedCursorRef.current.frame !== target) return
           const lastId = matchedIds[matchedIds.length - 1]
           if (lastId === undefined) return
           const { total: t, ids: allIds } = store.statsFor(provider)
@@ -261,10 +256,7 @@ export function ProtocolLog() {
     minBytes,
     excluded: excludedTypes,
   }
-  const hasActiveFilter = needle.length > 0
-    || dirFilter !== null
-    || minBytes > 0
-    || excludedTypes.size > 0
+  const hasActiveFilter = needle.length > 0 || dirFilter !== null || minBytes > 0 || excludedTypes.size > 0
 
   // Filter pipeline is authoritative — when a filter is active, we
   // query IDB directly via the store's `queryFiltered` cursor. Query
@@ -289,23 +281,19 @@ export function ProtocolLog() {
     const signal = { aborted: false }
     const predicate = filterPredicateRef.current!
     setFilterLoading(true)
-    const handle = (globalThis.setTimeout as unknown as (cb: () => void, ms: number) => number)(
-      () => {
-        void store.queryFiltered(activeProviderId, predicate, signal).then((result) => {
-          if (signal.aborted) return
-          setFilteredIds(result)
-          setFilterLoading(false)
-        })
-      },
-      150,
-    )
+    const handle = (globalThis.setTimeout as unknown as (cb: () => void, ms: number) => number)(() => {
+      void store.queryFiltered(activeProviderId, predicate, signal).then((result) => {
+        if (signal.aborted) return
+        setFilteredIds(result)
+        setFilterLoading(false)
+      })
+    }, 150)
     return () => {
       signal.aborted = true
       clearTimeout(handle)
     }
     // Filter primitives as deps; `filterPredicateRef.current` is read
     // inside but kept stable against renders via the ref.
-     
   }, [store, activeProviderId, hasActiveFilter, needle, dirFilter, minBytes, excludedTypes])
 
   // Live-append: when a new message matches the active filter, extend
@@ -341,7 +329,10 @@ export function ProtocolLog() {
     let visualIdx = 0
     if (selectedId !== null) {
       for (let i = 0; i < total; i++) {
-        if (ids[total - 1 - i] === selectedId) { visualIdx = i; break }
+        if (ids[total - 1 - i] === selectedId) {
+          visualIdx = i
+          break
+        }
       }
     }
     const nextIdx = Math.max(0, Math.min(total - 1, visualIdx + delta))
@@ -360,7 +351,10 @@ export function ProtocolLog() {
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (selectedId !== null) { setSelectedId(null); e.preventDefault() }
+        if (selectedId !== null) {
+          setSelectedId(null)
+          e.preventDefault()
+        }
         return
       }
       if (isTypingTarget(e.target)) return
@@ -391,8 +385,8 @@ export function ProtocolLog() {
 
   // Window-scope prefetch (unfiltered case). When filter is active the
   // bulk prefetch above covers it.
-  const startId = end > 0 && total > 0 ? ids[Math.max(0, total - end)] ?? 0 : 0
-  const endId = total > 0 ? ids[Math.max(0, total - 1 - start)] ?? 0 : 0
+  const startId = end > 0 && total > 0 ? (ids[Math.max(0, total - end)] ?? 0) : 0
+  const endId = total > 0 ? (ids[Math.max(0, total - 1 - start)] ?? 0) : 0
   useEffect(() => {
     if (hasActiveFilter) return
     if (activeProviderId === null || startId === 0 || startId > endId) return
@@ -400,7 +394,10 @@ export function ProtocolLog() {
     for (let i = start; i < end; i++) {
       const id = ids[total - 1 - i]
       if (id === undefined) continue
-      if (store.peek(activeProviderId, id) === null) { needsFetch = true; break }
+      if (store.peek(activeProviderId, id) === null) {
+        needsFetch = true
+        break
+      }
     }
     if (needsFetch) void store.prefetchRange(activeProviderId, startId, endId)
   }, [store, activeProviderId, hasActiveFilter, startId, endId, start, end, total, ids])
@@ -417,16 +414,24 @@ export function ProtocolLog() {
   // Selection follows the active provider. Swapping providers clears
   // any cross-provider selection.
   useEffect(() => {
-    if (selectedId === null || activeProviderId === null) { setSelectedEntry(null); return }
+    if (selectedId === null || activeProviderId === null) {
+      setSelectedEntry(null)
+      return
+    }
     const cached = store.peek(activeProviderId, selectedId)
-    if (cached !== null) { setSelectedEntry(cached); return }
+    if (cached !== null) {
+      setSelectedEntry(cached)
+      return
+    }
     let cancelled = false
     void store.prefetchRange(activeProviderId, selectedId, selectedId).then(() => {
       if (cancelled) return
       const fetched = store.peek(activeProviderId, selectedId)
       if (fetched !== null) setSelectedEntry(fetched)
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [store, activeProviderId, selectedId])
   const selected = selectedEntry
 
@@ -484,11 +489,7 @@ export function ProtocolLog() {
         <div class="protocol-filter-menu-wrap" ref={filterMenuRef}>
           <button
             type="button"
-            class={
-              (minBytes > 0 || excludedTypes.size > 0
-                ? 'protocol-btn protocol-btn-on'
-                : 'protocol-btn')
-            }
+            class={minBytes > 0 || excludedTypes.size > 0 ? 'protocol-btn protocol-btn-on' : 'protocol-btn'}
             onClick={() => setFilterMenuOpen((o) => !o)}
             title="Type + size filters"
           >
@@ -596,7 +597,7 @@ export function ProtocolLog() {
                     <span class="protocol-time">{isLoading ? 'loading…' : formatTime(e!.at)}</span>
                     <span class="protocol-frame">{!isPlaceholder && e!.frame !== undefined ? `#${e!.frame}` : ''}</span>
                     <span class="protocol-type">{isPlaceholder ? '' : e!.type}</span>
-                    <span class="protocol-tag">{isPlaceholder ? '' : e!.tag ?? ''}</span>
+                    <span class="protocol-tag">{isPlaceholder ? '' : (e!.tag ?? '')}</span>
                     <span class="protocol-size">{isPlaceholder ? '' : formatBytes(e!.bytes)}</span>
                   </button>
                 )
@@ -612,12 +613,9 @@ export function ProtocolLog() {
                 {selected.type}
                 {selected.tag !== undefined && <span class="protocol-tag"> · {selected.tag}</span>}
               </span>
-              <button
-                type="button"
-                class="protocol-btn"
-                onClick={() => setSelectedId(null)}
-                aria-label="Close detail"
-              >×</button>
+              <button type="button" class="protocol-btn" onClick={() => setSelectedId(null)} aria-label="Close detail">
+                ×
+              </button>
             </div>
             <div class="protocol-detail-meta">
               <span>{formatTime(selected.at)}</span>
@@ -688,7 +686,9 @@ function FilterMenu({
               type="button"
               class="protocol-btn protocol-filter-menu-clear"
               onClick={() => setExcludedTypes(new Set())}
-            >reset</button>
+            >
+              reset
+            </button>
           )}
         </div>
         <ul class="protocol-filter-types">
@@ -698,11 +698,7 @@ function FilterMenu({
             types.map((t) => (
               <li key={t}>
                 <label class="protocol-filter-type">
-                  <input
-                    type="checkbox"
-                    checked={!excludedTypes.has(t)}
-                    onChange={() => toggle(t)}
-                  />
+                  <input type="checkbox" checked={!excludedTypes.has(t)} onChange={() => toggle(t)} />
                   <span>{t}</span>
                 </label>
               </li>
@@ -747,14 +743,29 @@ function estimateBytes(msg: DebugMessage): number {
   const seen = new WeakSet<object>()
   const walk = (v: unknown): void => {
     if (v === null || v === undefined) return
-    if (typeof v === 'string') { bytes += v.length; return }
-    if (typeof v === 'number' || typeof v === 'boolean') { bytes += 8; return }
-    if (v instanceof ArrayBuffer) { bytes += v.byteLength; return }
-    if (ArrayBuffer.isView(v)) { bytes += v.byteLength; return }
+    if (typeof v === 'string') {
+      bytes += v.length
+      return
+    }
+    if (typeof v === 'number' || typeof v === 'boolean') {
+      bytes += 8
+      return
+    }
+    if (v instanceof ArrayBuffer) {
+      bytes += v.byteLength
+      return
+    }
+    if (ArrayBuffer.isView(v)) {
+      bytes += v.byteLength
+      return
+    }
     if (typeof v === 'object') {
       if (seen.has(v)) return
       seen.add(v)
-      if (Array.isArray(v)) { for (const x of v) walk(x); return }
+      if (Array.isArray(v)) {
+        for (const x of v) walk(x)
+        return
+      }
       for (const k in v as Record<string, unknown>) {
         bytes += k.length
         walk((v as Record<string, unknown>)[k])
@@ -779,11 +790,15 @@ function formatTime(at: number): string {
 
 function stringify(msg: DebugMessage): string {
   try {
-    return JSON.stringify(msg, (_k, v) => {
-      if (v instanceof ArrayBuffer) return `[ArrayBuffer ${v.byteLength}B]`
-      if (ArrayBuffer.isView(v)) return `[${v.constructor.name} ${v.byteLength}B]`
-      return v as unknown
-    }, 2)
+    return JSON.stringify(
+      msg,
+      (_k, v) => {
+        if (v instanceof ArrayBuffer) return `[ArrayBuffer ${v.byteLength}B]`
+        if (ArrayBuffer.isView(v)) return `[${v.constructor.name} ${v.byteLength}B]`
+        return v as unknown
+      },
+      2
+    )
   } catch {
     return '[unserialisable]'
   }
@@ -798,10 +813,7 @@ function stringify(msg: DebugMessage): string {
  * arbitrary markup from message payloads.
  */
 function highlightJson(json: string): string {
-  const escaped = json
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+  const escaped = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   return escaped.replace(
     /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
     (match) => {
@@ -814,6 +826,6 @@ function highlightJson(json: string): string {
         cls = 'json-null'
       }
       return `<span class="${cls}">${match}</span>`
-    },
+    }
   )
 }

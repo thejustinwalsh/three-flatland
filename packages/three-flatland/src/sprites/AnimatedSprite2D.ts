@@ -182,11 +182,7 @@ export class AnimatedSprite2D extends Sprite2D {
       // Atlas-sourced animations: populate the controller from the sheet's
       // named animations (`meta.animations` / Aseprite `frameTags`) when
       // nothing has been loaded yet. An explicit `animationSet` set first wins.
-      if (
-        value.animations &&
-        value.animations.size > 0 &&
-        this.controller.getAnimationNames().length === 0
-      ) {
+      if (value.animations && value.animations.size > 0 && this.controller.getAnimationNames().length === 0) {
         this.loadAnimationSet(sheetAnimationsToDefinition(value.animations))
       }
     }
@@ -475,9 +471,7 @@ export class AnimatedSprite2D extends Sprite2D {
  * from `meta.animations` or Aseprite `frameTags`) into the
  * `AnimationSetDefinition` shape `loadAnimationSet` consumes.
  */
-function sheetAnimationsToDefinition(
-  animations: ReadonlyMap<string, SpriteAnimation>,
-): AnimationSetDefinition {
+function sheetAnimationsToDefinition(animations: ReadonlyMap<string, SpriteAnimation>): AnimationSetDefinition {
   const out: AnimationSetDefinition['animations'] = {}
   for (const [name, anim] of animations) {
     out[name] = {

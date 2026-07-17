@@ -1,11 +1,6 @@
 import type { Texture } from 'three'
 import type { TilesetData, TileDefinition, TileAnimationFrame } from './types'
-import {
-  type TexturePreset,
-  type TextureOptions,
-  applyTextureOptions,
-  TextureConfig,
-} from '../loaders/texturePresets'
+import { type TexturePreset, type TextureOptions, applyTextureOptions, TextureConfig } from '../loaders/texturePresets'
 
 /**
  * Represents a tileset with tile definitions and texture atlas.

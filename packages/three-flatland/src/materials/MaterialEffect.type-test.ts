@@ -3,8 +3,6 @@
 // These tests do not run at runtime. A change that weakens channelNode
 // return narrowing will fail tsc --noEmit here before any user code breaks.
 
- 
-
 import { vec3, float, Fn } from 'three/tsl'
 import { createMaterialEffect } from './MaterialEffect'
 

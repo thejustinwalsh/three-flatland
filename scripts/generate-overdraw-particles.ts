@@ -134,7 +134,9 @@ function rasterize(shape: ShapeDef): AtlasSource {
     }
   }
   const ratio = occupied / (CANVAS * CANVAS)
-  console.log(`  ${shape.name}: occupies ${(ratio * 100).toFixed(1)}% of its frame (own silhouette, not the shared envelope)`)
+  console.log(
+    `  ${shape.name}: occupies ${(ratio * 100).toFixed(1)}% of its frame (own silhouette, not the shared envelope)`
+  )
   return { name: shape.name, width: CANVAS, height: CANVAS, rgba }
 }
 

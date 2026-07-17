@@ -18,11 +18,7 @@ import type { Vec2Input, FloatInput } from '../types'
  * // Animate rotation with uniform
  * uvRotate(uv(), angleUniform, [0.5, 0.5])
  */
-export function uvRotate(
-  inputUV: Node<'vec2'>,
-  angle: FloatInput,
-  pivot: Vec2Input = [0.5, 0.5]
-): Node<'vec2'> {
+export function uvRotate(inputUV: Node<'vec2'>, angle: FloatInput, pivot: Vec2Input = [0.5, 0.5]): Node<'vec2'> {
   const angleNode = typeof angle === 'number' ? float(angle) : angle
   const pivotVec = Array.isArray(pivot) ? vec2(...pivot) : pivot
 

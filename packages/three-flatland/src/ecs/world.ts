@@ -45,9 +45,7 @@ export interface WorldProvider {
  */
 export function assignWorld(child: { _flatlandWorld?: World | null }, world: World): void {
   if (child._flatlandWorld && child._flatlandWorld !== world) {
-    throw new Error(
-      'three-flatland: Cannot switch worlds after creation. Destroy and recreate the object.'
-    )
+    throw new Error('three-flatland: Cannot switch worlds after creation. Destroy and recreate the object.')
   }
   child._flatlandWorld = world
 }

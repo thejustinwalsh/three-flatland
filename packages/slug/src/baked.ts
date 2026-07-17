@@ -282,9 +282,7 @@ export function unpackBaked(asset: GlbView): BakedFontData {
   // The Int16Array view is stride-3 triples; wrap it in a DataView.
   const kernArr = asset.accessor(columns['kern']!.accessor) as Int16Array
   if (kernArr.length % kernStride !== 0) {
-    throw new Error(
-      `unpackBaked: kern accessor length ${kernArr.length} not divisible by stride ${kernStride}`
-    )
+    throw new Error(`unpackBaked: kern accessor length ${kernArr.length} not divisible by stride ${kernStride}`)
   }
   const kernCount = kernArr.length / kernStride
   const kernData = new DataView(kernArr.buffer, kernArr.byteOffset, kernArr.byteLength)

@@ -8,10 +8,7 @@ import type {
   CollisionShape,
 } from '../tilemap/types'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
-import {
-  resolveNormalMap,
-  type NormalSourceDescriptor,
-} from '@three-flatland/normals'
+import { resolveNormalMap, type NormalSourceDescriptor } from '@three-flatland/normals'
 import { type TexturePreset, type TextureOptions, resolveTextureOptions } from './texturePresets'
 import { TextureLoader } from './TextureLoader'
 import { tilesetToRegions, type TileNormalCustomData, type TilesetCell } from './normalDescriptor'
@@ -247,10 +244,7 @@ export class TiledLoader extends Loader<TileMapData> {
   /**
    * Load without caching.
    */
-  private static async loadUncached(
-    url: string,
-    options?: TiledLoaderOptions
-  ): Promise<TileMapData> {
+  private static async loadUncached(url: string, options?: TiledLoaderOptions): Promise<TileMapData> {
     const response = await fetch(url)
     if (!response.ok) {
       throw new Error(`Failed to load Tiled map: ${url}`)
@@ -433,8 +427,7 @@ export class TiledLoader extends Loader<TileMapData> {
     }
     const synthesized = tilesetToRegions(cells)
 
-    const base: NormalSourceDescriptor =
-      optionDescriptor === true ? {} : optionDescriptor
+    const base: NormalSourceDescriptor = optionDescriptor === true ? {} : optionDescriptor
     const descriptor: NormalSourceDescriptor = {
       ...base,
       regions: base.regions && base.regions.length > 0 ? base.regions : synthesized,
@@ -550,11 +543,7 @@ export class TiledLoader extends Loader<TileMapData> {
   /**
    * Parse infinite layer chunks into a contiguous array.
    */
-  private static parseInfiniteLayer(
-    chunks: TiledChunk[],
-    mapWidth: number,
-    mapHeight: number
-  ): Uint32Array {
+  private static parseInfiniteLayer(chunks: TiledChunk[], mapWidth: number, mapHeight: number): Uint32Array {
     const data = new Uint32Array(mapWidth * mapHeight)
 
     for (const chunk of chunks) {

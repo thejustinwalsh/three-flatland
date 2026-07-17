@@ -25,7 +25,7 @@ export interface BasisExports {
     h: number,
     opts: number,
     outPtr: number,
-    outLen: number,
+    outLen: number
   ) => number
 }
 

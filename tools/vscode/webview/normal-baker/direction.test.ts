@@ -40,9 +40,7 @@ describe('directionColor', () => {
 
   it('renders a named direction as an hsla string carrying its hue', () => {
     expect(directionColor('east')).toBe('hsla(0.0, 70%, 55%, 1)')
-    expect(directionColor('north', { saturation: 50, lightness: 40, alpha: 0.5 })).toBe(
-      'hsla(90.0, 50%, 40%, 0.5)'
-    )
+    expect(directionColor('north', { saturation: 50, lightness: 40, alpha: 0.5 })).toBe('hsla(90.0, 50%, 40%, 0.5)')
   })
 })
 

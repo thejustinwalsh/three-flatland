@@ -5,10 +5,7 @@ import opentype from 'opentype.js'
 import { measureText } from './textMeasure'
 import { parseFont } from './fontParser'
 
-const FONT_PATH = resolve(
-  __dirname,
-  '../../../../examples/three/slug-text/public/Inter-Regular.ttf'
-)
+const FONT_PATH = resolve(__dirname, '../../../../examples/three/slug-text/public/Inter-Regular.ttf')
 const buf = readFileSync(FONT_PATH)
 const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
 const font = opentype.parse(arrayBuffer)

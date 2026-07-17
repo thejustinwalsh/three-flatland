@@ -57,7 +57,7 @@ describe('usePane', () => {
     render(
       <StrictMode>
         <Probe />
-      </StrictMode>,
+      </StrictMode>
     )
 
     const bundle = captured!

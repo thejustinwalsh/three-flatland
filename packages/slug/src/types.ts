@@ -286,9 +286,4 @@ export type RuntimeMeasureTextFn = (
   fontSize: number
 ) => TextMetrics
 
-export type RuntimeWrapLinesFn = (
-  font: OpenTypeFont,
-  text: string,
-  fontSize: number,
-  maxWidth?: number
-) => string[]
+export type RuntimeWrapLinesFn = (font: OpenTypeFont, text: string, fontSize: number, maxWidth?: number) => string[]

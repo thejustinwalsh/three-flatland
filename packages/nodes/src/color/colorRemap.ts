@@ -25,11 +25,7 @@ const LUMA_B = 0.0722
  * // Partial remap with uniform
  * colorRemap(texture(tex, uv()), gradientTex, strengthUniform)
  */
-export function colorRemap(
-  inputColor: Node<'vec4'>,
-  gradientTex: Texture,
-  strength: FloatInput = 1
-): Node<'vec4'> {
+export function colorRemap(inputColor: Node<'vec4'>, gradientTex: Texture, strength: FloatInput = 1): Node<'vec4'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
   // Calculate luminance

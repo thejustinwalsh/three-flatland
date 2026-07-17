@@ -19,9 +19,7 @@ export function bakePreviewNormalMap(
   descriptor: NormalSourceDescriptor
 ): Uint8Array {
   const src =
-    pixels instanceof Uint8Array
-      ? pixels
-      : new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength)
+    pixels instanceof Uint8Array ? pixels : new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength)
   return bakeNormalMap(src, width, height, descriptor)
 }
 
@@ -67,10 +65,7 @@ export type LightVector = { x: number; y: number; lightHeight: number }
  * vector is normalized per pixel, since elevation varies pixel-to-pixel
  * and so, therefore, does the light's effective direction.
  */
-export function computeLitComposite(
-  normalRGBA: Uint8Array | Uint8ClampedArray,
-  light: LightVector
-): Uint8ClampedArray {
+export function computeLitComposite(normalRGBA: Uint8Array | Uint8ClampedArray, light: LightVector): Uint8ClampedArray {
   const out = new Uint8ClampedArray(normalRGBA.length)
   for (let i = 0; i < normalRGBA.length; i += 4) {
     const nx = (normalRGBA[i]! / 255) * 2 - 1

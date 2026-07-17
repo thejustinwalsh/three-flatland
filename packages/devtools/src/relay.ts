@@ -64,7 +64,9 @@ export function startRelay(port: number, host: string): RelayHandle {
       socket.end('HTTP/1.1 426 Upgrade Required\r\nSec-WebSocket-Version: 13\r\n\r\n')
       return
     }
-    const accept = createHash('sha1').update(key + WS_GUID).digest('base64')
+    const accept = createHash('sha1')
+      .update(key + WS_GUID)
+      .digest('base64')
     socket.write(
       'HTTP/1.1 101 Switching Protocols\r\n' +
         'Upgrade: websocket\r\n' +
@@ -161,9 +163,7 @@ export function startRelay(port: number, host: string): RelayHandle {
   server.listen(port, host, () => {
     console.log(`flatland-devtools-relay listening on ws://${host}:${port}`)
     if (host === '0.0.0.0') {
-      console.log(
-        '  warning: exposed to your local network; pass --host 127.0.0.1 for local-only'
-      )
+      console.log('  warning: exposed to your local network; pass --host 127.0.0.1 for local-only')
     }
     console.log('  game:      createDevtoolsProvider({ remote: "ws://<this-host>:%d" })', port)
     console.log('  dashboard: connectRemoteDevtools("ws://<this-host>:%d")', port)

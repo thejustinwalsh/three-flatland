@@ -77,10 +77,7 @@ describe('resolveRegion', () => {
       direction: 'south',
       pitch: 0.3,
     }
-    const resolved = resolveRegion(
-      { x: 0, y: 0, w: 16, h: 16, bump: 'none', direction: 'north', pitch: 0.9 },
-      desc
-    )
+    const resolved = resolveRegion({ x: 0, y: 0, w: 16, h: 16, bump: 'none', direction: 'north', pitch: 0.9 }, desc)
     expect(resolved.bump).toBe('none')
     expect(resolved.angle).toBe(Math.PI / 2)
     expect(resolved.pitch).toBe(0.9)

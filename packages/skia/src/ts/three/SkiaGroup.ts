@@ -80,8 +80,8 @@ export class SkiaGroup extends Object3D {
   private _backdropFilter: SkiaImageFilter | null = null
 
   _draw(ctx: SkiaDrawingContext, skia: SkiaContext): void {
-    const needsLayer = this.layer || this.blur > 0 || this.shadow || this.colorMatrix ||
-                       this.blendMode || this.opacity < 1
+    const needsLayer =
+      this.layer || this.blur > 0 || this.shadow || this.colorMatrix || this.blendMode || this.opacity < 1
     const needsBackdrop = this.backdropBlur > 0
 
     if (needsBackdrop) {
@@ -96,11 +96,13 @@ export class SkiaGroup extends Object3D {
     }
 
     // Apply transforms — position/scale from Object3D, rotation via degrees or rotation.z
-    const px = this.position.x, py = this.position.y
+    const px = this.position.x,
+      py = this.position.y
     if (px !== 0 || py !== 0) ctx.translate(px, py)
-    const deg = this.degrees || (this.rotation.z * RAD2DEG)
+    const deg = this.degrees || this.rotation.z * RAD2DEG
     if (deg) ctx.rotate(deg)
-    const sx = this.scale.x, sy = this.scale.y
+    const sx = this.scale.x,
+      sy = this.scale.y
     if (sx !== 1 || sy !== 1) ctx.scale(sx, sy)
     if (this.skewX !== 0 || this.skewY !== 0) ctx.skew(this.skewX, this.skewY)
 
@@ -116,7 +118,7 @@ export class SkiaGroup extends Object3D {
     for (const child of this.children) {
       if (!child.visible) continue
       if ('_draw' in child) {
-        (child as SkiaNode)._draw(ctx, skia)
+        ;(child as SkiaNode)._draw(ctx, skia)
       }
     }
 
@@ -144,8 +146,26 @@ export class SkiaGroup extends Object3D {
     if (this.shadow) {
       const s = this.shadow
       this._shadowFilter = s.shadowOnly
-        ? SkiaImageFilter.dropShadowOnly(skia, s.dx, s.dy, s.blur, s.blur, s.color, this._blurFilter ?? undefined, this._shadowFilter)
-        : SkiaImageFilter.dropShadow(skia, s.dx, s.dy, s.blur, s.blur, s.color, this._blurFilter ?? undefined, this._shadowFilter)
+        ? SkiaImageFilter.dropShadowOnly(
+            skia,
+            s.dx,
+            s.dy,
+            s.blur,
+            s.blur,
+            s.color,
+            this._blurFilter ?? undefined,
+            this._shadowFilter
+          )
+        : SkiaImageFilter.dropShadow(
+            skia,
+            s.dx,
+            s.dy,
+            s.blur,
+            s.blur,
+            s.color,
+            this._blurFilter ?? undefined,
+            this._shadowFilter
+          )
       if (this._shadowFilter) p.setImageFilter(this._shadowFilter)
     } else if (this._shadowFilter) {
       this._shadowFilter.dispose()
@@ -167,7 +187,13 @@ export class SkiaGroup extends Object3D {
   }
 
   private _ensureBackdropFilter(skia: SkiaContext): void {
-    this._backdropFilter = SkiaImageFilter.blur(skia, this.backdropBlur, this.backdropBlur, undefined, this._backdropFilter)
+    this._backdropFilter = SkiaImageFilter.blur(
+      skia,
+      this.backdropBlur,
+      this.backdropBlur,
+      undefined,
+      this._backdropFilter
+    )
   }
 
   dispose(): void {

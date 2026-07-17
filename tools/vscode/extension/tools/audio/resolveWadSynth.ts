@@ -21,10 +21,7 @@ export type WadSynthFinding = Extract<Finding, { kind: 'wad.synth' }>
  * because a `wad.synth` finding never carries pre-extracted config; there
  * is always real text to go read.
  */
-export async function resolveWadSynth(
-  uri: vscode.Uri,
-  finding: WadSynthFinding
-): Promise<ResolvedWadSynth> {
+export async function resolveWadSynth(uri: vscode.Uri, finding: WadSynthFinding): Promise<ResolvedWadSynth> {
   const varRef = finding.payload.varRef
   if (varRef) {
     if (!varRef.defUri || !varRef.defRange) {

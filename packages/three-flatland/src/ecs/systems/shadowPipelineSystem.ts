@@ -130,13 +130,7 @@ export function shadowPipelineSystem(world: World): void {
   const mode = (c?.shadowFilter as string) ?? 'auto'
   const snap = (c?.shadowPixelSnapEnabled as boolean) ?? false
   const desired =
-    mode === 'nearest'
-      ? NearestFilter
-      : mode === 'linear'
-        ? LinearFilter
-        : snap
-          ? NearestFilter
-          : LinearFilter
+    mode === 'nearest' ? NearestFilter : mode === 'linear' ? LinearFilter : snap ? NearestFilter : LinearFilter
   pipeline.sdfGenerator.setFilter(desired)
 
   const scene = ctx.scene
@@ -177,9 +171,7 @@ export function shadowPipelineSystem(world: World): void {
   const registryEntities = world.query(BatchRegistry)
   // Treat a missing registry as dirty so shadows never silently freeze.
   const occludersDirty =
-    registryEntities.length === 0
-      ? true
-      : (registryEntities[0]!.get(BatchRegistry)?.occludersDirty ?? true)
+    registryEntities.length === 0 ? true : (registryEntities[0]!.get(BatchRegistry)?.occludersDirty ?? true)
 
   const posX = camera.position.x
   const posY = camera.position.y

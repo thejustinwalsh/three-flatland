@@ -29,7 +29,8 @@ const styles = stylex.create({
     transform: 'translateX(-50%)',
     // Inner visible 2px line, drawn via box-shadow so it stays centered
     // within the wider hit affordance without changing layout.
-    boxShadow: 'inset 5px 0 0 rgba(255, 255, 255, 0.85), inset 6px 0 0 rgba(0, 0, 0, 0.5), inset 7px 0 0 rgba(255, 255, 255, 0.85)',
+    boxShadow:
+      'inset 5px 0 0 rgba(255, 255, 255, 0.85), inset 6px 0 0 rgba(0, 0, 0, 0.5), inset 7px 0 0 rgba(255, 255, 255, 0.85)',
   },
   handle: {
     position: 'absolute',
@@ -125,17 +126,15 @@ export function CompareSliderOverlay({ className, handleContent = '‖' }: Compa
   const mergedClass = [hitAreaProps.className, className].filter(Boolean).join(' ')
 
   return (
-    <div
-      ref={containerRef}
-      {...hitAreaProps}
-      className={mergedClass || undefined}
-      onPointerDown={startDrag}
-    >
+    <div ref={containerRef} {...hitAreaProps} className={mergedClass || undefined} onPointerDown={startDrag}>
       <div {...stylex.props(styles.line)} style={{ left: `${splitU * 100}%` }} />
       <div
         {...stylex.props(styles.handle)}
         style={{ left: `${splitU * 100}%` }}
-        onPointerDown={(e) => { e.stopPropagation(); startDrag(e) }}
+        onPointerDown={(e) => {
+          e.stopPropagation()
+          startDrag(e)
+        }}
       >
         {handleContent}
       </div>

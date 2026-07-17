@@ -41,9 +41,7 @@ async function transcodeToRgba32(ktx2: Uint8Array): Promise<Uint8Array> {
     const totalPixels = lvl.width * lvl.height
     const outPtr = t.fl_transcoder_alloc(totalPixels * 4)
     try {
-      expect(
-        t.fl_ktx2_transcode_level(transcoder, 0, 0, 0, TF_RGBA32, outPtr, totalPixels, 0),
-      ).toBe(FL_TRANSCODER_E_OK)
+      expect(t.fl_ktx2_transcode_level(transcoder, 0, 0, 0, TF_RGBA32, outPtr, totalPixels, 0)).toBe(FL_TRANSCODER_E_OK)
       return new Uint8Array(t.memory.buffer, outPtr, totalPixels * 4).slice()
     } finally {
       t.fl_transcoder_free(outPtr)

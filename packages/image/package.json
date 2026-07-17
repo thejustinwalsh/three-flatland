@@ -40,16 +40,21 @@
     "three": "catalog:"
   },
   "peerDependenciesMeta": {
-    "three": { "optional": true }
+    "three": {
+      "optional": true
+    }
   },
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "libs"],
+  "files": [
+    "dist",
+    "libs"
+  ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
+    "build": "tsdown",
     "build:wasm": "PATH=\"$PWD/node_modules/.bin:$PATH\" zig build",
-    "dev": "tsup --watch",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -67,7 +72,11 @@
   },
   "flatland": {
     "bake": [
-      { "name": "encode", "description": "Encode image to PNG/WebP/AVIF/KTX2", "entry": "./dist/cli.js" }
+      {
+        "name": "encode",
+        "description": "Encode image to PNG/WebP/AVIF/KTX2",
+        "entry": "./dist/cli.js"
+      }
     ]
   }
 }

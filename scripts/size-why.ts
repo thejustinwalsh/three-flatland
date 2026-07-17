@@ -35,8 +35,9 @@ if (wantsList) {
 }
 
 const branch =
-  execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim().replace(/[^\w.-]/g, '_') ||
-  'detached'
+  execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' })
+    .trim()
+    .replace(/[^\w.-]/g, '_') || 'detached'
 const outDir = `.reports/bundle/${branch}`
 mkdirSync(outDir, { recursive: true })
 

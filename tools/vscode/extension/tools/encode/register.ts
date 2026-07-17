@@ -32,8 +32,7 @@ export function registerEncodeTool(context: vscode.ExtensionContext): vscode.Dis
           void vscode.window.showInformationMessage('FL Image Encoder is disabled in Settings.')
           return
         }
-        const candidates =
-          allSelected && allSelected.length > 0 ? allSelected : clicked ? [clicked] : []
+        const candidates = allSelected && allSelected.length > 0 ? allSelected : clicked ? [clicked] : []
         const target = candidates[0] ?? vscode.window.activeTextEditor?.document.uri
         if (!target) {
           void vscode.window.showErrorMessage('FL Image Encoder: no file selected.')

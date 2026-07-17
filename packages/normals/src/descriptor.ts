@@ -56,9 +56,7 @@ export type NormalDirection =
  * Convention: 0 = +X / right, π/2 = +Y / up, π = -X / left,
  * -π/2 = -Y / down. Matches `Math.atan2` output.
  */
-export function directionToAngle(
-  direction: NormalDirection | undefined
-): number | null {
+export function directionToAngle(direction: NormalDirection | undefined): number | null {
   if (direction === undefined || direction === 'flat') return null
   if (typeof direction === 'number') return direction
 
@@ -112,13 +110,7 @@ export function directionToAngle(
  * - `'none'` — flat fill at the region's tilt direction. No per-texel
  *   variation; cheapest and useful for uniform surfaces.
  */
-export type NormalBump =
-  | 'alpha'
-  | 'luminance'
-  | 'red'
-  | 'green'
-  | 'blue'
-  | 'none'
+export type NormalBump = 'alpha' | 'luminance' | 'red' | 'green' | 'blue' | 'none'
 
 // ─── Regions + descriptor ─────────────────────────────────────────────────
 
@@ -195,14 +187,10 @@ export interface ResolvedNormalRegion {
   elevation: number
 }
 
-export function resolveRegion(
-  region: NormalRegion,
-  descriptor: NormalSourceDescriptor = {}
-): ResolvedNormalRegion {
+export function resolveRegion(region: NormalRegion, descriptor: NormalSourceDescriptor = {}): ResolvedNormalRegion {
   const direction = region.direction ?? descriptor.direction ?? 'flat'
   const angle = directionToAngle(direction)
-  const elevation =
-    region.elevation ?? descriptor.elevation ?? DEFAULT_ELEVATION
+  const elevation = region.elevation ?? descriptor.elevation ?? DEFAULT_ELEVATION
   return {
     x: region.x,
     y: region.y,

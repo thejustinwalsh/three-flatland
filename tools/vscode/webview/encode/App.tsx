@@ -73,9 +73,7 @@ export function App() {
     const bridge = createClientBridge()
     const unsubInit = bridge.on<InitPayload>('encode/init', async ({ fileName: fn, sourceBytes, mode }) => {
       try {
-        const bytes = sourceBytes instanceof Uint8Array
-          ? sourceBytes
-          : new Uint8Array(sourceBytes)
+        const bytes = sourceBytes instanceof Uint8Array ? sourceBytes : new Uint8Array(sourceBytes)
 
         if (mode === 'inspect') {
           // The source IS the encoded artifact. Skip the decode-then-encode
@@ -112,10 +110,7 @@ export function App() {
           // open so the user can stage a re-encode of an already-encoded
           // file.
           const format = detectFormat(fn)
-          const image =
-            format === 'ktx2'
-              ? await decodeKtx2ToImageData(bytes)
-              : await decodeImage(bytes, format)
+          const image = format === 'ktx2' ? await decodeKtx2ToImageData(bytes) : await decodeImage(bytes, format)
           loadInit({ fileName: fn, sourceBytes: bytes, sourceImage: image, mode })
         }
       } catch (err) {
@@ -188,12 +183,7 @@ export function App() {
       <Toolbar />
       {encodeError && <div {...stylex.props(styles.errorBanner)}>{encodeError}</div>}
       <div ref={workAreaRef} {...stylex.props(styles.workArea)}>
-        <Panel
-          title="Compare"
-          bodyPadding="none"
-          headerActions={<EncodeMenu />}
-          style={styles.comparePanel}
-        >
+        <Panel title="Compare" bodyPadding="none" headerActions={<EncodeMenu />} style={styles.comparePanel}>
           <ComparePreview />
         </Panel>
         <Splitter
@@ -207,11 +197,7 @@ export function App() {
             setInfoPanelWidth(rect.right - clientX)
           }}
         />
-        <Panel
-          title="Info"
-          bodyPadding="none"
-          style={styles.infoPanel}
-        >
+        <Panel title="Info" bodyPadding="none" style={styles.infoPanel}>
           <div style={{ width: infoPanelWidth, height: '100%' }}>
             <InfoPanel />
           </div>

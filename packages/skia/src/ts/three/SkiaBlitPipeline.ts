@@ -10,7 +10,7 @@
  * @internal
  */
 
-const BLIT_WGSL = /* wgsl */`
+const BLIT_WGSL = /* wgsl */ `
 struct VOut {
   @builtin(position) pos: vec4f,
   @location(0) uv: vec2f,
@@ -65,16 +65,20 @@ export class SkiaBlitPipeline {
       fragment: {
         module: this.shaderModule,
         entryPoint: 'fs',
-        targets: [{
-          format: destFormat,
-          ...(blend ? {
-            blend: {
-              // Premultiplied alpha: src*1 + dst*(1-srcAlpha)
-              color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-            },
-          } : {}),
-        }],
+        targets: [
+          {
+            format: destFormat,
+            ...(blend
+              ? {
+                  blend: {
+                    // Premultiplied alpha: src*1 + dst*(1-srcAlpha)
+                    color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                    alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                  },
+                }
+              : {}),
+          },
+        ],
       },
       primitive: { topology: 'triangle-list' },
     })
@@ -112,12 +116,14 @@ export class SkiaBlitPipeline {
 
     const encoder = this.device.createCommandEncoder()
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: dest.createView(),
-        loadOp: blend ? 'load' : 'clear',
-        storeOp: 'store',
-        clearValue: { r: 0, g: 0, b: 0, a: 0 },
-      }],
+      colorAttachments: [
+        {
+          view: dest.createView(),
+          loadOp: blend ? 'load' : 'clear',
+          storeOp: 'store',
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
+        },
+      ],
     })
     pass.setPipeline(pipeline)
     pass.setBindGroup(0, bindGroup)

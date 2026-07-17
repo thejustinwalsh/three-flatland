@@ -69,9 +69,7 @@ export function bakeNormalMap(
   }
 
   const regions =
-    descriptor.regions && descriptor.regions.length > 0
-      ? descriptor.regions
-      : [{ x: 0, y: 0, w: width, h: height }]
+    descriptor.regions && descriptor.regions.length > 0 ? descriptor.regions : [{ x: 0, y: 0, w: width, h: height }]
 
   for (const region of regions) {
     const resolved = resolveRegion(region, descriptor)
@@ -85,12 +83,7 @@ export function bakeNormalMap(
  * Bake a single region into the output buffer. Region-local alpha
  * clamping prevents cross-region gradient bleed.
  */
-function bakeRegion(
-  pixels: Uint8Array,
-  out: Uint8Array,
-  width: number,
-  region: ResolvedNormalRegion
-): void {
+function bakeRegion(pixels: Uint8Array, out: Uint8Array, width: number, region: ResolvedNormalRegion): void {
   const x0 = region.x
   const y0 = region.y
   const x1 = region.x + region.w
@@ -101,15 +94,7 @@ function bakeRegion(
   // RGB components and is handled separately below.
   const bumpMode = region.bump
   const bumpChannel =
-    bumpMode === 'alpha'
-      ? 3
-      : bumpMode === 'red'
-        ? 0
-        : bumpMode === 'green'
-          ? 1
-          : bumpMode === 'blue'
-            ? 2
-            : -1
+    bumpMode === 'alpha' ? 3 : bumpMode === 'red' ? 0 : bumpMode === 'green' ? 1 : bumpMode === 'blue' ? 2 : -1
   const useLuminance = bumpMode === 'luminance'
   const useBump = bumpChannel >= 0 || useLuminance
 
@@ -158,12 +143,7 @@ function bakeRegion(
     if (useLuminance) {
       // Rec. 709 luminance — matches perceptual brightness, so art
       // authored against a monitor reads consistently.
-      return (
-        (0.2126 * pixels[base]! +
-          0.7152 * pixels[base + 1]! +
-          0.0722 * pixels[base + 2]!) /
-        255
-      )
+      return (0.2126 * pixels[base]! + 0.7152 * pixels[base + 1]! + 0.0722 * pixels[base + 2]!) / 255
     }
     return pixels[base + bumpChannel]! / 255
   }

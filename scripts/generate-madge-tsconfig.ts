@@ -10,11 +10,7 @@ import fg from 'fast-glob'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, posix } from 'node:path'
 
-const PKG_GLOBS = [
-  'packages/*/package.json',
-  'minis/*/package.json',
-  'tools/*/package.json',
-]
+const PKG_GLOBS = ['packages/*/package.json', 'minis/*/package.json', 'tools/*/package.json']
 
 type Exports = string | { source?: string; [k: string]: unknown } | { [k: string]: unknown }
 
@@ -39,8 +35,7 @@ for (const pkgFile of pkgFiles) {
   const exportsField = pkg.exports as Exports | undefined
   if (exportsField && typeof exportsField === 'object') {
     for (const [subpath, value] of Object.entries(exportsField)) {
-      const source =
-        typeof value === 'string' ? value : (value as { source?: string })?.source
+      const source = typeof value === 'string' ? value : (value as { source?: string })?.source
       if (typeof source === 'string') addEntry(subpath, source)
     }
   } else {
@@ -50,9 +45,7 @@ for (const pkgFile of pkgFiles) {
   }
 }
 
-const sorted = Object.fromEntries(
-  Object.entries(paths).sort(([a], [b]) => a.localeCompare(b)),
-)
+const sorted = Object.fromEntries(Object.entries(paths).sort(([a], [b]) => a.localeCompare(b)))
 
 const tsconfig = {
   extends: './tsconfig.base.json',
@@ -63,6 +56,4 @@ const tsconfig = {
 }
 
 writeFileSync('tsconfig.madge.json', JSON.stringify(tsconfig, null, 2) + '\n')
-console.log(
-  `tsconfig.madge.json: ${Object.keys(sorted).length} path entries from ${pkgFiles.length} packages`,
-)
+console.log(`tsconfig.madge.json: ${Object.keys(sorted).length} path entries from ${pkgFiles.length} packages`)

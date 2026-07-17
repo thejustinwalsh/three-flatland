@@ -34,11 +34,7 @@ export function formatLabel(format: number | null): string {
  * artifact. `w` / `h` are the source dimensions — used as the fallback
  * for non-compressed textures whose mip array is empty.
  */
-export function extractGpuStats(
-  texture: THREE.Texture,
-  w: number,
-  h: number,
-): GpuStats {
+export function extractGpuStats(texture: THREE.Texture, w: number, h: number): GpuStats {
   const compressed = texture as THREE.CompressedTexture
   const mips = compressed.mipmaps
   if (mips && mips.length > 0) {

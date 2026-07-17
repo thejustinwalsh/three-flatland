@@ -98,11 +98,8 @@ export function GridSlicePanel({
 }: GridSlicePanelProps) {
   const pickedCount = grid ? tilesFromPicked(grid, picked).length : 0
   const generateCount = grid ? (pickedCount > 0 ? pickedCount : tilesFromGrid(grid).length) : 0
-  const splitByGridCount =
-    grid && selectedRegion ? splitRegionByGrid(selectedRegion, grid).length : 0
-  const splitRowsColsCount = selectedRegion
-    ? splitRegionRowsCols(selectedRegion, splitRows, splitCols).length
-    : 0
+  const splitByGridCount = grid && selectedRegion ? splitRegionByGrid(selectedRegion, grid).length : 0
+  const splitRowsColsCount = selectedRegion ? splitRegionRowsCols(selectedRegion, splitRows, splitCols).length : 0
 
   return (
     <div {...stylex.props(s.body)}>
@@ -152,9 +149,7 @@ export function GridSlicePanel({
           />
         </div>
       </div>
-      <p {...stylex.props(s.hint)}>
-        Drag grid lines on the canvas to fine-tune; click cells to pick a subset.
-      </p>
+      <p {...stylex.props(s.hint)}>Drag grid lines on the canvas to fine-tune; click cells to pick a subset.</p>
       <Button
         icon="layout"
         disabled={generateCount === 0}

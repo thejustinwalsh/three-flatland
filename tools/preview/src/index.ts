@@ -4,23 +4,11 @@
 // from `@three-flatland/preview/canvas` so they can be code-split via
 // `React.lazy()` and kept out of the initial paint critical path.
 
-export {
-  useCursorStore,
-  useImageData,
-  useViewportController,
-  type ViewportController,
-} from './CanvasContext'
+export { useCursorStore, useImageData, useViewportController, type ViewportController } from './CanvasContext'
 export { canvasBackgroundStyle, type CanvasBackgroundStyle } from './canvasBackground'
 export { RectOverlay, type RectOverlayProps, type Rect } from './RectOverlay'
 export { fitLabelFontSize, type LabelFitOptions } from './labelFit'
-export {
-  useViewport,
-  viewBoxFor,
-  visibleSizeFor,
-  screenScaleFor,
-  ViewportContext,
-  type Viewport,
-} from './Viewport'
+export { useViewport, viewBoxFor, visibleSizeFor, screenScaleFor, ViewportContext, type Viewport } from './Viewport'
 export { InfoPanel, type InfoPanelProps, type ColorMode, type CoordMode } from './InfoPanel'
 export {
   GridSliceOverlay,
@@ -59,10 +47,5 @@ export {
   type AnimationDrawerDensity,
 } from './AnimationDrawer'
 export { AnimationDrawerHeader, type AnimationDrawerHeaderProps } from './AnimationDrawerHeader'
-export {
-  AnimationTimeline,
-  groupCells,
-  frameIndexToGroupIndex,
-  type AnimationTimelineProps,
-} from './AnimationTimeline'
+export { AnimationTimeline, groupCells, frameIndexToGroupIndex, type AnimationTimelineProps } from './AnimationTimeline'
 export { AnimationRectHighlight, type AnimationRectHighlightProps } from './AnimationRectHighlight'

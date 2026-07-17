@@ -9,13 +9,35 @@ export type PathOp = 'difference' | 'intersect' | 'union' | 'xor' | 'reverse-dif
 
 /** Porter-Duff blend modes */
 export type BlendMode =
-  | 'clear' | 'src' | 'dst' | 'srcOver' | 'dstOver'
-  | 'srcIn' | 'dstIn' | 'srcOut' | 'dstOut'
-  | 'srcATop' | 'dstATop' | 'xor' | 'plus'
-  | 'modulate' | 'screen' | 'overlay' | 'darken'
-  | 'lighten' | 'colorDodge' | 'colorBurn' | 'hardLight'
-  | 'softLight' | 'difference' | 'exclusion' | 'multiply'
-  | 'hue' | 'saturation' | 'color' | 'luminosity'
+  | 'clear'
+  | 'src'
+  | 'dst'
+  | 'srcOver'
+  | 'dstOver'
+  | 'srcIn'
+  | 'dstIn'
+  | 'srcOut'
+  | 'dstOut'
+  | 'srcATop'
+  | 'dstATop'
+  | 'xor'
+  | 'plus'
+  | 'modulate'
+  | 'screen'
+  | 'overlay'
+  | 'darken'
+  | 'lighten'
+  | 'colorDodge'
+  | 'colorBurn'
+  | 'hardLight'
+  | 'softLight'
+  | 'difference'
+  | 'exclusion'
+  | 'multiply'
+  | 'hue'
+  | 'saturation'
+  | 'color'
+  | 'luminosity'
 
 /** Blur mask filter style */
 export type BlurStyle = 'normal' | 'solid' | 'outer' | 'inner'
@@ -31,28 +53,60 @@ export const STROKE_JOIN: Record<StrokeJoin, number> = { miter: 0, round: 1, bev
 
 /** @internal */
 export const PATH_OP: Record<PathOp, number> = {
-  'difference': 0, 'intersect': 1, 'union': 2, 'xor': 3, 'reverse-difference': 4,
+  difference: 0,
+  intersect: 1,
+  union: 2,
+  xor: 3,
+  'reverse-difference': 4,
 }
 
 /** @internal */
 export const BLEND_MODE: Record<BlendMode, number> = {
-  clear: 0, src: 1, dst: 2, srcOver: 3, dstOver: 4,
-  srcIn: 5, dstIn: 6, srcOut: 7, dstOut: 8,
-  srcATop: 9, dstATop: 10, xor: 11, plus: 12,
-  modulate: 13, screen: 14, overlay: 15, darken: 16,
-  lighten: 17, colorDodge: 18, colorBurn: 19, hardLight: 20,
-  softLight: 21, difference: 22, exclusion: 23, multiply: 24,
-  hue: 25, saturation: 26, color: 27, luminosity: 28,
+  clear: 0,
+  src: 1,
+  dst: 2,
+  srcOver: 3,
+  dstOver: 4,
+  srcIn: 5,
+  dstIn: 6,
+  srcOut: 7,
+  dstOut: 8,
+  srcATop: 9,
+  dstATop: 10,
+  xor: 11,
+  plus: 12,
+  modulate: 13,
+  screen: 14,
+  overlay: 15,
+  darken: 16,
+  lighten: 17,
+  colorDodge: 18,
+  colorBurn: 19,
+  hardLight: 20,
+  softLight: 21,
+  difference: 22,
+  exclusion: 23,
+  multiply: 24,
+  hue: 25,
+  saturation: 26,
+  color: 27,
+  luminosity: 28,
 }
 
 /** @internal Reverse lookup: numeric value → BlendMode string */
-export const BLEND_MODE_REVERSE: Record<number, BlendMode> = Object.fromEntries(Object.entries(BLEND_MODE).map(([k, v]) => [v, k as BlendMode]))
+export const BLEND_MODE_REVERSE: Record<number, BlendMode> = Object.fromEntries(
+  Object.entries(BLEND_MODE).map(([k, v]) => [v, k as BlendMode])
+)
 
 /** @internal Reverse lookup: numeric value → StrokeCap string */
-export const STROKE_CAP_REVERSE: Record<number, StrokeCap> = Object.fromEntries(Object.entries(STROKE_CAP).map(([k, v]) => [v, k as StrokeCap]))
+export const STROKE_CAP_REVERSE: Record<number, StrokeCap> = Object.fromEntries(
+  Object.entries(STROKE_CAP).map(([k, v]) => [v, k as StrokeCap])
+)
 
 /** @internal Reverse lookup: numeric value → StrokeJoin string */
-export const STROKE_JOIN_REVERSE: Record<number, StrokeJoin> = Object.fromEntries(Object.entries(STROKE_JOIN).map(([k, v]) => [v, k as StrokeJoin]))
+export const STROKE_JOIN_REVERSE: Record<number, StrokeJoin> = Object.fromEntries(
+  Object.entries(STROKE_JOIN).map(([k, v]) => [v, k as StrokeJoin])
+)
 
 /**
  * Raw WASM export functions used by the wrapper classes.
@@ -98,9 +152,33 @@ export interface SkiaExports {
   skia_paint_set_blur(h: number, sigma: number): void
   skia_paint_set_blur_style(h: number, sigma: number, style: number): void
   skia_paint_clear_blur(h: number): void
-  skia_paint_set_linear_gradient_n(h: number, x0: number, y0: number, x1: number, y1: number, colorsPtr: number, stopsPtr: number, count: number): void
-  skia_paint_set_radial_gradient(h: number, cx: number, cy: number, r: number, colorsPtr: number, stopsPtr: number, count: number): void
-  skia_paint_set_sweep_gradient(h: number, cx: number, cy: number, colorsPtr: number, stopsPtr: number, count: number): void
+  skia_paint_set_linear_gradient_n(
+    h: number,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    colorsPtr: number,
+    stopsPtr: number,
+    count: number
+  ): void
+  skia_paint_set_radial_gradient(
+    h: number,
+    cx: number,
+    cy: number,
+    r: number,
+    colorsPtr: number,
+    stopsPtr: number,
+    count: number
+  ): void
+  skia_paint_set_sweep_gradient(
+    h: number,
+    cx: number,
+    cy: number,
+    colorsPtr: number,
+    stopsPtr: number,
+    count: number
+  ): void
   skia_paint_clear_shader(h: number): void
 
   // Path
@@ -110,7 +188,16 @@ export interface SkiaExports {
   skia_path_line(h: number, x: number, y: number): void
   skia_path_quad(h: number, cx: number, cy: number, x: number, y: number): void
   skia_path_cubic(h: number, c1x: number, c1y: number, c2x: number, c2y: number, x: number, y: number): void
-  skia_path_arc(h: number, rx: number, ry: number, rotation: number, large: number, sweep: number, x: number, y: number): void
+  skia_path_arc(
+    h: number,
+    rx: number,
+    ry: number,
+    rotation: number,
+    large: number,
+    sweep: number,
+    x: number,
+    y: number
+  ): void
   skia_path_close(h: number): void
   skia_path_reset(h: number): void
   skia_path_from_svg(svgPtr: number, svgLen: number): number
@@ -168,8 +255,31 @@ export interface SkiaExports {
   skia_draw_line(x0: number, y0: number, x1: number, y1: number, paintH: number): void
   skia_draw_path(pathH: number, paintH: number): void
   skia_draw_text(textPtr: number, textLen: number, x: number, y: number, fontH: number, paintH: number): void
-  skia_canvas_draw_arc(x: number, y: number, w: number, h: number, startAngle: number, sweepAngle: number, useCenter: number, paintH: number): void
-  skia_canvas_draw_drrect(ox: number, oy: number, ow: number, oh: number, orx: number, ory: number, ix: number, iy: number, iw: number, ih: number, irx: number, iry: number, paintH: number): void
+  skia_canvas_draw_arc(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    startAngle: number,
+    sweepAngle: number,
+    useCenter: number,
+    paintH: number
+  ): void
+  skia_canvas_draw_drrect(
+    ox: number,
+    oy: number,
+    ow: number,
+    oh: number,
+    orx: number,
+    ory: number,
+    ix: number,
+    iy: number,
+    iw: number,
+    ih: number,
+    irx: number,
+    iry: number,
+    paintH: number
+  ): void
   skia_canvas_draw_paint(paintH: number): void
   skia_canvas_draw_color(r: number, g: number, b: number, a: number): void
 
@@ -205,12 +315,37 @@ export interface SkiaExports {
   skia_image_height(h: number): number
   skia_canvas_draw_image(imageH: number, x: number, y: number, paintH: number): void
   skia_image_read_pixels(h: number, outPtr: number, w: number, hh: number): number
-  skia_canvas_draw_image_rect(imageH: number, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number, paintH: number): void
+  skia_canvas_draw_image_rect(
+    imageH: number,
+    sx: number,
+    sy: number,
+    sw: number,
+    sh: number,
+    dx: number,
+    dy: number,
+    dw: number,
+    dh: number,
+    paintH: number
+  ): void
 
   // Image filters
   skia_imagefilter_blur(sigmaX: number, sigmaY: number, inputH: number): number
-  skia_imagefilter_drop_shadow(dx: number, dy: number, sigmaX: number, sigmaY: number, color: number, inputH: number): number
-  skia_imagefilter_drop_shadow_only(dx: number, dy: number, sigmaX: number, sigmaY: number, color: number, inputH: number): number
+  skia_imagefilter_drop_shadow(
+    dx: number,
+    dy: number,
+    sigmaX: number,
+    sigmaY: number,
+    color: number,
+    inputH: number
+  ): number
+  skia_imagefilter_drop_shadow_only(
+    dx: number,
+    dy: number,
+    sigmaX: number,
+    sigmaY: number,
+    color: number,
+    inputH: number
+  ): number
   skia_imagefilter_offset(dx: number, dy: number, inputH: number): number
   skia_imagefilter_color_filter(cfH: number, inputH: number): number
   skia_imagefilter_compose(outerH: number, innerH: number): number
@@ -256,16 +391,52 @@ export interface SkiaExports {
   skia_shader_turbulence(freqX: number, freqY: number, octaves: number, seed: number): number
   skia_shader_color(r: number, g: number, b: number, a: number): number
   skia_shader_blend(blendMode: number, dstH: number, srcH: number): number
-  skia_shader_linear_gradient(x0: number, y0: number, x1: number, y1: number, colorsPtr: number, stopsPtr: number, count: number): number
-  skia_shader_radial_gradient(cx: number, cy: number, r: number, colorsPtr: number, stopsPtr: number, count: number): number
+  skia_shader_linear_gradient(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    colorsPtr: number,
+    stopsPtr: number,
+    count: number
+  ): number
+  skia_shader_radial_gradient(
+    cx: number,
+    cy: number,
+    r: number,
+    colorsPtr: number,
+    stopsPtr: number,
+    count: number
+  ): number
   skia_shader_sweep_gradient(cx: number, cy: number, colorsPtr: number, stopsPtr: number, count: number): number
-  skia_shader_two_point_conical_gradient(sx: number, sy: number, sr: number, ex: number, ey: number, er: number, colorsPtr: number, stopsPtr: number, count: number): number
+  skia_shader_two_point_conical_gradient(
+    sx: number,
+    sy: number,
+    sr: number,
+    ex: number,
+    ey: number,
+    er: number,
+    colorsPtr: number,
+    stopsPtr: number,
+    count: number
+  ): number
   skia_shader_image(imageH: number, tileX: number, tileY: number): number
   skia_shader_destroy(h: number): void
   skia_paint_set_shader_obj(paintH: number, shaderH: number): void
 
   // TwoPointConical gradient
-  skia_paint_set_two_point_conical_gradient(paintH: number, startX: number, startY: number, startR: number, endX: number, endY: number, endR: number, colorsPtr: number, stopsPtr: number, count: number): void
+  skia_paint_set_two_point_conical_gradient(
+    paintH: number,
+    startX: number,
+    startY: number,
+    startR: number,
+    endX: number,
+    endY: number,
+    endR: number,
+    colorsPtr: number,
+    stopsPtr: number,
+    count: number
+  ): void
 
   // Canvas: skew
   skia_canvas_skew(sx: number, sy: number): void
@@ -275,7 +446,13 @@ export interface SkiaExports {
   skia_path_get_fill_type(pathH: number): number
 
   // Displacement map filter
-  skia_imagefilter_displacement_map(xChannel: number, yChannel: number, scale: number, displacementH: number, colorH: number): number
+  skia_imagefilter_displacement_map(
+    xChannel: number,
+    yChannel: number,
+    scale: number,
+    displacementH: number,
+    colorH: number
+  ): number
 
   // Backdrop layer
   skia_canvas_save_layer_with_backdrop(boundsPtr: number, paintH: number, backdropH: number): void

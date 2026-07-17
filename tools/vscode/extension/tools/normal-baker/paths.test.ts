@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  normalJsonPath,
-  normalPngPath,
-  pngPathFromNormalJson,
-  sourcePngFromNormalPng,
-} from './paths'
+import { normalJsonPath, normalPngPath, pngPathFromNormalJson, sourcePngFromNormalPng } from './paths'
 
 describe('normalJsonPath', () => {
   it('replaces a .png extension with .normal.json', () => {
@@ -32,9 +27,7 @@ describe('normalPngPath', () => {
 
 describe('pngPathFromNormalJson', () => {
   it('replaces a .normal.json sidecar path with its source .png path', () => {
-    expect(pngPathFromNormalJson('/a/b/Dungeon_Tileset.normal.json')).toBe(
-      '/a/b/Dungeon_Tileset.png'
-    )
+    expect(pngPathFromNormalJson('/a/b/Dungeon_Tileset.normal.json')).toBe('/a/b/Dungeon_Tileset.png')
   })
 
   it('is case-insensitive on the extension', () => {
@@ -55,9 +48,7 @@ describe('pngPathFromNormalJson', () => {
 
 describe('sourcePngFromNormalPng', () => {
   it('maps a baked X.normal.png back to its source X.png', () => {
-    expect(sourcePngFromNormalPng('/a/b/Dungeon_Tileset.normal.png')).toBe(
-      '/a/b/Dungeon_Tileset.png'
-    )
+    expect(sourcePngFromNormalPng('/a/b/Dungeon_Tileset.normal.png')).toBe('/a/b/Dungeon_Tileset.png')
   })
 
   it('is case-insensitive on the suffix', () => {

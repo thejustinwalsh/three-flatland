@@ -111,9 +111,12 @@ async function encodeKtx2ViaWorker(image: ImageData, opts: Ktx2Options): Promise
 
 export async function encodeImage(pixels: ImageData, opts: ImageEncodeOptions): Promise<Uint8Array> {
   switch (opts.format) {
-    case 'png':  return encodePng(pixels)
-    case 'webp': return encodeWebp(pixels, { quality: opts.quality, mode: opts.mode })
-    case 'avif': return encodeAvif(pixels, { quality: opts.quality, mode: opts.mode })
+    case 'png':
+      return encodePng(pixels)
+    case 'webp':
+      return encodeWebp(pixels, { quality: opts.quality, mode: opts.mode })
+    case 'avif':
+      return encodeAvif(pixels, { quality: opts.quality, mode: opts.mode })
     case 'ktx2': {
       const ktx2Opts: Ktx2Options = opts.basis ?? {}
       // Worker path: keeps main thread responsive during the 2-5s encode

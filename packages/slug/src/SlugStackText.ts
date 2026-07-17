@@ -359,13 +359,7 @@ export class SlugStackText extends Group {
 
     const decorations =
       this._styles.length > 0
-        ? stack.emitDecorations(
-            this._text,
-            flatSorted,
-            flatFontSorted,
-            this._styles,
-            this._fontSize
-          )
+        ? stack.emitDecorations(this._text, flatSorted, flatFontSorted, this._styles, this._fontSize)
         : []
 
     const colorRGBA = { r: this._color.r, g: this._color.g, b: this._color.b, a: 1 }

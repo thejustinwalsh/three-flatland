@@ -4,15 +4,9 @@ import { readFileSync } from 'node:fs'
 import opentype from 'opentype.js'
 import { shapeText } from './textShaper'
 
-const FONT_PATH = resolve(
-  __dirname,
-  '../../../../examples/three/slug-text/public/Inter-Regular.ttf'
-)
+const FONT_PATH = resolve(__dirname, '../../../../examples/three/slug-text/public/Inter-Regular.ttf')
 const fontBuffer = readFileSync(FONT_PATH)
-const arrayBuffer = fontBuffer.buffer.slice(
-  fontBuffer.byteOffset,
-  fontBuffer.byteOffset + fontBuffer.byteLength
-)
+const arrayBuffer = fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
 const font = opentype.parse(arrayBuffer)
 
 describe('textShaper', () => {

@@ -13,11 +13,7 @@
  * remote.dispose()
  * ```
  */
-import {
-  createConsumerRemoteBridge,
-  type RemoteBridgeHandle,
-  type WebSocketLike,
-} from 'three-flatland'
+import { createConsumerRemoteBridge, type RemoteBridgeHandle, type WebSocketLike } from 'three-flatland'
 import { DISCOVERY_CHANNEL } from 'three-flatland/debug-protocol'
 
 export interface ConnectRemoteDevtoolsOptions {

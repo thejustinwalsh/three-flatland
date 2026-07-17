@@ -65,14 +65,41 @@ export class SkiaDrawingContext {
     this._ctx._exports.skia_draw_path(path._handle, paint._handle)
   }
 
-  drawArc(x: number, y: number, w: number, h: number, startAngle: number, sweepAngle: number, useCenter: boolean, paint: SkiaPaint): void {
+  drawArc(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    startAngle: number,
+    sweepAngle: number,
+    useCenter: boolean,
+    paint: SkiaPaint
+  ): void {
     this._check()
     this._ctx._exports.skia_canvas_draw_arc(x, y, w, h, startAngle, sweepAngle, useCenter ? 1 : 0, paint._handle)
   }
 
-  drawDRRect(outer: { x: number; y: number; w: number; h: number; rx: number; ry: number }, inner: { x: number; y: number; w: number; h: number; rx: number; ry: number }, paint: SkiaPaint): void {
+  drawDRRect(
+    outer: { x: number; y: number; w: number; h: number; rx: number; ry: number },
+    inner: { x: number; y: number; w: number; h: number; rx: number; ry: number },
+    paint: SkiaPaint
+  ): void {
     this._check()
-    this._ctx._exports.skia_canvas_draw_drrect(outer.x, outer.y, outer.w, outer.h, outer.rx, outer.ry, inner.x, inner.y, inner.w, inner.h, inner.rx, inner.ry, paint._handle)
+    this._ctx._exports.skia_canvas_draw_drrect(
+      outer.x,
+      outer.y,
+      outer.w,
+      outer.h,
+      outer.rx,
+      outer.ry,
+      inner.x,
+      inner.y,
+      inner.w,
+      inner.h,
+      inner.rx,
+      inner.ry,
+      paint._handle
+    )
   }
 
   drawPaint(paint: SkiaPaint): void {
@@ -92,7 +119,6 @@ export class SkiaDrawingContext {
     const [ptr, len] = this._ctx._writeString(text)
     this._ctx._exports.skia_draw_text(ptr, len, x, y, font._handle, paint._handle)
   }
-
 
   // ── Transform stack ──
 
@@ -202,10 +228,25 @@ export class SkiaDrawingContext {
     this._ctx._exports.skia_canvas_draw_image(image._handle, x, y, paint?._handle ?? 0)
   }
 
-  drawImageRect(image: SkiaImage, src: [number, number, number, number], dst: [number, number, number, number], paint?: SkiaPaint): void {
+  drawImageRect(
+    image: SkiaImage,
+    src: [number, number, number, number],
+    dst: [number, number, number, number],
+    paint?: SkiaPaint
+  ): void {
     this._check()
     this._ctx._exports.skia_canvas_draw_image_rect(
-      image._handle, src[0], src[1], src[2], src[3], dst[0], dst[1], dst[2], dst[3], paint?._handle ?? 0)
+      image._handle,
+      src[0],
+      src[1],
+      src[2],
+      src[3],
+      dst[0],
+      dst[1],
+      dst[2],
+      dst[3],
+      paint?._handle ?? 0
+    )
   }
 
   // ── Text Blob ──
@@ -224,12 +265,14 @@ export class SkiaDrawingContext {
 
   // ── Backdrop Layer ──
 
-  saveLayerWithBackdrop(bounds: [number, number, number, number] | undefined, paint: SkiaPaint | undefined,
-                        backdropFilter: SkiaImageFilter): void {
+  saveLayerWithBackdrop(
+    bounds: [number, number, number, number] | undefined,
+    paint: SkiaPaint | undefined,
+    backdropFilter: SkiaImageFilter
+  ): void {
     this._check()
     const boundsPtr = bounds ? this._ctx._writeF32(bounds) : 0
-    this._ctx._exports.skia_canvas_save_layer_with_backdrop(
-      boundsPtr, paint?._handle ?? 0, backdropFilter._handle)
+    this._ctx._exports.skia_canvas_save_layer_with_backdrop(boundsPtr, paint?._handle ?? 0, backdropFilter._handle)
   }
 
   /** @internal Called by SkiaContext.endDrawing() */

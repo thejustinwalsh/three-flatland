@@ -1,10 +1,5 @@
 import { Loader, type Texture, TextureLoader as ThreeTextureLoader } from 'three'
-import {
-  type TexturePreset,
-  type TextureOptions,
-  applyTextureOptions,
-  resolveTextureOptions,
-} from './texturePresets'
+import { type TexturePreset, type TextureOptions, applyTextureOptions, resolveTextureOptions } from './texturePresets'
 
 /**
  * Options for loading a texture.

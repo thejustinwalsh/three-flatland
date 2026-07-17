@@ -23,7 +23,11 @@ export default function App() {
     const init = () => {
       if (initRef.current) return
       initRef.current = true
-      setZzfx(() => (...params: ZzFXParams) => zzfxPlay(...params))
+      setZzfx(
+        () =>
+          (...params: ZzFXParams) =>
+            zzfxPlay(...params)
+      )
     }
 
     window.addEventListener('click', init, { once: true })

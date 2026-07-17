@@ -18,9 +18,7 @@ type Mode = 'encode' | 'inspect'
  * it always launches encode mode via `openEncodePanel`, regardless of
  * the source format. See register.ts.
  */
-export class EncodeCustomEditorProvider
-  implements vscode.CustomReadonlyEditorProvider<EncodeDocument>
-{
+export class EncodeCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<EncodeDocument> {
   static readonly viewType = 'threeFlatland.encode'
 
   constructor(private readonly context: vscode.ExtensionContext) {}
@@ -30,10 +28,7 @@ export class EncodeCustomEditorProvider
     return { uri, dispose: () => void 0 }
   }
 
-  async resolveCustomEditor(
-    document: EncodeDocument,
-    panel: vscode.WebviewPanel,
-  ): Promise<void> {
+  async resolveCustomEditor(document: EncodeDocument, panel: vscode.WebviewPanel): Promise<void> {
     await wireEncodePanel(this.context, panel, document.uri, 'inspect')
   }
 }
@@ -44,10 +39,7 @@ export class EncodeCustomEditorProvider
  * of its current format (KTX2 source decodes to RGBA on the webview
  * side via the Ktx2Loader RGBA32 fallback).
  */
-export async function openEncodePanel(
-  context: vscode.ExtensionContext,
-  target: vscode.Uri,
-): Promise<void> {
+export async function openEncodePanel(context: vscode.ExtensionContext, target: vscode.Uri): Promise<void> {
   const panel = vscode.window.createWebviewPanel(
     EncodeCustomEditorProvider.viewType,
     `Encode: ${target.path.split('/').pop() ?? 'image'}`,
@@ -55,11 +47,8 @@ export async function openEncodePanel(
     {
       enableScripts: true,
       retainContextWhenHidden: false,
-      localResourceRoots: [
-        vscode.Uri.joinPath(context.extensionUri, 'dist'),
-        vscode.Uri.joinPath(target, '..'),
-      ],
-    },
+      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist'), vscode.Uri.joinPath(target, '..')],
+    }
   )
   await wireEncodePanel(context, panel, target, 'encode')
 }
@@ -73,15 +62,13 @@ async function wireEncodePanel(
   context: vscode.ExtensionContext,
   panel: vscode.WebviewPanel,
   target: vscode.Uri,
-  mode: Mode,
+  mode: Mode
 ): Promise<void> {
   const fileName = target.path.split('/').pop() ?? 'image'
   const fileExt = fileName.split('.').pop()?.toLowerCase() ?? ''
 
   if (!['png', 'webp', 'avif', 'ktx2'].includes(fileExt)) {
-    void vscode.window.showErrorMessage(
-      `FL Image Encoder: unsupported file extension .${fileExt}`,
-    )
+    void vscode.window.showErrorMessage(`FL Image Encoder: unsupported file extension .${fileExt}`)
     return
   }
 
@@ -92,7 +79,7 @@ async function wireEncodePanel(
   }
   if (stat.size > MAX_BYTES) {
     void vscode.window.showErrorMessage(
-      `FL Image Encoder: ${fileName} is ${(stat.size / 1024 / 1024).toFixed(1)} MB; current limit is ${MAX_BYTES / 1024 / 1024} MB.`,
+      `FL Image Encoder: ${fileName} is ${(stat.size / 1024 / 1024).toFixed(1)} MB; current limit is ${MAX_BYTES / 1024 / 1024} MB.`
     )
     return
   }
@@ -101,10 +88,7 @@ async function wireEncodePanel(
 
   panel.webview.options = {
     enableScripts: true,
-    localResourceRoots: [
-      vscode.Uri.joinPath(context.extensionUri, 'dist'),
-      vscode.Uri.joinPath(target, '..'),
-    ],
+    localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist'), vscode.Uri.joinPath(target, '..')],
   }
 
   const renderHtml = async () =>
@@ -140,7 +124,7 @@ async function wireEncodePanel(
         const choice = await vscode.window.showWarningMessage(
           `${suggestedFilename} already exists. Overwrite?`,
           { modal: true },
-          'Overwrite',
+          'Overwrite'
         )
         if (choice !== 'Overwrite') {
           return { ok: false, cancelled: true }
@@ -149,7 +133,7 @@ async function wireEncodePanel(
       await vscode.workspace.fs.writeFile(dest, new Uint8Array(bytes))
       log(`encode/save wrote ${dest.fsPath} (${bytes.length} bytes, ${format})`)
       return { ok: true, savedUri: dest.toString() }
-    },
+    }
   )
 
   bridge.on('encode/reveal-folder', async () => {
@@ -162,9 +146,7 @@ async function wireEncodePanel(
     return { ok: true }
   })
 
-  const disposeReload = setupDevReload(context.extensionUri, TOOL, () =>
-    bridge.emit('dev/reload', { tool: TOOL }),
-  )
+  const disposeReload = setupDevReload(context.extensionUri, TOOL, () => bridge.emit('dev/reload', { tool: TOOL }))
   bridge.on('dev/reload-request', async () => {
     panel.webview.html = await renderHtml()
     return { ok: true }

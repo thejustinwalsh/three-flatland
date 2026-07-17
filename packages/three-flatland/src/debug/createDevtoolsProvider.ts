@@ -55,10 +55,9 @@ export interface DevtoolsProviderHandle {
  * Construct a devtools provider when bundled + active; otherwise a
  * no-op stub. Safe to call unconditionally from app code.
  */
-export function createDevtoolsProvider(
-  options: DevtoolsProviderOptions = {},
-): DevtoolsProviderHandle {
-  if ((process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') || !isDevtoolsActive()) return NOOP_PROVIDER
+export function createDevtoolsProvider(options: DevtoolsProviderOptions = {}): DevtoolsProviderHandle {
+  if ((process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') || !isDevtoolsActive())
+    return NOOP_PROVIDER
 
   // Lazy-load the real provider via dynamic import. When the gate above folds
   // to `false` (production, no FL_DEVTOOLS), this whole tail is dead code, so
@@ -94,8 +93,16 @@ export function createDevtoolsProvider(
 }
 
 const NOOP_PROVIDER: DevtoolsProviderHandle = {
-  beginFrame() { /* no-op */ },
-  endFrame() { /* no-op */ },
-  dispose() { /* no-op */ },
-  get disposed() { return false },
+  beginFrame() {
+    /* no-op */
+  },
+  endFrame() {
+    /* no-op */
+  },
+  dispose() {
+    /* no-op */
+  },
+  get disposed() {
+    return false
+  },
 }

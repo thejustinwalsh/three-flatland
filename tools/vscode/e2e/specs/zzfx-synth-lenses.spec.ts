@@ -208,11 +208,7 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     expect(playLens.command?.command).toBe('threeFlatland.audio.playWadSynth')
     expect(stopLens.command?.command).toBe('threeFlatland.audio.stopSong')
 
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
     // The lens SET doesn't change while playing — same two lenses.
     lenses = await fetchLenses(evaluateInVSCode)
     const whilePlaying = lenses
@@ -236,20 +232,14 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
 
     const result = await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
         const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
 
         async function lensPairAt(line: number) {
-          const resolved = (await vscode.commands.executeCommand(
-            'vscode.executeCodeLensProvider',
-            uri,
-            100
-          )) as Array<{
+          const resolved = (await vscode.commands.executeCommand('vscode.executeCodeLensProvider', uri, 100)) as Array<{
             range: { start: { line: number } }
             command?: { title: string; command: string }
           }>
@@ -299,11 +289,7 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     expect(playLens.command?.command).toBe('threeFlatland.audio.playToneSynth')
     expect(stopLens.command?.command).toBe('threeFlatland.audio.stopSong')
 
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
     lenses = await fetchLenses(evaluateInVSCode)
     const whilePlaying = lenses
       .filter((l) => l.range.start.line === TONE_NOTE_LINE)
@@ -326,21 +312,13 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     let lenses = await fetchLenses(evaluateInVSCode)
     const noiseLens = lensAt(lenses, TONE_NOISE_LINE, '▶ Play')!
     expect(noiseLens.command?.command).toBe('threeFlatland.audio.playToneSynth')
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      noiseLens.command!.command,
-      noiseLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, noiseLens.command!.command, noiseLens.command!.arguments)
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
 
     lenses = await fetchLenses(evaluateInVSCode)
     const chordLens = lensAt(lenses, TONE_CHORD_LINE, '▶ Play')!
     expect(chordLens.command?.command).toBe('threeFlatland.audio.playToneSynth')
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      chordLens.command!.command,
-      chordLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, chordLens.command!.command, chordLens.command!.arguments)
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 
@@ -384,11 +362,7 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     const pluckLens = lensAt(lenses, TONE_PLUCK_LINE, '▶ Play')!
     expect(pluckLens.command?.command).toBe('threeFlatland.audio.playToneSynth')
 
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      pluckLens.command!.command,
-      pluckLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, pluckLens.command!.command, pluckLens.command!.arguments)
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
 
     // The process survived dispatching the command — prove it
@@ -403,10 +377,7 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
       if (ext && !ext.isActive) await ext.activate()
       return (ext!.exports as ExtensionApi).zzfxPlay.ping()
     })
-    expect(
-      alive,
-      'the sidecar must still answer ping after dispatching PluckSynth — not crashed/hung'
-    ).toBe(true)
+    expect(alive, 'the sidecar must still answer ping after dispatching PluckSynth — not crashed/hung').toBe(true)
   })
 
   // #47's wad.synth var-ref cases, driven end to end: the scanner always
@@ -425,11 +396,7 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     const resolvableLens = lensAt(lenses, WAD_VAR_RESOLVABLE_LINE, '▶ Play')!
     expect(resolvableLens.command?.command).toBe('threeFlatland.audio.playWadSynth')
 
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      resolvableLens.command!.command,
-      resolvableLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, resolvableLens.command!.command, resolvableLens.command!.arguments)
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
 
     const unresolvableLens = lensAt(lenses, WAD_VAR_UNRESOLVABLE_LINE, '▶ Play')!
@@ -462,11 +429,7 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
     const resolvableLens = lensAt(lenses, TONE_VAR_RESOLVABLE_LINE, '▶ Play')!
     expect(resolvableLens.command?.command).toBe('threeFlatland.audio.playToneSynth')
 
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      resolvableLens.command!.command,
-      resolvableLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, resolvableLens.command!.command, resolvableLens.command!.arguments)
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
 
     // No Play/Stop pair at all for this line — just the one Unresolved lens,
@@ -503,9 +466,7 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
 
     const alive = await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as ExtensionApi
 
@@ -527,10 +488,9 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
       { command: playLens.command!.command, args: playLens.command!.arguments }
     )
 
-    expect(
-      alive,
-      'the freshly-respawned sidecar must survive dispatching the Tone play and still answer ping'
-    ).toBe(true)
+    expect(alive, 'the freshly-respawned sidecar must survive dispatching the Tone play and still answer ping').toBe(
+      true
+    )
 
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })

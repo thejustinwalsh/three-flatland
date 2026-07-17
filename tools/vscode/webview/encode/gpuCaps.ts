@@ -28,9 +28,7 @@ function probe(): Ktx2Capabilities {
   const gl = canvas.getContext('webgl2') as WebGL2RenderingContext | null
   if (!gl) return FALLBACK
   const has = (n: string) => !!gl.getExtension(n)
-  const astcExt = gl.getExtension('WEBGL_compressed_texture_astc') as
-    | { getSupportedProfiles?: () => string[] }
-    | null
+  const astcExt = gl.getExtension('WEBGL_compressed_texture_astc') as { getSupportedProfiles?: () => string[] } | null
   const caps: Ktx2Capabilities = {
     astcSupported: !!astcExt,
     astcHDRSupported: astcExt?.getSupportedProfiles?.().includes('hdr') === true,
@@ -38,9 +36,7 @@ function probe(): Ktx2Capabilities {
     etc2Supported: has('WEBGL_compressed_texture_etc'),
     dxtSupported: has('WEBGL_compressed_texture_s3tc'),
     bptcSupported: has('EXT_texture_compression_bptc'),
-    pvrtcSupported:
-      has('WEBGL_compressed_texture_pvrtc') ||
-      has('WEBKIT_WEBGL_compressed_texture_pvrtc'),
+    pvrtcSupported: has('WEBGL_compressed_texture_pvrtc') || has('WEBKIT_WEBGL_compressed_texture_pvrtc'),
   }
   // Linux/Mesa workaround mirrored from three's KTX2Loader: ETC2 + ASTC
   // are exposed by Mesa drivers but software-decompressed at upload,

@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DEFAULT_PLAYBACK_TRIM_DB,
-  PLAYBACK_TRIM_MAX_DB,
-  PLAYBACK_TRIM_MIN_DB,
-  trimToMultiplier,
-} from './volumeTrim'
+import { DEFAULT_PLAYBACK_TRIM_DB, PLAYBACK_TRIM_MAX_DB, PLAYBACK_TRIM_MIN_DB, trimToMultiplier } from './volumeTrim'
 
 describe('trimToMultiplier', () => {
   it('maps the 0 dB default to EXACTLY multiplier 1 — the untouched baseline loudness', () => {

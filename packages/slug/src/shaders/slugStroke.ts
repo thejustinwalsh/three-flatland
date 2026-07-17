@@ -1,18 +1,4 @@
-import {
-  float,
-  vec2,
-  int,
-  Loop,
-  Break,
-  textureLoad,
-  ivec2,
-  fwidth,
-  max,
-  min,
-  clamp,
-  smoothstep,
-  If,
-} from 'three/tsl'
+import { float, vec2, int, Loop, Break, textureLoad, ivec2, fwidth, max, min, clamp, smoothstep, If } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { DataTexture } from 'three'
 import { distanceToQuadBezier } from './distanceToQuadBezier'
@@ -94,16 +80,8 @@ export function slugStroke(
   const effHalf = max(strokeHalfWidth, aaHalf)
 
   // Band indices — same math as the fill shader.
-  const bandIdxX = clamp(
-    renderCoord.x.mul(bandTransform.x).add(bandTransform.z),
-    0,
-    numVBands.sub(1)
-  )
-  const bandIdxY = clamp(
-    renderCoord.y.mul(bandTransform.y).add(bandTransform.w),
-    0,
-    numHBands.sub(1)
-  )
+  const bandIdxX = clamp(renderCoord.x.mul(bandTransform.x).add(bandTransform.z), 0, numVBands.sub(1))
+  const bandIdxY = clamp(renderCoord.y.mul(bandTransform.y).add(bandTransform.w), 0, numHBands.sub(1))
 
   const glyphLocXi = int(glyphLocX)
   const glyphLocYi = int(glyphLocY)

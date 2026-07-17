@@ -11,21 +11,7 @@ export { blurRadial, blurRadialDistance, blurSpin, blurFocus } from './blurRadia
 export { blurMotion, blurMotionVelocity, blurMotionObject, blurShake, speedLines } from './blurMotion'
 
 // Kawase blur (fast iterative)
-export {
-  blurKawase,
-  blurKawaseSimple,
-  blurKawaseDown,
-  blurKawaseUp,
-  blurKawaseMulti,
-} from './blurKawase'
+export { blurKawase, blurKawaseSimple, blurKawaseDown, blurKawaseUp, blurKawaseMulti } from './blurKawase'
 
 // Bloom and post-processing
-export {
-  bloomThreshold,
-  bloom,
-  glowSelective,
-  bloomAnamorphic,
-  bloomSimple,
-  vignette,
-  filmGrain,
-} from './bloom'
+export { bloomThreshold, bloom, glowSelective, bloomAnamorphic, bloomSimple, vignette, filmGrain } from './bloom'

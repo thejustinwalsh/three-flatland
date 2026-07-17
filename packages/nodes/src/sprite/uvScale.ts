@@ -18,11 +18,7 @@ import type { Vec2Input } from '../types'
  * // Scale with uniform for animation
  * uvScale(uv(), scaleUniform, [0.5, 0.5])
  */
-export function uvScale(
-  inputUV: Node<'vec2'>,
-  scale: Vec2Input,
-  pivot: Vec2Input = [0.5, 0.5]
-): Node<'vec2'> {
+export function uvScale(inputUV: Node<'vec2'>, scale: Vec2Input, pivot: Vec2Input = [0.5, 0.5]): Node<'vec2'> {
   const scaleVec = Array.isArray(scale) ? vec2(...scale) : scale
   const pivotVec = Array.isArray(pivot) ? vec2(...pivot) : pivot
 

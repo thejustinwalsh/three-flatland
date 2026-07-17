@@ -204,12 +204,7 @@ export function WaveformPreview({ params, playback }: WaveformPreviewProps) {
         )
       }
     >
-      <canvas
-        ref={canvasRef}
-        role="img"
-        aria-label="Waveform preview"
-        {...stylex.props(s.canvas)}
-      />
+      <canvas ref={canvasRef} role="img" aria-label="Waveform preview" {...stylex.props(s.canvas)} />
     </Panel>
   )
 }

@@ -51,9 +51,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
       includeDevFallback: false,
     })
     goldenText = await readFile(join(FIXTURES_DIR, 'golden.ts'), 'utf8')
-    goldenFindings = JSON.parse(
-      await readFile(join(FIXTURES_DIR, 'golden.findings.json'), 'utf8')
-    ) as Finding[]
+    goldenFindings = JSON.parse(await readFile(join(FIXTURES_DIR, 'golden.findings.json'), 'utf8')) as Finding[]
     // A fresh tmpdir, not a path inside the fixtures directory — the SQLite
     // cache file this creates must never leak into (or persist across runs
     // in) version-controlled fixtures.
@@ -102,10 +100,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     const explosionFinding = result.findings.find(
       (f) => f.kind === 'zzfx.call' && f.payload.varRef?.name === 'explosionPreset'
     )
-    expect(
-      explosionFinding,
-      'golden.ts must still declare and reference explosionPreset'
-    ).toBeDefined()
+    expect(explosionFinding, 'golden.ts must still declare and reference explosionPreset').toBeDefined()
     if (explosionFinding?.kind !== 'zzfx.call') throw new Error('expected zzfx.call')
     const defRange = explosionFinding.payload.varRef!.defRange
     expect(defRange, 'explosionPreset has an initializer; defRange must be present').toBeDefined()
@@ -126,10 +121,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     const inlineSongFinding = result.findings.find(
       (f) => f.kind === 'zzfxm.song' && f.payload.argRange.start.character === 8
     )
-    expect(
-      inlineSongFinding,
-      'golden.ts must still contain the inline-literal zzfxm call'
-    ).toBeDefined()
+    expect(inlineSongFinding, 'golden.ts must still contain the inline-literal zzfxm call').toBeDefined()
     if (inlineSongFinding?.kind !== 'zzfxm.song') throw new Error('expected zzfxm.song')
     expect(inlineSongFinding.payload.varRef).toBeUndefined()
 
@@ -143,10 +135,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
       if (finding.kind !== 'audio.file') throw new Error('expected audio.file')
       const lines = goldenText.split('\n')
       const line = lines[finding.payload.pathRange.start.line]!
-      const sliced = line.slice(
-        finding.payload.pathRange.start.character,
-        finding.payload.pathRange.end.character
-      )
+      const sliced = line.slice(finding.payload.pathRange.start.character, finding.payload.pathRange.end.character)
       expect(sliced).toBe(finding.payload.path)
     }
 
@@ -155,13 +144,8 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     // source IS a finding (slice-equality-proven, same discipline as the
     // Howler case), synthesis-mode source ('sine', no audio extension)
     // is NOT — both directions asserted explicitly.
-    const wadFinding = result.findings.find(
-      (f) => f.kind === 'audio.file' && f.payload.path === 'sounds/jump.wav'
-    )
-    expect(
-      wadFinding,
-      'golden.ts must still reference sounds/jump.wav via new Wad({...})'
-    ).toBeDefined()
+    const wadFinding = result.findings.find((f) => f.kind === 'audio.file' && f.payload.path === 'sounds/jump.wav')
+    expect(wadFinding, 'golden.ts must still reference sounds/jump.wav via new Wad({...})').toBeDefined()
     if (wadFinding?.kind !== 'audio.file') throw new Error('expected audio.file')
     const wadLines = goldenText.split('\n')
     const wadLine = wadLines[wadFinding.payload.pathRange.start.line]!
@@ -171,9 +155,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     )
     expect(wadSliced).toBe(wadFinding.payload.path)
 
-    const sineFinding = result.findings.find(
-      (f) => f.kind === 'audio.file' && f.payload.path === 'sine'
-    )
+    const sineFinding = result.findings.find((f) => f.kind === 'audio.file' && f.payload.path === 'sine')
     expect(
       sineFinding,
       "new Wad({source: 'sine'}) is synthesis mode, not a file reference — must NOT be a finding"
@@ -187,18 +169,13 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
       ['convolution reverb impulse ({reverb:{impulse}})', 'ir.wav'],
       ['SoundIterator files array', 'riff.mp3'],
     ] as const) {
-      const found = result.findings.find(
-        (f) => f.kind === 'audio.file' && f.payload.path === wadPath
-      )
+      const found = result.findings.find((f) => f.kind === 'audio.file' && f.payload.path === wadPath)
       expect(found, `golden.ts must still reference ${wadPath} via Wad's ${wadCase}`).toBeDefined()
       if (found?.kind !== 'audio.file') throw new Error('expected audio.file')
       const foundLine = goldenText.split('\n')[found.payload.pathRange.start.line]!
-      expect(
-        foundLine.slice(
-          found.payload.pathRange.start.character,
-          found.payload.pathRange.end.character
-        )
-      ).toBe(found.payload.path)
+      expect(foundLine.slice(found.payload.pathRange.start.character, found.payload.pathRange.end.character)).toBe(
+        found.payload.path
+      )
     }
     for (const synth of ['square', 'sawtooth', 'triangle', 'noise', 'mic']) {
       expect(
@@ -218,13 +195,8 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
       wadSynthFindings,
       "expected sine (beep), sawtooth/triangle/noise (synthVoices), the inline square inside playIterated's SoundIterator, playSquareSynth's square, and playLaserOsc's var-ref noise — 7 playable — plus the mic/sprite/preset decoys as the unresolved flavor — 10 total wad.synth findings"
     ).toHaveLength(10)
-    const unresolvedWads = wadSynthFindings.filter(
-      (f) => f.kind === 'wad.synth' && f.payload.unresolved
-    )
-    expect(
-      unresolvedWads,
-      'exactly the mic/sprite/preset decoys carry unresolved: true'
-    ).toHaveLength(3)
+    const unresolvedWads = wadSynthFindings.filter((f) => f.kind === 'wad.synth' && f.payload.unresolved)
+    expect(unresolvedWads, 'exactly the mic/sprite/preset decoys carry unresolved: true').toHaveLength(3)
     for (const f of unresolvedWads) {
       expect(
         f.kind === 'wad.synth' && f.payload.varRef,
@@ -237,24 +209,16 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
         if (f.kind !== 'wad.synth') return false
         const lines = goldenText.split('\n')
         const line = lines[f.payload.argRange.start.line]!
-        const sliced = line.slice(
-          f.payload.argRange.start.character,
-          f.payload.argRange.end.character
-        )
+        const sliced = line.slice(f.payload.argRange.start.character, f.payload.argRange.end.character)
         return sliced === objectText
       })
-      expect(
-        found,
-        `expected a wad.synth finding whose argRange slices to exactly ${objectText}`
-      ).toBe(true)
+      expect(found, `expected a wad.synth finding whose argRange slices to exactly ${objectText}`).toBe(true)
     }
 
     // The #1 partition risk: Wad's file-mode source must never ALSO
     // produce a wad.synth finding.
     expect(
-      result.findings.find(
-        (f) => f.kind === 'wad.synth' && f.range.start.line === wadFinding.range.start.line
-      ),
+      result.findings.find((f) => f.kind === 'wad.synth' && f.range.start.line === wadFinding.range.start.line),
       "new Wad({source: 'sounds/jump.wav'}) is file mode — must NOT be a wad.synth finding"
     ).toBeUndefined()
 
@@ -262,21 +226,14 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     // must slice to exactly laserOsc's initializer text, same "past the
     // declarator, value only" contract zzfx/zzfxm's varRef.defRange
     // already has.
-    const laserOscFinding = result.findings.find(
-      (f) => f.kind === 'wad.synth' && f.payload.varRef?.name === 'laserOsc'
-    )
-    expect(
-      laserOscFinding,
-      'golden.ts must still declare and reference laserOsc via new Wad(laserOsc)'
-    ).toBeDefined()
+    const laserOscFinding = result.findings.find((f) => f.kind === 'wad.synth' && f.payload.varRef?.name === 'laserOsc')
+    expect(laserOscFinding, 'golden.ts must still declare and reference laserOsc via new Wad(laserOsc)').toBeDefined()
     if (laserOscFinding?.kind !== 'wad.synth') throw new Error('expected wad.synth')
     const laserDefRange = laserOscFinding.payload.varRef!.defRange
     expect(laserDefRange, 'laserOsc has an initializer; defRange must be present').toBeDefined()
     const laserLines = goldenText.split('\n')
     const laserLine = laserLines[laserDefRange!.start.line]!
-    expect(laserLine.slice(laserDefRange!.start.character, laserDefRange!.end.character)).toBe(
-      "{ source: 'noise' }"
-    )
+    expect(laserLine.slice(laserDefRange!.start.character, laserDefRange!.end.character)).toBe("{ source: 'noise' }")
 
     // tone.synth: five findings — playTone/Synth, playNoise/NoiseSynth,
     // playChord/PolySynth+voiceType (all literal-note positives),
@@ -293,45 +250,25 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     ).toHaveLength(5)
 
     const goldenLines = goldenText.split('\n')
-    const slice = (range: {
-      start: { line: number; character: number }
-      end: { line: number; character: number }
-    }) => {
+    const slice = (range: { start: { line: number; character: number }; end: { line: number; character: number } }) => {
       const line = goldenLines[range.start.line]!
       return line.slice(range.start.character, range.end.character)
     }
 
-    const toneFinding = toneSynthFindings.find(
-      (f) => f.kind === 'tone.synth' && f.payload.synthType === 'Synth'
-    )
-    expect(
-      toneFinding,
-      "golden.ts must still declare playTone's new Tone.Synth() call"
-    ).toBeDefined()
+    const toneFinding = toneSynthFindings.find((f) => f.kind === 'tone.synth' && f.payload.synthType === 'Synth')
+    expect(toneFinding, "golden.ts must still declare playTone's new Tone.Synth() call").toBeDefined()
     if (toneFinding?.kind !== 'tone.synth') throw new Error('expected tone.synth')
     expect(toneFinding.payload.voiceType).toBeUndefined()
     expect(slice(toneFinding.payload.argRange)).toBe("'C4', '8n'")
-    expect(slice(toneFinding.range)).toBe(
-      "new Tone.Synth().toDestination().triggerAttackRelease('C4', '8n')"
-    )
+    expect(slice(toneFinding.range)).toBe("new Tone.Synth().toDestination().triggerAttackRelease('C4', '8n')")
 
-    const noiseFinding = toneSynthFindings.find(
-      (f) => f.kind === 'tone.synth' && f.payload.synthType === 'NoiseSynth'
-    )
-    expect(
-      noiseFinding,
-      "golden.ts must still declare playNoise's new Tone.NoiseSynth() call"
-    ).toBeDefined()
+    const noiseFinding = toneSynthFindings.find((f) => f.kind === 'tone.synth' && f.payload.synthType === 'NoiseSynth')
+    expect(noiseFinding, "golden.ts must still declare playNoise's new Tone.NoiseSynth() call").toBeDefined()
     if (noiseFinding?.kind !== 'tone.synth') throw new Error('expected tone.synth')
     expect(slice(noiseFinding.payload.argRange)).toBe("'8n'")
 
-    const chordFinding = toneSynthFindings.find(
-      (f) => f.kind === 'tone.synth' && f.payload.synthType === 'PolySynth'
-    )
-    expect(
-      chordFinding,
-      "golden.ts must still declare playChord's new Tone.PolySynth(Tone.FMSynth) call"
-    ).toBeDefined()
+    const chordFinding = toneSynthFindings.find((f) => f.kind === 'tone.synth' && f.payload.synthType === 'PolySynth')
+    expect(chordFinding, "golden.ts must still declare playChord's new Tone.PolySynth(Tone.FMSynth) call").toBeDefined()
     if (chordFinding?.kind !== 'tone.synth') throw new Error('expected tone.synth')
     expect(chordFinding.payload.voiceType).toBe('FMSynth')
     expect(slice(chordFinding.payload.argRange)).toBe("['C4', 'E4', 'G4'], '4n'")
@@ -339,9 +276,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     // playToneDynamicNote and playDynamicNote both have the identical
     // Tone.Synth() shape to playTone, differing only in whether/how their
     // note resolves — three Synth-typed findings total now.
-    const synthTyped = toneSynthFindings.filter(
-      (f) => f.kind === 'tone.synth' && f.payload.synthType === 'Synth'
-    )
+    const synthTyped = toneSynthFindings.filter((f) => f.kind === 'tone.synth' && f.payload.synthType === 'Synth')
     expect(
       synthTyped,
       'expected three Synth-typed tone.synth findings: playTone (literal), playToneDynamicNote (resolved varRef), playDynamicNote (unresolved varRef)'
@@ -363,10 +298,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     const dynamicNoteVarRef = dynamicNoteFinding.payload.varRef
     expect(dynamicNoteVarRef, 'expected a resolved varRef for dynamicNote').toBeDefined()
     expect(dynamicNoteVarRef!.name).toBe('dynamicNote')
-    expect(
-      dynamicNoteVarRef!.defRange,
-      'dynamicNote has an initializer; defRange must be present'
-    ).toBeDefined()
+    expect(dynamicNoteVarRef!.defRange, 'dynamicNote has an initializer; defRange must be present').toBeDefined()
     expect(slice(dynamicNoteVarRef!.defRange!)).toBe("'C4'")
 
     // playDynamicNote: bare-identifier note whose "declaration" is a

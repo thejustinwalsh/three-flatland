@@ -1,11 +1,5 @@
 // Wave distortions
-export {
-  waveHorizontal,
-  waveVertical,
-  waveRadial,
-  waveRipple,
-  waveWater,
-} from './wave'
+export { waveHorizontal, waveVertical, waveRadial, waveRipple, waveWater } from './wave'
 
 // Geometric distortions
 export {
@@ -21,9 +15,4 @@ export {
 } from './distort'
 
 // Noise-based distortions
-export {
-  distortNoise,
-  distortPerlin,
-  distortSimplex,
-  distortTurbulence,
-} from './distortNoise'
+export { distortNoise, distortPerlin, distortSimplex, distortTurbulence } from './distortNoise'

@@ -172,10 +172,8 @@ export function refSlugDilate(
   const t = m3[0] * nx + m3[1] * ny
 
   // Pixel-space projected normal components
-  const u =
-    (s * (m0[0] * nx + m0[1] * ny) - t * (m0[0] * posXY[0] + m0[1] * posXY[1] + m0[3])) * dim[0]
-  const v =
-    (s * (m1[0] * nx + m1[1] * ny) - t * (m1[0] * posXY[0] + m1[1] * posXY[1] + m1[3])) * dim[1]
+  const u = (s * (m0[0] * nx + m0[1] * ny) - t * (m0[0] * posXY[0] + m0[1] * posXY[1] + m0[3])) * dim[0]
+  const v = (s * (m1[0] * nx + m1[1] * ny) - t * (m1[0] * posXY[0] + m1[1] * posXY[1] + m1[3])) * dim[1]
 
   const s2 = s * s
   const st = s * t
@@ -192,10 +190,7 @@ export function refSlugDilate(
   const vpos: [number, number] = [posXY[0] + dx, posXY[1] + dy]
 
   // Adjusted em-space texcoord via inverse Jacobian
-  const texcoord: [number, number] = [
-    texXY[0] + dx * jac[0] + dy * jac[1],
-    texXY[1] + dx * jac[2] + dy * jac[3],
-  ]
+  const texcoord: [number, number] = [texXY[0] + dx * jac[0] + dy * jac[1], texXY[1] + dx * jac[2] + dy * jac[3]]
 
   return { vpos, texcoord }
 }

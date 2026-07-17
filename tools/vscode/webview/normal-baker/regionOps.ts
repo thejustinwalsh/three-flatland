@@ -32,10 +32,7 @@ export function removeRegion(regions: readonly EditableRegion[], id: string): Ed
   return regions.filter((r) => r.id !== id)
 }
 
-export function removeRegions(
-  regions: readonly EditableRegion[],
-  ids: ReadonlySet<string>
-): EditableRegion[] {
+export function removeRegions(regions: readonly EditableRegion[], ids: ReadonlySet<string>): EditableRegion[] {
   return regions.filter((r) => !ids.has(r.id))
 }
 
@@ -73,9 +70,6 @@ export function updateRegion(
  * delete one) — e.g. after `normalizeRegion` strips a field that now
  * matches the descriptor default.
  */
-export function replaceRegion(
-  regions: readonly EditableRegion[],
-  next: EditableRegion
-): EditableRegion[] {
+export function replaceRegion(regions: readonly EditableRegion[], next: EditableRegion): EditableRegion[] {
   return regions.map((r) => (r.id === next.id ? next : r))
 }

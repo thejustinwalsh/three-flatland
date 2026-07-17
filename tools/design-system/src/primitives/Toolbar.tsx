@@ -11,10 +11,7 @@ const s = stylex.create({
   },
 })
 
-export type ToolbarProps = Omit<
-  ComponentProps<typeof VscodeToolbarContainer>,
-  'style' | 'className'
-> & {
+export type ToolbarProps = Omit<ComponentProps<typeof VscodeToolbarContainer>, 'style' | 'className'> & {
   style?: StyleXStyles
 }
 

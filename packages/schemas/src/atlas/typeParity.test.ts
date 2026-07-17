@@ -16,9 +16,7 @@ describe('atlas.schema.json <-> AtlasJson type parity', () => {
     const typesGenPath = fileURLToPath(
       new URL('../../../three-flatland/src/sprites/atlas.types.gen.ts', import.meta.url)
     )
-    const tsconfigPath = fileURLToPath(
-      new URL('../../../three-flatland/tsconfig.json', import.meta.url)
-    )
+    const tsconfigPath = fileURLToPath(new URL('../../../three-flatland/tsconfig.json', import.meta.url))
 
     const generated = createGenerator({
       path: typesGenPath,

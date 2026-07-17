@@ -52,7 +52,7 @@ if (isSynced) {
             if (!syncKey) return;
             const label = localStorage.getItem(`starlight-synced-tabs__${syncKey}`);
             if (!label) return;
-            const tabs = [...starlightTabs?.querySelectorAll('[role="tab"]')];
+            const tabs = [...starlightTabs.querySelectorAll('[role="tab"]')];
             const tabIndexToRestore = tabs.findIndex(
                 (tab) => tab instanceof HTMLAnchorElement && tab.textContent?.trim() === label
             );

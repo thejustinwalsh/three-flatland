@@ -13,10 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import {
-  validateNormalDescriptor,
-  formatNormalDescriptorErrors,
-} from '@three-flatland/schemas/normal-descriptor'
+import { validateNormalDescriptor, formatNormalDescriptorErrors } from '@three-flatland/schemas/normal-descriptor'
 import type { NormalSourceDescriptor, NormalRegion } from './descriptor.js'
 
 describe('validateNormalDescriptor — type parity with NormalSourceDescriptor', () => {
@@ -62,10 +59,7 @@ describe('validateNormalDescriptor — type parity with NormalSourceDescriptor',
 describe('validateNormalDescriptor — real-world fixture', () => {
   it('accepts the Dungeon_Tileset.normal.json example verbatim', () => {
     const fixturePath = fileURLToPath(
-      new URL(
-        '../../../examples/react/lighting/public/sprites/Dungeon_Tileset.normal.json',
-        import.meta.url
-      )
+      new URL('../../../examples/react/lighting/public/sprites/Dungeon_Tileset.normal.json', import.meta.url)
     )
     const json = JSON.parse(readFileSync(fixturePath, 'utf8')) as unknown
     expect(validateNormalDescriptor(json)).toBe(true)

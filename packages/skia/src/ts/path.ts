@@ -1,8 +1,8 @@
 import type { SkiaContext } from './context'
 import { type PathOp, PATH_OP } from './types'
 
-const pathRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => drop(handle),
+const pathRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) =>
+  drop(handle)
 )
 
 /**
@@ -27,7 +27,11 @@ export class SkiaPath {
   constructor(context: SkiaContext) {
     this._ctx = context
     this._handle = context._exports.skia_path_new()
-    pathRegistry.register(this, { handle: this._handle, drop: (h: number) => context._exports.skia_path_delete(h) }, this)
+    pathRegistry.register(
+      this,
+      { handle: this._handle, drop: (h: number) => context._exports.skia_path_delete(h) },
+      this
+    )
   }
 
   /** @internal Create a path from an existing handle (e.g., from PathOps result) */
@@ -166,14 +170,24 @@ export class SkiaPath {
     const ptr = this._ctx._writeF32([0, 0, 0, 0])
     this._ctx._exports.skia_path_get_bounds(this._handle, ptr)
     const dv = new DataView(this._ctx._memory.buffer)
-    return { x: dv.getFloat32(ptr, true), y: dv.getFloat32(ptr + 4, true), width: dv.getFloat32(ptr + 8, true), height: dv.getFloat32(ptr + 12, true) }
+    return {
+      x: dv.getFloat32(ptr, true),
+      y: dv.getFloat32(ptr + 4, true),
+      width: dv.getFloat32(ptr + 8, true),
+      height: dv.getFloat32(ptr + 12, true),
+    }
   }
 
   computeTightBounds(): { x: number; y: number; width: number; height: number } {
     const ptr = this._ctx._writeF32([0, 0, 0, 0])
     this._ctx._exports.skia_path_compute_tight_bounds(this._handle, ptr)
     const dv = new DataView(this._ctx._memory.buffer)
-    return { x: dv.getFloat32(ptr, true), y: dv.getFloat32(ptr + 4, true), width: dv.getFloat32(ptr + 8, true), height: dv.getFloat32(ptr + 12, true) }
+    return {
+      x: dv.getFloat32(ptr, true),
+      y: dv.getFloat32(ptr + 4, true),
+      width: dv.getFloat32(ptr + 8, true),
+      height: dv.getFloat32(ptr + 12, true),
+    }
   }
 
   contains(x: number, y: number): boolean {
@@ -231,9 +245,7 @@ export class SkiaPath {
     const [ptr] = this._ctx._writeString('\0'.repeat(bufSize))
     this._ctx._exports.skia_path_to_svg(this._handle, ptr, bufSize)
 
-    return new TextDecoder().decode(
-      new Uint8Array(this._ctx._memory.buffer, ptr, needed),
-    )
+    return new TextDecoder().decode(new Uint8Array(this._ctx._memory.buffer, ptr, needed))
   }
 
   // ── Boolean operations ──
@@ -265,9 +277,7 @@ export class SkiaPath {
    * Returns true on success. The target path is reset before writing.
    */
   opInto(other: SkiaPath, operation: PathOp, target: SkiaPath): boolean {
-    return this._ctx._exports.skia_path_op_into(
-      this._handle, other._handle, PATH_OP[operation], target._handle,
-    ) !== 0
+    return this._ctx._exports.skia_path_op_into(this._handle, other._handle, PATH_OP[operation], target._handle) !== 0
   }
 
   /**

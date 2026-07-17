@@ -51,42 +51,41 @@ const DEFAULTS: Required<Pick<MeasureOptions, 'track' | 'trackGroup' | 'color'>>
  */
 const IS_PROD = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production'
 
-export const measure: MeasureStart =
-  IS_PROD
-    ? () => noop
-    : (fn, options) => {
-        if (typeof performance === 'undefined') {
-          return noop
-        }
-
-        const start = performance.now()
-        return () => {
-          const end = performance.now()
-          const duration = end - start
-          const name = typeof fn === 'string' ? fn : (fn.name || 'anonymous')
-          const track = options?.track ?? DEFAULTS.track
-          const trackGroup = options?.trackGroup ?? DEFAULTS.trackGroup
-          const color = options?.color ?? DEFAULTS.color
-
-          const properties: [string, string][] = [
-            ['System', name],
-            ['Duration', `${duration.toFixed(3)}ms`],
-            ...(options?.properties ?? []),
-          ]
-
-          performance.measure(name, {
-            start,
-            end,
-            detail: {
-              devtools: {
-                dataType: 'track-entry',
-                track,
-                trackGroup,
-                color,
-                properties,
-                tooltipText: name,
-              },
-            },
-          })
-        }
+export const measure: MeasureStart = IS_PROD
+  ? () => noop
+  : (fn, options) => {
+      if (typeof performance === 'undefined') {
+        return noop
       }
+
+      const start = performance.now()
+      return () => {
+        const end = performance.now()
+        const duration = end - start
+        const name = typeof fn === 'string' ? fn : fn.name || 'anonymous'
+        const track = options?.track ?? DEFAULTS.track
+        const trackGroup = options?.trackGroup ?? DEFAULTS.trackGroup
+        const color = options?.color ?? DEFAULTS.color
+
+        const properties: [string, string][] = [
+          ['System', name],
+          ['Duration', `${duration.toFixed(3)}ms`],
+          ...(options?.properties ?? []),
+        ]
+
+        performance.measure(name, {
+          start,
+          end,
+          detail: {
+            devtools: {
+              dataType: 'track-entry',
+              track,
+              trackGroup,
+              color,
+              properties,
+              tooltipText: name,
+            },
+          },
+        })
+      }
+    }

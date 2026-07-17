@@ -6,10 +6,5 @@ import * as vscode from 'vscode'
 import type { Finding } from '@three-flatland/codelens-service'
 
 export function rangeFromWire(range: Finding['range']): vscode.Range {
-  return new vscode.Range(
-    range.start.line,
-    range.start.character,
-    range.end.line,
-    range.end.character
-  )
+  return new vscode.Range(range.start.line, range.start.character, range.end.line, range.end.character)
 }

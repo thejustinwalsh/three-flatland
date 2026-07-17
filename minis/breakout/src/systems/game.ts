@@ -42,14 +42,18 @@ function loadHighScore(): { highScore: number; highScoreLevel: number } {
       const data = JSON.parse(raw) as { score?: number; level?: number }
       return { highScore: data.score ?? 0, highScoreLevel: data.level ?? 0 }
     }
-  } catch { /* localStorage unavailable or corrupt */ }
+  } catch {
+    /* localStorage unavailable or corrupt */
+  }
   return { highScore: 0, highScoreLevel: 0 }
 }
 
 export function saveHighScore(score: number, level: number) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ score, level }))
-  } catch { /* localStorage unavailable */ }
+  } catch {
+    /* localStorage unavailable */
+  }
 }
 
 /**
@@ -60,26 +64,30 @@ export function initWorld(world: World) {
   const saved = loadHighScore()
 
   // Add world trait singletons
-  world.add(GameState({
-    mode: 'attract',
-    score: 0,
-    lives: 3,
-    elapsed: 0,
-    highScore: saved.highScore,
-    highScoreLevel: saved.highScoreLevel,
-    level: 1,
-    countdown: 0,
-    streak: 0,
-    multiplier: 1,
-  }))
+  world.add(
+    GameState({
+      mode: 'attract',
+      score: 0,
+      lives: 3,
+      elapsed: 0,
+      highScore: saved.highScore,
+      highScoreLevel: saved.highScoreLevel,
+      level: 1,
+      countdown: 0,
+      streak: 0,
+      multiplier: 1,
+    })
+  )
 
-  world.add(Input({
-    pointerX: 0,
-    mouseActive: false,
-    touchActive: false,
-    lastTapTime: 0,
-    doubleTap: false,
-  }))
+  world.add(
+    Input({
+      pointerX: 0,
+      mouseActive: false,
+      touchActive: false,
+      lastTapTime: 0,
+      doubleTap: false,
+    })
+  )
 
   world.add(AttractAI)
 
@@ -88,7 +96,7 @@ export function initWorld(world: World) {
     Paddle,
     Position({ x: 0, y: PADDLE_Y }),
     Bounds({ width: PADDLE_WIDTH, height: PADDLE_HEIGHT }),
-    PaddleState({ bumpVelocity: 0 }),
+    PaddleState({ bumpVelocity: 0 })
   )
 
   // Create ball
@@ -113,7 +121,7 @@ export function spawnBall(world: World, attractMode: boolean) {
       Ball,
       Position({ x: 0, y: ballY }),
       Velocity({ x: Math.cos(angle) * speed, y: Math.sin(angle) * speed }),
-      Bounds({ width: BALL_SIZE, height: BALL_SIZE }),
+      Bounds({ width: BALL_SIZE, height: BALL_SIZE })
     )
   } else {
     // Spawn on paddle, stationary until ready countdown completes
@@ -122,7 +130,7 @@ export function spawnBall(world: World, attractMode: boolean) {
       Ball,
       Position({ x: 0, y: ballY }),
       Velocity({ x: 0, y: 0 }),
-      Bounds({ width: BALL_SIZE, height: BALL_SIZE }),
+      Bounds({ width: BALL_SIZE, height: BALL_SIZE })
     )
   }
 }
@@ -199,7 +207,7 @@ export function spawnBlocks(world: World) {
         Block,
         Position({ x, y }),
         Bounds({ width: BLOCK_WIDTH, height: BLOCK_HEIGHT }),
-        BlockState({ row, col, color }),
+        BlockState({ row, col, color })
       )
     }
   }

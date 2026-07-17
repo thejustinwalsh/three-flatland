@@ -95,15 +95,12 @@ export function readGlb(buf: ArrayBuffer): GlbView {
 
   function accessor(index: number): ArrayBufferView {
     const accessors = json.accessors
-    if (!accessors || index < 0 || index >= accessors.length)
-      throw new Error(`readGlb: accessor ${index} out of range`)
+    if (!accessors || index < 0 || index >= accessors.length) throw new Error(`readGlb: accessor ${index} out of range`)
     const acc = accessors[index] as GltfAccessor
     const Ctor = COMPONENT_CTORS[acc.componentType as ComponentType]
-    if (!Ctor)
-      throw new Error(`readGlb: accessor ${index} unknown componentType ${acc.componentType}`)
+    if (!Ctor) throw new Error(`readGlb: accessor ${index} unknown componentType ${acc.componentType}`)
     const components = TYPE_COMPONENTS[acc.type]
-    if (components === undefined)
-      throw new Error(`readGlb: accessor ${index} unknown type '${acc.type}'`)
+    if (components === undefined) throw new Error(`readGlb: accessor ${index} unknown type '${acc.type}'`)
     const bv = acc.bufferView !== undefined ? json.bufferViews?.[acc.bufferView] : undefined
     if (!bv) throw new Error(`readGlb: accessor ${index} bad bufferView`)
     const bvOffset = bv.byteOffset ?? 0

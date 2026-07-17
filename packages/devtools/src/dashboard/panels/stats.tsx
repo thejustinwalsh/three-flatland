@@ -36,15 +36,15 @@ function fmtMB(v: number | undefined): string {
 }
 
 const STATS: StatDef[] = [
-  { label: 'fps',   pick: (s) => s.fps,        series: (s) => s.series.fps,        format: fmt0,  color: '#47cca9' },
-  { label: 'cpu',   pick: (s) => s.cpuMs,      series: (s) => s.series.cpuMs,      format: fmtMs, color: '#47cc6a' },
-  { label: 'gpu',   pick: (s) => s.gpuMs,      series: (s) => s.series.gpuMs,      format: fmtMs, color: '#ffa347' },
-  { label: 'draws', pick: (s) => s.drawCalls,  series: (s) => s.series.drawCalls,  format: fmt0,  color: '#5eb0ff' },
-  { label: 'tris',  pick: (s) => s.triangles,  series: (s) => s.series.triangles,  format: fmt0,  color: '#c792ea' },
-  { label: 'prims', pick: (s) => s.primitives, series: (s) => s.series.primitives, format: fmt0,  color: '#ff8fa3' },
-  { label: 'geos',  pick: (s) => s.geometries, series: (s) => s.series.geometries, format: fmt0,  color: '#f78c6c' },
-  { label: 'tex',   pick: (s) => s.textures,   series: (s) => s.series.textures,   format: fmt0,  color: '#ffc371' },
-  { label: 'heap',  pick: (s) => s.heapUsedMB, series: (s) => s.series.heapUsedMB, format: fmtMB, color: '#d94c87' },
+  { label: 'fps', pick: (s) => s.fps, series: (s) => s.series.fps, format: fmt0, color: '#47cca9' },
+  { label: 'cpu', pick: (s) => s.cpuMs, series: (s) => s.series.cpuMs, format: fmtMs, color: '#47cc6a' },
+  { label: 'gpu', pick: (s) => s.gpuMs, series: (s) => s.series.gpuMs, format: fmtMs, color: '#ffa347' },
+  { label: 'draws', pick: (s) => s.drawCalls, series: (s) => s.series.drawCalls, format: fmt0, color: '#5eb0ff' },
+  { label: 'tris', pick: (s) => s.triangles, series: (s) => s.series.triangles, format: fmt0, color: '#c792ea' },
+  { label: 'prims', pick: (s) => s.primitives, series: (s) => s.series.primitives, format: fmt0, color: '#ff8fa3' },
+  { label: 'geos', pick: (s) => s.geometries, series: (s) => s.series.geometries, format: fmt0, color: '#f78c6c' },
+  { label: 'tex', pick: (s) => s.textures, series: (s) => s.series.textures, format: fmt0, color: '#ffc371' },
+  { label: 'heap', pick: (s) => s.heapUsedMB, series: (s) => s.series.heapUsedMB, format: fmtMB, color: '#d94c87' },
 ]
 
 export function StatsStrip() {
@@ -76,13 +76,7 @@ export function StatsStrip() {
           />
         ))}
       </div>
-      {expandedDef !== null && (
-        <StatDetail
-          def={expandedDef}
-          state={s}
-          onClose={() => setExpandedKey(null)}
-        />
-      )}
+      {expandedDef !== null && <StatDetail def={expandedDef} state={s} onClose={() => setExpandedKey(null)} />}
     </section>
   )
 }
@@ -138,9 +132,7 @@ function StatCard({
     >
       <canvas class="stat-canvas" ref={canvasRef} />
       <span class="stat-label">{def.label}</span>
-      <span class={`stat-value${cursor !== null ? ' stat-parked' : ''}`}>
-        {def.format(value)}
-      </span>
+      <span class={`stat-value${cursor !== null ? ' stat-parked' : ''}`}>{def.format(value)}</span>
     </button>
   )
 }
@@ -150,11 +142,7 @@ function StatCard({
  * cursor). Rings ingest in lockstep, so an index into the frames ring
  * is valid for every series ring.
  */
-function seriesValueAtFrame(
-  series: DevtoolsSeries,
-  frames: DevtoolsFrameSeries,
-  frame: number
-): number | undefined {
+function seriesValueAtFrame(series: DevtoolsSeries, frames: DevtoolsFrameSeries, frame: number): number | undefined {
   const len = Math.min(series.length, frames.length)
   if (len === 0) return undefined
   const size = frames.data.length
@@ -170,11 +158,7 @@ function seriesValueAtFrame(
   return series.data[(series.write - len + size) % size]
 }
 
-function StatDetail({ def, state, onClose }: {
-  def: StatDef
-  state: DevtoolsState
-  onClose: () => void
-}) {
+function StatDetail({ def, state, onClose }: { def: StatDef; state: DevtoolsState; onClose: () => void }) {
   const series = def.series(state)
   const stats = computeStats(series)
   const histoRef = useRef<HTMLCanvasElement | null>(null)
@@ -198,7 +182,9 @@ function StatDetail({ def, state, onClose }: {
       <div class="stat-detail-header">
         <span class="stat-detail-label">{def.label}</span>
         <span class="stat-detail-samples">{stats.count} samples</span>
-        <button type="button" class="stat-detail-close" onClick={onClose} aria-label="Close">×</button>
+        <button type="button" class="stat-detail-close" onClick={onClose} aria-label="Close">
+          ×
+        </button>
       </div>
       <div class="stat-detail-metrics">
         <Metric label="min" value={def.format(stats.min)} />
@@ -234,7 +220,8 @@ interface SeriesStats {
 
 function computeStats(series: DevtoolsSeries): SeriesStats {
   const len = series.length
-  if (len === 0) return { count: 0, min: undefined, max: undefined, mean: undefined, p50: undefined, p95: undefined, p99: undefined }
+  if (len === 0)
+    return { count: 0, min: undefined, max: undefined, mean: undefined, p50: undefined, p95: undefined, p99: undefined }
   const size = series.data.length
   const start = (series.write - len + size) % size
   // Copy into a dense array for sorting — len is typically ~256 so
@@ -268,7 +255,7 @@ function drawHistogram(
   w: number,
   h: number,
   series: DevtoolsSeries,
-  color: string,
+  color: string
 ): void {
   ctx.clearRect(0, 0, w, h)
   const len = series.length
@@ -365,7 +352,7 @@ function drawSeries(
   h: number,
   series: DevtoolsSeries,
   color: string,
-  rangeRef: { current: { min: number; max: number } | null },
+  rangeRef: { current: { min: number; max: number } | null }
 ): void {
   ctx.clearRect(0, 0, w, h)
   const len = series.length
@@ -381,12 +368,21 @@ function drawSeries(
   // compares per sample, no allocation). Top1 is the max; topK is
   // the K-th-largest = our trimmed observedMax. When fewer than K
   // samples exist (window still warming up), fall back to top1.
-  let top1 = -Infinity, top2 = -Infinity, top3 = -Infinity
+  let top1 = -Infinity,
+    top2 = -Infinity,
+    top3 = -Infinity
   for (let i = 0; i < len; i++) {
     const v = series.data[(start + i) % size]!
-    if (v > top1) { top3 = top2; top2 = top1; top1 = v }
-    else if (v > top2) { top3 = top2; top2 = v }
-    else if (v > top3) { top3 = v }
+    if (v > top1) {
+      top3 = top2
+      top2 = top1
+      top1 = v
+    } else if (v > top2) {
+      top3 = top2
+      top2 = v
+    } else if (v > top3) {
+      top3 = v
+    }
   }
   const observedMax = len < AXIS_TRIM_K ? top1 : top3
   if (!Number.isFinite(observedMax) || observedMax < 0) return

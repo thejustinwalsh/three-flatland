@@ -37,10 +37,7 @@ async function getDecodeLoader(): Promise<Ktx2LoaderType> {
 
 export async function decodeKtx2ToImageData(bytes: Uint8Array): Promise<ImageData> {
   const loader = await getDecodeLoader()
-  const buf = bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  ) as ArrayBuffer
+  const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
   const tex = (await loader.parse(buf)) as {
     mipmaps?: { width: number; height: number; data: Uint8Array }[]
   }
@@ -48,9 +45,7 @@ export async function decodeKtx2ToImageData(bytes: Uint8Array): Promise<ImageDat
   if (!m0) throw new Error('decodeKtx2ToImageData: no mip-0 in transcoded texture')
   const { width, height, data } = m0
   if (data.length !== width * height * 4) {
-    throw new Error(
-      `decodeKtx2ToImageData: expected ${width * height * 4} bytes (RGBA32), got ${data.length}`,
-    )
+    throw new Error(`decodeKtx2ToImageData: expected ${width * height * 4} bytes (RGBA32), got ${data.length}`)
   }
   // No row flip. Our basis encoder leaves `m_y_flip = false`, so KTX2
   // files we produce store top-down data, and the transcoder returns
