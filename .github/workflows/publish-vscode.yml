@@ -1,4 +1,4 @@
-name: Publish VS Code Extension
+name: Build VS Code Extension VSIX
 
 # @three-flatland/vscode is `private: true` (see tools/vscode/package.json)
 # so it's invisible to changesets' own npm-publish step in release.yml —
@@ -69,7 +69,7 @@ jobs:
           LOCAL_VERSION=$(node -p "require('./package.json').version")
           echo "version=$LOCAL_VERSION" >> "$GITHUB_OUTPUT"
 
-          PUBLISHED_VERSION=$(npx vsce show three-flatland.tools --json 2>/dev/null | node -p "
+          PUBLISHED_VERSION=$(npx vsce show three-flatland.fl-tools --json 2>/dev/null | node -p "
             try { JSON.parse(require('fs').readFileSync(0, 'utf8')).versions[0].version } catch { '' }
           " 2>/dev/null || echo "")
 
@@ -99,7 +99,10 @@ jobs:
   build-codelens-service:
     name: Build codelens-service (${{ matrix.target }})
     needs: check-version
-    if: needs.check-version.outputs.should_publish == 'true'
+    # A version bump on main builds the artifact automatically; a manual
+    # `workflow_dispatch` builds it on demand regardless of version (so you
+    # can grab a fresh universal VSIX to publish by hand anytime).
+    if: needs.check-version.outputs.should_publish == 'true' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -217,51 +220,13 @@ jobs:
         with:
           name: vsix
           path: tools/vscode/*.vsix
-          retention-days: 14
+          retention-days: 90
 
-  publish:
-    name: Publish to VS Code Marketplace + Open VSX
-    needs: [check-version, assemble-and-package]
-    runs-on: ubuntu-latest
-    environment: release
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: lts/*
-          cache: 'pnpm'
-
-      - name: Install dependencies (tools/vscode only)
-        run: pnpm install --frozen-lockfile --filter @three-flatland/vscode
-
-      - name: Download the universal VSIX
-        uses: actions/download-artifact@v5
-        with:
-          name: vsix
-          path: tools/vscode
-
-      - name: List downloaded package
-        run: ls -la tools/vscode/*.vsix
-
-      # --skip-duplicate: idempotent re-runs (a retried job, or this
-      # workflow re-triggering on an unrelated package.json edit that
-      # didn't actually change the version) fail silently instead of
-      # erroring, matching check-version's own guard rather than fighting
-      # it if both somehow both let a run through.
-      - name: Publish to VS Code Marketplace
-        working-directory: tools/vscode
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx vsce publish --packagePath *.vsix --skip-duplicate
-
-      - name: Publish to Open VSX
-        working-directory: tools/vscode
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npx ovsx publish --packagePath *.vsix --skip-duplicate
+# Publishing is intentionally MANUAL. Microsoft's Entra ID auth for CI-based
+# marketplace publishing is painful to wire up, so this workflow only BUILDS
+# the universal VSIX — the `vsix` artifact from assemble-and-package above.
+# To publish it, download that artifact and, from tools/vscode/, run one of:
+#   az login && npx vsce publish --azure-credential --packagePath <vsix>  # VS Code Marketplace (no PAT)
+#   npx ovsx publish --packagePath <vsix> -p <OVSX_PAT>                    # Open VSX
+# See PUBLISHING.md. (The former auto-publish job was removed in favor of this.)
