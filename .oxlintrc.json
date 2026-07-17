@@ -28,6 +28,6 @@
     "**/*.config.mjs",
     "**/*.setup.ts",
     "**/*.bench.ts",
-    "tools/vscode/e2e/fixtures/**"
+    "**/fixtures/**"
   ]
 }

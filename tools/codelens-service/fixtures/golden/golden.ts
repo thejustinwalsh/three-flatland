@@ -59,7 +59,7 @@ export function playLaserSongSpread() {
 
 // audio.file — direct string argument.
 export function playExplosionSfx() {
-  void new Audio('explosion.mp3').play()
+  new Audio('explosion.mp3').play()
 }
 
 // audio.file — Howler-style nested strings (array inside object inside a

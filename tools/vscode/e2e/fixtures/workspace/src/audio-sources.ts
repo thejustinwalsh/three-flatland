@@ -51,14 +51,23 @@ type ZzFXParams = [
 ]
 
 declare function zzfx(...params: ZzFXParams): unknown
-declare function zzfxm(instruments: number[][], patterns: number[][][], sequence: number[], bpm?: number): unknown
+declare function zzfxm(
+  instruments: number[][],
+  patterns: number[][][],
+  sequence: number[],
+  bpm?: number
+): unknown
 declare function zzfxM(...args: unknown[]): unknown
 declare class Howl {
   constructor(opts: { src: string[] })
   play(): void
 }
 declare class Wad {
-  constructor(opts: { source?: string; reverb?: { impulse?: string }; sprite?: Record<string, [number, number]> })
+  constructor(opts: {
+    source?: string
+    reverb?: { impulse?: string }
+    sprite?: Record<string, [number, number]>
+  })
   play(): void
   static presets: Record<string, ConstructorParameters<typeof Wad>[0]>
 }
