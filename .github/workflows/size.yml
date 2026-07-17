@@ -48,10 +48,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Build only packages/* (topo-ordered, nx-cached) — size checks read
-          # packages/*/dist and the skia WASM binaries; building the examples/docs
-          # would just be slow and let an unrelated build failure red the size gate.
-          build_script: build:packages
+          # size-limit-action runs this script against BOTH the PR branch and the
+          # base branch to compute the delta, so it must be a script name that
+          # exists on both. The base is pre-nx (turbo), so a packages-only nx
+          # script (`-p 'packages/*'`) doesn't exist there — plain `build` resolves
+          # on both (turbo's build on base, nx's on the PR). Narrowing to packages/*
+          # is a post-merge follow-up (once nx is on main).
+          build_script: build
           skip_step: install
           package_manager: pnpm
           script: bash -c "if [ -f scripts/size-limit.mjs ]; then node scripts/size-limit.mjs --json; else pnpm exec size-limit --json; fi"
