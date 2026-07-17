@@ -2,6 +2,8 @@
 
 ## Build & Test
 
+- Task orchestration is **Nx** (`nx.json`) — package-based, so it runs each package's own `package.json` scripts (tsdown build, etc.) with `dependsOn`/`inputs`/`outputs`/cache from `targetDefaults`. `pnpm build`/`pnpm typecheck` = `nx run-many`.
+- `pnpm graph` — open the Nx project-dependency graph. `pnpm boundaries` — enforce the loader-architecture DAG (siblings must not import `three-flatland`) via `scope:*` project tags + `scripts/check-boundaries.mjs` (we do NOT use `@nx/enforce-module-boundaries` — it's ESLint-only and this repo is oxlint-only).
 - `pnpm dev` — docs (port 4000) + examples MPA (port 5174) behind microfrontends proxy at http://localhost:5173
 - `pnpm --filter=example-react-tilemap dev` — run a single example
 - `pnpm sync:pack` — sync example/mini package.json deps with the workspace catalog after editing `pnpm-workspace.yaml`
