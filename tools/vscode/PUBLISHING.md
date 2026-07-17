@@ -2,7 +2,7 @@
 
 Operational guide for shipping `@three-flatland/vscode` to the VS Code Marketplace and Open VSX.
 For the packaging/build mechanics themselves (what the scripts and CI workflow actually do), see
-[`.github/workflows/publish-vscode.yml`](../../.github/workflows/publish-vscode.yml) and
+[`.github/workflows/build-vscode-vsix.yml`](../../.github/workflows/build-vscode-vsix.yml) and
 [`scripts/bundle-sidecars.mjs`](scripts/bundle-sidecars.mjs) — this doc is the human-side setup
 and day-to-day operating checklist, not a design doc.
 
@@ -43,7 +43,7 @@ marketplace" to publish to and no extra step for it — a single `ovsx publish` 
 
 ### 3. No CI secrets needed — CI builds, you publish
 
-`publish-vscode.yml` is a **build-only** workflow: it produces the universal `vsix` artifact and
+`build-vscode-vsix.yml` is a **build-only** workflow: it produces the universal `vsix` artifact and
 stops. It does **not** publish, so it needs no `VSCE_PAT`/`OVSX_PAT` in GitHub secrets. You publish
 the downloaded artifact by hand (next section). The only credential involved is whatever `az login`
 gives you (Marketplace) and, optionally, a local `OVSX_PAT` for Open VSX — neither lives in CI.
@@ -59,23 +59,25 @@ naming `@three-flatland/vscode: minor`. From here the normal release flow takes 
    and writes `tools/vscode/CHANGELOG.md` for the first time (changesets creates the CHANGELOG file
    if it doesn't exist yet).
 3. Merge that PR. `tools/vscode/package.json`'s version is now live on `main`.
-4. That merge push touches `tools/vscode/package.json`, which triggers `publish-vscode.yml`
-   automatically. Watch it in the **Actions** tab:
-   - `check-version` — compares local vs. published version, should resolve `should_publish=true`
-     (nothing is published yet).
-   - `build-codelens-service` — 6 parallel legs, one per platform (darwin x2, linux x2, win32 x2,
-     the last covering both `windows-latest` for x64 and the native `windows-11-arm` runner for
-     arm64 — Surface/Copilot+ PCs). ~2-5 min each depending on Rust cache state.
-   - `assemble-and-package` — merges all 6 binaries, builds audio-play once, produces the one
-     universal VSIX, and uploads it as the **`vsix`** artifact (kept 90 days). **CI stops here — it
-     does not publish.**
+4. Merging the "Version Packages" PR bumps `tools/vscode/package.json`. Once CI passes on `main`,
+   `release.yml` runs, and because this release bumped the extension's version, its VSIX jobs fire
+   (watch the **Actions → Release** run):
+   - `build-vsix` — calls the reusable `build-vscode-vsix.yml`: 6 parallel `build-codelens-service`
+     legs (darwin x2, linux x2, win32 x2 — the last on the native `windows-11-arm` runner), then
+     `assemble-and-package` merges the 6 binaries, builds audio-play once, and packages the one
+     universal VSIX. ~5-10 min depending on Rust cache state.
+   - `attach-vsix` — creates a GitHub Release **`fl-tools-v<version>`** with the `.vsix` attached as
+     a downloadable asset. Idempotent (keyed on whether that release already exists) and gated on a
+     real version bump, so it can't spuriously fire on an unrelated push.
 
-   You can also build the artifact anytime without a version bump: **Actions → Build VS Code
-   Extension VSIX → Run workflow** (`workflow_dispatch`).
+   You can also build the VSIX anytime without a release: **Actions → Build VS Code Extension VSIX →
+   Run workflow** (`workflow_dispatch`) — that produces the `vsix` artifact on the run.
 
 ### Publish the built artifact (manual — 2 minutes)
 
-Download the `vsix` artifact from that run, unzip it (GitHub wraps artifacts in a `.zip`), then:
+Grab the `.vsix` from the **GitHub Release** the pipeline created
+(<https://github.com/thejustinwalsh/three-flatland/releases> → `fl-tools-v<version>` → assets), or
+from a `workflow_dispatch` run's `vsix` artifact. Then:
 
 - **VS Code Marketplace** (no PAT, no app registration): `az login` — opens your browser; use the
   account that owns the `three-flatland` publisher — then
@@ -111,16 +113,18 @@ Nothing extra to do beyond normal changeset hygiene:
    (see `.changeset/CLAUDE.md` for the exact format). Forgetting this doesn't break anything loudly
    — it just means that change ships in the extension's *code* next time something else triggers a
    release, but never gets its own version bump or CHANGELOG entry of its own.
-2. The build is automatic: the version bump PR, the merge, the `publish-vscode.yml` trigger, the
-   six-platform universal VSIX artifact. The **publish** step stays manual every time — download the
-   `vsix` artifact and run the one-liner from "Publish the built artifact" above.
+2. The build + GitHub Release are automatic: the version bump PR, the merge, `release.yml`'s
+   `build-vsix`/`attach-vsix` jobs, and the `fl-tools-v<version>` release with the `.vsix` attached.
+   The **publish** step stays manual every time — download the `.vsix` from that release and run the
+   one-liner from "Publish the built artifact" above.
 
 ## Troubleshooting
 
-**`check-version` says `should_publish=false` but you expected a publish.** Run `npx vsce show
-three-flatland.fl-tools --json` locally and compare `versions[0].version` against `tools/vscode/
-package.json`'s `version` by hand — if they already match, the workflow correctly did nothing (it's
-not re-publishing an unchanged version, by design).
+**The Release ran but no `fl-tools-v<version>` release / VSIX appeared.** `attach-vsix` only fires
+when `tools/vscode/package.json`'s version actually bumped this release AND no `fl-tools-v<version>`
+release exists yet (idempotent). If the version didn't change, that's correct — nothing to release.
+If it did and nothing appeared, read the `release` job's "Detect a new FL Tools (VSIX) version" step
+output (it prints why it decided to skip or build).
 
 **One of the 6 `build-codelens-service` legs fails.** `fail-fast: false` means the other 5 keep
 running — re-run just the failed job from the Actions UI once you've fixed whatever broke, rather
