@@ -314,6 +314,22 @@ describe('registry-scoped effect-variant materials + dispose resurrection', () =
     group.dispose()
   })
 
+  it('preserves an explicit material texture when a provider resolves its variant', () => {
+    const group = new SpriteGroup()
+    const explicitMaterial = new Sprite2DMaterial({ map: texture, transparent: true })
+    const sprite = new Sprite2D({ material: explicitMaterial })
+    group.add(sprite)
+
+    sprite.addEffect(new VariantMarker())
+
+    expect(sprite.material).not.toBe(explicitMaterial)
+    expect(sprite.material.getTexture()).toBe(texture)
+    expect(sprite._materialWasRegistryVariant).toBe(true)
+    expect(sprite.material.hasEffect(VariantMarker)).toBe(true)
+
+    group.dispose()
+  })
+
   it("disposing world A's variant does not affect world B's sprites", () => {
     const groupA = new SpriteGroup()
     const groupB = new SpriteGroup()

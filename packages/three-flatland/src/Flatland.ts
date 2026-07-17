@@ -1252,7 +1252,13 @@ export class Flatland extends Group implements WorldProvider {
     // captured by effect shaders at setLighting time.
     const cam = this._camera
     this._worldSizeUniform.value.set(cam.right - cam.left, cam.top - cam.bottom)
-    this._worldOffsetUniform.value.set(cam.left, cam.bottom)
+    // Orthographic frustum edges are camera-local. Lighting and shadow
+    // shaders consume absolute world positions, so a scrolling camera
+    // must contribute its translation to the visible-world origin.
+    this._worldOffsetUniform.value.set(
+      cam.position.x + cam.left,
+      cam.position.y + cam.bottom
+    )
 
     // ONE canonical trigger for the ECS schedule + matrix update per
     // frame. `scene.updateMatrixWorld(true)` walks into

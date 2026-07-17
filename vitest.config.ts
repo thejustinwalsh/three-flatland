@@ -1,7 +1,16 @@
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig({
+const coreProject = {
+  resolve: {
+    conditions: ['source'],
+  },
+  ssr: {
+    resolve: {
+      conditions: ['source'],
+    },
+  },
   test: {
+    name: 'core',
     globals: true,
     environment: 'node',
     server: {
@@ -25,7 +34,7 @@ export default defineConfig({
     exclude: ['packages/skia/**', 'packages/devtools/**', '**/node_modules/**'],
     setupFiles: ['./vitest.setup.ts'],
     coverage: {
-      provider: 'v8',
+      provider: 'v8' as const,
       reporter: ['text', 'json', 'html'],
       include: ['packages/*/src/**/*.ts', 'packages/*/src/**/*.tsx'],
       exclude: ['**/*.test.ts', '**/*.test.tsx', '**/index.ts'],
@@ -35,5 +44,24 @@ export default defineConfig({
       exclude: ['packages/skia/**', 'packages/tweakpane/**', '**/node_modules/**'],
       tsconfig: './packages/three-flatland/tsconfig.json',
     },
+  },
+}
+
+export default defineConfig({
+  // Workspace packages expose TypeScript entrypoints behind the `source`
+  // condition. Tests exercise the monorepo as source, so they must not depend
+  // on stale or absent dist output from a previous Turbo build.
+  resolve: {
+    conditions: ['source'],
+  },
+  // Vitest executes Node projects through Vite's SSR loader, whose condition
+  // set is separate from client resolution in Vite 7.
+  ssr: {
+    resolve: {
+      conditions: ['source'],
+    },
+  },
+  test: {
+    projects: [coreProject, 'packages/devtools/vitest.config.ts', 'docs/vitest.config.ts'],
   },
 })

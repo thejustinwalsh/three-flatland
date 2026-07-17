@@ -1,0 +1,274 @@
+{
+  "image": "world-tiles.png",
+  "tileSize": 16,
+  "padding": 2,
+  "slotSize": 20,
+  "columns": 47,
+  "rows": 11,
+  "biomes": {
+    "topsoil": {
+      "soilRow": 0,
+      "stoneRow": 5
+    },
+    "deep-dirt": {
+      "soilRow": 1,
+      "stoneRow": 6
+    },
+    "stoneworks": {
+      "soilRow": 2,
+      "stoneRow": 7
+    },
+    "crystal-caverns": {
+      "soilRow": 3,
+      "stoneRow": 8
+    },
+    "core": {
+      "soilRow": 4,
+      "stoneRow": 9
+    }
+  },
+  "autotile": {
+    "generator": "wareya/webtyler:minitiles",
+    "miniInputs": [
+      "art/autotile-minis/topsoil-soil.png",
+      "art/autotile-minis/deep-dirt-soil.png",
+      "art/autotile-minis/stoneworks-soil.png",
+      "art/autotile-minis/crystal-caverns-soil.png",
+      "art/autotile-minis/core-soil.png",
+      "art/autotile-minis/topsoil-stone.png",
+      "art/autotile-minis/deep-dirt-stone.png",
+      "art/autotile-minis/stoneworks-stone.png",
+      "art/autotile-minis/crystal-caverns-stone.png",
+      "art/autotile-minis/core-stone.png"
+    ],
+    "maskBits": {
+      "north": 1,
+      "south": 2,
+      "east": 4,
+      "west": 8
+    },
+    "cornerBits": {
+      "northwest": 1,
+      "northeast": 2,
+      "southwest": 4,
+      "southeast": 8
+    },
+    "frameCount": 47,
+    "frames": [
+      {
+        "cardinalMask": 0,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 1,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 2,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 3,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 4,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 5,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 5,
+        "missingCornerMask": 2
+      },
+      {
+        "cardinalMask": 6,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 6,
+        "missingCornerMask": 8
+      },
+      {
+        "cardinalMask": 7,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 7,
+        "missingCornerMask": 2
+      },
+      {
+        "cardinalMask": 7,
+        "missingCornerMask": 8
+      },
+      {
+        "cardinalMask": 7,
+        "missingCornerMask": 10
+      },
+      {
+        "cardinalMask": 8,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 9,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 9,
+        "missingCornerMask": 1
+      },
+      {
+        "cardinalMask": 10,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 10,
+        "missingCornerMask": 4
+      },
+      {
+        "cardinalMask": 11,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 11,
+        "missingCornerMask": 1
+      },
+      {
+        "cardinalMask": 11,
+        "missingCornerMask": 4
+      },
+      {
+        "cardinalMask": 11,
+        "missingCornerMask": 5
+      },
+      {
+        "cardinalMask": 12,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 13,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 13,
+        "missingCornerMask": 1
+      },
+      {
+        "cardinalMask": 13,
+        "missingCornerMask": 2
+      },
+      {
+        "cardinalMask": 13,
+        "missingCornerMask": 3
+      },
+      {
+        "cardinalMask": 14,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 14,
+        "missingCornerMask": 4
+      },
+      {
+        "cardinalMask": 14,
+        "missingCornerMask": 8
+      },
+      {
+        "cardinalMask": 14,
+        "missingCornerMask": 12
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 0
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 1
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 2
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 3
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 4
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 5
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 6
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 7
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 8
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 9
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 10
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 11
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 12
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 13
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 14
+      },
+      {
+        "cardinalMask": 15,
+        "missingCornerMask": 15
+      }
+    ]
+  },
+  "fixtures": {
+    "row": 10,
+    "renderMode": "biome-stone-base-with-decoration-overlay",
+    "boneColumns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "mushroomColumns": [
+      4,
+      5,
+      6,
+      7
+    ],
+    "crystalColumns": [
+      8,
+      9,
+      10,
+      11
+    ],
+    "pillarColumn": 12,
+    "crateColumn": 13,
+    "torchColumn": 14,
+    "explosiveColumn": 15
+  }
+}

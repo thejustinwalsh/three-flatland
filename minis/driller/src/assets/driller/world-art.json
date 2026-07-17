@@ -1,0 +1,108 @@
+{
+  "source": "source/driller-concept-sheet.png",
+  "collections": {
+    "soil-autotile": {
+      "image": "soil-autotile.png",
+      "width": 198,
+      "height": 164,
+      "sourceRect": [
+        790,
+        90,
+        198,
+        164
+      ]
+    },
+    "soil-inner": {
+      "image": "soil-inner.png",
+      "width": 198,
+      "height": 39,
+      "sourceRect": [
+        790,
+        270,
+        198,
+        39
+      ]
+    },
+    "stone-autotile": {
+      "image": "stone-autotile.png",
+      "width": 145,
+      "height": 237,
+      "sourceRect": [
+        1009,
+        72,
+        145,
+        237
+      ]
+    },
+    "fixtures-bones": {
+      "image": "fixtures-bones.png",
+      "width": 190,
+      "height": 73,
+      "sourceRect": [
+        1173,
+        73,
+        190,
+        73
+      ]
+    },
+    "fixtures-mushrooms": {
+      "image": "fixtures-mushrooms.png",
+      "width": 190,
+      "height": 70,
+      "sourceRect": [
+        1173,
+        171,
+        190,
+        70
+      ]
+    },
+    "fixtures-crystals": {
+      "image": "fixtures-crystals.png",
+      "width": 190,
+      "height": 51,
+      "sourceRect": [
+        1173,
+        260,
+        190,
+        51
+      ]
+    },
+    "themed-props": {
+      "image": "themed-props.png",
+      "width": 294,
+      "height": 242,
+      "sourceRect": [
+        790,
+        366,
+        294,
+        242
+      ]
+    },
+    "gem-pickups": {
+      "image": "gem-pickups.png",
+      "width": 286,
+      "height": 211,
+      "sourceRect": [
+        1222,
+        385,
+        286,
+        211
+      ]
+    },
+    "title-attract": {
+      "image": "title-attract.png",
+      "width": 138,
+      "height": 36,
+      "sourceRect": [
+        1145,
+        920,
+        380,
+        100
+      ],
+      "pixelFixer": {
+        "step": 2.75,
+        "crop": null
+      }
+    }
+  }
+}

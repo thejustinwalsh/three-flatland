@@ -2,6 +2,7 @@ import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
+import reactYouMightNotNeedAnEffect from 'eslint-plugin-react-you-might-not-need-an-effect'
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -47,6 +48,13 @@ export default tseslint.config(
       // warning rather than a CI-blocking error.
       'react-hooks/set-state-in-effect': 'warn',
     },
+  },
+  {
+    files: ['minis/driller/src/**/*.{ts,tsx}'],
+    plugins: {
+      'react-you-might-not-need-an-effect': reactYouMightNotNeedAnEffect,
+    },
+    rules: reactYouMightNotNeedAnEffect.configs.strict.rules,
   },
   {
     ignores: [

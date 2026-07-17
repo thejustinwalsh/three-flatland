@@ -58,6 +58,9 @@ test-results/
 # Temporary
 tmp/
 temp/
+.pnpm-store/
+minis/*/artifacts/
+minis/*/art/pixel-fixer/input/
 .size-limit-filtered.*
 
 # Agents

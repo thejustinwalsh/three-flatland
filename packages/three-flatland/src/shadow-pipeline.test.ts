@@ -132,6 +132,31 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     expect(() => lightEffectSystem(flatland.world)).not.toThrow()
   })
 
+  it('includes camera translation in lighting world bounds', async () => {
+    const { lightEffectSystem } = await import('./ecs/systems/lightEffectSystem')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const flatland = new Flatland()
+    flatland.setLighting(new LitNoShadows())
+
+    const lctx = flatland.world.query(LightingContext)[0]!.get(LightingContext)
+    lctx.renderer = {
+      getSize: (target: { set: (x: number, y: number) => void }) => {
+        target.set(288, 640)
+        return target
+      },
+    } as unknown as typeof lctx.renderer
+    lctx.camera = flatland.camera
+    lctx.scene = null
+    flatland.camera.position.set(144, -10_192, 100)
+
+    lightEffectSystem(flatland.world)
+
+    expect(lctx.worldOffset.x).toBe(flatland.camera.position.x + flatland.camera.left)
+    expect(lctx.worldOffset.y).toBe(flatland.camera.position.y + flatland.camera.bottom)
+    expect(lctx.worldSize.x).toBe(flatland.camera.right - flatland.camera.left)
+    expect(lctx.worldSize.y).toBe(flatland.camera.top - flatland.camera.bottom)
+  })
+
   it('Flatland.dispose() releases trait-owned GPU resources', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const flatland = new Flatland()
