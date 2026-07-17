@@ -63,9 +63,7 @@ export type AtlasStoreState = {
   // minimal change.
   setRects: (next: Rect[] | ((prev: Rect[]) => Rect[])) => void
   setAnimations: (
-    next:
-      | Record<string, Animation>
-      | ((prev: Record<string, Animation>) => Record<string, Animation>)
+    next: Record<string, Animation> | ((prev: Record<string, Animation>) => Record<string, Animation>)
   ) => void
 
   // Atomic updater for both rects and animations in one set() call.
@@ -73,9 +71,7 @@ export type AtlasStoreState = {
   // ensure zundo records a single history entry for the combined edit.
   applyMulti: (
     rectsUpdater: Rect[] | ((prev: Rect[]) => Rect[]),
-    animsUpdater:
-      | Record<string, Animation>
-      | ((prev: Record<string, Animation>) => Record<string, Animation>)
+    animsUpdater: Record<string, Animation> | ((prev: Record<string, Animation>) => Record<string, Animation>)
   ) => void
 
   // Initial-load helper — replace both at once. Used during the
@@ -118,14 +114,7 @@ function rectsEqual(a: Rect[], b: Rect[]): boolean {
   for (let i = 0; i < a.length; i++) {
     const ra = a[i]!
     const rb = b[i]!
-    if (
-      ra.id !== rb.id ||
-      ra.x !== rb.x ||
-      ra.y !== rb.y ||
-      ra.w !== rb.w ||
-      ra.h !== rb.h ||
-      ra.name !== rb.name
-    ) {
+    if (ra.id !== rb.id || ra.x !== rb.x || ra.y !== rb.y || ra.w !== rb.w || ra.h !== rb.h || ra.name !== rb.name) {
       return false
     }
   }
@@ -187,8 +176,7 @@ export const useAtlasStore = create<AtlasStoreState>()(
             set((s) => ({
               ...s,
               rects: typeof rectsUpdater === 'function' ? rectsUpdater(s.rects) : rectsUpdater,
-              animations:
-                typeof animsUpdater === 'function' ? animsUpdater(s.animations) : animsUpdater,
+              animations: typeof animsUpdater === 'function' ? animsUpdater(s.animations) : animsUpdater,
             })),
 
           loadFromInit: (rects, animations, passthrough, format) => {
@@ -200,9 +188,7 @@ export const useAtlasStore = create<AtlasStoreState>()(
             // the user later tries to interact with it).
             const current = useAtlasStore.getState()
             const validActive =
-              current.activeAnimation && animations[current.activeAnimation]
-                ? current.activeAnimation
-                : null
+              current.activeAnimation && animations[current.activeAnimation] ? current.activeAnimation : null
             useAtlasStore.setState({
               rects,
               animations,
@@ -302,8 +288,7 @@ export const useAtlasStore = create<AtlasStoreState>()(
       // entries whenever a setter returns fresh references with
       // identical content (e.g. dropping a rect at its original
       // geometry, blurring a rename input unchanged).
-      equality: (a, b) =>
-        rectsEqual(a.rects, b.rects) && animationsEqual(a.animations, b.animations),
+      equality: (a, b) => rectsEqual(a.rects, b.rects) && animationsEqual(a.animations, b.animations),
       // Coalesce burst sets (drag, hot-key repeats) into one undo entry.
       // 100 ms is below human undo-reaction latency.
       handleSet: (handleSet) => {
@@ -356,16 +341,11 @@ export function useAtlasOutputFormat(): AtlasFormat {
 
 export const atlasActions = {
   setRects: (next: Rect[] | ((prev: Rect[]) => Rect[])) => useAtlasStore.getState().setRects(next),
-  setAnimations: (
-    next:
-      | Record<string, Animation>
-      | ((prev: Record<string, Animation>) => Record<string, Animation>)
-  ) => useAtlasStore.getState().setAnimations(next),
+  setAnimations: (next: Record<string, Animation> | ((prev: Record<string, Animation>) => Record<string, Animation>)) =>
+    useAtlasStore.getState().setAnimations(next),
   applyMulti: (
     rectsUpdater: Rect[] | ((prev: Rect[]) => Rect[]),
-    animsUpdater:
-      | Record<string, Animation>
-      | ((prev: Record<string, Animation>) => Record<string, Animation>)
+    animsUpdater: Record<string, Animation> | ((prev: Record<string, Animation>) => Record<string, Animation>)
   ) => useAtlasStore.getState().applyMulti(rectsUpdater, animsUpdater),
   loadFromInit: (
     rects: Rect[],

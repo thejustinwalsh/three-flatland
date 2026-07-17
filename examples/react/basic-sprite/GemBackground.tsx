@@ -153,8 +153,7 @@ export function gemClearColor(gem: Gem): Color {
  */
 export function gemFogColor(gem: Gem): Color {
   const [r, g, b] = oklabMix(GEM_HEX[gem], BG_HEX, 0.1)
-  const hex =
-    (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255)
+  const hex = (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255)
   return new Color(hex)
 }
 
@@ -171,15 +170,7 @@ export function gemFogColor(gem: Gem): Color {
  * part of the canvas is visible behind a 3D scene, so the gem
  * identity stays in a corner instead of dominating the viewport.
  */
-export function gemGradientNode({
-  gem,
-  lit = false,
-  radius = 0.7,
-}: {
-  gem: Gem
-  lit?: boolean
-  radius?: number
-}) {
+export function gemGradientNode({ gem, lit = false, radius = 0.7 }: { gem: Gem; lit?: boolean; radius?: number }) {
   // Pre-compute the three gradient stops in JS using OKLab mixing
   // (matches CSS `color-mix(in oklab, ...)` exactly). The sRGB-encoded
   // results are baked as vec3 constants in the shader; smoothstep then
@@ -195,12 +186,8 @@ export function gemGradientNode({
 
   return Fn(() => {
     const screenPx = screenSize
-    const cx = lit
-      ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(0))).mul(0.04))
-      : float(0.3)
-    const cy = lit
-      ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(100))).mul(0.04))
-      : float(0.3)
+    const cx = lit ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(0))).mul(0.04)) : float(0.3)
+    const cy = lit ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(100))).mul(0.04)) : float(0.3)
     const centerPx = vec2(cx, cy).mul(screenPx)
     const fragPx = screenUV.mul(screenPx)
     const d = length(fragPx.sub(centerPx)).div(length(screenPx).mul(float(radius)))
@@ -228,11 +215,7 @@ export function gemGradientNode({
  * differences, not BG mismatch). Default `radius` matches the TSL
  * variant (0.7 of canvas diagonal); center is at (30%, 30%).
  */
-export function gemGradientCanvas2D(
-  ctx: CanvasRenderingContext2D,
-  gem: Gem,
-  options: { radius?: number } = {}
-): void {
+export function gemGradientCanvas2D(ctx: CanvasRenderingContext2D, gem: Gem, options: { radius?: number } = {}): void {
   const radius = options.radius ?? 0.7
   const w = ctx.canvas.width
   const h = ctx.canvas.height

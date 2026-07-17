@@ -103,10 +103,7 @@ export function setupDevReload(
   onReload: () => void,
   debounceMs = 150
 ): vscode.Disposable {
-  const pattern = new vscode.RelativePattern(
-    vscode.Uri.joinPath(extensionUri, 'dist', 'webview'),
-    '**/*'
-  )
+  const pattern = new vscode.RelativePattern(vscode.Uri.joinPath(extensionUri, 'dist', 'webview'), '**/*')
   const watcher = vscode.workspace.createFileSystemWatcher(pattern)
   let t: NodeJS.Timeout | null = null
 

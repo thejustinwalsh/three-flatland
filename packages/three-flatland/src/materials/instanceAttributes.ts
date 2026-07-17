@@ -1,11 +1,6 @@
 import { int, attribute, vec2 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import {
-  LIT_FLAG_MASK,
-  RECEIVE_SHADOWS_MASK,
-  CAST_SHADOW_MASK,
-  ROTATED_FRAME_MASK,
-} from './effectFlagBits'
+import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, ROTATED_FRAME_MASK } from './effectFlagBits'
 
 /**
  * TSL accessors for the per-instance data packed into `SpriteBatch`'s

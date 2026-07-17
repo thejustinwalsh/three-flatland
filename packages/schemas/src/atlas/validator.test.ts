@@ -41,9 +41,7 @@ describe('atlas.schema.json — invalid fixtures assert a specific ajv error', (
     // `anyOf` error at the combinator itself — the summarizing one is the
     // stable assertion target (branch-level errors are anyOf implementation
     // detail, not part of the schema's public contract).
-    expect(validate.errors).toContainEqual(
-      expect.objectContaining({ instancePath: '/meta', keyword: 'anyOf' })
-    )
+    expect(validate.errors).toContainEqual(expect.objectContaining({ instancePath: '/meta', keyword: 'anyOf' }))
   })
 
   it('empty-sources.atlas.json — meta.sources fails minItems', () => {

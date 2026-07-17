@@ -46,10 +46,7 @@ export type DirectionColorOptions = {
 const FLAT_RGB = { r: 136, g: 136, b: 136 }
 
 /** CSS color for a direction. `'flat'` (or `undefined`) renders neutral gray. */
-export function directionColor(
-  direction: NormalDirection | undefined,
-  opts: DirectionColorOptions = {}
-): string {
+export function directionColor(direction: NormalDirection | undefined, opts: DirectionColorOptions = {}): string {
   const { saturation = 70, lightness = 55, alpha = 1 } = opts
   const hue = directionHue(direction)
   if (hue === null) return `rgba(${FLAT_RGB.r}, ${FLAT_RGB.g}, ${FLAT_RGB.b}, ${alpha})`
@@ -63,9 +60,7 @@ export function directionColor(
  * would. Returns `null` when the value is a custom angle that doesn't
  * land on any of the 8 named directions (compass shows no active cell).
  */
-export function activeCompassDirection(
-  direction: NormalDirection | undefined
-): NormalDirection | null {
+export function activeCompassDirection(direction: NormalDirection | undefined): NormalDirection | null {
   const angle = directionToAngle(direction)
   if (angle === null) return 'flat'
   for (const { direction: named } of COMPASS_LAYOUT) {

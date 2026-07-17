@@ -31,10 +31,7 @@ export function bloomThreshold(
   const softNode = typeof softThreshold === 'number' ? float(softThreshold) : softThreshold
 
   // Calculate luminance
-  const luma = inputColor.r
-    .mul(LUMA_R)
-    .add(inputColor.g.mul(LUMA_G))
-    .add(inputColor.b.mul(LUMA_B))
+  const luma = inputColor.r.mul(LUMA_R).add(inputColor.g.mul(LUMA_G)).add(inputColor.b.mul(LUMA_B))
 
   // Soft threshold for smoother falloff
   const knee = threshNode.mul(softNode)
@@ -209,7 +206,11 @@ export function vignette(
 
   // Distance from center (0,0 at center, 1 at corners for roundness=1)
   const centered = uv.sub(0.5).mul(2)
-  const dist = centered.x.abs().pow(roundnessNode).add(centered.y.abs().pow(roundnessNode)).pow(float(1).div(roundnessNode))
+  const dist = centered.x
+    .abs()
+    .pow(roundnessNode)
+    .add(centered.y.abs().pow(roundnessNode))
+    .pow(float(1).div(roundnessNode))
 
   // Vignette falloff
   const vignetteFactor = float(1).sub(dist.mul(intensityNode))

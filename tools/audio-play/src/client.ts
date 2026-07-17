@@ -45,9 +45,7 @@ export class PlaySidecarClient {
   private child: ChildProcessWithoutNullStreams | undefined
   private rl: readline.Interface | undefined
   private stderrRl: readline.Interface | undefined
-  private readonly exitListeners = new Set<
-    (code: number | null, signal: NodeJS.Signals | null) => void
-  >()
+  private readonly exitListeners = new Set<(code: number | null, signal: NodeJS.Signals | null) => void>()
   private readonly errorListeners = new Set<(err: Error) => void>()
   private readonly stderrListeners = new Set<(line: string) => void>()
   private exited = false
@@ -113,9 +111,10 @@ export class PlaySidecarClient {
         // lets a listener react to a specific failure mode without a
         // formal request id.
         this.emitError(
-          Object.assign(new Error(`audio-play: ${response.cmd} failed: ${response.error}`), {
-            ...(response.code !== undefined ? { code: response.code } : {}),
-          })
+          Object.assign(
+            new Error(`audio-play: ${response.cmd} failed: ${response.error}`),
+            response.code !== undefined ? { code: response.code } : {}
+          )
         )
       }
     })
@@ -303,12 +302,7 @@ export class PlaySidecarClient {
     }
 
     const id = this.nextRequestId++
-    const responsePromise = this.waitForResponse<Nack | Ack>(
-      this.rl,
-      'playToneSynth',
-      id,
-      timeoutMs
-    )
+    const responsePromise = this.waitForResponse<Nack | Ack>(this.rl, 'playToneSynth', id, timeoutMs)
     this.send({
       cmd: 'playToneSynth',
       ...cmd,

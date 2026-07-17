@@ -156,11 +156,7 @@ export function waveRipple(
  * @param time - Animation time
  * @returns Complex wave-distorted UV coordinates
  */
-export function waveWater(
-  uv: Node<'vec2'>,
-  amplitude: FloatInput = 0.01,
-  time: FloatInput = 0
-): Node<'vec2'> {
+export function waveWater(uv: Node<'vec2'>, amplitude: FloatInput = 0.01, time: FloatInput = 0): Node<'vec2'> {
   const ampNode = typeof amplitude === 'number' ? float(amplitude) : amplitude
   const timeNode = typeof time === 'number' ? float(time) : time
 

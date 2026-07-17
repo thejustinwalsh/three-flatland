@@ -60,10 +60,7 @@ scope.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
       const exports = await exportsPromise
       const out = await encodeKtx2WithExports(msg.image, msg.opts, exports)
       // Transfer the encoded bytes back; main thread becomes the new owner.
-      scope.postMessage(
-        { type: 'encode-done', id: msg.id, bytes: out },
-        [out.buffer as ArrayBuffer],
-      )
+      scope.postMessage({ type: 'encode-done', id: msg.id, bytes: out }, [out.buffer as ArrayBuffer])
     } catch (err) {
       scope.postMessage({
         type: 'encode-error',

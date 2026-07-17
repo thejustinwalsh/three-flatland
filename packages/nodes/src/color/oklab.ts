@@ -60,8 +60,7 @@ const M2_INV = mat3(
  * `@types/three` types `cbrt` scalar-only, but the runtime is component-wise;
  * the narrow cast adapts the typed surface without changing emitted shader math.
  */
-const cbrt3 = (v: Node<'vec3'>): Node<'vec3'> =>
-  cbrt(v as unknown as Node<'float'>) as unknown as Node<'vec3'>
+const cbrt3 = (v: Node<'vec3'>): Node<'vec3'> => cbrt(v as unknown as Node<'float'>) as unknown as Node<'vec3'>
 
 // --- Shared conversion cores (Fn so repeated calls emit shader fn invocations) ---
 
@@ -71,9 +70,7 @@ const cbrt3 = (v: Node<'vec3'>): Node<'vec3'> =>
  * object-inputs form); the runtime supports array destructure. Single
  * adapter cast, same pattern as `cbrt3` above.
  */
-const fnVec3 = Fn as unknown as (
-  cb: (args: [Node<'vec3'>]) => Node<'vec3'>
-) => (v: Node<'vec3'>) => Node<'vec3'>
+const fnVec3 = Fn as unknown as (cb: (args: [Node<'vec3'>]) => Node<'vec3'>) => (v: Node<'vec3'>) => Node<'vec3'>
 
 /** Linear sRGB rgb -> OKLAB lab (vec3 core). */
 const linearToOklabCore = fnVec3(([rgb]) => {

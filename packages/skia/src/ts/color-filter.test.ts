@@ -4,22 +4,22 @@ import { SkiaColorFilter } from './color-filter'
 import { SkiaPaint } from './paint'
 
 let skia: SkiaContext
-beforeAll(async () => { skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext) })
+beforeAll(async () => {
+  skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext)
+})
 
 describe('SkiaColorFilter', () => {
   it('blend', () => {
-    const f = SkiaColorFilter.blend(skia, 0xFFFF0000, 'srcOver')
+    const f = SkiaColorFilter.blend(skia, 0xffff0000, 'srcOver')
     expect(f).not.toBeNull()
     f!.dispose()
   })
 
   it('matrix (grayscale)', () => {
-    const f = SkiaColorFilter.matrix(skia, [
-      0.2126, 0.7152, 0.0722, 0, 0,
-      0.2126, 0.7152, 0.0722, 0, 0,
-      0.2126, 0.7152, 0.0722, 0, 0,
-      0,      0,      0,      1, 0,
-    ])
+    const f = SkiaColorFilter.matrix(
+      skia,
+      [0.2126, 0.7152, 0.0722, 0, 0, 0.2126, 0.7152, 0.0722, 0, 0, 0.2126, 0.7152, 0.0722, 0, 0, 0, 0, 0, 1, 0]
+    )
     expect(f).not.toBeNull()
     f!.dispose()
   })
@@ -29,7 +29,7 @@ describe('SkiaColorFilter', () => {
   })
 
   it('compose', () => {
-    const a = SkiaColorFilter.blend(skia, 0xFFFF0000, 'srcOver')!
+    const a = SkiaColorFilter.blend(skia, 0xffff0000, 'srcOver')!
     const b = SkiaColorFilter.linearToSRGB(skia)!
     const f = SkiaColorFilter.compose(skia, a, b)
     expect(f).not.toBeNull()
@@ -39,8 +39,8 @@ describe('SkiaColorFilter', () => {
   })
 
   it('lerp', () => {
-    const a = SkiaColorFilter.blend(skia, 0xFFFF0000, 'srcOver')!
-    const b = SkiaColorFilter.blend(skia, 0xFF0000FF, 'srcOver')!
+    const a = SkiaColorFilter.blend(skia, 0xffff0000, 'srcOver')!
+    const b = SkiaColorFilter.blend(skia, 0xff0000ff, 'srcOver')!
     const f = SkiaColorFilter.lerp(skia, 0.5, a, b)
     expect(f).not.toBeNull()
     f!.dispose()
@@ -81,7 +81,7 @@ describe('SkiaColorFilter', () => {
   })
 
   it('attaches to paint', () => {
-    const f = SkiaColorFilter.blend(skia, 0xFF0000FF, 'srcOver')!
+    const f = SkiaColorFilter.blend(skia, 0xff0000ff, 'srcOver')!
     const p = new SkiaPaint(skia).setColorFilter(f)
     p.clearColorFilter()
     p.dispose()

@@ -127,16 +127,7 @@ export const PARAM_GROUPS: readonly {
   {
     key: 'effects',
     label: 'Effects',
-    params: [
-      'randomness',
-      'repeatTime',
-      'noise',
-      'modulation',
-      'bitCrush',
-      'delay',
-      'tremolo',
-      'filter',
-    ],
+    params: ['randomness', 'repeatTime', 'noise', 'modulation', 'bitCrush', 'delay', 'tremolo', 'filter'],
   },
 ]
 

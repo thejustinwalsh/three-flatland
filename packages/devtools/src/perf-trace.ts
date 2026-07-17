@@ -64,12 +64,13 @@ export function tracePerf(msg: { ts: number; type: string; payload?: unknown } |
           // Chrome's User Timings extension surfaces `properties` as a
           // key/value table in the entry detail panel — perfect for
           // per-message bandwidth at-a-glance.
-          properties: bytes > 0
-            ? [
-                ['type', msg.type],
-                ['bytes', formatBytes(bytes)],
-              ]
-            : [['type', msg.type]],
+          properties:
+            bytes > 0
+              ? [
+                  ['type', msg.type],
+                  ['bytes', formatBytes(bytes)],
+                ]
+              : [['type', msg.type]],
         },
       },
     })
@@ -104,7 +105,12 @@ function sumTypedArrays(node: unknown): number {
   if (node === null || typeof node !== 'object') return 0
   let total = 0
   for (const v of Object.values(node)) {
-    if (v && typeof v === 'object' && (v as { byteLength?: number }).byteLength !== undefined && ArrayBuffer.isView(v as ArrayBufferView)) {
+    if (
+      v &&
+      typeof v === 'object' &&
+      (v as { byteLength?: number }).byteLength !== undefined &&
+      ArrayBuffer.isView(v as ArrayBufferView)
+    ) {
       total += (v as ArrayBufferView).byteLength
       continue
     }

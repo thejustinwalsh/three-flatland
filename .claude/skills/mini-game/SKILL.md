@@ -166,11 +166,25 @@ minis/{name}/
 ```json
 {
   "scripts": {
-    "dev": "tsup src/index.ts --format esm,cjs --dts --external react --external three --external @react-three/fiber --external koota --watch",
+    "dev": "tsdown --watch",
     "dev:app": "vite dev --port ${TURBO_MFE_PORT:-5200}",
-    "build": "tsup src/index.ts --format esm,cjs --dts --external react --external three --external @react-three/fiber --external koota"
+    "build": "tsdown"
   }
 }
+```
+
+Builds are ESM-only via a `tsdown.config.ts` (rolldown-powered) alongside `package.json`:
+
+```ts
+import { defineConfig } from 'tsdown'
+
+export default defineConfig({
+  entry: ['src/index.ts'],
+  format: ['esm'],
+  dts: true,
+  fixedExtension: false,
+  deps: { neverBundle: ['react', 'three', '@react-three/fiber', 'koota', 'three-flatland', '@three-flatland/nodes'] },
+})
 ```
 
 - `dev` - Watch mode for library build (used by `pnpm dev` at root)

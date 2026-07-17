@@ -1,11 +1,4 @@
-import type {
-  Command,
-  PlaybackStats,
-  PlayToneSynthCommand,
-  PlayWadSynthCommand,
-  Response,
-  Song,
-} from './protocol.js'
+import type { Command, PlaybackStats, PlayToneSynthCommand, PlayWadSynthCommand, Response, Song } from './protocol.js'
 
 /**
  * The audio-producing half of a command, injected so the state machine
@@ -52,10 +45,7 @@ export type AudioBackend = {
    * fake/test backend may still return synchronously — `handleCommand`
    * awaits either shape.
    */
-  playToneSynth(
-    cmd: Omit<PlayToneSynthCommand, 'cmd'>,
-    volume: number
-  ): { stop(): void } | Promise<{ stop(): void }>
+  playToneSynth(cmd: Omit<PlayToneSynthCommand, 'cmd'>, volume: number): { stop(): void } | Promise<{ stop(): void }>
   playWadSynth(config: PlayWadSynthCommand['config'], volume: number): { stop(): void }
   getStats(): PlaybackStats
 }
@@ -192,8 +182,7 @@ export function createCommandHandler(backend: AudioBackend): CommandHandler {
       // field. `await` inside the `try` above funnels a rejected
       // `backend.playToneSynth(...)` promise through this same path —
       // no separate async error channel needed.
-      const code =
-        err instanceof Error && 'code' in err ? String((err as { code?: unknown }).code) : undefined
+      const code = err instanceof Error && 'code' in err ? String((err as { code?: unknown }).code) : undefined
       return {
         ok: false,
         cmd: command.cmd,

@@ -4,7 +4,13 @@ import { computeMerge, type MergeSource } from './merge'
 
 function makeSource(alias: string, frames: Record<string, [number, number, number, number]>): MergeSource {
   const json: AtlasJson = {
-    meta: { app: 'x', version: '1', sources: [{ format: 'png' as const, uri: `${alias}.png` }], size: { w: 64, h: 64 }, scale: '1' },
+    meta: {
+      app: 'x',
+      version: '1',
+      sources: [{ format: 'png' as const, uri: `${alias}.png` }],
+      size: { w: 64, h: 64 },
+      scale: '1',
+    },
     frames: Object.fromEntries(
       Object.entries(frames).map(([n, [x, y, w, h]]) => [
         n,
@@ -24,10 +30,7 @@ function makeSource(alias: string, frames: Record<string, [number, number, numbe
 describe('computeMerge', () => {
   it('passes unique frame names through unchanged', () => {
     const r = computeMerge({
-      sources: [
-        makeSource('knight', { hand: [0, 0, 8, 8] }),
-        makeSource('goblin', { foot: [0, 0, 8, 8] }),
-      ],
+      sources: [makeSource('knight', { hand: [0, 0, 8, 8] }), makeSource('goblin', { foot: [0, 0, 8, 8] })],
       maxSize: 64,
       padding: 0,
       powerOfTwo: false,
@@ -38,10 +41,7 @@ describe('computeMerge', () => {
 
   it('detects frame name conflicts and reports them', () => {
     const r = computeMerge({
-      sources: [
-        makeSource('knight', { idle_0: [0, 0, 8, 8] }),
-        makeSource('goblin', { idle_0: [0, 0, 8, 8] }),
-      ],
+      sources: [makeSource('knight', { idle_0: [0, 0, 8, 8] }), makeSource('goblin', { idle_0: [0, 0, 8, 8] })],
       maxSize: 64,
       padding: 0,
       powerOfTwo: false,
@@ -129,11 +129,41 @@ describe('computeMerge', () => {
           },
         },
         frames: {
-          a: { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 }, sourceSize: { w: 8, h: 8 } },
-          c: { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 }, sourceSize: { w: 8, h: 8 } },
-          b: { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 }, sourceSize: { w: 8, h: 8 } },
-          d: { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 }, sourceSize: { w: 8, h: 8 } },
-          e: { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 }, sourceSize: { w: 8, h: 8 } },
+          a: {
+            frame: { x: 0, y: 0, w: 8, h: 8 },
+            rotated: false,
+            trimmed: false,
+            spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 },
+            sourceSize: { w: 8, h: 8 },
+          },
+          c: {
+            frame: { x: 0, y: 0, w: 8, h: 8 },
+            rotated: false,
+            trimmed: false,
+            spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 },
+            sourceSize: { w: 8, h: 8 },
+          },
+          b: {
+            frame: { x: 0, y: 0, w: 8, h: 8 },
+            rotated: false,
+            trimmed: false,
+            spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 },
+            sourceSize: { w: 8, h: 8 },
+          },
+          d: {
+            frame: { x: 0, y: 0, w: 8, h: 8 },
+            rotated: false,
+            trimmed: false,
+            spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 },
+            sourceSize: { w: 8, h: 8 },
+          },
+          e: {
+            frame: { x: 0, y: 0, w: 8, h: 8 },
+            rotated: false,
+            trimmed: false,
+            spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 },
+            sourceSize: { w: 8, h: 8 },
+          },
         },
       },
       renames: {},

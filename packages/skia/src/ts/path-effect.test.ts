@@ -5,7 +5,9 @@ import { SkiaPath } from './path'
 import { SkiaPaint } from './paint'
 
 let skia: SkiaContext
-beforeAll(async () => { skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext) })
+beforeAll(async () => {
+  skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext)
+})
 
 describe('SkiaPathEffect', () => {
   it('dash', () => {

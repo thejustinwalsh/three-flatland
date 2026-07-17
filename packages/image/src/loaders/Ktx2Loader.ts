@@ -41,11 +41,7 @@ import {
 } from 'three'
 import type { CompressedTextureImageData, LoadingManager } from 'three'
 
-import {
-  transcodeKtx2,
-  type Ktx2Capabilities,
-  type Ktx2TranscodeResult,
-} from './ktx2-transcode.js'
+import { transcodeKtx2, type Ktx2Capabilities, type Ktx2TranscodeResult } from './ktx2-transcode.js'
 // `transcoder-loader` is dynamically imported at the call site below
 // (not statically imported) so its module — and the wasm URL it owns —
 // can move into a separate chunk. `ktx2-transcode.ts` already
@@ -98,10 +94,7 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
   private workerConfig: Ktx2Capabilities | null = null
   private workerPromise: Promise<Worker> | null = null
   private nextId = 0
-  private pending = new Map<
-    number,
-    { resolve: (r: Ktx2TranscodeResult) => void; reject: (e: Error) => void }
-  >()
+  private pending = new Map<number, { resolve: (r: Ktx2TranscodeResult) => void; reject: (e: Error) => void }>()
 
   constructor(manager?: LoadingManager) {
     super(manager)
@@ -144,9 +137,7 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
       etc2Supported: exts.has('WEBGL_compressed_texture_etc'),
       dxtSupported: exts.has('WEBGL_compressed_texture_s3tc'),
       bptcSupported: exts.has('EXT_texture_compression_bptc'),
-      pvrtcSupported:
-        exts.has('WEBGL_compressed_texture_pvrtc') ||
-        exts.has('WEBKIT_WEBGL_compressed_texture_pvrtc'),
+      pvrtcSupported: exts.has('WEBGL_compressed_texture_pvrtc') || exts.has('WEBKIT_WEBGL_compressed_texture_pvrtc'),
     }
 
     // Linux/Mesa workaround copied from three's KTX2Loader: ETC2 + ASTC
@@ -183,7 +174,7 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
     url: string,
     onLoad: (texture: AnyCompressedTexture) => void,
     onProgress?: (event: ProgressEvent) => void,
-    onError?: (err: unknown) => void,
+    onError?: (err: unknown) => void
   ): void {
     if (this.workerConfig === null) {
       throw new Error('Ktx2Loader: call detectSupport() or setSupportedFormats() before load()')
@@ -202,7 +193,7 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
           .catch(onError ?? ((err) => console.error('Ktx2Loader:', err)))
       },
       onProgress,
-      onError,
+      onError
     )
   }
 
@@ -224,10 +215,7 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
     return buildTexture(result)
   }
 
-  private async runTranscode(
-    buffer: ArrayBuffer,
-    caps: Ktx2Capabilities,
-  ): Promise<Ktx2TranscodeResult> {
+  private async runTranscode(buffer: ArrayBuffer, caps: Ktx2Capabilities): Promise<Ktx2TranscodeResult> {
     // Browser path: lazy-spawn a worker on first use, reuse across calls.
     // The factory creates a CSP-friendly blob URL Worker (works under
     // VSCode webview's `worker-src blob:` rule) and pre-initializes the
@@ -303,7 +291,7 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
   private transcodeViaWorker(
     worker: Worker,
     buffer: ArrayBuffer,
-    caps: Ktx2Capabilities,
+    caps: Ktx2Capabilities
   ): Promise<Ktx2TranscodeResult> {
     const id = this.nextId++
     return new Promise<Ktx2TranscodeResult>((resolve, reject) => {
@@ -340,8 +328,7 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
 function buildTexture(result: Ktx2TranscodeResult): AnyCompressedTexture {
   const colorSpace = parseColorSpace(result)
   const premultiply = !!(result.dfdFlags & KHR_DF_FLAG_ALPHA_PREMULTIPLIED)
-  const minFilter =
-    result.faces[0]!.mipmaps.length === 1 ? LinearFilter : LinearMipmapLinearFilter
+  const minFilter = result.faces[0]!.mipmaps.length === 1 ? LinearFilter : LinearMipmapLinearFilter
 
   let texture: AnyCompressedTexture
 
@@ -371,11 +358,7 @@ function buildTexture(result: Ktx2TranscodeResult): AnyCompressedTexture {
     texture = dataTex
   } else if (result.faceCount === 6) {
     // Cubemap — three's CompressedCubeTexture takes the array of faces.
-    texture = new CompressedCubeTexture(
-      result.faces as unknown as CompressedTexture[],
-      fmt,
-      typ,
-    )
+    texture = new CompressedCubeTexture(result.faces as unknown as CompressedTexture[], fmt, typ)
   } else if (result.layerCount > 1) {
     texture = new CompressedArrayTexture(
       result.faces[0]!.mipmaps as never,
@@ -383,7 +366,7 @@ function buildTexture(result: Ktx2TranscodeResult): AnyCompressedTexture {
       result.height,
       result.layerCount,
       fmt,
-      typ,
+      typ
     )
   } else {
     // Pin the generic: `texture` is the `AnyCompressedTexture` union, whose
@@ -395,7 +378,7 @@ function buildTexture(result: Ktx2TranscodeResult): AnyCompressedTexture {
       result.width,
       result.height,
       fmt,
-      typ,
+      typ
     )
   }
 

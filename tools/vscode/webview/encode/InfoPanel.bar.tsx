@@ -38,13 +38,7 @@ export function InfoBar({ ratio }: InfoBarProps) {
   const clamped = Math.max(0, Math.min(1, ratio))
   return (
     <div {...stylex.props(s.track)}>
-      <span
-        {...stylex.props(
-          s.fill,
-          over && s.fillOver,
-          s.fillTransform(`${clamped * 100}%`),
-        )}
-      />
+      <span {...stylex.props(s.fill, over && s.fillOver, s.fillTransform(`${clamped * 100}%`))} />
     </div>
   )
 }

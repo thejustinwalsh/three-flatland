@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  Sprite2D,
-  LIT_FLAG_MASK,
-  RECEIVE_SHADOWS_MASK,
-  CAST_SHADOW_MASK,
-  EFFECT_BIT_OFFSET,
-} from './Sprite2D'
+import { Sprite2D, LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, EFFECT_BIT_OFFSET } from './Sprite2D'
 
 describe('Sprite2D castsShadow flag', () => {
   it('defaults to false (opt-in)', () => {

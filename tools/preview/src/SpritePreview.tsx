@@ -1,9 +1,6 @@
 import { CanvasStage, type CanvasStageProps } from './CanvasStage'
 
-export type SpritePreviewProps = Pick<
-  CanvasStageProps,
-  'imageUri' | 'background' | 'fitMargin' | 'onImageReady'
->
+export type SpritePreviewProps = Pick<CanvasStageProps, 'imageUri' | 'background' | 'fitMargin' | 'onImageReady'>
 
 /**
  * Bare image preview — no overlays. Convenience wrapper around

@@ -58,7 +58,7 @@ function resolveBackend(input: unknown, preference: SkiaBackend = 'auto'): Resol
       // User should create a WebGLRenderer instead, or use WebGPURenderer({ forceWebGL: true }).
       throw new Error(
         'Skia.init: backend "webgl" requested but this renderer uses WebGPU natively. ' +
-        'Use new WebGPURenderer({ forceWebGL: true }) or new WebGLRenderer() instead.'
+          'Use new WebGPURenderer({ forceWebGL: true }) or new WebGLRenderer() instead.'
       )
     }
 
@@ -88,7 +88,7 @@ function resolveBackend(input: unknown, preference: SkiaBackend = 'auto'): Resol
 
   throw new Error(
     'Skia.init: expected a WebGL2RenderingContext, GPUDevice, or a Three.js Renderer. ' +
-    'Pass your renderer instance or raw graphics context.'
+      'Pass your renderer instance or raw graphics context.'
   )
 }
 
@@ -115,11 +115,12 @@ function getWasmUrl(backend: 'webgl' | 'wgpu'): URL {
   // Allow env var override: SKIA_WASM_URL_GL / SKIA_WASM_URL_WGPU
   // These are replaced at build time by bundlers (Vite define, webpack DefinePlugin)
   const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> }
-  const envUrl = backend === 'webgl'
-    ? (typeof process !== 'undefined' && (process.env as Record<string, string | undefined>).SKIA_WASM_URL_GL)
-      || meta.env?.SKIA_WASM_URL_GL
-    : (typeof process !== 'undefined' && (process.env as Record<string, string | undefined>).SKIA_WASM_URL_WGPU)
-      || meta.env?.SKIA_WASM_URL_WGPU
+  const envUrl =
+    backend === 'webgl'
+      ? (typeof process !== 'undefined' && (process.env as Record<string, string | undefined>).SKIA_WASM_URL_GL) ||
+        meta.env?.SKIA_WASM_URL_GL
+      : (typeof process !== 'undefined' && (process.env as Record<string, string | undefined>).SKIA_WASM_URL_WGPU) ||
+        meta.env?.SKIA_WASM_URL_WGPU
 
   if (envUrl) return new URL(envUrl, globalThis.location?.href ?? import.meta.url)
 
@@ -149,10 +150,7 @@ function getWasmUrl(backend: 'webgl' | 'wgpu'): URL {
  * const skia = await Skia.init(gpuDevice)
  * ```
  */
-async function init(
-  input: unknown,
-  options?: SkiaContextOptions,
-): Promise<SkiaContext> {
+async function init(input: unknown, options?: SkiaContextOptions): Promise<SkiaContext> {
   // Return existing if already initialized and not destroyed
   if (SkiaContext.instance && !SkiaContext.instance.isDestroyed) {
     return SkiaContext.instance
@@ -165,10 +163,7 @@ async function init(
     const resolved = resolveBackend(input, options?.backend)
 
     // If preload started the right fetch, pass it through to avoid a second fetch
-    const preloadedResponse =
-      _preloadResponse && _preloadBackend === resolved.backend
-        ? _preloadResponse
-        : undefined
+    const preloadedResponse = _preloadResponse && _preloadBackend === resolved.backend ? _preloadResponse : undefined
 
     if (resolved.backend === 'webgl') {
       return SkiaContext.create({ ...options, backend: 'webgl', gl: resolved.gl!, preloadedResponse })

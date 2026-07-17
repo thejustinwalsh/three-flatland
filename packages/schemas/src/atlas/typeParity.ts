@@ -46,7 +46,7 @@ export function buildOurDefs(schema: SchemaNode): SchemaDefs {
   const meta = properties.meta as SchemaNode
   const metaRef = (meta.allOf as SchemaNode[] | undefined)?.[0]
   if (metaRef?.$ref) properties.meta = { $ref: metaRef.$ref }
-  return { AtlasJson: { ...root, properties }, ...($defs ?? {}) }
+  return { AtlasJson: { ...root, properties }, ...$defs }
 }
 
 /**
@@ -57,7 +57,7 @@ export function buildOurDefs(schema: SchemaNode): SchemaDefs {
  * so it's pulled out here to align with the `ours` side's naming.
  */
 export function buildTheirDefs(generated: SchemaNode): SchemaDefs {
-  const defs = { ...((generated.definitions as SchemaDefs) ?? {}) }
+  const defs = { ...(generated.definitions as SchemaDefs) }
   const atlasJson = defs.AtlasJson as SchemaNode
   const meta = (atlasJson.properties as SchemaNode)?.meta as SchemaNode
   return { ...defs, MetaBase: meta }
@@ -143,19 +143,11 @@ export function compareAtlasSchemaToType(ourDefs: SchemaDefs, theirDefs: SchemaD
 
     for (const key of ourKeys) {
       if (!theirKeys.has(key)) continue // already reported by diffSets above
-      comparePropertySchema(
-        `${path}.${key}`,
-        ourProps[key] as SchemaNode,
-        theirProps[key] as SchemaNode
-      )
+      comparePropertySchema(`${path}.${key}`, ourProps[key] as SchemaNode, theirProps[key] as SchemaNode)
     }
 
     if (ours.type === 'array' || theirs.type === 'array') {
-      comparePropertySchema(
-        `${path}[]`,
-        (ours.items as SchemaNode) ?? {},
-        (theirs.items as SchemaNode) ?? {}
-      )
+      comparePropertySchema(`${path}[]`, (ours.items as SchemaNode) ?? {}, (theirs.items as SchemaNode) ?? {})
     }
   }
 
@@ -185,21 +177,12 @@ export function compareAtlasSchemaToType(ourDefs: SchemaDefs, theirDefs: SchemaD
     }
 
     if (ours.enum || theirs.enum) {
-      diffSets(
-        `${path} enum`,
-        new Set((ours.enum as string[]) ?? []),
-        new Set((theirs.enum as string[]) ?? []),
-        errors
-      )
+      diffSets(`${path} enum`, new Set((ours.enum as string[]) ?? []), new Set((theirs.enum as string[]) ?? []), errors)
       return
     }
 
     if (ours.type === 'array' || theirs.type === 'array') {
-      comparePropertySchema(
-        `${path}[]`,
-        (ours.items as SchemaNode) ?? {},
-        (theirs.items as SchemaNode) ?? {}
-      )
+      comparePropertySchema(`${path}[]`, (ours.items as SchemaNode) ?? {}, (theirs.items as SchemaNode) ?? {})
       return
     }
 
@@ -217,9 +200,7 @@ export function compareAtlasSchemaToType(ourDefs: SchemaDefs, theirDefs: SchemaD
     const ourType = normalizeType(ours.type)
     const theirType = normalizeType(theirs.type)
     if (ourType && theirType && ourType !== theirType) {
-      errors.push(
-        `${path}: type mismatch (ours=${String(ours.type)}, theirs=${String(theirs.type)})`
-      )
+      errors.push(`${path}: type mismatch (ours=${String(ours.type)}, theirs=${String(theirs.type)})`)
     }
   }
 

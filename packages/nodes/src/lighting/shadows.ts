@@ -298,9 +298,7 @@ export function shadowSDF2D(
   void options.softness
   const epsNode = typeof options.eps === 'number' ? float(options.eps) : (options.eps ?? float(0.5))
   const startOffsetNode =
-    typeof options.startOffset === 'number'
-      ? float(options.startOffset)
-      : (options.startOffset ?? float(40))
+    typeof options.startOffset === 'number' ? float(options.startOffset) : (options.startOffset ?? float(40))
   const fragmentCastsShadow = options.fragmentCastsShadow
   const maxShadowDist =
     typeof options.maxShadowDistance === 'number'

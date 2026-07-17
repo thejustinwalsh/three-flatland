@@ -5,8 +5,6 @@ import { claimPane, createPane, type PaneBundle } from '../create-pane'
 import { usePane } from './use-pane'
 import { usePaneFolder } from './use-pane-folder'
 
-
-
 afterEach(() => {
   cleanup()
   document.body.innerHTML = ''
@@ -45,9 +43,7 @@ describe('usePaneFolder', () => {
 
   it('returns the same folder across re-renders (no parent change)', () => {
     withParent((bundle) => {
-      const { result, rerender } = renderHook(() =>
-        usePaneFolder(bundle.pane, 'StableFolder'),
-      )
+      const { result, rerender } = renderHook(() => usePaneFolder(bundle.pane, 'StableFolder'))
       const first = result.current
       rerender()
       expect(result.current).toBe(first)
@@ -56,9 +52,7 @@ describe('usePaneFolder', () => {
 
   it('respects the expanded option', () => {
     withParent((bundle) => {
-      const { result } = renderHook(() =>
-        usePaneFolder(bundle.pane, 'Expanded', { expanded: true }),
-      )
+      const { result } = renderHook(() => usePaneFolder(bundle.pane, 'Expanded', { expanded: true }))
       expect(result.current?.expanded).toBe(true)
     })
   })
@@ -101,7 +95,7 @@ describe('usePaneFolder', () => {
     render(
       <StrictMode>
         <Probe />
-      </StrictMode>,
+      </StrictMode>
     )
 
     const labels = bundle.pane.element.querySelectorAll('.tp-fldv_t')

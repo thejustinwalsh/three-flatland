@@ -38,12 +38,7 @@ export function rayPlaneZ0(raycaster: Raycaster, object: Object3D): RayPlaneHit 
  * Build a standard three.js Intersection from a RayPlaneHit. The world
  * point is freshly allocated per call — safe to store (spec §11.2).
  */
-export function createIntersection(
-  hit: RayPlaneHit,
-  object: Object3D,
-  u: number,
-  v: number
-): Intersection {
+export function createIntersection(hit: RayPlaneHit, object: Object3D, u: number, v: number): Intersection {
   return {
     distance: hit.distance,
     point: new Vector3(hit.localX, hit.localY, 0).applyMatrix4(object.matrixWorld),

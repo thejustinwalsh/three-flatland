@@ -2,19 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { parseWadSynthLiteralText } from './wadSynthResolver'
 
 describe('parseWadSynthLiteralText', () => {
-  it.each(['sine', 'square', 'sawtooth', 'triangle', 'noise'] as const)(
-    'parses source: %s',
-    (source) => {
-      const result = parseWadSynthLiteralText(`{source:'${source}'}`, 'cfg')
-      expect(result).toEqual({ config: { source } })
-    }
-  )
+  it.each(['sine', 'square', 'sawtooth', 'triangle', 'noise'] as const)('parses source: %s', (source) => {
+    const result = parseWadSynthLiteralText(`{source:'${source}'}`, 'cfg')
+    expect(result).toEqual({ config: { source } })
+  })
 
   it('parses additional simple literal fields as a bonus', () => {
-    const result = parseWadSynthLiteralText(
-      "{source:'square', attack:0.01, decay:0.1, env:true}",
-      'cfg'
-    )
+    const result = parseWadSynthLiteralText("{source:'square', attack:0.01, decay:0.1, env:true}", 'cfg')
     expect(result).toEqual({
       config: { source: 'square', attack: 0.01, decay: 0.1, env: true },
     })

@@ -54,9 +54,7 @@ describe('Flatland — channel provider validation (dev-only)', () => {
     sprite.addEffect(new FakeNormalProvider())
     flatland.add(sprite)
 
-    const offending = warn.mock.calls
-      .map((c) => String(c[0]))
-      .filter((m) => m.includes('ok-sprite'))
+    const offending = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('ok-sprite'))
     expect(offending).toEqual([])
   })
 
@@ -70,9 +68,7 @@ describe('Flatland — channel provider validation (dev-only)', () => {
     sprite.lit = false
     flatland.add(sprite)
 
-    const offending = warn.mock.calls
-      .map((c) => String(c[0]))
-      .filter((m) => m.includes('unlit-sprite'))
+    const offending = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('unlit-sprite'))
     expect(offending).toEqual([])
   })
 
@@ -91,9 +87,7 @@ describe('Flatland — channel provider validation (dev-only)', () => {
     flatland.remove(a)
     flatland.add(a)
 
-    const forA = warn.mock.calls
-      .map((c) => String(c[0]))
-      .filter((m) => m.includes('"a"'))
+    const forA = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('"a"'))
     expect(forA.length).toBe(1)
   })
 

@@ -2,11 +2,7 @@ import { create, useStore } from 'zustand'
 import { temporal } from 'zundo'
 import type { TemporalState } from 'zundo'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import {
-  computeMerge,
-  type MergeResult,
-  type MergeSource,
-} from '@three-flatland/io/atlas'
+import { computeMerge, type MergeResult, type MergeSource } from '@three-flatland/io/atlas'
 import type { AtlasJson } from '@three-flatland/io/atlas'
 import { localStorageStorage, webviewStorage } from '../state'
 
@@ -72,9 +68,9 @@ function emptyAtlas(): AtlasJson {
 
 // Recompute derived state from current primary state. Called inside
 // every action that touches primary state.
-function deriveOver<
-  T extends Pick<MergeStoreState, 'sources' | 'knobs' | 'outputFileName'>,
->(next: T): { result: MergeResult; viableSizes: number[]; bumpedKnobs?: MergeStoreState['knobs'] } {
+function deriveOver<T extends Pick<MergeStoreState, 'sources' | 'knobs' | 'outputFileName'>>(
+  next: T
+): { result: MergeResult; viableSizes: number[]; bumpedKnobs?: MergeStoreState['knobs'] } {
   const sources: MergeSource[] = next.sources.map((s) => ({
     uri: s.uri,
     alias: s.alias,
@@ -114,15 +110,10 @@ function deriveOver<
     sources,
     outputFileName: next.outputFileName,
   })
-  return knobs === next.knobs
-    ? { result, viableSizes }
-    : { result, viableSizes, bumpedKnobs: knobs }
+  return knobs === next.knobs ? { result, viableSizes } : { result, viableSizes, bumpedKnobs: knobs }
 }
 
-type PrimaryState = Pick<
-  MergeStoreState,
-  'sources' | 'knobs' | 'outputFileName'
->
+type PrimaryState = Pick<MergeStoreState, 'sources' | 'knobs' | 'outputFileName'>
 
 // Shallow content equality for the partialized state. Reference checks
 // alone fire history entries on every action because setters return
@@ -163,22 +154,13 @@ export const useMergeStore = create<MergeStoreState>()(
           // Helper: apply a primary-state update + re-derive in one go.
           const update = (
             partial: Partial<
-              Pick<
-                MergeStoreState,
-                | 'sources'
-                | 'knobs'
-                | 'outputFileName'
-                | 'deleteOriginals'
-                | 'imageLoadFailed'
-              >
-            >,
+              Pick<MergeStoreState, 'sources' | 'knobs' | 'outputFileName' | 'deleteOriginals' | 'imageLoadFailed'>
+            >
           ) => {
             set((s) => {
               const merged = { ...s, ...partial }
               const needsDerive =
-                partial.sources !== undefined ||
-                partial.knobs !== undefined ||
-                partial.outputFileName !== undefined
+                partial.sources !== undefined || partial.knobs !== undefined || partial.outputFileName !== undefined
               if (!needsDerive) {
                 return { ...merged, result: s.result, viableSizes: s.viableSizes }
               }
@@ -225,9 +207,7 @@ export const useMergeStore = create<MergeStoreState>()(
               }),
             setAlias: (uri, alias) =>
               set((s) => {
-                const sources = s.sources.map((src) =>
-                  src.uri === uri ? { ...src, alias } : src,
-                )
+                const sources = s.sources.map((src) => (src.uri === uri ? { ...src, alias } : src))
                 const derived = deriveOver({ ...s, sources })
                 return {
                   ...s,
@@ -241,7 +221,7 @@ export const useMergeStore = create<MergeStoreState>()(
               set((s) => {
                 const sources = s.sources.map((src) => {
                   if (src.uri !== uri) return src
-                  const next = { ...(src.renames.frames ?? {}) }
+                  const next = { ...src.renames.frames }
                   if (merged === null) delete next[original]
                   else next[original] = merged
                   return { ...src, renames: { ...src.renames, frames: next } }
@@ -259,7 +239,7 @@ export const useMergeStore = create<MergeStoreState>()(
               set((s) => {
                 const sources = s.sources.map((src) => {
                   if (src.uri !== uri) return src
-                  const next = { ...(src.renames.animations ?? {}) }
+                  const next = { ...src.renames.animations }
                   if (merged === null) delete next[original]
                   else next[original] = merged
                   return { ...src, renames: { ...src.renames, animations: next } }
@@ -286,10 +266,8 @@ export const useMergeStore = create<MergeStoreState>()(
               }),
             setOutputFileName: (name) => update({ outputFileName: name }),
             setDeleteOriginals: (next) => update({ deleteOriginals: next }),
-            setSplits: (next) =>
-              set((s) => ({ ...s, splits: { ...s.splits, ...next } })),
-            setActiveTab: (tab) =>
-              set((s) => ({ ...s, activeTab: tab })),
+            setSplits: (next) => set((s) => ({ ...s, splits: { ...s.splits, ...next } })),
+            setActiveTab: (tab) => set((s) => ({ ...s, activeTab: tab })),
             markImageFailed: (uri) =>
               set((s) => {
                 if (s.imageLoadFailed.has(uri)) return s
@@ -321,7 +299,7 @@ export const useMergeStore = create<MergeStoreState>()(
             state.result = derived.result
             state.viableSizes = derived.viableSizes
           },
-        },
+        }
       ),
       {
         // Cross-session prefs: survive panel close + VSCode restart.
@@ -338,7 +316,7 @@ export const useMergeStore = create<MergeStoreState>()(
           state.result = derived.result
           state.viableSizes = derived.viableSizes
         },
-      },
+      }
     ),
     {
       // Track only primary user-edited fields in undo history. On undo,
@@ -356,9 +334,7 @@ export const useMergeStore = create<MergeStoreState>()(
       // (e.g. clicking the dropdown's already-selected value, blurring
       // a rename input without editing).
       equality: (a, b) =>
-        knobsEqual(a.knobs, b.knobs) &&
-        a.outputFileName === b.outputFileName &&
-        sourcesEqual(a.sources, b.sources),
+        knobsEqual(a.knobs, b.knobs) && a.outputFileName === b.outputFileName && sourcesEqual(a.sources, b.sources),
       // Coalesce bursts of rapid set calls (NumberField drag, hot-key
       // repeats) into a single undo entry. Trailing-edge debounce: the
       // history entry is recorded 100 ms after the last change in the
@@ -374,17 +350,13 @@ export const useMergeStore = create<MergeStoreState>()(
           }, 100)
         }
       },
-    },
-  ),
+    }
+  )
 )
 
 // After zundo's undo/redo flips primary state, recompute derived.
 useMergeStore.subscribe((state, prev) => {
-  if (
-    state.sources === prev.sources &&
-    state.knobs === prev.knobs &&
-    state.outputFileName === prev.outputFileName
-  ) {
+  if (state.sources === prev.sources && state.knobs === prev.knobs && state.outputFileName === prev.outputFileName) {
     return
   }
   const derived = deriveOver(state)
@@ -398,8 +370,7 @@ export function useMergeState(): MergeStoreState {
 
 // Convenience action namespace matching the previous API.
 export const mergeActions = {
-  setSources: (sources: MergeStoreState['sources']) =>
-    useMergeStore.getState().setSources(sources),
+  setSources: (sources: MergeStoreState['sources']) => useMergeStore.getState().setSources(sources),
   // Bridge `merge/init` should call this — sets sources via the
   // smart-merge path AND clears any history accumulated from
   // rehydration / earlier inits. The user's undo stack starts empty
@@ -409,26 +380,18 @@ export const mergeActions = {
     useMergeStore.getState().setSources(sources)
     useMergeStore.temporal.getState().clear()
   },
-  setAlias: (uri: string, alias: string) =>
-    useMergeStore.getState().setAlias(uri, alias),
+  setAlias: (uri: string, alias: string) => useMergeStore.getState().setAlias(uri, alias),
   setFrameRename: (uri: string, original: string, merged: string | null) =>
     useMergeStore.getState().setFrameRename(uri, original, merged),
   setAnimRename: (uri: string, original: string, merged: string | null) =>
     useMergeStore.getState().setAnimRename(uri, original, merged),
-  setKnobs: (knobs: Partial<MergeStoreState['knobs']>) =>
-    useMergeStore.getState().setKnobs(knobs),
-  setOutputFileName: (name: string) =>
-    useMergeStore.getState().setOutputFileName(name),
-  setDeleteOriginals: (next: boolean) =>
-    useMergeStore.getState().setDeleteOriginals(next),
-  setSplits: (next: Partial<MergeStoreState['splits']>) =>
-    useMergeStore.getState().setSplits(next),
-  setActiveTab: (tab: MergeStoreState['activeTab']) =>
-    useMergeStore.getState().setActiveTab(tab),
-  markImageFailed: (uri: string) =>
-    useMergeStore.getState().markImageFailed(uri),
-  clearImageFailed: (uri: string) =>
-    useMergeStore.getState().clearImageFailed(uri),
+  setKnobs: (knobs: Partial<MergeStoreState['knobs']>) => useMergeStore.getState().setKnobs(knobs),
+  setOutputFileName: (name: string) => useMergeStore.getState().setOutputFileName(name),
+  setDeleteOriginals: (next: boolean) => useMergeStore.getState().setDeleteOriginals(next),
+  setSplits: (next: Partial<MergeStoreState['splits']>) => useMergeStore.getState().setSplits(next),
+  setActiveTab: (tab: MergeStoreState['activeTab']) => useMergeStore.getState().setActiveTab(tab),
+  markImageFailed: (uri: string) => useMergeStore.getState().markImageFailed(uri),
+  clearImageFailed: (uri: string) => useMergeStore.getState().clearImageFailed(uri),
 }
 
 // Undo/redo helpers exposed for keyboard handling and UI.

@@ -1,19 +1,7 @@
 import { Suspense, useState, useMemo, useRef, useEffect } from 'react'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
-import {
-  texture as sampleTexture,
-  uv,
-  attribute,
-  vec2,
-  vec4,
-  float,
-} from 'three/tsl'
-import {
-  CanvasTexture,
-  NearestFilter,
-  RepeatWrapping,
-  type OrthographicCamera,
-} from 'three'
+import { texture as sampleTexture, uv, attribute, vec2, vec4, float } from 'three/tsl'
+import { CanvasTexture, NearestFilter, RepeatWrapping, type OrthographicCamera } from 'three'
 import {
   AnimatedSprite2D,
   Sprite2DMaterial,
@@ -24,15 +12,7 @@ import {
   type MaterialEffect,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import {
-  tintAdditive,
-  hueShift,
-  saturate,
-  outline8,
-  pixelate,
-  dissolvePixelated,
-  tint,
-} from '@three-flatland/nodes'
+import { tintAdditive, hueShift, saturate, outline8, pixelate, dissolvePixelated, tint } from '@three-flatland/nodes'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
@@ -66,23 +46,31 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
 // Types
 // ========================================
 
-type EffectType =
-  | 'normal'
-  | 'damage'
-  | 'dissolve'
-  | 'powerup'
-  | 'petrify'
-  | 'select'
-  | 'shadow'
-  | 'pixelate'
+type EffectType = 'normal' | 'damage' | 'dissolve' | 'powerup' | 'petrify' | 'select' | 'shadow' | 'pixelate'
 
 // Animation set
 const animationSet: AnimationSetDefinition = {
   animations: {
     idle: { frames: ['idle_0', 'idle_1', 'idle_2', 'idle_3'], fps: 8 },
     run: {
-      frames: ['run_0', 'run_1', 'run_2', 'run_3', 'run_4', 'run_5', 'run_6', 'run_7',
-               'run_8', 'run_9', 'run_10', 'run_11', 'run_12', 'run_13', 'run_14', 'run_15'],
+      frames: [
+        'run_0',
+        'run_1',
+        'run_2',
+        'run_3',
+        'run_4',
+        'run_5',
+        'run_6',
+        'run_7',
+        'run_8',
+        'run_9',
+        'run_10',
+        'run_11',
+        'run_12',
+        'run_13',
+        'run_14',
+        'run_15',
+      ],
       fps: 16,
     },
     roll: {
@@ -131,15 +119,13 @@ const DamageFlash = createMaterialEffect({
 const Powerup = createMaterialEffect({
   name: 'powerup',
   schema: { angle: 0 } as const,
-  node: ({ inputColor, attrs }) =>
-    hueShift(inputColor, attrs.angle),
+  node: ({ inputColor, attrs }) => hueShift(inputColor, attrs.angle),
 })
 
 const Petrify = createMaterialEffect({
   name: 'petrify',
   schema: { amount: 0 } as const,
-  node: ({ inputColor, attrs }) =>
-    saturate(inputColor, attrs.amount),
+  node: ({ inputColor, attrs }) => saturate(inputColor, attrs.amount),
 })
 
 const ShadowEffect = createMaterialEffect({
@@ -223,8 +209,7 @@ function EffectSprite({ effect }: EffectSpriteProps) {
       Dissolve: createMaterialEffect({
         name: 'dissolve',
         schema: { progress: 0 } as const,
-        node: ({ inputColor, attrs }) =>
-          dissolvePixelated(inputColor, uv(), attrs.progress, noiseTexture, 16),
+        node: ({ inputColor, attrs }) => dissolvePixelated(inputColor, uv(), attrs.progress, noiseTexture, 16),
       }),
       Select: createMaterialEffect({
         name: 'select',
@@ -242,9 +227,7 @@ function EffectSprite({ effect }: EffectSpriteProps) {
           const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
           const localUV = uv()
 
-          const pixelAmount = float(1).sub(
-            attrs.progress.mul(float(2)).sub(float(1)).abs()
-          )
+          const pixelAmount = float(1).sub(attrs.progress.mul(float(2)).sub(float(1)).abs())
           const pixelCount = float(32).sub(pixelAmount.mul(float(28)))
 
           const pixelatedUV = pixelate(localUV, vec2(pixelCount, pixelCount))
@@ -348,13 +331,11 @@ function EffectSprite({ effect }: EffectSpriteProps) {
     const effectElapsed = stateRef.current.elapsed - startTime
 
     if (currentEffect === 'damage' && instance) {
-      ;(instance as InstanceType<typeof DamageFlash>).intensity =
-        Math.max(0, 1 - effectElapsed / 0.3)
+      ;(instance as InstanceType<typeof DamageFlash>).intensity = Math.max(0, 1 - effectElapsed / 0.3)
     }
 
     if (currentEffect === 'dissolve' && instance) {
-      ;(instance as InstanceType<typeof closureEffects.Dissolve>).progress =
-        Math.min(1, effectElapsed / 1.5)
+      ;(instance as InstanceType<typeof closureEffects.Dissolve>).progress = Math.min(1, effectElapsed / 1.5)
     }
 
     if (currentEffect === 'powerup' && instance) {
@@ -362,8 +343,7 @@ function EffectSprite({ effect }: EffectSpriteProps) {
     }
 
     if (currentEffect === 'pixelate' && instance) {
-      ;(instance as InstanceType<typeof closureEffects.Pixelate>).progress =
-        Math.min(1, effectElapsed / 1.0)
+      ;(instance as InstanceType<typeof closureEffects.Pixelate>).progress = Math.min(1, effectElapsed / 1.0)
     }
   })
 
@@ -396,7 +376,7 @@ function Scene() {
   // 3×3 radiogrid for effect selection
   useEffect(() => {
     if (!effectFolder) return
-    const grid = (effectFolder.addBlade({
+    const grid = effectFolder.addBlade({
       view: 'radiogrid',
       groupName: 'effect',
       size: [3, 3],
@@ -406,10 +386,15 @@ function Scene() {
         return { title: effectLabels[i]!, value: effectNames[i]! }
       },
       value: 'normal',
-    } as any) as any)
+    } as any) as any
     gridRef.current = grid
-    grid.on('change', (ev: any) => { if (ev.value) setEffect(ev.value) })
-    return () => { grid.dispose(); gridRef.current = null }
+    grid.on('change', (ev: any) => {
+      if (ev.value) setEffect(ev.value)
+    })
+    return () => {
+      grid.dispose()
+      gridRef.current = null
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectFolder])
 
@@ -458,11 +443,7 @@ export default function App() {
         }}
       >
         Knight sprite by{' '}
-        <a
-          href="https://analogstudios.itch.io/camelot"
-          target="_blank"
-          style={{ color: '#777' }}
-        >
+        <a href="https://analogstudios.itch.io/camelot" target="_blank" style={{ color: '#777' }}>
           analogStudios_
         </a>{' '}
         (CC0)

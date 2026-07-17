@@ -55,9 +55,7 @@ export function dmgPalette(inputColor: Node<'vec4'>, contrast: FloatInput = 1): 
   const c2 = vec3(...DMG_PALETTE[2]!)
   const c3 = vec3(...DMG_PALETTE[3]!)
 
-  const color = level
-    .lessThan(1)
-    .select(c3, level.lessThan(2).select(c2, level.lessThan(3).select(c1, c0)))
+  const color = level.lessThan(1).select(c3, level.lessThan(2).select(c2, level.lessThan(3).select(c1, c0)))
 
   return vec4(color, inputColor.a)
 }
@@ -82,9 +80,7 @@ export function pocketPalette(inputColor: Node<'vec4'>, contrast: FloatInput = 1
   const c2 = vec3(...POCKET_PALETTE[2]!)
   const c3 = vec3(...POCKET_PALETTE[3]!)
 
-  const color = level
-    .lessThan(1)
-    .select(c3, level.lessThan(2).select(c2, level.lessThan(3).select(c1, c0)))
+  const color = level.lessThan(1).select(c3, level.lessThan(2).select(c2, level.lessThan(3).select(c1, c0)))
 
   return vec4(color, inputColor.a)
 }
@@ -153,9 +149,7 @@ export function vbPalette(inputColor: Node<'vec4'>, contrast: FloatInput = 1): N
   const c2 = vec3(...VB_PALETTE[2]!)
   const c3 = vec3(...VB_PALETTE[3]!)
 
-  const color = level
-    .lessThan(1)
-    .select(c3, level.lessThan(2).select(c2, level.lessThan(3).select(c1, c0)))
+  const color = level.lessThan(1).select(c3, level.lessThan(2).select(c2, level.lessThan(3).select(c1, c0)))
 
   return vec4(color, inputColor.a)
 }

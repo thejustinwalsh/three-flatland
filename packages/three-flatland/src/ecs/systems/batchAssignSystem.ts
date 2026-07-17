@@ -45,10 +45,7 @@ export function createBatchAssignSystem(): (
   const dirtyMeshes = new Set<SpriteBatch>()
   const pendingCounts = new Map<string, number>()
 
-  return function batchAssignSystem(
-    world: World,
-    effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-  ): boolean {
+  return function batchAssignSystem(world: World, effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>): boolean {
     const added = world.query(Added(IsRenderable))
     if (added.length === 0) return false
 
@@ -95,13 +92,7 @@ export function createBatchAssignSystem(): (
 
       // Find or create the run for this (sortLayer, materialId, layers.mask)
       const runKey = computeRunKey(layerData.value, matRef.materialId, layersMask)
-      const { run } = getOrCreateRun(
-        registry,
-        layerData.value,
-        matRef.materialId,
-        layersMask,
-        material
-      )
+      const { run } = getOrCreateRun(registry, layerData.value, matRef.materialId, layersMask, material)
 
       // Find or create a batch with free slots
       const pendingCount = pendingCounts.get(runKey) ?? 0
@@ -202,10 +193,7 @@ function syncSlotBuffers(
   // and per-instance shadow radius (instanceExtras.x). Written for every
   // sprite, not just effect-bearing ones — a flat sprite can still be lit.
   mesh.writeSystemFlags(slot, sprite._systemFlags)
-  mesh.writeShadowRadius(
-    slot,
-    sprite.shadowRadius ?? Math.max(Math.abs(sprite.scale.x), Math.abs(sprite.scale.y))
-  )
+  mesh.writeShadowRadius(slot, sprite.shadowRadius ?? Math.max(Math.abs(sprite.scale.x), Math.abs(sprite.scale.y)))
 
   // Effect data
   syncEffectBuffers(slot, mesh, sprite, effectTraits)

@@ -94,9 +94,9 @@ function getGrassTileUV(x: number, y: number) {
 // updateSize fires only the first time) diverges from placed sprites
 // (one Sprite2D per placement, updateSize always fires on init).
 const BUILDINGS = [
-  { name: 'house', frame: 'house',   texture: 'buildings/House_Blue.png', width: 108, height: 148, shadowScale: 1.2 },
+  { name: 'house', frame: 'house', texture: 'buildings/House_Blue.png', width: 108, height: 148, shadowScale: 1.2 },
   { name: 'tower', frame: 'tower_0', texture: 'buildings/Tower_Blue.png', width: 114, height: 183, shadowScale: 1.0 },
-  { name: 'tree',  frame: 'tree_0',  texture: 'deco/Tree.png',            width: 111, height: 174, shadowScale: 1.5 },
+  { name: 'tree', frame: 'tree_0', texture: 'deco/Tree.png', width: 111, height: 174, shadowScale: 1.5 },
 ] as const
 
 // Entity state
@@ -106,7 +106,6 @@ interface PlacedEntity {
   gridX: number
   gridY: number
 }
-
 
 // Grid positions for ground tiles (computed once)
 const GROUND_POSITIONS = Array.from({ length: GRID_HEIGHT * GRID_WIDTH }, (_, i) => ({
@@ -158,7 +157,14 @@ interface EntitySpritesProps {
   gridOffsetY: number
 }
 
-function EntitySprites({ entity, spritesMaterial, spritesSheet, shadowMaterial, gridOffsetX, gridOffsetY }: EntitySpritesProps) {
+function EntitySprites({
+  entity,
+  spritesMaterial,
+  spritesSheet,
+  shadowMaterial,
+  gridOffsetX,
+  gridOffsetY,
+}: EntitySpritesProps) {
   const building = BUILDINGS[entity.buildingIndex]!
   const posX = gridOffsetX + entity.gridX * TILE_SIZE
   const posY = gridOffsetY + entity.gridY * TILE_SIZE
@@ -194,7 +200,7 @@ interface HoverPreviewProps {
   position: [number, number, number]
   material: Sprite2DMaterial
   spritesSheet: SpriteSheet
-  building: typeof BUILDINGS[number]
+  building: (typeof BUILDINGS)[number]
 }
 
 function HoverPreview({ visible, position, material, spritesSheet, building }: HoverPreviewProps) {
@@ -262,10 +268,7 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
   const shadowMaterial = useMemo(() => new Sprite2DMaterial({ map: shadowTex }), [shadowTex])
   // ONE material for ALL buildings + trees → ONE batch → cross-entity
   // zIndex Y-sort works correctly.
-  const spritesMaterial = useMemo(
-    () => new Sprite2DMaterial({ map: spritesSheet.texture }),
-    [spritesSheet]
-  )
+  const spritesMaterial = useMemo(() => new Sprite2DMaterial({ map: spritesSheet.texture }), [spritesSheet])
 
   // Grid calculations
   const gridOffsetX = (-GRID_WIDTH * TILE_SIZE) / 2 + TILE_SIZE / 2
@@ -338,11 +341,14 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
   const spriteGroupRef = useRef<SpriteGroup>(null)
 
   // Surface SpriteGroup batching stats to the parent each frame
-  useFrame(() => {
-    if (spriteGroupRef.current) {
-      onStats(spriteGroupRef.current.stats)
-    }
-  }, { priority: -Infinity })
+  useFrame(
+    () => {
+      if (spriteGroupRef.current) {
+        onStats(spriteGroupRef.current.stats)
+      }
+    },
+    { priority: -Infinity }
+  )
 
   // Hover position
   const hoverPosition: [number, number, number] = hoverGrid
@@ -479,7 +485,7 @@ export default function App() {
     <>
       <Canvas
         dpr={1}
-        style={{ background: "#16191e" }}
+        style={{ background: '#16191e' }}
         renderer={{ antialias: false }}
         onCreated={({ gl }) => {
           gl.domElement.style.imageRendering = 'pixelated'
@@ -513,9 +519,26 @@ export default function App() {
               <img
                 src={`${ASSET_BASE}${building.texture}`}
                 alt={building.name}
-                style={isTree
-                  ? { position: 'absolute', inset: 0, width: '400%', height: '300%', maxWidth: 'none', objectFit: 'cover', objectPosition: '0 0', pointerEvents: 'none' }
-                  : { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }
+                style={
+                  isTree
+                    ? {
+                        position: 'absolute',
+                        inset: 0,
+                        width: '400%',
+                        height: '300%',
+                        maxWidth: 'none',
+                        objectFit: 'cover',
+                        objectPosition: '0 0',
+                        pointerEvents: 'none',
+                      }
+                    : {
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain',
+                        pointerEvents: 'none',
+                      }
                 }
               />
             </button>

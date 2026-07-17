@@ -1,10 +1,6 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { resolve, join } from 'node:path'
-import type {
-  BakerRegistration,
-  FlatlandManifest,
-  FlatlandManifestEntry,
-} from './types.js'
+import type { BakerRegistration, FlatlandManifest, FlatlandManifestEntry } from './types.js'
 
 interface PackageJson {
   name?: string

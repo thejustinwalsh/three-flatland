@@ -51,10 +51,16 @@ import {
   syncHighScore,
 } from './systems/game'
 import { moveBall, updatePaddle, updateAttractAI } from './systems/physics'
-import { wallCollision, paddleCollision, blockCollision, checkBallLost, updateDissolving, updateBallFlash } from './systems/collision'
+import {
+  wallCollision,
+  paddleCollision,
+  blockCollision,
+  checkBallLost,
+  updateDissolving,
+  updateBallFlash,
+} from './systems/collision'
 import { WORLD_WIDTH, WORLD_LEFT } from './systems/constants'
 import { shallow } from './shallow'
-
 
 // Default zzfx for standalone mode - no-op until loaded
 const noopZzfx: PlaySoundFn = () => {}
@@ -126,7 +132,7 @@ function GameScene({ soundsRef, isVisible, onGameStateChange, onStatsChange }: G
       lives: state.lives,
       multiplier: state.multiplier,
     }
-    onGameStateChange(prev => shallow(prev, gameState) ? prev : gameState)
+    onGameStateChange((prev) => (shallow(prev, gameState) ? prev : gameState))
 
     // Sprite-domain stats come from SpriteGroup.stats (no renderer math —
     // devtools bus owns drawCalls/triangles/GPU timing separately).
@@ -139,7 +145,7 @@ function GameScene({ soundsRef, isVisible, onGameStateChange, onStatsChange }: G
         drawCalls: 0,
         fps: fpsRef.current.current,
       }
-      onStatsChange(prev => prev && shallow(prev, stats) ? prev : stats)
+      onStatsChange((prev) => (prev && shallow(prev, stats) ? prev : stats))
     }
 
     // Update elapsed time
@@ -218,13 +224,16 @@ function GameScene({ soundsRef, isVisible, onGameStateChange, onStatsChange }: G
   // Flatland.render() runs in 'render' phase — AFTER all update-phase useFrames
   // have synced effect values from ECS traits to MaterialEffect instances.
   // Registering in the render phase tells R3F to skip its own system render.
-  useFrame(() => {
-    if (!isVisible) return
-    const flatland = flatlandRef.current
-    if (!flatland) return
-    flatland.resize(size.width, size.height)
-    flatland.render(gl as unknown as WebGPURenderer)
-  }, { phase: 'render' })
+  useFrame(
+    () => {
+      if (!isVisible) return
+      const flatland = flatlandRef.current
+      if (!flatland) return
+      flatland.resize(size.width, size.height)
+      flatland.render(gl as unknown as WebGPURenderer)
+    },
+    { phase: 'render' }
+  )
 
   return (
     <>
@@ -260,7 +269,7 @@ export default function MiniBreakout({
   const [stats, setStats] = useState<Stats | null>(null)
 
   // Get world lazily on client only (useState initializer runs once)
-  const [world] = useState(() => typeof window !== 'undefined' ? getWorld() : null)
+  const [world] = useState(() => (typeof window !== 'undefined' ? getWorld() : null))
 
   // Update sound player when zzfx changes
   useEffect(() => {
@@ -367,9 +376,7 @@ export default function MiniBreakout({
     >
       {world && (
         <WorldProvider world={world}>
-          <Canvas
-            renderer={{ antialias: false, alpha: true }}
-          >
+          <Canvas renderer={{ antialias: false, alpha: true }}>
             <GameScene
               soundsRef={soundsRef}
               isVisible={isVisible}

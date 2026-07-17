@@ -277,8 +277,7 @@ describe('tight-mesh batch routing', () => {
     const before = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
     const beforePos = before.geometry.getAttribute('position')
     let beforeMax = 0
-    for (let i = 0; i < beforePos.count; i++)
-      beforeMax = Math.max(beforeMax, Math.abs(beforePos.getX(i)))
+    for (let i = 0; i < beforePos.count; i++) beforeMax = Math.max(beforeMax, Math.abs(beforePos.getX(i)))
     expect(beforeMax).toBeCloseTo(0.2)
 
     // A second sheet merges a diamond reaching the quad edges into the
@@ -301,8 +300,7 @@ describe('tight-mesh batch routing', () => {
     const after = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
     const afterPos = after.geometry.getAttribute('position')
     let afterMax = 0
-    for (let i = 0; i < afterPos.count; i++)
-      afterMax = Math.max(afterMax, Math.abs(afterPos.getX(i)))
+    for (let i = 0; i < afterPos.count; i++) afterMax = Math.max(afterMax, Math.abs(afterPos.getX(i)))
     expect(afterMax).toBeCloseTo(0.5) // ...but the batch's envelope grew to match
   })
 

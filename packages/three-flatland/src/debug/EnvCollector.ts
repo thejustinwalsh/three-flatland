@@ -1,9 +1,5 @@
 import { REVISION, Vector2 } from 'three'
-import type {
-  EnvBackendDelta,
-  EnvCanvasDelta,
-  EnvPayload,
-} from '../debug-protocol'
+import type { EnvBackendDelta, EnvCanvasDelta, EnvPayload } from '../debug-protocol'
 import { VERSION as THREE_FLATLAND_VERSION } from '../index'
 import type { GpuTimingProbeBackend } from './detectGpuTiming'
 

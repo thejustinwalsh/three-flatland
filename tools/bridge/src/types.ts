@@ -6,7 +6,7 @@ export type BridgeMessage =
 
 export type BridgeSchema = {
   // Routes host → webview
-  requests: Record<string, (params: never) => unknown | Promise<unknown>>
+  requests: Record<string, (params: never) => unknown>
   // Routes webview → host
   events: Record<string, unknown>
 }

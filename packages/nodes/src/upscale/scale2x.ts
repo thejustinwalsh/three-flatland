@@ -16,11 +16,7 @@ import type { Vec2Input } from '../types'
  * // For a 256x256 texture upscaled to 512x512
  * const upscaled = scale2x(texture, uv, [1/256, 1/256])
  */
-export function scale2x(
-  tex: Texture,
-  uv: Node<'vec2'>,
-  texelSize: Vec2Input = [1 / 256, 1 / 256]
-) {
+export function scale2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 / 256, 1 / 256]) {
   const texel = Array.isArray(texelSize) ? vec2(...texelSize) : texelSize
 
   // Find source pixel center
@@ -80,10 +76,7 @@ export function scale2x(
   const e3 = canScale.and(HeqF).select(F, E)
 
   // Select final pixel
-  const result = useTopLeft.select(
-    e0,
-    useTopRight.select(e1, useBottomLeft.select(e2, e3))
-  )
+  const result = useTopLeft.select(e0, useTopRight.select(e1, useBottomLeft.select(e2, e3)))
 
   return result
 }
@@ -97,11 +90,7 @@ export function scale2x(
  * @param texelSize - Source texel size
  * @returns Upscaled color
  */
-export function scale3x(
-  tex: Texture,
-  uv: Node<'vec2'>,
-  texelSize: Vec2Input = [1 / 256, 1 / 256]
-) {
+export function scale3x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 / 256, 1 / 256]) {
   const texel = Array.isArray(texelSize) ? vec2(...texelSize) : texelSize
 
   // Find source pixel

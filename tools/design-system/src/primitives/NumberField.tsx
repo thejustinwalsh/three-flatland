@@ -349,29 +349,27 @@ export function NumberField({
           s.decorator,
           dragging && s.decoratorActive,
           atCap && s.decoratorCapped,
-          disabled && s.decoratorDisabled,
+          disabled && s.decoratorDisabled
         )}
       >
         <ChevronUpDown />
       </div>
-      {dragging ? (() => {
-        const abs = Math.abs(dragDelta)
-        // Half-width units: scaleX shrinks from the left edge of the bar
-        // (which is anchored at the container's center). Negative
-        // direction = translate the bar leftward by its scaled width.
-        const tx = dragDelta >= 0 ? 0 : -100 * abs
-        const transform = `translateX(${tx}%) scaleX(${abs})`
-        return (
-          <span
-            aria-hidden="true"
-            {...stylex.props(
-              s.dragOverlay,
-              atCap && s.dragOverlayCapped,
-              s.dragOverlayTransform(transform),
-            )}
-          />
-        )
-      })() : null}
+      {dragging
+        ? (() => {
+            const abs = Math.abs(dragDelta)
+            // Half-width units: scaleX shrinks from the left edge of the bar
+            // (which is anchored at the container's center). Negative
+            // direction = translate the bar leftward by its scaled width.
+            const tx = dragDelta >= 0 ? 0 : -100 * abs
+            const transform = `translateX(${tx}%) scaleX(${abs})`
+            return (
+              <span
+                aria-hidden="true"
+                {...stylex.props(s.dragOverlay, atCap && s.dragOverlayCapped, s.dragOverlayTransform(transform))}
+              />
+            )
+          })()
+        : null}
     </div>
   )
 }

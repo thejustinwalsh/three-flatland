@@ -105,12 +105,7 @@ function union(parent: Int32Array, rank: Uint8Array, a: number, b: number): void
  * sorted by x within the row.
  */
 export function connectedComponents(image: ImageData, options?: CCLOptions): DetectedRect[] {
-  const {
-    alphaThreshold = 1,
-    minPixels = 4,
-    minSize = 2,
-    connectivity = 4,
-  } = options ?? {}
+  const { alphaThreshold = 1, minPixels = 4, minSize = 2, connectivity = 4 } = options ?? {}
 
   const { width: W, height: H, data } = image
   const N = W * H

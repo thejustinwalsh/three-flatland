@@ -272,7 +272,11 @@ describe('LightEffect attach/detach', () => {
 
     const instance = new Effect()
     let dirtyCalled = false
-    const mockFlatland = { _markLightingDirty: () => { dirtyCalled = true } }
+    const mockFlatland = {
+      _markLightingDirty: () => {
+        dirtyCalled = true
+      },
+    }
 
     instance._attach(mockFlatland)
     instance.enabled = false

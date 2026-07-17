@@ -6,10 +6,4 @@ export {
   reverseAnimation,
   concatAnimations,
 } from './utils'
-export type {
-  Animation,
-  AnimationFrame,
-  AnimationState,
-  AnimationSetDefinition,
-  PlayOptions,
-} from './types'
+export type { Animation, AnimationFrame, AnimationState, AnimationSetDefinition, PlayOptions } from './types'

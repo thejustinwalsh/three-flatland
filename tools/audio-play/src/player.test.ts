@@ -529,9 +529,7 @@ describe('playToneSynth', () => {
     const { ctx } = fakeAudioContext()
     const { Tone } = fakeToneEngine()
 
-    expect(() => playToneSynth(ctx, Tone, { synthType: 'Synth', duration: '8n' }, 1)).toThrow(
-      /requires a note/
-    )
+    expect(() => playToneSynth(ctx, Tone, { synthType: 'Synth', duration: '8n' }, 1)).toThrow(/requires a note/)
   })
 
   it('computes durationSeconds from duration + the CONSTRUCTED instance envelope.release (Synth)', () => {
@@ -601,12 +599,7 @@ describe('playToneSynth', () => {
       const { Tone } = fakeToneEngine()
 
       expect(() =>
-        playToneSynth(
-          ctx,
-          Tone,
-          { synthType: 'PolySynth', voiceType: 'NoiseSynth', note: ['C4'], duration: '4n' },
-          1
-        )
+        playToneSynth(ctx, Tone, { synthType: 'PolySynth', voiceType: 'NoiseSynth', note: ['C4'], duration: '4n' }, 1)
       ).toThrow(/can't be a PolySynth voice/)
     })
 
@@ -615,20 +608,10 @@ describe('playToneSynth', () => {
       const { Tone } = fakeToneEngine()
 
       expect(() =>
-        playToneSynth(
-          ctx,
-          Tone,
-          { synthType: 'PolySynth', voiceType: 'PluckSynth', note: ['C4'], duration: 1 },
-          1
-        )
+        playToneSynth(ctx, Tone, { synthType: 'PolySynth', voiceType: 'PluckSynth', note: ['C4'], duration: 1 }, 1)
       ).toThrow(/can't be a PolySynth voice/)
       expect(() =>
-        playToneSynth(
-          ctx,
-          Tone,
-          { synthType: 'PolySynth', voiceType: 'PolySynth', note: ['C4'], duration: 1 },
-          1
-        )
+        playToneSynth(ctx, Tone, { synthType: 'PolySynth', voiceType: 'PolySynth', note: ['C4'], duration: 1 }, 1)
       ).toThrow(/can't be a PolySynth voice/)
     })
 
@@ -645,12 +628,7 @@ describe('playToneSynth', () => {
       const { ctx } = fakeAudioContext()
       const { Tone, polyInstances } = fakeToneEngine()
 
-      const handle = playToneSynth(
-        ctx,
-        Tone,
-        { synthType: 'PolySynth', note: ['C4'], duration: 5 },
-        1
-      )
+      const handle = playToneSynth(ctx, Tone, { synthType: 'PolySynth', note: ['C4'], duration: 5 }, 1)
       handle.stop()
 
       expect(polyInstances[0]!.releaseAll).toHaveBeenCalledTimes(1)
@@ -663,12 +641,7 @@ describe('playToneSynth', () => {
       const { ctx } = fakeAudioContext()
       const { Tone, polyInstances } = fakeToneEngine()
 
-      const handle = playToneSynth(
-        ctx,
-        Tone,
-        { synthType: 'PolySynth', note: ['C4'], duration: 5 },
-        1
-      )
+      const handle = playToneSynth(ctx, Tone, { synthType: 'PolySynth', note: ['C4'], duration: 5 }, 1)
       handle.stop()
 
       expect(polyInstances[0]!.dispose).toHaveBeenCalledTimes(1)

@@ -1,10 +1,7 @@
 import { Suspense, useRef, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
-import {
-  Vector2,
-  type OrthographicCamera as ThreeOrthographicCamera,
-} from 'three'
+import { Vector2, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import {
   Flatland,
   Light2D,
@@ -19,10 +16,7 @@ import {
   attachEffect,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import {
-  DefaultLightEffect,
-  NormalMapProvider,
-} from '@three-flatland/presets'
+import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 
@@ -78,8 +72,8 @@ const TORCH_CLICK_RADIUS = TILE_PX * TILE_SCALE * 1.25
 // knight-widths keeps excitement local without making slimes skittish
 // from across the room.
 const SLIME_EXCITE_RADIUS = KNIGHT_SCALE * 1.5
-const SLIME_SPEED_WANDER = 14        // world units / s — slow crawl
-const SLIME_SPEED_EXCITED = 32       // ~2.3× — visibly agitated
+const SLIME_SPEED_WANDER = 14 // world units / s — slow crawl
+const SLIME_SPEED_EXCITED = 32 // ~2.3× — visibly agitated
 // Stamina drain rates — higher = shorter burst before needing rest.
 // Applied only during the `hop` sub-phase; pauses hold stamina flat.
 // Tuned so wandering slimes hop around for a good long stretch before
@@ -162,15 +156,7 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
     cam.updateProjectionMatrix()
     set({ camera: cam })
   }, [viewSize, aspect, set])
-  return (
-    <orthographicCamera
-      ref={camRef}
-      position={[0, 0, 100]}
-      near={0.1}
-      far={1000}
-      manual
-    />
-  )
+  return <orthographicCamera ref={camRef} position={[0, 0, 100]} near={0.1} far={1000} manual />
 }
 
 // ============================================
@@ -212,17 +198,6 @@ interface Wanderer {
   retargetTimer: number
 }
 
-function newWanderer(halfW: number, halfH: number): Wanderer {
-  return {
-    pos: new Vector2(
-      (Math.random() - 0.5) * halfW * 0.6,
-      (Math.random() - 0.5) * halfH * 0.6
-    ),
-    vel: new Vector2(),
-    retargetTimer: Math.random() * 2,
-  }
-}
-
 /**
  * Uniform spawn anywhere inside the playable map interior (the square
  * inside the wall tiles, shrunk by `entityHalf` so the sprite's centre
@@ -239,30 +214,10 @@ function newInteriorWanderer(halfW: number, halfH: number, entityHalf: number, w
   const mx = halfW - wallInset - entityHalf
   const my = halfH - wallInset - entityHalf
   return {
-    pos: new Vector2(
-      (Math.random() * 2 - 1) * mx,
-      (Math.random() * 2 - 1) * my,
-    ),
+    pos: new Vector2((Math.random() * 2 - 1) * mx, (Math.random() * 2 - 1) * my),
     vel: new Vector2(),
     retargetTimer: Math.random() * 2,
   }
-}
-
-function updateWanderer(w: Wanderer, delta: number, speed: number, halfW: number, halfH: number, entityRadius = 0): void {
-  w.retargetTimer -= delta
-  if (w.retargetTimer <= 0) {
-    const a = Math.random() * Math.PI * 2
-    w.vel.set(Math.cos(a) * speed, Math.sin(a) * speed)
-    w.retargetTimer = 1 + Math.random() * 2
-  }
-  w.pos.x += w.vel.x * delta
-  w.pos.y += w.vel.y * delta
-  const mx = halfW - WALL_TILE - entityRadius
-  const my = halfH - WALL_TILE - entityRadius
-  if (w.pos.x > mx) { w.pos.x = mx; w.vel.x = -Math.abs(w.vel.x) }
-  if (w.pos.x < -mx) { w.pos.x = -mx; w.vel.x = Math.abs(w.vel.x) }
-  if (w.pos.y > my) { w.pos.y = my; w.vel.y = -Math.abs(w.vel.y) }
-  if (w.pos.y < -my) { w.pos.y = -my; w.vel.y = Math.abs(w.vel.y) }
 }
 
 // ============================================
@@ -333,22 +288,24 @@ function FlatlandScene(props: SceneProps) {
   const viewSizeRef = useRef(viewSize)
   viewSizeRef.current = viewSize
 
-  const fixedLightPositions = useMemo(() =>
-    extractObjectsByType(mapData, 'light').map(obj => mapToWorld(obj, mapData, TILE_SCALE)),
-  [mapData])
+  const fixedLightPositions = useMemo(
+    () => extractObjectsByType(mapData, 'light').map((obj) => mapToWorld(obj, mapData, TILE_SCALE)),
+    [mapData]
+  )
 
-  const switchPositions = useMemo(() =>
-    extractObjectsByType(mapData, 'torch_switch').map(obj => mapToWorld(obj, mapData, TILE_SCALE)),
-  [mapData])
+  const switchPositions = useMemo(
+    () => extractObjectsByType(mapData, 'torch_switch').map((obj) => mapToWorld(obj, mapData, TILE_SCALE)),
+    [mapData]
+  )
 
-  const allTorchPositions = useMemo(() =>
-    [...fixedLightPositions, ...switchPositions],
-  [fixedLightPositions, switchPositions])
+  const allTorchPositions = useMemo(
+    () => [...fixedLightPositions, ...switchPositions],
+    [fixedLightPositions, switchPositions]
+  )
 
   useEffect(() => {
     setTorchEnabled(allTorchPositions.map(() => true))
   }, [allTorchPositions.length])
-
 
   const heroRef = useRef<AnimatedSprite2D | null>(null)
   const heroPos = useRef(new Vector2(0, 0))
@@ -379,17 +336,19 @@ function FlatlandScene(props: SceneProps) {
   // multiplier on drain/recovery rates so otherwise-identical slimes
   // drift apart in phase over time — without this they'd synchronize
   // into a single collective heartbeat.
-  const slimesRef = useRef<Array<{
-    anim: Wanderer
-    sprite: AnimatedSprite2D | null
-    light: Light2D | null
-    stamina: number
-    state: 'rest' | 'wander' | 'excited'
-    hopPhase: 'hop' | 'pause'
-    hopTimer: number
-    animation: 'idle' | 'walk'
-    drainBias: number
-  }>>([])
+  const slimesRef = useRef<
+    Array<{
+      anim: Wanderer
+      sprite: AnimatedSprite2D | null
+      light: Light2D | null
+      stamina: number
+      state: 'rest' | 'wander' | 'excited'
+      hopPhase: 'hop' | 'pause'
+      hopTimer: number
+      animation: 'idle' | 'walk'
+      drainBias: number
+    }>
+  >([])
 
   // Spawn hero near the first fixed torch so the map starts lit around
   // the player. Falls back to origin if the map has no torches (shouldn't
@@ -419,12 +378,7 @@ function FlatlandScene(props: SceneProps) {
         // slime's tight body clear of the wall art. The hero uses the
         // smaller WALL_TILE fudge because its frame has transparent
         // padding that can visually overlap the wall without clipping.
-        anim: newInteriorWanderer(
-          mapHalfW,
-          mapHalfH,
-          SLIME_SCALE / 2,
-          TILE_PX * TILE_SCALE,
-        ),
+        anim: newInteriorWanderer(mapHalfW, mapHalfH, SLIME_SCALE / 2, TILE_PX * TILE_SCALE),
         sprite: null,
         light: null,
         stamina,
@@ -501,14 +455,7 @@ function FlatlandScene(props: SceneProps) {
     e.shadowPixelSnapEnabled = props.shadowPixelSnapEnabled
     e.glowEnabled = props.glowEnabled
     e.rimEnabled = props.rimEnabled
-  }, [
-    props.bandsEnabled,
-    props.pixelSnapEnabled,
-    props.shadowPixelSnapEnabled,
-    props.glowEnabled,
-    props.rimEnabled,
-  ])
-
+  }, [props.bandsEnabled, props.pixelSnapEnabled, props.shadowPixelSnapEnabled, props.glowEnabled, props.rimEnabled])
 
   useEffect(() => {
     // torch_switch tiles hold a torch Light2D at their center — treating
@@ -562,10 +509,13 @@ function FlatlandScene(props: SceneProps) {
           const dot = (dx / dist) * facing.x + (dy / dist) * facing.y
           if (dot < facingThreshold) continue
         }
-        if (dist < bestDist) { bestDist = dist; bestIdx = i }
+        if (dist < bestDist) {
+          bestDist = dist
+          bestIdx = i
+        }
       }
       if (bestIdx < 0) return
-      setTorchEnabled(prev => {
+      setTorchEnabled((prev) => {
         const next = [...prev]
         next[switchStart + bestIdx] = !next[switchStart + bestIdx]
         return next
@@ -589,7 +539,10 @@ function FlatlandScene(props: SceneProps) {
     }
     const up = (e: KeyboardEvent) => {
       const k = keymap(e)
-      if (k) { heroKeys.current[k] = false; e.preventDefault() }
+      if (k) {
+        heroKeys.current[k] = false
+        e.preventDefault()
+      }
     }
     const canvas = (gl as unknown as { domElement: HTMLCanvasElement }).domElement
     const click = (e: MouseEvent) => {
@@ -599,8 +552,8 @@ function FlatlandScene(props: SceneProps) {
       const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
       const aspect = rect.width / rect.height
       const vs = viewSizeRef.current
-      const worldX = ndcX * (vs * aspect) / 2
-      const worldY = ndcY * vs / 2
+      const worldX = (ndcX * (vs * aspect)) / 2
+      const worldY = (ndcY * vs) / 2
 
       // Diablo-style click-to-walk. If the click landed near a torch
       // switch, queue that switch's index so the hero toggles it on
@@ -663,9 +616,7 @@ function FlatlandScene(props: SceneProps) {
       const distanceMul = isWall ? 1.0 : 0.7
       torch.distance = props.torchDistance * distanceMul
       torch.intensity =
-        props.torchIntensity *
-        intensityMul *
-        (1 + Math.sin(t * (15 + i * 2)) * 0.1 + Math.sin(t * (23 + i * 3)) * 0.05)
+        props.torchIntensity * intensityMul * (1 + Math.sin(t * (15 + i * 2)) * 0.1 + Math.sin(t * (23 + i * 3)) * 0.05)
     }
     // ── Hero movement: keyboard wins, else click-to-walk ──────
     const k = heroKeys.current
@@ -764,9 +715,7 @@ function FlatlandScene(props: SceneProps) {
     // Build a flat list of "predator" positions (hero + knight NPCs)
     // once per frame; each slime samples it for proximity. O(slimes ×
     // predators) = ~N distance tests — just the hero now.
-    const predatorPositions: Array<{ x: number; y: number }> = [
-      { x: heroPos.current.x, y: heroPos.current.y },
-    ]
+    const predatorPositions: Array<{ x: number; y: number }> = [{ x: heroPos.current.x, y: heroPos.current.y }]
     const exciteRadiusSq = SLIME_EXCITE_RADIUS * SLIME_EXCITE_RADIUS
 
     // Slimes use the full wall-tile thickness (TILE_PX * TILE_SCALE)
@@ -817,10 +766,7 @@ function FlatlandScene(props: SceneProps) {
       if (s.state === 'rest') {
         s.anim.vel.x = 0
         s.anim.vel.y = 0
-        s.stamina = Math.min(
-          1,
-          s.stamina + SLIME_STAMINA_RECOVER * s.drainBias * delta,
-        )
+        s.stamina = Math.min(1, s.stamina + SLIME_STAMINA_RECOVER * s.drainBias * delta)
       } else {
         // Advance the hop/pause timer and flip phases when it expires.
         s.hopTimer -= delta
@@ -828,17 +774,19 @@ function FlatlandScene(props: SceneProps) {
           if (s.hopPhase === 'hop') {
             // Hop done — settle into a pause.
             s.hopPhase = 'pause'
-            s.hopTimer = s.state === 'excited'
-              ? SLIME_PAUSE_MIN_EXCITED + Math.random() * (SLIME_PAUSE_MAX_EXCITED - SLIME_PAUSE_MIN_EXCITED)
-              : SLIME_PAUSE_MIN_WANDER + Math.random() * (SLIME_PAUSE_MAX_WANDER - SLIME_PAUSE_MIN_WANDER)
+            s.hopTimer =
+              s.state === 'excited'
+                ? SLIME_PAUSE_MIN_EXCITED + Math.random() * (SLIME_PAUSE_MAX_EXCITED - SLIME_PAUSE_MIN_EXCITED)
+                : SLIME_PAUSE_MIN_WANDER + Math.random() * (SLIME_PAUSE_MAX_WANDER - SLIME_PAUSE_MIN_WANDER)
             s.anim.vel.x = 0
             s.anim.vel.y = 0
           } else {
             // Pause done — launch into a new hop in a random direction.
             s.hopPhase = 'hop'
-            s.hopTimer = s.state === 'excited'
-              ? SLIME_HOP_MIN_EXCITED + Math.random() * (SLIME_HOP_MAX_EXCITED - SLIME_HOP_MIN_EXCITED)
-              : SLIME_HOP_MIN_WANDER + Math.random() * (SLIME_HOP_MAX_WANDER - SLIME_HOP_MIN_WANDER)
+            s.hopTimer =
+              s.state === 'excited'
+                ? SLIME_HOP_MIN_EXCITED + Math.random() * (SLIME_HOP_MAX_EXCITED - SLIME_HOP_MIN_EXCITED)
+                : SLIME_HOP_MIN_WANDER + Math.random() * (SLIME_HOP_MAX_WANDER - SLIME_HOP_MIN_WANDER)
             const angle = Math.random() * Math.PI * 2
             const speed = s.state === 'excited' ? SLIME_SPEED_EXCITED : SLIME_SPEED_WANDER
             s.anim.vel.x = Math.cos(angle) * speed
@@ -847,22 +795,32 @@ function FlatlandScene(props: SceneProps) {
         }
 
         // Apply velocity (only non-zero during hop phase) + wall bounce.
-        // Bypasses `updateWanderer` because that function continuously
-        // retargets its own velocity; we drive vel explicitly here.
+        // Velocity is driven explicitly per hop above rather than
+        // continuously retargeted, so slimes rest between hops.
         s.anim.pos.x += s.anim.vel.x * delta
         s.anim.pos.y += s.anim.vel.y * delta
-        if (s.anim.pos.x > slimeBoundX) { s.anim.pos.x = slimeBoundX; s.anim.vel.x = -Math.abs(s.anim.vel.x) }
-        if (s.anim.pos.x < -slimeBoundX) { s.anim.pos.x = -slimeBoundX; s.anim.vel.x = Math.abs(s.anim.vel.x) }
-        if (s.anim.pos.y > slimeBoundY) { s.anim.pos.y = slimeBoundY; s.anim.vel.y = -Math.abs(s.anim.vel.y) }
-        if (s.anim.pos.y < -slimeBoundY) { s.anim.pos.y = -slimeBoundY; s.anim.vel.y = Math.abs(s.anim.vel.y) }
+        if (s.anim.pos.x > slimeBoundX) {
+          s.anim.pos.x = slimeBoundX
+          s.anim.vel.x = -Math.abs(s.anim.vel.x)
+        }
+        if (s.anim.pos.x < -slimeBoundX) {
+          s.anim.pos.x = -slimeBoundX
+          s.anim.vel.x = Math.abs(s.anim.vel.x)
+        }
+        if (s.anim.pos.y > slimeBoundY) {
+          s.anim.pos.y = slimeBoundY
+          s.anim.vel.y = -Math.abs(s.anim.vel.y)
+        }
+        if (s.anim.pos.y < -slimeBoundY) {
+          s.anim.pos.y = -slimeBoundY
+          s.anim.vel.y = Math.abs(s.anim.vel.y)
+        }
 
         // Drain stamina only during active hops — pauses hold the
         // value steady so the slime's total movement endurance is
         // determined by hop-time alone.
         if (s.hopPhase === 'hop') {
-          const drain = s.state === 'excited'
-            ? SLIME_STAMINA_DRAIN_EXCITED
-            : SLIME_STAMINA_DRAIN_WANDER
+          const drain = s.state === 'excited' ? SLIME_STAMINA_DRAIN_EXCITED : SLIME_STAMINA_DRAIN_WANDER
           s.stamina = Math.max(0, s.stamina - drain * s.drainBias * delta)
         }
       }
@@ -872,8 +830,7 @@ function FlatlandScene(props: SceneProps) {
         // Walk while actively hopping, idle otherwise (rest OR pause
         // between hops). Animation changes drive `.play()` only on
         // transition — not every frame.
-        const wantAnim: 'idle' | 'walk' =
-          s.state !== 'rest' && s.hopPhase === 'hop' ? 'walk' : 'idle'
+        const wantAnim: 'idle' | 'walk' = s.state !== 'rest' && s.hopPhase === 'hop' ? 'walk' : 'idle'
         if (wantAnim !== s.animation) {
           s.sprite.play(wantAnim)
           s.animation = wantAnim
@@ -893,16 +850,17 @@ function FlatlandScene(props: SceneProps) {
       if (s.light) {
         s.light.enabled = props.slimeLights
         s.light.position.set(s.anim.pos.x, s.anim.pos.y, 0)
-        s.light.intensity = s.state === 'excited' ? 0.35
-          : s.state === 'rest' ? 0.2
-            : 0.28
+        s.light.intensity = s.state === 'excited' ? 0.35 : s.state === 'rest' ? 0.2 : 0.28
       }
     }
   })
 
-  useFrame(() => {
-    flatlandRef.current?.render(gl as unknown as WebGPURenderer)
-  }, { phase: 'render' })
+  useFrame(
+    () => {
+      flatlandRef.current?.render(gl as unknown as WebGPURenderer)
+    },
+    { phase: 'render' }
+  )
 
   return (
     <>
@@ -927,7 +885,12 @@ function FlatlandScene(props: SceneProps) {
             LDtkLoader from per-tile `tileDir` / `tileCap*` custom data)
             drives directional lighting — walls tilt toward their visible
             face, floors stay flat. */}
-        <tileMap2D ref={tilemapRef} data={mapData} scale={[TILE_SCALE, TILE_SCALE, 1]} position={[-mapHalfW, -mapHalfH, -100]}>
+        <tileMap2D
+          ref={tilemapRef}
+          data={mapData}
+          scale={[TILE_SCALE, TILE_SCALE, 1]}
+          position={[-mapHalfW, -mapHalfH, -100]}
+        >
           <normalMapProvider attach={attachEffect} normalMap={mapData.tilesets[0]?.normalMap ?? null} />
         </tileMap2D>
 
@@ -938,7 +901,9 @@ function FlatlandScene(props: SceneProps) {
         {fixedLightPositions.map((pos, i) => (
           <light2D
             key={`wall-torch-${i}`}
-            ref={(el) => { torchLightRefs.current[i] = el }}
+            ref={(el) => {
+              torchLightRefs.current[i] = el
+            }}
             lightType="point"
             position={[pos[0], pos[1], 0]}
             color={0xff6600}
@@ -952,7 +917,9 @@ function FlatlandScene(props: SceneProps) {
         {switchPositions.map((pos, i) => (
           <light2D
             key={`switch-torch-${i}`}
-            ref={(el) => { torchLightRefs.current[fixedLightPositions.length + i] = el }}
+            ref={(el) => {
+              torchLightRefs.current[fixedLightPositions.length + i] = el
+            }}
             lightType="point"
             position={[pos[0], pos[1], 0]}
             color={0xffcc44}
@@ -969,7 +936,9 @@ function FlatlandScene(props: SceneProps) {
             so they can't collapse into the same batch regardless of
             layer — bumping the layer is purely a visual z-order hint. */}
         <animatedSprite2D
-          ref={(el) => { heroRef.current = el }}
+          ref={(el) => {
+            heroRef.current = el
+          }}
           texture={knightSheet.texture}
           spriteSheet={knightSheet}
           animationSet={knightAnimations}
@@ -1017,7 +986,9 @@ function FlatlandScene(props: SceneProps) {
         {slimesRef.current.map((s, i) => (
           <light2D
             key={`slime-light-${i}`}
-            ref={(el) => { s.light = el }}
+            ref={(el) => {
+              s.light = el
+            }}
             lightType="point"
             color={0x33ff66}
             intensity={0.25}
@@ -1027,7 +998,6 @@ function FlatlandScene(props: SceneProps) {
             category="slime"
           />
         ))}
-
       </flatland>
     </>
   )

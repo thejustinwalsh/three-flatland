@@ -128,13 +128,12 @@ export function GridSliceOverlay({
     return m
   })()
 
-  const handleLinePointerDown =
-    (axis: 'col' | 'row', index: number) => (e: ReactPointerEvent<SVGElement>) => {
-      e.stopPropagation()
-      e.currentTarget.setPointerCapture(e.pointerId)
-      cursorStore?.freeze()
-      setDrag({ axis, index, pointerId: e.pointerId })
-    }
+  const handleLinePointerDown = (axis: 'col' | 'row', index: number) => (e: ReactPointerEvent<SVGElement>) => {
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    cursorStore?.freeze()
+    setDrag({ axis, index, pointerId: e.pointerId })
+  }
 
   const handleLinePointerMove = (e: ReactPointerEvent<SVGElement>) => {
     if (!drag) return

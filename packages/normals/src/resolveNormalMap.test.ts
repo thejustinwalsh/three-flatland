@@ -21,11 +21,14 @@ afterEach(() => {
 })
 
 function stubBakeEnv() {
-  ;(global as any).createImageBitmap = vi.fn(async () => ({
-    width: 1,
-    height: 1,
-    close: () => {},
-  } as ImageBitmap))
+  ;(global as any).createImageBitmap = vi.fn(
+    async () =>
+      ({
+        width: 1,
+        height: 1,
+        close: () => {},
+      }) as ImageBitmap
+  )
   ;(global as any).OffscreenCanvas = class {
     width: number
     height: number
@@ -66,8 +69,8 @@ describe('resolveNormalMap — forceRuntime', () => {
   })
 
   it('forwards flipY through the bake path', async () => {
-    global.fetch = vi.fn(async () =>
-      new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200 })
+    global.fetch = vi.fn(
+      async () => new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200 })
     ) as unknown as typeof fetch
     stubBakeEnv()
     vi.spyOn(console, 'warn').mockImplementation(() => {})

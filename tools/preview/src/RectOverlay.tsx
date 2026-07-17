@@ -298,10 +298,7 @@ function CornerIndex({
 // ─── Handle geometry helpers ─────────────────────────────────────────────────
 
 /** Returns the center point for a given handle direction on a rect. */
-function handleCenter(
-  r: { x: number; y: number; w: number; h: number },
-  dir: HandleDir
-): { x: number; y: number } {
+function handleCenter(r: { x: number; y: number; w: number; h: number }, dir: HandleDir): { x: number; y: number } {
   const cx = r.x + r.w / 2
   const cy = r.y + r.h / 2
   switch (dir) {
@@ -413,8 +410,7 @@ export function RectOverlay({
   // Round a number to the nearest multiple of `step`, with a 0/Shift-key
   // pass-through. The Shift check happens at call sites that have the
   // event in scope; this helper just does the arithmetic.
-  const snap = (v: number): number =>
-    snapStep > 0 ? Math.round(v / snapStep) * snapStep : Math.round(v)
+  const snap = (v: number): number => (snapStep > 0 ? Math.round(v / snapStep) * snapStep : Math.round(v))
   const snapRect = (r: { x: number; y: number; w: number; h: number }) => ({
     x: snap(r.x),
     y: snap(r.y),
@@ -432,10 +428,7 @@ export function RectOverlay({
   // Map from rect id → preview pos. Multi-rect drags fill in one
   // entry per selected rect; single-select drags fill in one. Lookup
   // by id during render so each rect renders at its preview position.
-  const [moveDragPreview, setMoveDragPreview] = useState<ReadonlyMap<
-    string,
-    { x: number; y: number }
-  > | null>(null)
+  const [moveDragPreview, setMoveDragPreview] = useState<ReadonlyMap<string, { x: number; y: number }> | null>(null)
 
   // Resize-drag state
   const resizeDragRef = useRef<ResizeDrag | null>(null)
@@ -576,13 +569,13 @@ export function RectOverlay({
       // positions for all so subsequent pointermoves can recompute
       // from anchor rather than accumulate (avoids drift under the
       // image-bounds clamp when one rect hits an edge).
-      const entries: MoveDragEntry[] = (
-        selectedIds.size > 1 ? rects.filter((rr) => selectedIds.has(rr.id)) : [r]
-      ).map((rr) => ({
-        id: rr.id,
-        startRect: { x: rr.x, y: rr.y, w: rr.w, h: rr.h },
-        preview: { x: rr.x, y: rr.y },
-      }))
+      const entries: MoveDragEntry[] = (selectedIds.size > 1 ? rects.filter((rr) => selectedIds.has(rr.id)) : [r]).map(
+        (rr) => ({
+          id: rr.id,
+          startRect: { x: rr.x, y: rr.y, w: rr.w, h: rr.h },
+          preview: { x: rr.x, y: rr.y },
+        })
+      )
       moveDragRef.current = {
         primaryId: r.id,
         pointerId: e.pointerId,
@@ -703,11 +696,7 @@ export function RectOverlay({
   }
 
   // ── Handle pointerdown: start resize ─────────────────────────────────────
-  const handleResizePointerDown = (
-    r: Rect,
-    dir: HandleDir,
-    e: ReactPointerEvent<SVGRectElement>
-  ) => {
+  const handleResizePointerDown = (r: Rect, dir: HandleDir, e: ReactPointerEvent<SVGRectElement>) => {
     // Stop propagation so the rect body move handler doesn't also fire.
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -787,57 +776,58 @@ export function RectOverlay({
           clicks (draw start or deselect). Transparent fill, but pointer-
           events:all so it receives the hit when the user clicks past
           the rects. */}
-      {interactive && (drawEnabled || selectionActive) && (
-        // Image-area catcher: starts new draws and consumes empty-space
-        // clicks INSIDE the image bounds. Margin clicks (outside the
-        // image) are handled by CanvasStage's stage-level background
-        // catcher — no need to inflate this rect to canvas size.
-        <rect
-          x={0}
-          y={0}
-          width={vp.imageW}
-          height={vp.imageH}
-          fill="transparent"
-          style={{
-            pointerEvents: 'all',
-            cursor: drawEnabled ? 'crosshair' : selectionActive ? 'default' : 'default',
-          }}
-          onPointerDown={(e) => {
-            if (drawEnabled) {
-              e.currentTarget.setPointerCapture(e.pointerId)
-              const p = toImagePx(e)
-              if (p) setDrag({ start: p, current: p })
-            } else if (selectionActive) {
-              onSelectionChange?.(new Set())
-            }
-          }}
-          onPointerMove={(e) => {
-            if (!drag) return
-            const p = toImagePx(e)
-            if (p) setDrag((d) => (d ? { ...d, current: p } : null))
-          }}
-          onPointerUp={(e) => {
-            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-              e.currentTarget.releasePointerCapture(e.pointerId)
-            }
-            setDrag((d) => {
-              if (d && onRectCreate) {
-                const r = normalized(d)
-                if (r.w >= 2 && r.h >= 2) {
-                  onRectCreate({ id: crypto.randomUUID(), ...r })
-                } else if (selectionActive) {
-                  // Tiny / no-drag click on empty in-image space →
-                  // treat as a deselect so the user can clear the
-                  // selection without leaving the rect tool.
-                  onSelectionChange?.(new Set())
-                }
+      {interactive &&
+        (drawEnabled || selectionActive) && (
+          // Image-area catcher: starts new draws and consumes empty-space
+          // clicks INSIDE the image bounds. Margin clicks (outside the
+          // image) are handled by CanvasStage's stage-level background
+          // catcher — no need to inflate this rect to canvas size.
+          <rect
+            x={0}
+            y={0}
+            width={vp.imageW}
+            height={vp.imageH}
+            fill="transparent"
+            style={{
+              pointerEvents: 'all',
+              cursor: drawEnabled ? 'crosshair' : selectionActive ? 'default' : 'default',
+            }}
+            onPointerDown={(e) => {
+              if (drawEnabled) {
+                e.currentTarget.setPointerCapture(e.pointerId)
+                const p = toImagePx(e)
+                if (p) setDrag({ start: p, current: p })
+              } else if (selectionActive) {
+                onSelectionChange?.(new Set())
               }
-              return null
-            })
-          }}
-          onPointerCancel={() => setDrag(null)}
-        />
-      )}
+            }}
+            onPointerMove={(e) => {
+              if (!drag) return
+              const p = toImagePx(e)
+              if (p) setDrag((d) => (d ? { ...d, current: p } : null))
+            }}
+            onPointerUp={(e) => {
+              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                e.currentTarget.releasePointerCapture(e.pointerId)
+              }
+              setDrag((d) => {
+                if (d && onRectCreate) {
+                  const r = normalized(d)
+                  if (r.w >= 2 && r.h >= 2) {
+                    onRectCreate({ id: crypto.randomUUID(), ...r })
+                  } else if (selectionActive) {
+                    // Tiny / no-drag click on empty in-image space →
+                    // treat as a deselect so the user can clear the
+                    // selection without leaving the rect tool.
+                    onSelectionChange?.(new Set())
+                  }
+                }
+                return null
+              })
+            }}
+            onPointerCancel={() => setDrag(null)}
+          />
+        )}
 
       {rects.map((r, i) => {
         const sel = selectedIds.has(r.id)
@@ -913,9 +903,7 @@ export function RectOverlay({
           if (!selectedIds.has(r.id)) return null
 
           const isResizing = resizeDragPreview?.id === r.id
-          const movePreview = moveDragRef.current?.committed
-            ? moveDragPreview?.get(r.id)
-            : undefined
+          const movePreview = moveDragRef.current?.committed ? moveDragPreview?.get(r.id) : undefined
           const gx = movePreview ? movePreview.x : isResizing ? resizeDragPreview!.x : r.x
           const gy = movePreview ? movePreview.y : isResizing ? resizeDragPreview!.y : r.y
           const gw = isResizing ? resizeDragPreview!.w : r.w

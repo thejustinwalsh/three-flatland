@@ -101,17 +101,17 @@ function LightingScene({ lit }: { lit: boolean }) {
 
   const fixedLightPositions = useMemo(
     () => extractObjectsByType(mapData, 'light').map((obj) => mapToWorld(obj, mapData, TILE_SCALE)),
-    [mapData],
+    [mapData]
   )
 
   const switchPositions = useMemo(
     () => extractObjectsByType(mapData, 'torch_switch').map((obj) => mapToWorld(obj, mapData, TILE_SCALE)),
-    [mapData],
+    [mapData]
   )
 
   const allTorchPositions = useMemo(
     () => [...fixedLightPositions, ...switchPositions],
-    [fixedLightPositions, switchPositions],
+    [fixedLightPositions, switchPositions]
   )
 
   const [torchEnabled, setTorchEnabled] = useState<boolean[]>([])
@@ -160,7 +160,7 @@ function LightingScene({ lit }: { lit: boolean }) {
         vel: new Vector2(Math.cos(angle) * SLIME_SPEED, Math.sin(angle) * SLIME_SPEED),
         retarget: SLIME_RETARGET_MIN + Math.random() * (SLIME_RETARGET_MAX - SLIME_RETARGET_MIN),
       }
-    }),
+    })
   )
 
   useEffect(() => {
@@ -179,9 +179,7 @@ function LightingScene({ lit }: { lit: boolean }) {
       const isWall = i < wallCount
       const intensityBase = 1.8 * (isWall ? 1.6 : 0.8)
       torch.enabled = lit && (torchEnabled[i] ?? true)
-      torch.intensity =
-        intensityBase *
-        (1 + Math.sin(t * (15 + i * 2)) * 0.1 + Math.sin(t * (23 + i * 3)) * 0.05)
+      torch.intensity = intensityBase * (1 + Math.sin(t * (15 + i * 2)) * 0.1 + Math.sin(t * (23 + i * 3)) * 0.05)
     }
   })
 
@@ -202,10 +200,22 @@ function LightingScene({ lit }: { lit: boolean }) {
       }
       s.pos.x += s.vel.x * delta
       s.pos.y += s.vel.y * delta
-      if (s.pos.x > slimeBoundX) { s.pos.x = slimeBoundX; s.vel.x = -Math.abs(s.vel.x) }
-      if (s.pos.x < -slimeBoundX) { s.pos.x = -slimeBoundX; s.vel.x = Math.abs(s.vel.x) }
-      if (s.pos.y > slimeBoundY) { s.pos.y = slimeBoundY; s.vel.y = -Math.abs(s.vel.y) }
-      if (s.pos.y < -slimeBoundY) { s.pos.y = -slimeBoundY; s.vel.y = Math.abs(s.vel.y) }
+      if (s.pos.x > slimeBoundX) {
+        s.pos.x = slimeBoundX
+        s.vel.x = -Math.abs(s.vel.x)
+      }
+      if (s.pos.x < -slimeBoundX) {
+        s.pos.x = -slimeBoundX
+        s.vel.x = Math.abs(s.vel.x)
+      }
+      if (s.pos.y > slimeBoundY) {
+        s.pos.y = slimeBoundY
+        s.vel.y = -Math.abs(s.vel.y)
+      }
+      if (s.pos.y < -slimeBoundY) {
+        s.pos.y = -slimeBoundY
+        s.vel.y = Math.abs(s.vel.y)
+      }
 
       if (s.sprite) {
         s.sprite.position.set(s.pos.x, s.pos.y, 0)
@@ -283,20 +293,13 @@ function LightingScene({ lit }: { lit: boolean }) {
         scale={[TILE_SCALE, TILE_SCALE, 1]}
         position={[-mapHalfW, -mapHalfH, -100]}
       >
-        <normalMapProvider
-          attach={attachEffect}
-          normalMap={mapData.tilesets[0]?.normalMap ?? null}
-        />
+        <normalMapProvider attach={attachEffect} normalMap={mapData.tilesets[0]?.normalMap ?? null} />
       </tileMap2D>
 
       {/* Ambient — always mounted; props swap between the demo's purple
           dungeon atmosphere (lit) and a bright flat white fill (unlit) so
           the tilemap reads "unlit/flat" without unmounting the light. */}
-      <light2D
-        lightType="ambient"
-        color={lit ? 0x5544aa : 0xffffff}
-        intensity={lit ? 0.6 : 1.3}
-      />
+      <light2D lightType="ambient" color={lit ? 0x5544aa : 0xffffff} intensity={lit ? 0.6 : 1.3} />
 
       {/* Wall torches (fixed) — warm orange */}
       {fixedLightPositions.map((pos, i) => (

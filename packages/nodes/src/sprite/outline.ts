@@ -40,11 +40,7 @@ export function outline(
   tex: Texture,
   options: OutlineOptions = {}
 ): Node<'vec4'> {
-  const {
-    color = [1, 1, 1, 1],
-    thickness = 0.01,
-    textureSize,
-  } = options
+  const { color = [1, 1, 1, 1], thickness = 0.01, textureSize } = options
 
   const outlineColor = Array.isArray(color) ? vec4(...color) : color
   const thicknessNode = typeof thickness === 'number' ? float(thickness) : thickness
@@ -93,11 +89,7 @@ export function outline8(
   tex: Texture,
   options: OutlineOptions = {}
 ): Node<'vec4'> {
-  const {
-    color = [1, 1, 1, 1],
-    thickness = 0.01,
-    textureSize,
-  } = options
+  const { color = [1, 1, 1, 1], thickness = 0.01, textureSize } = options
 
   const outlineColor = Array.isArray(color) ? vec4(...color) : color
   const thicknessNode = typeof thickness === 'number' ? float(thickness) : thickness
@@ -125,10 +117,7 @@ export function outline8(
   const sw = sampleTexture(tex, inputUV.sub(vec2(offsetX, offsetY)))
 
   // Get max alpha from all neighbors
-  const neighborAlpha = max(
-    max(max(n.a, s.a), max(e.a, w.a)),
-    max(max(ne.a, nw.a), max(se.a, sw.a))
-  )
+  const neighborAlpha = max(max(max(n.a, s.a), max(e.a, w.a)), max(max(ne.a, nw.a), max(se.a, sw.a)))
 
   // Calculate outline strength
   const outlineStrength = neighborAlpha.mul(float(1).sub(inputColor.a))

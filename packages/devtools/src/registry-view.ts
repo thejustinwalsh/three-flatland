@@ -56,10 +56,7 @@ function splitName(name: string): { group: string; short: string } {
   return { group: name.slice(0, dot), short: name.slice(dot + 1) }
 }
 
-export function addRegistryView(
-  parent: Pane | FolderApi,
-  client: DevtoolsClient,
-): RegistryViewHandle {
+export function addRegistryView(parent: Pane | FolderApi, client: DevtoolsClient): RegistryViewHandle {
   const blade = parent.addBlade({ view: 'separator' }) as unknown as {
     element: HTMLElement
     dispose(): void
@@ -109,7 +106,8 @@ export function addRegistryView(
   // the header row, so the whole row shares one hit target. Giving the
   // label its own cursor/handler caused inconsistent hit-testing when
   // the user clicked on the label's text-vs-padding boundary.
-  groupLabel.style.cssText = 'font-weight:500;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none'
+  groupLabel.style.cssText =
+    'font-weight:500;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none'
   const nextBtn = document.createElement('span')
   nextBtn.textContent = '▶'
   nextBtn.style.cssText = arrowStyle
@@ -165,8 +163,14 @@ export function addRegistryView(
     syncFilter()
   }
   header.addEventListener('click', toggleCollapse)
-  prevBtn.addEventListener('click', (e) => { e.stopPropagation(); cycle(-1) })
-  nextBtn.addEventListener('click', (e) => { e.stopPropagation(); cycle(1) })
+  prevBtn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    cycle(-1)
+  })
+  nextBtn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    cycle(1)
+  })
 
   function ensureGroup(name: string): GroupUI {
     let g = groups.get(name)
@@ -206,7 +210,8 @@ export function addRegistryView(
       'color:var(--tp-monitor-foreground-color)',
     ].join(';')
     const nameLabel = document.createElement('span')
-    nameLabel.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tp-label-foreground-color)'
+    nameLabel.style.cssText =
+      'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tp-label-foreground-color)'
     nameLabel.textContent = shortName
     const valueLabel = document.createElement('span')
     valueLabel.style.cssText = 'opacity:0.75;white-space:nowrap'
@@ -265,7 +270,12 @@ export function addRegistryView(
   }
   // (arrow click handlers wired above, alongside the toggle.)
 
-  function renderBars(row: EntryRow, kind: string, sample: Float32Array | Uint32Array | Int32Array, isSigned: boolean): { min: number; max: number; mean: number } {
+  function renderBars(
+    row: EntryRow,
+    kind: string,
+    sample: Float32Array | Uint32Array | Int32Array,
+    isSigned: boolean
+  ): { min: number; max: number; mean: number } {
     const ctx = row.ctx
     const w = row.canvas.width
     const h = row.canvas.height
@@ -286,7 +296,7 @@ export function addRegistryView(
     if (n === 0 || !Number.isFinite(min) || !Number.isFinite(max)) return { min, max: 0, mean }
 
     const zeroY = isSigned ? h / 2 : h
-    const scale = isSigned ? (h / 2) / Math.max(Math.abs(min), Math.abs(max) || 1) : h / (max || 1)
+    const scale = isSigned ? h / 2 / Math.max(Math.abs(min), Math.abs(max) || 1) : h / (max || 1)
 
     ctx.fillStyle = FILL_BY_KIND[kind] ?? '#47cca9'
     const bw = Math.max(1, w / n)

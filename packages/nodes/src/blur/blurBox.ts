@@ -16,12 +16,7 @@ import type { FloatInput, Vec2Input } from '../types'
  * @example
  * const blurred = blurBox(texture, uv, 0.01, 5)
  */
-export function blurBox(
-  tex: Texture,
-  uv: Node<'vec2'>,
-  radius: FloatInput = 0.01,
-  samples: number = 3
-): Node<'vec4'> {
+export function blurBox(tex: Texture, uv: Node<'vec2'>, radius: FloatInput = 0.01, samples: number = 3): Node<'vec4'> {
   const radiusNode = typeof radius === 'number' ? float(radius) : radius
 
   let result: Node<'vec4'> = vec4(0, 0, 0, 0)

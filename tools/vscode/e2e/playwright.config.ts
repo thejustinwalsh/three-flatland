@@ -38,11 +38,7 @@ export default defineConfig({
   // not depend on a real device at all — see specs/audio-render-gate.spec.ts.
   retries: 0,
   reporter: IS_CI
-    ? [
-        ['github'],
-        ['html', { outputFolder: path.join(__dirname, 'playwright-report'), open: 'never' }],
-        ['list'],
-      ]
+    ? [['github'], ['html', { outputFolder: path.join(__dirname, 'playwright-report'), open: 'never' }], ['list']]
     : 'list',
   timeout: 60_000,
   expect: {

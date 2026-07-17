@@ -1,12 +1,5 @@
 import { getStore as kootaGetStore, type World, type Trait } from 'koota'
-import {
-  IsRenderable,
-  IsBatched,
-  SortLayer,
-  SpriteZIndex,
-  BatchSlot,
-  BatchRegistry,
-} from '../traits'
+import { IsRenderable, IsBatched, SortLayer, SpriteZIndex, BatchSlot, BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import { ENTITY_ID_MASK } from '../snapshot'

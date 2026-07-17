@@ -59,9 +59,7 @@ function previewText(text: string, max = 40): string {
  * unparseable declaration must not crash Play/Edit, just play nothing
  * (all defaults) rather than throwing.
  */
-export async function resolveParams(
-  finding: Extract<Finding, { kind: 'zzfx.call' }>
-): Promise<ResolvedParams> {
+export async function resolveParams(finding: Extract<Finding, { kind: 'zzfx.call' }>): Promise<ResolvedParams> {
   if (finding.payload.params.length > 0) return { params: finding.payload.params }
   const varRef = finding.payload.varRef
   if (!varRef?.defUri || !varRef.defRange) return { params: finding.payload.params }

@@ -19,12 +19,7 @@ describe('writeSidecarPng', () => {
   it('writes a PNG with a flatland tEXt chunk that round-trips through readPngTextChunk', () => {
     const width = 2
     const height = 2
-    const pixels = new Uint8Array([
-      255, 0, 0, 255,
-      0, 255, 0, 255,
-      0, 0, 255, 255,
-      255, 255, 0, 255,
-    ])
+    const pixels = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255])
     const out = join(tmp, 'out.png')
     writeSidecarPng(out, pixels, width, height, { hash: 'deadbeefcafebabe', v: 1 })
 

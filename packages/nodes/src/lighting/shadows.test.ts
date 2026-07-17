@@ -105,15 +105,7 @@ describe('shadowDropSoft', () => {
     const tex = new Texture()
     const uv = vec2(0.5, 0.5)
 
-    const result = shadowDropSoft(
-      tex,
-      uv,
-      vec2(0.02, -0.02),
-      vec2(0, 0, 0),
-      float(0.5),
-      uniform(0.01),
-      6
-    )
+    const result = shadowDropSoft(tex, uv, vec2(0.02, -0.02), vec2(0, 0, 0), float(0.5), uniform(0.01), 6)
     expect(result).toBeDefined()
     expect(isNodeShaped(result)).toBe(true)
   })

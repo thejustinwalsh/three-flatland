@@ -8,7 +8,7 @@ import {
 } from '@three-flatland/preview/canvas'
 import { decodeImage } from '@three-flatland/image'
 import type { Ktx2Loader as Ktx2LoaderType } from '@three-flatland/image/loaders/ktx2'
-import { useEncodeStore } from './encodeStore'
+import { useEncodeStore, type GpuStats } from './encodeStore'
 import { getKtx2Caps } from './gpuCaps'
 import { extractGpuStats } from './gpuStats'
 
@@ -55,16 +55,21 @@ function imageDataToTexture(image: ImageData): THREE.CanvasTexture {
 
 function useOriginalTexture(image: ImageData | null): THREE.Texture | null {
   const tex = useMemo(() => (image ? imageDataToTexture(image) : null), [image])
-  useEffect(() => () => { tex?.dispose() }, [tex])
+  useEffect(
+    () => () => {
+      tex?.dispose()
+    },
+    [tex]
+  )
   return tex
 }
 
 // ─── Encoded texture hook ─────────────────────────────────────────────────────
 
 function useEncodedTexture(
-  setGpuStats: (stats: import('./encodeStore').GpuStats) => void,
+  setGpuStats: (stats: GpuStats) => void,
   sourceWidth: number,
-  sourceHeight: number,
+  sourceHeight: number
 ): THREE.Texture | null {
   const encodedBytes = useEncodeStore((s) => s.encodedBytes)
   const encodedFormat = useEncodeStore((s) => s.encodedFormat)
@@ -73,7 +78,10 @@ function useEncodedTexture(
 
   useEffect(() => {
     if (!encodedBytes || !encodedFormat) {
-      setTex((prev) => { prev?.dispose(); return null })
+      setTex((prev) => {
+        prev?.dispose()
+        return null
+      })
       return
     }
     const reqId = ++reqIdRef.current
@@ -86,7 +94,7 @@ function useEncodedTexture(
           const loader = await getKtx2Loader()
           const buf = encodedBytes.buffer.slice(
             encodedBytes.byteOffset,
-            encodedBytes.byteOffset + encodedBytes.byteLength,
+            encodedBytes.byteOffset + encodedBytes.byteLength
           ) as ArrayBuffer
           next = (await loader.parse(buf)) as THREE.CompressedTexture
         } else {
@@ -98,17 +106,27 @@ function useEncodedTexture(
           return
         }
         setGpuStats(extractGpuStats(next, sourceWidth, sourceHeight))
-        setTex((prev) => { prev?.dispose(); return next })
+        setTex((prev) => {
+          prev?.dispose()
+          return next
+        })
       } catch (err) {
         console.error('encoded texture decode failed', err)
       }
     })()
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [encodedBytes, encodedFormat, setGpuStats, sourceWidth, sourceHeight])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => () => { tex?.dispose() }, [])
+  useEffect(
+    () => () => {
+      tex?.dispose()
+    },
+    []
+  )
 
   return tex
 }

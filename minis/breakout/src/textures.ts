@@ -20,16 +20,7 @@ export function createBallTexture(): CanvasTexture {
   // Draw pixelated circle (manually for crisp edges)
   ctx.fillStyle = '#ffffff'
   // 8x8 circle pattern
-  const pixels = [
-    '  ####  ',
-    ' ###### ',
-    '########',
-    '########',
-    '########',
-    '########',
-    ' ###### ',
-    '  ####  ',
-  ]
+  const pixels = ['  ####  ', ' ###### ', '########', '########', '########', '########', ' ###### ', '  ####  ']
   pixels.forEach((row, y) => {
     row.split('').forEach((pixel, x) => {
       if (pixel === '#') {
@@ -62,12 +53,7 @@ export function createPaddleTexture(): CanvasTexture {
   // Draw pixelated rounded rect
   ctx.fillStyle = '#ffffff'
   // 16x4 paddle pattern with rounded ends
-  const pixels = [
-    ' ############## ',
-    '################',
-    '################',
-    ' ############## ',
-  ]
+  const pixels = [' ############## ', '################', '################', ' ############## ']
   pixels.forEach((row, y) => {
     row.split('').forEach((pixel, x) => {
       if (pixel === '#') {

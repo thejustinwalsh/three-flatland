@@ -73,13 +73,7 @@ const WAD_SQUARE_LINE = lineOf("new Wad({ source: 'square' })")
 const WAD_SAWTOOTH_LINE = lineOf("new Wad({ source: 'sawtooth' })")
 const WAD_TRIANGLE_LINE = lineOf("new Wad({ source: 'triangle' })")
 const WAD_NOISE_LINE = lineOf("new Wad({ source: 'noise' })")
-const WAD_OSCILLATOR_LINES = [
-  WAD_SINE_LINE,
-  WAD_SQUARE_LINE,
-  WAD_SAWTOOTH_LINE,
-  WAD_TRIANGLE_LINE,
-  WAD_NOISE_LINE,
-]
+const WAD_OSCILLATOR_LINES = [WAD_SINE_LINE, WAD_SQUARE_LINE, WAD_SAWTOOTH_LINE, WAD_TRIANGLE_LINE, WAD_NOISE_LINE]
 
 // #47: wad.synth bare-identifier var-ref — one resolvable, one whose
 // declaration isn't a valid oscillator config (a lens exists either way —
@@ -195,11 +189,7 @@ async function fetchSettledLenses(
         command?: { title: string; command: string; arguments?: unknown[] }
       }
       const fetchNow = async (): Promise<Lens[]> => {
-        const raw = (await vscode.commands.executeCommand(
-          'vscode.executeCodeLensProvider',
-          uri,
-          100
-        )) as Lens[]
+        const raw = (await vscode.commands.executeCommand('vscode.executeCodeLensProvider', uri, 100)) as Lens[]
         return raw.map((l) => ({
           range: { start: { line: l.range.start.line } },
           command: l.command,
@@ -313,11 +303,7 @@ async function pollLensAt(
         command?: { title: string; command: string; arguments?: unknown[] }
       }
       const fetchNow = async (): Promise<Lens[]> => {
-        const raw = (await vscode.commands.executeCommand(
-          'vscode.executeCodeLensProvider',
-          uri,
-          100
-        )) as Lens[]
+        const raw = (await vscode.commands.executeCommand('vscode.executeCodeLensProvider', uri, 100)) as Lens[]
         return raw.map((l) => ({
           range: { start: { line: l.range.start.line } },
           command: l.command,
@@ -377,9 +363,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     evaluateInVSCode,
   }) => {
     const lenses = await fetchSettledLenses(evaluateInVSCode)
-    const titles = lenses
-      .map((l) => l.command?.title ?? null)
-      .filter((t): t is string => t !== null)
+    const titles = lenses.map((l) => l.command?.title ?? null).filter((t): t is string => t !== null)
 
     // Stakeholder reversal of #46's toggle: every playable kind besides
     // zzfx.call now carries a STATIC Play+Stop pair, both always present
@@ -422,18 +406,10 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // Every zzfxm.song and audio.file Play/Stop pair routes to the right
     // commands, proving provider.ts's per-kind dispatch (not just
     // zzfx.call's pre-existing playParams/openEditor).
-    expect(lensAt(lenses, FANFARE_CALL_LINE, '▶ Play')?.command?.command).toBe(
-      'threeFlatland.audio.playSong'
-    )
-    expect(lensAt(lenses, FANFARE_CALL_LINE, '⏹ Stop')?.command?.command).toBe(
-      'threeFlatland.audio.stopSong'
-    )
-    expect(lensAt(lenses, JUMP_SFX_LINE, '▶ Play')?.command?.command).toBe(
-      'threeFlatland.audio.playFile'
-    )
-    expect(lensAt(lenses, JUMP_SFX_LINE, '⏹ Stop')?.command?.command).toBe(
-      'threeFlatland.audio.stopSong'
-    )
+    expect(lensAt(lenses, FANFARE_CALL_LINE, '▶ Play')?.command?.command).toBe('threeFlatland.audio.playSong')
+    expect(lensAt(lenses, FANFARE_CALL_LINE, '⏹ Stop')?.command?.command).toBe('threeFlatland.audio.stopSong')
+    expect(lensAt(lenses, JUMP_SFX_LINE, '▶ Play')?.command?.command).toBe('threeFlatland.audio.playFile')
+    expect(lensAt(lenses, JUMP_SFX_LINE, '⏹ Stop')?.command?.command).toBe('threeFlatland.audio.stopSong')
     // The resolved absolute path is baked into the lens's own command
     // arguments — proving audioFileResolver.ts's workspace-root tier
     // actually ran and found the file, not just that a lens exists.
@@ -452,26 +428,12 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // #47: every wad.synth and tone.synth Play/Stop pair routes to its
     // own new command, proving provider.ts's dispatch covers all 5
     // finding kinds now, not just the original 3.
-    for (const line of [
-      ...WAD_OSCILLATOR_LINES,
-      WAD_VAR_RESOLVABLE_LINE,
-      WAD_VAR_UNRESOLVABLE_LINE,
-    ]) {
-      expect(lensAt(lenses, line, '▶ Play')?.command?.command).toBe(
-        'threeFlatland.audio.playWadSynth'
-      )
+    for (const line of [...WAD_OSCILLATOR_LINES, WAD_VAR_RESOLVABLE_LINE, WAD_VAR_UNRESOLVABLE_LINE]) {
+      expect(lensAt(lenses, line, '▶ Play')?.command?.command).toBe('threeFlatland.audio.playWadSynth')
       expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.audio.stopSong')
     }
-    for (const line of [
-      TONE_NOTE_LINE,
-      TONE_NOISE_LINE,
-      TONE_CHORD_LINE,
-      TONE_PLUCK_LINE,
-      TONE_DYNAMIC_NOTE_LINE,
-    ]) {
-      expect(lensAt(lenses, line, '▶ Play')?.command?.command).toBe(
-        'threeFlatland.audio.playToneSynth'
-      )
+    for (const line of [TONE_NOTE_LINE, TONE_NOISE_LINE, TONE_CHORD_LINE, TONE_PLUCK_LINE, TONE_DYNAMIC_NOTE_LINE]) {
+      expect(lensAt(lenses, line, '▶ Play')?.command?.command).toBe('threeFlatland.audio.playToneSynth')
       expect(lensAt(lenses, line, '⏹ Stop')?.command?.command).toBe('threeFlatland.audio.stopSong')
     }
 
@@ -481,9 +443,9 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // info message about why there's no preview, never a Play that fails).
     expect(lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '▶ Play')).toBeUndefined()
     expect(lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '⏹ Stop')).toBeUndefined()
-    expect(
-      lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '$(question) Unresolved')?.command?.command
-    ).toBe('threeFlatland.audio.explainUnresolved')
+    expect(lensAt(lenses, TONE_UNRESOLVABLE_NOTE_LINE, '$(question) Unresolved')?.command?.command).toBe(
+      'threeFlatland.audio.explainUnresolved'
+    )
   })
 
   // #41 slow tier: thunder.ogg misses every fast tier (it lives only at
@@ -526,11 +488,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // path — the command must re-stat, re-search, and settle not-found
     // rather than erroring or playing nothing silently.
     fs.rmSync(thunderPath)
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      playLens!.command!.command,
-      playLens!.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, playLens!.command!.command, playLens!.command!.arguments)
     lenses = await fetchSettledLenses(evaluateInVSCode)
     expect(lensAt(lenses, THUNDER_SFX_LINE, '$(search) Not Found')).toBeDefined()
     expect(lensAt(lenses, THUNDER_SFX_LINE, '▶ Play')).toBeUndefined()
@@ -540,11 +498,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     fs.mkdirSync(path.dirname(thunderPath), { recursive: true })
     fs.writeFileSync(thunderPath, thunderBytes)
     const notFoundLens = lensAt(lenses, THUNDER_SFX_LINE, '$(search) Not Found')!
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      notFoundLens.command!.command,
-      notFoundLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, notFoundLens.command!.command, notFoundLens.command!.arguments)
 
     // And the lens healed back to ▶ Play at the found path. Stop for test
     // hygiene before the next spec — Play/Stop are static now, so this
@@ -560,18 +514,12 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
   // the lens/command wiring here, and that the command dispatches
   // without throwing, is what's pinned now; audibility of the shared
   // output step is the offline gate's job.
-  test('playFile (audio.file route) decodes via the real command without throwing', async ({
-    evaluateInVSCode,
-  }) => {
+  test('playFile (audio.file route) decodes via the real command without throwing', async ({ evaluateInVSCode }) => {
     const lenses = await fetchLenses(evaluateInVSCode)
     const playLens = lensAt(lenses, CLICK_SFX_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.audio.playFile')
 
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 
@@ -617,10 +565,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     // message about why there's no preview (never a Play that would fail).
     for (const line of SYNTH_DECOY_LINES) {
       const decoyLenses = lenses.filter((l) => l.range.start.line === line)
-      expect(
-        decoyLenses,
-        `synthesis decoy on fixture line ${line} must surface exactly one lens`
-      ).toHaveLength(1)
+      expect(decoyLenses, `synthesis decoy on fixture line ${line} must surface exactly one lens`).toHaveLength(1)
       expect(decoyLenses[0]?.command?.title).toMatch(/\$\(question\)\s+Unresolved/)
       // Exact non-breaking-space guard (CodeRabbit): the `\s+` matcher above
       // would still pass if the provider regressed to a REGULAR space — the
@@ -659,11 +604,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     // Play — the lens SET doesn't change at all: same two lenses, same
     // titles, same commands. No refresh-triggered recompute, no face flip.
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
     lenses = await fetchLenses(evaluateInVSCode)
     const whilePlaying = lenses
       .filter((l) => l.range.start.line === LONG_MARCH_CALL_LINE)
@@ -703,20 +644,14 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
 
     const result = await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
         const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
 
         async function lensPairAt(line: number) {
-          const resolved = (await vscode.commands.executeCommand(
-            'vscode.executeCodeLensProvider',
-            uri,
-            100
-          )) as Array<{
+          const resolved = (await vscode.commands.executeCommand('vscode.executeCodeLensProvider', uri, 100)) as Array<{
             range: { start: { line: number } }
             command?: { title: string; command: string }
           }>
@@ -775,11 +710,7 @@ test.describe('FL Audio: multi-library Play/Stop lenses', () => {
     const playLens = lensAt(lenses, FANFARE_SPREAD_CALL_LINE, '▶ Play')!
     expect(playLens.command?.command).toBe('threeFlatland.audio.playSong')
 
-    await executeVSCodeCommand(
-      evaluateInVSCode,
-      playLens.command!.command,
-      playLens.command!.arguments
-    )
+    await executeVSCodeCommand(evaluateInVSCode, playLens.command!.command, playLens.command!.arguments)
     await executeVSCodeCommand(evaluateInVSCode, 'threeFlatland.audio.stopSong', [])
   })
 })

@@ -4,8 +4,9 @@ import { createRoot } from 'react-dom/client'
 import { createClientBridge, getVSCodeApi } from '@three-flatland/bridge/client'
 // Suppress the 'custom element already registered' warning that fires when
 // any code path re-imports this module at runtime. Documented escape hatch.
-;(globalThis as unknown as { __vscodeElements_disableRegistryWarning__?: boolean })
-  .__vscodeElements_disableRegistryWarning__ = true
+;(
+  globalThis as unknown as { __vscodeElements_disableRegistryWarning__?: boolean }
+).__vscodeElements_disableRegistryWarning__ = true
 // Side-effect imports for <vscode-*> elements used as raw JSX intrinsics
 // in this entry. Every other element (toolbar-button, icon, badge, ...)
 // is registered transitively when its React wrapper is imported by the

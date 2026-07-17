@@ -3,9 +3,20 @@
 // nodes) and tags edges that cross package boundaries.
 
 const PALETTE = [
-  '#47cca9', '#0bafe6', '#d94c87', '#f7c93e', '#f09c60',
-  '#732866', '#a6216e', '#17735f', '#2469b3', '#b38f24',
-  '#b36159', '#343473', '#d94c87', '#0bafe6',
+  '#47cca9',
+  '#0bafe6',
+  '#d94c87',
+  '#f7c93e',
+  '#f09c60',
+  '#732866',
+  '#a6216e',
+  '#17735f',
+  '#2469b3',
+  '#b38f24',
+  '#b36159',
+  '#343473',
+  '#d94c87',
+  '#0bafe6',
 ]
 
 export const pkgOf = (p: string) => p.split('/').slice(0, 2).join('/')

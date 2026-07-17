@@ -21,9 +21,7 @@ describe('unpackBaked version gate', () => {
     }) as unknown as GlbView
 
   it('rejects a FL_slug_font version newer than supported', () => {
-    expect(() => unpackBaked(stub({ version: SLUG_FONT_VERSION + 1 }))).toThrow(
-      /unsupported FL_slug_font version/,
-    )
+    expect(() => unpackBaked(stub({ version: SLUG_FONT_VERSION + 1 }))).toThrow(/unsupported FL_slug_font version/)
   })
 
   it('rejects a missing/invalid version', () => {

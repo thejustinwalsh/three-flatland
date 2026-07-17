@@ -70,9 +70,7 @@ export class MessageDecoder {
       const header = this.buffer.subarray(0, headerEnd).toString('ascii')
       const result = parseContentLength(header)
       if (result.kind === 'missing') {
-        throw new Error(
-          `codelens-service: missing Content-Length header in: ${JSON.stringify(header)}`
-        )
+        throw new Error(`codelens-service: missing Content-Length header in: ${JSON.stringify(header)}`)
       }
       if (result.kind === 'invalid') {
         throw new Error(`codelens-service: ${result.reason}`)
@@ -89,10 +87,7 @@ export class MessageDecoder {
   }
 }
 
-type ContentLengthResult =
-  | { kind: 'missing' }
-  | { kind: 'invalid'; reason: string }
-  | { kind: 'ok'; value: number }
+type ContentLengthResult = { kind: 'missing' } | { kind: 'invalid'; reason: string } | { kind: 'ok'; value: number }
 
 const STRICT_DIGITS = /^\d+$/
 

@@ -199,7 +199,7 @@ export function watchToolConfiguration(context: vscode.ExtensionContext): void {
           try {
             disposable?.dispose()
           } catch (err) {
-            log(`toolRegistry: ${descriptor.label} failed to dispose cleanly: ${err}`)
+            log(`toolRegistry: ${descriptor.label} failed to dispose cleanly: ${String(err)}`)
           }
           live.delete(descriptor.id)
           // Also drop it from context.subscriptions (it was pushed there on

@@ -49,7 +49,14 @@ export function StyledQR({ data, size = 208 }: { data: string; size?: number }) 
   return (
     <div
       ref={ref}
-      style={{ width: size, height: size, background: '#fff', borderRadius: '0.9rem', padding: '0.7rem', lineHeight: 0 }}
+      style={{
+        width: size,
+        height: size,
+        background: '#fff',
+        borderRadius: '0.9rem',
+        padding: '0.7rem',
+        lineHeight: 0,
+      }}
     />
   )
 }

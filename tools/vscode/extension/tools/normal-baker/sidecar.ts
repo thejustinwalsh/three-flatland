@@ -30,9 +30,7 @@ export type LoadedDescriptor = { descriptor: NormalSourceDescriptor }
  * treat that as a non-fatal load error (see atlas's `readAtlasSidecar`
  * for the established convention this mirrors).
  */
-export async function readNormalDescriptorSidecar(
-  imageUri: vscode.Uri
-): Promise<LoadedDescriptor | null> {
+export async function readNormalDescriptorSidecar(imageUri: vscode.Uri): Promise<LoadedDescriptor | null> {
   const uri = normalJsonUriFor(imageUri)
   let bytes: Uint8Array
   try {
@@ -80,10 +78,7 @@ export type SaveResult = { pngUri: vscode.Uri; jsonUri: vscode.Uri }
  * virtual-filesystem source (remote SSH edits a local extension host
  * doesn't back, Codespaces web, vscode.dev) can't be baked this way.
  */
-export function saveNormalDescriptor(
-  imageUri: vscode.Uri,
-  descriptor: NormalSourceDescriptor
-): SaveResult {
+export function saveNormalDescriptor(imageUri: vscode.Uri, descriptor: NormalSourceDescriptor): SaveResult {
   assertValidNormalDescriptor(descriptor)
   if (imageUri.scheme !== 'file') {
     throw new Error(

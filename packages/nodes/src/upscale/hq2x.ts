@@ -70,10 +70,9 @@ export function hq2x(
   // Check edges and corners for blending decisions
 
   // Top-left quadrant
-  const p1Blend =
-    eq(w4, w2) // Left matches top
-      .and(eq(w5, w1).not()) // Center differs from corner
-      .and(eq(w5, w4).not()) // Center differs from left
+  const p1Blend = eq(w4, w2) // Left matches top
+    .and(eq(w5, w1).not()) // Center differs from corner
+    .and(eq(w5, w4).not()) // Center differs from left
 
   // Top-right quadrant
   const p2Blend = eq(w2, w6).and(eq(w5, w3).not()).and(eq(w5, w6).not())
@@ -158,7 +157,9 @@ export function hq3x(
 
   // Corner blending
   const blendCorner = (corner: Node<'vec4'>, adj1: Node<'vec4'>, adj2: Node<'vec4'>) =>
-    eq(adj1, adj2).and(eq(w5, corner).not()).select(mix(adj1.rgb.add(adj2.rgb).div(2), w5.rgb, float(0.5)), w5.rgb)
+    eq(adj1, adj2)
+      .and(eq(w5, corner).not())
+      .select(mix(adj1.rgb.add(adj2.rgb).div(2), w5.rgb, float(0.5)), w5.rgb)
 
   // Apply corner blending
   const topLeftResult = blendCorner(w1, w2, w4)
@@ -167,10 +168,18 @@ export function hq3x(
   const bottomRightResult = blendCorner(w9, w6, w8)
 
   // Edge blending
-  const topEdge = eq(w2, w5).not().select(mix(w2.rgb, w5.rgb, float(0.5)), w5.rgb)
-  const bottomEdge = eq(w8, w5).not().select(mix(w8.rgb, w5.rgb, float(0.5)), w5.rgb)
-  const leftEdge = eq(w4, w5).not().select(mix(w4.rgb, w5.rgb, float(0.5)), w5.rgb)
-  const rightEdge = eq(w6, w5).not().select(mix(w6.rgb, w5.rgb, float(0.5)), w5.rgb)
+  const topEdge = eq(w2, w5)
+    .not()
+    .select(mix(w2.rgb, w5.rgb, float(0.5)), w5.rgb)
+  const bottomEdge = eq(w8, w5)
+    .not()
+    .select(mix(w8.rgb, w5.rgb, float(0.5)), w5.rgb)
+  const leftEdge = eq(w4, w5)
+    .not()
+    .select(mix(w4.rgb, w5.rgb, float(0.5)), w5.rgb)
+  const rightEdge = eq(w6, w5)
+    .not()
+    .select(mix(w6.rgb, w5.rgb, float(0.5)), w5.rgb)
 
   // Select based on position
   result = isTop.and(isLeft).select(topLeftResult, result)

@@ -63,9 +63,7 @@ async function main(argv: string[]): Promise<number> {
 
 function printList(bakers: BakerRegistration[]): number {
   if (bakers.length === 0) {
-    process.stdout.write(
-      'No bakers registered. Install a package that contributes one (e.g. @three-flatland/slug).\n'
-    )
+    process.stdout.write('No bakers registered. Install a package that contributes one (e.g. @three-flatland/slug).\n')
     return 0
   }
 

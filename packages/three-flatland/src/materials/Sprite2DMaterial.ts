@@ -1,12 +1,5 @@
 import { attribute, texture, vec2, vec4, float, If, Discard, select } from 'three/tsl'
-import {
-  type Texture,
-  FrontSide,
-  NormalBlending,
-  CustomBlending,
-  OneFactor,
-  OneMinusSrcAlphaFactor,
-} from 'three'
+import { type Texture, FrontSide, NormalBlending, CustomBlending, OneFactor, OneMinusSrcAlphaFactor } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
 import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
@@ -291,9 +284,7 @@ export class Sprite2DMaterial extends EffectMaterial {
     )
 
     // Remap to frame in atlas
-    const atlasUV = frameUV
-      .mul(vec2(instanceUV.z, instanceUV.w))
-      .add(vec2(instanceUV.x, instanceUV.y))
+    const atlasUV = frameUV.mul(vec2(instanceUV.z, instanceUV.w)).add(vec2(instanceUV.x, instanceUV.y))
 
     // Sample texture
     const texColor = texture(mapTexture, atlasUV)
@@ -384,8 +375,7 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   _resolveGeometryStrategy(deferRebuild = false): void {
     const atlas = getAtlasMesh(this._spriteTexture)
-    let wantsTight =
-      this.transparent && this.alphaTest === 0 && atlas !== null && atlas.frames.length > 0
+    let wantsTight = this.transparent && this.alphaTest === 0 && atlas !== null && atlas.frames.length > 0
     if (wantsTight && this._effectTotalFloats > 16) {
       // Tight-mesh spends 2 bindings on geometry — a material already
       // carrying more than 16 effect floats can't fit under WebGPU's
@@ -448,8 +438,7 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   protected override _effectFloatCap(prospectiveTotal: number): number {
     const atlas = getAtlasMesh(this._spriteTexture)
-    const wantsTight =
-      this.transparent && this.alphaTest === 0 && atlas !== null && atlas.frames.length > 0
+    const wantsTight = this.transparent && this.alphaTest === 0 && atlas !== null && atlas.frames.length > 0
     return wantsTight && prospectiveTotal <= 16 ? 16 : EffectMaterial.MAX_EFFECT_FLOATS
   }
 

@@ -133,11 +133,7 @@ export function perfMeasure(
  * is wired into `DevtoolsProvider`; broader pipeline coverage (and most
  * `perfStart` call sites) is tracked there.
  */
-export function perfStart(
-  track: PerfTrackName,
-  name: string,
-  opts?: PerfDetailOptions
-): () => void {
+export function perfStart(track: PerfTrackName, name: string, opts?: PerfDetailOptions): () => void {
   const start = performance.now()
   return () => perfMeasure(track, name, start, performance.now(), opts)
 }

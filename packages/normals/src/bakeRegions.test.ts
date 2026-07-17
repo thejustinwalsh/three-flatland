@@ -14,12 +14,7 @@ function solidPixels(width: number, height: number, alpha = 255): Uint8Array {
   return buf
 }
 
-function rgbAt(
-  buf: Uint8Array,
-  x: number,
-  y: number,
-  w: number
-): [number, number, number] {
+function rgbAt(buf: Uint8Array, x: number, y: number, w: number): [number, number, number] {
   const i = (y * w + x) * 4
   return [buf[i]!, buf[i + 1]!, buf[i + 2]!]
 }
@@ -29,12 +24,7 @@ function rgbAt(
  * R/G are nx/ny in [-1, 1]; nz is `sqrt(max(0, 1 − nx² − ny²))`.
  * B carries elevation now, not nz — use `elevationAt` to read it.
  */
-function normalAt(
-  buf: Uint8Array,
-  x: number,
-  y: number,
-  w: number
-): [number, number, number] {
+function normalAt(buf: Uint8Array, x: number, y: number, w: number): [number, number, number] {
   const [r, g] = rgbAt(buf, x, y, w)
   const nx = (r / 255) * 2 - 1
   const ny = (g / 255) * 2 - 1
@@ -182,11 +172,7 @@ describe('bakeNormalMap — bump × tilt composition', () => {
     // equivalent. Pick (3, 4) — sits just west of the hole.
     const withBump = normalAt(tilted, 3, 4, w)
     const noBump = normalAt(flatTilted, 3, 4, w)
-    const delta = Math.hypot(
-      withBump[0] - noBump[0],
-      withBump[1] - noBump[1],
-      withBump[2] - noBump[2]
-    )
+    const delta = Math.hypot(withBump[0] - noBump[0], withBump[1] - noBump[1], withBump[2] - noBump[2])
     expect(delta).toBeGreaterThan(0.01)
   })
 })
@@ -312,8 +298,8 @@ describe('bakeNormalMap — elevation channel (B)', () => {
     const input = solidPixels(w, h, 255)
     const out = bakeNormalMap(input, w, h, {
       regions: [
-        { x: 0, y: 0, w: 4, h: 2, elevation: 1 },    // cap
-        { x: 4, y: 0, w: 4, h: 2, elevation: 0.5 },  // face
+        { x: 0, y: 0, w: 4, h: 2, elevation: 1 }, // cap
+        { x: 4, y: 0, w: 4, h: 2, elevation: 0.5 }, // face
       ],
     })
     expect(elevationAt(out, 1, 1, w)).toBeCloseTo(1, 2)

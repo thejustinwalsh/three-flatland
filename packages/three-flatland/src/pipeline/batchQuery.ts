@@ -66,10 +66,7 @@ export class BatchQueryView extends Map<RunKey, SpriteBatch[]> {
  * run key. Shared by `SpriteGroup.batches` and `Registry.batches` so the
  * run → mesh-list traversal has exactly one implementation.
  */
-export function buildBatchQueryView(
-  world: World | null,
-  registryData: RegistryData | null
-): BatchQueryView {
+export function buildBatchQueryView(world: World | null, registryData: RegistryData | null): BatchQueryView {
   const view = new BatchQueryView(world)
   if (!registryData) return view
   for (const [key, run] of registryData.runs) {

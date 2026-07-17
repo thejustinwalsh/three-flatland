@@ -10,12 +10,7 @@ import {
 import { NodeMaterial, QuadMesh, RendererUtils, type WebGPURenderer } from 'three/webgpu'
 import { uniform, uv, vec2, vec4, float, Fn, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import {
-  beginDebugPass,
-  endDebugPass,
-  registerDebugTexture,
-  unregisterDebugTexture,
-} from '../debug/debug-sink'
+import { beginDebugPass, endDebugPass, registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
 
 /**
  * Jump Flood Algorithm (JFA) SDF Generator.
@@ -362,10 +357,7 @@ export class SDFGenerator {
    * on a rectangular RT would pick an anisotropic winner and squash the
    * SDF along one axis.
    */
-  private _buildJFAMaterial(
-    sourceTex: Texture,
-    jumpSize: ReturnType<typeof uniform>
-  ): NodeMaterial {
+  private _buildJFAMaterial(sourceTex: Texture, jumpSize: ReturnType<typeof uniform>): NodeMaterial {
     const worldSize = this._worldSizeNode
     const mat = new NodeMaterial()
     mat.fragmentNode = Fn(() => {

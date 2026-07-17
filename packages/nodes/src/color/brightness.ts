@@ -53,11 +53,7 @@ export function brightnessMultiply(inputColor: Node<'vec4'>, factor: FloatInput)
 export function brightnessClamped(inputColor: Node<'vec4'>, amount: FloatInput): Node<'vec4'> {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
 
-  const adjustedRGB = clamp(
-    inputColor.rgb.add(vec3(amountNode, amountNode, amountNode)),
-    float(0),
-    float(1)
-  )
+  const adjustedRGB = clamp(inputColor.rgb.add(vec3(amountNode, amountNode, amountNode)), float(0), float(1))
 
   return vec4(adjustedRGB, inputColor.a)
 }

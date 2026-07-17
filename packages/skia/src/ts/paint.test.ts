@@ -17,27 +17,18 @@ describe('SkiaPaint', () => {
   })
 
   it('fluent color + fill', () => {
-    const paint = new SkiaPaint(skia)
-      .setColor(1, 0, 0, 1)
-      .setFill()
+    const paint = new SkiaPaint(skia).setColor(1, 0, 0, 1).setFill()
     expect(paint._handle).toBeGreaterThan(0)
     paint.dispose()
   })
 
   it('stroke with cap/join/miter', () => {
-    const paint = new SkiaPaint(skia)
-      .setStroke(3)
-      .setStrokeCap('round')
-      .setStrokeJoin('bevel')
-      .setStrokeMiter(8)
+    const paint = new SkiaPaint(skia).setStroke(3).setStrokeCap('round').setStrokeJoin('bevel').setStrokeMiter(8)
     paint.dispose()
   })
 
   it('alpha and blend mode', () => {
-    const paint = new SkiaPaint(skia)
-      .setAlpha(0.5)
-      .setBlendMode('multiply')
-      .setAntiAlias(true)
+    const paint = new SkiaPaint(skia).setAlpha(0.5).setBlendMode('multiply').setAntiAlias(true)
     paint.dispose()
   })
 
@@ -52,35 +43,27 @@ describe('SkiaPaint', () => {
   })
 
   it('dash', () => {
-    const paint = new SkiaPaint(skia)
-      .setDash([10, 5, 3, 5], 0)
+    const paint = new SkiaPaint(skia).setDash([10, 5, 3, 5], 0)
     paint.clearDash()
     paint.dispose()
   })
 
   it('linear gradient', () => {
-    const paint = new SkiaPaint(skia)
-      .setLinearGradient(0, 0, 100, 0, [0xFFFF0000, 0xFF0000FF], [0, 1])
+    const paint = new SkiaPaint(skia).setLinearGradient(0, 0, 100, 0, [0xffff0000, 0xff0000ff], [0, 1])
     paint.clearShader()
     paint.dispose()
   })
 
   it('radial gradient', () => {
-    new SkiaPaint(skia)
-      .setRadialGradient(50, 50, 50, [0xFFFF0000, 0xFF0000FF], [0, 1])
-      .dispose()
+    new SkiaPaint(skia).setRadialGradient(50, 50, 50, [0xffff0000, 0xff0000ff], [0, 1]).dispose()
   })
 
   it('sweep gradient', () => {
-    new SkiaPaint(skia)
-      .setSweepGradient(50, 50, [0xFFFF0000, 0xFF00FF00, 0xFF0000FF], [0, 0.5, 1])
-      .dispose()
+    new SkiaPaint(skia).setSweepGradient(50, 50, [0xffff0000, 0xff00ff00, 0xff0000ff], [0, 0.5, 1]).dispose()
   })
 
   it('two point conical gradient', () => {
-    new SkiaPaint(skia)
-      .setTwoPointConicalGradient(30, 30, 10, 60, 60, 50, [0xFFFF0000, 0xFF0000FF], [0, 1])
-      .dispose()
+    new SkiaPaint(skia).setTwoPointConicalGradient(30, 30, 10, 60, 60, 50, [0xffff0000, 0xff0000ff], [0, 1]).dispose()
   })
 
   it('getColor returns color components', () => {

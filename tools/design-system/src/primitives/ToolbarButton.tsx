@@ -28,11 +28,5 @@ export function ToolbarButton({ disabled, onMouseUp, ...rest }: ToolbarButtonPro
     onMouseUp?.(e)
     ;(e.currentTarget as unknown as HTMLElement).blur()
   }
-  return (
-    <VscodeToolbarButton
-      {...(attrs as Record<string, unknown>)}
-      {...rest}
-      onMouseUp={handleMouseUp}
-    />
-  )
+  return <VscodeToolbarButton {...(attrs as Record<string, unknown>)} {...rest} onMouseUp={handleMouseUp} />
 }

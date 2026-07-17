@@ -1,12 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { Canvas, extend, useLoader, useThree } from '@react-three/fiber/webgpu'
-import {
-  NearestFilter,
-  LinearFilter,
-  type OrthographicCamera as ThreeOrthographicCamera,
-  type Texture,
-} from 'three'
+import { NearestFilter, LinearFilter, type OrthographicCamera as ThreeOrthographicCamera, type Texture } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
@@ -33,7 +28,7 @@ export type AnimationPreviewPipProps = {
   /** Current playhead index (post-duplication). */
   playhead: number
   isPlaying: boolean
-  onTogglePlay(): void
+  onTogglePlay: () => void
   /**
    * Pixel-art filtering. When true, the shared atlas texture's
    * min/mag filter switches to `NearestFilter` (which propagates to
@@ -54,7 +49,7 @@ export type AnimationPreviewPipProps = {
    */
   pipScale?: AnimationPipScale
   /** Click handler for the scale toggle in the transport bar. */
-  onCycleScale?(): void
+  onCycleScale?: () => void
   /**
    * Per-frame event tags from the active animation's `events` block,
    * keyed by post-duplication frame index. When the playhead lands on
@@ -228,7 +223,7 @@ function PipScene({
     return {
       name: 'pip',
       x: frame.x / frame.atlasW,
-      y: 1 - (frame.y / frame.atlasH) - normalizedHeight,
+      y: 1 - frame.y / frame.atlasH - normalizedHeight,
       width: frame.w / frame.atlasW,
       height: normalizedHeight,
       sourceWidth: frame.w,
@@ -272,8 +267,14 @@ function PipScene({
  */
 export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
   const {
-    animationName, frames, rectsByName, atlasImageUri, atlasSize,
-    playhead, isPlaying, onTogglePlay,
+    animationName,
+    frames,
+    rectsByName,
+    atlasImageUri,
+    atlasSize,
+    playhead,
+    isPlaying,
+    onTogglePlay,
     pixelArt = false,
     panMode = false,
     pipScale = 1,
@@ -286,9 +287,7 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
   const currentFrameIndex = Math.min(playhead, frames.length - 1)
   const currentName = frames[currentFrameIndex]!
   const rect = rectsByName[currentName]
-  const frame = rect
-    ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h, atlasW: atlasSize.w, atlasH: atlasSize.h }
-    : null
+  const frame = rect ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h, atlasW: atlasSize.w, atlasH: atlasSize.h } : null
   // Event tag for the current playhead frame, if any. Keyed by frame
   // index (as string, matching the sidecar storage shape). The
   // editor's timeline uses the same lookup pattern.
@@ -324,10 +323,7 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
   // When the floor kicks in, the sprite renders centered with empty
   // space around it — the camera frustum widens to inner / pipScale.
   const frameMax = frame ? Math.max(frame.w, frame.h) : 0
-  const innerSize = Math.max(
-    MIN_INNER_SIZE,
-    Math.min(MAX_INNER_SIZE, frameMax * pipScale),
-  )
+  const innerSize = Math.max(MIN_INNER_SIZE, Math.min(MAX_INNER_SIZE, frameMax * pipScale))
   const outerWidth = innerSize + 2 // 1px L + 1px R border
   const outerHeight = innerSize + TRANSPORT_HEIGHT + 2
 
@@ -379,7 +375,10 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
         <span
           data-pip-transport=""
           {...stylex.props(s.play)}
-          onClick={(e) => { e.stopPropagation(); onTogglePlay() }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onTogglePlay()
+          }}
         >
           {isPlaying ? '⏸' : '▶'}
         </span>
@@ -391,12 +390,17 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
             aria-label={`Cycle PIP scale (currently ${pipScale}×)`}
             title={`Sprite scale: ${pipScale}× — click to cycle`}
             {...stylex.props(s.scaleBtn)}
-            onClick={(e) => { e.stopPropagation(); onCycleScale() }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onCycleScale()
+            }}
           >
             {pipScale}×
           </span>
         ) : null}
-        <span {...stylex.props(s.meta)}>{playhead + 1}/{frames.length}</span>
+        <span {...stylex.props(s.meta)}>
+          {playhead + 1}/{frames.length}
+        </span>
       </div>
     </div>
   )

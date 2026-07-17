@@ -62,11 +62,7 @@ export function packRects(input: PackInput): PackResult {
   }
 }
 
-function findBestNode(
-  free: FreeRect[],
-  w: number,
-  h: number,
-): { x: number; y: number } | null {
+function findBestNode(free: FreeRect[], w: number, h: number): { x: number; y: number } | null {
   let best: { x: number; y: number; score: number } | null = null
   for (const f of free) {
     if (f.w < w || f.h < h) continue

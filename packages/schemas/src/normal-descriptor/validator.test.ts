@@ -136,9 +136,7 @@ describe('normal-descriptor.schema.json', () => {
 
 describe('validateNormalDescriptor', () => {
   it('accepts a valid descriptor and surfaces no errors', () => {
-    expect(
-      validateNormalDescriptor({ direction: 'south', regions: [{ x: 0, y: 0, w: 8, h: 8 }] })
-    ).toBe(true)
+    expect(validateNormalDescriptor({ direction: 'south', regions: [{ x: 0, y: 0, w: 8, h: 8 }] })).toBe(true)
     expect(formatNormalDescriptorErrors()).toBe('')
   })
 

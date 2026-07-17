@@ -29,10 +29,7 @@ function circleSource(name: string, size: number, radius: number): AtlasSource {
 }
 
 function loadBakedJson(json: unknown): Promise<SpriteSheet> {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(json) })
-  )
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(json) }))
   const texture = new Texture()
   texture.image = { width: 128, height: 128 }
   vi.spyOn(

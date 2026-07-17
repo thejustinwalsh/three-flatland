@@ -1,22 +1,9 @@
 import type { WebGPURenderer } from 'three/webgpu'
 import type { DataTexture, PixelFormat, Texture } from 'three'
-import {
-  Mesh,
-  NearestFilter,
-  NoBlending,
-  OrthographicCamera,
-  PlaneGeometry,
-  RenderTarget,
-  Scene,
-} from 'three'
+import { Mesh, NearestFilter, NoBlending, OrthographicCamera, PlaneGeometry, RenderTarget, Scene } from 'three'
 import { texture as sampleTexture } from 'three/tsl'
 import { NodeMaterial } from 'three/webgpu'
-import type {
-  BufferDelta,
-  BufferDisplayMode,
-  BuffersPayload,
-  TexturePixelType,
-} from '../debug-protocol'
+import type { BufferDelta, BufferDisplayMode, BuffersPayload, TexturePixelType } from '../debug-protocol'
 import type { BuffersSubscription } from './SubscriberRegistry'
 
 /**
@@ -99,7 +86,7 @@ export class DebugTextureRegistry {
     name: string,
     source: DataTexture | ReadableRenderTarget,
     pixelType: TexturePixelType,
-    opts: { label?: string; display?: BufferDisplayMode } = {},
+    opts: { label?: string; display?: BufferDisplayMode } = {}
   ): void {
     const existing = this._entries.get(name)
     const version = (existing?.version ?? 0) + 1
@@ -116,8 +103,8 @@ export class DebugTextureRegistry {
       label: opts.label,
       lastEmittedVersion: existing?.lastEmittedVersion ?? 0,
       lastEmittedShape: existing?.lastEmittedShape ?? 'none',
-      dataTexture: isDataTexture ? (source) : undefined,
-      renderTarget: isDataTexture ? undefined : (source),
+      dataTexture: isDataTexture ? source : undefined,
+      renderTarget: isDataTexture ? undefined : source,
       pendingReadback: null,
       sample: existing?.sample ?? null,
       width: existing?.width ?? 0,
@@ -152,11 +139,7 @@ export class DebugTextureRegistry {
    * Returns `true` when the payload was written (the caller should
    * include `atlas:tick` in the data packet).
    */
-  drain(
-    out: BuffersPayload,
-    subscription: BuffersSubscription,
-    _renderer: WebGPURenderer | undefined,
-  ): boolean {
+  drain(out: BuffersPayload, subscription: BuffersSubscription, _renderer: WebGPURenderer | undefined): boolean {
     let wrote = false
     const entries: Record<string, BufferDelta | null> = {}
 
@@ -175,17 +158,21 @@ export class DebugTextureRegistry {
       // correct size. `e.width`/`e.height` track the SHIPPED dims
       // (possibly downsampled), which the readback path sets below.
       if (e.renderTarget) {
-        const lw = e.renderTarget.width, lh = e.renderTarget.height
+        const lw = e.renderTarget.width,
+          lh = e.renderTarget.height
         if (lw !== e.srcWidth || lh !== e.srcHeight) {
-          e.srcWidth = lw; e.srcHeight = lh
+          e.srcWidth = lw
+          e.srcHeight = lh
           e.version++
           e.sample = null
           e.pendingReadback = null
         }
       } else if (e.dataTexture) {
-        const lw = e.dataTexture.image.width, lh = e.dataTexture.image.height
+        const lw = e.dataTexture.image.width,
+          lh = e.dataTexture.image.height
         if (lw !== e.srcWidth || lh !== e.srcHeight) {
-          e.srcWidth = lw; e.srcHeight = lh
+          e.srcWidth = lw
+          e.srcHeight = lh
           e.version++
         }
       }
@@ -196,9 +183,7 @@ export class DebugTextureRegistry {
         pixelType: e.pixelType,
         display: e.display,
         version: e.version,
-        ...(e.srcWidth !== e.width || e.srcHeight !== e.height
-          ? { srcWidth: e.srcWidth, srcHeight: e.srcHeight }
-          : {}),
+        ...(e.srcWidth !== e.width || e.srcHeight !== e.height ? { srcWidth: e.srcWidth, srcHeight: e.srcHeight } : {}),
         ...(e.label !== undefined ? { label: e.label } : {}),
       }
       if (inFilter && e.sample !== null) {
@@ -270,7 +255,7 @@ export class DebugTextureRegistry {
     e: DebugTextureEntry,
     renderer: WebGPURenderer | undefined,
     mode: 'thumbnail' | 'stream' = 'stream',
-    thumbSize: number = 256,
+    thumbSize: number = 256
   ): void {
     if (e.pendingReadback !== null) return
 
@@ -279,9 +264,7 @@ export class DebugTextureRegistry {
       // the consumer isn't reading while the host mutates.
       const src = e.dataTexture.image.data as Uint8Array | Float32Array | undefined
       if (src !== undefined) {
-        const copy = src instanceof Float32Array
-          ? new Float32Array(src)
-          : new Uint8Array(src)
+        const copy = src instanceof Float32Array ? new Float32Array(src) : new Uint8Array(src)
         e.sample = copy
         const w = e.dataTexture.image.width
         const h = e.dataTexture.image.height
@@ -348,20 +331,22 @@ export class DebugTextureRegistry {
           // silent failures don't leave panels blank without feedback.
           if (e.readbackErrorLogged !== true) {
             e.readbackErrorLogged = true
-            console.error(
-              `[devtools] downsample failed for '${e.name}', falling back to native-size:`,
-              err,
-            )
+            console.error(`[devtools] downsample failed for '${e.name}', falling back to native-size:`, err)
           }
         }
       }
 
-      const readAsync = (renderer as unknown as {
-        readRenderTargetPixelsAsync?: (
-          renderTarget: unknown,
-          x: number, y: number, w: number, h: number,
-        ) => Promise<ArrayBufferView>
-      }).readRenderTargetPixelsAsync
+      const readAsync = (
+        renderer as unknown as {
+          readRenderTargetPixelsAsync?: (
+            renderTarget: unknown,
+            x: number,
+            y: number,
+            w: number,
+            h: number
+          ) => Promise<ArrayBufferView>
+        }
+      ).readRenderTargetPixelsAsync
       if (typeof readAsync !== 'function') return
       const p = readAsync.call(renderer, target, 0, 0, shippedW, shippedH).then(
         (result: ArrayBufferView) => {
@@ -384,11 +369,11 @@ export class DebugTextureRegistry {
             e.readbackErrorLogged = true
             console.error(
               `[devtools] readRenderTargetPixelsAsync rejected for '${e.name}' ` +
-              `(${shippedW}×${shippedH}, ${e.pixelType}):`,
-              err,
+                `(${shippedW}×${shippedH}, ${e.pixelType}):`,
+              err
             )
           }
-        },
+        }
       )
       e.pendingReadback = p
     }

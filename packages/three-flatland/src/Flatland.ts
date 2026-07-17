@@ -347,10 +347,7 @@ export class Flatland extends Group implements WorldProvider {
     // never added to a parent) and React/R3F (discarded renders never
     // reach `render()`, so orphan Flatland instances stay inert and GC).
     // Cleanup happens in `dispose()` below.
-    if (
-      (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') &&
-      isDevtoolsActive()
-    ) {
+    if ((process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') && isDevtoolsActive()) {
       // Lazy-load the producer via dynamic import so a production build (gate
       // folded to `false`) dead-strips this `import()` and never bundles
       // DevtoolsProvider or its dependencies (BatchCollector, registries, the
@@ -686,9 +683,7 @@ export class Flatland extends Group implements WorldProvider {
 
     // Spawn ECS entity with PostPassTrait
     const ctor = passEffect.constructor as typeof PassEffect
-    const entity = this.world.spawn(
-      PostPassTrait({ fn, order: passEffect._order, enabled: passEffect.enabled })
-    )
+    const entity = this.world.spawn(PostPassTrait({ fn, order: passEffect._order, enabled: passEffect.enabled }))
 
     // Add class-specific trait if schema has fields
     if (ctor._fields.length > 0) {
@@ -924,9 +919,7 @@ export class Flatland extends Group implements WorldProvider {
     } else {
       // Clearing lighting
       if (this._lightingContextEntity) {
-        const existingCtx = this._lightingContextEntity.get(LightingContext) as
-          | LightingContextData
-          | undefined
+        const existingCtx = this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined
         this._lightingContextEntity.set(LightingContext, {
           effect: null,
           lightStore: existingCtx?.lightStore ?? null,
@@ -1004,12 +997,7 @@ export class Flatland extends Group implements WorldProvider {
       if (pipeline?.sdfGenerator) sdfTexture = pipeline.sdfGenerator.sdfTexture
     }
 
-    const fn = lightEffect._buildLightFn(
-      this._lightStore,
-      this._worldSizeUniform,
-      this._worldOffsetUniform,
-      sdfTexture
-    )
+    const fn = lightEffect._buildLightFn(this._lightStore, this._worldSizeUniform, this._worldOffsetUniform, sdfTexture)
     const wrappedLightFn = wrapWithLightFlags(fn)
     lctx.wrappedLightFn = wrappedLightFn
     // requiredChannels is `ctor.requires`, static readonly — never
@@ -1194,9 +1182,7 @@ export class Flatland extends Group implements WorldProvider {
    */
   private _getLightingContext() {
     if (!this._lightingContextEntity) return null
-    return (
-      (this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined) ?? null
-    )
+    return (this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined) ?? null
   }
 
   /**

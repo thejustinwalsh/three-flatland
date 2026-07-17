@@ -4,20 +4,9 @@
 // Node-only helpers (file I/O, CLI) live under `@three-flatland/normals/node`
 // so bundlers targeting the browser don't pull in `node:fs` or pngjs.
 
-export {
-  bakeNormalMap,
-  bakeNormalMapFromPixels,
-  bakedNormalURL,
-  type BakeOptions,
-} from './bake.js'
-export {
-  NormalMapLoader,
-  type NormalMapResult,
-} from './NormalMapLoader.js'
-export {
-  resolveNormalMap,
-  type ResolveNormalMapOptions,
-} from './resolveNormalMap.js'
+export { bakeNormalMap, bakeNormalMapFromPixels, bakedNormalURL, type BakeOptions } from './bake.js'
+export { NormalMapLoader, type NormalMapResult } from './NormalMapLoader.js'
+export { resolveNormalMap, type ResolveNormalMapOptions } from './resolveNormalMap.js'
 export {
   directionToAngle,
   resolveRegion,

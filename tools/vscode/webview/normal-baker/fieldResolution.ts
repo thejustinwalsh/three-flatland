@@ -36,10 +36,7 @@ export function resolveBump(region: NormalRegion, descriptor: NormalSourceDescri
   return region.bump ?? descriptor.bump ?? DEFAULT_BUMP
 }
 
-export function resolveDirection(
-  region: NormalRegion,
-  descriptor: NormalSourceDescriptor
-): NormalDirection {
+export function resolveDirection(region: NormalRegion, descriptor: NormalSourceDescriptor): NormalDirection {
   return region.direction ?? descriptor.direction ?? 'flat'
 }
 

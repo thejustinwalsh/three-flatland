@@ -1,11 +1,5 @@
 // Scanline effects
-export {
-  scanlines,
-  scanlinesSmooth,
-  scanlinesGlow,
-  scanlinesInterlaced,
-  scanlinesGrid,
-} from './scanlines'
+export { scanlines, scanlinesSmooth, scanlinesGlow, scanlinesInterlaced, scanlinesGrid } from './scanlines'
 
 // Phosphor mask patterns
 export {
@@ -29,12 +23,4 @@ export {
 export type { CRTOptions } from './crtEffects'
 
 // LCD display effects
-export {
-  lcdGrid,
-  dotMatrix,
-  lcdGhosting,
-  lcdMotionGhost,
-  lcdBacklightBleed,
-  lcdPocket,
-  lcdGBC,
-} from './lcd'
+export { lcdGrid, dotMatrix, lcdGhosting, lcdMotionGhost, lcdBacklightBleed, lcdPocket, lcdGBC } from './lcd'

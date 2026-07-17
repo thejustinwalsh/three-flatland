@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  refCalcRootCode,
-  refSolveHorizPoly,
-  refSolveVertPoly,
-  refCalcCoverage,
-  refSlugDilate,
-} from './reference'
+import { refCalcRootCode, refSolveHorizPoly, refSolveVertPoly, refCalcCoverage, refSlugDilate } from './reference'
 
 describe('calcRootCode', () => {
   it('returns 0 when all points are above ray (all positive)', () => {
@@ -244,26 +238,8 @@ describe('slugDilate', () => {
     const m1: [number, number, number, number] = [0, 1, 0, 0]
     const m3: [number, number, number, number] = [0, 0, 0, 1]
 
-    const resultLarge = refSlugDilate(
-      [0, 0],
-      [1, 0],
-      [0.5, 0.5],
-      [1, 0, 0, 1],
-      m0,
-      m1,
-      m3,
-      [1920, 1080]
-    )
-    const resultSmall = refSlugDilate(
-      [0, 0],
-      [1, 0],
-      [0.5, 0.5],
-      [1, 0, 0, 1],
-      m0,
-      m1,
-      m3,
-      [320, 240]
-    )
+    const resultLarge = refSlugDilate([0, 0], [1, 0], [0.5, 0.5], [1, 0, 0, 1], m0, m1, m3, [1920, 1080])
+    const resultSmall = refSlugDilate([0, 0], [1, 0], [0.5, 0.5], [1, 0, 0, 1], m0, m1, m3, [320, 240])
 
     // Smaller viewport → larger dilation (more object-space displacement needed per pixel)
     expect(Math.abs(resultSmall.vpos[0])).toBeGreaterThan(Math.abs(resultLarge.vpos[0]))

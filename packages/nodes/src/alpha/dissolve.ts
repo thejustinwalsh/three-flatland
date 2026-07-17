@@ -41,18 +41,8 @@ export interface DissolveOptions {
  *   edgeWidth: 0.15,
  * })
  */
-export function dissolve(
-  inputColor: Node<'vec4'>,
-  inputUV: Node<'vec2'>,
-  options: DissolveOptions
-): Node<'vec4'> {
-  const {
-    progress,
-    noiseTex,
-    edgeColor = [1, 0.5, 0],
-    edgeWidth = 0.1,
-    noiseScale = 1,
-  } = options
+export function dissolve(inputColor: Node<'vec4'>, inputUV: Node<'vec2'>, options: DissolveOptions): Node<'vec4'> {
+  const { progress, noiseTex, edgeColor = [1, 0.5, 0], edgeWidth = 0.1, noiseScale = 1 } = options
 
   const progressNode = typeof progress === 'number' ? float(progress) : progress
   const edgeColorVec = Array.isArray(edgeColor) ? vec3(...edgeColor) : edgeColor

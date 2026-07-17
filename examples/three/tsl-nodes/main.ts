@@ -1,19 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
-import {
-  texture as sampleTexture,
-  uv,
-  attribute,
-  vec2,
-  vec4,
-  float,
-} from 'three/tsl'
-import {
-  Scene,
-  OrthographicCamera,
-  NearestFilter,
-  CanvasTexture,
-  RepeatWrapping,
-} from 'three'
+import { texture as sampleTexture, uv, attribute, vec2, vec4, float } from 'three/tsl'
+import { Scene, OrthographicCamera, NearestFilter, CanvasTexture, RepeatWrapping } from 'three'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 import {
@@ -24,38 +11,38 @@ import {
   createMaterialEffect,
 } from 'three-flatland'
 import type { MaterialEffect, AnimationSetDefinition } from 'three-flatland'
-import {
-  tintAdditive,
-  hueShift,
-  saturate,
-  outline8,
-  pixelate,
-  dissolvePixelated,
-  tint,
-} from '@three-flatland/nodes'
+import { tintAdditive, hueShift, saturate, outline8, pixelate, dissolvePixelated, tint } from '@three-flatland/nodes'
 import { createPane } from '@three-flatland/devtools'
 
 // ========================================
 // Types
 // ========================================
 
-type EffectType =
-  | 'normal'
-  | 'damage'
-  | 'dissolve'
-  | 'powerup'
-  | 'petrify'
-  | 'select'
-  | 'shadow'
-  | 'pixelate'
+type EffectType = 'normal' | 'damage' | 'dissolve' | 'powerup' | 'petrify' | 'select' | 'shadow' | 'pixelate'
 
 // Animation set
 const animationSet: AnimationSetDefinition = {
   animations: {
     idle: { frames: ['idle_0', 'idle_1', 'idle_2', 'idle_3'], fps: 8 },
     run: {
-      frames: ['run_0', 'run_1', 'run_2', 'run_3', 'run_4', 'run_5', 'run_6', 'run_7',
-               'run_8', 'run_9', 'run_10', 'run_11', 'run_12', 'run_13', 'run_14', 'run_15'],
+      frames: [
+        'run_0',
+        'run_1',
+        'run_2',
+        'run_3',
+        'run_4',
+        'run_5',
+        'run_6',
+        'run_7',
+        'run_8',
+        'run_9',
+        'run_10',
+        'run_11',
+        'run_12',
+        'run_13',
+        'run_14',
+        'run_15',
+      ],
       fps: 16,
     },
     roll: {
@@ -104,15 +91,13 @@ const DamageFlash = createMaterialEffect({
 const Powerup = createMaterialEffect({
   name: 'powerup',
   schema: { angle: 0 } as const,
-  node: ({ inputColor, attrs }) =>
-    hueShift(inputColor, attrs.angle),
+  node: ({ inputColor, attrs }) => hueShift(inputColor, attrs.angle),
 })
 
 const Petrify = createMaterialEffect({
   name: 'petrify',
   schema: { amount: 0 } as const,
-  node: ({ inputColor, attrs }) =>
-    saturate(inputColor, attrs.amount),
+  node: ({ inputColor, attrs }) => saturate(inputColor, attrs.amount),
 })
 
 const ShadowEffect = createMaterialEffect({
@@ -204,8 +189,7 @@ async function main() {
   const Dissolve = createMaterialEffect({
     name: 'dissolve',
     schema: { progress: 0 } as const,
-    node: ({ inputColor, attrs }) =>
-      dissolvePixelated(inputColor, uv(), attrs.progress, noiseTexture, 16),
+    node: ({ inputColor, attrs }) => dissolvePixelated(inputColor, uv(), attrs.progress, noiseTexture, 16),
   })
 
   const Select = createMaterialEffect({
@@ -227,9 +211,7 @@ async function main() {
       const localUV = uv()
 
       // Pixel count: 32 (normal) → 4 (pixelated) → 32 (normal)
-      const pixelAmount = float(1).sub(
-        attrs.progress.mul(float(2)).sub(float(1)).abs()
-      )
+      const pixelAmount = float(1).sub(attrs.progress.mul(float(2)).sub(float(1)).abs())
       const pixelCount = float(32).sub(pixelAmount.mul(float(28)))
 
       // Pixelate local UV then remap to atlas frame
@@ -337,14 +319,25 @@ async function main() {
   // Tweakpane UI
   // ========================================
 
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
   const devtools = createDevtoolsProvider({ name: 'tsl-nodes' })
 
-  const effectNames: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
+  const effectNames: EffectType[] = [
+    'normal',
+    'damage',
+    'dissolve',
+    'powerup',
+    'petrify',
+    'select',
+    'shadow',
+    'pixelate',
+  ]
   const effectLabels = ['Normal', 'Damage', 'Dissolve', 'Rainbow', 'Stone', 'Outline', 'Shadow', 'Pixelate']
 
   const effectFolder = pane.addFolder({ title: 'Effects' })
-  const effectGrid = (effectFolder.addBlade({
+  const effectGrid = effectFolder.addBlade({
     view: 'radiogrid',
     groupName: 'effect',
     size: [3, 3],
@@ -354,7 +347,7 @@ async function main() {
       return { title: effectLabels[i]!, value: effectNames[i]! }
     },
     value: 'normal',
-  } as any) as any)
+  } as any) as any
 
   effectGrid.on('change', (ev: any) => {
     if (ev.value) applyEffect(ev.value as EffectType)
@@ -403,13 +396,11 @@ async function main() {
     const effectElapsed = elapsedTime - effectStartTime
 
     if (currentEffect === 'damage' && currentInstance) {
-      ;(currentInstance as InstanceType<typeof DamageFlash>).intensity =
-        Math.max(0, 1 - effectElapsed / 0.3)
+      ;(currentInstance as InstanceType<typeof DamageFlash>).intensity = Math.max(0, 1 - effectElapsed / 0.3)
     }
 
     if (currentEffect === 'dissolve' && currentInstance) {
-      ;(currentInstance as InstanceType<typeof Dissolve>).progress =
-        Math.min(1, effectElapsed / 1.5)
+      ;(currentInstance as InstanceType<typeof Dissolve>).progress = Math.min(1, effectElapsed / 1.5)
     }
 
     if (currentEffect === 'powerup' && currentInstance) {
@@ -417,8 +408,7 @@ async function main() {
     }
 
     if (currentEffect === 'pixelate' && currentInstance) {
-      ;(currentInstance as InstanceType<typeof PixelateEffect>).progress =
-        Math.min(1, effectElapsed / 1.0)
+      ;(currentInstance as InstanceType<typeof PixelateEffect>).progress = Math.min(1, effectElapsed / 1.0)
     }
 
     devtools.beginFrame(performance.now(), renderer)
@@ -430,7 +420,7 @@ async function main() {
   animate()
 }
 
-main()
+void main()
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

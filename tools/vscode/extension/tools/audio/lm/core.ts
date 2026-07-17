@@ -46,8 +46,7 @@ export type PromptOptions = {
 export function buildZzfxPrompt(options: PromptOptions): string {
   const { category, styles, n, seeds } = options
   const adjectives = styles.length > 0 ? styles.join(', ') : 'none'
-  const seedLines =
-    seeds.length > 0 ? seeds.map((s) => `  ${JSON.stringify(s.params)}`).join('\n') : '  (none)'
+  const seedLines = seeds.length > 0 ? seeds.map((s) => `  ${JSON.stringify(s.params)}`).join('\n') : '  (none)'
   return [
     'System:',
     'You are ZzFX-GPT. Output ONLY valid JSON matching:',
@@ -342,11 +341,7 @@ async function safeSet(cache: CacheStore, key: string, value: string): Promise<v
   }
 }
 
-async function safeSend(
-  send: LmSend,
-  prompt: string,
-  onChunk?: (chunk: string) => void
-): Promise<string | null> {
+async function safeSend(send: LmSend, prompt: string, onChunk?: (chunk: string) => void): Promise<string | null> {
   try {
     return await send(prompt, onChunk)
   } catch {
@@ -384,8 +379,7 @@ export async function runGeneration(options: GenerateOptions): Promise<GenerateO
   if (!parsed.ok) {
     const retryPrompt = buildRetryPrompt(raw, parsed.reason)
     const retryRaw = await safeSend(send, retryPrompt, onChunk)
-    parsed =
-      retryRaw === null ? { ok: false, reason: 'retry unavailable' } : parseCandidates(retryRaw)
+    parsed = retryRaw === null ? { ok: false, reason: 'retry unavailable' } : parseCandidates(retryRaw)
   }
 
   if (!parsed.ok) {

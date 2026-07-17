@@ -22,10 +22,7 @@ test.describe('extension activation', () => {
     expect(result.hasMergeCommand).toBe(true)
   })
 
-  test('workspace folder resolves to the per-test fixture copy', async ({
-    evaluateInVSCode,
-    baseDir,
-  }) => {
+  test('workspace folder resolves to the per-test fixture copy', async ({ evaluateInVSCode, baseDir }) => {
     const workspacePath = await evaluateInVSCode((vscode) => {
       return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null
     })
@@ -42,16 +39,11 @@ test.describe('extension activation', () => {
   test('writes a marker file for the next test to check', async ({ evaluateInVSCode }) => {
     await evaluateInVSCode(async (vscode) => {
       const folder = vscode.workspace.workspaceFolders![0]!
-      await vscode.workspace.fs.writeFile(
-        vscode.Uri.joinPath(folder.uri, 'e2e-reset-marker.txt'),
-        new Uint8Array()
-      )
+      await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(folder.uri, 'e2e-reset-marker.txt'), new Uint8Array())
     })
   })
 
-  test('the previous test marker did not survive the window-reuse reset', async ({
-    evaluateInVSCode,
-  }) => {
+  test('the previous test marker did not survive the window-reuse reset', async ({ evaluateInVSCode }) => {
     const markerExists = await evaluateInVSCode(async (vscode) => {
       const folder = vscode.workspace.workspaceFolders![0]!
       try {

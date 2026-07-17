@@ -219,12 +219,7 @@ function RegionInspector({ region, defaults, onChange }: RegionInspectorProps) {
 
       <div {...stylex.props(s.field)}>
         <FieldHeader label="Strength" field="strength" region={region} onReset={reset} />
-        <NumberField
-          value={strength}
-          step={0.1}
-          onChange={(v) => commit({ strength: v })}
-          aria-label="Strength"
-        />
+        <NumberField value={strength} step={0.1} onChange={(v) => commit({ strength: v })} aria-label="Strength" />
       </div>
 
       <div {...stylex.props(s.field)}>
@@ -334,21 +329,15 @@ export function inspectorHeading(region: EditableRegion | null, selectionCount: 
   return 'Defaults'
 }
 
-export function Inspector({
-  region,
-  selectionCount,
-  defaults,
-  onRegionChange,
-  onDefaultsChange,
-}: InspectorProps) {
+export function Inspector({ region, selectionCount, defaults, onRegionChange, onDefaultsChange }: InspectorProps) {
   if (region) {
     return <RegionInspector region={region} defaults={defaults} onChange={onRegionChange} />
   }
   if (selectionCount > 1) {
     return (
       <div {...stylex.props(s.hint)}>
-        {selectionCount} regions selected — select exactly one to edit it, or clear the selection to
-        edit the inherited defaults.
+        {selectionCount} regions selected — select exactly one to edit it, or clear the selection to edit the inherited
+        defaults.
       </div>
     )
   }

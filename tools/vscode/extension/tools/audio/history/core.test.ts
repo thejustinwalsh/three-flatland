@@ -98,15 +98,9 @@ describe('batchFromOutcome', () => {
 
   it('returns null for preset outcomes and empty candidate lists', () => {
     expect(
-      batchFromOutcome(
-        { source: 'preset', candidates: makeBatch().candidates },
-        { category: 'Laser', styles: [] },
-        42
-      )
+      batchFromOutcome({ source: 'preset', candidates: makeBatch().candidates }, { category: 'Laser', styles: [] }, 42)
     ).toBeNull()
-    expect(
-      batchFromOutcome({ source: 'lm', candidates: [] }, { category: 'Laser', styles: [] }, 42)
-    ).toBeNull()
+    expect(batchFromOutcome({ source: 'lm', candidates: [] }, { category: 'Laser', styles: [] }, 42)).toBeNull()
   })
 })
 

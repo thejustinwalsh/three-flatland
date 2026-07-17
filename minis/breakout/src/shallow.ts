@@ -14,10 +14,7 @@ export function shallow<T>(a: T, b: T): boolean {
     const key = keysA[i]!
     if (
       !Object.prototype.hasOwnProperty.call(b, key) ||
-      !Object.is(
-        (a as Record<string, unknown>)[key],
-        (b as Record<string, unknown>)[key],
-      )
+      !Object.is((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])
     )
       return false
   }

@@ -23,7 +23,7 @@ function runFrame(
   r: WebGPURenderer,
   info: { calls: number; triangles: number },
   endCalls: number,
-  endTris: number,
+  endTris: number
 ): void {
   c.beginFrame()
   c.frameStart(r)
@@ -157,7 +157,7 @@ describe('BatchCollector', () => {
     const meshSources = new Set<() => null>([() => null])
     c.captureAllSources(
       regSources as unknown as ReadonlySet<() => null>,
-      meshSources as unknown as ReadonlySet<() => null>,
+      meshSources as unknown as ReadonlySet<() => null>
     )
     c.commit()
     const out = freshOut()

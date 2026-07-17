@@ -8,25 +8,10 @@ export { shimmer, shimmerWave, shimmerHolographic, shimmerMetallic } from './shi
 export { pulse, pulseGlow, pulseHeartbeat, pulseRadial, pulseRainbow } from './pulse'
 
 // Flash effects
-export {
-  flash,
-  flashSmooth,
-  flashAdditive,
-  flashAlpha,
-  flashDamage,
-  flashHeal,
-  flashPowerUp,
-} from './flash'
+export { flash, flashSmooth, flashAdditive, flashAlpha, flashDamage, flashHeal, flashPowerUp } from './flash'
 
 // Trail/motion effects
 export { trail, trailAdditive, trailBlur, trailVelocity } from './trail'
 
 // Afterimage/ghost effects
-export {
-  afterimage,
-  afterimageTinted,
-  afterimageGlow,
-  ghost,
-  ghostTrail,
-  ghostSpeed,
-} from './afterimage'
+export { afterimage, afterimageTinted, afterimageGlow, ghost, ghostTrail, ghostSpeed } from './afterimage'

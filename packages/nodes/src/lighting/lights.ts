@@ -53,9 +53,7 @@ export function pointLight2D(
 
   // Calculate attenuation using decay exponent
   const normalizedDist = dist.div(distanceNode).clamp(0, 1)
-  const attenuation = float(1)
-    .sub(normalizedDist.pow(decayNode))
-    .clamp(0, 1)
+  const attenuation = float(1).sub(normalizedDist.pow(decayNode)).clamp(0, 1)
 
   return {
     direction,
@@ -166,10 +164,7 @@ export function directionalLight2D(
  * @example
  * const ambient = ambientLight2D([0.2, 0.2, 0.3], 1.0)
  */
-export function ambientLight2D(
-  lightColor: Vec3Input = [1, 1, 1],
-  intensity: FloatInput = 0.2
-): Light2DResult {
+export function ambientLight2D(lightColor: Vec3Input = [1, 1, 1], intensity: FloatInput = 0.2): Light2DResult {
   const colorVec = Array.isArray(lightColor) ? vec3(...lightColor) : lightColor
   const intensityNode = typeof intensity === 'number' ? float(intensity) : intensity
 

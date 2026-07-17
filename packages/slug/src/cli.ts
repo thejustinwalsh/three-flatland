@@ -127,10 +127,7 @@ async function bakeFont(
   strokeConfigs: StrokeSetConfig[] = []
 ): Promise<void> {
   const fileBuffer = readFileSync(fontPath)
-  const arrayBuffer = fileBuffer.buffer.slice(
-    fileBuffer.byteOffset,
-    fileBuffer.byteOffset + fileBuffer.byteLength
-  )
+  const arrayBuffer = fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength)
 
   console.log(`Parsing ${basename(fontPath)}...`)
   const parsed = parseFont(arrayBuffer)

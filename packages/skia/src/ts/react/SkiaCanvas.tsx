@@ -5,7 +5,7 @@ import type { SkiaContextReady } from '../three/SkiaCanvas'
 import { SkiaReactContext } from './context'
 import { SkiaCanvas as SkiaCanvasClass } from '../three/SkiaCanvas'
 
-export type SkiaCanvasRef = ThreeElement<typeof SkiaCanvasClass>;
+export type SkiaCanvasRef = ThreeElement<typeof SkiaCanvasClass>
 
 type SkiaCanvasProps = SkiaCanvasRef & {
   ref?: Ref<SkiaCanvasRef>
@@ -13,7 +13,7 @@ type SkiaCanvasProps = SkiaCanvasRef & {
   onContextCreate?: (ctx: SkiaContextReady) => void
 }
 
-extend({ SkiaCanvas: SkiaCanvasClass });
+extend({ SkiaCanvas: SkiaCanvasClass })
 
 /**
  * R3F wrapper for `<skiaCanvas>` that provides the SkiaContext to children
@@ -31,10 +31,13 @@ extend({ SkiaCanvas: SkiaCanvasClass });
 export function SkiaCanvas({ ref, children, onContextCreate, ...props }: SkiaCanvasProps) {
   const [ctx, setCtx] = useState<SkiaContext | null>(null)
 
-  const handleContextCreate = useCallback((c: SkiaContextReady) => {
-    setCtx(c)
-    onContextCreate?.(c)
-  }, [onContextCreate])
+  const handleContextCreate = useCallback(
+    (c: SkiaContextReady) => {
+      setCtx(c)
+      onContextCreate?.(c)
+    },
+    [onContextCreate]
+  )
 
   return (
     <SkiaReactContext.Provider value={ctx}>

@@ -62,9 +62,7 @@ import {
 // the same module, so the chunk-loader resolves them with one network
 // roundtrip; React.lazy()'s internal use(promise) keeps the resolution
 // stable across renders (no double-fetch under StrictMode).
-const CanvasStage = lazy(() =>
-  import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage }))
-)
+const CanvasStage = lazy(() => import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage })))
 const AnimationPreviewPip = lazy(() =>
   import('@three-flatland/preview/canvas').then((m) => ({ default: m.AnimationPreviewPip }))
 )
@@ -120,10 +118,7 @@ type Animation = {
   pingPong: boolean
   events?: Record<string, string>
 }
-type RenameMode =
-  | { kind: 'none' }
-  | { kind: 'inline'; id: string }
-  | { kind: 'prefix'; ids: string[] }
+type RenameMode = { kind: 'none' } | { kind: 'inline'; id: string } | { kind: 'prefix'; ids: string[] }
 
 type SliceInputMode = 'pixels' | 'cells'
 
@@ -258,8 +253,7 @@ function lastBoundary(name: string): number {
       continue
     }
     // Case boundary: prev is lowercase letter or digit, c is uppercase letter.
-    const prevIsLowerAlnum =
-      (prev >= 0x61 && prev <= 0x7a) /* a-z */ || (prev >= 0x30 && prev <= 0x39) /* 0-9 */
+    const prevIsLowerAlnum = (prev >= 0x61 && prev <= 0x7a) /* a-z */ || (prev >= 0x30 && prev <= 0x39) /* 0-9 */
     const cIsUpper = c >= 0x41 && c <= 0x5a /* A-Z */
     if (prevIsLowerAlnum && cIsUpper) last = i
   }
@@ -747,10 +741,6 @@ export function App() {
   const [prefixDraft, setPrefixDraft] = useState('')
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null)
   const [mode, setMode] = useState<EditorMode>({ kind: 'normal' })
-  // Fraction of the right sidebar height taken by the Frames panel when a
-  // tool panel is active below it. Persisted in component state only; resets
-  // to default on remount.
-  const [framesFrac, setFramesFrac] = useState(0.5)
   const sidebarRef = useRef<HTMLDivElement>(null)
   // User-resizable width of the Frames sidebar. Persisted to localStorage
   // via the store so it survives panel close.
@@ -869,8 +859,7 @@ export function App() {
     if (isEditableTarget(e.target)) return
     if (!(e.target instanceof Element)) return
     // Let toolbar buttons / custom elements keep their own focus semantics.
-    if (e.target.closest('vscode-toolbar-button, button, a, [tabindex]:not([tabindex="-1"])'))
-      return
+    if (e.target.closest('vscode-toolbar-button, button, a, [tabindex]:not([tabindex="-1"])')) return
     rootRef.current?.focus()
   }, [])
 
@@ -881,10 +870,7 @@ export function App() {
     const handler = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return
       const target = e.target as HTMLElement | null
-      if (
-        target &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-      ) {
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return
       }
       if (e.key === 'z' && !e.shiftKey) {
@@ -898,12 +884,6 @@ export function App() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
-
-  const indexById = useMemo(() => {
-    const m = new Map<string, number>()
-    rects.forEach((r, i) => m.set(r.id, i))
-    return m
-  }, [rects])
 
   // Track whether the bridge has already seeded the store. A second
   // atlas/init (e.g. on dev/reload) would otherwise stomp any local
@@ -935,12 +915,7 @@ export function App() {
           rects.push({ id, x, y, w, h, name })
           if (Object.keys(rest).length > 0) passthrough[id] = rest
         }
-        atlasActions.loadFromInit(
-          rects,
-          p.animations ? { ...p.animations } : {},
-          passthrough,
-          p.format ?? 'native'
-        )
+        atlasActions.loadFromInit(rects, p.animations ? { ...p.animations } : {}, passthrough, p.format ?? 'native')
       }
       if (p.loadError) {
         setSaveStatus({
@@ -1032,17 +1007,14 @@ export function App() {
     setSelectedIds(new Set([r.id]))
   }, [])
 
-  const handleRectChange = useCallback(
-    (id: string, next: { x: number; y: number; w: number; h: number }) => {
-      setRects((prev) => prev.map((r) => (r.id === id ? { ...r, ...next } : r)))
-      // The rect's frame geometry just changed — any loaded rotation/trim/
-      // pivot/polygon-mesh passthrough for it no longer describes the new
-      // rect, and there's no editing UI to keep it consistent. See
-      // RectPassthrough's doc comment in atlasStore.ts.
-      atlasActions.clearPassthrough(id)
-    },
-    []
-  )
+  const handleRectChange = useCallback((id: string, next: { x: number; y: number; w: number; h: number }) => {
+    setRects((prev) => prev.map((r) => (r.id === id ? { ...r, ...next } : r)))
+    // The rect's frame geometry just changed — any loaded rotation/trim/
+    // pivot/polygon-mesh passthrough for it no longer describes the new
+    // rect, and there's no editing UI to keep it consistent. See
+    // RectPassthrough's doc comment in atlasStore.ts.
+    atlasActions.clearPassthrough(id)
+  }, [])
 
   // ── Animation handlers ──────────────────────────────────────────────────
   const animationNames = useMemo(() => Object.keys(animations).sort(), [animations])
@@ -1181,13 +1153,7 @@ export function App() {
     const loop = (t: number) => {
       const dt = t - last
       last = t
-      animationStore.tick(
-        dt,
-        activeAnim.frames.length,
-        activeAnim.fps,
-        activeAnim.loop,
-        activeAnim.pingPong
-      )
+      animationStore.tick(dt, activeAnim.frames.length, activeAnim.fps, activeAnim.loop, activeAnim.pingPong)
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
@@ -1319,7 +1285,7 @@ export function App() {
         const anim = prev[activeAnimation]
         if (!anim) return prev
         const key = String(frameIndex)
-        const nextEvents: Record<string, string> = { ...(anim.events ?? {}) }
+        const nextEvents: Record<string, string> = { ...anim.events }
         if (tag == null || tag === '') delete nextEvents[key]
         else nextEvents[key] = tag
         const cleaned = Object.keys(nextEvents).length > 0 ? nextEvents : undefined
@@ -1453,8 +1419,7 @@ export function App() {
       // If the rect lost its name (newName === undefined), strip the
       // entries — an unnamed rect can't appear in the `meta.animations` map.
       const needsAnimUpdate = oldName && oldName !== newName
-      const rectsUpdater = (prev: Rect[]): Rect[] =>
-        prev.map((r) => (r.id === id ? { ...r, name: newName } : r))
+      const rectsUpdater = (prev: Rect[]): Rect[] => prev.map((r) => (r.id === id ? { ...r, name: newName } : r))
       const animsUpdater = needsAnimUpdate
         ? (prev: Record<string, Animation>): Record<string, Animation> => {
             const next: Record<string, Animation> = {}
@@ -1530,26 +1495,8 @@ export function App() {
       if (w <= 0 || h <= 0) return next
       const grid =
         next.inputMode === 'pixels'
-          ? gridFromCellSize(
-              w,
-              h,
-              next.cellW,
-              next.cellH,
-              next.offsetX,
-              next.offsetY,
-              next.gutterX,
-              next.gutterY
-            )
-          : gridFromRowCol(
-              w,
-              h,
-              next.cols,
-              next.rows,
-              next.offsetX,
-              next.offsetY,
-              next.gutterX,
-              next.gutterY
-            )
+          ? gridFromCellSize(w, h, next.cellW, next.cellH, next.offsetX, next.offsetY, next.gutterX, next.gutterY)
+          : gridFromRowCol(w, h, next.cols, next.rows, next.offsetX, next.offsetY, next.gutterX, next.gutterY)
       return { ...next, grid, picked: new Set() }
     },
     [imageSize]
@@ -1681,8 +1628,7 @@ export function App() {
   }, [mode, updateSlice])
 
   const slicing = mode.kind === 'slicing'
-  const sliceCanCommit =
-    mode.kind === 'slicing' && mode.state.picked.size > 0 && mode.state.prefix.trim() !== ''
+  const sliceCanCommit = mode.kind === 'slicing' && mode.state.picked.size > 0 && mode.state.prefix.trim() !== ''
 
   // ─── Autodetect (CCL) ──────────────────────────────────────────────────────
 
@@ -1883,11 +1829,7 @@ export function App() {
       // an image edge stops the whole set in that axis. Mod/Alt are
       // bailed out below so e.g. Cmd+Arrow stays available for future
       // word-jump-style shortcuts.
-      const isArrow =
-        e.key === 'ArrowUp' ||
-        e.key === 'ArrowDown' ||
-        e.key === 'ArrowLeft' ||
-        e.key === 'ArrowRight'
+      const isArrow = e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight'
       if (isArrow && !mod && !e.altKey) {
         if (selectedIds.size === 0 || !imageSize) return
         const step = e.shiftKey ? 10 : 1
@@ -1959,12 +1901,7 @@ export function App() {
 
   return (
     <DragProvider>
-      <div
-        ref={rootRef}
-        tabIndex={-1}
-        onPointerDown={handleRootPointerDown}
-        {...stylex.props(s.root)}
-      >
+      <div ref={rootRef} tabIndex={-1} onPointerDown={handleRootPointerDown} {...stylex.props(s.root)}>
         <Toolbar>
           <ToolbarButton
             icon="symbol-ruler"
@@ -2008,49 +1945,17 @@ export function App() {
             onClick={() => setTool('move')}
           />
           <Divider />
-          <ToolbarButton
-            icon="symbol-string"
-            title="Rename / Auto-name  (N)"
-            disabled={inTool}
-            onClick={startRename}
-          />
+          <ToolbarButton icon="symbol-string" title="Rename / Auto-name  (N)" disabled={inTool} onClick={startRename} />
           <ToolbarButton icon="run-all" title="Animations" disabled={inTool} />
           <div {...stylex.props(s.toolbarSpacer)} />
-          <ToolbarButton
-            icon="zoom-in"
-            title="Zoom In"
-            onClick={() => viewportControllerRef.current?.zoomIn()}
-          />
-          <ToolbarButton
-            icon="zoom-out"
-            title="Zoom Out"
-            onClick={() => viewportControllerRef.current?.zoomOut()}
-          />
-          <ToolbarButton
-            icon="screen-full"
-            title="Fit"
-            onClick={() => viewportControllerRef.current?.fitToView()}
-          />
+          <ToolbarButton icon="zoom-in" title="Zoom In" onClick={() => viewportControllerRef.current?.zoomIn()} />
+          <ToolbarButton icon="zoom-out" title="Zoom Out" onClick={() => viewportControllerRef.current?.zoomOut()} />
+          <ToolbarButton icon="screen-full" title="Fit" onClick={() => viewportControllerRef.current?.fitToView()} />
           <Divider />
-          <ToolbarButton
-            icon="discard"
-            title="Undo  (⌘Z)"
-            disabled={!canUndo}
-            onClick={() => atlasHistory.undo()}
-          />
-          <ToolbarButton
-            icon="redo"
-            title="Redo  (⌘⇧Z)"
-            disabled={!canRedo}
-            onClick={() => atlasHistory.redo()}
-          />
+          <ToolbarButton icon="discard" title="Undo  (⌘Z)" disabled={!canUndo} onClick={() => atlasHistory.undo()} />
+          <ToolbarButton icon="redo" title="Redo  (⌘⇧Z)" disabled={!canRedo} onClick={() => atlasHistory.redo()} />
           <Divider />
-          <ToolbarButton
-            icon="trash"
-            title="Delete Selected  (Del)"
-            disabled={inTool}
-            onClick={deleteSelected}
-          />
+          <ToolbarButton icon="trash" title="Delete Selected  (Del)" disabled={inTool} onClick={deleteSelected} />
           <ToolbarButton
             icon="clear-all"
             title="Clear All Rects"
@@ -2080,10 +1985,7 @@ export function App() {
             headerActions={
               <>
                 {outputFormat !== 'native' ? (
-                  <span
-                    {...stylex.props(s.formatBadge)}
-                    title={`Export format: ${FORMAT_LABEL[outputFormat]}`}
-                  >
+                  <span {...stylex.props(s.formatBadge)} title={`Export format: ${FORMAT_LABEL[outputFormat]}`}>
                     {FORMAT_LABEL[outputFormat]}
                   </span>
                 ) : null}
@@ -2098,11 +2000,7 @@ export function App() {
                     {imageSize.w}×{imageSize.h}
                   </span>
                 ) : null}
-                <AtlasMenu
-                  prefs={prefs}
-                  outputFormat={outputFormat}
-                  onOutputFormatChange={setOutputFormat}
-                />
+                <AtlasMenu prefs={prefs} outputFormat={outputFormat} onOutputFormatChange={setOutputFormat} />
               </>
             }
             bodyPadding="none"
@@ -2201,15 +2099,10 @@ export function App() {
                         onCoordModeChange={(v) => prefsStore.set({ coordMode: v })}
                       />
                     ) : null}
-                    {(playback.isPlaying || manualAnimHighlight) &&
-                    activeAnim &&
-                    activeAnim.frames.length > 0 ? (
+                    {(playback.isPlaying || manualAnimHighlight) && activeAnim && activeAnim.frames.length > 0 ? (
                       <AnimationRectHighlight
                         rect={(() => {
-                          const name =
-                            activeAnim.frames[
-                              Math.min(playback.playhead, activeAnim.frames.length - 1)
-                            ]
+                          const name = activeAnim.frames[Math.min(playback.playhead, activeAnim.frames.length - 1)]
                           if (!name) return null
                           const r = rectsByName[name]
                           return r ? { x: r.x, y: r.y, w: r.w, h: r.h } : null
@@ -2246,9 +2139,7 @@ export function App() {
                 header={
                   <AnimationDrawerHeader
                     expanded={prefs.animDrawerExpanded}
-                    onToggleExpanded={() =>
-                      prefsStore.set({ animDrawerExpanded: !prefs.animDrawerExpanded })
-                    }
+                    onToggleExpanded={() => prefsStore.set({ animDrawerExpanded: !prefs.animDrawerExpanded })}
                     animationNames={animationNames}
                     activeAnimation={activeAnimation}
                     onSelectAnimation={setActiveAnimation}
@@ -2264,9 +2155,7 @@ export function App() {
                     onChangeLoop={(v) => updateActiveAnimation({ loop: v })}
                     onChangePingPong={(v) => updateActiveAnimation({ pingPong: v })}
                     pipVisible={prefs.animPipVisible}
-                    onTogglePipVisible={() =>
-                      prefsStore.set({ animPipVisible: !prefs.animPipVisible })
-                    }
+                    onTogglePipVisible={() => prefsStore.set({ animPipVisible: !prefs.animPipVisible })}
                     activeIsEmpty={activeAnim != null && activeAnim.frames.length === 0}
                   />
                 }
@@ -2277,9 +2166,7 @@ export function App() {
                     atlasImageUri={payload?.imageUri ?? null}
                     atlasSize={imageSize}
                     density={density}
-                    playheadGroupIndex={
-                      activeAnim ? frameIndexToGroupIndex(activeAnim.frames, playback.playhead) : 0
-                    }
+                    playheadGroupIndex={activeAnim ? frameIndexToGroupIndex(activeAnim.frames, playback.playhead) : 0}
                     playhead={playback.playhead}
                     isPlaying={playback.isPlaying}
                     getSmoothPlayhead={() => animationStore.getSmoothPlayhead()}
@@ -2344,10 +2231,7 @@ export function App() {
 
           <div
             ref={sidebarRef}
-            {...stylex.props(
-              s.sidebarStack,
-              s.sidebarRows(inTool ? 'minmax(0, 1fr) max-content' : '1fr')
-            )}
+            {...stylex.props(s.sidebarStack, s.sidebarRows(inTool ? 'minmax(0, 1fr) max-content' : '1fr'))}
           >
             <Panel
               title={`Frames (${rects.length}${selectedIds.size > 0 ? ` · ${selectedIds.size} sel` : ''})`}
@@ -2431,12 +2315,6 @@ export function App() {
                     setSelectedIds(next)
                     setFolderSelectionPrefix(null)
                   }}
-                  onSelectGroup={(ids, additive) => {
-                    const next = additive ? new Set(selectedIds) : new Set<string>()
-                    for (const id of ids) next.add(id)
-                    setSelectedIds(next)
-                    setFolderSelectionPrefix(null)
-                  }}
                   onSelectFolder={(prefix, ids) => {
                     setSelectedIds(new Set(ids))
                     setFolderSelectionPrefix(prefix)
@@ -2500,10 +2378,6 @@ export function App() {
       </div>
     </DragProvider>
   )
-
-  // Minor: keep indexById live even if it's not displayed directly —
-  // suppresses 'unused' lint and future frame-index helpers reuse it.
-  void indexById
 }
 
 function InlineRenameInput({
@@ -2562,7 +2436,7 @@ function SaveStatusLine({
    * Called when the user closes the error modal (X button or Esc).
    * Caller should reset its `saveStatus` state to `{ kind: 'idle' }`.
    */
-  onDismiss(): void
+  onDismiss: () => void
 }) {
   const [visible, setVisible] = useState(false)
 
@@ -2739,9 +2613,7 @@ function FrameRow({
   selectionOrder: number | null
 }) {
   const displayName = rect.name ?? `#${globalIndex}`
-  const hue = folderHighlight
-    ? folderHueForIndex(folderHighlight.index, folderHighlight.count)
-    : null
+  const hue = folderHighlight ? folderHueForIndex(folderHighlight.index, folderHighlight.count) : null
   const folderStyle = hue
     ? {
         backgroundColor: hue.bg,
@@ -2775,10 +2647,7 @@ function FrameRow({
             >
               <span
                 aria-hidden="true"
-                {...stylex.props(
-                  s.thumbInner,
-                  s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos, thumbBg.clip)
-                )}
+                {...stylex.props(s.thumbInner, s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos, thumbBg.clip))}
               />
             </span>
           ) : (
@@ -2840,7 +2709,6 @@ function FramesView({
   folderSelectionPrefix,
   renameMode,
   onSelectRect,
-  onSelectGroup,
   onSelectFolder,
   onStartInlineRename,
   onCommitInlineRename,
@@ -2855,7 +2723,6 @@ function FramesView({
   folderSelectionPrefix: string | null
   renameMode: RenameMode
   onSelectRect: (id: string, additive: boolean) => void
-  onSelectGroup: (ids: string[], additive: boolean) => void
   onSelectFolder: (prefix: string, ids: string[]) => void
   onStartInlineRename: (id: string) => void
   onCommitInlineRename: (id: string, name: string) => void
@@ -2961,14 +2828,11 @@ function FramesView({
         // from the folder's render order, so this naturally gives the
         // same green→violet sweep there too.
         const gradient =
-          sel && order != null && selectedIds.size > 1
-            ? { index: order - 1, count: selectedIds.size }
-            : null
+          sel && order != null && selectedIds.size > 1 ? { index: order - 1, count: selectedIds.size } : null
         // Dim others ONLY in folder mode — explicit "this is THE
         // folder" intent. Plain multi-select keeps every other row at
         // full opacity so you can keep extending the selection.
-        const otherFolderActive =
-          folderSelectionPrefix !== null && groupPrefix !== folderSelectionPrefix
+        const otherFolderActive = folderSelectionPrefix !== null && groupPrefix !== folderSelectionPrefix
         return (
           <FrameRow
             key={r.id}
@@ -3025,9 +2889,7 @@ function FramesView({
                 height: 16,
                 borderRadius: 2,
                 cursor: 'pointer',
-                color: isActiveFolder
-                  ? 'var(--vscode-focusBorder)'
-                  : 'var(--vscode-descriptionForeground)',
+                color: isActiveFolder ? 'var(--vscode-focusBorder)' : 'var(--vscode-descriptionForeground)',
               }}
             >
               <Icon name="check-all" />
@@ -3102,10 +2964,7 @@ function AutoDetectConfigPanel({
   state: AutoDetectState
   /** Decoded image pixels — null until the image finishes decoding. */
   imageData: ImageData | null
-  onOptionChange: <K extends keyof Required<CCLOptions>>(
-    key: K,
-    value: Required<CCLOptions>[K]
-  ) => void
+  onOptionChange: <K extends keyof Required<CCLOptions>>(key: K, value: Required<CCLOptions>[K]) => void
   onPrefixChange: (prefix: string) => void
   onDetect: (detected: DetectedRect[]) => void
   canCommit: boolean
@@ -3145,17 +3004,9 @@ function AutoDetectConfigPanel({
           onChange={(n) => onOptionChange('connectivity', n >= 8 ? 8 : 4)}
         />
         <span {...stylex.props(s.sliceLabel)}>Min px</span>
-        <SliceNumField
-          value={state.options.minPixels}
-          min={1}
-          onChange={(n) => onOptionChange('minPixels', n)}
-        />
+        <SliceNumField value={state.options.minPixels} min={1} onChange={(n) => onOptionChange('minPixels', n)} />
         <span {...stylex.props(s.sliceLabel)}>Min size</span>
-        <SliceNumField
-          value={state.options.minSize}
-          min={1}
-          onChange={(n) => onOptionChange('minSize', n)}
-        />
+        <SliceNumField value={state.options.minSize} min={1} onChange={(n) => onOptionChange('minSize', n)} />
       </div>
 
       <div {...stylex.props(s.sliceDivider)} />
@@ -3192,9 +3043,7 @@ function AutoDetectConfigPanel({
           disabled={!canCommit}
           onClick={onCommit}
           title={
-            canCommit
-              ? 'Commit picked rects as atlas frames (Enter)'
-              : 'Detect, pick rects, and set a name to commit'
+            canCommit ? 'Commit picked rects as atlas frames (Enter)' : 'Detect, pick rects, and set a name to commit'
           }
         >
           Commit
@@ -3255,15 +3104,7 @@ function Splitter({
 // SliceNumField was replaced by the design-system <NumberField/> primitive
 // which gives us VSCode-native styling, drag-handle inc/dec, and keyboard
 // arrow support. Adapter component preserves the call sites' shape.
-function SliceNumField({
-  value,
-  min,
-  onChange,
-}: {
-  value: number
-  min: number
-  onChange: (n: number) => void
-}) {
+function SliceNumField({ value, min, onChange }: { value: number; min: number; onChange: (n: number) => void }) {
   return <NumberField value={value} min={min} onChange={(n) => onChange(Math.round(n))} />
 }
 
@@ -3308,58 +3149,26 @@ function SliceConfigPanel({
         {state.inputMode === 'pixels' ? (
           <>
             <span {...stylex.props(s.sliceLabel)}>Cell W</span>
-            <SliceNumField
-              value={state.cellW}
-              min={1}
-              onChange={(n) => onParamsChange({ cellW: n })}
-            />
+            <SliceNumField value={state.cellW} min={1} onChange={(n) => onParamsChange({ cellW: n })} />
             <span {...stylex.props(s.sliceLabel)}>Cell H</span>
-            <SliceNumField
-              value={state.cellH}
-              min={1}
-              onChange={(n) => onParamsChange({ cellH: n })}
-            />
+            <SliceNumField value={state.cellH} min={1} onChange={(n) => onParamsChange({ cellH: n })} />
           </>
         ) : (
           <>
             <span {...stylex.props(s.sliceLabel)}>Cols</span>
-            <SliceNumField
-              value={state.cols || cols}
-              min={1}
-              onChange={(n) => onParamsChange({ cols: n })}
-            />
+            <SliceNumField value={state.cols || cols} min={1} onChange={(n) => onParamsChange({ cols: n })} />
             <span {...stylex.props(s.sliceLabel)}>Rows</span>
-            <SliceNumField
-              value={state.rows || rows}
-              min={1}
-              onChange={(n) => onParamsChange({ rows: n })}
-            />
+            <SliceNumField value={state.rows || rows} min={1} onChange={(n) => onParamsChange({ rows: n })} />
           </>
         )}
         <span {...stylex.props(s.sliceLabel)}>Offset X</span>
-        <SliceNumField
-          value={state.offsetX}
-          min={0}
-          onChange={(n) => onParamsChange({ offsetX: n })}
-        />
+        <SliceNumField value={state.offsetX} min={0} onChange={(n) => onParamsChange({ offsetX: n })} />
         <span {...stylex.props(s.sliceLabel)}>Offset Y</span>
-        <SliceNumField
-          value={state.offsetY}
-          min={0}
-          onChange={(n) => onParamsChange({ offsetY: n })}
-        />
+        <SliceNumField value={state.offsetY} min={0} onChange={(n) => onParamsChange({ offsetY: n })} />
         <span {...stylex.props(s.sliceLabel)}>Gutter X</span>
-        <SliceNumField
-          value={state.gutterX}
-          min={0}
-          onChange={(n) => onParamsChange({ gutterX: n })}
-        />
+        <SliceNumField value={state.gutterX} min={0} onChange={(n) => onParamsChange({ gutterX: n })} />
         <span {...stylex.props(s.sliceLabel)}>Gutter Y</span>
-        <SliceNumField
-          value={state.gutterY}
-          min={0}
-          onChange={(n) => onParamsChange({ gutterY: n })}
-        />
+        <SliceNumField value={state.gutterY} min={0} onChange={(n) => onParamsChange({ gutterY: n })} />
       </div>
 
       <div {...stylex.props(s.sliceDivider)} />
@@ -3387,9 +3196,7 @@ function SliceConfigPanel({
           disabled={!canCommit}
           onClick={onCommit}
           title={
-            canCommit
-              ? 'Commit picked cells as atlas frames (Enter)'
-              : 'Pick cells and set a name prefix to commit'
+            canCommit ? 'Commit picked cells as atlas frames (Enter)' : 'Pick cells and set a name prefix to commit'
           }
         >
           Commit

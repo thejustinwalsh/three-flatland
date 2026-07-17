@@ -109,16 +109,15 @@ export function blurSpin(
   let result: Node<'vec4'> = vec4(0, 0, 0, 0)
 
   for (let i = 0; i < samples; i++) {
-    const t = float(i / (samples - 1)).sub(0.5).mul(2) // -1 to 1
+    const t = float(i / (samples - 1))
+      .sub(0.5)
+      .mul(2) // -1 to 1
     const rotation = angleNode.mul(t)
 
     const cosR = rotation.cos()
     const sinR = rotation.sin()
 
-    const rotated = vec2(
-      toPixel.x.mul(cosR).sub(toPixel.y.mul(sinR)),
-      toPixel.x.mul(sinR).add(toPixel.y.mul(cosR))
-    )
+    const rotated = vec2(toPixel.x.mul(cosR).sub(toPixel.y.mul(sinR)), toPixel.x.mul(sinR).add(toPixel.y.mul(cosR)))
 
     result = result.add(sampleTexture(tex, centerVec.add(rotated)))
   }

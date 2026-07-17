@@ -50,11 +50,19 @@ function mkTransport(): CapturingTransport {
     acquireSmall: () => new ArrayBuffer(4 * 1024),
     acquireMedium: () => new ArrayBuffer(256 * 1024),
     acquireLarge: () => new ArrayBuffer(16 * 1024 * 1024),
-    post: (msg) => { posts.push(msg) },
-    convert: (req) => { converts.push(req) },
-    releaseUnused: () => { /* no-op */ },
+    post: (msg) => {
+      posts.push(msg)
+    },
+    convert: (req) => {
+      converts.push(req)
+    },
+    releaseUnused: () => {
+      /* no-op */
+    },
     poolStats: () => ({ smallFree: 0, mediumFree: 0, largeFree: 0 }),
-    dispose: () => { /* no-op */ },
+    dispose: () => {
+      /* no-op */
+    },
   }
 }
 
@@ -102,12 +110,16 @@ describe('DevtoolsProvider _flush — buffer pixel routing', () => {
 
     // Register a 1 MB texture (256×256 RGBA8) — bigger than the medium tier,
     // which is exactly the case the trivial fix exists to handle.
-    provider.registry  // no-op, just confirm the provider is alive
+    provider.registry // no-op, just confirm the provider is alive
     const tex = dataTex(256, 256, 0xa5)
-    const debugTextures = (provider as unknown as { _textures: {
-      register: (n: string, t: DataTexture, p: string) => void
-      readbackAll: (sub: Map<string, { mode: 'thumbnail' }>, r: WebGPURenderer) => void
-    } })._textures
+    const debugTextures = (
+      provider as unknown as {
+        _textures: {
+          register: (n: string, t: DataTexture, p: string) => void
+          readbackAll: (sub: Map<string, { mode: 'thumbnail' }>, r: WebGPURenderer) => void
+        }
+      }
+    )._textures
     debugTextures.register('big', tex, 'rgba8')
 
     // Subscribe to 'buffers' for that entry — drives both the per-frame
@@ -149,10 +161,14 @@ describe('DevtoolsProvider _flush — buffer pixel routing', () => {
   it('does not call convert when there is no pixel subscription', () => {
     const { provider, transport } = makeProvider('no-sub')
     const renderer = mockRenderer()
-    const debugTextures = (provider as unknown as { _textures: {
-      register: (n: string, t: DataTexture, p: string) => void
-      readbackAll: (sub: Map<string, { mode: 'thumbnail' }>, r: WebGPURenderer) => void
-    } })._textures
+    const debugTextures = (
+      provider as unknown as {
+        _textures: {
+          register: (n: string, t: DataTexture, p: string) => void
+          readbackAll: (sub: Map<string, { mode: 'thumbnail' }>, r: WebGPURenderer) => void
+        }
+      }
+    )._textures
     debugTextures.register('orphan', dataTex(8, 8), 'rgba8')
 
     // Subscribe to the 'buffers' *feature* (so metadata ships) but with NO
@@ -167,9 +183,11 @@ describe('DevtoolsProvider _flush — buffer pixel routing', () => {
     expect(transport.converts).toHaveLength(0)
     // Metadata-only buffers shape still ships so the picker UI knows what
     // entries exist.
-    const msg = transport.posts[0] as DebugMessage & {
-      payload: { features?: { buffers?: { entries?: Record<string, { pixels?: unknown }> } } }
-    } | undefined
+    const msg = transport.posts[0] as
+      | (DebugMessage & {
+          payload: { features?: { buffers?: { entries?: Record<string, { pixels?: unknown }> } } }
+        })
+      | undefined
     const entries = msg?.payload.features?.buffers?.entries
     if (entries) {
       // If we did emit, the entry must NOT carry pixels.

@@ -122,9 +122,7 @@ describe('splitRegionRowsCols', () => {
   })
 
   it('clamps counts to ≥1 and drops degenerate children when cuts exceed pixels', () => {
-    expect(splitRegionRowsCols({ x: 0, y: 0, w: 8, h: 8 }, 0, -3)).toEqual([
-      { x: 0, y: 0, w: 8, h: 8 },
-    ])
+    expect(splitRegionRowsCols({ x: 0, y: 0, w: 8, h: 8 }, 0, -3)).toEqual([{ x: 0, y: 0, w: 8, h: 8 }])
     // 2px wide, 4 columns: only 2 non-degenerate children can exist.
     const slivers = splitRegionRowsCols({ x: 0, y: 0, w: 2, h: 2 }, 1, 4)
     expectPartition(slivers, { x: 0, y: 0, w: 2, h: 2 })

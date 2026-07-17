@@ -91,10 +91,18 @@ class StreamEncoder {
   private _width = 0
   private _height = 0
   private _lastKeyFrameAt = 0
-  private _pendingMeta: Map<number, {
-    name: string; frame: number; capturedAt: number
-    width: number; height: number; pixelType: string; display: string
-  }> = new Map()
+  private _pendingMeta: Map<
+    number,
+    {
+      name: string
+      frame: number
+      capturedAt: number
+      width: number
+      height: number
+      pixelType: string
+      display: string
+    }
+  > = new Map()
   private _tsCounter = 0
 
   constructor(bc: BroadcastChannel) {
@@ -105,10 +113,18 @@ class StreamEncoder {
    * Encode already-converted RGBA8 pixels into a VP9 video stream.
    * Conversion from the source pixel format happens before this call.
    */
-  encode(rgba8: Uint8Array, meta: {
-    name: string; frame: number; width: number; height: number
-    pixelType: string; display: string; forceKeyFrame: boolean
-  }): void {
+  encode(
+    rgba8: Uint8Array,
+    meta: {
+      name: string
+      frame: number
+      width: number
+      height: number
+      pixelType: string
+      display: string
+      forceKeyFrame: boolean
+    }
+  ): void {
     const needsReconfigure = meta.width !== this._width || meta.height !== this._height
 
     if (needsReconfigure || this._encoder === null) {
@@ -119,8 +135,7 @@ class StreamEncoder {
     if (encoder === null) return
 
     const timestamp = this._tsCounter++
-    const forceKey = meta.forceKeyFrame || needsReconfigure ||
-      Date.now() - this._lastKeyFrameAt > KEYFRAME_INTERVAL_MS
+    const forceKey = meta.forceKeyFrame || needsReconfigure || Date.now() - this._lastKeyFrameAt > KEYFRAME_INTERVAL_MS
 
     this._pendingMeta.set(timestamp, {
       name: meta.name,
@@ -146,7 +161,11 @@ class StreamEncoder {
 
   close(): void {
     if (this._encoder !== null && this._encoder.state !== 'closed') {
-      try { this._encoder.close() } catch { /* may already be errored */ }
+      try {
+        this._encoder.close()
+      } catch {
+        /* may already be errored */
+      }
     }
     this._encoder = null
     this._pendingMeta.clear()
@@ -248,7 +267,11 @@ ctx.onmessage = (ev: MessageEvent<unknown>) => {
     const init = msg as InitMessage
     if (encoder !== null) encoder.close()
     if (bc !== null) {
-      try { bc.close() } catch { /* swallow */ }
+      try {
+        bc.close()
+      } catch {
+        /* swallow */
+      }
     }
     bc = new BroadcastChannel(init.channelName)
     encoder = new StreamEncoder(bc)
@@ -279,7 +302,14 @@ ctx.onmessage = (ev: MessageEvent<unknown>) => {
 
     // Convert BEFORE bouncing the pool buffer — conv.pixels IS the
     // pool buffer. Transferring it back detaches it from our scope.
-    const rgba8 = convertToRGBA8(conv.pixels, conv.pixelType, conv.display, conv.width, conv.height, conv.pixelsByteLength)
+    const rgba8 = convertToRGBA8(
+      conv.pixels,
+      conv.pixelType,
+      conv.display,
+      conv.width,
+      conv.height,
+      conv.pixelsByteLength
+    )
 
     // Now bounce pool buffers back (conversion is done).
     const poolBufs = conv.__poolBufs

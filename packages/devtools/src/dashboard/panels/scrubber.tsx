@@ -11,13 +11,7 @@
  */
 import { useEffect, useLayoutEffect } from 'preact/hooks'
 import { useDevtoolsState, useFrameTick } from '../hooks.js'
-import {
-  addFrameCursorListener,
-  getFrameCursor,
-  goLive,
-  setCursorProvider,
-  setFrameCursor,
-} from '../frame-cursor.js'
+import { addFrameCursorListener, getFrameCursor, goLive, setCursorProvider, setFrameCursor } from '../frame-cursor.js'
 import { useState } from 'preact/hooks'
 
 /** Oldest/newest engine frame currently held by the stats ring. */
@@ -93,9 +87,7 @@ export function Scrubber() {
       <button class="scrub-step" title="Forward one frame" onClick={() => step(1)}>
         ▶
       </button>
-      <span class="scrub-frame">
-        {parked ? `${shown}/${range.max}` : `${range.max}`}
-      </span>
+      <span class="scrub-frame">{parked ? `${shown}/${range.max}` : `${range.max}`}</span>
       <button
         class={`scrub-live${parked ? '' : ' active'}`}
         title={parked ? 'Return to live' : 'Live'}

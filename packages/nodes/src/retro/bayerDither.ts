@@ -17,12 +17,8 @@ function getBayer2x2(x: Node<'int'>, y: Node<'int'>): Node<'float'> {
   // Bayer 2x2 values: [0, 2, 3, 1] / 4
   return select(
     index.equal(int(0)),
-    float(0 / 4),
-    select(
-      index.equal(int(1)),
-      float(2 / 4),
-      select(index.equal(int(2)), float(3 / 4), float(1 / 4))
-    )
+    float(0),
+    select(index.equal(int(1)), float(2 / 4), select(index.equal(int(2)), float(3 / 4), float(1 / 4)))
   )
 }
 
@@ -42,7 +38,7 @@ function getBayer4x4(x: Node<'int'>, y: Node<'int'>): Node<'float'> {
   // [ 3,11, 1, 9] / 16
   // [15, 7,13, 5] / 16
   const values = [
-    0 / 16,
+    0,
     8 / 16,
     2 / 16,
     10 / 16,
@@ -81,7 +77,7 @@ function getBayer8x8(x: Node<'int'>, y: Node<'int'>): Node<'float'> {
 
   // 8x8 Bayer matrix values (normalized)
   const values = [
-    0 / 64,
+    0,
     32 / 64,
     8 / 64,
     40 / 64,
@@ -190,9 +186,7 @@ export function bayerDither2x2(
 
   // Apply dithering: add threshold offset before quantization
   const levelsMinusOne = levelsNode.sub(float(1))
-  const ditheredRGB = floor(
-    inputColor.rgb.mul(levelsMinusOne).add(threshold)
-  ).div(levelsMinusOne)
+  const ditheredRGB = floor(inputColor.rgb.mul(levelsMinusOne).add(threshold)).div(levelsMinusOne)
 
   return vec4(ditheredRGB, inputColor.a)
 }
@@ -230,9 +224,7 @@ export function bayerDither4x4(
   const threshold = getBayer4x4(x, y)
 
   const levelsMinusOne = levelsNode.sub(float(1))
-  const ditheredRGB = floor(
-    inputColor.rgb.mul(levelsMinusOne).add(threshold)
-  ).div(levelsMinusOne)
+  const ditheredRGB = floor(inputColor.rgb.mul(levelsMinusOne).add(threshold)).div(levelsMinusOne)
 
   return vec4(ditheredRGB, inputColor.a)
 }
@@ -270,9 +262,7 @@ export function bayerDither8x8(
   const threshold = getBayer8x8(x, y)
 
   const levelsMinusOne = levelsNode.sub(float(1))
-  const ditheredRGB = floor(
-    inputColor.rgb.mul(levelsMinusOne).add(threshold)
-  ).div(levelsMinusOne)
+  const ditheredRGB = floor(inputColor.rgb.mul(levelsMinusOne).add(threshold)).div(levelsMinusOne)
 
   return vec4(ditheredRGB, inputColor.a)
 }

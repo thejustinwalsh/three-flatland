@@ -44,15 +44,19 @@ async function main() {
   scene.add(sprite)
 
   // Tweakpane UI
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
   const devtools = createDevtoolsProvider({ name: 'template' })
   const params = { tint: '#ffffff' }
-  pane.addBinding(params, 'tint', {
-    label: 'tint',
-    options: { White: '#ffffff', Cyan: '#47cca9', Pink: '#ff6b9d' },
-  }).on('change', (ev) => {
-    sprite.tint.set(ev.value)
-  })
+  pane
+    .addBinding(params, 'tint', {
+      label: 'tint',
+      options: { White: '#ffffff', Cyan: '#47cca9', Pink: '#ff6b9d' },
+    })
+    .on('change', (ev) => {
+      sprite.tint.set(ev.value)
+    })
 
   // Resize
   window.addEventListener('resize', () => {
@@ -77,7 +81,7 @@ async function main() {
   animate()
 }
 
-main()
+void main()
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

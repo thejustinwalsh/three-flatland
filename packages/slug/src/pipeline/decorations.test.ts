@@ -7,10 +7,7 @@ import { shapeText } from './textShaper'
 import { emitDecorations } from './decorations'
 import type { SlugGlyphData } from '../types'
 
-const FONT_PATH = resolve(
-  __dirname,
-  '../../../../examples/three/slug-text/public/Inter-Regular.ttf'
-)
+const FONT_PATH = resolve(__dirname, '../../../../examples/three/slug-text/public/Inter-Regular.ttf')
 const buf = readFileSync(FONT_PATH)
 const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
 
@@ -45,21 +42,12 @@ describe('emitDecorations', () => {
   })
 
   it('returns empty when no positioned glyphs', () => {
-    expect(
-      emitDecorations('', [], [{ start: 0, end: 1, underline: true }], 48, metrics, advances)
-    ).toEqual([])
+    expect(emitDecorations('', [], [{ start: 0, end: 1, underline: true }], 48, metrics, advances)).toEqual([])
   })
 
   it('emits one underline rect for a single styled run on one line', () => {
     const positioned = shapeText(font, 'Hello', 48)
-    const rects = emitDecorations(
-      'Hello',
-      positioned,
-      [{ start: 0, end: 5, underline: true }],
-      48,
-      metrics,
-      advances
-    )
+    const rects = emitDecorations('Hello', positioned, [{ start: 0, end: 5, underline: true }], 48, metrics, advances)
     expect(rects).toHaveLength(1)
     const r = rects[0]!
     expect(r.width).toBeGreaterThan(0)
@@ -70,14 +58,7 @@ describe('emitDecorations', () => {
 
   it('emits one strike rect with correct vertical placement', () => {
     const positioned = shapeText(font, 'Hello', 48)
-    const rects = emitDecorations(
-      'Hello',
-      positioned,
-      [{ start: 0, end: 5, strike: true }],
-      48,
-      metrics,
-      advances
-    )
+    const rects = emitDecorations('Hello', positioned, [{ start: 0, end: 5, strike: true }], 48, metrics, advances)
     expect(rects).toHaveLength(1)
     expect(rects[0]!.height).toBeCloseTo(metrics.strikethroughThickness * 48, 3)
     expect(rects[0]!.y).toBeGreaterThan(0)

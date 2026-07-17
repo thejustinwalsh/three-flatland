@@ -47,9 +47,7 @@ function ShowcaseGameInner() {
   const noopZzfx: PlaySoundFn = () => {}
 
   const handleInteraction = useCallback(() => {
-    import('../scripts/sounds')
-      .then((sounds) => sounds.initAudio())
-      .catch(() => {})
+    import('../scripts/sounds').then((sounds) => sounds.initAudio()).catch(() => {})
   }, [])
 
   return (
@@ -64,12 +62,7 @@ function ShowcaseGameInner() {
       }}
     >
       <Suspense fallback={null}>
-        <MiniBreakout
-          zzfx={zzfxProxy ?? noopZzfx}
-          isVisible={isVisible}
-          onInteraction={handleInteraction}
-          showStats
-        />
+        <MiniBreakout zzfx={zzfxProxy ?? noopZzfx} isVisible={isVisible} onInteraction={handleInteraction} showStats />
       </Suspense>
     </div>
   )

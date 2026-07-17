@@ -9,7 +9,7 @@
 
 ## Code Style
 
-- No semicolons, single quotes, trailing commas (Prettier)
+- No semicolons, single quotes, trailing commas, 120-column width (oxfmt)
 - `type` keyword required for type-only imports (`consistent-type-imports` + `verbatimModuleSyntax`)
 - Unused vars must be prefixed with `_`
 

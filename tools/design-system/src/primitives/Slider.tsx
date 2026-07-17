@@ -7,13 +7,7 @@ import {
 } from 'react'
 import { vscode } from '../tokens/vscode-theme.stylex'
 import { radius } from '../tokens/radius.stylex'
-import {
-  computeDragValue,
-  ratioForValue,
-  snapToStep,
-  type SliderDragStart,
-  type SliderRange,
-} from './sliderMath'
+import { computeDragValue, ratioForValue, snapToStep, type SliderDragStart, type SliderRange } from './sliderMath'
 
 export type { SliderRange } from './sliderMath'
 
@@ -183,10 +177,7 @@ export function Slider({ value, range, onChange, disabled = false, ...rest }: Sl
       <span {...stylex.props(s.rail)}>
         <span {...stylex.props(s.fill, active && s.fillActive, s.fillWidth(ratio))} />
       </span>
-      <span
-        aria-hidden="true"
-        {...stylex.props(s.thumb, active && s.thumbActive, s.thumbLeft(ratio))}
-      />
+      <span aria-hidden="true" {...stylex.props(s.thumb, active && s.thumbActive, s.thumbLeft(ratio))} />
     </div>
   )
 }

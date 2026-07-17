@@ -159,11 +159,7 @@ export function SourcesView() {
 
   return (
     <Panel title="Sources" bodyPadding="none" style={s.panelFill}>
-      <div
-        ref={containerRef}
-        {...stylex.props(s.container)}
-        style={{ cursor: dragRef.current ? 'grabbing' : 'grab' }}
-      >
+      <div ref={containerRef} {...stylex.props(s.container)} style={{ cursor: dragRef.current ? 'grabbing' : 'grab' }}>
         <svg
           viewBox={viewBox}
           width="100%"
@@ -231,11 +227,7 @@ export function SourcesView() {
                       width={f.frame.w}
                       height={f.frame.h}
                       fill="none"
-                      stroke={
-                        isConflict
-                          ? 'var(--vscode-editorError-foreground)'
-                          : 'var(--vscode-focusBorder)'
-                      }
+                      stroke={isConflict ? 'var(--vscode-editorError-foreground)' : 'var(--vscode-focusBorder)'}
                       strokeWidth={(isConflict ? 2 : 1) / zoom}
                     />
                   )

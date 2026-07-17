@@ -18,18 +18,14 @@ function makeFakeResponse(bytes: ArrayBuffer): Response {
       },
       async arrayBuffer() {
         if (consumed) {
-          throw new TypeError(
-            "Failed to execute 'arrayBuffer' on 'Response': body stream already read",
-          )
+          throw new TypeError("Failed to execute 'arrayBuffer' on 'Response': body stream already read")
         }
         consumed = true
         return bytes
       },
       clone() {
         if (consumed) {
-          throw new TypeError(
-            "Failed to execute 'clone' on 'Response': Response body is already used",
-          )
+          throw new TypeError("Failed to execute 'clone' on 'Response': Response body is already used")
         }
         return make()
       },

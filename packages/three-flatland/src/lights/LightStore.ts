@@ -93,13 +93,7 @@ export class LightStore {
     // DataTexture: width=maxLights, height=4 rows, RGBA float
     const dataSize = this.maxLights * 4 * 4 // 4 rows x 4 channels x maxLights
     this._lightsData = new Float32Array(dataSize)
-    this._lightsTexture = new DataTexture(
-      this._lightsData,
-      this.maxLights,
-      4,
-      RGBAFormat,
-      FloatType
-    )
+    this._lightsTexture = new DataTexture(this._lightsData, this.maxLights, 4, RGBAFormat, FloatType)
     this._lightsTexture.minFilter = NearestFilter
     this._lightsTexture.magFilter = NearestFilter
     this._lightsTexture.needsUpdate = true

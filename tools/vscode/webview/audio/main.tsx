@@ -42,9 +42,7 @@ function tagCodiconStylesheet() {
 }
 tagCodiconStylesheet()
 
-window.addEventListener('error', (e) =>
-  send('error', [e.message, `${e.filename}:${e.lineno}:${e.colno}`])
-)
+window.addEventListener('error', (e) => send('error', [e.message, `${e.filename}:${e.lineno}:${e.colno}`]))
 window.addEventListener('unhandledrejection', (e) => send('unhandledrejection', [String(e.reason)]))
 send('info', ['zzfx webview boot'])
 

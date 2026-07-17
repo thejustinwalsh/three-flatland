@@ -53,9 +53,7 @@ function resolveDashboardRoot(): string {
   return resolve(here, 'dashboard')
 }
 
-export function threeFlatlandDevtools(
-  options: ThreeFlatlandDevtoolsOptions = {},
-): Plugin {
+export function threeFlatlandDevtools(options: ThreeFlatlandDevtoolsOptions = {}): Plugin {
   const mountPath = options.path ?? DEFAULT_PATH
   const dashboardRoot = resolveDashboardRoot()
   const vendorRoot = resolve(dashboardRoot, 'vendor')
@@ -128,7 +126,7 @@ export function threeFlatlandDevtools(
       const logger = server.config.logger
       const port = server.config.server.port ?? 5173
       logger.info(
-        `\n  \u001b[32m\u279c\u001b[0m  three-flatland devtools: \u001b[36mhttp://localhost:${port}${mountPath}\u001b[0m\n`,
+        `\n  \u001b[32m\u279c\u001b[0m  three-flatland devtools: \u001b[36mhttp://localhost:${port}${mountPath}\u001b[0m\n`
       )
     },
   }

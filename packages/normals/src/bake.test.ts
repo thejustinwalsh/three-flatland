@@ -12,12 +12,7 @@ function alphaAt(buf: Uint8Array, x: number, y: number, w: number): number {
   return buf[(y * w + x) * 4 + 3]!
 }
 
-function rgbAt(
-  buf: Uint8Array,
-  x: number,
-  y: number,
-  w: number
-): [number, number, number] {
+function rgbAt(buf: Uint8Array, x: number, y: number, w: number): [number, number, number] {
   const i = (y * w + x) * 4
   return [buf[i]!, buf[i + 1]!, buf[i + 2]!]
 }
@@ -119,9 +114,7 @@ describe('bakedNormalURL', () => {
   })
 
   it('preserves query strings', () => {
-    expect(bakedNormalURL('/sprites/knight.png?v=3')).toBe(
-      '/sprites/knight.normal.png?v=3'
-    )
+    expect(bakedNormalURL('/sprites/knight.png?v=3')).toBe('/sprites/knight.normal.png?v=3')
   })
 
   it('is case-insensitive on the extension', () => {

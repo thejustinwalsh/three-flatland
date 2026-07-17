@@ -29,10 +29,7 @@ export function shapeText(
   // advance. The baked shaper doesn't apply GSUB at all; pass an empty
   // features list to keep the two paths aligned.
   const openGlyphs = (
-    font.stringToGlyphs as (
-      s: string,
-      opts?: { features?: unknown[] }
-    ) => ReturnType<Font['stringToGlyphs']>
+    font.stringToGlyphs as (s: string, opts?: { features?: unknown[] }) => ReturnType<Font['stringToGlyphs']>
   )(text, { features: [] })
   const positioned: PositionedGlyph[] = []
 

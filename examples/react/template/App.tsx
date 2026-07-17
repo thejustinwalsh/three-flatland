@@ -23,14 +23,7 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
 function SpriteScene({ tint }: { tint: string }) {
   const texture = useLoader(TextureLoader, './icon.svg')
 
-  return (
-    <sprite2D
-      texture={texture}
-      tint={tint}
-      anchor={[0.5, 0.5]}
-      scale={[150, 150, 1]}
-    />
-  )
+  return <sprite2D texture={texture} tint={tint} anchor={[0.5, 0.5]} scale={[150, 150, 1]} />
 }
 
 function Scene() {
@@ -56,7 +49,10 @@ export default function App() {
         position: [0, 0, 100],
         near: 0.1,
         far: 1000,
-        left: -1, right: 1, top: 1, bottom: -1,
+        left: -1,
+        right: 1,
+        top: 1,
+        bottom: -1,
       }}
       renderer={{ antialias: false }}
       onCreated={({ gl }) => {

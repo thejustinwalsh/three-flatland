@@ -1,31 +1,17 @@
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { createClientBridge, getVSCodeApi } from '@three-flatland/bridge/client'
-import {
-  DevReloadToast,
-  Panel,
-  Splitter,
-  Toolbar,
-  ToolbarButton,
-} from '@three-flatland/design-system'
+import { DevReloadToast, Panel, Splitter, Toolbar, ToolbarButton } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
-import {
-  DragProvider,
-  GridSliceOverlay,
-  RectOverlay,
-  useImageData,
-  type Rect,
-} from '@three-flatland/preview'
+import { DragProvider, GridSliceOverlay, RectOverlay, useImageData, type Rect } from '@three-flatland/preview'
 import { cellKey, gridFromCellSize, type GridSpec } from '@three-flatland/preview/grid'
 import type { NormalSourceDescriptor } from '@three-flatland/normals'
 
 // Code-split the R3F + three.js + three-flatland chunk out of the initial
 // paint critical path — same pattern as the atlas/merge tools. See
 // tools/vscode/CLAUDE.md "Bundle size & loading".
-const CanvasStage = lazy(() =>
-  import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage }))
-)
+const CanvasStage = lazy(() => import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage })))
 
 import {
   normalBakerActions,
@@ -38,13 +24,7 @@ import {
 } from './normalBakerStore'
 import { descriptorToState, stateToDescriptor } from './descriptorIO'
 import { resolveDirection } from './fieldResolution'
-import {
-  childrenFromSplit,
-  splitRegionByGrid,
-  splitRegionRowsCols,
-  tilesFromGrid,
-  tilesFromPicked,
-} from './gridOps'
+import { childrenFromSplit, splitRegionByGrid, splitRegionRowsCols, tilesFromGrid, tilesFromPicked } from './gridOps'
 import { GridSlicePanel, type GridSettings } from './GridSlicePanel'
 import { InfoSection } from './InfoSection'
 import { Inspector, inspectorHeading } from './Inspector'
@@ -179,9 +159,7 @@ function ImageDataSink({ onChange }: { onChange: (data: ImageData | null) => voi
 }
 
 export function App() {
-  const [payload, setPayload] = useState<InitPayload | null>(
-    () => window.__FL_NORMAL_BAKER__ ?? null
-  )
+  const [payload, setPayload] = useState<InitPayload | null>(() => window.__FL_NORMAL_BAKER__ ?? null)
   const [loadError, setLoadError] = useState<string | null>(null)
   // Gates Save (button + Cmd/Ctrl+S) until the initial descriptor has
   // actually landed. The Toolbar mounts and the Save button becomes
@@ -193,10 +171,7 @@ export function App() {
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null)
   const [imageData, setImageData] = useState<ImageData | null>(null)
   const [saveStatus, setSaveStatus] = useState<
-    | { kind: 'idle' }
-    | { kind: 'saving' }
-    | { kind: 'saved'; at: number }
-    | { kind: 'error'; message: string }
+    { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved'; at: number } | { kind: 'error'; message: string }
   >({ kind: 'idle' })
 
   const regions = useNormalBakerRegions()
@@ -214,14 +189,7 @@ export function App() {
   const materializeGrid = useCallback(
     (settings: GridSettings): GridSpec | null =>
       imageSize
-        ? gridFromCellSize(
-            imageSize.w,
-            imageSize.h,
-            settings.tileW,
-            settings.tileH,
-            settings.offsetX,
-            settings.offsetY
-          )
+        ? gridFromCellSize(imageSize.w, imageSize.h, settings.tileW, settings.tileH, settings.offsetX, settings.offsetY)
         : null,
     [imageSize]
   )
@@ -417,12 +385,9 @@ export function App() {
     normalBakerActions.addRegion(r)
   }, [])
 
-  const handleRectChange = useCallback(
-    (id: string, next: { x: number; y: number; w: number; h: number }) => {
-      normalBakerActions.updateRegion(id, next)
-    },
-    []
-  )
+  const handleRectChange = useCallback((id: string, next: { x: number; y: number; w: number; h: number }) => {
+    normalBakerActions.updateRegion(id, next)
+  }, [])
 
   const handleAddRegionFromPanel = useCallback(() => {
     const w = imageSize ? Math.min(32, imageSize.w) : 32
@@ -458,8 +423,7 @@ export function App() {
   }, [gridState, updateGrid])
 
   const selectedRegion = useMemo(
-    () =>
-      selectedIds.size === 1 ? (regions.find((r) => r.id === [...selectedIds][0]) ?? null) : null,
+    () => (selectedIds.size === 1 ? (regions.find((r) => r.id === [...selectedIds][0]) ?? null) : null),
     [regions, selectedIds]
   )
 
@@ -507,11 +471,7 @@ export function App() {
     const handler = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return
       const target = e.target as HTMLElement | null
-      if (
-        target &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-      )
-        return
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
       if (e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
         normalBakerHistory.undo()
@@ -530,18 +490,8 @@ export function App() {
   return (
     <div ref={rootRef} tabIndex={-1} {...stylex.props(s.root)}>
       <Toolbar>
-        <ToolbarButton
-          icon="discard"
-          title="Undo"
-          onClick={normalBakerHistory.undo}
-          disabled={!canUndo}
-        />
-        <ToolbarButton
-          icon="redo"
-          title="Redo"
-          onClick={normalBakerHistory.redo}
-          disabled={!canRedo}
-        />
+        <ToolbarButton icon="discard" title="Undo" onClick={normalBakerHistory.undo} disabled={!canUndo} />
+        <ToolbarButton icon="redo" title="Redo" onClick={normalBakerHistory.redo} disabled={!canRedo} />
         <ToolbarButton
           icon="symbol-ruler"
           title="Grid Slice"
@@ -564,18 +514,12 @@ export function App() {
           disabled={!ready || saveStatus.kind === 'saving'}
         />
       </Toolbar>
-      {loadError ? (
-        <div {...stylex.props(s.errorBanner)}>Sidecar load failed: {loadError}</div>
-      ) : null}
+      {loadError ? <div {...stylex.props(s.errorBanner)}>Sidecar load failed: {loadError}</div> : null}
       <div ref={workAreaRef} {...stylex.props(s.workArea, s.workAreaCols(sidebarPx))}>
         <div {...stylex.props(s.canvasPanel)}>
           <Panel bodyPadding="none" style={s.canvasStagePanel}>
             <DragProvider>
-              <CanvasStage
-                imageUri={payload?.uri ?? null}
-                onImageReady={setImageSize}
-                backgroundStyle="checker"
-              >
+              <CanvasStage imageUri={payload?.uri ?? null} onImageReady={setImageSize} backgroundStyle="checker">
                 <ImageDataSink onChange={setImageData} />
                 <RegionColorOverlay regions={colorRegions} selectedIds={selectedIds} />
                 {/* Grid mode: the grid overlay owns the canvas pointer
@@ -657,18 +601,13 @@ export function App() {
           ) : (
             <Panel title="Info" bodyPadding="none" style={s.infoPanel}>
               <div {...stylex.props(s.infoBody)}>
-                <InfoSection
-                  id="inspector"
-                  heading={inspectorHeading(selectedRegion, selectedIds.size)}
-                >
+                <InfoSection id="inspector" heading={inspectorHeading(selectedRegion, selectedIds.size)}>
                   <Inspector
                     region={selectedRegion}
                     selectionCount={selectedIds.size}
                     defaults={defaults}
                     onRegionChange={(next) => normalBakerActions.replaceRegion(next)}
-                    onDefaultsChange={(patch) =>
-                      normalBakerActions.setDefaults((prev) => ({ ...prev, ...patch }))
-                    }
+                    onDefaultsChange={(patch) => normalBakerActions.setDefaults((prev) => ({ ...prev, ...patch }))}
                   />
                 </InfoSection>
                 {/* Renders its own two InfoSections (Normal, Lit) —

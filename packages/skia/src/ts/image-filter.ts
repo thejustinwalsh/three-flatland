@@ -2,8 +2,8 @@ import type { SkiaContext } from './context'
 import type { SkiaColorFilter } from './color-filter'
 import { type BlendMode, BLEND_MODE } from './types'
 
-const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => drop(handle),
+const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) =>
+  drop(handle)
 )
 
 /**
@@ -50,7 +50,13 @@ export class SkiaImageFilter {
    * Create a blur filter, or return `existing` if it was created with the same params.
    * Disposes `existing` if params changed. Pass `existing` from your cached field.
    */
-  static blur(context: SkiaContext, sigmaX: number, sigmaY: number, input?: SkiaImageFilter, existing?: SkiaImageFilter | null): SkiaImageFilter | null {
+  static blur(
+    context: SkiaContext,
+    sigmaX: number,
+    sigmaY: number,
+    input?: SkiaImageFilter,
+    existing?: SkiaImageFilter | null
+  ): SkiaImageFilter | null {
     const params = ['blur', sigmaX, sigmaY, input?._handle ?? 0]
     if (this._matches(existing, params)) return existing!
     existing?.dispose()
@@ -58,7 +64,16 @@ export class SkiaImageFilter {
     return h ? new SkiaImageFilter(context, h, params) : null
   }
 
-  static dropShadow(context: SkiaContext, dx: number, dy: number, sigmaX: number, sigmaY: number, color: number, input?: SkiaImageFilter, existing?: SkiaImageFilter | null): SkiaImageFilter | null {
+  static dropShadow(
+    context: SkiaContext,
+    dx: number,
+    dy: number,
+    sigmaX: number,
+    sigmaY: number,
+    color: number,
+    input?: SkiaImageFilter,
+    existing?: SkiaImageFilter | null
+  ): SkiaImageFilter | null {
     const params = ['dropShadow', dx, dy, sigmaX, sigmaY, color, input?._handle ?? 0]
     if (this._matches(existing, params)) return existing!
     existing?.dispose()
@@ -66,7 +81,16 @@ export class SkiaImageFilter {
     return h ? new SkiaImageFilter(context, h, params) : null
   }
 
-  static dropShadowOnly(context: SkiaContext, dx: number, dy: number, sigmaX: number, sigmaY: number, color: number, input?: SkiaImageFilter, existing?: SkiaImageFilter | null): SkiaImageFilter | null {
+  static dropShadowOnly(
+    context: SkiaContext,
+    dx: number,
+    dy: number,
+    sigmaX: number,
+    sigmaY: number,
+    color: number,
+    input?: SkiaImageFilter,
+    existing?: SkiaImageFilter | null
+  ): SkiaImageFilter | null {
     const params = ['dropShadowOnly', dx, dy, sigmaX, sigmaY, color, input?._handle ?? 0]
     if (this._matches(existing, params)) return existing!
     existing?.dispose()
@@ -89,34 +113,62 @@ export class SkiaImageFilter {
     return h ? new SkiaImageFilter(context, h) : null
   }
 
-  static dilate(context: SkiaContext, radiusX: number, radiusY: number, input?: SkiaImageFilter): SkiaImageFilter | null {
+  static dilate(
+    context: SkiaContext,
+    radiusX: number,
+    radiusY: number,
+    input?: SkiaImageFilter
+  ): SkiaImageFilter | null {
     const h = context._exports.skia_imagefilter_dilate(radiusX, radiusY, input?._handle ?? 0)
     return h ? new SkiaImageFilter(context, h) : null
   }
 
-  static displacementMap(context: SkiaContext, xChannel: 'alpha' | 'red' | 'green' | 'blue',
-                         yChannel: 'alpha' | 'red' | 'green' | 'blue', scale: number,
-                         displacement: SkiaImageFilter, color?: SkiaImageFilter): SkiaImageFilter | null {
+  static displacementMap(
+    context: SkiaContext,
+    xChannel: 'alpha' | 'red' | 'green' | 'blue',
+    yChannel: 'alpha' | 'red' | 'green' | 'blue',
+    scale: number,
+    displacement: SkiaImageFilter,
+    color?: SkiaImageFilter
+  ): SkiaImageFilter | null {
     const channelMap = { alpha: 1, red: 2, green: 3, blue: 4 }
     const h = context._exports.skia_imagefilter_displacement_map(
-      channelMap[xChannel], channelMap[yChannel], scale,
-      displacement._handle, color?._handle ?? 0)
+      channelMap[xChannel],
+      channelMap[yChannel],
+      scale,
+      displacement._handle,
+      color?._handle ?? 0
+    )
     return h ? new SkiaImageFilter(context, h) : null
   }
 
-  static erode(context: SkiaContext, radiusX: number, radiusY: number, input?: SkiaImageFilter): SkiaImageFilter | null {
+  static erode(
+    context: SkiaContext,
+    radiusX: number,
+    radiusY: number,
+    input?: SkiaImageFilter
+  ): SkiaImageFilter | null {
     const h = context._exports.skia_imagefilter_erode(radiusX, radiusY, input?._handle ?? 0)
     return h ? new SkiaImageFilter(context, h) : null
   }
 
   /** Blend two image filter results using a blend mode */
-  static blend(context: SkiaContext, blendMode: BlendMode, bg: SkiaImageFilter, fg: SkiaImageFilter): SkiaImageFilter | null {
+  static blend(
+    context: SkiaContext,
+    blendMode: BlendMode,
+    bg: SkiaImageFilter,
+    fg: SkiaImageFilter
+  ): SkiaImageFilter | null {
     const h = context._exports.skia_imagefilter_blend(BLEND_MODE[blendMode], bg._handle, fg._handle)
     return h ? new SkiaImageFilter(context, h) : null
   }
 
   /** Apply a matrix transform to the filter input */
-  static matrixTransform(context: SkiaContext, matrix: Float32Array | number[], input?: SkiaImageFilter): SkiaImageFilter | null {
+  static matrixTransform(
+    context: SkiaContext,
+    matrix: Float32Array | number[],
+    input?: SkiaImageFilter
+  ): SkiaImageFilter | null {
     const arr = matrix instanceof Float32Array ? matrix : new Float32Array(matrix)
     const ptr = context._writeF32(arr)
     const h = context._exports.skia_imagefilter_matrix_transform(ptr, 0, input?._handle ?? 0)

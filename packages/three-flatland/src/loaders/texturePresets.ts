@@ -78,10 +78,7 @@ export class TextureConfig {
 /**
  * Apply texture preset or custom options to a texture.
  */
-export function applyTextureOptions(
-  texture: Texture,
-  preset: TexturePreset | TextureOptions
-): void {
+export function applyTextureOptions(texture: Texture, preset: TexturePreset | TextureOptions): void {
   const opts = typeof preset === 'string' ? TEXTURE_PRESETS[preset] : preset
 
   if (opts.minFilter !== undefined) texture.minFilter = opts.minFilter

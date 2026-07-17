@@ -66,9 +66,7 @@ test('opening a real Aseprite export shows the Aseprite badge, and an untouched 
 
   await saveAndWaitForSaved(frame, frame.getByTitle(/Save Atlas/))
 
-  const written = JSON.parse(
-    await readFile(evaluateInVSCode, 'sprites/knight-aseprite.atlas.json')
-  ) as {
+  const written = JSON.parse(await readFile(evaluateInVSCode, 'sprites/knight-aseprite.atlas.json')) as {
     meta: { image?: string; sources?: unknown; animations?: unknown; frameTags?: unknown[] }
     frames: Record<string, { duration?: number }>
   }

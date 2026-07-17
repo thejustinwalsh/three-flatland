@@ -48,7 +48,9 @@ interface RendererLike {
 export class StatsCollector {
   private _latestRenderer: RendererLike | undefined
   private _frame = 0
-  get frame(): number { return this._frame }
+  get frame(): number {
+    return this._frame
+  }
 
   private _renderStartAt = 0
   private _lastFrameEndAt = 0
@@ -147,8 +149,7 @@ export class StatsCollector {
     const drawCalls = Math.max(0, (render?.calls ?? 0) - this._callsBefore)
     const triangles = Math.max(0, (render?.triangles ?? 0) - this._trianglesBefore)
     const primitives =
-      Math.max(0, (render?.lines ?? 0) - this._linesBefore) +
-      Math.max(0, (render?.points ?? 0) - this._pointsBefore)
+      Math.max(0, (render?.lines ?? 0) - this._linesBefore) + Math.max(0, (render?.points ?? 0) - this._pointsBefore)
     const geometries = memory?.geometries ?? 0
     const textures = memory?.textures ?? 0
     const heapUsedMB = this._perfMemory ? Math.round(this._perfMemory.usedJSHeapSize / 1048576) : 0
@@ -310,10 +311,14 @@ export class StatsCollector {
     if (!detectGpuTimingActive(renderer.backend)) return
     const fn = renderer.resolveTimestampsAsync?.bind(renderer)
     if (!fn) return
-    void Promise.resolve(fn('render')).catch(() => { /* tearing down sampling */ })
+    void Promise.resolve(fn('render')).catch(() => {
+      /* tearing down sampling */
+    })
   }
 
-  get gpuCapable(): boolean { return this._gpuCapable }
+  get gpuCapable(): boolean {
+    return this._gpuCapable
+  }
 
   /**
    * Fill `out` with the valid prefix of each ring as typed-array

@@ -18,16 +18,7 @@
  *   for the formula).
  */
 
-export const GEM_ORDER = [
-  'diamond',
-  'emerald',
-  'gold',
-  'amethyst',
-  'ruby',
-  'pink',
-  'salmon',
-  'turquoize',
-] as const
+export const GEM_ORDER = ['diamond', 'emerald', 'gold', 'amethyst', 'ruby', 'pink', 'salmon', 'turquoize'] as const
 
 export type Gem = (typeof GEM_ORDER)[number]
 

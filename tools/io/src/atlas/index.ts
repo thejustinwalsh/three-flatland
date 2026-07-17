@@ -1,11 +1,4 @@
-export type {
-  AnimationInput,
-  AsepriteFrameTag,
-  AtlasJson,
-  AtlasMergeMeta,
-  RectInput,
-  WireAnimation,
-} from './types'
+export type { AnimationInput, AsepriteFrameTag, AtlasJson, AtlasMergeMeta, RectInput, WireAnimation } from './types'
 
 export {
   animationInputToWire,

@@ -198,10 +198,7 @@ export class TileMap2D extends Group {
     this._heightInPixels = data.height * data.tileHeight
 
     // Create bounds
-    this._bounds = new Box3(
-      new Vector3(0, 0, 0),
-      new Vector3(this._widthInPixels, this._heightInPixels, 0)
-    )
+    this._bounds = new Box3(new Vector3(0, 0, 0), new Vector3(this._widthInPixels, this._heightInPixels, 0))
 
     // Create tilesets
     for (const tilesetData of data.tilesets) {
@@ -215,13 +212,7 @@ export class TileMap2D extends Group {
       const tileset = this.getTilesetForLayer(layerData)
 
       if (tileset) {
-        const layer = new TileLayer(
-          layerData,
-          tileset,
-          this._tileWidth,
-          this._tileHeight,
-          this._chunkSize
-        )
+        const layer = new TileLayer(layerData, tileset, this._tileWidth, this._tileHeight, this._chunkSize)
 
         // Position layer in Z for proper ordering
         layer.position.z = i * 0.001
@@ -303,10 +294,7 @@ export class TileMap2D extends Group {
 
     // Extract from object layers named "collision" or similar
     for (const objLayer of this.objectLayers) {
-      if (
-        objLayer.name.toLowerCase().includes('collision') ||
-        objLayer.name.toLowerCase().includes('solid')
-      ) {
+      if (objLayer.name.toLowerCase().includes('collision') || objLayer.name.toLowerCase().includes('solid')) {
         for (const obj of objLayer.objects) {
           const shape = this.objectToCollisionShape(obj)
           if (shape) {
@@ -562,12 +550,7 @@ export class TileMap2D extends Group {
     const hit = rayPlaneZ0(raycaster, this)
     if (!hit) return false
     const { localX, localY } = hit
-    if (
-      localX < 0 ||
-      localX >= this._widthInPixels ||
-      localY < 0 ||
-      localY >= this._heightInPixels
-    ) {
+    if (localX < 0 || localX >= this._widthInPixels || localY < 0 || localY >= this._heightInPixels) {
       return false
     }
     for (let i = this.tileLayers.length - 1; i >= 0; i--) {
@@ -588,9 +571,7 @@ export class TileMap2D extends Group {
    * layer + tile coordinates (Tiled Y-down) + GID. Returns null for
    * foreign intersections. Spec §7.2.
    */
-  tileFromIntersection(
-    hit: Intersection
-  ): { layer: number; tileX: number; tileY: number; gid: number } | null {
+  tileFromIntersection(hit: Intersection): { layer: number; tileX: number; tileY: number; gid: number } | null {
     if (hit.object !== this || hit.faceIndex === undefined || hit.faceIndex === null) return null
     _tileLocalPoint.copy(hit.point).applyMatrix4(_tileInvMatrix.copy(this.matrixWorld).invert())
     const { x: tileX, y: tileY } = this.worldToTile(_tileLocalPoint.x, _tileLocalPoint.y)

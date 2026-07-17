@@ -132,11 +132,7 @@ export function crtBloom(
  * @param amount - Bleeding amount (default: 0.002)
  * @returns Color with bleeding effect
  */
-export function crtColorBleed(
-  tex: TextureNode<'vec4'>,
-  uv: Node<'vec2'>,
-  amount: FloatInput = 0.002
-) {
+export function crtColorBleed(tex: TextureNode<'vec4'>, uv: Node<'vec2'>, amount: FloatInput = 0.002) {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
 
   // Sample with horizontal offset for each channel

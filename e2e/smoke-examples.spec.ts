@@ -109,17 +109,17 @@ function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
   const threeSlugs = new Set(
     readdirSync(threeDir, { withFileTypes: true })
       .filter((d) => d.isDirectory())
-      .map((d) => d.name),
+      .map((d) => d.name)
   )
   const reactSlugs = new Set(
     readdirSync(reactDir, { withFileTypes: true })
       .filter((d) => d.isDirectory())
-      .map((d) => d.name),
+      .map((d) => d.name)
   )
   const docsSlugs = new Set(
     readdirSync(docsExamplesDir, { withFileTypes: true })
       .filter((d) => d.isFile() && d.name.endsWith('.mdx') && d.name !== 'index.mdx')
-      .map((d) => d.name.slice(0, -'.mdx'.length)),
+      .map((d) => d.name.slice(0, -'.mdx'.length))
   )
 
   const errors: string[] = []
@@ -130,7 +130,7 @@ function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
     if (SOURCE_ONLY.has(slug)) continue
     errors.push(
       `examples/three/${slug}/ has no paired examples/react/${slug}/. ` +
-        `Either create the React pair or add '${slug}' to SOURCE_ONLY.`,
+        `Either create the React pair or add '${slug}' to SOURCE_ONLY.`
     )
   }
 
@@ -140,7 +140,7 @@ function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
     if (SOURCE_ONLY.has(slug)) continue
     errors.push(
       `examples/react/${slug}/ has no paired examples/three/${slug}/. ` +
-        `Either create the Three.js pair or add '${slug}' to SOURCE_ONLY.`,
+        `Either create the Three.js pair or add '${slug}' to SOURCE_ONLY.`
     )
   }
 
@@ -151,7 +151,7 @@ function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
     if (SOURCE_ONLY.has(slug)) continue
     errors.push(
       `examples/{three,react}/${slug}/ has no docs/src/content/docs/examples/${slug}.mdx. ` +
-        `Either create the detail page or add '${slug}' to SOURCE_ONLY.`,
+        `Either create the detail page or add '${slug}' to SOURCE_ONLY.`
     )
   }
 
@@ -164,7 +164,7 @@ function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
     if (!reactSlugs.has(slug)) missing.push(`examples/react/${slug}/`)
     errors.push(
       `docs/src/content/docs/examples/${slug}.mdx exists but missing source: ${missing.join(', ')}. ` +
-        `Either create the example pair or add '${slug}' to DOCS_ONLY.`,
+        `Either create the example pair or add '${slug}' to DOCS_ONLY.`
     )
   }
 
@@ -172,13 +172,11 @@ function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
   for (const slug of docsSlugs) {
     if (!threeSlugs.has(slug) || !reactSlugs.has(slug)) continue
     if (DOCS_ONLY.has(slug)) continue
-    const missing = CAPTURE_EXTS.filter(
-      (ext) => !existsSync(resolve(capturesDir, `${slug}.${ext}`)),
-    )
+    const missing = CAPTURE_EXTS.filter((ext) => !existsSync(resolve(capturesDir, `${slug}.${ext}`)))
     if (missing.length > 0) {
       errors.push(
         `docs/public/captures/${slug}.{${missing.join(',')}} missing. ` +
-          `Run \`pnpm capture:examples\` to regenerate the gallery assets.`,
+          `Run \`pnpm capture:examples\` to regenerate the gallery assets.`
       )
     }
   }
@@ -186,7 +184,7 @@ function discoverAndValidate(): { slugs: string[]; specs: ExampleSpec[] } {
   if (errors.length > 0) {
     throw new Error(
       `smoke-examples: example/docs inventory is inconsistent (${errors.length} issue${errors.length === 1 ? '' : 's'}):\n` +
-        errors.map((e) => `  - ${e}`).join('\n'),
+        errors.map((e) => `  - ${e}`).join('\n')
     )
   }
 
@@ -207,17 +205,11 @@ const { slugs: SLUGS, specs: EXAMPLES } = discoverAndValidate()
 
 if (EXAMPLES.length === 0) {
   throw new Error(
-    'smoke-examples: no examples discovered after bidirectional validation — filesystem walk found no slugs with three + react + docs all present',
+    'smoke-examples: no examples discovered after bidirectional validation — filesystem walk found no slugs with three + react + docs all present'
   )
 }
 
-const REQUIRED_STATS_TOOLTIPS = [
-  'Draw Calls',
-  'Triangles',
-  'Geometries',
-  'Textures',
-  'Primitives (lines + points)',
-]
+const REQUIRED_STATS_TOOLTIPS = ['Draw Calls', 'Triangles', 'Geometries', 'Textures', 'Primitives (lines + points)']
 
 // ── Page helpers ───────────────────────────────────────────────────────
 
@@ -253,9 +245,7 @@ async function collectStats(page: Page): Promise<StatsSnapshot> {
 
     const fpsRaw = document.querySelector('.tp-fpsv_v')?.textContent ?? null
 
-    const cells = Array.from(
-      document.querySelectorAll('.tp-flatland-statsrow-cell'),
-    ) as HTMLElement[]
+    const cells = Array.from(document.querySelectorAll('.tp-flatland-statsrow-cell')) as HTMLElement[]
     const valueByTitle: Record<string, string | null> = {}
     const tooltips: string[] = []
     for (const cell of cells) {
@@ -281,10 +271,7 @@ async function collectStats(page: Page): Promise<StatsSnapshot> {
 }
 
 /** Poll `collectStats` until the stats row + FPS are populated (or time out). */
-async function waitForStats(
-  page: Page,
-  { timeoutMs = 8000, intervalMs = 250 } = {},
-): Promise<StatsSnapshot> {
+async function waitForStats(page: Page, { timeoutMs = 8000, intervalMs = 250 } = {}): Promise<StatsSnapshot> {
   const deadline = Date.now() + timeoutMs
   let last: StatsSnapshot | null = null
   while (Date.now() < deadline) {
@@ -327,7 +314,7 @@ test.describe('build artifacts', () => {
       expect(
         response.status(),
         `${url} returned ${response.status()} — likely missing from docs/dist/examples/${spec.path}/. ` +
-          `Check that example-${spec.type}-${spec.slug}#build is in turbo.json's docs#build.dependsOn.`,
+          `Check that example-${spec.type}-${spec.slug}#build is in turbo.json's docs#build.dependsOn.`
       ).toBe(200)
       const html = await response.text()
       // Vite's prod build emits `<script type="module" crossorigin
@@ -337,7 +324,7 @@ test.describe('build artifacts', () => {
       // the artifact came out of `vite build`, not the Astro 404 page.
       expect(
         html,
-        `${url} HTML missing the bundled entry script (no <script ... src="./assets/...">) — likely served Astro 404 or an unbuilt placeholder`,
+        `${url} HTML missing the bundled entry script (no <script ... src="./assets/...">) — likely served Astro 404 or an unbuilt placeholder`
       ).toMatch(/<script[^>]+src=["']\.\/assets\//)
     })
   }
@@ -356,16 +343,13 @@ test.describe('examples', () => {
       const snapshot = await waitForStats(page)
 
       // No runtime errors on the page.
-      expect(
-        pageErrors,
-        `page errors in ${spec.path}:\n  ${pageErrors.join('\n  ')}`,
-      ).toEqual([])
+      expect(pageErrors, `page errors in ${spec.path}:\n  ${pageErrors.join('\n  ')}`).toEqual([])
 
       // Core DOM presence.
       expect(snapshot.hasCanvas, 'canvas element').toBe(true)
       expect(
         snapshot.paneCount,
-        'exactly 1 Tweakpane root (regression: usePane leak under StrictMode + Suspense)',
+        'exactly 1 Tweakpane root (regression: usePane leak under StrictMode + Suspense)'
       ).toBe(1)
 
       // Stats row tooltips — all 5 cells must be present with their field names.
@@ -375,16 +359,11 @@ test.describe('examples', () => {
 
       // FPS — the graph's begin/end wiring must be firing.
       expect(snapshot.fps, 'FPS rendered').not.toBeNull()
-      expect(snapshot.fps!, 'FPS above threshold').toBeGreaterThanOrEqual(
-        spec.minFps ?? 1,
-      )
+      expect(snapshot.fps!, 'FPS above threshold').toBeGreaterThanOrEqual(spec.minFps ?? 1)
 
       // Draw calls — scene.onAfterRender / manual stats.update wiring works.
       expect(snapshot.draws, 'Draw Calls rendered').not.toBeNull()
-      expect(
-        snapshot.draws!,
-        'Draw Calls above threshold',
-      ).toBeGreaterThanOrEqual(spec.minDraws ?? 1)
+      expect(snapshot.draws!, 'Draw Calls above threshold').toBeGreaterThanOrEqual(spec.minDraws ?? 1)
     })
   }
 })
@@ -441,10 +420,9 @@ test.describe('docs detail page iframe', () => {
         // actually loaded. Guards against the URL param being ignored
         // and against the default-variant branch regressing.
         const src = await iframe.getAttribute('src')
-        expect(
-          src,
-          `iframe src for ${shape.label} did not point at /examples/${shape.expected}/${slug}/`,
-        ).toContain(`/examples/${shape.expected}/${slug}/`)
+        expect(src, `iframe src for ${shape.label} did not point at /examples/${shape.expected}/${slug}/`).toContain(
+          `/examples/${shape.expected}/${slug}/`
+        )
 
         // If the artifact 404s, the iframe loads Astro's 404 page —
         // no canvas mounts. Same failure mode the user-visible page
@@ -454,16 +432,13 @@ test.describe('docs detail page iframe', () => {
         const canvas = frame.locator('canvas').first()
         await expect(
           canvas,
-          `iframe for ${slug} (${shape.label}) did not mount a canvas — likely 404 or runtime error in the iframe`,
+          `iframe for ${slug} (${shape.label}) did not mount a canvas — likely 404 or runtime error in the iframe`
         ).toBeAttached({ timeout: 15_000 })
 
         // Error check runs last: the canvas-attached wait above gives
         // the iframe + parent page time to surface any runtime errors
         // through the `pageerror` listener before we assert on them.
-        expect(
-          pageErrors,
-          `docs detail page ${url} had runtime errors:\n  ${pageErrors.join('\n  ')}`,
-        ).toEqual([])
+        expect(pageErrors, `docs detail page ${url} had runtime errors:\n  ${pageErrors.join('\n  ')}`).toEqual([])
       })
     }
   }
@@ -493,12 +468,12 @@ test.describe('gallery captures', () => {
         expect(
           response.status(),
           `${url} returned ${response.status()} — gallery tile for ${slug} will render broken. ` +
-            `Run \`pnpm capture:examples\` and confirm the file lands in docs/public/captures/.`,
+            `Run \`pnpm capture:examples\` and confirm the file lands in docs/public/captures/.`
         ).toBe(200)
         const contentType = response.headers()['content-type'] ?? ''
         expect(
           contentType,
-          `${url} content-type was "${contentType}", expected to start with "${CAPTURE_CONTENT_TYPES[ext]}"`,
+          `${url} content-type was "${contentType}", expected to start with "${CAPTURE_CONTENT_TYPES[ext]}"`
         ).toMatch(new RegExp(`^${CAPTURE_CONTENT_TYPES[ext]}`))
       })
     }

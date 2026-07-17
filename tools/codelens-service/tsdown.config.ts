@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsdown'
 
 export default defineConfig({
   entry: ['src/index.ts', 'src/client.ts', 'src/framing.ts', 'src/protocol.ts', 'src/resolveBinary.ts'],
@@ -6,5 +6,6 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
-  bundle: false,
+  unbundle: true,
+  fixedExtension: false,
 })

@@ -128,11 +128,19 @@ class WorkerBusTransport implements BusTransport {
     this._worker.postMessage({ type: '__init__', channelName })
   }
 
-  get codecSupported(): boolean | null { return this._codecSupported }
+  get codecSupported(): boolean | null {
+    return this._codecSupported
+  }
 
-  acquireSmall(): ArrayBuffer { return this._pool.acquireSmall() }
-  acquireMedium(): ArrayBuffer { return this._pool.acquireMedium() }
-  acquireLarge(): ArrayBuffer { return this._pool.acquireLarge() }
+  acquireSmall(): ArrayBuffer {
+    return this._pool.acquireSmall()
+  }
+  acquireMedium(): ArrayBuffer {
+    return this._pool.acquireMedium()
+  }
+  acquireLarge(): ArrayBuffer {
+    return this._pool.acquireLarge()
+  }
 
   post(msg: DebugMessage, bufs?: ArrayBuffer[]): void {
     if (this._disposed) return
@@ -147,7 +155,9 @@ class WorkerBusTransport implements BusTransport {
     } else {
       try {
         this._worker.postMessage(msg)
-      } catch { /* swallow */ }
+      } catch {
+        /* swallow */
+      }
     }
   }
 
@@ -180,7 +190,11 @@ class WorkerBusTransport implements BusTransport {
   dispose(): void {
     if (this._disposed) return
     this._disposed = true
-    try { this._worker.terminate() } catch { /* swallow */ }
+    try {
+      this._worker.terminate()
+    } catch {
+      /* swallow */
+    }
     this._pool.dispose()
   }
 }
@@ -202,15 +216,27 @@ class InlineBusTransport implements BusTransport {
     this._bc = new BroadcastChannel(channelName)
   }
 
-  get codecSupported(): boolean | null { return false }
+  get codecSupported(): boolean | null {
+    return false
+  }
 
-  acquireSmall(): ArrayBuffer { return new ArrayBuffer(POOL.small.size) }
-  acquireMedium(): ArrayBuffer { return new ArrayBuffer(POOL.medium.size) }
-  acquireLarge(): ArrayBuffer { return new ArrayBuffer(POOL.large.size) }
+  acquireSmall(): ArrayBuffer {
+    return new ArrayBuffer(POOL.small.size)
+  }
+  acquireMedium(): ArrayBuffer {
+    return new ArrayBuffer(POOL.medium.size)
+  }
+  acquireLarge(): ArrayBuffer {
+    return new ArrayBuffer(POOL.large.size)
+  }
 
   post(msg: DebugMessage, _bufs?: ArrayBuffer[]): void {
     if (this._disposed) return
-    try { this._bc.postMessage(msg) } catch { /* swallow */ }
+    try {
+      this._bc.postMessage(msg)
+    } catch {
+      /* swallow */
+    }
   }
 
   convert(req: ConvertRequest, _poolBuf: ArrayBuffer): void {
@@ -229,10 +255,16 @@ class InlineBusTransport implements BusTransport {
         data: rgba8.buffer,
       },
     }
-    try { this._bc.postMessage(msg) } catch { /* swallow */ }
+    try {
+      this._bc.postMessage(msg)
+    } catch {
+      /* swallow */
+    }
   }
 
-  releaseUnused(_buf: ArrayBuffer): void { /* no pool to return to */ }
+  releaseUnused(_buf: ArrayBuffer): void {
+    /* no pool to return to */
+  }
 
   poolStats(): { smallFree: number; mediumFree: number; largeFree: number } {
     return { smallFree: 0, mediumFree: 0, largeFree: 0 }
@@ -241,7 +273,11 @@ class InlineBusTransport implements BusTransport {
   dispose(): void {
     if (this._disposed) return
     this._disposed = true
-    try { this._bc.close() } catch { /* swallow */ }
+    try {
+      this._bc.close()
+    } catch {
+      /* swallow */
+    }
   }
 }
 

@@ -39,7 +39,7 @@ export interface TranscoderExports {
     levelIndex: number,
     layerIndex: number,
     faceIndex: number,
-    outPtr: number,
+    outPtr: number
   ) => number
 
   // Transcoding
@@ -51,7 +51,7 @@ export interface TranscoderExports {
     targetFormat: number,
     outputBuf: number,
     outputBufSizeInBlocksOrPixels: number,
-    decodeFlags: number,
+    decodeFlags: number
   ) => number
 
   // Format query helpers (no transcoder instance required)

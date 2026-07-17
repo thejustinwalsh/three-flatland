@@ -1,5 +1,17 @@
 import { Not, type World } from 'koota'
-import { Position, PrevPosition, Velocity, Bounds, Ball, Paddle, Block, GameState, PaddleState, Dissolving, BallFlash } from '../traits'
+import {
+  Position,
+  PrevPosition,
+  Velocity,
+  Bounds,
+  Ball,
+  Paddle,
+  Block,
+  GameState,
+  PaddleState,
+  Dissolving,
+  BallFlash,
+} from '../traits'
 import {
   WORLD_LEFT,
   WORLD_RIGHT,
@@ -11,17 +23,20 @@ import {
 } from './constants'
 import type { SoundPlayer } from './sounds'
 
-
 /**
  * Line segment vs AABB intersection using the slab method.
  * Returns the entry time t in [0,1] and which axis was hit, or null if no hit.
  * The AABB should already be expanded by the ball's half-extents (Minkowski sum).
  */
 function sweepLineAABB(
-  x0: number, y0: number,
-  x1: number, y1: number,
-  minX: number, minY: number,
-  maxX: number, maxY: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number
 ): { t: number; axis: 'x' | 'y' } | null {
   const dx = x1 - x0
   const dy = y1 - y0
@@ -36,8 +51,15 @@ function sweepLineAABB(
   } else {
     let t1 = (minX - x0) / dx
     let t2 = (maxX - x0) / dx
-    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp }
-    if (t1 > tMin) { tMin = t1; hitAxis = 'x' }
+    if (t1 > t2) {
+      const tmp = t1
+      t1 = t2
+      t2 = tmp
+    }
+    if (t1 > tMin) {
+      tMin = t1
+      hitAxis = 'x'
+    }
     if (t2 < tMax) tMax = t2
     if (tMin > tMax) return null
   }
@@ -48,8 +70,15 @@ function sweepLineAABB(
   } else {
     let t1 = (minY - y0) / dy
     let t2 = (maxY - y0) / dy
-    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp }
-    if (t1 > tMin) { tMin = t1; hitAxis = 'y' }
+    if (t1 > t2) {
+      const tmp = t1
+      t1 = t2
+      t2 = tmp
+    }
+    if (t1 > tMin) {
+      tMin = t1
+      hitAxis = 'y'
+    }
     if (t2 < tMax) tMax = t2
     if (tMin > tMax) return null
   }
@@ -194,11 +223,7 @@ export function paddleCollision(world: World, sounds: SoundPlayer | null) {
  * Tests the ball's travel path (prevPos → currentPos) against Minkowski-expanded
  * block AABBs to prevent tunneling at high speeds.
  */
-export function blockCollision(
-  world: World,
-  sounds: SoundPlayer | null,
-  onBlockDestroyed: () => void,
-) {
+export function blockCollision(world: World, sounds: SoundPlayer | null, onBlockDestroyed: () => void) {
   // Only collide with blocks that aren't already dissolving
   const blocks = world.query(Block, Position, Bounds, Not(Dissolving))
 

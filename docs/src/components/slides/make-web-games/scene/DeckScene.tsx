@@ -133,11 +133,28 @@ export function DeckScene() {
         {/* Real flatland sizzles — always mounted (so the camera can transition to
             them); active-gated so only the in-view panel renders/animates/shows. */}
         {/* Slide 6 (index 5): automatic ECS sprite batching. */}
-        <FlatlandLayer key={knightKey} active={knightActive} position={[1.6, 0.4, 0]} size={3.6} clearAlpha={1} clearColor={0x1a1a2e} resolution={[1280, 720]} viewSize={700}>
+        <FlatlandLayer
+          key={knightKey}
+          active={knightActive}
+          position={[1.6, 0.4, 0]}
+          size={3.6}
+          clearAlpha={1}
+          clearColor={0x1a1a2e}
+          resolution={[1280, 720]}
+          viewSize={700}
+        >
           <KnightmarkSizzle />
         </FlatlandLayer>
         {/* Slide 7 (index 6): tilemap + real-time 2D lighting. */}
-        <FlatlandLayer active={slideIndex === 6} position={[1.6, 0.4, 0]} size={3.6} clearAlpha={1} clearColor={0x111418} resolution={[1280, 720]} viewSize={400}>
+        <FlatlandLayer
+          active={slideIndex === 6}
+          position={[1.6, 0.4, 0]}
+          size={3.6}
+          clearAlpha={1}
+          clearColor={0x111418}
+          resolution={[1280, 720]}
+          viewSize={400}
+        >
           {/* lights off until the first fragment reveal (Tilemaps → lights on). */}
           <LightingSizzle lit={fragment >= 1} />
         </FlatlandLayer>

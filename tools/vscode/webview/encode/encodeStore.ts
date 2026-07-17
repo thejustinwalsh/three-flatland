@@ -77,7 +77,7 @@ interface RuntimeSlice {
   // includes 'png' too — keeping the type aligned with what encodeImage()
   // actually emits avoids a cast at the pipeline assignment site.
   encodedFormat: EncodeFormat | null
-  encodedImage: ImageData | null  // null when format=ktx2 (no decode support)
+  encodedImage: ImageData | null // null when format=ktx2 (no decode support)
   encodedSize: number
   isEncoding: boolean
   encodeError: string | null
@@ -115,7 +115,12 @@ export type EncodeStoreState = DocSlice &
     setGpuStats: (stats: GpuStats) => void
     setInfoPanelWidth: (px: number) => void
     // Actions — lifecycle
-    loadInit: (p: { fileName: string; sourceBytes: Uint8Array; sourceImage: ImageData | null; mode: 'encode' | 'inspect' }) => void
+    loadInit: (p: {
+      fileName: string
+      sourceBytes: Uint8Array
+      sourceImage: ImageData | null
+      mode: 'encode' | 'inspect'
+    }) => void
     // Actions — runtime
     setRuntimeFields: (p: Partial<RuntimeSlice>) => void
     bumpEncodeReqId: () => number
@@ -191,8 +196,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
           // Prefs actions
           setCompareSplitU: (u) => set((s) => ({ ...s, compareSplitU: Math.min(1, Math.max(0, u)) })),
           setPixelArt: (v) => set((s) => ({ ...s, pixelArt: v })),
-          setInfoSection: (key, open) =>
-            set((s) => ({ ...s, infoSections: { ...s.infoSections, [key]: open } })),
+          setInfoSection: (key, open) => set((s) => ({ ...s, infoSections: { ...s.infoSections, [key]: open } })),
 
           // Session actions
           setMipLevel: (n) =>
@@ -258,7 +262,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
             mipLevel: s.mipLevel,
             mode: s.mode,
           }),
-        },
+        }
       ),
       {
         // Cross-session prefs: survive panel close + VSCode restart.
@@ -270,7 +274,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
           splits: s.splits,
           infoSections: s.infoSections,
         }),
-      },
+      }
     ),
     {
       // Track only doc fields in undo history. UI / runtime fields are not
@@ -303,8 +307,8 @@ export const useEncodeStore = create<EncodeStoreState>()(
           }, 100)
         }
       },
-    },
-  ),
+    }
+  )
 )
 
 // Convenience hook matching peer-store API.
@@ -314,41 +318,30 @@ export function useEncodeState(): EncodeStoreState {
 
 // Convenience action namespace for callers that don't subscribe to the store.
 export const encodeActions = {
-  setFormat: (format: DocSlice['format']) =>
-    useEncodeStore.getState().setFormat(format),
-  setWebpQuality: (quality: number) =>
-    useEncodeStore.getState().setWebpQuality(quality),
-  setAvifQuality: (quality: number) =>
-    useEncodeStore.getState().setAvifQuality(quality),
-  setKtx2Mode: (mode: DocSlice['ktx2']['mode']) =>
-    useEncodeStore.getState().setKtx2Mode(mode),
-  setKtx2Quality: (quality: number) =>
-    useEncodeStore.getState().setKtx2Quality(quality),
-  setKtx2Mipmaps: (mipmaps: boolean) =>
-    useEncodeStore.getState().setKtx2Mipmaps(mipmaps),
-  setKtx2UastcLevel: (level: DocSlice['ktx2']['uastcLevel']) =>
-    useEncodeStore.getState().setKtx2UastcLevel(level),
-  setCompareSplitU: (u: number) =>
-    useEncodeStore.getState().setCompareSplitU(u),
-  setPixelArt: (v: boolean) =>
-    useEncodeStore.getState().setPixelArt(v),
-  setInfoSection: (key: InfoSectionKey, open: boolean) =>
-    useEncodeStore.getState().setInfoSection(key, open),
-  setMipLevel: (n: number) =>
-    useEncodeStore.getState().setMipLevel(n),
-  setGpuStats: (stats: GpuStats) =>
-    useEncodeStore.getState().setGpuStats(stats),
-  setInfoPanelWidth: (px: number) =>
-    useEncodeStore.getState().setInfoPanelWidth(px),
+  setFormat: (format: DocSlice['format']) => useEncodeStore.getState().setFormat(format),
+  setWebpQuality: (quality: number) => useEncodeStore.getState().setWebpQuality(quality),
+  setAvifQuality: (quality: number) => useEncodeStore.getState().setAvifQuality(quality),
+  setKtx2Mode: (mode: DocSlice['ktx2']['mode']) => useEncodeStore.getState().setKtx2Mode(mode),
+  setKtx2Quality: (quality: number) => useEncodeStore.getState().setKtx2Quality(quality),
+  setKtx2Mipmaps: (mipmaps: boolean) => useEncodeStore.getState().setKtx2Mipmaps(mipmaps),
+  setKtx2UastcLevel: (level: DocSlice['ktx2']['uastcLevel']) => useEncodeStore.getState().setKtx2UastcLevel(level),
+  setCompareSplitU: (u: number) => useEncodeStore.getState().setCompareSplitU(u),
+  setPixelArt: (v: boolean) => useEncodeStore.getState().setPixelArt(v),
+  setInfoSection: (key: InfoSectionKey, open: boolean) => useEncodeStore.getState().setInfoSection(key, open),
+  setMipLevel: (n: number) => useEncodeStore.getState().setMipLevel(n),
+  setGpuStats: (stats: GpuStats) => useEncodeStore.getState().setGpuStats(stats),
+  setInfoPanelWidth: (px: number) => useEncodeStore.getState().setInfoPanelWidth(px),
   // Bridge `encode/init` should call this — sets source + fileName AND clears
   // any history accumulated from rehydration / earlier inits. The user's undo
   // stack starts empty when they first see the panel content.
-  loadInit: (p: { fileName: string; sourceBytes: Uint8Array; sourceImage: ImageData | null; mode: 'encode' | 'inspect' }) =>
-    useEncodeStore.getState().loadInit(p),
-  setRuntimeFields: (p: Partial<RuntimeSlice>) =>
-    useEncodeStore.getState().setRuntimeFields(p),
-  bumpEncodeReqId: () =>
-    useEncodeStore.getState().bumpEncodeReqId(),
+  loadInit: (p: {
+    fileName: string
+    sourceBytes: Uint8Array
+    sourceImage: ImageData | null
+    mode: 'encode' | 'inspect'
+  }) => useEncodeStore.getState().loadInit(p),
+  setRuntimeFields: (p: Partial<RuntimeSlice>) => useEncodeStore.getState().setRuntimeFields(p),
+  bumpEncodeReqId: () => useEncodeStore.getState().bumpEncodeReqId(),
 }
 
 // Undo/redo helpers exposed for keyboard handling and UI.

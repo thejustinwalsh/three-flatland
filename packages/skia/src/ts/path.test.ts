@@ -15,8 +15,7 @@ describe('SkiaPath', () => {
   })
 
   it('fluent path building', () => {
-    const path = new SkiaPath(skia)
-      .moveTo(0, 0).lineTo(100, 0).lineTo(100, 100).close()
+    const path = new SkiaPath(skia).moveTo(0, 0).lineTo(100, 0).lineTo(100, 100).close()
     path.dispose()
   })
 

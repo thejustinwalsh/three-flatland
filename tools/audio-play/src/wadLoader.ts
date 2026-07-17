@@ -48,8 +48,7 @@ export function loadWadConstructor(context: AudioContext): WadConstructor {
   const realAudioContext = globalThis.AudioContext
   const realWebkitAudioContext = (globalThis as { webkitAudioContext?: unknown }).webkitAudioContext
   const realWindowAudioContext = globalThis.window.AudioContext
-  const realWindowWebkitAudioContext = (globalThis.window as { webkitAudioContext?: unknown })
-    .webkitAudioContext
+  const realWindowWebkitAudioContext = (globalThis.window as { webkitAudioContext?: unknown }).webkitAudioContext
   const realCreateBuffer = context.createBuffer.bind(context)
   // The explicit-object-return `new` trick: a constructor that returns
   // an object explicitly makes `new Ctor()` use that object instead of
@@ -128,8 +127,7 @@ export function loadWadConstructor(context: AudioContext): WadConstructor {
     globalThis.AudioContext = realAudioContext
     ;(globalThis as { webkitAudioContext?: unknown }).webkitAudioContext = realWebkitAudioContext
     globalThis.window.AudioContext = realWindowAudioContext
-    ;(globalThis.window as { webkitAudioContext?: unknown }).webkitAudioContext =
-      realWindowWebkitAudioContext
+    ;(globalThis.window as { webkitAudioContext?: unknown }).webkitAudioContext = realWindowWebkitAudioContext
   }
 }
 

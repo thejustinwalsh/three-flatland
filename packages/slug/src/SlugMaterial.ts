@@ -70,8 +70,7 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     this._supersample = options.supersample ?? false
     this._pixelSnap = options.pixelSnap ?? true
 
-    const color =
-      options.color instanceof Color ? options.color : new Color(options.color ?? 0xffffff)
+    const color = options.color instanceof Color ? options.color : new Color(options.color ?? 0xffffff)
 
     this._colorUniform = uniform(color)
     this._opacityUniform = uniform(options.opacity ?? 1.0)
@@ -148,16 +147,7 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       )
 
       // Dynamic dilation — expands quad by half a pixel in screen space
-      const dilated = slugDilate(
-        objPos,
-        normal,
-        emCoord,
-        invScale,
-        mvpRow0,
-        mvpRow1,
-        mvpRow3,
-        viewportUniform
-      )
+      const dilated = slugDilate(objPos, normal, emCoord, invScale, mvpRow0, mvpRow1, mvpRow3, viewportUniform)
 
       let finalPos = dilated.vpos
       let finalTex = dilated.texcoord
@@ -186,10 +176,7 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
         const objDeltaY = snapDeltaY.div(halfVP.y).mul(clipW).div(mvpRow1.y)
 
         finalPos = vec2(finalPos.x.add(objDeltaX), finalPos.y.add(objDeltaY))
-        finalTex = vec2(
-          finalTex.x.add(objDeltaX.mul(invScale)),
-          finalTex.y.add(objDeltaY.mul(invScale))
-        )
+        finalTex = vec2(finalTex.x.add(objDeltaX.mul(invScale)), finalTex.y.add(objDeltaY.mul(invScale)))
       }
 
       // Write em-space coordinate to varying for fragment shader

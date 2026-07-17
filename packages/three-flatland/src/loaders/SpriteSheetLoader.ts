@@ -13,11 +13,7 @@ import type {
 } from '../sprites/types'
 import { degradeAtlasMesh, registerAtlasMesh } from './atlasMeshRegistry'
 import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
-import {
-  resolveNormalMap,
-  type NormalSourceDescriptor,
-  type NormalRegion,
-} from '@three-flatland/normals'
+import { resolveNormalMap, type NormalSourceDescriptor, type NormalRegion } from '@three-flatland/normals'
 import { type TexturePreset, type TextureOptions, resolveTextureOptions } from './texturePresets'
 import { TextureLoader } from './TextureLoader'
 import { resolveAlphaMap } from '../events/resolveAlphaMap'
@@ -182,10 +178,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   /**
    * Load without caching.
    */
-  private static async loadUncached(
-    url: string,
-    options?: SpriteSheetLoaderOptions
-  ): Promise<SpriteSheet> {
+  private static async loadUncached(url: string, options?: SpriteSheetLoaderOptions): Promise<SpriteSheet> {
     // Fetch JSON
     const response = await fetch(url)
     if (!response.ok) {
@@ -216,13 +209,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     const animations = parseAnimations(json.meta, orderedFrameNames, frameDurations)
 
     // Create SpriteSheet
-    const sheet = this.createSpriteSheet(
-      texture,
-      parsed.frames,
-      animations,
-      parsed.width,
-      parsed.height
-    )
+    const sheet = this.createSpriteSheet(texture, parsed.frames, animations, parsed.width, parsed.height)
 
     // Resolve normal map — probe baked sibling, fall back to in-memory bake.
     if (options?.normals) {
@@ -500,10 +487,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
    *   are derived from the vertex position within the (trimmed) frame
    *   rect, so the shader's instanceUV atlas remap applies unchanged.
    */
-  private static parseFrameMesh(
-    data: SpriteSheetFrameMeshJSON,
-    frame: SpriteFrame
-  ): SpriteFrameMesh | null {
+  private static parseFrameMesh(data: SpriteSheetFrameMeshJSON, frame: SpriteFrame): SpriteFrameMesh | null {
     if (data.mesh && data.mesh.verts.length >= 3 && data.mesh.indices.length >= 3) {
       const count = data.mesh.verts.length
       const verts = new Float32Array(count * 4)
@@ -594,7 +578,7 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
  *      median per-frame duration → fps.
  */
 function parseAnimations(
-  meta: SpriteSheetJSONHash["meta"],
+  meta: SpriteSheetJSONHash['meta'],
   orderedFrameNames: readonly string[],
   frameDurations: ReadonlyMap<string, number>
 ): Map<string, SpriteAnimation> {
@@ -628,7 +612,7 @@ function atlasAnimationToSpriteAnimation(anim: AtlasAnimation): SpriteAnimation 
     if (name == null) {
       console.warn(
         `[three-flatland] AtlasAnimation: frame index ${idx} out of bounds ` +
-          `for frameSet (length ${anim.frameSet.length}); skipping.`,
+          `for frameSet (length ${anim.frameSet.length}); skipping.`
       )
       continue
     }
@@ -652,16 +636,16 @@ function frameTagToSpriteAnimation(
   const slice = orderedFrameNames.slice(tag.from, tag.to + 1)
   if (slice.length === 0) return null
 
-  const dir = tag.direction ?? "forward"
-  const reverseInPlace = dir === "reverse" || dir === "pingpong_reverse"
-  const isPingPong = dir === "pingpong" || dir === "pingpong_reverse"
+  const dir = tag.direction ?? 'forward'
+  const reverseInPlace = dir === 'reverse' || dir === 'pingpong_reverse'
+  const isPingPong = dir === 'pingpong' || dir === 'pingpong_reverse'
   const frames = reverseInPlace ? [...slice].reverse() : slice
 
   // Median per-frame duration (ms) → fps. Frames without a recorded
   // duration default to 100ms (10 fps) — the typical Aseprite default.
   const durations = slice
     .map((n) => frameDurations.get(n))
-    .filter((d): d is number => typeof d === "number" && d > 0)
+    .filter((d): d is number => typeof d === 'number' && d > 0)
     .sort((a, b) => a - b)
   const medianMs = durations.length > 0 ? durations[Math.floor(durations.length / 2)]! : 100
   const fps = Math.max(1, Math.round(1000 / medianMs))

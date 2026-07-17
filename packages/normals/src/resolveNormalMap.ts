@@ -1,16 +1,5 @@
-import {
-  DataTexture,
-  RGBAFormat,
-  UnsignedByteType,
-  TextureLoader as ThreeTextureLoader,
-  type Texture,
-} from 'three'
-import {
-  bakedSiblingURL,
-  devtimeWarn,
-  hashDescriptor,
-  probeBakedSibling,
-} from '@three-flatland/bake'
+import { DataTexture, RGBAFormat, UnsignedByteType, TextureLoader as ThreeTextureLoader, type Texture } from 'three'
+import { bakedSiblingURL, devtimeWarn, hashDescriptor, probeBakedSibling } from '@three-flatland/bake'
 import type { NormalSourceDescriptor } from './descriptor.js'
 
 export interface ResolveNormalMapOptions {
@@ -85,8 +74,7 @@ export async function resolveNormalMap(
       devtimeWarn(
         'normal',
         sourceURL,
-        `No baked sibling at ${bakedURL} — baking in memory. ` +
-          `Run \`npx flatland-bake normal\` for production.`
+        `No baked sibling at ${bakedURL} — baking in memory. ` + `Run \`npx flatland-bake normal\` for production.`
       )
     }
   }
@@ -111,10 +99,7 @@ async function loadTextureURL(url: string): Promise<Texture> {
   })
 }
 
-async function bakeInMemory(
-  sourceURL: string,
-  descriptor: NormalSourceDescriptor
-): Promise<Texture> {
+async function bakeInMemory(sourceURL: string, descriptor: NormalSourceDescriptor): Promise<Texture> {
   const res = await fetch(sourceURL)
   if (!res.ok) {
     throw new Error(`resolveNormalMap: failed to fetch ${sourceURL} (${res.status})`)
@@ -127,22 +112,12 @@ async function bakeInMemory(
 
   const { bakeNormalMap } = await import('./bake.js')
   const normalPixels = bakeNormalMap(pixels, width, height, descriptor)
-  const texture = new DataTexture(
-    normalPixels,
-    width,
-    height,
-    RGBAFormat,
-    UnsignedByteType
-  )
+  const texture = new DataTexture(normalPixels, width, height, RGBAFormat, UnsignedByteType)
   texture.needsUpdate = true
   return texture
 }
 
-function imageBitmapToRGBA(
-  bitmap: ImageBitmap,
-  width: number,
-  height: number
-): Uint8Array {
+function imageBitmapToRGBA(bitmap: ImageBitmap, width: number, height: number): Uint8Array {
   // OffscreenCanvas where available (workers + modern browsers), fall
   // back to a regular 2D canvas in environments that don't ship it.
   if (typeof OffscreenCanvas !== 'undefined') {
@@ -162,4 +137,3 @@ function imageBitmapToRGBA(
   const data = ctx.getImageData(0, 0, width, height)
   return new Uint8Array(data.data.buffer, data.data.byteOffset, data.data.byteLength)
 }
-

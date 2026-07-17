@@ -40,10 +40,7 @@ function tokenizeAssetBase(token = '%FL_BASE%'): Plugin {
         // Vite emits `../assets/...` from a tool subdir, `./assets/...` from
         // a root HTML, `/assets/...` with base: '/'. All collapse to the
         // same shared asset dir under the webview root.
-        return html.replace(
-          /((?:src|href))="(?:\.\.?\/)+(?=[^/"])/g,
-          (_m, attr) => `${attr}="${token}`
-        )
+        return html.replace(/((?:src|href))="(?:\.\.?\/)+(?=[^/"])/g, (_m, attr) => `${attr}="${token}`)
       },
     },
   }
@@ -57,11 +54,7 @@ function tokenizeAssetBase(token = '%FL_BASE%'): Plugin {
 const isWatchMode = process.argv.includes('--watch') || process.argv.includes('-w')
 
 export default defineConfig({
-  plugins: [
-    stylex.vite({ useCSSLayers: true }),
-    react(),
-    tokenizeAssetBase(),
-  ],
+  plugins: [stylex.vite({ useCSSLayers: true }), react(), tokenizeAssetBase()],
   root: resolve(__dirname, 'webview'),
   base: './',
   // jsquash codec workers (avif_enc_mt.js etc.) are Emscripten IIFE bundles

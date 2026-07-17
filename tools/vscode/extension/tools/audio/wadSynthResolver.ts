@@ -19,13 +19,7 @@
 
 export type WadOscillatorSource = 'sine' | 'square' | 'sawtooth' | 'triangle' | 'noise'
 
-const OSCILLATOR_SOURCES: readonly WadOscillatorSource[] = [
-  'sine',
-  'square',
-  'sawtooth',
-  'triangle',
-  'noise',
-]
+const OSCILLATOR_SOURCES: readonly WadOscillatorSource[] = ['sine', 'square', 'sawtooth', 'triangle', 'noise']
 
 function isOscillatorSource(value: string): value is WadOscillatorSource {
   return (OSCILLATOR_SOURCES as readonly string[]).includes(value)

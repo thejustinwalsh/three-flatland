@@ -127,11 +127,7 @@ describe('colorReplaceMultiple', () => {
 
   it('preserves alpha channel', () => {
     const inputColor = vec4(1, 0, 0, 0.8)
-    const result = colorReplaceMultiple(
-      inputColor,
-      [[1, 0, 0]],
-      [[0, 0, 1]]
-    )
+    const result = colorReplaceMultiple(inputColor, [[1, 0, 0]], [[0, 0, 1]])
 
     expect(result).toBeDefined()
     expect(result.a).toBeDefined()

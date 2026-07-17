@@ -18,9 +18,7 @@ let lastErrors: string[] = []
 export function validateNormalDescriptor(json: unknown): boolean {
   lastErrors = []
   if (!ajvValidate(json)) {
-    lastErrors = (ajvValidate.errors ?? []).map(
-      (e) => `${e.instancePath || '/'} ${e.message ?? 'invalid'}`
-    )
+    lastErrors = (ajvValidate.errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message ?? 'invalid'}`)
     return false
   }
   return true

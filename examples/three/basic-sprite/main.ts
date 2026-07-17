@@ -53,7 +53,9 @@ async function main() {
   scene.add(sprite)
 
   // Tweakpane UI
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
 
   // Vanilla three.js apps don't get a devtools provider for free —
   // Flatland constructs one inside `Flatland.render()`. For non-
@@ -152,11 +154,7 @@ async function main() {
     const delta = (now - lastTime) / 1000
     lastTime = now
 
-    const targetScale = isPressed
-      ? params.pressedScale
-      : isHovered
-        ? params.hoverScale
-        : params.baseScale
+    const targetScale = isPressed ? params.pressedScale : isHovered ? params.hoverScale : params.baseScale
     const targetTint = isHovered ? hoverTint : normalTint
 
     const lerpFactor = Math.min(params.lerpSpeed * delta, 1)
@@ -179,7 +177,7 @@ async function main() {
   animate()
 }
 
-main()
+void main()
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

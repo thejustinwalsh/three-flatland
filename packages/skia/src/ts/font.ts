@@ -14,7 +14,9 @@ class TypefaceRef {
     typefaceGCRegistry.register(this, { handle, drop: (h: number) => ctx._exports.skia_typeface_delete(h) }, this)
   }
 
-  retain(): void { this._refs++ }
+  retain(): void {
+    this._refs++
+  }
 
   release(): void {
     if (--this._refs <= 0 && this.handle !== 0) {
@@ -26,7 +28,10 @@ class TypefaceRef {
       const cache = typefaceCache.get(this._ctx)
       if (cache) {
         for (const [key, ref] of cache) {
-          if (ref === this) { cache.delete(key); break }
+          if (ref === this) {
+            cache.delete(key)
+            break
+          }
         }
       }
     }
@@ -34,12 +39,14 @@ class TypefaceRef {
 }
 
 const typefaceGCRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => { if (handle) drop(handle) },
+  ({ handle, drop }) => {
+    if (handle) drop(handle)
+  }
 )
 
-const fontGCRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => { if (handle) drop(handle) },
-)
+const fontGCRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) => {
+  if (handle) drop(handle)
+})
 
 // ── Typeface dedup cache: WeakMap<SkiaContext, Map<hash, TypefaceRef>> ──
 
@@ -48,7 +55,7 @@ const typefaceCache = new WeakMap<SkiaContext, Map<string, TypefaceRef>>()
 function hashBytes(data: Uint8Array): string {
   // Fast non-crypto hash for dedup — sample bytes + length
   let h = data.length
-  const step = Math.max(1, (data.length >>> 8))
+  const step = Math.max(1, data.length >>> 8)
   for (let i = 0; i < data.length; i += step) {
     h = (h * 31 + data[i]!) | 0
   }
@@ -109,10 +116,14 @@ export class SkiaTypeface {
   }
 
   /** The underlying typeface handle (0 if deferred or disposed) */
-  get handle(): number { return this._ref?.handle ?? 0 }
+  get handle(): number {
+    return this._ref?.handle ?? 0
+  }
 
   /** The raw font file bytes */
-  get data(): Uint8Array { return this._data }
+  get data(): Uint8Array {
+    return this._data
+  }
 
   /**
    * Create a SkiaFont at the given size.
@@ -187,7 +198,11 @@ export class SkiaFont {
       throw new Error('Failed to create font')
     }
 
-    fontGCRegistry.register(this, { handle: this._handle, drop: (h: number) => context._exports.skia_font_delete(h) }, this)
+    fontGCRegistry.register(
+      this,
+      { handle: this._handle, drop: (h: number) => context._exports.skia_font_delete(h) },
+      this
+    )
   }
 
   /** Create a font from raw TTF/OTF data. Convenience for standalone use. */
@@ -212,7 +227,11 @@ export class SkiaFont {
     const ptr = this._ctx._writeF32([0, 0, 0])
     this._ctx._exports.skia_font_get_metrics(this._handle, ptr)
     const dv = new DataView(this._ctx._memory.buffer)
-    return { ascent: dv.getFloat32(ptr, true), descent: dv.getFloat32(ptr + 4, true), leading: dv.getFloat32(ptr + 8, true) }
+    return {
+      ascent: dv.getFloat32(ptr, true),
+      descent: dv.getFloat32(ptr + 4, true),
+      leading: dv.getFloat32(ptr + 8, true),
+    }
   }
 
   /** Get the current font size */
@@ -233,7 +252,7 @@ export class SkiaFont {
   getGlyphWidths(glyphIDs: Uint16Array): Float32Array {
     const glyphsPtr = this._ctx._exports.cabi_realloc(0, 0, 2, glyphIDs.byteLength)
     new Uint16Array(this._ctx._memory.buffer, glyphsPtr, glyphIDs.length).set(glyphIDs)
-    const outPtr = this._ctx._writeF32(new Array(glyphIDs.length).fill(0))
+    const outPtr = this._ctx._writeF32(Array.from({ length: glyphIDs.length }, () => 0))
     this._ctx._exports.skia_font_get_glyph_widths(this._handle, glyphsPtr, glyphIDs.length, outPtr)
     return new Float32Array(this._ctx._memory.buffer.slice(outPtr, outPtr + glyphIDs.length * 4))
   }

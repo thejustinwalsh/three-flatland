@@ -62,9 +62,7 @@ export function scanlinesSmooth(
   const phaseNode = typeof phase === 'number' ? float(phase) : phase
 
   // Sine wave scanline pattern
-  const scanline = sin(uv.y.mul(resNode).mul(3.14159).add(phaseNode))
-    .mul(0.5)
-    .add(0.5)
+  const scanline = sin(uv.y.mul(resNode).mul(3.14159).add(phaseNode)).mul(0.5).add(0.5)
 
   // Apply intensity
   const darken = float(1).sub(scanline.mul(intensityNode))

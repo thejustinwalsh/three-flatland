@@ -25,7 +25,7 @@ describe('flatland-bake encode integration', () => {
     const { stdout } = await exec(
       process.execPath,
       [bakeCli, 'encode', fixture, out, '--format', 'webp', '--quality', '80'],
-      { cwd: pkgRoot },
+      { cwd: pkgRoot }
     )
     expect(stdout).toMatch(/encode\] ok/)
     expect(existsSync(out)).toBe(true)

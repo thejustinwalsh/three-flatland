@@ -35,9 +35,7 @@ function BallView({ entity, material }: BallViewProps) {
 
       const effect = effectRef.current
       if (effect) {
-        effect.amount = entity.has(BallFlash)
-          ? entity.get(BallFlash)!.amount
-          : 0
+        effect.amount = entity.has(BallFlash) ? entity.get(BallFlash)!.amount : 0
       }
     }
   })
@@ -55,10 +53,7 @@ function BallView({ entity, material }: BallViewProps) {
       sortLayer={SortLayers.ENTITIES}
       zIndex={20}
     >
-      <flashEffect
-        attach={attachEffect}
-        ref={effectRef}
-      />
+      <flashEffect attach={attachEffect} ref={effectRef} />
     </sprite2D>
   )
 }

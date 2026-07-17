@@ -31,16 +31,16 @@ import type { LightEffectClass } from '../lights/LightEffect'
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type EffectElement<T extends MaterialEffectClass<any>> =
-  ThreeElement<T> & (T extends MaterialEffectClass<infer S extends EffectSchema> ? Partial<EffectValues<S>> : Record<string, never>)
+export type EffectElement<T extends MaterialEffectClass<any>> = ThreeElement<T> &
+  (T extends MaterialEffectClass<infer S extends EffectSchema> ? Partial<EffectValues<S>> : Record<string, never>)
 
 /**
  * JSX element type for a LightEffect with schema-derived props.
  * Surfaces uniform (settable) schema fields as JSX props.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type LightEffectElement<T extends LightEffectClass<any>> =
-  ThreeElement<T> & (T extends LightEffectClass<infer S extends EffectSchema> ? Partial<EffectValues<S>> : Record<string, never>)
+export type LightEffectElement<T extends LightEffectClass<any>> = ThreeElement<T> &
+  (T extends LightEffectClass<infer S extends EffectSchema> ? Partial<EffectValues<S>> : Record<string, never>)
 
 /**
  * R3F ThreeElements type augmentation for three-flatland objects.

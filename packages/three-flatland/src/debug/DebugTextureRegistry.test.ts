@@ -96,7 +96,9 @@ describe('DebugTextureRegistry.drain', () => {
   it('handles huge samples without size warnings or pixel loss (regression)', () => {
     const warnings: unknown[] = []
     const realWarn = console.warn
-    console.warn = (...args: unknown[]) => { warnings.push(args) }
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args)
+    }
     try {
       const reg = new DebugTextureRegistry()
       // ForwardPlus-shaped: 1024×1024 RGBA8 = 4 MB. Pre-fix this overflowed

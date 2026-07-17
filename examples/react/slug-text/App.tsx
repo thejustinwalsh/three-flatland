@@ -1,6 +1,6 @@
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { OrthographicCamera } from 'three'
+import type { OrthographicCamera } from 'three'
 import { SlugText, SlugStackText, SlugFontLoader, SlugFontStack } from '@three-flatland/slug/react'
 import type { SlugFont, StyleSpan, TextMetrics } from '@three-flatland/slug/react'
 import {
@@ -40,8 +40,7 @@ const ICON = {
   book: '\uf02d',
 } as const
 const ICON_DEMO =
-  `Built with ${ICON.code} and ${ICON.heart}\n` +
-  `${ICON.coffee} brewed  ${ICON.rocket} launched  ${ICON.bolt} fast`
+  `Built with ${ICON.code} and ${ICON.heart}\n` + `${ICON.coffee} brewed  ${ICON.rocket} launched  ${ICON.bolt} fast`
 const LOREM =
   'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.'
 const LOREM_WORDS = LOREM.split(' ')
@@ -163,17 +162,7 @@ function drawDiff(
   const cw = compareCtx.canvas.width
   const ch = compareCtx.canvas.height
 
-  drawCompareText(
-    compareCtx,
-    font,
-    text,
-    fontSize,
-    maxWidth,
-    lineHeight,
-    'diff',
-    fontFamily,
-    preWrappedLines
-  )
+  drawCompareText(compareCtx, font, text, fontSize, maxWidth, lineHeight, 'diff', fontFamily, preWrappedLines)
   const canvasPixels = compareCtx.getImageData(0, 0, cw, ch)
 
   const tempCanvas = document.createElement('canvas')
@@ -532,17 +521,7 @@ function CompareCanvas({
       setComputing(true)
       const idleId = requestIdleCallback(
         () => {
-          drawDiff(
-            ctx,
-            gpuCanvas,
-            font,
-            text,
-            fontSize,
-            maxWidth,
-            LINE_HEIGHT,
-            fontFamily,
-            preWrappedLines
-          )
+          drawDiff(ctx, gpuCanvas, font, text, fontSize, maxWidth, LINE_HEIGHT, fontFamily, preWrappedLines)
         },
         { timeout: 32 }
       )
@@ -556,17 +535,7 @@ function CompareCanvas({
     setComputing(false)
     const idleId = requestIdleCallback(
       () => {
-        drawCompareText(
-          ctx,
-          font,
-          text,
-          fontSize,
-          maxWidth,
-          LINE_HEIGHT,
-          mode,
-          fontFamily,
-          preWrappedLines
-        )
+        drawCompareText(ctx, font, text, fontSize, maxWidth, LINE_HEIGHT, mode, fontFamily, preWrappedLines)
       },
       { timeout: 32 }
     )
@@ -697,8 +666,12 @@ function SplitLabels({ splitX, mode }: { splitX: number; mode: CompareMode }) {
   }
   return (
     <>
-      <div ref={slugRef} style={{ ...base, color: '#fff', left: PADDING, transform: `translateX(${-slugPush}px)` }}>SLUG</div>
-      <div ref={c2dRef} style={{ ...base, color: '#ff6464', right: PADDING, transform: `translateX(${c2dPush}px)` }}>{MODE_LABELS[mode]}</div>
+      <div ref={slugRef} style={{ ...base, color: '#fff', left: PADDING, transform: `translateX(${-slugPush}px)` }}>
+        SLUG
+      </div>
+      <div ref={c2dRef} style={{ ...base, color: '#ff6464', right: PADDING, transform: `translateX(${c2dPush}px)` }}>
+        {MODE_LABELS[mode]}
+      </div>
     </>
   )
 }
@@ -724,10 +697,7 @@ function MeasureOverlay({
   windowSize: { w: number; h: number }
   onMetrics: (m: TextMetrics | null) => void
 }) {
-  const shapedLines = useMemo(
-    () => font.wrapText(text, fontSize, maxWidth),
-    [font, text, fontSize, maxWidth]
-  )
+  const shapedLines = useMemo(() => font.wrapText(text, fontSize, maxWidth), [font, text, fontSize, maxWidth])
   const lineCount = shapedLines.length
 
   const lineMetrics = useMemo(
@@ -794,8 +764,7 @@ function MeasureOverlay({
               left: centerX - overlayMetrics.width / 2 - overlayMetrics.actualBoundingBoxLeft,
               top: baselineFor(overlayLine) - overlayMetrics.actualBoundingBoxAscent,
               width: overlayMetrics.actualBoundingBoxLeft + overlayMetrics.actualBoundingBoxRight,
-              height:
-                overlayMetrics.actualBoundingBoxAscent + overlayMetrics.actualBoundingBoxDescent,
+              height: overlayMetrics.actualBoundingBoxAscent + overlayMetrics.actualBoundingBoxDescent,
               border: '1px solid rgba(102, 217, 239, 0.9)',
               pointerEvents: 'none',
               zIndex: 6,
@@ -818,27 +787,9 @@ function ComputingIndicator() {
           zIndex: 4,
         }}
       >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          style={{ animation: 'slug-spin 0.7s linear infinite' }}
-        >
-          <circle
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="rgba(255,255,255,0.15)"
-            strokeWidth="3"
-            fill="none"
-          />
-          <path
-            d="M12 2a10 10 0 0 1 10 10"
-            stroke="#fff"
-            strokeWidth="3"
-            fill="none"
-            strokeLinecap="round"
-          />
+        <svg width="20" height="20" viewBox="0 0 24 24" style={{ animation: 'slug-spin 0.7s linear infinite' }}>
+          <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.15)" strokeWidth="3" fill="none" />
+          <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" fill="none" strokeLinecap="round" />
         </svg>
       </div>
       <style>{`@keyframes slug-spin { to { transform: rotate(360deg); } }`}</style>
@@ -975,14 +926,8 @@ export default function App() {
   const [gpuCanvas, setGpuCanvas] = useState<HTMLCanvasElement | null>(null)
   const windowSize = useWindowSize()
   const [splitX, setSplitX] = useState(() => Math.round(window.innerWidth / 2))
-  const text = useMemo(
-    () => (iconsMode ? ICON_DEMO : getLoremText(wordCount)),
-    [iconsMode, wordCount]
-  )
-  const stack = useMemo(
-    () => (font && iconFont ? new SlugFontStack([font, iconFont]) : null),
-    [font, iconFont]
-  )
+  const text = useMemo(() => (iconsMode ? ICON_DEMO : getLoremText(wordCount)), [iconsMode, wordCount])
+  const stack = useMemo(() => (font && iconFont ? new SlugFontStack([font, iconFont]) : null), [font, iconFont])
 
   // Compute the demo span [start, end) from the chosen scope. Falls back
   // to the entire text if the heuristic finds nothing (e.g. a line scope
@@ -1039,18 +984,17 @@ export default function App() {
   // overlay aligned with the Slug shaping on first paint.
   useEffect(() => {
     let cancelled = false
-    Promise.allSettled([
-      document.fonts.load('48px Inter-Slug'),
-      document.fonts.load('48px FA-Solid'),
-    ]).finally(() => {
-      SlugFontLoader.load(FONT_URL, { forceRuntime })
-        .then((f) => {
-          if (!cancelled) setFont(f)
-        })
-        .catch((err) => {
-          if (!cancelled) console.error('[slug-text] Inter load failed:', err)
-        })
-    })
+    void Promise.allSettled([document.fonts.load('48px Inter-Slug'), document.fonts.load('48px FA-Solid')]).finally(
+      () => {
+        SlugFontLoader.load(FONT_URL, { forceRuntime })
+          .then((f) => {
+            if (!cancelled) setFont(f)
+          })
+          .catch((err) => {
+            if (!cancelled) console.error('[slug-text] Inter load failed:', err)
+          })
+      }
+    )
     return () => {
       cancelled = true
     }

@@ -262,12 +262,7 @@ export interface ProviderIdentity {
  * `stats:frame` + `stats:gpuReady` — gpu ms lives in the same packet,
  * cached on the server between async resolves).
  */
-export type DebugFeature =
-  | 'stats'
-  | 'env'
-  | 'buffers'
-  | 'registry'
-  | 'batches'
+export type DebugFeature = 'stats' | 'env' | 'buffers' | 'registry' | 'batches'
 
 /** Categories help the UI group registered buffers. Free-form string accepted. */
 export type DebugCategory = 'lighting' | 'materials' | 'post' | 'sprites' | (string & {})
@@ -382,13 +377,13 @@ export interface EnvCanvasDelta {
  * tables for vector kinds, bit strips for flag arrays.
  */
 export type RegistryEntryKind =
-  | 'float'      // Float32Array — scalar 1D
-  | 'uint'       // Uint32Array  — scalar 1D, integer
-  | 'int'        // Int32Array   — scalar 1D, signed integer
-  | 'float2'     // Float32Array interpreted as vec2 pairs
-  | 'float3'     // vec3 triples
-  | 'float4'     // vec4 quads
-  | 'bits'       // Uint32Array interpreted as a bitmask
+  | 'float' // Float32Array — scalar 1D
+  | 'uint' // Uint32Array  — scalar 1D, integer
+  | 'int' // Int32Array   — scalar 1D, signed integer
+  | 'float2' // Float32Array interpreted as vec2 pairs
+  | 'float3' // vec3 triples
+  | 'float4' // vec4 quads
+  | 'bits' // Uint32Array interpreted as a bitmask
 
 /**
  * One entry in the registry delta. `version` bumps whenever the host
@@ -802,27 +797,28 @@ export interface DebugMessageEnvelope {
  * structured-clone-safe (no functions, no DOM nodes, no class instances).
  * Every variant carries the `DebugMessageEnvelope` fields (`v`, `ts`).
  */
-export type DebugMessage = DebugMessageEnvelope & (
+export type DebugMessage = DebugMessageEnvelope &
   // Discovery (both directions)
-  | { type: 'provider:announce'; payload: ProviderAnnouncePayload }
-  | { type: 'provider:query'; payload: ProviderQueryPayload }
-  | { type: 'provider:gone'; payload: ProviderGonePayload }
-  // Consumer → provider (lifecycle)
-  | { type: 'subscribe'; payload: SubscribePayload }
-  | { type: 'unsubscribe'; payload: UnsubscribePayload }
-  | { type: 'ack'; payload: AckPayload }
-  // Provider → consumer (lifecycle + data + liveness)
-  | { type: 'subscribe:ack'; payload: SubscribeAckPayload }
-  | { type: 'data'; payload: DataPayload }
-  | { type: 'buffer:chunk'; payload: BufferChunkPayload }
-  | { type: 'buffer:raw'; payload: BufferRawPayload }
-  | { type: 'ping'; payload: PingPayload }
-  // Consumer ↔ consumer (providers ignore; `rpc:` prefix)
-  | { type: 'rpc:registry:select'; payload: RpcRegistrySelectPayload }
-  | { type: 'rpc:ui:expand'; payload: RpcUiTogglePayload }
-  | { type: 'rpc:ui:gridAll'; payload: RpcUiTogglePayload }
-  | { type: 'rpc:tick:set'; payload: RpcTickSetPayload }
-)
+  (
+    | { type: 'provider:announce'; payload: ProviderAnnouncePayload }
+    | { type: 'provider:query'; payload: ProviderQueryPayload }
+    | { type: 'provider:gone'; payload: ProviderGonePayload }
+    // Consumer → provider (lifecycle)
+    | { type: 'subscribe'; payload: SubscribePayload }
+    | { type: 'unsubscribe'; payload: UnsubscribePayload }
+    | { type: 'ack'; payload: AckPayload }
+    // Provider → consumer (lifecycle + data + liveness)
+    | { type: 'subscribe:ack'; payload: SubscribeAckPayload }
+    | { type: 'data'; payload: DataPayload }
+    | { type: 'buffer:chunk'; payload: BufferChunkPayload }
+    | { type: 'buffer:raw'; payload: BufferRawPayload }
+    | { type: 'ping'; payload: PingPayload }
+    // Consumer ↔ consumer (providers ignore; `rpc:` prefix)
+    | { type: 'rpc:registry:select'; payload: RpcRegistrySelectPayload }
+    | { type: 'rpc:ui:expand'; payload: RpcUiTogglePayload }
+    | { type: 'rpc:ui:gridAll'; payload: RpcUiTogglePayload }
+    | { type: 'rpc:tick:set'; payload: RpcTickSetPayload }
+  )
 
 /**
  * Type helper: message body (type + payload) without the envelope.

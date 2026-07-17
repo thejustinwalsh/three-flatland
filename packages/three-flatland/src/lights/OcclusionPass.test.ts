@@ -84,14 +84,18 @@ describe('OcclusionPass', () => {
     const mat = new Sprite2DMaterial({ map: tex })
 
     // Access the private cache via the private-field back door for test.
-    const cache = (pass as unknown as {
-      _occlusionMaterials: Map<unknown, unknown>
-    })._occlusionMaterials
+    const cache = (
+      pass as unknown as {
+        _occlusionMaterials: Map<unknown, unknown>
+      }
+    )._occlusionMaterials
     expect(cache.size).toBe(0)
 
-    const getOrCreate = (pass as unknown as {
-      _getOrCreateOcclusionMaterial: (t: unknown) => unknown
-    })._getOrCreateOcclusionMaterial.bind(pass)
+    const getOrCreate = (
+      pass as unknown as {
+        _getOrCreateOcclusionMaterial: (t: unknown) => unknown
+      }
+    )._getOrCreateOcclusionMaterial.bind(pass)
 
     const first = getOrCreate(tex)
     const second = getOrCreate(tex)

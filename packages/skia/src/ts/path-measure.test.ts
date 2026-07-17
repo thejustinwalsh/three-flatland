@@ -4,7 +4,9 @@ import { SkiaPath } from './path'
 import { SkiaPathMeasure } from './path-measure'
 
 let skia: SkiaContext
-beforeAll(async () => { skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext) })
+beforeAll(async () => {
+  skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext)
+})
 
 describe('SkiaPathMeasure', () => {
   it('measures a straight line', () => {

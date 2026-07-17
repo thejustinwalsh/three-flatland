@@ -103,13 +103,7 @@ export function splitRegionRowsCols(region: TileRect, rows: number, cols: number
   return out
 }
 
-const OVERRIDABLE_FIELDS: readonly OverridableField[] = [
-  'bump',
-  'direction',
-  'pitch',
-  'strength',
-  'elevation',
-]
+const OVERRIDABLE_FIELDS: readonly OverridableField[] = ['bump', 'direction', 'pitch', 'strength', 'elevation']
 
 /**
  * Materializes split children from a parent region: each child takes one

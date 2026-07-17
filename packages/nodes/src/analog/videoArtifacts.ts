@@ -157,12 +157,7 @@ export function vhsDistortion(
  * @param intensity - Static intensity (0 = no static, 1 = full static)
  * @returns Color with static noise
  */
-export function staticNoise(
-  inputColor: Node<'vec4'>,
-  uv: Node<'vec2'>,
-  time: FloatInput,
-  intensity: FloatInput = 0.5
-) {
+export function staticNoise(inputColor: Node<'vec4'>, uv: Node<'vec2'>, time: FloatInput, intensity: FloatInput = 0.5) {
   const timeNode = typeof time === 'number' ? float(time) : time
   const intensityNode = typeof intensity === 'number' ? float(intensity) : intensity
 

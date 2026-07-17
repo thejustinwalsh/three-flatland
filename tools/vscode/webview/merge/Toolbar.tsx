@@ -9,7 +9,14 @@ import {
 } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
-import { mergeActions, mergeHistory, useMergeHistoryStore, useMergeState, useMergeStore, CANDIDATE_SIZES } from './mergeStore'
+import {
+  mergeActions,
+  mergeHistory,
+  useMergeHistoryStore,
+  useMergeState,
+  useMergeStore,
+  CANDIDATE_SIZES,
+} from './mergeStore'
 
 export type ToolbarProps = {
   onSave: () => void
@@ -65,26 +72,14 @@ export function Toolbar(p: ToolbarProps) {
   const canUndo = history.pastStates.length > 0
   const canRedo = history.futureStates.length > 0
   const conflicts =
-    state.result.kind === 'conflicts'
-      ? state.result.frameConflicts.length + state.result.animationConflicts.length
-      : 0
+    state.result.kind === 'conflicts' ? state.result.frameConflicts.length + state.result.animationConflicts.length : 0
   const nofit = state.result.kind === 'nofit'
   const canSave = state.result.kind === 'ok' && state.sources.length > 0 && state.imageLoadFailed.size === 0
 
   return (
     <DesignToolbar>
-      <ToolbarButton
-        icon="discard"
-        title="Undo (⌘Z)"
-        disabled={!canUndo}
-        onClick={() => mergeHistory.undo()}
-      />
-      <ToolbarButton
-        icon="redo"
-        title="Redo (⌘⇧Z)"
-        disabled={!canRedo}
-        onClick={() => mergeHistory.redo()}
-      />
+      <ToolbarButton icon="discard" title="Undo (⌘Z)" disabled={!canUndo} onClick={() => mergeHistory.undo()} />
+      <ToolbarButton icon="redo" title="Redo (⌘⇧Z)" disabled={!canRedo} onClick={() => mergeHistory.redo()} />
       <Divider />
       <ToolbarButton
         icon="symbol-namespace"
@@ -115,12 +110,8 @@ export function Toolbar(p: ToolbarProps) {
           {(state.result.utilization * 100).toFixed(0)}% used
         </span>
       )}
-      {nofit && (
-        <span {...stylex.props(s.statusError)}>Doesn't fit</span>
-      )}
-      {conflicts > 0 && (
-        <span {...stylex.props(s.status)}>Conflicts: {conflicts}</span>
-      )}
+      {nofit && <span {...stylex.props(s.statusError)}>Doesn't fit</span>}
+      {conflicts > 0 && <span {...stylex.props(s.status)}>Conflicts: {conflicts}</span>}
       <Divider />
       <ToolbarButton
         icon="save"
@@ -128,12 +119,12 @@ export function Toolbar(p: ToolbarProps) {
           canSave
             ? 'Pack & Save…'
             : state.imageLoadFailed.size > 0
-            ? 'Source image(s) failed to load — fix or remove sources before saving'
-            : conflicts > 0
-            ? 'Resolve conflicts before saving'
-            : nofit
-            ? "Output doesn't fit; adjust max size or padding"
-            : 'Add at least one source to save'
+              ? 'Source image(s) failed to load — fix or remove sources before saving'
+              : conflicts > 0
+                ? 'Resolve conflicts before saving'
+                : nofit
+                  ? "Output doesn't fit; adjust max size or padding"
+                  : 'Add at least one source to save'
         }
         disabled={!canSave}
         onClick={p.onSave}

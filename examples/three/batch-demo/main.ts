@@ -21,9 +21,9 @@ const ASSET_BASE = './assets/'
 
 // Grass tilemap UV size (32x32 tiles in 640x256 texture)
 const TILE_UV_SIZE = { width: 32 / 640, height: 32 / 256 }
-const SLICE_TILES = 6; // 6x6 region for 9-slice
-const SLICE_START_X = 0; // in tiles
-const SLICE_START_Y = 0; // in tiles
+const SLICE_TILES = 6 // 6x6 region for 9-slice
+const SLICE_START_X = 0 // in tiles
+const SLICE_START_Y = 0 // in tiles
 
 // Building definitions — frame names refer to the shared sprites atlas
 // (sprites.png + sprites.atlas.json). All buildings load from one
@@ -45,9 +45,9 @@ interface BuildingDef {
 // bottom-anchor position math `+ height/2 - TILE_SIZE/2` is invariant
 // under height changes so sprite ground-anchoring stays correct.
 const BUILDINGS: BuildingDef[] = [
-  { name: 'house', frame: 'house',   width: 108, height: 148, shadowScale: 1.2 },
+  { name: 'house', frame: 'house', width: 108, height: 148, shadowScale: 1.2 },
   { name: 'tower', frame: 'tower_0', width: 114, height: 183, shadowScale: 1.0 },
-  { name: 'tree',  frame: 'tree_0',  width: 111, height: 174, shadowScale: 1.5 },
+  { name: 'tree', frame: 'tree_0', width: 111, height: 174, shadowScale: 1.5 },
 ]
 
 // Placed entity
@@ -74,14 +74,7 @@ async function main() {
   const viewHeight = TILE_SIZE * (GRID_HEIGHT + 4)
 
   // Orthographic camera
-  const camera = new OrthographicCamera(
-    -viewWidth / 2,
-    viewWidth / 2,
-    viewHeight / 2,
-    -viewHeight / 2,
-    0.1,
-    1000
-  )
+  const camera = new OrthographicCamera(-viewWidth / 2, viewWidth / 2, viewHeight / 2, -viewHeight / 2, 0.1, 1000)
   camera.position.z = 100
 
   // WebGPU Renderer
@@ -119,28 +112,28 @@ async function main() {
   // Helper to get the correct grass tile UV based on grid position
   function getGrassTileUV(x: number, y: number) {
     // Map grid position to 9-slice tile index (0-5 for 6x6 region)
-    const maxX = GRID_WIDTH - 1;
-    const maxY = GRID_HEIGHT - 1;
+    const maxX = GRID_WIDTH - 1
+    const maxY = GRID_HEIGHT - 1
 
     // Determine which 9-slice index this tile is (0, 1, ..., 5)
-    let sliceCol = 0;
-    let sliceRow = 0;
-    if (x === 0) sliceCol = 0;
-    else if (x === maxX) sliceCol = SLICE_TILES - 1;
-    else sliceCol = 1 + ((x - 1) % (SLICE_TILES - 2));
+    let sliceCol = 0
+    let sliceRow = 0
+    if (x === 0) sliceCol = 0
+    else if (x === maxX) sliceCol = SLICE_TILES - 1
+    else sliceCol = 1 + ((x - 1) % (SLICE_TILES - 2))
 
-    if (y === 0) sliceRow = 0;
-    else if (y === maxY) sliceRow = SLICE_TILES - 1;
-    else sliceRow = 1 + ((y - 1) % (SLICE_TILES - 2));
+    if (y === 0) sliceRow = 0
+    else if (y === maxY) sliceRow = SLICE_TILES - 1
+    else sliceRow = 1 + ((y - 1) % (SLICE_TILES - 2))
 
     // Compute UVs (flip y so v=0 is top of texture)
     // Invert sliceRow so top row in grid maps to top row in texture
-    const flippedSliceRow = SLICE_TILES - 1 - sliceRow;
+    const flippedSliceRow = SLICE_TILES - 1 - sliceRow
     const uv = {
       x: (SLICE_START_X + sliceCol) * TILE_UV_SIZE.width,
-      y: 1 - ((SLICE_START_Y + flippedSliceRow + 1) * TILE_UV_SIZE.height),
-    };
-    return uv;
+      y: 1 - (SLICE_START_Y + flippedSliceRow + 1) * TILE_UV_SIZE.height,
+    }
+    return uv
   }
 
   // Create ground tiles using 9-slice pattern
@@ -322,7 +315,9 @@ async function main() {
   updateHoverSprite()
 
   // Tweakpane debug UI
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
   const devtools = createDevtoolsProvider({ name: 'batch-demo' })
   const exampleStats = { sprites: 0, batches: 0 }
   const statsFolder = pane.addFolder({ title: 'Batching', expanded: false })
@@ -373,7 +368,7 @@ async function main() {
   animate()
 }
 
-main()
+void main()
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

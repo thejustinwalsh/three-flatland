@@ -1,11 +1,5 @@
 // Types
-export type {
-  Vec2Input,
-  Vec3Input,
-  Vec4Input,
-  FloatInput,
-  ColorInput,
-} from './types'
+export type { Vec2Input, Vec3Input, Vec4Input, FloatInput, ColorInput } from './types'
 
 // Sprite/UV nodes
 export * from './sprite'

@@ -2,14 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { buildBands } from './bandBuilder'
 import type { QuadCurve, GlyphBounds } from '../types'
 
-function makeCurve(
-  p0x: number,
-  p0y: number,
-  p1x: number,
-  p1y: number,
-  p2x: number,
-  p2y: number
-): QuadCurve {
+function makeCurve(p0x: number, p0y: number, p1x: number, p1y: number, p2x: number, p2y: number): QuadCurve {
   return { p0x, p0y, p1x, p1y, p2x, p2y }
 }
 

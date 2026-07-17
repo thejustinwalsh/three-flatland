@@ -198,18 +198,14 @@ async function main() {
           name: 'encode',
           capture: async () => {
             await openCommand('threeFlatland.encode.open', ['sprites/knight.png'])
-            await workbox
-              .getByRole('tab', { name: 'Encode: knight.png' })
-              .waitFor({ state: 'visible' })
+            await workbox.getByRole('tab', { name: 'Encode: knight.png' }).waitFor({ state: 'visible' })
           },
         },
         {
           name: 'normal-baker',
           capture: async () => {
             await openCommand('threeFlatland.normalBaker.open', ['sprites/Dungeon_Tileset.png'])
-            await workbox
-              .getByRole('tab', { name: 'Normal Baker: Dungeon_Tileset.png' })
-              .waitFor({ state: 'visible' })
+            await workbox.getByRole('tab', { name: 'Normal Baker: Dungeon_Tileset.png' }).waitFor({ state: 'visible' })
           },
         },
         {
@@ -230,9 +226,7 @@ async function main() {
               const editor = await vscode.window.showTextDocument(doc)
               editor.revealRange(new vscode.Range(93, 0, 93, 0), vscode.TextEditorRevealType.AtTop)
             })
-            await workbox
-              .getByRole('tab', { name: 'audio-sources.ts' })
-              .waitFor({ state: 'visible' })
+            await workbox.getByRole('tab', { name: 'audio-sources.ts' }).waitFor({ state: 'visible' })
           },
         },
         {

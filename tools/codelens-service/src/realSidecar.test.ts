@@ -198,9 +198,7 @@ describe.skipIf(!CARGO_AVAILABLE)('CodelensServiceClient against the real sideca
     expect(finding.kind).toBe('zzfxm.song')
     if (finding.kind !== 'zzfxm.song') throw new Error('expected zzfxm.song')
     expect(finding.payload.varRef?.name).toBe('mySong')
-    expect(sliceRange(text, finding.payload.varRef!.defRange!)).toBe(
-      '[[[1,0,220]],[[0,0,0,1]],[1]]'
-    )
+    expect(sliceRange(text, finding.payload.varRef!.defRange!)).toBe('[[[1,0,220]],[[0,0,0,1]],[1]]')
 
     await client.shutdown()
   })

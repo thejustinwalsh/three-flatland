@@ -23,9 +23,7 @@ export { WASIProcExit } from 'uwasi'
 // uwasi@1.4.1's barrel doesn't re-export `WASIFeatureProvider` (it lives in
 // the internal `./options` module). Derive it from the public `WASI`
 // constructor's `features` option instead of reaching into an internal path.
-type WASIFeatureProvider = NonNullable<
-  NonNullable<ConstructorParameters<typeof WASI>[0]>['features']
->[number]
+type WASIFeatureProvider = NonNullable<NonNullable<ConstructorParameters<typeof WASI>[0]>['features']>[number]
 
 // WASI errno values used in the no-FS feature below. wasi-libc's stdio
 // initializer scans preopens via fd_prestat_get and STOPS when it gets
@@ -91,14 +89,14 @@ function makeWasi(): WASI {
  * and run its `_initialize` automatically. Returns the instantiated
  * exports so the caller can immediately invoke any `fl_*` setup.
  */
-export async function instantiateWithWasi<T>(
-  bytes: ArrayBuffer,
-): Promise<T> {
+export async function instantiateWithWasi<T>(bytes: ArrayBuffer): Promise<T> {
   const wasi = makeWasi()
-  const result = await (WebAssembly.instantiate as (
-    bytes: BufferSource,
-    imports: WebAssembly.Imports,
-  ) => Promise<WebAssembly.WebAssemblyInstantiatedSource>)(bytes, {
+  const result = await (
+    WebAssembly.instantiate as (
+      bytes: BufferSource,
+      imports: WebAssembly.Imports
+    ) => Promise<WebAssembly.WebAssemblyInstantiatedSource>
+  )(bytes, {
     wasi_snapshot_preview1: wasi.wasiImport,
   })
   // Reactor mode: uwasi runs _initialize for us via initialize(),

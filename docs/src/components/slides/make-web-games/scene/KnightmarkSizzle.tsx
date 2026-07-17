@@ -90,8 +90,22 @@ const knightAnimations: AnimationSetDefinition = {
     },
     run: {
       frames: [
-        'run_0', 'run_1', 'run_2', 'run_3', 'run_4', 'run_5', 'run_6', 'run_7',
-        'run_8', 'run_9', 'run_10', 'run_11', 'run_12', 'run_13', 'run_14', 'run_15',
+        'run_0',
+        'run_1',
+        'run_2',
+        'run_3',
+        'run_4',
+        'run_5',
+        'run_6',
+        'run_7',
+        'run_8',
+        'run_9',
+        'run_10',
+        'run_11',
+        'run_12',
+        'run_13',
+        'run_14',
+        'run_15',
       ],
       fps: 16,
       loop: true,
@@ -321,7 +335,7 @@ function KnightmarkScene() {
         knightsRef.current.push(spawnKnight(sheet, group))
       }
     },
-    [sheet],
+    [sheet]
   )
 
   // Spawn the seed batch on mount. Each visit to the slide remounts this whole

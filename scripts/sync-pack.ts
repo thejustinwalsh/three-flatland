@@ -73,7 +73,7 @@ export function getInternalVersions(): Record<string, string> {
 // Internal wins on collision.
 export function buildVersionTable(
   catalog: Record<string, string>,
-  internal: Record<string, string>,
+  internal: Record<string, string>
 ): Record<string, string> {
   const table: Record<string, string> = { ...catalog }
   for (const [name, version] of Object.entries(internal)) {
@@ -105,10 +105,7 @@ function findPackages(dir: string): string[] {
 // Overwrite any dep whose name is in the version table with the table value.
 // Deps not in the table are left untouched. Returns true iff at least one
 // value changed.
-export function syncDeps(
-  deps: Record<string, string> | undefined,
-  table: Record<string, string>,
-): boolean {
+export function syncDeps(deps: Record<string, string> | undefined, table: Record<string, string>): boolean {
   if (!deps) return false
   let changed = false
 
@@ -126,10 +123,7 @@ export function syncDeps(
 // Check for drift: for each dep whose name is in the table, report a human
 // readable string when the current value differs from the table value.
 // Returns an empty array on a clean tree. Out-of-table deps are ignored.
-export function checkDeps(
-  deps: Record<string, string> | undefined,
-  table: Record<string, string>,
-): string[] {
+export function checkDeps(deps: Record<string, string> | undefined, table: Record<string, string>): string[] {
   if (!deps) return []
   const issues: string[] = []
 
@@ -154,7 +148,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.error(
       'Usage: pnpm sync:pack <dir> [<dir> ...]\n' +
         '       pnpm sync:pack --files <file> [<file> ...]\n' +
-        '       pnpm sync:pack --verify <dir> [<dir> ...]',
+        '       pnpm sync:pack --verify <dir> [<dir> ...]'
     )
     process.exit(1)
   }
@@ -205,7 +199,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (totalOutOfSync > 0) {
       console.error(
         `\n${totalOutOfSync} package(s) have unresolved versions.` +
-          `\nRun 'pnpm sync:pack ${dirs.join(' ')}' locally or install git hooks with 'pnpm prepare'.`,
+          `\nRun 'pnpm sync:pack ${dirs.join(' ')}' locally or install git hooks with 'pnpm prepare'.`
       )
       process.exit(1)
     }

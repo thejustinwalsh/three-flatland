@@ -79,7 +79,7 @@ describe('SkiaContext', () => {
   })
 
   it('writeU32 allocates in WASM memory', () => {
-    const ptr = skia._writeU32([0xFF0000FF, 0x00FF00FF])
+    const ptr = skia._writeU32([0xff0000ff, 0x00ff00ff])
     expect(ptr).toBeGreaterThan(0)
   })
 })

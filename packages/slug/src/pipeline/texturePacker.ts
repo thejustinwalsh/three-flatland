@@ -1,12 +1,4 @@
-import {
-  DataTexture,
-  DataUtils,
-  FloatType,
-  HalfFloatType,
-  NearestFilter,
-  RGBAFormat,
-  RGFormat,
-} from 'three'
+import { DataTexture, DataUtils, FloatType, HalfFloatType, NearestFilter, RGBAFormat, RGFormat } from 'three'
 import type { SlugGlyphData, SlugTextureData } from '../types'
 
 /** Default texture width in texels (must be power of 2). */
@@ -105,7 +97,7 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
     // The shader reads texel[i] and texel[i+1] — works identically.
     //
     // curveTexelMap[curveIndex] = texel offset of that curve's first texel
-    const curveTexelMap = new Array<number>(glyph.curves.length)
+    const curveTexelMap = Array.from<number>({ length: glyph.curves.length })
     const starts = glyph.contourStarts
 
     for (let c = 0; c < starts.length; c++) {
@@ -194,13 +186,7 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
   }
 
   // Curve texture — RGBA16F (half-float).
-  const curveTexture = new DataTexture(
-    curveData,
-    TEXTURE_WIDTH,
-    curveHeight,
-    RGBAFormat,
-    HalfFloatType
-  )
+  const curveTexture = new DataTexture(curveData, TEXTURE_WIDTH, curveHeight, RGBAFormat, HalfFloatType)
   curveTexture.minFilter = NearestFilter
   curveTexture.magFilter = NearestFilter
   curveTexture.needsUpdate = true

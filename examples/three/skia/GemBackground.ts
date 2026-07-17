@@ -170,8 +170,7 @@ export function gemClearColor(gem: Gem): Color {
  */
 export function gemFogColor(gem: Gem): Color {
   const [r, g, b] = oklabMix(GEM_HEX[gem], BG_HEX, 0.1)
-  const hex =
-    (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255)
+  const hex = (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255)
   return new Color(hex)
 }
 
@@ -196,15 +195,7 @@ export function gemFogColor(gem: Gem): Color {
  * scene (skia: ~0.4) so the gem identity stays in a corner instead
  * of dominating the visible viewport.
  */
-export function gemGradientNode({
-  gem,
-  lit = false,
-  radius = 0.7,
-}: {
-  gem: Gem
-  lit?: boolean
-  radius?: number
-}) {
+export function gemGradientNode({ gem, lit = false, radius = 0.7 }: { gem: Gem; lit?: boolean; radius?: number }) {
   // Pre-compute the three gradient stops in JS using OKLab mixing,
   // matching CSS `color-mix(in oklab, ...)` exactly. The resulting
   // sRGB-encoded values are baked into the shader as vec3 constants —
@@ -229,12 +220,8 @@ export function gemGradientNode({
     // - extent = farthest-corner (distance from (0.3,0.3) center to
     //   (1,1) corner = 0.7 × screen-diagonal length)
     const screenPx = screenSize
-    const cx = lit
-      ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(0))).mul(0.04))
-      : float(0.3)
-    const cy = lit
-      ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(100))).mul(0.04))
-      : float(0.3)
+    const cx = lit ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(0))).mul(0.04)) : float(0.3)
+    const cy = lit ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(100))).mul(0.04)) : float(0.3)
     const centerPx = vec2(cx, cy).mul(screenPx)
     const fragPx = screenUV.mul(screenPx)
     const d = length(fragPx.sub(centerPx)).div(length(screenPx).mul(float(radius)))
@@ -273,11 +260,7 @@ export function gemGradientNode({
  * Gradient center matches the TSL version at (30%, 30%); radius
  * defaults to 0.7 of the canvas diagonal — same as `gemGradientNode`.
  */
-export function gemGradientCanvas2D(
-  ctx: CanvasRenderingContext2D,
-  gem: Gem,
-  options: { radius?: number } = {}
-): void {
+export function gemGradientCanvas2D(ctx: CanvasRenderingContext2D, gem: Gem, options: { radius?: number } = {}): void {
   const radius = options.radius ?? 0.7
   const w = ctx.canvas.width
   const h = ctx.canvas.height

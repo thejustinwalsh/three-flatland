@@ -15,22 +15,12 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { bakeNormalMapFile } from '@three-flatland/normals/node'
 import type { NormalSourceDescriptor } from '@three-flatland/normals'
-import {
-  tilesetToRegions,
-  type TileNormalCustomData,
-  type TilesetCell,
-} from 'three-flatland/loaders/normalDescriptor'
+import { tilesetToRegions, type TileNormalCustomData, type TilesetCell } from 'three-flatland/loaders/normalDescriptor'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
-const LDTK_PATH = resolve(
-  ROOT,
-  'examples/react/lighting/public/maps/dungeon.ldtk'
-)
-const TILESET_PATH = resolve(
-  ROOT,
-  'examples/react/lighting/public/sprites/Dungeon_Tileset.png'
-)
+const LDTK_PATH = resolve(ROOT, 'examples/react/lighting/public/maps/dungeon.ldtk')
+const TILESET_PATH = resolve(ROOT, 'examples/react/lighting/public/sprites/Dungeon_Tileset.png')
 
 interface LDtkTilesetDef {
   uid: number

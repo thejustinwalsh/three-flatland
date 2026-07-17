@@ -71,7 +71,7 @@ describe('transcoder-loader', () => {
       expect(header.pixelWidth).toBe(decoded.width)
       expect(header.pixelHeight).toBe(decoded.height)
       expect(header.levelCount).toBe(1) // mipmaps: false
-      expect(header.faceCount).toBe(1)  // 2D
+      expect(header.faceCount).toBe(1) // 2D
       expect(header.isEtc1s).toBe(true)
       expect(header.isUastc).toBe(false)
       expect(header.isHdr).toBe(false)
@@ -85,7 +85,7 @@ describe('transcoder-loader', () => {
 
       expect(level.width).toBeGreaterThanOrEqual(decoded.width)
       expect(level.height).toBeGreaterThanOrEqual(decoded.height)
-      expect(level.blockWidth).toBe(4)  // ETC1S block size
+      expect(level.blockWidth).toBe(4) // ETC1S block size
       expect(level.blockHeight).toBe(4)
 
       // Transcode base mip into RGBA32. cTFRGBA32 sizes by PIXELS.
@@ -96,10 +96,13 @@ describe('transcoder-loader', () => {
       const outPtr = t.fl_transcoder_alloc(totalPixels * bytesPerPixel)
       rc = t.fl_ktx2_transcode_level(
         transcoder,
-        0, 0, 0,
+        0,
+        0,
+        0,
         TF_RGBA32,
-        outPtr, totalPixels,
-        0, // decode_flags
+        outPtr,
+        totalPixels,
+        0 // decode_flags
       )
       expect(rc).toBe(FL_TRANSCODER_E_OK)
 

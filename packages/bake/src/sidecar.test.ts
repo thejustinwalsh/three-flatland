@@ -1,15 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import {
-  bakedSiblingURL,
-  hashDescriptor,
-  readPngTextChunk,
-} from './sidecar.js'
+import { bakedSiblingURL, hashDescriptor, readPngTextChunk } from './sidecar.js'
 
 describe('bakedSiblingURL', () => {
   it('replaces the extension with the given suffix', () => {
-    expect(bakedSiblingURL('/sprites/knight.png', '.normal.png')).toBe(
-      '/sprites/knight.normal.png'
-    )
+    expect(bakedSiblingURL('/sprites/knight.png', '.normal.png')).toBe('/sprites/knight.normal.png')
   })
 
   it('preserves query strings', () => {
@@ -21,9 +15,9 @@ describe('bakedSiblingURL', () => {
   })
 
   it('handles absolute URLs', () => {
-    expect(
-      bakedSiblingURL('https://cdn.example.com/path/foo.png', '.normal.png')
-    ).toBe('https://cdn.example.com/path/foo.normal.png')
+    expect(bakedSiblingURL('https://cdn.example.com/path/foo.png', '.normal.png')).toBe(
+      'https://cdn.example.com/path/foo.normal.png'
+    )
   })
 })
 
@@ -98,11 +92,19 @@ function buildTinyPngWithTextChunk(keyword: string, value: string): ArrayBuffer 
   const ihdr = makeChunk(
     'IHDR',
     new Uint8Array([
-      0, 0, 0, 1, // width 1
-      0, 0, 0, 1, // height 1
+      0,
+      0,
+      0,
+      1, // width 1
+      0,
+      0,
+      0,
+      1, // height 1
       8, // bit depth
       6, // color type (RGBA)
-      0, 0, 0, // compression, filter, interlace
+      0,
+      0,
+      0, // compression, filter, interlace
     ])
   )
 
@@ -119,9 +121,12 @@ function buildTinyPngWithTextChunk(keyword: string, value: string): ArrayBuffer 
   const total = sig.length + ihdr.length + text.length + iend.length
   const out = new Uint8Array(total)
   let offset = 0
-  out.set(sig, offset); offset += sig.length
-  out.set(ihdr, offset); offset += ihdr.length
-  out.set(text, offset); offset += text.length
+  out.set(sig, offset)
+  offset += sig.length
+  out.set(ihdr, offset)
+  offset += ihdr.length
+  out.set(text, offset)
+  offset += text.length
   out.set(iend, offset)
   return out.buffer
 }

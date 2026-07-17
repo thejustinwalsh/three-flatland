@@ -16,9 +16,19 @@
 
 // Handle table names — must match TABLE_* constants in core.zig
 const TABLE_NAMES = [
-  'paints', 'paths', 'fonts', 'typefaces', 'imagefilters',
-  'colorfilters', 'patheffects', 'shaders', 'images',
-  'path_measures', 'text_blobs', 'picture_recorders', 'pictures',
+  'paints',
+  'paths',
+  'fonts',
+  'typefaces',
+  'imagefilters',
+  'colorfilters',
+  'patheffects',
+  'shaders',
+  'images',
+  'path_measures',
+  'text_blobs',
+  'picture_recorders',
+  'pictures',
 ]
 
 /**
@@ -36,7 +46,7 @@ export function createEnvImports(): Record<string, WebAssembly.ImportValue> {
         return (tableId: number, oldCap: number, newCap: number) => {
           console.warn(
             `[Skia] Handle pool "${TABLE_NAMES[tableId] ?? tableId}" grew: ${oldCap} → ${newCap}. ` +
-            `Consider disposing unused resources.`,
+              `Consider disposing unused resources.`
           )
         }
       }
@@ -58,7 +68,7 @@ export function createEnvImports(): Record<string, WebAssembly.ImportValue> {
  */
 export async function instantiateWasm(
   response: Response | Promise<Response>,
-  imports: WebAssembly.Imports,
+  imports: WebAssembly.Imports
 ): Promise<WebAssembly.WebAssemblyInstantiatedSource> {
   const res = await response
   try {
@@ -94,16 +104,14 @@ export async function instantiateWasm(
  * via a getter, since WASM memory isn't available until the instance
  * is created.
  */
-export function createWasiImports(
-  getMemory: () => WebAssembly.Memory,
-): Record<string, WebAssembly.ImportValue> {
+export function createWasiImports(getMemory: () => WebAssembly.Memory): Record<string, WebAssembly.ImportValue> {
   const fdErrors: Record<string, number> = {
-    fd_prestat_get: 8,      // EBADF
+    fd_prestat_get: 8, // EBADF
     fd_prestat_dir_name: 8, // EBADF
-    fd_fdstat_get: 8,       // EBADF
-    fd_filestat_get: 8,     // EBADF
-    path_open: 44,          // ENOENT
-    path_filestat_get: 44,  // ENOENT
+    fd_fdstat_get: 8, // EBADF
+    fd_filestat_get: 8, // EBADF
+    path_open: 44, // ENOENT
+    path_filestat_get: 44, // ENOENT
   }
 
   return new Proxy({} as Record<string, WebAssembly.ImportValue>, {
@@ -115,7 +123,9 @@ export function createWasiImports(
 
       // proc_exit — throw so we notice if it's called
       if (name === 'proc_exit') {
-        return () => { throw new Error('WASI proc_exit called') }
+        return () => {
+          throw new Error('WASI proc_exit called')
+        }
       }
 
       // environ_sizes_get(count_ptr, size_ptr) — write 0 to both

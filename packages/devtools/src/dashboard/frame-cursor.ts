@@ -73,8 +73,7 @@ export function goLive(): void {
 export function setCursorProvider(providerId: string | null): void {
   if (activeProviderId === providerId) return
   activeProviderId = providerId
-  const restored =
-    providerId !== null ? (cursorByProvider.get(providerId) ?? null) : null
+  const restored = providerId !== null ? (cursorByProvider.get(providerId) ?? null) : null
   if (liveCursor !== restored) {
     liveCursor = restored
     fire()

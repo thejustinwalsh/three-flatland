@@ -41,20 +41,16 @@ test.describe('FL ZzFX Studio', () => {
         // opening the document schedules activation but doesn't await its
         // completion, so a CodeLens query issued immediately after can
         // race a provider that isn't registered yet.
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
         const uri = vscode.Uri.joinPath(folder!.uri, arg.file)
         const doc = await vscode.workspace.openTextDocument(uri)
         await vscode.window.showTextDocument(doc)
-        const lenses = (await vscode.commands.executeCommand(
-          'vscode.executeCodeLensProvider',
-          uri,
-          100
-        )) as { command?: { title: string } }[]
+        const lenses = (await vscode.commands.executeCommand('vscode.executeCodeLensProvider', uri, 100)) as {
+          command?: { title: string }
+        }[]
         return lenses.map((l) => l.command?.title ?? null)
       },
       { file: SOUNDS_FILE }
@@ -74,9 +70,7 @@ test.describe('FL ZzFX Studio', () => {
   }) => {
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -105,9 +99,7 @@ test.describe('FL ZzFX Studio', () => {
   }) => {
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -142,9 +134,7 @@ test.describe('FL ZzFX Studio', () => {
 
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -174,9 +164,7 @@ test.describe('FL ZzFX Studio', () => {
     // The fill's input event commits synchronously into session state and
     // flips `dirty`, which retitles Save — wait for that so the save
     // request provably snapshots the 1800.
-    await expect(
-      frame.locator('vscode-toolbar-button[title="Save (unsaved changes)"]')
-    ).toBeVisible()
+    await expect(frame.locator('vscode-toolbar-button[title="Save (unsaved changes)"]')).toBeVisible()
     await frame.locator('vscode-toolbar-button[title^="Save"]').click()
 
     const actualText = await readFile(evaluateInVSCode, SOUNDS_FILE)
@@ -197,9 +185,7 @@ test.describe('FL ZzFX Studio', () => {
   }) => {
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -253,9 +239,7 @@ test.describe('FL ZzFX Studio', () => {
     // The direct-document edit survived (it happened outside the panel,
     // independent of the refused save) and the call site is untouched —
     // proving the refusal didn't also revert or otherwise mutate the file.
-    expect(text).toContain(
-      "const LASER: ZzFXParams = getPreset('laser', 99999999999999999999999999999999)"
-    )
+    expect(text).toContain("const LASER: ZzFXParams = getPreset('laser', 99999999999999999999999999999999)")
     expect(text).toContain('zzfx(...LASER)')
   })
 
@@ -268,9 +252,7 @@ test.describe('FL ZzFX Studio', () => {
 
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -323,9 +305,7 @@ test.describe('FL ZzFX Studio', () => {
   }) => {
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -375,15 +355,10 @@ test.describe('FL ZzFX Studio', () => {
     expect(text).toContain(LITERAL_CALL_TEXT)
   })
 
-  test('waveform preview draws a real trace for the LASER finding', async ({
-    evaluateInVSCode,
-    webviewFrame,
-  }) => {
+  test('waveform preview draws a real trace for the LASER finding', async ({ evaluateInVSCode, webviewFrame }) => {
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -409,9 +384,7 @@ test.describe('FL ZzFX Studio', () => {
     // with the runner's DPR and window size, while this attribute poll is
     // deterministic and auto-retries across the ~100ms debounced
     // synth+draw window.
-    await expect
-      .poll(async () => Number(await canvas.getAttribute('data-waveform-peak')))
-      .toBeGreaterThan(0)
+    await expect.poll(async () => Number(await canvas.getAttribute('data-waveform-peak'))).toBeGreaterThan(0)
   })
 
   test('header source link for a variable finding shows the variable name alone and clicking it reveals + focuses the declaration', async ({
@@ -420,9 +393,7 @@ test.describe('FL ZzFX Studio', () => {
   }) => {
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -476,9 +447,7 @@ test.describe('FL ZzFX Studio', () => {
   }) => {
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -525,9 +494,7 @@ test.describe('FL ZzFX Studio', () => {
 
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
 
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -600,17 +567,11 @@ test.describe('FL ZzFX Studio', () => {
   }) => {
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as {
           zzfxHistory: {
-            keyFor: (source: {
-              uri: string
-              line: number
-              varRef?: { name: string; defUri?: string }
-            }) => string
+            keyFor: (source: { uri: string; line: number; varRef?: { name: string; defUri?: string } }) => string
             append: (key: string, batch: unknown) => Promise<unknown>
           }
         }
@@ -691,17 +652,11 @@ test.describe('FL ZzFX Studio', () => {
     // final emptiness assertion a stronger proof.
     await evaluateInVSCode(
       async (vscode, arg) => {
-        const ext = vscode.extensions.all.find(
-          (e) => e.packageJSON.name === '@three-flatland/vscode'
-        )
+        const ext = vscode.extensions.all.find((e) => e.packageJSON.name === '@three-flatland/vscode')
         if (ext && !ext.isActive) await ext.activate()
         const api = ext!.exports as {
           zzfxHistory: {
-            keyFor: (source: {
-              uri: string
-              line: number
-              varRef?: { name: string; defUri?: string }
-            }) => string
+            keyFor: (source: { uri: string; line: number; varRef?: { name: string; defUri?: string } }) => string
             append: (key: string, batch: unknown) => Promise<unknown>
           }
         }
@@ -717,9 +672,7 @@ test.describe('FL ZzFX Studio', () => {
           category: 'Laser',
           styles: [],
           source: 'cache',
-          candidates: [
-            { label: 'Seeded Zap C', params: [0.6, 0, 700, 0, 0.03, 0.05, 4, 2], rationale: 'c' },
-          ],
+          candidates: [{ label: 'Seeded Zap C', params: [0.6, 0, 700, 0, 0.03, 0.05, 4, 2], rationale: 'c' }],
         })
       },
       { file: SOUNDS_FILE, callLine: VARIABLE_CALL_LINE }
@@ -743,9 +696,7 @@ test.describe('FL ZzFX Studio', () => {
     // First click only ARMS the button (title flips to the explicit
     // confirm wording); the history must still be intact.
     await frame.locator('vscode-toolbar-button[title="Clear history for this sound"]').click()
-    const confirm = frame.locator(
-      'vscode-toolbar-button[title="Click again to clear all history for this sound"]'
-    )
+    const confirm = frame.locator('vscode-toolbar-button[title="Click again to clear all history for this sound"]')
     await expect(confirm).toBeVisible()
     await expect(frame.getByText('Seeded Zap C')).toBeVisible()
 

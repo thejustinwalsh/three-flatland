@@ -10,8 +10,8 @@ import { useViewport } from './Viewport'
 export type CoordMode = 'px' | 'uv+' | 'uv-'
 export type ColorMode = 'hex' | 'rgba' | 'float'
 
-const NEXT: Record<CoordMode, CoordMode> = { 'px': 'uv+', 'uv+': 'uv-', 'uv-': 'px' }
-const NEXT_COLOR: Record<ColorMode, ColorMode> = { 'hex': 'rgba', 'rgba': 'float', 'float': 'hex' }
+const NEXT: Record<CoordMode, CoordMode> = { px: 'uv+', 'uv+': 'uv-', 'uv-': 'px' }
+const NEXT_COLOR: Record<ColorMode, ColorMode> = { hex: 'rgba', rgba: 'float', float: 'hex' }
 
 // Match HoverFrameChip's breakpoint so the two panels stack together
 // at the same canvas width. Keep in sync.
@@ -74,12 +74,12 @@ const s = stylex.create({
   // Per-mode min-width reservations for the color display.
   // Sized to the longest possible value in each mode so the panel
   // never shifts while the cursor is scanning — only reflows on a click.
-  colorHex: { minWidth: '9ch' },   // #rrggbbaa = 9 chars
+  colorHex: { minWidth: '9ch' }, // #rrggbbaa = 9 chars
   colorRgba: { minWidth: '18ch' }, // 255, 255, 255, 255 = 18 chars
   colorFloat: { minWidth: '26ch' }, // 1.000, 1.000, 1.000, 1.000 = 26 chars
   // Per-mode min-width reservations for the coord display.
-  coordPx: { minWidth: '14ch' },  // px: 9999, 9999 = 14 chars
-  coordUv: { minWidth: '17ch' },  // uv+: 1.000, 1.000 = 17 chars
+  coordPx: { minWidth: '14ch' }, // px: 9999, 9999 = 14 chars
+  coordUv: { minWidth: '17ch' }, // uv+: 1.000, 1.000 = 17 chars
   coord: {
     cursor: 'pointer',
     pointerEvents: 'auto',
@@ -104,17 +104,12 @@ function hex2(n: number): string {
 
 const ZERO_RGBA: [number, number, number, number] = [0, 0, 0, 0]
 
-function formatColor(
-  rgba: [number, number, number, number] | null,
-  mode: ColorMode,
-): string {
+function formatColor(rgba: [number, number, number, number] | null, mode: ColorMode): string {
   // Out-of-bounds / no sample: show 0s in the active format rather than `—`,
   // so the panel still communicates the format without going blank.
   const [r, g, b, a] = rgba ?? ZERO_RGBA
   if (mode === 'hex') {
-    return a < 255
-      ? `#${hex2(r)}${hex2(g)}${hex2(b)}${hex2(a)}`
-      : `#${hex2(r)}${hex2(g)}${hex2(b)}`
+    return a < 255 ? `#${hex2(r)}${hex2(g)}${hex2(b)}${hex2(a)}` : `#${hex2(r)}${hex2(g)}${hex2(b)}`
   }
   if (mode === 'rgba') {
     return `${r}, ${g}, ${b}, ${a}`
@@ -205,8 +200,8 @@ export function InfoPanel({
             s.swatchFill(
               reading?.rgba
                 ? `rgba(${reading.rgba[0]}, ${reading.rgba[1]}, ${reading.rgba[2]}, ${reading.rgba[3] / 255})`
-                : 'transparent',
-            ),
+                : 'transparent'
+            )
           )}
         />
         <span

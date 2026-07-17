@@ -11,7 +11,13 @@ import {
   Plane,
   Vector3,
 } from 'three'
-import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData, createDevtoolsProvider } from 'three-flatland'
+import {
+  TileMap2D,
+  type TileMapData,
+  type TilesetData,
+  type TileLayerData,
+  createDevtoolsProvider,
+} from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
@@ -130,7 +136,11 @@ interface BSPNode {
 /**
  * Generate a procedural dungeon using BSP (Binary Space Partitioning).
  */
-function generateDungeon(width: number, height: number, density: string): {
+function generateDungeon(
+  width: number,
+  height: number,
+  density: string
+): {
   ground: Uint32Array
   walls: Uint32Array
   decor: Uint32Array
@@ -347,7 +357,7 @@ function generateDungeon(width: number, height: number, density: string): {
     }
 
     // Random decorations in room interior
-    const numDecorations = Math.floor(room.w * room.h / 40) + 1
+    const numDecorations = Math.floor((room.w * room.h) / 40) + 1
     for (let i = 0; i < numDecorations; i++) {
       if (room.w <= 4 || room.h <= 4) continue
       const rx = room.x + 2 + Math.floor(Math.random() * (room.w - 4))
@@ -551,26 +561,25 @@ async function main() {
   }
 
   // Tweakpane UI
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
   const devtools = createDevtoolsProvider({ name: 'tilemap' })
 
   // Layers folder
   const layerFolder = pane.addFolder({ title: 'Layers', expanded: false })
-  layerFolder.addBinding(layers, 'showGround', { label: 'ground' })
-    .on('change', (ev) => {
-      const layer = tilemap.getLayerAt(0)
-      if (layer) layer.visible = ev.value
-    })
-  layerFolder.addBinding(layers, 'showWalls', { label: 'walls' })
-    .on('change', (ev) => {
-      const layer = tilemap.getLayerAt(1)
-      if (layer) layer.visible = ev.value
-    })
-  layerFolder.addBinding(layers, 'showDecor', { label: 'decor' })
-    .on('change', (ev) => {
-      const layer = tilemap.getLayerAt(2)
-      if (layer) layer.visible = ev.value
-    })
+  layerFolder.addBinding(layers, 'showGround', { label: 'ground' }).on('change', (ev) => {
+    const layer = tilemap.getLayerAt(0)
+    if (layer) layer.visible = ev.value
+  })
+  layerFolder.addBinding(layers, 'showWalls', { label: 'walls' }).on('change', (ev) => {
+    const layer = tilemap.getLayerAt(1)
+    if (layer) layer.visible = ev.value
+  })
+  layerFolder.addBinding(layers, 'showDecor', { label: 'decor' }).on('change', (ev) => {
+    const layer = tilemap.getLayerAt(2)
+    if (layer) layer.visible = ev.value
+  })
 
   // Tiles folder (monitors)
   const tilesFolder = pane.addFolder({ title: 'Tiles', expanded: false })
@@ -580,19 +589,24 @@ async function main() {
 
   // Generation folder (at bottom, expanded)
   const genFolder = pane.addFolder({ title: 'Tilemap' })
-  genFolder.addBinding(gen, 'mapSize', {
-    options: { SM: 'sm', MD: 'md', LG: 'lg', XL: 'xl' },
-    label: 'map size',
-  }).on('change', () => rebuildTilemap())
-  genFolder.addBinding(gen, 'chunkSize', {
-    options: { '256': 256, '512': 512, '1024': 1024, '2048': 2048 },
-    label: 'chunk',
-  }).on('change', () => rebuildTilemap())
-  genFolder.addBinding(gen, 'density', {
-    options: { Sparse: 'sparse', Normal: 'normal', Dense: 'dense', Packed: 'packed' },
-  }).on('change', () => rebuildTilemap())
-  genFolder.addBinding(gen, 'seed', { min: 0, max: 999999, step: 1 })
+  genFolder
+    .addBinding(gen, 'mapSize', {
+      options: { SM: 'sm', MD: 'md', LG: 'lg', XL: 'xl' },
+      label: 'map size',
+    })
     .on('change', () => rebuildTilemap())
+  genFolder
+    .addBinding(gen, 'chunkSize', {
+      options: { '256': 256, '512': 512, '1024': 1024, '2048': 2048 },
+      label: 'chunk',
+    })
+    .on('change', () => rebuildTilemap())
+  genFolder
+    .addBinding(gen, 'density', {
+      options: { Sparse: 'sparse', Normal: 'normal', Dense: 'dense', Packed: 'packed' },
+    })
+    .on('change', () => rebuildTilemap())
+  genFolder.addBinding(gen, 'seed', { min: 0, max: 999999, step: 1 }).on('change', () => rebuildTilemap())
   genFolder.addButton({ title: 'Regenerate' }).on('click', () => {
     gen.seed = Math.floor(Math.random() * 1000000)
     pane.refresh()
@@ -680,12 +694,16 @@ async function main() {
     pane.refresh()
   }
 
-  renderer.domElement.addEventListener('wheel', (e) => {
-    if (!e.ctrlKey && !e.metaKey) return
-    e.preventDefault()
-    const delta = e.deltaY > 0 ? -2 : 2
-    applyZoomSlider(cam.zoom + delta)
-  }, { passive: false })
+  renderer.domElement.addEventListener(
+    'wheel',
+    (e) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? -2 : 2
+      applyZoomSlider(cam.zoom + delta)
+    },
+    { passive: false }
+  )
 
   // Pinch-to-zoom via touch
   let lastPinchDist = 0
@@ -697,9 +715,13 @@ async function main() {
     return Math.sqrt(dx * dx + dy * dy)
   }
 
-  renderer.domElement.addEventListener('touchstart', () => {
-    if (activePointers.size >= 2) lastPinchDist = getPinchDist()
-  }, { passive: true })
+  renderer.domElement.addEventListener(
+    'touchstart',
+    () => {
+      if (activePointers.size >= 2) lastPinchDist = getPinchDist()
+    },
+    { passive: true }
+  )
 
   window.addEventListener('pointermove', () => {
     if (activePointers.size >= 2) {
@@ -798,7 +820,7 @@ async function main() {
   animate()
 }
 
-main()
+void main()
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

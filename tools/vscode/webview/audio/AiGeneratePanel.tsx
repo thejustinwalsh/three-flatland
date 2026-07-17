@@ -224,9 +224,7 @@ export function AiGeneratePanel({
       ))}
     </>
   )
-  const clearAllAction = history.length > 0 && (
-    <ClearHistoryButton onClearHistory={onClearHistory} />
-  )
+  const clearAllAction = history.length > 0 && <ClearHistoryButton onClearHistory={onClearHistory} />
 
   // No vscode.lm in this editor host at all (or no signed-in model) —
   // browse the curated preset library directly, no Generate button, no
@@ -238,18 +236,12 @@ export function AiGeneratePanel({
   if (!lmAvailable) {
     const entries = category ? (presets[category] ?? []) : []
     return (
-      <Panel
-        title="Sound Presets (AI unavailable)"
-        style={s.panelFill}
-        headerActions={clearAllAction}
-      >
+      <Panel title="Sound Presets (AI unavailable)" style={s.panelFill} headerActions={clearAllAction}>
         <div {...stylex.props(s.body)}>
           <p {...stylex.props(s.description)}>
             No AI model is available in this editor — browsing the curated preset library instead.
           </p>
-          {!category && (
-            <p {...stylex.props(s.description)}>Pick a category above to see its presets.</p>
-          )}
+          {!category && <p {...stylex.props(s.description)}>Pick a category above to see its presets.</p>}
           <div {...stylex.props(s.results)}>
             {entries.length > 0 && (
               <div {...stylex.props(s.cards)}>
@@ -275,22 +267,15 @@ export function AiGeneratePanel({
     <Panel title="AI Generate" style={s.panelFill} headerActions={clearAllAction}>
       <div {...stylex.props(s.body)}>
         <p {...stylex.props(s.description)}>
-          Generates {DEFAULT_CANDIDATE_COUNT} candidate variations from the category + style pills
-          above.
+          Generates {DEFAULT_CANDIDATE_COUNT} candidate variations from the category + style pills above.
         </p>
         <div {...stylex.props(s.row)}>
-          <Button
-            icon="sparkle"
-            onClick={onGenerate}
-            disabled={standalone || generating || !category}
-          >
+          <Button icon="sparkle" onClick={onGenerate} disabled={standalone || generating || !category}>
             {generating ? 'Generating…' : 'Generate'}
           </Button>
           {!category && <span {...stylex.props(s.description)}>Pick a category above first.</span>}
         </div>
-        {standalone && (
-          <p {...stylex.props(s.description)}>Connect to a host to use AI Generate.</p>
-        )}
+        {standalone && <p {...stylex.props(s.description)}>Connect to a host to use AI Generate.</p>}
         {/* Always-mounted footprint — see `s.results`'s doc comment. Its
             content swaps (empty → stream → error → history) but the
             wrapper itself never mounts/unmounts, so finishing a
@@ -346,9 +331,7 @@ function ClearHistoryButton({ onClearHistory }: { onClearHistory: () => void }) 
   return (
     <ToolbarButton
       icon={armed ? 'warning' : 'clear-all'}
-      title={
-        armed ? 'Click again to clear all history for this sound' : 'Clear history for this sound'
-      }
+      title={armed ? 'Click again to clear all history for this sound' : 'Clear history for this sound'}
       onClick={() => {
         if (armed) {
           setArmed(false)

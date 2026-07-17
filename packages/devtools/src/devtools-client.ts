@@ -473,10 +473,7 @@ export class DevtoolsClient {
         id: this.id,
         features: this._features,
         registry: this._registrySelection ?? undefined,
-        buffers:
-          Object.keys(this._buffersSelection).length > 0
-            ? this._buffersSelection
-            : undefined,
+        buffers: Object.keys(this._buffersSelection).length > 0 ? this._buffersSelection : undefined,
       },
     })
     this._fire()
@@ -500,7 +497,11 @@ export class DevtoolsClient {
       clearTimeout(this._queryRetryTimer)
       this._queryRetryTimer = null
     }
-    try { this._discoveryBus.close() } catch { /* already closed */ }
+    try {
+      this._discoveryBus.close()
+    } catch {
+      /* already closed */
+    }
   }
 
   /**
@@ -524,12 +525,22 @@ export class DevtoolsClient {
       if (this._subscribed) {
         try {
           this._postData({ type: 'unsubscribe', payload: { id: this.id } })
-        } catch { /* bus may already be closing */ }
+        } catch {
+          /* bus may already be closing */
+        }
       }
       if (this._dataHandler !== null) {
-        try { this._dataBus.removeEventListener('message', this._dataHandler) } catch { /* ignore */ }
+        try {
+          this._dataBus.removeEventListener('message', this._dataHandler)
+        } catch {
+          /* ignore */
+        }
       }
-      try { this._dataBus.close() } catch { /* already closed */ }
+      try {
+        this._dataBus.close()
+      } catch {
+        /* already closed */
+      }
       this._dataBus = null
       this._dataHandler = null
     }
@@ -591,7 +602,11 @@ export class DevtoolsClient {
     // derive it themselves.
     if (this._rawMessageListeners.size > 0) {
       for (const cb of this._rawMessageListeners) {
-        try { cb(msg, 'in') } catch { /* listener errors shouldn't break the bus */ }
+        try {
+          cb(msg, 'in')
+        } catch {
+          /* listener errors shouldn't break the bus */
+        }
       }
     }
 
@@ -622,7 +637,11 @@ export class DevtoolsClient {
         this._markServerAlive()
         const payload = msg.payload
         for (const cb of this._chunkListeners) {
-          try { cb(payload) } catch { /* listener errors shouldn't break the bus */ }
+          try {
+            cb(payload)
+          } catch {
+            /* listener errors shouldn't break the bus */
+          }
         }
         break
       }
@@ -693,10 +712,7 @@ export class DevtoolsClient {
         id: this.id,
         features: this._features,
         registry: this._registrySelection ?? undefined,
-        buffers:
-          Object.keys(this._buffersSelection).length > 0
-            ? this._buffersSelection
-            : undefined,
+        buffers: Object.keys(this._buffersSelection).length > 0 ? this._buffersSelection : undefined,
       },
     })
     this._fire()
@@ -731,16 +747,26 @@ export class DevtoolsClient {
       this.state.heapUsedMB = undefined
       this.state.heapLimitMB = undefined
       const s = this.state.series
-      s.fps.write = 0; s.fps.length = 0
-      s.cpuMs.write = 0; s.cpuMs.length = 0
-      s.gpuMs.write = 0; s.gpuMs.length = 0
-      s.heapUsedMB.write = 0; s.heapUsedMB.length = 0
-      s.drawCalls.write = 0; s.drawCalls.length = 0
-      s.triangles.write = 0; s.triangles.length = 0
-      s.primitives.write = 0; s.primitives.length = 0
-      s.geometries.write = 0; s.geometries.length = 0
-      s.textures.write = 0; s.textures.length = 0
-      s.frames.write = 0; s.frames.length = 0
+      s.fps.write = 0
+      s.fps.length = 0
+      s.cpuMs.write = 0
+      s.cpuMs.length = 0
+      s.gpuMs.write = 0
+      s.gpuMs.length = 0
+      s.heapUsedMB.write = 0
+      s.heapUsedMB.length = 0
+      s.drawCalls.write = 0
+      s.drawCalls.length = 0
+      s.triangles.write = 0
+      s.triangles.length = 0
+      s.primitives.write = 0
+      s.primitives.length = 0
+      s.geometries.write = 0
+      s.geometries.length = 0
+      s.textures.write = 0
+      s.textures.length = 0
+      s.frames.write = 0
+      s.frames.length = 0
       return
     }
     const count = batch.count
@@ -762,15 +788,15 @@ export class DevtoolsClient {
       ring.write = w
       ring.length = Math.min(size, ring.length + count)
     }
-    if (batch.fps)        this.state.fps        = this._ingestI16(s.fps,        batch.fps,        count, 0.1)
-    if (batch.cpuMs)      this.state.cpuMs      = this._ingestU16(s.cpuMs,      batch.cpuMs,      count, 0.01)
-    if (batch.gpuMs)      this.state.gpuMs      = this._ingestU16(s.gpuMs,      batch.gpuMs,      count, 0.01)
+    if (batch.fps) this.state.fps = this._ingestI16(s.fps, batch.fps, count, 0.1)
+    if (batch.cpuMs) this.state.cpuMs = this._ingestU16(s.cpuMs, batch.cpuMs, count, 0.01)
+    if (batch.gpuMs) this.state.gpuMs = this._ingestU16(s.gpuMs, batch.gpuMs, count, 0.01)
     if (batch.heapUsedMB) this.state.heapUsedMB = this._ingestU16(s.heapUsedMB, batch.heapUsedMB, count, 1)
-    if (batch.drawCalls)  this.state.drawCalls  = this._ingestU32(s.drawCalls,  batch.drawCalls,  count)
-    if (batch.triangles)  this.state.triangles  = this._ingestU32(s.triangles,  batch.triangles,  count)
+    if (batch.drawCalls) this.state.drawCalls = this._ingestU32(s.drawCalls, batch.drawCalls, count)
+    if (batch.triangles) this.state.triangles = this._ingestU32(s.triangles, batch.triangles, count)
     if (batch.primitives) this.state.primitives = this._ingestU32(s.primitives, batch.primitives, count)
     if (batch.geometries) this.state.geometries = this._ingestU32(s.geometries, batch.geometries, count)
-    if (batch.textures)   this.state.textures   = this._ingestU32(s.textures,   batch.textures,   count)
+    if (batch.textures) this.state.textures = this._ingestU32(s.textures, batch.textures, count)
     if (batch.heapLimitMB !== undefined) this.state.heapLimitMB = batch.heapLimitMB
   }
 
@@ -1056,14 +1082,11 @@ export class DevtoolsClient {
         this._postData({
           type: 'subscribe',
           payload: {
-        id: this.id,
-        features: this._features,
-        registry: this._registrySelection ?? undefined,
-        buffers:
-          Object.keys(this._buffersSelection).length > 0
-            ? this._buffersSelection
-            : undefined,
-      },
+            id: this.id,
+            features: this._features,
+            registry: this._registrySelection ?? undefined,
+            buffers: Object.keys(this._buffersSelection).length > 0 ? this._buffersSelection : undefined,
+          },
         })
       }
     }
@@ -1080,7 +1103,9 @@ export class DevtoolsClient {
     this._fireRawMessage(msg, 'out')
     try {
       this._discoveryBus.postMessage(msg)
-    } catch { /* bus may be closing */ }
+    } catch {
+      /* bus may be closing */
+    }
   }
 
   private _postData(body: Omit<DebugMessage, 'v' | 'ts'>): void {
@@ -1089,20 +1114,28 @@ export class DevtoolsClient {
     this._fireRawMessage(msg, 'out')
     try {
       this._dataBus.postMessage(msg)
-    } catch { /* bus may be closing */ }
+    } catch {
+      /* bus may be closing */
+    }
   }
 
   private _fireRawMessage(msg: DebugMessage, direction: 'in' | 'out'): void {
     if (this._rawMessageListeners.size === 0) return
     for (const cb of this._rawMessageListeners) {
-      try { cb(msg, direction) } catch { /* listener errors shouldn't break the bus */ }
+      try {
+        cb(msg, direction)
+      } catch {
+        /* listener errors shouldn't break the bus */
+      }
     }
   }
 
   /** Subscribe to state-change events. Returns an unsubscribe function. */
   addListener(cb: DevtoolsStateListener): () => void {
     this._listeners.add(cb)
-    return () => { this._listeners.delete(cb) }
+    return () => {
+      this._listeners.delete(cb)
+    }
   }
 
   /** Explicit remove — equivalent to calling the unsubscribe returned from `addListener`. */
@@ -1113,7 +1146,9 @@ export class DevtoolsClient {
   /** Subscribe to incoming WebCodecs buffer chunks. Returns an unsubscribe function. */
   addChunkListener(cb: BufferChunkListener): () => void {
     this._chunkListeners.add(cb)
-    return () => { this._chunkListeners.delete(cb) }
+    return () => {
+      this._chunkListeners.delete(cb)
+    }
   }
 
   /**
@@ -1124,12 +1159,18 @@ export class DevtoolsClient {
    */
   addRawMessageListener(cb: RawMessageListener): () => void {
     this._rawMessageListeners.add(cb)
-    return () => { this._rawMessageListeners.delete(cb) }
+    return () => {
+      this._rawMessageListeners.delete(cb)
+    }
   }
 
   private _fire(): void {
     for (const cb of this._listeners) {
-      try { cb(this.state) } catch { /* listener errors shouldn't break the bus */ }
+      try {
+        cb(this.state)
+      } catch {
+        /* listener errors shouldn't break the bus */
+      }
     }
   }
 }
@@ -1153,7 +1194,7 @@ function sameFilter(a: readonly string[] | null, b: readonly string[] | null): b
 /** Equality for buffer subscription records. Compares keys and nested fields. */
 function sameBufferSubscription(
   a: Record<string, BufferSubscriptionEntry>,
-  b: Record<string, BufferSubscriptionEntry>,
+  b: Record<string, BufferSubscriptionEntry>
 ): boolean {
   const ak = Object.keys(a)
   const bk = Object.keys(b)

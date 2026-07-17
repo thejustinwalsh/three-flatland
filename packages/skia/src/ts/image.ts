@@ -1,7 +1,7 @@
 import type { SkiaContext } from './context'
 
-const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
-  ({ handle, drop }) => drop(handle),
+const registry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(({ handle, drop }) =>
+  drop(handle)
 )
 
 /**

@@ -1,11 +1,7 @@
 import { resolve } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
 import type { Baker } from '@three-flatland/bake'
-import {
-  directionToAngle,
-  type NormalDirection,
-  type NormalSourceDescriptor,
-} from './descriptor.js'
+import { directionToAngle, type NormalDirection, type NormalSourceDescriptor } from './descriptor.js'
 import { bakeNormalMapFile } from './bake.node.js'
 
 const USAGE = [
@@ -73,9 +69,7 @@ const baker: Baker = {
         try {
           directionToAngle(raw as NormalDirection)
         } catch (err) {
-          process.stderr.write(
-            `--direction: ${err instanceof Error ? err.message : String(err)}\n`
-          )
+          process.stderr.write(`--direction: ${err instanceof Error ? err.message : String(err)}\n`)
           return Promise.resolve(1)
         }
         flags.direction = raw as NormalDirection
@@ -112,9 +106,7 @@ const baker: Baker = {
 
     const [inputArg, outputArg] = positional
     if (!inputArg) {
-      process.stderr.write(
-        'missing <input.png>. Run `flatland-bake normal --help`.\n'
-      )
+      process.stderr.write('missing <input.png>. Run `flatland-bake normal --help`.\n')
       return Promise.resolve(1)
     }
 

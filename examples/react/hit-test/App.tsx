@@ -548,12 +548,7 @@ function Scene({ onCounts }: { onCounts: (counts: Record<RarityName, number>) =>
           suspending loaders live below an inner Suspense. */}
       <Suspense fallback={null}>
         <Ground onWalk={walkToGround} />
-        <Knight
-          target={target}
-          pendingCoinId={pendingCoinId}
-          onReachCoin={reachCoin}
-          onDragStart={cancelWalk}
-        />
+        <Knight target={target} pendingCoinId={pendingCoinId} onReachCoin={reachCoin} onDragStart={cancelWalk} />
         {visible.map((spec) => (
           <Coin
             key={spec.id}

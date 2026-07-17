@@ -68,11 +68,11 @@ function branchId(base: string): string {
       encoding: 'utf-8',
     }).trim()
     const firstLine = output.split('\n')[0]
-    if (!firstLine) return (MAX_TS).toString(36).padStart(7, '0')
+    if (!firstLine) return MAX_TS.toString(36).padStart(7, '0')
     const ts = parseInt(firstLine, 10)
     return (MAX_TS - ts).toString(36).padStart(7, '0')
   } catch {
-    return (MAX_TS).toString(36).padStart(7, '0')
+    return MAX_TS.toString(36).padStart(7, '0')
   }
 }
 
@@ -160,10 +160,7 @@ function getShortStat(sha: string): string {
 
 const CONVENTIONAL_RE = /^(\w+)(?:\(([^)]*)\))?(!)?:\s*(.+)/
 
-function parseConventionalCommit(
-  sha: string,
-  packageMap: Map<string, string>,
-): ParsedCommit | null {
+function parseConventionalCommit(sha: string, packageMap: Map<string, string>): ParsedCommit | null {
   const { subject, body } = getCommitMessage(sha)
   const match = subject.match(CONVENTIONAL_RE)
   if (!match) return null
@@ -302,7 +299,13 @@ function writeChangeset(id: string, changeset: PackageChangeset, meta: Metadata)
 
 // --- Main ---
 
-function parseArgs(): { base: string; branch: string | null; repo: string | null; pr: number | null; capMajor: boolean } {
+function parseArgs(): {
+  base: string
+  branch: string | null
+  repo: string | null
+  pr: number | null
+  capMajor: boolean
+} {
   const args = process.argv.slice(2)
   let base = 'origin/main'
   let branch: string | null = null
@@ -349,11 +352,7 @@ function main() {
     return
   }
 
-  console.log(
-    'Packages:',
-    [...packageMap.values()].join(', '),
-    '\n',
-  )
+  console.log('Packages:', [...packageMap.values()].join(', '), '\n')
 
   const shas = getCommitRange(args.base)
   if (shas.length === 0) {
