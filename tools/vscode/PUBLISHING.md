@@ -128,11 +128,11 @@ release exists yet (idempotent). If the version didn't change, that's correct �
 If it did and nothing appeared, read the `release` job's "Detect a new FL Tools (VSIX) version" step
 output (it prints why it decided to skip or build).
 
-**One of the 6 `build-codelens-service` legs fails.** `fail-fast: false` means the other 5 keep
+**One of the 5 `build-codelens-service` legs fails.** `fail-fast: false` means the other 4 keep
 running. If it's a **transient** runner/cache failure, re-run just the failed job from the Actions
 UI (a job re-run reuses the original commit, so this is only valid for flakes — not code fixes). If
 it needs a **code fix**, push a new commit and let a fresh run rebuild. `assemble-and-package` won't
-start until all 6 succeed.
+start until all 5 succeed.
 
 **`vsce publish` says the version already exists.** You already published this version — bump
 `tools/vscode/package.json` (via a changeset release), rebuild the artifact, and publish that. Add
