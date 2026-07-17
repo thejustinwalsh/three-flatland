@@ -7,9 +7,9 @@
 
 ### Fixes
 
-- Fix `skia:fetch-wasm` CLI entrypoint check silently no-op'ing on Windows — now resolves `argv[1]` and compares against the canonical `fileURLToPath(import.meta.url)` instead of a raw `file://` string concat.
-- Fix `PATH` augmentation in `build-wasm.mjs`, `compare-builds.mjs`, `prebuilt-wasm.mjs`, and `setup.mjs` to use `path.delimiter` instead of a hard-coded `:`, so the pinned Zig toolchain in `.tools/bin` is picked up correctly on Windows.
-- Fix `fetchPrebuiltWasm` silently reporting success on a partial manifest match — it now requires every requested variant (`gl`, `wgpu`) to be present in `prebuilt-wasm.json`, failing loudly instead of leaving a variant's `.wasm` missing.
-- Harden external command execution: 15s timeout on the Zig build probe (fails fast into the prebuilt-wasm fallback instead of hanging on a stuck linker), and `execFileSync` with 60s/30s timeouts for `npm pack` / `tar` (removes shell interpolation and unbounded hangs).
+- Fix `skia:fetch-wasm` CLI entrypoint check silently no-op'ing on Windows by comparing `resolve(argv[1])` against `fileURLToPath(url)` instead of a raw `file://` string compare.
+- Fix PATH augmentation across `build-wasm`, `compare-builds`, and `setup` scripts to use `path.delimiter` instead of a hard-coded `:`, fixing Windows compatibility.
+- Fix `fetchPrebuiltWasm` false-positive: it now requires every requested WASM variant to be present in the manifest before reporting success, instead of returning true after copying only a partial match.
+- Bound external command execution to prevent indefinite hangs: 15s timeout on the Zig probe, and `execFileSync` with 60s/30s timeouts (no shell interpolation) for `npm pack`/`tar`.
 
-Addresses PR #164 review feedback (CodeRabbit + Fro Bot). Verified via `node --check` on all four scripts, an offline missing-variant guard test, and an end-to-end prebuilt-WASM fetch that writes sha256-verified artifacts.
+Internal hardening of the `@three-flatland/skia` prebuilt-WASM fetch and build tooling; no public API changes.
