@@ -5,15 +5,13 @@
 > Branch: fix/flatland-react-aspect
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/181
 
-### Fixed
+### Fixes
 
-- `Flatland` now derives its camera aspect ratio automatically from the render surface (renderer size, or the `RenderTarget` size when rendering to texture) instead of defaulting to a fixed `1` and requiring a manual `resize()` call. Fixes distorted/oversized rendering in consumers (e.g. React Three Fiber) that never wired up a resize handshake.
-- Unchanged surface sizes short-circuit, so effects like `LightEffect` don't reallocate tile buffers every frame.
-- Zero/negative/NaN surface dimensions are now a no-op rather than latching a broken frustum, so a `0x0` initial frame self-heals on the next render.
+- `Flatland` now auto-derives the camera aspect ratio from the renderer (or the active `RenderTarget`) on every render, instead of defaulting to a fixed aspect of 1 until `resize()` was called manually.
+  - Fixes distorted/oversized scenes in R3F, where nothing previously called `resize()` for you (e.g. a bare `<flatland>` rendered at aspect 1 regardless of actual canvas size, ~1.78x too large on a 1280x720 canvas).
+  - `aspect` is now a real get/set accessor, reachable from JSX under R3F's no-arg-construction + property-setting pattern (previously constructor-only).
+  - Calling `resize()` or setting `aspect` explicitly still switches to manual control permanently — existing callers are unaffected.
+  - Invalid sizes (zero, negative, NaN — e.g. R3F's unmeasured first commit) are ignored rather than latching a broken frustum, so auto-sync self-heals once a real size is available.
+  - Unchanged sizes short-circuit the sync so `LightEffect` tile buffers only reallocate on real size changes.
 
-### Changed
-
-- `aspect` is now a real get/set accessor on `Flatland` (previously constructor-only), making it reachable from JSX under R3F's no-arg-construction + property-setting pattern.
-- Passing an explicit `aspect` option/property, or calling `resize()`, switches `Flatland` to manual aspect control permanently — existing callers that already manage aspect are unaffected.
-
-Auto camera aspect sync eliminates a silent, undocumented resize handshake that every consumer previously had to implement by hand.
+Fixes scenes rendered via React Three Fiber matching aspect ratio automatically, removing the need for a hand-rolled resize bridge.
