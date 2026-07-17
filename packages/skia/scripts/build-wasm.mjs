@@ -33,8 +33,9 @@
 
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
+import { canBuildWasm, fetchPrebuiltWasm } from "./prebuilt-wasm.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(__dirname, "..");
@@ -50,7 +51,7 @@ const witOnly = args.includes("--wit-only");
 const TOOLS_BIN = resolve(PKG_ROOT, ".tools/bin");
 const augmentedEnv = {
   ...process.env,
-  PATH: `${TOOLS_BIN}:${process.env.PATH}`,
+  PATH: `${TOOLS_BIN}${delimiter}${process.env.PATH}`,
   // WSL2: Zig's cache needs atomic renames which fail on NTFS (/mnt/).
   // Redirect both caches to a native Linux tmpdir if we detect WSL.
   ...(process.env.WSL_DISTRO_NAME && !process.env.ZIG_LOCAL_CACHE_DIR
@@ -159,6 +160,23 @@ if (skipIfFresh) {
     console.log("WASM artifacts are fresh, skipping build.");
     process.exit(0);
   }
+}
+
+// ── Host capability gate: build from source, or fetch the prebuilt ──
+// If Zig can't link a native binary here (macOS 26.4+/27 dropped the arm64
+// libSystem slice — ziglang/zig#31658), the from-source build is impossible;
+// fall back to the CI-published prebuilt WASM. CI/Linux links fine and builds
+// from source, so it never hits this path and stays the source of truth.
+if (!canBuildWasm()) {
+  console.warn("\n⚠ Zig cannot link a native binary on this host — building WASM from source is not possible here.");
+  console.warn("  Known cause: macOS 26.4+/27 dropped the arm64 libSystem slice (ziglang/zig#31658).");
+  console.warn("  Falling back to the CI-published prebuilt WASM. Edited skia sources? Build on Linux/CI to pick them up.");
+  if (!fetchPrebuiltWasm(variants, { dist: DIST })) {
+    console.error("\n✗ No prebuilt WASM available to fall back to — build on Linux/CI or fix the local Zig toolchain.");
+    process.exit(1);
+  }
+  console.log("\n✓ Prebuilt WASM in place.");
+  process.exit(0);
 }
 
 // ── Ensure dist directories ──
