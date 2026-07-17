@@ -41,8 +41,6 @@ test-results/
 .playwright/
 .vscode-test/
 
-# Turbo
-
 # Astro
 .astro/
 

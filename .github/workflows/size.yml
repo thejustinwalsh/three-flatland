@@ -48,7 +48,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          build_script: build
+          # Build only packages/* (topo-ordered, nx-cached) — size checks read
+          # packages/*/dist and the skia WASM binaries; building the examples/docs
+          # would just be slow and let an unrelated build failure red the size gate.
+          build_script: build:packages
           skip_step: install
           package_manager: pnpm
           script: bash -c "if [ -f scripts/size-limit.mjs ]; then node scripts/size-limit.mjs --json; else pnpm exec size-limit --json; fi"
