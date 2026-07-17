@@ -86,6 +86,7 @@
     "skia:tools": "node scripts/setup.mjs --tools",
     "build": "node scripts/setup.mjs --ensure && tsup",
     "build:wasm": "node scripts/build-wasm.mjs",
+    "skia:fetch-wasm": "node scripts/prebuilt-wasm.mjs",
     "build:wasm:gl": "node scripts/build-wasm.mjs --gl-only",
     "build:wasm:wgpu": "node scripts/build-wasm.mjs --wgpu-only",
     "dev": "tsup --watch",
