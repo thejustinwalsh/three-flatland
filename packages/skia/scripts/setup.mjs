@@ -19,9 +19,10 @@
 
 import { execSync, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, chmodSync, cpSync, rmSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { canBuildWasm, fetchPrebuiltWasm } from "./prebuilt-wasm.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(__dirname, "..");
@@ -87,7 +88,7 @@ function run(cmd, opts = {}) {
     return execSync(cmd, {
       stdio: opts.silent ? "pipe" : "inherit",
       cwd: opts.cwd || PKG_ROOT,
-      env: { ...process.env, PATH: `${TOOLS_BIN}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${TOOLS_BIN}${delimiter}${process.env.PATH}` },
       ...opts,
     });
   } catch (e) {
@@ -98,7 +99,7 @@ function run(cmd, opts = {}) {
 
 function which(name) {
   try {
-    const p = execSync(`which ${name}`, { stdio: "pipe", env: { ...process.env, PATH: `${TOOLS_BIN}:${process.env.PATH}` } });
+    const p = execSync(`which ${name}`, { stdio: "pipe", env: { ...process.env, PATH: `${TOOLS_BIN}${delimiter}${process.env.PATH}` } });
     return p.toString().trim();
   } catch {
     return null;
@@ -109,7 +110,7 @@ function getVersion(name) {
   try {
     const out = execSync(`${name} --version`, {
       stdio: "pipe",
-      env: { ...process.env, PATH: `${TOOLS_BIN}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${TOOLS_BIN}${delimiter}${process.env.PATH}` },
     });
     return out.toString().trim();
   } catch {
@@ -546,6 +547,24 @@ async function main() {
     console.log("");
     ok("All tools installed.");
     process.exit(0);
+  }
+
+  // Host capability gate: with tools (incl. Zig) installed, can Zig link a
+  // native binary here? If not — macOS 26.4+/27 dropped the arm64 libSystem
+  // slice (ziglang/zig#31658) — the whole submodule -> GN -> zig pipeline
+  // can't succeed, so fetch the CI-published prebuilt WASM instead and skip
+  // it. CI/Linux links fine, builds from source, and stays authoritative.
+  if (!canBuildWasm()) {
+    const variants = glOnly ? ["gl"] : wgpuOnly ? ["wgpu"] : ["gl", "wgpu"];
+    heading("Prebuilt WASM fallback");
+    warn("Zig can't link a native binary on this host (ziglang/zig#31658).");
+    warn("Fetching the CI-published prebuilt WASM instead of building from source.");
+    if (fetchPrebuiltWasm(variants, { dist: resolve(PKG_ROOT, "dist") })) {
+      ok("Prebuilt WASM in place. Edited skia sources? Build on Linux/CI to pick them up.");
+      return;
+    }
+    fail("No prebuilt WASM available to fall back to. Build on Linux/CI or fix the local Zig toolchain.");
+    process.exit(1);
   }
 
   // 3. Skia setup (submodule + deps + GN + source extraction)

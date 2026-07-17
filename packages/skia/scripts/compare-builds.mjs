@@ -8,7 +8,7 @@
 
 import { execSync } from "node:child_process";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,7 +17,7 @@ const TOOLS_DIR = resolve(PKG_ROOT, ".tools");
 const TOOLS_BIN = resolve(TOOLS_DIR, "bin");
 const env = {
   ...process.env,
-  PATH: `${TOOLS_BIN}:${process.env.PATH}`,
+  PATH: `${TOOLS_BIN}${delimiter}${process.env.PATH}`,
   ...(process.env.WSL_DISTRO_NAME && !process.env.ZIG_LOCAL_CACHE_DIR
     ? { ZIG_LOCAL_CACHE_DIR: `/tmp/skia-zig-cache`, ZIG_GLOBAL_CACHE_DIR: `/tmp/skia-zig-global-cache` }
     : {}),
