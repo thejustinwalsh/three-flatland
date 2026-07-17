@@ -57,10 +57,10 @@ import { playSound } from './sounds'
  *   6. Paint (any soil cell).
  *   7. None.
  *
- * Free-fall is the exception: in the void band the player can collect
- * the nearest gem by clicking anywhere (no halo limit), and other
- * actions are unreachable anyway (no SOIL, no driller-cell pet because
- * the driller is mid-fall).
+ * Free-fall is the exception: the pointer enters a radius-limited swipe
+ * vacuum mode. Gem selection happens against the swept pointer path in
+ * gem-vacuum.ts, so hover deliberately returns no single gem target and
+ * the renderer does not draw a square highlight.
  */
 export function resolveHoverAction(
   world: World,
@@ -79,25 +79,11 @@ export function resolveHoverAction(
 
   const drillerEntity = world.queryFirst(Driller)
 
-  // Free-fall: nearest gem anywhere, no halo, no other actions.
+  // Free-fall: held swipe vacuum, no single-cell target or square outline.
   if (drillerEntity) {
     const d = drillerEntity.get(Driller)!
     if (isFreeFall(d.row)) {
-      let nearestGem: Entity | null = null
-      let nearestDistSq = Infinity
-      world.query(Gem).forEach((entity) => {
-        const g = entity.get(Gem)
-        if (!g || g.collected) return
-        const dc = g.col - col
-        const dr = g.row - row
-        const distSq = dc * dc + dr * dr
-        if (distSq < nearestDistSq) {
-          nearestDistSq = distSq
-          nearestGem = entity
-        }
-      })
-      if (nearestGem) return { action: 'collect', gemEntity: nearestGem }
-      return { action: 'none', gemEntity: null }
+      return { action: 'vacuum', gemEntity: null }
     }
   }
 
@@ -188,6 +174,9 @@ export function commitAction(world: World, action: ActionKind, target: Entity | 
       // not a one-shot commit. The Game.tsx pointerdown handler arms
       // it directly via Pointer.dragEntity; this branch is a no-op.
       return false
+    case 'vacuum':
+      // Continuous free-fall vacuuming is driven by pointer movement.
+      return false
     case 'none':
       return false
   }
@@ -266,6 +255,30 @@ function doPet(world: World): boolean {
  */
 const GEM_VALUE = { small: 1, medium: 3, large: 5, huge: 10 } as const
 
+/** Credit, destroy, and sound a gem after either click or vacuum collection. */
+export function completeGemCollection(world: World, target: Entity): boolean {
+  const gem = target.get(Gem)
+  const gs = world.get(GameState)
+  if (!gem || !gs) return false
+
+  const value = GEM_VALUE[gem.size] ?? 1
+  world.set(GameState, { gems: gs.gems + value })
+  const drillerEntity = world.queryFirst(Driller)
+  if (drillerEntity) {
+    const mood = drillerEntity.get(Mood)
+    if (mood) {
+      const next = applyMoodEvent(
+        { greed: mood.greed, fear: mood.fear, drive: mood.drive },
+        'gem-collected'
+      )
+      drillerEntity.set(Mood, next)
+    }
+  }
+  target.destroy()
+  playSound(world, 'gemCollect')
+  return true
+}
+
 function doCollect(world: World, target: Entity): boolean {
   const gem = target.get(Gem)
   const gs = world.get(GameState)
@@ -281,21 +294,10 @@ function doCollect(world: World, target: Entity): boolean {
   const inVoid = driller ? isFreeFall(driller.row) : false
   if (!inVoid && gs.tick < ptr.collectCooldownUntilTick) return false
 
-  const value = GEM_VALUE[gem.size] ?? 1
-  world.set(GameState, { gems: gs.gems + value })
   if (!inVoid) {
     world.set(Pointer, { collectCooldownUntilTick: gs.tick + GEM_COLLECT_COOLDOWN_TICKS })
   }
-  if (drillerEntity) {
-    const m = drillerEntity.get(Mood)
-    if (m) {
-      const next = applyMoodEvent({ greed: m.greed, fear: m.fear, drive: m.drive }, 'gem-collected')
-      drillerEntity.set(Mood, next)
-    }
-  }
-  target.destroy()
-  playSound(world, 'gemCollect')
-  return true
+  return completeGemCollection(world, target)
 }
 
 function doBrace(world: World): boolean {

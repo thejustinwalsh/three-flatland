@@ -28,7 +28,8 @@ function GemSprite({ entity, material }: ViewProps) {
     const g = entity.get(Gem)!
     const sprite = spriteRef.current
     if (!sprite) return
-    if (g.collected) {
+    const vacuuming = g.collected && g.collectProgress > 0
+    if (g.collected && !vacuuming) {
       sprite.visible = false
       return
     }
@@ -95,8 +96,9 @@ function GemSprite({ entity, material }: ViewProps) {
       }
     }
     const [baseWidth, baseHeight] = gemRenderScale(g.color, g.size)
-    sprite.scale.set(baseWidth * scale, baseHeight * scale, 1)
-    sprite.alpha = alpha
+    const vacuumScale = vacuuming ? Math.max(0, 1 - g.collectProgress) : 1
+    sprite.scale.set(baseWidth * scale * vacuumScale, baseHeight * scale * vacuumScale, 1)
+    sprite.alpha = alpha * (vacuuming ? Math.max(0, 1 - g.collectProgress * 0.7) : 1)
   })
 
   const g = entity.get(Gem)!

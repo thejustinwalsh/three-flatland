@@ -1,6 +1,7 @@
-import type { Entity, World } from 'koota'
-import { Camera, Driller, GameState, Gem, Grid, TILE_AIR } from '../traits'
+import type { World } from 'koota'
+import { Camera, Driller, Gem, Grid, TILE_AIR } from '../traits'
 import { FALL_INTERVAL_MS, TILE_PX } from '../constants'
+import { completeGemCollection } from './input'
 
 /**
  * Gravity for gems — once a gem has entered the camera viewport, it
@@ -48,7 +49,7 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
     // last tick while ground was being dug out) gets collected even if
     // the gem is now blocked from falling further.
     if (drillerCell && g.col === drillerCell.col && g.row === drillerCell.row) {
-      collectGem(world, entity)
+      completeGemCollection(world, entity)
       return
     }
 
@@ -97,7 +98,7 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
     // If the cell we're about to fall into is the driller's cell,
     // collect on contact instead of moving the gem there.
     if (drillerCell && g.col === drillerCell.col && belowRow === drillerCell.row) {
-      collectGem(world, entity)
+      completeGemCollection(world, entity)
       return
     }
 
@@ -120,9 +121,3 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
  * it scales out. Mirrored by GemRenderer's death-tween window.
  */
 export const GEM_DEATH_ROWS = 4
-
-function collectGem(world: World, entity: Entity): void {
-  const gs = world.get(GameState)
-  if (gs) world.set(GameState, { gems: gs.gems + 1 })
-  entity.destroy()
-}

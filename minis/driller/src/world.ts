@@ -25,6 +25,17 @@ function readDevStartWorld(): number {
   return Number.isFinite(value) ? Math.max(0, Math.min(4, value)) : 0
 }
 
+function readDevStartRow(defaultRow: number): number {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return defaultRow
+  const value = Number.parseInt(
+    new URLSearchParams(window.location.search).get('row') ?? `${defaultRow}`,
+    10
+  )
+  return Number.isFinite(value)
+    ? Math.max(0, Math.min(WORLD_LENGTH_ROWS * 5 - 1, value))
+    : defaultRow
+}
+
 /**
  * HMR-safe global handle. Module re-evaluation under HMR creates a new
  * `__drillerWorld` symbol; the guard reuses the previous instance if it
@@ -42,7 +53,8 @@ declare global {
  */
 function initWorld(world: World, options: WorldOptions): void {
   const startWorld = readDevStartWorld()
-  const startRow = startWorld * WORLD_LENGTH_ROWS + (startWorld === 0 ? 0 : 12)
+  const defaultStartRow = startWorld * WORLD_LENGTH_ROWS + (startWorld === 0 ? 0 : 12)
+  const startRow = readDevStartRow(defaultStartRow)
   const startY = startRow * 16 + 8
   const cameraY = Math.max(0, (startRow - 10) * 16)
   world.add(
@@ -77,6 +89,9 @@ function initWorld(world: World, options: WorldOptions): void {
     Pointer({
       px: 0,
       py: 0,
+      worldPx: 0,
+      worldPy: 0,
+      vacuumHasPoint: false,
       active: false,
       hoverAction: 'none',
       hoverTargetCol: 0,

@@ -13,6 +13,7 @@ import { TitleAttract } from './components/TitleAttract'
 import { Leaderboard, loadLeaderboard } from './components/Leaderboard'
 import { commitAction, pointerWorldCell, resolveHoverAction } from './systems/input'
 import { endDrag, startDrag } from './systems/drag'
+import { vacuumFreeFallGemSweep } from './systems/gem-vacuum'
 import { bindSoundPlayer, createSoundPlayer } from './systems/sounds'
 import { resetRun } from './systems/run-lifecycle'
 import type { DrillerProps } from './types'
@@ -96,15 +97,32 @@ export default function Driller({
       cols: 18,
       rows: grid?.rows ?? 256,
     })
+    const worldPoint = {
+      x: canvasX / metrics.scale,
+      y: (cam?.y ?? 0) + canvasY / metrics.scale,
+    }
+    const previousPointer = world.get(Pointer)
+    const wasActive = previousPointer?.active ?? false
+    const hadVacuumPoint = previousPointer?.vacuumHasPoint ?? false
+    const previousWorldPoint = {
+      x: previousPointer?.worldPx ?? worldPoint.x,
+      y: previousPointer?.worldPy ?? worldPoint.y,
+    }
     const { action, gemEntity } = resolveHoverAction(world, cell.col, cell.row)
     world.set(Pointer, {
       px: clientX,
       py: clientY,
+      worldPx: worldPoint.x,
+      worldPy: worldPoint.y,
       hoverTargetCol: cell.col,
       hoverTargetRow: cell.row,
       hoverAction: action,
       hoverGemEntity: gemEntity?.id() ?? 0,
     })
+    if (wasActive) {
+      vacuumFreeFallGemSweep(world, hadVacuumPoint ? previousWorldPoint : worldPoint, worldPoint)
+      world.set(Pointer, { vacuumHasPoint: true })
+    }
   })
 
   const handleClick = useEffectEvent((clientX: number, clientY: number) => {
@@ -124,7 +142,9 @@ export default function Driller({
 
     const onPointerMove = (e: PointerEvent) => handleMove(e.clientX, e.clientY)
     const onPointerDown = (e: PointerEvent) => {
-      world.set(Pointer, { active: true })
+      e.preventDefault()
+      host.setPointerCapture(e.pointerId)
+      world.set(Pointer, { active: true, vacuumHasPoint: false })
       handleMove(e.clientX, e.clientY)
       const ptr = world.get(Pointer)
       if (!ptr) return
@@ -151,24 +171,40 @@ export default function Driller({
       endDrag(world)
       world.set(Pointer, {
         active: false,
+        vacuumHasPoint: false,
         dragEntity: 0,
         dragHeldSinceTick: 0,
         dragLastCostTick: 0,
         lockedAction: 'none',
       })
+      if (host.hasPointerCapture(e.pointerId)) host.releasePointerCapture(e.pointerId)
       // Skip the click-commit if this release ended a drag: the press
       // was dedicated to drag, and the cursor's resting cell shouldn't
       // suddenly trigger collect / pet / paint on release.
       if (!wasDragging) handleClick(e.clientX, e.clientY)
     }
+    const onPointerCancel = (e: PointerEvent) => {
+      endDrag(world)
+      world.set(Pointer, {
+        active: false,
+        vacuumHasPoint: false,
+        dragEntity: 0,
+        dragHeldSinceTick: 0,
+        dragLastCostTick: 0,
+        lockedAction: 'none',
+      })
+      if (host.hasPointerCapture(e.pointerId)) host.releasePointerCapture(e.pointerId)
+    }
 
     host.addEventListener('pointermove', onPointerMove)
     host.addEventListener('pointerdown', onPointerDown)
     host.addEventListener('pointerup', onPointerUp)
+    host.addEventListener('pointercancel', onPointerCancel)
     return () => {
       host.removeEventListener('pointermove', onPointerMove)
       host.removeEventListener('pointerdown', onPointerDown)
       host.removeEventListener('pointerup', onPointerUp)
+      host.removeEventListener('pointercancel', onPointerCancel)
     }
   }, [world])
 

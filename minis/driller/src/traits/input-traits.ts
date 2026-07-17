@@ -11,7 +11,15 @@ import { trait } from 'koota'
  *   4. cell above driller in intact soil → 'trigger'
  *   5. anything else                   → 'none'
  */
-export type ActionKind = 'none' | 'collect' | 'brace' | 'trigger' | 'pet' | 'paint' | 'drag'
+export type ActionKind =
+  | 'none'
+  | 'collect'
+  | 'brace'
+  | 'trigger'
+  | 'pet'
+  | 'paint'
+  | 'drag'
+  | 'vacuum'
 
 /**
  * Pointer state. Updated by DOM event handlers in the input system.
@@ -20,6 +28,11 @@ export const Pointer = trait({
   /** Canvas-space pixel of the cursor. */
   px: 0,
   py: 0,
+  /** Pointer position in logical world pixels, used by the free-fall vacuum. */
+  worldPx: 0,
+  worldPy: 0,
+  /** Whether the current press has a previous world-space sample. */
+  vacuumHasPoint: false,
   /** True while a pointer is pressed (mouse down or finger touching). */
   active: false,
   /** Resolved hover action — drives cursor color and click commit. */

@@ -23,6 +23,7 @@ import { deathSystem, scatteredGemsSystem } from '../systems/death'
 import { drillerSystem, moodDriftSystem } from '../systems/driller'
 import { explosiveSystem } from '../systems/explosive'
 import { gemGravitySystem } from '../systems/gem-gravity'
+import { gemVacuumSystem } from '../systems/gem-vacuum'
 import { gemExpirySystem } from '../systems/gem-expiry'
 import { pointerHeldTick } from '../systems/input'
 import { dragSystem } from '../systems/drag'
@@ -293,6 +294,7 @@ function runSimulationTick(world: World): void {
     drillerSystem(world, deltaMs)
     hazardSpawnSystem(world)
     pointerHeldTick(world)
+    gemVacuumSystem(world, deltaMs)
     dragSystem(world)
   }
   hazardTickSystem(world)

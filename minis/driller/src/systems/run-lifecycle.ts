@@ -89,6 +89,9 @@ export function resetRun(world: World, options: ResetRunOptions): void {
   world.set(Pointer, {
     px: 0,
     py: 0,
+    worldPx: 0,
+    worldPy: 0,
+    vacuumHasPoint: false,
     active: false,
     hoverAction: 'none',
     hoverTargetCol: 0,

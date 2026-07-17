@@ -1,16 +1,11 @@
-import { describe, it, expect } from 'vitest'
 import { createWorld } from 'koota'
-import { resolveHoverAction, commitAction } from '../src/systems/input'
-import { Camera, Driller, GameState, Gem, Grid, Pointer } from '../src/traits'
+import { describe, expect, it } from 'vitest'
 import { WORLD_BODY_ROWS } from '../src/biomes'
-
-/**
- * Free-fall click-to-collect: while the driller is in the void band
- * between worlds, the player can collect any visible gem with no
- * exact-cell alignment — clicking anywhere resolves to the nearest
- * non-collected gem. Once the driller lands and re-enters the body
- * of the next world, normal exact-cell hover rules return.
- */
+import { FREE_FALL_VACUUM_DURATION_MS, FREE_FALL_VACUUM_RADIUS_PX, TILE_PX } from '../src/constants'
+import { gemVacuumSystem, vacuumFreeFallGemSweep } from '../src/systems/gem-vacuum'
+import { resolveHoverAction } from '../src/systems/input'
+import { Camera, Driller, GameState, Gem, Grid, Pointer } from '../src/traits'
+import type { GemSize } from '../src/traits'
 
 function makeMinimalWorld(drillerRow: number) {
   const world = createWorld()
@@ -37,105 +32,76 @@ function makeMinimalWorld(drillerRow: number) {
   return world
 }
 
-describe('free-fall click-to-collect', () => {
-  it('clicking far from a gem during free-fall still collects it (no distance check)', () => {
-    // Free-fall: depth in [WORLD_BODY_ROWS, WORLD_LENGTH_ROWS).
-    const world = makeMinimalWorld(WORLD_BODY_ROWS + 10) // mid-void
-
-    // Place a gem at (5, 160). Click at (15, 170) — far away.
-    const gemEntity = world.spawn(
-      Gem({
-        col: 5,
-        row: 160,
-        color: 'emerald',
-        size: 'medium',
-        collected: false,
-        scatteredUntilTick: 0,
-      })
-    )
-    const { action, gemEntity: target } = resolveHoverAction(world, 15, 170)
-    expect(action).toBe('collect')
-    expect(target).toBe(gemEntity)
-
-    // Commit → gem destroyed, gem count incremented by the medium-gem value (3).
-    expect(commitAction(world, action, target)).toBe(true)
-    expect(world.get(GameState)!.gems).toBe(3)
-    let liveGems = 0
-    world.query(Gem).forEach((e) => {
-      const g = e.get(Gem)
-      if (g && !g.collected) liveGems++
+function gemAt(
+  world: ReturnType<typeof makeMinimalWorld>,
+  x: number,
+  y: number,
+  size: GemSize = 'small'
+) {
+  return world.spawn(
+    Gem({
+      col: Math.floor(x / TILE_PX),
+      row: Math.floor(y / TILE_PX),
+      px: x,
+      py: y,
+      color: 'emerald',
+      size,
     })
-    expect(liveGems).toBe(0)
+  )
+}
+
+describe('free-fall swipe vacuum', () => {
+  it('enters vacuum mode without selecting a gem or drawing a collect target', () => {
+    const world = makeMinimalWorld(WORLD_BODY_ROWS + 10)
+    gemAt(world, 80, 160)
+    const result = resolveHoverAction(world, 15, 170)
+    expect(result).toEqual({ action: 'vacuum', gemEntity: null })
   })
 
-  it('returns NEAREST gem when multiple are present', () => {
-    const world = makeMinimalWorld(WORLD_BODY_ROWS + 5)
+  it('catches only gems inside the small finger radius', () => {
+    const world = makeMinimalWorld(WORLD_BODY_ROWS + 10)
+    const near = gemAt(world, 100, 100 + FREE_FALL_VACUUM_RADIUS_PX - 1)
+    const far = gemAt(world, 100, 100 + FREE_FALL_VACUUM_RADIUS_PX + 1)
 
-    // Two gems: near (4, 160) and far (15, 200). Click at (5, 161) —
-    // very close to the first.
-    const near = world.spawn(
-      Gem({
-        col: 4,
-        row: 160,
-        color: 'emerald',
-        size: 'small',
-        collected: false,
-        scatteredUntilTick: 0,
-      })
-    )
-    world.spawn(
-      Gem({
-        col: 15,
-        row: 200,
-        color: 'topaz',
-        size: 'small',
-        collected: false,
-        scatteredUntilTick: 0,
-      })
-    )
-    const { action, gemEntity: target } = resolveHoverAction(world, 5, 161)
-    expect(action).toBe('collect')
-    expect(target).toBe(near)
+    expect(vacuumFreeFallGemSweep(world, { x: 100, y: 100 }, { x: 100, y: 100 })).toBe(1)
+    expect(near.get(Gem)!.collected).toBe(true)
+    expect(far.get(Gem)!.collected).toBe(false)
   })
 
-  it('does NOT bypass exact-cell rule when driller is in the body (not free-fall)', () => {
-    // Driller at row 10 (deep in topsoil body, not void).
+  it('uses the full swept segment so a fast swipe cannot skip gems', () => {
+    const world = makeMinimalWorld(WORLD_BODY_ROWS + 10)
+    const first = gemAt(world, 60, 104)
+    const second = gemAt(world, 140, 96)
+    const outside = gemAt(world, 100, 100 + FREE_FALL_VACUUM_RADIUS_PX + 2)
+
+    expect(vacuumFreeFallGemSweep(world, { x: 20, y: 100 }, { x: 180, y: 100 })).toBe(2)
+    expect(first.get(Gem)!.collected).toBe(true)
+    expect(second.get(Gem)!.collected).toBe(true)
+    expect(outside.get(Gem)!.collected).toBe(false)
+  })
+
+  it('pulls, shrinks, then credits each caught gem at the end of the tween', () => {
+    const world = makeMinimalWorld(WORLD_BODY_ROWS + 10)
+    const gem = gemAt(world, 80, 100, 'medium')
+    vacuumFreeFallGemSweep(world, { x: 90, y: 100 }, { x: 90, y: 100 })
+
+    gemVacuumSystem(world, FREE_FALL_VACUUM_DURATION_MS / 2)
+    const halfway = gem.get(Gem)!
+    expect(halfway.px).toBeGreaterThan(80)
+    expect(halfway.px).toBeLessThan(90)
+    expect(halfway.collectProgress).toBeCloseTo(0.5)
+    expect(world.get(GameState)!.gems).toBe(0)
+
+    gemVacuumSystem(world, FREE_FALL_VACUUM_DURATION_MS / 2)
+    expect(world.get(GameState)!.gems).toBe(3)
+    expect(world.queryFirst(Gem)).toBe(undefined)
+  })
+
+  it('does not vacuum outside the end-of-stage free-fall band', () => {
     const world = makeMinimalWorld(10)
-    world.spawn(
-      Gem({
-        col: 5,
-        row: 12,
-        color: 'emerald',
-        size: 'medium',
-        collected: false,
-        scatteredUntilTick: 0,
-      })
-    )
-    // Click 3 cells away — must NOT resolve to collect.
-    const { action } = resolveHoverAction(world, 8, 12)
-    expect(action).not.toBe('collect')
-  })
-
-  it('exact-cell click on the gem still works in free-fall', () => {
-    const world = makeMinimalWorld(WORLD_BODY_ROWS + 1)
-    const gemEntity = world.spawn(
-      Gem({
-        col: 7,
-        row: 155,
-        color: 'ruby',
-        size: 'small',
-        collected: false,
-        scatteredUntilTick: 0,
-      })
-    )
-    const { action, gemEntity: target } = resolveHoverAction(world, 7, 155)
-    expect(action).toBe('collect')
-    expect(target).toBe(gemEntity)
-  })
-
-  it('returns none in free-fall when no live gems exist', () => {
-    const world = makeMinimalWorld(WORLD_BODY_ROWS + 20)
-    const { action } = resolveHoverAction(world, 5, 170)
-    expect(action).toBe('none')
+    const gem = gemAt(world, 100, 100)
+    expect(vacuumFreeFallGemSweep(world, { x: 100, y: 100 }, { x: 100, y: 100 })).toBe(0)
+    expect(gem.get(Gem)!.collected).toBe(false)
+    expect(resolveHoverAction(world, 10, 10).action).not.toBe('vacuum')
   })
 })

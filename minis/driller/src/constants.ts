@@ -160,6 +160,12 @@ export const GEM_FADE_TICKS = 180
  */
 export const GEM_COLLECT_COOLDOWN_TICKS = 12
 
+/** Logical-pixel radius of the free-fall swipe vacuum (three quarters of a tile). */
+export const FREE_FALL_VACUUM_RADIUS_PX = 12
+
+/** Pull-and-shrink duration after a swipe catches a gem. */
+export const FREE_FALL_VACUUM_DURATION_MS = 110
+
 /**
  * Floating "-N gem" popup lifetime in ticks (~600 ms @ 60Hz). The
  * renderer scales (pop), rises, and fades across this window.
