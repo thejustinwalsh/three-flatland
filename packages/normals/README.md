@@ -59,7 +59,7 @@ flatland-bake normal <input.png> --descriptor <input.normal.json>
 | `--strength <n>` | Gradient multiplier before normalization (default `1`) |
 | `--descriptor <path>` | Region-aware descriptor JSON — per-frame / per-tile control for atlases and tilemaps |
 
-See the [three-flatland docs](https://thejustinwalsh.com/three-flatland/) for descriptor examples covering sprite sheets, LDtk tilesets, and directional (3/4-view wall) tiles.
+See the [three-flatland docs](https://tjw.dev/three-flatland/) for descriptor examples covering sprite sheets, LDtk tilesets, and directional (3/4-view wall) tiles.
 
 ### Loader options
 
@@ -212,7 +212,7 @@ This package is renderer-agnostic and works with any Three.js WebGPU project. Ba
 
 ## Documentation
 
-Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**
+Full docs, interactive examples, and API reference at **[tjw.dev/three-flatland](https://tjw.dev/three-flatland/)**
 
 ## License
 

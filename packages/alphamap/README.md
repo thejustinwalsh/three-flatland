@@ -13,7 +13,7 @@ flatland-bake alpha sprites.png   # writes sprites.alpha.png
 
 The sidecar backs `hitTestMode: 'alpha'` in `three-flatland`. It is optional:
 the loader falls back to a runtime canvas readback when the sidecar is absent.
-See the [Hit Testing guide](https://thejustinwalsh.com/three-flatland/guides/hit-testing/).
+See the [Hit Testing guide](https://tjw.dev/three-flatland/guides/hit-testing/).
 
 ## API
 
