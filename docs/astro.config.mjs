@@ -46,7 +46,7 @@ const vanillaRedirects = Object.fromEntries(
 );
 
 export default defineConfig({
-  site: 'https://thejustinwalsh.com',
+  site: 'https://tjw.dev',
   base: '/three-flatland/',
   trailingSlash: 'always',
   redirects: vanillaRedirects,
@@ -158,7 +158,7 @@ export default defineConfig({
             tag: 'meta',
             attrs: {
               property: 'og:image',
-              content: 'https://thejustinwalsh.com/three-flatland/social/og-image.webp',
+              content: 'https://tjw.dev/three-flatland/social/og-image.webp',
             },
           },
           {
@@ -187,7 +187,7 @@ export default defineConfig({
             tag: 'meta',
             attrs: {
               name: 'twitter:image',
-              content: 'https://thejustinwalsh.com/three-flatland/social/x-card-image.webp',
+              content: 'https://tjw.dev/three-flatland/social/x-card-image.webp',
             },
           },
         ],

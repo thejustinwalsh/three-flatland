@@ -184,7 +184,7 @@ flash.intensity = 0.8 // Animate per frame
 
 ## Documentation
 
-Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**.
+Full docs, interactive examples, and API reference at **[tjw.dev/three-flatland](https://tjw.dev/three-flatland/)**.
 
 ## When not to reach for three-flatland
 
