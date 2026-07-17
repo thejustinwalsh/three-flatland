@@ -5,25 +5,25 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-## Flight recorder (Phase C, epic #116)
 
-New always-on recording and time-travel debugging for the devtools dashboard:
+## Changes
 
-- Rolling ring buffer records each buffer's encoded video chunks and stats arrivals on a wall-clock window (10s chunks, 30s stats), evicting oldest data first while always preserving the newest keyframe so a frozen snapshot can decode from its own start
-- Freeze/unfreeze scrubbing: freezing clones the ring and parks the frame cursor while live ingest keeps writing underneath; unfreeze is wired into every existing "go live" action (LIVE button, double-click, Esc)
-- Buffers panel decodes the frozen ring's keyframe-anchored chain for the scrubbed frame instead of showing "no playback yet"
-- Multi-buffer support: mark several buffers at once, laid out on a responsive grid (1 / 2 / 2x2 / 3x2 / 3x3) with per-cell decode and a soft guardrail past ~4 concurrent streams
-- Registry panel gains multi-select via pinned tabs (Ctrl/Cmd-click), reconstructing every pinned entry consistently while parked
-- Registry now emits periodic full checkpoint snapshots (`checkpoint: true`) so time-travel reconstruction never replays further back than one cadence window; partial checkpoints (from pool overflow) are retried and skipped as anchors in favor of the nearest complete one
-- Protocol store adds size-based IndexedDB quota + pruning (byte-budget policy via `navigator.storage.estimate()`, throttled oldest-first eviction that never touches a provider's pinned tail window) so long dashboard sessions no longer grow the store unbounded
-- VP9 encoder keyframe cadence tightened from 2000ms to 500ms so a scrub cursor is never far from a decodable anchor
+**Flight recorder (new)** — pause the live dashboard, scrub back through recent history, and replay decoded buffer frames:
 
-## Fixes
+- Protocol log persistence now runs unconditionally at dashboard bootstrap, independent of any panel's mount state or Pause toggle — Pause only freezes that panel's own list, not the underlying record
+- Size-based IndexedDB quota + pruning for the protocol store: a byte budget (via `navigator.storage.estimate()`, capped/overridable, with a fixed fallback) with throttled oldest-first pruning that never touches a provider's pinned tail window; `retainedRange()` exposes what actually survives per provider
+- Rolling ring buffer for encoded buffer chunks + a stats-arrival log, windowed by wall-clock time (10s chunks, 30s stats), with eviction that never removes the newest keyframe still inside the window
+- Freeze/unfreeze: freezing clones the ring and parks the frame cursor while live ingest continues underneath; unfreeze is wired into every existing "go live" action (LIVE button, double-click, Esc)
+- While frozen, the buffers panel decodes the ring's keyframe-anchored chain for the parked cursor frame via a dedicated scrub decoder, replacing the old "no playback yet" placeholder with an actual frame
+- Registry checkpoint snapshots: periodic full-state resends so reconstructing registry state at a parked frame only has to replay from the nearest checkpoint, not from the start of history
+- Multi-buffer support: mark and view several buffers at once on a responsive grid (1 / 2 / 2x2 / 3x2 / 3x3) with per-cell decode and a soft guardrail past ~4 concurrent streams; registry panel gains multi-select via pinned tabs (Ctrl/Cmd-click to pin)
 
-- Frozen scrubber range is now correctly intersected (not unioned) against the stats ring's bounds, so a narrow marked-buffer window can no longer be overridden by a wider stats window and claim frames that buffer can't decode
-- Scrub decode outputs are now correlated to their originating request via a FIFO tracker, preventing a superseded request's late output from being drawn as the wrong frame during rapid cursor moves
-- Protocol-store quota pruning: per-provider tail windows are now sized by each provider's own retained id count rather than a shared global id span; in-memory accounting rolls back on failed writes; a one-shot timer ensures a throttled prune still runs after a burst; `dispose()` closes the IDB connection and cancels timers; `retainedRange()` no longer points at deleted rows
-- Protocol-store ingest moved to dashboard bootstrap so persistence no longer depends on the Protocol Log panel being mounted or unpaused
-- `ProtocolStore` adds `addFlushListener`, firing after a write batch commits, so the registry panel's parked reconstruction re-queries once new rows are durably queryable instead of racing a debounce
+**Fixes**
 
-This release completes the flight recorder's core feature set: continuous recording, freeze/scrub playback, multi-buffer and multi-registry review, and durable, bounded persistence for long dashboard sessions.
+- Frozen claimable scrub range is now correctly intersected (not unioned) between marked buffers' chunk ranges and the primary stats ring's range, so the scrubber can no longer claim frames a buffer's decode chain can't resolve
+- Scrub decode outputs are now correlated to the request that issued them (FIFO tracker) instead of a plain counter, preventing a superseded request's late output from being drawn as the wrong frame during rapid cursor movement
+- Protocol store quota pruning: per-provider tail windows are now pinned by each provider's own retained id count (not a shared global id span); in-memory accounting rolls back on failed write-batch commits; a one-shot timer arms pruning after a throttled over-budget push so a quiet period still triggers it; `dispose()` cancels background timers and closes the IDB connection; `statsFor().total` is derived directly from retained ids; `retainedRange().oldestFrame` recovers correctly when a prune pass stops before observing the first survivor
+
+## Summary
+
+Adds a full "flight recorder" to the devtools dashboard — persistent protocol history with quota-based pruning, a rolling chunk ring with freeze/scrub/replay, registry checkpoint snapshots, and multi-buffer grid viewing — plus a run of adversarial-review fixes closing races and correctness gaps across the new persistence, ring, and scrub-decode paths.

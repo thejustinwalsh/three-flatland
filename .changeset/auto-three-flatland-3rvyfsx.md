@@ -5,14 +5,14 @@
 > Branch: feat/flight-recorder
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/146
 
-## Registry checkpoint snapshots (flight recorder)
 
-- `DebugRegistry` now periodically emits full checkpoint snapshots (`checkpoint: true` on `RegistryPayload`) so devtools time-travel reconstruction never replays further back than one cadence window
-- Checkpoints that would degrade an entry to metadata-only (pool overflow) now retry and settle on `checkpoint: true, partial: true` instead of silently claiming a complete snapshot or starving forever
+## Changes
 
-## Fixes
+- Registry checkpoint snapshots: the debug registry protocol now periodically emits a full-state `checkpoint: true` snapshot in addition to incremental deltas, so time-travel/reconstruction of registry state never has to replay further back than one checkpoint cadence window
+- Checkpoints that must degrade an oversized entry to metadata-only no longer falsely claim to be complete — they retry, and settle on a `checkpoint: true, partial: true` state that reconstruction skips as an anchor, falling back to the nearest complete checkpoint
+- Registry delta application (adding/removing/updating entries) is now shared between the live client and the reconstruction path via a single fold function, so the two can't drift apart
+- Buffer bus worker: tightened the VP9 encoder's keyframe cadence from 2000ms to 500ms so a frozen scrub cursor is never far from a decodable keyframe anchor
 
-- Registry reconstruction now skips partial checkpoints as anchors, falling back to the nearest complete one; live client and reconstruction core share one fold function so they can't diverge
-- Protocol-store ingest moved to dashboard bootstrap — persistence no longer depends on the Protocol Log panel being mounted or unpaused (Pause now only freezes that panel's own list)
+## Summary
 
-A summary of underlying flight-recorder groundwork (rolling ring buffer, freeze/scrub playback, tighter VP9 keyframe cadence) lands alongside these registry changes to support scrub-through-time debugging.
+Backs the devtools flight recorder (checkpoint snapshots + tighter keyframe cadence) with protocol- and registry-level changes that make paused/scrubbed reconstruction reliable and race-free.
