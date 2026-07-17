@@ -99,7 +99,7 @@ import { hueShift, dissolve, bloom } from '@three-flatland/nodes'
 
 ## Documentation
 
-Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**.
+Full docs, interactive examples, and API reference at **[tjw.dev/three-flatland](https://tjw.dev/three-flatland/)**.
 
 ## License
 
