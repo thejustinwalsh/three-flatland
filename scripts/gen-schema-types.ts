@@ -84,14 +84,3 @@ if (verify && drift > 0) {
   )
   process.exit(1)
 }
-
-// Format generated files so they match repo style (Prettier handles trailing
-// commas + line widths that json-schema-to-typescript ignores).
-if (!verify) {
-  const targets = TARGETS.map((t) => t.out).join(' ')
-  try {
-    execSync(`pnpm exec prettier --write ${targets}`, { stdio: 'inherit' })
-  } catch {
-    // Non-fatal: drift check will catch anything important.
-  }
-}

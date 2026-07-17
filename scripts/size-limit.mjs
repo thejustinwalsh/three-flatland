@@ -42,29 +42,26 @@ const filtered = config.filter((entry) => {
 // Size-limit needs a JSON config for --config flag (can't pass .cjs with functions
 // through the filtered temp file). Convert filtered entries to plain objects.
 const jsonSafe = filtered.map(({ modifyEsbuildConfig, ...rest }) => rest)
-const tmpConfig = resolve(root, '.size-limit-filtered.json')
-writeFileSync(tmpConfig, JSON.stringify(jsonSafe, null, 2))
 
-// For entries with modifyEsbuildConfig, write a .cjs temp config instead
-const hasCustomConfig = filtered.some((e) => e.modifyEsbuildConfig)
-let configArg = tmpConfig
-
-if (hasCustomConfig) {
-  const tmpCjsConfig = resolve(root, '.size-limit-filtered.cjs')
-  const serialized = `module.exports = ${JSON.stringify(jsonSafe, null, 2)}`
-  // Re-attach modifyEsbuildConfig functions by referencing the original config
-  const lines = [
-    `const original = require('./.size-limit.cjs')`,
-    `const byName = Object.fromEntries(original.map(e => [e.name, e]))`,
-    `module.exports = ${JSON.stringify(jsonSafe, null, 2)}.map(e => {`,
-    `  const orig = byName[e.name]`,
-    `  if (orig && orig.modifyEsbuildConfig) e.modifyEsbuildConfig = orig.modifyEsbuildConfig`,
-    `  return e`,
-    `})`,
-  ]
-  writeFileSync(tmpCjsConfig, lines.join('\n'))
-  configArg = tmpCjsConfig
-}
+// Always emit a .cjs temp config that (1) re-attaches each entry's original
+// modifyEsbuildConfig and (2) composes a `node:*` external. tsdown keeps the
+// `node:` prefix on builtins in the ESM output, and node-only deps (e.g.
+// @three-flatland/bake) get bundled into browser size checks — esbuild can't
+// resolve `node:path` for platform browser. Marking node: builtins external is
+// correct anyway: a shipped bundle never contains them.
+const tmpCjsConfig = resolve(root, '.size-limit-filtered.cjs')
+const lines = [
+  `const original = require('./.size-limit.cjs')`,
+  `const byName = Object.fromEntries(original.map((e) => [e.name, e]))`,
+  `const nodeExternal = (config) => { config.external = [...(config.external || []), 'node:*']; return config }`,
+  `module.exports = ${JSON.stringify(jsonSafe, null, 2)}.map((e) => {`,
+  `  const inner = byName[e.name] && byName[e.name].modifyEsbuildConfig`,
+  `  e.modifyEsbuildConfig = inner ? (c) => nodeExternal(inner(c)) : nodeExternal`,
+  `  return e`,
+  `})`,
+]
+writeFileSync(tmpCjsConfig, lines.join('\n'))
+const configArg = tmpCjsConfig
 
 const isJson = process.argv.includes('--json')
 const args = process.argv.slice(2).join(' ')
