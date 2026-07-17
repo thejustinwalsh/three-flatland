@@ -1,5 +1,13 @@
 # Changeset and Release Flow
 
+> **Agents & contributors:** this is the changeset guidance for the repo (the file that used to
+> be `.changeset/CLAUDE.md`). It **must** live as `README.md` and nowhere else in this directory.
+> `changesets` parses **every** `.md` file in `.changeset/` as a changeset **except `README.md`** —
+> a `CLAUDE.md`, `AGENTS.md`, or any other doc here makes `changesets/action` (its own bundled
+> reader) throw `could not parse changeset - invalid YAML in frontmatter` and **breaks the release**.
+> Keep prose docs in this one file. Only `README.md`, `config.json`, `pre.json`, and real
+> `---`-frontmatter changesets belong in `.changeset/`.
+
 ## How changesets are generated
 
 CI generates changesets automatically — contributors do **not** hand-write them for normal feature and fix work. The exception is when a changeset cannot be derived from commits alone (initial package releases, renames, unusual version bumps); those are hand-written and committed directly to `.changeset/`.
