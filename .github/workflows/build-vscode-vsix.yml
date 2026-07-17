@@ -32,11 +32,13 @@ jobs:
   # cross-compiled reliably for a "just works everywhere" native binary, so
   # each leg builds on its own OS. Each uploads ONLY its own
   # bin/<platform>-<arch>/; audio-play is built once, downstream, in the
-  # assemble job (it's platform-independent — building it 5× here is waste).
+  # assemble job (it's platform-independent — building it 6× here is waste).
   # win32-arm64 (Surface/Copilot+ PCs) uses GitHub's native windows-11-arm
-  # runner. darwin-x64 (Intel Mac) is dropped — GitHub retired the macos-13
-  # Intel runner. linux-armhf and alpine (musl) are deliberately not covered:
-  # node-web-audio-api ships zero musl prebuilds, so FL Audio can't work there.
+  # runner. darwin-x64 (Intel Mac) builds on macos-26-intel — GitHub's current
+  # Intel image; the old macos-13 Intel runner was retired (don't switch it back,
+  # and don't "simplify" it to a default macos-* label — those are arm64). linux-
+  # armhf and alpine (musl) are deliberately not covered: node-web-audio-api
+  # ships zero musl prebuilds, so FL Audio can't work there.
   build-codelens-service:
     name: Build codelens-service (${{ matrix.target }})
     strategy:
@@ -45,6 +47,8 @@ jobs:
         include:
           - os: macos-14
             target: darwin-arm64
+          - os: macos-26-intel
+            target: darwin-x64
           - os: ubuntu-latest
             target: linux-x64
           - os: ubuntu-24.04-arm
@@ -92,7 +96,7 @@ jobs:
           path: tools/vscode/bin
           retention-days: 1
 
-  # Merges all 5 platforms' codelens-service binaries into one bin/ tree,
+  # Merges all 6 platforms' codelens-service binaries into one bin/ tree,
   # builds audio-play once, builds the extension + webviews, packages the ONE
   # universal VSIX, and uploads it as the `vsix` artifact.
   assemble-and-package:
@@ -124,10 +128,10 @@ jobs:
           path: tools/vscode/bin
           merge-multiple: true
 
-      - name: Verify all 5 platform binaries are present
+      - name: Verify all 6 platform binaries are present
         working-directory: tools/vscode
         run: |
-          for t in darwin-arm64 linux-x64 linux-arm64 win32-x64 win32-arm64; do
+          for t in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64 win32-arm64; do
             f="bin/$t/codelens-service"
             case "$t" in win32-*) f="$f.exe" ;; esac
             if [ ! -f "$f" ]; then
@@ -135,7 +139,7 @@ jobs:
               exit 1
             fi
           done
-          echo "all 5 platform binaries present:"
+          echo "all 6 platform binaries present:"
           find bin -type f
 
       - name: Build audio-play sidecar
