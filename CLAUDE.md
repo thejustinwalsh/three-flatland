@@ -41,7 +41,7 @@
 
 ## Workflow
 
-- Use Conventional Commits — releases are cut from changesets generated from the commit history. CI auto-generates the changesets from commit history; we do NOT hand-write them. A package is release-visible iff `private !== true` and it's not in `.changeset/config.json`'s `ignore` list. See [.changeset/CLAUDE.md](.changeset/CLAUDE.md) for the full flow (commit-type → bump mapping, the generator script, alpha pre-release mode).
+- Use Conventional Commits — releases are cut from changesets generated from the commit history. CI auto-generates the changesets from commit history; we do NOT hand-write them. A package is release-visible iff `private !== true` and it's not in `.changeset/config.json`'s `ignore` list. See [.changeset/README.md](.changeset/README.md) for the full flow (commit-type → bump mapping, the generator script, alpha pre-release mode). (It lives as `README.md` because `changesets` parses every other `.md` in `.changeset/` as a changeset — a doc named `CLAUDE.md`/`AGENTS.md` there breaks the release.)
 - **Stage by exact path** — `git add tools/io/src/foo.ts`, never `git add -A` / `git add .` / `git commit -a`. This branch routinely has WIP modifications across many files; bundling them is a recoverable but disruptive mistake.
 
 ## Engineering discipline (iron law)
