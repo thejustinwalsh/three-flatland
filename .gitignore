@@ -95,3 +95,6 @@ tools/vscode/bin/
 tools/vscode/audio-play/
 tools/vscode/*.vsix
 tools/vscode/LICENSE
+.nx/cache
+.nx/workspace-data
+.nx/migrate-runs
