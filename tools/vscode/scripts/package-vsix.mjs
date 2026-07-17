@@ -134,6 +134,21 @@ if (missingArtifacts.length > 0) {
   process.exit(1)
 }
 
+// Never package/publish the placeholder version. `private: true` does NOT stop
+// vsce/ovsx (they ignore it), so a stray local `package`/`publish` before the
+// changeset bump lands would emit — or publish to the Marketplace — a 0.0.0
+// build. The version only becomes real once `changeset version` consumes the
+// pending @three-flatland/vscode changeset (CI's release job does this).
+if (pkg.version === '0.0.0') {
+  console.error(
+    `[package-vsix] Refusing to ${vsceCommand} at version 0.0.0 — the pre-release ` +
+      `placeholder. Run \`pnpm changeset:version\` first (consumes the pending ` +
+      `@three-flatland/vscode changeset → a real version + CHANGELOG). CI's release ` +
+      `job does this automatically; a manual publish must never ship 0.0.0.`
+  )
+  process.exit(1)
+}
+
 try {
   writeFileSync(PKG_PATH, JSON.stringify(pkg, null, 2) + '\n')
   console.log(`[package-vsix] package.json name: ${realName} → ${VSCE_VALID_NAME} (temporary)`)
