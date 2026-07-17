@@ -59,6 +59,7 @@
     "color": "#111418",
     "theme": "dark"
   },
+  "preview": true,
   "qna": false,
   "extensionKind": [
     "workspace"
