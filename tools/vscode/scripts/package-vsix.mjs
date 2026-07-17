@@ -45,11 +45,11 @@ const VSCE_BIN = join(
   process.platform === 'win32' ? 'vsce.cmd' : 'vsce'
 )
 
-// Extension id becomes `<publisher>.<name>` = `three-flatland.tools` —
+// Extension id becomes `<publisher>.<name>` = `three-flatland.fl-tools` —
 // short, unambiguous given the publisher prefix already carries the
 // project name (matches real-world convention, e.g. `ms-python.python`
 // doesn't repeat "ms-python" in its own `name`).
-const VSCE_VALID_NAME = 'tools'
+const VSCE_VALID_NAME = 'fl-tools'
 
 const vsceCommand = process.argv[2] ?? 'package'
 const extraArgs = process.argv.slice(3).filter((a) => a !== '--')

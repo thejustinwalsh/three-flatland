@@ -20,6 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     environment: release
+    # Surfaced so the VSIX jobs below know whether THIS release bumped
+    # @three-flatland/vscode (the private extension package) and thus needs a
+    # fresh universal VSIX built + attached to a GitHub Release.
+    outputs:
+      vscode_version: ${{ steps.flvsix.outputs.version }}
+      vscode_needs_release: ${{ steps.flvsix.outputs.needs_release }}
 
     steps:
       - name: Checkout
@@ -76,3 +82,69 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
           NPM_CONFIG_ACCESS: public
+
+      # The VS Code extension is `private: true`, so `changeset publish` never
+      # touches it and it gets no npm release / git tag. This decides whether
+      # its version bumped THIS run and thus needs a universal VSIX built +
+      # attached to a GitHub Release (see the build-vsix / attach-vsix jobs).
+      # Idempotent: keyed on whether the `fl-tools-v<version>` release already
+      # exists, so a re-run or an unrelated push is a no-op. `0.0.0` is the
+      # pre-first-release placeholder (no changeset consumed yet) — skip it.
+      # Best-effort: every branch exits 0 so it can never fail the release job
+      # after the npm publish above already succeeded.
+      - name: Detect a new FL Tools (VSIX) version to release
+        id: flvsix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=$(node -p "require('./tools/vscode/package.json').version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if [ "$V" = "0.0.0" ]; then
+            echo "needs_release=false" >> "$GITHUB_OUTPUT"
+            echo "vscode still at placeholder 0.0.0 — no changeset consumed yet, skipping VSIX release"
+            exit 0
+          fi
+          if gh release view "fl-tools-v$V" >/dev/null 2>&1; then
+            echo "needs_release=false" >> "$GITHUB_OUTPUT"
+            echo "fl-tools-v$V already released — nothing to do"
+          else
+            echo "needs_release=true" >> "$GITHUB_OUTPUT"
+            echo "new FL Tools version $V — will build + attach the universal VSIX to fl-tools-v$V"
+          fi
+
+  # Build the universal VSIX (composable, reusable workflow) only when this
+  # release bumped the extension's version.
+  build-vsix:
+    name: Build FL Tools VSIX
+    needs: release
+    if: needs.release.outputs.vscode_needs_release == 'true'
+    uses: ./.github/workflows/build-vscode-vsix.yml
+
+  # Create the versioned GitHub Release with the .vsix attached as an asset —
+  # this is the artifact a human downloads to publish manually (Marketplace via
+  # `vsce publish --azure-credential`, Open VSX via `ovsx publish`).
+  attach-vsix:
+    name: Attach VSIX to GitHub Release
+    needs: [release, build-vsix]
+    if: needs.release.outputs.vscode_needs_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download the built universal VSIX
+        uses: actions/download-artifact@v5
+        with:
+          name: vsix
+          path: dist-vsix
+
+      - name: Create the GitHub Release with the VSIX attached
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ needs.release.outputs.vscode_version }}"
+          gh release create "fl-tools-v$V" dist-vsix/*.vsix \
+            --title "FL Tools v$V" \
+            --notes "Universal VSIX for \`three-flatland.fl-tools\` v$V (all platforms). Download the \`.vsix\` and publish it manually — \`vsce publish --azure-credential --packagePath <vsix>\` (VS Code Marketplace, no PAT) or \`ovsx publish --packagePath <vsix> -p <OVSX_PAT>\` (Open VSX). See tools/vscode/PUBLISHING.md."
