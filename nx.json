@@ -1,6 +1,8 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "maxCacheSize": "2GB",
+  "analytics": false,
+  "neverConnectToCloud": true,
   "namedInputs": {
     "default": ["{projectRoot}/**/*", "sharedGlobals"],
     "production": [

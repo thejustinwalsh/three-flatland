@@ -16,12 +16,5 @@
         "repo": "nrwl/nx-ai-agents-config"
       }
     }
-  },
-  "sandbox": {
-    "network": {
-      "allowedDomains": [
-        "www.google-analytics.com"
-      ]
-    }
   }
 }

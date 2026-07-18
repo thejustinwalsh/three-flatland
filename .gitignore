@@ -92,9 +92,6 @@ tools/vscode/bin/
 tools/vscode/audio-play/
 tools/vscode/*.vsix
 tools/vscode/LICENSE
-.nx/cache
-.nx/workspace-data
-.nx/migrate-runs
-
-.nx/polygraph
+# Nx runtime/cache dirs — nothing under .nx/ is meant to be tracked
+.nx/
 .claude/worktrees
