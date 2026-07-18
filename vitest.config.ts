@@ -13,16 +13,19 @@ export default defineConfig({
         external: ['gltf-validator'],
       },
     },
+    // Packages are per-project now (`nx test <pkg>`, each with its own vitest.config
+    // extending vitest.base.ts). This root config covers ONLY the non-package
+    // surface — scripts + the tools/ packages that don't yet have their own nx
+    // test target — and runs as the root `//#test` nx target so `nx run-many -t
+    // test` still includes it. Do not re-add packages/* here.
     include: [
-      'packages/*/src/**/*.test.ts',
-      'packages/*/src/**/*.test.tsx',
-      'packages/starlight-theme/**/*.test.ts',
       'scripts/**/*.test.ts',
       'tools/*/src/**/*.test.ts',
       'tools/vscode/webview/**/*.test.ts',
       'tools/vscode/extension/**/*.test.ts',
     ],
-    exclude: ['packages/skia/**', 'packages/devtools/**', '**/node_modules/**'],
+    // audio-play has its OWN nx test target — exclude it here so it isn't double-run.
+    exclude: ['tools/audio-play/**', '**/node_modules/**'],
     setupFiles: ['./vitest.setup.ts'],
     coverage: {
       provider: 'v8',
