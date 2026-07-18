@@ -25,8 +25,8 @@ consumer (presets, devtools)       layer 3  — consume the composer
 ## Cycles — "of any kind"
 
 - **Project-level:** Nx builds its graph from the AST; it detects project cycles (none today). `check-boundaries` + `nx graph` cover this.
-- **File-level:** **oxlint `import/no-cycle`** (the `import` plugin is already enabled) — replaces the retired, brittle `madge` pipeline. Runs in every `pnpm lint`.
-  - Currently **`"warn"`**, not `"error"`: it surfaced **10 pre-existing cycles** in the vscode extension's registry↔registrant pattern (`toolRegistry.ts` ↔ `tools/*/register.ts`). **Escalate to `error`** once that's fixed (extract `isToolEnabled` to a leaf module — tracked as a follow-up task).
+- **File-level:** **oxlint `import/no-cycle`** = **`"error"`** (the `import` plugin is already enabled) — replaces the retired, brittle `madge` pipeline. Runs in every `pnpm lint`.
+  - It surfaced 10 pre-existing cycles in the vscode extension's registry↔registrant pattern; **fixed** by extracting `isToolEnabled` + tool metadata into a leaf `extension/toolEnabled.ts` (`toolRegistry.ts` keeps only register-wiring). 10 → 0, then escalated warn → error.
 - **Retired:** `madge` dep + `generate-madge-tsconfig`/`graph-circular`/`graph-types`/`wrap-graph-viewer` scripts + `graph:sync/circular/types/*:open`. Kept `graph = nx graph`.
 
 ## Bundling & standalone (direction)
@@ -66,4 +66,4 @@ Machinery (partly in place):
 | 6 | Per-project test model + `nx affected` in CI | deferred (build-verified) |
 | 7 | three-flatland bundles `@three-flatland/*` | deferred (build-verified) |
 | 8 | schemas/bake `fixed` changeset group | deferred (with #7) |
-| 9 | Fix vscode registry cycle → escalate no-cycle to `error` | tracked (follow-up task) |
+| 9 | Fix vscode registry cycle → escalate no-cycle to `error` | ✅ done (`toolEnabled.ts` leaf) |
