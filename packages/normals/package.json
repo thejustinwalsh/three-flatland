@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/normals",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Offline + runtime normal map generation for sprites and tilesets. Contributes a `normal` subcommand to the flatland-bake CLI.",
   "type": "module",
   "exports": {
