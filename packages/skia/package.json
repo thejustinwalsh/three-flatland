@@ -60,6 +60,53 @@
     "THIRD_PARTY_LICENSES"
   ],
   "sideEffects": false,
+  "nx": {
+    "tags": [
+      "scope:sibling"
+    ],
+    "targets": {
+      "build:wasm": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "inputs": [
+          "{projectRoot}/build.zig",
+          "{projectRoot}/build.zig.zon",
+          "{projectRoot}/src/zig/**/*",
+          "{projectRoot}/patches/**/*",
+          "{projectRoot}/vendor/**/*",
+          "{projectRoot}/wit/**/*",
+          "{projectRoot}/scripts/build-wasm.mjs",
+          "{projectRoot}/scripts/setup.mjs",
+          "{projectRoot}/package.json",
+          {
+            "runtime": "git rev-parse HEAD:packages/skia/third_party/skia"
+          }
+        ],
+        "outputs": [
+          "{projectRoot}/lib/skia-gl.wasm",
+          "{projectRoot}/lib/skia-wgpu.wasm"
+        ],
+        "options": {
+          "command": "node scripts/build-wasm.mjs",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "test": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "vitest run",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
   "scripts": {
     "skia:setup": "node scripts/setup.mjs",
     "skia:check": "node scripts/setup.mjs --check",

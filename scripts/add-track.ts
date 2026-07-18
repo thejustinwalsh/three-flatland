@@ -120,7 +120,7 @@ function normalizeJsArrayLiteral(src: string): string {
   out = out.replace(/,(\s*)\]/g, ',$1null]')
   // Bare decimal: `.5` → `0.5`. Match where preceded by start, comma,
   // bracket, whitespace, or operator (so we don't break e.g. `1.5`).
-  out = out.replace(/(^|[,\[\s\-+])\.(\d)/g, '$10.$2')
+  out = out.replace(/(^|[,[\s\-+])\.(\d)/g, '$10.$2')
   return out
 }
 

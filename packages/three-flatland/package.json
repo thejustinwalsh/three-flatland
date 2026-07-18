@@ -170,6 +170,27 @@
     "codemods"
   ],
   "sideEffects": false,
+  "nx": {
+    "tags": [
+      "scope:composer"
+    ],
+    "targets": {
+      "test": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "vitest run",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
   "scripts": {
     "build": "NODE_OPTIONS=--max-old-space-size=8192 tsdown",
     "dev": "tsdown --watch",

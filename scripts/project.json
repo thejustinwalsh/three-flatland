@@ -1,7 +1,6 @@
 {
-  "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "name": "@three-flatland/devtools",
-  "tags": ["scope:consumer"],
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "scripts",
   "targets": {
     "test": {
       "executor": "nx:run-commands",

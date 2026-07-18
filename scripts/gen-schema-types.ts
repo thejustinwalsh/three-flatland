@@ -15,7 +15,6 @@
 //   tools/io/src/atlas/<name>.types.gen.ts                   — target
 
 import { compileFromFile } from 'json-schema-to-typescript'
-import { execSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
@@ -23,14 +22,12 @@ const verify = process.argv.includes('--verify')
 
 // Add new schemas here. `name` becomes the type name + filename stem.
 type Target = { schema: string; type: string; out: string }
-const TARGETS: Target[] = [
-  // atlas — JSON sidecar for sprite sheets (TexturePacker/Aseprite superset).
-  ...['packages/three-flatland/src/sprites', 'tools/io/src/atlas'].map((dir) => ({
-    schema: 'packages/schemas/src/atlas/schema.json',
-    type: 'AtlasJson',
-    out: `${dir}/atlas.types.gen.ts`,
-  })),
-]
+// atlas — JSON sidecar for sprite sheets (TexturePacker/Aseprite superset).
+const TARGETS: Target[] = ['packages/three-flatland/src/sprites', 'tools/io/src/atlas'].map((dir) => ({
+  schema: 'packages/schemas/src/atlas/schema.json',
+  type: 'AtlasJson',
+  out: `${dir}/atlas.types.gen.ts`,
+}))
 
 const HEADER = (sourceRel: string, type: string) =>
   `// AUTO-GENERATED — DO NOT EDIT. Regenerate with \`pnpm gen:types\`.\n` +

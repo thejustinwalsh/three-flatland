@@ -95,7 +95,10 @@ jobs:
               - 'tsconfig*.json'
               - '.oxlintrc.json'
               - '.oxfmtrc.json'
-              - 'vitest.config.*'
+              - '**/vitest.config.*'
+              - 'vitest.base.ts'
+              - 'vitest.setup.ts'
+              - '**/project.json'
               - 'scripts/**'
             vscode:
               - 'tools/**'

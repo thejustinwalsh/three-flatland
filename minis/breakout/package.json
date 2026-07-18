@@ -17,6 +17,17 @@
     "dist"
   ],
   "sideEffects": false,
+  "nx": {
+    "targets": {
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
   "scripts": {
     "dev": "tsdown --watch",
     "dev:app": "vite dev --port ${TURBO_MFE_PORT:-5200}",
