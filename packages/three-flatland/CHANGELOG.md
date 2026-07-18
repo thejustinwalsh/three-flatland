@@ -1,5 +1,588 @@
 # three-flatland
 
+## 0.1.0-alpha.8
+
+### Minor Changes
+
+- d3ee466: > Branch: feat/world-effect-materials
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/156
+
+  ### Changes
+  - World-scope constants-effect material variants: sprites with a constants-effect (e.g. `NormalMapProvider`) now resolve materials per-world instead of from a flat module-global cache, eliminating cross-world material sharing/coupling for effect variants (matches existing default-material behavior)
+  - Reassigning a texture on a sprite holding a shared effect-variant material now re-resolves the variant instead of mutating the shared instance in place
+  - Fixed `alphaTest`/`premultipliedAlpha` being silently dropped on variant re-resolution (texture reassignment, dispose resurrection, bootstrap enrollment) — sprites relying on alpha-test depth fast-path or premultiplied-alpha `CustomBlending` now keep those settings correctly
+  - Added `Sprite2DMaterial.variantOptions` accessor to centralize variant option readback and prevent future drift between the cache key and its consumers
+
+  ### Summary
+
+  Effect-variant materials are now world-scoped like default materials, fixing cross-world sharing bugs, and a related regression that dropped alpha-test/premultiplied-alpha settings during material re-resolution has been fixed.
+
+- 12bacea: > Branch: feat/rotated-polygon-mesh
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/144
+  - Polygon-trim meshes (`SpriteSheetLoader`) are no longer discarded for rotated TexturePacker frames. Previously any frame with `frame.rotated: true` fell back to a plain quad, even when a mesh was defined; now the mesh renders correctly since mesh space is always the unrotated source frame, and rotation is handled per-instance in the shader (`ROTATED_FRAME_MASK` unrotation in `Sprite2DMaterial`/`OcclusionPass`).
+  - Rotated polygon frames now contribute their hull to `buildEnvelopeGeometry` instead of degrading to a 4-corner quad fallback, improving overdraw reduction and occlusion accuracy for rotated, tightly-trimmed sprites.
+  - Docs: corrected the hit-test guide's rotated/trimmed-frame caveat — rendering now honors both `frame.rotated` and `frame.trimmed`, but alpha hit-testing (`AlphaMap.sampleFrame`) hasn't caught up yet and can sample the wrong atlas region for such frames. Recommends `hitTestMode: 'bounds'` as a workaround until full atlas-aware alpha sampling lands (PR #117). Also updated the loaders guide to note polygon-trim now supports rotated frames.
+
+  Fixes polygon-mesh sprites packed with rotation enabled in TexturePacker so they render with tight, overdraw-reducing meshes instead of silently falling back to quads.
+
+- 26739f3: > Branch: feat/devtools-texturepacker
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/143
+
+  ## Features
+  - **TexturePacker support for rotated and trimmed frames** — atlases packed with size optimizations (rotation, trim) now render correctly without disabling those options at export. Rotated frames unrotate frame-local sampling via a new per-instance flag; trimmed frames position the quad at the true trimmed offset, with trim scale/offset baked into both the standalone and batched matrix paths so per-frame trim in animations no longer stretches or wobbles. `OcclusionPass` mirrors the same math. Docs updated to cover the supported TexturePacker feature set (rotation, trim, polygon trim).
+  - **WebSocket transport for remote/mobile debugging** — run the game on a device and attach the desktop devtools dashboard over WebSocket. Adds a wire codec for bus frames (JSON + binary sections, round-trip safe for typed arrays), direction-filtered bridges over the existing BroadcastChannel bus, `createDevtoolsProvider({ remote: 'ws://…' })`, and outbound frame queuing while the socket is connecting.
+
+  ## Fixes
+  - Fixed a batching bug where batched sprites with a non-center anchor (`anchor != [0.5, 0.5]`) rendered at the wrong position — the batch path now bakes the anchor offset into the instance matrix identically to the standalone path. Added a regression test.
+  - Hardened remote-debug WebSocket handling: both socket message handlers are now guarded against malformed frames (a bad frame no longer crashes remote debugging), the consumer bridge opens a provider's data channel eagerly so early subscribes aren't dropped, and reconnecting a provider on an already-closed socket now warns instead of silently going dark.
+  - Fixed several adversarial-review findings on the remote-debug path: correct RFC 6455 fragmentation handling in the relay, a same-context echo guard to prevent provider/consumer bridges in one page from relay-ping-ponging forever, binary payloads now travel via an explicit path table instead of sentinel objects, and wire sends are properly bound to bridge lifetime.
+
+  ## Summary
+
+  This release adds full TexturePacker atlas support (rotation + trim) and a WebSocket-based remote debugging transport, alongside anchor-offset and remote-debug robustness fixes.
+
+- 2f94520: > Branch: feat/overdraw-tight-mesh
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/142
+
+  ## Tight-mesh envelope geometry for alpha-blend sprites
+  - Add tight-mesh (convex-hull envelope) geometry path for transparent, non-alpha-tested sprite materials, cutting overdraw/fringe shading vs the synth-quad path. Materials auto-select the strategy from registered atlas polygon data; unregistered/meshless textures keep rendering as the synth quad with no behavior change.
+  - Extend the atlas format with optional per-frame polygon mesh data (native `mesh` field or TexturePacker polygon-trim import), concatenated per-sheet and registered against each texture via a new atlas mesh registry.
+  - Rebuild affected batches automatically when atlas content changes after sprites are already batched (late-loading sheets, re-registration, merges, degrades) — envelopes and geometry versioning now track atlas state so stale/clipped geometry can't persist.
+  - Rotated TexturePacker frames fall back to the quad (rotated sampling isn't supported yet) instead of producing incorrectly sampled meshes.
+  - Disconnected sprite silhouettes (multiple alpha blobs) now trace every connected component instead of only the first, preventing clipped envelopes.
+  - A material already over the tight-mesh effect-float budget (16 floats, vs 24 for synth-quad) now demotes to synth-quad with a warning instead of throwing or silently overflowing WebGPU's binding budget; `registerEffect` is transactional so a rejected effect never leaves partial state behind.
+  - Fix atlas merge bugs: a meshless sheet loading before a meshed sheet sharing its texture no longer gets marked complete prematurely (which would clip its frames); two complete sheets merging now correctly stay complete; dangling registry-level mesh arrays from re-registration are removed since only per-frame data is used.
+
+  Files: packages/three-flatland/src/loaders/SpriteSheetLoader.ts, packages/three-flatland/src/loaders/atlasMeshRegistry.ts, packages/three-flatland/src/loaders/atlasMesh.test.ts, packages/three-flatland/src/materials/EffectMaterial.ts, packages/three-flatland/src/materials/Sprite2DMaterial.ts, packages/three-flatland/src/pipeline/SpriteBatch.ts, packages/three-flatland/src/pipeline/convexHull.ts, packages/three-flatland/src/pipeline/envelopeGeometry.ts, packages/three-flatland/src/pipeline/tightMesh.test.ts, packages/three-flatland/src/ecs/batchUtils.ts, packages/three-flatland/src/lights/OcclusionPass.ts, packages/three-flatland/src/sprites/Sprite2D.ts, packages/three-flatland/src/sprites/types.ts, packages/atlas/src/polygon.ts
+
+  Summary: Adds an opt-in tight-mesh envelope geometry path that reduces alpha-blend overdraw for sprites with registered atlas polygon data, plus a series of correctness fixes for atlas merging, late registration, and effect-budget handling discovered during review.
+
+- e4c3c68: > Branch: feat/sort-layers-orchestration
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/141
+
+  ## Auto-orchestration & batching
+  - Sprites in a plain three.js scene now self-register per (renderer, scene) and auto-batch with siblings sharing the same material/sortLayer/layers.mask — zero setup required
+  - Tiered batch buffers (1024 → 4096 → 16384 slots) with hysteresis, so batches grow/shrink without create/destroy flapping around thresholds; bulk-adds size their first batch for the load they already know about
+  - Default materials are now scoped per world/registry instead of a single cross-world static cache, preventing effect registrations or texture swaps on one scene from leaking into another
+  - Batch classification traits (`IsAlphaBlendedBatch`, `IsLitBatch`, `BatchGeometryStrategy`) exposed via `group.batches` / `registry.batches` query views
+  - New `SortLayerGroup` container bridges first-party sprites and foreign three.js objects (Skia, Slug, plain Mesh) under one sort-ordering discipline
+  - `SpriteGroup.maxBatchSize` is now a settable property (previously constructor-only), so it can be set via R3F JSX
+
+  ## Fixes
+  - Assigning `sprite.material` directly no longer gets silently clobbered by auto-orchestration on the next render sweep
+  - Synth-quad geometry now carries real position/uv attributes, fixing custom TSL effects that read `uv()`/`positionGeometry()` (pixelate, dissolve, outline effects were previously broken)
+  - Fixed a material leak: reassigning a sprite's material no longer keeps the old material (and its texture) alive forever
+  - `spriteSheet` swaps now re-resolve the active animation frame instead of rendering with stale UVs
+  - Missing-alphaMap raycast warning is now latched per sprite instead of a single process-wide flag that suppressed it for every other sprite
+  - `effectTier` values that exceed the WebGPU buffer cap now throw at construction instead of failing deep in pipeline creation
+  - Fixed batch eviction reading the wrong (undefined) slot during effect-tier upgrades, which silently no-op'd cleanup
+  - Auto-batch tier floor raised from 64 to 1024 to cut CPU overhead (~20% faster on the knightmark example at matched sprite counts); batch consolidation across the ladder was dropped in favor of hand-tuned `maxBatchSize` for very large scenes
+  - Fixed the missing-position console warning firing for synth-quad geometry, and various adversarial-review fixes to the sortLayer/batching stack (renderOrder derivation, dispose listener leaks, run-key bit width, negative sortLayer handling)
+
+  ## Performance
+  - Synth-quad geometry (index-only, position synthesized in the vertex shader) replaces `PlaneGeometry` for sprites, freeing 3 vertex-buffer bindings and doubling effect capacity (`MAX_EFFECT_FLOATS` 12 → 24)
+
+  ## Refactors
+  - Internal cleanup: shared eviction core, deduped batch-view builder between `SpriteGroup`/`Registry`, internal scene sweep no longer calls the deprecated `SpriteGroup.update()`
+
+  ## BREAKING CHANGES
+  - `Sprite2D.layer` renamed to `sortLayer` (and the `{ layer }` constructor option to `{ sortLayer }`), to avoid confusion with three.js's `Object3D.layers` camera bitmask. `Layers`/`LayerManager` renamed to `SortLayers`/`SortLayerManager`. Update any code, examples, or docs referencing the old `layer` property/option.
+
+  ***
+
+  This release activates the full auto-orchestration and auto-batching pipeline for vanilla three.js scenes, adds a `SortLayerGroup` container and per-world default materials, and fixes a series of material/batching correctness bugs surfaced along the way, alongside a sort-layer rename that is the sole breaking change.
+
+- 9b04cfa: > Branch: worktree-events-system
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/125
+
+  ### c03dd167fcabfbc0f0ce6f52a4b43159d8585da5
+
+  feat: extract the alpha hitmask baker into its own package
+  Each flatland-bake baker is meant to be a small grab-it-when-you-need-it
+  package, not a tenant of an unrelated one. The alpha baker had been
+  parked in @three-flatland/normals (which already owned PNG decode), but
+  the name was misleading — normals now shipped a non-normal baker.
+
+  Move the alpha baker into a new @three-flatland/alphamap package: the
+  `flatland-bake alpha` subcommand, bakeAlphaMapFile, and the
+  ALPHA_DESCRIPTOR. The runtime side (AlphaMap, resolveAlphaMap) stays in
+  three-flatland/events, decoupled by the re-declared descriptor literal —
+  no cross-package import either way. normals goes back to a single
+  `normal` baker.
+
+  Shared deps move to the workspace catalog (pngjs, @types/pngjs); both
+  baker packages reference catalog:. Discovery is unchanged — the bake CLI
+  finds whichever bakers are installed via their package.json flatland.bake
+  manifest, so consumers install only the baker they need.
+  Files: docs/src/content/docs/examples/hit-test.mdx, docs/src/content/docs/guides/baking.mdx, packages/alphamap/README.md, packages/alphamap/package.json, packages/alphamap/src/bake.node.test.ts, packages/alphamap/src/bake.node.ts, packages/alphamap/src/cli.ts, packages/alphamap/src/descriptor.ts, packages/alphamap/src/index.ts, packages/alphamap/src/node.ts, packages/alphamap/tsconfig.json, packages/alphamap/tsup.config.ts, packages/normals/package.json, packages/normals/src/alphaBake.node.ts, packages/normals/src/alphaBake.test.ts, packages/normals/src/alphaCli.ts, packages/three-flatland/src/events/resolveAlphaMap.ts, pnpm-lock.yaml, pnpm-workspace.yaml
+  Stats: 19 files changed, 283 insertions(+), 121 deletions(-)
+
+  ### 68fcbdf27396059dca8296c02ab23efd0bc7cc69
+
+  fix: AnimatedSprite2D keeps a user-set alphaMap across sheet swaps
+  The spriteSheet setter decided whether to replace alphaMap from the
+  \_usesSpriteSheetAlphaMap flag, but that flag only tracks the sheet path
+  — assigning the public alphaMap property directly leaves it stale at
+  true. So inherit-from-sheet → user override → swap clobbered the user's
+  map. Decide replacement by comparing the current alphaMap against the
+  previous sheet's inherited map instead: replace only when alphaMap is
+  null or still that inherited map. Add a regression test for the
+  inherit → override → swap lifecycle (the existing user-set test never
+  inherited first, so it missed the stale-flag path).
+  Files: packages/three-flatland/src/sprites/AnimatedSprite2D.test.ts, packages/three-flatland/src/sprites/AnimatedSprite2D.ts
+  Stats: 2 files changed, 34 insertions(+), 1 deletion(-)
+
+  ### 024cb610d30e1683e400c1d2962b22348590c15d
+
+  fix: AnimatedSprite2D updates inherited alphaMap on sheet swap
+  CodeRabbit #125: the null-only guard left a sheet-inherited alphaMap stale
+  after swapping spritesheets. Track inherited vs user-set so swaps update the
+  inherited mask while preserving an explicit assignment.
+  Files: packages/three-flatland/src/sprites/AnimatedSprite2D.test.ts, packages/three-flatland/src/sprites/AnimatedSprite2D.ts
+  Stats: 2 files changed, 47 insertions(+), 1 deletion(-)
+
+  ### a9209ed2ff60f71d021f3a9792fbd3602c276bee
+
+  fix: empty supportedHitTestModes guard + resolveAlphaMap decode fallback
+  CodeRabbit #125: resolveHitTestMode could return undefined for an empty
+  supported list — now throws; a corrupt/stale baked .alpha.png rejected the
+  whole load — now caught and degraded to runtime extraction; test warn
+  assertion made NODE_ENV-deterministic.
+  Files: packages/three-flatland/src/events/HitTestMode.test.ts, packages/three-flatland/src/events/HitTestMode.ts, packages/three-flatland/src/events/resolveAlphaMap.test.ts, packages/three-flatland/src/events/resolveAlphaMap.ts
+  Stats: 4 files changed, 55 insertions(+), 18 deletions(-)
+
+  ### 34c039f1a94e4384c223a8b1ae60a2297e92eea6
+
+  fix: Sprite2D — flip-aware alpha sampling, clone hit-test config, explicit none guard
+  CodeRabbit #125: alpha mode sampled the unflipped atlas (mirrored sprites
+  hit-tested the wrong pixels) — now mirrors Sprite2DMaterial's UV flip;
+  clone() dropped hitTestMode/hitRadius/alphaThreshold/alphaMap — now carried;
+  added an explicit 'none' early-return in raycast() for direct calls (the
+  raycast-nulling stays as the R3F-registration skip optimization).
+  Files: packages/three-flatland/src/sprites/Sprite2D.raycast.test.ts, packages/three-flatland/src/sprites/Sprite2D.ts
+  Stats: 2 files changed, 66 insertions(+), 2 deletions(-)
+
+  ### 46efe52a759e55bca8bac07c3d714a92f9ecca56
+
+  refactor: break AlphaMap <-> sprites/types type cycle
+  AlphaMap imported SpriteFrame from sprites/types while SpriteSheet.alphaMap
+  imported AlphaMap back — a type-only cycle (no runtime effect, but real in
+  the type graph). Give sampleFrame a local structural AtlasRect type so
+  events/ never imports sprites/. Not the cause of the DTS-build heap pressure
+  (that persists with the cycle gone — it's the package's type-graph size vs
+  the default DTS worker heap), but correct hygiene.
+  Files: packages/three-flatland/src/events/AlphaMap.ts
+  Stats: 1 file changed, 14 insertions(+), 2 deletions(-)
+
+  ### c67a9695449d412b0008da24b95684c0a156df1c
+
+  fix: key the spritesheet cache on sidecar flags (alpha/normals/forceRuntime)
+  Final-review finding: getCacheKey hashed only URL + texture preset, so
+  load(url, { alpha: true }) and a bare load(url) shared a cache entry —
+  whichever resolved first won, silently giving the alpha caller a sheet
+  with no alphaMap (degrading hitTestMode 'alpha' to bounds). Fold the
+  sidecar flags into the cache identity.
+  Files: packages/three-flatland/src/loaders/SpriteSheetLoader.test.ts, packages/three-flatland/src/loaders/SpriteSheetLoader.ts
+  Stats: 2 files changed, 21 insertions(+), 1 deletion(-)
+
+  ### b42b74ee5b6e8a546dddc47002802f4afd27174d
+
+  feat: AnimatedSprite2D adopts SpriteSheet.alphaMap
+  Files: packages/three-flatland/src/sprites/AnimatedSprite2D.test.ts, packages/three-flatland/src/sprites/AnimatedSprite2D.ts
+  Stats: 2 files changed, 39 insertions(+), 7 deletions(-)
+
+  ### 341ebeb22e9eefaf1ae9a919acb53c4e9345ed61
+
+  feat: alpha option populating SpriteSheet.alphaMap via sidecar resolve
+  Files: packages/three-flatland/src/loaders/SpriteSheetLoader.test.ts, packages/three-flatland/src/loaders/SpriteSheetLoader.ts, packages/three-flatland/src/sprites/types.ts
+  Stats: 3 files changed, 104 insertions(+), 10 deletions(-)
+
+  ### f7115882e8ed985ebc7734519c0d4e2cacf4d0e0
+
+  feat: resolveAlphaMap with baked-sidecar probe and runtime fallback
+  Files: packages/three-flatland/src/events/index.ts, packages/three-flatland/src/events/resolveAlphaMap.test.ts, packages/three-flatland/src/events/resolveAlphaMap.ts
+  Stats: 3 files changed, 129 insertions(+)
+
+  ### b42d30032bc24367b6fdcb0c7993cb381fd8abd7
+
+  feat: createFlatlandCompute portal events seam for flatland camera
+  Files: packages/three-flatland/src/Flatland.ts, packages/three-flatland/src/react/flatlandEvents.test.ts, packages/three-flatland/src/react/flatlandEvents.ts, packages/three-flatland/src/react/index.ts
+  Stats: 4 files changed, 88 insertions(+), 2 deletions(-)
+
+  ### fba088a29a2895c7c8614b1991136f5f72c12b92
+
+  feat: TileMap2D raycast with O(1) tile lookup and child-traversal block
+  Files: packages/three-flatland/src/tilemap/TileMap2D.raycast.test.ts, packages/three-flatland/src/tilemap/TileMap2D.ts
+  Stats: 2 files changed, 151 insertions(+), 7 deletions(-)
+
+  ### b7ff64f3ca3cc646e19db7d5a66285ba10e67efa
+
+  feat: Sprite2D.raycast with radius/bounds/alpha modes and none opt-out
+  Files: packages/three-flatland/src/sprites/Sprite2D.raycast.test.ts, packages/three-flatland/src/sprites/Sprite2D.ts
+  Stats: 2 files changed, 271 insertions(+), 13 deletions(-)
+
+  ### a172d41ce3f865d7f1c311095ade3dc26c0ce6b5
+
+  feat: export events module + react subpath wrapper
+  Files: packages/three-flatland/package.json, packages/three-flatland/src/events/HitTestMode.ts, packages/three-flatland/src/events/index.ts, packages/three-flatland/src/index.ts, packages/three-flatland/src/react/events/index.ts
+  Stats: 5 files changed, 35 insertions(+)
+
+  ### 5d49506fcd75ed23e5d959d92008e20a502b576a
+
+  feat: AlphaMap CPU alpha store with frame-rect sampling
+  Files: packages/three-flatland/src/events/AlphaMap.test.ts, packages/three-flatland/src/events/AlphaMap.ts
+  Stats: 2 files changed, 101 insertions(+)
+
+  ### 86260c6e2e8ede3c46042254897602c59fb20eda
+
+  feat: ray-to-local-plane helpers with per-hit point cloning
+  Files: packages/three-flatland/src/events/raycastHelpers.test.ts, packages/three-flatland/src/events/raycastHelpers.ts
+  Stats: 2 files changed, 117 insertions(+)
+
+  ### ea9bca8a343587ee0f4e99c9af5fa49a8dfcd29d
+
+  feat: hit-test mode union with resolve fallback
+  Files: packages/three-flatland/src/events/HitTestMode.test.ts, packages/three-flatland/src/events/HitTestMode.ts
+  Stats: 2 files changed, 50 insertions(+)
+
+- ea7ec3d: > Branch: feat/oklch-color-main
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/123
+
+  ### e1167303647acd572b4cfdd6ea435f6410bdbe90
+
+  fix: correct Color color-space semantics, exact sRGB transfer, TSL dedup
+  Review-cycle fixes for the ported suite (this is its first review):
+
+  CPU (three-flatland/src/color):
+  - colorToOklab / oklabToColor / relativeLuminance now treat Color
+    components as working-space Linear-sRGB (the three.js default since
+    r152) instead of double-applying the sRGB transfer; srgbToLinear /
+    linearToSrgb remain for explicit gamma-encoded values
+  - tests hardened with absolute Ottosson/CSS Color 4 reference values,
+    exact mid-gray luminance, exact 21:1 black/white contrast, and a
+    non-cancelling round-trip through the Color type
+
+  TSL (@three-flatland/nodes/color):
+  - exact IEC 61966-2-1 transfer via three/tsl sRGBTransferEOTF/OETF
+    (replaces the pow-2.2 approximation; GPU now matches CPU)
+  - gamma entry points clamp input to [0,1] (kills pow-on-negative NaN)
+  - reuse three/tsl cbrt and TWO_PI; drop local re-implementations
+  - oklchLerp reuses the shared OKLAB<->OKLCH polar helpers from oklch.ts
+  - conversion cores wrapped in Fn() so composed calls emit shader
+    function invocations instead of re-inlined subgraphs; typed through a
+    narrow adapter (array-inputs Fn overload is runtime-supported but
+    missing from some @types/three resolutions)
+    Files: packages/nodes/src/color/oklab.test.ts, packages/nodes/src/color/oklab.ts, packages/nodes/src/color/oklch.test.ts, packages/nodes/src/color/oklch.ts, packages/nodes/src/color/oklchLerp.test.ts, packages/nodes/src/color/oklchLerp.ts, packages/three-flatland/src/color/conversions.test.ts, packages/three-flatland/src/color/conversions.ts, packages/three-flatland/src/color/distance.test.ts, packages/three-flatland/src/color/distance.ts, packages/three-flatland/src/color/interpolation.test.ts
+    Stats: 11 files changed, 208 insertions(+), 85 deletions(-)
+
+  ### 3ba7af85461c0ba7bc153aaf28c47155075b7cd5
+
+  feat: port OKLAB/OKLCH color suite onto the current layout
+  Re-homes the orphaned worktree-oklch-color work (39086a1f, based on a
+  pre-alpha-6 tree) onto main:
+  - @three-flatland/nodes: oklab/oklch/oklchLerp TSL nodes alongside the
+    existing color nodes, exported from the color index
+  - three-flatland: new src/color/ CPU-side suite (conversions, distance,
+    gamut, harmony, interpolation, palette) with ./color package exports
+    and a generated react subpath wrapper (pnpm sync:react)
+
+  Adapted to current conventions: import type for type-only imports,
+  dropped an unused import, prettier formatting.
+  Files: packages/nodes/src/color/contrast.ts, packages/nodes/src/color/hueShift.ts, packages/nodes/src/color/index.ts, packages/nodes/src/color/oklab.test.ts, packages/nodes/src/color/oklab.ts, packages/nodes/src/color/oklch.test.ts, packages/nodes/src/color/oklch.ts, packages/nodes/src/color/oklchLerp.test.ts, packages/nodes/src/color/oklchLerp.ts, packages/three-flatland/package.json, packages/three-flatland/src/color/conversions.test.ts, packages/three-flatland/src/color/conversions.ts, packages/three-flatland/src/color/distance.test.ts, packages/three-flatland/src/color/distance.ts, packages/three-flatland/src/color/gamut.test.ts, packages/three-flatland/src/color/gamut.ts, packages/three-flatland/src/color/harmony.test.ts, packages/three-flatland/src/color/harmony.ts, packages/three-flatland/src/color/index.ts, packages/three-flatland/src/color/interpolation.test.ts, packages/three-flatland/src/color/interpolation.ts, packages/three-flatland/src/color/palette.test.ts, packages/three-flatland/src/color/palette.ts, packages/three-flatland/src/index.ts, packages/three-flatland/src/react/color/index.ts
+  Stats: 25 files changed, 1497 insertions(+), 6 deletions(-)
+
+- 6caf0f8: > Branch: worktree-events-system
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/125
+
+  ### 6ef42b72356a33615296a0073adce1737af0b49f
+
+  fix: AnimatedSprite2D updates inherited alphaMap on sheet swap
+  CodeRabbit #125: the null-only guard left a sheet-inherited alphaMap stale
+  after swapping spritesheets. Track inherited vs user-set so swaps update the
+  inherited mask while preserving an explicit assignment.
+  Files: packages/three-flatland/src/sprites/AnimatedSprite2D.test.ts, packages/three-flatland/src/sprites/AnimatedSprite2D.ts
+  Stats: 2 files changed, 47 insertions(+), 1 deletion(-)
+
+  ### 5a4f6853b2599ec68989f302a77a7225f716cb39
+
+  fix: empty supportedHitTestModes guard + resolveAlphaMap decode fallback
+  CodeRabbit #125: resolveHitTestMode could return undefined for an empty
+  supported list — now throws; a corrupt/stale baked .alpha.png rejected the
+  whole load — now caught and degraded to runtime extraction; test warn
+  assertion made NODE_ENV-deterministic.
+  Files: packages/three-flatland/src/events/HitTestMode.test.ts, packages/three-flatland/src/events/HitTestMode.ts, packages/three-flatland/src/events/resolveAlphaMap.test.ts, packages/three-flatland/src/events/resolveAlphaMap.ts
+  Stats: 4 files changed, 55 insertions(+), 18 deletions(-)
+
+  ### 407074489eb41e31cd5347c2b23a0f8f33b0e0a5
+
+  fix: Sprite2D — flip-aware alpha sampling, clone hit-test config, explicit none guard
+  CodeRabbit #125: alpha mode sampled the unflipped atlas (mirrored sprites
+  hit-tested the wrong pixels) — now mirrors Sprite2DMaterial's UV flip;
+  clone() dropped hitTestMode/hitRadius/alphaThreshold/alphaMap — now carried;
+  added an explicit 'none' early-return in raycast() for direct calls (the
+  raycast-nulling stays as the R3F-registration skip optimization).
+  Files: packages/three-flatland/src/sprites/Sprite2D.raycast.test.ts, packages/three-flatland/src/sprites/Sprite2D.ts
+  Stats: 2 files changed, 66 insertions(+), 2 deletions(-)
+
+  ### 61bcf0b0cfc02c270930bea2b99c2acc87140140
+
+  refactor: break AlphaMap <-> sprites/types type cycle
+  AlphaMap imported SpriteFrame from sprites/types while SpriteSheet.alphaMap
+  imported AlphaMap back — a type-only cycle (no runtime effect, but real in
+  the type graph). Give sampleFrame a local structural AtlasRect type so
+  events/ never imports sprites/. Not the cause of the DTS-build heap pressure
+  (that persists with the cycle gone — it's the package's type-graph size vs
+  the default DTS worker heap), but correct hygiene.
+  Files: packages/three-flatland/src/events/AlphaMap.ts
+  Stats: 1 file changed, 14 insertions(+), 2 deletions(-)
+
+  ### 2e0d613acc3b1f39ecfc65a2b5b1755d1d346fe1
+
+  fix: key the spritesheet cache on sidecar flags (alpha/normals/forceRuntime)
+  Final-review finding: getCacheKey hashed only URL + texture preset, so
+  load(url, { alpha: true }) and a bare load(url) shared a cache entry —
+  whichever resolved first won, silently giving the alpha caller a sheet
+  with no alphaMap (degrading hitTestMode 'alpha' to bounds). Fold the
+  sidecar flags into the cache identity.
+  Files: packages/three-flatland/src/loaders/SpriteSheetLoader.test.ts, packages/three-flatland/src/loaders/SpriteSheetLoader.ts
+  Stats: 2 files changed, 21 insertions(+), 1 deletion(-)
+
+  ### 3673d47a4a1655dba76e82f5597eec98e987e62d
+
+  feat: AnimatedSprite2D adopts SpriteSheet.alphaMap
+  Files: packages/three-flatland/src/sprites/AnimatedSprite2D.test.ts, packages/three-flatland/src/sprites/AnimatedSprite2D.ts
+  Stats: 2 files changed, 39 insertions(+), 7 deletions(-)
+
+  ### 1c815f291b6fe71895f8b283959a29a4c9501d00
+
+  feat: alpha option populating SpriteSheet.alphaMap via sidecar resolve
+  Files: packages/three-flatland/src/loaders/SpriteSheetLoader.test.ts, packages/three-flatland/src/loaders/SpriteSheetLoader.ts, packages/three-flatland/src/sprites/types.ts
+  Stats: 3 files changed, 104 insertions(+), 10 deletions(-)
+
+  ### add6a9a3140a7998087ad73d37f883f917a15f98
+
+  feat: resolveAlphaMap with baked-sidecar probe and runtime fallback
+  Files: packages/three-flatland/src/events/index.ts, packages/three-flatland/src/events/resolveAlphaMap.test.ts, packages/three-flatland/src/events/resolveAlphaMap.ts
+  Stats: 3 files changed, 129 insertions(+)
+
+  ### 582b062ed76faf32d864903bad89dd5df380dd17
+
+  feat: createFlatlandCompute portal events seam for flatland camera
+  Files: packages/three-flatland/src/Flatland.ts, packages/three-flatland/src/react/flatlandEvents.test.ts, packages/three-flatland/src/react/flatlandEvents.ts, packages/three-flatland/src/react/index.ts
+  Stats: 4 files changed, 88 insertions(+), 2 deletions(-)
+
+  ### 605935e17dff298a10892b030a26be73b9eccc41
+
+  feat: TileMap2D raycast with O(1) tile lookup and child-traversal block
+  Files: packages/three-flatland/src/tilemap/TileMap2D.raycast.test.ts, packages/three-flatland/src/tilemap/TileMap2D.ts
+  Stats: 2 files changed, 151 insertions(+), 7 deletions(-)
+
+  ### e89e37ccfa4c3bd1f2964605fa9228610f40859b
+
+  feat: Sprite2D.raycast with radius/bounds/alpha modes and none opt-out
+  Files: packages/three-flatland/src/sprites/Sprite2D.raycast.test.ts, packages/three-flatland/src/sprites/Sprite2D.ts
+  Stats: 2 files changed, 271 insertions(+), 13 deletions(-)
+
+  ### 312486dce60c249214a80201d69d32a67cdfbc31
+
+  feat: export events module + react subpath wrapper
+  Files: packages/three-flatland/package.json, packages/three-flatland/src/events/HitTestMode.ts, packages/three-flatland/src/events/index.ts, packages/three-flatland/src/index.ts, packages/three-flatland/src/react/events/index.ts
+  Stats: 5 files changed, 35 insertions(+)
+
+  ### 9a6d9b7ca6cbb6c987531dcf832c285491e308db
+
+  feat: AlphaMap CPU alpha store with frame-rect sampling
+  Files: packages/three-flatland/src/events/AlphaMap.test.ts, packages/three-flatland/src/events/AlphaMap.ts
+  Stats: 2 files changed, 101 insertions(+)
+
+  ### d3483e8dc2a29268cda39bf596adfbafba34cefa
+
+  feat: ray-to-local-plane helpers with per-hit point cloning
+  Files: packages/three-flatland/src/events/raycastHelpers.test.ts, packages/three-flatland/src/events/raycastHelpers.ts
+  Stats: 2 files changed, 117 insertions(+)
+
+  ### 4ffe61342f0b8327c7ff9bd854effc6ad056f0d1
+
+  feat: hit-test mode union with resolve fallback
+  Files: packages/three-flatland/src/events/HitTestMode.test.ts, packages/three-flatland/src/events/HitTestMode.ts
+  Stats: 2 files changed, 50 insertions(+)
+
+- 0033ea6: > Branch: feat/oklch-color-main
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/123
+
+  ### cc96f8702ab41e81980f329f3829f21fc0bc890f
+
+  fix: correct Color color-space semantics, exact sRGB transfer, TSL dedup
+  Review-cycle fixes for the ported suite (this is its first review):
+
+  CPU (three-flatland/src/color):
+  - colorToOklab / oklabToColor / relativeLuminance now treat Color
+    components as working-space Linear-sRGB (the three.js default since
+    r152) instead of double-applying the sRGB transfer; srgbToLinear /
+    linearToSrgb remain for explicit gamma-encoded values
+  - tests hardened with absolute Ottosson/CSS Color 4 reference values,
+    exact mid-gray luminance, exact 21:1 black/white contrast, and a
+    non-cancelling round-trip through the Color type
+
+  TSL (@three-flatland/nodes/color):
+  - exact IEC 61966-2-1 transfer via three/tsl sRGBTransferEOTF/OETF
+    (replaces the pow-2.2 approximation; GPU now matches CPU)
+  - gamma entry points clamp input to [0,1] (kills pow-on-negative NaN)
+  - reuse three/tsl cbrt and TWO_PI; drop local re-implementations
+  - oklchLerp reuses the shared OKLAB<->OKLCH polar helpers from oklch.ts
+  - conversion cores wrapped in Fn() so composed calls emit shader
+    function invocations instead of re-inlined subgraphs; typed through a
+    narrow adapter (array-inputs Fn overload is runtime-supported but
+    missing from some @types/three resolutions)
+    Files: packages/nodes/src/color/oklab.test.ts, packages/nodes/src/color/oklab.ts, packages/nodes/src/color/oklch.test.ts, packages/nodes/src/color/oklch.ts, packages/nodes/src/color/oklchLerp.test.ts, packages/nodes/src/color/oklchLerp.ts, packages/three-flatland/src/color/conversions.test.ts, packages/three-flatland/src/color/conversions.ts, packages/three-flatland/src/color/distance.test.ts, packages/three-flatland/src/color/distance.ts, packages/three-flatland/src/color/interpolation.test.ts
+    Stats: 11 files changed, 208 insertions(+), 85 deletions(-)
+
+  ### 2760f64794e3a6eed3e8814be9c43f9daeddda2f
+
+  feat: port OKLAB/OKLCH color suite onto the current layout
+  Re-homes the orphaned worktree-oklch-color work (39086a1f, based on a
+  pre-alpha-6 tree) onto main:
+  - @three-flatland/nodes: oklab/oklch/oklchLerp TSL nodes alongside the
+    existing color nodes, exported from the color index
+  - three-flatland: new src/color/ CPU-side suite (conversions, distance,
+    gamut, harmony, interpolation, palette) with ./color package exports
+    and a generated react subpath wrapper (pnpm sync:react)
+
+  Adapted to current conventions: import type for type-only imports,
+  dropped an unused import, prettier formatting.
+  Files: packages/nodes/src/color/contrast.ts, packages/nodes/src/color/hueShift.ts, packages/nodes/src/color/index.ts, packages/nodes/src/color/oklab.test.ts, packages/nodes/src/color/oklab.ts, packages/nodes/src/color/oklch.test.ts, packages/nodes/src/color/oklch.ts, packages/nodes/src/color/oklchLerp.test.ts, packages/nodes/src/color/oklchLerp.ts, packages/three-flatland/package.json, packages/three-flatland/src/color/conversions.test.ts, packages/three-flatland/src/color/conversions.ts, packages/three-flatland/src/color/distance.test.ts, packages/three-flatland/src/color/distance.ts, packages/three-flatland/src/color/gamut.test.ts, packages/three-flatland/src/color/gamut.ts, packages/three-flatland/src/color/harmony.test.ts, packages/three-flatland/src/color/harmony.ts, packages/three-flatland/src/color/index.ts, packages/three-flatland/src/color/interpolation.test.ts, packages/three-flatland/src/color/interpolation.ts, packages/three-flatland/src/color/palette.test.ts, packages/three-flatland/src/color/palette.ts, packages/three-flatland/src/index.ts, packages/three-flatland/src/react/color/index.ts
+  Stats: 25 files changed, 1497 insertions(+), 6 deletions(-)
+
+- 30550a2: > Branch: preview/tools-combined
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/172
+
+  ## Atlas schema & validation
+  - New `@three-flatland/schemas` package: canonical `schema.json` + Ajv validators for the atlas format, silo'd out of `three-flatland` runtime (removes Ajv from the bundle — full build drops 56.91 kB → 22.26 kB brotli, -34.65 kB)
+  - Atlas schema JSON hosted from the docs site for external `$ref` consumers
+  - `scripts/gen-schema-types.ts` codegens `atlas.types.gen.ts` from schema.json into both `three-flatland` and `tools/io`; committed so a fresh checkout builds without the codegen toolchain; `pnpm gen:types:verify` now wired into CI's build/verify step to catch drift
+  - Relaxed atlas `meta` requiredness: only `size` is required now, `meta.sources` and legacy `meta.image` both validate via `anyOf` — fixes raw TexturePacker/Aseprite exports (image-only meta) failing validation and crashing `validateAtlas()`
+  - Added per-frame polygon fields to `Frame`: baked `mesh` (verts/indices) plus TexturePacker's `vertices`/`verticesUV`/`triangles`, with `mesh` preferred on read
+  - Fixed a schema/codegen bug where nesting `sources`/`image` `anyOf` directly inside `meta`'s subschema collapsed generated `AtlasJson` typing to a bare index signature, silently dropping every typed `meta.*` field (including `animations`)
+  - `validateAtlas`/`assertValidAtlas`/`formatAtlasErrors` centralized with a format-uniqueness check; `tools/vscode` validator now re-exports from `@three-flatland/schemas/atlas` instead of duplicating the implementation
+
+  ## Sprite animations
+  - `AnimatedSprite2D` now auto-populates its animation controller from a loaded `SpriteSheet`'s named animations (`meta.animations` / Aseprite `frameTags`) via `sheetAnimationsToDefinition()` when no explicit `animationSet` is given — in both the constructor and the `spriteSheet` setter. An explicit `animationSet` still takes priority
+  - Fixed a crash in `new AnimatedSprite2D({})` caused by missing optional chaining on `options.spriteSheet.animations`
+  - `SpriteSheetLoader` now tolerates legacy `meta.image` atlases (`meta.sources?.[0]?.uri ?? meta.image`), fixing a runtime crash ("Cannot read properties of undefined (reading '0')") on any sidecar without `meta.sources`
+
+  ## Editor tooling (atlas panel)
+  - Atlas sidecar save workflow: `<basename>.atlas.json` written next to the source image via the new `atlas.schema.json` ($id `https://three-flatland.dev/schemas/atlas.v1.json`), a superset of TexturePacker's JSON-Hash format
+  - Editor Save button + Cmd/Ctrl+S write the sidecar, with a themed status chip ("Saving atlas…" → "Saved N frames → knight.atlas.json", auto-hiding) and error state on failure
+  - Canvas import restructuring and UI responsiveness improvements across the atlas/animation preview tooling
+
+  ## BREAKING CHANGES
+  - `three-flatland`'s `./sprites/atlas` and `./sprites/atlas.schema.json` subpath exports are removed; atlas schema validation now lives in `@three-flatland/schemas` (`@three-flatland/schemas/atlas`) instead
+
+  ## Summary
+
+  Atlas schema validation moves to a dedicated `@three-flatland/schemas` package (dropping ~35 kB of Ajv from the runtime bundle), atlas `meta` becomes more permissive to support real-world TexturePacker/Aseprite exports, sprites gain automatic animation population from atlas metadata, and the VSCode atlas editor gains a full sidecar save workflow.
+
+- 261b5be: **BREAKING — render-order layers renamed to sort layers.** `layer` → `sortLayer` on `Sprite2D`/`AnimatedSprite2D` (property, constructor option, and R3F JSX prop), `Layers` → `SortLayers`, `LayerManager`/`Layer`/`LayerConfig`/`LayerName`/`LayerValue` → `SortLayerManager`/`SortLayer`/`SortLayerConfig`/`SortLayerName`/`SortLayerValue`, ECS trait `SpriteLayer` → `SortLayer`, and `SpriteSortFunction`'s comparator fields now read `sortLayer`. Camera layer masks (`sprite.layers`, three.js `Layers`) and tilemap tile layers (`TileLayer`, `tileFromIntersection().layer`) intentionally keep their names — that collision is why the rename exists. Also note: assigning `renderOrder` to a sprite now deliberately demotes it from batching to standalone rendering with a custom order; prefer `sortLayer` + `zIndex`.
+
+  **A codemod ships with this release.** Point an LLM agent at `node_modules/three-flatland/codemods/layers-to-sort-layers.md` and it migrates your codebase (the artifact embeds the full agent instructions, scope rules for the camera-mask/tile-layer false positives, and verification commands). Codemod index: `node_modules/three-flatland/codemods/README.md`.
+
+### Patch Changes
+
+- 75fcf94: > Branch: feat/esm-oxc-migration
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/196
+  - Fixed all real-source oxlint errors across the monorepo (0 errors remaining); `exhaustive-deps` kept as advisory warnings, matching prior eslint config
+  - Applied oxlint autofixes and reformatting (unused imports/vars removed, `import type` enforced, floating promises voided, useless spreads removed)
+  - Excluded e2e/spec test harnesses from lint scope (previously uncovered by eslint)
+  - No functional/API changes — internal code-quality and tooling cleanup only, verified via typecheck (45/45) and build (46/46)
+
+  No breaking changes.
+
+  Internal lint and code-quality cleanup as part of the ESM/oxlint migration; no user-facing behavior changes.
+
+- abad04f: > Branch: fix/dissolve-instant-vanish
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/158
+  - Fix: the dissolve effect in the react `tsl-nodes` example vanished almost instantly instead of fading out over 1.5s. Caused by the noise texture being tagged sRGB via the `pixel-art` preset, which made WebGPU hardware-decode the raw noise samples and skew them toward 0. The noise texture now sets nearest filtering directly and leaves `colorSpace` untouched, matching the vanilla three.js example's behavior.
+  - Add tests for `applyTextureOptions` documenting that `colorSpace` is only applied when explicitly provided, so data/mask textures (noise, height, distortion maps) can opt out of sRGB tagging.
+
+  Fixes a bug where the WebGPU dissolve shader example dissolved too fast due to incorrect sRGB tagging on a non-color noise texture; no public API changes.
+
+- a8b7e5d: > Branch: fix/devtools-buffer-pool-tier
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/120
+
+  ### b304ae4058fd4d940bde62907ecd208a3b4670e8
+
+  fix: restore buffer streaming without bloating the flush cursor
+  `@three-flatland/devtools` panel stopped rendering texture pixels — every
+  inspectable buffer entry (SDF passes, occlusion mask, ForwardPlus tiles)
+  logged `[devtools] buffer entry '...' exceeds remaining pool buffer space.
+Shipping metadata only.`
+
+  Cause: `_textures.drain` was copying pixel bytes into the per-flush data-
+  packet cursor (so a typed-array view in the published payload referenced the
+  transferred pool buffer). When the data packet moved to the 256 KB medium
+  tier — to fix the BroadcastChannel re-broadcast clone wobble — even a single
+  SDF (~900 KB) overflowed the cursor and drain fell back to metadata-only.
+  The convert path's `if (!entry.pixels) continue` guard then skipped the
+  RGBA8/VP9 broadcast for that entry, so the consumer saw nothing.
+
+  The cursor copy was always redundant. `_flush` already deletes `entry.pixels`
+  after queuing each entry's `transport.convert(...)` — pixels never travel via
+  the broadcasted data message regardless. They flow exclusively through the
+  worker's `__convert__` path → `buffer:raw` / `buffer:chunk` broadcasts — and
+  that path acquires its own per-entry large buffer for the transfer. The
+  consumer renderer reads from `state.buffers[name].pixels`, which both
+  broadcasts populate; the data-message pixel reference was a wasted
+  intermediate.
+
+  Fix is surgical:
+  - `DebugTextureRegistry.drain` references `e.sample` directly. No cursor
+    copy, no size check, no warning. The `into?: BufferCursor` parameter +
+    `warnedOversized` flag + `copyTypedTo` import all drop out.
+  - `DevtoolsProvider._flush` keeps `acquireMedium()` (no tier escalation
+    needed — pixel bytes never travel via this buffer) and drops the cursor
+    arg from the textures drain call.
+
+  Streaming pipeline untouched: convert → RGBA8 → buffer:raw (thumbnail mode)
+  and convert → VideoEncoder → buffer:chunk (VP9 stream mode) both still flow
+  through the per-entry large convBuf, the worker still handles codec probing
+  and keyframe forcing, and the consumer's VideoDecoder path reads frames the
+  same way.
+
+  Tests:
+  - `DebugTextureRegistry.test.ts` (new, 5 tests) — drain references the
+    cached sample directly (no copy), omits pixels when not in the pixel
+    subscription, handles huge samples (1024×1024 = 4 MB ForwardPlus shape)
+    without warnings or pixel loss, emits metadata-only when the sample
+    isn't ready, suppresses re-emission while version + shape are unchanged.
+  - `DevtoolsProvider.buffers.test.ts` (new, 2 tests) — drives a real
+    `_flush` against a capturing transport: asserts `convert()` was called
+    with the raw pixels (the streaming path is alive), and that the
+    broadcast data message carries metadata for the entry but `entry.pixels`
+    is `undefined` (broadcast wobble can't return).
+
+  Full suite: typecheck 31/31, debug tests 65/65 (8 files incl. the two new),
+  lint 0 errors.
+  Files: packages/three-flatland/src/debug/DebugTextureRegistry.test.ts, packages/three-flatland/src/debug/DebugTextureRegistry.ts, packages/three-flatland/src/debug/DevtoolsProvider.buffers.test.ts, packages/three-flatland/src/debug/DevtoolsProvider.ts
+  Stats: 4 files changed, 342 insertions(+), 33 deletions(-)
+
+- Updated dependencies [9b04cfa]
+- Updated dependencies [6caf0f8]
+- Updated dependencies [192774c]
+  - @three-flatland/normals@0.1.0-alpha.3
+
 ## 0.1.0-alpha.7
 
 ### Minor Changes

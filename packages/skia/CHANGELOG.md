@@ -1,5 +1,42 @@
 # @three-flatland/skia
 
+## 0.1.0-alpha.4
+
+### Patch Changes
+
+- 75fcf94: > Branch: feat/esm-oxc-migration
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/196
+  - Fixed all real-source oxlint errors across the monorepo (0 errors remaining); `exhaustive-deps` kept as advisory warnings, matching prior eslint config
+  - Applied oxlint autofixes and reformatting (unused imports/vars removed, `import type` enforced, floating promises voided, useless spreads removed)
+  - Excluded e2e/spec test harnesses from lint scope (previously uncovered by eslint)
+  - No functional/API changes — internal code-quality and tooling cleanup only, verified via typecheck (45/45) and build (46/46)
+
+  No breaking changes.
+
+  Internal lint and code-quality cleanup as part of the ESM/oxlint migration; no user-facing behavior changes.
+
+- e8b5d17: > Branch: claude/skia-rendering-regression-b1d604
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/186
+  - Fix blank/broken Skia rendering in Safari caused by a WASM init failure on MIME-type fallback paths (e.g. behind a cross-origin redirect)
+    - `instantiateWasm` now streams from `res.clone()` so the original response body stays unread, letting the `res.arrayBuffer()` fallback succeed instead of throwing `TypeError: body stream already read`
+    - Added regression tests modeling real single-read `Response` body semantics
+
+  Fixes a Safari-specific blank render bug in `@three-flatland/skia`'s WASM loader where the MIME-type fallback path crashed instead of recovering.
+
+- 739afb7: > Branch: fix/skia-prebuilt-wasm-fallback
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/164
+
+  ### Fixes
+  - Fix `skia:fetch-wasm` CLI entrypoint check silently no-op'ing on Windows — now uses a portable `resolve(argv[1]) === fileURLToPath(url)` comparison instead of a raw `file://` string match.
+  - Fix hard-coded `:` PATH separator across `build-wasm`, `compare-builds`, `setup`, and `prebuilt-wasm` scripts (broke on Windows); now uses `path.delimiter`.
+  - Fix `fetchPrebuiltWasm` silently reporting success when only some requested WASM variants were present in the manifest — now requires every requested variant to match before copying, preventing missing artifacts from going unnoticed.
+  - Add timeouts to external command invocations (Zig probe: 15s, `npm pack`/`tar`: 60s/30s) and switch to `execFileSync` to avoid shell interpolation and indefinite hangs.
+
+  Hardens the prebuilt-WASM fetch path against review feedback: fixes cross-platform bugs and prevents silent partial failures or hung processes during WASM setup.
+
 ## 0.1.0-alpha.3
 
 ### Minor Changes

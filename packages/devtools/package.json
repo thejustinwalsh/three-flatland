@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/devtools",
-  "version": "1.0.0-alpha.4",
+  "version": "1.0.0-alpha.5",
   "description": "Dev-time introspection toolkit for three-flatland — Tweakpane v4 UI plugin, stats monitor, and buffer inspection",
   "type": "module",
   "exports": {
@@ -54,7 +54,7 @@
     "@tweakpane/plugin-essentials": "^0.2.1",
     "react": "^19.2.0",
     "three": "^0.183.0",
-    "three-flatland": "^0.1.0-alpha.7",
+    "three-flatland": "^0.1.0-alpha.8",
     "tweakpane": "^4.0.5",
     "vite": "^5.0.0 || ^6.0.0"
   },

@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@three-flatland/skia": "^0.1.0-alpha.3",
-    "@three-flatland/devtools": "^1.0.0-alpha.4",
+    "@three-flatland/skia": "^0.1.0-alpha.4",
+    "@three-flatland/devtools": "^1.0.0-alpha.5",
     "@tweakpane/plugin-essentials": "^0.2.1",
     "@react-three/fiber": "10.0.0-alpha.2",
     "react": "^19.2.0",

@@ -1,5 +1,70 @@
 # @three-flatland/normals
 
+## 0.1.0-alpha.3
+
+### Minor Changes
+
+- 9b04cfa: > Branch: worktree-events-system
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/125
+
+  ### c03dd167fcabfbc0f0ce6f52a4b43159d8585da5
+
+  feat: extract the alpha hitmask baker into its own package
+  Each flatland-bake baker is meant to be a small grab-it-when-you-need-it
+  package, not a tenant of an unrelated one. The alpha baker had been
+  parked in @three-flatland/normals (which already owned PNG decode), but
+  the name was misleading — normals now shipped a non-normal baker.
+
+  Move the alpha baker into a new @three-flatland/alphamap package: the
+  `flatland-bake alpha` subcommand, bakeAlphaMapFile, and the
+  ALPHA_DESCRIPTOR. The runtime side (AlphaMap, resolveAlphaMap) stays in
+  three-flatland/events, decoupled by the re-declared descriptor literal —
+  no cross-package import either way. normals goes back to a single
+  `normal` baker.
+
+  Shared deps move to the workspace catalog (pngjs, @types/pngjs); both
+  baker packages reference catalog:. Discovery is unchanged — the bake CLI
+  finds whichever bakers are installed via their package.json flatland.bake
+  manifest, so consumers install only the baker they need.
+  Files: docs/src/content/docs/examples/hit-test.mdx, docs/src/content/docs/guides/baking.mdx, packages/alphamap/README.md, packages/alphamap/package.json, packages/alphamap/src/bake.node.test.ts, packages/alphamap/src/bake.node.ts, packages/alphamap/src/cli.ts, packages/alphamap/src/descriptor.ts, packages/alphamap/src/index.ts, packages/alphamap/src/node.ts, packages/alphamap/tsconfig.json, packages/alphamap/tsup.config.ts, packages/normals/package.json, packages/normals/src/alphaBake.node.ts, packages/normals/src/alphaBake.test.ts, packages/normals/src/alphaCli.ts, packages/three-flatland/src/events/resolveAlphaMap.ts, pnpm-lock.yaml, pnpm-workspace.yaml
+  Stats: 19 files changed, 283 insertions(+), 121 deletions(-)
+
+  ### f48d546b9a12b1b1ec839f9dd70d70226dd4ac0c
+
+  feat: register flatland-bake alpha baker writing stamped .alpha.png sidecars
+  Files: packages/normals/package.json, packages/normals/src/alphaBake.node.ts, packages/normals/src/alphaBake.test.ts, packages/normals/src/alphaCli.ts
+  Stats: 4 files changed, 113 insertions(+)
+
+- 6caf0f8: > Branch: worktree-events-system
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/125
+
+  ### c20a94769ce8028c3ae08efc0570e8f00610d5ef
+
+  feat: register flatland-bake alpha baker writing stamped .alpha.png sidecars
+  Files: packages/normals/package.json, packages/normals/src/alphaBake.node.ts, packages/normals/src/alphaBake.test.ts, packages/normals/src/alphaCli.ts
+  Stats: 4 files changed, 113 insertions(+)
+
+- 192774c: > Branch: preview/tools-combined
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/172
+
+  ## Normal Baker schema
+  - New `NormalSourceDescriptor` JSON Schema + `validateNormalDescriptor()` (in `@three-flatland/schemas/normal-descriptor`), following the atlas schema's conventions: hand-authored `packages/normals/src/descriptor.ts` type stays authoritative, schema conforms to it, and the schema is published to `docs/public/schemas/normal-descriptor.v1.json` via `pnpm sync:docs:schemas` — kept out of `gen:types` so the browser-safe normals bundle never pulls in Ajv
+  - Tightened integer constraints (x/y/w/h) and synced the published docs schema copy, with new invalid-fixture tests (fractional x/y/w/h) in both the schemas validator suite and the normals type<->schema parity suite
+
+  ## Normal Baker editor (VSCode)
+  - Added a per-field "reset to inherited" affordance (bump/direction/pitch/strength/elevation) in `RegionPropertiesPanel`, restoring the ability to clear an explicit field override that was lost when normalize-on-save was reversed
+  - Extracted the bake/write/rename/cleanup sequence out of `sidecar.ts` into a pure, unit-testable `atomicPublish.ts`; covers the success path plus three injected-failure paths, confirming temp files are cleaned up and final files are never touched on error
+  - Verified the elevation preview formula against the runtime lighting implementation (`DefaultLightEffect.ts`); confirmed exact match and documented the one known divergence (positional vs. orbit-direction XY)
+  - Strengthened the e2e save-round-trip spec with exact PNG tEXt-stamp hash equality and an independently-derived pixel check against a real fixture region
+  - `RegionListPanel`'s raw reorder buttons converted to `ToolbarButton` for design-system compliance
+
+  ## Summary
+
+  Adds a JSON Schema + validator for the Normal Baker's descriptor format (mirroring the atlas schema pattern) and hardens the Normal Baker editor: a reset-to-inherited affordance, an atomically-tested bake/write/rename pipeline, verified elevation math, and stricter round-trip test coverage.
+
 ## 0.1.0-alpha.2
 
 ### Minor Changes
