@@ -33,8 +33,8 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "three": "catalog:",
-    "@react-three/fiber": "catalog:"
+    "@react-three/fiber": "catalog:",
+    "three": "catalog:"
   },
   "peerDependenciesMeta": {
     "@react-three/fiber": {
@@ -42,13 +42,13 @@
     }
   },
   "dependencies": {
-    "three-flatland": "workspace:*",
-    "@three-flatland/nodes": "workspace:*"
+    "@three-flatland/nodes": "workspace:*",
+    "three-flatland": "workspace:*"
   },
   "devDependencies": {
+    "@react-three/fiber": "catalog:",
     "@types/three": "catalog:",
-    "three": "catalog:",
-    "@react-three/fiber": "catalog:"
+    "three": "catalog:"
   },
   "keywords": [
     "three.js",
@@ -61,10 +61,5 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/presets"
-  },
-  "nx": {
-    "tags": [
-      "scope:consumer"
-    ]
   }
 }

@@ -59,16 +59,16 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@three-flatland/bake": "workspace:*",
+    "@jsquash/avif": "catalog:",
     "@jsquash/png": "catalog:",
     "@jsquash/webp": "catalog:",
-    "@jsquash/avif": "catalog:",
+    "@three-flatland/bake": "workspace:*",
     "uwasi": "catalog:"
   },
   "devDependencies": {
+    "@types/three": "catalog:",
     "binaryen": "^123.0.0",
-    "three": "catalog:",
-    "@types/three": "catalog:"
+    "three": "catalog:"
   },
   "flatland": {
     "bake": [
@@ -77,11 +77,6 @@
         "description": "Encode image to PNG/WebP/AVIF/KTX2",
         "entry": "./dist/cli.js"
       }
-    ]
-  },
-  "nx": {
-    "tags": [
-      "scope:sibling"
     ]
   }
 }

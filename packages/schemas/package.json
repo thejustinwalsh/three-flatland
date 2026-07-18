@@ -35,10 +35,5 @@
   },
   "devDependencies": {
     "ts-json-schema-generator": "catalog:"
-  },
-  "nx": {
-    "tags": [
-      "scope:foundation"
-    ]
   }
 }

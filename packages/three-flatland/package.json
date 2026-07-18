@@ -194,11 +194,11 @@
   },
   "devDependencies": {
     "@react-three/fiber": "catalog:",
+    "@three-flatland/atlas": "workspace:*",
     "@types/react": "catalog:",
     "@types/three": "catalog:",
     "react": "catalog:",
-    "three": "catalog:",
-    "@three-flatland/atlas": "workspace:*"
+    "three": "catalog:"
   },
   "keywords": [
     "three.js",
@@ -215,10 +215,5 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/three-flatland"
-  },
-  "nx": {
-    "tags": [
-      "scope:composer"
-    ]
   }
 }
