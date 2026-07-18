@@ -3,7 +3,7 @@
   "package": "@three-flatland/skia",
   "version": "0.1.0-alpha.3",
   "artifacts": {
-    "skia-gl/skia-gl.wasm": "sha256:e7c9ad7f785e6814143f8f0476407141e4772e06a3fe35f1eb1347ebe565946d",
-    "skia-wgpu/skia-wgpu.wasm": "sha256:8cbe0d7f34d2e01debb57f97c54e3fec56fd4a17b0313c9923d649eabea0395e"
+    "lib/skia-gl.wasm": "sha256:e7c9ad7f785e6814143f8f0476407141e4772e06a3fe35f1eb1347ebe565946d",
+    "lib/skia-wgpu.wasm": "sha256:8cbe0d7f34d2e01debb57f97c54e3fec56fd4a17b0313c9923d649eabea0395e"
   }
 }

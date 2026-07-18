@@ -18,12 +18,15 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   sourcemap: true,
-  clean: false, // WASM artifacts live in dist/ alongside TS output — don't wipe them
+  clean: false, // committed WASM lives in lib/; nothing to protect in dist, but keep parity
   unbundle: true,
   fixedExtension: false,
   outDir: 'dist',
-  // Mirror dist/ off src/ts (so src/ts/index.ts -> dist/index.js), matching the exports.
-  root: 'src/ts',
+  // Mirror dist/ off src (so src/ts/index.ts -> dist/ts/index.js). Keeping the `ts/`
+  // segment makes built files the SAME depth as their source, so a `new URL('../../lib/…',
+  // import.meta.url)` asset ref resolves to <pkg>/lib in BOTH source (via the `source`
+  // condition) and the published dist — matching @three-flatland/image's layout.
+  root: 'src',
   // `/\.json$/` keeps ./wgpu-layouts.json external (referenced at runtime, copied
   // to dist below) rather than emitted as a chunk — unbundle can't name it.
   deps: { neverBundle: ['three', 'react', '@react-three/fiber', /\.json$/] },
@@ -31,7 +34,7 @@ export default defineConfig({
     // Copy JSON imported at runtime but not emitted by the unbundled build.
     'build:done'() {
       const src = resolve(__dirname, 'src/ts/wgpu-layouts.json')
-      const dst = resolve(__dirname, 'dist/wgpu-layouts.json')
+      const dst = resolve(__dirname, 'dist/ts/wgpu-layouts.json')
       if (existsSync(src)) {
         cpSync(src, dst)
       }

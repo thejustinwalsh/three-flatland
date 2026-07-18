@@ -40,6 +40,9 @@ import { canBuildWasm, fetchPrebuiltWasm } from "./prebuilt-wasm.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(__dirname, "..");
 const DIST = resolve(PKG_ROOT, "dist");
+// Committed WASM artifacts live in lib/ (tracked, shipped, never wiped by `clean`).
+// dist/ still holds build intermediates (.opt.wasm) and is gitignored.
+const LIB = resolve(PKG_ROOT, "lib");
 
 const args = process.argv.slice(2);
 const glOnly = args.includes("--gl-only");
@@ -154,8 +157,8 @@ if (!hasWasmOpt) {
 const variants = glOnly ? ["gl"] : wgpuOnly ? ["wgpu"] : ["gl", "wgpu"];
 
 if (skipIfFresh) {
-  const glFresh = !variants.includes("gl") || existsSync(resolve(DIST, "skia-gl/skia-gl.wasm"));
-  const wgpuFresh = !variants.includes("wgpu") || existsSync(resolve(DIST, "skia-wgpu/skia-wgpu.wasm"));
+  const glFresh = !variants.includes("gl") || existsSync(resolve(LIB, "skia-gl.wasm"));
+  const wgpuFresh = !variants.includes("wgpu") || existsSync(resolve(LIB, "skia-wgpu.wasm"));
   if (glFresh && wgpuFresh) {
     console.log("WASM artifacts are fresh, skipping build.");
     process.exit(0);
@@ -171,7 +174,7 @@ if (!canBuildWasm()) {
   console.warn("\n⚠ Zig cannot link a native binary on this host — building WASM from source is not possible here.");
   console.warn("  Known cause: macOS 26.4+/27 dropped the arm64 libSystem slice (ziglang/zig#31658).");
   console.warn("  Falling back to the CI-published prebuilt WASM. Edited skia sources? Build on Linux/CI to pick them up.");
-  if (!fetchPrebuiltWasm(variants, { dist: DIST })) {
+  if (!fetchPrebuiltWasm(variants)) {
     console.error("\n✗ No prebuilt WASM available to fall back to — build on Linux/CI or fix the local Zig toolchain.");
     process.exit(1);
   }
@@ -182,8 +185,9 @@ if (!canBuildWasm()) {
 // ── Ensure dist directories ──
 
 for (const v of variants) {
-  mkdirSync(resolve(DIST, `skia-${v}`), { recursive: true });
+  mkdirSync(resolve(DIST, `skia-${v}`), { recursive: true }); // intermediates (.opt.wasm)
 }
+mkdirSync(LIB, { recursive: true }); // final committed artifacts
 
 // Step 2a: Generate struct layouts from Dawn header (Zig comptime → JSON)
 if (hasCommand("wasmtime")) {
@@ -228,7 +232,6 @@ for (const variant of variants) {
   const name = `skia-${variant}`;
   const wasmRaw = resolve(PKG_ROOT, `zig-out/bin/${name}.wasm`);
   const wasmOpt = resolve(DIST, `${name}/${name}.opt.wasm`);
-  const outDir = resolve(DIST, `${name}`);
 
   if (!existsSync(wasmRaw)) {
     console.error(`Expected ${wasmRaw} but not found. Zig build may have failed.`);
@@ -243,10 +246,10 @@ for (const variant of variants) {
     run(`wasm-opt -Oz --strip-debug --enable-tail-call --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-multivalue --enable-extended-const --enable-exception-handling --enable-simd -o ${wasmOpt} ${wasmRaw}`);
   }
 
-  // Step 4: Copy WASM to dist
+  // Step 4: Copy final WASM to lib/ (the committed, shipped location)
   const { copyFileSync } = await import("node:fs");
-  copyFileSync(wasmInput, resolve(outDir, `${name}.wasm`));
-  console.log(`\n  Copied ${name}.wasm to ${outDir}/`);
+  copyFileSync(wasmInput, resolve(LIB, `${name}.wasm`));
+  console.log(`\n  Copied ${name}.wasm to lib/`);
 }
 
 console.log("\nWASM build complete.");

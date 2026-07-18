@@ -469,10 +469,10 @@ function buildWasm(glOnly = false, wgpuOnly = false, skipIfFresh = false) {
 
   // Report output
   for (const variant of glOnly ? ["gl"] : wgpuOnly ? ["wgpu"] : ["gl", "wgpu"]) {
-    const wasmPath = resolve(PKG_ROOT, `dist/skia-${variant}/skia-${variant}.wasm`);
+    const wasmPath = resolve(PKG_ROOT, `lib/skia-${variant}.wasm`);
     if (existsSync(wasmPath)) {
       const size = (readFileSync(wasmPath).byteLength / 1024).toFixed(0);
-      ok(`dist/skia-${variant}/skia-${variant}.wasm (${size} KB)`);
+      ok(`lib/skia-${variant}.wasm (${size} KB)`);
     }
   }
 
@@ -499,7 +499,7 @@ async function main() {
   if (ensure) {
     const variants = glOnly ? ["gl"] : wgpuOnly ? ["wgpu"] : ["gl", "wgpu"];
     const allFresh = variants.every((v) =>
-      existsSync(resolve(PKG_ROOT, `dist/skia-${v}/skia-${v}.wasm`)),
+      existsSync(resolve(PKG_ROOT, `lib/skia-${v}.wasm`)),
     );
     if (allFresh) {
       // WASM exists — just verify tools + submodule are present (fast path)
@@ -559,7 +559,7 @@ async function main() {
     heading("Prebuilt WASM fallback");
     warn("Zig can't link a native binary on this host (ziglang/zig#31658).");
     warn("Fetching the CI-published prebuilt WASM instead of building from source.");
-    if (fetchPrebuiltWasm(variants, { dist: resolve(PKG_ROOT, "dist") })) {
+    if (fetchPrebuiltWasm(variants)) {
       ok("Prebuilt WASM in place. Edited skia sources? Build on Linux/CI to pick them up.");
       return;
     }

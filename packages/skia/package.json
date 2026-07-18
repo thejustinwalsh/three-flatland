@@ -7,54 +7,54 @@
     ".": {
       "source": "./src/ts/index.ts",
       "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
+        "types": "./dist/ts/index.d.ts",
+        "default": "./dist/ts/index.js"
       }
     },
     "./three": {
       "source": "./src/ts/three/index.ts",
       "import": {
-        "types": "./dist/three/index.d.ts",
-        "default": "./dist/three/index.js"
+        "types": "./dist/ts/three/index.d.ts",
+        "default": "./dist/ts/three/index.js"
       }
     },
     "./three/*": {
       "source": "./src/ts/three/*.ts",
       "import": {
-        "types": "./dist/three/*.d.ts",
-        "default": "./dist/three/*.js"
+        "types": "./dist/ts/three/*.d.ts",
+        "default": "./dist/ts/three/*.js"
       }
     },
     "./react": {
       "source": "./src/ts/react/index.ts",
       "import": {
-        "types": "./dist/react/index.d.ts",
-        "default": "./dist/react/index.js"
+        "types": "./dist/ts/react/index.d.ts",
+        "default": "./dist/ts/react/index.js"
       }
     },
     "./react/*": {
       "source": "./src/ts/react/*.ts",
       "import": {
-        "types": "./dist/react/*.d.ts",
-        "default": "./dist/react/*.js"
+        "types": "./dist/ts/react/*.d.ts",
+        "default": "./dist/ts/react/*.js"
       }
     },
-    "./wasm": "./dist/skia-gl/skia-gl.wasm",
-    "./wasm/gl": "./dist/skia-gl/skia-gl.wasm",
-    "./wasm/wgpu": "./dist/skia-wgpu/skia-wgpu.wasm"
+    "./wasm": "./lib/skia-gl.wasm",
+    "./wasm/gl": "./lib/skia-gl.wasm",
+    "./wasm/wgpu": "./lib/skia-wgpu.wasm"
   },
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/ts/index.js",
+  "module": "./dist/ts/index.js",
+  "types": "./dist/ts/index.d.ts",
   "bin": {
     "skia-wasm": "./bin/copy-wasm.mjs"
   },
   "files": [
     "dist",
-    "!dist/**/*-debug.wasm",
-    "!dist/**/*-ReleaseFast.wasm",
-    "!dist/**/*-ReleaseSmall.wasm",
-    "!dist/**/*.opt.wasm",
+    "!dist/**/*.wasm",
+    "lib/skia-gl.wasm",
+    "lib/skia-wgpu.wasm",
+    "lib/wasi_snapshot_preview1.wasm",
     "bin",
     "LICENSE",
     "THIRD_PARTY_LICENSES"
@@ -64,7 +64,7 @@
     "skia:setup": "node scripts/setup.mjs",
     "skia:check": "node scripts/setup.mjs --check",
     "skia:tools": "node scripts/setup.mjs --tools",
-    "build": "node scripts/setup.mjs --ensure && tsdown",
+    "build": "tsdown",
     "build:wasm": "node scripts/build-wasm.mjs",
     "skia:fetch-wasm": "node scripts/prebuilt-wasm.mjs",
     "build:wasm:gl": "node scripts/build-wasm.mjs --gl-only",
@@ -163,10 +163,5 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/skia"
-  },
-  "nx": {
-    "tags": [
-      "scope:sibling"
-    ]
   }
 }

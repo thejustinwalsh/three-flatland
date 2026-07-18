@@ -27,7 +27,6 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PKG_ROOT = resolve(__dirname, '..')
-const DIST = resolve(PKG_ROOT, 'dist')
 const TOOLS_BIN = resolve(PKG_ROOT, '.tools/bin')
 const MANIFEST = resolve(PKG_ROOT, 'prebuilt-wasm.json')
 
@@ -67,21 +66,21 @@ function sha256(path) {
 
 /**
  * Fetch the CI-published WASM from npm (pinned in prebuilt-wasm.json), verify
- * each artifact's sha256, and write it into dist/. Returns true on success.
+ * each artifact's sha256, and write it into lib/. Returns true on success.
  *
  * Note: the prebuilt is keyed by a published version, not by a hash of the
  * local skia sources. If you've edited skia and can't build locally, this
  * silently serves the LAST published binary — build on Linux/CI to pick up
  * source changes. (A source-hash staleness guard is a reasonable follow-up.)
  */
-export function fetchPrebuiltWasm(variants = ['gl', 'wgpu'], { dist = DIST } = {}) {
+export function fetchPrebuiltWasm(variants = ['gl', 'wgpu'], { root = PKG_ROOT } = {}) {
   if (!existsSync(MANIFEST)) {
     console.error(`  no prebuilt manifest at ${MANIFEST}`)
     return false
   }
   const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'))
   const spec = `${manifest.package}@${manifest.version}`
-  const wanted = variants.map((v) => `skia-${v}/skia-${v}.wasm`)
+  const wanted = variants.map((v) => `lib/skia-${v}.wasm`)
   if (wanted.length === 0) {
     console.error('  no variants requested')
     return false
@@ -106,10 +105,10 @@ export function fetchPrebuiltWasm(variants = ['gl', 'wgpu'], { dist = DIST } = {
       })
     )
     const tarball = resolve(tmp, packed[0].filename)
-    const members = wanted.map((a) => `package/dist/${a}`)
+    const members = wanted.map((a) => `package/${a}`)
     execFileSync('tar', ['-xzf', tarball, '-C', tmp, ...members], { cwd: tmp, timeout: 30_000 })
     for (const artifact of wanted) {
-      const src = resolve(tmp, 'package/dist', artifact)
+      const src = resolve(tmp, 'package', artifact)
       if (!existsSync(src)) {
         console.error(`  ${artifact} missing from ${spec}`)
         return false
@@ -122,8 +121,8 @@ export function fetchPrebuiltWasm(variants = ['gl', 'wgpu'], { dist = DIST } = {
         )
         return false
       }
-      mkdirSync(resolve(dist, dirname(artifact)), { recursive: true })
-      copyFileSync(src, resolve(dist, artifact))
+      mkdirSync(resolve(root, dirname(artifact)), { recursive: true })
+      copyFileSync(src, resolve(root, artifact))
       console.log(`  ok ${artifact} (sha256 verified)`)
     }
     return true

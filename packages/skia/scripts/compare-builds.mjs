@@ -99,8 +99,8 @@ function buildOurs() {
   console.log(' done')
 
   return {
-    gl: measureVariant('skia (GL)', resolve(PKG_ROOT, 'dist/skia-gl/skia-gl.wasm')),
-    wgpu: measureVariant('skia (WebGPU)', resolve(PKG_ROOT, 'dist/skia-wgpu/skia-wgpu.wasm')),
+    gl: measureVariant('skia (GL)', resolve(PKG_ROOT, 'lib/skia-gl.wasm')),
+    wgpu: measureVariant('skia (WebGPU)', resolve(PKG_ROOT, 'lib/skia-wgpu.wasm')),
   }
 }
 
