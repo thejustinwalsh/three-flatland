@@ -56,6 +56,11 @@ export type ZzfxSessionState = {
   setStyles: (styles: string[]) => void
   save: () => Promise<void>
   saving: boolean
+  /** Monotonic count of committed saves. Increments only after the host's
+   * zzfx/save response resolves (which awaits applyEdit), so it's a causal
+   * "the edit landed" signal — ticking even on a no-op/canonicalizing save,
+   * which `dirty` doesn't. e2e awaits its increment instead of racing a read. */
+  saveGeneration: number
   saveError: string | null
   /** From `ZzfxInitPayload.loadError` (#148 Z7b part 2) — set when a
    * variable-spread call's initializer couldn't be read as a plain number
@@ -140,6 +145,11 @@ export function useZzfxSession(): ZzfxSessionState {
   const [styles, setStyles] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // Monotonic count of committed saves — a causal completion signal (the host
+  // awaits applyEdit before its zzfx/save response resolves). Unlike `dirty`,
+  // it ticks even on a no-op/canonicalizing save, so e2e can await a real
+  // "the edit landed" event instead of racing a bare file read.
+  const [saveGeneration, setSaveGeneration] = useState(0)
   const [lmAvailable, setLmAvailable] = useState(false)
   const [presets, setPresets] = useState<Record<string, { label: string; params: number[] }[]>>({})
   const [generating, setGenerating] = useState(false)
@@ -254,6 +264,7 @@ export function useZzfxSession(): ZzfxSessionState {
       }
       await bridge.request<ZzfxSaveResult>('zzfx/save', payload)
       setDirty(false)
+      setSaveGeneration((n) => n + 1)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -335,6 +346,7 @@ export function useZzfxSession(): ZzfxSessionState {
     setStyles,
     save,
     saving,
+    saveGeneration,
     saveError,
     loadError,
     lmAvailable,
