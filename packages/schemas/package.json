@@ -52,7 +52,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "ajv": "^8.17.1"
+    "ajv": "catalog:"
   },
   "devDependencies": {
     "ts-json-schema-generator": "catalog:"

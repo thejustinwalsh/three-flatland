@@ -63,3 +63,5 @@ catalog:
   zundo: ^2.3.0
   zustand: ^5.0.0
   ts-json-schema-generator: ^2.9.0
+  # JSON Schema validator — packages/schemas runtime dep (Ajv 2020 dialect).
+  ajv: ^8.17.1

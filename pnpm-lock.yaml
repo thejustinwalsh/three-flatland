@@ -51,6 +51,9 @@ catalogs:
     '@zzfx-studio/zzfxm':
       specifier: ^0.1.5
       version: 0.1.5
+    ajv:
+      specifier: ^8.17.1
+      version: 8.20.0
     koota:
       specifier: ^0.6.5
       version: 0.6.5
@@ -1547,7 +1550,7 @@ importers:
   packages/schemas:
     dependencies:
       ajv:
-        specifier: '>=8.18.0 <9'
+        specifier: 'catalog:'
         version: 8.20.0
     devDependencies:
       ts-json-schema-generator:
