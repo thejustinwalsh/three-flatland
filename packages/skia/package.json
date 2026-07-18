@@ -210,5 +210,42 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/skia"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/ts/index.d.ts",
+          "default": "./dist/ts/index.js"
+        }
+      },
+      "./three": {
+        "import": {
+          "types": "./dist/ts/three/index.d.ts",
+          "default": "./dist/ts/three/index.js"
+        }
+      },
+      "./three/*": {
+        "import": {
+          "types": "./dist/ts/three/*.d.ts",
+          "default": "./dist/ts/three/*.js"
+        }
+      },
+      "./react": {
+        "import": {
+          "types": "./dist/ts/react/index.d.ts",
+          "default": "./dist/ts/react/index.js"
+        }
+      },
+      "./react/*": {
+        "import": {
+          "types": "./dist/ts/react/*.d.ts",
+          "default": "./dist/ts/react/*.js"
+        }
+      },
+      "./wasm": "./lib/skia-gl.wasm",
+      "./wasm/gl": "./lib/skia-gl.wasm",
+      "./wasm/wgpu": "./lib/skia-wgpu.wasm"
+    }
   }
 }

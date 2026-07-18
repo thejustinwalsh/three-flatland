@@ -60,6 +60,9 @@ jobs:
       - name: Verify react subpath wrappers
         run: pnpm sync:react:verify
 
+      - name: Verify publish exports (dist-only publishConfig)
+        run: pnpm sync:publish-exports:verify
+
       - name: Verify source VERSION constants
         run: pnpm sync:versions:verify
 

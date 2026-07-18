@@ -63,5 +63,13 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/atlas"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
   }
 }

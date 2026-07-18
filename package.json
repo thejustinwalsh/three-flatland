@@ -36,6 +36,8 @@
     "bake:fonts": "node scripts/bake-example-fonts.ts",
     "sync:react": "node scripts/sync-react-subpaths.ts",
     "sync:react:verify": "node scripts/sync-react-subpaths.ts --verify",
+    "sync:publish-exports": "node scripts/sync-publish-exports.ts",
+    "sync:publish-exports:verify": "node scripts/sync-publish-exports.ts --verify",
     "sync:examples": "node scripts/sync-examples.ts",
     "sync:examples:verify": "node scripts/sync-examples.ts --verify",
     "validate:skills": "pnpm --filter @three-flatland/skills validate",
