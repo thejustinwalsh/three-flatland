@@ -42,5 +42,10 @@
     "rehype": "^13.0.2",
     "unist-util-visit": "^5.1.0",
     "zod": "^3.23.8"
+  },
+  "nx": {
+    "tags": [
+      "scope:docs"
+    ]
   }
 }
