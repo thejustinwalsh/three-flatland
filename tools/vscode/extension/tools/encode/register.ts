@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import { EncodeCustomEditorProvider, openEncodePanel } from './host'
-import { isToolEnabled } from '../../toolRegistry'
+import { isToolEnabled } from '../../toolEnabled'
 
 export function registerEncodeTool(context: vscode.ExtensionContext): vscode.Disposable {
   const disposables: vscode.Disposable[] = []

@@ -9,7 +9,7 @@
     "typescript/consistent-type-imports": ["error", { "prefer": "type-imports", "fixStyle": "inline-type-imports" }],
     "typescript/no-import-type-side-effects": "error",
     "react-hooks/exhaustive-deps": "warn",
-    "import/no-cycle": "warn"
+    "import/no-cycle": "error"
   },
   "ignorePatterns": [
     "**/node_modules/**",
