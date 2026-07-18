@@ -1,11 +1,11 @@
 /**
  * Regenerates the pre-baked slug font assets for both slug-text examples.
  *
- * Runs the slug-bake CLI (via tsx against the source) so no prior build step
- * is required. Output goes to both example public directories so the dev server
- * and the committed assets stay in sync.
+ * Runs the built slug-bake CLI (dist/cli.js) via node. Output goes to both
+ * example public directories so the dev server and the committed assets stay
+ * in sync.
  *
- * Usage: pnpm bake:fonts
+ * Usage: pnpm --filter @three-flatland/slug build && pnpm bake:fonts
  *
  * Fonts baked:
  *   Inter-Regular.ttf  --range latin+  → Inter-Regular.slug.glb (~3.4 MB)
@@ -23,7 +23,7 @@ const EXAMPLE_DIRS = [
   join(ROOT, 'examples', 'react', 'slug-text', 'public'),
 ] as const
 
-const CLI = join(ROOT, 'packages', 'slug', 'src', 'cli.ts')
+const CLI = join(ROOT, 'packages', 'slug', 'dist', 'cli.js')
 
 interface BakeConfig {
   ttf: string
@@ -44,8 +44,7 @@ const FONTS: BakeConfig[] = [
   },
 ]
 
-/** Run `cmd` with an explicit args array, inheriting stdio, in ROOT. Uses a
- *  shell only on Windows so the `tsx.cmd` shim resolves; Unix stays shell-free
+/** Run `cmd` with an explicit args array, inheriting stdio, in ROOT.
  *  (paths with spaces are handled by the args array). */
 function run(cmd: string, args: string[]): void {
   console.log(`  $ ${cmd} ${args.join(' ')}`)
@@ -59,6 +58,11 @@ function ensureDir(dir: string): void {
 function main(): void {
   console.log('Baking example slug fonts...\n')
 
+  if (!existsSync(CLI)) {
+    console.error(`Missing built slug CLI: ${CLI}\n  Build it first: pnpm --filter @three-flatland/slug build`)
+    process.exit(1)
+  }
+
   // Use the first example dir as the bake destination, then copy to the rest.
   const primaryDir = EXAMPLE_DIRS[0]
 
@@ -71,7 +75,7 @@ function main(): void {
 
     const outputBase = join(primaryDir, font.output)
     console.log(`Baking ${font.ttf} (--range ${font.range})...`)
-    run('tsx', [CLI, ttfPath, '--range', font.range, '--output', outputBase])
+    run('node', [CLI, ttfPath, '--range', font.range, '--output', outputBase])
 
     const glbFile = `${font.output}.slug.glb`
     const srcGlb = join(primaryDir, glbFile)

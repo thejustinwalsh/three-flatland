@@ -30,7 +30,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSy
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { GEM_ORDER, GEM_OVERRIDES, gemForExample, type Gem } from '../examples/_shared/gems.config.js'
+import { GEM_ORDER, GEM_OVERRIDES, gemForExample, type Gem } from '../examples/_shared/gems.config.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)

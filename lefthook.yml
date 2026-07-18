@@ -15,7 +15,7 @@ pre-commit:
       stage_fixed: true
     sync-pack-files:
       glob: "{examples,minis}/**/package.json"
-      run: pnpm exec tsx scripts/sync-pack.ts --files {staged_files}
+      run: node scripts/sync-pack.ts --files {staged_files}
       stage_fixed: true
     sync-lockfile:
       glob: "{pnpm-workspace.yaml,**/package.json}"
@@ -23,7 +23,7 @@ pre-commit:
       stage_fixed: true
     sync-react-subpaths:
       glob: "{packages/three-flatland/src/index.ts,packages/three-flatland/src/*/index.ts,packages/skia/src/ts/three/index.ts}"
-      run: pnpm exec tsx scripts/sync-react-subpaths.ts
+      run: node scripts/sync-react-subpaths.ts
       stage_fixed: true
     sync-examples:
       # Re-sync gem-background helpers + per-example gem.ts whenever the
@@ -35,4 +35,4 @@ pre-commit:
       stage_fixed: true
     check-skia-pin:
       glob: "packages/skia/third_party/skia"
-      run: pnpm exec tsx scripts/check-skia-pin.ts
+      run: node scripts/check-skia-pin.ts
