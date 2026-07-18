@@ -3,6 +3,7 @@
   "maxCacheSize": "2GB",
   "analytics": false,
   "neverConnectToCloud": true,
+  "parallel": 6,
   "namedInputs": {
     "default": ["{projectRoot}/**/*", "sharedGlobals"],
     "production": [
