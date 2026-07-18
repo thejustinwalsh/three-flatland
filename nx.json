@@ -41,7 +41,7 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "continuous": true
     },
     "clean": {
       "cache": false
