@@ -19,27 +19,6 @@ jobs:
   changes:
     uses: ./.github/workflows/changes.yml
 
-  # Rebuild + commit skia's WASM binaries ONLY when their native inputs change
-  # (Zig/skia sources), then commit them back to the branch. TS-only changes
-  # skip this and reuse the committed lib/*.wasm. GITHUB_TOKEN pushes don't
-  # retrigger CI, so no loop. See commit-artifact.yml.
-  skia-wasm:
-    needs: changes
-    if: |
-      !cancelled() &&
-      needs.changes.outputs.changeset_only != 'true' &&
-      (needs.changes.outputs.skia_native == 'true' ||
-       needs.changes.outputs.ci == 'true')
-    permissions:
-      contents: write
-    uses: ./.github/workflows/commit-artifact.yml
-    with:
-      project: '@three-flatland/skia'
-      target: 'build:wasm'
-      artifact-paths: 'packages/skia/lib'
-      artifact-name: 'skia-wasm'
-      setup-zig: true
-
   build:
     needs: changes
     if: |
@@ -55,10 +34,12 @@ jobs:
     strategy:
       matrix:
         include:
-          # Node 24 (current LTS) is the floor — engines is >=24, so we no longer
-          # matrix the previous LTS (22).
-          - node-version: '24'
+          # Always build on current LTS AND the previous LTS — the hedge that we
+          # still work on the last node version.
+          - node-version: lts/*
             node-tag: current
+          - node-version: lts/-1
+            node-tag: previous
     uses: ./.github/workflows/build.yml
     with:
       node-version: ${{ matrix.node-version }}

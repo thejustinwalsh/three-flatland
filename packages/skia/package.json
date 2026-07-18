@@ -65,29 +65,30 @@
       "scope:sibling"
     ],
     "targets": {
-      "build:wasm": {
+      "build": {
         "executor": "nx:run-commands",
         "cache": true,
         "inputs": [
+          "production",
+          "^production",
           "{projectRoot}/build.zig",
           "{projectRoot}/build.zig.zon",
           "{projectRoot}/src/zig/**/*",
           "{projectRoot}/patches/**/*",
           "{projectRoot}/vendor/**/*",
           "{projectRoot}/wit/**/*",
-          "{projectRoot}/scripts/build-wasm.mjs",
-          "{projectRoot}/scripts/setup.mjs",
-          "{projectRoot}/package.json",
+          "{projectRoot}/scripts/**/*",
           {
             "runtime": "git rev-parse HEAD:packages/skia/third_party/skia"
           }
         ],
         "outputs": [
+          "{projectRoot}/dist",
           "{projectRoot}/lib/skia-gl.wasm",
           "{projectRoot}/lib/skia-wgpu.wasm"
         ],
         "options": {
-          "command": "node scripts/build-wasm.mjs",
+          "command": "node scripts/setup.mjs --ensure && tsdown",
           "cwd": "{projectRoot}"
         }
       },
@@ -111,7 +112,7 @@
     "skia:setup": "node scripts/setup.mjs",
     "skia:check": "node scripts/setup.mjs --check",
     "skia:tools": "node scripts/setup.mjs --tools",
-    "build": "tsdown",
+    "build": "node scripts/setup.mjs --ensure && tsdown",
     "build:wasm": "node scripts/build-wasm.mjs",
     "skia:fetch-wasm": "node scripts/prebuilt-wasm.mjs",
     "build:wasm:gl": "node scripts/build-wasm.mjs --gl-only",
