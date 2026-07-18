@@ -1,11 +1,27 @@
 {
   "enabledPlugins": {
     "typescript-lsp@claude-plugins-official": true,
-    "restruct@thejustinwalsh": true
+    "restruct@thejustinwalsh": true,
+    "nx@nx-claude-plugins": true
   },
   "includeCoAuthoredBy": false,
   "attribution": {
     "commits": false,
     "pullRequests": false
+  },
+  "extraKnownMarketplaces": {
+    "nx-claude-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "nrwl/nx-ai-agents-config"
+      }
+    }
+  },
+  "sandbox": {
+    "network": {
+      "allowedDomains": [
+        "www.google-analytics.com"
+      ]
+    }
   }
 }
