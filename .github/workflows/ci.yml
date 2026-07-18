@@ -77,6 +77,19 @@ jobs:
        needs.changes.outputs.ci == 'true')
     uses: ./.github/workflows/smoke.yml
 
+  # Real external-consumer smoke — runs ONLY after every package build is green
+  # (needs: build), and restores the build job's Nx cache instead of rebuilding.
+  wild-consumer:
+    needs: [changes, build]
+    if: |
+      !cancelled() && needs.build.result == 'success' &&
+      needs.changes.outputs.changeset_only != 'true' &&
+      (needs.changes.outputs.packages == 'true' ||
+       needs.changes.outputs.examples == 'true' ||
+       needs.changes.outputs.configs == 'true' ||
+       needs.changes.outputs.ci == 'true')
+    uses: ./.github/workflows/wild-consumer.yml
+
   size:
     needs: [changes, build]
     if: |
@@ -107,21 +120,22 @@ jobs:
   # stays safe). Not a dependency of `ci-passed`: changeset generation is
   # best-effort and never gates merge.
   changeset:
-    needs: [changes, build, smoke, size, vscode-e2e]
+    needs: [changes, build, smoke, size, vscode-e2e, wild-consumer]
     if: |
       github.event_name == 'pull_request' &&
       needs.changes.outputs.changeset_only != 'true' &&
       needs.build.result == 'success' &&
       needs.smoke.result != 'failure' &&
       needs.size.result != 'failure' &&
-      needs.vscode-e2e.result != 'failure'
+      needs.vscode-e2e.result != 'failure' &&
+      needs.wild-consumer.result != 'failure'
     uses: ./.github/workflows/changeset.yml
     secrets: inherit
 
   ci-passed:
     name: CI passed
     if: always()
-    needs: [changes, build, smoke, size, vscode-e2e]
+    needs: [changes, build, smoke, size, vscode-e2e, wild-consumer]
     runs-on: ubuntu-latest
     steps:
       - name: Gate
@@ -132,7 +146,8 @@ jobs:
               "build:${{ needs.build.result }}" \
               "smoke:${{ needs.smoke.result }}" \
               "size:${{ needs.size.result }}" \
-              "vscode-e2e:${{ needs.vscode-e2e.result }}"; do
+              "vscode-e2e:${{ needs.vscode-e2e.result }}" \
+              "wild-consumer:${{ needs.wild-consumer.result }}"; do
             name="${job_result%%:*}"
             result="${job_result##*:}"
             case "$result" in
