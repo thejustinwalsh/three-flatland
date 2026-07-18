@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Wild-consumer smoke test — proves the packages we PUBLISH actually work for
+ * Consumer smoke test — proves the packages we PUBLISH actually work for
  * someone using them in the wild, before we deploy.
  *
  * For every example pair (examples/{react,three}/<slug>):
@@ -19,7 +19,7 @@
  * green; locally it builds via nx first — a cache hit if already built). It
  * never races a second repo build.
  *
- * Usage: node scripts/wild-consumer-smoke.mjs [--only <slug>] [--no-render]
+ * Usage: node scripts/consumer-smoke.mjs [--only <slug>] [--no-render]
  */
 
 import { execFileSync } from 'node:child_process'
@@ -53,7 +53,7 @@ function publishablePackages() {
 const PKGS = publishablePackages()
 const FLATLAND_NAMES = new Set(PKGS.map((p) => p.name))
 
-console.log(`Wild-consumer smoke — ${PKGS.length} publishable packages`)
+console.log(`consumer smoke — ${PKGS.length} publishable packages`)
 
 // CI runs this only after the build job is green, so packages are built. Locally
 // it's a cache hit if already built. A package that can't build here (skia's
@@ -237,7 +237,7 @@ const skipped = results.filter((r) => r.build === 'skip')
 const failed = results.filter((r) => r.build === 'fail' || (!NO_RENDER && r.build === 'ok' && r.render !== 'ok'))
 const passed = results.length - failed.length - skipped.length
 console.log(`\n${'─'.repeat(60)}`)
-console.log(`Wild-consumer smoke: ${passed} passed, ${failed.length} failed, ${skipped.length} skipped (of ${results.length})`)
+console.log(`Consumer smoke: ${passed} passed, ${failed.length} failed, ${skipped.length} skipped (of ${results.length})`)
 for (const f of failed) console.log(`  ✗ ${f.id} — ${f.build === 'fail' ? 'build' : 'render'} failed`)
 if (unpackable.length) console.log(`  (unpackable packages: ${unpackable.join(', ')})`)
 if (failed.length) {

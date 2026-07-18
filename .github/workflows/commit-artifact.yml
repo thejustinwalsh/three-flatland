@@ -1,0 +1,132 @@
+name: Commit Artifact
+
+# Reusable "build-on-change -> commit binary back" workflow.
+#
+# A package's binary artifact (WASM, baked asset) is a cacheable NX target. This
+# workflow rebuilds it, commits the result back to the branch (via GITHUB_TOKEN,
+# whose pushes do NOT retrigger CI — GitHub's built-in loop guard), and uploads
+# it so the same run's downstream jobs can consume the fresh binary without
+# re-checking-out the commit-back.
+#
+# The build command stays in the package (its NX target); only this
+# orchestration is shared, so package boundaries are respected. One instance per
+# artifact-producing package (skia wasm first). See
+# planning/superpowers/specs/binary-artifacts-unification.md.
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: NX project name (e.g. @three-flatland/skia)
+        required: true
+        type: string
+      target:
+        description: NX target that produces the artifact (e.g. build:wasm)
+        required: true
+        type: string
+      artifact-paths:
+        description: git pathspec to commit + upload (e.g. packages/skia/lib)
+        required: true
+        type: string
+      artifact-name:
+        description: name for the uploaded run artifact
+        required: true
+        type: string
+      setup-zig:
+        description: set up the Zig toolchain + git submodules (WASM packages)
+        default: false
+        type: boolean
+      zig-version:
+        default: '0.15.1'
+        type: string
+      node-version:
+        default: 'lts/*'
+        type: string
+
+jobs:
+  build-and-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the rebuilt binary back to the branch
+    env:
+      NODE_OPTIONS: --max-old-space-size=8192
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: ${{ inputs.setup-zig }}
+          # On a PR check out the head branch (not the detached merge ref) so
+          # the commit-back can push to it; on push, the triggering ref.
+          ref: ${{ github.head_ref || github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'pnpm'
+
+      - name: Setup Zig
+        if: ${{ inputs.setup-zig }}
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ inputs.zig-version }}
+
+      - name: Cache toolchain (.tools)
+        if: ${{ inputs.setup-zig }}
+        uses: actions/cache@v5
+        with:
+          path: packages/skia/.tools
+          key: ${{ runner.os }}-skia-tools-${{ hashFiles('packages/skia/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-skia-tools-
+
+      - name: Cache Nx
+        uses: actions/cache@v5
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-artifact-${{ inputs.artifact-name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-artifact-${{ inputs.artifact-name }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # NX's content hash is the rebuild oracle: unchanged inputs -> cache
+      # restore (no recompile), changed inputs -> recompile. Either way the
+      # artifact ends up on disk. GITHUB_TOKEN authenticates the toolchain
+      # downloads (setup.mjs) so a cold cache doesn't hit the API rate limit.
+      - name: Build artifact
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm nx ${{ inputs.target }} ${{ inputs.project }}
+
+      - name: Commit rebuilt artifact back to branch
+        # BRANCH is passed via env (not inlined) to avoid script injection from
+        # an untrusted branch name (actionlint expression rule).
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          ARTIFACT_PATHS: ${{ inputs.artifact-paths }}
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          NX_TARGET: ${{ inputs.target }}
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$ARTIFACT_PATHS"
+          if git diff --cached --quiet; then
+            echo "Artifact unchanged — nothing to commit."
+          else
+            git commit -m "chore($ARTIFACT_NAME): rebuild via $NX_TARGET [skip ci]"
+            git push origin "HEAD:$BRANCH"
+            echo "Committed + pushed rebuilt $ARTIFACT_NAME."
+          fi
+
+      - name: Upload artifact for downstream jobs
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.artifact-paths }}
+          if-no-files-found: error

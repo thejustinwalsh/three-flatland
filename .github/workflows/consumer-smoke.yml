@@ -1,19 +1,20 @@
-name: Wild Consumer
+name: Consumer Smoke
 
-# Real external-consumer smoke: pnpm pack every publishable package → copy each
-# example OUT of the repo → npm install the tarballs → build + Playwright
-# render-check. Proves the packages we PUBLISH work in the wild before deploy.
+# The smoke test, exercising the REAL published-package flow a consumer would:
+# pnpm pack every publishable package (dist-only via publishConfig) → copy each
+# example OUT of the repo root → npm install the tarballs → build + Playwright
+# render-check. Proves the packages we deploy actually work before we deploy.
 #
-# Gated on `needs: [changes, build]` in ci.yml, so it runs ONLY after every
-# package build is green — and it restores the build job's Nx cache instead of
+# Gated `needs: [changes, build, skia-wasm]` in ci.yml, so it runs only after
+# every package build is green; it restores the build job's Nx cache instead of
 # rebuilding, so the repo is never built again in a race.
 
 on:
   workflow_call:
 
 jobs:
-  wild-consumer:
-    name: Wild-consumer smoke (published tarballs)
+  consumer-smoke:
+    name: Consumer smoke (published tarballs)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -33,6 +34,15 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # If skia's WASM was (re)compiled this run, pack the fresh libs; otherwise
+      # this no-ops and the committed lib/*.wasm are packed.
+      - name: Download freshly-built skia WASM (if any)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: skia-wasm
+          path: packages/skia/lib
 
       # Restore the build job's outputs (keyed on this SHA) so the harness's
       # `nx build` is a cache hit — no second real build of the repo.
@@ -60,5 +70,5 @@ jobs:
       - name: Install Playwright system dependencies
         run: pnpm exec playwright install-deps chromium
 
-      - name: Wild-consumer smoke
-        run: pnpm test:wild
+      - name: Consumer smoke
+        run: pnpm test:consumer

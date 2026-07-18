@@ -19,9 +19,32 @@ jobs:
   changes:
     uses: ./.github/workflows/changes.yml
 
-  build:
+  # Compile skia's WASM (setup.mjs --ensure: patch + GN + source-gen + zig +
+  # wasm-opt) ONLY when its native inputs change, commit lib/*.wasm back to the
+  # branch (GITHUB_TOKEN pushes don't retrigger CI), and upload them so the same
+  # run's build/smoke consume the fresh libs. When skia inputs are unchanged this
+  # skips and the committed libs are reused. See commit-artifact.yml.
+  skia-wasm:
     needs: changes
     if: |
+      !cancelled() &&
+      needs.changes.outputs.changeset_only != 'true' &&
+      (needs.changes.outputs.skia_native == 'true' ||
+       needs.changes.outputs.ci == 'true')
+    permissions:
+      contents: write
+    uses: ./.github/workflows/commit-artifact.yml
+    with:
+      project: '@three-flatland/skia'
+      target: 'build:wasm'
+      artifact-paths: 'packages/skia/lib'
+      artifact-name: 'skia-wasm'
+      setup-zig: true
+
+  build:
+    needs: [changes, skia-wasm]
+    if: |
+      !cancelled() && needs.skia-wasm.result != 'failure' &&
       needs.changes.outputs.changeset_only != 'true' && (
         needs.changes.outputs.packages == 'true' ||
         needs.changes.outputs.minis == 'true' ||
@@ -58,18 +81,20 @@ jobs:
        needs.changes.outputs.ci == 'true')
     uses: ./.github/workflows/smoke.yml
 
-  # Real external-consumer smoke — runs ONLY after every package build is green
-  # (needs: build), and restores the build job's Nx cache instead of rebuilding.
-  wild-consumer:
-    needs: [changes, build]
+  # The smoke test — real published-package consumer flow. Runs ONLY after every
+  # package build is green (needs: build) and skia's libs are ready (skia-wasm),
+  # and restores the build job's Nx cache instead of rebuilding.
+  consumer-smoke:
+    needs: [changes, skia-wasm, build]
     if: |
       !cancelled() && needs.build.result == 'success' &&
+      needs.skia-wasm.result != 'failure' &&
       needs.changes.outputs.changeset_only != 'true' &&
       (needs.changes.outputs.packages == 'true' ||
        needs.changes.outputs.examples == 'true' ||
        needs.changes.outputs.configs == 'true' ||
        needs.changes.outputs.ci == 'true')
-    uses: ./.github/workflows/wild-consumer.yml
+    uses: ./.github/workflows/consumer-smoke.yml
 
   size:
     needs: [changes, build]
@@ -101,7 +126,7 @@ jobs:
   # stays safe). Not a dependency of `ci-passed`: changeset generation is
   # best-effort and never gates merge.
   changeset:
-    needs: [changes, build, smoke, size, vscode-e2e, wild-consumer]
+    needs: [changes, build, smoke, size, vscode-e2e, consumer-smoke]
     if: |
       github.event_name == 'pull_request' &&
       needs.changes.outputs.changeset_only != 'true' &&
@@ -109,14 +134,14 @@ jobs:
       needs.smoke.result != 'failure' &&
       needs.size.result != 'failure' &&
       needs.vscode-e2e.result != 'failure' &&
-      needs.wild-consumer.result != 'failure'
+      needs.consumer-smoke.result != 'failure'
     uses: ./.github/workflows/changeset.yml
     secrets: inherit
 
   ci-passed:
     name: CI passed
     if: always()
-    needs: [changes, build, smoke, size, vscode-e2e, wild-consumer]
+    needs: [changes, build, smoke, size, vscode-e2e, consumer-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Gate
@@ -128,7 +153,7 @@ jobs:
               "smoke:${{ needs.smoke.result }}" \
               "size:${{ needs.size.result }}" \
               "vscode-e2e:${{ needs.vscode-e2e.result }}" \
-              "wild-consumer:${{ needs.wild-consumer.result }}"; do
+              "consumer-smoke:${{ needs.consumer-smoke.result }}"; do
             name="${job_result%%:*}"
             result="${job_result##*:}"
             case "$result" in
