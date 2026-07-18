@@ -55,10 +55,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - node-version: lts/*
+          # Node 24 (current LTS) is the floor — engines is >=24, so we no longer
+          # matrix the previous LTS (22).
+          - node-version: '24'
             node-tag: current
-          - node-version: lts/-1
-            node-tag: previous
     uses: ./.github/workflows/build.yml
     with:
       node-version: ${{ matrix.node-version }}
