@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# Native git pre-commit hook (replaces lefthook — which can't install/run in
+# linked worktrees). Wired via a RELATIVE `core.hooksPath = .githooks`, which
+# git resolves against each worktree's top-level, so it runs everywhere.
+#
+# Mirrors the former lefthook.yml: each check is gated on the staged paths it
+# cares about and re-stages what it rewrites. sync-react-subpaths self-stages
+# (git add inside the script); check-skia-pin is read-only.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Staged (added/copied/modified/renamed) paths, one per line.
+STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
+match() { printf '%s\n' "$STAGED" | grep -qE "$1"; }
+matched() { printf '%s\n' "$STAGED" | grep -E "$1" || true; }
+
+# 1. A package/catalog change → re-materialize concrete versions into
+#    examples/ + minis/ (they ship standalone and can't use `catalog:`).
+if match '^(pnpm-workspace\.yaml|packages/[^/]+/package\.json)$'; then
+  echo "pre-commit: sync:pack (examples minis)"
+  pnpm sync:pack examples minis
+  git add examples minis
+fi
+
+# 2. A specific example/mini package.json staged → sync just those files.
+PKG_FILES="$(matched '^(examples|minis)/.*/package\.json$')"
+if [ -n "$PKG_FILES" ]; then
+  echo "pre-commit: sync:pack --files"
+  # Word-split $PKG_FILES into per-file args on purpose (repo paths have no
+  # spaces). shellcheck disable=SC2086
+  node scripts/sync-pack.ts --files $PKG_FILES
+  # shellcheck disable=SC2086
+  git add $PKG_FILES
+fi
+
+# 3. Any manifest/catalog change → keep the lockfile in sync.
+if match '(^|/)package\.json$|^pnpm-workspace\.yaml$'; then
+  echo "pre-commit: sync lockfile"
+  pnpm install --lockfile-only
+  git add pnpm-lock.yaml
+fi
+
+# 4. Core category index changed → regenerate the react/ subpath wrappers
+#    (the script git-adds created/removed wrappers itself).
+if match '^packages/three-flatland/src/index\.ts$|^packages/three-flatland/src/[^/]+/index\.ts$|^packages/skia/src/ts/three/index\.ts$'; then
+  echo "pre-commit: sync:react"
+  pnpm sync:react
+fi
+
+# 5. Gem source-of-truth changed → re-sync per-example gem backgrounds.
+if match '^examples/_shared/gems\.config\.ts$|^examples/three/template/GemBackground\.ts$|^examples/react/template/GemBackground\.tsx$'; then
+  echo "pre-commit: sync:examples"
+  pnpm sync:examples
+  git add examples docs/src/data/example-gems.ts
+fi
+
+# 6. Skia submodule pointer staged → verify the pin (read-only; fails loudly).
+if match '^packages/skia/third_party/skia$'; then
+  echo "pre-commit: check-skia-pin"
+  node scripts/check-skia-pin.ts
+fi

@@ -46,7 +46,7 @@
     "sync:docs:schemas": "node scripts/sync-docs-schemas.ts",
     "sync:docs:schemas:verify": "node scripts/sync-docs-schemas.ts --verify",
     "graph": "nx graph",
-    "prepare": "lefthook install",
+    "prepare": "git config core.hooksPath .githooks",
     "boundaries": "node scripts/check-boundaries.mjs"
   },
   "pnpm": {
@@ -100,7 +100,6 @@
     "cytoscape-fcose": "^2.2.0",
     "dagre": "^0.8.5",
     "json-schema-to-typescript": "^15.0.4",
-    "lefthook": "^2.1.5",
     "nx": "23.1.0",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.74.0",
