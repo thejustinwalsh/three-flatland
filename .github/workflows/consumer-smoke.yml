@@ -5,7 +5,7 @@ name: Consumer Smoke
 # example OUT of the repo root → npm install the tarballs → build + Playwright
 # render-check. Proves the packages we deploy actually work before we deploy.
 #
-# Gated `needs: [changes, build, skia-wasm]` in ci.yml, so it runs only after
+# Gated `needs: [changes, build]` in ci.yml, so it runs only after
 # every package build is green; it restores the build job's Nx cache instead of
 # rebuilding, so the repo is never built again in a race.
 
@@ -34,15 +34,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # If skia's WASM was (re)compiled this run, pack the fresh libs; otherwise
-      # this no-ops and the committed lib/*.wasm are packed.
-      - name: Download freshly-built skia WASM (if any)
-        uses: actions/download-artifact@v5
-        continue-on-error: true
-        with:
-          name: skia-wasm
-          path: packages/skia/lib
 
       # Restore the build job's outputs (keyed on this SHA) so the harness's
       # `nx build` is a cache hit — no second real build of the repo.

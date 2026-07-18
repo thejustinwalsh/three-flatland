@@ -17,8 +17,6 @@ on:
         value: ${{ jobs.detect.outputs.vscode }}
       ci:
         value: ${{ jobs.detect.outputs.ci }}
-      skia_native:
-        value: ${{ jobs.detect.outputs.skia_native }}
       changeset_only:
         value: ${{ jobs.detect.outputs.changeset_only }}
 
@@ -33,7 +31,6 @@ jobs:
       configs: ${{ steps.filter.outputs.configs }}
       vscode: ${{ steps.filter.outputs.vscode }}
       ci: ${{ steps.filter.outputs.ci }}
-      skia_native: ${{ steps.filter.outputs.skia_native }}
       changeset_only: ${{ steps.skip.outputs.changeset_only }}
     steps:
       - uses: actions/checkout@v6
@@ -107,16 +104,3 @@ jobs:
               - 'tools/**'
             ci:
               - '.github/workflows/**'
-            # skia's native WASM build inputs — mirror the build:wasm nx target's
-            # inputs. When one changes, CI recompiles the wasm (setup.mjs --ensure)
-            # and commits lib/*.wasm back; otherwise the committed libs are reused.
-            skia_native:
-              - 'packages/skia/build.zig'
-              - 'packages/skia/build.zig.zon'
-              - 'packages/skia/src/zig/**'
-              - 'packages/skia/patches/**'
-              - 'packages/skia/vendor/**'
-              - 'packages/skia/wit/**'
-              - 'packages/skia/third_party/**'
-              - 'packages/skia/scripts/**'
-              - 'packages/skia/package.json'

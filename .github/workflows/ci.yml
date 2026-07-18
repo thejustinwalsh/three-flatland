@@ -19,32 +19,13 @@ jobs:
   changes:
     uses: ./.github/workflows/changes.yml
 
-  # Compile skia's WASM (setup.mjs --ensure: patch + GN + source-gen + zig +
-  # wasm-opt) ONLY when its native inputs change, commit lib/*.wasm back to the
-  # branch (GITHUB_TOKEN pushes don't retrigger CI), and upload them so the same
-  # run's build/smoke consume the fresh libs. When skia inputs are unchanged this
-  # skips and the committed libs are reused. See commit-artifact.yml.
-  skia-wasm:
+  # skia's single `build` target compiles the wasm (setup.mjs --ensure) only on a
+  # cache miss (its wasm sources changed) and consumes committed libs otherwise —
+  # so the build is self-sufficient and nothing gates the graph on a separate
+  # wasm step. The commit-skia-libs job below persists freshly-compiled libs.
+  build:
     needs: changes
     if: |
-      !cancelled() &&
-      needs.changes.outputs.changeset_only != 'true' &&
-      (needs.changes.outputs.skia_native == 'true' ||
-       needs.changes.outputs.ci == 'true')
-    permissions:
-      contents: write
-    uses: ./.github/workflows/commit-artifact.yml
-    with:
-      project: '@three-flatland/skia'
-      target: 'build:wasm'
-      artifact-paths: 'packages/skia/lib'
-      artifact-name: 'skia-wasm'
-      setup-zig: true
-
-  build:
-    needs: [changes, skia-wasm]
-    if: |
-      !cancelled() && needs.skia-wasm.result != 'failure' &&
       needs.changes.outputs.changeset_only != 'true' && (
         needs.changes.outputs.packages == 'true' ||
         needs.changes.outputs.minis == 'true' ||
@@ -68,6 +49,66 @@ jobs:
       node-version: ${{ matrix.node-version }}
       node-tag: ${{ matrix.node-tag }}
 
+  # Persist skia's compiled libs. After the build, materialize skia's cached
+  # lib/*.wasm (a cache hit unless its wasm sources changed, in which case it
+  # compiles once) and commit them back — only when they actually changed.
+  # Runs on head_ref so the push targets the PR branch (not the merge ref);
+  # GITHUB_TOKEN pushes don't retrigger CI.
+  commit-skia-libs:
+    needs: [changes, build]
+    if: |
+      !cancelled() && needs.build.result == 'success' &&
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.changeset_only != 'true' &&
+      (needs.changes.outputs.packages == 'true' || needs.changes.outputs.ci == 'true')
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Restore Nx cache
+        uses: actions/cache@v5
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-current-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-current-
+      - name: Materialize skia libs (cache hit; compiles only if skia changed)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm nx build @three-flatland/skia
+      - name: Commit skia libs if changed
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/skia/lib/skia-gl.wasm packages/skia/lib/skia-wgpu.wasm
+          if git diff --cached --quiet; then
+            echo "skia libs unchanged — nothing to commit"
+          else
+            git commit -m "chore(skia): rebuild wasm libs [skip ci]"
+            git push origin "HEAD:$BRANCH"
+          fi
+
   smoke:
     needs: [changes, build]
     if: |
@@ -82,13 +123,12 @@ jobs:
     uses: ./.github/workflows/smoke.yml
 
   # The smoke test — real published-package consumer flow. Runs ONLY after every
-  # package build is green (needs: build) and skia's libs are ready (skia-wasm),
-  # and restores the build job's Nx cache instead of rebuilding.
+  # package build is green (needs: build); it restores the build job's Nx cache
+  # (which carries skia's lib/*.wasm as a build output) instead of rebuilding.
   consumer-smoke:
-    needs: [changes, skia-wasm, build]
+    needs: [changes, build]
     if: |
       !cancelled() && needs.build.result == 'success' &&
-      needs.skia-wasm.result != 'failure' &&
       needs.changes.outputs.changeset_only != 'true' &&
       (needs.changes.outputs.packages == 'true' ||
        needs.changes.outputs.examples == 'true' ||

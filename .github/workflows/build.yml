@@ -38,15 +38,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # If skia's WASM was (re)compiled this run, use the fresh libs; otherwise
-      # this step no-ops and skia's build/test use the committed lib/*.wasm.
-      - name: Download freshly-built skia WASM (if any)
-        uses: actions/download-artifact@v5
-        continue-on-error: true
-        with:
-          name: skia-wasm
-          path: packages/skia/lib
-
       - name: Cache Nx
         uses: actions/cache@v5
         with:
