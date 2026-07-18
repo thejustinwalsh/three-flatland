@@ -1,3 +1,7 @@
+# three-flatland — agent guide
+
+> **Package manager: pnpm. Task runner: Nx.** Use **pnpm** workspaces + **Nx** exclusively — never `npm` or `yarn`. Install with `pnpm install`; run scripts with `pnpm <script>`; run tasks with `pnpm nx <target>` / `pnpm nx run-many` / `pnpm nx affected`. The nx-generated section below mentions `npm exec nx …` as an alternative — in this repo, always use pnpm. See the full project guide in [CLAUDE.md](CLAUDE.md).
+
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->
 

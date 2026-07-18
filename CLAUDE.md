@@ -1,5 +1,7 @@
 # three-flatland
 
+> **Package manager: pnpm. Task runner: Nx.** This repo uses **pnpm** workspaces + **Nx** exclusively — never `npm` or `yarn`. Install with `pnpm install`; run scripts with `pnpm <script>`; run tasks with `pnpm nx <target>` / `pnpm nx run-many` / `pnpm nx affected`. (The nx-generated block below shows an `npm exec nx …` alternative — ignore it here; always use pnpm.)
+
 ## Build & Test
 
 - Task orchestration is **Nx** (`nx.json`) — package-based, so it runs each package's own `package.json` scripts (tsdown build, etc.) with `dependsOn`/`inputs`/`outputs`/cache from `targetDefaults`. `pnpm build`/`pnpm typecheck` = `nx run-many`.
