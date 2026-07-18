@@ -1,5 +1,70 @@
 # @three-flatland/devtools
 
+## 1.0.0-alpha.5
+
+### Minor Changes
+
+- 26739f3: > Branch: feat/devtools-texturepacker
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/143
+
+  ## Features
+  - **WebSocket transport for remote/mobile debugging** — run the game on a device, attach the desktop dashboard over WebSocket. Adds `connectRemoteDevtools(url)` and a zero-dependency `flatland-devtools-relay` bin (minimal RFC 6455 broadcast relay for development use — no auth/TLS by design).
+  - **Time-travel debugging, Phase A: frame-link scrubber** — a shared, per-provider frame cursor lets you park the whole dashboard at a past engine frame. New scrubber control (drag, step, click a protocol-log row to jump to its frame, LIVE button / double-click / Esc to resume). Stat cards and the protocol log now render values relative to the parked frame; the buffers panel freezes its canvas while parked with a "parked at frame N" notice (full historical playback lands in a later phase).
+
+  ## Fixes
+  - Hardened the WebSocket relay against several RFC 6455 violations and edge cases: rejects unmasked client frames and Sec-WebSocket-Version mismatches, caps both per-frame and reassembled-fragment size, rejects malformed/oversized control frames and mid-fragmentation interleaving, preserves the original opcode (text vs binary) on broadcast, echoes close frames per spec, and guards broadcast writes so a peer disconnecting mid-broadcast can't throw. `startRelay` now returns `{ close, server }` instead of a bare stop function.
+  - Fixed remote-debug WebSocket robustness: malformed frames no longer crash the socket message handlers, the consumer bridge opens a provider's data channel eagerly so early subscribes aren't dropped, and a closed socket passed on (re)start now warns instead of silently going dark.
+  - Fixed a same-context echo guard so a provider bridge and consumer bridge coexisting in one page (dashboard debugging itself) no longer relay-ping-pong forever; binary payloads now travel via an explicit path table instead of sentinel objects; wire sends are bound to bridge lifetime so a disposed bridge can't emit stale frames.
+  - Scrubber and protocol-log cursor state now update via effects instead of mid-render, fixing a one-frame flash of the previous provider's cursor when switching producers.
+
+  ## Summary
+
+  This release adds a WebSocket-based remote debugging transport and a time-travel frame scrubber, backed by a hardened, spec-compliant relay implementation.
+
+- 415d722: > Branch: feat-vscode-tools
+
+  > PR: https://github.com/thejustinwalsh/three-flatland/pull/117
+
+  ## Remote debugging
+  - `connectRemoteDevtools(url)` and `createDevtoolsProvider({ remote: 'ws://…' })` add a WebSocket transport for attaching the dashboard to a game running on a separate device (mobile/remote debugging)
+  - New zero-dependency `flatland-devtools-relay` CLI bin — a minimal RFC 6455 broadcast relay for bridging provider/consumer connections (dev tool only, no auth/TLS)
+  - Frames queued while the socket is `CONNECTING` flush automatically on open; `provider:gone` is sent synchronously on dispose
+
+  ## Time-travel scrubber (Phase A)
+  - Shared frame cursor lets you park the dashboard at a past engine frame — every panel (stats, protocol log, buffers) snaps to that moment, with per-provider parked-position memory
+  - New scrubber control under the stats strip (prev/next step, slider, live indicator); protocol-log rows and the LIVE button/double-click/Esc all provide entry/exit points
+  - Stats series track a parallel per-frame ring buffer so stat cards can show the value at the parked frame instead of only the live tail
+
+  ## WebSocket relay hardening
+  - Closed multiple RFC 6455 compliance gaps: unmasked client frames are now rejected (frames must be masked per spec), oversized/fragmented control frames are rejected, and a new frame can no longer interrupt an in-progress fragmented message
+  - Reassembled-fragment size is now bounded (not just per-frame size), closing a drip-fed memory-growth DoS vector
+  - Handshakes with `Sec-WebSocket-Version !== 13` are now rejected instead of silently accepted
+  - Broadcast now preserves the originating opcode (text stays text, binary stays binary) instead of hardcoding binary
+  - Close frames are echoed per spec before ending the connection; broadcast writes are guarded against a peer closing mid-broadcast
+  - `startRelay()` now returns `{ close, server }` instead of a bare stop function, so callers can observe the bound port (needed for ephemeral-port test setups)
+  - Fixed a same-context echo loop when a provider and consumer bridge coexist in one page (e.g. a dashboard debugging itself remotely)
+
+  Adds full remote/WebSocket debugging support with a time-travel scrubber, backed by a hardened, spec-compliant relay implementation.
+
+### Patch Changes
+
+- Updated dependencies [75fcf94]
+- Updated dependencies [abad04f]
+- Updated dependencies [d3ee466]
+- Updated dependencies [12bacea]
+- Updated dependencies [26739f3]
+- Updated dependencies [2f94520]
+- Updated dependencies [e4c3c68]
+- Updated dependencies [9b04cfa]
+- Updated dependencies [ea7ec3d]
+- Updated dependencies [6caf0f8]
+- Updated dependencies [0033ea6]
+- Updated dependencies [a8b7e5d]
+- Updated dependencies [30550a2]
+- Updated dependencies [261b5be]
+  - three-flatland@0.1.0-alpha.8
+
 ## 1.0.0-alpha.4
 
 ### Major Changes

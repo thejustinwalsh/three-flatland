@@ -1,7 +1,7 @@
 {
   "name": "@three-flatland/vscode",
   "displayName": "Flatland Tools",
-  "version": "0.1.0",
+  "version": "0.2.0-alpha.0",
   "private": true,
   "description": "Visual editors for game and multimedia assets, right in your editor — ideal for Three.js and React Three Fiber (R3F) projects. Sprite atlas packing, GPU image encoding, normal-map baking, and inline audio playback. Built by the three-flatland team; every tool works standalone.",
   "publisher": "three-flatland",
@@ -95,19 +95,25 @@
             "id": "flatland.overview",
             "title": "Five tools, one extension",
             "description": "Flatland Tools adds five visual editors for game & multimedia assets. They surface two ways: **right-click asset files** in the Explorer, and a **▶ Play** CodeLens above audio calls in your code.\n\n[Open Flatland Tools settings](command:workbench.action.openSettings?%5B%22threeFlatland%22%5D)",
-            "media": { "markdown": "walkthroughs/overview.md" }
+            "media": {
+              "markdown": "walkthroughs/overview.md"
+            }
           },
           {
             "id": "flatland.assets",
             "title": "Edit sprites, images & normal maps",
             "description": "Right-click a **.png**, **.ktx2**, or **.atlas.json** in the Explorer → **Flatland Tools** to open the Sprite Atlas, Image Encoder, Normal Baker, or Atlas Merge editor.",
-            "media": { "markdown": "walkthroughs/assets.md" }
+            "media": {
+              "markdown": "walkthroughs/assets.md"
+            }
           },
           {
             "id": "flatland.audio",
             "title": "Play audio inline",
             "description": "Open a **.js** / **.ts** file with a `zzfx(...)`, `Tone`, or `Wad` sound call — a **▶ Play** CodeLens appears above it. Click to hear the sound without running your game.",
-            "media": { "markdown": "walkthroughs/audio.md" }
+            "media": {
+              "markdown": "walkthroughs/audio.md"
+            }
           }
         ]
       }

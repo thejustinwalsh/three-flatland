@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/atlas",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "First-party atlas baker — packs source images into a sprite atlas and generates tight polygon meshes from alpha silhouettes for the overdraw-reduction path",
   "type": "module",
   "bin": {
