@@ -31,6 +31,7 @@
     "test": {
       "dependsOn": ["build"],
       "inputs": ["default", "^production"],
+      "outputs": [],
       "cache": true
     },
     "typecheck": {
@@ -44,6 +45,11 @@
     },
     "clean": {
       "cache": false
+    },
+    "lint": {
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/.oxlintrc.json"],
+      "outputs": []
     }
   }
 }
