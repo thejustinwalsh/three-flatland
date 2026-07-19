@@ -29,6 +29,15 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # size-limit-action also builds the BASE branch (main) to compute the delta,
+      # and main's `prepare` is `lefthook install` — which refuses when
+      # core.hooksPath is preset (this branch's `prepare` sets it to .githooks).
+      # Clear it so the base build's lefthook installs cleanly. `skip_step: install`
+      # means the action won't re-run this branch's prepare, so it stays cleared.
+      # Resolves on merge, when main also uses native .githooks (no lefthook).
+      - name: Clear core.hooksPath for the base (main) build's lefthook prepare
+        run: git config --unset-all core.hooksPath || true
+
       - name: Cache Nx
         uses: actions/cache@v5
         with:
