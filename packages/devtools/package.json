@@ -40,6 +40,27 @@
     "dist"
   ],
   "sideEffects": false,
+  "nx": {
+    "tags": [
+      "scope:consumer"
+    ],
+    "targets": {
+      "test": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "vitest run",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
   "scripts": {
     "build": "tsdown",
     "build:bundle": "vite build --config vite.config.bundle.ts",
@@ -107,5 +128,33 @@
   },
   "bin": {
     "flatland-devtools-relay": "./dist/relay.js"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        }
+      },
+      "./react": {
+        "import": {
+          "types": "./dist/react.d.ts",
+          "default": "./dist/react.js"
+        }
+      },
+      "./react/*": {
+        "import": {
+          "types": "./dist/react/*.d.ts",
+          "default": "./dist/react/*.js"
+        }
+      },
+      "./vite": {
+        "import": {
+          "types": "./dist/vite-plugin.d.ts",
+          "default": "./dist/vite-plugin.js"
+        }
+      }
+    }
   }
 }

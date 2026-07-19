@@ -33,6 +33,17 @@
     "dist"
   ],
   "sideEffects": false,
+  "nx": {
+    "targets": {
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import { openNormalBakerPanel } from './host'
 import { pngPathFromNormalJson, sourcePngFromNormalPng } from './paths'
-import { isToolEnabled } from '../../toolRegistry'
+import { isToolEnabled } from '../../toolEnabled'
 
 /** The derived candidate exists as a real file on disk, or `null`. */
 async function existingFileOrNull(candidate: vscode.Uri): Promise<vscode.Uri | null> {

@@ -14,20 +14,21 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PKG_ROOT = resolve(__dirname, '..')
-const DIST = resolve(PKG_ROOT, 'dist')
 
+// Paths are PKG_ROOT-relative: JS/dts under dist/ts/ (tsdown root:src → dist/ts/*),
+// committed WASM under lib/ (shipped via package.json "files").
 const required = [
-  'index.js',
-  'index.d.ts',
-  'three/index.js',
-  'three/index.d.ts',
-  'react/index.js',
-  'react/index.d.ts',
-  'skia-gl/skia-gl.wasm',
-  'skia-wgpu/skia-wgpu.wasm',
+  'dist/ts/index.js',
+  'dist/ts/index.d.ts',
+  'dist/ts/three/index.js',
+  'dist/ts/three/index.d.ts',
+  'dist/ts/react/index.js',
+  'dist/ts/react/index.d.ts',
+  'lib/skia-gl.wasm',
+  'lib/skia-wgpu.wasm',
 ]
 
-const missing = required.filter(f => !existsSync(resolve(DIST, f)))
+const missing = required.filter(f => !existsSync(resolve(PKG_ROOT, f)))
 
 if (missing.length === 0) {
   console.log('  \x1b[32m✓\x1b[0m All publish artifacts present')
@@ -36,7 +37,7 @@ if (missing.length === 0) {
 
 // CI: don't attempt a build, just fail fast
 if (process.env.CI) {
-  for (const f of missing) console.error(`  \x1b[31m✗\x1b[0m Missing: dist/${f}`)
+  for (const f of missing) console.error(`  \x1b[31m✗\x1b[0m Missing: ${f}`)
   console.error('\nCI publish blocked — build step did not produce all artifacts.\n')
   process.exit(1)
 }
@@ -51,9 +52,9 @@ try {
 }
 
 // Verify again
-const stillMissing = required.filter(f => !existsSync(resolve(DIST, f)))
+const stillMissing = required.filter(f => !existsSync(resolve(PKG_ROOT, f)))
 if (stillMissing.length > 0) {
-  for (const f of stillMissing) console.error(`  \x1b[31m✗\x1b[0m Still missing: dist/${f}`)
+  for (const f of stillMissing) console.error(`  \x1b[31m✗\x1b[0m Still missing: ${f}`)
   console.error('\nBuild completed but artifacts are still missing.\n')
   process.exit(1)
 }

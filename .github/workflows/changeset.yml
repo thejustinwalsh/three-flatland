@@ -39,11 +39,17 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Generate template changesets
+        # Untrusted PR head ref passed via env (not inlined) to avoid script
+        # injection from a crafted branch name (actionlint expression rule).
+        env:
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: >-
           pnpm changeset:generate
-          --branch ${{ github.event.pull_request.head.ref }}
-          --repo ${{ github.repository }}
-          --pr ${{ github.event.pull_request.number }}
+          --branch "$PR_BRANCH"
+          --repo "$REPO"
+          --pr "$PR_NUMBER"
           --base origin/main
           --cap-major
 

@@ -183,7 +183,9 @@ async function main() {
   }
 
   // Tweakpane UI
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
   const devtools = createDevtoolsProvider({ name: 'overdraw-bench' })
 
   const params = { mode: 'tight' as Mode, count: 1500, paused: false }

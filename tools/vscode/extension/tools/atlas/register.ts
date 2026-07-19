@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import { AtlasCustomEditorProvider } from './provider'
-import { isToolEnabled } from '../../toolRegistry'
+import { isToolEnabled } from '../../toolEnabled'
 
 export function registerAtlasTool(context: vscode.ExtensionContext): vscode.Disposable {
   const disposables: vscode.Disposable[] = []

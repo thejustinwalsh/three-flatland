@@ -24,7 +24,7 @@ import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const PKG_DIST = resolve(__dirname, '..', 'dist')
+const PKG_LIB = resolve(__dirname, '..', 'lib')
 
 const args = process.argv.slice(2)
 const glOnly = args.includes('--gl-only')
@@ -38,7 +38,7 @@ mkdirSync(target, { recursive: true })
 
 let copied = 0
 for (const v of variants) {
-  const src = join(PKG_DIST, `skia-${v}`, `skia-${v}.wasm`)
+  const src = join(PKG_LIB, `skia-${v}.wasm`)
   const dest = join(target, `skia-${v}.wasm`)
 
   if (!existsSync(src)) {

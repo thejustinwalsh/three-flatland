@@ -173,6 +173,19 @@
     "dist"
   ],
   "sideEffects": false,
+  "nx": {
+    "tags": ["scope:sibling"],
+    "targets": {
+      "test": {
+        "executor": "nx:run-commands",
+        "options": { "command": "vitest run", "cwd": "{projectRoot}" }
+      },
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": { "command": "oxlint --type-aware .", "cwd": "{projectRoot}" }
+      }
+    }
+  },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
@@ -198,5 +211,147 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/nodes"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        }
+      },
+      "./alpha": {
+        "import": {
+          "types": "./dist/alpha/index.d.ts",
+          "default": "./dist/alpha/index.js"
+        }
+      },
+      "./alpha/*": {
+        "import": {
+          "types": "./dist/alpha/*.d.ts",
+          "default": "./dist/alpha/*.js"
+        }
+      },
+      "./analog": {
+        "import": {
+          "types": "./dist/analog/index.d.ts",
+          "default": "./dist/analog/index.js"
+        }
+      },
+      "./analog/*": {
+        "import": {
+          "types": "./dist/analog/*.d.ts",
+          "default": "./dist/analog/*.js"
+        }
+      },
+      "./blur": {
+        "import": {
+          "types": "./dist/blur/index.d.ts",
+          "default": "./dist/blur/index.js"
+        }
+      },
+      "./blur/*": {
+        "import": {
+          "types": "./dist/blur/*.d.ts",
+          "default": "./dist/blur/*.js"
+        }
+      },
+      "./color": {
+        "import": {
+          "types": "./dist/color/index.d.ts",
+          "default": "./dist/color/index.js"
+        }
+      },
+      "./color/*": {
+        "import": {
+          "types": "./dist/color/*.d.ts",
+          "default": "./dist/color/*.js"
+        }
+      },
+      "./display": {
+        "import": {
+          "types": "./dist/display/index.d.ts",
+          "default": "./dist/display/index.js"
+        }
+      },
+      "./display/*": {
+        "import": {
+          "types": "./dist/display/*.d.ts",
+          "default": "./dist/display/*.js"
+        }
+      },
+      "./distortion": {
+        "import": {
+          "types": "./dist/distortion/index.d.ts",
+          "default": "./dist/distortion/index.js"
+        }
+      },
+      "./distortion/*": {
+        "import": {
+          "types": "./dist/distortion/*.d.ts",
+          "default": "./dist/distortion/*.js"
+        }
+      },
+      "./lighting": {
+        "import": {
+          "types": "./dist/lighting/index.d.ts",
+          "default": "./dist/lighting/index.js"
+        }
+      },
+      "./lighting/*": {
+        "import": {
+          "types": "./dist/lighting/*.d.ts",
+          "default": "./dist/lighting/*.js"
+        }
+      },
+      "./retro": {
+        "import": {
+          "types": "./dist/retro/index.d.ts",
+          "default": "./dist/retro/index.js"
+        }
+      },
+      "./retro/*": {
+        "import": {
+          "types": "./dist/retro/*.d.ts",
+          "default": "./dist/retro/*.js"
+        }
+      },
+      "./sprite": {
+        "import": {
+          "types": "./dist/sprite/index.d.ts",
+          "default": "./dist/sprite/index.js"
+        }
+      },
+      "./sprite/*": {
+        "import": {
+          "types": "./dist/sprite/*.d.ts",
+          "default": "./dist/sprite/*.js"
+        }
+      },
+      "./upscale": {
+        "import": {
+          "types": "./dist/upscale/index.d.ts",
+          "default": "./dist/upscale/index.js"
+        }
+      },
+      "./upscale/*": {
+        "import": {
+          "types": "./dist/upscale/*.d.ts",
+          "default": "./dist/upscale/*.js"
+        }
+      },
+      "./vfx": {
+        "import": {
+          "types": "./dist/vfx/index.d.ts",
+          "default": "./dist/vfx/index.js"
+        }
+      },
+      "./vfx/*": {
+        "import": {
+          "types": "./dist/vfx/*.d.ts",
+          "default": "./dist/vfx/*.js"
+        }
+      }
+    }
   }
 }

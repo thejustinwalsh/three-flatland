@@ -58,11 +58,11 @@ env:
     - pnpm sync:pack:verify examples minis
     - pnpm sync:react:verify
     - pnpm sync:versions:verify
-    - pnpm exec turbo run //#lint
+    - pnpm lint
     - pnpm typecheck
     - pnpm build
-    - pnpm exec turbo run //#test
-    - pnpm exec turbo run test --filter=@three-flatland/skia
+    - pnpm test
+    - pnpm --filter @three-flatland/skia test
     - pnpm test:smoke
 
     Do NOT push commits, modify code, or create branches. Review only.
@@ -190,13 +190,13 @@ jobs:
         with:
           version: 0.15.1
 
-      - name: Cache Turbo
+      - name: Cache Nx
         uses: actions/cache@v5
         with:
-          path: .turbo
-          key: ${{ runner.os }}-fro-bot-turbo-${{ github.sha }}
+          path: .nx/cache
+          key: ${{ runner.os }}-fro-bot-nx-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-fro-bot-turbo-
+            ${{ runner.os }}-fro-bot-nx-
 
       - name: Cache Skia WASM tools
         uses: actions/cache@v5

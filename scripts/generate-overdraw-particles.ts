@@ -25,14 +25,14 @@
 // which frames are drawn, instead of ballooning toward the union of very
 // differently-oriented silhouettes.
 //
-// Usage: tsx scripts/generate-overdraw-particles.ts
+// Usage: pnpm --filter @three-flatland/atlas build && node scripts/generate-overdraw-particles.ts
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-// Relative import (not the package name): @three-flatland/atlas isn't a
-// root devDependency, and this is a one-off authoring script, not a
-// consumer of the published surface.
-import { bakeAtlas, encodePng, type AtlasSource } from '../packages/atlas/src/index'
+// Import the built dist (not the package name): @three-flatland/atlas isn't a
+// root devDependency, and node runs this directly — the compiled JS needs no
+// on-the-fly transpilation of the atlas source tree. Build atlas first.
+import { bakeAtlas, encodePng, type AtlasSource } from '../packages/atlas/dist/index.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')

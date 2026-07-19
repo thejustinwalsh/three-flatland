@@ -4,105 +4,47 @@ import { registerMergeTool } from './tools/merge/register'
 import { registerEncodeTool } from './tools/encode/register'
 import { registerNormalBakerTool } from './tools/normal-baker/register'
 import { registerAudioTool } from './tools/audio/register'
+import { TOOL_META, type ToolMeta, isEnabled } from './toolEnabled'
 import { decideToolConfigAction } from './toolRegistryDecisions'
 import { log } from './log'
 
 /**
- * Single point of extension for "which tools does this extension ship,
- * and can each be turned off." Adding a tool means ONE new entry here —
- * its own `contributes.configuration` property in package.json, and any
- * menu items gated on `contextKey` — not scattered edits across
- * `extension/index.ts`.
+ * Register-function wiring + activate/watch lifecycle for the extension's tools.
+ *
+ * Tool metadata and `isToolEnabled` live in `./toolEnabled` (the leaf) so that
+ * `tools/<name>/register.ts` can read enablement WITHOUT importing back into
+ * this module — this module imports each `register*Tool`, so the reverse edge
+ * would be a `toolRegistry -> register -> toolRegistry` cycle. Adding a tool =
+ * one entry in `TOOL_META` (toolEnabled.ts) + its register function keyed by id
+ * in `REGISTER_BY_ID` below.
  */
-export type ToolDescriptor = {
-  /** Short id — the `tools.<id>.enabled` segment of `settingKey`. */
-  id: string
-  /** Full `threeFlatland.tools.<id>.enabled` config key. */
-  settingKey: string
-  /** `threeFlatland.tool.<id>.enabled` — mirrored into `setContext` so
-   * `when` clauses (menus, command `enablement`) can gate on it. */
-  contextKey: string
-  /** Human label for reload/status messages. */
-  label: string
-  /**
-   * Whether flipping the setting mid-session can register/dispose the
-   * tool live. `false` tools (audio: a CodeLens provider with a debounced
-   * document-change listener, plus two external sidecar processes with
-   * async spawn/shutdown lifecycles) prompt for a window reload instead —
-   * safer than risking a live re-register racing an in-flight sidecar
-   * shutdown.
-   */
-  liveToggle: boolean
+type ToolDescriptor = ToolMeta & {
   /**
    * Registers the tool and returns ONE aggregate `Disposable` covering
-   * everything it created — the registry pushes this to
-   * `context.subscriptions` (deactivate-time cleanup) and separately
-   * holds onto it for live per-tool disposal. Each `register*Tool`
-   * function collects its own disposables into an array and returns
-   * `vscode.Disposable.from(...)` instead of pushing directly to
-   * `context.subscriptions`, so ownership stays with the registry.
+   * everything it created — the registry pushes this to `context.subscriptions`
+   * (deactivate-time cleanup) and separately holds onto it for live per-tool
+   * disposal. Each `register*Tool` collects its own disposables and returns
+   * `vscode.Disposable.from(...)` rather than pushing to `context.subscriptions`
+   * directly, so ownership stays with the registry.
    */
   register: (context: vscode.ExtensionContext) => vscode.Disposable
 }
 
-export const TOOL_DESCRIPTORS: ToolDescriptor[] = [
-  {
-    id: 'spriteAtlas',
-    settingKey: 'threeFlatland.tools.spriteAtlas.enabled',
-    contextKey: 'threeFlatland.tool.spriteAtlas.enabled',
-    label: 'FL Sprite Atlas',
-    liveToggle: true,
-    register: registerAtlasTool,
-  },
-  {
-    id: 'imageEncoder',
-    settingKey: 'threeFlatland.tools.imageEncoder.enabled',
-    contextKey: 'threeFlatland.tool.imageEncoder.enabled',
-    label: 'FL Image Encoder',
-    liveToggle: true,
-    register: registerEncodeTool,
-  },
-  {
-    id: 'atlasMerge',
-    settingKey: 'threeFlatland.tools.atlasMerge.enabled',
-    contextKey: 'threeFlatland.tool.atlasMerge.enabled',
-    label: 'FL Atlas Merge',
-    liveToggle: true,
-    register: registerMergeTool,
-  },
-  {
-    id: 'audio',
-    settingKey: 'threeFlatland.tools.audio.enabled',
-    contextKey: 'threeFlatland.tool.audio.enabled',
-    label: 'FL Audio',
-    liveToggle: false,
-    register: registerAudioTool,
-  },
-  {
-    id: 'normalBaker',
-    settingKey: 'threeFlatland.tools.normalBaker.enabled',
-    contextKey: 'threeFlatland.tool.normalBaker.enabled',
-    label: 'FL Normal Baker',
-    // Ad-hoc webview panel + in-process Node bake calls (imports
-    // @three-flatland/normals/@three-flatland/bake directly) — no
-    // CodeLens provider, no external sidecar process, same shape as
-    // atlas/encode/merge. Safe to register/dispose live.
-    liveToggle: true,
-    register: registerNormalBakerTool,
-  },
-]
-
-function isEnabled(descriptor: ToolDescriptor): boolean {
-  return vscode.workspace.getConfiguration().get<boolean>(descriptor.settingKey, true)
+const REGISTER_BY_ID: Record<string, ToolDescriptor['register']> = {
+  spriteAtlas: registerAtlasTool,
+  imageEncoder: registerEncodeTool,
+  atlasMerge: registerMergeTool,
+  audio: registerAudioTool,
+  normalBaker: registerNormalBakerTool,
 }
 
-/** Read directly by a command callback for the "defense in depth against
- * a keybinding bypassing a hidden menu item" guard — see each
- * `register*Tool`'s command callbacks. */
-export function isToolEnabled(id: string): boolean {
-  const descriptor = TOOL_DESCRIPTORS.find((d) => d.id === id)
-  return descriptor ? isEnabled(descriptor) : true
-}
+const TOOL_DESCRIPTORS: ToolDescriptor[] = TOOL_META.map((meta) => {
+  const register = REGISTER_BY_ID[meta.id]
+  if (!register) {
+    throw new Error(`toolRegistry: no register function wired for tool id '${meta.id}'`)
+  }
+  return { ...meta, register }
+})
 
 const live = new Map<string, vscode.Disposable>()
 

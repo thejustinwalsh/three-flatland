@@ -165,7 +165,10 @@ export function App() {
   const sourceTitle = session.def ? `${session.def.path}:${session.def.line + 1}` : session.sourcePath
 
   return (
-    <div {...stylex.props(styles.root)}>
+    // data-save-generation is a causal completion signal for e2e: it ticks
+    // after each committed save (see useZzfxSession) so tests await the edit
+    // landing instead of racing a bare file read.
+    <div {...stylex.props(styles.root)} data-save-generation={session.saveGeneration}>
       <Toolbar>
         <ToolbarButton icon="play" title="Play" onClick={handlePlay} />
         <Divider />

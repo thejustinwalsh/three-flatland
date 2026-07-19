@@ -12,6 +12,7 @@
   "dependencies": {
     "@three-flatland/skia": "^0.1.0-alpha.4",
     "@three-flatland/devtools": "^1.0.0-alpha.5",
+    "three-flatland": "^0.1.0-alpha.8",
     "@tweakpane/plugin-essentials": "^0.2.1",
     "three": "^0.183.1",
     "tweakpane": "^4.0.5"
@@ -20,5 +21,16 @@
     "@types/three": "^0.183.1",
     "typescript": "^5.7.3",
     "vite": "^6.4.3"
+  },
+  "nx": {
+    "tags": [
+      "type:example"
+    ],
+    "targets": {
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": { "command": "oxlint --type-aware .", "cwd": "{projectRoot}" }
+      }
+    }
   }
 }

@@ -6,7 +6,7 @@
  * 2. Appends raw + brotli file sizes for WASM binaries
  */
 
-import { existsSync, readFileSync, writeFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { execSync } from 'node:child_process'
 import { brotliCompressSync, constants } from 'node:zlib'
@@ -41,7 +41,7 @@ const filtered = config.filter((entry) => {
 
 // Size-limit needs a JSON config for --config flag (can't pass .cjs with functions
 // through the filtered temp file). Convert filtered entries to plain objects.
-const jsonSafe = filtered.map(({ modifyEsbuildConfig, ...rest }) => rest)
+const jsonSafe = filtered.map(({ modifyEsbuildConfig: _modifyEsbuildConfig, ...rest }) => rest)
 
 // Always emit a .cjs temp config that (1) re-attaches each entry's original
 // modifyEsbuildConfig and (2) composes a `node:*` external. tsdown keeps the

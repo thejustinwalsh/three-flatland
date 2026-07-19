@@ -51,13 +51,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Cache Turbo
-        uses: actions/cache@v5
+      - name: Restore Nx cache
+        uses: actions/cache/restore@v5
         with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-current-${{ github.sha }}
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-current-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-turbo-current-
+            ${{ runner.os }}-nx-current-
 
       - name: Cache Skia WASM tools
         uses: actions/cache@v5

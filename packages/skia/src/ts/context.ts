@@ -86,7 +86,7 @@ export class SkiaContext {
     if (options.backend === 'webgl') {
       const { loadSkiaGL } = await import('./wasm-loader-gl')
       const gl = options.gl!
-      const wasmUrl = options.wasmUrl ?? new URL('../../dist/skia-gl/skia-gl.wasm', import.meta.url)
+      const wasmUrl = options.wasmUrl ?? new URL('../../lib/skia-gl.wasm', import.meta.url)
       const wasm = await loadSkiaGL(wasmUrl, gl, options.preloadedResponse)
       const ctx = new SkiaContext('webgl', wasm.exports as unknown as SkiaExports, wasm.exports.memory, gl)
       ctx._glState = wasm.glState as unknown as typeof ctx._glState
@@ -96,7 +96,7 @@ export class SkiaContext {
     } else {
       const { loadSkiaWGPU } = await import('./wasm-loader-wgpu')
       const device = options.device!
-      const wasmUrl = options.wasmUrl ?? new URL('../../dist/skia-wgpu/skia-wgpu.wasm', import.meta.url)
+      const wasmUrl = options.wasmUrl ?? new URL('../../lib/skia-wgpu.wasm', import.meta.url)
       const wasm = await loadSkiaWGPU(wasmUrl, device, options.preloadedResponse)
       const ctx = new SkiaContext(
         'wgpu',

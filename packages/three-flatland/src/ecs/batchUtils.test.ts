@@ -50,13 +50,14 @@ describe('auto-batch tier defaults (batchUtils)', () => {
     group = new SpriteGroup()
   })
 
-  // 20s ceiling to match the bulk-prime test body below: tearing down a
-  // 40k-sprite group + universe.reset() can exceed vitest's default 10s
-  // hookTimeout on slower/contended CI runners.
+  // 60s ceiling: tearing down a 40k-sprite group + universe.reset() is O(n) and
+  // blew even a bumped 20s hookTimeout on a contended CI runner (passes in ~6s
+  // locally). It's the bulk-prime fixture's inherent teardown cost, not a hang —
+  // the reset is correctly dirty-gated; give it headroom.
   afterEach(() => {
     group.dispose()
     universe.reset()
-  }, 20000)
+  }, 60000)
 
   it('small scene: 200 sprites in one pass produce exactly one 1024-slot batch', () => {
     for (let i = 0; i < 200; i++) {

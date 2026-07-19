@@ -125,8 +125,8 @@ function getWasmUrl(backend: 'webgl' | 'wgpu'): URL {
   if (envUrl) return new URL(envUrl, globalThis.location?.href ?? import.meta.url)
 
   return backend === 'webgl'
-    ? new URL('../../dist/skia-gl/skia-gl.wasm', import.meta.url)
-    : new URL('../../dist/skia-wgpu/skia-wgpu.wasm', import.meta.url)
+    ? new URL('../../lib/skia-gl.wasm', import.meta.url)
+    : new URL('../../lib/skia-wgpu.wasm', import.meta.url)
 }
 
 /**

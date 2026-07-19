@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import { openMergePanel } from './host'
-import { isToolEnabled } from '../../toolRegistry'
+import { isToolEnabled } from '../../toolEnabled'
 
 export function registerMergeTool(context: vscode.ExtensionContext): vscode.Disposable {
   return vscode.commands.registerCommand(

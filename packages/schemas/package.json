@@ -24,6 +24,27 @@
     "dist"
   ],
   "sideEffects": false,
+  "nx": {
+    "tags": [
+      "scope:foundation"
+    ],
+    "targets": {
+      "test": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "vitest run",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
@@ -31,7 +52,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "ajv": "^8.17.1"
+    "ajv": "catalog:"
   },
   "devDependencies": {
     "ts-json-schema-generator": "catalog:"
