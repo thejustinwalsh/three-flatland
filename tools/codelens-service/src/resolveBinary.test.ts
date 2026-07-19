@@ -71,7 +71,7 @@ describe('resolveBinary', () => {
     expect(candidates.some((c) => /sidecar[/\\]target[/\\]debug[/\\]codelens-service/.test(c))).toBe(true)
   })
 
-  it('falls back to the dev-mode build actually on disk in this checkout', () => {
+  it('falls back to the dev-mode build actually on disk in this checkout', (ctx) => {
     // This checkout always has a cargo-built debug binary (`cargo build`/
     // `cargo test` runs produce it); a RELEASE build may or may not also
     // exist (scripts/bundle-sidecars.mjs's `cargo build --release` leaves
@@ -82,7 +82,11 @@ describe('resolveBinary', () => {
     // wired in, without depending on whether packaging ever ran here.
     const candidates = devBinaryCandidates()
     const existing = candidates.filter((c) => existsSync(c))
-    expect(existing.length).toBeGreaterThan(0)
+    // No cargo-built sidecar on disk — e.g. CI runs `vitest run` without a Rust
+    // build, so there's no dev binary to resolve to. The newest-wins fallback is
+    // exercised locally (where `cargo build`/`cargo test` leaves a binary); skip
+    // here rather than fail on an environment that never built the sidecar.
+    if (existing.length === 0) return ctx.skip()
     const expected = existing.reduce((a, b) => (statSync(a).mtimeMs >= statSync(b).mtimeMs ? a : b))
     expect(resolveBinary()).toBe(expected)
   })
