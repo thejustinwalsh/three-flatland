@@ -372,7 +372,7 @@ var wasmSizeKB = '?', wasmGzipKB = '...';
   // ── Load WASM ──
   info('Loading skia-gl.wasm...');
 
-  const wasmUrl = '../dist/skia-gl/skia-gl.wasm?v=' + Date.now();
+  const wasmUrl = '../lib/skia-gl.wasm?v=' + Date.now();
   let wasm;
   try {
     const response = await fetch(wasmUrl);
