@@ -13,6 +13,7 @@
     "@react-three/fiber": "10.0.0-alpha.2",
     "@three-flatland/slug": "^0.1.0-alpha.4",
     "@three-flatland/devtools": "^1.0.0-alpha.5",
+    "three-flatland": "^0.1.0-alpha.8",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "three": "^0.183.1"

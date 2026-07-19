@@ -1,40 +1,44 @@
 #!/usr/bin/env node
 /**
- * Consumer smoke test — proves the packages we PUBLISH actually work for
- * someone using them in the wild, before we deploy.
+ * Consumer smoke test — proves the packages we PUBLISH actually work for a real
+ * consumer, by installing them the way npm actually would.
  *
- * For every example pair (examples/{react,three}/<slug>):
- *   1. `pnpm pack` each publishable package → tarballs (pnpm applies
- *      publishConfig, so the tarball is the exact published artifact: dist only,
- *      no dev `source` condition — see scripts/sync-publish-exports.ts).
- *   2. Copy the example OUT of the repo root (escapes pnpm's workspace/catalog
- *      resolution — behaves like a real download).
- *   3. Rewrite its flatland deps to the local tarballs + add `overrides` so the
- *      whole transitive flatland closure resolves to tarballs, not npm.
- *   4. `npm install` (real npm — the consumer's tool) + `npm run build`.
- *   5. Serve the built example and drive Playwright: assert the canvas renders
- *      real pixels (not blank) with no console errors.
+ * Faithful simulation — NO dependency-path rewriting:
+ *   1. Build + `pnpm pack` each publishable package → tarballs. pnpm applies
+ *      publishConfig, so each tarball is the exact published artifact (dist only,
+ *      no dev `source` condition; workspace:* deps rewritten to real versions).
+ *   2. Start a throwaway Verdaccio registry. Our packages are served ONLY from
+ *      local storage (no npmjs merge, so a consumer can't silently pull a real
+ *      published version); everything else (three, react, tweakpane, …) uplinks
+ *      to npmjs.
+ *   3. `npm publish` each packed tarball to it, at its real declared version.
+ *   4. Copy each example OUT of the repo (escapes the workspace/catalog), drop an
+ *      `.npmrc` pointing npm at Verdaccio, and `npm install` with the example's
+ *      manifest UNCHANGED. Declared versions resolve from the registry exactly as
+ *      a real consumer's would. Then `npm run build` + a Playwright render check.
  *
- * Assumes packages are already BUILT (CI runs this only after the build job is
- * green; locally it builds via nx first — a cache hit if already built). It
- * never races a second repo build.
+ * Because nothing rewrites the example package.json, the in-repo pnpm workspace +
+ * `pnpm.overrides` (declared version → workspace:*) path is never touched — the
+ * examples work in both locations.
  *
  * Usage: node scripts/consumer-smoke.mjs [--only <slug>] [--no-render]
  */
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { cpSync, mkdtempSync, readFileSync, writeFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { createServer as netServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve, extname } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const args = process.argv.slice(2)
 const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1] : null
 const NO_RENDER = args.includes('--no-render')
 
-const run = (cmd, cmdArgs, cwd) =>
-  execFileSync(cmd, cmdArgs, { cwd, stdio: 'pipe', encoding: 'utf8', env: { ...process.env } })
+const run = (cmd, cmdArgs, cwd, extraEnv) =>
+  execFileSync(cmd, cmdArgs, { cwd, stdio: 'pipe', encoding: 'utf8', env: { ...process.env, ...extraEnv } })
 
 // ── 1. Discover publishable packages + build + pack them ────────────────────
 
@@ -45,24 +49,23 @@ function publishablePackages() {
     if (!existsSync(p)) continue
     const pkg = JSON.parse(readFileSync(p, 'utf8'))
     if (pkg.private === true || !pkg.scripts?.build) continue
-    out.push({ dir, name: pkg.name })
+    out.push({ dir, name: pkg.name, version: pkg.version })
   }
   return out
 }
 
 const PKGS = publishablePackages()
-const FLATLAND_NAMES = new Set(PKGS.map((p) => p.name))
 
 console.log(`consumer smoke — ${PKGS.length} publishable packages`)
 
 // CI runs this only after the build job is green, so packages are built. Locally
 // it's a cache hit if already built. A package that can't build here (skia's
-// wasm can't compile on macOS — CI seeds it) is skipped, not fatal.
+// wasm can't compile on macOS — it packs from the committed libs) is skipped.
 console.log('• ensuring packages are built (nx cache hit if already built)…')
 try {
   run('pnpm', ['nx', 'run-many', '-t', 'build', ...PKGS.flatMap((p) => ['-p', p.name])], ROOT)
 } catch {
-  console.warn('  ⚠ some package builds failed (e.g. skia wasm on macOS) — packing what built')
+  console.warn('  ⚠ some package builds failed — packing what built')
 }
 
 const TARBALL_DIR = mkdtempSync(join(tmpdir(), 'wc-tarballs-'))
@@ -75,17 +78,135 @@ for (const p of PKGS) {
     const stem = p.name.replace('@', '').replace('/', '-')
     const tgz = readdirSync(TARBALL_DIR).find((f) => f.startsWith(stem + '-') && f.endsWith('.tgz'))
     if (tgz) tarballs[p.name] = join(TARBALL_DIR, tgz)
+    else unpackable.push(p.name)
   } catch {
     unpackable.push(p.name)
     console.warn(`  ⚠ could not pack ${p.name} — examples needing it will be skipped`)
   }
 }
-
-// npm overrides forcing the ENTIRE (packable) flatland closure to local tarballs.
-const overrides = Object.fromEntries(Object.entries(tarballs).map(([n, t]) => [n, `file:${t}`]))
 const UNPACKABLE = new Set(unpackable)
 
-// ── 2. Per-example: copy out, install tarballs, build ───────────────────────
+// ── 2. Local Verdaccio registry seeded with the packed tarballs ─────────────
+
+const REG_STORAGE = mkdtempSync(join(tmpdir(), 'wc-verdaccio-'))
+const REG_PORT = await freePort()
+const REG_URL = `http://127.0.0.1:${REG_PORT}`
+const REG_HOST = `127.0.0.1:${REG_PORT}`
+// A userconfig npmrc used for publish (needs a token; Verdaccio accepts any with
+// publish:$all). The token line is keyed by host so npm sends it to Verdaccio.
+const PUBLISH_NPMRC = join(REG_STORAGE, 'publish.npmrc')
+writeFileSync(PUBLISH_NPMRC, `registry=${REG_URL}/\n//${REG_HOST}/:_authToken="consumer-smoke"\n`)
+
+const cfgPath = join(REG_STORAGE, 'config.yaml')
+const regLog = join(REG_STORAGE, 'verdaccio.log')
+writeFileSync(
+  cfgPath,
+  [
+    `storage: ${join(REG_STORAGE, 'storage')}`,
+    'uplinks:',
+    '  npmjs:',
+    '    url: https://registry.npmjs.org/',
+    '    maxage: 60m',
+    'packages:',
+    // Our packages: served ONLY from local storage — no proxy, so a consumer can
+    // never silently resolve a real published version instead of our build.
+    "  '@three-flatland/*':",
+    '    access: $all',
+    '    publish: $all',
+    '    unpublish: $all',
+    "  'three-flatland':",
+    '    access: $all',
+    '    publish: $all',
+    '    unpublish: $all',
+    // Everything else proxies npmjs (three, react, tweakpane, …).
+    "  '**':",
+    '    access: $all',
+    '    publish: $all',
+    '    proxy: npmjs',
+    'max_body_size: 200mb',
+    `log: { type: file, path: ${regLog}, level: warn }`,
+    '',
+  ].join('\n')
+)
+
+let verdaccio
+async function startRegistry() {
+  const bin = resolve(ROOT, 'node_modules/.bin/verdaccio')
+  console.log(`• starting Verdaccio on ${REG_URL} …`)
+  // Bind to 127.0.0.1 explicitly — a bare port defaults to `localhost`, which on
+  // macOS resolves to ::1 (IPv6), so a 127.0.0.1 client never connects.
+  verdaccio = spawn(bin, ['--config', cfgPath, '--listen', `${REG_URL}/`], { stdio: 'ignore' })
+  verdaccio.on('exit', (code) => {
+    if (code && code !== 0 && !shuttingDown) console.error(`  ⚠ Verdaccio exited early (code ${code})`)
+  })
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`${REG_URL}/-/ping`)
+      if (r.ok) return
+    } catch {
+      /* not up yet */
+    }
+    await sleep(300)
+  }
+  throw new Error('Verdaccio did not become ready within 30s')
+}
+
+let shuttingDown = false
+function cleanup() {
+  shuttingDown = true
+  try {
+    verdaccio?.kill('SIGTERM')
+  } catch {
+    /* already gone */
+  }
+  for (const d of [TARBALL_DIR, REG_STORAGE]) rmSync(d, { recursive: true, force: true })
+}
+process.on('exit', cleanup)
+process.on('SIGINT', () => process.exit(130))
+process.on('SIGTERM', () => process.exit(143))
+
+await startRegistry()
+
+console.log(`• publishing ${Object.keys(tarballs).length} tarballs to the local registry…`)
+// `--tag alpha`: our packages are prerelease (0.1.0-alpha.*) and npm refuses to
+// publish a prerelease without an explicit dist-tag. The tag is irrelevant to
+// resolution — examples install by version range, which matches across all
+// published versions regardless of tag.
+const publishFailed = []
+for (const [name, tgz] of Object.entries(tarballs)) {
+  try {
+    run(
+      'npm',
+      [
+        'publish',
+        tgz,
+        '--tag',
+        'alpha',
+        '--registry',
+        `${REG_URL}/`,
+        '--userconfig',
+        PUBLISH_NPMRC,
+        '--loglevel',
+        'warn',
+      ],
+      ROOT
+    )
+  } catch (err) {
+    const msg = (err.stdout || '') + (err.stderr || '') || err.message
+    console.error(`  ✗ failed to publish ${name}:\n${msg.slice(-600)}`)
+    publishFailed.push(name)
+  }
+}
+if (publishFailed.length) {
+  // A pack succeeded but publish failed → the registry is missing packages the
+  // examples need. That's a harness failure, not a clean skip; fail loudly rather
+  // than silently skipping every example and reporting green.
+  console.error(`\n✗ failed to publish to the local registry: ${publishFailed.join(', ')}`)
+  process.exit(1)
+}
+
+// ── 3. Per-example: copy out, install from the registry (manifest UNCHANGED) ─
 
 function discoverExamples() {
   const out = []
@@ -110,8 +231,9 @@ const results = []
 for (const ex of EXAMPLES) {
   const id = `${ex.type}/${ex.slug}`
   const dest = join(WORK, `${ex.type}-${ex.slug}`)
-  // Skip examples that need a package we couldn't pack (e.g. skia on macOS —
-  // CI packs everything, so nothing is skipped there).
+  // Skip examples that need a flatland package we couldn't pack/publish — else
+  // npm would 404 (our packages don't proxy npmjs) and the failure would be
+  // about the harness, not the example.
   const exDeps = (() => {
     const p = JSON.parse(readFileSync(join(ex.dir, 'package.json'), 'utf8'))
     return { ...p.dependencies, ...p.devDependencies }
@@ -119,34 +241,24 @@ for (const ex of EXAMPLES) {
   const missing = Object.keys(exDeps).filter((d) => UNPACKABLE.has(d))
   if (missing.length) {
     results.push({ id, build: 'skip' })
-    console.log(`  – [${id}] skipped (needs unpackable ${missing.join(', ')})`)
+    console.log(`  – [${id}] skipped (needs unpublished ${missing.join(', ')})`)
     continue
   }
   try {
-    // Copy the example out of the repo (skip any local node_modules/dist).
+    // Copy the example out of the repo (skip any local node_modules/dist), then
+    // point npm at the local registry. The package.json is left UNTOUCHED.
     cpSync(ex.dir, dest, {
       recursive: true,
       filter: (src) => !/(^|\/)(node_modules|dist)(\/|$)/.test(src.slice(ex.dir.length)),
     })
+    writeFileSync(join(dest, '.npmrc'), `registry=${REG_URL}/\n`)
 
-    // Rewrite deps + inject overrides so flatland resolves to the tarballs.
-    const pkgPath = join(dest, 'package.json')
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-    for (const bucket of ['dependencies', 'devDependencies']) {
-      if (!pkg[bucket]) continue
-      for (const dep of Object.keys(pkg[bucket])) {
-        if (FLATLAND_NAMES.has(dep)) pkg[bucket][dep] = `file:${tarballs[dep]}`
-      }
-    }
-    pkg.overrides = { ...pkg.overrides, ...overrides }
-    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
-
-    console.log(`• [${id}] npm install…`)
+    console.log(`• [${id}] npm install (from local registry)…`)
     run('npm', ['install', '--no-audit', '--no-fund', '--loglevel', 'error'], dest)
     console.log(`• [${id}] npm run build…`)
     run('npm', ['run', 'build'], dest)
     results.push({ id, dest, build: 'ok' })
-    console.log(`  ✓ [${id}] built against published tarballs`)
+    console.log(`  ✓ [${id}] built against the published packages`)
   } catch (err) {
     const msg = (err.stdout || '') + (err.stderr || '') || err.message
     results.push({ id, build: 'fail', error: msg.slice(-1500) })
@@ -154,7 +266,7 @@ for (const ex of EXAMPLES) {
   }
 }
 
-// ── 3. Render check (Playwright) — pixels, not blank, no console errors ──────
+// ── 4. Render check (Playwright) — pixels, not blank, no console errors ──────
 
 async function renderCheck(built) {
   const { chromium } = await import('@playwright/test')
@@ -169,24 +281,33 @@ async function renderCheck(built) {
     const server = staticServer(distDir)
     const port = server.address().port
     const page = await browser.newPage()
+    const pageErrors = []
     const consoleErrors = []
     page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()))
-    page.on('pageerror', (e) => consoleErrors.push(String(e)))
+    page.on('pageerror', (e) => pageErrors.push(String(e)))
     try {
       await page.goto(`http://localhost:${port}/`, { waitUntil: 'networkidle', timeout: 30000 })
       await page.waitForSelector('canvas', { timeout: 20000 })
-      // Give the render loop a few frames, then sample the canvas for non-blank pixels.
+      // Let the render loop run a few frames, then confirm a real render surface.
+      // We can't read WebGPU/WebGL pixels back reliably in headless (the front
+      // buffer isn't preserved for drawImage), so "painted" is a live canvas of
+      // non-zero size; the real failure signal is an uncaught error at init/run.
       await page.waitForTimeout(1500)
       const painted = await page.evaluate(() => {
         const c = document.querySelector('canvas')
-        if (!c) return false
-        // WebGL/WebGPU canvases can't be read back directly; use the compositor
-        // snapshot instead — a non-trivial canvas box is the render surface.
-        return c.width > 0 && c.height > 0
+        return !!c && c.width > 0 && c.height > 0
       })
-      if (consoleErrors.length) {
+      // A page error (uncaught exception) is always fatal. Console errors are too,
+      // EXCEPT resource-load failures — loaders here intentionally probe for an
+      // optional baked sibling (e.g. <sheet>.normal.png) and fall back to runtime
+      // synthesis, so a 404 there is by design, not a broken example.
+      const fatalConsole = consoleErrors.filter(
+        (t) => !/Failed to load resource|net::ERR_|ERR_ABORTED|status of 40\d/i.test(t)
+      )
+      const fatal = [...pageErrors, ...fatalConsole]
+      if (fatal.length) {
         r.render = 'fail'
-        r.error = `console errors:\n${consoleErrors.slice(0, 5).join('\n')}`
+        r.error = `errors:\n${fatal.slice(0, 5).join('\n')}`
       } else if (!painted) {
         r.render = 'fail'
         r.error = 'canvas present but not painted (blank)'
@@ -206,7 +327,17 @@ async function renderCheck(built) {
 }
 
 function staticServer(dir) {
-  const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.png': 'image/png', '.svg': 'image/svg+xml', '.glb': 'model/gltf-binary' }
+  const MIME = {
+    '.html': 'text/html',
+    '.js': 'text/javascript',
+    '.mjs': 'text/javascript',
+    '.css': 'text/css',
+    '.json': 'application/json',
+    '.wasm': 'application/wasm',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.glb': 'model/gltf-binary',
+  }
   const srv = createServer((req, res) => {
     let p = decodeURIComponent((req.url || '/').split('?')[0])
     if (p === '/' || p.endsWith('/')) p += 'index.html'
@@ -230,19 +361,39 @@ if (!NO_RENDER) {
   }
 }
 
-// ── 4. Report ───────────────────────────────────────────────────────────────
+// ── 5. Report ───────────────────────────────────────────────────────────────
 
-rmSync(TARBALL_DIR, { recursive: true, force: true })
 const skipped = results.filter((r) => r.build === 'skip')
 const failed = results.filter((r) => r.build === 'fail' || (!NO_RENDER && r.build === 'ok' && r.render !== 'ok'))
 const passed = results.length - failed.length - skipped.length
 console.log(`\n${'─'.repeat(60)}`)
-console.log(`Consumer smoke: ${passed} passed, ${failed.length} failed, ${skipped.length} skipped (of ${results.length})`)
+console.log(
+  `Consumer smoke: ${passed} passed, ${failed.length} failed, ${skipped.length} skipped (of ${results.length})`
+)
 for (const f of failed) console.log(`  ✗ ${f.id} — ${f.build === 'fail' ? 'build' : 'render'} failed`)
-if (unpackable.length) console.log(`  (unpackable packages: ${unpackable.join(', ')})`)
+if (unpackable.length) console.log(`  (unpublished packages: ${unpackable.join(', ')})`)
 if (failed.length) {
   console.log(`\nWorkdir kept for inspection: ${WORK}`)
+  console.log(`Verdaccio log: ${regLog}`)
+  process.exit(1)
+}
+if (passed === 0) {
+  // Nothing actually exercised the packages — a false green. Treat as failure.
+  console.error('✗ no example was built — every one was skipped. Nothing was tested.')
   process.exit(1)
 }
 rmSync(WORK, { recursive: true, force: true })
-console.log('All packable examples install + build' + (NO_RENDER ? '' : ' + render') + ' against the published tarballs. ✓')
+console.log('All packable examples install + build' + (NO_RENDER ? '' : ' + render') + ' from the local registry. ✓')
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+function freePort() {
+  return new Promise((res, rej) => {
+    const s = netServer()
+    s.once('error', rej)
+    s.listen(0, '127.0.0.1', () => {
+      const { port } = s.address()
+      s.close(() => res(port))
+    })
+  })
+}
