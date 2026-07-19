@@ -432,6 +432,10 @@ if (passed === 0) {
 }
 rmSync(WORK, { recursive: true, force: true })
 console.log('All packable examples install + build' + (NO_RENDER ? '' : ' + render') + ' from the local registry. ✓')
+// Exit explicitly: the spawned Verdaccio child keeps the event loop alive, so
+// without this the process hangs after printing success until the job's timeout
+// cancels it (green script, "cancelled" CI job). The `exit` handler kills it.
+process.exit(0)
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
