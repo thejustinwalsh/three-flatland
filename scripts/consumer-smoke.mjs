@@ -71,13 +71,18 @@ try {
 const TARBALL_DIR = mkdtempSync(join(tmpdir(), 'wc-tarballs-'))
 console.log(`• pnpm pack → ${TARBALL_DIR}`)
 const tarballs = {} // name → absolute tarball path
+const versionOf = Object.fromEntries(PKGS.map((p) => [p.name, p.version]))
 const unpackable = []
 for (const p of PKGS) {
   try {
     run('pnpm', ['pack', '--pack-destination', TARBALL_DIR], join(ROOT, 'packages', p.dir))
+    // Match the EXACT filename (<stem>-<version>.tgz), not a prefix: `three-flatland-`
+    // is a prefix of `three-flatland-devtools-`, `three-flatland-nodes-`, … so a
+    // `.startsWith()` find would grab the wrong package's tarball depending on the
+    // (filesystem-dependent) readdir order — green on macOS, wrong on Linux CI.
     const stem = p.name.replace('@', '').replace('/', '-')
-    const tgz = readdirSync(TARBALL_DIR).find((f) => f.startsWith(stem + '-') && f.endsWith('.tgz'))
-    if (tgz) tarballs[p.name] = join(TARBALL_DIR, tgz)
+    const expected = `${stem}-${p.version}.tgz`
+    if (existsSync(join(TARBALL_DIR, expected))) tarballs[p.name] = join(TARBALL_DIR, expected)
     else unpackable.push(p.name)
   } catch {
     unpackable.push(p.name)
@@ -203,6 +208,36 @@ if (publishFailed.length) {
   // examples need. That's a harness failure, not a clean skip; fail loudly rather
   // than silently skipping every example and reporting green.
   console.error(`\n✗ failed to publish to the local registry: ${publishFailed.join(', ')}`)
+  process.exit(1)
+}
+
+// Verify every published package@version is actually resolvable BEFORE installing
+// examples. npm publish can return 0 before Verdaccio has flushed the packument to
+// storage, and an immediate `npm install` then hits ETARGET (green on a fast macOS
+// FS, red on CI). Poll the packument until the version appears, and fail loudly
+// with the exact package if it never does — never a silent all-examples failure.
+async function packumentHas(name, version) {
+  const enc = name.replace('/', '%2f')
+  for (let i = 0; i < 60; i++) {
+    try {
+      const r = await fetch(`${REG_URL}/${enc}`)
+      if (r.ok) {
+        const j = await r.json()
+        if (j?.versions?.[version]) return true
+      }
+    } catch {
+      /* not queryable yet */
+    }
+    await sleep(250)
+  }
+  return false
+}
+const notReady = []
+for (const name of Object.keys(tarballs)) {
+  if (!(await packumentHas(name, versionOf[name]))) notReady.push(`${name}@${versionOf[name]}`)
+}
+if (notReady.length) {
+  console.error(`\n✗ published but not resolvable in the registry: ${notReady.join(', ')}`)
   process.exit(1)
 }
 
