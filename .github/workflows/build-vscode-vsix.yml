@@ -121,6 +121,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Reuse the release's already-built Nx cache (build is the sole writer of the
+      # `nx-current` lineage) so `nx build @three-flatland/vscode` below is a cache
+      # hit for the extension + its dep closure instead of a cold rebuild.
+      - name: Restore Nx cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-current-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-current-
+
       - name: Download all platform codelens-service binaries
         uses: actions/download-artifact@v5
         with:
@@ -149,12 +160,15 @@ jobs:
       # Build the extension AND its workspace-dep closure. The extension's own
       # build script doesn't build @three-flatland/bridge / design-system / io /
       # … — their subpaths (e.g. @three-flatland/bridge/client) resolve to dist
-      # for Vite/Rollup, so an unbuilt closure fails the webview build. The `...`
-      # suffix builds the real dependency closure in topological order.
-      # Deliberately NOT the monorepo `nx run-many -t build`, which drags in @three-flatland/skia's
-      # build (needs the Zig/WASM toolchain). Mirrors e2e/global-setup.ts.
+      # for Vite/Rollup, so an unbuilt closure fails the webview build.
+      # `nx build @three-flatland/vscode` builds exactly the extension + its nx
+      # dependency graph (11 projects, topo order via `dependsOn: ^build`) — it does
+      # NOT drag in @three-flatland/skia's Zig/WASM build (skia isn't a dep), so it
+      # avoids the toolchain while staying on Nx and reusing the restored cache.
+      # (The whole-workspace `nx run-many -t build` WOULD pull in skia; a single
+      # project target does not.)
       - name: Build extension + webviews
-        run: pnpm --filter "@three-flatland/vscode..." -r run build
+        run: pnpm nx build @three-flatland/vscode
 
       - name: Package universal VSIX
         working-directory: tools/vscode
