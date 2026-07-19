@@ -20,6 +20,9 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: true
+          # Full history so `nx affected` can compute the merge-base against the
+          # PR's target branch (needs common history, not a shallow clone).
+          fetch-depth: 0
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
@@ -37,6 +40,21 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Base for `nx affected`: the PR's target branch on a PR, else the previous
+      # commit on a push to main. So a PR only builds/tests/typechecks the projects
+      # its diff actually affects (per the nx graph) — not the whole workspace. A
+      # change to a workspace-global input (nx.json, lockfile, tsconfig, …) still
+      # marks everything affected, which is correct.
+      - name: Determine nx affected base
+        id: nxbase
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            echo "base=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Cache Nx
         uses: actions/cache@v5
@@ -79,17 +97,17 @@ jobs:
         run: pnpm boundaries
 
       - name: Typecheck
-        run: pnpm typecheck
+        run: pnpm nx affected -t typecheck --base=${{ steps.nxbase.outputs.base }}
 
       - name: Build
         # Authenticate the skia WASM toolchain downloads (setup.mjs) so a cold
         # .tools cache doesn't hit the unauthenticated GitHub API rate limit.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm build
+        run: pnpm nx affected -t build --base=${{ steps.nxbase.outputs.base }}
 
+      # `nx affected -t test` already runs @three-flatland/skia's test when skia
+      # is affected (it's in the test graph and reads the committed lib/*.wasm), so
+      # no separate skia test step is needed.
       - name: Test
-        run: pnpm test
-
-      - name: Test Skia
-        run: pnpm --filter @three-flatland/skia test
+        run: pnpm nx affected -t test --base=${{ steps.nxbase.outputs.base }}
