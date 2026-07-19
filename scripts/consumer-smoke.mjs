@@ -295,7 +295,14 @@ for (const ex of EXAMPLES) {
     writeFileSync(join(dest, '.npmrc'), `registry=${REG_URL}/\n@three-flatland:registry=${REG_URL}/\n`)
 
     console.log(`• [${id}] npm install (from local registry)…`)
-    run('npm', ['install', '--no-audit', '--no-fund', '--loglevel', 'error'], dest)
+    // Force the registry on the COMMAND LINE, not just via .npmrc: CI sets a
+    // higher-precedence `npm_config_registry` env var (env beats a project
+    // .npmrc), so the .npmrc `registry=` alone let the default registry stay
+    // npmjs — where our packages exist at OLDER versions (three-flatland maxes at
+    // 0.1.0-alpha.6 there) → the example's ^0.1.0-alpha.8 ETARGET'd. A CLI flag
+    // beats env. The @three-flatland scope is pinned in the .npmrc (no env
+    // competes for a scoped key); third-party scopes use the default → npmjs uplink.
+    run('npm', ['install', '--no-audit', '--no-fund', '--loglevel', 'error', '--registry', `${REG_URL}/`], dest)
     console.log(`• [${id}] npm run build…`)
     run('npm', ['run', 'build'], dest)
     results.push({ id, dest, build: 'ok' })
