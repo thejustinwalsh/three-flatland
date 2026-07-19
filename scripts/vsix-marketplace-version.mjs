@@ -44,11 +44,13 @@
  * compute the wrong bump and the counter sequence breaks.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MANIFEST = join(dirname(dirname(fileURLToPath(import.meta.url))), 'tools/vscode/package.json')
+const VSCODE_DIR = join(dirname(dirname(fileURLToPath(import.meta.url))), 'tools/vscode')
+const MANIFEST = join(VSCODE_DIR, 'package.json')
+const CHANGELOG = join(VSCODE_DIR, 'CHANGELOG.md')
 
 /** Fold a `-<tag>.<n>` prerelease counter into the patch position. */
 export function marketplaceVersion(version) {
@@ -57,11 +59,36 @@ export function marketplaceVersion(version) {
     if (/^\d+\.\d+\.\d+$/.test(version)) return version
     throw new Error(
       `Cannot derive a Marketplace version from '${version}'. Expected MAJOR.MINOR.PATCH ` +
-        `or MAJOR.MINOR.PATCH-<tag>.<n> (what changesets pre-mode produces).`,
+        `or MAJOR.MINOR.PATCH-<tag>.<n> (what changesets pre-mode produces).`
     )
   }
   const [, major, minor, , counter] = match
   return `${major}.${minor}.${counter}`
+}
+
+/**
+ * Rewrite changesets' version headings through the same transform.
+ *
+ * vsce ships CHANGELOG.md in the VSIX and both marketplaces render it as a
+ * Changelog tab, but changesets writes headings at the raw version
+ * (`## 0.2.0-alpha.1`) while we publish the derived one (`0.2.1`). Left alone,
+ * users read a changelog whose versions match nothing they can install.
+ *
+ * Applying the identical mapping keeps history correct, not just the newest
+ * entry: every past release was published through this same transform, so each
+ * old heading maps to the version that actually shipped for it. Headings that
+ * are already clean (the hand-set 0.1.0 release) pass through untouched.
+ */
+export function rewriteChangelogHeadings(markdown) {
+  // `[ \t]` not `\s`: `\s` matches newlines, so a greedy `\s*$` under the `m`
+  // flag swallows the blank line after each heading and reflows the document.
+  return markdown.replace(/^(##+[ \t]+)(\d+\.\d+\.\d+(?:-[0-9a-z-]+\.\d+)?)[ \t]*$/gim, (line, hashes, version) => {
+    try {
+      return `${hashes}${marketplaceVersion(version)}`
+    } catch {
+      return line
+    }
+  })
 }
 
 // CLI only when run directly — importing this module (tests, other scripts)
@@ -76,6 +103,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       writeFileSync(MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`)
       console.error('vsix: rewrote manifest version for the Marketplace — do NOT commit this')
     }
+
+    if (existsSync(CHANGELOG)) {
+      const original = readFileSync(CHANGELOG, 'utf8')
+      const rewritten = rewriteChangelogHeadings(original)
+      if (rewritten !== original) {
+        writeFileSync(CHANGELOG, rewritten)
+        console.error('vsix: rewrote CHANGELOG version headings to match — do NOT commit this')
+      }
+    }
+
     console.error(`vsix: publishing as ${derived} (preview: ${manifest.preview === true})`)
   }
 
