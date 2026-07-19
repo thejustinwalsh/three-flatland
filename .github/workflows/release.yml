@@ -15,47 +15,28 @@ permissions:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  # Is THIS run the actual publish? changesets/action only publishes when there are
-  # no pending changesets left — i.e. the "chore: release packages" version PR (which
-  # consumes them and stages the bumped versions) has just merged. On every other
-  # push, changesets accumulate and it merely updates that PR — no publish, so no
-  # smokes. This is the "after we say yes and everything is staged" gate: the smokes
-  # run only on the release, not on every merge to main.
-  detect-publish:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
-    outputs:
-      publish: ${{ steps.d.outputs.publish }}
-    steps:
-      - uses: actions/checkout@v6
-      - id: d
-        run: |
-          if find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | grep -q .; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"   # changesets pending → version-PR update only
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"    # none pending → this run publishes
-          fi
-
-  # Full smoke suites — ONLY on the publish run. Final safety net on the exact commit
-  # being released; self-sufficient reusable workflows (they build off the restored
-  # Nx cache). A failure here skips `release` below → nothing is published.
+  # Full smoke suites — the final check right before a publish. Gated to the MANUAL
+  # release (workflow_dispatch): that's how a release is cut here — you run this job
+  # and approve the `release` environment. So this IS "we're about to publish": run
+  # the smokes, then the release job requires your approval, then it publishes. On
+  # the automatic workflow_run (which only keeps the "chore: release packages"
+  # version PR updated) the smokes are SKIPPED — they don't run on every merge to
+  # main. Self-sufficient reusable workflows; a failure skips `release` → no publish.
   smoke:
-    needs: detect-publish
-    if: ${{ needs.detect-publish.outputs.publish == 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     uses: ./.github/workflows/smoke.yml
 
   consumer-smoke:
-    needs: detect-publish
-    if: ${{ needs.detect-publish.outputs.publish == 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     uses: ./.github/workflows/consumer-smoke.yml
 
   release:
     name: Release
-    needs: [detect-publish, smoke, consumer-smoke]
+    needs: [smoke, consumer-smoke]
     runs-on: ubuntu-latest
-    # Runs on BOTH paths: version-PR management (smokes SKIPPED) and the publish
-    # (smokes ran). A smoke FAILURE on the publish run makes this skip → no publish;
-    # SKIPPED smokes (the non-publish path) are fine and still let it manage the PR.
+    # Manual run → smokes ran and must have PASSED (a failure skips this → no publish).
+    # Auto workflow_run → smokes SKIPPED (version-PR management) and that's fine. The
+    # `release` environment's required reviewer is the human approval on either path.
     if: |
       !cancelled() &&
       (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') &&
