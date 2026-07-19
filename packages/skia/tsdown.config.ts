@@ -31,10 +31,14 @@ export default defineConfig({
   // to dist below) rather than emitted as a chunk — unbundle can't name it.
   deps: { neverBundle: ['three', 'react', '@react-three/fiber', /\.json$/] },
   hooks: {
-    // Copy JSON imported at runtime but not emitted by the unbundled build.
+    // Copy the JSON imported at runtime but not emitted by the unbundled build.
+    // tsdown emits the import as `../wgpu-layouts.json` from dist/ts/*.js (root:
+    // 'src' places the external asset at the dist ROOT, not mirrored under ts/),
+    // so it must land at dist/wgpu-layouts.json — copying it under dist/ts/ left
+    // the built loader unable to resolve it and broke any consumer bundling skia.
     'build:done'() {
       const src = resolve(__dirname, 'src/ts/wgpu-layouts.json')
-      const dst = resolve(__dirname, 'dist/ts/wgpu-layouts.json')
+      const dst = resolve(__dirname, 'dist/wgpu-layouts.json')
       if (existsSync(src)) {
         cpSync(src, dst)
       }
