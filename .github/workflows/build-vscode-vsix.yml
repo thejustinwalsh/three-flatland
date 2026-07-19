@@ -25,7 +25,13 @@ on:
 permissions:
   contents: read
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+# Hardcoded group, NOT ${{ github.workflow }}: when this is CALLED as a reusable
+# workflow, github.workflow is the CALLER's name ("Release"), so that expression
+# resolved to the release run's own concurrency group — a caller waiting on a job
+# that's blocked on the caller's group = deadlock (GitHub cancels the release). A
+# fixed prefix keeps the group distinct from any caller while still serializing
+# standalone (workflow_dispatch) VSIX builds on the same ref.
+concurrency: build-vscode-vsix-${{ github.ref }}
 
 jobs:
   # One native codelens-service build per target platform — Rust can't be
