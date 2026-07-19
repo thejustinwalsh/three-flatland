@@ -286,7 +286,13 @@ for (const ex of EXAMPLES) {
       recursive: true,
       filter: (src) => !/(^|\/)(node_modules|dist)(\/|$)/.test(src.slice(ex.dir.length)),
     })
-    writeFileSync(join(dest, '.npmrc'), `registry=${REG_URL}/\n`)
+    // Set BOTH the default and the @three-flatland-scoped registry. The scoped
+    // one is essential: our packages ARE published to real npmjs at older
+    // versions (e.g. @three-flatland/devtools@0.1.0-alpha.3), so if a scoped
+    // package fell through to npmjs it would resolve the wrong version and the
+    // example's `^1.0.0-alpha.5` would ETARGET. A project-level .npmrc has the
+    // highest precedence, so this wins over any inherited scoped config.
+    writeFileSync(join(dest, '.npmrc'), `registry=${REG_URL}/\n@three-flatland:registry=${REG_URL}/\n`)
 
     console.log(`• [${id}] npm install (from local registry)…`)
     run('npm', ['install', '--no-audit', '--no-fund', '--loglevel', 'error'], dest)
