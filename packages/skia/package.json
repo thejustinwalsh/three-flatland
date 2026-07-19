@@ -85,7 +85,8 @@
         "outputs": [
           "{projectRoot}/dist",
           "{projectRoot}/lib/skia-gl.wasm",
-          "{projectRoot}/lib/skia-wgpu.wasm"
+          "{projectRoot}/lib/skia-wgpu.wasm",
+          "{projectRoot}/lib/.wasm-sources.sha256"
         ],
         "options": {
           "command": "node scripts/setup.mjs --ensure && tsdown",
