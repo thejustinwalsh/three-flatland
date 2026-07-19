@@ -15,8 +15,23 @@ permissions:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
+  # Final gate before publishing to npm: re-run the FULL smoke suites on the exact
+  # commit being released. We can't lean on the triggering CI run — its smokes are
+  # skipped on a changeset-only push, and a skipped job still reads as "success" to
+  # the workflow_run conclusion — so the release verifies them itself here. Both are
+  # self-sufficient reusable workflows (they build what they need off the restored
+  # Nx cache). If either fails, `release` is skipped: no publish.
+  smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    uses: ./.github/workflows/smoke.yml
+
+  consumer-smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    uses: ./.github/workflows/consumer-smoke.yml
+
   release:
     name: Release
+    needs: [smoke, consumer-smoke]
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     environment: release
