@@ -35,7 +35,7 @@ import { execSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
-import { canBuildWasm, fetchPrebuiltWasm } from "./prebuilt-wasm.mjs";
+import { canBuildWasm } from "./host-capability.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(__dirname, "..");
@@ -165,21 +165,22 @@ if (skipIfFresh) {
   }
 }
 
-// ── Host capability gate: build from source, or fetch the prebuilt ──
+// ── Host capability gate: build from source, or use the committed libs ──
 // If Zig can't link a native binary here (macOS 26.4+/27 dropped the arm64
-// libSystem slice — ziglang/zig#31658), the from-source build is impossible;
-// fall back to the CI-published prebuilt WASM. CI/Linux links fine and builds
-// from source, so it never hits this path and stays the source of truth.
+// libSystem slice — ziglang/zig#31658), the from-source build is impossible.
+// The compiled lib/*.wasm are COMMITTED to the repo (CI rebuilds + commits them
+// on skia changes), so use those — we do NOT fetch a remote prebuilt (that would
+// overwrite the tracked libs and dirty git history). Missing libs → fail.
 if (!canBuildWasm()) {
-  console.warn("\n⚠ Zig cannot link a native binary on this host — building WASM from source is not possible here.");
-  console.warn("  Known cause: macOS 26.4+/27 dropped the arm64 libSystem slice (ziglang/zig#31658).");
-  console.warn("  Falling back to the CI-published prebuilt WASM. Edited skia sources? Build on Linux/CI to pick them up.");
-  if (!fetchPrebuiltWasm(variants)) {
-    console.error("\n✗ No prebuilt WASM available to fall back to — build on Linux/CI or fix the local Zig toolchain.");
-    process.exit(1);
+  const libsPresent = variants.every((v) => existsSync(resolve(LIB, `skia-${v}.wasm`)));
+  if (libsPresent) {
+    console.log("\n✓ Can't compile WASM on this host — using the committed lib/*.wasm (CI rebuilds on skia changes).");
+    console.log("  Edited skia sources? Push and let Linux/CI recompile and commit them.");
+    process.exit(0);
   }
-  console.log("\n✓ Prebuilt WASM in place.");
-  process.exit(0);
+  console.error("\n✗ Committed skia lib/*.wasm are missing and this host can't compile them.");
+  console.error("  Restore them from git or build on Linux/CI. NOT fetching a remote prebuilt.");
+  process.exit(1);
 }
 
 // ── Ensure dist directories ──
