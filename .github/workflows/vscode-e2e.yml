@@ -56,8 +56,8 @@ jobs:
         run: cargo build --release
         working-directory: tools/codelens-service/sidecar
 
-      - name: Cache Nx
-        uses: actions/cache@v5
+      - name: Restore Nx cache
+        uses: actions/cache/restore@v5
         with:
           path: .nx/cache
           key: ${{ runner.os }}-nx-current-${{ github.sha }}

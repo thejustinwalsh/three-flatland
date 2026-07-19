@@ -267,8 +267,8 @@ NODE VERSION & MATRIX
 - When the LTS schedule rolls (e.g., Node 24 becomes Active LTS), bump engines accordingly
 
 NX CACHE
-- Per-node-version cache namespace: `${{ runner.os }}-nx-${{ inputs.node-tag }}-${{ github.sha }}` in build.yml
-- Smoke, size, vscode-e2e, release, and any new single-node-version job pin to the `current` leg's namespace: `${{ runner.os }}-nx-current-${{ github.sha }}`
+- Per-node-version cache namespace: `${{ runner.os }}-nx-${{ inputs.node-tag }}-${{ github.sha }}` in build.yml — build.yml OWNS this key and SAVES it (`actions/cache`).
+- Smoke, size, vscode-e2e, release, docs, and the commit-skia-libs job pin to the `current` leg's namespace (`${{ runner.os }}-nx-current-${{ github.sha }}`) but RESTORE-ONLY (`actions/cache/restore`) — build is the sole writer of that lineage. Restoring-only avoids the immutable-cache save contention (multiple jobs can't save the same key; they'd just log "already exists") and any cross-workflow race for the same SHA, while still inheriting build's warm cache.
 - Restore-keys use the same prefix so prefix-fallback inherits from prior SHAs; nx's content-hashing decides per-task hits
 
 WORKFLOW DEPENDENCIES

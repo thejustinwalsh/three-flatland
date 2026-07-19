@@ -122,7 +122,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Restore Nx cache
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: .nx/cache
           key: ${{ runner.os }}-nx-current-${{ github.sha }}

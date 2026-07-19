@@ -40,7 +40,7 @@ jobs:
       # Restore the build job's outputs (keyed on this SHA) so the harness's
       # `nx build` is a cache hit — no second real build of the repo.
       - name: Restore Nx cache
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: .nx/cache
           key: ${{ runner.os }}-nx-current-${{ github.sha }}
