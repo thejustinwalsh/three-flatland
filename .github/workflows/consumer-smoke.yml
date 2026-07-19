@@ -1,9 +1,11 @@
 name: Consumer Smoke
 
 # The smoke test, exercising the REAL published-package flow a consumer would:
-# pnpm pack every publishable package (dist-only via publishConfig) → copy each
-# example OUT of the repo root → npm install the tarballs → build + Playwright
-# render-check. Proves the packages we deploy actually work before we deploy.
+# pnpm pack every publishable package (dist-only via publishConfig) → publish the
+# tarballs to a throwaway local Verdaccio registry → copy each example OUT of the
+# repo root → npm install with its manifest UNCHANGED (declared versions resolve
+# from the registry) → build + Playwright render-check. Proves the packages we
+# deploy actually work before we deploy.
 #
 # Gated `needs: [changes, build]` in ci.yml, so it runs only after
 # every package build is green; it restores the build job's Nx cache instead of
