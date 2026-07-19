@@ -31,6 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       vscode: ${{ steps.calc.outputs.vscode }}
+      examples: ${{ steps.calc.outputs.examples }}
+      nx_ok: ${{ steps.calc.outputs.nx_ok }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -49,12 +51,30 @@ jobs:
           else
             BASE="HEAD~1"
           fi
-          AFFECTED="$(pnpm nx show projects --affected --base="$BASE" 2>/dev/null || echo '@three-flatland/vscode')"
+          # Track whether nx actually answered. Every consumer below fails OPEN
+          # on nx trouble: we would rather burn CI minutes running everything
+          # than silently test a subset because the graph query broke.
+          if AFFECTED="$(pnpm nx show projects --affected --base="$BASE" 2>/dev/null)"; then
+            echo "nx_ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "nx_ok=false" >> "$GITHUB_OUTPUT"
+            AFFECTED='@three-flatland/vscode'
+          fi
+
           if echo "$AFFECTED" | grep -q '@three-flatland/vscode'; then
             echo "vscode=true" >> "$GITHUB_OUTPUT"
           else
             echo "vscode=false" >> "$GITHUB_OUTPUT"
           fi
+
+          # Examples whose dependency graph this change touches — the consumer
+          # smoke's scope on PRs. Let nx do the selecting: every example
+          # declares `tags: ["type:example"]`, so this rides declared metadata
+          # rather than guessing from the project-name prefix.
+          EXAMPLES="$(pnpm nx show projects --affected --base="$BASE" --projects=tag:type:example --json 2>/dev/null \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const m=s.match(/\[.*\]/s);process.stdout.write(m?JSON.parse(m[0]).join(","):"")})')"
+          echo "examples=$EXAMPLES" >> "$GITHUB_OUTPUT"
+          echo "affected examples: ${EXAMPLES:-<none>}"
 
   # skia's single `build` target compiles the wasm (setup.mjs --ensure) only on a
   # cache miss (its wasm sources changed) and consumes committed libs otherwise —
@@ -162,16 +182,30 @@ jobs:
   # The smoke test — real published-package consumer flow. Runs ONLY after every
   # package build is green (needs: build); it restores the build job's Nx cache
   # (which carries skia's lib/*.wasm as a build output) instead of rebuilding.
+  #
+  # On PRs this is scoped to the examples `nx affected` says the change can
+  # reach, so a skia-only change render-tests the 2 skia examples instead of all
+  # 22. The release runs the same script UNSCOPED (release.yml, as a step inside
+  # the approved job) so the full surface is still swept before anything is
+  # published — that's the net for an accidental break the graph didn't predict.
+  #
+  # Fails open in both directions: if `nx` errored, or the affected job didn't
+  # run, the scope is empty and every example is tested.
   consumer-smoke:
-    needs: [changes, build]
+    needs: [changes, build, affected]
     if: |
       !cancelled() && needs.build.result == 'success' &&
       needs.changes.outputs.changeset_only != 'true' &&
       (needs.changes.outputs.packages == 'true' ||
        needs.changes.outputs.examples == 'true' ||
        needs.changes.outputs.configs == 'true' ||
-       needs.changes.outputs.ci == 'true')
+       needs.changes.outputs.ci == 'true') &&
+      (needs.affected.result != 'success' ||
+       needs.affected.outputs.nx_ok != 'true' ||
+       needs.affected.outputs.examples != '')
     uses: ./.github/workflows/consumer-smoke.yml
+    with:
+      examples: ${{ (needs.affected.result == 'success' && needs.affected.outputs.nx_ok == 'true') && needs.affected.outputs.examples || '' }}
 
   size:
     needs: [changes, build]

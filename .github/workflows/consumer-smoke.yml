@@ -13,6 +13,17 @@ name: Consumer Smoke
 
 on:
   workflow_call:
+    inputs:
+      examples:
+        description: >-
+          Comma-separated examples to test (slug or nx project name). PRs pass
+          the `nx affected` set so a package change only render-tests what
+          depends on it. Empty = full sweep of every example, which is what the
+          release runs so an accidental break the graph didn't predict still
+          gets caught before publish.
+        type: string
+        required: false
+        default: ''
 
 jobs:
   consumer-smoke:
@@ -64,4 +75,9 @@ jobs:
         run: pnpm exec playwright install-deps chromium
 
       - name: Consumer smoke
-        run: pnpm test:consumer
+        run: |
+          if [ -n "${{ inputs.examples }}" ]; then
+            pnpm test:consumer -- --only "${{ inputs.examples }}"
+          else
+            pnpm test:consumer
+          fi
