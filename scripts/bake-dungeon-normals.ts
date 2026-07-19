@@ -6,7 +6,7 @@
 // bakeNormalMapFile on the resulting regions.
 //
 // Usage:
-//   tsx scripts/bake-dungeon-normals.ts
+//   node scripts/bake-dungeon-normals.ts
 //
 // Output: examples/react/lighting/public/sprites/Dungeon_Tileset.normal.png
 

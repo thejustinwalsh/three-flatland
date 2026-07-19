@@ -165,9 +165,15 @@ test.describe('FL ZzFX Studio', () => {
     // flips `dirty`, which retitles Save — wait for that so the save
     // request provably snapshots the 1800.
     await expect(frame.locator('vscode-toolbar-button[title="Save (unsaved changes)"]')).toBeVisible()
-    await frame.locator('vscode-toolbar-button[title^="Save"]').click()
 
-    const actualText = await readFile(evaluateInVSCode, SOUNDS_FILE)
+    // Save is asynchronous (webview → host IPC → applyEdit). Await the causal
+    // completion signal — data-save-generation ticks only after the host's
+    // zzfx/save response resolves, which awaits applyEdit — before reading, so
+    // we never race a bare read against the edit landing.
+    const panel = frame.locator('[data-save-generation]')
+    const gen = Number(await panel.getAttribute('data-save-generation'))
+    await frame.locator('vscode-toolbar-button[title^="Save"]').click()
+    await expect(panel).toHaveAttribute('data-save-generation', String(gen + 1))
 
     // Whole-file strict equality, computed the same way as the literal
     // write-back test: only LASER's array text should differ, and only
@@ -175,6 +181,7 @@ test.describe('FL ZzFX Studio', () => {
     // other line (including the `zzfx(...LASER)` call site itself, which
     // this write-back must NEVER touch) stay byte-identical.
     const expectedText = originalText.replace(LASER_ARRAY_TEXT, LASER_ARRAY_FREQ_1800)
+    const actualText = await readFile(evaluateInVSCode, SOUNDS_FILE)
     expect(actualText).toBe(expectedText)
     expect(actualText).toContain('zzfx(...LASER)')
   })
@@ -285,18 +292,27 @@ test.describe('FL ZzFX Studio', () => {
     // normalizes the call from spread-array to plain positional args —
     // functionally identical, and the expected/only sane behavior since
     // nothing specifies "preserve original calling-convention style."
+    // Save is asynchronous (webview → host IPC → sidecar parse → applyEdit),
+    // and Playwright's click() resolves on DOM dispatch, not on the save chain.
+    // Await the causal completion signal — data-save-generation ticks only
+    // after the host's zzfx/save response resolves, which awaits applyEdit —
+    // before reading. A bare read here can observe the file before applyEdit
+    // commits, which was exactly the intermittent "file unchanged after Save"
+    // flake. This is a no-op-params save, so `dirty` never toggles; the
+    // generation counter still ticks (any committed save counts), which is why
+    // it — not the dirty dot — is the correct signal here.
+    const panel = frame.locator('[data-save-generation]')
+    const gen = Number(await panel.getAttribute('data-save-generation'))
     await frame.locator('vscode-toolbar-button[title^="Save"]').click()
+    await expect(panel).toHaveAttribute('data-save-generation', String(gen + 1))
 
-    const actualText = await readFile(evaluateInVSCode, SOUNDS_FILE)
-
-    // Whole-file strict equality against "the captured original, with
-    // ONLY the known call-site substring replaced" — not just
-    // `toContain`. Anything the write-back touched outside that exact
-    // substring (whitespace elsewhere, a neighboring line, the comment
-    // above it) would make this fail, which a `toContain` check on the
-    // new text alone could never catch.
+    // Whole-file strict equality against "the captured original, with ONLY the
+    // known call-site substring replaced" — not just `toContain`. Anything the
+    // write-back touched outside that exact substring (whitespace elsewhere, a
+    // neighboring line, the comment above it) would make this fail, which a
+    // `toContain` check on the new text alone could never catch.
     const expectedText = originalText.replace(LITERAL_CALL_TEXT, LITERAL_CALL_CANONICAL)
-    expect(actualText).toBe(expectedText)
+    expect(await readFile(evaluateInVSCode, SOUNDS_FILE)).toBe(expectedText)
   })
 
   test('Save fails safely — without corrupting the file — when the call has shifted position since the panel opened', async ({

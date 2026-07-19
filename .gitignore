@@ -41,9 +41,6 @@ test-results/
 .playwright/
 .vscode-test/
 
-# Turbo
-.turbo/
-
 # Astro
 .astro/
 
@@ -95,3 +92,6 @@ tools/vscode/bin/
 tools/vscode/audio-play/
 tools/vscode/*.vsix
 tools/vscode/LICENSE
+# Nx runtime/cache dirs — nothing under .nx/ is meant to be tracked
+.nx/
+.claude/worktrees

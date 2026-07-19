@@ -124,7 +124,7 @@ export function buildOverviewData(graph: Record<string, string[]>): GraphData {
 
   const edges: GraphEdge[] = []
   let i = 0
-  for (const [k, n] of [...counts.entries()].sort()) {
+  for (const [k, n] of [...counts.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     const [source, target] = k.split('|') as [string, string]
     edges.push({ id: `e${i++}`, source, target, cross: true, weight: n })
   }

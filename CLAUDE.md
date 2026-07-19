@@ -1,7 +1,11 @@
 # three-flatland
 
+> **Package manager: pnpm. Task runner: Nx.** This repo uses **pnpm** workspaces + **Nx** exclusively — never `npm` or `yarn`. Install with `pnpm install`; run scripts with `pnpm <script>`; run tasks with `pnpm nx <target>` / `pnpm nx run-many` / `pnpm nx affected`. (The nx-generated block below shows an `npm exec nx …` alternative — ignore it here; always use pnpm.)
+
 ## Build & Test
 
+- Task orchestration is **Nx** (`nx.json`) — package-based, so it runs each package's own `package.json` scripts (tsdown build, etc.) with `dependsOn`/`inputs`/`outputs`/cache from `targetDefaults`. `pnpm build`/`pnpm typecheck` = `nx run-many`.
+- `pnpm graph` — open the Nx project-dependency graph. `pnpm boundaries` — enforce the loader-architecture DAG (siblings must not import `three-flatland`) via `scope:*` project tags + `scripts/check-boundaries.mjs` (we do NOT use `@nx/enforce-module-boundaries` — it's ESLint-only and this repo is oxlint-only).
 - `pnpm dev` — docs (port 4000) + examples MPA (port 5174) behind microfrontends proxy at http://localhost:5173
 - `pnpm --filter=example-react-tilemap dev` — run a single example
 - `pnpm sync:pack` — sync example/mini package.json deps with the workspace catalog after editing `pnpm-workspace.yaml`
@@ -166,3 +170,29 @@ The **original retro pixel-art FL mark** is the established visual identity. It 
 4. **Light and dark equal citizens.** Token-driven through the `starlight-theme` workspace plugin. Neither mode is the afterthought; both are designed; both stay saturated.
 5. **Performance is the proof.** Page transitions snappy, animations cheap, fonts subset, bundle lean. `prefers-reduced-motion` is honored everywhere.
 6. **Audio belongs.** The library lives at the seam of dev-tool and creative-tool; sound toggles and audio examples are part of that. They never autoplay; they always respect mute.
+
+
+<!-- nx configuration start-->
+<!-- Leave the start & end comments to automatically receive updates. -->
+
+## General Guidelines for working with Nx
+
+- For navigating/exploring the workspace, invoke the `nx-workspace` skill first - it has patterns for querying projects, targets, and dependencies
+- When running tasks (for example build, lint, test, e2e, etc.), always prefer running the task through `nx` (i.e. `nx run`, `nx run-many`, `nx affected`) instead of using the underlying tooling directly
+- Prefix nx commands with the workspace's package manager (e.g., `pnpm nx build`, `npm exec nx test`) - avoids using globally installed CLI
+- You have access to the Nx MCP server and its tools, use them to help the user
+- For Nx plugin best practices, check `node_modules/@nx/<plugin>/PLUGIN.md`. Not all plugins have this file - proceed without it if unavailable.
+- NEVER guess CLI flags - always check nx_docs or `--help` first when unsure
+
+## Scaffolding & Generators
+
+- For scaffolding tasks (creating apps, libs, project structure, setup), ALWAYS invoke the `nx-generate` skill FIRST before exploring or calling MCP tools
+
+## When to use nx_docs
+
+- USE for: advanced config options, unfamiliar flags, migration guides, plugin configuration, edge cases
+- DON'T USE for: basic generator syntax (`nx g @nx/react:app`), standard commands, things you already know
+- The `nx-generate` skill handles generator discovery internally - don't call nx_docs just to look up generator syntax
+
+
+<!-- nx configuration end-->

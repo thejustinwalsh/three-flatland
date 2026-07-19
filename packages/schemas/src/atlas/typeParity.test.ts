@@ -32,7 +32,10 @@ describe('atlas.schema.json <-> AtlasJson type parity', () => {
     const result = compareAtlasSchemaToType(ourDefs, theirDefs)
     expect(result.errors, result.errors.join('\n')).toEqual([])
     expect(result.ok).toBe(true)
-  })
+    // Generating the schema from the TS type (ts-json-schema-generator loads a
+    // full TS program) is CPU-heavy — ~0.6s locally but past the 5s default on a
+    // contended CI runner. Headroom for a correctness check, not a perf assertion.
+  }, 30000)
 })
 
 // Direct unit coverage of the comparator against synthetic defs — proves

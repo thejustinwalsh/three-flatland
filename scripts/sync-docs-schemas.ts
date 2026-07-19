@@ -17,7 +17,7 @@
 // `pnpm sync:schemas` to fix.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { createRequire } from 'node:module'
 
 const require_ = createRequire(import.meta.url)

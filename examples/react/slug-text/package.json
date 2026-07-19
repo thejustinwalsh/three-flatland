@@ -13,6 +13,7 @@
     "@react-three/fiber": "10.0.0-alpha.2",
     "@three-flatland/slug": "^0.1.0-alpha.4",
     "@three-flatland/devtools": "^1.0.0-alpha.5",
+    "three-flatland": "^0.1.0-alpha.8",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "three": "^0.183.1"
@@ -24,5 +25,16 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.3",
     "vite": "^6.4.3"
+  },
+  "nx": {
+    "tags": [
+      "type:example"
+    ],
+    "targets": {
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": { "command": "oxlint --type-aware .", "cwd": "{projectRoot}" }
+      }
+    }
   }
 }

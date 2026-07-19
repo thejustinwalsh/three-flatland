@@ -170,6 +170,27 @@
     "codemods"
   ],
   "sideEffects": false,
+  "nx": {
+    "tags": [
+      "scope:composer"
+    ],
+    "targets": {
+      "test": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "vitest run",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
   "scripts": {
     "build": "NODE_OPTIONS=--max-old-space-size=8192 tsdown",
     "dev": "tsdown --watch",
@@ -194,11 +215,11 @@
   },
   "devDependencies": {
     "@react-three/fiber": "catalog:",
+    "@three-flatland/atlas": "workspace:*",
     "@types/react": "catalog:",
     "@types/three": "catalog:",
     "react": "catalog:",
-    "three": "catalog:",
-    "@three-flatland/atlas": "workspace:*"
+    "three": "catalog:"
   },
   "keywords": [
     "three.js",
@@ -215,5 +236,141 @@
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/three-flatland"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        }
+      },
+      "./react": {
+        "import": {
+          "types": "./dist/react.d.ts",
+          "default": "./dist/react.js"
+        }
+      },
+      "./debug-protocol": {
+        "import": {
+          "types": "./dist/debug-protocol.d.ts",
+          "default": "./dist/debug-protocol.js"
+        }
+      },
+      "./sprites": {
+        "import": {
+          "types": "./dist/sprites/index.d.ts",
+          "default": "./dist/sprites/index.js"
+        }
+      },
+      "./sprites/*": {
+        "import": {
+          "types": "./dist/sprites/*.d.ts",
+          "default": "./dist/sprites/*.js"
+        }
+      },
+      "./animation": {
+        "import": {
+          "types": "./dist/animation/index.d.ts",
+          "default": "./dist/animation/index.js"
+        }
+      },
+      "./animation/*": {
+        "import": {
+          "types": "./dist/animation/*.d.ts",
+          "default": "./dist/animation/*.js"
+        }
+      },
+      "./materials": {
+        "import": {
+          "types": "./dist/materials/index.d.ts",
+          "default": "./dist/materials/index.js"
+        }
+      },
+      "./materials/*": {
+        "import": {
+          "types": "./dist/materials/*.d.ts",
+          "default": "./dist/materials/*.js"
+        }
+      },
+      "./loaders": {
+        "import": {
+          "types": "./dist/loaders/index.d.ts",
+          "default": "./dist/loaders/index.js"
+        }
+      },
+      "./loaders/*": {
+        "import": {
+          "types": "./dist/loaders/*.d.ts",
+          "default": "./dist/loaders/*.js"
+        }
+      },
+      "./pipeline": {
+        "import": {
+          "types": "./dist/pipeline/index.d.ts",
+          "default": "./dist/pipeline/index.js"
+        }
+      },
+      "./pipeline/*": {
+        "import": {
+          "types": "./dist/pipeline/*.d.ts",
+          "default": "./dist/pipeline/*.js"
+        }
+      },
+      "./lights": {
+        "import": {
+          "types": "./dist/lights/index.d.ts",
+          "default": "./dist/lights/index.js"
+        }
+      },
+      "./lights/*": {
+        "import": {
+          "types": "./dist/lights/*.d.ts",
+          "default": "./dist/lights/*.js"
+        }
+      },
+      "./tilemap": {
+        "import": {
+          "types": "./dist/tilemap/index.d.ts",
+          "default": "./dist/tilemap/index.js"
+        }
+      },
+      "./tilemap/*": {
+        "import": {
+          "types": "./dist/tilemap/*.d.ts",
+          "default": "./dist/tilemap/*.js"
+        }
+      },
+      "./color": {
+        "import": {
+          "types": "./dist/color/index.d.ts",
+          "default": "./dist/color/index.js"
+        }
+      },
+      "./color/*": {
+        "import": {
+          "types": "./dist/color/*.d.ts",
+          "default": "./dist/color/*.js"
+        }
+      },
+      "./events": {
+        "import": {
+          "types": "./dist/events/index.d.ts",
+          "default": "./dist/events/index.js"
+        }
+      },
+      "./events/*": {
+        "import": {
+          "types": "./dist/events/*.d.ts",
+          "default": "./dist/events/*.js"
+        }
+      },
+      "./react/*": {
+        "import": {
+          "types": "./dist/react/*.d.ts",
+          "default": "./dist/react/*.js"
+        }
+      }
+    }
   }
 }

@@ -56,13 +56,13 @@ jobs:
         run: cargo build --release
         working-directory: tools/codelens-service/sidecar
 
-      - name: Cache Turbo
-        uses: actions/cache@v5
+      - name: Restore Nx cache
+        uses: actions/cache/restore@v5
         with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-current-${{ github.sha }}
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-current-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-turbo-current-
+            ${{ runner.os }}-nx-current-
 
       # ~264 MB per VS Code build. downloadAndUnzipVSCode resolves "stable"
       # to a concrete build on every call and only re-downloads when that

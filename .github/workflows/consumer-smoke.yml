@@ -1,0 +1,67 @@
+name: Consumer Smoke
+
+# The smoke test, exercising the REAL published-package flow a consumer would:
+# pnpm pack every publishable package (dist-only via publishConfig) → publish the
+# tarballs to a throwaway local Verdaccio registry → copy each example OUT of the
+# repo root → npm install with its manifest UNCHANGED (declared versions resolve
+# from the registry) → build + Playwright render-check. Proves the packages we
+# deploy actually work before we deploy.
+#
+# Gated `needs: [changes, build]` in ci.yml, so it runs only after
+# every package build is green; it restores the build job's Nx cache instead of
+# rebuilding, so the repo is never built again in a race.
+
+on:
+  workflow_call:
+
+jobs:
+  consumer-smoke:
+    name: Consumer smoke (published tarballs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_OPTIONS: --max-old-space-size=8192
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Restore the build job's outputs (keyed on this SHA) so the harness's
+      # `nx build` is a cache hit — no second real build of the repo.
+      - name: Restore Nx cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-current-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-current-
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install chromium
+
+      - name: Install Playwright system dependencies
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Consumer smoke
+        run: pnpm test:consumer

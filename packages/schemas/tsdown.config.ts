@@ -42,7 +42,7 @@ export default defineConfig({
       // Regenerate the AtlasJson types in three-flatland + tools/io. In `dev`
       // (tsdown --watch), schema edits trigger rebuild → build:done → codegen.
       // In one-shot builds, turbo's //#gen:types task already ran (safety net).
-      execSync('pnpm exec tsx scripts/gen-schema-types.ts', {
+      execSync('node scripts/gen-schema-types.ts', {
         cwd: repoRoot,
         stdio: 'inherit',
       })

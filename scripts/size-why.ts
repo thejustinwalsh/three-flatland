@@ -45,7 +45,7 @@ console.log(`size:why → filter=${JSON.stringify(filter)} → ${outDir}/`)
 
 // size-limit only reads packages/*/dist/ — skip docs/examples/minis builds.
 // Turbo short-circuits unchanged packages, so re-runs are cheap on a warm cache.
-execSync('pnpm turbo run build --filter="./packages/*"', { stdio: 'inherit' })
+execSync('pnpm build', { stdio: 'inherit' })
 
 execSync(`size-limit --why --save-bundle ${outDir} --clean-dir`, {
   stdio: 'inherit',

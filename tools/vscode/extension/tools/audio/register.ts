@@ -13,7 +13,7 @@ import { resolveSong } from './resolveSong'
 import { resolveWadSynth } from './resolveWadSynth'
 import { resolveToneSynth } from './resolveToneSynth'
 import { getPlaybackVolumeMultiplier } from './playbackVolume'
-import { isToolEnabled } from '../../toolRegistry'
+import { isToolEnabled } from '../../toolEnabled'
 import { log } from '../../log'
 import { INLINE_PLAYBACK_SETTING } from './settings'
 
