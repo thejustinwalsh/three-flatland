@@ -15,33 +15,16 @@ permissions:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  # Full smoke suites — the final check right before a publish. Gated to the MANUAL
-  # release (workflow_dispatch): that's how a release is cut here — you run this job
-  # and approve the `release` environment. So this IS "we're about to publish": run
-  # the smokes, then the release job requires your approval, then it publishes. On
-  # the automatic workflow_run (which only keeps the "chore: release packages"
-  # version PR updated) the smokes are SKIPPED — they don't run on every merge to
-  # main. Self-sufficient reusable workflows; a failure skips `release` → no publish.
-  smoke:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    uses: ./.github/workflows/smoke.yml
-
-  consumer-smoke:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    uses: ./.github/workflows/consumer-smoke.yml
-
   release:
     name: Release
-    needs: [smoke, consumer-smoke]
     runs-on: ubuntu-latest
-    # Manual run → smokes ran and must have PASSED (a failure skips this → no publish).
-    # Auto workflow_run → smokes SKIPPED (version-PR management) and that's fine. The
-    # `release` environment's required reviewer is the human approval on either path.
-    if: |
-      !cancelled() &&
-      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') &&
-      (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') &&
-      (needs.consumer-smoke.result == 'success' || needs.consumer-smoke.result == 'skipped')
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # `environment: release` requires a reviewer, so the auto workflow_run QUEUES
+    # this job and it waits for your approval. Everything below — including the smoke
+    # suites run as steps just before the publish — executes ONLY after you approve.
+    # So the smokes never run on ordinary merges (the job sits pending); they run on
+    # the release you actually greenlight, right before it publishes, and a smoke
+    # failure fails the job before the publish step → nothing is published.
     environment: release
     # Surfaced so the VSIX jobs below know whether THIS release bumped
     # @three-flatland/vscode (the private extension package) and thus needs a
@@ -92,6 +75,19 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # Full smoke suites as the last gate before the publish below. These run only
+      # after you've approved this job, so they never run on ordinary merges to main;
+      # if either fails, the job fails here and the publish step never runs. Same
+      # suites as CI's smoke / consumer-smoke jobs (nx-built, verdaccio consumer flow).
+      - name: Install Playwright (for smokes)
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke — examples
+        run: pnpm test:smoke
+
+      - name: Smoke — consumer (published tarballs)
+        run: pnpm test:consumer
 
       - name: Create Release Pull Request or Publish
         id: changesets
