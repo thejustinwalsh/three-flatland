@@ -19,6 +19,43 @@ jobs:
   changes:
     uses: ./.github/workflows/changes.yml
 
+  # Which projects does this PR affect, per the nx graph (transitively)? Lets the
+  # heavy per-project jobs run only when actually relevant — e.g. vscode-e2e skips
+  # a skia-only PR, since the extension doesn't depend on skia. Reads the graph
+  # only (no build, no submodules), so it's ~a minute and off the critical path
+  # (vscode-e2e already waits on `build`). Fails OPEN (marks vscode affected) so a
+  # graph error never silently skips the e2e.
+  affected:
+    needs: changes
+    if: needs.changes.outputs.changeset_only != 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      vscode: ${{ steps.calc.outputs.vscode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: calc
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            BASE="origin/${{ github.base_ref }}"
+          else
+            BASE="HEAD~1"
+          fi
+          AFFECTED="$(pnpm nx show projects --affected --base="$BASE" 2>/dev/null || echo '@three-flatland/vscode')"
+          if echo "$AFFECTED" | grep -q '@three-flatland/vscode'; then
+            echo "vscode=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "vscode=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # skia's single `build` target compiles the wasm (setup.mjs --ensure) only on a
   # cache miss (its wasm sources changed) and consumes committed libs otherwise —
   # so the build is self-sufficient and nothing gates the graph on a separate
@@ -148,13 +185,17 @@ jobs:
     uses: ./.github/workflows/size.yml
     secrets: inherit
 
+  # Gated on the nx-affected result, not a coarse `packages` filter: the 30-min
+  # e2e runs only when @three-flatland/vscode (or one of its transitive deps) is
+  # affected, or a CI change touches it. `affected.result == 'failure'` is treated
+  # as "run it" (fail open — never skip the e2e on a graph-compute error).
   vscode-e2e:
-    needs: [changes, build]
+    needs: [changes, build, affected]
     if: |
       !cancelled() && needs.build.result != 'failure' &&
       needs.changes.outputs.changeset_only != 'true' &&
-      (needs.changes.outputs.vscode == 'true' ||
-       needs.changes.outputs.packages == 'true' ||
+      (needs.affected.outputs.vscode == 'true' ||
+       needs.affected.result == 'failure' ||
        needs.changes.outputs.ci == 'true')
     uses: ./.github/workflows/vscode-e2e.yml
 
