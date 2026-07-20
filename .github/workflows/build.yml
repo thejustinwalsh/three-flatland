@@ -73,7 +73,7 @@ jobs:
             ${{ runner.os }}-skia-tools-
 
       - name: Verify package versions
-        run: pnpm sync:pack:verify examples minis
+        run: pnpm sync:pack:verify examples minis packages/create-three-flatland/templates
 
       - name: Verify react subpath wrappers
         run: pnpm sync:react:verify
