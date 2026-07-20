@@ -73,3 +73,47 @@ jobs:
           name: playwright-traces
           path: test-results/
           retention-days: 14
+
+  scaffold:
+    name: Scaffold smoke (create-three-flatland)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      # Mirrors build.yml: `pnpm build` includes skia, which needs Zig and a token.
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Turbo
+        uses: actions/cache@v5
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-current-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-current-
+
+      - name: Build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm build
+
+      - name: Scaffold smoke
+        run: pnpm test:scaffold

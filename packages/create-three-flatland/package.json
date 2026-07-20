@@ -1,7 +1,7 @@
 {
   "name": "create-three-flatland",
   "version": "0.0.0",
-  "description": "Scaffold a three-flatland project — minimal three.js or React starters for WebGPU 2D",
+  "description": "Scaffold a three-flatland project \u2014 minimal three.js or React starters for WebGPU 2D",
   "type": "module",
   "license": "MIT",
   "author": "Justin Walsh (https://thejustinwalsh.com)",
@@ -25,7 +25,10 @@
   },
   "files": [
     "dist",
-    "templates"
+    "templates",
+    "!templates/*/node_modules",
+    "!templates/*/dist",
+    "!templates/*/.turbo"
   ],
   "engines": {
     "node": ">=20.19.0"
