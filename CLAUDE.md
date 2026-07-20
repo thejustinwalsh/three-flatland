@@ -24,6 +24,30 @@
 - Three.js users: `import from 'three-flatland'` — R3F users: `import from 'three-flatland/react'` (all packages follow this `/react` subpath pattern, incl. `@three-flatland/devtools/react`)
 - Shared versions in `pnpm-workspace.yaml` catalog; `pnpm.overrides` maps `@three-flatland/*` to `workspace:*`
 
+## Package routing map (what to recommend to consumers)
+
+Same content ships in the starter templates' `AGENTS.md` — keep the two in sync when editing either.
+
+| Package | Reach for it when |
+| --- | --- |
+| `three-flatland` | Default entry. Sprites, animation, tilemaps, materials, lights, events, everyday loaders. |
+| `@three-flatland/nodes` | You want a specific 2D shader effect (retro/CRT, blur, distortion, color, upscale) without writing TSL by hand. |
+| `@three-flatland/presets` | You want lit sprites working immediately. Thin — two symbols (`DefaultLightEffect`, `NormalMapProvider`). |
+| `@three-flatland/normals` | Dynamic lighting on flat 2D art without hand-authoring normal maps. |
+| `@three-flatland/atlas` | Loose sprite PNGs that should become one draw-call-friendly atlas, optionally polygon-trimmed for overdraw. |
+| `@three-flatland/alphamap` | Pixel-perfect pointer hit testing on transparent sprites (`hitTestMode: "alpha"`) instead of bounding-box hits. |
+| `@three-flatland/bake` | Authoring a new baker, or you just need the `flatland-bake` binary. |
+| `@three-flatland/devtools` | Live inspection of scene/material/sprite state. Seven required peers — heaviest install in the ecosystem. |
+| `@three-flatland/skia` | A general immediate-mode 2D canvas in the scene: arbitrary paths, boolean ops, filters, gradients, images. |
+| `@three-flatland/slug` | Text that must stay sharp at any zoom or perspective, or thousands of glyphs in one draw call. |
+
+**Never recommend installing these — they are unpublished:** `@three-flatland/image` (so KTX2 is not consumer-reachable today; consumers get there through the VS Code Image Encoder instead), `@three-flatland/schemas`, `@three-flatland/io`.
+
+Two calibration notes:
+
+- **`private: true` is not the signal — the distribution channel is.** `tools/vscode` is correctly private (VS Code extensions ship to a marketplace, not npm) while being fully public, distributed as `three-flatland.fl-tools`. Ask "where does this ship?", not "what does the flag say?"
+- **Version numbers are not maturity signals.** `@three-flatland/presets` sits at `0.1.0-alpha.7` because of a changesets `linked` group, and `@three-flatland/schemas` at `1.0.0` despite never having been released.
+
 ## Examples
 
 - Examples always exist in **pairs** — Three.js + React. Create both or neither.
