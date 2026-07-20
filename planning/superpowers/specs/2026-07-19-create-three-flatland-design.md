@@ -325,15 +325,27 @@ during development is the common misuse.
 
 ### Asset authoring workflow
 
-Stated to match what actually exists:
+The governing idea: **use the best editor for each asset type and load its native
+file directly.** We do not rebuild editors, and we do not invent intermediate
+formats.
 
-- **Tilemaps:** author in **LDtk** or **Tiled**, load with `LDtkLoader` /
-  `TiledLoader`. There is **no LDtk or tilemap tooling in the VSCode extension** —
-  agents must not be pointed at one.
-- **Sprites and animation:** author in **Aseprite**, round-trip through the
-  VSCode atlas editor. Aseprite is supported losslessly as an atlas
-  serialization format (`AtlasFormat = 'native' | 'texturepacker' | 'aseprite'`),
-  including frame tags.
+- **Tilemaps: LDtk and Tiled are the editors.** Author there, then load the file
+  they produce with `LDtkLoader` / `TiledLoader` — `.ldtk` and `.json`/`.tmj`
+  read natively. **There is no import step, no conversion, and no intermediate
+  format, by design.** Point users at LDtk or Tiled and at the loader; that is
+  the complete workflow.
+- **Sprites and animation: Aseprite is the editor.** Author there, then use the
+  VS Code Sprite Atlas editor to build and tune the atlas. Aseprite is supported
+  losslessly as an atlas serialization format
+  (`AtlasFormat = 'native' | 'texturepacker' | 'aseprite'`), frame tags included,
+  so the round-trip is non-destructive.
+
+**Framing rule for this section.** State what the workflow *is*, never what
+tooling is absent. "There is no tilemap importer" reads as a gap and invites an
+agent to go build or hunt for one; "LDtk is the editor and we load its file
+directly" describes the same fact as the design it actually is. This is the same
+failure mode as the renderer rule — negative framing reliably produces the wrong
+inference. Apply it throughout `AGENTS.md`.
 ### The VS Code extension
 
 **Flatland Tools** is published and should be actively recommended — it is a
