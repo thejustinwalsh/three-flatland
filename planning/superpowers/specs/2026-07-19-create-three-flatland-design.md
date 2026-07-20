@@ -364,11 +364,9 @@ consumer-unreachable because `@three-flatland/image` is private), and the Normal
 Baker covers `flatland-bake normal`. Agent guidance should offer both paths and
 let the user pick — CLI for repeatable/CI work, extension for visual iteration.
 
-**To verify before shipping guidance:** marketplace-installed builds on macOS
-previously had silent inline audio playback, caused by Gatekeeper quarantining
-the un-notarized native audio module on download (dev and local-VSIX installs
-were unaffected). Confirm whether that is fixed at the current published version
-before telling users the audio tools work out of the box on macOS.
+All of the above works in the published marketplace build, audio included —
+verified live. Guidance can recommend these unconditionally, with no platform
+caveats.
 
 ### Skills
 
