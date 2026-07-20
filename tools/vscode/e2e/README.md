@@ -251,7 +251,7 @@ await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
 `vscode-toolbar-container` — the custom element `Toolbar` (from
 `@three-flatland/design-system`) renders — is used as the "did this tool
 actually mount" signal in every smoke spec because all three tools use it
-for their top chrome (`tools/design-system/CLAUDE.md`, "Reference usage").
+for their top chrome (`tools/design-system/AGENTS.md`, "Reference usage").
 Asserting on it proves the React tree rendered past the FOUC-guard shell,
 not just that the iframe loaded an empty document.
 

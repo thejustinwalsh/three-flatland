@@ -110,6 +110,8 @@ npx slug-bake Inter-Regular.ttf --range latin       # Latin Extended
 npx slug-bake Inter-Regular.ttf -r latin -r 0x2000-0x206F  # Multiple ranges
 ```
 
+The same baker is also registered with the shared dispatcher, so `npx flatland-bake slug Inter-Regular.ttf --range ascii` is equivalent and lists under `flatland-bake --list` alongside every other baker in your project. (Inside this monorepo, run either from a package that depends on `@three-flatland/slug` — pnpm only links the `slug-bake` bin stub into the `node_modules/.bin` of packages that declare the dependency, so from the repo root it reports `Command "slug-bake" not found`.)
+
 Place the baked files alongside the font. `SlugFontLoader.load()` detects them automatically — no code changes needed. The original `.ttf` is not fetched when baked data is present, and opentype.js never enters the bundle.
 
 ### glTF-Transform interop (`@three-flatland/slug/bake`)

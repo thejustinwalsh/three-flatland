@@ -9,7 +9,7 @@
  * `tools/vscode/e2e/specs/audio-render-gate.spec.ts`'s noise test).
  * `sidecar.ts` calls this with `ZZFX.audioContext`; the offline probes
  * call it with an `OfflineAudioContext`. Only the context differs — see
- * `tools/audio-play/CLAUDE.md`'s "noise-buffer" pitfall for the full
+ * `tools/audio-play/AGENTS.md`'s "noise-buffer" pitfall for the full
  * empirical trace this preserves.
  */
 import { createRequire } from 'node:module'

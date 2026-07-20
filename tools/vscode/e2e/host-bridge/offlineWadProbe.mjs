@@ -4,7 +4,7 @@
 // output path only, per that file's header comment). Wad has its own,
 // separate output graph (`tools/audio-play/src/player.ts`'s
 // `playWadSynth`) with its own historically-real Electron silent-bug class
-// (see `tools/audio-play/CLAUDE.md`'s "noise-buffer" pitfall) — this probe
+// (see `tools/audio-play/AGENTS.md`'s "noise-buffer" pitfall) — this probe
 // closes the device-independent regression-guard gap for it, the same way
 // `offlineRenderProbe.mjs` does for zzfx/zzfxm: render a real Wad oscillator
 // play through an `OfflineAudioContext` and assert the known non-zero

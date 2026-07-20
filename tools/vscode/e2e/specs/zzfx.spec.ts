@@ -215,7 +215,7 @@ test.describe('FL ZzFX Studio', () => {
     // Edit the DOCUMENT directly (not through the panel) — LASER's
     // initializer becomes a call expression, exactly the
     // "sidecar reports the range unvalidated" case
-    // tools/codelens-service/CLAUDE.md's contract calls out. host.ts's
+    // tools/codelens-service/AGENTS.md's contract calls out. host.ts's
     // save-path revalidation (isNumberArrayLiteralText) is the only
     // thing standing between this and silently overwriting a function
     // call with a hardcoded array.

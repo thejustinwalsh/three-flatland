@@ -86,7 +86,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
           ref: ${{ inputs.ref }}
@@ -95,10 +95,10 @@ jobs:
           persist-credentials: false
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: lts/*
           cache: 'pnpm'
@@ -120,7 +120,7 @@ jobs:
         run: node scripts/bundle-sidecars.mjs --codelens-only
 
       - name: Upload codelens-service binary
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: bin-${{ matrix.target }}
           path: tools/vscode/bin
@@ -137,7 +137,7 @@ jobs:
       version: ${{ steps.mkver.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
           ref: ${{ inputs.ref }}
@@ -146,10 +146,10 @@ jobs:
           persist-credentials: false
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: lts/*
           cache: 'pnpm'
@@ -161,7 +161,7 @@ jobs:
       # `nx-current` lineage) so `nx build @three-flatland/vscode` below is a cache
       # hit for the extension + its dep closure instead of a cold rebuild.
       - name: Restore Nx cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: .nx/cache
           key: ${{ runner.os }}-nx-current-${{ inputs.ref || github.sha }}
@@ -169,7 +169,7 @@ jobs:
             ${{ runner.os }}-nx-current-
 
       - name: Download all platform codelens-service binaries
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: bin-*
           path: tools/vscode/bin
@@ -225,7 +225,7 @@ jobs:
         run: pnpm run package
 
       - name: Upload VSIX
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: vsix
           path: tools/vscode/*.vsix

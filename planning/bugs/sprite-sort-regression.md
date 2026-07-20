@@ -110,7 +110,7 @@ order.
 
 Three viable strategies, in increasing invasiveness. All of them must
 honor the "no allocations in hot path / use `BatchRegistry.spriteArr` SoA,
-no reverse maps" convention from `CLAUDE.md`.
+no reverse maps" convention from `AGENTS.md`.
 
 ### Option A — Opaque fast-path via `depthWrite=true` + `alphaTest`
 

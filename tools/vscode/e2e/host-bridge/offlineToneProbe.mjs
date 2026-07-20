@@ -4,7 +4,7 @@
 // `offlineWadProbe.mjs` (Wad). Tone has its own output graph
 // (`tools/audio-play/src/player.ts`'s `playToneSynth`) with its own
 // historically-real Electron/Node bug classes documented in
-// `tools/audio-play/CLAUDE.md` — the AudioWorklet crash (`PluckSynth`'s
+// `tools/audio-play/AGENTS.md` — the AudioWorklet crash (`PluckSynth`'s
 // internal `LowpassCombFilter`, see `offlineTonePluckProbe.mjs` for the
 // dedicated regression guard) and the `getConstant()` detached-buffer trap
 // (`DuoSynth`'s vibrato `LFO`, currently dormant since `val === 0` happens

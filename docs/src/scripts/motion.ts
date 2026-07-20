@@ -1,6 +1,6 @@
 /**
  * Motion-as-craft runtime — three primitives shipped as opt-in classes /
- * data-attribute hooks per the Design Context (CLAUDE.md):
+ * data-attribute hooks per the Design Context (AGENTS.md):
  *
  *   .u-reveal / [data-reveal]    fade-rise on scroll-into-view
  *   .u-light  / [data-light]     pointer-driven gem-tinted radial highlight

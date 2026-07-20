@@ -88,7 +88,7 @@ export async function openNormalBakerPanel(context: vscode.ExtensionContext, ima
 
   // Ad-hoc webview panel (not a CustomDocument) — there's no built-in
   // "unsaved changes" tab indicator to drive here; that mechanism only
-  // exists for the customEditors pattern (see tools/vscode/CLAUDE.md "Two
+  // exists for the customEditors pattern (see tools/vscode/AGENTS.md "Two
   // patterns: custom editor vs ad-hoc command"). Acknowledge so the
   // webview's best-effort request doesn't hang; nothing else to do today.
   bridge.on<{ isDirty: boolean }>('normalBaker/dirty', async () => {

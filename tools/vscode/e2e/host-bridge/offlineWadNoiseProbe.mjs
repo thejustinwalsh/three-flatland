@@ -6,7 +6,7 @@
 // `noiseBuffer.getChannelData(0)` + a fill loop — the exact
 // `getChannelData()`-then-write anti-pattern that silently loses its write
 // under `node-web-audio-api`/Electron (a detached copy, not a live view;
-// see `tools/audio-play/CLAUDE.md`'s "noise-buffer" pitfall and
+// see `tools/audio-play/AGENTS.md`'s "noise-buffer" pitfall and
 // `player.ts`'s file doc comment for the root cause). `wadLoader.ts`'s
 // `loadWadConstructor` carries a dedicated repair for exactly this
 // (intercept the one `createBuffer` call Wad's import-time IIFE makes,

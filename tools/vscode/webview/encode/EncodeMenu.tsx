@@ -218,7 +218,7 @@ export function EncodeMenu() {
     } catch (err) {
       console.error('encode/reveal-folder failed', err)
     }
-    // bridge has no dispose() — see tools/vscode/CLAUDE.md
+    // bridge has no dispose() — see tools/vscode/AGENTS.md
     setOpen(false)
   }
 

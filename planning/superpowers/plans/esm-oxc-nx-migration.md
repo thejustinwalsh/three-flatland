@@ -89,7 +89,7 @@ Tools (4): audio-play, bridge, codelens-service, io. Minis (1): breakout (inline
 - Gate: `pnpm lint` clean (0 errors), `pnpm typecheck`, `pnpm build`, `pnpm test`, smoke (as feasible locally).
 
 ### A4. Docs / skills references
-- Update CLAUDE.md Code Style bullet (prettier→oxfmt, eslint→oxlint), any skill docs referencing eslint/prettier/tsup (`.claude/skills/mini-game`, turborepo skill stays until PR B). Fold-in at point of discovery.
+- Update AGENTS.md Code Style bullet (prettier→oxfmt, eslint→oxlint), any skill docs referencing eslint/prettier/tsup (`.claude/skills/mini-game`, turborepo skill stays until PR B). Fold-in at point of discovery.
 
 ### A5. Push + CI + review loop
 - Push branch, open PR A (supersedes #31; note that in body). Close #31.
@@ -157,6 +157,6 @@ Local mirror of CI: `pnpm sync:pack:verify examples minis`, `pnpm sync:react:ver
   - **exhaustive-deps → `warn`** (matches old flat config's react-hooks-recommended severity; force-fixing 42 in webview/demo React risks breaking behavior). oxlint exits 0 on warnings-only → CI green. NOT disabled — kept visible.
   - Violation math: 172 total → autofix → 120 real-source → exhaustive-deps→warn → **78 ERRORS** to hand-fix + 42 advisory warnings. 78 errors = unbound-method 32, consistent-type-imports 12, restrict-template 11, no-unused-vars 8, erasing-op 4 (FALSE-POS: intentional Bayer `0/N` zeros → `0`), no-new-array 3, misc.
   - **A3c dispatched 5 parallel agents** (preview / examples / vscode-ext+audio / packages / vscode-webview+design-system) under guardrails (never disable a rule, fix root cause, verify oxlint+typecheck in scope). Awaiting results → then verify aggregate (full lint 0 errors + typecheck + build) + commit A3c. `.oxlintrc.json` exhaustive-deps:warn + spec/e2e ignore still UNCOMMITTED (goes in A3c).
-  - Next after A3c: A4 (CLAUDE.md/skill-doc eslint→oxlint/prettier→oxfmt/tsup→tsdown refs), then A5 (push, PR, CI, review). Then PR B (NX).
+  - Next after A3c: A4 (AGENTS.md/skill-doc eslint→oxlint/prettier→oxfmt/tsup→tsdown refs), then A5 (push, PR, CI, review). Then PR B (NX).
 - **2026-07-17 T3 — A4 + A5 done, PR #196 open (supersedes #31, #31 CLOSED). Two adversarial reviews PASSED clean.** Commits through 0aa51af0. ESM-review: migration correct, 2 pre-existing minors (skia `wgpu-layouts.json` import lacks `with{type:json}` — browser-safe; do a clean skia build before publish). Lint-fix review: all 78 fixes verified behavior-preserving. **CI run 1 RED**: build/Lint step, 605 oxlint errors. Root cause: **skia submodule `packages/skia/third_party/skia` checked out on CI (`submodules:true`) but not in worktree → its emscripten glue JS lit up; old eslint only linted `*/src` so never hit it.** Fixed 0aa51af0: added `!**/third_party/**` `!**/vendor/**` `!**/node_modules/**` `!**/*.generated.ts` excludes (CLI + config). Verified via probe files. CI run 2 in flight. See memory [[project-esm-oxc-nx-migration]] for the full debugging trail (local-green ≠ CI-green for oxlint; gh api job logs; pnpm bin-warnings ≠ lint errors).
   - **Still-open risk for CI run 2**: "Invalid tsconfig ×3" appeared in run-1 tsgolint output — may or may not persist / gate. If run 2 still reds on lint, inspect those. Also smoke (Playwright) + size not yet exercised.

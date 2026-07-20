@@ -52,7 +52,7 @@ Sub-task checkboxes below reflect this status: `[x]` = done, `[ ]` = pending.
 ## Phase 0z — Relocate Example to `examples/three/` (before Tweakpane migration)
 
 The PR-20 branch put the Three-side example under `examples/three/slug-text/` and registered both slug-text examples as standalone microfrontends. Post-rename on `main`:
-- Vanilla → Three: examples live at `examples/three/<name>/` alongside `examples/react/<name>/` (CLAUDE.md: "`examples/three/` = plain Three.js, `examples/react/` = React Three Fiber").
+- Vanilla → Three: examples live at `examples/three/<name>/` alongside `examples/react/<name>/` (AGENTS.md: "`examples/three/` = plain Three.js, `examples/react/` = React Three Fiber").
 - Standalone MFEs were consolidated — the shared `examples/` app (port 5174) auto-discovers every `examples/{three,react}/*/index.html` via `examples/vite.config.ts:discoverExamples()` and serves them at `/three/<name>` and `/react/<name>`. Individual example packages still have their own `package.json`, but they do **not** get their own `microfrontends.json` entry.
 
 ### Task 0z.1 — Move + rename
@@ -74,13 +74,13 @@ The PR-20 branch put the Three-side example under `examples/three/slug-text/` an
 
 ## Phase 0a — Tweakpane Migration (before any feature work)
 
-The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main`. Both slug-text examples still import `@awesome.me/webawesome` — forbidden by `examples/react/CLAUDE.md` ("Do NOT use Web Awesome") and the root CLAUDE.md. The React example also has no `useStatsMonitor`, which every example is required to have.
+The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main`. Both slug-text examples still import `@awesome.me/webawesome` — forbidden by `examples/react/AGENTS.md` ("Do NOT use Web Awesome") and the root AGENTS.md. The React example also has no `useStatsMonitor`, which every example is required to have.
 
 **Reference patterns (verified against `main`):**
 - React canonical: `examples/react/pass-effects/App.tsx` — `usePane`/`useStatsMonitor`/`usePaneFolder`/`usePaneInput`/`usePaneButton` from `@three-flatland/tweakpane/react`, `<StatsTracker>` child component inside Canvas calling `useStatsMonitor(stats)`.
 - Three canonical: `examples/three/pass-effects/main.ts` — `createPane({ scene })` from `@three-flatland/tweakpane`, `pane.addFolder` / `addBinding` with `{ min, max, step }`, `stats.begin()` / `stats.end()` wrapping the render loop, monitor bindings with `readonly: true` for diagnostics, `pane.refresh()` on a throttled timer.
 
-**Non-negotiables per `examples/react/CLAUDE.md`:**
+**Non-negotiables per `examples/react/AGENTS.md`:**
 - No `@awesome.me/webawesome` imports (runtime or CSS).
 - `usePane()` + `useStatsMonitor(stats)` in every example; `trackTimestamp: true` on `renderer` so GPU-timestamp mode works.
 - Orthographic camera, `<color attach="background" args={['#00021c']} />`.

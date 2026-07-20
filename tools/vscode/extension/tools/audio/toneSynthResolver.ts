@@ -25,7 +25,7 @@
 // real finding, but this stays defensive rather than assuming the
 // invariant always holds.
 //
-// Design decision (v1 scope, see tools/codelens-service/CLAUDE.md's
+// Design decision (v1 scope, see tools/codelens-service/AGENTS.md's
 // tone.synth section): the constructor's own config object
 // (`new Tone.Synth({...})`) is NOT parsed here, and the sidecar doesn't
 // capture a separate range for it at all. Config isn't load-bearing for

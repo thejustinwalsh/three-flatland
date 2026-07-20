@@ -4,7 +4,7 @@
 // plain vitest.
 //
 // `wad.synth`'s payload has no pre-extracted config (tools/codelens-service/
-// CLAUDE.md) — like zzfxm.song, there's always real source text to read and
+// AGENTS.md) — like zzfxm.song, there's always real source text to read and
 // parse, whether the call site is a literal object
 // (`new Wad({source:'square'})`, read at `argRange`) or a bare-identifier
 // var-ref (`new Wad(cfg)`, read at `varRef.defRange`).

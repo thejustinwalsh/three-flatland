@@ -154,7 +154,7 @@ This package is wired so consumers can pay for what they import — but only if 
 - **Token imports use subpaths**, not the barrel — required by StyleX as documented above. As a side benefit, this avoids pulling all four token files into a consumer that only uses one.
 - **No top-level `@vscode-elements/elements` imports** in this package. The Lit web-component registration side-effects belong in the consumer's `main.tsx` for the specific elements it uses as raw JSX intrinsics (e.g. `<vscode-progress-ring />`). The React wrappers register their own elements transitively when imported.
 
-When introducing a primitive that needs more than one Lit element (e.g. a composite), still import each from its dedicated subpath. See `tools/vscode/CLAUDE.md` "Bundle size & loading" for the consumer-side picture (lazy chunks, Suspense boundaries, FOUC guard).
+When introducing a primitive that needs more than one Lit element (e.g. a composite), still import each from its dedicated subpath. See `tools/vscode/AGENTS.md` "Bundle size & loading" for the consumer-side picture (lazy chunks, Suspense boundaries, FOUC guard).
 
 ## Adding a primitive
 

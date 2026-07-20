@@ -99,7 +99,7 @@ export type ZzfxConfigEvent = {
 }
 
 /** webview -> host, requests the init payload (register the `zzfx/init`
- * listener BEFORE calling this — see tools/bridge/CLAUDE.md handshake). */
+ * listener BEFORE calling this — see tools/bridge/AGENTS.md handshake). */
 export type ZzfxReadyResult = { ok: true }
 
 /** webview -> host, writes the edited params back into source. */

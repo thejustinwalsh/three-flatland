@@ -17,7 +17,7 @@ jobs:
       NODE_OPTIONS: --max-old-space-size=8192
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
           # Full history so `nx affected` can compute the merge-base against the
@@ -25,10 +25,10 @@ jobs:
           fetch-depth: 0
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js ${{ inputs.node-version }}
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'pnpm'
@@ -57,7 +57,7 @@ jobs:
           fi
 
       - name: Cache Nx
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .nx/cache
           key: ${{ runner.os }}-nx-${{ inputs.node-tag }}-${{ github.sha }}
@@ -65,7 +65,7 @@ jobs:
             ${{ runner.os }}-nx-${{ inputs.node-tag }}-
 
       - name: Cache Skia WASM tools
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: packages/skia/.tools
           key: ${{ runner.os }}-skia-tools-${{ hashFiles('packages/skia/package.json') }}
@@ -73,7 +73,12 @@ jobs:
             ${{ runner.os }}-skia-tools-
 
       - name: Verify package versions
-        run: pnpm sync:pack:verify examples minis
+        run: pnpm sync:pack:verify examples minis packages/create-three-flatland/templates
+
+      # Generate then verify: pointers are gitignored, so a bare --verify
+      # always fails on a fresh checkout.
+      - name: Verify AGENTS.md / CLAUDE.md pairs
+        run: pnpm sync:agents && pnpm sync:agents:verify
 
       - name: Verify react subpath wrappers
         run: pnpm sync:react:verify
@@ -90,12 +95,6 @@ jobs:
       - name: Verify published docs schemas
         run: pnpm sync:docs:schemas:verify
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Boundaries
-        run: pnpm boundaries
-
       - name: Typecheck
         run: pnpm nx affected -t typecheck --base=${{ steps.nxbase.outputs.base }}
 
@@ -105,6 +104,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm nx affected -t build --base=${{ steps.nxbase.outputs.base }}
+
+      # Lint runs AFTER build: type-aware rules resolve workspace imports through
+      # each package's published types, and anything without the dev `source`
+      # condition (the scaffolder templates, deliberately) has no dist to read
+      # before the build step.
+      - name: Lint
+        run: pnpm lint
+
+      - name: Boundaries
+        run: pnpm boundaries
 
       # `nx affected -t test` already runs @three-flatland/skia's test when skia
       # is affected (it's in the test graph and reads the committed lib/*.wasm), so

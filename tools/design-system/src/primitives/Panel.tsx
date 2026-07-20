@@ -125,7 +125,7 @@ export type PanelProps = Omit<HTMLAttributes<HTMLDivElement>, 'style' | 'classNa
    * Body overflow strategy. `'auto'` (default) clips + internally
    * scrolls — the right choice when an ancestor stretches this Panel to
    * a definite height (`style={{flex: 1, minHeight: 0}}`; see
-   * `tools/vscode/CLAUDE.md`'s Panel layout rules). Set `'visible'` for
+   * `tools/vscode/AGENTS.md`'s Panel layout rules). Set `'visible'` for
    * a Panel left to size itself from its own content in normal document
    * flow (e.g. a short row of controls, not a stretched sidebar) —
    * per the flexbox spec, a flex item's automatic minimum size is 0

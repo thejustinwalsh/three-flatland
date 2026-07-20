@@ -355,7 +355,7 @@ export class PlaySidecarClient {
    * it's alive and responsive WITHOUT needing a working audio backend:
    * `ping` never appears in `sidecar.ts`'s `PLAY_COMMANDS` set, so it
    * skips `contextLifecycle`'s acquire ladder entirely (see
-   * `tools/audio-play/CLAUDE.md`'s device-tolerance section) and
+   * `tools/audio-play/AGENTS.md`'s device-tolerance section) and
    * `commandHandler.ts` answers it without touching `ZZFX.audioContext`
    * at all. Spawns the sidecar on first call, like every other command
    * here. Exists specifically so a caller (e2e process-lifecycle

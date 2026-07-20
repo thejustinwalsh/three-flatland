@@ -77,7 +77,7 @@ export default defineConfig({
         // Visual brand is "flatland" (set in Silkscreen by SiteTitle override).
         // The npm package, README, and install commands stay "three-flatland"
         // for SEO and Three.js / R3F ecosystem discoverability — see Design
-        // Context (CLAUDE.md > Naming).
+        // Context (AGENTS.md > Naming).
         title: 'flatland',
         // Site description — feeds Starlight's <meta description> and
         // the SiteFooter's brand tagline (falls back via config.description).

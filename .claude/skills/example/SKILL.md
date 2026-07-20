@@ -144,7 +144,7 @@ function Scene() {
   const [color] = usePaneInput(folder, 'color', '#99d9ef')
   usePaneButton(folder, 'Reset', () => { /* ... */ })
 
-  // Stats wiring — see examples/react/CLAUDE.md for the full pattern
+  // Stats wiring — see examples/react/AGENTS.md for the full pattern
   const statsRef = useRef(stats)
   statsRef.current = stats
   useFrame(() => { statsRef.current.begin() }, { priority: -Infinity })
@@ -158,13 +158,13 @@ function Scene() {
 }
 ```
 
-`usePane` must be called inside `<Canvas>` (e.g. in a `<Scene>` child component). See [ui-patterns.md](ui-patterns.md) for component-level patterns and [examples/react/CLAUDE.md](../../../examples/react/CLAUDE.md) for the canonical React example structure.
+`usePane` must be called inside `<Canvas>` (e.g. in a `<Scene>` child component). See [ui-patterns.md](ui-patterns.md) for component-level patterns and [examples/react/AGENTS.md](../../../examples/react/AGENTS.md) for the canonical React example structure.
 
 See [design-tokens.md](design-tokens.md) for overlay layout and CSS design tokens.
 
 ## Pair Discipline
 
-> Examples always exist in pairs — Three.js + React. Create both or neither. (CLAUDE.md)
+> Examples always exist in pairs — Three.js + React. Create both or neither. (AGENTS.md)
 
 Functional parity matters: same controls, same defaults, same visual output. Differences should be limited to idiomatic concerns (event handling, lifecycle, asset loading).
 

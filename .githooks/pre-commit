@@ -19,13 +19,13 @@ matched() { printf '%s\n' "$STAGED" | grep -E "$1" || true; }
 # 1. A package/catalog change → re-materialize concrete versions into
 #    examples/ + minis/ (they ship standalone and can't use `catalog:`).
 if match '^(pnpm-workspace\.yaml|packages/[^/]+/package\.json)$'; then
-  echo "pre-commit: sync:pack (examples minis)"
-  pnpm sync:pack examples minis
-  git add examples minis
+  echo "pre-commit: sync:pack (examples minis templates)"
+  pnpm sync:pack examples minis packages/create-three-flatland/templates
+  git add examples minis packages/create-three-flatland/templates
 fi
 
 # 2. A specific example/mini package.json staged → sync just those files.
-PKG_FILES="$(matched '^(examples|minis)/.*/package\.json$')"
+PKG_FILES="$(matched '^(examples|minis|packages/create-three-flatland/templates)/.*/package\.json$')"
 if [ -n "$PKG_FILES" ]; then
   echo "pre-commit: sync:pack --files"
   # Word-split $PKG_FILES into per-file args on purpose (repo paths have no
@@ -60,4 +60,13 @@ fi
 if match '^packages/skia/third_party/skia$'; then
   echo "pre-commit: check-skia-pin"
   node scripts/check-skia-pin.ts
+fi
+
+# 7. AGENTS.md (or the ignore rule) staged → regenerate the CLAUDE.md pointers
+#    and fail if one got committed. The pointers are gitignored, so there is
+#    nothing to `git add`; --verify is the meaningful gate.
+if match '(^|/)AGENTS\.md$|^\.gitignore$'; then
+  echo "pre-commit: sync:agents --verify"
+  node scripts/sync-agents-pairs.ts
+  node scripts/sync-agents-pairs.ts --verify
 fi

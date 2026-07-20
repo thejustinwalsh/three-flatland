@@ -19,11 +19,11 @@ Full tool spec, including the AI-generation prompt template verbatim: `planning/
 | `ParamRow.tsx`, `ParamGroup.tsx`                                              | One param row (slider + NumberField, or a dropdown for `shape`); one collapsible group of rows.                                                                                                                                                                                                                                          |
 | `AiGeneratePanel.tsx`                                                         | AI Generate UI — Generate button, live stream readout, N candidate cards (label/rationale/Play/"Use this"), source badge (`lm`/`cache`/`preset`). Falls back to a static preset-browsing card list when `lmAvailable` is false. Feature-flagged (`AI_GENERATE_ENABLED`, currently `true`) — a ship kill-switch. See "AI Generate" below. |
 | `useZzfxSession.ts`                                                           | Bridge handshake + all editable state (params, dirty flag, category, styles, save, generate, candidates, presets).                                                                                                                                                                                                                       |
-| `App.tsx`, `main.tsx`, `index.html`                                           | Standard tool boot — see `tools/vscode/CLAUDE.md`.                                                                                                                                                                                                                                                                                       |
+| `App.tsx`, `main.tsx`, `index.html`                                           | Standard tool boot — see `tools/vscode/AGENTS.md`.                                                                                                                                                                                                                                                                                       |
 
 ## Bridge contract (`protocol.ts`)
 
-Handshake follows the repo convention (`tools/bridge/CLAUDE.md`): the webview registers its `zzfx/init` listener before requesting `zzfx/ready`.
+Handshake follows the repo convention (`tools/bridge/AGENTS.md`): the webview registers its `zzfx/init` listener before requesting `zzfx/ready`.
 
 ```
 Webview (on mount):
@@ -220,7 +220,7 @@ Two layers of degradation, matching the planning doc's Risks section ("LM API in
 
 ## Local primitives (candidates for `@three-flatland/design-system` promotion)
 
-Nothing in the design system covers a pill/chip toggle or a horizontal scrub slider, so both were composed locally per `tools/vscode/CLAUDE.md`'s "compose locally, note as a promotion candidate" allowance:
+Nothing in the design system covers a pill/chip toggle or a horizontal scrub slider, so both were composed locally per `tools/vscode/AGENTS.md`'s "compose locally, note as a promotion candidate" allowance:
 
 - **`Pill`** (`Pill.tsx`) — toggleable chip, `active`/`disabled`/`onToggle` props, styled with `vscode.*` tokens. `PillGroup.tsx` layers single-select and multi-select-with-max on top.
 - **`Slider`** (`Slider.tsx`) — horizontal scrub control described above.

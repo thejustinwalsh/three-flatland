@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "NODE_OPTIONS=--max-old-space-size=8192 nx run-many -t build",
-    "dev": "echo '\\n  ➜  Dev server: http://localhost:4321\\n' && nx run-many -t dev -p docs examples",
+    "dev": "echo '\\n  \u279c  Dev server: http://localhost:4321\\n' && nx run-many -t dev -p docs examples",
     "typecheck": "nx run-many -t typecheck",
     "lint": "oxlint --type-aware packages minis tools examples '!**/node_modules/**' '!**/dist/**' '!**/third_party/**' '!**/vendor/**' '!**/fixtures/**' '!**/*.gen.ts' '!**/*.generated.ts'",
     "lint:fix": "oxlint --type-aware --fix packages minis tools examples '!**/node_modules/**' '!**/dist/**' '!**/third_party/**' '!**/vendor/**' '!**/fixtures/**' '!**/*.gen.ts' '!**/*.generated.ts'",
@@ -41,6 +41,8 @@
     "sync:publish-exports:verify": "node scripts/sync-publish-exports.ts --verify",
     "sync:examples": "node scripts/sync-examples.ts",
     "sync:examples:verify": "node scripts/sync-examples.ts --verify",
+    "sync:agents": "node scripts/sync-agents-pairs.ts",
+    "sync:agents:verify": "node scripts/sync-agents-pairs.ts --verify",
     "validate:skills": "pnpm --filter @three-flatland/skills validate",
     "size": "size-limit",
     "size:why": "node scripts/size-why.ts",
@@ -86,7 +88,10 @@
       "markdown-it@<=14.1.1": ">=14.2.0 <15",
       "linkify-it@<=5.0.0": ">=5.0.1 <6",
       "js-yaml@<3.15.0": ">=3.15.0 <4",
-      "js-yaml@>=4.0.0 <=4.1.1": ">=4.2.0 <5"
+      "js-yaml@>=4.0.0 <=4.1.1": ">=4.2.0 <5",
+      "vite": "^7.3.6",
+      "qs": "^6.15.3",
+      "uuid": "^11.1.1"
     }
   },
   "devDependencies": {

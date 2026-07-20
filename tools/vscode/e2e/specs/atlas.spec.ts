@@ -8,7 +8,7 @@ test('FL Sprite Atlas opens on knight.png and renders', async ({ openCommand, we
   const frame = await webviewFrame('knight.png')
 
   // Toolbar is design-system's canonical chrome for every FL tool
-  // (tools/design-system/CLAUDE.md "Reference usage") — its presence
+  // (tools/design-system/AGENTS.md "Reference usage") — its presence
   // proves the React tree mounted past the FOUC-guard shell, not just
   // that the iframe loaded an empty document.
   await expect(frame.locator('vscode-toolbar-container')).toBeVisible()
