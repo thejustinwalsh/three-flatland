@@ -4,10 +4,10 @@
  * Copy Skia WASM files to your project's public directory.
  *
  * Usage:
- *   npx @three-flatland/skia copy-wasm [target-dir]
- *   npx @three-flatland/skia copy-wasm public/wasm
- *   npx @three-flatland/skia copy-wasm --gl-only public/wasm
- *   npx @three-flatland/skia copy-wasm --wgpu-only public/wasm
+ *   npx skia-wasm [target-dir]
+ *   npx skia-wasm public/wasm
+ *   npx skia-wasm --gl-only public/wasm
+ *   npx skia-wasm --wgpu-only public/wasm
  *
  * Default target: ./public/skia
  *
