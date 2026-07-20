@@ -51,13 +51,37 @@ async function main(): Promise<number> {
     return 0
   }
 
-  let targetDir = positionals[0] ? formatTargetDir(positionals[0]) : undefined
+  // Format FIRST, then decide whether a target was supplied. Testing the raw
+  // positional here is a data-loss bug: formatTargetDir('/') strips the trailing
+  // slash to '', which resolve() turns into process.cwd() — so `create … / --overwrite`
+  // would empty the user's current directory instead of targeting root. Anything
+  // that normalizes to empty (a lone '/', whitespace) counts as not supplied and
+  // falls through to the prompt, which is also what create-vite does.
+  const formattedTarget = positionals[0] !== undefined ? formatTargetDir(positionals[0]) : undefined
+  let targetDir = formattedTarget === '' ? undefined : formattedTarget
   let template: string | undefined = values.template
 
-  // Vite interop contract: fully non-interactive when target dir + a valid template are both supplied.
-  const interactive = targetDir === undefined || !isTemplate(template)
+  // Vite interop contract: fully non-interactive when a target dir and a template
+  // are both supplied. An INVALID template must error, not open a picker — with
+  // stdin closed that printed a selection UI and exited 0 without scaffolding.
+  const interactive = targetDir === undefined || template === undefined
 
   if (interactive) {
+    // Refuse to prompt without a TTY. @clack's prompts never settle on EOF, so a
+    // piped/CI/redirected invocation would hang main() forever, drain the event
+    // loop, and exit 0 having scaffolded nothing — a silent success. Fail loudly
+    // with the flags that would have made this non-interactive instead.
+    if (!process.stdin.isTTY) {
+      const missing = [
+        targetDir === undefined ? 'a target directory' : null,
+        template === undefined ? '--template <three|react>' : null,
+      ].filter(Boolean)
+      console.error(
+        `create-three-flatland needs ${missing.join(' and ')}, and stdin is not a TTY so it cannot prompt.\n` +
+          `Run: create-three-flatland <target-dir> --template <three|react>`
+      )
+      return 1
+    }
     prompts.intro(pc.bold('create-three-flatland'))
     if (targetDir === undefined) {
       const answer = await prompts.text({

@@ -1,6 +1,7 @@
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -64,7 +65,26 @@ function emptyDir(dir: string): void {
   }
 }
 
+/**
+ * Refuse to write through an existing symlink. With "ignore files and continue"
+ * on a non-empty target, a pre-existing `src` symlink would otherwise scatter
+ * template files into whatever it points at, and a symlinked package.json would
+ * be followed again during the name rewrite.
+ */
+function assertNotSymlink(path: string): void {
+  let stats
+  try {
+    stats = lstatSync(path)
+  } catch {
+    return // does not exist — nothing to follow
+  }
+  if (stats.isSymbolicLink()) {
+    throw new Error(`refusing to write through symlink: ${path}`)
+  }
+}
+
 function copyDir(src: string, dest: string, written: string[]): void {
+  assertNotSymlink(dest)
   mkdirSync(dest, { recursive: true })
   for (const entry of readdirSync(src)) {
     if (SKIP_DIRS.has(entry)) continue
@@ -74,6 +94,7 @@ function copyDir(src: string, dest: string, written: string[]): void {
     if (statSync(srcPath).isDirectory()) {
       copyDir(srcPath, destPath, written)
     } else {
+      assertNotSymlink(destPath)
       copyFileSync(srcPath, destPath)
       written.push(destPath)
     }

@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { formatTargetDir, isEmptyDir, isValidPackageName, scaffold, toValidPackageName } from './scaffold'
@@ -54,7 +63,9 @@ describe('scaffold', () => {
     it(`emits no workspace-only wiring for ${template} (leak guard)`, () => {
       const root = join(work, 'app')
       scaffold({ targetDir: root, template, packageName: 'my-game', templatesRoot: TEMPLATES_ROOT })
-      const banned = [
+      // Workspace-only wiring. Never legitimate in a scaffolded project, in any
+      // file — these break the project or leak monorepo plumbing.
+      const bannedEverywhere = [
         'catalog:',
         'workspace:*',
         'workspace:^',
@@ -63,14 +74,23 @@ describe('scaffold', () => {
         'TURBO_MFE_PORT',
         'FL_DEVTOOLS',
         'GemBackground',
-        '@three-flatland/devtools',
-        'tweakpane',
       ]
+      // Packages deliberately excluded from the starter. These must not be
+      // DEPENDENCIES, but prose may legitimately name them — AGENTS.md's package
+      // routing map is required by the spec to list @three-flatland/devtools.
+      // Scoping this to the manifest keeps the real leak class covered (an
+      // accidental dep still fails) without banning the word from documentation.
+      const bannedAsDependency = ['@three-flatland/devtools', 'tweakpane']
+
       for (const file of walkFiles(root)) {
         const text = readFileSync(file, 'utf-8')
-        for (const needle of banned) {
+        for (const needle of bannedEverywhere) {
           expect(text, `${file} leaked "${needle}"`).not.toContain(needle)
         }
+      }
+      const manifest = readFileSync(join(root, 'package.json'), 'utf-8')
+      for (const needle of bannedAsDependency) {
+        expect(manifest, `package.json depends on "${needle}"`).not.toContain(needle)
       }
     })
 
@@ -211,6 +231,33 @@ describe('scaffold semantics (fixture template)', () => {
     const root = join(work, 'nested', 'deep', 'app')
     scaffold({ targetDir: root, template: 'three', packageName: 'my-game', templatesRoot })
     expect(existsSync(join(root, 'index.html'))).toBe(true)
+  })
+
+  // Regression — adversarial review, 2026-07-19. With `ignoreExisting` on a
+  // non-empty target, a pre-existing symlink was followed, scattering template
+  // files outside the target directory entirely.
+  it('refuses to write through a destination symlink instead of escaping the target', () => {
+    const victim = join(work, 'victim')
+    const root = join(work, 'tgt')
+    mkdirSync(victim)
+    mkdirSync(root)
+    writeFileSync(join(root, 'stale.txt'), 'x')
+    symlinkSync(victim, join(root, 'src'))
+
+    expect(() =>
+      scaffold({ targetDir: root, template: 'three', packageName: 'my-game', templatesRoot, ignoreExisting: true })
+    ).toThrow(/symlink/)
+    expect(readdirSync(victim)).toEqual([])
+  })
+
+  // Regression — adversarial review, 2026-07-19. A lone '/' normalized to '',
+  // which resolve() turns into process.cwd(); with --overwrite that emptied the
+  // user's current directory. Anything normalizing to empty must not count as a
+  // supplied target.
+  it('normalizes a root-only target to empty so it can never resolve to cwd', () => {
+    expect(formatTargetDir('/')).toBe('')
+    expect(formatTargetDir('  ')).toBe('')
+    expect(formatTargetDir('///')).toBe('')
   })
 })
 
