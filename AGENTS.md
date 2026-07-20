@@ -35,12 +35,13 @@ Same content ships in the starter templates' `AGENTS.md` — keep the two in syn
 | `@three-flatland/normals` | Dynamic lighting on flat 2D art without hand-authoring normal maps. |
 | `@three-flatland/atlas` | Loose sprite PNGs that should become one draw-call-friendly atlas, optionally polygon-trimmed for overdraw. |
 | `@three-flatland/alphamap` | Pixel-perfect pointer hit testing on transparent sprites (`hitTestMode: "alpha"`) instead of bounding-box hits. |
+| `@three-flatland/image` | PNG/WebP/AVIF/KTX2 encode and decode, plus `Ktx2Loader`. Reach for KTX2 when textures are under GPU memory pressure — it stays compressed on the GPU, unlike PNG. |
 | `@three-flatland/bake` | Authoring a new baker, or you just need the `flatland-bake` binary. |
 | `@three-flatland/devtools` | Live inspection of scene/material/sprite state. Seven required peers — heaviest install in the ecosystem. |
 | `@three-flatland/skia` | A general immediate-mode 2D canvas in the scene: arbitrary paths, boolean ops, filters, gradients, images. |
 | `@three-flatland/slug` | Text that must stay sharp at any zoom or perspective, or thousands of glyphs in one draw call. |
 
-**Never recommend installing these — they are unpublished:** `@three-flatland/image` (so KTX2 is not consumer-reachable today; consumers get there through the VS Code Image Encoder instead), `@three-flatland/schemas`, `@three-flatland/io`.
+**Never recommend installing these — they are unpublished:** `@three-flatland/schemas`, `@three-flatland/io`.
 
 Two calibration notes:
 

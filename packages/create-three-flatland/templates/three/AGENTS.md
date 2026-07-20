@@ -48,12 +48,13 @@ Reach for a package by intent:
 | `@three-flatland/normals` | Dynamic lighting on flat 2D art without hand-authoring normal maps. |
 | `@three-flatland/atlas` | Loose sprite PNGs that should become one draw-call-friendly atlas, optionally polygon-trimmed for overdraw. |
 | `@three-flatland/alphamap` | Pixel-perfect pointer hit testing on transparent sprites (`hitTestMode: "alpha"`) instead of bounding-box hits. |
+| `@three-flatland/image` | PNG/WebP/AVIF/KTX2 encode and decode, plus `Ktx2Loader`. Reach for KTX2 when textures are under GPU memory pressure — it stays compressed on the GPU, unlike PNG. |
 | `@three-flatland/bake` | Authoring a new baker, or you just need the `flatland-bake` binary. |
 | `@three-flatland/devtools` | Live inspection of scene/material/sprite state. Seven required peers — heaviest install in the ecosystem. |
 | `@three-flatland/skia` | A general immediate-mode 2D canvas in the scene: arbitrary paths, boolean ops, filters, gradients, images. |
 | `@three-flatland/slug` | Text that must stay sharp at any zoom or perspective, or thousands of glyphs in one draw call. |
 
-**Never recommend installing `@three-flatland/image`, `@three-flatland/schemas`, or `@three-flatland/io` — they are `private: true` and unpublished.** (KTX2 encoding is therefore reached through the VS Code extension's Image Encoder today, not through an npm package.)
+**Never recommend installing `@three-flatland/schemas` or `@three-flatland/io` — they are `private: true` and unpublished.**
 
 Two calibration notes. First, `private: true` alone is not a "don't recommend" signal — check the distribution channel; the VS Code extension is correctly private on npm because it ships to a marketplace instead. Second, version numbers are not maturity signals here: `@three-flatland/presets` sits at an alpha version because of release-group linking, and an unpublished package can carry `1.0.0`.
 
@@ -117,13 +118,13 @@ The extension is the GUI counterpart to the CLI bakers — the Image Encoder pai
 
 ## Skills
 
-This project depends on `@three-flatland/skills` (a devDependency) — packaged agent skills for working in this stack. Wire them up with:
+Packaged agent skills for this stack live in `@three-flatland/skills`. Install them into this project with:
 
 ```sh
 npx skills add thejustinwalsh/three-flatland
 ```
 
-or copy the skill directories from `node_modules/@three-flatland/skills/` into `.claude/skills/`. Shipped skills: `tsl` (writing TSL shaders and node materials), `codemod` (migrating across three-flatland breaking changes), `flatland-r3f` (React Three Fiber integration), and `flatland-bake` (the baking workflow).
+Add a single skill by path, e.g. `npx skills add thejustinwalsh/three-flatland/skills/tsl`. Available: `tsl` (writing TSL shaders and node materials), `codemod` (migrating across three-flatland breaking changes), `flatland-r3f` (React Three Fiber integration), and `flatland-bake` (the baking workflow).
 
 ## Reference links
 

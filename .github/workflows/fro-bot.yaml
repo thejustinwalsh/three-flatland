@@ -55,7 +55,7 @@ env:
     below yourself to investigate a SPECIFIC question CI's pass/fail
     signal doesn't answer (e.g. why one particular type error occurs, not
     a blanket re-verification pass):
-    - pnpm sync:pack:verify examples minis
+    - pnpm sync:pack:verify examples minis packages/create-three-flatland/templates
     - pnpm sync:react:verify
     - pnpm sync:versions:verify
     - pnpm lint
