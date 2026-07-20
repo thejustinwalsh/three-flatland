@@ -147,8 +147,16 @@ scene drew anything.
 **Use `vitexec` to probe the running app.** It runs snippets inside the live
 page and reads back console output, network activity, and screenshots, which is
 the fastest way to answer "is this actually rendering / did that event fire"
-without inventing a bespoke harness. Reach for it while debugging, then encode
-whatever you learned as a Playwright spec so it stays checked.
+without inventing a bespoke harness. It is not installed here by default:
+
+```sh
+npm i -D vitexec                        # once, in this project
+npx vitexec 'console.log("ready")'      # then, against `npm run dev`
+npx vitexec --screenshot 'document.querySelector("canvas")'
+```
+
+Reach for it while debugging, then encode whatever you learned as a Playwright
+spec so it stays checked.
 
 A green suite is not proof the app renders. Confirm the visible result — a
 screenshot or a real interaction — before calling a rendering change done.
