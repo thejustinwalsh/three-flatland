@@ -69,7 +69,8 @@ Two calibration notes:
 
 ## Workflow
 
-- Use Conventional Commits. **Write your own changeset whenever you change a package** — `pnpm changeset`, or hand-author the file under `.changeset/`. The CI generator is DISABLED (it exhausts its model tokens and fails), so nothing will write one for you: a package change without a changeset ships unreleased. Within `packages/`, a package is release-visible iff `private !== true` and it's not in `.changeset/config.json`'s `ignore` list; packages outside `packages/` (`skills`, `minis`, `tools`) always need a hand-written changeset. See [.changeset/README.md](.changeset/README.md) for the bump mapping and alpha pre-release mode. (It lives as `README.md` because `changesets` parses every other `.md` in `.changeset/` as a changeset — a doc named `CLAUDE.md`/`AGENTS.md` there breaks the release.)
+- **Use Conventional Commits.** `feat:`, `fix:`, `docs:`, `chore:`, `build:`, `test:`, `refactor:`, `ci:`, with an optional scope — `fix(slug): …`. The type drives the release bump, so it is not cosmetic.
+- **Every change to a package needs a changeset. Write it yourself.** `pnpm changeset` (interactive) or hand-author a file in `.changeset/`, and commit it with the change. The CI generator is DISABLED, so nothing writes one for you and a package change without one ships unreleased. Within `packages/`, a package is release-visible iff `private !== true` and it is not in `.changeset/config.json`'s `ignore` list; packages outside `packages/` (`skills`, `minis`, `tools`) always need one by hand. Bump mapping and alpha pre-release mode: [.changeset/README.md](.changeset/README.md).
 - **Stage by exact path** — `git add tools/io/src/foo.ts`, never `git add -A` / `git add .` / `git commit -a`. This branch routinely has WIP modifications across many files; bundling them is a recoverable but disruptive mistake.
 
 ## Engineering discipline (iron law)
