@@ -1,3 +1,8 @@
+---
+name: flatland-r3f
+description: Use when integrating three-flatland with React Three Fiber — registering classes with extend(), rendering sprites declaratively in JSX, Flatland child routing, post-processing via addEffect, resize/render wiring in useFrame/useThree, or avoiding imperative R3F anti-patterns
+---
+
 # Flatland R3F Integration Skill
 
 > **Purpose:** Guide for properly integrating Flatland with React Three Fiber (R3F).
@@ -288,7 +293,6 @@ This is similar to how render targets work in R3F - you render to them manually.
 The `three-flatland/react` package includes type augmentation:
 
 ```typescript
-// packages/react/src/types.ts
 declare module '@react-three/fiber' {
   interface ThreeElements {
     flatland: ThreeElement<typeof Flatland>
