@@ -90,6 +90,9 @@ jobs:
         with:
           submodules: true
           ref: ${{ inputs.ref }}
+          # Build-only job: it never pushes, so don't leave the token in
+          # .git/config for later steps or artifact packaging to pick up.
+          persist-credentials: false
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
@@ -138,6 +141,9 @@ jobs:
         with:
           submodules: true
           ref: ${{ inputs.ref }}
+          # Build-only job: it never pushes, so don't leave the token in
+          # .git/config for later steps or artifact packaging to pick up.
+          persist-credentials: false
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5

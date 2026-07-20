@@ -116,7 +116,7 @@ jobs:
       # The VS Code extension is `private: true`, so `changeset publish` never
       # touches it and it gets no npm release / git tag. This decides whether
       # its version bumped THIS run and thus needs a universal VSIX built +
-      # attached to a GitHub Release (see the build-vsix / attach-vsix jobs).
+      # attached to a GitHub Release (see the build-vsix / publish-vsix jobs).
       # Idempotent: keyed on whether the `fl-tools-v<version>` release already
       # exists, so a re-run or an unrelated push is a no-op. `0.0.0` is the
       # pre-first-release placeholder (no changeset consumed yet) — skip it.
@@ -183,6 +183,11 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.release.outputs.sha }}
+          # This job never pushes — `gh release create` authenticates via GH_TOKEN
+          # in the step env, not git credentials — so the token has no reason to
+          # sit in .git/config where tooling or an artifact could pick it up.
+          # (The release job above DOES push, via changesets; leave that one alone.)
+          persist-credentials: false
 
       - name: Download the built universal VSIX
         uses: actions/download-artifact@v5
