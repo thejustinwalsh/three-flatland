@@ -241,30 +241,11 @@ jobs:
        needs.changes.outputs.ci == 'true')
     uses: ./.github/workflows/vscode-e2e.yml
 
-  # Generate the release changeset only AFTER the gate jobs pass, as the final
-  # step of CI rather than a parallel workflow. Sequencing it here means the
-  # bot's `ci: generate changesets` commit is created on an already-green base —
-  # so its own CI run instapasses via the changeset-only skip, and because this
-  # PR's CI is finished by then, that run cancels nothing (cancel-in-progress
-  # stays safe). Not a dependency of `ci-passed`: changeset generation is
-  # best-effort and never gates merge.
-  # DISABLED 2026-07-20. The generator burns through its model tokens and fails,
-  # so changesets are hand-written now: whoever changes a package commits the
-  # changeset with it. See .changeset/README.md. Re-enable by dropping the
-  # `false &&` once the generator is fixed.
-  changeset:
-    needs: [changes, build, smoke, size, vscode-e2e, consumer-smoke]
-    if: |
-      false &&
-      github.event_name == 'pull_request' &&
-      needs.changes.outputs.changeset_only != 'true' &&
-      needs.build.result == 'success' &&
-      needs.smoke.result != 'failure' &&
-      needs.size.result != 'failure' &&
-      needs.vscode-e2e.result != 'failure' &&
-      needs.consumer-smoke.result != 'failure'
-    uses: ./.github/workflows/changeset.yml
-    secrets: inherit
+  # Changeset generation is DISABLED (2026-07-20): the generator exhausted its
+  # model tokens and failed. Changesets are hand-written now — whoever changes a
+  # package commits one with it (see .changeset/README.md). The reusable
+  # workflow still exists at .github/workflows/changeset.yml; restore by adding
+  # a `changeset:` job here that calls it. It never gated `ci-passed`.
 
   ci-passed:
     name: CI passed
