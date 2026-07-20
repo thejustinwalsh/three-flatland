@@ -1899,6 +1899,10 @@ export class Sprite2D extends Mesh {
     // this object at registration (the zero-cost path); this guard is
     // defense-in-depth for direct raycast() calls.
     if (this._hitTestMode === 'none') return
+    // Flatland's internal scene disables matrixWorldAutoUpdate — matrices are
+    // refreshed once per frame inside render() — so a raycast from user code
+    // would otherwise read an identity matrixWorld and test a half-unit disc.
+    this.updateMatrixWorld()
     const hit = rayPlaneZ0(raycaster, this)
     if (!hit) return
 
