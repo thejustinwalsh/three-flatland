@@ -1189,7 +1189,9 @@ git add packages/create-three-flatland/templates/three/AGENTS.md packages/create
 git commit -m "feat(create): agent guidance (AGENTS.md + CLAUDE.md) in both templates"
 ```
 
----### Task 4: Scaffolder ↔ template integration tests (bin-level)
+---
+
+### Task 4: Scaffolder ↔ template integration tests (bin-level)
 
 **Files:**
 - Create: `packages/create-three-flatland/src/cli.test.ts`
