@@ -6,7 +6,7 @@
 // `resolveParams`), which imports `parseSongLiteralText` from here.
 //
 // `zzfxm.song`'s payload has NO `params` — a song is a deeply nested array,
-// not a flat numeric list (tools/codelens-service/CLAUDE.md), so unlike
+// not a flat numeric list (tools/codelens-service/AGENTS.md), so unlike
 // zzfx.call there is always real source text to read and parse, whether the
 // call site is a literal or a variable reference.
 //

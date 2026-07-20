@@ -180,7 +180,7 @@ export function useZzfxSession(): ZzfxSessionState {
     }
     bridgeRef.current = bridge
     // Register listeners BEFORE requesting ready — see tools/bridge/
-    // CLAUDE.md's handshake convention.
+    // AGENTS.md's handshake convention.
     const offInit = bridge.on<ZzfxInitPayload>('zzfx/init', (p) => {
       setFindingId(p.findingId)
       setUri(p.uri)

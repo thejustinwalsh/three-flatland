@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * controls exactly what "the polyfill installed" looks like (a fake,
  * throwable native `AudioContext` constructor) rather than depending on
  * a real native binding/device, which is unavailable-by-design in a
- * plain-Node `vitest` run (see `tools/audio-play/CLAUDE.md`'s "Common
+ * plain-Node `vitest` run (see `tools/audio-play/AGENTS.md`'s "Common
  * pitfalls" — the real device/Electron-binding proof lives in the e2e
  * `audio-render-gate` gate, not here). The mock factory below stands in
  * for exactly what `node-web-audio-api/polyfill.js` itself does: installs

@@ -10,7 +10,7 @@ unit landing after this one; this doc is what it should build against.
 ## Bridge contract
 
 Follows the same handshake convention as every other tool — see
-`tools/bridge/CLAUDE.md` and `tools/vscode/CLAUDE.md` "Bridge handshake
+`tools/bridge/AGENTS.md` and `tools/vscode/AGENTS.md` "Bridge handshake
 convention" for the general shape.
 
 ```
@@ -109,7 +109,7 @@ request is fire-and-forget with a swallowed rejection, so it's safe for
 the host handler to not exist yet. Intended use on the host side: tab
 dirty-dot / "unsaved changes" prompt on panel close, mirroring VSCode's
 native custom-editor dirty state if this becomes a `customEditors` entry
-rather than an ad-hoc command (see `tools/vscode/CLAUDE.md`'s "Two
+rather than an ad-hoc command (see `tools/vscode/AGENTS.md`'s "Two
 patterns: custom editor vs ad-hoc command" for that decision).
 
 ## What's implemented in this directory
@@ -197,7 +197,7 @@ there's nothing for it to be a counterpart of.
 ## Reused as-is vs. composed locally
 
 Per the brief: reuse `tools/preview`'s rect widget as-is, don't fork it.
-What that actually gets you, precisely (see `tools/preview/CLAUDE.md`):
+What that actually gets you, precisely (see `tools/preview/AGENTS.md`):
 
 - **`RectOverlay` is single-color for every rect** — "No per-rect color or
   stroke prop." Region-by-direction coloring is therefore a second,
@@ -218,7 +218,7 @@ What that actually gets you, precisely (see `tools/preview/CLAUDE.md`):
 - **Grid-snap** is `RectOverlay`'s `snapStep` prop, not
   `GridSliceOverlay` (that's the atlas tool's whole-grid frame-extraction
   UI — a different feature, listed as atlas-specific in
-  `tools/preview/CLAUDE.md`'s "What is atlas-tool-specific" section, not
+  `tools/preview/AGENTS.md`'s "What is atlas-tool-specific" section, not
   wired into this tool).
 - **`DirectionCompass.tsx` and `Slider.tsx` are new local primitives.**
   Neither has a design-system or `tools/preview` equivalent — `Slider`'s

@@ -5,7 +5,7 @@
 // `PluckSynth` is the ONE allowlisted Tone class whose construction routes
 // through `ToneAudioWorklet` → `standardized-audio-context`'s
 // `AudioWorkletNode`, which is exactly the path
-// `tools/audio-play/CLAUDE.md` documents as having historically CRASHED
+// `tools/audio-play/AGENTS.md` documents as having historically CRASHED
 // THE ENTIRE SIDECAR PROCESS (`window.isSecureContext`/`self` undefined in
 // our shim `window`) before `toneEngineLoader.ts`'s `setupToneEnvironment`
 // fix. `zzfx-synth-lenses.spec.ts`'s device-less e2e tests for PluckSynth

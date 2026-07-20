@@ -294,7 +294,7 @@ export async function openZzfxEditorPanel(
       //    WHATEVER initializer expression is there — it does not
       //    validate that it's actually an array literal (`const preset =
       //    getPreset()` still reports the call expression's range; see
-      //    tools/codelens-service/CLAUDE.md's `varRef.defRange` contract:
+      //    tools/codelens-service/AGENTS.md's `varRef.defRange` contract:
       //    "the sidecar reports the range, it doesn't validate the
       //    shape; that's the client's job"). Blindly overwriting that
       //    range with `[${params...}]` would silently turn a function

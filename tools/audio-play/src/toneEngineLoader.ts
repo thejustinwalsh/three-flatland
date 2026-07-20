@@ -11,7 +11,7 @@
  * `tools/vscode/e2e/specs/audio-render-gate.spec.ts`'s PluckSynth test).
  * `sidecar.ts` calls this with `ZZFX.audioContext`; the offline probes
  * call it with an `OfflineAudioContext`. Only the context differs — see
- * `tools/audio-play/CLAUDE.md`'s AudioWorklet section for the full
+ * `tools/audio-play/AGENTS.md`'s AudioWorklet section for the full
  * empirical trace this preserves.
  */
 import type * as ToneNamespace from 'tone'

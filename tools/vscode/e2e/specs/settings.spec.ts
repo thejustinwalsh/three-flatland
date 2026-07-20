@@ -10,7 +10,7 @@ import { HostBridgeClient } from '../host-bridge/client'
 // through VS Code's extension API — these specs assert the underlying
 // state the menus are driven by instead: the `threeFlatland.tool.*.enabled`
 // context keys (same values `when` clauses read) and command
-// availability/behavior. See tools/vscode/CLAUDE.md's "Per-tool settings"
+// availability/behavior. See tools/vscode/AGENTS.md's "Per-tool settings"
 // section for what each assertion is standing in for.
 
 // This file lives in e2e/specs/, one directory deeper than fixtures.ts

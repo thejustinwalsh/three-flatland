@@ -233,7 +233,7 @@ Use this prompt when adding new workflows, modifying triggers, or changing the C
 You are implementing CI/CD changes for a GitHub Actions monorepo. Before making changes, read:
 - .github/workflows/README.md — full architecture reference
 - All .github/workflows/*.yml files — current workflow definitions
-- CLAUDE.md — project structure and build commands
+- AGENTS.md — project structure and build commands
 
 Follow these rules when modifying or creating workflows:
 

@@ -13,7 +13,7 @@
   **Always** lazy-load (`React.lazy(() => import('@three-flatland/preview/canvas'))`) and warm
   the chunk in `main.tsx` with `void import('@three-flatland/preview/canvas')`. Importing this
   subpath at the top level of any module pulls three.js + R3F into the initial shell chunk,
-  which balloons it from ~30 KB to >1 MB. See `tools/vscode/CLAUDE.md` "Bundle size & loading"
+  which balloons it from ~30 KB to >1 MB. See `tools/vscode/AGENTS.md` "Bundle size & loading"
   for the canonical pattern (Suspense boundaries, FOUC guard, chunk warm-up).
 
 `tools/preview/package.json` ships `"sideEffects": false`, so unused exports tree-shake out of

@@ -85,7 +85,7 @@ export class CodelensServiceClient {
     // actually matters. Best-effort: a failure here (e.g. a read-only
     // install location) just falls through to spawn()'s own ENOENT/EACCES
     // handling below — same degrade-not-panic posture as the rest of this
-    // client (see CLAUDE.md's "Degrade, don't panic").
+    // client (see AGENTS.md's "Degrade, don't panic").
     if (process.platform !== 'win32') {
       try {
         chmodSync(this.options.binaryPath, 0o755)

@@ -33,7 +33,7 @@ jobs:
       ci: ${{ steps.filter.outputs.ci }}
       changeset_only: ${{ steps.skip.outputs.changeset_only }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # The changeset bot pushes a `.changeset/`-only commit on top of each
       # code commit. Such a push has nothing to build, so skip the heavy jobs
@@ -72,7 +72,7 @@ jobs:
             echo "changeset_only=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |

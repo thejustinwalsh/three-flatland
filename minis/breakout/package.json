@@ -60,7 +60,7 @@
     "react-dom": "^19.2.0",
     "three": "^0.183.1",
     "typescript": "^5.7.3",
-    "vite": "^6.4.3"
+    "vite": "^7.3.6"
   },
   "keywords": [
     "three.js",

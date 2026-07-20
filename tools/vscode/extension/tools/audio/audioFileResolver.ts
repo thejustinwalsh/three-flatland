@@ -1,6 +1,6 @@
 // Resolves an `audio.file` finding's `payload.path` (a string as written
 // in source — may be relative, and the sidecar never validates it exists
-// on disk, tools/codelens-service/CLAUDE.md) to a real absolute path.
+// on disk, tools/codelens-service/AGENTS.md) to a real absolute path.
 //
 // Two speeds, per the progressive-resolution design (#41):
 //   - FAST (sync, 3 stat calls): (1) the source file's own directory,

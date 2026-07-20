@@ -20,7 +20,7 @@ import { getChannel, log } from './log'
  * `exports` pattern (`vscode.extensions.getExtension(id)!.exports`), same
  * mechanism the built-in Git extension uses to expose its `git.API`. Kept
  * intentionally small: a diagnostic surface for the audio-play sidecar
- * (real AudioContext, no webview panel — see `tools/audio-play/CLAUDE.md`),
+ * (real AudioContext, no webview panel — see `tools/audio-play/AGENTS.md`),
  * not a general extensibility API. `getActivePid`/`shutdown`/`getStats`
  * are exactly the functions `playSidecarManager.ts` itself uses —
  * `shutdown` is the same call `context.subscriptions`' dispose handler
@@ -28,7 +28,7 @@ import { getChannel, log } from './log'
  * is the audibility regression guard (see `tools/audio-play/src/player.ts`)
  * — an e2e test drives it to prove a played sound actually reaches the
  * output, not just that `play` acked clean. `ping` is the device-independent
- * counterpart (see `tools/audio-play/CLAUDE.md`'s device-tolerance
+ * counterpart (see `tools/audio-play/AGENTS.md`'s device-tolerance
  * section): proves the sidecar PROCESS is alive and responding over the
  * wire protocol without touching `AudioContext` at all, so it stays
  * meaningful even on a device-less runner where `getStats`/a real `play`

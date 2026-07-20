@@ -577,7 +577,7 @@ Contents/MacOS/Code Helper (Plugin)` (macOS) or the equivalent utility
   stops the previous song first, don't remove that guard.
 - Adding a new file under `src/` without adding it to `tsup.config.ts`'s
   `entry` array — same `bundle: false` gotcha as `codelens-service`, see
-  its `CLAUDE.md`.
+  its `AGENTS.md`.
 - **Patching only the bare `globalThis.AudioContext`/`globalThis.webkitAudioContext`
   when shimming a browser-targeting package (e.g. `loadWadConstructor` for
   `web-audio-daw`), not also `globalThis.window.AudioContext`/

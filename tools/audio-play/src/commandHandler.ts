@@ -21,7 +21,7 @@ export type AudioBackend = {
    * immediately — `handleCommand` acks "accepted" synchronously right
    * after this returns, since decoding is inherently async and the
    * stdin/stdout wiring must never block waiting for it (see
-   * `tools/audio-play/CLAUDE.md`'s "the async wrinkle"). A read/decode
+   * `tools/audio-play/AGENTS.md`'s "the async wrinkle"). A read/decode
    * failure is the implementation's own responsibility to report through
    * whatever async channel it has — the real `sidecar.ts` backend
    * reports it via a `{ok:false, cmd:'playFile'}` line on stdout, closing
@@ -69,7 +69,7 @@ export type CommandHandler = {
  * file (#46) — replacing (stopping) it on any new `playSong`/`playFile`,
  * per the "zero fidelity drift" contract — `zzfxm()`'s song and
  * `zzfx()`'s one-shots share the backend's own `AudioContext` already
- * (see `tools/audio-play/CLAUDE.md`), this layer only owns *which* source
+ * (see `tools/audio-play/AGENTS.md`), this layer only owns *which* source
  * handle is currently live.
  */
 export function createCommandHandler(backend: AudioBackend): CommandHandler {

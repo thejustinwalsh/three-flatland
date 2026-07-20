@@ -966,7 +966,7 @@ The implementation plan and downstream subagents MUST consume the following exis
 
 ## 18. Frontend stack — Koota ECS + React Three Fiber only (no plain three.js variant)
 
-**Decision D13 (added 2026-05-29):** The showcase is an **R3F app**. There is no `examples/three/` variant of this showcase — the standard "examples come in pairs (three + react)" rule (per CLAUDE.md) is explicitly waived for this mini. The single deliverable is `minis/alchemy-duel/` as an R3F + WebGPU app.
+**Decision D13 (added 2026-05-29):** The showcase is an **R3F app**. There is no `examples/three/` variant of this showcase — the standard "examples come in pairs (three + react)" rule (per AGENTS.md) is explicitly waived for this mini. The single deliverable is `minis/alchemy-duel/` as an R3F + WebGPU app.
 
 **Decision D14:** Gameplay ECS is **Koota** — the same ECS the rest of the repo uses; same trait conventions (SoA via `trait({...})`, AoS singletons via `trait(() => ({...}))`). Game state systems, animation/tween systems, the diff→intent system, and the 3D→atlas light driver all run as Koota systems on a dedicated showcase world. The world is owned by a React provider at the showcase root; system scheduling is driven from a single `useFrame` callback in deterministic order (matching §9.F.3).
 

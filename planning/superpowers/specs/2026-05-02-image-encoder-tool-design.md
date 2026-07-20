@@ -97,7 +97,7 @@ interface PrefsSlice {
 }
 ```
 
-Rules from the CLAUDE.md guidelines:
+Rules from the AGENTS.md guidelines:
 - zundo `partialize` covers ONLY `DocSlice`. UI state (`encodedBytes`, `isEncoding`, `encodeError`) is not undoable.
 - Equality is content-based: shallow compare each format sub-object.
 - 100ms debounced `handleSet`.

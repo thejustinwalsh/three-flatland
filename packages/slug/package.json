@@ -64,6 +64,15 @@
   "bin": {
     "slug-bake": "./dist/cli.js"
   },
+  "flatland": {
+    "bake": [
+      {
+        "name": "slug",
+        "description": "Bake a Slug font sidecar (.slug.glb — pre-parsed glyphs, optional baked strokes)",
+        "entry": "./dist/baker.js"
+      }
+    ]
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

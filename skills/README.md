@@ -35,6 +35,9 @@ cp -r node_modules/@three-flatland/skills/* .claude/skills/
 ## Included skills
 
 - **tsl** — Use when writing TSL shaders, creating NodeMaterials, migrating GLSL to TSL, using compute shaders, working with `three/tsl` imports, or debugging shader node graphs.
+- **codemod** — Use when authoring or applying three-flatland breaking-change codemods.
+- **flatland-r3f** — Use when integrating three-flatland with React Three Fiber: `extend()` registration, declarative JSX sprites, Flatland routing, post-processing, anti-patterns.
+- **flatland-bake** — Use when baking derived assets (alpha hitmasks, normal maps, Slug fonts) or deciding whether to bake at all: `flatland-bake` subcommands, direct bins, and the baked → runtime fallback contract.
 
 ### Requirements
 

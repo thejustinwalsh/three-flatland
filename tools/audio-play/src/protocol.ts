@@ -69,12 +69,12 @@ export type StatsCommand = { cmd: 'stats'; id?: number }
  * Exists so a caller (e2e process-lifecycle assertions) can prove the
  * child process is alive and responsive on a device-less runner, where
  * every audio-touching command legitimately Nacks (see
- * `tools/audio-play/CLAUDE.md`'s device-tolerance section). `id`-correlated
+ * `tools/audio-play/AGENTS.md`'s device-tolerance section). `id`-correlated
  * like `stats`/`playToneSynth` — see `StatsCommand`'s doc for why. */
 export type PingCommand = { cmd: 'ping'; id?: number }
 
 /** The narrow, statically-parseable Tone.js instrument subset this sidecar
- * supports — see `tools/audio-play/CLAUDE.md`/#47 for why Tone's imperative
+ * supports — see `tools/audio-play/AGENTS.md`/#47 for why Tone's imperative
  * method-chain API only gets a fixed allowlist rather than arbitrary
  * construction. `MonoSynth` is deliberately excluded — not part of the v1
  * scanner's detected shapes. */

@@ -17,8 +17,8 @@ Any loader whose output can be produced by two paths:
 
 Examples live in-tree:
 
-- `@three-flatland/slug` — `SlugFontLoader` tries `.slug.json` + `.slug.bin`,
-  falls back to parsing the TTF with opentype.js.
+- `@three-flatland/slug` — `SlugFontLoader` tries a single `.slug.glb`, falls
+  back to parsing the TTF with opentype.js.
 - `@three-flatland/normals` — ships the baker today. Runtime fallback is the
   TSL helper `normalFromSprite` executed per-fragment in the lit material.
 
@@ -94,7 +94,7 @@ strings preserved. Case-insensitive on the source extension.
 ```ts
 '/sprites/knight.png'       → '/sprites/knight.normal.png'
 '/sprites/knight.png?v=3'   → '/sprites/knight.normal.png?v=3'
-'/fonts/Inter-Regular.ttf'  → '/fonts/Inter-Regular.slug.json' + '.slug.bin'
+'/fonts/Inter-Regular.ttf'  → '/fonts/Inter-Regular.slug.glb'
 ```
 
 Ship the derivation as a named export (`bakedNormalURL`, `bakedURLs`) so

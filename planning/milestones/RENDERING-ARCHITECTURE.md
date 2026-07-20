@@ -329,7 +329,7 @@ There is no React Context to add, no provider wrapper, no `useLayoutEffect` to r
 | Requirement | Where |
 |---|---|
 | `extend({ Sprite2D, SpriteGroup, Flatland, ... })` | One-time call in the `three-flatland/react` subpath |
-| No-arg construction + property setters | Existing CLAUDE.md project rule |
+| No-arg construction + property setters | Existing AGENTS.md project rule |
 | Typed JSX via `ThreeElements` augmentation | Existing pattern in `packages/three-flatland/src/react/types.ts` |
 
 Per-Canvas isolation is free — R3F's `_roots: Map<canvas, Root>` gives each Canvas its own renderer; our `WeakMap<Renderer, ...>` registry shape naturally isolates without any further coordination. Portals are free — moving a node fires standard `'removed'`/`'added'` events; the registry on the destination scene picks the sprite up via the normal path.

@@ -60,6 +60,9 @@ temp/
 # Agents
 settings.local.json
 
+# Generated from AGENTS.md by scripts/sync-agents-pairs.ts
+CLAUDE.md
+
 # Vendor Library for examples to pull from
 vendor/
 !packages/image/vendor/

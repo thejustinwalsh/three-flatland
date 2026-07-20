@@ -28,6 +28,8 @@
     "example-three-tilemap",
     "example-three-tsl-nodes",
     "example-react-skia",
-    "example-three-skia"
+    "example-three-skia",
+    "flatland-template-three",
+    "flatland-template-react"
   ]
 }

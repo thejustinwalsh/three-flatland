@@ -1,0 +1,54 @@
+{
+  "name": "flatland-template-react",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium"
+  },
+  "dependencies": {
+    "@react-three/fiber": "10.0.0-alpha.2",
+    "koota": "^0.6.5",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "three": "^0.183.1",
+    "three-flatland": "^0.1.0-alpha.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@types/three": "^0.183.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "oxfmt": "^0.59.0",
+    "oxlint": "^1.74.0",
+    "typescript": "^5.7.3",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.6"
+  },
+  "nx": {
+    "tags": [
+      "type:template"
+    ],
+    "targets": {
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  }
+}
