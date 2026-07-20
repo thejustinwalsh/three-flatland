@@ -21,7 +21,13 @@
  * `pnpm.overrides` (declared version → workspace:*) path is never touched — the
  * examples work in both locations.
  *
- * Usage: node scripts/consumer-smoke.mjs [--only <slug>] [--no-render]
+ * Usage: node scripts/consumer-smoke.mjs [--only <sel>[,<sel>…]] [--no-render]
+ *
+ * `--only` selects examples by slug (`skia` = both react and three) or by nx
+ * project name (`example-react-skia` = just that one). CI passes the affected
+ * set on PRs so a package change render-tests only the examples that depend on
+ * it; releases pass nothing and sweep all of them, to catch anything the
+ * dependency graph didn't predict.
  */
 
 import { execFileSync, spawn } from 'node:child_process'
@@ -34,7 +40,15 @@ import { setTimeout as sleep } from 'node:timers/promises'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const args = process.argv.slice(2)
-const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1] : null
+const onlyArg = args.includes('--only') ? args[args.indexOf('--only') + 1] : null
+const ONLY = onlyArg
+  ? new Set(
+      onlyArg
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    )
+  : null
 const NO_RENDER = args.includes('--no-render')
 
 const run = (cmd, cmdArgs, cwd, extraEnv) =>
@@ -52,6 +66,26 @@ function publishablePackages() {
     out.push({ dir, name: pkg.name, version: pkg.version })
   }
   return out
+}
+
+// Resolve scope FIRST. Everything below — building 10 packages, packing them,
+// standing up Verdaccio, publishing tarballs — is pure waste if the selection
+// is empty, so decide before paying for any of it. (`discoverExamples` is a
+// hoisted function declaration, defined further down with the other example
+// helpers.)
+const EXAMPLES = discoverExamples()
+
+// Always say what the scope was. A scoped run and a full run otherwise look
+// identical in the log, and "2/2 green" over a 2-example subset reads as far
+// more coverage than it is.
+if (ONLY) {
+  console.log(`consumer-smoke: SCOPED to ${EXAMPLES.length} example(s) via --only ${[...ONLY].join(',')}`)
+  if (EXAMPLES.length === 0) {
+    console.log('consumer-smoke: nothing selected — exiting green (no affected examples to test)')
+    process.exit(0)
+  }
+} else {
+  console.log(`consumer-smoke: FULL sweep — all ${EXAMPLES.length} examples`)
 }
 
 const PKGS = publishablePackages()
@@ -252,14 +286,16 @@ function discoverExamples() {
       if (slug === 'template') continue // scaffolding, not a shipped example
       const dir = join(base, slug)
       if (!existsSync(join(dir, 'package.json'))) continue
-      if (ONLY && slug !== ONLY) continue
+      // Match by slug (`skia` → both react+three) or nx project name
+      // (`example-react-skia` → only that one), so CI can pass `nx affected`
+      // output straight through without translating it.
+      if (ONLY && !ONLY.has(slug) && !ONLY.has(`example-${type}-${slug}`)) continue
       out.push({ type, slug, dir })
     }
   }
   return out
 }
 
-const EXAMPLES = discoverExamples()
 const WORK = mkdtempSync(join(tmpdir(), 'wc-run-'))
 const results = []
 

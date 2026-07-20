@@ -20,12 +20,38 @@ name: Build VS Code Extension VSIX
 
 on:
   workflow_call:
+    inputs:
+      ref:
+        description: >-
+          Exact commit to build. release.yml passes the SHA it published so the
+          VSIX matches what npm got; without it each job checks out main's head
+          independently and can drift (the release job sits pending approval,
+          so main moves under it). Empty = default checkout behaviour.
+        type: string
+        required: false
+        default: ''
+    outputs:
+      version:
+        description: The Marketplace version the VSIX was packaged as (alpha counter folded into patch).
+        value: ${{ jobs.assemble-and-package.outputs.version }}
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit/branch/tag to build (default: this workflow's ref)"
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+# Hardcoded group, NOT ${{ github.workflow }}: when this is CALLED as a reusable
+# workflow, github.workflow is the CALLER's name ("Release"), so that expression
+# resolved to the release run's own concurrency group — a caller waiting on a job
+# that's blocked on the caller's group = deadlock (GitHub cancels the release). A
+# fixed prefix keeps the group distinct from any caller while still serializing
+# standalone (workflow_dispatch) VSIX builds on the same ref.
+concurrency: build-vscode-vsix-${{ github.ref }}
 
 jobs:
   # One native codelens-service build per target platform — Rust can't be
@@ -63,6 +89,10 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: true
+          ref: ${{ inputs.ref }}
+          # Build-only job: it never pushes, so don't leave the token in
+          # .git/config for later steps or artifact packaging to pick up.
+          persist-credentials: false
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
@@ -103,11 +133,17 @@ jobs:
     name: Assemble + package universal VSIX
     needs: build-codelens-service
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.mkver.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           submodules: true
+          ref: ${{ inputs.ref }}
+          # Build-only job: it never pushes, so don't leave the token in
+          # .git/config for later steps or artifact packaging to pick up.
+          persist-credentials: false
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
@@ -120,6 +156,17 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Reuse the release's already-built Nx cache (build is the sole writer of the
+      # `nx-current` lineage) so `nx build @three-flatland/vscode` below is a cache
+      # hit for the extension + its dep closure instead of a cold rebuild.
+      - name: Restore Nx cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-current-${{ inputs.ref || github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-current-
 
       - name: Download all platform codelens-service binaries
         uses: actions/download-artifact@v5
@@ -149,12 +196,29 @@ jobs:
       # Build the extension AND its workspace-dep closure. The extension's own
       # build script doesn't build @three-flatland/bridge / design-system / io /
       # … — their subpaths (e.g. @three-flatland/bridge/client) resolve to dist
-      # for Vite/Rollup, so an unbuilt closure fails the webview build. The `...`
-      # suffix builds the real dependency closure in topological order.
-      # Deliberately NOT the monorepo `nx run-many -t build`, which drags in @three-flatland/skia's
-      # build (needs the Zig/WASM toolchain). Mirrors e2e/global-setup.ts.
+      # for Vite/Rollup, so an unbuilt closure fails the webview build.
+      # `nx build @three-flatland/vscode` builds exactly the extension + its nx
+      # dependency graph (11 projects, topo order via `dependsOn: ^build`) — it does
+      # NOT drag in @three-flatland/skia's Zig/WASM build (skia isn't a dep), so it
+      # avoids the toolchain while staying on Nx and reusing the restored cache.
+      # (The whole-workspace `nx run-many -t build` WOULD pull in skia; a single
+      # project target does not.)
       - name: Build extension + webviews
-        run: pnpm --filter "@three-flatland/vscode..." -r run build
+        run: pnpm nx build @three-flatland/vscode
+
+      # The Marketplace refuses semver prerelease versions, but the repo is in
+      # changesets pre-mode (repo-global — no per-package opt-out), so the
+      # manifest carries `-alpha.N`. Fold that counter into the patch position
+      # so the published version is clean AND strictly increasing. "Alpha" is
+      # signalled by `"preview": true` on the listing instead. This rewrite is
+      # ephemeral CI state and is never committed — the repo's package.json must
+      # keep the real changesets version or the next bump computes wrong.
+      # See scripts/vsix-marketplace-version.mjs for the full reasoning.
+      - name: Derive the Marketplace version
+        id: mkver
+        run: |
+          V=$(node scripts/vsix-marketplace-version.mjs --write)
+          echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: Package universal VSIX
         working-directory: tools/vscode

@@ -19,6 +19,12 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # `environment: release` requires a reviewer, so the auto workflow_run QUEUES
+    # this job and it waits for your approval. Everything below — including the smoke
+    # suites run as steps just before the publish — executes ONLY after you approve.
+    # So the smokes never run on ordinary merges (the job sits pending); they run on
+    # the release you actually greenlight, right before it publishes, and a smoke
+    # failure fails the job before the publish step → nothing is published.
     environment: release
     # Surfaced so the VSIX jobs below know whether THIS release bumped
     # @three-flatland/vscode (the private extension package) and thus needs a
@@ -26,12 +32,23 @@ jobs:
     outputs:
       vscode_version: ${{ steps.flvsix.outputs.version }}
       vscode_needs_release: ${{ steps.flvsix.outputs.needs_release }}
+      sha: ${{ steps.relsha.outputs.sha }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           submodules: true
+
+      # The exact commit this release builds, smoke-tests, and publishes. npm gets
+      # this consistency for free — `changeset publish` runs in THIS job against
+      # THIS tree. The VSIX path doesn't: its jobs check out independently and can
+      # land on a newer main (this job sits pending approval, so main moves under
+      # it). Pinning them to this SHA makes the VSIX built and the tag created match
+      # what was actually published, instead of "whatever main was minutes later".
+      - name: Resolve the exact release commit
+        id: relsha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
@@ -70,6 +87,19 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Full smoke suites as the last gate before the publish below. These run only
+      # after you've approved this job, so they never run on ordinary merges to main;
+      # if either fails, the job fails here and the publish step never runs. Same
+      # suites as CI's smoke / consumer-smoke jobs (nx-built, verdaccio consumer flow).
+      - name: Install Playwright (for smokes)
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke — examples
+        run: pnpm test:smoke
+
+      - name: Smoke — consumer (published tarballs)
+        run: pnpm test:consumer
+
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
@@ -86,7 +116,7 @@ jobs:
       # The VS Code extension is `private: true`, so `changeset publish` never
       # touches it and it gets no npm release / git tag. This decides whether
       # its version bumped THIS run and thus needs a universal VSIX built +
-      # attached to a GitHub Release (see the build-vsix / attach-vsix jobs).
+      # attached to a GitHub Release (see the build-vsix / publish-vsix jobs).
       # Idempotent: keyed on whether the `fl-tools-v<version>` release already
       # exists, so a re-run or an unrelated push is a no-op. `0.0.0` is the
       # pre-first-release placeholder (no changeset consumed yet) — skip it.
@@ -97,7 +127,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          V=$(node -p "require('./tools/vscode/package.json').version")
+          # The Marketplace version (alpha counter folded into patch), NOT the raw
+          # changesets version — so the git tag, the GitHub Release, and what the
+          # Marketplace actually serves all carry the same number.
+          V=$(node scripts/vsix-marketplace-version.mjs)
           echo "version=$V" >> "$GITHUB_OUTPUT"
           if [ "$V" = "0.0.0" ]; then
             echo "needs_release=false" >> "$GITHUB_OUTPUT"
@@ -119,20 +152,42 @@ jobs:
     needs: release
     if: needs.release.outputs.vscode_needs_release == 'true'
     uses: ./.github/workflows/build-vscode-vsix.yml
+    with:
+      # Pin to the commit the release job published. Without this each matrix leg
+      # checks out main's head at its own start time, so a merge landing during
+      # the (multi-platform, ~10min) build would ship a VSIX built from code that
+      # was never published or smoke-tested.
+      ref: ${{ needs.release.outputs.sha }}
 
-  # Create the versioned GitHub Release with the .vsix attached as an asset —
-  # this is the artifact a human downloads to publish manually (Marketplace via
-  # `vsce publish --azure-credential`, Open VSX via `ovsx publish`).
-  attach-vsix:
-    name: Attach VSIX to GitHub Release
+  # One GitHub Release carrying the VSIX, then the actual Marketplace + Open VSX
+  # publishes. The extension releases on its OWN cadence (it is deliberately not
+  # in a changesets `fixed` group with the packages), so this is its release —
+  # tagged, noted from its changesets-generated CHANGELOG, and pinned to the same
+  # commit npm published.
+  #
+  # `environment: release` is required to read VSCODE_PAT / OVSX_PAT, which are
+  # scoped to that environment rather than the repo. That means this job takes
+  # its own approval — the release job's approval does not carry over. Worth the
+  # second click: publish tokens reachable only from an approved deployment beat
+  # repo-level secrets any workflow could read.
+  publish-vsix:
+    name: Publish FL Tools (Marketplace + Open VSX)
     needs: [release, build-vsix]
     if: needs.release.outputs.vscode_needs_release == 'true'
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.sha }}
+          # This job never pushes — `gh release create` authenticates via GH_TOKEN
+          # in the step env, not git credentials — so the token has no reason to
+          # sit in .git/config where tooling or an artifact could pick it up.
+          # (The release job above DOES push, via changesets; leave that one alone.)
+          persist-credentials: false
 
       - name: Download the built universal VSIX
         uses: actions/download-artifact@v5
@@ -140,11 +195,66 @@ jobs:
           name: vsix
           path: dist-vsix
 
+      # Notes come from the CHANGELOG changesets generated — take the topmost
+      # section, which is this release's. Its heading carries the raw
+      # `-alpha.N` version while the tag carries the derived Marketplace one;
+      # that mismatch is expected and only cosmetic.
+      - name: Assemble release notes from the changesets CHANGELOG
+        run: |
+          if [ -f tools/vscode/CHANGELOG.md ]; then
+            awk '/^## /{n++} n==1' tools/vscode/CHANGELOG.md > notes.md
+          fi
+          if [ ! -s notes.md ]; then
+            echo "_No changelog entry found for this release._" > notes.md
+          fi
+          {
+            echo ""
+            echo "---"
+            echo "Universal VSIX for \`three-flatland.fl-tools\` — all platforms in one artifact."
+            echo "Published to the VS Code Marketplace and Open VSX from commit \`${{ needs.release.outputs.sha }}\`."
+          } >> notes.md
+
       - name: Create the GitHub Release with the VSIX attached
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           V="${{ needs.release.outputs.vscode_version }}"
+          # --target pins the tag to the published commit; without it the tag is
+          # cut at whatever main's head happens to be right now.
           gh release create "fl-tools-v$V" dist-vsix/*.vsix \
             --title "FL Tools v$V" \
-            --notes "Universal VSIX for \`three-flatland.fl-tools\` v$V (all platforms). Download the \`.vsix\` and publish it manually — \`vsce publish --azure-credential --packagePath <vsix>\` (VS Code Marketplace, no PAT) or \`ovsx publish --packagePath <vsix> -p <OVSX_PAT>\` (Open VSX). See tools/vscode/PUBLISHING.md."
+            --target "${{ needs.release.outputs.sha }}" \
+            --notes-file notes.md \
+            --prerelease
+
+      # vsce reads the token from VSCE_PAT; our secret is named VSCODE_PAT, hence
+      # the mapping. The listing is flagged `"preview": true`, which is what
+      # signals "alpha" to users — the version itself must be clean semver
+      # because the Marketplace rejects prerelease versions outright.
+      - name: Publish to the VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCODE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::VSCODE_PAT is not set in the 'release' environment — cannot publish to the Marketplace."
+            exit 1
+          fi
+          npx --yes @vscode/vsce publish --packagePath dist-vsix/*.vsix
+
+      # Covers Cursor / Windsurf / VSCodium / Theia. Requires OVSX_PAT in the
+      # `release` environment, plus a ONE-TIME namespace claim:
+      #   npx ovsx create-namespace three-flatland -p <OVSX_PAT>
+      # Runs last so a missing token can't strand the Marketplace publish or the
+      # GitHub Release above — but it does fail the job, loudly and on purpose.
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::error::OVSX_PAT is not set in the 'release' environment — Open VSX publish skipped."
+            echo "Create a token at https://open-vsx.org/user-settings/tokens, claim the namespace once"
+            echo "with 'npx ovsx create-namespace three-flatland -p <token>', then add OVSX_PAT."
+            echo "The Marketplace publish and the GitHub Release above already succeeded."
+            exit 1
+          fi
+          npx --yes ovsx publish --packagePath dist-vsix/*.vsix -p "$OVSX_PAT"

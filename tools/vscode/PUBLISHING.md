@@ -18,14 +18,12 @@ in a browser.
    `tools/vscode/package.json`. If that exact ID is taken, you'll need to either negotiate for it
    or change `package.json`'s `publisher` field to match whatever you actually register (and update
    the marketplace badge URL in `README.md` to match).
-3. That's all the Marketplace needs up front. **Publishing is manual** (CI only builds the VSIX —
-   see below), and the simplest way to authenticate a manual publish is `az login` (interactive, in
-   your browser): `vsce publish --azure-credential` rides that logged-in session — no Personal
-   Access Token, no Entra app registration, no federated credential needed. (A Marketplace-scoped
-   PAT still works for a manual `vsce publish -p <PAT>` if you prefer, but Microsoft is retiring
-   full-scoped/global Azure DevOps PATs and tightening PAT policies, and automating publish via
-   Entra-ID in CI is painful — so `az login` + `--azure-credential` is the path of least resistance,
-   and why this repo doesn't publish from CI at all.)
+3. Generate a Marketplace-scoped Personal Access Token and store it as **`VSCODE_PAT`** in the
+   repo's **`release` environment** (not repo-level secrets — environment scoping means the token
+   is only reachable from an approved deployment). CI publishes with it; see §3 below.
+
+   `az login` + `vsce publish --azure-credential` still works for a manual publish from your own
+   machine if you ever need to bypass CI, but it is no longer the normal path.
 
 ### 2. Register the Open VSX namespace
 
@@ -43,12 +41,25 @@ covers all of them at once.
    - Locally: `npx ovsx create-namespace three-flatland -p <OVSX_PAT>` (run from anywhere — this
      talks to the registry directly, not tied to this repo).
 
-### 3. No CI secrets needed — CI builds, you publish
+### 3. CI secrets — both live in the `release` environment
 
-`build-vscode-vsix.yml` is a **build-only** workflow: it produces the universal `vsix` artifact and
-stops. It does **not** publish, so it needs no `VSCE_PAT`/`OVSX_PAT` in GitHub secrets. You publish
-the downloaded artifact by hand (next section). The only credential involved is whatever `az login`
-gives you (Marketplace) and, optionally, a local `OVSX_PAT` for Open VSX — neither lives in CI.
+CI publishes to both registries. Two secrets are required, and both must be on the **`release`
+environment** rather than repo-level, so they're reachable only from an approved deployment:
+
+| Secret        | Used for                     | Where to get it                                             |
+| ------------- | ---------------------------- | ----------------------------------------------------------- |
+| `VSCODE_PAT`  | VS Code Marketplace publish  | <https://marketplace.visualstudio.com/manage> (§1 above)      |
+| `OVSX_PAT`    | Open VSX publish             | <https://open-vsx.org/user-settings/tokens> (§2 above)        |
+
+`vsce` reads its token from `VSCE_PAT`, so `release.yml` maps `VSCE_PAT: ${{ secrets.VSCODE_PAT }}`
+— the names differ on purpose, don't "fix" one to match the other.
+
+`build-vscode-vsix.yml` remains **build-only**: it produces the universal `vsix` artifact and
+stops, so a manual `workflow_dispatch` run can never publish anything. The actual publishing lives
+in `release.yml`'s `publish-vsix` job, which downloads that artifact.
+
+Because `publish-vsix` references the `release` environment, it takes **its own approval** — you
+will approve twice per release (once for the publish job, once for this). That is deliberate.
 
 ## First release
 
@@ -68,26 +79,44 @@ naming `@three-flatland/vscode: minor`. From here the normal release flow takes 
      legs (darwin x2, linux x2, win32 x2 — the last on the native `windows-11-arm` runner), then
      `assemble-and-package` merges the 6 binaries, builds audio-play once, and packages the one
      universal VSIX. ~5-10 min depending on Rust cache state.
-   - `attach-vsix` — creates a GitHub Release **`fl-tools-v<version>`** with the `.vsix` attached as
-     a downloadable asset. Idempotent (keyed on whether that release already exists) and gated on a
-     real version bump, so it can't spuriously fire on an unrelated push.
+   - `publish-vsix` — creates the GitHub Release **`fl-tools-v<version>`** with the `.vsix`
+     attached, then publishes to the Marketplace and Open VSX. Takes its own approval (see §3).
+     Gated on a real version bump and idempotent on the release tag, so it can't spuriously fire.
 
    You can also build the VSIX anytime without a release: **Actions → Build VS Code Extension VSIX →
-   Run workflow** (`workflow_dispatch`) — that produces the `vsix` artifact on the run.
+   Run workflow** (`workflow_dispatch`) — that produces the `vsix` artifact and publishes nothing.
 
-### Publish the built artifact (manual — 2 minutes)
+### Versions: why the published number differs from `package.json`
 
-Grab the `.vsix` from the **GitHub Release** the pipeline created
-(<https://github.com/thejustinwalsh/three-flatland/releases> → `fl-tools-v<version>` → assets), or
-from a `workflow_dispatch` run's `vsix` artifact. Then:
+While the repo is in changesets **pre-mode**, changesets stamps `-alpha.N` onto every version it
+bumps — and pre-mode is repo-global, with no per-package opt-out. The Marketplace rejects semver
+prerelease versions outright (`vsce` throws on them), so the release folds the alpha counter into
+the patch position: **`0.3.0-alpha.1` publishes as `0.3.1`**.
 
-- **VS Code Marketplace** (no PAT, no app registration): `az login` — opens your browser; use the
-  account that owns the `three-flatland` publisher — then
-  `npx @vscode/vsce publish --azure-credential --packagePath <the.vsix>`. `--azure-credential` pulls
-  an Entra token off your `az login` session; that's the entire "Entra" story for a manual publish.
+This is strictly increasing (the counter is per-package and never resets within a pre period, and
+the base `MAJOR.MINOR` never decreases), which is what the Marketplace requires. "Alpha" is
+signalled by `"preview": true` on the listing, not by the version string. `CHANGELOG.md` headings
+get the same treatment so the Changelog tab matches what people can actually install.
+
+The rewrite is ephemeral CI state and is **never committed** — the repo's `package.json` must keep
+the real changesets version or the next bump computes wrong. See
+[`scripts/vsix-marketplace-version.mjs`](../../scripts/vsix-marketplace-version.mjs).
+
+On exiting pre-mode this becomes a no-op (clean versions pass through). The one manual step then:
+bump the extension past the last version actually published, since the derived patch numbers will
+have run ahead of the committed `package.json`.
+
+### Publishing by hand (only if you're bypassing CI)
+
+Grab the `.vsix` from the **GitHub Release** (<https://github.com/thejustinwalsh/three-flatland/releases>
+→ `fl-tools-v<version>` → assets) or a `workflow_dispatch` run's `vsix` artifact. Then:
+
+- **VS Code Marketplace:** `az login` (browser; use the account owning the `three-flatland`
+  publisher), then `npx @vscode/vsce publish --azure-credential --packagePath <the.vsix>`. Or with
+  a token: `npx @vscode/vsce publish -p <VSCODE_PAT> --packagePath <the.vsix>`.
 - **Open VSX** (covers Cursor/Windsurf/VSCodium/Theia/etc.):
-  `npx ovsx publish --packagePath <the.vsix> -p <OVSX_PAT>` (token from
-  <https://open-vsx.org/user-settings/tokens>; one-time `npx ovsx create-namespace three-flatland -p <OVSX_PAT>`).
+  `npx ovsx publish --packagePath <the.vsix> -p <OVSX_PAT>` (one-time
+  `npx ovsx create-namespace three-flatland -p <OVSX_PAT>`).
 
 ### Verify it actually worked
 
@@ -115,14 +144,13 @@ Nothing extra to do beyond normal changeset hygiene:
    (see `.changeset/README.md` for the exact format). Forgetting this doesn't break anything loudly
    — it just means that change ships in the extension's *code* next time something else triggers a
    release, but never gets its own version bump or CHANGELOG entry of its own.
-2. The build + GitHub Release are automatic: the version bump PR, the merge, `release.yml`'s
-   `build-vsix`/`attach-vsix` jobs, and the `fl-tools-v<version>` release with the `.vsix` attached.
-   The **publish** step stays manual every time — download the `.vsix` from that release and run the
-   one-liner from "Publish the built artifact" above.
+2. Everything after that is automatic: the version bump PR, the merge, `release.yml`'s
+   `build-vsix`/`publish-vsix` jobs, the `fl-tools-v<version>` release with the `.vsix` attached,
+   and the Marketplace + Open VSX publishes. Your only manual step is approving `publish-vsix`.
 
 ## Troubleshooting
 
-**The Release ran but no `fl-tools-v<version>` release / VSIX appeared.** `attach-vsix` only fires
+**The Release ran but no `fl-tools-v<version>` release / VSIX appeared.** `publish-vsix` only fires
 when `tools/vscode/package.json`'s version actually bumped this release AND no `fl-tools-v<version>`
 release exists yet (idempotent). If the version didn't change, that's correct — nothing to release.
 If it did and nothing appeared, read the `release` job's "Detect a new FL Tools (VSIX) version" step
