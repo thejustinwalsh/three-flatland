@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, RefObject } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
@@ -96,10 +96,64 @@ export default function App() {
           <Scene />
         </Suspense>
       </Canvas>
-      <button type="button" style={fullscreenStyle} onClick={() => void containerRef.current?.requestFullscreen()}>
-        Fullscreen
-      </button>
+      <FullscreenButton containerRef={containerRef} />
     </div>
+  )
+}
+
+/**
+ * Fullscreen toggle. Tracks `fullscreenchange` rather than local state so the
+ * icon stays correct when the browser exits on its own — Esc, gesture, or the
+ * OS. Safari does not wire Esc to `exitFullscreen`, so it is handled here.
+ */
+function FullscreenButton({ containerRef }: { containerRef: RefObject<HTMLDivElement | null> }) {
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const sync = () => setIsFullscreen(document.fullscreenElement !== null)
+    document.addEventListener('fullscreenchange', sync)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && document.fullscreenElement) void document.exitFullscreen()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('fullscreenchange', sync)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [])
+
+  const toggle = () => {
+    if (document.fullscreenElement) void document.exitFullscreen()
+    else void containerRef.current?.requestFullscreen()
+  }
+
+  return (
+    <button
+      type="button"
+      style={fullscreenStyle}
+      onClick={toggle}
+      aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path
+          d={
+            isFullscreen
+              ? 'M1.5 5.5H6V1M14.5 5.5H10V1M1.5 10.5H6V15M14.5 10.5H10V15'
+              : 'M6 1.5H1.5V6M10 1.5h4.5V6M6 14.5H1.5V10M10 14.5h4.5V10'
+          }
+        />
+      </svg>
+    </button>
   )
 }
 
@@ -107,11 +161,14 @@ const fullscreenStyle: CSSProperties = {
   position: 'absolute',
   top: 12,
   right: 12,
-  padding: '6px 10px',
+  display: 'grid',
+  placeItems: 'center',
+  width: 34,
+  height: 34,
+  padding: 0,
   border: '1px solid #2c3340',
-  borderRadius: 6,
-  background: 'transparent',
+  borderRadius: 8,
+  background: 'rgb(22 25 30 / 0.6)',
   color: '#9aa4b2',
-  font: '12px system-ui, sans-serif',
   cursor: 'pointer',
 }

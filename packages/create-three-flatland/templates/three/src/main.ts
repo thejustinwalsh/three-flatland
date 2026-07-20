@@ -64,11 +64,26 @@ async function main() {
     pressed = false
   })
 
+  // Fullscreen. `data-fullscreen` drives the icon swap from CSS, and it is set
+  // from `fullscreenchange` rather than on click so it stays correct when the
+  // browser exits on its own. Safari does not wire Esc to exitFullscreen.
   const fullscreenBtn = document.querySelector('#fullscreen')
-  if (fullscreenBtn)
+  if (fullscreenBtn) {
+    const syncFullscreen = () => {
+      const active = document.fullscreenElement !== null
+      fullscreenBtn.setAttribute('data-fullscreen', String(active))
+      fullscreenBtn.setAttribute('aria-label', active ? 'Exit fullscreen' : 'Enter fullscreen')
+    }
     on(fullscreenBtn, 'click', () => {
-      void container.requestFullscreen()
+      if (document.fullscreenElement) void document.exitFullscreen()
+      else void container.requestFullscreen()
     })
+    on(document, 'fullscreenchange', syncFullscreen)
+    on(document, 'keydown', ((event: KeyboardEvent) => {
+      if (event.key === 'Escape' && document.fullscreenElement) void document.exitFullscreen()
+    }) as EventListener)
+    syncFullscreen()
+  }
 
   const resize = () => {
     flatland.resize(container.clientWidth, container.clientHeight)
