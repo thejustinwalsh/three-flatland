@@ -39,24 +39,36 @@ workspace-only wiring a scaffolded project must not carry. Two consequences:
   globs for explicitly-passed directories — `ignorePatterns` is the mechanism
   that works.
 
-## React template ships without `<StrictMode>` — unresolved
+## React template: Suspense must live INSIDE the Canvas
 
-Symptom: with StrictMode, pointer events stop working against the Vite dev
-server; production builds are unaffected. Reproduces under
-`pnpm test:consumer -- --only scaffold-react`, whose hover check asserts the
-frame changes when the cursor enters the canvas.
+**Resolved 2026-07-20.** Wrapping `<Canvas>` in a `<Suspense>` boundary means a
+suspending `useLoader` unmounts and remounts the Canvas. Under StrictMode's
+double-mount that calls `R3F.createRoot` twice on the same canvas element:
+the console warns `R3F.createRoot should only be called once!` and the app locks
+up, so pointer events never work.
 
-Ruled out: the camera wiring. Frustum copy, `useEffect` + `set({ camera })`, and
-the callback ref used today all reproduce it. Also ruled out: the deferred
-`_roots.delete()` / `events.disconnect()` teardown once blamed on
-`@react-three/fiber` — that code is not in the installed `10.0.0-alpha.2` build.
+Confirmed in a real browser by the maintainer, comparing two live dev servers:
 
-Not established: whether the examples behave the same. They all use StrictMode,
-and no equivalent dev+hover probe has been run against one. Until that is
-measured, this may be template-specific rather than general.
+| | Suspense position | StrictMode | Result |
+| --- | --- | --- | --- |
+| template | outside `<Canvas>` | on | createRoot twice, locks up |
+| `examples/react/basic-sprite` | none — suspends inside the Canvas | on | works |
 
-Re-test by re-enabling StrictMode in `templates/react/src/main.tsx` and running
-that smoke.
+Not fiber, not StrictMode, and not the camera wiring — the structure. The spec
+asked for a DOM loading overlay outside the Canvas so `<Suspense>` could render
+real DOM; that requirement produced the bug.
+
+**Fix:** the Canvas stays mounted permanently and the loading overlay is the
+`#loader` element in `index.html`, removed once the scene is ready — the
+mechanism the three.js template already uses. Suspense, if used at all, goes
+inside the Canvas around the suspending scene content. StrictMode then returns
+to the template permanently.
+
+**Testing note:** the smoke's Playwright hover check flagged this correctly, but
+its diagnosis was unusable — a synthetic `mouse.move()` reports only "the frame
+did not change." The real browser gave the console warning that named the cause
+in one line. Reach for a real browser when a headless check says *what* broke but
+not *why*.
 
 ## Leak guard is split by what it can legitimately appear in
 
