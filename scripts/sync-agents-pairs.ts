@@ -1,27 +1,33 @@
 /**
- * Generates the CLAUDE.md pointer file that sits beside every AGENTS.md.
+ * Generates the CLAUDE.md file that sits beside every AGENTS.md.
  *
- * AGENTS.md is the single source of truth for agent instructions in this repo.
- * Claude Code reads CLAUDE.md, so each AGENTS.md gets a one-line sibling
- * `CLAUDE.md` containing `@AGENTS.md` — an import directive, not a copy, so the
- * two can never drift. The generated pointers are gitignored; this script
- * recreates them on Claude session start and guards them on commit.
+ * AGENTS.md is the single source of truth for agent instructions. Claude Code
+ * reads CLAUDE.md, so every AGENTS.md gets a sibling. There are TWO modes, and
+ * the difference is deliberate:
+ *
+ *   Repo (default)   — CLAUDE.md is a one-line `@AGENTS.md` import. Cheap, and
+ *                      the two can never drift. Gitignored; recreated on Claude
+ *                      session start and guarded on commit.
+ *
+ *   Templates        — CLAUDE.md is a byte-identical COPY of AGENTS.md. A
+ *   (--templates)      scaffolded user project must not depend on Claude Code's
+ *                      `@` import resolving; it just gets both files, 1:1, no
+ *                      magic. This rule is special to templates we publish.
  *
  * Usage: pnpm sync:agents
  *
  * Flags:
  *   --verify             CI/commit check; exit 1 on drift, no writes.
- *   --templates          Generate the shipped-template pointers instead of the
- *                        repo ones. Run from create-three-flatland's build and
- *                        prepack so templates/<t>/CLAUDE.md exists for the
- *                        scaffold tests and lands in the published tarball.
- *                        Deliberately NOT run by the Claude session-start hook:
- *                        those files are product, not developer ergonomics.
+ *   --templates          Write byte-identical copies for the shipped templates
+ *                        instead of pointers for the repo. Run from
+ *                        create-three-flatland's build (so scaffold tests see
+ *                        them) and prepack (so they land in the published
+ *                        tarball). Deliberately NOT run by the Claude
+ *                        session-start hook: those files are product, not
+ *                        developer ergonomics.
  *
- * Excluded: packages/create-three-flatland/templates/. Those CLAUDE.md files
- * are shipped product — tracked in git, published inside the
- * create-three-flatland tarball, and asserted by scaffold.test.ts and
- * scripts/scaffold-smoke.ts. They are never generated and never ignored.
+ * Both sets are gitignored and generated; the two modes cover disjoint paths,
+ * so neither can clobber the other.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -70,6 +76,11 @@ function listStrayTrackedPointers(): string[] {
     .sort()
 }
 
+/** What CLAUDE.md must contain next to a given AGENTS.md, per mode. */
+function expectedContent(agentFile: string): string {
+  return templatesMode ? readFileSync(join(ROOT, agentFile), 'utf-8') : POINTER
+}
+
 function main(): void {
   const agentFiles = listAgentFiles()
   const stray = listStrayTrackedPointers()
@@ -84,7 +95,7 @@ function main(): void {
         drifted.push(`${relPath} (missing)`)
         continue
       }
-      if (readFileSync(target, 'utf-8') !== POINTER) {
+      if (readFileSync(target, 'utf-8') !== expectedContent(agentFile)) {
         drifted.push(`${relPath} (content differs)`)
       }
     }
@@ -119,13 +130,15 @@ function main(): void {
   for (const agentFile of agentFiles) {
     const target = join(ROOT, dirname(agentFile), 'CLAUDE.md')
     const relPath = target.replace(ROOT + '/', '')
-    if (existsSync(target) && readFileSync(target, 'utf-8') === POINTER) continue
-    writeFileSync(target, POINTER)
+    const content = expectedContent(agentFile)
+    if (existsSync(target) && readFileSync(target, 'utf-8') === content) continue
+    writeFileSync(target, content)
     console.log(`  wrote ${relPath}`)
     written++
   }
 
-  console.log(`✓ ${agentFiles.length} AGENTS.md file(s), ${written} pointer(s) written.`)
+  const kind = templatesMode ? 'copy' : 'pointer'
+  console.log(`✓ ${agentFiles.length} AGENTS.md file(s), ${written} ${kind}(s) written.`)
 }
 
 main()

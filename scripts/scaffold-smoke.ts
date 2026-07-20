@@ -227,6 +227,17 @@ function checkNoLeaks(root: string, template: string): void {
       }
     }
   }
+  // Published templates ship AGENTS.md and CLAUDE.md as byte-identical copies,
+  // so a scaffolded project never depends on an `@AGENTS.md` import resolving.
+  const agents = readFileSync(join(root, 'AGENTS.md'), 'utf-8')
+  const claude = readFileSync(join(root, 'CLAUDE.md'), 'utf-8')
+  if (agents !== claude) {
+    fail(`${template}: AGENTS.md and CLAUDE.md are not byte-identical in the scaffolded project`)
+    leaked = true
+  } else {
+    ok(`${template}: AGENTS.md and CLAUDE.md are byte-identical`)
+  }
+
   const manifest = readFileSync(join(root, 'package.json'), 'utf-8')
   for (const needle of BANNED_AS_DEPENDENCY) {
     if (manifest.includes(needle)) {

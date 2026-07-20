@@ -48,6 +48,10 @@ describe('scaffold', () => {
       expect(existsSync(join(root, 'index.html'))).toBe(true)
       expect(existsSync(join(root, 'AGENTS.md'))).toBe(true)
       expect(existsSync(join(root, 'CLAUDE.md'))).toBe(true)
+      // Published templates ship both files as byte-identical copies — a
+      // scaffolded project must not depend on Claude Code resolving an
+      // `@AGENTS.md` import. This is the invariant, not merely presence.
+      expect(readFileSync(join(root, 'CLAUDE.md'), 'utf-8')).toBe(readFileSync(join(root, 'AGENTS.md'), 'utf-8'))
       expect(existsSync(join(root, 'public', 'sprite.svg'))).toBe(true)
     })
 
