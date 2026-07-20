@@ -95,12 +95,6 @@ jobs:
       - name: Verify published docs schemas
         run: pnpm sync:docs:schemas:verify
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Boundaries
-        run: pnpm boundaries
-
       - name: Typecheck
         run: pnpm nx affected -t typecheck --base=${{ steps.nxbase.outputs.base }}
 
@@ -110,6 +104,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm nx affected -t build --base=${{ steps.nxbase.outputs.base }}
+
+      # Lint runs AFTER build: type-aware rules resolve workspace imports through
+      # each package's published types, and anything without the dev `source`
+      # condition (the scaffolder templates, deliberately) has no dist to read
+      # before the build step.
+      - name: Lint
+        run: pnpm lint
+
+      - name: Boundaries
+        run: pnpm boundaries
 
       # `nx affected -t test` already runs @three-flatland/skia's test when skia
       # is affected (it's in the test graph and reads the committed lib/*.wasm), so

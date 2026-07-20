@@ -48,7 +48,6 @@
     "**/*.config.mjs",
     "**/*.setup.ts",
     "**/*.bench.ts",
-    "**/fixtures/**",
-    "**/create-three-flatland/templates/**"
+    "**/fixtures/**"
   ]
 }
