@@ -64,29 +64,10 @@ const CLI_PKG = 'create-three-flatland'
 const CLI_DIR = join(ROOT, 'packages', CLI_PKG)
 const TEMPLATES = ['three', 'react']
 
-/**
- * Workspace-only wiring that must never appear in a scaffolded file. Twin of the
- * list in packages/create-three-flatland/src/scaffold.test.ts — that one guards the
- * templates as authored, this one guards the project a consumer actually receives
- * after a real registry install.
- */
-const BANNED_IN_SCAFFOLD = [
-  'catalog:',
-  'workspace:*',
-  'workspace:^',
-  'customConditions',
-  "conditions: ['source']",
-  'TURBO_MFE_PORT',
-  'FL_DEVTOOLS',
-  'GemBackground',
-]
-
-/**
- * Deliberately excluded from the starter. These must not be DEPENDENCIES, but prose
- * may name them — AGENTS.md's package routing map is required to list
- * @three-flatland/devtools. Checked against package.json only.
- */
-const BANNED_AS_SCAFFOLD_DEPENDENCY = ['@three-flatland/devtools', 'tweakpane']
+// Leak guard lists — single source of truth, shared with the scaffolder's own
+// unit test so the two can never drift.
+import { BANNED_AS_DEPENDENCY as BANNED_AS_SCAFFOLD_DEPENDENCY, BANNED_EVERYWHERE as BANNED_IN_SCAFFOLD }
+  from '../packages/create-three-flatland/leak-guard.mjs'
 
 // Assertions that aren't about one consumer building — tarball shape, scaffolded
 // tree hygiene. Collected so a single failure doesn't abort the sweep, and folded

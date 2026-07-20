@@ -12,6 +12,8 @@ import {
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { formatTargetDir, isEmptyDir, isValidPackageName, scaffold, toValidPackageName } from './scaffold'
+// Single source of truth, shared with scripts/consumer-smoke.mjs.
+import { BANNED_AS_DEPENDENCY, BANNED_EVERYWHERE } from '../leak-guard.mjs'
 
 const TEMPLATES_ROOT = join(import.meta.dirname, '..', 'templates')
 
@@ -67,33 +69,15 @@ describe('scaffold', () => {
     it(`emits no workspace-only wiring for ${template} (leak guard)`, () => {
       const root = join(work, 'app')
       scaffold({ targetDir: root, template, packageName: 'my-game', templatesRoot: TEMPLATES_ROOT })
-      // Workspace-only wiring. Never legitimate in a scaffolded project, in any
-      // file — these break the project or leak monorepo plumbing.
-      const bannedEverywhere = [
-        'catalog:',
-        'workspace:*',
-        'workspace:^',
-        'customConditions',
-        "conditions: ['source']",
-        'TURBO_MFE_PORT',
-        'FL_DEVTOOLS',
-        'GemBackground',
-      ]
-      // Packages deliberately excluded from the starter. These must not be
-      // DEPENDENCIES, but prose may legitimately name them — AGENTS.md's package
-      // routing map is required by the spec to list @three-flatland/devtools.
-      // Scoping this to the manifest keeps the real leak class covered (an
-      // accidental dep still fails) without banning the word from documentation.
-      const bannedAsDependency = ['@three-flatland/devtools', 'tweakpane']
 
       for (const file of walkFiles(root)) {
         const text = readFileSync(file, 'utf-8')
-        for (const needle of bannedEverywhere) {
+        for (const needle of BANNED_EVERYWHERE) {
           expect(text, `${file} leaked "${needle}"`).not.toContain(needle)
         }
       }
       const manifest = readFileSync(join(root, 'package.json'), 'utf-8')
-      for (const needle of bannedAsDependency) {
+      for (const needle of BANNED_AS_DEPENDENCY) {
         expect(manifest, `package.json depends on "${needle}"`).not.toContain(needle)
       }
     })
