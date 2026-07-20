@@ -75,6 +75,12 @@ jobs:
       - name: Verify package versions
         run: pnpm sync:pack:verify examples minis packages/create-three-flatland/templates
 
+      # Generate THEN verify, mirroring .githooks/pre-commit. The CLAUDE.md
+      # pointers are gitignored, so a fresh checkout has none and a bare
+      # `--verify` would always fail; generating first leaves the check that
+      # actually holds on CI — that no CLAUDE.md is tracked in git outside the
+      # shipped templates, where it would silently shadow its AGENTS.md. The
+      # pre-commit hook alone doesn't cover this: `--no-verify` bypasses it.
       - name: Verify AGENTS.md / CLAUDE.md pairs
         run: pnpm sync:agents && pnpm sync:agents:verify
 
