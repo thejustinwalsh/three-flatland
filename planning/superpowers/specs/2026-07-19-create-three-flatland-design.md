@@ -205,8 +205,34 @@ One source of truth, no drift, both agents served.
    `llms-small.txt`). Note explicitly that these are **not** served at the origin
    root — `https://tjw.dev/llms.txt` 404s, and origin root is what agents
    habitually probe.
-4. The **package routing map**, **bake decision rule**, and **asset-authoring
+4. The **renderer rule** below — this is the single most important thing in the
+   file and belongs near the top.
+5. The **package routing map**, **bake decision rule**, and **asset-authoring
    workflow** below.
+
+### The renderer rule (agents get this wrong constantly)
+
+**Always construct `WebGPURenderer` and always write TSL. Never `WebGLRenderer`,
+never GLSL, never `onBeforeCompile`.**
+
+`WebGPURenderer` is the three.js renderer class imported from `three/webgpu`
+(R3F: `@react-three/fiber/webgpu`). **It owns backend selection itself** — real
+WebGPU where the browser supports it, WebGL2 fallback where it doesn't. TSL
+compiles to both.
+
+So "three-flatland requires `WebGPURenderer`" is a statement about *which class
+you construct*. It is **not** a hardware or browser requirement, and it does not
+mean WebGPU-only. Everything works in either backend. Route through
+`WebGPURenderer` + TSL and you get the right thing on both.
+
+The failure mode to guard against: an agent reads "requires WebGPURenderer,"
+infers "WebGPU-only," and either adds a `WebGLRenderer` fallback path (wrong —
+that's a different, unsupported renderer) or gates features on WebGPU detection
+(also wrong). The agent guidance must state the rule affirmatively rather than
+listing what is unsupported, because the negative framing is what produces the
+bad inference.
+
+WebGL 1 is not a target and should be ignored entirely.
 
 ### Package routing map
 
@@ -241,13 +267,20 @@ problems and touch at exactly one point.
 
 - **Skia** is an immediate-mode 2D canvas rasterized into a texture. Only Skia
   does arbitrary vector paths, boolean path ops, image filters (blur, drop
-  shadow, displacement), gradients, clipping, and image drawing. Runs on
-  **either** renderer (Graphite/Dawn on WebGPU, Ganesh on WebGL).
+  shadow, displacement), gradients, clipping, and image drawing.
 - **Slug** is a text primitive. Glyph outlines are solved per-fragment, so there
   is no resolution ceiling; thousands of glyphs batch into one instanced draw
   call, with real layout (`measureText`, `wrapText`, style spans, font fallback
-  chains). **Requires `WebGPURenderer` — `WebGLRenderer` is explicitly
-  unsupported.**
+  chains).
+
+Both follow the renderer rule above — `WebGPURenderer`, either backend. Neither
+is WebGPU-only.
+
+Skia's WASM ships as two builds (`skia-gl.wasm`, `skia-wgpu.wasm`) matching the
+backend the renderer resolved to. **This is an internal detail on a different
+axis from the renderer rule** and must not be presented to agents as a renderer
+choice — the copy step (`npx skia-wasm public/skia`, or `--gl-only` / `--wgpu-only`
+to ship just one) is the only place it surfaces.
 
 The one overlap is drawing text, and the rule is mechanical: if the camera moves
 relative to the text, use Slug; if it is static UI at a known resolution, Skia's
