@@ -22,15 +22,6 @@
   "nx": {
     "tags": [
       "type:template"
-    ],
-    "targets": {
-      "lint": {
-        "executor": "nx:run-commands",
-        "options": {
-          "command": "oxlint --type-aware .",
-          "cwd": "{projectRoot}"
-        }
-      }
-    }
+    ]
   }
 }
