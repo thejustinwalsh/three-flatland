@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       vscode: ${{ steps.calc.outputs.vscode }}
-      examples: ${{ steps.calc.outputs.examples }}
+      consumers: ${{ steps.calc.outputs.consumers }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -65,14 +65,18 @@ jobs:
             echo "vscode=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # Examples whose dependency graph this change touches — the consumer
-          # smoke's scope on PRs. Let nx do the selecting: every example
-          # declares `tags: ["type:example"]`, so this rides declared metadata
-          # rather than guessing from the project-name prefix.
-          EXAMPLES="$(pnpm nx show projects --affected --base="$BASE" --projects=tag:type:example --json \
+          # Consumers whose dependency graph this change touches — the consumer
+          # smoke's scope on PRs. Let nx do the selecting: every example declares
+          # `tags: ["type:example"]` and every scaffolder template
+          # `tags: ["type:template"]`, so this rides declared metadata rather than
+          # guessing from the project-name prefix. `create-three-flatland` is named
+          # explicitly (its `type:tool` tag is shared with tools that aren't
+          # consumers); the smoke maps it onto both scaffold templates.
+          CONSUMERS="$(pnpm nx show projects --affected --base="$BASE" \
+            --projects=tag:type:example,tag:type:template,create-three-flatland --json \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const m=s.match(/\[.*\]/s);if(!m){console.error("nx returned no parseable project list");process.exit(1)}process.stdout.write(JSON.parse(m[0]).join(","))})')"
-          echo "examples=$EXAMPLES" >> "$GITHUB_OUTPUT"
-          echo "affected examples: ${EXAMPLES:-<none>}"
+          echo "consumers=$CONSUMERS" >> "$GITHUB_OUTPUT"
+          echo "affected consumers: ${CONSUMERS:-<none>}"
 
   # skia's single `build` target compiles the wasm (setup.mjs --ensure) only on a
   # cache miss (its wasm sources changed) and consumes committed libs otherwise —
@@ -181,13 +185,19 @@ jobs:
   # package build is green (needs: build); it restores the build job's Nx cache
   # (which carries skia's lib/*.wasm as a build output) instead of rebuilding.
   #
-  # On PRs this is scoped to the examples `nx affected` says the change can
-  # reach, so a skia-only change render-tests the 2 skia examples instead of all
-  # 22. The release runs the same script UNSCOPED (release.yml, as a step inside
-  # the approved job) so the full surface is still swept before anything is
-  # published — that's the net for an accidental break the graph didn't predict.
+  # Consumers are the examples AND the projects `create-three-flatland` scaffolds:
+  # a scaffolded starter is just another consumer that installs our published
+  # packages by declared range, so it rides the same Verdaccio harness rather than
+  # a second job with its own (weaker, `file:`-based) install path.
   #
-  # No affected examples means nothing this change can break, so the job is
+  # On PRs this is scoped to what `nx affected` says the change can reach, so a
+  # skia-only change render-tests the 2 skia examples instead of all 22, and a
+  # template-only change tests just the scaffolds. The release runs the same
+  # script UNSCOPED (release.yml, as a step inside the approved job) so the full
+  # surface is still swept before anything is published — that's the net for an
+  # accidental break the graph didn't predict.
+  #
+  # No affected consumers means nothing this change can break, so the job is
   # skipped and the gate treats that as a pass. If `affected` itself failed,
   # nx couldn't answer — that job fails, the gate blocks the PR, and we fix the
   # graph rather than papering over it with a full sweep.
@@ -200,10 +210,10 @@ jobs:
        needs.changes.outputs.examples == 'true' ||
        needs.changes.outputs.configs == 'true' ||
        needs.changes.outputs.ci == 'true') &&
-      needs.affected.outputs.examples != ''
+      needs.affected.outputs.consumers != ''
     uses: ./.github/workflows/consumer-smoke.yml
     with:
-      examples: ${{ needs.affected.outputs.examples }}
+      consumers: ${{ needs.affected.outputs.consumers }}
 
   size:
     needs: [changes, build]

@@ -22,7 +22,6 @@
     "test:consumer": "node scripts/consumer-smoke.mjs",
     "test:smoke:ui": "nx run docs:build && pnpm test:e2e -- --ui",
     "test:smoke:headed": "nx run docs:build && pnpm test:e2e -- --headed",
-    "test:scaffold": "node scripts/scaffold-smoke.ts",
     "test:smoke:install": "playwright install chromium",
     "test:e2e": "playwright test",
     "clean": "nx run-many -t clean && rm -rf node_modules/.vite .nx/cache",

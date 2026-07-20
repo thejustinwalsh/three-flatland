@@ -27,17 +27,16 @@
     "dist",
     "templates",
     "!templates/*/node_modules",
-    "!templates/*/dist",
-    "!templates/*/.turbo"
+    "!templates/*/dist"
   ],
   "engines": {
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "tsx ../../scripts/sync-agents-pairs.ts --templates && tsdown",
+    "build": "node ../../scripts/sync-agents-pairs.ts --templates && tsdown",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "prepack": "tsx ../../scripts/sync-agents-pairs.ts --templates && rm -rf templates/three/dist templates/react/dist templates/three/.turbo templates/react/.turbo"
+    "prepack": "node ../../scripts/sync-agents-pairs.ts --templates && rm -rf templates/three/dist templates/react/dist"
   },
   "devDependencies": {
     "@clack/prompts": "^0.11.0",
