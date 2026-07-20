@@ -218,7 +218,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Fro Bot
-        uses: fro-bot/agent@v0
+        uses: fro-bot/agent@v0.93.1
         env:
           NODE_OPTIONS: --max-old-space-size=8192
           OPENCODE_PROMPT_ARTIFACT: 'true'
