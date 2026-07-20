@@ -31,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       vscode: ${{ steps.calc.outputs.vscode }}
+      examples: ${{ steps.calc.outputs.examples }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -49,12 +50,29 @@ jobs:
           else
             BASE="HEAD~1"
           fi
-          AFFECTED="$(pnpm nx show projects --affected --base="$BASE" 2>/dev/null || echo '@three-flatland/vscode')"
+          # nx is the authority here, the same as it already is for what gets
+          # built, typechecked, and tested in build.yml. If it can't answer,
+          # that's a blocker to fix — this step fails, the job fails, and the
+          # `CI passed` gate blocks the PR. Deliberately NOT swallowed into a
+          # run-everything fallback: that would hide a broken graph behind a
+          # green check and a permanently inflated CI bill.
+          set -euo pipefail
+          AFFECTED="$(pnpm nx show projects --affected --base="$BASE")"
+
           if echo "$AFFECTED" | grep -q '@three-flatland/vscode'; then
             echo "vscode=true" >> "$GITHUB_OUTPUT"
           else
             echo "vscode=false" >> "$GITHUB_OUTPUT"
           fi
+
+          # Examples whose dependency graph this change touches — the consumer
+          # smoke's scope on PRs. Let nx do the selecting: every example
+          # declares `tags: ["type:example"]`, so this rides declared metadata
+          # rather than guessing from the project-name prefix.
+          EXAMPLES="$(pnpm nx show projects --affected --base="$BASE" --projects=tag:type:example --json \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const m=s.match(/\[.*\]/s);if(!m){console.error("nx returned no parseable project list");process.exit(1)}process.stdout.write(JSON.parse(m[0]).join(","))})')"
+          echo "examples=$EXAMPLES" >> "$GITHUB_OUTPUT"
+          echo "affected examples: ${EXAMPLES:-<none>}"
 
   # skia's single `build` target compiles the wasm (setup.mjs --ensure) only on a
   # cache miss (its wasm sources changed) and consumes committed libs otherwise —
@@ -162,16 +180,30 @@ jobs:
   # The smoke test — real published-package consumer flow. Runs ONLY after every
   # package build is green (needs: build); it restores the build job's Nx cache
   # (which carries skia's lib/*.wasm as a build output) instead of rebuilding.
+  #
+  # On PRs this is scoped to the examples `nx affected` says the change can
+  # reach, so a skia-only change render-tests the 2 skia examples instead of all
+  # 22. The release runs the same script UNSCOPED (release.yml, as a step inside
+  # the approved job) so the full surface is still swept before anything is
+  # published — that's the net for an accidental break the graph didn't predict.
+  #
+  # No affected examples means nothing this change can break, so the job is
+  # skipped and the gate treats that as a pass. If `affected` itself failed,
+  # nx couldn't answer — that job fails, the gate blocks the PR, and we fix the
+  # graph rather than papering over it with a full sweep.
   consumer-smoke:
-    needs: [changes, build]
+    needs: [changes, build, affected]
     if: |
       !cancelled() && needs.build.result == 'success' &&
       needs.changes.outputs.changeset_only != 'true' &&
       (needs.changes.outputs.packages == 'true' ||
        needs.changes.outputs.examples == 'true' ||
        needs.changes.outputs.configs == 'true' ||
-       needs.changes.outputs.ci == 'true')
+       needs.changes.outputs.ci == 'true') &&
+      needs.affected.outputs.examples != ''
     uses: ./.github/workflows/consumer-smoke.yml
+    with:
+      examples: ${{ needs.affected.outputs.examples }}
 
   size:
     needs: [changes, build]
@@ -187,15 +219,15 @@ jobs:
 
   # Gated on the nx-affected result, not a coarse `packages` filter: the 30-min
   # e2e runs only when @three-flatland/vscode (or one of its transitive deps) is
-  # affected, or a CI change touches it. `affected.result == 'failure'` is treated
-  # as "run it" (fail open — never skip the e2e on a graph-compute error).
+  # affected, or a CI change touches it. If nx can't answer, `affected` fails and
+  # the gate blocks the PR — no fall back to running it anyway, which would hide
+  # the broken graph.
   vscode-e2e:
     needs: [changes, build, affected]
     if: |
       !cancelled() && needs.build.result != 'failure' &&
       needs.changes.outputs.changeset_only != 'true' &&
       (needs.affected.outputs.vscode == 'true' ||
-       needs.affected.result == 'failure' ||
        needs.changes.outputs.ci == 'true')
     uses: ./.github/workflows/vscode-e2e.yml
 
@@ -222,7 +254,7 @@ jobs:
   ci-passed:
     name: CI passed
     if: always()
-    needs: [changes, build, smoke, size, vscode-e2e, consumer-smoke]
+    needs: [changes, affected, build, smoke, size, vscode-e2e, consumer-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Gate
@@ -230,6 +262,7 @@ jobs:
           fail=0
           for job_result in \
               "changes:${{ needs.changes.result }}" \
+              "affected:${{ needs.affected.result }}" \
               "build:${{ needs.build.result }}" \
               "smoke:${{ needs.smoke.result }}" \
               "size:${{ needs.size.result }}" \
