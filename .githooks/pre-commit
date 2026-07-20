@@ -61,3 +61,12 @@ if match '^packages/skia/third_party/skia$'; then
   echo "pre-commit: check-skia-pin"
   node scripts/check-skia-pin.ts
 fi
+
+# 7. AGENTS.md (or the ignore rule) staged → regenerate the CLAUDE.md pointers
+#    and fail if one got committed. The pointers are gitignored, so there is
+#    nothing to `git add`; --verify is the meaningful gate.
+if match '(^|/)AGENTS\.md$|^\.gitignore$'; then
+  echo "pre-commit: sync:agents --verify"
+  node scripts/sync-agents-pairs.ts
+  node scripts/sync-agents-pairs.ts --verify
+fi
