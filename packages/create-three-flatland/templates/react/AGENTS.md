@@ -36,7 +36,19 @@ extend({ Flatland, Sprite2D }) // once, at module scope
 </Canvas>
 ```
 
-`Flatland` owns an internal scene and camera, so it renders manually: `useFrame(() => flatlandRef.current?.render(gl), { phase: 'render' })` makes R3F skip its own render pass. `App.tsx`'s `SyncEventCamera` mirrors Flatland's frustum onto R3F's default camera so pointer events raycast in the same space Flatland draws in — keep the `Canvas` `orthographic` for that copy to hold.
+`Flatland` owns an internal scene and camera, so it renders manually: `useFrame(() => flatlandRef.current?.render(gl), { phase: 'render' })` makes R3F skip its own render pass.
+
+**Pointer events depend on which camera R3F raycasts with, and that differs by mode:**
+
+- **To the screen** (this template) — hand Flatland's camera to R3F as the default: `set({ camera: flatland.camera })` from a callback ref on `<flatland>`, with `camera.manual = true` so R3F leaves the frustum to `flatland.resize()`. One camera, nothing to keep in sync. Keep the `Canvas` `orthographic`.
+- **To a texture, or children portalled into `flatland.scene`** — R3F's default camera is the wrong one, so re-cast the pointer with `createFlatlandCompute` from `three-flatland/react`:
+  ```tsx
+  createPortal(children, flatland.scene, {
+    events: { compute: createFlatlandCompute(() => flatlandRef.current), priority: 1 },
+  })
+  ```
+
+Do not copy one camera's frustum onto another — that drifts.
 
 Two R3F rules this project follows everywhere:
 

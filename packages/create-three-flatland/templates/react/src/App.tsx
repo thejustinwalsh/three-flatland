@@ -11,11 +11,9 @@ import { approach, SPRITE_SCALE, targetScale, tintFor } from './interaction'
 extend({ Flatland, Sprite2D })
 
 function Scene() {
-  // Suspends until the texture resolves — the Suspense fallback OUTSIDE the
-  // Canvas renders a DOM loading overlay meanwhile.
   const texture = useLoader(TextureLoader, `${import.meta.env.BASE_URL}sprite.svg`)
 
-  // Scene renders only after the texture resolves, so this is the ready signal.
+  // Suspense resolved, so the scene is ready — drop index.html's loading screen.
   useEffect(() => {
     document.querySelector('#loader')?.remove()
   }, [])
@@ -23,16 +21,9 @@ function Scene() {
   const set = useThree((s) => s.set)
   const size = useThree((s) => s.size)
 
-  /**
-   * Hand Flatland's own camera to R3F as the default, so pointer events raycast
-   * through the exact object Flatland draws with — one camera, nothing to sync.
-   *
-   * This must be a CALLBACK REF, not an effect reading a ref: React 19's
-   * StrictMode double-mount detaches and reattaches, and a callback ref re-runs
-   * on every attach while an effect can end up holding a stale instance. Getting
-   * this wrong leaves pointer events dead in dev and fine in production.
-   * Re-created when size changes, which re-registers after a resize.
-   */
+  // Flatland renders to the screen with its own camera, so hand that camera to
+  // R3F as the default — pointer events then raycast through the same object
+  // Flatland draws with. A callback ref, so it re-runs on StrictMode remount.
   const attachFlatland = useCallback(
     (instance: Flatland | null) => {
       flatlandRef.current = instance
