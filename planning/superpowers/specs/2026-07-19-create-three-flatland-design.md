@@ -515,3 +515,47 @@ requirements.
   with what the templates ship
 - Whether `@three-flatland/image` should be published, which would make KTX2
   reachable by consumers and complete the Tier-1 texture dispatch story
+
+---
+
+## As-built deltas (2026-07-20)
+
+The design above is the record as approved. Implementation deviated in five
+places, each for a reason discovered during the work. Recorded here rather than
+edited into the body, so the reasoning stays visible.
+
+**1. Templates typecheck against built types, not source.** The spec's layer-1
+validation was self-contradictory: the mechanism is `customConditions: ["source"]`,
+which is precisely the workspace-only leak templates must not ship. Nx's
+`targetDefaults` (`typecheck: dependsOn ["^build"]`) covers the intent, verified
+by deleting `three-flatland/dist` and watching Nx rebuild before typechecking.
+
+**2. The scaffold smoke was folded into the Verdaccio consumer smoke.** The spec
+proposed a standalone per-PR smoke over packed tarballs with `file:` overrides.
+Main has since landed `scripts/consumer-smoke.mjs`, which installs from a
+throwaway registry with unchanged manifests — strictly more faithful, and it was
+already building and publishing `create-three-flatland`. The standalone script
+was deleted. Scaffolds are now a consumer kind and ride the existing render
+check, plus a live dev-server check.
+
+**3. Templates ship AGENTS.md and CLAUDE.md as byte-identical copies**, not an
+`@AGENTS.md` import. A scaffolded project should not depend on Claude Code
+resolving an import directive. The repo keeps pointers, where the import cannot
+drift; templates get copies, generated at build and prepack. Byte-identity is
+asserted and mutation-tested.
+
+**4. `@three-flatland/image` is published.** The spec listed it as private and
+routed KTX2 through the VS Code extension. Nothing marked it deliberately
+internal — it was absent from the changesets ignore list and sat at
+`private: true` / `0.0.0`. Publishing it makes KTX2 consumer-reachable for the
+first time, via both `Ktx2Loader` and `flatland-bake encode`.
+
+**5. The templates do not depend on `@three-flatland/skills`.** The spec proposed
+a devDependency for version-locking. It bought little — the skills still need
+`npx skills add` to be wired into `.claude/skills`, so the dependency only added
+a version range to maintain, and `sync-pack` cannot see repo-root packages
+anyway. `AGENTS.md` points at `npx skills add`, which was always the real path.
+
+Unchanged and shipped as specified: the CLI's create-vite flag contract, the two
+hand-authored templates on a `Flatland` root, the agent-guidance content and its
+three framing rules, the skills promotions, and the folded-in defect fixes.
