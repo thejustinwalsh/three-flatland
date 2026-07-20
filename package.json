@@ -42,6 +42,8 @@
     "sync:publish-exports:verify": "node scripts/sync-publish-exports.ts --verify",
     "sync:examples": "node scripts/sync-examples.ts",
     "sync:examples:verify": "node scripts/sync-examples.ts --verify",
+    "sync:agents": "node scripts/sync-agents-pairs.ts",
+    "sync:agents:verify": "node scripts/sync-agents-pairs.ts --verify",
     "validate:skills": "pnpm --filter @three-flatland/skills validate",
     "size": "size-limit",
     "size:why": "node scripts/size-why.ts",

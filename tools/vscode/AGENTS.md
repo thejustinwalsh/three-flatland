@@ -422,7 +422,7 @@ Layer two `persist` middlewares in one Zustand store with different `name` + `st
 - **Never** `git add -A` / `git add .` — this branch has WIP across many packages. Stage by exact path.
 - `bridge.on()` returns an unsubscribe function, not a Disposable. There is no `bridge.on(…).dispose()`.
 - `retainContextWhenHidden: false` is the standard. Hidden tabs dispose the webview (memory wins); state survives via `webviewStorage` + `localStorageStorage` rehydrate. Don't flip to `true`.
-- VSCode Element Lit hosts: outside CSS overrides shadow CSS. If you `display: flex` a Lit host (e.g. `vscode-tabs`), you also need to re-assert `[hidden] { display: none }` on the same host or its inactive subtree won't hide. See `tools/design-system/CLAUDE.md` for the full gotcha list.
+- VSCode Element Lit hosts: outside CSS overrides shadow CSS. If you `display: flex` a Lit host (e.g. `vscode-tabs`), you also need to re-assert `[hidden] { display: none }` on the same host or its inactive subtree won't hide. See `tools/design-system/AGENTS.md` for the full gotcha list.
 - Vite auto-discovers `webview/<tool>/index.html` — no `vite.config.ts` edit needed.
 - `composeToolHtml` may return a placeholder HTML page if the bundle is missing (not built yet). Run `pnpm --filter @three-flatland/vscode build` first.
 - `crossorigin` attributes are stripped from the HTML by `composeToolHtml` — don't rely on them.

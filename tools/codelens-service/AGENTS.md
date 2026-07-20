@@ -88,7 +88,7 @@ client.dispose()                                                  // hard kill, 
 - `client.request(method, params)` / `client.notify(method, params)` are exported for anything not covered by the named methods above — both are typed against `RequestMethods`/`NotificationMethods` in `src/protocol.ts`.
 - Errors from the sidecar (JSON-RPC `-32601`/`-32602`/`-32700`, or an application error code) reject as `CodelensServiceError` with `.code` and `.message`.
 - If the process fails to spawn, exits unexpectedly, or a request is sent after it has already exited, the promise rejects (or `notify`/`didChange` throws) as `CodelensServiceExitedError`. Check `client.isExited` before assuming a hung request is still in flight.
-- **`client.onError(handler)` / `client.onExit(handler)`** subscribe to process-level errors (spawn failure, a malformed frame from the sidecar) and process exit, respectively. Both return an **unsubscribe function** — same convention as `tools/bridge`'s `ClientBridge.on()`, see `tools/bridge/CLAUDE.md`. There is no `dispose()`-style bulk unsubscribe; call the returned functions.
+- **`client.onError(handler)` / `client.onExit(handler)`** subscribe to process-level errors (spawn failure, a malformed frame from the sidecar) and process exit, respectively. Both return an **unsubscribe function** — same convention as `tools/bridge`'s `ClientBridge.on()`, see `tools/bridge/AGENTS.md`. There is no `dispose()`-style bulk unsubscribe; call the returned functions.
 - `client.stderr` is the child's raw stderr `Readable` (`undefined` before `start()`) — pipe it to a VS Code output channel or similar; the sidecar never writes protocol data there, only diagnostics.
 - `shutdown(timeoutMs = 5000)` sends `shutdown`, awaits the response, then awaits the process actually exiting. If it's still alive after `timeoutMs`, it sends `SIGKILL` and waits for that exit instead — a stuck sidecar cannot hang the caller forever.
 
@@ -137,7 +137,7 @@ Both sides treat a broken cache as a persistence problem, never a crash:
 ## Common pitfalls
 
 - Editing `src/protocol.ts` without checking `sidecar/src/model.rs` — there's no codegen keeping them in sync; a field rename on one side silently breaks interop (only `realSidecar.test.ts`/`goldenFixture.test.ts` will catch it).
-- Adding a new file under `src/` without adding it to `tools/codelens-service/tsup.config.ts`'s `entry` array — `bundle: false` means every cross-imported file needs its own entry (same gotcha as `tools/io`, see `tools/io/CLAUDE.md`).
+- Adding a new file under `src/` without adding it to `tools/codelens-service/tsup.config.ts`'s `entry` array — `bundle: false` means every cross-imported file needs its own entry (same gotcha as `tools/io`, see `tools/io/AGENTS.md`).
 - Assuming `Content-Length` is a character count — it's bytes. Test with multi-byte content if you touch `framing.ts`.
 - Calling `client.scan()`/`client.parse()`/etc. before `await client.start()` — there is no queue, it rejects/throws immediately (by design, see API section above).
 - Writing `resolveBinary()` tests without `includeDevFallback: false` when asserting a "not found" case — it'll silently pass or fail depending on whether the sidecar happens to be built in that checkout.

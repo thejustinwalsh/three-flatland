@@ -4,6 +4,20 @@
     "restruct@thejustinwalsh": true,
     "nx@nx-claude-plugins": true
   },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pnpm sync:agents 2>/dev/null || true",
+            "statusMessage": "Generating CLAUDE.md pointers from AGENTS.md",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  },
   "includeCoAuthoredBy": false,
   "attribution": {
     "commits": false,
