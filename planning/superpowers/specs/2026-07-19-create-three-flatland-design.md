@@ -296,9 +296,13 @@ dev, but any other production build needs `npx skia-wasm public/skia` plus a
 
 ### Baking
 
-Baking moves a *derived* asset computation from browser-runtime to build-time. It
-is never about capability — if you ask for the data you always get it. Baking
-chooses only **where the cost lands**.
+**Nothing requires baking.** Ask for a derived asset and you get it — the loader
+probes for a baked sibling, generates it at runtime if there isn't one, warns you
+once that it's slower and worth baking, and continues. Zero config, working
+scene, with the optimization signposted rather than demanded.
+
+Baking then moves that computation from browser-runtime to build-time. It is
+never about capability; it chooses only **where the cost lands**.
 
 **Every baker self-discovers.** This is the intended architecture, confirmed
 during design — a baker declares a `flatland.bake` field in its `package.json`
@@ -325,20 +329,44 @@ during development is the common misuse.
 
 ### Asset authoring workflow
 
-The governing idea: **use the best editor for each asset type and load its native
-file directly.** We do not rebuild editors, and we do not invent intermediate
-formats.
+The governing idea: **meet users where their assets already are.** Read the
+formats their tools already produce, offer a richer native format when they want
+more, convert freely between them, and never make baking a prerequisite for
+things working.
 
-- **Tilemaps: LDtk and Tiled are the editors.** Author there, then load the file
-  they produce with `LDtkLoader` / `TiledLoader` — `.ldtk` and `.json`/`.tmj`
-  read natively. **There is no import step, no conversion, and no intermediate
-  format, by design.** Point users at LDtk or Tiled and at the loader; that is
-  the complete workflow.
-- **Sprites and animation: Aseprite is the editor.** Author there, then use the
-  VS Code Sprite Atlas editor to build and tune the atlas. Aseprite is supported
-  losslessly as an atlas serialization format
-  (`AtlasFormat = 'native' | 'texturepacker' | 'aseprite'`), frame tags included,
-  so the round-trip is non-destructive.
+Agent guidance should present this as the capability it is. The common mistake is
+under-selling it — describing one blessed path and treating the others as
+fallbacks.
+
+**Tilemaps — LDtk and Tiled are the editors.** Author there, then load what they
+produce with `LDtkLoader` / `TiledLoader`. `.ldtk` and `.json` / `.tmj` are read
+natively, so there is no import step and nothing to convert.
+
+**Sprite atlases — three formats, all first-class.** `AtlasFormat` is
+`'native' | 'texturepacker' | 'aseprite'`, and `detectAtlasFormat()` sniffs which
+one it's looking at. Bring a TexturePacker sheet, an Aseprite export, or an atlas
+built by our own tooling — all load.
+
+- **Our native format is deliberately richer, not merely different.**
+  `meta.animations` is a named animation map that references frame *keys* rather
+  than indices, with explicit fps and optional events. Aseprite's `frameTags`
+  sits alongside it under `meta.frameTags`; readers prefer `meta.animations` and
+  fall back to converting `frameTags` + per-frame `duration`. So adopting our
+  format is an upgrade path, never a lock-in tax.
+- **Conversion runs both ways and is round-trip safe.**
+  `importAsepriteFrameTags()` brings Aseprite in; `buildAsepriteJson()` and
+  `buildTexturePackerJson()` write back out. An untouched Aseprite fixture
+  round-trips unchanged, and rotation, trim, pivot, polygon mesh, and duration all
+  survive.
+- **The VS Code Sprite Atlas editor is the GUI for all of this** — build, tune,
+  and convert between formats visually.
+
+**Baking is an optimization, never a gate.** If a derived asset isn't baked, the
+loader generates it at runtime, warns once (via `devtimeWarn`, suppressed in
+production), and carries on. Nothing breaks and nothing is blocked; you get a
+pointer to `flatland-bake` for when you want the cost moved to build time. Agent
+guidance must lead with "it just works, and it tells you how to make it faster,"
+not with "you must bake first."
 
 **Framing rule for this section.** State what the workflow *is*, never what
 tooling is absent. "There is no tilemap importer" reads as a gap and invites an
