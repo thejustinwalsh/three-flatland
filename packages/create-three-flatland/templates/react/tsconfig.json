@@ -15,5 +15,5 @@
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src", "e2e", "vite.config.ts", "playwright.config.ts"]
 }

@@ -18,10 +18,124 @@
         width: 100%;
         height: 100%;
       }
+      /* Loading screen overlay. React owns #root, so the overlay lives beside it
+         and retires itself with CSS alone: it shows only while #root has no
+         <canvas>. The Canvas mounts exactly when the Suspense boundary in
+         src/App.tsx resolves (renderer constructed, texture loaded), so this
+         tracks the same readiness signal — no removal code, no JS. It sits
+         opaque above the bare Suspense fallback. On browsers without :has()
+         the overlay simply never shows, which fails safe. */
+      #loader {
+        position: fixed;
+        inset: 0;
+        display: none;
+        place-items: center;
+        background: #16191e;
+        pointer-events: none;
+      }
+      #root:not(:has(canvas)) + #loader {
+        display: grid;
+      }
+      .fl-stack {
+        display: grid;
+        justify-items: center;
+        gap: 20px;
+      }
+      .fl-mark {
+        width: 96px;
+        height: 96px;
+      }
+      /* One soft diagonal glint sweeps the mark — the same turquoise the
+         sprite tints on hover — then rests before the next pass. */
+      .fl-sweep {
+        animation: fl-sweep 2.6s ease-in-out infinite;
+      }
+      .fl-dot {
+        opacity: 0.25;
+        animation: fl-dot 1.6s ease-in-out infinite;
+      }
+      .fl-dot2 {
+        animation-delay: 0.2s;
+      }
+      .fl-dot3 {
+        animation-delay: 0.4s;
+      }
+      @keyframes fl-sweep {
+        0% {
+          transform: translate(-48px, -48px);
+        }
+        55%,
+        100% {
+          transform: translate(48px, 48px);
+        }
+      }
+      @keyframes fl-dot {
+        0%,
+        60%,
+        100% {
+          opacity: 0.25;
+        }
+        30% {
+          opacity: 1;
+        }
+      }
+      /* Non-negotiable: reduced motion collapses to a static pose — the mark
+         unlit, all three dots on. */
+      @media (prefers-reduced-motion: reduce) {
+        .fl-sweep {
+          animation: none;
+          visibility: hidden;
+        }
+        .fl-dot {
+          animation: none;
+          opacity: 1;
+        }
+      }
     </style>
   </head>
   <body>
     <div id="root"></div>
+
+    <!--
+      Loading screen. The pixel FL mark is the brand icon (assets/icon.svg
+      upstream) losslessly re-encoded as one path per colour; "loading" is
+      Silkscreen — the flatland wordmark face — baked to path outlines, so
+      there is no font file and no webfont request. Animation is pure CSS
+      and collapses to a static pose under prefers-reduced-motion.
+    -->
+    <div id="loader" role="status" aria-label="Loading">
+      <div class="fl-stack">
+        <svg class="fl-mark" viewBox="0 0 48 48" shape-rendering="crispEdges" aria-hidden="true">
+          <defs>
+            <linearGradient id="fl-glint" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#47cca9" stop-opacity="0" />
+              <stop offset="0.5" stop-color="#47cca9" stop-opacity="0.4" />
+              <stop offset="1" stop-color="#47cca9" stop-opacity="0" />
+            </linearGradient>
+            <!-- Luminance mask from the mark itself: bright faces catch the
+                 glint strongly, shadowed faces barely, voids not at all. -->
+            <mask id="fl-mask"><use href="#fl-mark-px" /></mask>
+          </defs>
+          <g id="fl-mark-px">
+        <path fill="#999999" d="M11 2h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h3v1h-3m4 -1h7v1h-7m-29 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h21v1h-21m-9 0h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m-31 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h13v1h-13m-13 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m-31 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h9v1h-9m-9 0h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-25 0h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h1v1h-1" />
+        <path fill="#777777" d="M45 3h1v1h-1m-1 0h2v1h-2m-1 0h1v1h-1m2 -1h1v1h-1m-3 0h3v1h-3m-1 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-5 0h3v1h-3m4 -1h1v1h-1m-5 0h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m-7 0h7v1h-7m0 0h2v1h-2m3 -1h1v1h-1m2 -1h1v1h-1m-5 0h5v1h-5m6 -1h1v1h-1m-6 0h4v1h-4m5 -1h1v1h-1m2 -1h1v1h-1m-7 0h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m-6 0h2v1h-2m3 -1h1v1h-1m2 -1h1v1h-1m-5 0h5v1h-5m6 -1h1v1h-1m-6 0h2v1h-2m3 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-7 0h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m-6 0h2v1h-2m3 -1h1v1h-1m2 -1h1v1h-1m-5 0h5v1h-5m6 -1h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m-3 0h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m-3 0h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m-5 0h1v1h-1m-1 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m-3 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-3 0h1v1h-1m-1 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m-3 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-3 0h1v1h-1m-1 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-6 1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-3 0h1v1h-1m-1 0h1v1h-1m2 -1h1v1h-1m-2 1h1v1h-1m2 -1h1v1h-1m-2 1h1v1h-1" />
+        <path fill="#444444" d="M44 5h1v1h-1m1 0h1v1h-1m-3 0h1v1h-1m2 -1h1v1h-1m-1 0h1v1h-1m2 -1h1v1h-1m-3 0h1v1h-1m2 -1h1v1h-1m1 0h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m2 -1h2v1h-2m-1 0h1v1h-1m2 -1h1v1h-1m-3 0h1v1h-1m2 -1h1v1h-1m-3 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m2 -1h2v1h-2m-1 0h1v1h-1m2 -1h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-3 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m2 -1h2v1h-2m-1 0h1v1h-1m2 -1h1v1h-1m-7 0h1v1h-1m2 -1h1v1h-1m2 -1h4v1h-4m-1 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-7 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h2v1h-2m-5 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-7 0h1v1h-1m2 -1h1v1h-1m2 -1h4v1h-4m-1 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-7 0h1v1h-1m2 -1h6v1h-6m-1 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-7 0h1v1h-1m2 -1h1v1h-1m2 -1h4v1h-4m-3 0h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m-5 0h1v1h-1m2 -1h6v1h-6m-1 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-7 0h1v1h-1m2 -1h1v1h-1m2 -1h4v1h-4m-3 0h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m-5 0h1v1h-1m2 -1h6v1h-6m-1 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-7 0h8v1h-8m1 0h1v1h-1m2 -1h1v1h-1m2 -1h2v1h-2m-5 0h1v1h-1m2 -1h4v1h-4m-1 0h1v1h-1m2 -1h2v1h-2m-3 0h4v1h-4m1 0h1v1h-1m-1 0h2v1h-2" />
+        <path fill="#E0E0E0" d="M10 2h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m-29 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-15 0h7v1h-7m8 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-33 0h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-23 0h11v1h-11m12 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-33 0h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-27 0h19v1h-19m20 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-35 0h11v1h-11m12 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v2h-1m2 -2h1v1h-1m2 -1h1v2h-1m2 -2h1v2h-1m2 -2h1v2h-1m4 -2h1v2h-1m-2 -1h1v1h-1m-23 0h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h2v1h-2m-13 0h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-27 0h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-15 0h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-29 0h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h2v1h-2m-17 0h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-31 0h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m-13 0h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-33 0h1v1h-1m14 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h3v1h-3m4 -1h6v1h-6m-13 0h1v1h-1m8 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-35 0h1v1h-1m16 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h4v1h-4m-21 0h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-33 0h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h10v1h-10m-17 0h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-35 0h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h3v1h-3m4 -1h8v1h-8m-15 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m-33 0h1v1h-1m2 -1h1v1h-1m10 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h2v1h-2m6 -1h12v1h-12m-11 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-35 0h1v1h-1m2 -1h1v1h-1m10 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h12v1h-12m-21 0h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h3v1h-3m-33 0h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h2v1h-2m6 -1h12v1h-12m-23 0h1v1h-1m8 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-35 0h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m8 -1h12v1h-12m-21 0h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m14 -1h3v1h-3m-33 0h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h3v1h-3m4 -1h6v1h-6m18 -1h4v1h-4m-31 0h1v1h-1m8 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m13 -1h2v1h-2m3 -1h1v1h-1m-35 0h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h4v1h-4m16 -1h4v1h-4m-31 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h3v1h-3m4 -1h3v1h-3m4 -1h3v1h-3m-33 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h26v1h-26m-9 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h3v1h-3m4 -1h1v1h-1m-35 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h24v1h-24m-11 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h3v1h-3m4 -1h3v1h-3m4 -1h7v1h-7m-29 0h1v1h-1m2 -1h3v1h-3m4 -1h30v1h-30m-5 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h3v1h-3m4 -1h3v1h-3m4 -1h1v1h-1m-35 0h1v1h-1m2 -1h1v1h-1m2 -1h3v1h-3m4 -1h28v1h-28" />
+        <path fill="#FFFFFF" d="M2 10h23v1h-23m24 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-34 0h10v1h-10m11 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-33 0h21v1h-21m22 -1h3v1h-3m4 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-34 0h8v1h-8m9 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-35 0h19v1h-19m20 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-34 0h6v1h-6m7 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-33 0h17v1h-17m18 -1h3v1h-3m4 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-34 0h4v2h-4m5 -2h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-19 0h3v1h-3m8 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-34 0h2v1h-2m3 -1h1v1h-1m14 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m4 -1h1v1h-1m-29 0h4v1h-4m16 -1h1v1h-1m2 -1h2v1h-2m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-33 0h3v1h-3m16 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-31 0h4v1h-4m8 -1h3v1h-3m4 -1h3v1h-3m4 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-34 0h2v1h-2m3 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m-25 0h4v1h-4m8 -1h1v1h-1m2 -1h3v1h-3m4 -1h3v1h-3m4 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-33 0h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m8 -1h1v1h-1m-27 0h4v1h-4m12 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-31 0h1v1h-1m2 -1h1v1h-1m10 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-17 0h4v1h-4m12 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-33 0h1v1h-1m2 -1h1v1h-1m10 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-19 0h3v1h-3m8 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-31 0h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-17 0h1v1h-1m2 -1h2v1h-2m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m-33 0h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-19 0h3v1h-3m8 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m14 -1h1v1h-1m-31 0h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m4 -1h1v1h-1m-13 0h1v1h-1m2 -1h2v1h-2m6 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m16 -1h1v1h-1m-33 0h1v1h-1m2 -1h1v1h-1m6 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-15 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m-31 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-9 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m-33 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m-11 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m-27 0h1v1h-1m4 -1h1v1h-1m-5 0h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m4 -1h1v1h-1m-33 0h1v1h-1m2 -1h1v1h-1m4 -1h1v1h-1" />
+        <path fill="#000000" d="M6 18h12v4h-12m16 -4h4v16h-4m-16 -12h4v4h-4m0 0h8v4h-8m0 0h4v8h-4m16 -4h12v4h-12" />
+          </g>
+          <g mask="url(#fl-mask)">
+            <rect class="fl-sweep" width="48" height="48" fill="url(#fl-glint)" />
+          </g>
+        </svg>
+        <svg class="fl-word" viewBox="0 -13 120 14" width="120" height="14" aria-hidden="true">
+          <path fill="#9aa4b2" d="M10 0L2.5 0L2.5-12.5L5-12.5L5-2.5L10-2.5L10 0ZM22.5 0L17.5 0L17.5-2.5L15-2.5L15-10L17.5-10L17.5-12.5L22.5-12.5L22.5-10L25-10L25-2.5L22.5-2.5L22.5 0ZM17.5-9.9L17.5-2.6L22.5-2.6L22.5-9.9L17.5-9.9ZM32.5 0L30 0L30-10L32.5-10L32.5-12.5L37.5-12.5L37.5-10L40-10L40 0L37.5 0L37.5-5L32.5-5L32.5 0ZM32.5-9.9L32.5-7.5L37.5-7.5L37.5-9.9L32.5-9.9ZM52.5 0L45 0L45-12.5L52.5-12.5L52.5-10L55-10L55-2.5L52.5-2.5L52.5 0ZM47.5-10L47.5-2.5L52.4-2.5L52.4-10L47.5-10ZM62.5 0L60 0L60-12.5L62.5-12.5L62.5 0ZM70 0L67.5 0L67.5-12.5L70-12.5L70-10L72.5-10L72.5-7.5L75-7.5L75-5L77.5-5L77.5-12.5L80-12.5L80 0L77.5 0L77.5-2.5L75-2.5L75-5L72.5-5L72.5-7.5L70-7.5L70 0ZM95-10L87.5-10L87.5-12.5L95-12.5L95-10ZM87.5-2.5L85-2.5L85-10L87.5-10L87.5-2.5ZM95-2.5L92.5-2.5L92.5-5L90-5L90-7.5L95-7.5L95-2.5ZM92.5 0L87.5 0L87.5-2.5L92.5-2.5L92.5 0Z" />
+          <path class="fl-dot" fill="#47cca9" d="M102.5 0L100 0L100-2.5L102.5-2.5L102.5 0Z" />
+          <path class="fl-dot fl-dot2" fill="#47cca9" d="M110 0L107.5 0L107.5-2.5L110-2.5L110 0Z" />
+          <path class="fl-dot fl-dot3" fill="#47cca9" d="M117.5 0L115 0L115-2.5L117.5-2.5L117.5 0Z" />
+        </svg>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

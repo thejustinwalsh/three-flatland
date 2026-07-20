@@ -126,6 +126,33 @@ npx skills add thejustinwalsh/three-flatland
 
 Add a single skill by path, e.g. `npx skills add thejustinwalsh/three-flatland/skills/tsl`. Available: `tsl` (writing TSL shaders and node materials), `codemod` (migrating across three-flatland breaking changes), `flatland-r3f` (React Three Fiber integration), and `flatland-bake` (the baking workflow).
 
+## Testing
+
+This project ships both layers, and agent-written changes are expected to keep them green.
+
+```sh
+npm run test            # vitest — unit tests next to the code, src/**/*.test.ts
+npm run test:e2e        # playwright — drives the real app in a browser
+npm run lint            # oxlint
+npm run format          # oxfmt
+```
+
+**Write unit tests for logic, Playwright specs for the scene.** Interaction and
+animation maths belongs in a pure helper with a vitest test (see
+`src/interaction.ts` and its spec). Anything that only shows up on screen —
+the canvas renders, a pointer event lands, a sprite reacts — belongs in a
+Playwright spec under `e2e/`, because a passing unit test cannot tell you the
+scene drew anything.
+
+**Use `vitexec` to probe the running app.** It runs snippets inside the live
+page and reads back console output, network activity, and screenshots, which is
+the fastest way to answer "is this actually rendering / did that event fire"
+without inventing a bespoke harness. Reach for it while debugging, then encode
+whatever you learned as a Playwright spec so it stays checked.
+
+A green suite is not proof the app renders. Confirm the visible result — a
+screenshot or a real interaction — before calling a rendering change done.
+
 ## Reference links
 
 - Docs: <https://tjw.dev/three-flatland/>

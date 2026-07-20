@@ -1,6 +1,9 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Color, Raycaster, Vector2 } from 'three'
 import { Flatland, Sprite2D, TextureLoader } from 'three-flatland'
+// Pure scene maths, extracted so it can be unit-tested without a GPU.
+// See src/interaction.test.ts — `npm run test`.
+import { approach, SPRITE_SCALE, targetScale, toPointerNdc } from './interaction'
 
 /* HMR teardown state — without this, every dev save stacks another
  * renderer + animation loop. Dev-only: `import.meta.hot` is undefined in prod. */
@@ -38,7 +41,7 @@ async function main() {
   document.querySelector('#loader')?.remove()
 
   const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] })
-  sprite.scale.set(150, 150, 1)
+  sprite.scale.set(SPRITE_SCALE.idle, SPRITE_SCALE.idle, 1)
   flatland.add(sprite)
 
   // Pointer interactivity — a standard three.js Raycaster. Sprite2D
@@ -49,8 +52,8 @@ async function main() {
   let pressed = false
 
   on(renderer.domElement, 'pointermove', ((event: PointerEvent) => {
-    const rect = renderer.domElement.getBoundingClientRect()
-    pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
+    const ndc = toPointerNdc(event.clientX, event.clientY, renderer.domElement.getBoundingClientRect())
+    pointer.set(ndc.x, ndc.y)
     raycaster.setFromCamera(pointer, flatland.camera)
     hovered = raycaster.intersectObject(sprite).length > 0
   }) as EventListener)
@@ -80,8 +83,7 @@ async function main() {
   function animate() {
     rafId = requestAnimationFrame(animate)
     sprite.rotation.z += 0.005
-    const target = pressed ? 130 : hovered ? 170 : 150
-    const next = sprite.scale.x + (target - sprite.scale.x) * 0.15
+    const next = approach(sprite.scale.x, targetScale({ hovered, pressed }))
     sprite.scale.set(next, next, 1)
     sprite.tint.lerp(hovered ? hoverTint : idleTint, 0.15)
     flatland.render(renderer)

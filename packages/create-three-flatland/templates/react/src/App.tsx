@@ -1,8 +1,11 @@
-import { Suspense, useCallback, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
+// Pure scene maths, extracted so it can be unit-tested without a GPU or a
+// React renderer. See src/interaction.test.ts — `npm run test`.
+import { approach, SPRITE_SCALE, targetScale, tintFor } from './interaction'
 
 // R3F requires registration before Flatland classes appear as JSX elements.
 extend({ Flatland, Sprite2D })
@@ -11,6 +14,11 @@ function Scene() {
   // Suspends until the texture resolves — the Suspense fallback OUTSIDE the
   // Canvas renders a DOM loading overlay meanwhile.
   const texture = useLoader(TextureLoader, `${import.meta.env.BASE_URL}sprite.svg`)
+
+  // Scene renders only after the texture resolves, so this is the ready signal.
+  useEffect(() => {
+    document.querySelector('#loader')?.remove()
+  }, [])
   const flatlandRef = useRef<Flatland>(null)
   const set = useThree((s) => s.set)
   const size = useThree((s) => s.size)
@@ -46,8 +54,7 @@ function Scene() {
     const sprite = spriteRef.current
     if (sprite) {
       sprite.rotation.z += 0.005
-      const target = pressed ? 130 : hovered ? 170 : 150
-      const next = sprite.scale.x + (target - sprite.scale.x) * 0.15
+      const next = approach(sprite.scale.x, targetScale({ hovered, pressed }))
       sprite.scale.set(next, next, 1)
     }
   })
@@ -68,8 +75,8 @@ function Scene() {
           ref={spriteRef}
           texture={texture}
           anchor={[0.5, 0.5]}
-          scale={[150, 150, 1]}
-          tint={hovered ? '#47cca9' : '#ffffff'}
+          scale={[SPRITE_SCALE.idle, SPRITE_SCALE.idle, 1]}
+          tint={tintFor({ hovered, pressed })}
           onPointerOver={() => setHovered(true)}
           onPointerOut={() => setHovered(false)}
           onPointerDown={() => setPressed(true)}
@@ -84,22 +91,14 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <Suspense fallback={<Loading />}>
-        <Canvas orthographic renderer={{ antialias: false }}>
+      <Canvas orthographic renderer={{ antialias: false }}>
+        <Suspense fallback={null}>
           <Scene />
-        </Canvas>
-      </Suspense>
+        </Suspense>
+      </Canvas>
       <button type="button" style={fullscreenStyle} onClick={() => void containerRef.current?.requestFullscreen()}>
         Fullscreen
       </button>
-    </div>
-  )
-}
-
-function Loading() {
-  return (
-    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#9aa4b2' }}>
-      Loading…
     </div>
   )
 }

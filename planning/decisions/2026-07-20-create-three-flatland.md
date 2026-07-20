@@ -39,36 +39,13 @@ workspace-only wiring a scaffolded project must not carry. Two consequences:
   globs for explicitly-passed directories — `ignorePatterns` is the mechanism
   that works.
 
-## React template: Suspense must live INSIDE the Canvas
+## React template: Suspense goes inside the Canvas
 
-**Resolved 2026-07-20.** Wrapping `<Canvas>` in a `<Suspense>` boundary means a
-suspending `useLoader` unmounts and remounts the Canvas. Under StrictMode's
-double-mount that calls `R3F.createRoot` twice on the same canvas element:
-the console warns `R3F.createRoot should only be called once!` and the app locks
-up, so pointer events never work.
-
-Confirmed in a real browser by the maintainer, comparing two live dev servers:
-
-| | Suspense position | StrictMode | Result |
-| --- | --- | --- | --- |
-| template | outside `<Canvas>` | on | createRoot twice, locks up |
-| `examples/react/basic-sprite` | none — suspends inside the Canvas | on | works |
-
-Not fiber, not StrictMode, and not the camera wiring — the structure. The spec
-asked for a DOM loading overlay outside the Canvas so `<Suspense>` could render
-real DOM; that requirement produced the bug.
-
-**Fix:** the Canvas stays mounted permanently and the loading overlay is the
-`#loader` element in `index.html`, removed once the scene is ready — the
-mechanism the three.js template already uses. Suspense, if used at all, goes
-inside the Canvas around the suspending scene content. StrictMode then returns
-to the template permanently.
-
-**Testing note:** the smoke's Playwright hover check flagged this correctly, but
-its diagnosis was unusable — a synthetic `mouse.move()` reports only "the frame
-did not change." The real browser gave the console warning that named the cause
-in one line. Reach for a real browser when a headless check says *what* broke but
-not *why*.
+Wrapping `<Canvas>` in a Suspense boundary unmounts and remounts the Canvas when
+`useLoader` suspends, which trips `R3F.createRoot should only be called once!`
+under StrictMode. Suspense lives inside the Canvas; the loading overlay is the
+`#loader` element in `index.html`, as in the three.js template. StrictMode stays
+enabled.
 
 ## Leak guard is split by what it can legitimately appear in
 
