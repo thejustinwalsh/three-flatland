@@ -24,7 +24,7 @@
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.3",
-    "vite": "^6.4.3"
+    "vite": "^7.3.6"
   },
   "nx": {
     "tags": [
@@ -33,7 +33,10 @@
     "targets": {
       "lint": {
         "executor": "nx:run-commands",
-        "options": { "command": "oxlint --type-aware .", "cwd": "{projectRoot}" }
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
       }
     }
   }
