@@ -31,7 +31,7 @@ function SyncEventCamera({ flatland }: { flatland: RefObject<Flatland | null> })
 function Scene() {
   // Suspends until the texture resolves — the Suspense fallback OUTSIDE the
   // Canvas renders a DOM loading overlay meanwhile.
-  const texture = useLoader(TextureLoader, '/sprite.svg')
+  const texture = useLoader(TextureLoader, `${import.meta.env.BASE_URL}sprite.svg`)
   const flatlandRef = useRef<Flatland>(null)
   const spriteRef = useRef<Sprite2D>(null)
   const gl = useThree((s) => s.gl)

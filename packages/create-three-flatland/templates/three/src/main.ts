@@ -6,6 +6,16 @@ import { Flatland, Sprite2D, TextureLoader } from 'three-flatland'
  * renderer + animation loop. Dev-only: `import.meta.hot` is undefined in prod. */
 let rafId = 0
 let activeRenderer: WebGPURenderer | null = null
+let activeFlatland: Flatland | null = null
+/* Every listener registered this run, so HMR can remove them all. Anonymous
+ * callbacks can't be removed, so each dev save would otherwise stack another
+ * closure over an already-disposed renderer and call setSize on it. */
+const listeners: Array<() => void> = []
+
+function on<T extends EventTarget>(target: T, type: string, handler: EventListener): void {
+  target.addEventListener(type, handler)
+  listeners.push(() => target.removeEventListener(type, handler))
+}
 
 async function main() {
   const container = document.querySelector<HTMLDivElement>('#app')!
@@ -18,10 +28,11 @@ async function main() {
   // supported, WebGL2 fallback where not). Never construct WebGLRenderer.
   const renderer = new WebGPURenderer({ antialias: false })
   activeRenderer = renderer
+  activeFlatland = flatland
   container.appendChild(renderer.domElement)
 
   await renderer.init()
-  const texture = await TextureLoader.load('/sprite.svg')
+  const texture = await TextureLoader.load(`${import.meta.env.BASE_URL}sprite.svg`)
 
   // Renderer + texture ready — drop the loading overlay.
   document.querySelector('#loader')?.remove()
@@ -37,28 +48,30 @@ async function main() {
   let hovered = false
   let pressed = false
 
-  renderer.domElement.addEventListener('pointermove', (event) => {
+  on(renderer.domElement, 'pointermove', ((event: PointerEvent) => {
     const rect = renderer.domElement.getBoundingClientRect()
     pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
     raycaster.setFromCamera(pointer, flatland.camera)
     hovered = raycaster.intersectObject(sprite).length > 0
-  })
-  renderer.domElement.addEventListener('pointerdown', () => {
+  }) as EventListener)
+  on(renderer.domElement, 'pointerdown', () => {
     pressed = hovered
   })
-  window.addEventListener('pointerup', () => {
+  on(window, 'pointerup', () => {
     pressed = false
   })
 
-  document.querySelector('#fullscreen')?.addEventListener('click', () => {
-    void container.requestFullscreen()
-  })
+  const fullscreenBtn = document.querySelector('#fullscreen')
+  if (fullscreenBtn)
+    on(fullscreenBtn, 'click', () => {
+      void container.requestFullscreen()
+    })
 
   const resize = () => {
     flatland.resize(container.clientWidth, container.clientHeight)
     renderer.setSize(container.clientWidth, container.clientHeight)
   }
-  window.addEventListener('resize', resize)
+  on(window, 'resize', resize)
   resize()
 
   const idleTint = new Color(0xffffff)
@@ -84,6 +97,9 @@ if (import.meta.hot) {
       cancelAnimationFrame(rafId)
       rafId = 0
     }
+    for (const off of listeners.splice(0)) off()
+    activeFlatland?.dispose()
+    activeFlatland = null
     if (activeRenderer) {
       activeRenderer.dispose?.()
       activeRenderer.domElement.remove()
