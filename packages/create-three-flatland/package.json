@@ -34,10 +34,10 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "tsx ../../scripts/sync-agents-pairs.ts --templates && tsdown",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "prepack": "rm -rf templates/three/dist templates/react/dist templates/three/.turbo templates/react/.turbo"
+    "prepack": "tsx ../../scripts/sync-agents-pairs.ts --templates && rm -rf templates/three/dist templates/react/dist templates/three/.turbo templates/react/.turbo"
   },
   "devDependencies": {
     "@clack/prompts": "^0.11.0",

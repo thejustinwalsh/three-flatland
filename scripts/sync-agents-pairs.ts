@@ -11,6 +11,12 @@
  *
  * Flags:
  *   --verify             CI/commit check; exit 1 on drift, no writes.
+ *   --templates          Generate the shipped-template pointers instead of the
+ *                        repo ones. Run from create-three-flatland's build and
+ *                        prepack so templates/<t>/CLAUDE.md exists for the
+ *                        scaffold tests and lands in the published tarball.
+ *                        Deliberately NOT run by the Claude session-start hook:
+ *                        those files are product, not developer ergonomics.
  *
  * Excluded: packages/create-three-flatland/templates/. Those CLAUDE.md files
  * are shipped product — tracked in git, published inside the
@@ -31,6 +37,7 @@ const EXCLUDED_PREFIX = 'packages/create-three-flatland/templates/'
 const POINTER = '@AGENTS.md\n'
 
 const verify = process.argv.includes('--verify')
+const templatesMode = process.argv.includes('--templates')
 
 /**
  * Repo-relative paths of every tracked AGENTS.md, minus the shipped templates.
@@ -40,11 +47,10 @@ function listAgentFiles(): string[] {
     cwd: ROOT,
     encoding: 'utf-8',
   })
-  return stdout
-    .split('\0')
-    .filter(Boolean)
-    .filter((path) => !path.startsWith(EXCLUDED_PREFIX))
-    .sort()
+  const all = stdout.split('\0').filter(Boolean)
+  // --templates inverts the filter: generate exactly the pointers the repo mode
+  // skips. The two sets are disjoint, so neither mode can clobber the other.
+  return all.filter((path) => path.startsWith(EXCLUDED_PREFIX) === templatesMode).sort()
 }
 
 /**
