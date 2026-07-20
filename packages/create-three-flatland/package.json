@@ -1,0 +1,48 @@
+{
+  "name": "create-three-flatland",
+  "version": "0.0.0",
+  "description": "Scaffold a three-flatland project — minimal three.js or React starters for WebGPU 2D",
+  "type": "module",
+  "license": "MIT",
+  "author": "Justin Walsh (https://thejustinwalsh.com)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/create-three-flatland"
+  },
+  "keywords": [
+    "three-flatland",
+    "three",
+    "webgpu",
+    "create",
+    "scaffold",
+    "vite",
+    "2d",
+    "sprites"
+  ],
+  "bin": {
+    "create-three-flatland": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepack": "rm -rf templates/three/dist templates/react/dist templates/three/.turbo templates/react/.turbo"
+  },
+  "devDependencies": {
+    "@clack/prompts": "^0.11.0",
+    "picocolors": "^1.1.1",
+    "tsdown": "^0.22.9",
+    "typescript": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
