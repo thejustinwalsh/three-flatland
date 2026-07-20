@@ -448,7 +448,7 @@ function checkScaffoldedTree(root, template) {
   let clean = true
   for (const file of walkFiles(root)) {
     // package-lock.json records the registry URL, not workspace wiring.
-    if (/package-lock\.json$/.test(file)) continue
+    if (file.endsWith('package-lock.json')) continue
     const text = readFileSync(file, 'utf8')
     for (const needle of BANNED_IN_SCAFFOLD) {
       if (text.includes(needle)) {
@@ -771,7 +771,10 @@ async function startDevServer(dest, id) {
   // and it wraps the PORT itself in escapes ("localhost:\e[1m5173\e[22m/"), so a
   // regex over the raw stream silently never matches and the wait times out.
   const capture = (buf) => {
-    rec.log += buf.toString().replace(/\x1b\[[0-9;]*m/g, '')
+    // Vite colourises its ready banner even onto a pipe, wrapping the port
+    // digits themselves — strip SGR sequences so the URL regex can match.
+    // eslint-disable-next-line no-control-regex
+    rec.log += buf.toString().replace(/\u001b\[[0-9;]*m/g, '')
   }
   child.stdout.on('data', capture)
   child.stderr.on('data', capture)
