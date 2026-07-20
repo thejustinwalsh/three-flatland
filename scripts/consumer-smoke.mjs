@@ -13,7 +13,8 @@
  *      to npmjs.
  *   3. `npm publish` each packed tarball to it, at its real declared version.
  *   4. Install each CONSUMER from that registry with its manifest UNCHANGED, then
- *      `npm run build` + a Playwright render check. Two kinds of consumer:
+ *      `npm run build` + a Playwright render check (production `dist/`, plus a
+ *      live `npm run dev` Vite server for the scaffolds). Two kinds of consumer:
  *        • examples — copied OUT of the repo (escapes the workspace/catalog).
  *        • scaffolds — `create-three-flatland` is itself installed from the
  *          registry, and its published CLI is run to generate a fresh project
@@ -250,6 +251,12 @@ let shuttingDown = false
 // Scratch dirs created lazily later (e.g. the installed-CLI home) append here so
 // they're torn down on every exit path, including SIGINT.
 const cleanupDirs = [TARBALL_DIR, REG_STORAGE]
+// Every Vite dev server we spawn, so cleanup() can reap them on ANY exit path —
+// success, collected failure, thrown error, or SIGINT. Same posture as Verdaccio.
+// Declared HERE, not next to its users further down: several early `process.exit`
+// paths above run cleanup() before that point, and a `const` in the temporal dead
+// zone would turn teardown into a ReferenceError.
+const devServers = new Set()
 function cleanup() {
   shuttingDown = true
   try {
@@ -257,6 +264,9 @@ function cleanup() {
   } catch {
     /* already gone */
   }
+  // Vite dev servers are spawned detached; without this an aborted run leaves an
+  // orphaned vite holding a port. `killTree` is hoisted, so it's safe here.
+  for (const rec of devServers) killTree(rec.child, 'SIGKILL')
   for (const d of cleanupDirs) rmSync(d, { recursive: true, force: true })
 }
 process.on('exit', cleanup)
@@ -550,7 +560,7 @@ for (const ex of CONSUMERS) {
     console.log(`• [${id}] npm run build…`)
     run('npm', ['run', 'build'], dest)
     if (!existsSync(join(dest, 'dist', 'index.html'))) throw new Error('build produced no dist/index.html')
-    results.push({ id, dest, build: 'ok' })
+    results.push({ id, dest, kind: ex.kind, build: 'ok' })
     console.log(`  ✓ [${id}] built against the published packages`)
     // Run AFTER the build: an install can materialize wiring the CLI didn't emit
     // (a stray lockfile entry, a postinstall-written file), and that counts.
@@ -564,62 +574,270 @@ for (const ex of CONSUMERS) {
 
 // ── 4. Render check (Playwright) — pixels, not blank, no console errors ──────
 
+/**
+ * A frame must clear BOTH bars to count as painted. Calibrated by measuring the
+ * real templates on headless Chromium at 1280×720 (230400 pixels sampled), then
+ * measuring a deliberately blanked frame — the canvas swapped for a solid #16191e
+ * fill — through the same code:
+ *
+ *   painted (three + react, prod dist AND dev server)  distinct=34  maxStd≈41.25
+ *   blanked (mutation test)                            distinct=28  maxStd≈2.01
+ *
+ * `maxStd` is the term that discriminates, by a factor of ~20. `distinct` barely
+ * separates the two and is NOT load-bearing: the templates overlay a fullscreen
+ * button and a loading div on the canvas, and an element screenshot composites
+ * those in, so even a dead frame carries a few dozen colours from page chrome.
+ * It's kept only as a cheap floor against a screenshot that is literally one
+ * colour. Do not raise it and assume it's guarding anything — it isn't.
+ *
+ * The stddev bar sits ~5× under what the templates produce and ~4× over the
+ * blanked frame, so antialiasing, dpr, or a GPU-backend swap can't flip the
+ * verdict in either direction.
+ */
+const MIN_DISTINCT_COLORS = 8
+const MIN_CHANNEL_STDDEV = 8
+
+/**
+ * Pixel statistics for a PNG, decoded in a scratch browser page.
+ *
+ * The canvas front buffer genuinely can't be read back in headless (which is why
+ * `toDataURL`/`drawImage` on the LIVE canvas is useless here) — but
+ * `page.screenshot()` composites it correctly, and the resulting PNG is an
+ * ordinary image that a 2D canvas will happily decode. Doing the decode in the
+ * browser we already run avoids adding a Node PNG-decode dependency to the root.
+ *
+ * Colours are quantised to 5 bits/channel so gradient + AA noise doesn't inflate
+ * the count; the stddev term is what actually proves tonal spread.
+ */
+async function pngStats(scratch, pngBuffer) {
+  return scratch.evaluate(async (b64) => {
+    const img = new Image()
+    img.src = `data:image/png;base64,${b64}`
+    await img.decode()
+    const w = img.naturalWidth
+    const h = img.naturalHeight
+    const c = document.createElement('canvas')
+    c.width = w
+    c.height = h
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(img, 0, 0)
+    const px = ctx.getImageData(0, 0, w, h).data
+    // Sample on a stride so a retina-sized frame stays a few milliseconds.
+    const step = Math.max(1, Math.floor(Math.sqrt((w * h) / 200_000)))
+    const buckets = new Set()
+    const sum = [0, 0, 0]
+    const sumSq = [0, 0, 0]
+    let n = 0
+    for (let y = 0; y < h; y += step) {
+      for (let x = 0; x < w; x += step) {
+        const i = (y * w + x) * 4
+        const rgb = [px[i], px[i + 1], px[i + 2]]
+        buckets.add(((rgb[0] >> 3) << 10) | ((rgb[1] >> 3) << 5) | (rgb[2] >> 3))
+        for (let k = 0; k < 3; k++) {
+          sum[k] += rgb[k]
+          sumSq[k] += rgb[k] * rgb[k]
+        }
+        n++
+      }
+    }
+    const std = sum.map((s, k) => Math.sqrt(Math.max(0, sumSq[k] / n - (s / n) ** 2)))
+    return {
+      w,
+      h,
+      sampled: n,
+      distinct: buckets.size,
+      maxStd: +Math.max(...std).toFixed(2),
+    }
+  }, pngBuffer.toString('base64'))
+}
+
+/**
+ * Screenshot the canvas and prove the frame is non-trivial. Not a golden-image
+ * match — the claim is only "something was actually drawn", which a solid clear
+ * colour cannot satisfy.
+ */
+async function paintCheck(page, scratch) {
+  const canvas = page.locator('canvas').first()
+  const box = await canvas.boundingBox()
+  if (!box || box.width <= 0 || box.height <= 0) return { ok: false, why: 'canvas has no layout box', stats: null }
+  const shot = await canvas.screenshot({ type: 'png' })
+  const stats = await pngStats(scratch, shot)
+  const ok = stats.distinct >= MIN_DISTINCT_COLORS && stats.maxStd >= MIN_CHANNEL_STDDEV
+  return {
+    ok,
+    stats,
+    why: ok
+      ? null
+      : `frame is uniform — distinct=${stats.distinct} (need ≥${MIN_DISTINCT_COLORS}), ` +
+        `maxStd=${stats.maxStd} (need ≥${MIN_CHANNEL_STDDEV})`,
+  }
+}
+
+// A page error (uncaught exception) is always fatal. Console errors are too,
+// EXCEPT resource-load failures — loaders here intentionally probe for an
+// optional baked sibling (e.g. <sheet>.normal.png) and fall back to runtime
+// synthesis, so a 404 there is by design, not a broken example.
+const isFatalConsole = (t) => !/Failed to load resource|net::ERR_|ERR_ABORTED|status of 40\d/i.test(t)
+
+/**
+ * Load a URL, collect errors, and assert real pixels. Shared verbatim by the
+ * production-dist check and the dev-server check so neither can drift into being
+ * the weaker assertion.
+ */
+async function probe(browser, scratch, url, { waitUntil }) {
+  const page = await browser.newPage()
+  const pageErrors = []
+  const consoleErrors = []
+  page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()))
+  page.on('pageerror', (e) => pageErrors.push(String(e)))
+  try {
+    await page.goto(url, { waitUntil, timeout: 30000 })
+    await page.waitForSelector('canvas', { timeout: 20000 })
+    // Let the render loop run a few frames before sampling.
+    await page.waitForTimeout(1500)
+    const paint = await paintCheck(page, scratch)
+    const fatal = [...pageErrors, ...consoleErrors.filter(isFatalConsole)]
+    if (fatal.length) return { ok: false, error: `errors:\n${fatal.slice(0, 5).join('\n')}`, stats: paint.stats }
+    if (!paint.ok) return { ok: false, error: paint.why, stats: paint.stats }
+    return { ok: true, stats: paint.stats }
+  } catch (err) {
+    return { ok: false, error: String(err).slice(0, 800), stats: null }
+  } finally {
+    await page.close()
+  }
+}
+
+const fmtStats = (s) => (s ? `distinct=${s.distinct} maxStd=${s.maxStd} (${s.w}×${s.h}, ${s.sampled} px sampled)` : 'n/a')
+
 async function renderCheck(built) {
   const { chromium } = await import('@playwright/test')
   const browser = await chromium.launch()
-  for (const r of built) {
-    const distDir = join(r.dest, 'dist')
-    if (!existsSync(join(distDir, 'index.html'))) {
-      r.render = 'fail'
-      r.error = 'no dist/index.html after build'
-      continue
-    }
-    const server = staticServer(distDir)
-    const port = server.address().port
-    const page = await browser.newPage()
-    const pageErrors = []
-    const consoleErrors = []
-    page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()))
-    page.on('pageerror', (e) => pageErrors.push(String(e)))
-    try {
-      await page.goto(`http://localhost:${port}/`, { waitUntil: 'networkidle', timeout: 30000 })
-      await page.waitForSelector('canvas', { timeout: 20000 })
-      // Let the render loop run a few frames, then confirm a real render surface.
-      // We can't read WebGPU/WebGL pixels back reliably in headless (the front
-      // buffer isn't preserved for drawImage), so "painted" is a live canvas of
-      // non-zero size; the real failure signal is an uncaught error at init/run.
-      await page.waitForTimeout(1500)
-      const painted = await page.evaluate(() => {
-        const c = document.querySelector('canvas')
-        return !!c && c.width > 0 && c.height > 0
-      })
-      // A page error (uncaught exception) is always fatal. Console errors are too,
-      // EXCEPT resource-load failures — loaders here intentionally probe for an
-      // optional baked sibling (e.g. <sheet>.normal.png) and fall back to runtime
-      // synthesis, so a 404 there is by design, not a broken example.
-      const fatalConsole = consoleErrors.filter(
-        (t) => !/Failed to load resource|net::ERR_|ERR_ABORTED|status of 40\d/i.test(t)
-      )
-      const fatal = [...pageErrors, ...fatalConsole]
-      if (fatal.length) {
+  // One scratch page for PNG decoding, reused across consumers. Kept separate
+  // from the page under test so its own console stays out of the assertions.
+  const scratch = await browser.newPage()
+  try {
+    for (const r of built) {
+      const distDir = join(r.dest, 'dist')
+      if (!existsSync(join(distDir, 'index.html'))) {
         r.render = 'fail'
-        r.error = `errors:\n${fatal.slice(0, 5).join('\n')}`
-      } else if (!painted) {
-        r.render = 'fail'
-        r.error = 'canvas present but not painted (blank)'
-      } else {
-        r.render = 'ok'
+        r.error = 'no dist/index.html after build'
+        console.log(`  ✗ [${r.id}] render`)
+        continue
       }
-    } catch (err) {
-      r.render = 'fail'
-      r.error = String(err).slice(0, 800)
-    } finally {
-      await page.close()
-      server.close()
+      const server = staticServer(distDir)
+      const port = server.address().port
+      let res
+      try {
+        res = await probe(browser, scratch, `http://localhost:${port}/`, { waitUntil: 'networkidle' })
+      } finally {
+        server.close()
+      }
+      r.render = res.ok ? 'ok' : 'fail'
+      if (!res.ok) r.error = res.error
+      console.log(`  ${res.ok ? '✓' : '✗'} [${r.id}] render — ${fmtStats(res.stats)}${res.ok ? '' : `\n      ${res.error}`}`)
     }
-    console.log(`  ${r.render === 'ok' ? '✓' : '✗'} [${r.id}] render`)
+
+    // ── dev-server check — scaffolds only ────────────────────────────────────
+    //
+    // Production-only coverage is blind to everything dev mode does differently:
+    // React StrictMode double-mounts (so an effect that isn't idempotent blows up
+    // only here), HMR wiring is live, and Vite serves unbundled ESM straight from
+    // source. Restricted to the two scaffolds — the examples' dev path is covered
+    // elsewhere and spinning a Vite server per example would balloon the sweep.
+    for (const r of built.filter((x) => x.kind === 'scaffold')) {
+      const dev = await startDevServer(r.dest, r.id)
+      if (!dev.ok) {
+        r.dev = 'fail'
+        r.error = dev.error
+        console.log(`  ✗ [${r.id}] dev — ${dev.error}`)
+        continue
+      }
+      try {
+        // 'load' rather than 'networkidle': Vite's dev client holds an open HMR
+        // channel, and unbundled ESM means a long tail of module requests.
+        const res = await probe(browser, scratch, dev.url, { waitUntil: 'load' })
+        r.dev = res.ok ? 'ok' : 'fail'
+        if (!res.ok) r.error = res.error
+        console.log(
+          `  ${res.ok ? '✓' : '✗'} [${r.id}] dev (${dev.url}) — ${fmtStats(res.stats)}` +
+            `${res.ok ? '' : `\n      ${res.error}`}`
+        )
+      } finally {
+        await stopDevServer(dev)
+      }
+    }
+  } finally {
+    await scratch.close()
+    await browser.close()
   }
-  await browser.close()
+}
+
+/** `npm run dev` on a pre-picked free port; resolves once Vite reports listening. */
+async function startDevServer(dest, id) {
+  const port = await freePort()
+  console.log(`• [${id}] npm run dev…`)
+  // detached: the npm wrapper spawns vite as a child, so killing the npm pid
+  // alone orphans vite. Its own process group lets us signal the whole tree.
+  const child = spawn('npm', ['run', 'dev', '--', '--port', String(port)], {
+    cwd: dest,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+    env: { ...process.env, BROWSER: 'none', NO_COLOR: '1', FORCE_COLOR: '0' },
+  })
+  const rec = { child, log: '' }
+  devServers.add(rec)
+  // Strip ANSI as it arrives. Vite colourises the ready banner even onto a pipe,
+  // and it wraps the PORT itself in escapes ("localhost:\e[1m5173\e[22m/"), so a
+  // regex over the raw stream silently never matches and the wait times out.
+  const capture = (buf) => {
+    rec.log += buf.toString().replace(/\x1b\[[0-9;]*m/g, '')
+  }
+  child.stdout.on('data', capture)
+  child.stderr.on('data', capture)
+
+  let exited = false
+  child.on('exit', () => {
+    exited = true
+  })
+
+  // Parse the port Vite ACTUALLY bound. `--port` is a request, not a guarantee —
+  // without --strictPort Vite silently increments past a busy port, and a check
+  // pointed at the requested port would then be testing whatever else is there.
+  const deadline = Date.now() + 90_000
+  while (Date.now() < deadline) {
+    const m = rec.log.match(/Local:\s+(http:\/\/[^\s/]+)\/?/i)
+    if (m) return { ...rec, ok: true, url: `${m[1]}/` }
+    if (exited) {
+      await stopDevServer(rec)
+      return { ok: false, error: `dev server exited before listening:\n${rec.log.slice(-800)}` }
+    }
+    await sleep(200)
+  }
+  await stopDevServer(rec)
+  return { ok: false, error: `dev server never reported a URL within 90s:\n${rec.log.slice(-800)}` }
+}
+
+async function stopDevServer(rec) {
+  if (!rec?.child) return
+  devServers.delete(rec)
+  killTree(rec.child)
+  // Give the group a beat to unwind before the harness moves on, so a port isn't
+  // still held when the next consumer picks one.
+  for (let i = 0; i < 25 && rec.child.exitCode === null && rec.child.signalCode === null; i++) await sleep(100)
+  if (rec.child.exitCode === null && rec.child.signalCode === null) killTree(rec.child, 'SIGKILL')
+}
+
+function killTree(child, signal = 'SIGTERM') {
+  try {
+    // Negative pid = the whole process group (npm + the vite it spawned).
+    process.kill(-child.pid, signal)
+  } catch {
+    try {
+      child.kill(signal)
+    } catch {
+      /* already gone */
+    }
+  }
 }
 
 function staticServer(dir) {
@@ -660,13 +878,23 @@ if (!NO_RENDER) {
 // ── 5. Report ───────────────────────────────────────────────────────────────
 
 const skipped = results.filter((r) => r.build === 'skip')
-const failed = results.filter((r) => r.build === 'fail' || (!NO_RENDER && r.build === 'ok' && r.render !== 'ok'))
+// A scaffold only passes if its dev server rendered too. `r.dev` is undefined for
+// examples (never dev-checked) and for every consumer under --no-render, so the
+// clause is scoped to records that actually ran one.
+const failed = results.filter(
+  (r) =>
+    r.build === 'fail' ||
+    (!NO_RENDER && r.build === 'ok' && (r.render !== 'ok' || (r.dev !== undefined && r.dev !== 'ok')))
+)
 const passed = results.length - failed.length - skipped.length
 console.log(`\n${'─'.repeat(60)}`)
 console.log(
   `Consumer smoke: ${passed} passed, ${failed.length} failed, ${skipped.length} skipped (of ${results.length})`
 )
-for (const f of failed) console.log(`  ✗ ${f.id} — ${f.build === 'fail' ? 'build' : 'render'} failed`)
+for (const f of failed) {
+  const stage = f.build === 'fail' ? 'build' : f.render !== 'ok' ? 'render' : 'dev'
+  console.log(`  ✗ ${f.id} — ${stage} failed${f.error ? `\n      ${String(f.error).split('\n')[0]}` : ''}`)
+}
 if (assertionFailures.length) {
   console.log(`  ✗ ${assertionFailures.length} assertion(s) failed:`)
   for (const a of assertionFailures) console.log(`      - ${a}`)
@@ -683,7 +911,11 @@ if (passed === 0) {
   process.exit(1)
 }
 rmSync(WORK, { recursive: true, force: true })
-console.log('All packable consumers install + build' + (NO_RENDER ? '' : ' + render') + ' from the local registry. ✓')
+console.log(
+  'All packable consumers install + build' +
+    (NO_RENDER ? '' : ' + render (prod dist, and a live dev server for the scaffolds)') +
+    ' from the local registry. ✓'
+)
 // Exit explicitly: the spawned Verdaccio child keeps the event loop alive, so
 // without this the process hangs after printing success until the job's timeout
 // cancels it (green script, "cancelled" CI job). The `exit` handler kills it.
