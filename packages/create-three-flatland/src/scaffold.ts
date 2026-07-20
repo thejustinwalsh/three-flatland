@@ -6,7 +6,6 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -91,7 +90,11 @@ function copyDir(src: string, dest: string, written: string[]): void {
     const srcPath = join(src, entry)
     const destName = RENAME_FILES[entry] ?? entry
     const destPath = join(dest, destName)
-    if (statSync(srcPath).isDirectory()) {
+    // lstat, not stat: a symlink inside the template would otherwise be
+    // followed and could copy a tree from outside the template root.
+    const srcStat = lstatSync(srcPath)
+    if (srcStat.isSymbolicLink()) continue
+    if (srcStat.isDirectory()) {
       copyDir(srcPath, destPath, written)
     } else {
       assertNotSymlink(destPath)
@@ -102,6 +105,14 @@ function copyDir(src: string, dest: string, written: string[]): void {
 }
 
 export function scaffold(options: ScaffoldOptions): ScaffoldResult {
+  // Enforce the invariant here rather than at each call site. An empty or
+  // whitespace-only target resolves to process.cwd(), and with `overwrite` that
+  // empties the user's current directory. The CLI screens its positional arg,
+  // but the interactive prompt is a second entry point — this covers both, and
+  // anything embedding scaffold() directly.
+  if (options.targetDir.trim() === '') {
+    throw new Error('target directory must not be empty')
+  }
   const root = resolve(options.targetDir)
   const templateDir = join(options.templatesRoot, options.template)
   if (!existsSync(templateDir)) {

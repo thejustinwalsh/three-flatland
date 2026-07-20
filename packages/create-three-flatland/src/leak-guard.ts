@@ -8,8 +8,9 @@
  *   • scripts/consumer-smoke.mjs — guards the project a consumer actually
  *     receives, after a real registry install of the published tarball.
  *
- * Plain .mjs with no dependencies so both a vitest suite and a bare node script
- * can import it without a build step.
+ * Plain TypeScript with no dependencies: vitest imports it directly, and
+ * scripts/consumer-smoke.mjs runs under node's type stripping, the same way
+ * every other script in scripts/ does.
  */
 
 /**
@@ -17,7 +18,7 @@
  * each of these either breaks the project outside this monorepo or leaks
  * monorepo plumbing into a user's tree.
  */
-export const BANNED_EVERYWHERE = [
+export const BANNED_EVERYWHERE: readonly string[] = [
   'catalog:',
   'workspace:*',
   'workspace:^',
@@ -34,4 +35,4 @@ export const BANNED_EVERYWHERE = [
  * routing map is required by the spec to list `@three-flatland/devtools`. So
  * this list is checked against package.json only, never against a file walk.
  */
-export const BANNED_AS_DEPENDENCY = ['@three-flatland/devtools', 'tweakpane']
+export const BANNED_AS_DEPENDENCY: readonly string[] = ['@three-flatland/devtools', 'tweakpane']

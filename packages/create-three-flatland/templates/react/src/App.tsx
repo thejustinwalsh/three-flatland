@@ -1,7 +1,6 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
-import type { OrthographicCamera } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
 
@@ -9,22 +8,23 @@ import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
 extend({ Flatland, Sprite2D })
 
 /**
- * Flatland renders with its own orthographic camera. Mirror its frustum onto
- * R3F's default camera so pointer events raycast in the same space Flatland
- * draws in. Order matters: resize() recomputes the frustum this copy reads,
- * so this component owns both. The Canvas must be `orthographic` — `copy`
- * across mismatched camera types produces a broken projection.
+ * Flatland owns an orthographic camera. Hand that exact camera to R3F as the
+ * default so pointer events raycast through the same object Flatland draws
+ * with — one camera, no copying, nothing to drift. `manual` stops R3F
+ * recomputing the frustum on resize; `flatland.resize()` owns that.
  */
-function SyncEventCamera({ flatland }: { flatland: RefObject<Flatland | null> }) {
-  const camera = useThree((s) => s.camera) as OrthographicCamera
+function UseFlatlandCamera({ flatland }: { flatland: RefObject<Flatland | null> }) {
+  const set = useThree((s) => s.set)
   const size = useThree((s) => s.size)
   useEffect(() => {
     const source = flatland.current
     if (!source) return
     source.resize(size.width, size.height)
-    camera.copy(source.camera)
-    camera.updateProjectionMatrix()
-  }, [camera, size, flatland])
+    // `manual` is read by R3F but not declared on three's camera type.
+    ;(source.camera as typeof source.camera & { manual?: boolean }).manual = true
+    source.camera.updateProjectionMatrix()
+    set({ camera: source.camera })
+  }, [set, size, flatland])
   return null
 }
 
@@ -34,7 +34,7 @@ function Scene() {
   const texture = useLoader(TextureLoader, `${import.meta.env.BASE_URL}sprite.svg`)
   const flatlandRef = useRef<Flatland>(null)
   const spriteRef = useRef<Sprite2D>(null)
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer as WebGPURenderer)
   const [hovered, setHovered] = useState(false)
   const [pressed, setPressed] = useState(false)
 
@@ -52,14 +52,14 @@ function Scene() {
   // Registering in the 'render' phase makes R3F skip its own render pass.
   useFrame(
     () => {
-      flatlandRef.current?.render(gl as unknown as WebGPURenderer)
+      flatlandRef.current?.render(renderer)
     },
     { phase: 'render' }
   )
 
   return (
     <>
-      <SyncEventCamera flatland={flatlandRef} />
+      <UseFlatlandCamera flatland={flatlandRef} />
       <flatland ref={flatlandRef} viewSize={400} clearColor={0x16191e}>
         <sprite2D
           ref={spriteRef}

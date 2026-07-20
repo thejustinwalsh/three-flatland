@@ -67,7 +67,7 @@ const TEMPLATES = ['three', 'react']
 // Leak guard lists — single source of truth, shared with the scaffolder's own
 // unit test so the two can never drift.
 import { BANNED_AS_DEPENDENCY as BANNED_AS_SCAFFOLD_DEPENDENCY, BANNED_EVERYWHERE as BANNED_IN_SCAFFOLD }
-  from '../packages/create-three-flatland/leak-guard.mjs'
+  from '../packages/create-three-flatland/src/leak-guard.ts'
 
 // Assertions that aren't about one consumer building — tarball shape, scaffolded
 // tree hygiene. Collected so a single failure doesn't abort the sweep, and folded
@@ -665,7 +665,29 @@ const isFatalConsole = (t) => !/Failed to load resource|net::ERR_|ERR_ABORTED|st
  * production-dist check and the dev-server check so neither can drift into being
  * the weaker assertion.
  */
-async function probe(browser, scratch, url, { waitUntil }) {
+/**
+ * Hover the canvas centre and prove the frame CHANGES. The scaffolded templates
+ * tint and grow the sprite on pointerover, so a changed frame means R3F's
+ * raycaster and Flatland's camera agree about where the sprite is. That is the
+ * exact coupling most likely to break silently — a static render check passes
+ * happily while pointer events are dead.
+ */
+async function hoverCheck(page, scratch) {
+  const before = await paintCheck(page, scratch)
+  const box = await page.locator('canvas').boundingBox()
+  if (!box) return { ok: false, why: 'no canvas box to hover' }
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.waitForTimeout(700) // the hover lerp needs a few frames
+  const after = await paintCheck(page, scratch)
+  if (!before.stats || !after.stats) return { ok: false, why: 'could not sample frames' }
+  const delta = Math.abs(after.stats.maxStd - before.stats.maxStd)
+  const changed = delta > 0.25 || after.stats.distinct !== before.stats.distinct
+  return changed
+    ? { ok: true, why: `hover changed the frame (Δ maxStd ${delta.toFixed(2)})` }
+    : { ok: false, why: `hover did not change the frame — pointer events are not reaching the sprite (Δ maxStd ${delta.toFixed(2)})` }
+}
+
+async function probe(browser, scratch, url, { waitUntil, hover = false }) {
   const page = await browser.newPage()
   const pageErrors = []
   const consoleErrors = []
@@ -680,6 +702,11 @@ async function probe(browser, scratch, url, { waitUntil }) {
     const fatal = [...pageErrors, ...consoleErrors.filter(isFatalConsole)]
     if (fatal.length) return { ok: false, error: `errors:\n${fatal.slice(0, 5).join('\n')}`, stats: paint.stats }
     if (!paint.ok) return { ok: false, error: paint.why, stats: paint.stats }
+    if (hover) {
+      const h = await hoverCheck(page, scratch)
+      if (!h.ok) return { ok: false, error: h.why, stats: paint.stats }
+      return { ok: true, stats: paint.stats, hover: h.why }
+    }
     return { ok: true, stats: paint.stats }
   } catch (err) {
     return { ok: false, error: String(err).slice(0, 800), stats: null }
@@ -709,13 +736,18 @@ async function renderCheck(built) {
       const port = server.address().port
       let res
       try {
-        res = await probe(browser, scratch, `http://localhost:${port}/`, { waitUntil: 'networkidle' })
+        // Scaffolds additionally prove pointer events reach the sprite.
+        const hover = r.kind === 'scaffold'
+        res = await probe(browser, scratch, `http://localhost:${port}/`, { waitUntil: 'networkidle', hover })
       } finally {
         server.close()
       }
       r.render = res.ok ? 'ok' : 'fail'
       if (!res.ok) r.error = res.error
-      console.log(`  ${res.ok ? '✓' : '✗'} [${r.id}] render — ${fmtStats(res.stats)}${res.ok ? '' : `\n      ${res.error}`}`)
+      console.log(
+        `  ${res.ok ? '✓' : '✗'} [${r.id}] render — ${fmtStats(res.stats)}` +
+          `${res.hover ? ` · ${res.hover}` : ''}${res.ok ? '' : `\n      ${res.error}`}`
+      )
     }
 
     // ── dev-server check — scaffolds only ────────────────────────────────────
@@ -736,12 +768,12 @@ async function renderCheck(built) {
       try {
         // 'load' rather than 'networkidle': Vite's dev client holds an open HMR
         // channel, and unbundled ESM means a long tail of module requests.
-        const res = await probe(browser, scratch, dev.url, { waitUntil: 'load' })
+        const res = await probe(browser, scratch, dev.url, { waitUntil: 'load', hover: true })
         r.dev = res.ok ? 'ok' : 'fail'
         if (!res.ok) r.error = res.error
         console.log(
           `  ${res.ok ? '✓' : '✗'} [${r.id}] dev (${dev.url}) — ${fmtStats(res.stats)}` +
-            `${res.ok ? '' : `\n      ${res.error}`}`
+            `${res.hover ? ` · ${res.hover}` : ''}${res.ok ? '' : `\n      ${res.error}`}`
         )
       } finally {
         await stopDevServer(dev)

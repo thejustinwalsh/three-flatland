@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { formatTargetDir, isEmptyDir, isValidPackageName, scaffold, toValidPackageName } from './scaffold'
 // Single source of truth, shared with scripts/consumer-smoke.mjs.
-import { BANNED_AS_DEPENDENCY, BANNED_EVERYWHERE } from '../leak-guard.mjs'
+import { BANNED_AS_DEPENDENCY, BANNED_EVERYWHERE } from './leak-guard'
 
 const TEMPLATES_ROOT = join(import.meta.dirname, '..', 'templates')
 
@@ -236,6 +236,36 @@ describe('scaffold semantics (fixture template)', () => {
       scaffold({ targetDir: root, template: 'three', packageName: 'my-game', templatesRoot, ignoreExisting: true })
     ).toThrow(/symlink/)
     expect(readdirSync(victim)).toEqual([])
+  })
+
+  // Regression — PR review, 2026-07-20. scaffold() itself must reject an empty
+  // target; the CLI screened its positional arg but the interactive prompt was a
+  // second, unguarded entry point into resolve('') === cwd.
+  it('refuses an empty or whitespace-only target directory', () => {
+    for (const bad of ['', '   ']) {
+      expect(() =>
+        scaffold({ targetDir: bad, template: 'three', packageName: 'my-game', templatesRoot: TEMPLATES_ROOT })
+      ).toThrow(/must not be empty/)
+    }
+  })
+
+  // Regression — PR review, 2026-07-20. A symlink inside the template was
+  // followed by statSync and could copy a tree from outside the template root.
+  it('does not follow symlinks inside the template source', () => {
+    const outside = join(work, 'outside')
+    mkdirSync(outside)
+    writeFileSync(join(outside, 'secret.txt'), 'x')
+    const fixture = join(work, 'tpl', 'three')
+    mkdirSync(fixture, { recursive: true })
+    writeFileSync(join(fixture, 'index.html'), '<!doctype html>')
+    writeFileSync(join(fixture, 'package.json'), '{"name":"t","private":true,"version":"0.0.0"}\n')
+    symlinkSync(outside, join(fixture, 'linked'))
+
+    const root = join(work, 'app')
+    scaffold({ targetDir: root, template: 'three', packageName: 'my-game', templatesRoot: join(work, 'tpl') })
+    expect(existsSync(join(root, 'index.html'))).toBe(true)
+    expect(existsSync(join(root, 'linked'))).toBe(false)
+    expect(existsSync(join(root, 'linked', 'secret.txt'))).toBe(false)
   })
 
   // Regression — adversarial review, 2026-07-19. A lone '/' normalized to '',

@@ -91,6 +91,11 @@ async function main(): Promise<number> {
       })
       if (prompts.isCancel(answer)) return cancelled()
       targetDir = formatTargetDir(answer)
+      // '/' and whitespace normalize to '', which resolve() turns into cwd.
+      if (targetDir === '') {
+        console.error('Project name must not be empty.')
+        return 1
+      }
     }
     if (!isTemplate(template)) {
       if (template !== undefined) {
