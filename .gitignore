@@ -60,12 +60,7 @@ temp/
 # Agents
 settings.local.json
 
-# AGENTS.md is the source of truth; every sibling CLAUDE.md is a generated
-# `@AGENTS.md` pointer and is never committed. Repo pointers come from
-# scripts/sync-agents-pairs.ts (Claude session start, guarded pre-commit).
-# The create-three-flatland template pointers come from the same script in
-# --templates mode, run at that package's build and prepack, so they exist for
-# the scaffold tests and ship inside the published tarball.
+# Generated from AGENTS.md by scripts/sync-agents-pairs.ts
 CLAUDE.md
 
 # Vendor Library for examples to pull from

@@ -1,33 +1,10 @@
 /**
- * Generates the CLAUDE.md file that sits beside every AGENTS.md.
+ * Generates the CLAUDE.md that sits beside every AGENTS.md.
  *
- * AGENTS.md is the single source of truth for agent instructions. Claude Code
- * reads CLAUDE.md, so every AGENTS.md gets a sibling. There are TWO modes, and
- * the difference is deliberate:
- *
- *   Repo (default)   — CLAUDE.md is a one-line `@AGENTS.md` import. Cheap, and
- *                      the two can never drift. Gitignored; recreated on Claude
- *                      session start and guarded on commit.
- *
- *   Templates        — CLAUDE.md is a byte-identical COPY of AGENTS.md. A
- *   (--templates)      scaffolded user project must not depend on Claude Code's
- *                      `@` import resolving; it just gets both files, 1:1, no
- *                      magic. This rule is special to templates we publish.
- *
- * Usage: pnpm sync:agents
- *
- * Flags:
- *   --verify             CI/commit check; exit 1 on drift, no writes.
- *   --templates          Write byte-identical copies for the shipped templates
- *                        instead of pointers for the repo. Run from
- *                        create-three-flatland's build (so scaffold tests see
- *                        them) and prepack (so they land in the published
- *                        tarball). Deliberately NOT run by the Claude
- *                        session-start hook: those files are product, not
- *                        developer ergonomics.
- *
- * Both sets are gitignored and generated; the two modes cover disjoint paths,
- * so neither can clobber the other.
+ * Usage: pnpm sync:agents [--verify] [--templates]
+ *   --verify      exit 1 on drift, no writes
+ *   --templates   byte-identical copies for the shipped templates, instead of
+ *                 `@AGENTS.md` pointers for the repo. Disjoint path sets.
  */
 
 import { execFileSync } from 'node:child_process'

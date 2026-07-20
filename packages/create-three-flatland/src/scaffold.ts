@@ -64,12 +64,7 @@ function emptyDir(dir: string): void {
   }
 }
 
-/**
- * Refuse to write through an existing symlink. With "ignore files and continue"
- * on a non-empty target, a pre-existing `src` symlink would otherwise scatter
- * template files into whatever it points at, and a symlinked package.json would
- * be followed again during the name rewrite.
- */
+/** Refuse to write through a symlink — it would scatter files outside the target. */
 function assertNotSymlink(path: string): void {
   let stats
   try {
@@ -90,8 +85,7 @@ function copyDir(src: string, dest: string, written: string[]): void {
     const srcPath = join(src, entry)
     const destName = RENAME_FILES[entry] ?? entry
     const destPath = join(dest, destName)
-    // lstat, not stat: a symlink inside the template would otherwise be
-    // followed and could copy a tree from outside the template root.
+    // lstat, not stat: don't follow symlinks out of the template root.
     const srcStat = lstatSync(srcPath)
     if (srcStat.isSymbolicLink()) continue
     if (srcStat.isDirectory()) {
@@ -105,11 +99,7 @@ function copyDir(src: string, dest: string, written: string[]): void {
 }
 
 export function scaffold(options: ScaffoldOptions): ScaffoldResult {
-  // Enforce the invariant here rather than at each call site. An empty or
-  // whitespace-only target resolves to process.cwd(), and with `overwrite` that
-  // empties the user's current directory. The CLI screens its positional arg,
-  // but the interactive prompt is a second entry point — this covers both, and
-  // anything embedding scaffold() directly.
+  // An empty target resolves to cwd, which --overwrite would then empty.
   if (options.targetDir.trim() === '') {
     throw new Error('target directory must not be empty')
   }
