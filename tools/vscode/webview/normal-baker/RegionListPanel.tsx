@@ -90,7 +90,7 @@ const s = stylex.create({
   // requires a definite height for the default bodyOverflow="auto" to
   // actually scroll instead of collapsing to 0 (Panel's
   // flex-1-with-no-stretching-ancestor bug — see design-system
-  // CLAUDE.md). The sidebar's Regions/Info grid split gives this row a
+  // AGENTS.md). The sidebar's Regions/Info grid split gives this row a
   // definite height (the user drags the splitter to trade list space
   // against the Info panel), so fill it.
   bounded: {

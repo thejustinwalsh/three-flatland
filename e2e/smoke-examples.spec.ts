@@ -85,7 +85,7 @@ const CAPTURE_EXTS = ['png', 'webp', 'webm'] as const
 /** Bidirectional discovery + validation:
  *
  *  1. Every `examples/three/<slug>/` must have a paired
- *     `examples/react/<slug>/` (CLAUDE.md: "examples always exist in
+ *     `examples/react/<slug>/` (AGENTS.md: "examples always exist in
  *     pairs"), unless allow-listed in SOURCE_ONLY.
  *  2. Every `examples/react/<slug>/` must have a paired
  *     `examples/three/<slug>/`, same exception.

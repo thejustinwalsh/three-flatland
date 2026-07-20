@@ -4,7 +4,7 @@
  * under scripts/, not e2e/specs/, so `pnpm test:e2e` never picks it up).
  * Launches a real VS Code instance with the Bearded Theme installed and
  * active (Black & Gold — matches the docs site's own gem-palette design
- * language, see the design-system CLAUDE.md's "bearded-theme/black"
+ * language, see the design-system AGENTS.md's "bearded-theme/black"
  * citation), opens each FL tool against real fixture data, and captures
  * a full-window screenshot of each for the marketplace README.
  *
@@ -253,7 +253,7 @@ async function main() {
         // a one-off asset script, not a latency-sensitive e2e test. Atlas
         // specifically needs the longest margin: it's the first tool
         // opened this session, so its lazy-loaded canvas chunk (see
-        // tools/vscode/CLAUDE.md's "Bundle size & loading") is a genuine
+        // tools/vscode/AGENTS.md's "Bundle size & loading") is a genuine
         // cold start; every tool after it reuses the already-warm chunk.
         // Individual shots can override via settleMs (e.g. audio's
         // codelens-service sidecar cold-start).

@@ -4,7 +4,7 @@ import { directionColor } from './direction'
 import { fitRegionLabelFontSize } from './regionLabelFit'
 
 // `RectOverlay` (tools/preview/src/RectOverlay.tsx) is deliberately
-// single-color for every rect — see its CLAUDE.md: "No per-rect color or
+// single-color for every rect — see its AGENTS.md: "No per-rect color or
 // stroke prop." Coloring each region by its resolved direction therefore
 // needs its own non-interactive fill layer, rendered as a sibling
 // underneath RectOverlay so RectOverlay still owns all pointer

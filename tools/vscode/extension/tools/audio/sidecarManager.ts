@@ -30,7 +30,7 @@ const BINARY_NAME = process.platform === 'win32' ? 'codelens-service.exe' : 'cod
 
 /**
  * Production (VSIX-packaged) candidate path, per the convention documented
- * in `tools/codelens-service/CLAUDE.md`: `<extensionUri>/bin/<platform>-
+ * in `tools/codelens-service/AGENTS.md`: `<extensionUri>/bin/<platform>-
  * <arch>/codelens-service`. Actually bundling the binary into the VSIX at
  * that path is out of scope for this unit — packaging is a separate,
  * later concern — but the resolution order is wired up now so that work

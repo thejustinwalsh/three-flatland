@@ -11,7 +11,7 @@
 // e2e/fixtures/workspace/src/sounds.ts's `LASER`), not a general JS
 // expression evaluator.
 //
-// `defRange` (#148 Z7a, tools/codelens-service/CLAUDE.md's contract) is
+// `defRange` (#148 Z7a, tools/codelens-service/AGENTS.md's contract) is
 // the initializer VALUE range only — this module's parsing has assumed
 // that shape all along, so Z7a's sidecar fix aligns reality with what
 // was already written here rather than requiring a change; see the

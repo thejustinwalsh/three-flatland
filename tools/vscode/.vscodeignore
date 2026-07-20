@@ -45,6 +45,7 @@ node_modules/**
 
 # Maintainer/agent-facing docs, not user-facing — README.md is the only
 # doc an installed extension needs to carry.
+AGENTS.md
 CLAUDE.md
 PUBLISHING.md
 .impeccable/**

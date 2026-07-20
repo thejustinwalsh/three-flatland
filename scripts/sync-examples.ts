@@ -180,7 +180,7 @@ function main(): void {
   console.log('')
 
   // Use the three variant as the slug source — three and react are
-  // assumed paired (per examples/CLAUDE.md "Examples always exist in
+  // assumed paired (per examples/AGENTS.md "Examples always exist in
   // pairs"). Order is driven by each example MDX's `sort` frontmatter
   // value — examples with explicit sort come first (asc), then any
   // unsorted slugs alphabetically. The sortedIndex feeds into the gem

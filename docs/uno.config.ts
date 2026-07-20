@@ -40,7 +40,7 @@ export default defineConfig({
       // Bearded-theme-inspired technicolor gem palette — names match
       // theme.css custom properties so utilities resolve to the same values
       // Starlight's overrides consume via `var(--…)`. See Design Context
-      // (CLAUDE.md) for the gem taxonomy.
+      // (AGENTS.md) for the gem taxonomy.
       bg: 'var(--background)',
       fg: 'var(--foreground)',
       'bg-1': 'var(--gray-7)',
@@ -82,7 +82,7 @@ export default defineConfig({
       teal: 'var(--teal)',
     },
     fontFamily: {
-      // Typography stack per Design Context (CLAUDE.md).
+      // Typography stack per Design Context (AGENTS.md).
       // `display` is reserved for the Silkscreen wordmark only.
       display: ['Silkscreen', 'system-ui', 'sans-serif'],
       sans: ['Public Sans', 'system-ui', 'sans-serif'],

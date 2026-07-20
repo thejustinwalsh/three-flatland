@@ -35,7 +35,7 @@ export function tokenizeNumberArrayLiteral(text: string): string[] | null {
  * nested expressions, no function calls, just a bracket-wrapped,
  * comma-separated list (one optional trailing comma). Deliberately
  * conservative: the sidecar reports `defRange` for WHATEVER initializer
- * is there without validating its shape (tools/codelens-service/CLAUDE.md),
+ * is there without validating its shape (tools/codelens-service/AGENTS.md),
  * so this is the one place both the read path (resolveParams) and the
  * write path (host.ts's zzfx/save) agree on what's safe to treat as "a
  * preset array." */

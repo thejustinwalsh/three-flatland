@@ -32,7 +32,7 @@
 //
 // audio-play (Node sidecar script, platform-independent):
 //   tools/audio-play builds with `bundle: false` deliberately (matches
-//   codelens-service's own convention — see audio-play/CLAUDE.md's
+//   codelens-service's own convention — see tools/audio-play/AGENTS.md's
 //   "Building" section) so its normal `dist/sidecar.js` stays a thin,
 //   multi-file ESM build for dev-mode use (`devSidecarPath()` in
 //   playSidecarManager.ts still points there, untouched by this script).

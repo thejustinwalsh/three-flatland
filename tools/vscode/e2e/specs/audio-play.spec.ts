@@ -30,7 +30,7 @@
 // process was spawned," not "the process is alive and answering the wire
 // protocol." Every test below calls `ping()` (id-correlated, answered by
 // `commandHandler.ts` without ever touching `AudioContext` — see
-// `tools/audio-play/CLAUDE.md`'s device-tolerance section) to prove
+// `tools/audio-play/AGENTS.md`'s device-tolerance section) to prove
 // PROCESS liveness first, deterministically, with or without a real
 // audio device, before/alongside any pid-based assertion.
 import { expect, test } from '../fixtures'

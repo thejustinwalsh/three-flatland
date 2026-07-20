@@ -10,7 +10,7 @@
 
 The skia wasm port (`packages/skia/`) predates the patterns we honed during the basisu port in May 2026. The basisu work distilled a prescriptive recipe for Zig + wasm32-wasi + uwasi + wasm-opt that the skia build has not yet adopted. The packaged outputs (`dist/skia-gl/`, `dist/skia-wgpu/`) function correctly but carry size and complexity costs the cookbook patterns would eliminate.
 
-Both `packages/image/CLAUDE.md` and `packages/skia/CLAUDE.md` reference this spec as the canonical migration. The skia CLAUDE.md explicitly warns agents not to copy skia's current `build.zig` shape as a reference for new work.
+Both `packages/image/AGENTS.md` and `packages/skia/AGENTS.md` reference this spec as the canonical migration. The skia AGENTS.md explicitly warns agents not to copy skia's current `build.zig` shape as a reference for new work.
 
 ## Current state — concrete gaps vs the cookbook
 
@@ -97,7 +97,7 @@ Each task should land as a separate commit. Build + test must pass after each. R
 
 - After T1–T7 land, run `wasm-opt --metrics` against both variants and compare against the cookbook's "healthy build signals" table (`.library/zig-wasi/cookbook.md` §15).
 - Document the before/after sizes in the migration commit message.
-- Update `packages/skia/CLAUDE.md` to remove the "older shape" callouts now that we're cookbook-compliant. Replace with "follows the cookbook patterns; see `.library/zig-wasi/cookbook.md`."
+- Update `packages/skia/AGENTS.md` to remove the "older shape" callouts now that we're cookbook-compliant. Replace with "follows the cookbook patterns; see `.library/zig-wasi/cookbook.md`."
 
 ## Risks / open questions
 
@@ -119,4 +119,4 @@ Each task should land as a separate commit. Build + test must pass after each. R
 - Same for `dist/skia-wgpu/skia_wgpu.wasm`.
 - Both variants pass existing tests + a browser smoke test (GL renders a path; WebGPU renders a path).
 - Final binary sizes documented and reduced from current.
-- `packages/skia/CLAUDE.md` updated to remove "older shape" callouts.
+- `packages/skia/AGENTS.md` updated to remove "older shape" callouts.

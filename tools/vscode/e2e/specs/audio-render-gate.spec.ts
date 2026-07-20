@@ -9,7 +9,7 @@
 // `child_process.spawn(process.execPath, …, { env: { ELECTRON_RUN_AS_NODE:
 // '1' } })`, the exact mechanism fixtures.ts's (now-removed) `runOracle`/
 // `warmUpAudioPipeline` used, and the exact mechanism the real audio-play
-// sidecar itself is spawned with (see tools/audio-play/CLAUDE.md's "hard
+// sidecar itself is spawned with (see tools/audio-play/AGENTS.md's "hard
 // prototype gate").
 //
 // `offlineRenderProbe.mjs` covers zzfx/zzfxm's `playSampleChannels` output
@@ -18,7 +18,7 @@
 // (`playWadSynth`/`playToneSynth`) with their own historically-real
 // Electron/Node silent-bug classes (Wad's noise-buffer, Tone's
 // AudioWorklet crash / `getConstant` trap — see `tools/audio-play/
-// CLAUDE.md`). `offlineWadProbe.mjs`/`offlineWadNoiseProbe.mjs` and
+// AGENTS.md`). `offlineWadProbe.mjs`/`offlineWadNoiseProbe.mjs` and
 // `offlineToneProbe.mjs`/`offlineTonePluckProbe.mjs` close that gap the
 // same way: render a real production play through a real
 // `OfflineAudioContext` under the real `Code Helper (Plugin)` binary and
@@ -330,7 +330,7 @@ test.describe('FL Audio: offline render audibility gate', () => {
     // `window.isSecureContext`/`self` — the exact path that used to CRASH
     // THE ENTIRE SIDECAR PROCESS (an unhandled promise rejection, not a
     // clean Nack) before the shim fix, documented in
-    // `tools/audio-play/CLAUDE.md`. `offlineToneProbe.mjs` above exercises
+    // `tools/audio-play/AGENTS.md`. `offlineToneProbe.mjs` above exercises
     // plain `Tone.Synth`, which never touches this path at all — a
     // regression that deleted the shims could stay green there. Verified
     // directly: with `setupToneEnvironment`'s `isSecureContext` line

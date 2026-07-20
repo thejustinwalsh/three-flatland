@@ -334,7 +334,7 @@ test.describe('FL Audio: wad.synth and tone.synth Play/Stop lenses (#47)', () =>
   // used to throw inside an unawaited `.then()` (`window.isSecureContext`
   // undefined in our shim `window`) and crash the ENTIRE sidecar process,
   // silently killing every other in-flight sound with it (see
-  // `tools/audio-play/CLAUDE.md`'s AudioWorklet section) — is structurally
+  // `tools/audio-play/AGENTS.md`'s AudioWorklet section) — is structurally
   // UNREACHABLE from this test on a device-less runner. A regression that
   // deleted the `isSecureContext`/`self` fix (`toneEngineLoader.ts`'s
   // `setupToneEnvironment`) entirely would still pass THIS test, because

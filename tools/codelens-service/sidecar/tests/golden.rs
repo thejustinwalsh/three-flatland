@@ -9,7 +9,7 @@
 //! real wire protocol (not by calling `find_zzfx_calls` directly) with the
 //! synthetic URI `file:///golden.ts` — see the header comment in
 //! `golden.findings.json`'s sibling `golden.ts` and
-//! `tools/codelens-service/CLAUDE.md` for how to regenerate it if the
+//! `tools/codelens-service/AGENTS.md` for how to regenerate it if the
 //! fixture or the extraction logic changes.
 
 use std::io::{BufReader, Read, Write};
@@ -133,7 +133,7 @@ fn document_parse_matches_the_golden_fixture_exactly() {
         actual_findings, golden_findings,
         "document/parse output for the golden fixture drifted from golden.findings.json.\n\
          If this is an intentional protocol/extraction change, regenerate the golden file \
-         (see tools/codelens-service/CLAUDE.md) and update BOTH this test and \
+         (see tools/codelens-service/AGENTS.md) and update BOTH this test and \
          src/goldenFixture.test.ts's expectations together."
     );
     assert_eq!(
@@ -324,7 +324,7 @@ fn document_parse_matches_the_golden_fixture_exactly() {
     }
 
     // wad.synth: every oscillator/noise keyword IS a PLAYABLE wad.synth
-    // finding (a dedicated kind — see tools/codelens-service/CLAUDE.md),
+    // finding (a dedicated kind — see tools/codelens-service/AGENTS.md),
     // proven by arg_range slice-equality against the real source text, same
     // discipline as the audio.file positives above. The three decoys —
     // 'mic' (live input), the sprite-only map, and the Wad.presets member

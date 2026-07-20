@@ -1659,7 +1659,7 @@
     }
 
     /* ─────────────────────────────────────────────────────────────────────
-     * Motion-as-craft primitives — see Design Context (CLAUDE.md).
+     * Motion-as-craft primitives — see Design Context (AGENTS.md).
      * Asymmetric: ambient layers (texture, scroll-reveal) stay quiet so the
      * interactive moments (light, holo) can land hard. JS runtime in
      * `docs/src/scripts/motion.ts` drives `--mx`/`--my`/`--tilt-x`/`--tilt-y`

@@ -2275,7 +2275,7 @@ OK: encoded 64×64 to <N> bytes in <Mms> — WASM works in webview
 ```
 
 If it shows `FAIL: ...`, capture the error in the OutputChannel/devtools console and document the cause. Common issues:
-- CSP missing `wasm-unsafe-eval` (already set by `composeToolHtml` per CLAUDE.md).
+- CSP missing `wasm-unsafe-eval` (already set by `composeToolHtml` per AGENTS.md).
 - WASM file resolution — vite emits `assets/<hash>.wasm`; `composeToolHtml` URL substitution covers this for `%FL_BASE%` — verify the network request actually completes against `vscode-webview://`.
 
 - [ ] **Step 7: Document and commit**

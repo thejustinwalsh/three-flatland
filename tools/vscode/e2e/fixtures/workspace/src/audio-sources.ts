@@ -6,7 +6,7 @@
 // coverage grows to — one fixture file per spec file's "whole document"
 // scope, not a shared grab-bag every test has to filter around.
 //
-// Covers all five Finding kinds tools/codelens-service/CLAUDE.md
+// Covers all five Finding kinds tools/codelens-service/AGENTS.md
 // documents: zzfx.call (literal + named-const, mirroring sounds.ts's own
 // positive cases so this file's own zzfx.call lenses are pinned too),
 // zzfxm.song (bare-identifier varRef, positional literal, and a
@@ -267,7 +267,7 @@ export function playToneChord() {
 // standardized-audio-context (none of the other 8 classes do). Dedicated
 // coverage here specifically because that path used to crash the whole
 // sidecar process (window.isSecureContext undefined) — see audio-play's
-// CLAUDE.md and sidecar.ts's module-scope fix comment.
+// AGENTS.md and sidecar.ts's module-scope fix comment.
 export function playTonePluck() {
   new Tone.PluckSynth().toDestination().triggerAttackRelease('C4', '8n')
 }

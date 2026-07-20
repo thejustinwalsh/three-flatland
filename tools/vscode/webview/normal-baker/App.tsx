@@ -10,7 +10,7 @@ import type { NormalSourceDescriptor } from '@three-flatland/normals'
 
 // Code-split the R3F + three.js + three-flatland chunk out of the initial
 // paint critical path — same pattern as the atlas/merge tools. See
-// tools/vscode/CLAUDE.md "Bundle size & loading".
+// tools/vscode/AGENTS.md "Bundle size & loading".
 const CanvasStage = lazy(() => import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage })))
 
 import {
@@ -102,7 +102,7 @@ const s = stylex.create({
   },
   // Regions (list) / splitter / Info (inspector + preview) rows — the
   // 4px splitter is the only inter-panel gap (no grid gap on top of it,
-  // per tools/vscode/CLAUDE.md's panel-spacing rule). Both rows keep a
+  // per tools/vscode/AGENTS.md's panel-spacing rule). Both rows keep a
   // floor so neither can be collapsed away entirely.
   sidebar: {
     minWidth: 0,

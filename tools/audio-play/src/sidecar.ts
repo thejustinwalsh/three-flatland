@@ -9,7 +9,7 @@
  * entitlement the main `Code`/Electron binary does NOT have, which is
  * what makes loading node-web-audio-api's unsigned prebuilt `.node`
  * binary possible at all on macOS's hardened runtime. See
- * `tools/audio-play/CLAUDE.md` for the full prototype-gate writeup — this
+ * `tools/audio-play/AGENTS.md` for the full prototype-gate writeup — this
  * comment is the load-bearing "why," not decoration.
  *
  * Importing `./audioContextGuard.js` FIRST (before `zzfx`/`@zzfx-studio/
@@ -24,7 +24,7 @@
  * try/catch this package controls — an unguarded throw there would abort
  * zzfx's module evaluation and crash this whole process before a single
  * line below has run. See `audioContextGuard.ts`'s file doc comment for
- * the full mechanism (and `tools/audio-play/CLAUDE.md`'s device-tolerance
+ * the full mechanism (and `tools/audio-play/AGENTS.md`'s device-tolerance
  * section for the production rationale).
  *
  * Synthesis stays real, unmodified upstream zzfx/zzfxm — `ZZFX.buildSamples`
@@ -190,7 +190,7 @@ function loadToneEngineBounded(): Promise<ToneEngine> {
 // monkey-patch, both the bare-global AND `window`-scoped copies) and the
 // noise-buffer `copyToChannel` repair now live in `wadLoader.ts`'s
 // `loadWadConstructor` — see that file for the full empirical trace
-// (`tools/audio-play/CLAUDE.md`'s "noise-buffer" pitfall has the original
+// (`tools/audio-play/AGENTS.md`'s "noise-buffer" pitfall has the original
 // write-up). `resetWadConstructorCache` (also from `wadLoader.ts`) is
 // called from the lifecycle's `onReacquired` hook below, since Wad
 // captures its context PERMANENTLY at CJS module load — the only cure
@@ -223,7 +223,7 @@ const handler = createCommandHandler({
   },
   // Fire-and-forget: `fs.readFile` + `decodeAudioData` are both async,
   // but `handleCommand` (and the `rl.on('line', ...)` loop it runs
-  // inside) must never block on them — see `tools/audio-play/CLAUDE.md`'s
+  // inside) must never block on them — see `tools/audio-play/AGENTS.md`'s
   // "the async wrinkle". A read/decode failure is reported directly via
   // `send`, not thrown — there is no longer a live `handleCommand` call
   // stack to throw into by the time this `catch` runs. `onStarted` hands

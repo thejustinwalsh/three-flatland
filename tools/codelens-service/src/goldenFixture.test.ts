@@ -10,7 +10,7 @@
  * Rust side actually produces).
  *
  * See the header comment in `golden.ts` and
- * `tools/codelens-service/CLAUDE.md` for how to regenerate the golden JSON
+ * `tools/codelens-service/AGENTS.md` for how to regenerate the golden JSON
  * if the fixture or the extraction logic changes.
  */
 
@@ -185,7 +185,7 @@ describe.skipIf(!CARGO_AVAILABLE)('golden interop fixture', () => {
     }
 
     // wad.synth: every oscillator/noise keyword IS a PLAYABLE wad.synth
-    // finding (a dedicated kind — see tools/codelens-service/CLAUDE.md),
+    // finding (a dedicated kind — see tools/codelens-service/AGENTS.md),
     // proven by argRange slice-equality against the real source text, the
     // TS twin of golden.rs's same block. The three decoys — 'mic' (live
     // input), the sprite-only map, and the Wad.presets member expression —
