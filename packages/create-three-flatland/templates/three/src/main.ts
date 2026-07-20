@@ -20,6 +20,18 @@ function on<T extends EventTarget>(target: T, type: string, handler: EventListen
   listeners.push(() => target.removeEventListener(type, handler))
 }
 
+/** Fade the loading overlay out, then remove it. Instant under reduced motion. */
+function dismissLoader(): void {
+  const loader = document.querySelector<HTMLElement>('#loader')
+  if (!loader) return
+  const done = () => loader.remove()
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return done()
+  loader.addEventListener('transitionend', done, { once: true })
+  // Fallback: if the transition never fires (tab hidden, reduced-motion race).
+  setTimeout(done, 600)
+  loader.dataset.loaded = 'true'
+}
+
 async function main() {
   const container = document.querySelector<HTMLDivElement>('#app')!
 
@@ -37,8 +49,8 @@ async function main() {
   await renderer.init()
   const texture = await TextureLoader.load(`${import.meta.env.BASE_URL}sprite.svg`)
 
-  // Renderer + texture ready — drop the loading overlay.
-  document.querySelector('#loader')?.remove()
+  // Renderer + texture ready — fade the loading overlay out, then drop it.
+  dismissLoader()
 
   const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] })
   sprite.scale.set(SPRITE_SCALE.idle, SPRITE_SCALE.idle, 1)

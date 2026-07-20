@@ -13,9 +13,16 @@ extend({ Flatland, Sprite2D })
 function Scene() {
   const texture = useLoader(TextureLoader, `${import.meta.env.BASE_URL}sprite.svg`)
 
-  // Suspense resolved, so the scene is ready — drop index.html's loading screen.
+  // Suspense resolved, so the scene is ready — fade index.html's overlay out.
   useEffect(() => {
-    document.querySelector('#loader')?.remove()
+    const loader = document.querySelector<HTMLElement>('#loader')
+    if (!loader) return
+    const done = () => loader.remove()
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return done()
+    loader.addEventListener('transitionend', done, { once: true })
+    const t = setTimeout(done, 600)
+    loader.dataset.loaded = 'true'
+    return () => clearTimeout(t)
   }, [])
   const flatlandRef = useRef<Flatland>(null)
   const set = useThree((s) => s.set)

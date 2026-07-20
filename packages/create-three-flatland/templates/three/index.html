@@ -23,14 +23,6 @@
       }
       /* Loading screen overlay — removed by src/main.ts once the renderer has
          initialised and the texture has resolved. */
-      #loader {
-        position: absolute;
-        inset: 0;
-        display: grid;
-        place-items: center;
-        background: #16191e;
-        pointer-events: none;
-      }
       .fl-stack {
         display: grid;
         justify-items: center;
@@ -85,6 +77,22 @@
           animation: none;
           opacity: 1;
         }
+      }
+      /* Loading overlay — identical in both templates. Fades out once the
+         scene is ready, then removes itself. */
+      #loader {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        display: grid;
+        place-items: center;
+        background: #16191e;
+        pointer-events: none;
+        opacity: 1;
+        transition: opacity 320ms ease;
+      }
+      #loader[data-loaded='true'] {
+        opacity: 0;
       }
       #fullscreen {
         position: absolute;

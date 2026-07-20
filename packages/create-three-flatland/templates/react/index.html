@@ -25,17 +25,6 @@
          tracks the same readiness signal — no removal code, no JS. It sits
          opaque above the bare Suspense fallback. On browsers without :has()
          the overlay simply never shows, which fails safe. */
-      #loader {
-        position: fixed;
-        inset: 0;
-        display: none;
-        place-items: center;
-        background: #16191e;
-        pointer-events: none;
-      }
-      #root:not(:has(canvas)) + #loader {
-        display: grid;
-      }
       .fl-stack {
         display: grid;
         justify-items: center;
@@ -90,6 +79,22 @@
           animation: none;
           opacity: 1;
         }
+      }
+      /* Loading overlay — identical in both templates. Fades out once the
+         scene is ready, then removes itself. */
+      #loader {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        display: grid;
+        place-items: center;
+        background: #16191e;
+        pointer-events: none;
+        opacity: 1;
+        transition: opacity 320ms ease;
+      }
+      #loader[data-loaded='true'] {
+        opacity: 0;
       }
     </style>
   </head>
