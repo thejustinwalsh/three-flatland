@@ -10,15 +10,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: lts/*
           cache: 'pnpm'
@@ -57,7 +57,7 @@ jobs:
         working-directory: tools/codelens-service/sidecar
 
       - name: Restore Nx cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: .nx/cache
           key: ${{ runner.os }}-nx-current-${{ github.sha }}
@@ -70,7 +70,7 @@ jobs:
       # long-term — a new stable release just adds a new subfolder under
       # this path rather than invalidating the whole cache.
       - name: Cache VS Code test download
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: tools/vscode/.vscode-test
           key: ${{ runner.os }}-vscode-test-stable
@@ -100,7 +100,7 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: vscode-e2e-report
           path: tools/vscode/e2e/playwright-report/
@@ -108,7 +108,7 @@ jobs:
 
       - name: Upload Playwright traces
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: vscode-e2e-traces
           path: tools/vscode/e2e/test-results/

@@ -42,13 +42,13 @@ jobs:
     if: needs.smoke.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: lts/*
           cache: pnpm
@@ -60,7 +60,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Restore Nx cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: .nx/cache
           key: ${{ runner.os }}-nx-current-${{ github.sha }}
@@ -70,7 +70,7 @@ jobs:
       - name: Build docs
         run: pnpm exec nx build docs
 
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/dist
 

@@ -17,7 +17,7 @@ jobs:
       NODE_OPTIONS: --max-old-space-size=8192
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
           # Full history so `nx affected` can compute the merge-base against the
@@ -25,10 +25,10 @@ jobs:
           fetch-depth: 0
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js ${{ inputs.node-version }}
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'pnpm'
@@ -57,7 +57,7 @@ jobs:
           fi
 
       - name: Cache Nx
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .nx/cache
           key: ${{ runner.os }}-nx-${{ inputs.node-tag }}-${{ github.sha }}
@@ -65,7 +65,7 @@ jobs:
             ${{ runner.os }}-nx-${{ inputs.node-tag }}-
 
       - name: Cache Skia WASM tools
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: packages/skia/.tools
           key: ${{ runner.os }}-skia-tools-${{ hashFiles('packages/skia/package.json') }}
