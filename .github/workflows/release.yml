@@ -165,9 +165,11 @@ jobs:
   # tagged, noted from its changesets-generated CHANGELOG, and pinned to the same
   # commit npm published.
   #
-  # `environment: release` is required to read the AZURE_* credentials, which are
-  # scoped to that environment. That means this job takes its own approval —
-  # the release job's approval does not carry over to it.
+  # `environment: release` is required to read VSCODE_PAT / OVSX_PAT, which are
+  # scoped to that environment rather than the repo. That means this job takes
+  # its own approval — the release job's approval does not carry over. Worth the
+  # second click: publish tokens reachable only from an approved deployment beat
+  # repo-level secrets any workflow could read.
   publish-vsix:
     name: Publish FL Tools (Marketplace + Open VSX)
     needs: [release, build-vsix]
@@ -176,7 +178,6 @@ jobs:
     environment: release
     permissions:
       contents: write
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -221,19 +222,19 @@ jobs:
             --notes-file notes.md \
             --prerelease
 
-      # `--azure-credential` pulls an Entra token from the OIDC login below, so
-      # no PAT is stored anywhere. The listing is flagged `"preview": true`, which
-      # is what signals "alpha" to users — the version itself must be clean semver
+      # vsce reads the token from VSCE_PAT; our secret is named VSCODE_PAT, hence
+      # the mapping. The listing is flagged `"preview": true`, which is what
+      # signals "alpha" to users — the version itself must be clean semver
       # because the Marketplace rejects prerelease versions outright.
-      - name: Azure login (OIDC, for the Marketplace publish)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          allow-no-subscriptions: true
-
       - name: Publish to the VS Code Marketplace
-        run: npx --yes @vscode/vsce publish --azure-credential --packagePath dist-vsix/*.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCODE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::VSCODE_PAT is not set in the 'release' environment — cannot publish to the Marketplace."
+            exit 1
+          fi
+          npx --yes @vscode/vsce publish --packagePath dist-vsix/*.vsix
 
       # Covers Cursor / Windsurf / VSCodium / Theia. Requires OVSX_PAT in the
       # `release` environment, plus a ONE-TIME namespace claim:
