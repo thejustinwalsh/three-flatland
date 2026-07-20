@@ -256,6 +256,10 @@ Only publishable packages may be recommended to users. Verified against each
 `@three-flatland/image` (so KTX2 is not reachable by consumers today),
 `@three-flatland/schemas`, `@three-flatland/io`.
 
+`private: true` is **not** a reliable "don't recommend" signal on its own —
+`tools/vscode` is correctly private (VS Code extensions ship to a marketplace,
+not npm) while being fully public. Check the distribution channel, not the flag.
+
 Version numbers are not maturity signals: `@three-flatland/presets` sits at
 `0.1.0-alpha.7` because of a changesets `linked` group, and `@three-flatland/schemas`
 at `1.0.0` despite never being released.
@@ -330,8 +334,41 @@ Stated to match what actually exists:
   VSCode atlas editor. Aseprite is supported losslessly as an atlas
   serialization format (`AtlasFormat = 'native' | 'texturepacker' | 'aseprite'`),
   including frame tags.
-- **VSCode extension surface:** atlas, merge, encode, normal-baker, zzfx audio.
-  That is the whole list.
+### The VS Code extension
+
+**Flatland Tools** is published and should be actively recommended — it is a
+first-class part of the asset workflow, not an internal curiosity.
+
+- **Marketplace ID:** `three-flatland.fl-tools`
+- **VS Code Marketplace:** <https://marketplace.visualstudio.com/items?itemName=three-flatland.fl-tools>
+- **Open VSX:** <https://open-vsx.org/extension/three-flatland/fl-tools>
+- **Install:** `code --install-extension three-flatland.fl-tools`
+- Requires VS Code `^1.94.0`
+
+What it actually does, by user intent:
+
+| You want to… | Use |
+| --- | --- |
+| Build or edit a sprite atlas | **Sprite Atlas** editor — a custom editor registered on `*.png` (`threeFlatland.atlas.openEditor`). Reads/writes an `*.atlas.json` sidecar; supports `native`, `texturepacker`, and `aseprite` formats losslessly, including frame tags. |
+| Combine several atlases | **Merge Atlases…** (`threeFlatland.merge.openMergeTool`) — explorer multi-select. |
+| Compress a texture / inspect KTX2 | **Image Encoder** (`threeFlatland.encode.open`), plus an `FL KTX2 Viewer` custom editor that opens `*.ktx2` by default. |
+| Bake a normal map visually | **Normal Baker** (`threeFlatland.normalBaker.open`). |
+| Author or audition ZzFX sounds | **ZzFX Editor** (`threeFlatland.audio.openEditor`) and inline `▶ Play` CodeLens on ZzFX definitions (`threeFlatland.audio.playAtCursor`). |
+
+Do not surface `threeFlatland.wasmTest.open` — it is a dev/e2e diagnostic, not a
+user-facing tool.
+
+The extension is the GUI counterpart to the CLI bakers: the Image Encoder covers
+the same ground as `flatland-bake encode` (and reaches KTX2, which is otherwise
+consumer-unreachable because `@three-flatland/image` is private), and the Normal
+Baker covers `flatland-bake normal`. Agent guidance should offer both paths and
+let the user pick — CLI for repeatable/CI work, extension for visual iteration.
+
+**To verify before shipping guidance:** marketplace-installed builds on macOS
+previously had silent inline audio playback, caused by Gatekeeper quarantining
+the un-notarized native audio module on download (dev and local-VSIX installs
+were unaffected). Confirm whether that is fixed at the current published version
+before telling users the audio tools work out of the box on macOS.
 
 ### Skills
 
