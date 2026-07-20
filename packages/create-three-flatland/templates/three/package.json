@@ -1,0 +1,23 @@
+{
+  "name": "flatland-template-three",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "koota": "^0.6.5",
+    "three": "^0.183.1",
+    "three-flatland": "^0.1.0-alpha.7"
+  },
+  "devDependencies": {
+    "@three-flatland/skills": "^0.1.0-alpha.2",
+    "@types/three": "^0.183.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.4.3"
+  }
+}
