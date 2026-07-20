@@ -296,13 +296,21 @@ Baking moves a *derived* asset computation from browser-runtime to build-time. I
 is never about capability — if you ask for the data you always get it. Baking
 chooses only **where the cost lands**.
 
-Bakers self-register via a `flatland.bake` field and are run through the
-`flatland-bake` dispatcher: `alpha` (`@three-flatland/alphamap`), `normal`
+**Every baker self-discovers.** This is the intended architecture, confirmed
+during design — a baker declares a `flatland.bake` field in its `package.json`
+and the `flatland-bake` dispatcher finds it. Any baker that does not register is
+a bug in that package, not a variant pattern.
+
+Registered subcommands: `alpha` (`@three-flatland/alphamap`), `normal`
 (`@three-flatland/normals`), `encode` (`@three-flatland/image`, private), and
-`slug` (`@three-flatland/slug`, once registered — see defect 1 below). Packages
-may also expose a direct bin: `slug-bake`, `flatland-atlas`. `flatland-atlas` is
-standalone-only. `skia-wasm` is **not** a baker — it is an asset-copy step, and
-agent guidance should say so, because the name reads like one.
+`slug` (`@three-flatland/slug` — registration is missing today; see defect 1).
+
+Packages may *additionally* expose a direct bin (`slug-bake`, `flatland-atlas`)
+for standalone use, but the bin is a convenience on top of registration, never a
+substitute for it. `flatland-atlas` is standalone-only today.
+
+`skia-wasm` is **not** a baker — it is an asset-copy step, and agent guidance
+should say so explicitly, because the name reads like one.
 
 Bake when shipping to production, always for fonts with a known glyph set (ASCII
 + Brotli is 32 KB vs 724 KB, and it drops opentype.js from the bundle), and for
@@ -360,11 +368,18 @@ precisely what this work exists to prevent:
    has only the bin, so `flatland-bake --list` never shows slug. Meanwhile
    `packages/bake/src/cli.ts:23` and `:66` name `@three-flatland/slug` as *the
    example* of a package contributing a baker — pointing at the one publishable
-   baker that doesn't register. **Fix: register slug with `flatland.bake`** so
-   discovery finds it and the help text becomes true; keep the `slug-bake` bin for
-   direct use. Also investigate why `pnpm exec slug-bake` silently no-ops in this
-   workspace (requiring a direct `packages/slug/dist/cli.js` call) — likely the
-   same bin-resolution cruft.
+   baker that doesn't register.
+
+   **Fix (decided): register slug with `flatland.bake`.** Self-discovery is the
+   intended architecture for every baker, so this is bringing slug into line
+   rather than adding a special case. The `slug-bake` bin stays for direct use.
+   Once registered, the dispatcher's help text becomes true as written and needs
+   no edit.
+
+   Also investigate why `pnpm exec slug-bake` silently no-ops in this workspace
+   (requiring a direct `packages/slug/dist/cli.js` call) — likely related
+   bin-resolution cruft, and worth confirming it isn't masking the same root
+   cause.
 2. **`planning/bake/loader-pattern.md`** documents a dead format (`.slug.json` +
    `.slug.bin`); the code emits a single `.slug.glb` (`packages/slug/src/baked.ts:115`).
 3. **`packages/skia/bin/copy-wasm.mjs`** usage comment documents a `copy-wasm`
