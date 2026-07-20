@@ -8,9 +8,30 @@
 > Keep prose docs in this one file. Only `README.md`, `config.json`, `pre.json`, and real
 > `---`-frontmatter changesets belong in `.changeset/`.
 
-## How changesets are generated
+## How changesets are written
 
-CI generates changesets automatically — contributors do **not** hand-write them for normal feature and fix work. The exception is when a changeset cannot be derived from commits alone (initial package releases, renames, unusual version bumps); those are hand-written and committed directly to `.changeset/`.
+> **The CI generator is DISABLED as of 2026-07-20.** It exhausted its model
+> tokens and failed, so it no longer runs on PRs. **Write your own changeset
+> whenever you change a package** — a package change without one ships
+> unreleased, and nothing will catch it for you.
+
+```sh
+pnpm changeset          # interactive: pick packages + bump, writes .changeset/<name>.md
+```
+
+Or hand-author the file — it is just frontmatter plus a summary:
+
+```markdown
+---
+'three-flatland': patch
+---
+
+Fix sprite tint not applying on the first frame after a texture swap.
+```
+
+Commit it alongside the change it describes. The sections below document the
+generator's behaviour for when it is repaired; the commit-type → bump mapping is
+still the convention to follow by hand.
 
 ### Trigger
 

@@ -1,14 +1,16 @@
 import { createRoot } from 'react-dom/client'
 import App from './App'
 
-// No <StrictMode> yet. @react-three/fiber 10.0.0-alpha.2 tears its Canvas event
-// listeners down on a deferred timer; under React 19's StrictMode dev
-// double-mount that timer fires against the live remounted root, so pointer
-// events go dead shortly after load — in dev only, production is unaffected.
+// <StrictMode> is intentionally omitted for now, and this is a known gap rather
+// than a preference.
 //
-// This is verified rather than folklore: the consumer smoke hovers the sprite
-// and asserts the frame changes. With StrictMode that check fails against the
-// dev server and passes against the production build; without it, both pass.
-// Restore StrictMode once the fiber alpha fixes its unmount timing — the smoke
-// will tell you when it is safe.
+// Symptom: with StrictMode enabled, pointer events on the sprite stop working
+// against the Vite dev server. Production builds are unaffected. It reproduces
+// under `pnpm test:consumer -- --only scaffold-react`, whose hover check asserts
+// the frame changes when the cursor enters the canvas.
+//
+// Cause: not yet identified. It is NOT the camera wiring — three different
+// implementations (frustum copy, effect + set({ camera }), and the callback ref
+// used today) all reproduce it. Re-enable StrictMode here and run that smoke to
+// re-test; if the hover check passes against the dev server, delete this note.
 createRoot(document.getElementById('root')!).render(<App />)

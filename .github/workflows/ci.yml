@@ -248,9 +248,14 @@ jobs:
   # PR's CI is finished by then, that run cancels nothing (cancel-in-progress
   # stays safe). Not a dependency of `ci-passed`: changeset generation is
   # best-effort and never gates merge.
+  # DISABLED 2026-07-20. The generator burns through its model tokens and fails,
+  # so changesets are hand-written now: whoever changes a package commits the
+  # changeset with it. See .changeset/README.md. Re-enable by dropping the
+  # `false &&` once the generator is fixed.
   changeset:
     needs: [changes, build, smoke, size, vscode-e2e, consumer-smoke]
     if: |
+      false &&
       github.event_name == 'pull_request' &&
       needs.changes.outputs.changeset_only != 'true' &&
       needs.build.result == 'success' &&

@@ -1,5 +1,5 @@
-import { Suspense, useEffect, useRef, useState } from 'react'
-import type { CSSProperties, RefObject } from 'react'
+import { Suspense, useCallback, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
@@ -7,32 +7,36 @@ import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
 // R3F requires registration before Flatland classes appear as JSX elements.
 extend({ Flatland, Sprite2D })
 
-/**
- * Flatland owns an orthographic camera. Hand that exact camera to R3F as the
- * default so pointer events raycast through the same object Flatland draws
- * with — one camera, no copying, nothing to drift. `manual` stops R3F
- * recomputing the frustum on resize; `flatland.resize()` owns that.
- */
-function UseFlatlandCamera({ flatland }: { flatland: RefObject<Flatland | null> }) {
-  const set = useThree((s) => s.set)
-  const size = useThree((s) => s.size)
-  useEffect(() => {
-    const source = flatland.current
-    if (!source) return
-    source.resize(size.width, size.height)
-    // `manual` is read by R3F but not declared on three's camera type.
-    ;(source.camera as typeof source.camera & { manual?: boolean }).manual = true
-    source.camera.updateProjectionMatrix()
-    set({ camera: source.camera })
-  }, [set, size, flatland])
-  return null
-}
-
 function Scene() {
   // Suspends until the texture resolves — the Suspense fallback OUTSIDE the
   // Canvas renders a DOM loading overlay meanwhile.
   const texture = useLoader(TextureLoader, `${import.meta.env.BASE_URL}sprite.svg`)
   const flatlandRef = useRef<Flatland>(null)
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+
+  /**
+   * Hand Flatland's own camera to R3F as the default, so pointer events raycast
+   * through the exact object Flatland draws with — one camera, nothing to sync.
+   *
+   * This must be a CALLBACK REF, not an effect reading a ref: React 19's
+   * StrictMode double-mount detaches and reattaches, and a callback ref re-runs
+   * on every attach while an effect can end up holding a stale instance. Getting
+   * this wrong leaves pointer events dead in dev and fine in production.
+   * Re-created when size changes, which re-registers after a resize.
+   */
+  const attachFlatland = useCallback(
+    (instance: Flatland | null) => {
+      flatlandRef.current = instance
+      if (!instance) return
+      instance.resize(size.width, size.height)
+      // `manual` is read by R3F but not declared on three's camera type.
+      ;(instance.camera as typeof instance.camera & { manual?: boolean }).manual = true
+      instance.camera.updateProjectionMatrix()
+      set({ camera: instance.camera })
+    },
+    [set, size.width, size.height]
+  )
   const spriteRef = useRef<Sprite2D>(null)
   const renderer = useThree((s) => s.renderer as WebGPURenderer)
   const [hovered, setHovered] = useState(false)
@@ -59,8 +63,7 @@ function Scene() {
 
   return (
     <>
-      <UseFlatlandCamera flatland={flatlandRef} />
-      <flatland ref={flatlandRef} viewSize={400} clearColor={0x16191e}>
+      <flatland ref={attachFlatland} viewSize={400} clearColor={0x16191e}>
         <sprite2D
           ref={spriteRef}
           texture={texture}
