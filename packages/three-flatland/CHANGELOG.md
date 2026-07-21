@@ -1,5 +1,65 @@
 # three-flatland
 
+## 0.1.0-alpha.9
+
+### Minor Changes
+
+- 2df7c13: Batch-root broadphase picking. `SpriteBatch.raycast` now does a spatial-grid
+  broadphase over its sprites instead of being a no-op, so scene traversal
+  (`raycaster.intersectObjects(scene.children, true)`) finds batched sprites in
+  roughly constant time per click rather than not at all.
+
+  A uniform hash grid (`SpriteSpatialGrid`) holds each batch's `Sprite2D`
+  references keyed by world position, maintained where slots are assigned/moved/
+  freed. `raycast` intersects the ray with z=0, queries the covering cell, and
+  delegates each candidate to the sprite's own `raycast()` — reusing the per-sprite
+  hit-test and returning `intersection.object === sprite`. Pick cost stays ~flat
+  to 50k sprites in a shared-texture scene.
+
+  React (`three-flatland/react`) gets the same win. R3F raycasts every interactive
+  object in `state.internal.interaction` per pointer event — O(n) in sprite count.
+  When a batched sprite is R3F-managed, its picking is now proxied to the owning
+  batch: the sprite is spliced out of the interaction list (handlers preserved) and
+  the batch is registered once in its place. `<sprite2D onClick>` fires exactly as
+  before, with `event.object === sprite`, but a 3000-sprite shared-texture batch now
+  presents a single raycast target instead of 3000 — the interaction list holds one
+  object, not one per sprite. Vanilla (non-R3F) sprites are untouched.
+
+### Patch Changes
+
+- c2e81f1: Fix pointer hit testing on objects added via `flatland.add()`.
+
+  `Flatland`'s internal scene disables `matrixWorldAutoUpdate` — matrices refresh
+  once per frame inside `render()` — so a raycast from user code read an identity
+  `matrixWorld`. `hitTestMode: 'radius'` then tested a 0.5-unit disc against a
+  sprite drawn at 150 units: only a dead-centre ray hit, and hover appeared dead
+  everywhere else.
+
+  `Sprite2D.raycast()` and `TileMap2D.raycast()` now refresh their own world
+  matrix first. Examples never hit this because they use `scene.add()` and plain
+  R3F children; batched objects were the untested path.
+
+- 6dac6fd: Fix rendering and pointer hit testing for sprites added via `flatland.add()`.
+
+  Batched sprites are composed into a `SpriteBatch` instance matrix from their
+  local transform, and their `matrixWorld` was never maintained — so a sprite
+  under a transformed `SpriteGroup` rendered at the wrong place, and
+  `raycaster.intersectObject(sprite)` (the one hit-test contract, per the
+  `hit-test` example) tested against an identity matrix and missed.
+
+  `transformSyncSystem` composes each sprite's world transform (folding the
+  group's 2D affine once per frame, identity-fast-pathed) into the instance slot.
+  It does NOT write `sprite.matrixWorld` per frame — rendering reads the slot, and
+  the only per-frame consumer of a batched sprite's matrixWorld is `raycast()`,
+  which composes it on demand for the one sprite being cast. `SpriteBatch.matrixWorld`
+  is pinned to identity so instances carry world exactly. `sceneGraphSyncSystem`'s prune is
+  gated to actual batch meshes so a `renderOrder`-demoted sprite is no longer
+  evicted from the graph. `Sprite2D`/`TileMap2D` `raycast()` refresh their world
+  matrix for casts issued outside the frame loop.
+
+  No API change — batched sprites now behave like `scene.add()` sprites under the
+  existing `Raycaster`/`onPointer*` idiom.
+
 ## 0.1.0-alpha.8
 
 ### Minor Changes
