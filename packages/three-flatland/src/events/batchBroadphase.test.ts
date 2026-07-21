@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { Raycaster, Vector2, Vector3, Texture } from 'three'
+import { PerspectiveCamera, Raycaster, Vector2, Vector3, Texture } from 'three'
 import { Flatland } from '../Flatland'
 import { Sprite2D } from '../sprites/Sprite2D'
 
@@ -71,6 +71,34 @@ describe('batch-root broadphase picking', () => {
     expect(rc.intersectObjects(flatland.scene.children, true)[0]?.object).toBe(s)
     rc.setFromCamera(new Vector2(0, 0), flatland.camera) // old spot
     expect(rc.intersectObjects(flatland.scene.children, true).length).toBe(0)
+  })
+
+  // Under a PERSPECTIVE camera the ray converges, so its (x,y) at the sprite's
+  // world z differs from its (x,y) at z=0. Localizing the broadphase on a
+  // single z=0 plane would query the wrong grid cell and miss. The batch must
+  // sweep the ray across its members' z-span. (Ortho rays are z-parallel, so
+  // the other tests already cover the collapsed single-cell path.)
+  it('finds a batched sprite at non-zero z off-axis under a perspective camera', () => {
+    const flatland = fl()
+    const cam = new PerspectiveCamera(50, 1, 0.1, 1000)
+    cam.position.set(0, 0, 200)
+    cam.updateMatrixWorld(true)
+    cam.updateProjectionMatrix()
+
+    const s = new Sprite2D({ texture: new Texture(), anchor: [0.5, 0.5] })
+    s.position.set(100, 0, 100) // off-axis AND off the z=0 plane
+    s.scale.set(20, 20, 1)
+    flatland.add(s)
+    flatland.scene.updateMatrixWorld(true)
+
+    const proj = s.position.clone().project(cam) // aim NDC at the sprite centre
+    const rc = new Raycaster()
+    rc.setFromCamera(new Vector2(proj.x, proj.y), cam)
+
+    // Narrow phase alone hits; the broadphase (scene traversal) must too.
+    expect(rc.intersectObject(s).length).toBe(1)
+    const hits = rc.intersectObjects(flatland.scene.children, true)
+    expect(hits.some((h) => h.object === s)).toBe(true)
   })
 
   // A batched R3F sprite carrying its OWN custom raycast is NOT proxied (it

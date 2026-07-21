@@ -97,20 +97,29 @@ export function isR3FManaged(sprite: Sprite2D): boolean {
 const MARKER = (): void => {}
 
 /**
- * The batch sits in the interaction list but never lands in
- * `initialHits`, so R3F calls its `onPointerMissed` on every qualifying
- * click. Forward it to member sprites the way R3F would have when they
- * were listed individually: every R3F member with handlers that was not
- * among the pointerdown's initial hits.
+ * The batch sits in the interaction list but never lands in `initialHits`,
+ * so R3F fires its "missed" handlers (`onPointerMissed`, `onDragOverMissed`,
+ * `onDropMissed`) by walking the interaction list. Since the batch stands in
+ * for its members there, forward each such event to the members the way R3F
+ * would have when they were listed individually.
+ *
+ * `filterInitialHits` mirrors R3F's own dispatch: a click "misses" an object
+ * only if it wasn't among the pointerdown's initial hits (onPointerMissed);
+ * drag-over / drop "missed" fire on the whole interaction list unconditionally
+ * when the drag/drop hit nothing, so they do NOT filter.
  */
-function createBatchPointerMissed(reg: BatchPickRegistration): (event: unknown) => void {
+function createMissedForwarder(
+  reg: BatchPickRegistration,
+  name: 'onPointerMissed' | 'onDragOverMissed' | 'onDropMissed',
+  filterInitialHits: boolean
+): (event: unknown) => void {
   return (event: unknown): void => {
-    const initialHits = reg.root.getState()?.internal?.initialHits
+    const initialHits = filterInitialHits ? reg.root.getState()?.internal?.initialHits : undefined
     for (const sprite of reg.sprites) {
       const inst = (sprite as WithR3F).__r3f
       if (!inst?.eventCount) continue
       if (initialHits?.includes(sprite)) continue
-      inst.handlers.onPointerMissed?.(event)
+      inst.handlers[name]?.(event)
     }
   }
 }
@@ -159,7 +168,9 @@ export function proxyPickToBatch(sprite: Sprite2D, batch: SpriteBatch): void {
         onPointerMove: MARKER,
         onDragOver: MARKER,
         onDrop: MARKER,
-        onPointerMissed: createBatchPointerMissed(reg),
+        onPointerMissed: createMissedForwarder(reg, 'onPointerMissed', true),
+        onDragOverMissed: createMissedForwarder(reg, 'onDragOverMissed', false),
+        onDropMissed: createMissedForwarder(reg, 'onDropMissed', false),
       },
     }
     if (!interaction.includes(batch)) interaction.push(batch)

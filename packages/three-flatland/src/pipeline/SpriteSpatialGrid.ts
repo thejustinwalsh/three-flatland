@@ -45,6 +45,18 @@ export class SpriteSpatialGrid {
   /** Reverse index: sprite → its current cell coverage, for O(1) remove. */
   private readonly _ranges = new Map<Sprite2D, CellRange>()
 
+  /**
+   * World-Z span of the indexed sprites. The grid is a 2D (xy) structure,
+   * but a picking ray localizes at a specific z; under a perspective camera
+   * the ray's xy shifts with z, so `SpriteBatch.raycast` must sweep the ray
+   * across [`zMin`, `zMax`] to find candidates (see `querySegment`). Grows to
+   * include each inserted sprite and is not shrunk on remove — a wider span
+   * only widens the swept cell set (still exact after narrow phase), never
+   * drops a hit. Empty grid: `zMin > zMax`.
+   */
+  private _zMin = Infinity
+  private _zMax = -Infinity
+
   constructor(cellSize: number = SPATIAL_GRID_CELL_SIZE) {
     this._cellSize = cellSize
   }
@@ -54,21 +66,34 @@ export class SpriteSpatialGrid {
     return this._ranges.size
   }
 
+  /** Lowest world-Z of any indexed sprite (`Infinity` when empty). */
+  get zMin(): number {
+    return this._zMin
+  }
+
+  /** Highest world-Z of any indexed sprite (`-Infinity` when empty). */
+  get zMax(): number {
+    return this._zMax
+  }
+
   /**
    * Insert `sprite` covering the world AABB centered at (x, y) with
-   * half-extents (hx, hy). Re-inserting an already-indexed sprite
-   * behaves like {@link update}.
+   * half-extents (hx, hy), at world depth `z`. Re-inserting an
+   * already-indexed sprite behaves like {@link update}.
    */
-  insert(sprite: Sprite2D, x: number, y: number, hx: number, hy: number): void {
-    this.update(sprite, x, y, hx, hy)
+  insert(sprite: Sprite2D, x: number, y: number, hx: number, hy: number, z = 0): void {
+    this.update(sprite, x, y, hx, hy, z)
   }
 
   /**
    * Move `sprite` to the world AABB centered at (x, y) with half-extents
-   * (hx, hy). No-op when the covered cell range is unchanged (the
-   * common static-sprite frame); inserts when the sprite isn't indexed yet.
+   * (hx, hy), at world depth `z`. No-op when the covered cell range is
+   * unchanged (the common static-sprite frame); inserts when the sprite
+   * isn't indexed yet.
    */
-  update(sprite: Sprite2D, x: number, y: number, hx: number, hy: number): void {
+  update(sprite: Sprite2D, x: number, y: number, hx: number, hy: number, z = 0): void {
+    if (z < this._zMin) this._zMin = z
+    if (z > this._zMax) this._zMax = z
     const cs = this._cellSize
     const minCx = Math.floor((x - hx) / cs)
     const minCy = Math.floor((y - hy) / cs)
@@ -113,10 +138,45 @@ export class SpriteSpatialGrid {
     return this._cells.get(`${Math.floor(x / cs)},${Math.floor(y / cs)}`) ?? EMPTY
   }
 
+  /**
+   * Candidate sprites under the world-space segment from (x0, y0) to
+   * (x1, y1) — the projection of a picking ray swept across the batch's
+   * z-span. When both ends fall in the same cell (an orthographic camera,
+   * or a coplanar batch, collapses the segment to a point) this reads that
+   * ONE cell allocation-free, exactly like {@link queryPoint}. Otherwise it
+   * unions every cell in the segment's bounding block into a fresh Set —
+   * conservative (a few extra cells) but never a miss; the narrow phase
+   * filters. Cheap because this runs per pointer event, not per frame.
+   */
+  querySegment(x0: number, y0: number, x1: number, y1: number): Iterable<Sprite2D> {
+    const cs = this._cellSize
+    const cx0 = Math.floor(x0 / cs)
+    const cy0 = Math.floor(y0 / cs)
+    const cx1 = Math.floor(x1 / cs)
+    const cy1 = Math.floor(y1 / cs)
+    if (cx0 === cx1 && cy0 === cy1) {
+      return this._cells.get(`${cx0},${cy0}`) ?? EMPTY
+    }
+    const out = new Set<Sprite2D>()
+    const minCx = cx0 < cx1 ? cx0 : cx1
+    const maxCx = cx0 < cx1 ? cx1 : cx0
+    const minCy = cy0 < cy1 ? cy0 : cy1
+    const maxCy = cy0 < cy1 ? cy1 : cy0
+    for (let cy = minCy; cy <= maxCy; cy++) {
+      for (let cx = minCx; cx <= maxCx; cx++) {
+        const cell = this._cells.get(`${cx},${cy}`)
+        if (cell) for (const s of cell) out.add(s)
+      }
+    }
+    return out
+  }
+
   /** Drop all sprites — used when a batch is recycled or disposed. */
   clear(): void {
     this._cells.clear()
     this._ranges.clear()
+    this._zMin = Infinity
+    this._zMax = -Infinity
   }
 
   private _addToCells(sprite: Sprite2D, range: CellRange): void {

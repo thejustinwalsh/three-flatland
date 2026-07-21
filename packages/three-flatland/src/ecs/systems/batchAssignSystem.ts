@@ -206,7 +206,7 @@ function syncSlotBuffers(
   // grid and the rendered position agree either way.
   const te = sprite.matrix.elements
   quadHalfExtents(te[0]!, te[4]!, te[1]!, te[5]!, sprite.hitRadius, _he)
-  mesh.grid.insert(sprite, te[12]!, te[13]!, _he.hx, _he.hy)
+  mesh.grid.insert(sprite, te[12]!, te[13]!, _he.hx, _he.hy, te[14]!)
 
   // Lighting system flags (lit/receiveShadows/castsShadow → instanceSystem.z)
   // and per-instance shadow radius (instanceExtras.x). Written for every

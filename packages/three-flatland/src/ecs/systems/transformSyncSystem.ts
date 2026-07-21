@@ -169,7 +169,7 @@ export function transformSyncSystem(world: World): void {
     // (the same tx/ty the GPU draws at). No-op inside the grid when the
     // sprite's cell coverage hasn't changed — the static-sprite frame.
     quadHalfExtents(m00, m01, m10, m11, sprite.hitRadius, _he)
-    mesh.grid.update(sprite, tx, ty, _he.hx, _he.hy)
+    mesh.grid.update(sprite, tx, ty, _he.hx, _he.hy, tz)
 
     // We do NOT write sprite.matrixWorld here. Rendering reads the instance
     // slot above; the only per-frame consumer of a batched sprite's

@@ -130,6 +130,54 @@ describe('batchPicking — R3F interaction-list proxy', () => {
     expect(internal.interaction).toContain(batch2)
   })
 
+  it('forwards onDragOverMissed / onDropMissed / onPointerMissed to members', () => {
+    const drag: string[] = []
+    const drop: string[] = []
+    const missed: string[] = []
+    const mk = (id: string) =>
+      makeManagedSprite(store, {
+        onClick() {},
+        onDragOverMissed: () => drag.push(id),
+        onDropMissed: () => drop.push(id),
+        onPointerMissed: () => missed.push(id),
+      })
+    const a = mk('a')
+    const b = mk('b')
+    internal.interaction.push(a, b)
+    proxyPickToBatch(a, batch)
+    proxyPickToBatch(b, batch)
+
+    // The batch stands in for both members in R3F's interaction list; R3F
+    // fires the batch's synthesized "missed" handlers, which fan out.
+    const batchHandlers = (batch as unknown as { __r3f: { handlers: Record<string, (e: unknown) => void> } }).__r3f
+      .handlers
+    batchHandlers.onDragOverMissed({})
+    batchHandlers.onDropMissed({})
+    batchHandlers.onPointerMissed({})
+
+    // Drag/drop missed fire on the whole member set unconditionally.
+    expect(drag.sort()).toEqual(['a', 'b'])
+    expect(drop.sort()).toEqual(['a', 'b'])
+    // Pointer-missed too (no member is in initialHits here).
+    expect(missed.sort()).toEqual(['a', 'b'])
+  })
+
+  it('onPointerMissed skips a member that was an initial hit', () => {
+    const missed: string[] = []
+    const a = makeManagedSprite(store, { onClick() {}, onPointerMissed: () => missed.push('a') })
+    const b = makeManagedSprite(store, { onClick() {}, onPointerMissed: () => missed.push('b') })
+    internal.interaction.push(a, b)
+    proxyPickToBatch(a, batch)
+    proxyPickToBatch(b, batch)
+
+    // `a` was the pointerdown's hit → a click is not "missed" for it.
+    internal.initialHits.push(a)
+    const batchHandlers = (batch as unknown as { __r3f: { handlers: Record<string, (e: unknown) => void> } }).__r3f
+      .handlers
+    batchHandlers.onPointerMissed({})
+    expect(missed).toEqual(['b'])
+  })
+
   it('no-ops for a vanilla (non-R3F) sprite', () => {
     const s = new Sprite2D({ texture: new Texture() })
     // No __r3f — pure three.js usage.

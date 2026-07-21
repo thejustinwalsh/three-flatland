@@ -210,7 +210,7 @@ function syncAllBuffers(
   // position lands via transformSyncSystem — see batchAssignSystem.
   const te = sprite.matrix.elements
   quadHalfExtents(te[0]!, te[4]!, te[1]!, te[5]!, sprite.hitRadius, _he)
-  mesh.grid.insert(sprite, te[12]!, te[13]!, _he.hx, _he.hy)
+  mesh.grid.insert(sprite, te[12]!, te[13]!, _he.hx, _he.hy, te[14]!)
 
   // Lighting system flags (instanceSystem.z) + shadow radius
   // (instanceExtras.x) — re-written on reassign so a slot move carries
