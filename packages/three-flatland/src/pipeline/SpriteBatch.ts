@@ -12,7 +12,7 @@ import {
   type Intersection,
 } from 'three'
 import { SpriteSpatialGrid } from './SpriteSpatialGrid'
-import { retireBatchPicking } from '../react/batchPicking'
+import { retireBatchPicking, isR3FManaged } from '../react/batchPicking'
 import { createSynthQuadGeometry } from './synthQuadGeometry'
 import { buildEnvelopeGeometry } from './envelopeGeometry'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
@@ -660,11 +660,17 @@ export class SpriteBatch extends InstancedMesh {
         // THIS batch its raycast path. Bypass the null straight to the
         // narrow phase (`_hitTestInto` re-checks `hitTestMode = 'none'`).
         sprite._hitTestInto(raycaster, intersects)
+      } else if (isR3FManaged(sprite)) {
+        // R3F-managed but NOT proxied (own custom `raycast`, or an opt-out
+        // null): R3F's own per-object interaction list still holds it, so
+        // hit-testing it here too would fire its raycast twice per pointer
+        // event. Leave it to R3F.
+        continue
       } else if (typeof sprite.raycast === 'function') {
-        // Vanilla / non-proxied: honor the sprite's OWN raycast — the
-        // prototype hit test, or a user-supplied custom one. A null raycast
-        // (`hitTestMode = 'none'` or an explicit `raycast={null}` opt-out) is
-        // falsy here and correctly skipped.
+        // Vanilla (three.js) sprite — the batch grid is its ONLY picking
+        // path. Honor its OWN raycast: the prototype hit test or a
+        // user-supplied custom one. A null raycast (`hitTestMode = 'none'`
+        // or an explicit opt-out) is falsy here and correctly skipped.
         sprite.raycast(raycaster, intersects)
       }
     }

@@ -26,6 +26,15 @@
 // the core package must not depend on R3F, only consume its shapes), so
 // the batching systems can call these hooks unconditionally: sprites
 // without `__r3f` (vanilla three.js usage) no-op.
+//
+// The supported way to control a sprite's picking is `hitTestMode`
+// (none/bounds/radius/alpha) — it is honored correctly through batching
+// (the setter is `_pickProxied`-aware and the batch's narrow phase
+// re-reads the mode). Mutating the raw three.js `raycast` property on an
+// ALREADY-batched sprite is a low-level poke this proxy cannot track:
+// only the raycast state at proxy time is captured, so a `raycast`
+// reassigned mid-batch is ignored until the sprite next leaves and
+// re-enters a batch. Set picking via `hitTestMode`, or before enrollment.
 
 import type { Object3D } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
@@ -65,6 +74,17 @@ interface BatchPickRegistration {
 }
 
 const registrations = new WeakMap<SpriteBatch, BatchPickRegistration>()
+
+/**
+ * True when a sprite is R3F-managed (`object.__r3f` present). A NON-proxied
+ * such sprite handles its own picking through R3F's per-object interaction
+ * list — so `SpriteBatch.raycast` must skip it as a grid candidate, or it
+ * would be hit-tested twice (once by R3F, once by the batch). Vanilla
+ * (three.js) sprites lack `__r3f` and are picked ONLY via the batch grid.
+ */
+export function isR3FManaged(sprite: Sprite2D): boolean {
+  return (sprite as WithR3F).__r3f !== undefined
+}
 
 /**
  * Inert truthy marker for R3F's `filterPointerEvents`: pointer-move /

@@ -72,4 +72,54 @@ describe('batch-root broadphase picking', () => {
     rc.setFromCamera(new Vector2(0, 0), flatland.camera) // old spot
     expect(rc.intersectObjects(flatland.scene.children, true).length).toBe(0)
   })
+
+  // A batched R3F sprite carrying its OWN custom raycast is NOT proxied (it
+  // stays in R3F's per-object interaction list). It is still in the batch
+  // grid, so without a guard the batch would ALSO invoke its raycast — twice
+  // per pointer event. The batch must skip R3F-managed non-proxied candidates.
+  it('does not double-invoke a non-proxied R3F sprite’s custom raycast', () => {
+    const flatland = fl()
+    const tex = new Texture() // shared → proxied + custom sprite land in ONE batch
+
+    // A fake R3F root so proxyPickToBatch can splice/register.
+    const interaction: object[] = []
+    const root = { getState: () => ({ internal: { interaction, initialHits: [] } }) }
+
+    // Proxied member (default raycast) — keeps the batch registered.
+    const proxied = new Sprite2D({ texture: tex, anchor: [0.5, 0.5] })
+    proxied.scale.set(100, 100, 1)
+    ;(proxied as unknown as { __r3f: unknown }).__r3f = { root, eventCount: 1, handlers: { onClick() {} } }
+
+    // Non-proxied member: R3F-managed + OWN custom raycast at the same spot.
+    let customCalls = 0
+    const custom = new Sprite2D({ texture: tex, anchor: [0.5, 0.5] })
+    custom.scale.set(100, 100, 1)
+    ;(custom as unknown as { __r3f: unknown }).__r3f = { root, eventCount: 1, handlers: { onClick() {} } }
+    ;(custom as unknown as { raycast: unknown }).raycast = () => {
+      customCalls++
+    }
+
+    flatland.add(proxied)
+    flatland.add(custom)
+    flatland.scene.updateMatrixWorld(true)
+
+    // Both share one batch; the custom sprite was left in R3F's list, not proxied.
+    const batch = proxied._batchMesh
+    expect(batch).not.toBeNull()
+    expect(proxied._pickProxied).toBe(true)
+    expect(custom._pickProxied).toBe(false)
+    expect(custom._batchMesh).toBe(batch) // same batch (shared texture)
+
+    // Cast straight down through the overlapped centre and drive the batch.
+    const rc = new Raycaster()
+    rc.set(new Vector3(0, 0, 100), new Vector3(0, 0, -1))
+    const intersects: import('three').Intersection[] = []
+    batch!.raycast(rc, intersects)
+
+    // The batch hit-tested the proxied sprite but NOT the custom one — R3F's
+    // own list owns that; invoking it here would be the second call.
+    expect(customCalls).toBe(0)
+    expect(intersects.some((h) => h.object === proxied)).toBe(true)
+    expect(intersects.some((h) => h.object === custom)).toBe(false)
+  })
 })
