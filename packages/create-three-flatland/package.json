@@ -1,6 +1,6 @@
 {
   "name": "create-three-flatland",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Scaffold a three-flatland project — minimal three.js or React starters for WebGPU 2D",
   "type": "module",
   "license": "MIT",
