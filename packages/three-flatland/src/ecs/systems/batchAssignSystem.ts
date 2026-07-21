@@ -19,7 +19,11 @@ import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
 import { computeRunKey, getOrCreateRun, findOrCreateBatch } from '../batchUtils'
+import { quadHalfExtents } from '../../pipeline/SpriteSpatialGrid'
 import { ENTITY_ID_MASK } from '../snapshot'
+
+/** Scratch for quadHalfExtents — systems are single-threaded. */
+const _he = { hx: 0, hy: 0 }
 
 /**
  * Create a batch-assign system bound to its own scratch state.
@@ -188,6 +192,15 @@ function syncSlotBuffers(
   // Transform — use Sprite2D's updateMatrix for full 3D support
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
+
+  // Picking broadphase: index the sprite at its local translation. The
+  // group-folded WORLD position lands via transformSyncSystem's
+  // `grid.update` later in the same schedule run; when transform sync is
+  // disabled the instance matrix above is this same local affine, so the
+  // grid and the rendered position agree either way.
+  const te = sprite.matrix.elements
+  quadHalfExtents(te[0]!, te[4]!, te[1]!, te[5]!, sprite.hitRadius, _he)
+  mesh.grid.insert(sprite, te[12]!, te[13]!, _he.hx, _he.hy)
 
   // Lighting system flags (lit/receiveShadows/castsShadow → instanceSystem.z)
   // and per-instance shadow radius (instanceExtras.x). Written for every

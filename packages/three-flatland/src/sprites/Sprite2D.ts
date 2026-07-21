@@ -2356,7 +2356,11 @@ export class Sprite2D extends Mesh {
     // (the spriteArr entry above is already nulled), and a stale
     // _batchMesh would let direct-write setters (color/alpha/flip/UV)
     // clobber a freed — possibly reallocated — slot before the next
-    // system pass.
+    // system pass. Same reasoning for the picking-broadphase entry:
+    // remove it here while the batch is still in hand, or the deferred
+    // batchRemoveSystem (which can no longer resolve this sprite) would
+    // leave a stale grid entry that keeps raycast-hitting.
+    if (this._batchMesh) this._batchMesh.grid.remove(this)
     this._batchMesh = null
     this._batchSlot = -1
     this._batchIdx = -1

@@ -4,11 +4,14 @@ import {
   InstancedInterleavedBuffer,
   InterleavedBufferAttribute,
   DynamicDrawUsage,
+  Plane,
   Sphere,
+  Vector3,
   type Matrix4,
   type Raycaster,
   type Intersection,
 } from 'three'
+import { SpriteSpatialGrid } from './SpriteSpatialGrid'
 import { createSynthQuadGeometry } from './synthQuadGeometry'
 import { buildEnvelopeGeometry } from './envelopeGeometry'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
@@ -66,6 +69,16 @@ const INTERLEAVED_FULL_THRESHOLD = 3
 const CUSTOM_FULL_THRESHOLD = 3
 
 /**
+ * The batch's picking plane: world z = 0. Instance transforms live near
+ * z = 0 (sort-layer offsets + tiny zIndex epsilons), and the batch mesh
+ * itself is identity-pinned, so a single plane intersection localizes
+ * the ray for the broadphase. Module-level scratch — raycast is
+ * single-threaded and synchronous.
+ */
+const _pickPlane = new Plane(new Vector3(0, 0, 1), 0)
+const _pickPoint = new Vector3()
+
+/**
  * A batch of sprites rendered with a single draw call.
  *
  * Uses InstancedMesh with:
@@ -119,6 +132,14 @@ export class SpriteBatch extends InstancedMesh {
    * longer matches its registration gets rebuilt instead of reused.
    */
   readonly envelopeVersion: number
+
+  /**
+   * Picking broadphase: a uniform hash grid of this batch's member
+   * sprites keyed by world position. Maintained by the batch lifecycle
+   * systems (assign/reassign/remove insert + remove entries) and by
+   * `transformSyncSystem` (moves). Queried by {@link SpriteBatch.raycast}.
+   */
+  readonly grid = new SpriteSpatialGrid()
 
   /**
    * Current number of active slots in the batch.
@@ -549,6 +570,8 @@ export class SpriteBatch extends InstancedMesh {
     this._freeList.length = 0
     this._nextIndex = 0
     this.count = 0
+    // Wholesale membership reset — the broadphase index goes with it.
+    this.grid.clear()
   }
 
   /**
@@ -615,12 +638,26 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Raycasting a batch is meaningless — the unit-quad geometry knows
-   * nothing about per-instance UV flip/atlas remap or alpha. Pointer
-   * interaction happens per-Sprite2D via its own plane-math raycast;
-   * batched-sprite picking is tracked separately (GPU ID-buffer picking).
+   * Batch-root broadphase picking. Scene traversal reaches the batch
+   * (member sprites are not graph children), so the batch localizes the
+   * ray — one intersection with the world z=0 plane the instances live
+   * near — and queries its spatial grid for candidate sprites. Each
+   * candidate delegates to `Sprite2D.raycast`, which owns ALL narrow-
+   * phase correctness (on-demand world-matrix compose, hitTestMode
+   * bounds/alpha/radius, near/far) and pushes intersections with
+   * `object === sprite`. three's Raycaster distance-sorts afterward, so
+   * higher-zIndex sprites (closer along +z) surface first — no sorting
+   * here.
    */
-  override raycast(_raycaster: Raycaster, _intersects: Intersection[]): void {}
+  override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
+    if (this._activeCount === 0) return
+    // Parallel or receding ray — no plane point to localize around.
+    if (raycaster.ray.intersectPlane(_pickPlane, _pickPoint) === null) return
+    for (const sprite of this.grid.queryPoint(_pickPoint.x, _pickPoint.y)) {
+      // `hitTestMode = 'none'` nulls the instance raycast property.
+      if (typeof sprite.raycast === 'function') sprite.raycast(raycaster, intersects)
+    }
+  }
 
   /**
    * Flush per-buffer dirty state to GPU upload ranges.

@@ -2,7 +2,11 @@ import { getStore as kootaGetStore, type World, type Trait } from 'koota'
 import { IsRenderable, IsBatched, SortLayer, SpriteZIndex, BatchSlot, BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
+import { quadHalfExtents } from '../../pipeline/SpriteSpatialGrid'
 import { ENTITY_ID_MASK } from '../snapshot'
+
+/** Scratch for quadHalfExtents — systems are single-threaded. */
+const _he = { hx: 0, hy: 0 }
 
 /** Resolve SoA store for a numeric trait — one lookup, reused for all entities. */
 function getNumericStore(world: World, trait: Trait): Record<string, number[]> {
@@ -160,6 +164,12 @@ export function transformSyncSystem(world: World): void {
     buf[o + 15] = 1
 
     mesh.markMatrixDirty(slot)
+
+    // Keep the picking broadphase keyed to the composed WORLD position
+    // (the same tx/ty the GPU draws at). No-op inside the grid when the
+    // sprite's cell coverage hasn't changed — the static-sprite frame.
+    quadHalfExtents(m00, m01, m10, m11, sprite.hitRadius, _he)
+    mesh.grid.update(sprite, tx, ty, _he.hx, _he.hy)
 
     // We do NOT write sprite.matrixWorld here. Rendering reads the instance
     // slot above; the only per-frame consumer of a batched sprite's

@@ -20,7 +20,11 @@ import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
 
 import { computeRunKey, getOrCreateRun, findOrCreateBatch, recycleBatchIfEmpty } from '../batchUtils'
+import { quadHalfExtents } from '../../pipeline/SpriteSpatialGrid'
 import { ENTITY_ID_MASK } from '../snapshot'
+
+/** Scratch for quadHalfExtents — systems are single-threaded. */
+const _he = { hx: 0, hy: 0 }
 
 /**
  * Create a batch-reassign system bound to its own scratch state.
@@ -99,6 +103,10 @@ export function createBatchReassignSystem(): (
         oldBatchMesh.mesh.freeSlot(oldSlot)
         oldBatchMesh.mesh.syncCount()
       }
+
+      // Drop the picking-broadphase entry with the slot — the sprite is
+      // re-indexed into its new batch's grid by syncAllBuffers below.
+      if (oldBatchMesh?.mesh) oldBatchMesh.mesh.grid.remove(sprite)
 
       entity.remove(InBatch(oldBatchEntity))
 
@@ -189,6 +197,12 @@ function syncAllBuffers(
   // Transform — use Sprite2D's updateMatrix for full 3D support
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
+
+  // Picking broadphase: index at the local translation; the world-folded
+  // position lands via transformSyncSystem — see batchAssignSystem.
+  const te = sprite.matrix.elements
+  quadHalfExtents(te[0]!, te[4]!, te[1]!, te[5]!, sprite.hitRadius, _he)
+  mesh.grid.insert(sprite, te[12]!, te[13]!, _he.hx, _he.hy)
 
   // Lighting system flags (instanceSystem.z) + shadow radius
   // (instanceExtras.x) — re-written on reassign so a slot move carries
