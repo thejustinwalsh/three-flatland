@@ -655,12 +655,18 @@ export class SpriteBatch extends InstancedMesh {
     // Parallel or receding ray — no plane point to localize around.
     if (raycaster.ray.intersectPlane(_pickPlane, _pickPoint) === null) return
     for (const sprite of this.grid.queryPoint(_pickPoint.x, _pickPoint.y)) {
-      // A nulled `raycast` is an opt-out (`hitTestMode = 'none'`, user
-      // `raycast={null}`) — respect it, UNLESS the null is R3F batch-root
-      // picking's own doing (`_pickProxied`), in which case this batch IS
-      // the sprite's raycast path. `_hitTestInto` re-checks 'none' itself.
-      if (sprite.raycast === null && !sprite._pickProxied) continue
-      sprite._hitTestInto(raycaster, intersects)
+      if (sprite._pickProxied) {
+        // R3F batch-root picking nulled the sprite's own `raycast` and made
+        // THIS batch its raycast path. Bypass the null straight to the
+        // narrow phase (`_hitTestInto` re-checks `hitTestMode = 'none'`).
+        sprite._hitTestInto(raycaster, intersects)
+      } else if (typeof sprite.raycast === 'function') {
+        // Vanilla / non-proxied: honor the sprite's OWN raycast — the
+        // prototype hit test, or a user-supplied custom one. A null raycast
+        // (`hitTestMode = 'none'` or an explicit `raycast={null}` opt-out) is
+        // falsy here and correctly skipped.
+        sprite.raycast(raycaster, intersects)
+      }
     }
   }
 

@@ -105,10 +105,16 @@ function createBatchPointerMissed(reg: BatchPickRegistration): (event: unknown) 
 export function proxyPickToBatch(sprite: Sprite2D, batch: SpriteBatch): void {
   const inst = (sprite as WithR3F).__r3f
   if (!inst?.root) return
-  // An already-null raycast is an existing opt-out (user `raycast={null}`
-  // or hitTestMode 'none') — leave it alone; SpriteBatch.raycast skips
-  // non-proxied nulls.
-  if (sprite.raycast === null) return
+  // Only proxy sprites using the DEFAULT (prototype) raycast. An OWN
+  // `raycast` property means the sprite has opted out or customized picking,
+  // and we must not clobber it:
+  //   - `hitTestMode = 'none'` / user `raycast={null}` → own null (already
+  //     excluded from R3F's interaction list — nothing to proxy)
+  //   - user `raycast={customFn}` → own function that stays in R3F's
+  //     per-object list and works unchanged
+  // Our own proxy installs an own null too, so this doubles as the
+  // idempotency guard: a re-proxied sprite already has one.
+  if (Object.hasOwn(sprite, 'raycast')) return
   const state = inst.root.getState()
   const interaction = state?.internal?.interaction
   if (!interaction) return
@@ -153,7 +159,16 @@ export function unproxyPickFromBatch(sprite: Sprite2D, batch: SpriteBatch): void
   if (reg && reg.sprites.delete(sprite) && reg.sprites.size === 0) {
     retireBatchPicking(batch)
   }
+  restoreProxiedSprite(sprite)
+}
 
+/**
+ * Undo a single sprite's proxy: restore the prototype `raycast` (unless
+ * `hitTestMode = 'none'` owns the null) and re-list it in R3F's per-object
+ * interaction list if it still has handlers. Idempotent — a no-op for a
+ * sprite that isn't proxied.
+ */
+function restoreProxiedSprite(sprite: Sprite2D): void {
   if (!sprite._pickProxied) return
   sprite._pickProxied = false
   if (sprite.hitTestMode !== 'none') {
@@ -181,6 +196,12 @@ export function retireBatchPicking(batch: SpriteBatch): void {
   if (!reg) return
   registrations.delete(batch)
   delete (batch as WithR3F).__r3f
+  // Restore any members still proxied through this batch — a disposed
+  // batch is about to vanish, so its sprites must not be left pointing at
+  // a dead raycast target (unpickable, and un-re-proxyable while their
+  // `raycast` stays null). Normally the last member's unproxy already
+  // emptied the set; this covers dispose()/recycle with live members.
+  for (const sprite of reg.sprites) restoreProxiedSprite(sprite)
   const interaction = reg.root.getState()?.internal?.interaction
   if (!interaction) return
   const idx = interaction.indexOf(batch)
