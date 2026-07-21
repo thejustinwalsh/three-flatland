@@ -20,12 +20,8 @@ import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
 
 import { computeRunKey, getOrCreateRun, findOrCreateBatch, recycleBatchIfEmpty } from '../batchUtils'
-import { quadHalfExtents } from '../../pipeline/SpriteSpatialGrid'
 import { proxyPickToBatch, unproxyPickFromBatch } from '../../react/batchPicking'
 import { ENTITY_ID_MASK } from '../snapshot'
-
-/** Scratch for quadHalfExtents — systems are single-threaded. */
-const _he = { hx: 0, hy: 0 }
 
 /**
  * Create a batch-reassign system bound to its own scratch state.
@@ -208,9 +204,7 @@ function syncAllBuffers(
 
   // Picking broadphase: index at the local translation; the world-folded
   // position lands via transformSyncSystem — see batchAssignSystem.
-  const te = sprite.matrix.elements
-  quadHalfExtents(te[0]!, te[4]!, te[1]!, te[5]!, sprite.hitRadius, _he)
-  mesh.grid.insert(sprite, te[12]!, te[13]!, _he.hx, _he.hy, te[14]!)
+  mesh.indexForPicking(sprite)
 
   // Lighting system flags (instanceSystem.z) + shadow radius
   // (instanceExtras.x) — re-written on reassign so a slot move carries

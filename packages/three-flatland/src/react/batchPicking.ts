@@ -66,6 +66,11 @@ interface WithR3F {
   __r3f?: R3FInstanceSlice
 }
 
+/** R3F's per-object instance slice, or `undefined` for a vanilla three.js object. */
+function r3f(object: Sprite2D | SpriteBatch): R3FInstanceSlice | undefined {
+  return (object as WithR3F).__r3f
+}
+
 /** Live registration of a batch in an R3F interaction list. */
 interface BatchPickRegistration {
   root: R3FStore
@@ -83,7 +88,7 @@ const registrations = new WeakMap<SpriteBatch, BatchPickRegistration>()
  * (three.js) sprites lack `__r3f` and are picked ONLY via the batch grid.
  */
 export function isR3FManaged(sprite: Sprite2D): boolean {
-  return (sprite as WithR3F).__r3f !== undefined
+  return r3f(sprite) !== undefined
 }
 
 /**
@@ -122,7 +127,7 @@ function createMissedForwarder(
   return (event: unknown): void => {
     const initialHits = filterInitialHits ? reg.root.getState()?.internal?.initialHits : undefined
     for (const sprite of reg.sprites) {
-      const inst = (sprite as WithR3F).__r3f
+      const inst = r3f(sprite)
       if (!inst?.eventCount) continue
       if (initialHits?.includes(sprite)) continue
       inst.handlers[name]?.(event)
@@ -138,7 +143,7 @@ function createMissedForwarder(
  * an opt-out this proxy must respect, not replace.
  */
 export function proxyPickToBatch(sprite: Sprite2D, batch: SpriteBatch): void {
-  const inst = (sprite as WithR3F).__r3f
+  const inst = r3f(sprite)
   if (!inst?.root) return
   // Only proxy sprites using the DEFAULT (prototype) raycast. An OWN
   // `raycast` property means the sprite has opted out or customized picking,
@@ -216,7 +221,7 @@ function restoreProxiedSprite(sprite: Sprite2D): void {
   // longer reachable through any batch. Mirrors R3F's own membership
   // condition (eventCount && raycast !== null). During R3F unmount this
   // is transient: removeInteractivity filters the sprite right back out.
-  const inst = (sprite as WithR3F).__r3f
+  const inst = r3f(sprite)
   if (inst?.eventCount && sprite.raycast !== null) {
     const interaction = inst.root.getState()?.internal?.interaction
     if (interaction && !interaction.includes(sprite)) interaction.push(sprite)

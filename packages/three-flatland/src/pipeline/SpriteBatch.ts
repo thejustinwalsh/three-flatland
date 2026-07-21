@@ -10,8 +10,9 @@ import {
   type Raycaster,
   type Intersection,
 } from 'three'
-import { SpriteSpatialGrid } from './SpriteSpatialGrid'
+import { SpriteSpatialGrid, quadHalfExtents } from './SpriteSpatialGrid'
 import { retireBatchPicking, isR3FManaged } from '../react/batchPicking'
+import type { Sprite2D } from '../sprites/Sprite2D'
 import { createSynthQuadGeometry } from './synthQuadGeometry'
 import { buildEnvelopeGeometry } from './envelopeGeometry'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
@@ -75,6 +76,8 @@ const CUSTOM_FULL_THRESHOLD = 3
  */
 const _pickPoint = new Vector3()
 const _pickPoint2 = new Vector3()
+/** Scratch for `indexForPicking`'s half-extents — single-threaded, synchronous. */
+const _he = { hx: 0, hy: 0 }
 
 /**
  * A batch of sprites rendered with a single draw call.
@@ -633,6 +636,19 @@ export class SpriteBatch extends InstancedMesh {
     if (this.boundingSphere === null) this.boundingSphere = new Sphere()
     this.boundingSphere.center.set(0, 0, 0)
     this.boundingSphere.radius = Infinity
+  }
+
+  /**
+   * Index `sprite` into the picking broadphase from its local matrix. The
+   * batch systems call this at slot assign/reassign; the group-folded WORLD
+   * position lands later the same schedule run via `transformSyncSystem`'s
+   * `grid.update`. When transform sync is disabled the instance matrix IS
+   * this local affine, so the grid and the rendered position agree either way.
+   */
+  indexForPicking(sprite: Sprite2D): void {
+    const te = sprite.matrix.elements
+    quadHalfExtents(te[0]!, te[4]!, te[1]!, te[5]!, sprite.hitRadius, _he)
+    this.grid.insert(sprite, te[12]!, te[13]!, _he.hx, _he.hy, te[14]!)
   }
 
   /**

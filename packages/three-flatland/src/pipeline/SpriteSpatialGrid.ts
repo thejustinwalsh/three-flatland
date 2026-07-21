@@ -34,6 +34,11 @@ function clampCell(v: number): number {
   return v < -MAX_SAFE_CELL ? -MAX_SAFE_CELL : v > MAX_SAFE_CELL ? MAX_SAFE_CELL : v
 }
 
+/** Map key for the cell at integer indices (cx, cy). */
+function cellKey(cx: number, cy: number): string {
+  return `${cx},${cy}`
+}
+
 /** A sprite's current cell coverage — inclusive cell-index bounds. */
 interface CellRange {
   minCx: number
@@ -49,13 +54,12 @@ const EMPTY: readonly Sprite2D[] = []
  * Uniform hash grid of `Sprite2D` keyed by world position, used by
  * `SpriteBatch.raycast` as the picking broadphase.
  *
- * Indexing strategy: **multi-cell insert, single-cell query.** Each
- * sprite is inserted into every cell its world AABB overlaps (sprites
- * vary freely in size, so a fixed query neighborhood like a 3×3 block
- * would miss sprites larger than a cell). A point query then reads
- * exactly ONE cell — any sprite whose AABB covers the point must occupy
- * that cell — and since a cell holds each sprite at most once (Set),
- * single-cell queries need no dedup pass at all.
+ * Indexing strategy: **multi-cell insert, cell-block query.** Each sprite
+ * is inserted into every cell its world AABB overlaps (sprites vary freely
+ * in size, so a fixed query neighborhood like a 3×3 block would miss
+ * sprites larger than a cell). {@link querySegment} then reads only the
+ * cells the picking ray sweeps — a single cell for an orthographic camera
+ * or a coplanar batch (the common case), a short segment under perspective.
  *
  * The grid is a conservative broadphase: candidates are over-approximate
  * (AABB of the possibly-rotated quad) and the narrow phase
@@ -172,25 +176,15 @@ export class SpriteSpatialGrid {
   }
 
   /**
-   * Candidate sprites whose quad could cover the world point (x, y).
-   * Reads a single cell (see class doc) — allocation-free beyond the
-   * cell-key string; the returned iterable is live grid state, consume
-   * immediately without mutating the grid.
-   */
-  queryPoint(x: number, y: number): Iterable<Sprite2D> {
-    const cs = this._cellSize
-    return this._cells.get(`${Math.floor(x / cs)},${Math.floor(y / cs)}`) ?? EMPTY
-  }
-
-  /**
    * Candidate sprites under the world-space segment from (x0, y0) to
    * (x1, y1) — the projection of a picking ray swept across the batch's
    * z-span. When both ends fall in the same cell (an orthographic camera,
    * or a coplanar batch, collapses the segment to a point) this reads that
-   * ONE cell allocation-free, exactly like {@link queryPoint}. Otherwise it
-   * unions every cell in the segment's bounding block into a fresh Set —
-   * conservative (a few extra cells) but never a miss; the narrow phase
-   * filters. Cheap because this runs per pointer event, not per frame.
+   * ONE cell allocation-free. Otherwise it unions every cell in the
+   * segment's bounding block into a fresh Set — conservative (a few extra
+   * cells) but never a miss; the narrow phase filters. Cheap because this
+   * runs per pointer event, not per frame; the returned iterable is transient
+   * grid state, consume immediately without mutating the grid.
    */
   querySegment(x0: number, y0: number, x1: number, y1: number): Iterable<Sprite2D> {
     const cs = this._cellSize
@@ -199,41 +193,33 @@ export class SpriteSpatialGrid {
     const cx1 = Math.floor(x1 / cs)
     const cy1 = Math.floor(y1 / cs)
     if (cx0 === cx1 && cy0 === cy1) {
-      return this._cells.get(`${cx0},${cy0}`) ?? EMPTY
+      return this._cells.get(cellKey(cx0, cy0)) ?? EMPTY
     }
     const minCx = cx0 < cx1 ? cx0 : cx1
     const maxCx = cx0 < cx1 ? cx1 : cx0
     const minCy = cy0 < cy1 ? cy0 : cy1
     const maxCy = cy0 < cy1 ? cy1 : cy0
     const out = new Set<Sprite2D>()
-    // A near-grazing ray (tiny dz) can make the swept segment — and thus this
-    // cell bounding block — span astronomically many cells, almost all empty.
-    // Iterate whichever set is smaller: the block, or the OCCUPIED cells
-    // (bounded by the sprite count). The result is identical; only the cost
-    // differs. Guards against an unbounded loop / hang on a grazing ray.
-    //
-    // The block branch also requires float-safe indices: a `cx++` at
-    // Number.MAX_SAFE_INTEGER (world coords near 2^53·cellSize) stops
-    // advancing and loops forever, so beyond a generous magnitude fall back to
-    // the occupied-set branch, whose bound comparisons increment nothing.
+    // Iterate the cheaper of two equivalent passes: the segment's cell block,
+    // or every indexed sprite (tested for AABB overlap with the block). A
+    // near-grazing ray (tiny dz) can make the block span astronomically many
+    // cells, almost all empty; and a `cx++` past 2^53 (world coords near
+    // 2^53·cellSize) stops advancing, looping forever. So take the block loop
+    // only when its indices are float-safe AND it is no larger than the sprite
+    // set; otherwise the per-sprite pass, whose overlap tests increment nothing.
     const indicesSafe =
       minCx > -MAX_SAFE_CELL && maxCx < MAX_SAFE_CELL && minCy > -MAX_SAFE_CELL && maxCy < MAX_SAFE_CELL
     const blockCells = (maxCx - minCx + 1) * (maxCy - minCy + 1)
-    if (indicesSafe && blockCells <= this._cells.size) {
+    if (indicesSafe && blockCells <= this._ranges.size) {
       for (let cy = minCy; cy <= maxCy; cy++) {
         for (let cx = minCx; cx <= maxCx; cx++) {
-          const cell = this._cells.get(`${cx},${cy}`)
+          const cell = this._cells.get(cellKey(cx, cy))
           if (cell) for (const s of cell) out.add(s)
         }
       }
     } else {
-      for (const [key, cell] of this._cells) {
-        const comma = key.indexOf(',')
-        const cx = Number(key.slice(0, comma))
-        const cy = Number(key.slice(comma + 1))
-        if (cx >= minCx && cx <= maxCx && cy >= minCy && cy <= maxCy) {
-          for (const s of cell) out.add(s)
-        }
+      for (const [sprite, r] of this._ranges) {
+        if (r.minCx <= maxCx && r.maxCx >= minCx && r.minCy <= maxCy && r.maxCy >= minCy) out.add(sprite)
       }
     }
     return out
@@ -250,7 +236,7 @@ export class SpriteSpatialGrid {
   private _addToCells(sprite: Sprite2D, range: CellRange): void {
     for (let cy = range.minCy; cy <= range.maxCy; cy++) {
       for (let cx = range.minCx; cx <= range.maxCx; cx++) {
-        const key = `${cx},${cy}`
+        const key = cellKey(cx, cy)
         let cell = this._cells.get(key)
         if (!cell) {
           cell = new Set()
@@ -264,7 +250,7 @@ export class SpriteSpatialGrid {
   private _removeFromCells(sprite: Sprite2D, range: CellRange): void {
     for (let cy = range.minCy; cy <= range.maxCy; cy++) {
       for (let cx = range.minCx; cx <= range.maxCx; cx++) {
-        const key = `${cx},${cy}`
+        const key = cellKey(cx, cy)
         const cell = this._cells.get(key)
         if (!cell) continue
         cell.delete(sprite)
