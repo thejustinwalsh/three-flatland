@@ -1,5 +1,15 @@
 # docs
 
+## 0.0.1-alpha.2
+
+### Patch Changes
+
+- Updated dependencies [2df7c13]
+- Updated dependencies [c2e81f1]
+- Updated dependencies [6dac6fd]
+  - three-flatland@0.1.0-alpha.9
+  - @three-flatland/presets@0.1.0-alpha.9
+
 ## 0.0.1-alpha.1
 
 ### Patch Changes
