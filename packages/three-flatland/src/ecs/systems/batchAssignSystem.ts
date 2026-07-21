@@ -19,6 +19,7 @@ import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
 import { computeRunKey, getOrCreateRun, findOrCreateBatch } from '../batchUtils'
+import { proxyPickToBatch } from '../../react/batchPicking'
 import { ENTITY_ID_MASK } from '../snapshot'
 
 /**
@@ -124,6 +125,11 @@ export function createBatchAssignSystem(): (
       sprite._batchSlot = slot
       sprite._batchIdx = batchIdx
 
+      // R3F batch-root picking: route the sprite's raycast through the
+      // batch's broadphase instead of R3F's O(n) per-object list. No-op
+      // for vanilla (non-R3F) sprites.
+      proxyPickToBatch(sprite, mesh)
+
       // Auto-orchestrated sprites live in the user's scene tree — once a
       // batch draws them, their own Mesh must stop rendering. Explicit
       // SpriteGroup sprites were never tree children; leave them alone.
@@ -188,6 +194,10 @@ function syncSlotBuffers(
   // Transform — use Sprite2D's updateMatrix for full 3D support
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
+
+  // Picking broadphase: index at the local translation; the group-folded
+  // world position lands via transformSyncSystem's grid.update the same run.
+  mesh.indexForPicking(sprite)
 
   // Lighting system flags (lit/receiveShadows/castsShadow → instanceSystem.z)
   // and per-instance shadow radius (instanceExtras.x). Written for every

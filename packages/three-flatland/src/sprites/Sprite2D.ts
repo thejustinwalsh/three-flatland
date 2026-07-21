@@ -39,6 +39,7 @@ import type { HitTestMode } from '../events/HitTestMode'
 import { resolveHitTestMode } from '../events/HitTestMode'
 import type { AlphaMap } from '../events/AlphaMap'
 import { rayPlaneZ0, createIntersection } from '../events/raycastHelpers'
+import { unproxyPickFromBatch } from '../react/batchPicking'
 import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
 import { flatlandPrime, flatlandRegister, flatlandUnregister } from '../orchestration/orchestrator'
 import type { Registry } from '../orchestration/registry'
@@ -174,6 +175,17 @@ export class Sprite2D extends Mesh {
   /** Active hit-test strategy. */
   private _hitTestMode: HitTestMode = 'radius'
 
+  /**
+   * True while R3F batch-root picking has nulled this sprite's `raycast`
+   * to keep it out of R3F's per-object interaction list — the owning
+   * SpriteBatch raycasts on its behalf via {@link Sprite2D._hitTestInto}.
+   * Distinguishes that proxy-owned null from a user opt-out
+   * (`raycast={null}` / `hitTestMode = 'none'`), which the batch must
+   * respect. Managed by `react/batchPicking`.
+   * @internal
+   */
+  _pickProxied = false
+
   /** Hit radius override in local units. Default 0.5 (inscribed half-width of unit quad). */
   get hitRadius(): number {
     return this._hitRadius
@@ -193,6 +205,12 @@ export class Sprite2D extends Mesh {
     this._hitTestMode = resolved
     if (resolved === 'none') {
       // Null the own-property so R3F / three skips this object in raycast traversal
+      ;(this as { raycast: unknown }).raycast = null
+    } else if (this._pickProxied) {
+      // R3F batch-root picking owns the null — restoring the prototype
+      // method would re-expose the sprite to R3F's per-object raycast
+      // list. The batch delegates to _hitTestInto, which reads the mode
+      // set above, so the new mode still takes effect.
       ;(this as { raycast: unknown }).raycast = null
     } else {
       // Delete the own-property to restore the prototype method
@@ -1895,6 +1913,18 @@ export class Sprite2D extends Mesh {
    * method works entirely in centered-quad local space with no anchor math.
    */
   override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
+    this._hitTestInto(raycaster, intersects)
+  }
+
+  /**
+   * Narrow-phase hit test — the body of {@link Sprite2D.raycast},
+   * callable regardless of the public `raycast` property (which
+   * `hitTestMode = 'none'` and R3F batch-root picking null).
+   * `SpriteBatch.raycast` delegates broadphase candidates here; the mode
+   * check lives inside so `'none'` still skips on every path.
+   * @internal
+   */
+  _hitTestInto(raycaster: Raycaster, intersects: Intersection[]): void {
     // `hitTestMode = 'none'` also nulls the instance `raycast` so R3F skips
     // this object at registration (the zero-cost path); this guard is
     // defense-in-depth for direct raycast() calls.
@@ -1902,7 +1932,17 @@ export class Sprite2D extends Mesh {
     // Flatland's internal scene disables matrixWorldAutoUpdate — matrices are
     // refreshed once per frame inside render() — so a raycast from user code
     // would otherwise read an identity matrixWorld and test a half-unit disc.
-    this.updateMatrixWorld()
+    //
+    // Batched sprites own their matrixWorld through the ECS transform pass
+    // (matrixWorldAutoUpdate is off), so three's refresh would be a no-op;
+    // compose the world affine directly instead — this covers raycasts
+    // issued outside the frame loop / before the first schedule run.
+    // Standalone sprites are real graph children: refresh ancestors too so
+    // pre-first-render raycasts read a current parent chain.
+    // The standard three refresh contract — routed to the batched compose for
+    // enrolled sprites (see the updateWorldMatrix override), or three's normal
+    // ancestor walk for standalone ones.
+    this.updateWorldMatrix(true, false)
     const hit = rayPlaneZ0(raycaster, this)
     if (!hit) return
 
@@ -1941,6 +1981,78 @@ export class Sprite2D extends Mesh {
     const u = localX + 0.5
     const v = localY + 0.5
     intersects.push(createIntersection(hit, this, u, v))
+  }
+
+  /**
+   * Make `matrixWorld` current on demand. For an enrolled (batched) sprite,
+   * `matrixWorldAutoUpdate` is off and the sprite is not a graph child, so
+   * three's own traversal never composes it — do it here. For a standalone
+   * sprite, defer to three's normal ancestor walk. This is the standard
+   * three refresh contract, so any consumer (raycast, bounds, devtools) can
+   * `sprite.updateWorldMatrix(true, false)` then read `matrixWorld`.
+   */
+  override updateWorldMatrix(updateParents: boolean, updateChildren: boolean): void {
+    if (this._entity) {
+      this._composeBatchedMatrixWorld()
+      return
+    }
+    super.updateWorldMatrix(updateParents, updateChildren)
+  }
+
+  override updateMatrixWorld(force?: boolean): void {
+    if (this._entity) {
+      this._composeBatchedMatrixWorld()
+      return
+    }
+    super.updateMatrixWorld(force)
+  }
+
+  /**
+   * Compose this batched sprite's matrixWorld directly: local 2D TRS
+   * (via the fast `updateMatrix`) with the owning SpriteGroup's world
+   * affine folded in — the same 2D-affine ∘ 2D-affine math as
+   * `transformSyncSystem`. Called via the `updateWorldMatrix` override.
+   * @internal
+   */
+  private _composeBatchedMatrixWorld(): void {
+    // Local affine (anchor/trim/layer-depth baked) into this.matrix.
+    this.updateMatrix()
+    this.matrixWorld.copy(this.matrix)
+
+    const registryEntities = this._flatlandWorld?.query(BatchRegistry)
+    const registry =
+      registryEntities && registryEntities.length > 0
+        ? (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined)
+        : undefined
+    const group = registry?.parentGroup
+    if (group) {
+      group.updateWorldMatrix(true, false)
+      const ge = group.matrixWorld.elements
+      const ga = ge[0]!
+      const gb = ge[1]!
+      const gc = ge[4]!
+      const gd = ge[5]!
+      const gtx = ge[12]!
+      const gty = ge[13]!
+      const gtz = ge[14]!
+      if (ga !== 1 || gb !== 0 || gc !== 0 || gd !== 1 || gtx !== 0 || gty !== 0 || gtz !== 0) {
+        const me = this.matrixWorld.elements
+        const l00 = me[0]!
+        const l10 = me[1]!
+        const l01 = me[4]!
+        const l11 = me[5]!
+        const px = me[12]!
+        const py = me[13]!
+        me[0] = ga * l00 + gc * l10
+        me[1] = gb * l00 + gd * l10
+        me[4] = ga * l01 + gc * l11
+        me[5] = gb * l01 + gd * l11
+        me[12] = ga * px + gc * py + gtx
+        me[13] = gb * px + gd * py + gty
+        me[14] = me[14]! + gtz
+      }
+    }
+    this.matrixWorldNeedsUpdate = false
   }
 
   /**
@@ -2148,6 +2260,13 @@ export class Sprite2D extends Mesh {
     const eid = (this._entity as unknown as number) & ENTITY_ID_MASK
     this._idx = eid
 
+    // The ECS transform pass is the single writer of a batched sprite's
+    // matrixWorld (group-world affine ∘ local TRS). Disable three's
+    // auto-compose so a scene traversal can't overwrite it with a
+    // parent-chain compose that doesn't match the rendered transform.
+    // Restored on unenroll — standalone sprites keep three semantics.
+    this.matrixWorldAutoUpdate = false
+
     // Swap array refs from local to world SoA stores
     const uvStore = resolveStore(w, SpriteUV)
     this._uvX = uvStore['x']!
@@ -2267,10 +2386,24 @@ export class Sprite2D extends Mesh {
     // (the spriteArr entry above is already nulled), and a stale
     // _batchMesh would let direct-write setters (color/alpha/flip/UV)
     // clobber a freed — possibly reallocated — slot before the next
-    // system pass.
+    // system pass. Same reasoning for the picking-broadphase entry:
+    // remove it here while the batch is still in hand, or the deferred
+    // batchRemoveSystem (which can no longer resolve this sprite) would
+    // leave a stale grid entry that keeps raycast-hitting.
+    if (this._batchMesh) {
+      this._batchMesh.grid.remove(this)
+      // Hand picking back from the batch (R3F batch-root proxy) — the
+      // deferred batchRemoveSystem can no longer resolve this sprite.
+      unproxyPickFromBatch(this, this._batchMesh)
+    }
     this._batchMesh = null
     this._batchSlot = -1
     this._batchIdx = -1
+
+    // Hand matrixWorld ownership back to three — a standalone (or
+    // demoted) sprite is a real graph child again and needs the normal
+    // parent-chain compose for rendering and raycasts.
+    this.matrixWorldAutoUpdate = true
   }
 
   /**

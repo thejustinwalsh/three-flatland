@@ -3,6 +3,7 @@ import type { World, Entity } from 'koota'
 import { IsRenderable, InBatch, BatchSlot, BatchMesh, BatchMeta, BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { computeRunKey, recycleBatchIfEmpty } from '../batchUtils'
+import { unproxyPickFromBatch } from '../../react/batchPicking'
 import { ENTITY_ID_MASK } from '../snapshot'
 
 /**
@@ -58,6 +59,15 @@ export function createBatchRemoveSystem(): (world: World, pendingDestroy: Entity
       const eid = (entity as unknown as number) & ENTITY_ID_MASK
       const sprite = registry.spriteArr[eid]
       if (sprite) {
+        // Drop the picking-broadphase entry. The common removal path
+        // (Sprite2D._unenrollFromWorld) has already nulled spriteArr AND
+        // removed the grid entry itself; this covers removal triggers
+        // where the sprite is still enrolled.
+        if (batchMesh?.mesh) {
+          batchMesh.mesh.grid.remove(sprite)
+          // Hand picking back from the batch (R3F batch-root proxy).
+          unproxyPickFromBatch(sprite, batchMesh.mesh)
+        }
         sprite._batchMesh = null
         sprite._batchSlot = -1
         sprite._batchIdx = -1

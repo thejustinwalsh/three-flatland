@@ -5,10 +5,14 @@ import {
   InterleavedBufferAttribute,
   DynamicDrawUsage,
   Sphere,
+  Vector3,
   type Matrix4,
   type Raycaster,
   type Intersection,
 } from 'three'
+import { SpriteSpatialGrid, quadHalfExtents } from './SpriteSpatialGrid'
+import { retireBatchPicking, isR3FManaged } from '../react/batchPicking'
+import type { Sprite2D } from '../sprites/Sprite2D'
 import { createSynthQuadGeometry } from './synthQuadGeometry'
 import { buildEnvelopeGeometry } from './envelopeGeometry'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
@@ -66,6 +70,16 @@ const INTERLEAVED_FULL_THRESHOLD = 3
 const CUSTOM_FULL_THRESHOLD = 3
 
 /**
+ * Scratch for the two XY endpoints of the ray's sweep across the batch's
+ * member z-span (see `raycast`). Module-level — raycast is single-threaded
+ * and synchronous.
+ */
+const _pickPoint = new Vector3()
+const _pickPoint2 = new Vector3()
+/** Scratch for `indexForPicking`'s half-extents — single-threaded, synchronous. */
+const _he = { hx: 0, hy: 0 }
+
+/**
  * A batch of sprites rendered with a single draw call.
  *
  * Uses InstancedMesh with:
@@ -86,6 +100,13 @@ const CUSTOM_FULL_THRESHOLD = 3
  * @internal
  */
 export class SpriteBatch extends InstancedMesh {
+  /**
+   * Type marker for graph-management code (sceneGraphSyncSystem's prune)
+   * that must distinguish batch meshes from other SpriteGroup children
+   * without a value import of this class.
+   */
+  readonly isSpriteBatch = true
+
   /**
    * The material used by all sprites in this batch.
    */
@@ -112,6 +133,14 @@ export class SpriteBatch extends InstancedMesh {
    * longer matches its registration gets rebuilt instead of reused.
    */
   readonly envelopeVersion: number
+
+  /**
+   * Picking broadphase: a uniform hash grid of this batch's member
+   * sprites keyed by world position. Maintained by the batch lifecycle
+   * systems (assign/reassign/remove insert + remove entries) and by
+   * `transformSyncSystem` (moves). Queried by {@link SpriteBatch.raycast}.
+   */
+  readonly grid = new SpriteSpatialGrid()
 
   /**
    * Current number of active slots in the batch.
@@ -542,6 +571,8 @@ export class SpriteBatch extends InstancedMesh {
     this._freeList.length = 0
     this._nextIndex = 0
     this.count = 0
+    // Wholesale membership reset — the broadphase index goes with it.
+    this.grid.clear()
   }
 
   /**
@@ -579,6 +610,24 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
+   * The instance slots carry each sprite's WORLD transform (the ECS
+   * transform pass folds the owning SpriteGroup's world affine in), so
+   * the batch mesh itself must stay pinned at identity — inheriting the
+   * group's transform through the normal parent-chain compose would
+   * double-apply it in the shader's `modelMatrix × instanceMatrix`.
+   */
+  override updateMatrixWorld(_force?: boolean): void {
+    this.matrixWorld.identity()
+    this.matrixWorldNeedsUpdate = false
+  }
+
+  /** See {@link SpriteBatch.updateMatrixWorld} — identity-pinned. */
+  override updateWorldMatrix(_updateParents?: boolean, _updateChildren?: boolean): void {
+    this.matrixWorld.identity()
+    this.matrixWorldNeedsUpdate = false
+  }
+
+  /**
    * The batch is never frustum-culled — an infinite bound is the
    * honest answer at zero cost (InstancedMesh's default would union
    * all instance spheres).
@@ -590,12 +639,82 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Raycasting a batch is meaningless — the unit-quad geometry knows
-   * nothing about per-instance UV flip/atlas remap or alpha. Pointer
-   * interaction happens per-Sprite2D via its own plane-math raycast;
-   * batched-sprite picking is tracked separately (GPU ID-buffer picking).
+   * Index `sprite` into the picking broadphase from its local matrix. The
+   * batch systems call this at slot assign/reassign; the group-folded WORLD
+   * position lands later the same schedule run via `transformSyncSystem`'s
+   * `grid.update`. When transform sync is disabled the instance matrix IS
+   * this local affine, so the grid and the rendered position agree either way.
    */
-  override raycast(_raycaster: Raycaster, _intersects: Intersection[]): void {}
+  indexForPicking(sprite: Sprite2D): void {
+    const te = sprite.matrix.elements
+    quadHalfExtents(te[0]!, te[4]!, te[1]!, te[5]!, sprite.hitRadius, _he)
+    this.grid.insert(sprite, te[12]!, te[13]!, _he.hx, _he.hy, te[14]!)
+  }
+
+  /**
+   * Batch-root broadphase picking. Scene traversal reaches the batch
+   * (member sprites are not graph children), so the batch localizes the
+   * ray and queries its spatial grid for candidate sprites. Each candidate
+   * delegates to `Sprite2D.raycast`, which owns ALL narrow-phase
+   * correctness (on-demand world-matrix compose, hitTestMode
+   * bounds/alpha/radius, near/far) and pushes intersections with
+   * `object === sprite`. three's Raycaster distance-sorts afterward, so
+   * higher-zIndex sprites (closer along +z) surface first — no sorting
+   * here.
+   *
+   * The grid is indexed by world XY, but the ray's XY depends on the depth
+   * at which it is sampled: under an orthographic camera the ray is
+   * z-parallel (XY constant), but under perspective it converges, so a
+   * single z=0 sample would query the wrong cell for a sprite at non-zero
+   * world Z. Localize by sweeping the ray across the grid's [zMin, zMax]
+   * span — the XY endpoints at where the ray ENTERS and EXITS the span,
+   * clamped to the forward (t ≥ 0) half. That collapses to one cell (the
+   * fast path) when the batch is coplanar or the camera is orthographic,
+   * and — unlike intersecting the two z-planes directly — stays correct
+   * when the ray origin sits inside the span or a stale span reaches behind
+   * the camera (those just clamp; they never abort the whole broadphase).
+   */
+  override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
+    if (this._activeCount === 0) return
+    const grid = this.grid
+    const zMin = grid.zMin
+    const zMax = grid.zMax
+    if (zMin > zMax) return // empty grid
+    const ray = raycaster.ray
+    const oz = ray.origin.z
+    const dz = ray.direction.z
+    if (dz === 0) return // ray edge-on to the 2D plane — XY unbounded, no localize
+    // Ray parameters where z crosses the span bounds, ordered + clamped to the
+    // forward half. Entirely-behind span (tHi < 0) → nothing to pick.
+    const ta = (zMin - oz) / dz
+    const tb = (zMax - oz) / dz
+    let tLo = ta < tb ? ta : tb
+    const tHi = ta < tb ? tb : ta
+    if (tHi < 0) return
+    if (tLo < 0) tLo = 0
+    _pickPoint.copy(ray.direction).multiplyScalar(tLo).add(ray.origin)
+    _pickPoint2.copy(ray.direction).multiplyScalar(tHi).add(ray.origin)
+    for (const sprite of grid.querySegment(_pickPoint.x, _pickPoint.y, _pickPoint2.x, _pickPoint2.y)) {
+      if (sprite._pickProxied) {
+        // R3F batch-root picking nulled the sprite's own `raycast` and made
+        // THIS batch its raycast path. Bypass the null straight to the
+        // narrow phase (`_hitTestInto` re-checks `hitTestMode = 'none'`).
+        sprite._hitTestInto(raycaster, intersects)
+      } else if (isR3FManaged(sprite)) {
+        // R3F-managed but NOT proxied (own custom `raycast`, or an opt-out
+        // null): R3F's own per-object interaction list still holds it, so
+        // hit-testing it here too would fire its raycast twice per pointer
+        // event. Leave it to R3F.
+        continue
+      } else if (typeof sprite.raycast === 'function') {
+        // Vanilla (three.js) sprite — the batch grid is its ONLY picking
+        // path. Honor its OWN raycast: the prototype hit test or a
+        // user-supplied custom one. A null raycast (`hitTestMode = 'none'`
+        // or an explicit opt-out) is falsy here and correctly skipped.
+        sprite.raycast(raycaster, intersects)
+      }
+    }
+  }
 
   /**
    * Flush per-buffer dirty state to GPU upload ranges.
@@ -644,6 +763,9 @@ export class SpriteBatch extends InstancedMesh {
    * Dispose of resources.
    */
   override dispose(): this {
+    // Drop any R3F batch-root picking registration — a disposed mesh
+    // must not linger in a live root's interaction list.
+    retireBatchPicking(this)
     this.resetSlots()
     this.geometry.dispose()
     // Don't dispose the material - it may be shared between batches

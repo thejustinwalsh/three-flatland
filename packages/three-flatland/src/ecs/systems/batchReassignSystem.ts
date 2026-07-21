@@ -20,6 +20,7 @@ import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
 
 import { computeRunKey, getOrCreateRun, findOrCreateBatch, recycleBatchIfEmpty } from '../batchUtils'
+import { proxyPickToBatch, unproxyPickFromBatch } from '../../react/batchPicking'
 import { ENTITY_ID_MASK } from '../snapshot'
 
 /**
@@ -100,6 +101,14 @@ export function createBatchReassignSystem(): (
         oldBatchMesh.mesh.syncCount()
       }
 
+      // Drop the picking-broadphase entry with the slot — the sprite is
+      // re-indexed into its new batch's grid by syncAllBuffers below.
+      // The R3F pick proxy moves with it (re-proxied after insertion).
+      if (oldBatchMesh?.mesh) {
+        oldBatchMesh.mesh.grid.remove(sprite)
+        unproxyPickFromBatch(sprite, oldBatchMesh.mesh)
+      }
+
       entity.remove(InBatch(oldBatchEntity))
 
       // Recycle old batch if empty
@@ -158,6 +167,9 @@ export function createBatchReassignSystem(): (
       sprite._batchSlot = newSlot
       sprite._batchIdx = newBatchIdx
 
+      // Re-route R3F picking through the new batch.
+      proxyPickToBatch(sprite, newBatchMesh.mesh)
+
       // Full sync to new batch
       syncAllBuffers(entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)
     }
@@ -189,6 +201,10 @@ function syncAllBuffers(
   // Transform — use Sprite2D's updateMatrix for full 3D support
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
+
+  // Picking broadphase: index at the local translation; the world-folded
+  // position lands via transformSyncSystem — see batchAssignSystem.
+  mesh.indexForPicking(sprite)
 
   // Lighting system flags (instanceSystem.z) + shadow radius
   // (instanceExtras.x) — re-written on reassign so a slot move carries
