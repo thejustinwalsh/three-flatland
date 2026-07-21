@@ -157,15 +157,32 @@ export class SpriteSpatialGrid {
     if (cx0 === cx1 && cy0 === cy1) {
       return this._cells.get(`${cx0},${cy0}`) ?? EMPTY
     }
-    const out = new Set<Sprite2D>()
     const minCx = cx0 < cx1 ? cx0 : cx1
     const maxCx = cx0 < cx1 ? cx1 : cx0
     const minCy = cy0 < cy1 ? cy0 : cy1
     const maxCy = cy0 < cy1 ? cy1 : cy0
-    for (let cy = minCy; cy <= maxCy; cy++) {
-      for (let cx = minCx; cx <= maxCx; cx++) {
-        const cell = this._cells.get(`${cx},${cy}`)
-        if (cell) for (const s of cell) out.add(s)
+    const out = new Set<Sprite2D>()
+    // A near-grazing ray (tiny dz) can make the swept segment — and thus this
+    // cell bounding block — span astronomically many cells, almost all empty.
+    // Iterate whichever set is smaller: the block, or the OCCUPIED cells
+    // (bounded by the sprite count). The result is identical; only the cost
+    // differs. Guards against an unbounded loop / hang on a grazing ray.
+    const blockCells = (maxCx - minCx + 1) * (maxCy - minCy + 1)
+    if (blockCells <= this._cells.size) {
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        for (let cx = minCx; cx <= maxCx; cx++) {
+          const cell = this._cells.get(`${cx},${cy}`)
+          if (cell) for (const s of cell) out.add(s)
+        }
+      }
+    } else {
+      for (const [key, cell] of this._cells) {
+        const comma = key.indexOf(',')
+        const cx = Number(key.slice(0, comma))
+        const cy = Number(key.slice(comma + 1))
+        if (cx >= minCx && cx <= maxCx && cy >= minCy && cy <= maxCy) {
+          for (const s of cell) out.add(s)
+        }
       }
     }
     return out
