@@ -161,27 +161,11 @@ export function transformSyncSystem(world: World): void {
 
     mesh.markMatrixDirty(slot)
 
-    // Mirror the composed WORLD affine into the sprite's matrixWorld so
-    // raycasts and any matrixWorld consumer see exactly what renders.
-    // matrixWorld stays a valid Matrix4 (identity z-column, w-row).
-    const me = sprite.matrixWorld.elements
-    me[0] = m00
-    me[1] = m10
-    me[2] = 0
-    me[3] = 0
-    me[4] = m01
-    me[5] = m11
-    me[6] = 0
-    me[7] = 0
-    me[8] = 0
-    me[9] = 0
-    me[10] = 1
-    me[11] = 0
-    me[12] = tx
-    me[13] = ty
-    me[14] = tz
-    me[15] = 1
-    sprite.matrixWorldNeedsUpdate = false
+    // We do NOT write sprite.matrixWorld here. Rendering reads the instance
+    // slot above; the only per-frame consumer of a batched sprite's
+    // matrixWorld is raycast(), which composes it on demand for the one sprite
+    // being cast (Sprite2D._composeBatchedMatrixWorld). Materializing it for
+    // every sprite every frame is wasted work.
 
     // Auto-derived shadow radius tracks animated scale (e.g.
     // AnimatedSprite2D frame source-size swaps) each frame. Explicit

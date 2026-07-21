@@ -6,10 +6,12 @@ import { Sprite2D } from '../sprites/Sprite2D'
 /**
  * Batched sprites must render AND hit-test at the same WORLD point.
  *
- * The ECS transform pass is the single writer of a batched sprite's world
- * transform: it folds the SpriteGroup's own world affine into each sprite's
- * local 2D TRS and writes the result to BOTH the batch instanceMatrix slot
- * (what the GPU draws) and `sprite.matrixWorld` (what raycasts read).
+ * The ECS transform pass folds the SpriteGroup's world affine into each
+ * sprite's local 2D TRS and writes the result to the batch instanceMatrix slot
+ * (what the GPU draws). It does NOT write sprite.matrixWorld — that is composed
+ * on demand inside raycast(), only for the sprite actually being cast. So these
+ * tests assert the slot (rendering) and the raycast (hit testing), never a
+ * per-frame matrixWorld.
  */
 
 function makeSprite(scale = 100): Sprite2D {
@@ -39,19 +41,13 @@ describe('batched sprite world transform under a translated SpriteGroup', () => 
     // renderer.render() entry point — runs the ECS schedule.
     scene.updateMatrixWorld(true)
 
-    // (a) matrixWorld carries the group's translation
-    expect(sprite.matrixWorld.elements[12]).toBe(500)
-    expect(sprite.matrixWorld.elements[13]).toBe(0)
-    expect(sprite.matrixWorld.elements[0]).toBe(100)
-    expect(sprite.matrixWorld.elements[5]).toBe(100)
-
-    // (b) the instance slot carries the SAME world transform
+    // (a) the instance slot (what renders) carries the world transform
     const slot = instanceSlot(sprite)
     expect(slot[12]).toBe(500)
     expect(slot[0]).toBe(100)
     expect(slot[5]).toBe(100)
 
-    // (c) a raycast at the sprite's world centre hits; off-sprite misses
+    // (b) a raycast at the sprite's world centre hits; off-sprite misses
     const rc = new Raycaster()
     rc.set(new Vector3(500, 0, 100), new Vector3(0, 0, -1))
     expect(rc.intersectObject(sprite)).toHaveLength(1)
@@ -77,10 +73,7 @@ describe('batched sprite world transform under a translated SpriteGroup', () => 
 
     scene.updateMatrixWorld(true)
 
-    // Group rotates the sprite's position (200, 0) to (0, 200)
-    expect(sprite.matrixWorld.elements[12]).toBeCloseTo(0, 10)
-    expect(sprite.matrixWorld.elements[13]).toBeCloseTo(200, 10)
-
+    // Group rotates the sprite's position (200, 0) to (0, 200) in the slot
     const slot = instanceSlot(sprite)
     expect(slot[12]).toBeCloseTo(0, 10)
     expect(slot[13]).toBeCloseTo(200, 10)
@@ -147,11 +140,13 @@ describe('batched sprite world transform under a translated SpriteGroup', () => 
 
     scene.updateMatrixWorld(true)
 
-    expect(sprite.matrixWorld.elements[12]).toBe(30)
-    expect(sprite.matrixWorld.elements[13]).toBe(-40)
+    // Identity group → slot is the plain local compose, and hit testing agrees.
     const slot = instanceSlot(sprite)
     expect(slot[12]).toBe(30)
     expect(slot[13]).toBe(-40)
+    const rc = new Raycaster()
+    rc.set(new Vector3(30, -40, 100), new Vector3(0, 0, -1))
+    expect(rc.intersectObject(sprite)).toHaveLength(1)
   })
 })
 
