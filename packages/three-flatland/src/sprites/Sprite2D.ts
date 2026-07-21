@@ -1909,11 +1909,10 @@ export class Sprite2D extends Mesh {
     // issued outside the frame loop / before the first schedule run.
     // Standalone sprites are real graph children: refresh ancestors too so
     // pre-first-render raycasts read a current parent chain.
-    if (this._entity) {
-      this._composeBatchedMatrixWorld()
-    } else {
-      this.updateWorldMatrix(true, false)
-    }
+    // The standard three refresh contract — routed to the batched compose for
+    // enrolled sprites (see the updateWorldMatrix override), or three's normal
+    // ancestor walk for standalone ones.
+    this.updateWorldMatrix(true, false)
     const hit = rayPlaneZ0(raycaster, this)
     if (!hit) return
 
@@ -1955,12 +1954,34 @@ export class Sprite2D extends Mesh {
   }
 
   /**
+   * Make `matrixWorld` current on demand. For an enrolled (batched) sprite,
+   * `matrixWorldAutoUpdate` is off and the sprite is not a graph child, so
+   * three's own traversal never composes it — do it here. For a standalone
+   * sprite, defer to three's normal ancestor walk. This is the standard
+   * three refresh contract, so any consumer (raycast, bounds, devtools) can
+   * `sprite.updateWorldMatrix(true, false)` then read `matrixWorld`.
+   */
+  override updateWorldMatrix(updateParents: boolean, updateChildren: boolean): void {
+    if (this._entity) {
+      this._composeBatchedMatrixWorld()
+      return
+    }
+    super.updateWorldMatrix(updateParents, updateChildren)
+  }
+
+  override updateMatrixWorld(force?: boolean): void {
+    if (this._entity) {
+      this._composeBatchedMatrixWorld()
+      return
+    }
+    super.updateMatrixWorld(force)
+  }
+
+  /**
    * Compose this batched sprite's matrixWorld directly: local 2D TRS
    * (via the fast `updateMatrix`) with the owning SpriteGroup's world
    * affine folded in — the same 2D-affine ∘ 2D-affine math as
-   * `transformSyncSystem`, for raycasts issued outside the frame loop.
-   * `updateWorldMatrix` can't do this: with `matrixWorldAutoUpdate`
-   * disabled three skips the compose entirely (verified three r183).
+   * `transformSyncSystem`. Called via the `updateWorldMatrix` override.
    * @internal
    */
   private _composeBatchedMatrixWorld(): void {
