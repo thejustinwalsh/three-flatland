@@ -4,7 +4,6 @@ import {
   InstancedInterleavedBuffer,
   InterleavedBufferAttribute,
   DynamicDrawUsage,
-  Plane,
   Sphere,
   Vector3,
   type Matrix4,
@@ -70,13 +69,10 @@ const INTERLEAVED_FULL_THRESHOLD = 3
 const CUSTOM_FULL_THRESHOLD = 3
 
 /**
- * The batch's picking plane: world z = 0. Instance transforms live near
- * z = 0 (sort-layer offsets + tiny zIndex epsilons), and the batch mesh
- * itself is identity-pinned, so a single plane intersection localizes
- * the ray for the broadphase. Module-level scratch — raycast is
- * single-threaded and synchronous.
+ * Scratch for the two XY endpoints of the ray's sweep across the batch's
+ * member z-span (see `raycast`). Module-level — raycast is single-threaded
+ * and synchronous.
  */
-const _pickPlane = new Plane(new Vector3(0, 0, 1), 0)
 const _pickPoint = new Vector3()
 const _pickPoint2 = new Vector3()
 
@@ -654,22 +650,34 @@ export class SpriteBatch extends InstancedMesh {
    * at which it is sampled: under an orthographic camera the ray is
    * z-parallel (XY constant), but under perspective it converges, so a
    * single z=0 sample would query the wrong cell for a sprite at non-zero
-   * world Z. Sweep the ray across the grid's [zMin, zMax] span instead —
-   * two plane intersections bounding a segment, which collapses back to one
-   * cell (the fast path) whenever the batch is coplanar or the camera is
-   * orthographic.
+   * world Z. Localize by sweeping the ray across the grid's [zMin, zMax]
+   * span — the XY endpoints at where the ray ENTERS and EXITS the span,
+   * clamped to the forward (t ≥ 0) half. That collapses to one cell (the
+   * fast path) when the batch is coplanar or the camera is orthographic,
+   * and — unlike intersecting the two z-planes directly — stays correct
+   * when the ray origin sits inside the span or a stale span reaches behind
+   * the camera (those just clamp; they never abort the whole broadphase).
    */
   override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
     if (this._activeCount === 0) return
     const grid = this.grid
     const zMin = grid.zMin
-    if (zMin > grid.zMax) return // empty grid
-    // Localize the ray at both ends of the member z-span. A ray parallel to
-    // (or receding from) these z-planes yields no point — nothing to pick.
-    _pickPlane.constant = -zMin
-    if (raycaster.ray.intersectPlane(_pickPlane, _pickPoint) === null) return
-    _pickPlane.constant = -grid.zMax
-    if (raycaster.ray.intersectPlane(_pickPlane, _pickPoint2) === null) return
+    const zMax = grid.zMax
+    if (zMin > zMax) return // empty grid
+    const ray = raycaster.ray
+    const oz = ray.origin.z
+    const dz = ray.direction.z
+    if (dz === 0) return // ray edge-on to the 2D plane — XY unbounded, no localize
+    // Ray parameters where z crosses the span bounds, ordered + clamped to the
+    // forward half. Entirely-behind span (tHi < 0) → nothing to pick.
+    const ta = (zMin - oz) / dz
+    const tb = (zMax - oz) / dz
+    let tLo = ta < tb ? ta : tb
+    const tHi = ta < tb ? tb : ta
+    if (tHi < 0) return
+    if (tLo < 0) tLo = 0
+    _pickPoint.copy(ray.direction).multiplyScalar(tLo).add(ray.origin)
+    _pickPoint2.copy(ray.direction).multiplyScalar(tHi).add(ray.origin)
     for (const sprite of grid.querySegment(_pickPoint.x, _pickPoint.y, _pickPoint2.x, _pickPoint2.y)) {
       if (sprite._pickProxied) {
         // R3F batch-root picking nulled the sprite's own `raycast` and made

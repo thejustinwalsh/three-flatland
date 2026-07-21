@@ -107,6 +107,12 @@ const MARKER = (): void => {}
  * only if it wasn't among the pointerdown's initial hits (onPointerMissed);
  * drag-over / drop "missed" fire on the whole interaction list unconditionally
  * when the drag/drop hit nothing, so they do NOT filter.
+ *
+ * The initialHits filter is exact for the dominant click (pointerdown and
+ * pointerup on the same target): empty space → every member fires; on a member
+ * → the others fire. It differs from R3F only in the cancelled click
+ * (pointerdown on member A, pointerup on empty): R3F would fire A's
+ * onPointerMissed, this skips it. Niche and arguably preferable (A was pressed).
  */
 function createMissedForwarder(
   reg: BatchPickRegistration,

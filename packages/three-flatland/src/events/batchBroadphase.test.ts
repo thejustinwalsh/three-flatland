@@ -101,6 +101,36 @@ describe('batch-root broadphase picking', () => {
     expect(hits.some((h) => h.object === s)).toBe(true)
   })
 
+  // Robustness: when the camera's Z lies INSIDE the batch's member z-span
+  // (a near sprite in front + a sprite behind the camera), a naive
+  // intersect-both-z-planes localizer aborts (the far plane is behind the ray).
+  // The forward-clamped sweep must still find the reachable near sprite.
+  it('finds a forward sprite when the camera sits inside the member z-span', () => {
+    const flatland = fl()
+    const cam = new PerspectiveCamera(50, 1, 0.1, 1000)
+    cam.position.set(0, 0, 50)
+    cam.updateMatrixWorld(true)
+    cam.updateProjectionMatrix()
+
+    // Behind the camera (z=100 > camera z=50) — pushes zMax past the origin.
+    const behind = new Sprite2D({ texture: new Texture(), anchor: [0.5, 0.5] })
+    behind.position.set(0, 0, 100)
+    behind.scale.set(20, 20, 1)
+    flatland.add(behind)
+    // In front, off the z=0... on z=0, reachable.
+    const front = new Sprite2D({ texture: new Texture(), anchor: [0.5, 0.5] })
+    front.position.set(20, 0, 0)
+    front.scale.set(20, 20, 1)
+    flatland.add(front)
+    flatland.scene.updateMatrixWorld(true)
+
+    const proj = front.position.clone().project(cam)
+    const rc = new Raycaster()
+    rc.setFromCamera(new Vector2(proj.x, proj.y), cam)
+    const hits = rc.intersectObjects(flatland.scene.children, true)
+    expect(hits.some((h) => h.object === front)).toBe(true)
+  })
+
   // A batched R3F sprite carrying its OWN custom raycast is NOT proxied (it
   // stays in R3F's per-object interaction list). It is still in the batch
   // grid, so without a guard the batch would ALSO invoke its raycast — twice
