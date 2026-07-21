@@ -167,8 +167,15 @@ export class SpriteSpatialGrid {
     // Iterate whichever set is smaller: the block, or the OCCUPIED cells
     // (bounded by the sprite count). The result is identical; only the cost
     // differs. Guards against an unbounded loop / hang on a grazing ray.
+    //
+    // The block branch also requires float-safe indices: a `cx++` at
+    // Number.MAX_SAFE_INTEGER (world coords near 2^53·cellSize) stops
+    // advancing and loops forever, so beyond a generous magnitude fall back to
+    // the occupied-set branch, whose bound comparisons increment nothing.
+    const SAFE_CELL = 2 ** 40
+    const indicesSafe = minCx > -SAFE_CELL && maxCx < SAFE_CELL && minCy > -SAFE_CELL && maxCy < SAFE_CELL
     const blockCells = (maxCx - minCx + 1) * (maxCy - minCy + 1)
-    if (blockCells <= this._cells.size) {
+    if (indicesSafe && blockCells <= this._cells.size) {
       for (let cy = minCy; cy <= maxCy; cy++) {
         for (let cx = minCx; cx <= maxCx; cx++) {
           const cell = this._cells.get(`${cx},${cy}`)

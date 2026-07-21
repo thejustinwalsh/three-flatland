@@ -56,4 +56,18 @@ describe('SpriteSpatialGrid', () => {
     expect(performance.now() - start).toBeLessThan(200)
     expect(hit).toEqual(['a', 'b'])
   })
+
+  it('terminates on a SMALL block at astronomically large cell indices', () => {
+    const g = new SpriteSpatialGrid(128)
+    g.insert(sprite('a'), 10, 10, 4, 4)
+    // A tiny 2-cell block, but at world coords ~2^53·cellSize where integer
+    // ++ would stop advancing. Must fall back to the occupied-cell branch and
+    // return promptly rather than spinning forever.
+    const huge = 2 ** 53 * 128
+    const start = performance.now()
+    const hit = ids(g.querySegment(huge, huge, huge + 128, huge))
+    expect(performance.now() - start).toBeLessThan(200)
+    // Query is far from 'a' — no false hit, and critically it RETURNED.
+    expect(hit).toEqual([])
+  })
 })
