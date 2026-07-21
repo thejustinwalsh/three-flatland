@@ -1902,7 +1902,18 @@ export class Sprite2D extends Mesh {
     // Flatland's internal scene disables matrixWorldAutoUpdate — matrices are
     // refreshed once per frame inside render() — so a raycast from user code
     // would otherwise read an identity matrixWorld and test a half-unit disc.
-    this.updateMatrixWorld()
+    //
+    // Batched sprites own their matrixWorld through the ECS transform pass
+    // (matrixWorldAutoUpdate is off), so three's refresh would be a no-op;
+    // compose the world affine directly instead — this covers raycasts
+    // issued outside the frame loop / before the first schedule run.
+    // Standalone sprites are real graph children: refresh ancestors too so
+    // pre-first-render raycasts read a current parent chain.
+    if (this._entity) {
+      this._composeBatchedMatrixWorld()
+    } else {
+      this.updateWorldMatrix(true, false)
+    }
     const hit = rayPlaneZ0(raycaster, this)
     if (!hit) return
 
@@ -1941,6 +1952,56 @@ export class Sprite2D extends Mesh {
     const u = localX + 0.5
     const v = localY + 0.5
     intersects.push(createIntersection(hit, this, u, v))
+  }
+
+  /**
+   * Compose this batched sprite's matrixWorld directly: local 2D TRS
+   * (via the fast `updateMatrix`) with the owning SpriteGroup's world
+   * affine folded in — the same 2D-affine ∘ 2D-affine math as
+   * `transformSyncSystem`, for raycasts issued outside the frame loop.
+   * `updateWorldMatrix` can't do this: with `matrixWorldAutoUpdate`
+   * disabled three skips the compose entirely (verified three r183).
+   * @internal
+   */
+  private _composeBatchedMatrixWorld(): void {
+    // Local affine (anchor/trim/layer-depth baked) into this.matrix.
+    this.updateMatrix()
+    this.matrixWorld.copy(this.matrix)
+
+    const registryEntities = this._flatlandWorld?.query(BatchRegistry)
+    const registry =
+      registryEntities && registryEntities.length > 0
+        ? (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined)
+        : undefined
+    const group = registry?.parentGroup
+    if (group) {
+      group.updateWorldMatrix(true, false)
+      const ge = group.matrixWorld.elements
+      const ga = ge[0]!
+      const gb = ge[1]!
+      const gc = ge[4]!
+      const gd = ge[5]!
+      const gtx = ge[12]!
+      const gty = ge[13]!
+      const gtz = ge[14]!
+      if (ga !== 1 || gb !== 0 || gc !== 0 || gd !== 1 || gtx !== 0 || gty !== 0 || gtz !== 0) {
+        const me = this.matrixWorld.elements
+        const l00 = me[0]!
+        const l10 = me[1]!
+        const l01 = me[4]!
+        const l11 = me[5]!
+        const px = me[12]!
+        const py = me[13]!
+        me[0] = ga * l00 + gc * l10
+        me[1] = gb * l00 + gd * l10
+        me[4] = ga * l01 + gc * l11
+        me[5] = gb * l01 + gd * l11
+        me[12] = ga * px + gc * py + gtx
+        me[13] = gb * px + gd * py + gty
+        me[14] = me[14]! + gtz
+      }
+    }
+    this.matrixWorldNeedsUpdate = false
   }
 
   /**
@@ -2148,6 +2209,13 @@ export class Sprite2D extends Mesh {
     const eid = (this._entity as unknown as number) & ENTITY_ID_MASK
     this._idx = eid
 
+    // The ECS transform pass is the single writer of a batched sprite's
+    // matrixWorld (group-world affine ∘ local TRS). Disable three's
+    // auto-compose so a scene traversal can't overwrite it with a
+    // parent-chain compose that doesn't match the rendered transform.
+    // Restored on unenroll — standalone sprites keep three semantics.
+    this.matrixWorldAutoUpdate = false
+
     // Swap array refs from local to world SoA stores
     const uvStore = resolveStore(w, SpriteUV)
     this._uvX = uvStore['x']!
@@ -2271,6 +2339,11 @@ export class Sprite2D extends Mesh {
     this._batchMesh = null
     this._batchSlot = -1
     this._batchIdx = -1
+
+    // Hand matrixWorld ownership back to three — a standalone (or
+    // demoted) sprite is a real graph child again and needs the normal
+    // parent-chain compose for rendering and raycasts.
+    this.matrixWorldAutoUpdate = true
   }
 
   /**

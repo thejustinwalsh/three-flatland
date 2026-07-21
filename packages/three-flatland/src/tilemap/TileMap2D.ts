@@ -548,8 +548,9 @@ export class TileMap2D extends Group {
    */
   override raycast(raycaster: Raycaster, intersects: Intersection[]): false {
     // See Sprite2D.raycast — Flatland's internal scene disables
-    // matrixWorldAutoUpdate, so refresh before reading matrixWorld.
-    this.updateMatrixWorld()
+    // matrixWorldAutoUpdate, so refresh (ancestors included, for
+    // raycasts issued outside the frame loop) before reading matrixWorld.
+    this.updateWorldMatrix(true, false)
     const hit = rayPlaneZ0(raycaster, this)
     if (!hit) return false
     const { localX, localY } = hit
