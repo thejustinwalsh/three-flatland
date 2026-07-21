@@ -52,14 +52,14 @@ import { encodeImageFile, encodeImageBatch } from '@three-flatland/image/node'
 
 ## KTX2 loader
 
-`Ktx2Loader` extends `three.Loader`. Detect the renderer's supported transcode targets once, then load — the texture stays GPU-compressed.
+`Ktx2Loader` extends `three.Loader`. Detect the renderer's supported transcode targets once (synchronous, chainable), then load — the texture stays GPU-compressed.
 
 ```ts
 import { Ktx2Loader } from '@three-flatland/image/loaders/ktx2'
 
-const loader = new Ktx2Loader()
-await loader.detectSupport(renderer) // required before load(): picks BC7/ASTC/ETC2/…
-const texture = await loader.loadAsync('/sprite.ktx2')
+const texture = await new Ktx2Loader()
+  .detectSupport(renderer) // required before load(); picks BC7/ASTC/ETC2/…
+  .loadAsync('/sprite.ktx2')
 ```
 
 ## CLI
