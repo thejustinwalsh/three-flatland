@@ -1,5 +1,11 @@
 # create-three-flatland
 
+## 0.1.0-alpha.1
+
+### Patch Changes
+
+- 7617e28: docs: add package README (banner, usage, template matrix, create-vite-compatible flags) and LICENSE
+
 ## 0.1.0-alpha.0
 
 ### Minor Changes

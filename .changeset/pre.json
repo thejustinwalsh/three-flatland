@@ -51,7 +51,6 @@
     "@three-flatland/io": "0.0.0",
     "@three-flatland/preview": "0.0.0",
     "@three-flatland/vscode": "0.1.0",
-    "create-three-flatland": "0.0.0",
     "flatland-template-react": "0.0.0",
     "flatland-template-three": "0.0.0"
   },
@@ -116,7 +115,9 @@
     "batched-raycast-fix",
     "batched-sprite-world-transform",
     "create-three-flatland-initial",
+    "create-three-flatland-readme",
     "image-initial-release",
+    "image-readme",
     "normals-force-runtime-rename",
     "rename-tweakpane-to-devtools",
     "slug-baker-registration",
