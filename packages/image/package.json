@@ -1,7 +1,7 @@
 {
   "name": "@three-flatland/image",
-  "version": "0.0.0",
-  "description": "WASM image encoder package \u2014 PNG/WebP/AVIF/KTX2 with browser+Node+CLI surfaces",
+  "version": "0.1.0-alpha.0",
+  "description": "WASM image encoder package — PNG/WebP/AVIF/KTX2 with browser+Node+CLI surfaces",
   "type": "module",
   "exports": {
     ".": {
