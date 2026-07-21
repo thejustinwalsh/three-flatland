@@ -117,13 +117,22 @@ jobs:
       # touches it and it gets no npm release / git tag. This decides whether
       # its version bumped THIS run and thus needs a universal VSIX built +
       # attached to a GitHub Release (see the build-vsix / publish-vsix jobs).
+      #
+      # Gated on `steps.changesets.outputs.published` so the VSIX ships on the
+      # SAME trigger as the npm packages: only a run where `changeset publish`
+      # actually published anything runs this and, downstream, the VSIX jobs. On
+      # a version-mode run (the action just opened/updated the release PR, npm
+      # published nothing) this is skipped — so the extension can never ship
+      # ahead of, or without, the npm release. They move together.
+      #
       # Idempotent: keyed on whether the `fl-tools-v<version>` release already
-      # exists, so a re-run or an unrelated push is a no-op. `0.0.0` is the
-      # pre-first-release placeholder (no changeset consumed yet) — skip it.
-      # Best-effort: every branch exits 0 so it can never fail the release job
-      # after the npm publish above already succeeded.
+      # exists, so a re-run is a no-op. `0.0.0` is the pre-first-release
+      # placeholder (no changeset consumed yet) — skip it. Best-effort: every
+      # branch exits 0 so it can never fail the release job after the npm
+      # publish above already succeeded.
       - name: Detect a new FL Tools (VSIX) version to release
         id: flvsix
+        if: steps.changesets.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
