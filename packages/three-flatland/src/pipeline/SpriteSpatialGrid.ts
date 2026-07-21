@@ -7,6 +7,33 @@ import type { Sprite2D } from '../sprites/Sprite2D'
  */
 export const SPATIAL_GRID_CELL_SIZE = 128
 
+/**
+ * Largest cell-index magnitude the grid indexes into. Two bounds in one:
+ * indices stay float-safe (a `cx++` at 2^53 stops advancing → infinite loop),
+ * and the covered region stays finite. `2^40` cells ≈ 1.4e14 world units at
+ * the default cell size — orders of magnitude beyond any real 2D scene (and
+ * beyond float32 render precision), so only absurd coordinates/scales clamp.
+ */
+const MAX_SAFE_CELL = 2 ** 40
+
+/**
+ * Cap on the per-axis cell span a single sprite may occupy. A sprite whose
+ * AABB is astronomically large would otherwise allocate one cell Set per
+ * covered cell (unbounded memory). 256 cells/axis (32768 world units) far
+ * exceeds any real sprite; a degenerate one is indexed into a bounded window
+ * centred on it (≤ 256² cells — kept small so even a pathological input is
+ * cheap, not just finite).
+ */
+const MAX_CELL_SPAN = 256
+
+/**
+ * Clamp a cell index to the float-safe window. `NaN` (a NaN coordinate)
+ * passes through and simply produces an empty, non-iterating range.
+ */
+function clampCell(v: number): number {
+  return v < -MAX_SAFE_CELL ? -MAX_SAFE_CELL : v > MAX_SAFE_CELL ? MAX_SAFE_CELL : v
+}
+
 /** A sprite's current cell coverage — inclusive cell-index bounds. */
 interface CellRange {
   minCx: number
@@ -95,10 +122,27 @@ export class SpriteSpatialGrid {
     if (z < this._zMin) this._zMin = z
     if (z > this._zMax) this._zMax = z
     const cs = this._cellSize
-    const minCx = Math.floor((x - hx) / cs)
-    const minCy = Math.floor((y - hy) / cs)
-    const maxCx = Math.floor((x + hx) / cs)
-    const maxCy = Math.floor((y + hy) / cs)
+    // Clamp coverage to a bounded, float-safe cell window. Without this a
+    // sprite at absurd world coordinates (index ≥ 2^53) would spin the
+    // add/remove loops forever, and a giant AABB would allocate unbounded
+    // cell Sets. Realistic sprites sit far inside these bounds untouched.
+    let minCx = clampCell(Math.floor((x - hx) / cs))
+    let minCy = clampCell(Math.floor((y - hy) / cs))
+    let maxCx = clampCell(Math.floor((x + hx) / cs))
+    let maxCy = clampCell(Math.floor((y + hy) / cs))
+    // Cap the span AROUND the sprite's centre cell (not from the min corner),
+    // so a giant AABB still indexes the region a centre-ish pointer will query.
+    const half = MAX_CELL_SPAN / 2
+    if (maxCx - minCx > MAX_CELL_SPAN) {
+      const cCx = clampCell(Math.floor(x / cs))
+      minCx = cCx - half
+      maxCx = cCx + half
+    }
+    if (maxCy - minCy > MAX_CELL_SPAN) {
+      const cCy = clampCell(Math.floor(y / cs))
+      minCy = cCy - half
+      maxCy = cCy + half
+    }
 
     const range = this._ranges.get(sprite)
     if (range) {
@@ -172,8 +216,8 @@ export class SpriteSpatialGrid {
     // Number.MAX_SAFE_INTEGER (world coords near 2^53·cellSize) stops
     // advancing and loops forever, so beyond a generous magnitude fall back to
     // the occupied-set branch, whose bound comparisons increment nothing.
-    const SAFE_CELL = 2 ** 40
-    const indicesSafe = minCx > -SAFE_CELL && maxCx < SAFE_CELL && minCy > -SAFE_CELL && maxCy < SAFE_CELL
+    const indicesSafe =
+      minCx > -MAX_SAFE_CELL && maxCx < MAX_SAFE_CELL && minCy > -MAX_SAFE_CELL && maxCy < MAX_SAFE_CELL
     const blockCells = (maxCx - minCx + 1) * (maxCy - minCy + 1)
     if (indicesSafe && blockCells <= this._cells.size) {
       for (let cy = minCy; cy <= maxCy; cy++) {

@@ -70,4 +70,27 @@ describe('SpriteSpatialGrid', () => {
     // Query is far from 'a' — no false hit, and critically it RETURNED.
     expect(hit).toEqual([])
   })
+
+  it('insert terminates for an absurd coordinate (index past 2^53)', () => {
+    const g = new SpriteSpatialGrid(128)
+    const start = performance.now()
+    g.insert(sprite('a'), 2 ** 53 * 128, 0, 4, 4) // index ~2^53 → cx++ would stall
+    expect(performance.now() - start).toBeLessThan(200)
+    expect(g.size).toBe(1)
+  })
+
+  it('insert AND remove stay bounded for a giant AABB (no unbounded allocation)', () => {
+    const g = new SpriteSpatialGrid(128)
+    const a = sprite('a')
+    const t0 = performance.now()
+    g.insert(a, 0, 0, 1e9, 1e9) // half-extent 1e9 → billions of cells if uncapped
+    expect(performance.now() - t0).toBeLessThan(500)
+    // A query at the sprite's centre still finds it (indexed window covers 0,0).
+    expect(ids(g.querySegment(0, 0, 10, 10))).toEqual(['a'])
+    // Remove walks the same capped window — must also terminate promptly.
+    const t1 = performance.now()
+    g.remove(a)
+    expect(performance.now() - t1).toBeLessThan(500)
+    expect(g.size).toBe(0)
+  })
 })
