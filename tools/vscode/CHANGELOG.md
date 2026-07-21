@@ -1,5 +1,12 @@
 # @three-flatland/vscode
 
+## 0.2.0-alpha.2
+
+### Patch Changes
+
+- Updated dependencies [7617e28]
+  - @three-flatland/image@0.1.0-alpha.1
+
 ## 0.2.0-alpha.1
 
 ### Patch Changes

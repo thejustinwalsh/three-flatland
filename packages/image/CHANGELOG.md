@@ -1,5 +1,11 @@
 # @three-flatland/image
 
+## 0.1.0-alpha.1
+
+### Patch Changes
+
+- 7617e28: docs: add package README (banner, KTX2 rationale, encode/decode + Ktx2Loader usage, CLI) and LICENSE
+
 ## 0.1.0-alpha.0
 
 ### Minor Changes
