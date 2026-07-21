@@ -20,6 +20,7 @@ import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
 import { computeRunKey, getOrCreateRun, findOrCreateBatch } from '../batchUtils'
 import { quadHalfExtents } from '../../pipeline/SpriteSpatialGrid'
+import { proxyPickToBatch } from '../../react/batchPicking'
 import { ENTITY_ID_MASK } from '../snapshot'
 
 /** Scratch for quadHalfExtents — systems are single-threaded. */
@@ -127,6 +128,11 @@ export function createBatchAssignSystem(): (
       sprite._batchMesh = mesh
       sprite._batchSlot = slot
       sprite._batchIdx = batchIdx
+
+      // R3F batch-root picking: route the sprite's raycast through the
+      // batch's broadphase instead of R3F's O(n) per-object list. No-op
+      // for vanilla (non-R3F) sprites.
+      proxyPickToBatch(sprite, mesh)
 
       // Auto-orchestrated sprites live in the user's scene tree — once a
       // batch draws them, their own Mesh must stop rendering. Explicit

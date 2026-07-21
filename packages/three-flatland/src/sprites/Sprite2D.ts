@@ -39,6 +39,7 @@ import type { HitTestMode } from '../events/HitTestMode'
 import { resolveHitTestMode } from '../events/HitTestMode'
 import type { AlphaMap } from '../events/AlphaMap'
 import { rayPlaneZ0, createIntersection } from '../events/raycastHelpers'
+import { unproxyPickFromBatch } from '../react/batchPicking'
 import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
 import { flatlandPrime, flatlandRegister, flatlandUnregister } from '../orchestration/orchestrator'
 import type { Registry } from '../orchestration/registry'
@@ -174,6 +175,17 @@ export class Sprite2D extends Mesh {
   /** Active hit-test strategy. */
   private _hitTestMode: HitTestMode = 'radius'
 
+  /**
+   * True while R3F batch-root picking has nulled this sprite's `raycast`
+   * to keep it out of R3F's per-object interaction list — the owning
+   * SpriteBatch raycasts on its behalf via {@link Sprite2D._hitTestInto}.
+   * Distinguishes that proxy-owned null from a user opt-out
+   * (`raycast={null}` / `hitTestMode = 'none'`), which the batch must
+   * respect. Managed by `react/batchPicking`.
+   * @internal
+   */
+  _pickProxied = false
+
   /** Hit radius override in local units. Default 0.5 (inscribed half-width of unit quad). */
   get hitRadius(): number {
     return this._hitRadius
@@ -193,6 +205,12 @@ export class Sprite2D extends Mesh {
     this._hitTestMode = resolved
     if (resolved === 'none') {
       // Null the own-property so R3F / three skips this object in raycast traversal
+      ;(this as { raycast: unknown }).raycast = null
+    } else if (this._pickProxied) {
+      // R3F batch-root picking owns the null — restoring the prototype
+      // method would re-expose the sprite to R3F's per-object raycast
+      // list. The batch delegates to _hitTestInto, which reads the mode
+      // set above, so the new mode still takes effect.
       ;(this as { raycast: unknown }).raycast = null
     } else {
       // Delete the own-property to restore the prototype method
@@ -1895,6 +1913,18 @@ export class Sprite2D extends Mesh {
    * method works entirely in centered-quad local space with no anchor math.
    */
   override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
+    this._hitTestInto(raycaster, intersects)
+  }
+
+  /**
+   * Narrow-phase hit test — the body of {@link Sprite2D.raycast},
+   * callable regardless of the public `raycast` property (which
+   * `hitTestMode = 'none'` and R3F batch-root picking null).
+   * `SpriteBatch.raycast` delegates broadphase candidates here; the mode
+   * check lives inside so `'none'` still skips on every path.
+   * @internal
+   */
+  _hitTestInto(raycaster: Raycaster, intersects: Intersection[]): void {
     // `hitTestMode = 'none'` also nulls the instance `raycast` so R3F skips
     // this object at registration (the zero-cost path); this guard is
     // defense-in-depth for direct raycast() calls.
@@ -2360,7 +2390,12 @@ export class Sprite2D extends Mesh {
     // remove it here while the batch is still in hand, or the deferred
     // batchRemoveSystem (which can no longer resolve this sprite) would
     // leave a stale grid entry that keeps raycast-hitting.
-    if (this._batchMesh) this._batchMesh.grid.remove(this)
+    if (this._batchMesh) {
+      this._batchMesh.grid.remove(this)
+      // Hand picking back from the batch (R3F batch-root proxy) — the
+      // deferred batchRemoveSystem can no longer resolve this sprite.
+      unproxyPickFromBatch(this, this._batchMesh)
+    }
     this._batchMesh = null
     this._batchSlot = -1
     this._batchIdx = -1

@@ -21,6 +21,7 @@ import type { RegistryData } from '../batchUtils'
 
 import { computeRunKey, getOrCreateRun, findOrCreateBatch, recycleBatchIfEmpty } from '../batchUtils'
 import { quadHalfExtents } from '../../pipeline/SpriteSpatialGrid'
+import { proxyPickToBatch, unproxyPickFromBatch } from '../../react/batchPicking'
 import { ENTITY_ID_MASK } from '../snapshot'
 
 /** Scratch for quadHalfExtents — systems are single-threaded. */
@@ -106,7 +107,11 @@ export function createBatchReassignSystem(): (
 
       // Drop the picking-broadphase entry with the slot — the sprite is
       // re-indexed into its new batch's grid by syncAllBuffers below.
-      if (oldBatchMesh?.mesh) oldBatchMesh.mesh.grid.remove(sprite)
+      // The R3F pick proxy moves with it (re-proxied after insertion).
+      if (oldBatchMesh?.mesh) {
+        oldBatchMesh.mesh.grid.remove(sprite)
+        unproxyPickFromBatch(sprite, oldBatchMesh.mesh)
+      }
 
       entity.remove(InBatch(oldBatchEntity))
 
@@ -165,6 +170,9 @@ export function createBatchReassignSystem(): (
       sprite._batchMesh = newBatchMesh.mesh
       sprite._batchSlot = newSlot
       sprite._batchIdx = newBatchIdx
+
+      // Re-route R3F picking through the new batch.
+      proxyPickToBatch(sprite, newBatchMesh.mesh)
 
       // Full sync to new batch
       syncAllBuffers(entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)

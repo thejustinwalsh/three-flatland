@@ -12,6 +12,7 @@ import {
   type Intersection,
 } from 'three'
 import { SpriteSpatialGrid } from './SpriteSpatialGrid'
+import { retireBatchPicking } from '../react/batchPicking'
 import { createSynthQuadGeometry } from './synthQuadGeometry'
 import { buildEnvelopeGeometry } from './envelopeGeometry'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
@@ -654,8 +655,12 @@ export class SpriteBatch extends InstancedMesh {
     // Parallel or receding ray — no plane point to localize around.
     if (raycaster.ray.intersectPlane(_pickPlane, _pickPoint) === null) return
     for (const sprite of this.grid.queryPoint(_pickPoint.x, _pickPoint.y)) {
-      // `hitTestMode = 'none'` nulls the instance raycast property.
-      if (typeof sprite.raycast === 'function') sprite.raycast(raycaster, intersects)
+      // A nulled `raycast` is an opt-out (`hitTestMode = 'none'`, user
+      // `raycast={null}`) — respect it, UNLESS the null is R3F batch-root
+      // picking's own doing (`_pickProxied`), in which case this batch IS
+      // the sprite's raycast path. `_hitTestInto` re-checks 'none' itself.
+      if (sprite.raycast === null && !sprite._pickProxied) continue
+      sprite._hitTestInto(raycaster, intersects)
     }
   }
 
@@ -706,6 +711,9 @@ export class SpriteBatch extends InstancedMesh {
    * Dispose of resources.
    */
   override dispose(): this {
+    // Drop any R3F batch-root picking registration — a disposed mesh
+    // must not linger in a live root's interaction list.
+    retireBatchPicking(this)
     this.resetSlots()
     this.geometry.dispose()
     // Don't dispose the material - it may be shared between batches
