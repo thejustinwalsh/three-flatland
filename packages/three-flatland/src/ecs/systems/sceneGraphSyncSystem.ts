@@ -3,6 +3,7 @@ import type { World } from 'koota'
 import { BatchRegistry, BatchMesh, BatchMeta } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { rebuildBatchOrder } from '../batchUtils'
+import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 
 /**
  * Create a scene-graph sync system bound to its own scratch state.
@@ -45,10 +46,14 @@ export function createSceneGraphSyncSystem(): (
       if (batchMesh?.mesh) activeMeshes.add(batchMesh.mesh)
     }
 
-    // Remove children not in active batches
+    // Remove stale BATCH MESHES only. The group's children also include
+    // non-batch objects — sprites demoted to standalone via a user
+    // `renderOrder` write (reparented here by `_demoteToStandalone`) and
+    // foreign Object3Ds routed through `SpriteGroup.add`'s super path —
+    // which this system does not manage and must never evict.
     for (let i = parent.children.length - 1; i >= 0; i--) {
       const child = parent.children[i]
-      if (child && !activeMeshes.has(child)) {
+      if (child && (child as Partial<SpriteBatch>).isSpriteBatch === true && !activeMeshes.has(child)) {
         parentRemove.call(parent, child)
       }
     }

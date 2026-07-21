@@ -9,6 +9,7 @@ import {
 } from '../materials/Sprite2DMaterial'
 import { SpriteBatch } from '../pipeline/SpriteBatch'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
+import { retireBatchPicking, unproxyPickFromBatch } from '../react/batchPicking'
 import {
   BatchGeometryStrategy,
   BatchMesh,
@@ -337,6 +338,10 @@ export function recycleBatchIfEmpty(registry: RegistryData, batchEntity: Entity,
   const batchMesh = batchEntity.get(BatchMesh)
   if (!batchMesh?.mesh || !batchMesh.mesh.isEmpty) return
 
+  // Defensive: a pooled mesh must never linger in an R3F interaction
+  // list (the last member's unproxy normally already retired it).
+  retireBatchPicking(batchMesh.mesh)
+
   // Remove from run
   const idx = run.batches.indexOf(batchEntity)
   if (idx >= 0) run.batches.splice(idx, 1)
@@ -519,6 +524,8 @@ function evictMatchingBatchedEntities(
     const matRef = entity.get(SpriteMaterialRef)
     if (!matRef || !shouldEvict(matRef)) continue
 
+    const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+
     const batchEntity = entity.targetFor(InBatch)
     if (batchEntity) {
       // BatchSlot.slot is the authoritative live slot (kept in sync by
@@ -528,6 +535,14 @@ function evictMatchingBatchedEntities(
       if (slot >= 0 && batchMesh?.mesh) {
         batchMesh.mesh.freeSlot(slot)
         batchMesh.mesh.syncCount()
+      }
+
+      // Drop the picking-broadphase entry with the slot — re-assignment
+      // (IsRenderable re-trigger below) re-indexes into the new batch.
+      // The R3F pick proxy is handed back too; re-assignment re-proxies.
+      if (sprite && batchMesh?.mesh) {
+        batchMesh.mesh.grid.remove(sprite)
+        unproxyPickFromBatch(sprite, batchMesh.mesh)
       }
 
       entity.remove(InBatch(batchEntity))
@@ -545,7 +560,6 @@ function evictMatchingBatchedEntities(
     }
 
     // Clear the sprite's cached direct-write refs — its slot is gone.
-    const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
     if (sprite) {
       sprite._batchMesh = null
       sprite._batchSlot = -1
