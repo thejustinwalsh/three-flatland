@@ -1,5 +1,14 @@
 # @three-flatland/image
 
+## 0.1.0-alpha.2
+
+### Patch Changes
+
+- 2b6f4be: fix: add the `repository` and `license` fields to package.json. The empty
+  `repository.url` made npm reject the publish with E422 (sigstore provenance
+  could not verify the source repo). With provenance enabled, the field must
+  match the GitHub repo URL.
+
 ## 0.1.0-alpha.1
 
 ### Patch Changes
