@@ -45,6 +45,53 @@ jobs:
           echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
           echo "mode: $([ "$PUBLISH" = "true" ] && echo publish || echo version)"
 
+      # Publish preflight — fail FAST, before any approval is spent, if a
+      # public workspace package has never been published. OIDC trusted
+      # publishing can UPDATE a package but never CREATE one, so `changeset
+      # publish` only discovers a first-publish at the end of an approved
+      # ~25-minute run, as a cryptic E404 that fails the whole release and
+      # blocks the VSIX. This killed four releases in a row as new packages
+      # landed: image, create-three-flatland, atlas, alphamap. First publishes
+      # are a one-time manual bootstrap:
+      #   pnpm --filter <name> publish --access public --no-git-checks
+      #   then add the GitHub Actions trusted publisher on npmjs.com.
+      - name: Preflight — every public package must already exist on npm
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          # Enumerate publishable packages: every workspace package.json with
+          # private !== true. Walks the pnpm-workspace.yaml roots that can
+          # contain publics (examples/templates/tools/docs are all private).
+          node -e '
+            const fs = require("fs"), path = require("path")
+            const dirs = ["skills", "docs"]
+            for (const root of ["packages", "minis", "tools"])
+              if (fs.existsSync(root))
+                for (const d of fs.readdirSync(root)) dirs.push(path.join(root, d))
+            const publics = []
+            for (const d of dirs) {
+              const pj = path.join(d, "package.json")
+              if (!fs.existsSync(pj)) continue
+              const p = JSON.parse(fs.readFileSync(pj, "utf8"))
+              if (p.name && !p.private) publics.push(p.name)
+            }
+            fs.writeFileSync("publics.txt", publics.join("\n") + "\n")
+            console.log("public packages:", publics.length)
+          '
+          MISSING=""
+          while read -r NAME; do
+            [ -z "$NAME" ] && continue
+            # One retry absorbs a transient registry hiccup; a real E404 fails twice.
+            npm view "$NAME" name >/dev/null 2>&1 || npm view "$NAME" name >/dev/null 2>&1 \
+              || MISSING="$MISSING $NAME"
+          done < publics.txt
+          if [ -n "$MISSING" ]; then
+            for NAME in $MISSING; do
+              echo "::error::$NAME has never been published — OIDC trusted publishing cannot create it, so the publish WILL fail with E404. Bootstrap once by hand: pnpm --filter $NAME publish --access public --no-git-checks, then add the GitHub Actions trusted publisher for it on npmjs.com."
+            done
+            exit 1
+          fi
+          echo "preflight ok — every public package exists on npm"
+
   # The approval-free half: open or refresh the release PR so it always
   # reflects main. Merging that PR is the human act that leads to a publish;
   # the reviewer gate below guards the publish itself, not this bookkeeping.
