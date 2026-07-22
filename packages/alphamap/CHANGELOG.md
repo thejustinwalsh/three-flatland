@@ -1,5 +1,13 @@
 # @three-flatland/alphamap
 
+## 0.1.0-alpha.2
+
+### Patch Changes
+
+- f6bb9c8: docs: adopt the standard package README (repo banner, description with links,
+  Alpha Release notice, npm/license badges) and add the MIT LICENSE file, matching
+  the other published packages ahead of alphamap's first publish.
+
 ## 0.1.0-alpha.1
 
 ### Minor Changes

@@ -1,7 +1,7 @@
 {
   "name": "@three-flatland/vscode",
   "displayName": "Flatland Tools",
-  "version": "0.2.0-alpha.3",
+  "version": "0.2.0-alpha.4",
   "private": true,
   "description": "Visual editors for game and multimedia assets, right in your editor — ideal for Three.js and React Three Fiber (R3F) projects. Sprite atlas packing, GPU image encoding, normal-map baking, and inline audio playback. Built by the three-flatland team; every tool works standalone.",
   "publisher": "three-flatland",
