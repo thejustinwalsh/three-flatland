@@ -17,16 +17,77 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Which half of the changesets loop is this run? Pending (pre-mode unapplied)
+  # changesets → "version": refresh the `chore: release packages` PR; nothing
+  # ships, so no approval. None pending → the release PR was just merged →
+  # "publish": run the reviewer-gated publish below. Keeping this decision OUT
+  # of the environment-gated job is what keeps ordinary merges approval-free —
+  # putting `environment: release` on the single do-both job made every merge
+  # queue an approval just to refresh the PR.
+  mode:
+    name: Version or publish?
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      publish: ${{ steps.decide.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: decide
+        run: |
+          PUBLISH=$(node -e '
+            const fs = require("fs")
+            const files = fs.readdirSync(".changeset").filter((f) => f.endsWith(".md") && f !== "README.md")
+            let applied = new Set()
+            try { applied = new Set(JSON.parse(fs.readFileSync(".changeset/pre.json", "utf8")).changesets) } catch {}
+            const pending = files.map((f) => f.slice(0, -3)).filter((id) => !applied.has(id))
+            console.log(pending.length === 0)
+          ')
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+          echo "mode: $([ "$PUBLISH" = "true" ] && echo publish || echo version)"
+
+  # The approval-free half: open or refresh the release PR so it always
+  # reflects main. Merging that PR is the human act that leads to a publish;
+  # the reviewer gate below guards the publish itself, not this bookkeeping.
+  version-pr:
+    name: Update release PR
+    runs-on: ubuntu-latest
+    needs: mode
+    if: needs.mode.outputs.publish != 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create or update the release PR
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset:version
+          title: 'chore: release packages'
+          commit: 'chore: release packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   release:
     name: Release
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    # `environment: release` requires a reviewer, so the auto workflow_run QUEUES
-    # this job and it waits for your approval. Everything below — including the smoke
-    # suites run as steps just before the publish — executes ONLY after you approve.
-    # So the smokes never run on ordinary merges (the job sits pending); they run on
-    # the release you actually greenlight, right before it publishes, and a smoke
-    # failure fails the job before the publish step → nothing is published.
+    needs: mode
+    if: needs.mode.outputs.publish == 'true'
+    # `environment: release` requires a reviewer, so this QUEUES and waits for
+    # your approval — but only on a publish run (the release PR was just
+    # merged). The smoke suites run as steps just before the publish, on the
+    # release you actually greenlight; a smoke failure fails the job before the
+    # publish step → nothing is published.
     environment: release
     # Surfaced so the VSIX jobs below know whether THIS release bumped
     # @three-flatland/vscode (the private extension package) and thus needs a
