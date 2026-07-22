@@ -25,5 +25,16 @@ export const baseTestConfig = defineConfig({
     // Global WebGL context mock — harmless where unused, required by GPU-touching
     // tests. Absolute path so it resolves the same from any package's config.
     setupFiles: [fileURLToPath(new URL('./vitest.setup.ts', import.meta.url))],
+    // CI: parallelism lives in Nx, not in each vitest. Nx runs up to 6 test
+    // tasks concurrently (nx.json `parallel`) on a 4-core runner; every vitest
+    // defaulting to its own core-wide worker pool oversubscribes the box to
+    // ~6×4 workers + mains. A starved vitest main thread then misses the 60s
+    // worker-RPC deadline and the task dies with
+    // `[vitest-worker]: Timeout calling "onTaskUpdate"` — all tests green
+    // (killed @three-flatland/codelens-service:test on PR #211; same class as
+    // the create-three-flatland "flaky task" flags and the CI-slow timeouts
+    // band-aided in 161856dc). One worker per vitest in CI keeps per-file
+    // isolation (files run sequentially, fresh fork each) and ends the thrash.
+    ...(process.env.CI ? { maxWorkers: 1, minWorkers: 1 } : {}),
   },
 })
