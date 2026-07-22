@@ -64,16 +64,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nx-current-
 
-      # ~264 MB per VS Code build. downloadAndUnzipVSCode resolves "stable"
-      # to a concrete build on every call and only re-downloads when that
-      # resolved build isn't already on disk, so a static cache key is safe
-      # long-term — a new stable release just adds a new subfolder under
-      # this path rather than invalidating the whole cache.
+      # ~264 MB per VS Code build, keyed to the CONCRETE stable version so the
+      # cache rotates when VS Code releases. The previous static key
+      # ("…-vscode-test-stable") rotted silently: actions/cache saves only on
+      # a primary-key MISS, so once that key existed, each newly released
+      # stable was downloaded during the run and thrown away at save time —
+      # every run after a VS Code release re-downloaded 295 MB inside the
+      # vscodeInstallPath fixture's clock (the 60s setup-timeout flake).
+      # If the resolve fails, "stable" degrades to the old behavior instead
+      # of failing the job; the fixture's own download budget covers it.
+      - name: Resolve current VS Code stable
+        id: vsver
+        run: |
+          V=$(curl -fsSL --retry 3 https://update.code.visualstudio.com/api/releases/stable \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+          echo "version=${V:-stable}" >> "$GITHUB_OUTPUT"
+          echo "current stable: ${V:-stable}"
+
       - name: Cache VS Code test download
         uses: actions/cache@v6
         with:
           path: tools/vscode/.vscode-test
-          key: ${{ runner.os }}-vscode-test-stable
+          key: ${{ runner.os }}-vscode-test-${{ steps.vsver.outputs.version }}
           restore-keys: |
             ${{ runner.os }}-vscode-test-
 
@@ -97,6 +109,16 @@ jobs:
       # once; if this suite is red, that's a real signal.
       - name: Run VS Code extension e2e tests
         run: xvfb-run -a pnpm --filter @three-flatland/vscode test:e2e
+
+      # Keep only the resolved version's install before the post-job cache
+      # save — restore-keys can restore an older build alongside the fresh
+      # download, and without pruning each version bump would snowball
+      # another ~264 MB into every new cache entry.
+      - name: Prune stale VS Code builds from the cache dir
+        if: always() && steps.vsver.outputs.version != 'stable'
+        run: |
+          find tools/vscode/.vscode-test -maxdepth 1 -type d -name 'vscode-*' \
+            ! -name "*-${{ steps.vsver.outputs.version }}" -print -exec rm -rf {} + 2>/dev/null || true
 
       - name: Upload Playwright report
         if: failure()
