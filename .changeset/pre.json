@@ -55,6 +55,7 @@
     "flatland-template-three": "0.0.0"
   },
   "changesets": [
+    "atlas-readme",
     "auto-alpha-release-3s2qcns",
     "auto-three-flatland-3rvfleo",
     "auto-three-flatland-3rvxmcp",
@@ -118,6 +119,7 @@
     "create-three-flatland-readme",
     "image-initial-release",
     "image-readme",
+    "image-repository",
     "normals-force-runtime-rename",
     "rename-tweakpane-to-devtools",
     "slug-baker-registration",
