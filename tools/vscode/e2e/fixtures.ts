@@ -206,6 +206,13 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
   // One VS Code download/install per worker — re-downloading per test
   // would dominate the run time for no isolation benefit (the install
   // itself is never mutated by a test; only the workspace folder is).
+  //
+  // Explicit 5-minute timeout: on a CI cache miss this fixture downloads
+  // ~295 MB from Microsoft's CDN, and the default 60s fixture-setup budget
+  // turns CDN weather into a red run charged to whichever test ran first
+  // ("Fixture "vscodeInstallPath" timeout of 60000ms exceeded during
+  // setup", test shown failing in 2ms). A warm cache makes this instant;
+  // the budget only exists so the cold path never races a wall clock.
   vscodeInstallPath: [
     async ({}, use) => {
       const installPath = await downloadAndUnzipVSCode({
@@ -214,7 +221,7 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
       })
       await use(installPath)
     },
-    { scope: 'worker' },
+    { scope: 'worker', timeout: 300_000 },
   ],
 
   // Worker-lifetime box holding the one long-lived window. Its teardown
