@@ -1,5 +1,11 @@
 # @three-flatland/vscode
 
+## 0.2.0-alpha.4
+
+### Patch Changes
+
+- 2460dc0: build: bump sharp to ^0.35.0 (Dependabot advisory GHSA — dev-time icon pipeline).
+
 ## 0.2.0-alpha.3
 
 ### Patch Changes
