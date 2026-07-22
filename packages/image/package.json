@@ -2,6 +2,12 @@
   "name": "@three-flatland/image",
   "version": "0.1.0-alpha.1",
   "description": "WASM image encoder package — PNG/WebP/AVIF/KTX2 with browser+Node+CLI surfaces",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/image"
+  },
   "type": "module",
   "exports": {
     ".": {

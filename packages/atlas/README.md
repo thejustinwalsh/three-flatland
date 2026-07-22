@@ -1,8 +1,15 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/thejustinwalsh/three-flatland/main/assets/repo-banner.png" alt="three-flatland" width="100%" />
+</p>
+
 # @three-flatland/atlas
 
-First-party atlas baker: packs a directory of PNGs into a sprite atlas
-and generates **tight polygon meshes** from each frame's alpha
-silhouette — the data the tight-mesh overdraw-reduction path consumes.
+First-party atlas baker for [three-flatland](https://www.npmjs.com/package/three-flatland) and [Three.js](https://threejs.org/): packs a directory of PNGs into a sprite atlas and generates **tight polygon meshes** from each frame's alpha silhouette — the data the tight-mesh overdraw-reduction path consumes.
+
+> **Alpha Release** — this package is in active development. The API will evolve and breaking changes are expected between releases. Pin your version and check the [changelog](https://github.com/thejustinwalsh/three-flatland/releases) before upgrading.
+
+[![npm](https://img.shields.io/npm/v/@three-flatland/atlas)](https://www.npmjs.com/package/@three-flatland/atlas)
+[![license](https://img.shields.io/npm/l/@three-flatland/atlas)](https://github.com/thejustinwalsh/three-flatland/blob/main/LICENSE)
 
 ## CLI
 
@@ -42,3 +49,7 @@ fully-transparent frames are skipped.
 Build-tool integration (Vite plugin) is sketched as a follow-up: the
 programmatic API is the integration point — a plugin wraps `bakeAtlas`
 over a glob and emits the pair as assets.
+
+## License
+
+[MIT](./LICENSE)
