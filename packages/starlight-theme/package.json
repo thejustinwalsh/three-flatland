@@ -21,7 +21,7 @@
     }
   },
   "name": "starlight-theme",
-  "version": "0.0.1-alpha.0",
+  "version": "0.0.1-alpha.3",
   "type": "module",
   "private": true,
   "description": "three-flatland's internal Starlight theme — base16 Materia tokens, Linear/Radix-leaning aesthetic. Forked from lucode-starlight (MIT, lucas-labs).",

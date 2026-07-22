@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/alphamap",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Offline alpha hitmask baker for pixel-perfect sprite hit testing. Contributes an `alpha` subcommand to the flatland-bake CLI.",
   "type": "module",
   "exports": {

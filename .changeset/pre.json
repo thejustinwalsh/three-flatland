@@ -55,6 +55,7 @@
     "flatland-template-three": "0.0.0"
   },
   "changesets": [
+    "alphamap-readme",
     "atlas-readme",
     "auto-alpha-release-3s2qcns",
     "auto-three-flatland-3rvfleo",
@@ -117,6 +118,7 @@
     "batched-sprite-world-transform",
     "create-three-flatland-initial",
     "create-three-flatland-readme",
+    "docs-astro-7-security",
     "image-initial-release",
     "image-readme",
     "image-repository",
@@ -124,10 +126,12 @@
     "rename-tweakpane-to-devtools",
     "slug-baker-registration",
     "sort-layers-rename",
+    "starlight-theme-rolldown-import",
     "three-flatland-skills-initial",
     "vite-7-catalog",
     "vscode-codelens-render-and-search",
     "vscode-onboarding-walkthrough",
+    "vscode-sharp-security",
     "vscode-tools-initial-release"
   ]
 }
