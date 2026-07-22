@@ -264,6 +264,40 @@ jobs:
             echo "new FL Tools version $V — will build + attach the universal VSIX to fl-tools-v$V"
           fi
 
+      # Dist-tag tripwire — read-only, needs no auth. OIDC trusted publishing
+      # can only authenticate inside `npm publish`, so CI cannot MOVE tags
+      # (2c36017a removed the token-era sync step for exactly that reason).
+      # Changesets in pre mode publishes to `latest` only while a package's
+      # registry history is all-prerelease (getReleaseTag); one stray regular
+      # release — a 0.0.0 placeholder bootstrap — flips that package to the
+      # `alpha` tag and `latest` goes stale. Warn loudly with the repair
+      # command instead of failing: npm already published, and failing the job
+      # here would block the VSIX jobs over a movable pointer.
+      - name: Verify dist-tags point at what was just published
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          : > /tmp/tag-drift.md
+          echo '${{ steps.changesets.outputs.publishedPackages }}' \
+            | node -e "process.stdin.on('data',(d)=>{for(const p of JSON.parse(d))console.log(p.name+' '+p.version)})" \
+            | while read -r NAME VERSION; do
+                LATEST=$(npm view "$NAME" dist-tags.latest 2>/dev/null || echo '?')
+                if [ "$LATEST" != "$VERSION" ]; then
+                  echo "::warning::$NAME: latest points at $LATEST but $VERSION was just published. Repair: npm dist-tag add $NAME@$VERSION latest — and unpublish/deprecate any 0.0.0 placeholder so changesets stops routing this package to the alpha tag (AGENTS.md: new-package bootstrap)."
+                  echo "| $NAME | $VERSION | $LATEST |" >> /tmp/tag-drift.md
+                fi
+              done
+          if [ -s /tmp/tag-drift.md ]; then
+            {
+              echo "### ⚠ dist-tag drift — \`latest\` is stale for these packages"
+              echo ""
+              echo "| package | just published | latest points at |"
+              echo "| --- | --- | --- |"
+              cat /tmp/tag-drift.md
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "dist-tags ok — latest matches every published version"
+          fi
+
   # Build the universal VSIX (composable, reusable workflow) only when this
   # release bumped the extension's version.
   build-vsix:
