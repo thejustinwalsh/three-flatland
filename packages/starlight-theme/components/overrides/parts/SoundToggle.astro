@@ -105,7 +105,10 @@
         private loadSounds(): Promise<SoundsModule> {
             if (!this.soundsPromise) {
                 this.soundsPromise = import(
-                    /* @vite-ignore */
+                    // NO @vite-ignore here: the specifier is a static string and
+                    // must be analyzed + code-split. Under rollup (vite<=7) the
+                    // ignore hint was tolerated; rolldown (vite 8) honors it and
+                    // ships the raw path, which 404s in the built site.
                     '../../../../../docs/src/scripts/sounds'
                 ) as Promise<SoundsModule>
                 this.soundsPromise.then(async (sounds) => {
