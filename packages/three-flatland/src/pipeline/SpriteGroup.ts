@@ -392,6 +392,9 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
       const targetWorld = this.world
       // Skip if already enrolled (R3F insertBefore re-adds during reconciliation)
       if (spriteOrObject.entity && spriteOrObject._flatlandWorld === targetWorld) return this
+      if (spriteOrObject._autoRegistry && spriteOrObject._autoRegistry.group !== this) {
+        spriteOrObject._releaseAutoOrchestration()
+      }
       if (spriteOrObject.entity) this._releasePreviousWorldEnrollment(spriteOrObject)
       // Assign ECS world, resolve world-scoped default material, enroll
       assignWorld(spriteOrObject, targetWorld)

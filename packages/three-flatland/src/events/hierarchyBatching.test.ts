@@ -337,6 +337,40 @@ describe('auto batching preserves the source hierarchy', () => {
     explicit.dispose()
   })
 
+  it('clears auto orchestration when a sprite is added directly to a SpriteGroup', () => {
+    const renderer = {}
+    const scene = new Scene()
+    const sourceRoot = new Group()
+    sourceRoot.position.x = 1_000
+    const texture = new Texture()
+    const first = makeSprite(20, texture)
+    const second = makeSprite(20, texture)
+    first.position.x = 20
+    sourceRoot.add(first, second)
+    scene.add(sourceRoot)
+    flatlandRegister(first, renderer, scene)
+    flatlandRegister(second, renderer, scene)
+    flatlandSceneSweep(renderer, scene)
+    scene.updateMatrixWorld(true)
+    expect(first._autoRegistry).not.toBeNull()
+
+    const explicit = new SpriteGroup()
+    explicit.position.x = 100
+    scene.add(explicit)
+    explicit.add(first)
+    scene.updateMatrixWorld(true)
+
+    expect(first._autoRegistry).toBeNull()
+    expect(first._hierarchyManaged).toBe(false)
+    expect(first._flatlandWorld).toBe(explicit.world)
+    expect(instanceSlot(first)[12]).toBe(20)
+    expect(raycastAt(first, 120, 0)).toBe(1)
+    expect(raycastAt(first, 1_020, 0)).toBe(0)
+
+    flatlandUnregister(second)
+    explicit.dispose()
+  })
+
   it('matches Object3D.remove semantics for a retained deep sprite', () => {
     const scene = new Scene()
     const spriteGroup = new SpriteGroup()
