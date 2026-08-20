@@ -7,16 +7,16 @@ import type { GEM_ORDER } from '../../../examples/_shared/gems.config'
 type Gem = (typeof GEM_ORDER)[number]
 
 export const EXAMPLE_GEMS: Record<string, Gem | null> = {
-  "animation": 'emerald',
-  "basic-sprite": 'diamond',
-  "batch-demo": 'gold',
-  "hierarchy-clipping": 'amethyst',
-  "hit-test": 'gold',
-  "knightmark": 'amethyst',
-  "lighting": 'emerald',
-  "pass-effects": 'ruby',
-  "skia": 'turquoize',
-  "slug-text": 'diamond',
-  "tilemap": 'salmon',
-  "tsl-nodes": 'pink',
+  'animation': 'emerald',
+  'basic-sprite': 'diamond',
+  'batch-demo': 'gold',
+  'hierarchy-clipping': 'amethyst',
+  'hit-test': 'gold',
+  'knightmark': 'amethyst',
+  'lighting': 'emerald',
+  'pass-effects': 'ruby',
+  'skia': 'turquoize',
+  'slug-text': 'diamond',
+  'tilemap': 'salmon',
+  'tsl-nodes': 'pink',
 }

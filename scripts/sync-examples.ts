@@ -155,7 +155,10 @@ function gemModuleSource(gem: Gem | null): string {
  */
 function docsModuleSource(map: Record<string, Gem | null>): string {
   const entries = Object.entries(map)
-    .map(([slug, gem]) => `  ${JSON.stringify(slug)}: ${gem === null ? 'null' : `'${gem}'`},`)
+    .map(([slug, gem]) => {
+      const quotedSlug = `'${slug.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
+      return `  ${quotedSlug}: ${gem === null ? 'null' : `'${gem}'`},`
+    })
     .join('\n')
   return (
     GENERATED_BANNER +

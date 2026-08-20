@@ -10,7 +10,8 @@ texture.magFilter = NearestFilter
 texture.needsUpdate = true
 
 const scene = new Scene()
-;(scene as unknown as { backgroundNode: unknown }).backgroundNode = gemGradientNode({ gem: GEM })
+const sceneWithBackground = scene as unknown as { backgroundNode: unknown }
+sceneWithBackground.backgroundNode = gemGradientNode({ gem: GEM })
 const camera = new OrthographicCamera(-240, 240, 160, -160, 0.1, 1000)
 camera.position.z = 100
 
