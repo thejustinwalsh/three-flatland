@@ -34,9 +34,10 @@ export class HierarchyStateTracker {
     source: Object3D,
     boundary: Object3D | null,
     parentOverride?: Object3D | null,
-    sourceVisible?: boolean
+    sourceVisible?: boolean,
+    sourceIsSprite = true
   ): boolean {
-    let changed = this._objectChanged(source, true, sourceVisible)
+    let changed = this._objectChanged(source, sourceIsSprite, sourceVisible)
     let object = parentOverride === undefined ? source.parent : parentOverride
     while (object && object !== boundary) {
       if (this._objectChanged(object)) changed = true

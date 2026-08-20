@@ -472,6 +472,48 @@ describe('auto batching preserves the source hierarchy', () => {
     spriteGroup.dispose()
   })
 
+  it('skips hierarchy reconciliation during a reentrant matrix update', () => {
+    const spriteGroup = new SpriteGroup()
+    const internal = spriteGroup as unknown as {
+      _inSystems: boolean
+      _reconcileHierarchySprites(): void
+    }
+    const reconcile = vi.spyOn(internal, '_reconcileHierarchySprites')
+
+    internal._inSystems = true
+    spriteGroup.updateMatrixWorld(true)
+    internal._inSystems = false
+
+    expect(reconcile).not.toHaveBeenCalled()
+    spriteGroup.dispose()
+  })
+
+  it('syncs a late assignment when automatic invalidation is disabled', () => {
+    const scene = new Scene()
+    const spriteGroup = new SpriteGroup({ autoInvalidateTransforms: false })
+    type BatchAssign = (...args: unknown[]) => boolean
+    const internal = spriteGroup as unknown as { _batchAssignSystem: BatchAssign }
+    const assign = internal._batchAssignSystem
+    let assignCalls = 0
+    internal._batchAssignSystem = (...args) => {
+      assignCalls++
+      return assignCalls === 1 ? false : assign(...args)
+    }
+
+    const texture = new Texture()
+    const first = makeSprite(20, texture)
+    const second = makeSprite(20, texture)
+    first.position.x = 35
+    spriteGroup.add(first, second)
+    scene.add(spriteGroup)
+    scene.updateMatrixWorld(true)
+
+    expect(assignCalls).toBeGreaterThanOrEqual(2)
+    expect(instanceSlot(first)[0]).toBe(20)
+    expect(instanceSlot(first)[12]).toBe(35)
+    spriteGroup.dispose()
+  })
+
   it('honors explicit invalidation when automatic transform sync is disabled', () => {
     const scene = new Scene()
     const spriteGroup = new SpriteGroup({ autoInvalidateTransforms: false })
@@ -557,6 +599,8 @@ describe('SpriteGroup clipRect', () => {
     expect(raycastAt(sprite, 75, 25)).toBe(0)
     expect(raycastAt(sprite, -25, 25)).toBe(0)
     expect(raycastAt(sprite, 45, 25)).toBe(0) // inside inner, outside outer
+    inner.dispose()
+    outer.dispose()
   })
 
   it('keeps clipRect local when the SpriteGroup is transformed', () => {
@@ -573,5 +617,6 @@ describe('SpriteGroup clipRect', () => {
     expect(raycastAt(sprite, 125, 25)).toBe(1)
     expect(raycastAt(sprite, 175, 25)).toBe(0)
     expect(group.clippingPlanes[0]!.distanceToPoint(new Vector3(100, 0, 0))).toBeCloseTo(0)
+    group.dispose()
   })
 })

@@ -152,7 +152,7 @@ export function transformSyncSystem(world: World): void {
     _trackers.set(registry, tracker)
   }
   tracker.beginFrame()
-  const rootChanged = group ? tracker.pathChanged(group, null) : false
+  const rootChanged = group ? tracker.pathChanged(group, null, undefined, undefined, false) : false
   const rootIsIdentity = !group || isIdentity(group.matrixWorld)
   const rootVisible = hierarchyVisibleFrom(group)
   if (group) _rootInverse.copy(group.matrixWorld).invert()

@@ -26,7 +26,6 @@ import {
   createBatchSortSystem,
   createSceneGraphSyncSystem,
   deferredDestroySystem,
-  transformSyncSystem,
 } from '../ecs/systems'
 import { conditionalTransformSyncSystem } from '../ecs/systems/conditionalTransformSyncSystem'
 import { flushDirtyRangesSystem } from '../ecs/systems/flushDirtyRangesSystem'
@@ -320,7 +319,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
           (w) => {
             const lateAssigned = this._batchAssignSystem(w, this._effectTraits)
             if (lateAssigned) {
-              if (this.autoInvalidateTransforms) transformSyncSystem(w)
+              conditionalTransformSyncSystem(w)
               this._batchSortSystem(w)
               this._sceneGraphSyncSystem(w, this, this._parentAdd, this._parentRemove)
             }
@@ -656,7 +655,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   private _inSystems = false
 
   override updateMatrixWorld(force?: boolean): void {
-    this._reconcileHierarchySprites()
+    if (!this._inSystems) this._reconcileHierarchySprites()
 
     // Reentrancy guard: systems (e.g. shadowPipelineSystem) can trigger a
     // nested renderer.render() for offscreen passes, and three.js will call
@@ -711,6 +710,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    * @internal
    */
   _runScheduleNow(): void {
+    if (this._inSystems) return
     this._reconcileHierarchySprites()
     if (!this._world) return
     const registry = this._getRegistry()
@@ -726,9 +726,14 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
       }
       registry.autoInvalidateTransforms = this.autoInvalidateTransforms
       registry.schedule.nextFrame()
-      registry.schedule.run(this._world)
-      registry.scheduleRuns++
-      this._lastRunSeen = registry.scheduleRuns
+      this._inSystems = true
+      try {
+        registry.schedule.run(this._world)
+        registry.scheduleRuns++
+        this._lastRunSeen = registry.scheduleRuns
+      } finally {
+        this._inSystems = false
+      }
     }
   }
 
