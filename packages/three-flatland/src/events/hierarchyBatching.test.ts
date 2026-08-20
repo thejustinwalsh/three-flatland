@@ -36,14 +36,17 @@ describe('auto batching preserves the source hierarchy', () => {
     scene.add(spriteGroup)
     scene.updateMatrixWorld(true)
 
+    expect(sprite.visible).toBe(true)
     expect(instanceSlot(sprite)[15]).toBe(1)
     sprite.visible = false
     scene.updateMatrixWorld(true)
+    expect(sprite.visible).toBe(false)
     expect(instanceSlot(sprite)[0]).toBe(0)
     expect(raycastAt(sprite, 0, 0)).toBe(0)
 
     sprite.visible = true
     scene.updateMatrixWorld(true)
+    expect(sprite.visible).toBe(true)
     expect(instanceSlot(sprite)[0]).toBe(20)
     expect(instanceSlot(sprite)[15]).toBe(1)
     expect(raycastAt(sprite, 0, 0)).toBe(1)
@@ -66,14 +69,19 @@ describe('auto batching preserves the source hierarchy', () => {
     scene.updateMatrixWorld(true)
 
     expect(sprite._autoRegistry).not.toBeNull()
+    expect(sprite.visible).toBe(true)
+    expect(sprite.isMesh).toBe(false)
     expect(instanceSlot(sprite)[15]).toBe(1)
     sprite.visible = false
     scene.updateMatrixWorld(true)
+    expect(sprite.visible).toBe(false)
     expect(instanceSlot(sprite)[0]).toBe(0)
     expect(raycastAt(sprite, 0, 0)).toBe(0)
 
     sprite.visible = true
     scene.updateMatrixWorld(true)
+    expect(sprite.visible).toBe(true)
+    expect(sprite.isMesh).toBe(false)
     expect(instanceSlot(sprite)[0]).toBe(20)
     expect(instanceSlot(sprite)[15]).toBe(1)
     expect(raycastAt(sprite, 0, 0)).toBe(1)
@@ -160,7 +168,8 @@ describe('auto batching preserves the source hierarchy', () => {
     expect(first._hierarchyManaged).toBe(true)
     expect(first._batchMesh?.parent).toBe(spriteGroup)
     expect(first._autoBatched).toBe(true)
-    expect(first.visible).toBe(false)
+    expect(first.visible).toBe(true)
+    expect(first.isMesh).toBe(false)
     expect(instanceSlot(first)[15]).toBe(1)
 
     // This is the same host mutation R3F performs for hidden Activity trees.
@@ -174,12 +183,14 @@ describe('auto batching preserves the source hierarchy', () => {
 
     first.visible = true
     scene.updateMatrixWorld(true)
-    expect(first.visible).toBe(false) // still batch-suppressed, never double-drawn
+    expect(first.visible).toBe(true)
+    expect(first.isMesh).toBe(false) // still omitted from render-list projection, never double-drawn
     expect(instanceSlot(first)[15]).toBe(1)
     expect(raycastAt(first, 0, 0)).toBe(1)
 
     activityHost.remove(first)
     expect(first.visible).toBe(true)
+    expect(first.isMesh).toBe(true)
     spriteGroup.dispose()
   })
 

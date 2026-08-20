@@ -551,6 +551,7 @@ export class Sprite2D extends Mesh {
   _setBatchSuppressed(value: boolean): void {
     this._batchSuppressed = value
     this._autoBatched = value
+    this._syncSourceMeshParticipation()
   }
 
   /** Authored visibility before batch suppression is applied. @internal */
@@ -578,9 +579,26 @@ export class Sprite2D extends Mesh {
 
   /** Update internal draw readiness without taking ownership of authored visibility. @internal */
   private _setContentReady(value: boolean): void {
-    if (this._contentReady === value) return
+    if (this._contentReady === value) {
+      this._syncSourceMeshParticipation()
+      return
+    }
     this._contentReady = value
+    this._syncSourceMeshParticipation()
     this._markTransformsDirty()
+  }
+
+  /**
+   * Keep the logical Object3D's public visibility independent from whether
+   * its own Mesh participates in Three's render-list projection. A batched
+   * source remains a Mesh instance with authored geometry/material, but the
+   * batch is its physical draw representation. Clearing Three's runtime type
+   * discriminator prevents the duplicate source draw before render-list
+   * insertion without corrupting `visible`, ancestor traversal, or raycasts.
+   * @internal
+   */
+  private _syncSourceMeshParticipation(): void {
+    Reflect.set(this, 'isMesh', this._contentReady && !this._batchSuppressed)
   }
 
   /** Intercept an authored visibility write and invalidate its batch slot. @internal */
@@ -2634,8 +2652,7 @@ Object.defineProperty(Sprite2D.prototype, 'renderOrder', {
 // unhideInstance, so internal batching state must never overwrite it.
 Object.defineProperty(Sprite2D.prototype, 'visible', {
   get(this: Sprite2D): boolean {
-    const state = this as unknown as { _batchSuppressed?: boolean; _contentReady?: boolean }
-    return this._isAuthoredVisible() && state._contentReady !== false && !state._batchSuppressed
+    return this._isAuthoredVisible()
   },
   set(this: Sprite2D, value: boolean): void {
     this._setAuthoredVisible(value)

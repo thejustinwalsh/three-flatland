@@ -61,9 +61,12 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     expect(mesh.maxSize).toBe(1024) // tier 0
     expect(mesh.activeCount).toBe(2)
 
-    // First-frame correctness: both sprites' own meshes already hidden
-    expect(a.visible).toBe(false)
-    expect(b.visible).toBe(false)
+    // First-frame correctness: authored visibility survives while both source
+    // meshes are already omitted from Three's render-list projection.
+    expect(a.visible).toBe(true)
+    expect(b.visible).toBe(true)
+    expect(a.isMesh).toBe(false)
+    expect(b.isMesh).toBe(false)
     expect(a._batchMesh).toBe(mesh)
     expect(b._batchMesh).toBe(mesh)
   })
@@ -85,8 +88,10 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
 
     expect(a.entity).not.toBeNull()
     expect(b.entity).not.toBeNull()
-    expect(a.visible).toBe(false)
-    expect(b.visible).toBe(false)
+    expect(a.visible).toBe(true)
+    expect(b.visible).toBe(true)
+    expect(a.isMesh).toBe(false)
+    expect(b.isMesh).toBe(false)
     expect(registryData(registry).activeBatches.length).toBe(1)
   })
 
@@ -160,6 +165,7 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     registry.group.update()
     expect(data.activeBatches.length).toBe(0) // N=0 destroys
     expect(b.visible).toBe(true)
+    expect(b.isMesh).toBe(true)
   })
 
   it('renderOrder override demotes the auto sprite in place (stays a scene child)', () => {
@@ -168,12 +174,14 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     scene.add(a)
     scene.add(b)
     fireSceneHook(scene, renderer)
-    expect(a.visible).toBe(false)
+    expect(a.visible).toBe(true)
+    expect(a.isMesh).toBe(false)
 
     a.renderOrder = 999
 
     expect(a.entity).toBeNull()
     expect(a.visible).toBe(true)
+    expect(a.isMesh).toBe(true)
     expect(a.parent).toBe(scene) // never reparented — it was already in the tree
     expect(a.renderOrder).toBe(999)
 
@@ -183,7 +191,8 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
 
     // The sibling is unaffected
     expect(b.entity).not.toBeNull()
-    expect(b.visible).toBe(false)
+    expect(b.visible).toBe(true)
+    expect(b.isMesh).toBe(false)
   })
 
   it('different camera masks route to different batches on the auto path', () => {
@@ -233,7 +242,8 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     scene.add(a)
     scene.add(b)
     fireSceneHook(scene, renderer)
-    expect(a.visible).toBe(false)
+    expect(a.visible).toBe(true)
+    expect(a.isMesh).toBe(false)
 
     a.setFrame({
       name: 'f',
@@ -244,7 +254,8 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
       sourceWidth: 8,
       sourceHeight: 8,
     })
-    expect(a.visible).toBe(false)
+    expect(a.visible).toBe(true)
+    expect(a.isMesh).toBe(false)
   })
 
   it('explicit SpriteGroup maxBatchSize still pins the batch size', () => {

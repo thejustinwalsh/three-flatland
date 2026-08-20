@@ -30,15 +30,32 @@ describe('Sprite2D', () => {
 
     expect(Object.hasOwn(sprite, 'visible')).toBe(false)
     expect(sprite._isAuthoredVisible()).toBe(true)
+    expect(sprite.visible).toBe(true)
+    expect(sprite.isMesh).toBe(true)
 
     sprite._setBatchSuppressed(true)
-    expect(sprite.visible).toBe(false)
+    expect(sprite.visible).toBe(true)
     expect(sprite._isAuthoredVisible()).toBe(true)
+    expect(sprite.isMesh).toBe(false)
 
     sprite.visible = false
+    expect(sprite.visible).toBe(false)
     sprite._setBatchSuppressed(false)
     expect(sprite.visible).toBe(false)
     expect(sprite._isAuthoredVisible()).toBe(false)
+    expect(sprite.isMesh).toBe(true)
+  })
+
+  it('reports authored visibility while content readiness controls only source rendering', () => {
+    const sprite = new Sprite2D()
+
+    expect(sprite.visible).toBe(true)
+    expect(sprite.isMesh).toBe(false)
+
+    sprite.visible = false
+    sprite.texture = texture
+    expect(sprite.visible).toBe(false)
+    expect(sprite.isMesh).toBe(true)
   })
 
   it('should set anchor correctly', () => {
@@ -128,7 +145,8 @@ describe('Sprite2D', () => {
 
     target.copy(source)
 
-    expect(source.visible).toBe(false)
+    expect(source.visible).toBe(true)
+    expect(source.isMesh).toBe(false)
     expect(target._isAuthoredVisible()).toBe(true)
     expect(target.visible).toBe(true)
   })

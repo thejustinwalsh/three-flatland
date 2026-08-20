@@ -133,7 +133,7 @@ Setting a custom `sprite.renderOrder` opts that sprite out of batching so Three.
 :::caution[Hierarchy behavior is now authoritative]
 Older releases flattened some batched sprites against the batching root. If your scene added a compensating transform or manually mirrored ancestor visibility to work around that behavior, remove the workaround when upgrading.
 
-While a source sprite is represented by a batch, reading `sprite.visible` returns `false` because its own mesh is privately suppressed. Assigning `sprite.visible` still records the authored value and updates the batch. Keep application visibility in your own state when you need to read it back directly.
+`sprite.visible` keeps normal three.js semantics in every rendering mode: it reports the sprite's locally authored value. The effective batch-slot visibility also includes content readiness and every authored ancestor, but those conditions do not overwrite the public property. A child can therefore report `visible === true` while an invisible parent keeps the subtree out of the batch draw, matching `Object3D` behavior.
 :::
 
 ## Automatic Change Detection
