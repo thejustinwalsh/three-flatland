@@ -25,6 +25,22 @@ describe('Sprite2D', () => {
     expect(sprite.zIndex).toBe(0)
   })
 
+  it('constructs visibility through the prototype accessor without an own-property shadow', () => {
+    const sprite = new Sprite2D({ texture })
+
+    expect(Object.hasOwn(sprite, 'visible')).toBe(false)
+    expect(sprite._isAuthoredVisible()).toBe(true)
+
+    sprite._setBatchSuppressed(true)
+    expect(sprite.visible).toBe(false)
+    expect(sprite._isAuthoredVisible()).toBe(true)
+
+    sprite.visible = false
+    sprite._setBatchSuppressed(false)
+    expect(sprite.visible).toBe(false)
+    expect(sprite._isAuthoredVisible()).toBe(false)
+  })
+
   it('should set anchor correctly', () => {
     const sprite = new Sprite2D({ texture, anchor: [0.5, 1] })
 
