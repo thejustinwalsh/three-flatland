@@ -322,21 +322,20 @@ export default defineConfig({
             // footerText is no longer rendered; leave empty for schema
             // compat, slated for removal when the schema drops the field.
             footerText: '',
-            // Top-of-page navigation. Three top-level surfaces:
+            // Top-of-page navigation. Two published top-level surfaces:
             //   - Docs       → introduction (the entry point into the
             //                  prose docs; subsequent pages flow from
             //                  the sidebar)
             //   - Examples   → masonry grid of focused single-feature
             //                  demos (sprites, animation, batch, TSL,
             //                  pass effects, tilemaps, skia)
-            //   - Showcases  → masonry grid of larger app/game demos
-            //                  (currently just `breakout`)
+            // Showcase sources remain as draft development routes until the
+            // surface is ready to publish again.
             // Minis (e.g. mini-breakout) are implementation packages,
             // not user-facing — they don't get a top-level surface.
             navLinks: [
               { label: 'Docs', link: '/getting-started/introduction/' },
               { label: 'Examples', link: '/examples/' },
-              { label: 'Showcases', link: '/showcases/' },
             ],
           }),
         ],
@@ -416,11 +415,8 @@ export default defineConfig({
               { label: 'Devtools', slug: 'guides/devtools' },
             ],
           },
-          // Examples + Showcases are now top-level surfaces with their
-          // own masonry index pages reached via the header's nav links
-          // (Docs / Examples / Showcases). The detail pages remain
-          // routed under `/examples/<slug>/` and `/showcases/<slug>/`
-          // — they're just no longer rendered in the docs sidebar.
+          // Examples are a published top-level surface. Showcase sources are
+          // retained as development-only drafts and stay out of navigation.
           {
             label: 'Resources',
             items: [
