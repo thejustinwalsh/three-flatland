@@ -308,6 +308,39 @@ describe('auto batching preserves the source hierarchy', () => {
     right.dispose()
   })
 
+  it('preserves hierarchy ownership after attempted direct adoption by another group', () => {
+    const scene = new Scene()
+    const left = new SpriteGroup()
+    const right = new SpriteGroup()
+    const leftHost = new Group()
+    const texture = new Texture()
+    const sprite = makeSprite(20, texture)
+    leftHost.add(sprite)
+    left.add(leftHost)
+    scene.add(left, right)
+    scene.updateMatrixWorld(true)
+
+    expect(sprite._hierarchyOwner).toBe(left)
+    expect(left.spriteCount).toBe(1)
+    expect(right.spriteCount).toBe(0)
+
+    // Direct enrollment releases the previous world cleanly, but the source
+    // remains below leftHost, so the authored hierarchy reclaims it on sync.
+    right.add(sprite)
+    expect(sprite._hierarchyOwner).toBeNull()
+    expect(left.spriteCount).toBe(0)
+    expect(right.spriteCount).toBe(1)
+
+    scene.updateMatrixWorld(true)
+    expect(sprite._hierarchyOwner).toBe(left)
+    expect(sprite._flatlandWorld).toBe(left.world)
+    expect(left.spriteCount).toBe(1)
+    expect(right.spriteCount).toBe(0)
+
+    left.dispose()
+    right.dispose()
+  })
+
   it('lets an explicit SpriteGroup adopt an auto-batched subtree', () => {
     const renderer = {}
     const scene = new Scene()

@@ -488,7 +488,11 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     const previousGroup = registry?.parentGroup
     if (previousGroup && 'isSpriteGroup' in previousGroup && previousGroup.isSpriteGroup === true) {
       const previousSpriteGroup = previousGroup as SpriteGroup
-      previousSpriteGroup._releaseDirectEnrollment(sprite)
+      if (sprite._hierarchyManaged && sprite._hierarchyOwner === previousSpriteGroup) {
+        previousSpriteGroup._releaseHierarchySprite(sprite)
+      } else {
+        previousSpriteGroup._releaseDirectEnrollment(sprite)
+      }
       return
     }
     sprite._setBatchSuppressed(false)
