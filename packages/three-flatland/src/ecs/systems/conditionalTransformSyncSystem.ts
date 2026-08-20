@@ -15,7 +15,8 @@ export function conditionalTransformSyncSystem(world: World): void {
   const registryEntities = world.query(BatchRegistry)
   if (registryEntities.length === 0) return
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-  if (!registry || !registry.autoInvalidateTransforms) return
+  if (!registry || (!registry.autoInvalidateTransforms && !registry.transformsDirty)) return
 
   transformSyncSystem(world)
+  registry.transformsDirty = false
 }

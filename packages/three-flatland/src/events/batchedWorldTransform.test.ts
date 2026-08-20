@@ -6,12 +6,9 @@ import { Sprite2D } from '../sprites/Sprite2D'
 /**
  * Batched sprites must render AND hit-test at the same WORLD point.
  *
- * The ECS transform pass folds the SpriteGroup's world affine into each
- * sprite's local 2D TRS and writes the result to the batch instanceMatrix slot
- * (what the GPU draws). It does NOT write sprite.matrixWorld — that is composed
- * on demand inside raycast(), only for the sprite actually being cast. So these
- * tests assert the slot (rendering) and the raycast (hit testing), never a
- * per-frame matrixWorld.
+ * The ECS transform pass writes each sprite relative to its SpriteGroup draw
+ * root. The batch mesh inherits the root's world transform, so the shader's
+ * `modelMatrix × instanceMatrix` composite matches `sprite.matrixWorld`.
  */
 
 function makeSprite(scale = 100): Sprite2D {
@@ -29,7 +26,7 @@ function instanceSlot(sprite: Sprite2D): Float32Array {
 }
 
 describe('batched sprite world transform under a translated SpriteGroup', () => {
-  it('folds the group translation into matrixWorld, the instance slot, and raycasts', () => {
+  it('keeps the slot root-relative while matrixWorld and raycasts stay world-space', () => {
     const scene = new Scene()
     const group = new SpriteGroup()
     group.position.x = 500
@@ -41,11 +38,14 @@ describe('batched sprite world transform under a translated SpriteGroup', () => 
     // renderer.render() entry point — runs the ECS schedule.
     scene.updateMatrixWorld(true)
 
-    // (a) the instance slot (what renders) carries the world transform
+    // (a) the instance slot stays relative to the shared draw root.
     const slot = instanceSlot(sprite)
-    expect(slot[12]).toBe(500)
+    expect(slot[12]).toBe(0)
     expect(slot[0]).toBe(100)
     expect(slot[5]).toBe(100)
+    expect(sprite.matrixWorld.elements[12]).toBe(500)
+    const composite = new Matrix4().fromArray(slot).premultiply(sprite._batchMesh!.matrixWorld)
+    expect(composite.elements[12]).toBe(500)
 
     // (b) a raycast at the sprite's world centre hits; off-sprite misses
     const rc = new Raycaster()
@@ -61,7 +61,7 @@ describe('batched sprite world transform under a translated SpriteGroup', () => 
     expect(rc.intersectObject(sprite)).toHaveLength(0)
   })
 
-  it('folds a rotated group affine (2D compose, not translation-only)', () => {
+  it('inherits a rotated group through the batch mesh', () => {
     const scene = new Scene()
     const group = new SpriteGroup()
     group.rotation.z = Math.PI / 2
@@ -73,10 +73,13 @@ describe('batched sprite world transform under a translated SpriteGroup', () => 
 
     scene.updateMatrixWorld(true)
 
-    // Group rotates the sprite's position (200, 0) to (0, 200) in the slot
+    // The slot remains local; the batch mesh supplies the group rotation.
     const slot = instanceSlot(sprite)
-    expect(slot[12]).toBeCloseTo(0, 10)
-    expect(slot[13]).toBeCloseTo(200, 10)
+    expect(slot[12]).toBeCloseTo(200, 10)
+    expect(slot[13]).toBeCloseTo(0, 10)
+    const composite = new Matrix4().fromArray(slot).premultiply(sprite._batchMesh!.matrixWorld)
+    expect(composite.elements[12]).toBeCloseTo(0, 10)
+    expect(composite.elements[13]).toBeCloseTo(200, 10)
 
     // Raycast at the rotated world position hits
     const rc = new Raycaster()
@@ -105,7 +108,7 @@ describe('batched sprite world transform under a translated SpriteGroup', () => 
     expect(rc.intersectObject(sprite)).toHaveLength(0)
   })
 
-  it('does not double-apply the group transform through the batch mesh', () => {
+  it('applies the group transform exactly once through the batch mesh', () => {
     const scene = new Scene()
     const group = new SpriteGroup()
     group.position.set(500, 250, 0)
@@ -116,11 +119,8 @@ describe('batched sprite world transform under a translated SpriteGroup', () => 
 
     scene.updateMatrixWorld(true)
 
-    // The batch mesh must stay pinned at identity — the instance slots
-    // already carry world transforms, so shader-side modelMatrix ×
-    // instanceMatrix would otherwise apply the group transform twice.
     const batch = sprite._batchMesh!
-    expect(batch.matrixWorld.equals(new Matrix4())).toBe(true)
+    expect(batch.matrixWorld.equals(group.matrixWorld)).toBe(true)
 
     // Composite render transform (modelMatrix × instanceMatrix) equals the
     // sprite's world transform exactly.

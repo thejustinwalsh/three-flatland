@@ -92,8 +92,10 @@ export function flatlandUnregister(sprite: Sprite2D): void {
     if (sprite.entity) {
       sprite._unenrollFromWorld()
     }
-    sprite._autoBatched = false
-    sprite.visible = true
+    // Auto ownership is scene-scoped. A later authored reparent may adopt
+    // this sprite into an explicit SpriteGroup with a different ECS world.
+    sprite._flatlandWorld = null
+    sprite._setBatchSuppressed(false)
   }
   // Not yet drained from a pending set? Clear it there too.
   const scene = sprite._pendingPrimeScene
@@ -197,6 +199,7 @@ export function evaluateAutoBatch(registry: Registry): void {
   const byRun = new Map<string, Sprite2D[]>()
   for (const sprite of registry.standalone) {
     if (sprite._renderOrderOverridden) continue // explicit escape hatch
+    if (sprite._batchEnrollmentBlockedMaterial === sprite.material) continue
     const key = computeRunKey(sprite.sortLayerValue, sprite.material.batchId, sprite.layers.mask)
     let bucket = byRun.get(key)
     if (!bucket) {

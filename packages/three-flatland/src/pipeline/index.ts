@@ -30,6 +30,7 @@ export type {
   InstanceAttributeConfig,
   SortLayerDescriptor,
   RenderStats,
+  ClipRect,
   SpriteGroupOptions,
   SpriteSortFunction,
   BatchKey,

@@ -69,6 +69,8 @@ export interface RegistryData {
   parentRemove: ((...objects: Object3D[]) => Group) | null
   /** Whether auto-invalidate transforms is enabled. */
   autoInvalidateTransforms: boolean
+  /** Explicit invalidation latch for transforms and hierarchy visibility. */
+  transformsDirty: boolean
   /** The SystemSchedule for this world. */
   schedule: SystemSchedule | null
   /** Monotonic counter of completed `schedule.run` invocations — see trait doc. */
@@ -633,9 +635,12 @@ export function handleMaterialDispose(world: World, registry: RegistryData, mate
       )
     } else {
       orphaned++
-      sprite._autoBatched = false
-      sprite.visible = true
-      sprite._unenrollFromWorld()
+      sprite._batchEnrollmentBlockedMaterial = material
+      if (sprite._hierarchyOwner) sprite._hierarchyOwner._releaseHierarchySprite?.(sprite)
+      else {
+        sprite._setBatchSuppressed(false)
+        sprite._unenrollFromWorld()
+      }
     }
   }
 

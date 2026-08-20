@@ -1261,3 +1261,14 @@ describe('Sprite2D clone with effects', () => {
     expect((clonedDissolve as any).progress).toBeCloseTo(0.7)
   })
 })
+
+describe('Sprite2DMaterial clipping', () => {
+  it('keeps clipping in the fragment stage for synthesized instance positions', () => {
+    const material = new Sprite2DMaterial()
+
+    material.hardwareClipping = true
+    material.setupHardwareClipping(undefined as never)
+
+    expect(material.hardwareClipping).toBe(false)
+  })
+})

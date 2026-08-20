@@ -104,6 +104,19 @@ describe('Sprite2D', () => {
     expect(cloned.position.equals(sprite.position)).toBe(true)
   })
 
+  it('copy preserves authored visibility from a batch-suppressed source', () => {
+    const source = new Sprite2D({ texture })
+    source.visible = true
+    source._setBatchSuppressed(true)
+    const target = new Sprite2D({ texture })
+
+    target.copy(source)
+
+    expect(source.visible).toBe(false)
+    expect(target._isAuthoredVisible()).toBe(true)
+    expect(target.visible).toBe(true)
+  })
+
   it('should get world position 2D', () => {
     const sprite = new Sprite2D({ texture })
     sprite.position.set(100, 200, 50)

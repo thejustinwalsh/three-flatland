@@ -1,6 +1,7 @@
 import { attribute, texture, vec2, vec4, float, If, Discard, select } from 'three/tsl'
 import { type Texture, FrontSide, NormalBlending, CustomBlending, OneFactor, OneMinusSrcAlphaFactor } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
+import type NodeBuilder from 'three/src/nodes/core/NodeBuilder.js'
 import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
 import { readFlip, readRotatedFrameFlag } from './instanceAttributes'
@@ -217,6 +218,20 @@ export class Sprite2DMaterial extends EffectMaterial {
     if (options.map) {
       this.setTexture(options.map)
     }
+  }
+
+  /**
+   * Sprite batches compose their instance transform in the custom
+   * `positionNode`. Three.js evaluates hardware clip distances before that
+   * position is available, so those distances describe the shared unit quad
+   * instead of the transformed sprite. Keep clipping in the fragment stage,
+   * where the view-position varying is produced after `positionNode` assigns
+   * the synthesized, instance-transformed local position.
+   *
+   * @internal
+   */
+  override setupHardwareClipping(_builder: NodeBuilder): void {
+    this.hardwareClipping = false
   }
 
   /**

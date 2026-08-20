@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { Texture, CustomBlending, OneFactor } from 'three'
+import { Group, Scene, Texture, CustomBlending, OneFactor } from 'three'
 import { universe } from 'koota'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
@@ -133,6 +133,33 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     expect(sprite.material).toBe(custom) // we never swap user materials
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
 
+    group.dispose()
+  })
+
+  it('keeps a hierarchy sprite unbatched after custom material disposal until replacement', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const custom = new Sprite2DMaterial({ map: texture })
+    const scene = new Scene()
+    const group = new SpriteGroup()
+    const host = new Group()
+    const sprite = new Sprite2D({ texture, material: custom })
+    host.add(sprite)
+    group.add(host)
+    scene.add(group)
+    scene.updateMatrixWorld(true)
+    expect(sprite.entity).not.toBeNull()
+
+    custom.dispose()
+    scene.updateMatrixWorld(true)
+    expect(sprite.entity).toBeNull()
+    expect(sprite.material).toBe(custom)
+    expect(sprite.visible).toBe(true)
+
+    sprite.material = new Sprite2DMaterial({ map: texture })
+    scene.updateMatrixWorld(true)
+    expect(sprite.entity).not.toBeNull()
+    expect(sprite._hierarchyOwner).toBe(group)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
     group.dispose()
   })
 
