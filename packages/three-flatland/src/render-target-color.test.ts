@@ -118,6 +118,21 @@ describe('Flatland render-target color management', () => {
     expect(setRenderTarget.mock.calls).toEqual([[target], [previousTarget]])
   })
 
+  it('restores autoClear and the render target when direct rendering throws', () => {
+    const previousTarget = new RenderTarget(8, 8)
+    const target = new RenderTarget(64, 64)
+    const flatland = new Flatland({ renderTarget: target })
+    const { renderer, setRenderTarget } = createRenderer(previousTarget)
+    renderer.autoClear = false
+    vi.mocked(renderer.render).mockImplementation(() => {
+      throw new Error('direct render failed')
+    })
+
+    expect(() => flatland.render(renderer)).toThrow('direct render failed')
+    expect(renderer.autoClear).toBe(false)
+    expect(setRenderTarget.mock.calls).toEqual([[target], [previousTarget]])
+  })
+
   it('binds the default framebuffer when renderTarget is null', () => {
     const previousTarget = new RenderTarget(8, 8)
     const pipeline = createPipeline()

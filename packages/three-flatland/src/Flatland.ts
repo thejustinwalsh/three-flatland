@@ -1295,13 +1295,16 @@ export class Flatland extends Group implements WorldProvider {
         // Configure renderer clear state and let render() handle clearing
         const prevAutoClear = renderer.autoClear
         renderer.autoClear = this.autoClear
-        if (this.autoClear) {
-          renderer.setClearColor(this.clearAlpha < 1 ? 0x000000 : this.clearColor, this.clearAlpha)
+        try {
+          if (this.autoClear) {
+            renderer.setClearColor(this.clearAlpha < 1 ? 0x000000 : this.clearColor, this.clearAlpha)
+          }
+          beginDebugPass('main', renderer)
+          renderer.render(this.scene, this._camera)
+          endDebugPass(renderer)
+        } finally {
+          renderer.autoClear = prevAutoClear
         }
-        beginDebugPass('main', renderer)
-        renderer.render(this.scene, this._camera)
-        endDebugPass(renderer)
-        renderer.autoClear = prevAutoClear
       }
     } finally {
       if (renderTargetChanged) {
