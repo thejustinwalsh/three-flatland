@@ -638,8 +638,12 @@ export function handleMaterialDispose(world: World, registry: RegistryData, mate
       sprite._batchEnrollmentBlockedMaterial = material
       if (sprite._hierarchyOwner) sprite._hierarchyOwner._releaseHierarchySprite?.(sprite)
       else {
-        sprite._setBatchSuppressed(false)
-        sprite._unenrollFromWorld()
+        const owner = registry.parentGroup as (Object3D & { _releaseDirectEnrollment?(source: Sprite2D): void }) | null
+        if (owner?._releaseDirectEnrollment) owner._releaseDirectEnrollment(sprite)
+        else {
+          sprite._setBatchSuppressed(false)
+          sprite._unenrollFromWorld()
+        }
       }
     }
   }

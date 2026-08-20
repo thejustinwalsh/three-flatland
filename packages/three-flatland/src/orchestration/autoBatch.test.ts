@@ -95,6 +95,30 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     expect(registryData(registry).activeBatches.length).toBe(1)
   })
 
+  it('releases auto enrollment and never re-registers a disposed sprite', () => {
+    const a = new Sprite2D({ texture })
+    const b = new Sprite2D({ texture })
+    scene.add(a, b)
+    fireSceneHook(scene, renderer)
+
+    const registry = peekRegistry(renderer, scene)!
+    expect(registry.group.spriteCount).toBe(2)
+
+    a.dispose()
+
+    expect(a.entity).toBeNull()
+    expect(a._autoRegistry).toBeNull()
+    expect(a.isMesh).toBe(false)
+    expect(registry.sprites.has(a)).toBe(false)
+    expect(registry.standalone.has(a)).toBe(false)
+    expect(registry.group.spriteCount).toBe(1)
+
+    fireSceneHook(scene, renderer)
+    expect(a.entity).toBeNull()
+    expect(a._autoRegistry).toBeNull()
+    expect(registry.group.spriteCount).toBe(1)
+  })
+
   it('a third sprite joins the existing run immediately (no threshold re-wait)', () => {
     scene.add(new Sprite2D({ texture }))
     scene.add(new Sprite2D({ texture }))

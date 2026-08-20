@@ -94,6 +94,24 @@ describe('SpriteGroup', () => {
     expect(renderer.spriteCount).toBe(0)
   })
 
+  it('releases direct enrollment when a sprite is disposed', () => {
+    renderer = new SpriteGroup()
+    const sprite = new Sprite2D({ material })
+    renderer.add(sprite)
+    renderer.update()
+
+    sprite.dispose()
+
+    expect(sprite.entity).toBeNull()
+    expect(sprite.isMesh).toBe(false)
+    expect(renderer.spriteCount).toBe(0)
+
+    renderer.add(sprite)
+    renderer.update()
+    expect(sprite.entity).toBeNull()
+    expect(renderer.spriteCount).toBe(0)
+  })
+
   it('should update batches', () => {
     renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
@@ -152,7 +170,7 @@ describe('SpriteGroup', () => {
 
   it('should clear all sprites', () => {
     renderer = new SpriteGroup()
-    const sprite = new Sprite2D({ material })
+    const sprite = new Sprite2D({ texture, material })
 
     renderer.add(sprite)
     renderer.update()
@@ -161,6 +179,9 @@ describe('SpriteGroup', () => {
     expect(renderer.isEmpty).toBe(true)
     expect(renderer.batchCount).toBe(0)
     expect(renderer.children.length).toBe(0)
+    expect(sprite.entity).toBeNull()
+    expect(sprite._batchMesh).toBeNull()
+    expect(sprite.isMesh).toBe(true)
   })
 
   it('should add batch objects to scene graph', () => {

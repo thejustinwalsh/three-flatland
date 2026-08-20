@@ -387,6 +387,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     }
     // Check if it's a Sprite2D (has _enrollInWorld — duck typing)
     if ('_enrollInWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
+      if (spriteOrObject._disposed) return this
       if (spriteOrObject._batchEnrollmentBlockedMaterial === spriteOrObject.material) return this
       const targetWorld = this.world
       // Skip if already enrolled (R3F insertBefore re-adds during reconciliation)
@@ -415,6 +416,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   /** Enroll a sprite while leaving it under its authored Object3D parent. @internal */
   _enrollHierarchySprite(sprite: Sprite2D): void {
     if (
+      sprite._disposed ||
       sprite._renderOrderOverridden ||
       sprite._batchEnrollmentBlockedMaterial === sprite.material ||
       !this._ownsHierarchySprite(sprite)
@@ -470,8 +472,11 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     this._spriteCount--
   }
 
-  /** Release a direct (non-hierarchy) enrollment so another world can adopt it. */
-  private _releaseDirectEnrollment(sprite: Sprite2D): void {
+  /** Release a direct (non-hierarchy) enrollment so another world can adopt it. @internal */
+  _releaseDirectEnrollment(sprite: Sprite2D): void {
+    // Match Object3D.remove(): a retained descendant is not this group's
+    // direct child. The hierarchy reconciler owns its enrollment lifecycle.
+    if (sprite._hierarchyOwner === this) return
     if (!sprite.entity || sprite._flatlandWorld !== this._world) return
     sprite._setBatchSuppressed(false)
     sprite._unenrollFromWorld()
@@ -516,7 +521,11 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
 
     if ('_enrollInWorld' in object && '_flatlandWorld' in object) {
       const sprite = object as Sprite2D
-      if (!sprite._renderOrderOverridden && sprite._batchEnrollmentBlockedMaterial !== sprite.material) {
+      if (
+        !sprite._disposed &&
+        !sprite._renderOrderOverridden &&
+        sprite._batchEnrollmentBlockedMaterial !== sprite.material
+      ) {
         this._hierarchySeen.add(sprite)
         if (sprite._hierarchyOwner !== this || !sprite.entity) this._enrollHierarchySprite(sprite)
       }
@@ -879,6 +888,17 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   override clear(): this {
     for (const sprite of this._hierarchySprites) this._releaseHierarchySprite(sprite)
 
+    // Direct sprites are not Object3D children, so clearing the group tree
+    // cannot discover them. Release every remaining registry source before
+    // disposing its batches; otherwise sprites retain live entities and
+    // cached pointers into disposed batch meshes.
+    const registry = this._getRegistry()
+    if (registry) {
+      for (const sprite of registry.spriteArr) {
+        if (sprite) this._releaseDirectEnrollment(sprite)
+      }
+    }
+
     // Remove all batch children from scene graph
     while (this.children.length > 0) {
       const child = this.children[0]
@@ -888,7 +908,6 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     }
 
     // Clear registry state
-    const registry = this._getRegistry()
     if (registry) {
       // Dispose all active batch meshes
       for (const batchEntity of registry.activeBatches) {

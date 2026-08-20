@@ -170,6 +170,15 @@ export function createBatchReassignSystem(): (
       // Re-route R3F picking through the new batch.
       proxyPickToBatch(sprite, newBatchMesh.mesh)
 
+      // The new slot is seeded below from the sprite's local matrix, but a
+      // hierarchy/auto-managed sprite may need an ancestor-composed matrix or
+      // a zero-scale hidden matrix instead. Force the transform pass that
+      // follows this system to rewrite the slot and its broadphase entry in
+      // the same schedule run. Retaining the previous hierarchy snapshot
+      // would otherwise let the tracker early-out forever.
+      sprite._batchHierarchyState = undefined
+      registry.transformsDirty = true
+
       // Full sync to new batch
       syncAllBuffers(entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)
     }

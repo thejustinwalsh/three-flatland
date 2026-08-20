@@ -1,4 +1,4 @@
-import { Activity, act } from 'react'
+import { Activity, act, createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Texture } from 'three'
 import { createRoot, extend } from '@react-three/fiber/webgpu'
@@ -97,6 +97,67 @@ describe('React Activity', () => {
     expect(sprite._batchSlot).toBe(retainedSlot)
     expect((sprite._batchMesh!.instanceMatrix.array as Float32Array)[sprite._batchSlot * 16]).toBe(20)
     expect(authoredHiddenSprite._isAuthoredVisible()).toBe(false)
+
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+  })
+
+  it('toggles a direct Sprite2D host without losing batch ownership', async () => {
+    vi.stubGlobal('requestAnimationFrame', () => 0)
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+    const canvas = { width: 64, height: 64 } as OffscreenCanvas
+    const root = createRoot(canvas)
+    await root.configure({
+      renderer,
+      frameloop: 'never',
+      size: { width: 64, height: 64, top: 0, left: 0 },
+    })
+
+    const texture = new Texture()
+    const spriteRef = createRef<Sprite2D>()
+    const renderView = async (mode: 'visible' | 'hidden') => {
+      let store: ReturnType<typeof root.render> | undefined
+      await act(async () => {
+        store = root.render(
+          <spriteGroup>
+            <Activity mode={mode}>
+              <sprite2D ref={spriteRef} name="direct-activity-sprite" texture={texture} scale={[20, 20, 1]} />
+            </Activity>
+          </spriteGroup>
+        )
+        await Promise.resolve()
+      })
+      return store!
+    }
+
+    const store = await renderView('visible')
+    const scene = store.getState().scene
+    scene.updateMatrixWorld(true)
+    const sprite = spriteRef.current!
+    expect(sprite.entity).not.toBeNull()
+    expect(sprite._hierarchyManaged).toBe(false)
+    expect(sprite.visible).toBe(true)
+    // Direct SpriteGroup sources are not Object3D children, so their own
+    // Mesh discriminator can remain intact without creating a second draw.
+    expect(sprite.isMesh).toBe(true)
+    expect((sprite._batchMesh!.instanceMatrix.array as Float32Array)[sprite._batchSlot * 16]).toBe(20)
+    const retainedEntity = sprite.entity
+
+    await renderView('hidden')
+    scene.updateMatrixWorld(true)
+    expect(sprite.entity).toBe(retainedEntity)
+    expect(sprite.visible).toBe(false)
+    expect(sprite.isMesh).toBe(true)
+    expect((sprite._batchMesh!.instanceMatrix.array as Float32Array)[sprite._batchSlot * 16]).toBe(0)
+
+    await renderView('visible')
+    scene.updateMatrixWorld(true)
+    expect(sprite.entity).toBe(retainedEntity)
+    expect(sprite.visible).toBe(true)
+    expect(sprite.isMesh).toBe(true)
+    expect((sprite._batchMesh!.instanceMatrix.array as Float32Array)[sprite._batchSlot * 16]).toBe(20)
 
     await act(async () => {
       root.unmount()

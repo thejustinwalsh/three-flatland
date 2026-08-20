@@ -104,6 +104,7 @@ interface FlatlandClipAncestor extends Object3D {
   _containsWorldPoint?(point: Vector3): boolean
   _enrollHierarchySprite?(sprite: Sprite2D): void
   _releaseHierarchySprite?(sprite: Sprite2D): void
+  _releaseDirectEnrollment?(sprite: Sprite2D): void
 }
 
 export class Sprite2D extends Mesh {
@@ -489,6 +490,8 @@ export class Sprite2D extends Mesh {
   _batchHierarchyState?: unknown
   /** User material whose disposal currently blocks automatic re-enrollment. @internal */
   _batchEnrollmentBlockedMaterial: Sprite2DMaterial | null = null
+  /** Terminal object-disposal latch; disposed sprites cannot be re-enrolled. @internal */
+  _disposed = false
 
   /**
    * True while the material is the construction-time bootstrap default
@@ -2008,6 +2011,7 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _onAddedToTree = (): void => {
+    if (this._disposed) return
     // A custom renderOrder deliberately escapes batching. Demotion
     // reparents the source mesh under the SpriteGroup with the base Group
     // method; do not let the resulting `added` event enroll it again.
@@ -2344,7 +2348,7 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _enrollInWorld(world?: World): void {
-    if (this._entity) return // Already enrolled
+    if (this._disposed || this._entity) return // Disposed or already enrolled
 
     const w = world ?? this._flatlandWorld ?? getGlobalWorld()
     this._flatlandWorld = w
@@ -2540,8 +2544,24 @@ export class Sprite2D extends Mesh {
    * Dispose of resources.
    */
   dispose() {
-    // Unenroll from ECS world
-    this._unenrollFromWorld()
+    if (this._disposed) return
+    this._disposed = true
+
+    // Release through the owning path so hierarchy/auto/direct bookkeeping
+    // and sprite counts stay coherent. A disposed source may remain in the
+    // authored Object3D tree, so the terminal latch above also prevents the
+    // next reconciliation or orchestration sweep from resurrecting it.
+    if (this._hierarchyOwner) {
+      this._hierarchyOwner._releaseHierarchySprite?.(this)
+    } else if (this._autoRegistry) {
+      flatlandUnregister(this)
+    } else {
+      const owner = this._registryData()?.parentGroup as FlatlandClipAncestor | undefined
+      if (owner?._releaseDirectEnrollment) owner._releaseDirectEnrollment(this)
+      else this._unenrollFromWorld()
+    }
+    if (this._pendingPrimeScene) flatlandUnregister(this)
+    this._setContentReady(false)
 
     // Detach effects
     for (const effect of this._effects) {
