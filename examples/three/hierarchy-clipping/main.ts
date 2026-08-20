@@ -55,16 +55,19 @@ await renderer.init()
 let active = 0
 let lastSwap = performance.now()
 let raf = 0
+const motionPreference = matchMedia('(prefers-reduced-motion: reduce)')
 function frame(now: number) {
   raf = requestAnimationFrame(frame)
-  if (now - lastSwap > 2200) {
-    active = 1 - active
-    firstView.visible = active === 0
-    secondView.visible = active === 1
-    lastSwap = now
+  if (!motionPreference.matches) {
+    if (now - lastSwap > 2200) {
+      active = 1 - active
+      firstView.visible = active === 0
+      secondView.visible = active === 1
+      lastSwap = now
+    }
+    const view = active === 0 ? firstView : secondView
+    view.position.y = Math.sin(now * 0.001) * 55
   }
-  const view = active === 0 ? firstView : secondView
-  view.position.y = Math.sin(now * 0.001) * 55
   renderer.render(scene, camera)
 }
 resize()

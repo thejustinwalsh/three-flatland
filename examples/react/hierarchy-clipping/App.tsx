@@ -14,6 +14,7 @@ const paletteTexture = new DataTexture(palette, 4, 1, RGBAFormat)
 paletteTexture.magFilter = NearestFilter
 paletteTexture.needsUpdate = true
 import.meta.hot?.dispose(() => paletteTexture.dispose())
+const motionPreference = matchMedia('(prefers-reduced-motion: reduce)')
 
 function Camera() {
   const camera = useThree((state) => state.camera) as OrthographicCamera
@@ -29,11 +30,20 @@ function Camera() {
   return null
 }
 
-function Symbols({ texture, rotated = false }: { texture: DataTexture; rotated?: boolean }) {
+function Symbols({
+  texture,
+  rotated = false,
+  animated = true,
+}: {
+  texture: DataTexture
+  rotated?: boolean
+  animated?: boolean
+}) {
   const host = useRef<Group>(null)
   const elapsed = useRef(0)
 
   useFrame((_, delta) => {
+    if (!animated) return
     elapsed.current += delta
     if (host.current) host.current.position.y = Math.sin(elapsed.current) * 55
   })
@@ -64,6 +74,7 @@ function Symbols({ texture, rotated = false }: { texture: DataTexture; rotated?:
 function Scene() {
   const [active, setActive] = useState<0 | 1>(0)
   useEffect(() => {
+    if (motionPreference.matches) return
     const timer = window.setInterval(() => setActive((value) => (value === 0 ? 1 : 0)), 2200)
     return () => window.clearInterval(timer)
   }, [])
@@ -71,10 +82,10 @@ function Scene() {
   return (
     <spriteGroup clipRect={[-120, -80, 240, 160]} rotation-z={-0.08}>
       <Activity mode={active === 0 ? 'visible' : 'hidden'}>
-        <Symbols texture={paletteTexture} />
+        <Symbols texture={paletteTexture} animated={!motionPreference.matches} />
       </Activity>
       <Activity mode={active === 1 ? 'visible' : 'hidden'}>
-        <Symbols texture={paletteTexture} rotated />
+        <Symbols texture={paletteTexture} rotated animated={!motionPreference.matches} />
       </Activity>
     </spriteGroup>
   )
