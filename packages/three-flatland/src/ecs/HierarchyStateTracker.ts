@@ -23,6 +23,7 @@ export class HierarchyStateTracker {
   private readonly _observed = new WeakMap<Object3D, ObservedHierarchyState>()
   private _frame = 0
 
+  /** Begin a new memoization frame for shared ancestor comparisons. */
   beginFrame(): void {
     this._frame++
   }
@@ -47,6 +48,7 @@ export class HierarchyStateTracker {
     return changed
   }
 
+  /** Compare one object's authored matrix, parent, and visibility snapshot. */
   private _objectChanged(object: Object3D, spriteSource = false, visibilityOverride?: boolean): boolean {
     const candidate = object as BatchVisibilitySource
     const sourceState = spriteSource ? candidate._batchHierarchyState : undefined

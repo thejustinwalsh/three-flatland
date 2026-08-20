@@ -19,6 +19,7 @@ const viewport = new SpriteGroup({ clipRect: [-120, -80, 240, 160] })
 viewport.rotation.z = -0.08
 scene.add(viewport)
 
+/** Create one retained hierarchy of batched palette sprites. */
 function makeView(): Group {
   const host = new Group()
   for (let i = 0; i < 36; i++) {
@@ -56,6 +57,8 @@ let active = 0
 let lastSwap = performance.now()
 let raf = 0
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)')
+
+/** Animate hierarchy visibility and transforms before rendering each frame. */
 function frame(now: number) {
   raf = requestAnimationFrame(frame)
   if (!motionPreference.matches) {
@@ -73,6 +76,7 @@ function frame(now: number) {
 resize()
 frame(performance.now())
 
+/** Keep the orthographic camera and renderer fitted to the viewport. */
 function resize() {
   const aspect = innerWidth / innerHeight
   camera.left = -160 * aspect

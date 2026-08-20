@@ -16,6 +16,7 @@ paletteTexture.needsUpdate = true
 import.meta.hot?.dispose(() => paletteTexture.dispose())
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)')
 
+/** Keep the orthographic example camera fitted to the current canvas aspect. */
 function Camera() {
   const camera = useThree((state) => state.camera) as OrthographicCamera
   const size = useThree((state) => state.size)
@@ -30,6 +31,7 @@ function Camera() {
   return null
 }
 
+/** Render and optionally animate one retained hierarchy of batched symbols. */
 function Symbols({
   texture,
   rotated = false,
@@ -71,6 +73,7 @@ function Symbols({
   )
 }
 
+/** Alternate two Activity-owned hierarchies inside a transformed clip group. */
 function Scene() {
   const [active, setActive] = useState<0 | 1>(0)
   useEffect(() => {
@@ -91,6 +94,7 @@ function Scene() {
   )
 }
 
+/** Mount the React hierarchy, Activity, and clipping demonstration. */
 export default function App() {
   return (
     <Canvas orthographic dpr={[1, 2]} frameloop="always" camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}>

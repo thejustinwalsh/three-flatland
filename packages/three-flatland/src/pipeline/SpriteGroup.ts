@@ -214,6 +214,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     this.clipRect = options.clipRect ?? null
   }
 
+  /** Build parent-local clipping planes from the public rectangle property. */
   private _updateLocalClipPlanes(): void {
     const rect = this._clipRect
     if (!rect) {
@@ -233,6 +234,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     this.clippingPlanes.length = 4
   }
 
+  /** Project local clipping planes into world space for Three.js clipping. */
   private _syncWorldClipPlanes(): void {
     if (!this._clipRect) return
     for (let i = 0; i < 4; i++) {

@@ -17,6 +17,7 @@ const _relativeParents = new Map<Object3D, Matrix4>()
 const _relativeParentPool: Matrix4[] = []
 let _relativeParentPoolIndex = 0
 
+/** Write a slot only when its visible or hidden matrix representation changed. */
 function syncInstanceSlot(buffer: Float32Array, offset: number, matrix: Matrix4, visible: boolean): boolean {
   const elements = matrix.elements
   let changed = false
@@ -34,6 +35,7 @@ function syncInstanceSlot(buffer: Float32Array, offset: number, matrix: Matrix4,
   return true
 }
 
+/** Encode a source matrix, using zero scale while preserving hidden position. */
 function writeInstanceSlot(buffer: Float32Array, offset: number, matrix: Matrix4, visible: boolean): void {
   const elements = matrix.elements
   if (visible) {
@@ -73,6 +75,7 @@ function writeInstanceSlot(buffer: Float32Array, offset: number, matrix: Matrix4
   }
 }
 
+/** Return whether a complete Matrix4 is the exact identity transform. */
 function isIdentity(matrix: Matrix4): boolean {
   const e = matrix.elements
   return (
@@ -95,6 +98,7 @@ function isIdentity(matrix: Matrix4): boolean {
   )
 }
 
+/** Resolve effective Three.js visibility from an object through the scene root. */
 function hierarchyVisibleFrom(object: Object3D | null): boolean {
   while (object) {
     if (!object.visible) return false
