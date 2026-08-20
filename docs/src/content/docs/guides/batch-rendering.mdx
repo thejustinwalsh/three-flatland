@@ -134,6 +134,8 @@ Setting a custom `sprite.renderOrder` opts that sprite out of batching so Three.
 Older releases flattened some batched sprites against the batching root. If your scene added a compensating transform or manually mirrored ancestor visibility to work around that behavior, remove the workaround when upgrading.
 
 `sprite.visible` keeps normal three.js semantics in every rendering mode: it reports the sprite's locally authored value. The effective batch-slot visibility also includes content readiness and every authored ancestor, but those conditions do not overwrite the public property. A child can therefore report `visible === true` while an invisible parent keeps the subtree out of the batch draw, matching `Object3D` behavior.
+
+When an automatically batched or retained hierarchy source remains in the authored scene graph, the batch suppresses its duplicate draw by temporarily setting the runtime `isMesh` discriminator to `false`. It returns to `true` when the sprite leaves the batch and has renderable content. Direct `SpriteGroup` sources are not scene children and can keep `isMesh === true`. Use `sprite instanceof Sprite2D` rather than `sprite.isMesh` to classify logical sprites, and serialize authored sprite data before enrollment: generic `Object3D.toJSON()` omits mesh geometry while a source draw is suppressed.
 :::
 
 ## Automatic Change Detection
@@ -149,6 +151,8 @@ sprite.position.x += 10
 ```
 
 For a static scene with `autoInvalidateTransforms: false`, call `spriteGroup.invalidateTransforms()` after changing a parent transform or parent visibility. Direct `sprite.visible` changes invalidate their batch slot automatically.
+
+Retained hierarchy mode checks the authored subtree on each matrix update so arbitrary Three.js reparenting is detected without a Flatland-specific mutation API. For very large flat populations, add sprites directly to `SpriteGroup` or use automatic batching; those paths avoid the retained-subtree walk.
 
 ## Performance Monitoring
 

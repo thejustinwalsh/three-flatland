@@ -29,7 +29,7 @@ React 19 `Activity` controls an ordinary host group's `visible` state. Because t
 
 ## Compatibility
 
-This is a breaking behavioral correction. Code that compensated for flattened parent transforms or manually mirrored parent visibility may need those workarounds removed. The release commit must use `fix(core)!` and include a `BREAKING CHANGE:` footer so the automatic changeset generator records the break.
+This is a breaking behavioral correction. Code that compensated for flattened parent transforms or manually mirrored parent visibility may need those workarounds removed. The implementation shipped as an atomic `feat(core)!` commit, and the release note is hand-authored because this repository intentionally does not run an automatic changeset generator.
 
 ## Proof
 
