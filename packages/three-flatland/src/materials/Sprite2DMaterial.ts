@@ -1,7 +1,7 @@
 import { attribute, texture, vec2, vec4, float, If, Discard, select } from 'three/tsl'
 import { type Texture, FrontSide, NormalBlending, CustomBlending, OneFactor, OneMinusSrcAlphaFactor } from 'three'
+import type { NodeBuilder } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
-import type NodeBuilder from 'three/src/nodes/core/NodeBuilder.js'
 import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
 import { readFlip, readRotatedFrameFlag } from './instanceAttributes'
