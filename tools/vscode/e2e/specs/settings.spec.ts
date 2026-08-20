@@ -3,7 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron } from '@playwright/test'
-import { test, expect } from '../fixtures'
+import { test, expect, removeFixtureDirectory } from '../fixtures'
 import { HostBridgeClient } from '../host-bridge/client'
 
 // Menu *rendering* (submenu contents, item visibility) isn't introspectable
@@ -233,9 +233,9 @@ test.describe('FL tool settings', () => {
     } finally {
       await app.close()
       await Promise.all([
-        fs.rm(baseDir, { recursive: true, force: true }),
-        fs.rm(extensionsDir, { recursive: true, force: true }),
-        fs.rm(userDataDir, { recursive: true, force: true }),
+        removeFixtureDirectory(baseDir),
+        removeFixtureDirectory(extensionsDir),
+        removeFixtureDirectory(userDataDir),
       ])
     }
   })

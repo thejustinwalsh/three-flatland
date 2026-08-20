@@ -66,6 +66,11 @@ type WorkerFixtures = {
   _windowCache: { current?: CachedWindow }
 }
 
+/** Remove an Electron fixture directory while tolerating late process writes. */
+export async function removeFixtureDirectory(directory: string): Promise<void> {
+  await fs.rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+}
+
 async function launchWindow(vscodeInstallPath: string): Promise<CachedWindow> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fl-vscode-e2e-'))
   // realpath: macOS resolves os.tmpdir() through a /tmp -> /private/tmp
@@ -142,9 +147,9 @@ async function teardownWindow(win: CachedWindow | undefined): Promise<void> {
     // already exited — nothing to kill
   }
   await Promise.all([
-    fs.rm(win.baseDir, { recursive: true, force: true }),
-    fs.rm(win.extensionsDir, { recursive: true, force: true }),
-    fs.rm(win.userDataDir, { recursive: true, force: true }),
+    removeFixtureDirectory(win.baseDir),
+    removeFixtureDirectory(win.extensionsDir),
+    removeFixtureDirectory(win.userDataDir),
   ])
 }
 
@@ -197,7 +202,7 @@ async function resetWindowWorkspace(win: CachedWindow): Promise<void> {
       await api.reset?.()
     }
   })
-  await fs.rm(win.baseDir, { recursive: true, force: true })
+  await removeFixtureDirectory(win.baseDir)
   await fs.mkdir(win.baseDir, { recursive: true })
   await fs.cp(FIXTURE_WORKSPACE, win.baseDir, { recursive: true })
 }
