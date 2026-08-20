@@ -28,6 +28,60 @@ afterEach(() => {
 })
 
 describe('auto batching preserves the source hierarchy', () => {
+  it('projects public visibility writes into a directly owned batch slot', () => {
+    const scene = new Scene()
+    const spriteGroup = new SpriteGroup()
+    const sprite = makeSprite()
+    spriteGroup.add(sprite)
+    scene.add(spriteGroup)
+    scene.updateMatrixWorld(true)
+
+    expect(instanceSlot(sprite)[15]).toBe(1)
+    sprite.visible = false
+    scene.updateMatrixWorld(true)
+    expect(instanceSlot(sprite)[0]).toBe(0)
+    expect(raycastAt(sprite, 0, 0)).toBe(0)
+
+    sprite.visible = true
+    scene.updateMatrixWorld(true)
+    expect(instanceSlot(sprite)[0]).toBe(20)
+    expect(instanceSlot(sprite)[15]).toBe(1)
+    expect(raycastAt(sprite, 0, 0)).toBe(1)
+
+    spriteGroup.dispose()
+  })
+
+  it('projects public visibility writes into an auto-owned batch slot', () => {
+    const renderer = {}
+    const scene = new Scene()
+    const parent = new Group()
+    const texture = new Texture()
+    const sprite = makeSprite(20, texture)
+    const batchPeer = makeSprite(20, texture)
+    parent.add(sprite, batchPeer)
+    scene.add(parent)
+    flatlandRegister(sprite, renderer, scene)
+    flatlandRegister(batchPeer, renderer, scene)
+    flatlandSceneSweep(renderer, scene)
+    scene.updateMatrixWorld(true)
+
+    expect(sprite._autoRegistry).not.toBeNull()
+    expect(instanceSlot(sprite)[15]).toBe(1)
+    sprite.visible = false
+    scene.updateMatrixWorld(true)
+    expect(instanceSlot(sprite)[0]).toBe(0)
+    expect(raycastAt(sprite, 0, 0)).toBe(0)
+
+    sprite.visible = true
+    scene.updateMatrixWorld(true)
+    expect(instanceSlot(sprite)[0]).toBe(20)
+    expect(instanceSlot(sprite)[15]).toBe(1)
+    expect(raycastAt(sprite, 0, 0)).toBe(1)
+
+    flatlandUnregister(sprite)
+    flatlandUnregister(batchPeer)
+  })
+
   it('composes transforms through ordinary nested Object3D parents', () => {
     const renderer = {}
     const scene = new Scene()
