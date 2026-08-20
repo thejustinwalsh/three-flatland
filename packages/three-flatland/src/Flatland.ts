@@ -8,6 +8,8 @@ import {
   type ColorRepresentation,
   type Texture,
   Vector2,
+  NoColorSpace,
+  SRGBColorSpace,
 } from 'three'
 import { RenderPipeline } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
@@ -87,7 +89,12 @@ export interface FlatlandOptions {
    * default. Default: `'flatland'`.
    */
   name?: string
-  /** Render target (null = render to viewport) */
+  /**
+   * Render target (null = render to viewport). Targets with NoColorSpace
+   * default to sRGB; set LinearSRGBColorSpace explicitly for linear/HDR output.
+   * Pass the target before its first GPU use so Three allocates the matching
+   * attachment format.
+   */
   renderTarget?: RenderTarget | null
   /** Camera to use (null = use internal orthographic camera) */
   camera?: OrthographicCamera | null
@@ -320,7 +327,7 @@ export class Flatland extends Group implements WorldProvider {
     }
 
     // Render target
-    this._renderTarget = options.renderTarget ?? null
+    this._renderTarget = this._prepareRenderTarget(options.renderTarget ?? null)
 
     // Clear settings
     this.autoClear = options.autoClear ?? true
@@ -440,7 +447,8 @@ export class Flatland extends Group implements WorldProvider {
    * Set the render target.
    */
   set renderTarget(value: RenderTarget | null) {
-    this._renderTarget = value
+    this._renderTarget = this._prepareRenderTarget(value)
+    this._syncRenderPipelineOutputTransform()
   }
 
   /**
@@ -623,12 +631,15 @@ export class Flatland extends Group implements WorldProvider {
    *
    * flatland.setRenderPipeline(pipeline, scenePass)
    * ```
+   * Flatland preserves the pipeline's outputColorTransform setting. Set it to
+   * false when a manual pipeline writes working-space color to a render target.
    */
   setRenderPipeline(renderPipeline: RenderPipeline, passNode: PassNode): void {
     this._renderPipeline = renderPipeline
     this._passNode = passNode
     this._outputNode = renderPipeline.outputNode
     this._renderPipelineEnabled = true
+    this._autoRenderPipeline = false
   }
 
   /**
@@ -1263,36 +1274,37 @@ export class Flatland extends Group implements WorldProvider {
     // Auto-initialize or rebuild render pipeline if needed
     this._ensureRenderPipeline(renderer)
 
-    // Save current render target
+    // Bind Flatland's destination for both direct and post-processed
+    // rendering. RenderPipeline draws its final full-screen quad into the
+    // renderer's current target, so it does not manage this state itself.
     const currentRenderTarget = renderer.getRenderTarget()
+    const renderTargetChanged = currentRenderTarget !== this._renderTarget
+    if (renderTargetChanged) {
+      renderer.setRenderTarget(this._renderTarget)
+    }
 
-    if (this._renderPipeline && this._renderPipelineEnabled) {
-      // Render pipeline handles its own render target
-      beginDebugPass('main.post', renderer)
-      this._renderPipeline.render()
-      endDebugPass(renderer)
-    } else {
-      // Direct rendering
-      if (this._renderTarget) {
-        renderer.setRenderTarget(this._renderTarget)
+    try {
+      if (this._renderPipeline && this._renderPipelineEnabled) {
+        beginDebugPass('main.post', renderer)
+        this._renderPipeline.render()
+        endDebugPass(renderer)
+      } else {
+        // Sync scene.background based on clearAlpha (R3F sets props after construction)
+        this.scene.background = this.clearAlpha < 1 ? null : this.clearColor
+
+        // Configure renderer clear state and let render() handle clearing
+        const prevAutoClear = renderer.autoClear
+        renderer.autoClear = this.autoClear
+        if (this.autoClear) {
+          renderer.setClearColor(this.clearAlpha < 1 ? 0x000000 : this.clearColor, this.clearAlpha)
+        }
+        beginDebugPass('main', renderer)
+        renderer.render(this.scene, this._camera)
+        endDebugPass(renderer)
+        renderer.autoClear = prevAutoClear
       }
-
-      // Sync scene.background based on clearAlpha (R3F sets props after construction)
-      this.scene.background = this.clearAlpha < 1 ? null : this.clearColor
-
-      // Configure renderer clear state and let render() handle clearing
-      const prevAutoClear = renderer.autoClear
-      renderer.autoClear = this.autoClear
-      if (this.autoClear) {
-        renderer.setClearColor(this.clearAlpha < 1 ? 0x000000 : this.clearColor, this.clearAlpha)
-      }
-      beginDebugPass('main', renderer)
-      renderer.render(this.scene, this._camera)
-      endDebugPass(renderer)
-      renderer.autoClear = prevAutoClear
-
-      // Restore render target
-      if (this._renderTarget) {
+    } finally {
+      if (renderTargetChanged) {
         renderer.setRenderTarget(currentRenderTarget)
       }
     }
@@ -1350,6 +1362,8 @@ export class Flatland extends Group implements WorldProvider {
       }
     }
 
+    this._syncRenderPipelineOutputTransform()
+
     // Run postPassSystem to get sorted passes (returns null if not dirty)
     const sortedPasses = postPassSystem(this.world)
     if (sortedPasses && this._renderPipeline && this._passNode) {
@@ -1369,6 +1383,29 @@ export class Flatland extends Group implements WorldProvider {
       this._renderPipeline.outputNode = this._outputNode
       this._renderPipeline.needsUpdate = true
     }
+  }
+
+  /** Keep the pipeline's final color transform aligned with its destination. */
+  private _syncRenderPipelineOutputTransform(): void {
+    if (!this._renderPipeline || !this._autoRenderPipeline) return
+
+    // The default framebuffer needs the pipeline's display transform. Custom
+    // targets receive working-space shader output: an sRGB attachment performs
+    // its encode in hardware, while a linear/HDR attachment stores it directly.
+    // Applying RenderPipeline's display transform as well would double-encode.
+    const outputColorTransform = this._renderTarget === null
+    if (this._renderPipeline.outputColorTransform !== outputColorTransform) {
+      this._renderPipeline.outputColorTransform = outputColorTransform
+      this._renderPipeline.needsUpdate = true
+    }
+  }
+
+  /** Apply Flatland's 2D-friendly default without overriding authored output. */
+  private _prepareRenderTarget(renderTarget: RenderTarget | null): RenderTarget | null {
+    if (renderTarget?.texture.colorSpace === NoColorSpace) {
+      renderTarget.texture.colorSpace = SRGBColorSpace
+    }
+    return renderTarget
   }
 
   /**
