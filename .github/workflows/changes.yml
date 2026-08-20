@@ -35,8 +35,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The changeset bot pushes a `.changeset/`-only commit on top of each
-      # code commit. Such a push has nothing to build, so skip the heavy jobs
+      # A contributor or agent may push a `.changeset/`-only follow-up commit
+      # after the code commit. Such a push has nothing to build, so skip the heavy jobs
       # and let the `CI passed` gate go green on the skips — but only when the
       # base commit it sits on already passed CI, so a changeset stacked on a
       # red commit can never be green-lit. Keys on the pushed file delta, not
