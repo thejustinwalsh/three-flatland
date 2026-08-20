@@ -1,0 +1,68 @@
+---
+title: Hierarchy and Clipping
+description: Retain nested transforms and visibility in a sprite batch, hide React subtrees with Activity, and clip the result in SpriteGroup-local space.
+template: splash
+sort: 12
+---
+
+import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
+import { loadExample } from '../../../utils/loadExample'
+import { Tabs, TabItem } from 'starlight-theme/components'
+
+export const threeFiles = loadExample('three', 'hierarchy-clipping')
+export const reactFiles = loadExample('react', 'hierarchy-clipping')
+
+<ExampleDetailLayout
+  slug="hierarchy-clipping"
+  threeFiles={threeFiles}
+  reactFiles={reactFiles}
+>
+
+## One authored hierarchy
+
+Sprites can stay below ordinary three.js groups while `SpriteGroup` batches their pixels. Parent transforms, parent visibility, clipping, and pointer picking all follow the same hierarchy.
+
+```typescript
+const viewport = new SpriteGroup({ clipRect: [-160, -90, 320, 180] })
+const card = new Group()
+
+card.add(portrait, label, button)
+viewport.add(card)
+scene.add(viewport)
+
+card.position.x = 48
+card.rotation.z = 0.08
+```
+
+The batch mesh carries the viewport transform. Each instance stores only its transform relative to that root, so moving the viewport does not upload every unchanged sprite slot.
+
+## Visibility in React
+
+React 19 `Activity` hides its host group without unmounting the subtree. Batched sprites now follow that group directly, preserving their instances and authored visibility across every hidden/visible cycle.
+
+```tsx
+<spriteGroup clipRect={[-160, -90, 320, 180]}>
+  <Activity mode={open ? 'visible' : 'hidden'}>
+    <group position={[48, 0, 0]}>
+      <sprite2D texture={portrait} />
+      <sprite2D texture={button} position={[64, -40, 0]} />
+    </group>
+  </Activity>
+</spriteGroup>
+```
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    Open the Three.js source above to see ordinary `Group` visibility, nested transforms, and a transformed clipped
+    batch.
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    Open the React source above to see the same scene driven by a real `Activity` boundary.
+  </TabItem>
+</Tabs>
+
+:::note
+`SpriteGroup.clipRect` rendering requires `WebGPURenderer`, matching Three.js `ClippingGroup`. Pointer filtering uses the same rectangle on the CPU.
+:::
+
+</ExampleDetailLayout>

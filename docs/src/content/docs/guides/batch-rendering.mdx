@@ -3,9 +3,9 @@ title: Batch Rendering
 description: How automatic batching works and tips for optimal performance.
 ---
 
-import { Tabs, TabItem } from 'starlight-theme/components';
-import Diagram from '../../../components/Diagram.astro';
-import batchingPipeline from '../../../assets/diagrams/batching-pipeline.svg?raw';
+import { Tabs, TabItem } from 'starlight-theme/components'
+import Diagram from '../../../components/Diagram.astro'
+import batchingPipeline from '../../../assets/diagrams/batching-pipeline.svg?raw'
 
 SpriteGroup automatically batches sprites that share the same material into single draw calls. You don't need to do anything special—just add sprites and the batching happens behind the scenes.
 
@@ -15,7 +15,10 @@ The defaults are tuned for the common case (thousands of sprites, one or two mat
 
 When you add sprites to a `SpriteGroup`, they're grouped by material and layer into efficient GPU batches. Systems run automatically during Three.js rendering — no manual `update()` call needed.
 
-<Diagram caption="The batch pipeline — sprites group by material and layer into instanced batches packed in one interleaved buffer, with a bucketed dirty tracker and branchless effect gating." src={batchingPipeline} />
+<Diagram
+  caption="The batch pipeline — sprites group by material and layer into instanced batches packed in one interleaved buffer, with a bucketed dirty tracker and branchless effect gating."
+  src={batchingPipeline}
+/>
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -40,6 +43,7 @@ When you add sprites to a `SpriteGroup`, they're grouped by material and layer i
       requestAnimationFrame(animate);
     }
     ```
+
   </TabItem>
   <TabItem label="React" icon="simple-icons:react">
     ```tsx
@@ -68,6 +72,7 @@ When you add sprites to a `SpriteGroup`, they're grouped by material and layer i
       );
     }
     ```
+
   </TabItem>
 </Tabs>
 
@@ -77,39 +82,87 @@ The `SpriteGroup` constructor accepts optional batch configuration:
 
 ```typescript
 const spriteGroup = new SpriteGroup({
-  maxBatchSize: 8192,        // Max sprites per batch (default: 8192)
-  autoSort: true,            // Enable automatic sorting (default: true)
-  frustumCulling: true,      // Enable frustum culling (default: true)
+  maxBatchSize: 16384, // Optional fixed size; default uses 1024 → 4096 → 16384 tiers
+  autoSort: true, // Enable automatic sorting (default: true)
+  frustumCulling: true, // Enable frustum culling (default: true)
   autoInvalidateTransforms: true, // Auto-sync transforms every frame (default: true)
-});
-scene.add(spriteGroup);
+  clipRect: [-160, -90, 320, 180], // Optional local [x, y, width, height]
+})
+scene.add(spriteGroup)
 ```
+
+## Scene-graph hierarchy
+
+Batched sprites keep the transforms and visibility of their authored parents. Put an ordinary three.js `Group` under a `SpriteGroup` when you want to move, rotate, scale, or hide a whole subtree without giving up batching:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    const viewport = new SpriteGroup({ clipRect: [-160, -90, 320, 180] })
+    const page = new Group()
+
+    page.add(title, portrait, nextButton)
+    viewport.add(page)
+    scene.add(viewport)
+
+    page.position.x = 80
+    page.visible = false // the batch and pointer picking both follow
+    ```
+
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    <spriteGroup clipRect={[-160, -90, 320, 180]}>
+      <Activity mode={active ? 'visible' : 'hidden'}>
+        <group position={[80, 0, 0]}>
+          <sprite2D texture={portrait} />
+          <sprite2D texture={button} position={[64, -40, 0]} />
+        </group>
+      </Activity>
+    </spriteGroup>
+    ```
+  </TabItem>
+</Tabs>
+
+`clipRect` is local to the `SpriteGroup`, so it follows the group's own transform. Nested `SpriteGroup` clip rectangles compose, and clipped pixels are excluded from pointer hits as well as rendering. Scene-graph clipping uses Three.js `ClippingGroup`, so the rendering half requires `WebGPURenderer`; CPU pointer filtering still applies independently.
+
+Use `SpriteGroup.clipRect` for clipping inside a batch. An ordinary `ClippingGroup` inserted between a `SpriteGroup` and its authored sprites is not retained as a batch boundary, so it cannot clip the shared batch mesh or its pointer hits.
+
+Setting a custom `sprite.renderOrder` opts that sprite out of batching so Three.js can preserve its exact render-list position. Prefer `sortLayer` when the sprite should remain in the batch.
+
+:::caution[Hierarchy behavior is now authoritative]
+Older releases flattened some batched sprites against the batching root. If your scene added a compensating transform or manually mirrored ancestor visibility to work around that behavior, remove the workaround when upgrading.
+
+While a source sprite is represented by a batch, reading `sprite.visible` returns `false` because its own mesh is privately suppressed. Assigning `sprite.visible` still records the authored value and updates the batch. Keep application visibility in your own state when you need to read it back directly.
+:::
 
 ## Automatic Change Detection
 
-Property changes on sprites are detected automatically through the ECS. When you update a sprite's tint, alpha, flip, frame, sortLayer, or position, the renderer syncs only the changed data to the GPU on the next frame. No manual invalidation needed.
+Property changes on sprites are detected automatically through the ECS. When you update a sprite's tint, alpha, flip, frame, sortLayer, position, or ancestor transform, the renderer syncs only the changed data to the GPU on the next frame. No manual invalidation is needed with the default `autoInvalidateTransforms: true`.
 
 ```typescript
 // Just change properties — the renderer handles the rest
-sprite.tint = [1, 0, 0];
-sprite.alpha = 0.5;
-sprite.sortLayer = SortLayers.UI;
-sprite.position.x += 10;
+sprite.tint = [1, 0, 0]
+sprite.alpha = 0.5
+sprite.sortLayer = SortLayers.UI
+sprite.position.x += 10
 ```
+
+For a static scene with `autoInvalidateTransforms: false`, call `spriteGroup.invalidateTransforms()` after changing a parent transform or parent visibility. Direct `sprite.visible` changes invalidate their batch slot automatically.
 
 ## Performance Monitoring
 
 Check batch efficiency with the `stats` property:
 
 ```typescript
-const stats = spriteGroup.stats;
+const stats = spriteGroup.stats
 
-console.log(`Sprites: ${stats.spriteCount}`);
-console.log(`Batches: ${stats.batchCount}`);
-console.log(`Visible: ${stats.visibleSprites}`);
+console.log(`Sprites: ${stats.spriteCount}`)
+console.log(`Batches: ${stats.batchCount}`)
+console.log(`Visible: ${stats.visibleSprites}`)
 
 // Draw calls aren't part of stats — read them from the renderer:
-console.log(`Draw calls: ${renderer.info.render.calls}`);
+console.log(`Draw calls: ${renderer.info.render.calls}`)
 ```
 
 **Goal:** Keep `batchCount` low relative to `spriteCount`. If you have 1000 sprites but 100 batches, you're not batching efficiently.
@@ -124,13 +177,13 @@ Sprites only batch together when they share the **same material instance** — n
 
 ```typescript
 // Good: One material, one batch
-const material = new Sprite2DMaterial({ map: atlas });
-sprites.forEach(s => s.material = material);
+const material = new Sprite2DMaterial({ map: atlas })
+sprites.forEach((s) => (s.material = material))
 
 // Bad: Many materials, many batches
-sprites.forEach(s => {
-  s.material = new Sprite2DMaterial({ map: atlas }); // Creates new batch each time!
-});
+sprites.forEach((s) => {
+  s.material = new Sprite2DMaterial({ map: atlas }) // Creates new batch each time!
+})
 ```
 
 ### Use Texture Atlases
@@ -139,13 +192,13 @@ Combine textures into a single atlas. All sprites using the atlas can share one 
 
 ```typescript
 // Load a sprite sheet with frame data
-const { texture, frames } = await SpriteSheetLoader.load('/sprites/atlas.json');
+const { texture, frames } = await SpriteSheetLoader.load('/sprites/atlas.json')
 
-const material = new Sprite2DMaterial({ map: texture });
+const material = new Sprite2DMaterial({ map: texture })
 
 // Different frames, same material = same batch
-const player = new Sprite2D({ material, frame: frames.get('player') });
-const enemy = new Sprite2D({ material, frame: frames.get('enemy') });
+const player = new Sprite2D({ material, frame: frames.get('player') })
+const enemy = new Sprite2D({ material, frame: frames.get('enemy') })
 ```
 
 ### Organize by Sort Layer
@@ -153,13 +206,13 @@ const enemy = new Sprite2D({ material, frame: frames.get('enemy') });
 Sprites are sorted by sortLayer before batching. Keep related sprites on the same layer:
 
 ```typescript
-import { SortLayers } from 'three-flatland';
+import { SortLayers } from 'three-flatland'
 
 // Background sprites batch together
-backgrounds.forEach(s => s.sortLayer = SortLayers.BACKGROUND);
+backgrounds.forEach((s) => (s.sortLayer = SortLayers.BACKGROUND))
 
 // Entity sprites batch together
-entities.forEach(s => s.sortLayer = SortLayers.ENTITIES);
+entities.forEach((s) => (s.sortLayer = SortLayers.ENTITIES))
 ```
 
 ## Custom Materials
@@ -168,27 +221,27 @@ If you're authoring a custom `Sprite2DMaterial` subclass — or a stand-alone TS
 
 ### Interleaved instance buffer layout
 
-import bufferDataflow from '../../../assets/diagrams/instance-buffer-dataflow.svg?raw';
+import bufferDataflow from '../../../assets/diagrams/instance-buffer-dataflow.svg?raw'
 
 <Diagram caption="Per-instance data flow: CPU → GPU → TSL accessors" src={bufferDataflow} />
 
 Each `SpriteBatch` allocates a single `InstancedInterleavedBuffer` with **stride = 16 floats per instance**. Four named attribute views look into that buffer:
 
-| Attribute | Type | Floats | Contents |
-|-----------|------|--------|----------|
-| `instanceUV` | `vec4` | 0..3 | Atlas UV rect — `x, y, w, h` for the sprite's frame in the atlas. |
-| `instanceColor` | `vec4` | 4..7 | Per-instance tint and alpha — `r, g, b, a`. |
-| `instanceSystem` | `vec4` | 8..11 | `[flipX, flipY, systemFlags, enableBits]`. |
-| `instanceExtras` | `vec4` | 12..15 | `[shadowRadius, reserved, reserved, reserved]`. |
+| Attribute        | Type   | Floats | Contents                                                          |
+| ---------------- | ------ | ------ | ----------------------------------------------------------------- |
+| `instanceUV`     | `vec4` | 0..3   | Atlas UV rect — `x, y, w, h` for the sprite's frame in the atlas. |
+| `instanceColor`  | `vec4` | 4..7   | Per-instance tint and alpha — `r, g, b, a`.                       |
+| `instanceSystem` | `vec4` | 8..11  | `[flipX, flipY, systemFlags, enableBits]`.                        |
+| `instanceExtras` | `vec4` | 12..15 | `[shadowRadius, reserved, reserved, reserved]`.                   |
 
 `flipX` and `flipY` are `+1` (unflipped) or `-1` (flipped). `systemFlags` is an integer bitfield:
 
-| Bit | Mask | Meaning |
-|-----|------|---------|
-| 0 | `LIT_FLAG_MASK` | Sprite receives lighting. |
-| 1 | `RECEIVE_SHADOWS_MASK` | Sprite's lit fragments may be darkened by the shadow trace. |
-| 2 | `CAST_SHADOW_MASK` | Sprite contributes to the occlusion pre-pass. |
-| 3..23 | reserved | — |
+| Bit   | Mask                   | Meaning                                                     |
+| ----- | ---------------------- | ----------------------------------------------------------- |
+| 0     | `LIT_FLAG_MASK`        | Sprite receives lighting.                                   |
+| 1     | `RECEIVE_SHADOWS_MASK` | Sprite's lit fragments may be darkened by the shadow trace. |
+| 2     | `CAST_SHADOW_MASK`     | Sprite contributes to the occlusion pre-pass.               |
+| 3..23 | reserved               | —                                                           |
 
 `enableBits` is the active-MaterialEffect bitmask: bit `N` is set while the `N`th registered effect is active on the instance (24 slots, see `EFFECT_BIT_OFFSET`). System bits and effect-enable bits live in different vec4 components on purpose so adding system flags never costs an effect slot.
 
@@ -198,15 +251,15 @@ Effect-specific data — the per-instance uniform fields declared in a `Material
 
 `packages/three-flatland/src/materials/instanceAttributes.ts` exports the recommended accessors for use inside TSL nodes. They hide the packed layout and stay forward-compatible if the buffer is rearranged:
 
-| Helper | Returns | Reads |
-|--------|---------|-------|
-| `readFlip()` | `vec2` | `instanceSystem.xy` (±1 per axis) |
-| `readSystemFlags()` | `int` | `instanceSystem.z` (raw bitfield) |
-| `readEnableBits()` | `int` | `instanceSystem.w` (effect-active mask) |
-| `readShadowRadius()` | `float` | `instanceExtras.x` |
-| `readLitFlag()` | `bool` | bit 0 of system flags |
-| `readReceiveShadowsFlag()` | `bool` | bit 1 of system flags |
-| `readCastShadowFlag()` | `bool` | bit 2 of system flags |
+| Helper                     | Returns | Reads                                   |
+| -------------------------- | ------- | --------------------------------------- |
+| `readFlip()`               | `vec2`  | `instanceSystem.xy` (±1 per axis)       |
+| `readSystemFlags()`        | `int`   | `instanceSystem.z` (raw bitfield)       |
+| `readEnableBits()`         | `int`   | `instanceSystem.w` (effect-active mask) |
+| `readShadowRadius()`       | `float` | `instanceExtras.x`                      |
+| `readLitFlag()`            | `bool`  | bit 0 of system flags                   |
+| `readReceiveShadowsFlag()` | `bool`  | bit 1 of system flags                   |
+| `readCastShadowFlag()`     | `bool`  | bit 2 of system flags                   |
 
 Don't call `attribute('instanceSystem', 'vec4')` directly unless you specifically need the raw vec4 — the helpers keep the call site readable and survive layout changes.
 
