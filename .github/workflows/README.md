@@ -18,12 +18,7 @@ graph TD
         CISmoke --> Gate
         CISize --> Gate
         CIVscodeE2E --> Gate
-        CIBuild --> ChangesetJob["changeset (PRs only)"]
-        CISmoke --> ChangesetJob
-        CISize --> ChangesetJob
-        CIVscodeE2E --> ChangesetJob
     end
-    ChangesetJob -->|"pushes .changeset/ files (PAT) → re-runs CI, instapasses"| PR
 
     subgraph DocsOrch ["docs.yml (orchestrator)"]
         DocsChanges["changes.yml"]
@@ -57,14 +52,14 @@ graph TD
 
 | File             | Role                                                                                                              | Trigger                               |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `ci.yml`         | Orchestrator: paths-filter → build matrix → smoke/size/vscode-e2e → changeset → gate                              | `push`, `pull_request`                |
+| `ci.yml`         | Orchestrator: paths-filter → build matrix → smoke/size/vscode-e2e → gate                                          | `push`, `pull_request`                |
 | `docs.yml`       | Orchestrator: paths-filter → smoke → build-pages → deploy                                                         | `push` to `main`, `workflow_dispatch` |
 | `changes.yml`    | dorny/paths-filter; emits `packages` / `minis` / `examples` / `docs` / `configs` / `vscode` / `ci` bucket outputs | `workflow_call`                       |
 | `build.yml`      | Build + typecheck + lint + test + skia test (single node version, takes `node-version` + `node-tag` inputs)       | `workflow_call`                       |
 | `smoke.yml`      | Playwright smoke tests against built docs site                                                                    | `workflow_call`                       |
 | `size.yml`       | Bundle size diff via size-limit; comments on PR                                                                   | `workflow_call`                       |
 | `vscode-e2e.yml` | VS Code extension e2e (real Electron build under Playwright, via `xvfb-run`)                                      | `workflow_call`                       |
-| `changeset.yml`  | Generate + Copilot-enhance + push the release changeset (via `CHANGESET_PAT`)                                     | `workflow_call`                       |
+| `changeset.yml`  | Dormant generator reference; intentionally not called by an orchestrator                                          | `workflow_call`                       |
 
 The matrix lives at the orchestrator layer (`ci.yml`) — `build.yml` is single-node and reusable. Release could call it directly for a clean publish build if we ever want to dedupe `release.yml`.
 
@@ -74,7 +69,9 @@ Branch protection is a **repository ruleset** with a single required status chec
 
 Doc-only or meta-only PRs (where build / smoke / size / vscode-e2e are skipped via paths-filter gating) still produce a passing `CI passed` check and can merge. Code-changing PRs wait for the real jobs to complete before `CI passed` resolves.
 
-The `changeset` job is **not** required and is **not** in `ci-passed`'s `needs` — changeset generation is best-effort and never gates merge. The changeset bot's own `ci: generate changesets` commit instapasses: `changes.yml` flags it `changeset_only`, build / smoke / size skip, and `CI passed` resolves green in seconds. See [Changeset-only skip](#changeset-only-skip).
+Changesets are written and committed by the contributor or agent. CI does not
+generate them. A manual changeset-only follow-up commit can use the retained
+fast path described in [Changeset-only skip](#changeset-only-skip).
 
 > **Ruleset name:** `Main Branch CI` — manage at Settings > Rules > Rulesets
 
@@ -82,7 +79,7 @@ The `changeset` job is **not** required and is **not** in `ci-passed`'s `needs` 
 
 | Workflow                      | File                                                                               | Triggers                                                    | Purpose                                                                                                                                                                                                                                                                                                                                   |
 | ----------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **CI**                        | `ci.yml` (+ `changes.yml`, `build.yml`, `smoke.yml`, `size.yml`, `vscode-e2e.yml`) | push to `main`, pull requests                               | Build matrix, lint, test, typecheck, smoke (Playwright), bundle size, VS Code extension e2e (real Electron under Playwright via xvfb), gated by `ci-passed`; on PRs, generates the release changeset (Copilot-enhanced) as the final `changeset` job after the gate jobs pass                                                             |
+| **CI**                        | `ci.yml` (+ `changes.yml`, `build.yml`, `smoke.yml`, `size.yml`, `vscode-e2e.yml`) | push to `main`, pull requests                               | Build matrix, lint, test, typecheck, smoke (Playwright), bundle size, VS Code extension e2e (real Electron under Playwright via xvfb), gated by `ci-passed`                                                                                                                   |
 | **Release**                   | `release.yml`                                                                      | after CI succeeds on `main`, manual                         | Publishes packages to npm via changesets; when the release bumps the private `@three-flatland/vscode` package, orchestrates the reusable `build-vscode-vsix.yml` (`build-vsix`) then creates the `fl-tools-v<version>` GitHub Release with the universal `.vsix` attached (`attach-vsix`)                                                    |
 | **Build VS Code Extension VSIX** | `build-vscode-vsix.yml`                                                          | `workflow_call` (from `release.yml`), manual                | Reusable/composable: builds a native codelens-service binary per platform (6-leg matrix, no cross-compilation — darwin x2, linux x2, win32 x2), merges them into one universal VSIX + audio-play, uploads it as the `vsix` artifact. Does **not** publish — marketplace publishing is manual (see `tools/vscode/PUBLISHING.md`)              |
 | **Deploy Docs**               | `docs.yml` (+ `changes.yml`, `smoke.yml`)                                          | push to `main`, manual                                      | Self-gated docs deploy: runs paths-filter + smoke before building the Pages artifact and deploying                                                                                                                                                                                                                                        |
@@ -111,7 +108,6 @@ Job gating:
 | `ci.smoke`                         | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` (and upstream `build` didn't fail)                                                                                                                                                                                                                                                                                                                       |
 | `ci.size`                          | `packages` ∨ `configs` ∨ `ci` (PR events only; size-limit only tracks published packages)                                                                                                                                                                                                                                                                                                                              |
 | `ci.vscode-e2e`                    | `vscode` ∨ `packages` ∨ `ci` (and upstream `build` didn't fail) — real VS Code (Electron) launched under Playwright via `xvfb-run`, see `tools/vscode/e2e/README.md`. `packages` is included because the extension's real `workspace:*` dependency closure reaches into `packages/schemas`, `packages/normals`, `packages/bake`, `packages/image`, `packages/atlas`, and `three-flatland` itself — not just `tools/**` |
-| `ci.changeset`                     | PR events only, when `build` succeeded and `smoke` / `size` / `vscode-e2e` didn't fail, and not `changeset_only` — generates + pushes the release changeset after the gate jobs pass                                                                                                                                                                                                                                   |
 | `ci-passed`                        | always — gates the merge                                                                                                                                                                                                                                                                                                                                                                                               |
 | `docs.smoke`                       | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` — docs:build pulls in all of them (API reference from `packages`, showcases from `minis`, embedded demos from `examples`)                                                                                                                                                                                                                                |
 | `docs.build-pages` / `docs.deploy` | gated on `docs.smoke` success                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -120,12 +116,17 @@ A change in `ci` or `configs` triggers everything — CI/config changes need to 
 
 ### Changeset-only skip
 
-The `changeset` job pushes a `.changeset/`-only commit on top of each code commit (via `CHANGESET_PAT`, so the push triggers a fresh CI run — `GITHUB_TOKEN` pushes don't). That follow-up run has nothing to build, so `changes.yml` emits `changeset_only`:
+When a contributor or agent pushes a follow-up commit whose delta contains only
+`.changeset/` files, that run has nothing to build, so `changes.yml` emits
+`changeset_only`:
 
 - On a `pull_request` synchronize, it compares the pushed delta (`before...after` via the compare API). If **every** changed file is under `.changeset/` **and** the base commit's `CI passed` was green, `changeset_only = true`.
-- `build` / `smoke` / `size` gate on `changeset_only != 'true'`, so they skip; `ci-passed` (skipped = success) resolves green in seconds — the bot commit instapasses instead of re-running the full pipeline.
+- `build` / `smoke` / `size` gate on `changeset_only != 'true'`, so they skip; `ci-passed` (skipped = success) resolves green in seconds instead of re-running the full pipeline.
 
-The flag keys on the **file delta**, not the commit message, so it can't be spoofed, and the base-passed guard means a changeset stacked on a red commit never gets green-lit. Because the `changeset` job runs only _after_ the gate jobs pass, the bot commit always lands on an already-green base, so its run cancels nothing — `cancel-in-progress` stays on.
+The flag keys on the **file delta**, not the commit message, so it cannot be
+spoofed. The base-passed guard means a changeset stacked on a red commit never
+gets green-lit. This is an optimization for manual release metadata, not an
+automatic changeset generator.
 
 ## Node Version Policy
 
@@ -167,7 +168,7 @@ graph LR
 
 | Workflow    | Concurrency Group         | Behavior                                                                                                                                                                       |
 | ----------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| CI          | `ci-{PR number or ref}`   | Latest push cancels in-progress run for same PR. Safe with the `changeset` job: it pushes its commit only after the gate jobs finish, so the bot commit's run cancels nothing. |
+| CI          | `ci-{PR number or ref}`   | Latest push cancels the in-progress run for the same PR                                                                                                                       |
 | Release     | `Release-refs/heads/main` | Only one release at a time per branch                                                                                                                                          |
 | Deploy Docs | `pages`                   | Latest deploy cancels in-progress deploys                                                                                                                                      |
 

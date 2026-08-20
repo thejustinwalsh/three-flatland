@@ -30,16 +30,18 @@ Fix sprite tint not applying on the first frame after a texture swap.
 ```
 
 Commit it alongside the change it describes. The sections below document the
-generator's behaviour for when it is repaired; the commit-type → bump mapping is
+dormant generator as a local drafting aid; the commit-type → bump mapping is
 still the convention to follow by hand.
 
-### Trigger
+### Dormant generator
 
-`ci.yml` runs the `changeset` job as the final step of a PR's CI pipeline, after `build`, `smoke`, and `size` all pass (`needs: [changes, build, smoke, size]`). It delegates to `.github/workflows/changeset.yml`.
+`ci.yml` does not call `.github/workflows/changeset.yml`. Do not restore that job
+to fix a missing changeset. The reusable workflow remains in the repository as
+reference, but agents must create, inspect, and commit release notes themselves.
 
 ### Script
 
-`changeset.yml` runs:
+The deterministic generator can draft a changeset locally:
 
 ```
 pnpm changeset:generate
@@ -50,7 +52,7 @@ pnpm changeset:generate
   --cap-major
 ```
 
-The script is `scripts/generate-changesets.ts`. It is also runnable locally:
+The script is `scripts/generate-changesets.ts`. The shorter local form is:
 
 ```
 pnpm changeset:generate --branch <your-branch>
@@ -77,11 +79,17 @@ Any type not in either list also produces no changeset.
 
 Generated files are named `auto-<sanitized-pkg-name>-<branch-id>.md`. The branch ID is a 7-char base36 inverted timestamp of the branch's first commit — deterministic per branch, sorts most-recent-first. On re-generation the old files for that branch ID are deleted and rewritten.
 
-After generation, GitHub Copilot CLI (`--yolo`) enhances the body of each `auto-*-<id>.md` in place. The frontmatter is never modified by that step.
+The dormant workflow's Copilot step enhanced each generated body without
+modifying its frontmatter. Agents can instead read that prompt in
+`.github/workflows/changeset.yml`, inspect the referenced commits and diffs, and
+write the final release note directly.
 
-### Post-generation commit
+### Dormant workflow behavior
 
-The bot commits with `git config user.email "github-actions[bot]@users.noreply.github.com"` and pushes. The commit message is `ci: generate changesets`. The `changes.yml` skip logic detects this as a changeset-only push on a green base and fast-passes CI on the re-triggered run.
+The workflow previously committed generated files as `ci: generate changesets`.
+That push no longer occurs. `changes.yml` retains its changeset-only fast path so
+a manual follow-up commit containing only `.changeset/` files can reuse the
+previous green CI result.
 
 ---
 
@@ -133,9 +141,9 @@ Packages in the same linked group always bump to the same version. Adding a new 
 
 ## Gotchas
 
-- **`--cap-major` is always passed by CI.** Breaking changes produce `minor` bumps, not `major`, until the pre-release period ends and the flag is removed. If you need a true `major` bump, hand-write the changeset.
+- **Alpha breaking changes use a `minor` changeset plus an explicit `BREAKING CHANGES` section.** This preserves the former generator's `--cap-major` behavior. Use `major` only when the release plan explicitly requires it.
 - **Pre-release mode is active.** `pre.json` has `mode: "pre"`, `tag: "alpha"`. All versions published via `changeset publish` will be `-alpha.N` until `changeset pre exit` is run and committed.
-- **`auto-*` files are owned by CI.** Do not hand-edit them. On the next PR push the script deletes and rewrites all `auto-*-<branch-id>.md` files for that branch. Manual edits will be lost.
+- **Reserve `auto-*` names for generator output.** Hand-authored changesets use descriptive names such as `three-flatland-hierarchy-aware-batching.md`.
 - **`starlight-theme` is `private: true`** yet appears in the `linked` group and in `pre.json`. It is versioned by changesets but never published to npm. This is intentional — it is a workspace plugin.
 - **`@three-flatland/skia` and `@three-flatland/bake`** have no `private` flag and no `publishConfig`, so they are treated as public. Confirm this matches intent before adding a new package in the same pattern.
 - **`scripts/sync-versions.ts`** runs after `changeset version` to keep internal dependency versions in sync. If it fails, the release PR version step fails.
