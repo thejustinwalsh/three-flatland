@@ -681,7 +681,10 @@ describe('auto batching preserves the source hierarchy', () => {
     const spriteGroup = new SpriteGroup()
     const host = new Group()
     const texture = new Texture()
-    const parentSprite = makeSprite(20, texture)
+    // An unready Sprite2D ancestor still contributes its authored visibility
+    // to a ready descendant, even though its own batch slot stays hidden.
+    const parentSprite = new Sprite2D()
+    parentSprite.scale.set(20, 20, 1)
     const childSprite = makeSprite(10, texture)
     parentSprite.position.x = 30
     childSprite.position.x = 5

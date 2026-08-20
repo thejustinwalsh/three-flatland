@@ -10,6 +10,7 @@ interface ObservedHierarchyState {
 
 interface BatchVisibilitySource extends Object3D {
   _batchVisibilityState?(): boolean
+  _isAuthoredVisible?(): boolean
   _batchHierarchyState?: SourceHierarchyState
 }
 
@@ -53,7 +54,10 @@ export class HierarchyStateTracker {
     if (existing?.frame === this._frame) return existing.changed
 
     const elements = object.matrix.elements
-    const visible = visibilityOverride ?? candidate._batchVisibilityState?.() ?? object.visible
+    const visible =
+      visibilityOverride ??
+      (spriteSource ? candidate._batchVisibilityState?.() : candidate._isAuthoredVisible?.()) ??
+      object.visible
     if (!existing) {
       const state: SourceHierarchyState = {
         matrix: new Float64Array(elements),

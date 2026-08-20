@@ -4,6 +4,7 @@ import { createWorld, universe } from 'koota'
 import { Sprite2D } from './Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteColor, SpriteFlip, SpriteUV } from '../ecs/traits'
+import { SpriteGroup } from '../pipeline/SpriteGroup'
 
 describe('Sprite2D', () => {
   let texture: Texture
@@ -149,6 +150,27 @@ describe('Sprite2D', () => {
     expect(source.isMesh).toBe(false)
     expect(target._isAuthoredVisible()).toBe(true)
     expect(target.visible).toBe(true)
+  })
+
+  it('copy preserves matrixWorld ownership from the target enrollment state', () => {
+    const group = new SpriteGroup()
+    const enrolledSource = new Sprite2D({ texture })
+    const enrolledTarget = new Sprite2D({ texture })
+    const standaloneSource = new Sprite2D({ texture })
+    const standaloneTarget = new Sprite2D({ texture })
+    group.add(enrolledSource, enrolledTarget)
+
+    expect(enrolledSource.matrixWorldAutoUpdate).toBe(false)
+    expect(enrolledTarget.matrixWorldAutoUpdate).toBe(false)
+    expect(standaloneSource.matrixWorldAutoUpdate).toBe(true)
+    expect(standaloneTarget.matrixWorldAutoUpdate).toBe(true)
+
+    standaloneTarget.copy(enrolledSource)
+    expect(standaloneTarget.matrixWorldAutoUpdate).toBe(true)
+
+    enrolledTarget.copy(standaloneSource)
+    expect(enrolledTarget.matrixWorldAutoUpdate).toBe(false)
+    group.dispose()
   })
 
   it('should get world position 2D', () => {

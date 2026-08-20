@@ -202,7 +202,14 @@ export class Sprite2D extends Mesh {
   }
 
   set hitRadius(value: number) {
+    if (this._hitRadius === value) return
     this._hitRadius = value
+    // Radius changes do not alter the Object3D matrix, so invalidate the
+    // inline hierarchy snapshot as well as the transform schedule. That
+    // guarantees the next pass reaches grid.update instead of taking the
+    // unchanged-matrix early-out.
+    this._batchHierarchyState = undefined
+    this._markTransformsDirty()
   }
 
   /** Pointer hit-testing strategy. Setting `'none'` nulls the instance `raycast` property. */
@@ -2584,6 +2591,9 @@ export class Sprite2D extends Mesh {
    */
   override copy(source: this, recursive?: boolean): this {
     super.copy(source, recursive)
+    // Object3D.copy transfers matrixWorldAutoUpdate from the source, but
+    // Flatland owns that flag according to the TARGET's enrollment state.
+    this.matrixWorldAutoUpdate = this._entity === null
     this.visible = source._isAuthoredVisible()
     return this
   }

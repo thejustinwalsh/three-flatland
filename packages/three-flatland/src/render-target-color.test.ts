@@ -10,8 +10,18 @@ import {
 import type { RenderPipeline, WebGPURenderer } from 'three/webgpu'
 import type PassNode from 'three/src/nodes/display/PassNode.js'
 import { vec4 } from 'three/tsl'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Flatland } from './Flatland'
+import { beginDebugPass, endDebugPass } from './debug/debug-sink'
+
+vi.mock('./debug/debug-sink', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./debug/debug-sink')>()
+  return {
+    ...actual,
+    beginDebugPass: vi.fn(),
+    endDebugPass: vi.fn(),
+  }
+})
 
 function createPipeline(render = vi.fn()): RenderPipeline {
   return {
@@ -48,6 +58,10 @@ function markPipelineAutoManaged(flatland: Flatland): void {
 }
 
 describe('Flatland render-target color management', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('defaults an untagged 2D target to sRGB', () => {
     const target = new RenderTarget(64, 64)
 
@@ -116,6 +130,8 @@ describe('Flatland render-target color management', () => {
 
     expect(() => flatland.render(renderer)).toThrow('pipeline failed')
     expect(setRenderTarget.mock.calls).toEqual([[target], [previousTarget]])
+    expect(beginDebugPass).toHaveBeenCalledWith('main.post', renderer)
+    expect(endDebugPass).toHaveBeenCalledWith(renderer)
   })
 
   it('restores autoClear and the render target when direct rendering throws', () => {
@@ -131,6 +147,8 @@ describe('Flatland render-target color management', () => {
     expect(() => flatland.render(renderer)).toThrow('direct render failed')
     expect(renderer.autoClear).toBe(false)
     expect(setRenderTarget.mock.calls).toEqual([[target], [previousTarget]])
+    expect(beginDebugPass).toHaveBeenCalledWith('main', renderer)
+    expect(endDebugPass).toHaveBeenCalledWith(renderer)
   })
 
   it('binds the default framebuffer when renderTarget is null', () => {

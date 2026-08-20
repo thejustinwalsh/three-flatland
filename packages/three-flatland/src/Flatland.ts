@@ -1286,8 +1286,11 @@ export class Flatland extends Group implements WorldProvider {
     try {
       if (this._renderPipeline && this._renderPipelineEnabled) {
         beginDebugPass('main.post', renderer)
-        this._renderPipeline.render()
-        endDebugPass(renderer)
+        try {
+          this._renderPipeline.render()
+        } finally {
+          endDebugPass(renderer)
+        }
       } else {
         // Sync scene.background based on clearAlpha (R3F sets props after construction)
         this.scene.background = this.clearAlpha < 1 ? null : this.clearColor
@@ -1300,8 +1303,11 @@ export class Flatland extends Group implements WorldProvider {
             renderer.setClearColor(this.clearAlpha < 1 ? 0x000000 : this.clearColor, this.clearAlpha)
           }
           beginDebugPass('main', renderer)
-          renderer.render(this.scene, this._camera)
-          endDebugPass(renderer)
+          try {
+            renderer.render(this.scene, this._camera)
+          } finally {
+            endDebugPass(renderer)
+          }
         } finally {
           renderer.autoClear = prevAutoClear
         }
