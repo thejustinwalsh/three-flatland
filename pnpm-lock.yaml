@@ -594,6 +594,9 @@ importers:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
       react:
         specifier: ^19.2.0
         version: 19.2.3
@@ -1135,6 +1138,9 @@ importers:
 
   examples/three/hierarchy-clipping:
     dependencies:
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
       three:
         specifier: ^0.183.1
         version: 0.183.1

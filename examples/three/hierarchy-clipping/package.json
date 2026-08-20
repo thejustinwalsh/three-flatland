@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@three-flatland/devtools": "^1.0.0-alpha.6",
     "three-flatland": "^0.1.0-alpha.9",
     "three": "^0.183.1"
   },

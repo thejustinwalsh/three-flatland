@@ -1,5 +1,6 @@
 import { Activity, useEffect, useRef, useState } from 'react'
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
+import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import { DataTexture, NearestFilter, RGBAFormat, type Group, type OrthographicCamera } from 'three'
 import { Sprite2D, SpriteGroup } from 'three-flatland/react'
 import { GemBackground } from './GemBackground'
@@ -75,6 +76,7 @@ function Symbols({
 
 /** Alternate two Activity-owned hierarchies inside a transformed clip group. */
 function Scene() {
+  usePane()
   const [active, setActive] = useState<0 | 1>(0)
   useEffect(() => {
     if (motionPreference.matches) return
@@ -98,6 +100,7 @@ function Scene() {
 export default function App() {
   return (
     <Canvas orthographic dpr={[1, 2]} frameloop="always" camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}>
+      <DevtoolsProvider name="react-hierarchy-clipping" />
       <GemBackground gem={GEM} />
       <Camera />
       <Scene />

@@ -1,6 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { DataTexture, Group, NearestFilter, OrthographicCamera, RGBAFormat, Scene } from 'three'
-import { Sprite2D, SpriteGroup } from 'three-flatland'
+import { createPane } from '@three-flatland/devtools'
+import { Sprite2D, SpriteGroup, createDevtoolsProvider } from 'three-flatland'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
@@ -53,6 +54,9 @@ renderer.setSize(innerWidth, innerHeight)
 document.body.appendChild(renderer.domElement)
 await renderer.init()
 
+const paneBundle = createPane({ driver: 'manual' })
+const devtools = createDevtoolsProvider({ name: 'three-hierarchy-clipping' })
+
 let active = 0
 let lastSwap = performance.now()
 let raf = 0
@@ -71,7 +75,10 @@ function frame(now: number) {
     const view = active === 0 ? firstView : secondView
     view.position.y = Math.sin(now * 0.001) * 55
   }
+  devtools.beginFrame(now, renderer)
   renderer.render(scene, camera)
+  devtools.endFrame(renderer)
+  paneBundle.update()
 }
 resize()
 frame(performance.now())
@@ -92,6 +99,8 @@ if (import.meta.hot) {
     removeEventListener('resize', resize)
     viewport.dispose()
     texture.dispose()
+    paneBundle.pane.dispose()
+    devtools.dispose()
     renderer.dispose()
     renderer.domElement.remove()
   })
