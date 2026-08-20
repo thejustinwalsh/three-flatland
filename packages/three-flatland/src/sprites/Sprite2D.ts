@@ -563,24 +563,31 @@ export class Sprite2D extends Mesh {
     return this._isAuthoredVisible() && this._contentReady
   }
 
+  /** Resolve this sprite's world-scoped batch registry, if assigned. */
+  private _registryData(): RegistryData | undefined {
+    if (!this._flatlandWorld) return undefined
+    const registries = this._flatlandWorld.query(BatchRegistry)
+    return registries[0]?.get(BatchRegistry) as RegistryData | undefined
+  }
+
+  /** Invalidate projected transform and visibility state in the assigned world. */
+  private _markTransformsDirty(): void {
+    const registry = this._registryData()
+    if (registry) registry.transformsDirty = true
+  }
+
   /** Update internal draw readiness without taking ownership of authored visibility. @internal */
   private _setContentReady(value: boolean): void {
     if (this._contentReady === value) return
     this._contentReady = value
-    if (!this._flatlandWorld) return
-    const registries = this._flatlandWorld.query(BatchRegistry)
-    const registry = registries.length > 0 ? (registries[0]!.get(BatchRegistry) as RegistryData | undefined) : undefined
-    if (registry) registry.transformsDirty = true
+    this._markTransformsDirty()
   }
 
   /** Intercept an authored visibility write and invalidate its batch slot. @internal */
   _setAuthoredVisible(value: boolean): void {
     if (this._visibleValue === value) return
     this._visibleValue = value
-    if (!this._flatlandWorld) return
-    const registries = this._flatlandWorld.query(BatchRegistry)
-    const registry = registries.length > 0 ? (registries[0]!.get(BatchRegistry) as RegistryData | undefined) : undefined
-    if (registry) registry.transformsDirty = true
+    this._markTransformsDirty()
   }
 
   /**
@@ -592,10 +599,7 @@ export class Sprite2D extends Mesh {
   _batchHierarchyParent(): Object3D | null {
     if (this._autoRegistry) return this.parent
     if (this._hierarchyManaged && this.parent) return this.parent
-    if (!this._flatlandWorld) return this.parent
-    const registries = this._flatlandWorld.query(BatchRegistry)
-    const registry = registries.length > 0 ? (registries[0]!.get(BatchRegistry) as RegistryData | undefined) : undefined
-    return registry?.parentGroup ?? this.parent
+    return this._registryData()?.parentGroup ?? this.parent
   }
 
   /** True when authored visibility and every source ancestor are visible. @internal */
@@ -960,9 +964,7 @@ export class Sprite2D extends Mesh {
     if (!this._entity || !this._flatlandWorld) return
     const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
     if (!bs || bs.batchIdx < 0) return
-    const registryEntities = this._flatlandWorld.query(BatchRegistry)
-    if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as { batchSlots: readonly unknown[] } | undefined
+    const registry = this._registryData()
     if (!registry) return
     const mesh = registry.batchSlots[bs.batchIdx] as { writeShadowRadius(i: number, r: number): void } | undefined
     mesh?.writeShadowRadius(bs.slot, this._resolveShadowRadius())
@@ -979,8 +981,7 @@ export class Sprite2D extends Mesh {
    */
   private _resolveWorldDefaultMaterial(texture: Texture): Sprite2DMaterial | null {
     if (this._flatlandWorld) {
-      const registryEntities = this._flatlandWorld.query(BatchRegistry)
-      const registry = registryEntities[0]?.get(BatchRegistry) as RegistryData | undefined
+      const registry = this._registryData()
       if (registry) return getWorldDefaultMaterial(this._flatlandWorld, registry, texture)
     }
     if (this._autoRegistry) {
@@ -1001,8 +1002,7 @@ export class Sprite2D extends Mesh {
    */
   private _resolveWorldEffectVariant(texture: Texture, options: Sprite2DMaterialOptions): Sprite2DMaterial | null {
     if (this._flatlandWorld) {
-      const registryEntities = this._flatlandWorld.query(BatchRegistry)
-      const registry = registryEntities[0]?.get(BatchRegistry) as RegistryData | undefined
+      const registry = this._registryData()
       if (registry) return getWorldEffectVariant(this._flatlandWorld, registry, texture, options)
     }
     if (this._autoRegistry) {
@@ -1969,9 +1969,7 @@ export class Sprite2D extends Mesh {
     if (!this._entity || !this._flatlandWorld) return
     const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
     if (!bs || bs.batchIdx < 0) return
-    const registryEntities = this._flatlandWorld.query(BatchRegistry)
-    if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    const registry = this._registryData()
     if (!registry) return
     const batch = registry.batchSlots[bs.batchIdx] as
       | {
@@ -2233,9 +2231,7 @@ export class Sprite2D extends Mesh {
    */
   _demoteToStandalone(): void {
     if (!this._entity || !this._flatlandWorld) return
-    const registryEntities = this._flatlandWorld.query(BatchRegistry)
-    const registry =
-      registryEntities.length > 0 ? (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined) : undefined
+    const registry = this._registryData()
     this._unenrollFromWorld()
     // SpriteGroup-managed sprites were never in the scene tree — parent
     // them under the group so their own Mesh draw resumes. Auto-managed
@@ -2479,13 +2475,8 @@ export class Sprite2D extends Mesh {
 
     // Remove from spriteArr
     if (this._flatlandWorld) {
-      const registryEntities = this._flatlandWorld.query(BatchRegistry)
-      if (registryEntities.length > 0) {
-        const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-        if (registry) {
-          registry.spriteArr[eid] = null
-        }
-      }
+      const registry = this._registryData()
+      if (registry) registry.spriteArr[eid] = null
     }
 
     // Remove IsRenderable instead of destroying — this triggers Removed(IsRenderable)
