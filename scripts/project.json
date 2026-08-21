@@ -1,6 +1,7 @@
 {
   "$schema": "../node_modules/nx/schemas/project-schema.json",
   "name": "scripts",
+  "implicitDependencies": ["example-*", "benchmark-*"],
   "targets": {
     "test": {
       "executor": "nx:run-commands",

@@ -20,16 +20,16 @@ function contrastRatio(a: string, b: string): number {
   return (lighter + 0.05) / (darker + 0.05)
 }
 
-function examplePages(): string[] {
-  return ['react', 'three'].flatMap((variant) =>
-    readdirSync(join(ROOT, 'examples', variant), { withFileTypes: true })
+function rendererPages(): string[] {
+  return [join(ROOT, 'examples', 'react'), join(ROOT, 'examples', 'three'), join(ROOT, 'benchmarks')].flatMap((root) =>
+    readdirSync(root, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
-      .map((entry) => join(ROOT, 'examples', variant, entry.name, 'index.html'))
+      .map((entry) => join(root, entry.name, 'index.html'))
   )
 }
 
 describe('synced renderer fallbacks', () => {
-  it.each(examplePages())('keeps failure text readable against %s', (path) => {
+  it.each(rendererPages())('keeps failure text readable against %s', (path) => {
     const html = readFileSync(path, 'utf8')
     const background = html.match(/background(?:-color)?\s*:\s*(#[\da-f]{6})/i)?.[1]
 
