@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { hasSemanticGLSLCompiler, validateGLSL, validateShaderSources, validateWGSL, type ShaderSource } from './index'
+import {
+  glslCompilerFailure,
+  hasSemanticGLSLCompiler,
+  nagaFailure,
+  validateGLSL,
+  validateShaderSources,
+  validateWGSL,
+  type ShaderSource,
+} from './index'
 
 function shader(output: string, backend: 'glsl' | 'wgsl'): ShaderSource {
   return { backend, label: 'validator-fixture', output, stage: 'fragment' }
@@ -7,13 +15,13 @@ function shader(output: string, backend: 'glsl' | 'wgsl'): ShaderSource {
 
 describe('shader validators', () => {
   it('accepts empty and single-backend batches', async () => {
-    expect(() => validateWGSL([])).not.toThrow()
+    await expect(validateWGSL([])).resolves.toBeUndefined()
     await expect(
       validateShaderSources([shader('#version 300 es\nprecision highp float;\nvoid main() {}', 'glsl')])
     ).resolves.toBeUndefined()
   })
 
-  it('accepts current-spec unsigned textureLoad mip levels despite Naga 24', () => {
+  it('accepts current-spec unsigned textureLoad mip levels despite Naga 24', async () => {
     const output = `
       @group(0) @binding(0) var sampledTexture: texture_2d<f32>;
       @fragment fn main() -> @location(0) vec4<f32> {
@@ -21,10 +29,10 @@ describe('shader validators', () => {
       }
     `
 
-    expect(() => validateWGSL([shader(output, 'wgsl')])).not.toThrow()
+    await expect(validateWGSL([shader(output, 'wgsl')])).resolves.toBeUndefined()
   })
 
-  it('normalizes nested and compound unsigned textureLoad selectors for Naga 24', () => {
+  it('normalizes nested and compound unsigned textureLoad selectors for Naga 24', async () => {
     const output = `
       @group(0) @binding(0) var sampledTexture: texture_2d<f32>;
       @group(0) @binding(1) var indexTexture: texture_2d<u32>;
@@ -35,11 +43,19 @@ describe('shader validators', () => {
       }
     `
 
-    expect(() => validateWGSL([shader(output, 'wgsl')])).not.toThrow()
+    await expect(validateWGSL([shader(output, 'wgsl')])).resolves.toBeUndefined()
   })
 
-  it('rejects malformed WGSL', () => {
-    expect(() => validateWGSL([shader('@fragment fn main(', 'wgsl')])).toThrow(/WGSL parser rejected/)
+  it('rejects malformed WGSL', async () => {
+    await expect(validateWGSL([shader('@fragment fn main(', 'wgsl')])).rejects.toThrow(/WGSL parser rejected/)
+  })
+
+  it('reports synchronous and asynchronous compiler timeouts precisely', () => {
+    expect(glslCompilerFailure({ code: 'ETIMEDOUT' })).toBe('glslangValidator timed out after 25000ms')
+    expect(glslCompilerFailure({ code: null, killed: true, signal: 'SIGKILL' })).toBe(
+      'glslangValidator timed out after 25000ms'
+    )
+    expect(nagaFailure({ code: null, killed: true, signal: 'SIGKILL' })).toBe('Naga timed out after 25000ms')
   })
 
   it('accepts valid GLSL and rejects malformed GLSL', async () => {

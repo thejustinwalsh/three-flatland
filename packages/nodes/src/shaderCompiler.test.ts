@@ -331,7 +331,7 @@ describe('emitted shader semantics', () => {
         const shard = shaders.slice(shardIndex * shardSize, (shardIndex + 1) * shardSize)
 
         expect(shard.length).toBeGreaterThan(0)
-        if (backend === 'wgsl') validateWGSL(shard)
+        if (backend === 'wgsl') await validateWGSL(shard)
         else await validateGLSL(shard)
       },
       30_000

@@ -1,4 +1,4 @@
-import { execFile, execFileSync, spawnSync } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -273,7 +273,8 @@ function conciseGLSLDiagnostics(output: string): string {
   return diagnostics.join('\n') || output.trim()
 }
 
-function glslCompilerFailure(error: unknown): string {
+/** Format a glslang failure for focused validator tests. `@internal` */
+export function glslCompilerFailure(error: unknown): string {
   if (typeof error !== 'object' || error === null) return String(error)
   if (
     ('code' in error && error.code === 'ETIMEDOUT') ||
@@ -467,7 +468,7 @@ function normalizeTextureLoadForNaga24(source: string): string {
   return output
 }
 
-export function validateWGSL(shaders: ShaderSource[]): void {
+export async function validateWGSL(shaders: ShaderSource[]): Promise<void> {
   if (shaders.length === 0) return
 
   const shaderDirectory = mkdtempSync(join(tmpdir(), 'three-flatland-wgsl-'))
@@ -488,13 +489,12 @@ export function validateWGSL(shaders: ShaderSource[]): void {
       writeFileSync(join(shaderDirectory, filename), normalizeTextureLoadForNaga24(shader.output))
       return filename
     })
-    execFileSync(process.execPath, [nagaRunner, nagaWasm, '--bulk-validate', ...filenames], {
+    await execFileAsync(process.execPath, [nagaRunner, nagaWasm, '--bulk-validate', ...filenames], {
       cwd: shaderDirectory,
       encoding: 'utf8',
       env: { ...process.env, NODE_NO_WARNINGS: '1' },
       killSignal: 'SIGKILL',
       maxBuffer: 16 * 1024 * 1024,
-      stdio: 'pipe',
       timeout: SHADER_COMPILER_TIMEOUT_MS,
     })
   } catch (error) {
@@ -505,9 +505,13 @@ export function validateWGSL(shaders: ShaderSource[]): void {
   }
 }
 
-function nagaFailure(error: unknown): string {
+/** Format a Naga failure for focused validator tests. `@internal` */
+export function nagaFailure(error: unknown): string {
   if (typeof error !== 'object' || error === null) return String(error)
-  if ('code' in error && error.code === 'ETIMEDOUT')
+  if (
+    ('code' in error && error.code === 'ETIMEDOUT') ||
+    ('killed' in error && error.killed === true && 'signal' in error && error.signal === 'SIGKILL')
+  )
     return `Naga timed out after ${SHADER_COMPILER_TIMEOUT_MS}ms`
   if ('stderr' in error) {
     const stderr = Reflect.get(error, 'stderr')
@@ -521,7 +525,7 @@ function nagaFailure(error: unknown): string {
 
 export async function validateShaderSources(shaders: ShaderSource[]): Promise<void> {
   await validateGLSL(shaders.filter((shader) => shader.backend === 'glsl'))
-  validateWGSL(shaders.filter((shader) => shader.backend === 'wgsl'))
+  await validateWGSL(shaders.filter((shader) => shader.backend === 'wgsl'))
 }
 
 export function countShaderCalls(output: string, functionName: string): number {
