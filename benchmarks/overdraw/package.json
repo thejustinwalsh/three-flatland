@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "nx": {
+    "implicitDependencies": [
+      "examples"
+    ],
     "targets": {
       "lint": {
         "executor": "nx:run-commands",
