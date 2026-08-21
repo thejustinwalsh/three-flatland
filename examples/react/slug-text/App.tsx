@@ -288,7 +288,7 @@ function SlugTextScene({
     } else {
       mesh.outline = { width: outlineWidth, color: outlineColor }
     }
-  }, [outlineStyle])
+  }, [outlineStyle, outlineWidth, outlineColor])
 
   useEffect(() => {
     ref.current?.setOutlineWidth(outlineWidth)
@@ -360,7 +360,7 @@ function SlugStackTextScene({
     } else {
       mesh.outline = { width: outlineWidth, color: outlineColor }
     }
-  }, [outlineStyle])
+  }, [outlineStyle, outlineWidth, outlineColor])
 
   useEffect(() => {
     ref.current?.setOutlineWidth(outlineWidth)
