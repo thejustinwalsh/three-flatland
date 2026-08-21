@@ -27,9 +27,9 @@ function pendingForever<T>(): Promise<T> {
 //
 // Mock @react-three/fiber so the test doesn't need a real R3F Canvas mount.
 // `useThree(selector)` invokes the selector with a stub state that exposes a
-// fake `gl` renderer object — useSkiaContext only reads `s.gl`.
+// fake renderer object — useSkiaContext only reads `s.renderer`.
 vi.mock('@react-three/fiber', () => ({
-  useThree: vi.fn(<T,>(selector: (state: { gl: object }) => T) => selector({ gl: { __mock: 'renderer' } })),
+  useThree: vi.fn(<T,>(selector: (state: { renderer: object }) => T) => selector({ renderer: { __mock: 'renderer' } })),
 }))
 
 // Mock the SkiaContext module to control the singleton via test helpers.
@@ -52,7 +52,7 @@ vi.mock('../context', () => {
 })
 
 // Mock the Skia init module. The hook reads `Skia.pending` and may call
-// `Skia.init(gl)`. We give the test full control over both via helpers that
+// `Skia.init(renderer)`. We give the test full control over both via helpers that
 // mimic the real dedupe behavior (init called twice returns the same promise).
 vi.mock('../init', () => {
   let pending: Promise<unknown> | null = null
@@ -183,14 +183,14 @@ describe('useSkiaContext', () => {
     expect(Skia.init).not.toHaveBeenCalled()
   })
 
-  it('case 4: kicks off Skia.init with the R3F gl when there is no prior state', () => {
+  it('case 4: kicks off Skia.init with the R3F renderer when there is no prior state', () => {
     SkiaMock.__setNextInitPromise(fulfilled({ id: 'init-result' }))
 
     render(withSuspense(<Probe />))
 
     expect(screen.getByTestId('result').textContent).toBe('init-result')
     expect(Skia.init).toHaveBeenCalledTimes(1)
-    // Verify the fake gl from the useThree mock was passed in
+    // Verify the fake renderer from the useThree mock was passed in
     expect(vi.mocked(Skia.init).mock.calls[0]?.[0]).toEqual({ __mock: 'renderer' })
   })
 

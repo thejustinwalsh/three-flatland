@@ -257,7 +257,7 @@ interface VillageSceneProps {
 }
 
 function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: VillageSceneProps) {
-  const { camera, gl } = useThree()
+  const { camera, renderer } = useThree()
 
   // Load textures (presets are automatically applied - NearestFilter + SRGBColorSpace)
   const grassTex = useLoader(TextureLoader, ASSET_BASE + 'terrain/Tilemap_Flat.png')
@@ -294,7 +294,7 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
 
   const screenToGrid = useCallback(
     (clientX: number, clientY: number) => {
-      const rect = gl.domElement.getBoundingClientRect()
+      const rect = renderer.domElement.getBoundingClientRect()
       const mouse = new Vector2(
         ((clientX - rect.left) / rect.width) * 2 - 1,
         -((clientY - rect.top) / rect.height) * 2 + 1
@@ -311,12 +311,12 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
       }
       return null
     },
-    [camera, gl, raycaster, groundPlane, gridOffsetX, gridOffsetY]
+    [camera, renderer, raycaster, groundPlane, gridOffsetX, gridOffsetY]
   )
 
   // Mouse events - use useEffect for proper cleanup
   useEffect(() => {
-    const canvas = gl.domElement
+    const canvas = renderer.domElement
 
     const onMouseMove = (e: MouseEvent) => setHoverGrid(screenToGrid(e.clientX, e.clientY))
     const onMouseLeave = () => setHoverGrid(null)
@@ -336,7 +336,7 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
       canvas.removeEventListener('mouseleave', onMouseLeave)
       canvas.removeEventListener('click', onClick)
     }
-  }, [gl, screenToGrid, occupiedCells, onPlaceBuilding])
+  }, [renderer, screenToGrid, occupiedCells, onPlaceBuilding])
 
   // SpriteGroup ref for stats
   const spriteGroupRef = useRef<SpriteGroup>(null)
@@ -488,8 +488,8 @@ export default function App() {
         dpr={1}
         style={{ background: '#16191e' }}
         renderer={{ antialias: false }}
-        onCreated={({ gl }) => {
-          gl.domElement.style.imageRendering = 'pixelated'
+        onCreated={({ renderer }) => {
+          renderer.domElement.style.imageRendering = 'pixelated'
         }}
       >
         {/* L1 + L2 — gem-tinted clear color + lit radial gradient. */}

@@ -274,7 +274,7 @@ function FlatlandScene(props: SceneProps) {
     l.normals = true
   })
 
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   const size = useThree((s) => s.size)
   const flatlandRef = useRef<Flatland>(null)
   const tilemapRef = useRef<TileMap2D>(null)
@@ -554,7 +554,7 @@ function FlatlandScene(props: SceneProps) {
         e.preventDefault()
       }
     }
-    const canvas = (gl as unknown as { domElement: HTMLCanvasElement }).domElement
+    const canvas = (renderer as unknown as { domElement: HTMLCanvasElement }).domElement
     const click = (e: MouseEvent) => {
       if (!canvas) return
       const rect = canvas.getBoundingClientRect()
@@ -605,7 +605,7 @@ function FlatlandScene(props: SceneProps) {
       window.removeEventListener('keyup', up)
       canvas.removeEventListener('click', click)
     }
-  }, [gl, fixedLightPositions.length, switchPositions])
+  }, [renderer, fixedLightPositions.length, switchPositions])
 
   useFrame((_, rawDelta) => {
     // When paused, freeze the simulation. Rendering still happens, so the
@@ -867,7 +867,7 @@ function FlatlandScene(props: SceneProps) {
 
   useFrame(
     () => {
-      flatlandRef.current?.render(gl as unknown as WebGPURenderer)
+      flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
     },
     { phase: 'render' }
   )

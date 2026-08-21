@@ -413,7 +413,7 @@ function CameraController({
 }) {
   const zoomSliderRef = useRef(zoomSlider)
   zoomSliderRef.current = zoomSlider
-  const { camera, gl } = useThree()
+  const { camera, renderer } = useThree()
   const keys = useRef(new Set<string>())
   const isDragging = useRef(false)
   const dragStart = useRef({ x: 0, y: 0 })
@@ -426,7 +426,7 @@ function CameraController({
   }, [camera, mapSize])
 
   useEffect(() => {
-    const canvas = gl.domElement
+    const canvas = renderer.domElement
 
     const panKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'])
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -546,7 +546,7 @@ function CameraController({
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerCancel)
     }
-  }, [camera, gl, setZoomSlider])
+  }, [camera, renderer, setZoomSlider])
 
   const currentZoom = useRef(zoomRef.current)
 
@@ -683,8 +683,8 @@ export default function App() {
       dpr={1}
       renderer={{ antialias: false }}
       style={{ touchAction: 'none' }}
-      onCreated={({ gl }) => {
-        gl.domElement.style.imageRendering = 'pixelated'
+      onCreated={({ renderer }) => {
+        renderer.domElement.style.imageRendering = 'pixelated'
       }}
     >
       <OrthoCamera viewSize={800} />

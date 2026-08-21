@@ -28,7 +28,7 @@ export interface DevtoolsProviderProps {
  * Passive sampler — does NOT take over rendering. Registers a
  * default-phase `useFrame` and snaps `endFrame → beginFrame` once per
  * tick, leaving R3F's auto-render (and any explicit render useFrame
- * like Flatland's `flatland.render(gl)`) completely alone. The
+ * like Flatland's `flatland.render(renderer)`) completely alone. The
  * `cpuMs` value reported is the inter-tick interval — equivalent to
  * frame time at 60fps, slightly looser than Flatland's internal
  * tight-bracket measurement when stressed (Flatland's number isolates
@@ -64,9 +64,9 @@ function DevtoolsProviderActive({ name, id, discoveryChannelName }: DevtoolsProv
     // `cpuMs` measures the full inter-tick interval. We deliberately
     // do NOT use `phase: 'render'` — that would steal R3F's render
     // slot and prevent users from driving their own render path
-    // (Flatland's `flatland.render(gl)`, custom passes, etc.).
-    h.endFrame(state.gl as never)
-    h.beginFrame(performance.now(), state.gl as never)
+    // (Flatland's `flatland.render(renderer)`, custom passes, etc.).
+    h.endFrame(state.renderer as never)
+    h.beginFrame(performance.now(), state.renderer as never)
   })
 
   useEffect(() => {

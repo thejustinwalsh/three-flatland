@@ -157,8 +157,8 @@ export default function App() {
     <Canvas
       dpr={1}
       renderer={{ antialias: false }}
-      onCreated={({ gl }) => {
-        gl.domElement.style.imageRendering = 'pixelated'
+      onCreated={({ renderer }) => {
+        renderer.domElement.style.imageRendering = 'pixelated'
       }}
     >
       <OrthoCamera viewSize={400} />

@@ -44,7 +44,7 @@ export function FlatlandLayer({
   rotation = [0, 0, 0],
   size = 4,
 }: Props) {
-  const gl = useThree((s) => s.gl) as unknown as WebGPURenderer
+  const renderer = useThree((s) => s.renderer)
   const flatlandRef = useRef<Flatland>(null)
   const matRef = useRef<MeshBasicNodeMaterial>(null)
   const target = useMemo(() => {
@@ -68,7 +68,7 @@ export function FlatlandLayer({
     const fl = flatlandRef.current
     if (!fl || !active) return
     fl.resize(resolution[0], resolution[1])
-    fl.render(gl)
+    fl.render(renderer as unknown as WebGPURenderer)
   })
 
   // Fade the panel in/out on activation (no pop-in) via anime.js.

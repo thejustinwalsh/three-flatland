@@ -220,10 +220,10 @@ function PixelCamera() {
 
 /** Surfaces the WebGPU canvas element to the parent for pixel reads (diff mode). */
 function CanvasGrabber({ onReady }: { onReady: (canvas: HTMLCanvasElement) => void }) {
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   useEffect(() => {
-    onReady(gl.domElement as HTMLCanvasElement)
-  }, [gl, onReady])
+    onReady(renderer.domElement as HTMLCanvasElement)
+  }, [renderer, onReady])
   return null
 }
 
@@ -237,10 +237,10 @@ function CanvasGrabber({ onReady }: { onReady: (canvas: HTMLCanvasElement) => vo
  * onto the renderer whenever it changes.
  */
 function DprSync({ dpr }: { dpr: number }) {
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   useEffect(() => {
-    gl.setPixelRatio(Math.min(dpr, 2))
-  }, [gl, dpr])
+    renderer.setPixelRatio(Math.min(dpr, 2))
+  }, [renderer, dpr])
   return null
 }
 

@@ -501,12 +501,12 @@ function Controls({
   minDistance: number
   maxDistance: number
 }) {
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   const camera = useThree((s) => s.camera)
   const controlsRef = useRef<OrbitControls | null>(null)
 
   useEffect(() => {
-    const controls = new OrbitControls(camera, gl.domElement)
+    const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = dampingFactor
     controls.target.set(0, 0.9, 0)
@@ -515,7 +515,7 @@ function Controls({
     controls.maxPolarAngle = Math.PI * 0.85
     controlsRef.current = controls
     return () => controls.dispose()
-  }, [camera, gl]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [camera, renderer]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const c = controlsRef.current
@@ -676,10 +676,10 @@ export default function App() {
       <Canvas
         camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
         renderer={{ antialias: true }}
-        onCreated={({ scene, gl }) => {
+        onCreated={({ scene, renderer }) => {
           // Pure-black clear + fog so foreground 3D meshes (floor, panels)
           // fade to the same void the floor's distant edges dissolve into.
-          gl.setClearColor(new Color(0x000000))
+          renderer.setClearColor(new Color(0x000000))
           scene.background = new Color(0x000000)
           scene.fog = new Fog(0x000000, 6, 18)
 

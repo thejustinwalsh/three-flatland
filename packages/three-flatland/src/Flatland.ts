@@ -159,10 +159,10 @@ export interface FlatlandOptions {
  *
  * function Scene() {
  *   const flatlandRef = useRef<Flatland>(null)
- *   const { gl } = useThree()
+ *   const { renderer } = useThree()
  *
  *   useFrame(() => {
- *     flatlandRef.current?.render(gl)
+ *     flatlandRef.current?.render(renderer)
  *   })
  *
  *   return (

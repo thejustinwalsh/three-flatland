@@ -228,7 +228,7 @@ function SpriteScene() {
 
 function FlatlandScene({ preset }: { preset: PresetName }) {
   const flatlandRef = useRef<Flatland>(null)
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   const presetRef = useRef<ActivePreset>({ passes: [], timeDriven: [] })
   const elapsedRef = useRef(0)
 
@@ -258,7 +258,7 @@ function FlatlandScene({ preset }: { preset: PresetName }) {
       const flatland = flatlandRef.current
       if (!flatland) return
       flatland.resize(size.width, size.height)
-      flatland.render(gl as unknown as WebGPURenderer)
+      flatland.render(renderer as unknown as WebGPURenderer)
     },
     { phase: 'render' }
   )
@@ -292,8 +292,8 @@ export default function App() {
       dpr={1}
       camera={{ zoom: 5, position: [0, 0, 100] }}
       renderer={{ antialias: false }}
-      onCreated={({ gl }) => {
-        gl.domElement.style.imageRendering = 'pixelated'
+      onCreated={({ renderer }) => {
+        renderer.domElement.style.imageRendering = 'pixelated'
       }}
     >
       <GemBackground gem={GEM} />
