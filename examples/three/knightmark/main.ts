@@ -2,6 +2,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, NearestFilter } from 'three'
 import { gemClearColor } from './GemBackground'
 import { GEM } from './gem'
+import { initializeRenderer } from '../../_shared/rendererFallback'
 import {
   AnimatedSprite2D,
   Sprite2DMaterial,
@@ -207,7 +208,7 @@ async function main() {
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Scene
   // L1-only gem clear color — knightmark's sprites fill the viewport, so

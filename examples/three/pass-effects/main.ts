@@ -5,6 +5,7 @@ import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
 import { Flatland, Sprite2D, TextureLoader, createPassEffect } from 'three-flatland'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
+import { initializeRenderer } from '../../_shared/rendererFallback'
 import type { PassEffect } from 'three-flatland'
 import {
   // CRT display nodes
@@ -309,7 +310,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   flatland.resize(window.innerWidth, window.innerHeight)
 

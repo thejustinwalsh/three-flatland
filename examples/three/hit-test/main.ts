@@ -4,6 +4,7 @@ import { AnimatedSprite2D, SpriteSheetLoader, createDevtoolsProvider } from 'thr
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
+import { initializeRenderer } from '../../_shared/rendererFallback'
 
 // HMR cleanup — stop the old animate loop + dispose the old renderer
 // when Vite reloads this module. Without this, every dev save stacks a
@@ -88,7 +89,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // ── Raycaster setup ───────────────────────────────────────────────────
 

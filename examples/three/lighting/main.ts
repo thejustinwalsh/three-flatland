@@ -1,5 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Vector2 } from 'three'
+import { initializeRenderer } from '../../_shared/rendererFallback'
 import {
   Flatland,
   Light2D,
@@ -175,7 +176,7 @@ async function main() {
   renderer.setPixelRatio(1)
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // ─── Flatland ───────────────────────────────────────────────────
   const flatland = new Flatland({

@@ -4,6 +4,7 @@ import { AnimatedSprite2D, SpriteSheetLoader, SortLayers, createDevtoolsProvider
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
+import { initializeRenderer } from '../../_shared/rendererFallback'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
  * a fresh renderer + animate() loop while the previous one keeps
@@ -37,7 +38,7 @@ async function main() {
   document.body.appendChild(renderer.domElement)
 
   // Wait for renderer to initialize
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Load the knight spritesheet
   const spriteSheet = await SpriteSheetLoader.load('./sprites/knight.json')

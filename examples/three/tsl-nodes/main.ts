@@ -1,4 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
+import { initializeRenderer } from '../../_shared/rendererFallback'
 import { texture as sampleTexture, uv, attribute, vec2, vec4, float } from 'three/tsl'
 import { Scene, OrthographicCamera, NearestFilter, CanvasTexture, RepeatWrapping } from 'three'
 import { gemGradientNode } from './GemBackground'
@@ -170,7 +171,7 @@ async function main() {
   document.body.appendChild(renderer.domElement)
 
   // Wait for renderer to initialize
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Load the knight spritesheet
   const spriteSheet = await SpriteSheetLoader.load('./sprites/knight.json')

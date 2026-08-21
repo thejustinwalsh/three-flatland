@@ -1,7 +1,19 @@
+import { useLayoutEffect, useRef, useState } from 'react'
+import { RENDERER_FAILURE_MESSAGE } from './rendererFallback'
+
 export function WebGPUFallback() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [isVisible, setIsVisible] = useState(false)
+
+  useLayoutEffect(() => {
+    setIsVisible(ref.current?.parentElement?.tagName !== 'CANVAS')
+  }, [])
+
   return (
     <div
-      role="note"
+      ref={ref}
+      role={isVisible ? 'status' : undefined}
+      aria-hidden={isVisible ? undefined : true}
       style={{
         width: '100%',
         height: '100%',
@@ -12,7 +24,7 @@ export function WebGPUFallback() {
         color: 'inherit',
       }}
     >
-      This example requires WebGPU.
+      {RENDERER_FAILURE_MESSAGE}
     </div>
   )
 }

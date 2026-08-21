@@ -2,6 +2,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
 import { Sprite2D, TextureLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
+import { initializeRenderer } from '../../_shared/rendererFallback'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
  * a fresh renderer + animate() loop while the previous one keeps
@@ -32,7 +33,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   const texture = await TextureLoader.load('./icon.svg')
 
