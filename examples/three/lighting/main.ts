@@ -198,7 +198,7 @@ async function main() {
   const [knightSheet, slimeSheet, mapData] = await Promise.all([
     SpriteSheetLoader.load('./sprites/knight.json', { normals: true, forceRuntime: true }),
     SpriteSheetLoader.load('./sprites/slime.json', { normals: true, forceRuntime: true }),
-    LDtkLoader.load('./maps/dungeon.ldtk', undefined, { normals: true, forceRuntime: true }),
+    LDtkLoader.load('./maps/dungeon.ldtk', undefined, { normals: true }),
   ])
 
   const mapHalfW = (mapData.width * mapData.tileWidth * TILE_SCALE) / 2

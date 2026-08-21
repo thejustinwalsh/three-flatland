@@ -8,7 +8,7 @@
 // Usage:
 //   node scripts/bake-dungeon-normals.ts
 //
-// Output: examples/react/lighting/public/sprites/Dungeon_Tileset.normal.png
+// Output: the paired React and Three.js lighting-example normal sidecars
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -20,7 +20,9 @@ import { tilesetToRegions, type TileNormalCustomData, type TilesetCell } from 't
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
 const LDTK_PATH = resolve(ROOT, 'examples/react/lighting/public/maps/dungeon.ldtk')
-const TILESET_PATH = resolve(ROOT, 'examples/react/lighting/public/sprites/Dungeon_Tileset.png')
+const TILESET_PATHS = ['react', 'three'].map((variant) =>
+  resolve(ROOT, `examples/${variant}/lighting/public/sprites/Dungeon_Tileset.png`)
+)
 
 interface LDtkTilesetDef {
   uid: number
@@ -74,20 +76,17 @@ function main(): void {
   }
 
   const regions = tilesetToRegions(cells)
-  const descriptor: NormalSourceDescriptor = {
-    version: 1,
-    pitch: Math.PI / 4,
-    regions,
+  const descriptor: NormalSourceDescriptor = { regions }
+
+  for (const tilesetPath of TILESET_PATHS) {
+    // Dump the descriptor next to each paired tileset for inspection + reruns.
+    const descriptorPath = tilesetPath.replace(/\.png$/, '.normal.json')
+    writeFileSync(descriptorPath, JSON.stringify(descriptor, null, 2) + '\n')
+    console.log(`wrote ${descriptorPath} (${regions.length} regions)`)
+
+    const outPath = bakeNormalMapFile(tilesetPath, descriptor)
+    console.log(`baked ${outPath}`)
   }
-
-  // Dump descriptor next to the tileset for inspection + reruns.
-  const descriptorPath = TILESET_PATH.replace(/\.png$/, '.normal.json')
-  writeFileSync(descriptorPath, JSON.stringify(descriptor, null, 2) + '\n')
-  console.log(`wrote ${descriptorPath} (${regions.length} regions)`)
-
-  // Bake.
-  const outPath = bakeNormalMapFile(TILESET_PATH, descriptor)
-  console.log(`baked ${outPath}`)
 }
 
 main()

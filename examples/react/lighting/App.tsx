@@ -275,7 +275,6 @@ function FlatlandScene(props: SceneProps) {
   })
   const mapData = useLoader(LDtkLoader, './maps/dungeon.ldtk', (l) => {
     l.normals = true
-    l.forceRuntime = true
   })
 
   const renderer = useThree((s) => s.renderer)
