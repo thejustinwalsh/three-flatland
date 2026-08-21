@@ -68,10 +68,17 @@ const require = createRequire(import.meta.url)
 // runs auto-detect Khronos glslang and otherwise retain portable parse/scope
 // validation; set the variable to an empty string to exercise that fallback.
 const configuredGLSLCompiler = process.env.THREE_FLATLAND_GLSLANG_VALIDATOR
-const GLSL_COMPILER_TIMEOUT_MS = 60_000
+const GLSL_COMPILER_PROBE_TIMEOUT_MS = 5_000
+const SHADER_COMPILER_TIMEOUT_MS = 25_000
 const glslCompiler =
   configuredGLSLCompiler ??
-  (spawnSync('glslangValidator', ['--version'], { stdio: 'ignore' }).status === 0 ? 'glslangValidator' : null)
+  (spawnSync('glslangValidator', ['--version'], {
+    killSignal: 'SIGKILL',
+    stdio: 'ignore',
+    timeout: GLSL_COMPILER_PROBE_TIMEOUT_MS,
+  }).status === 0
+    ? 'glslangValidator'
+    : null)
 
 export function hasSemanticGLSLCompiler(): boolean {
   return Boolean(glslCompiler)
@@ -226,9 +233,10 @@ export function validateGLSL(shaders: ShaderSource[]): void {
     output = execFileSync(glslCompiler, filenames, {
       cwd: shaderDirectory,
       encoding: 'utf8',
+      killSignal: 'SIGKILL',
       maxBuffer: 16 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: GLSL_COMPILER_TIMEOUT_MS,
+      timeout: SHADER_COMPILER_TIMEOUT_MS,
     })
   } catch (error) {
     throw new Error(`GLSL compiler rejected emitted shaders:\n${glslCompilerFailure(error)}`, { cause: error })
@@ -263,7 +271,7 @@ function conciseGLSLDiagnostics(output: string): string {
 function glslCompilerFailure(error: unknown): string {
   if (typeof error !== 'object' || error === null) return String(error)
   if ('code' in error && error.code === 'ETIMEDOUT')
-    return `glslangValidator timed out after ${GLSL_COMPILER_TIMEOUT_MS}ms`
+    return `glslangValidator timed out after ${SHADER_COMPILER_TIMEOUT_MS}ms`
 
   const output = ['stdout', 'stderr']
     .filter((stream) => stream in error)
@@ -476,18 +484,31 @@ export function validateWGSL(shaders: ShaderSource[]): void {
       cwd: shaderDirectory,
       encoding: 'utf8',
       env: { ...process.env, NODE_NO_WARNINGS: '1' },
+      killSignal: 'SIGKILL',
       maxBuffer: 16 * 1024 * 1024,
       stdio: 'pipe',
-      timeout: 30_000,
+      timeout: SHADER_COMPILER_TIMEOUT_MS,
     })
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('WGSL parser rejected')) throw error
-    const output =
-      typeof error === 'object' && error !== null && 'stderr' in error ? String(error.stderr) : String(error)
-    throw new Error(`Naga rejected emitted WGSL:\n${output}`, { cause: error })
+    throw new Error(nagaFailure(error), { cause: error })
   } finally {
     rmSync(shaderDirectory, { force: true, recursive: true })
   }
+}
+
+function nagaFailure(error: unknown): string {
+  if (typeof error !== 'object' || error === null) return String(error)
+  if ('code' in error && error.code === 'ETIMEDOUT')
+    return `Naga timed out after ${SHADER_COMPILER_TIMEOUT_MS}ms`
+  if ('stderr' in error) {
+    const stderr = Reflect.get(error, 'stderr')
+    const output = typeof stderr === 'string' ? stderr.trim() : ''
+    if (output) return `Naga rejected emitted WGSL:\n${output}`
+  }
+  return error instanceof Error
+    ? `Naga validation failed: ${error.message}`
+    : 'Naga failed without diagnostic output'
 }
 
 export function validateShaderSources(shaders: ShaderSource[]): void {

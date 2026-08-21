@@ -6,7 +6,8 @@ import {
   countShaderCalls,
   createShaderTexture,
   shaderSources,
-  validateShaderSources,
+  validateGLSL,
+  validateWGSL,
   type ShaderBackend,
   type ShaderSource,
 } from '@three-flatland/tsl-test'
@@ -39,6 +40,7 @@ type PublicNodeFunction = (...args: unknown[]) => unknown
 const sourceRoot = dirname(fileURLToPath(import.meta.url))
 const deepPublicNodes = { oklabToOklchNode, oklchToOklabNode }
 const compiledShaders = new Map<string, ShaderSource>()
+const semanticShardIndexes = [0, 1, 2, 3] as const
 const texture = createShaderTexture()
 
 function collectSourceFiles(directory: string): string[] {
@@ -284,16 +286,8 @@ const shaderFunctions = collectPublicShaderFunctions()
 const shaderInvocations = shaderFunctions.flatMap(shaderVariants)
 
 afterAll(() => {
-  try {
-    const shaders = [...compiledShaders.values()]
-    const wgslShaders = shaders.filter((shader) => shader.backend === 'wgsl')
-
-    expect(wgslShaders.some((shader) => shader.output.includes('textureSample'))).toBe(true)
-    validateShaderSources(shaders)
-  } finally {
-    texture.dispose()
-  }
-}, 120_000)
+  texture.dispose()
+})
 
 describe('public TSL shader compiler compatibility', () => {
   it('keeps every public function in the compiler matrix', () => {
@@ -319,5 +313,28 @@ describe('public TSL shader compiler compatibility', () => {
       expectValidShaderOutput(backend, 'vertex', shader.vertexShader)
       expectValidShaderOutput(backend, 'fragment', shader.fragmentShader)
     })
+  })
+})
+
+describe('emitted shader semantics', () => {
+  it('compiles the texture sampling fixture to WGSL', () => {
+    const wgslShaders = [...compiledShaders.values()].filter((shader) => shader.backend === 'wgsl')
+    expect(wgslShaders.some((shader) => shader.output.includes('textureSample'))).toBe(true)
+  })
+
+  describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s', (backend) => {
+    it.each(semanticShardIndexes)(
+      'validates shard %i',
+      (shardIndex) => {
+        const shaders = [...compiledShaders.values()].filter((shader) => shader.backend === backend)
+        const shardSize = Math.ceil(shaders.length / semanticShardIndexes.length)
+        const shard = shaders.slice(shardIndex * shardSize, (shardIndex + 1) * shardSize)
+
+        expect(shard.length).toBeGreaterThan(0)
+        if (backend === 'wgsl') validateWGSL(shard)
+        else validateGLSL(shard)
+      },
+      30_000
+    )
   })
 })
