@@ -27,7 +27,7 @@
 npm install three-flatland three koota
 
 # For React Three Fiber
-npm install three-flatland @react-three/fiber@10.0.0-alpha.3 react react-dom
+npm install three-flatland @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
 
 # TSL shader nodes
 npm install @three-flatland/nodes
