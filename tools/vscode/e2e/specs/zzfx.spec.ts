@@ -1,4 +1,4 @@
-import { expect, test } from '../fixtures'
+import { awaitWebviewTeardown, expect, test } from '../fixtures'
 
 // See e2e/fixtures/README.md and src/sounds.ts's own header comment for
 // what each line is testing: a literal spread-array call (line 49, one-
@@ -580,6 +580,7 @@ test.describe('FL ZzFX Studio', () => {
   test('seeded AI history renders for the LASER finding, and a deleted candidate stays gone across panel close + reopen', async ({
     evaluateInVSCode,
     webviewFrame,
+    workbox,
   }) => {
     await evaluateInVSCode(
       async (vscode, arg) => {
@@ -642,6 +643,7 @@ test.describe('FL ZzFX Studio', () => {
     await evaluateInVSCode(async (vscode) => {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors')
     })
+    await awaitWebviewTeardown(workbox)
     await evaluateInVSCode(
       async (vscode, arg) => {
         const [folder] = vscode.workspace.workspaceFolders ?? []
@@ -661,6 +663,7 @@ test.describe('FL ZzFX Studio', () => {
   test('clear-all requires the two-step confirm, empties the history, and it stays empty after reopen', async ({
     evaluateInVSCode,
     webviewFrame,
+    workbox,
   }) => {
     // Seed a fresh batch. NOTE: 'Seeded Zap B' from the previous test may
     // still be in the store (globalStorage persists across tests in this
@@ -723,6 +726,7 @@ test.describe('FL ZzFX Studio', () => {
     await evaluateInVSCode(async (vscode) => {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors')
     })
+    await awaitWebviewTeardown(workbox)
     await evaluateInVSCode(
       async (vscode, arg) => {
         const [folder] = vscode.workspace.workspaceFolders ?? []

@@ -153,6 +153,17 @@ async function teardownWindow(win: CachedWindow | undefined): Promise<void> {
   ])
 }
 
+/** Wait until editor webviews closed through VS Code finish renderer teardown. */
+export async function awaitWebviewTeardown(workbox: Page): Promise<void> {
+  // The current suite contributes and opens editor webviews only. If a future
+  // spec opens a persistent webview view or notebook output, scope this locator
+  // to the editor area rather than weakening the lifecycle assertion.
+  await expect(
+    workbox.locator('iframe.webview'),
+    'webview iframes from the previous editor failed to tear down'
+  ).toHaveCount(0)
+}
+
 /**
  * Restores isolation for the one long-lived window between every pair of
  * tests — including across spec-file boundaries, which used to be a full
@@ -202,6 +213,14 @@ async function resetWindowWorkspace(win: CachedWindow): Promise<void> {
       await api.reset?.()
     }
   })
+  // `closeAllEditors` resolves in the extension host before the workbench has
+  // necessarily finished tearing down the corresponding webview elements.
+  // On a slower CI renderer, deleting/recreating the workspace (and then
+  // opening the next panel) during that tail can leave the replacement
+  // panel's active-frame as an empty document. Wait on the actual DOM
+  // lifecycle boundary so no prior editor teardown can overlap the next
+  // test's workspace or panel.
+  await awaitWebviewTeardown(win.workbox)
   await removeFixtureDirectory(win.baseDir)
   await fs.mkdir(win.baseDir, { recursive: true })
   await fs.cp(FIXTURE_WORKSPACE, win.baseDir, { recursive: true })
@@ -310,7 +329,10 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
       // extension's actual document, e.g. our Vite-built React app
       // (vscode src/vs/workbench/contrib/webview/browser/pre/index.html).
       const inner = outer.frameLocator('#active-frame')
-      await inner.locator('#root').waitFor({ state: 'attached' })
+      // The static Vite shell contains an empty #root before the application
+      // script runs. Require a mounted child so an empty active-frame cannot
+      // be handed to the test as a ready application.
+      await inner.locator('#root > *').first().waitFor({ state: 'attached' })
       return inner
     })
   },
