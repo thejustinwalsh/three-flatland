@@ -1,11 +1,5 @@
 // Pipeline exports
 
-// Restore pre-upload timing for r185's internal instanced-buffer sync. Call the
-// installer explicitly so tree-shaking cannot discard an exportless import.
-import { installInstanceEventUpdateBeforePatch } from './_instanceEventUpdateBeforePatch'
-
-installInstanceEventUpdateBeforePatch()
-
 export { PassEffect, createPassEffect } from './PassEffect'
 export type { PassEffectClass, PassEffectContext, PassEffectFn } from './PassEffect'
 export { SpriteGroup } from './SpriteGroup'

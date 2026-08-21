@@ -192,7 +192,7 @@
     }
   },
   "scripts": {
-    "build": "NODE_OPTIONS=--max-old-space-size=8192 tsdown",
+    "build": "NODE_OPTIONS=--max-old-space-size=8192 tsdown && node scripts/verify-dist-event-patch.mjs",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"

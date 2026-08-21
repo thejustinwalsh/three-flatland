@@ -1,11 +1,40 @@
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 import { NodeUpdateType } from 'three/tsl'
 import { EventNode } from 'three/webgpu'
-import { installInstanceEventUpdateBeforePatch } from './_instanceEventUpdateBeforePatch'
+import {
+  installInstanceEventUpdateBeforePatch,
+  matchesInstanceBufferSyncCallbackSource,
+} from './_instanceEventUpdateBeforePatch'
 
 installInstanceEventUpdateBeforePatch()
+const require = createRequire(import.meta.url)
 
 describe('r185 instance event timing patch', () => {
+  it('matches the callback shipped in the installed Three WebGPU runtime', () => {
+    const runtimeSource = readFileSync(require.resolve('three/webgpu'), 'utf8')
+    const marker = 'OnFrameUpdate( () => {'
+    const markerStart = runtimeSource.indexOf(marker)
+    expect(markerStart).toBeGreaterThanOrEqual(0)
+
+    const callbackStart = markerStart + 'OnFrameUpdate( '.length
+    const bodyStart = runtimeSource.indexOf('{', callbackStart)
+    let depth = 0
+    let callbackEnd = -1
+    for (let index = bodyStart; index < runtimeSource.length; index++) {
+      if (runtimeSource[index] === '{') depth++
+      if (runtimeSource[index] === '}') depth--
+      if (depth === 0) {
+        callbackEnd = index + 1
+        break
+      }
+    }
+
+    expect(callbackEnd).toBeGreaterThan(bodyStart)
+    expect(matchesInstanceBufferSyncCallbackSource(runtimeSource.slice(callbackStart, callbackEnd))).toBe(true)
+  })
+
   it('moves the r185 instance-buffer synchronization event before geometry upload', () => {
     const interleavedMatrix = {
       updateRanges: [] as unknown[],
@@ -23,7 +52,9 @@ describe('r185 instance event timing patch', () => {
     }
     const matrices = { updateRanges: [{}], version: 1 }
     const colors = { updateRanges: [{ start: 1 }], version: 2 }
+    let callbackRuns = 0
     const event = new EventNode(EventNode.FRAME as typeof EventNode.OBJECT, () => {
+      callbackRuns++
       interleavedMatrix.clearUpdateRanges()
       interleavedMatrix.updateRanges.push(...matrices.updateRanges)
       if (matrices.version !== interleavedMatrix.version) {
@@ -37,14 +68,22 @@ describe('r185 instance event timing patch', () => {
       }
     })
 
-    expect(event.getUpdateType()).toBe(NodeUpdateType.NONE)
+    expect(event.getUpdateType()).toBe(NodeUpdateType.FRAME)
     expect(event.getUpdateBeforeType()).toBe(NodeUpdateType.FRAME)
 
-    event.updateBefore({} as never)
+    const firstFrame = { frameId: 1 }
+    event.updateBefore(firstFrame as never)
+    event.update(firstFrame as never)
+    expect(callbackRuns).toBe(1)
     expect(interleavedMatrix.updateRanges).toEqual(matrices.updateRanges)
     expect(interleavedMatrix.version).toBe(matrices.version)
     expect(interleavedColor.updateRanges).toEqual(colors.updateRanges)
     expect(interleavedColor.version).toBe(colors.version)
+
+    // A pipeline built before the patch is registered only in Three's normal
+    // update list. It must keep syncing rather than being disabled by a late install.
+    event.update({ frameId: 2 } as never)
+    expect(callbackRuns).toBe(2)
   })
 
   it('leaves user-authored frame events in the normal Three.js phase', () => {

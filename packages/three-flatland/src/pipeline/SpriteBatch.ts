@@ -19,6 +19,12 @@ import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
 import { BucketedDirtyTracker } from './BucketedDirtyTracker'
+import { installInstanceEventUpdateBeforePatch } from './_instanceEventUpdateBeforePatch'
+
+// SpriteBatch is retained by every batching entry, including tsdown's flattened
+// root/react builds and direct pipeline subpaths. Install the r185 compatibility
+// patch here instead of in a re-export barrel that production builds can bypass.
+installInstanceEventUpdateBeforePatch()
 
 /**
  * Fallback slot count when a batch is constructed without an explicit
