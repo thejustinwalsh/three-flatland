@@ -62,6 +62,7 @@
   "devDependencies": {
     "@react-three/fiber": "catalog:",
     "@three-flatland/design-system": "workspace:*",
+    "@three-flatland/tsl-test": "workspace:*",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/three": "catalog:",

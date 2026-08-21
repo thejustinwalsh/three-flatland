@@ -148,6 +148,7 @@
     "@bytecodealliance/componentize-js": "^0.19.3",
     "@bytecodealliance/jco": "^1.17.6",
     "@react-three/fiber": "catalog:",
+    "@three-flatland/tsl-test": "workspace:*",
     "@testing-library/react": "^16.1.0",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
