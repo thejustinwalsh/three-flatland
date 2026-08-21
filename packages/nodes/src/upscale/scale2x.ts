@@ -33,11 +33,11 @@ export function scale2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [
   //   A B C
   //   D E F
   //   G H I
-  const B = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1))))
-  const D = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0))))
-  const E = sampleTexture(tex, srcUV) // Center
-  const F = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0))))
-  const H = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1))))
+  const B = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1)))).toVar()
+  const D = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0)))).toVar()
+  const E = sampleTexture(tex, srcUV).toVar() // Center
+  const F = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0)))).toVar()
+  const H = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1)))).toVar()
 
   // Scale2x rules:
   // If B != H and D != F, then
@@ -102,15 +102,15 @@ export function scale3x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [
   const localPos = uv.div(texel.div(3)).sub(srcPixel)
 
   // Sample neighborhood
-  const _A = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1))))
-  const B = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1))))
-  const _C = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1))))
-  const D = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0))))
-  const E = sampleTexture(tex, srcUV)
-  const F = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0))))
-  const _G = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1))))
-  const H = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1))))
-  const _I = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1))))
+  const _A = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1)))).toVar()
+  const B = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1)))).toVar()
+  const _C = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1)))).toVar()
+  const D = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0)))).toVar()
+  const E = sampleTexture(tex, srcUV).toVar()
+  const F = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0)))).toVar()
+  const _G = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1)))).toVar()
+  const H = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1)))).toVar()
+  const _I = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1)))).toVar()
 
   // For simplicity, return center pixel for edge cases
   // Full Scale3x implementation would check all 9 output positions

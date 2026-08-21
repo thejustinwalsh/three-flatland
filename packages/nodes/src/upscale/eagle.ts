@@ -29,15 +29,15 @@ export function eagle(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 
   // S T U
   // V C W
   // X Y Z
-  const S = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1))))
-  const T = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1))))
-  const U = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1))))
-  const V = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0))))
-  const C = sampleTexture(tex, srcUV)
-  const W = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0))))
-  const X = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1))))
-  const Y = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1))))
-  const Z = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1))))
+  const S = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1)))).toVar()
+  const T = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1)))).toVar()
+  const U = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1)))).toVar()
+  const V = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0)))).toVar()
+  const C = sampleTexture(tex, srcUV).toVar()
+  const W = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0)))).toVar()
+  const X = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1)))).toVar()
+  const Y = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1)))).toVar()
+  const Z = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1)))).toVar()
 
   // Color equality check
   const eq = (a: Node<'vec4'>, b: Node<'vec4'>) => a.rgb.sub(b.rgb).length().lessThan(0.01)
@@ -85,15 +85,15 @@ export function superEagle(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input 
   const localPos = uv.div(texel.mul(0.5)).sub(srcPixel)
 
   // Extended neighborhood for SuperEagle
-  const c0 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1))))
-  const c1 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1))))
-  const c2 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1))))
-  const c3 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0))))
-  const c4 = sampleTexture(tex, srcUV)
-  const c5 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0))))
-  const c6 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1))))
-  const c7 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1))))
-  const c8 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1))))
+  const c0 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1)))).toVar()
+  const c1 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1)))).toVar()
+  const c2 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1)))).toVar()
+  const c3 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0)))).toVar()
+  const c4 = sampleTexture(tex, srcUV).toVar()
+  const c5 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0)))).toVar()
+  const c6 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1)))).toVar()
+  const c7 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1)))).toVar()
+  const c8 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1)))).toVar()
 
   const eq = (a: Node<'vec4'>, b: Node<'vec4'>) => a.rgb.sub(b.rgb).length().lessThan(0.01)
 
@@ -133,7 +133,7 @@ export function sai2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 
   const localPos = uv.div(texel.mul(0.5)).sub(srcPixel)
 
   // Sample 4x4 for 2xSaI
-  const getPixel = (ox: number, oy: number) => sampleTexture(tex, srcUV.add(texel.mul(vec2(ox, oy))))
+  const getPixel = (ox: number, oy: number) => sampleTexture(tex, srcUV.add(texel.mul(vec2(ox, oy)))).toVar()
 
   const _I = getPixel(-1, -1)
   const _E = getPixel(0, -1)

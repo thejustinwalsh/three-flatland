@@ -106,12 +106,12 @@ function requiredArgument(parameter: ParameterSpec): unknown {
   if (type.includes('Light2DResult[]')) return [lightFixture()]
   if (type.includes('Light2DResult')) return lightFixture()
   if (type.includes('TextureNode')) return sampleTexture(texture)
-  if (type.includes('Texture')) return texture
   if (type.includes("Node<'bool'>")) return bool(true)
   if (type.includes("Node<'vec4'>")) return vec4(0.2, 0.4, 0.6, 0.8)
   if (type.includes("Node<'vec3'>")) return vec3(0, 0, 1)
   if (type.includes("Node<'vec2'>")) return vec2(0.25, 0.75)
   if (type.includes("Node<'float'>")) return float(0.5)
+  if (type.includes('Texture')) return texture
   if (type.includes('Array<[number, number]>')) return [[0.02, 0]]
   if (type.includes('[number, number, number][]')) return [[0.2, 0.4, 0.6]]
   if (type.includes('Vec4Input')) return [0.1, 0.2, 0.3, 0.9]
@@ -262,11 +262,22 @@ function expectValidShaderOutput(backend: ShaderBackend, stage: 'fragment' | 've
 }
 
 function expectScalerSampleBudget(name: string, backend: ShaderBackend, fragment: string | null) {
-  if (backend !== 'wgsl' || fragment === null) return
-  const sampleBudget: Record<string, number> = { eagle: 12, scale2x: 8 }
+  if (fragment === null) return
+  const sampleBudget: Record<string, number> = {
+    eagle: 9,
+    hq2x: 9,
+    hq3x: 9,
+    sai2x: 4,
+    scale2x: 5,
+    scale3x: 5,
+    superEagle: 9,
+  }
   const expectedSamples = sampleBudget[name]
   if (expectedSamples === undefined) return
-  expect(countShaderCalls(fragment, 'textureSample'), `${name} duplicated texture samples`).toBe(expectedSamples)
+  const sampleFunction = backend === 'wgsl' ? 'textureSample' : 'texture'
+  expect(countShaderCalls(fragment, sampleFunction), `${backend} ${name} duplicated texture samples`).toBe(
+    expectedSamples
+  )
 }
 
 const shaderFunctions = collectPublicShaderFunctions()
