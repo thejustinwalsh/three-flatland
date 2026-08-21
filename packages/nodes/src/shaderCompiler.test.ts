@@ -293,7 +293,7 @@ afterAll(() => {
   } finally {
     texture.dispose()
   }
-}, 60_000)
+}, 120_000)
 
 describe('public TSL shader compiler compatibility', () => {
   it('keeps every public function in the compiler matrix', () => {

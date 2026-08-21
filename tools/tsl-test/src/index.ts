@@ -68,6 +68,7 @@ const require = createRequire(import.meta.url)
 // runs auto-detect Khronos glslang and otherwise retain portable parse/scope
 // validation; set the variable to an empty string to exercise that fallback.
 const configuredGLSLCompiler = process.env.THREE_FLATLAND_GLSLANG_VALIDATOR
+const GLSL_COMPILER_TIMEOUT_MS = 60_000
 const glslCompiler =
   configuredGLSLCompiler ??
   (spawnSync('glslangValidator', ['--version'], { stdio: 'ignore' }).status === 0 ? 'glslangValidator' : null)
@@ -204,22 +205,73 @@ export function validateGLSL(shaders: ShaderSource[]): void {
     } catch (error) {
       throw new Error(`GLSL parser rejected ${shader.label} ${shader.stage}`, { cause: error })
     }
-
-    if (glslCompiler) {
-      try {
-        const output = execFileSync(glslCompiler, ['--stdin', '-S', shader.stage === 'fragment' ? 'frag' : 'vert'], {
-          encoding: 'utf8',
-          input: shader.output,
-          maxBuffer: 4 * 1024 * 1024,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          timeout: 30_000,
-        })
-        if (/^WARNING:/m.test(output)) throw new Error(output.trim())
-      } catch (error) {
-        throw new Error(`GLSL compiler rejected ${shader.label} ${shader.stage}`, { cause: error })
-      }
-    }
   }
+
+  if (!glslCompiler || shaders.length === 0) return
+
+  // glslang accepts multiple stage-suffixed files in one invocation. Keeping
+  // the semantic compiler warm avoids hundreds of process launches for the
+  // public-node matrix while filenames retain actionable shader labels.
+  const shaderDirectory = mkdtempSync(join(tmpdir(), 'three-flatland-glsl-'))
+  const indexWidth = Math.max(3, String(shaders.length - 1).length)
+  let output = ''
+  try {
+    const filenames = shaders.map((shader, index) => {
+      const safeLabel = shader.label.replace(/[^a-zA-Z0-9_-]+/g, '-')
+      const stage = shader.stage === 'fragment' ? 'frag' : 'vert'
+      const filename = `${String(index).padStart(indexWidth, '0')}-${safeLabel}.${stage}`
+      writeFileSync(join(shaderDirectory, filename), shader.output)
+      return filename
+    })
+    output = execFileSync(glslCompiler, filenames, {
+      cwd: shaderDirectory,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: GLSL_COMPILER_TIMEOUT_MS,
+    })
+  } catch (error) {
+    throw new Error(`GLSL compiler rejected emitted shaders:\n${glslCompilerFailure(error)}`, { cause: error })
+  } finally {
+    rmSync(shaderDirectory, { force: true, recursive: true })
+  }
+
+  if (/^WARNING:/m.test(output))
+    throw new Error(`GLSL compiler warned for emitted shaders:\n${conciseGLSLDiagnostics(output)}`)
+}
+
+function conciseGLSLDiagnostics(output: string): string {
+  const diagnostics: string[] = []
+  let currentFile = ''
+  let emittedFile = ''
+
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (/\.(?:frag|vert)$/.test(line)) {
+      currentFile = line
+      continue
+    }
+    if (!/^(?:ERROR|WARNING):/.test(line)) continue
+    if (currentFile && currentFile !== emittedFile) diagnostics.push(currentFile)
+    diagnostics.push(line)
+    emittedFile = currentFile
+  }
+
+  return diagnostics.join('\n') || output.trim()
+}
+
+function glslCompilerFailure(error: unknown): string {
+  if (typeof error !== 'object' || error === null) return String(error)
+  if ('code' in error && error.code === 'ETIMEDOUT')
+    return `glslangValidator timed out after ${GLSL_COMPILER_TIMEOUT_MS}ms`
+
+  const output = ['stdout', 'stderr']
+    .filter((stream) => stream in error)
+    .map((stream) => String(Reflect.get(error, stream) ?? '').trim())
+    .filter(Boolean)
+    .join('\n')
+  if (output) return conciseGLSLDiagnostics(output)
+  return error instanceof Error ? error.message : 'glslangValidator failed without diagnostic output'
 }
 
 interface TextureLoadCall {

@@ -76,6 +76,8 @@ describe('shader validators', () => {
       void main() { fragColor = vec4(1.0 - 1); }
     `
 
-    expect(() => validateGLSL([shader(output, 'glsl')])).toThrow(/GLSL compiler rejected/)
+    expect(() => validateGLSL([shader(output, 'glsl')])).toThrow(
+      /GLSL compiler rejected emitted shaders:\n[\s\S]*validator-fixture\.frag[\s\S]*ERROR:/
+    )
   })
 })
