@@ -283,16 +283,18 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
     events,
   } = props
 
-  if (!animationName || frames.length === 0 || !atlasImageUri || !atlasSize) return null
-
-  const currentFrameIndex = Math.min(playhead, frames.length - 1)
-  const currentName = frames[currentFrameIndex]!
-  const rect = rectsByName[currentName]
-  const frame = rect ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h, atlasW: atlasSize.w, atlasH: atlasSize.h } : null
+  const canRender = Boolean(animationName && frames.length > 0 && atlasImageUri && atlasSize)
+  const currentFrameIndex = frames.length > 0 ? Math.min(Math.max(playhead, 0), frames.length - 1) : 0
+  const currentName = frames[currentFrameIndex]
+  const rect = currentName ? rectsByName[currentName] : undefined
+  const frame =
+    rect && atlasSize
+      ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h, atlasW: atlasSize.w, atlasH: atlasSize.h }
+      : null
   // Event tag for the current playhead frame, if any. Keyed by frame
   // index (as string, matching the sidecar storage shape). The
   // editor's timeline uses the same lookup pattern.
-  const currentEvent = events?.[String(currentFrameIndex)] ?? null
+  const currentEvent = canRender ? (events?.[String(currentFrameIndex)] ?? null) : null
 
   // Latched event display: every time the playhead lands on a tagged
   // frame we capture (text, stamp). The badge below renders against
@@ -317,6 +319,8 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
   useEffect(() => {
     setEventLatch(null)
   }, [animationName])
+
+  if (!canRender || !animationName || !atlasImageUri) return null
 
   // Box size is `frame.maxDim × pipScale`, floored at MIN_INNER_SIZE
   // (so tiny sprites still get a usable widget) and capped at
