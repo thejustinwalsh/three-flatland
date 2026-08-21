@@ -31,6 +31,13 @@
       "scope:consumer"
     ],
     "targets": {
+      "test": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "vitest run",
+          "cwd": "{projectRoot}"
+        }
+      },
       "lint": {
         "executor": "nx:run-commands",
         "options": {
@@ -61,6 +68,7 @@
   },
   "devDependencies": {
     "@react-three/fiber": "catalog:",
+    "@three-flatland/tsl-test": "workspace:*",
     "@types/three": "catalog:",
     "three": "catalog:"
   },
