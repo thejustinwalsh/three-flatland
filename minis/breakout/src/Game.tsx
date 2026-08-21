@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState, type Dispatch, type SetStateAction } from 'react'
+import { useRef, useEffect, useLayoutEffect, useCallback, useState, type Dispatch, type SetStateAction } from 'react'
 import { Canvas, useFrame, extend, useThree } from '@react-three/fiber/webgpu'
 import {
   Sprite2D,
@@ -20,6 +20,17 @@ declare module '@react-three/fiber' {
     flashEffect: EffectElement<typeof FlashEffect>
     blockDissolveEffect: EffectElement<typeof BlockDissolveEffect>
   }
+}
+
+function RendererFallback() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [isVisible, setIsVisible] = useState(false)
+  useLayoutEffect(() => setIsVisible(ref.current?.parentElement?.tagName !== 'CANVAS'), [])
+  return (
+    <div ref={ref} role={isVisible ? 'status' : undefined} aria-hidden={isVisible ? undefined : true}>
+      This game could not initialize WebGPU or WebGL 2 rendering.
+    </div>
+  )
 }
 import { WorldProvider, useWorld } from 'koota/react'
 import { getWorld } from './world'
@@ -376,10 +387,7 @@ export default function MiniBreakout({
     >
       {world && (
         <WorldProvider world={world}>
-          <Canvas
-            renderer={{ antialias: false, alpha: true }}
-            fallback={<div role="note">This game requires WebGPU.</div>}
-          >
+          <Canvas renderer={{ antialias: false, alpha: true }} fallback={<RendererFallback />}>
             <GameScene
               soundsRef={soundsRef}
               isVisible={isVisible}
