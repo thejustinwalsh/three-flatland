@@ -18,6 +18,7 @@ export type { TiledLoaderOptions } from './TiledLoader'
 // Normal descriptor helpers — asset metadata → NormalRegion[].
 export {
   buildTilesetGrid,
+  tilesetCellAt,
   framesToRegions,
   wholeTextureRegion,
   tileToRegions,

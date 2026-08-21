@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { hashDescriptor, readPngTextChunk } from '../packages/bake/src/sidecar'
+import { hashDescriptor, readPngTextChunk } from '@three-flatland/bake'
 import { buildDungeonNormalDescriptor, type LDtkProject, type LDtkTilesetDef } from './bake-dungeon-normals'
 
 const ROOT = resolve(import.meta.dirname, '..')
@@ -24,17 +24,21 @@ describe('lighting example dungeon normal sidecars', () => {
     const tileset: LDtkTilesetDef = {
       uid: 1,
       identifier: 'Dungeon_Tileset',
-      pxWid: 32,
-      pxHei: 16,
+      pxWid: 36,
+      pxHei: 36,
       tileGridSize: 16,
       spacing: 2,
       padding: 1,
+      __cWid: 2,
+      __cHei: 2,
       customData: [],
     }
 
     expect(buildDungeonNormalDescriptor({ defs: { tilesets: [tileset] } }).regions).toEqual([
       { x: 1, y: 1, w: 16, h: 16 },
       { x: 19, y: 1, w: 16, h: 16 },
+      { x: 1, y: 19, w: 16, h: 16 },
+      { x: 19, y: 19, w: 16, h: 16 },
     ])
   })
 

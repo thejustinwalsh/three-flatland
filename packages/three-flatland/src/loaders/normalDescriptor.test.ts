@@ -396,26 +396,43 @@ describe('tilesetToRegions', () => {
 })
 
 describe('buildTilesetGrid', () => {
-  it('derives grid dimensions independently of spacing and applies spaced origins', () => {
+  it('uses authoritative grid dimensions and preserves row-major metadata ordering', () => {
     const grid = buildTilesetGrid(
       {
-        imageWidth: 32,
-        imageHeight: 16,
+        imageWidth: 36,
+        imageHeight: 36,
         tileWidth: 16,
         tileHeight: 16,
         spacing: 2,
         padding: 1,
+        columns: 2,
+        rows: 2,
       },
-      (tileId) => (tileId === 1 ? { tileElevation: 0.5 } : undefined)
+      (tileId) => (tileId === 3 ? { tileElevation: 0.5 } : undefined)
     )
 
     expect(grid).toEqual({
       columns: 2,
-      rows: 1,
+      rows: 2,
       cells: [
         { x: 1, y: 1, w: 16, h: 16, meta: undefined },
-        { x: 19, y: 1, w: 16, h: 16, meta: { tileElevation: 0.5 } },
+        { x: 19, y: 1, w: 16, h: 16, meta: undefined },
+        { x: 1, y: 19, w: 16, h: 16, meta: undefined },
+        { x: 19, y: 19, w: 16, h: 16, meta: { tileElevation: 0.5 } },
       ],
     })
+  })
+
+  it('infers a physically valid spaced and padded grid when dimensions are absent', () => {
+    expect(
+      buildTilesetGrid({
+        imageWidth: 36,
+        imageHeight: 36,
+        tileWidth: 16,
+        tileHeight: 16,
+        spacing: 2,
+        padding: 1,
+      })
+    ).toMatchObject({ columns: 2, rows: 2 })
   })
 })

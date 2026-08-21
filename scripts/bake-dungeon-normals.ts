@@ -33,6 +33,8 @@ export interface LDtkTilesetDef {
   tileGridSize: number
   spacing: number
   padding: number
+  __cWid: number
+  __cHei: number
   customData: Array<{ tileId: number; data: string }>
 }
 
@@ -44,7 +46,7 @@ export function buildDungeonNormalDescriptor(project: LDtkProject): NormalSource
   const tileset = project.defs.tilesets.find((t) => t.identifier === 'Dungeon_Tileset')
   if (!tileset) throw new Error('Dungeon_Tileset not found in LDtk project')
 
-  const { pxWid, pxHei, tileGridSize, spacing, padding, customData } = tileset
+  const { pxWid, pxHei, tileGridSize, spacing, padding, __cWid, __cHei, customData } = tileset
   // Parse customData into a map keyed by tileId.
   const metaById = new Map<number, TileNormalCustomData>()
   for (const entry of customData) {
@@ -63,6 +65,8 @@ export function buildDungeonNormalDescriptor(project: LDtkProject): NormalSource
       tileHeight: tileGridSize,
       spacing,
       padding,
+      columns: __cWid,
+      rows: __cHei,
     },
     (tileId) => metaById.get(tileId)
   )

@@ -13,7 +13,7 @@
     "test": {
       "dependsOn": [
         {
-          "projects": ["three-flatland", "@three-flatland/normals"],
+          "projects": ["three-flatland", "@three-flatland/normals", "@three-flatland/bake"],
           "target": "build"
         }
       ],

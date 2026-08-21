@@ -59,6 +59,7 @@
     "@playwright/test": "^1.60.0",
     "@size-limit/esbuild-why": "12.0.0",
     "@size-limit/preset-small-lib": "^12.0.0",
+    "@three-flatland/bake": "workspace:*",
     "@three-flatland/normals": "workspace:*",
     "@types/dagre": "^0.7.54",
     "@types/node": "catalog:",

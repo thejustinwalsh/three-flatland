@@ -147,6 +147,10 @@ export interface TilesetGridOptions {
   tileHeight: number
   spacing: number
   padding: number
+  /** Authoritative exported column count, when the source format provides it. */
+  columns?: number
+  /** Authoritative exported row count, when the source format provides it. */
+  rows?: number
 }
 
 export interface TilesetGrid {
@@ -155,30 +159,44 @@ export interface TilesetGrid {
   cells: TilesetCell[]
 }
 
+function inferTilesetAxisCount(imageSize: number, tileSize: number, spacing: number, padding: number): number {
+  return Math.max(0, Math.floor((imageSize - padding * 2 + spacing) / (tileSize + spacing)))
+}
+
 /**
- * Build the logical tile grid shared by runtime loaders and offline bakers.
- * Atlas dimensions determine the grid count; spacing and padding affect only
- * each cell's pixel origin, matching LDtk's exported geometry contract.
+ * Resolve a tile cell by its row-major index. Explicit source-format grid
+ * dimensions win; atlas dimensions are used only as a compatibility fallback.
  */
+export function tilesetCellAt(tileId: number, options: TilesetGridOptions, meta?: TileNormalCustomData): TilesetCell {
+  const { imageWidth, tileWidth, tileHeight, spacing, padding } = options
+  const columns = options.columns ?? inferTilesetAxisCount(imageWidth, tileWidth, spacing, padding)
+  const col = tileId % columns
+  const row = Math.floor(tileId / columns)
+
+  return {
+    x: padding + col * (tileWidth + spacing),
+    y: padding + row * (tileHeight + spacing),
+    w: tileWidth,
+    h: tileHeight,
+    meta,
+  }
+}
+
+/** Build the logical tile grid shared by runtime loaders and offline bakers. */
 export function buildTilesetGrid(
   options: TilesetGridOptions,
   metaForTile?: (tileId: number) => TileNormalCustomData | undefined
 ): TilesetGrid {
   const { imageWidth, imageHeight, tileWidth, tileHeight, spacing, padding } = options
-  const columns = Math.floor(imageWidth / tileWidth)
-  const rows = Math.floor(imageHeight / tileHeight)
+  const columns = options.columns ?? inferTilesetAxisCount(imageWidth, tileWidth, spacing, padding)
+  const rows = options.rows ?? inferTilesetAxisCount(imageHeight, tileHeight, spacing, padding)
+  const resolvedOptions = { ...options, columns, rows }
   const cells: TilesetCell[] = []
 
   for (let gy = 0; gy < rows; gy++) {
     for (let gx = 0; gx < columns; gx++) {
       const tileId = gy * columns + gx
-      cells.push({
-        x: padding + gx * (tileWidth + spacing),
-        y: padding + gy * (tileHeight + spacing),
-        w: tileWidth,
-        h: tileHeight,
-        meta: metaForTile?.(tileId),
-      })
+      cells.push(tilesetCellAt(tileId, resolvedOptions, metaForTile?.(tileId)))
     }
   }
 

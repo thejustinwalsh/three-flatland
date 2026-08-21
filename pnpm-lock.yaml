@@ -162,6 +162,9 @@ importers:
       '@size-limit/preset-small-lib':
         specifier: ^12.0.0
         version: 12.0.0(size-limit@12.0.0(jiti@2.7.0))
+      '@three-flatland/bake':
+        specifier: workspace:*
+        version: link:packages/bake
       '@three-flatland/normals':
         specifier: workspace:*
         version: link:packages/normals
