@@ -453,6 +453,7 @@ export class SlugText extends InstancedMesh {
     this._teardownOutline()
     this._slugGeometry.dispose()
     this._slugMaterial?.dispose()
-    return super.dispose()
+    super.dispose()
+    return this
   }
 }
