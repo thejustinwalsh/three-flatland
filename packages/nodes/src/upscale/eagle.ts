@@ -168,11 +168,11 @@ export function sai2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 
 
   // Select corners
   const topLeft = A
-  const topRight = preferBC.select(B.rgb.add(A.rgb).mul(0.5), B)
-  const bottomLeft = preferBC.select(C.rgb.add(A.rgb).mul(0.5), C)
+  const topRight = preferBC.select(B.rgb.add(A.rgb).mul(0.5), B.rgb)
+  const bottomLeft = preferBC.select(C.rgb.add(A.rgb).mul(0.5), C.rgb)
   const bottomRight = AeqD.and(BeqC).select(
     A.rgb.add(B.rgb).add(C.rgb).add(D.rgb).mul(0.25),
-    preferAD.select(A.rgb.add(D.rgb).mul(0.5), preferBC.select(B.rgb.add(C.rgb).mul(0.5), A))
+    preferAD.select(A.rgb.add(D.rgb).mul(0.5), preferBC.select(B.rgb.add(C.rgb).mul(0.5), A.rgb))
   )
 
   const topRow = isRight.select(vec4(topRight, A.a), topLeft)
