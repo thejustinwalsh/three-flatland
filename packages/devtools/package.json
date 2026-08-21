@@ -73,7 +73,7 @@
   "peerDependencies": {
     "@react-three/fiber": "catalog:",
     "@tweakpane/plugin-essentials": "^0.2.1",
-    "react": "^19.2.0",
+    "react": "catalog:",
     "three": "catalog:",
     "three-flatland": "^0.1.0-alpha.9",
     "tweakpane": "^4.0.5",
