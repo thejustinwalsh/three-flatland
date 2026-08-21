@@ -213,7 +213,10 @@ const _DefaultLightEffect = createLightEffect({
             Break()
           })
 
-          const idx = float(lightId.sub(int(1)))
+          // The 1-based ID is stored in a float DataTexture. Keep the
+          // subtraction in float space so r185's TSL optimizer cannot lower
+          // the underlying value to an invalid `float - int` GLSL expression.
+          const idx = float(lightId).sub(float(1))
           const { row0, row1, row2, row3 } = lightStore.readLightData(idx)
 
           const lightPos = vec2(row0.r, row0.g)
