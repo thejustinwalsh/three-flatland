@@ -106,7 +106,7 @@
     }
   },
   "scripts": {
-    "build": "tsdown && node ../../scripts/verify-dist-event-patch.mjs dist/index.js dist/react.js",
+    "build": "tsdown && node ../../scripts/verify-dist-no-test-artifacts.mjs dist && node ../../scripts/verify-dist-event-patch.mjs dist/index.js dist/react.js",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"

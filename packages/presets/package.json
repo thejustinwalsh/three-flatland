@@ -48,8 +48,9 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && node ../../scripts/verify-dist-no-test-artifacts.mjs dist",
     "dev": "tsdown --watch",
+    "test": "nx run @three-flatland/presets:test",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

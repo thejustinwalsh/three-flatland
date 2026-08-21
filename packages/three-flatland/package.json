@@ -192,7 +192,7 @@
     }
   },
   "scripts": {
-    "build": "NODE_OPTIONS=--max-old-space-size=8192 tsdown && node ../../scripts/verify-dist-event-patch.mjs dist/index.js dist/react.js dist/pipeline/SpriteBatch.js dist/materials/Sprite2DMaterial.js",
+    "build": "NODE_OPTIONS=--max-old-space-size=8192 tsdown && node ../../scripts/verify-dist-no-test-artifacts.mjs dist && node ../../scripts/verify-dist-event-patch.mjs dist/index.js dist/react.js dist/pipeline/SpriteBatch.js dist/materials/Sprite2DMaterial.js",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
