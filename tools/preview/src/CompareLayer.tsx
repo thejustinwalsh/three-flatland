@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
+import { useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import {
   LinearFilter,
   LinearMipmapLinearFilter,
@@ -13,7 +13,7 @@ import {
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { texture, textureLevel, uv, screenUV, select, uniform, mix, vec2, vec3, vec4, float, dot } from 'three/tsl'
 import type { ImageSource } from './ThreeLayer'
-import { RendererFallback } from './RendererFallback'
+import { PreviewCanvas } from './PreviewCanvas'
 
 export type { ImageSource }
 
@@ -364,7 +364,7 @@ export function CompareLayer({
     return <div style={{ position: 'absolute', inset: 0 }} />
   }
   return (
-    <Canvas
+    <PreviewCanvas
       dpr={1}
       // Continuous render loop — required for the useFrame-driven uniform
       // pushes inside CompareScene. With "demand" the canvas would freeze
@@ -372,7 +372,6 @@ export function CompareLayer({
       // refs hold a fresher splitU value.
       frameloop="always"
       renderer={{ antialias: false }}
-      fallback={<RendererFallback />}
       style={{
         position: 'absolute',
         inset: 0,
@@ -395,6 +394,6 @@ export function CompareLayer({
           onPrimaryReady={onImageReady}
         />
       </Suspense>
-    </Canvas>
+    </PreviewCanvas>
   )
 }

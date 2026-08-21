@@ -1,8 +1,8 @@
 import { Suspense, useEffect } from 'react'
-import { Canvas, extend, useLoader, useThree } from '@react-three/fiber/webgpu'
+import { extend, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { LinearFilter, NearestFilter, type OrthographicCamera as ThreeOrthographicCamera, type Texture } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
-import { RendererFallback } from './RendererFallback'
+import { PreviewCanvas } from './PreviewCanvas'
 
 extend({ Sprite2D })
 
@@ -257,10 +257,9 @@ export function ThreeLayer({
 }: ThreeLayerProps) {
   const source = resolveSource({ imageSource: imageSourceProp, imageUri })
   return (
-    <Canvas
+    <PreviewCanvas
       dpr={1}
       renderer={{ antialias: false }}
-      fallback={<RendererFallback />}
       style={{
         position: 'absolute',
         inset: 0,
@@ -291,7 +290,7 @@ export function ThreeLayer({
           pixelArt={pixelArt}
         />
       ) : null}
-    </Canvas>
+    </PreviewCanvas>
   )
 }
 
