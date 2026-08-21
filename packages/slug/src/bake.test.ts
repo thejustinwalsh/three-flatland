@@ -76,11 +76,11 @@ describe('FlSlugFontExtension — registerable glTF-Transform extension', () => 
 
     // The extension property must be attached to the root with all accessor
     // refs resolved back into the property graph (not dropped).
-    const prop = doc.getRoot().getExtension<{
+    const prop = doc.getRoot().getExtension('FL_slug_font') as unknown as {
       listAccessorSemantics(): string[]
       getAccessorRef(semantic: string): unknown
       getMetadata(): Record<string, unknown>
-    }>('FL_slug_font')
+    } | null
     expect(prop, 'FL_slug_font property attached to root').toBeTruthy()
 
     const semantics = prop!.listAccessorSemantics()

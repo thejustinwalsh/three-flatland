@@ -47,6 +47,12 @@ let idG: number
 let id0: number
 let idSpace: number
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return copy.buffer
+}
+
 beforeAll(async () => {
   const buf = readFileSync(FONT_PATH)
   const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
@@ -124,7 +130,7 @@ beforeAll(async () => {
 
   // Pack → unpack
   const glb = await packBaked(input)
-  const glbBuf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+  const glbBuf = toArrayBuffer(glb)
   const asset = readGlb(glbBuf)
   data = unpackBaked(asset)
 
@@ -306,7 +312,7 @@ describe('real-font equivalence — texture byte-exact round-trip', () => {
   it('curve texture (Uint16Array) round-trips byte-exact', async () => {
     // Re-read the GLB to access the raw accessor
     const glb = await packBaked(input)
-    const glbBuf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const glbBuf = toArrayBuffer(glb)
     const asset = readGlb(glbBuf)
 
     const ext = asset.ext<Record<string, unknown>>('FL_slug_font')!
@@ -325,7 +331,7 @@ describe('real-font equivalence — texture byte-exact round-trip', () => {
 
   it('band texture (Float32Array) round-trips byte-exact', async () => {
     const glb = await packBaked(input)
-    const glbBuf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const glbBuf = toArrayBuffer(glb)
     const asset = readGlb(glbBuf)
 
     const ext = asset.ext<Record<string, unknown>>('FL_slug_font')!

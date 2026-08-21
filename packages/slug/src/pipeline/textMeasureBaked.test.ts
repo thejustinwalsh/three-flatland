@@ -120,7 +120,9 @@ describe('measureTextBaked', () => {
       cmap,
       kern: [],
     })
-    const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const copy = new Uint8Array(glb.byteLength)
+    copy.set(glb)
+    const buf = copy.buffer
     const roundtripped = unpackBaked(readGlb(buf))
 
     const m = measureTextBaked(roundtripped, roundtripped.glyphs, unitsPerEm, ascender, descender, 'Hello', 48)
