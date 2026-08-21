@@ -21,6 +21,7 @@ import { OcclusionPass } from './lights/OcclusionPass'
 import { EffectMaterial } from './materials/EffectMaterial'
 import { Sprite2DMaterial } from './materials/Sprite2DMaterial'
 import { createPassEffect } from './pipeline/PassEffect'
+import { SpriteBatch } from './pipeline/SpriteBatch'
 import { Sprite2D } from './sprites/Sprite2D'
 import { TileLayer } from './tilemap/TileLayer'
 import { Tileset } from './tilemap/Tileset'
@@ -128,6 +129,17 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
     )
     const sprite = new Sprite2D({ material })
     capture('sprite-material-opaque-premultiplied', backend, material, sprite)
+  })
+
+  it('compiles the production SpriteBatch geometry and attribute layout', () => {
+    const material = trackMaterial(new Sprite2DMaterial({ map: shaderTexture() }))
+    const batch = new SpriteBatch(material, 1)
+
+    try {
+      capture('sprite-batch-material', backend, material, batch)
+    } finally {
+      batch.dispose()
+    }
   })
 
   it('compiles the public EffectMaterial no-base-color branch', () => {
