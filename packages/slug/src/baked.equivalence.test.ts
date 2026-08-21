@@ -18,6 +18,7 @@ import { unpackBaked, cmapLookup, kernLookup } from './baked'
 import type { BakeInput, BakedFontData } from './baked'
 import { packBaked } from './bake'
 import type { SlugGlyphData } from './types'
+import { toArrayBuffer } from './test-utils/toArrayBuffer'
 
 // ---------------------------------------------------------------------------
 // Font fixture — same file used by all other slug tests
@@ -46,12 +47,6 @@ let idLa: number
 let idG: number
 let id0: number
 let idSpace: number
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength)
-  copy.set(bytes)
-  return copy.buffer
-}
 
 beforeAll(async () => {
   const buf = readFileSync(FONT_PATH)

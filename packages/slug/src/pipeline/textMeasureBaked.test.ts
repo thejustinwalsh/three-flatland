@@ -11,6 +11,7 @@ import { unpackBaked } from '../baked'
 import { packBaked } from '../bake'
 import type { BakedFontData } from '../baked'
 import type { SlugGlyphData } from '../types'
+import { toArrayBuffer } from '../test-utils/toArrayBuffer'
 
 const FONT_PATH = resolve(__dirname, '../../../../examples/three/slug-text/public/Inter-Regular.ttf')
 const buf = readFileSync(FONT_PATH)
@@ -120,10 +121,7 @@ describe('measureTextBaked', () => {
       cmap,
       kern: [],
     })
-    const copy = new Uint8Array(glb.byteLength)
-    copy.set(glb)
-    const buf = copy.buffer
-    const roundtripped = unpackBaked(readGlb(buf))
+    const roundtripped = unpackBaked(readGlb(toArrayBuffer(glb)))
 
     const m = measureTextBaked(roundtripped, roundtripped.glyphs, unitsPerEm, ascender, descender, 'Hello', 48)
     expect(m.width).toBeGreaterThan(0)

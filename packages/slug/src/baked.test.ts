@@ -6,6 +6,7 @@ import type { BakeInput } from './baked'
 import { SLUG_FONT_VERSION } from './format'
 import { packBaked } from './bake'
 import type { SlugGlyphData, QuadCurve } from './types'
+import { toArrayBuffer } from './test-utils/toArrayBuffer'
 
 describe('unpackBaked version gate', () => {
   const stub = (extObj: unknown): GlbView =>
@@ -125,12 +126,6 @@ async function bakeAndRead(input: BakeInput) {
   const ext = asset.ext<Record<string, unknown>>('FL_slug_font')!
   const columns = ext['columns'] as Record<string, { accessor: number }>
   return { glb, asset, ext, columns }
-}
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength)
-  copy.set(bytes)
-  return copy.buffer
 }
 
 // ---------------------------------------------------------------------------
