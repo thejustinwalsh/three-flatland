@@ -11,11 +11,11 @@ import { EventNode } from 'three/webgpu'
  * `OnBeforeFrameUpdate` in mrdoob/three.js#34162.
  *
  * TSL function bodies are built after material setup, so the internal event is
- * not available to capture synchronously. Identify the r185 callback by the
- * stable buffer APIs it invokes (`clearUpdateRanges`, `updateRanges.push`, and
- * `version`) and move only that event. Property names survive normal bundler
- * minification; unrelated user-authored `OnFrameUpdate` events retain their
- * normal frame phase.
+ * not available to capture synchronously. Identify the r185 callback by its
+ * duplicated matrix/color buffer signature (`clearUpdateRanges`,
+ * `updateRanges.push`, and `version`) and move only that event. Property names
+ * survive normal bundler minification; unrelated user-authored
+ * `OnFrameUpdate` events retain their normal frame phase.
  *
  * @internal
  */
@@ -34,6 +34,19 @@ type EventNodePrototype = RuntimeEventNode & Record<string, unknown>
 const PATCH_FLAG = '__instanceEventPhaseSplitPatched__'
 const classifications = new WeakMap<object, boolean>()
 
+function hasAtLeastOccurrences(source: string, token: string, minimum: number): boolean {
+  let count = 0
+  let offset = 0
+
+  while ((offset = source.indexOf(token, offset)) !== -1) {
+    count++
+    if (count >= minimum) return true
+    offset += token.length
+  }
+
+  return false
+}
+
 function isInstanceBufferSyncEvent(event: RuntimeEventNode): boolean {
   if (event.eventType !== EventNode.FRAME) return false
 
@@ -42,9 +55,9 @@ function isInstanceBufferSyncEvent(event: RuntimeEventNode): boolean {
 
   const callbackSource = Function.prototype.toString.call(event.callback)
   const isSyncEvent =
-    callbackSource.includes('clearUpdateRanges') &&
-    callbackSource.includes('updateRanges.push') &&
-    callbackSource.includes('.version')
+    hasAtLeastOccurrences(callbackSource, 'clearUpdateRanges', 2) &&
+    hasAtLeastOccurrences(callbackSource, 'updateRanges.push', 2) &&
+    hasAtLeastOccurrences(callbackSource, '.version', 8)
   classifications.set(event, isSyncEvent)
   return isSyncEvent
 }
