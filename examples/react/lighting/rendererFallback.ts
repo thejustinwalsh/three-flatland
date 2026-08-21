@@ -1,4 +1,5 @@
 export const RENDERER_FAILURE_MESSAGE = 'This example could not initialize WebGPU or WebGL 2 rendering.'
+export const RENDERER_FAILURE_COLOR = '#f4f7fb'
 
 type InitializableRenderer = {
   init(): Promise<unknown>
@@ -25,7 +26,7 @@ export async function initializeRenderer(renderer: InitializableRenderer): Promi
       padding: '2rem',
       boxSizing: 'border-box',
       textAlign: 'center',
-      color: 'inherit',
+      color: RENDERER_FAILURE_COLOR,
     })
     document.body.replaceChildren(fallback)
     return false

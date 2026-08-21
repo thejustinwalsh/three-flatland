@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { RENDERER_FAILURE_MESSAGE } from './rendererFallback'
+import { RENDERER_FAILURE_COLOR, RENDERER_FAILURE_MESSAGE } from './rendererFallback'
 
 export function WebGPUFallback() {
   const ref = useRef<HTMLDivElement>(null)
@@ -21,7 +21,7 @@ export function WebGPUFallback() {
         placeItems: 'center',
         padding: '2rem',
         textAlign: 'center',
-        color: 'inherit',
+        color: RENDERER_FAILURE_COLOR,
       }}
     >
       {RENDERER_FAILURE_MESSAGE}
