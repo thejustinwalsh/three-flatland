@@ -45,10 +45,9 @@ test('renders the sprite and responds to the pointer', async ({ page }) => {
   await settle(page)
   const hovered = await sampleSprite(page)
 
-  expect(
-    hovered.redToGreen,
-    'hovering did not tint the sprite — pointer events are not reaching it'
-  ).toBeLessThan(idle.redToGreen * HOVER_TINT_DROP)
+  expect(hovered.redToGreen, 'hovering did not tint the sprite — pointer events are not reaching it').toBeLessThan(
+    idle.redToGreen * HOVER_TINT_DROP
+  )
 
   expect(consoleErrors, `console/page errors:\n${consoleErrors.join('\n')}`).toEqual([])
 })
@@ -110,9 +109,7 @@ async function sampleSprite(page: Page): Promise<FrameSample> {
       }
     }
     const mean = sum.map((s) => s / n)
-    const stdDev = Math.max(
-      ...mean.map((m, ch) => Math.sqrt(Math.max(0, (sumSq[ch] ?? 0) / n - m * m)))
-    )
+    const stdDev = Math.max(...mean.map((m, ch) => Math.sqrt(Math.max(0, (sumSq[ch] ?? 0) / n - m * m))))
     return {
       stdDev,
       // Guard the divisor: a fully unlit frame would otherwise divide by zero.
