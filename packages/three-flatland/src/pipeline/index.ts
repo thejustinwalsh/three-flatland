@@ -1,8 +1,10 @@
 // Pipeline exports
 
-// Side-effect: restores pre-upload timing for r185's internal instanced-buffer
-// synchronization event without changing user-authored frame events.
-import './_instanceEventUpdateBeforePatch'
+// Restore pre-upload timing for r185's internal instanced-buffer sync. Call the
+// installer explicitly so tree-shaking cannot discard an exportless import.
+import { installInstanceEventUpdateBeforePatch } from './_instanceEventUpdateBeforePatch'
+
+installInstanceEventUpdateBeforePatch()
 
 export { PassEffect, createPassEffect } from './PassEffect'
 export type { PassEffectClass, PassEffectContext, PassEffectFn } from './PassEffect'

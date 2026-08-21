@@ -1,5 +1,5 @@
 import { NodeUpdateType } from 'three/tsl'
-import EventNode from 'three/src/nodes/utils/EventNode.js'
+import { EventNode } from 'three/webgpu'
 
 /**
  * Restore the pre-upload timing of r185's instanced-buffer synchronization.
@@ -32,7 +32,6 @@ interface RuntimeEventNode {
 type EventNodePrototype = RuntimeEventNode & Record<string, unknown>
 
 const PATCH_FLAG = '__instanceEventPhaseSplitPatched__'
-const proto = EventNode.prototype as unknown as EventNodePrototype
 const classifications = new WeakMap<object, boolean>()
 
 function isInstanceBufferSyncEvent(event: RuntimeEventNode): boolean {
@@ -50,16 +49,19 @@ function isInstanceBufferSyncEvent(event: RuntimeEventNode): boolean {
   return isSyncEvent
 }
 
-if (!proto[PATCH_FLAG]) {
-  proto[PATCH_FLAG] = true
-  const originalGetUpdateType = proto.getUpdateType
-  const originalGetUpdateBeforeType = proto.getUpdateBeforeType
+export function installInstanceEventUpdateBeforePatch(): void {
+  const proto = EventNode.prototype as unknown as EventNodePrototype
+  if (!proto[PATCH_FLAG]) {
+    proto[PATCH_FLAG] = true
+    const originalGetUpdateType = proto.getUpdateType
+    const originalGetUpdateBeforeType = proto.getUpdateBeforeType
 
-  proto.getUpdateType = function (this: RuntimeEventNode) {
-    return isInstanceBufferSyncEvent(this) ? NodeUpdateType.NONE : originalGetUpdateType.call(this)
-  }
+    proto.getUpdateType = function (this: RuntimeEventNode) {
+      return isInstanceBufferSyncEvent(this) ? NodeUpdateType.NONE : originalGetUpdateType.call(this)
+    }
 
-  proto.getUpdateBeforeType = function (this: RuntimeEventNode) {
-    return isInstanceBufferSyncEvent(this) ? NodeUpdateType.FRAME : originalGetUpdateBeforeType.call(this)
+    proto.getUpdateBeforeType = function (this: RuntimeEventNode) {
+      return isInstanceBufferSyncEvent(this) ? NodeUpdateType.FRAME : originalGetUpdateBeforeType.call(this)
+    }
   }
 }

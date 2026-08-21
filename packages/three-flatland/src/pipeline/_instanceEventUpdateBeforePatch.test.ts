@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { NodeUpdateType } from 'three/tsl'
-import EventNode from 'three/src/nodes/utils/EventNode.js'
-import './_instanceEventUpdateBeforePatch'
+import { EventNode } from 'three/webgpu'
+import { installInstanceEventUpdateBeforePatch } from './_instanceEventUpdateBeforePatch'
+
+installInstanceEventUpdateBeforePatch()
 
 describe('r185 instance event timing patch', () => {
   it('moves the r185 instance-buffer synchronization event before geometry upload', () => {
