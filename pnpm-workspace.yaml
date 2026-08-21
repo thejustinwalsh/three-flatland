@@ -12,6 +12,7 @@ catalog:
   '@jsquash/avif': ^2.1.1
   '@jsquash/png': ^3.1.1
   '@jsquash/webp': ^1.5.0
+  '@three-flatland/devtools': ^1.0.0-alpha.6
   '@tweakpane/core': ^2.0.5
   '@tweakpane/plugin-essentials': ^0.2.1
   tweakpane: ^4.0.5
