@@ -1,9 +1,14 @@
 import { spawnSync } from 'node:child_process'
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
-const entries = ['dist/index.js', 'dist/react.js', 'dist/pipeline/SpriteBatch.js']
+const entries = process.argv.slice(2)
+if (entries.length === 0) {
+  throw new Error('Pass at least one built entry to verify')
+}
 
 for (const entry of entries) {
-  const entryUrl = new URL(`../${entry}`, import.meta.url).href
+  const entryUrl = pathToFileURL(resolve(entry)).href
   const verification = `
     import { EventNode } from 'three/webgpu'
     await import(${JSON.stringify(entryUrl)})
@@ -21,4 +26,4 @@ for (const entry of entries) {
   }
 }
 
-console.log('Verified r185 EventNode patch in published batching entries.')
+console.log(`Verified r185 EventNode patch in ${entries.length} published entries.`)
