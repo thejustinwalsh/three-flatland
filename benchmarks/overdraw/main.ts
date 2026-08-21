@@ -27,6 +27,7 @@ const VIEW_SIZE = 900
 // Extra world-space margin beyond the visible frustum before a drifting
 // particle wraps to the opposite edge — keeps the wrap invisible.
 const MARGIN = 220
+const STARTUP_FAILURE_MESSAGE = 'The overdraw benchmark could not initialize. Check the console for details.'
 
 type Mode = 'tight' | 'quad'
 
@@ -41,6 +42,23 @@ interface ParticleState {
   frameIndex: number
   tint: string
   alpha: number
+}
+
+function showStartupFailure(): void {
+  const fallback = document.createElement('div')
+  fallback.setAttribute('role', 'status')
+  fallback.textContent = STARTUP_FAILURE_MESSAGE
+  Object.assign(fallback.style, {
+    width: '100%',
+    height: '100%',
+    display: 'grid',
+    placeItems: 'center',
+    padding: '2rem',
+    boxSizing: 'border-box',
+    textAlign: 'center',
+    color: '#f4f7fb',
+  })
+  document.body.replaceChildren(fallback)
 }
 
 function randomRange(min: number, max: number): number {
@@ -288,6 +306,16 @@ async function main() {
 
 main().catch((err) => {
   console.error('[overdraw-bench] failed to start:', err)
+  if (activeResizeHandler) {
+    window.removeEventListener('resize', activeResizeHandler)
+    activeResizeHandler = null
+  }
+  if (activeRenderer) {
+    activeRenderer.dispose?.()
+    activeRenderer.domElement.remove()
+    activeRenderer = null
+  }
+  showStartupFailure()
 })
 
 if (import.meta.hot) {
