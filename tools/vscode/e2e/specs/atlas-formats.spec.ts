@@ -1,5 +1,5 @@
 import { expect, test } from '../fixtures'
-import type { FrameLocator, Locator } from '@playwright/test'
+import type { Frame, Locator } from '@playwright/test'
 
 // Reads a workspace-relative file's text content through the real
 // extension host, straight off disk. Uses vscode.workspace.fs rather than
@@ -33,7 +33,7 @@ async function readFile(
 // of avoiding it), wait for the "Image size" badge App.tsx renders once
 // CanvasStage's onImageReady fires — the same `imageSize` signal
 // handleSave itself gates on — then click exactly once.
-async function saveAndWaitForSaved(frame: FrameLocator, button: Locator): Promise<void> {
+async function saveAndWaitForSaved(frame: Frame, button: Locator): Promise<void> {
   await expect(frame.getByTitle('Image size')).toBeVisible()
   await button.click()
   await expect(frame.getByText(/Saved/)).toBeVisible()

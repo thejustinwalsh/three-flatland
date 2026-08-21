@@ -243,11 +243,16 @@ webview structure:
    React app (`webview/<tool>/index.html`) — swapped in once loaded
    (`browser/webview/pre/index.html`, `getActiveFrame()`).
 
-Returns a `FrameLocator` scoped to `#active-frame`, after confirming that
+Returns the concrete `Frame` behind `#active-frame`, after confirming that
 `#root` (every tool's Vite mount point — see each
 `webview/<tool>/index.html`) has a mounted child. The static shell contains
 an empty `#root` before the application script runs, so attachment of the
-mount point alone is not a readiness signal.
+mount point alone is not a readiness signal. Pinning the concrete frame is
+intentional: a live `FrameLocator` could retarget later assertions to a blank
+replacement `#active-frame` if VS Code swaps the iframe while its webview host
+settles. A pinned frame ends when its iframe does: after closing, reopening, or
+otherwise recreating a panel, call `webviewFrame` again instead of reusing the
+old frame.
 
 ```ts
 const frame = await webviewFrame('knight.png')
