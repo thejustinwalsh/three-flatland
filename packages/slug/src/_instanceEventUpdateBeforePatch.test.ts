@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
+import { NodeUpdateType } from 'three/tsl'
 import { EventNode } from 'three/webgpu'
 import {
   installInstanceEventUpdateBeforePatch,
@@ -37,5 +38,28 @@ describe('standalone Slug r185 instance event timing patch', () => {
     installInstanceEventUpdateBeforePatch()
 
     expect((EventNode.prototype as unknown as Record<string, unknown>).__instanceEventPhaseSplitPatched__).toBe(true)
+  })
+
+  it('does not remap a user callback that synchronizes one buffer', () => {
+    installInstanceEventUpdateBeforePatch()
+
+    const interleaved = {
+      updateRanges: [] as unknown[],
+      version: 0,
+      clearUpdateRanges() {
+        this.updateRanges.length = 0
+      },
+    }
+    const source = { updateRanges: [{}], version: 1 }
+    const event = new EventNode(EventNode.FRAME as typeof EventNode.OBJECT, () => {
+      interleaved.clearUpdateRanges()
+      interleaved.updateRanges.push(...source.updateRanges)
+      if (source.version !== interleaved.version) {
+        interleaved.version = source.version
+      }
+    })
+
+    expect(event.getUpdateType()).toBe(NodeUpdateType.FRAME)
+    expect(event.getUpdateBeforeType()).toBe(NodeUpdateType.NONE)
   })
 })
