@@ -123,6 +123,7 @@ function generateDungeon(
   const ground = new Uint32Array(width * height)
   const walls = new Uint32Array(width * height)
   const decor = new Uint32Array(width * height)
+  // Mulberry32 keeps identical pane seeds reproducible across browsers and reloads.
   let randomState = seed >>> 0
   const random = () => {
     randomState = (randomState + 0x6d2b79f5) >>> 0
