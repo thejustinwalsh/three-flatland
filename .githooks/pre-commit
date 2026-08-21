@@ -29,7 +29,7 @@ if match '^(pnpm-workspace\.yaml|packages/[^/]+/package\.json)$'; then
 fi
 
 # 2. A specific standalone package.json staged → sync just those files.
-PKG_FILES="$(matched '^(examples|benchmarks|minis|packages/create-three-flatland/templates)/.*/package\.json$')"
+PKG_FILES="$(matched '^(examples|benchmarks|minis|packages/create-three-flatland/templates)/(.*/)?package\.json$')"
 if [ -n "$PKG_FILES" ]; then
   echo "pre-commit: sync:pack --files"
   # Word-split $PKG_FILES into per-file args on purpose (repo paths have no
