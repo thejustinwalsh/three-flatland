@@ -1,10 +1,9 @@
 // Pipeline exports
 
-// Side-effect: patches three.js's `InstanceNode` so dirty-range propagation
-// fires before the geometry upload (works around the one-frame lag in three.js
-// when an InstancedMesh's `count` grows). Imported here so anyone using the
-// pipeline picks up the patch.
-import './_instanceNodeUpdateBeforePatch'
+// Side-effect: restores pre-upload timing for r185's instanced-buffer update
+// event (works around the one-frame lag when an InstancedMesh's `count` grows).
+// Imported here so anyone using the pipeline picks up the patch.
+import './_instanceEventUpdateBeforePatch'
 
 export { PassEffect, createPassEffect } from './PassEffect'
 export type { PassEffectClass, PassEffectContext, PassEffectFn } from './PassEffect'

@@ -1265,10 +1265,10 @@ describe('Sprite2D clone with effects', () => {
 describe('Sprite2DMaterial clipping', () => {
   it('keeps clipping in the fragment stage for synthesized instance positions', () => {
     const material = new Sprite2DMaterial()
+    const builder = { hardwareClipping: true }
 
-    material.hardwareClipping = true
-    material.setupHardwareClipping(undefined as never)
+    material.setupHardwareClipping(builder as never)
 
-    expect(material.hardwareClipping).toBe(false)
+    expect(builder.hardwareClipping).toBe(false)
   })
 })

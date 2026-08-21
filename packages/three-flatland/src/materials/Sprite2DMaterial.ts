@@ -230,8 +230,9 @@ export class Sprite2DMaterial extends EffectMaterial {
    *
    * @internal
    */
-  override setupHardwareClipping(_builder: NodeBuilder): void {
-    this.hardwareClipping = false
+  override setupHardwareClipping(builder: NodeBuilder): void {
+    const clippingBuilder = builder as NodeBuilder & { hardwareClipping: boolean }
+    clippingBuilder.hardwareClipping = false
   }
 
   /**
