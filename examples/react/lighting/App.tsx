@@ -156,7 +156,17 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
     cam.updateProjectionMatrix()
     set({ camera: cam })
   }, [viewSize, aspect, set])
-  return <orthographicCamera ref={camRef} position={[0, 0, 100]} near={0.1} far={1000} manual />
+  return (
+    <orthographicCamera
+      ref={(cam) => {
+        camRef.current = cam
+        if (cam) (cam as ThreeOrthographicCamera & { manual?: boolean }).manual = true
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+    />
+  )
 }
 
 // ============================================

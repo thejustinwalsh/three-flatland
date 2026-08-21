@@ -29,6 +29,7 @@ function FitOrthoCamera({ viewWidth, viewHeight }: { viewWidth: number; viewHeig
     <orthographicCamera
       ref={(cam: OrthographicCamera | null) => {
         if (!cam) return
+        ;(cam as OrthographicCamera & { manual?: boolean }).manual = true
         if (aspect > viewAspect) {
           // Window wider — fit to height
           cam.top = viewHeight / 2
@@ -48,7 +49,6 @@ function FitOrthoCamera({ viewWidth, viewHeight }: { viewWidth: number; viewHeig
       position={[0, 0, 100]}
       near={0.1}
       far={1000}
-      manual
     />
   )
 }

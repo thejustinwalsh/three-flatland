@@ -384,6 +384,7 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
     <orthographicCamera
       ref={(cam: OrthographicCamera | null) => {
         if (!cam) return
+        ;(cam as OrthographicCamera & { manual?: boolean }).manual = true
         cam.left = (-viewSize * aspect) / 2
         cam.right = (viewSize * aspect) / 2
         cam.top = viewSize / 2
@@ -394,7 +395,6 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
       position={[0, 0, 100]}
       near={0.1}
       far={1000}
-      manual
     />
   )
 }

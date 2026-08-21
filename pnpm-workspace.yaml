@@ -38,26 +38,22 @@ catalog:
   # against these specific builds.
   tone: 15.1.22
   web-audio-daw: 4.13.4
-  # Pinned (no caret) — `^10.0.0-alpha.2` semver-matches `10.0.0-canary.X`
-  # because canary > alpha alphabetically on the same 10.0.0 base. Our
-  # local pnpm lockfile holds alpha.2, but a fresh `npm install` (e.g. in
-  # StackBlitz) resolves to the latest matching, which picks up canary
-  # builds — and the current canary imports `WebGLCubeRenderTarget` from
-  # `three/webgpu` which no released three.js exports. Pin until alpha.3+
-  # ships and Renovate can propose the bump.
-  '@react-three/fiber': 10.0.0-alpha.2
+  # Keep prereleases exact: a caret range can resolve R3F canaries with a
+  # different three/webgpu compatibility floor.
+  '@react-three/fiber': 10.0.0-alpha.3
   '@stylexjs/stylex': ^0.18.3
   '@stylexjs/unplugin': ^0.18.3
   '@types/pngjs': ^6.0.5
   '@types/react': ^19.0.2
   '@types/react-dom': ^19.0.2
-  '@types/three': ^0.183.1
+  '@types/three': ^0.185.4
+  '@webgpu/types': ^0.1.72
   '@vitejs/plugin-react': ^4.3.4
   koota: ^0.6.5
   pngjs: ^7.0.0
   react: ^19.2.0
   react-dom: ^19.2.0
-  three: ^0.183.1
+  three: ^0.185.1
   typescript: ^5.7.3
   uwasi: ^1.4.1
   vite: ^7.3.6
