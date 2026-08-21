@@ -15,7 +15,7 @@ export async function initializeRenderer(renderer: InitializableRenderer): Promi
     renderer.domElement.remove()
 
     const fallback = document.createElement('div')
-    fallback.role = 'status'
+    fallback.setAttribute('role', 'status')
     fallback.textContent = RENDERER_FAILURE_MESSAGE
     Object.assign(fallback.style, {
       width: '100%',
