@@ -21,9 +21,9 @@ npm install @three-flatland/devtools
 
 - **tweakpane** >= 4.0.5
 - **@tweakpane/plugin-essentials** >= 0.2.1
-- **three** >= 0.185.1
+- **three** ^0.185.1
 - **React** >= 19.0.0 (for `@three-flatland/devtools/react`)
-- **@react-three/fiber** >= 10.0.0-alpha.3 (for React hooks)
+- **@react-three/fiber** 10.0.0-alpha.3 (for React hooks)
 
 ## What's in the box
 

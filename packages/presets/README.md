@@ -19,7 +19,7 @@ npm install @three-flatland/presets
 
 ### Requirements
 
-- **three** >= 0.185.1
+- **three** ^0.185.1
 - **three-flatland** >= 0.1.0-alpha.0
 - **@three-flatland/nodes** >= 0.1.0-alpha.0
 
