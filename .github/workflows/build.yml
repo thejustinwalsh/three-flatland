@@ -83,6 +83,9 @@ jobs:
       - name: Verify react subpath wrappers
         run: pnpm sync:react:verify
 
+      - name: Verify standalone example helpers
+        run: pnpm sync:examples:verify
+
       - name: Verify publish exports (dist-only publishConfig)
         run: pnpm sync:publish-exports:verify
 

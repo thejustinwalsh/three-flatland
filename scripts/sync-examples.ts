@@ -44,13 +44,12 @@ type Variant = (typeof VARIANTS)[number]
 type SyncedFile = {
   source: string
   target: string
-  exclude?: readonly string[]
 }
 
 const SYNCED_FILES: Record<Variant, readonly SyncedFile[]> = {
   three: [
     { source: 'examples/three/template/GemBackground.ts', target: 'GemBackground.ts' },
-    { source: 'examples/_shared/rendererFallback.ts', target: 'rendererFallback.ts', exclude: ['skia'] },
+    { source: 'examples/_shared/rendererFallback.ts', target: 'rendererFallback.ts' },
   ],
   react: [
     { source: 'examples/react/template/GemBackground.tsx', target: 'GemBackground.tsx' },
@@ -70,11 +69,12 @@ let driftCount = 0
 const driftedFiles: string[] = []
 
 /**
- * List example slugs in a variant. Excludes the `template` directory
- * (template is the source-of-truth, not a sync target) and any directory
- * without a `package.json` (stale local scratch dirs that should not be
- * mistaken for workspace examples). Returned order is alphabetical;
- * callers re-sort by frontmatter when ordering matters.
+ * List example slugs in a variant. Excludes the `template` directory,
+ * whose GemBackground is canonical and whose other helpers are synced in
+ * a dedicated pre-pass, plus any directory without a `package.json`
+ * (stale local scratch dirs that should not be mistaken for workspace
+ * examples). Returned order is alphabetical; callers re-sort by
+ * frontmatter when ordering matters.
  */
 function listExamples(variant: Variant): string[] {
   const dir = join(ROOT, 'examples', variant)
@@ -239,7 +239,6 @@ function main(): void {
 
       const exampleDir = join(ROOT, 'examples', variant, slug)
       for (const file of syncedFiles) {
-        if (file.exclude?.includes(slug)) continue
         syncFile(join(exampleDir, file.target), file.body, `${variant}/${slug} ${file.target}`)
       }
       syncFile(join(exampleDir, 'gem.ts'), gemModuleSource(gem), `${variant}/${slug} gem.ts`)
