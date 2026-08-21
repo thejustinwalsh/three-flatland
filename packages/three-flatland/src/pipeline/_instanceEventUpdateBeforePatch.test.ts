@@ -21,6 +21,10 @@ describe('r185 instance event timing patch', () => {
 
     expect(event.getUpdateType()).toBe(NodeUpdateType.NONE)
     expect(event.getUpdateBeforeType()).toBe(NodeUpdateType.FRAME)
+
+    event.updateBefore({} as never)
+    expect(interleaved.updateRanges).toEqual(matrices.updateRanges)
+    expect(interleaved.version).toBe(matrices.version)
   })
 
   it('leaves user-authored frame events in the normal Three.js phase', () => {
