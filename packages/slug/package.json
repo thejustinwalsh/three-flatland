@@ -131,6 +131,7 @@
   },
   "devDependencies": {
     "@react-three/fiber": "catalog:",
+    "@three-flatland/tsl-test": "workspace:*",
     "@types/opentype.js": "^1.3.9",
     "@types/react": "catalog:",
     "@types/three": "catalog:",
