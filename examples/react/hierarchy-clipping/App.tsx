@@ -78,19 +78,27 @@ function Symbols({
 function Scene() {
   usePane()
   const [active, setActive] = useState<0 | 1>(0)
+  const [reducedMotion, setReducedMotion] = useState(motionPreference.matches)
+
   useEffect(() => {
-    if (motionPreference.matches) return
+    const handleChange = (event: MediaQueryListEvent) => setReducedMotion(event.matches)
+    motionPreference.addEventListener('change', handleChange)
+    return () => motionPreference.removeEventListener('change', handleChange)
+  }, [])
+
+  useEffect(() => {
+    if (reducedMotion) return
     const timer = window.setInterval(() => setActive((value) => (value === 0 ? 1 : 0)), 2200)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [reducedMotion])
 
   return (
     <spriteGroup clipRect={[-120, -80, 240, 160]} rotation-z={-0.08}>
       <Activity mode={active === 0 ? 'visible' : 'hidden'}>
-        <Symbols texture={paletteTexture} animated={!motionPreference.matches} />
+        <Symbols texture={paletteTexture} animated={!reducedMotion} />
       </Activity>
       <Activity mode={active === 1 ? 'visible' : 'hidden'}>
-        <Symbols texture={paletteTexture} rotated animated={!motionPreference.matches} />
+        <Symbols texture={paletteTexture} rotated animated={!reducedMotion} />
       </Activity>
     </spriteGroup>
   )
