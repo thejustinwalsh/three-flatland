@@ -267,12 +267,15 @@ interface SceneProps {
 function FlatlandScene(props: SceneProps) {
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
     l.normals = true
+    l.forceRuntime = true
   })
   const slimeSheet = useLoader(SpriteSheetLoader, './sprites/slime.json', (l) => {
     l.normals = true
+    l.forceRuntime = true
   })
   const mapData = useLoader(LDtkLoader, './maps/dungeon.ldtk', (l) => {
     l.normals = true
+    l.forceRuntime = true
   })
 
   const renderer = useThree((s) => s.renderer)
