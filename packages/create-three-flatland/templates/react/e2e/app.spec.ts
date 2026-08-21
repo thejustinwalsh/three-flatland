@@ -21,6 +21,21 @@ import { expect, test, type Page } from '@playwright/test'
 
 const HOVER_TINT_DROP = 0.9 // hovering must pull red:green to under 90% of idle
 
+test('replaces the loading overlay when no renderer backend initializes', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined })
+    HTMLCanvasElement.prototype.getContext = () => null
+  })
+
+  await page.goto('/')
+
+  const loader = page.locator('#loader')
+  await expect(loader).toContainText('This app could not initialize WebGPU or WebGL 2 rendering.')
+  await expect(loader).toHaveAttribute('role', 'status')
+  await expect(loader).not.toHaveAttribute('aria-label')
+  await expect(page.locator('canvas')).toHaveCount(0)
+})
+
 test('renders the sprite and responds to the pointer', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('pageerror', (e) => consoleErrors.push(String(e)))
