@@ -7,6 +7,7 @@ import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 import type { Rect } from './RectOverlay'
+import { RendererFallback } from './RendererFallback'
 
 extend({ Sprite2D })
 
@@ -343,6 +344,7 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
           <Canvas
             dpr={1}
             renderer={{ antialias: false }}
+            fallback={<RendererFallback />}
             style={{ position: 'absolute', inset: 0, background: 'transparent' }}
           >
             <Suspense fallback={null}>

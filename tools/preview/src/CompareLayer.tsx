@@ -13,6 +13,7 @@ import {
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { texture, textureLevel, uv, screenUV, select, uniform, mix, vec2, vec3, vec4, float, dot } from 'three/tsl'
 import type { ImageSource } from './ThreeLayer'
+import { RendererFallback } from './RendererFallback'
 
 export type { ImageSource }
 
@@ -371,6 +372,7 @@ export function CompareLayer({
       // refs hold a fresher splitU value.
       frameloop="always"
       renderer={{ antialias: false }}
+      fallback={<RendererFallback />}
       style={{
         position: 'absolute',
         inset: 0,
