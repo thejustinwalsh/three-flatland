@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture, BufferAttribute, InterleavedBufferAttribute } from 'three'
 import { createWorld, universe } from 'koota'
 import { Sprite2D } from './Sprite2D'
@@ -170,6 +170,23 @@ describe('Sprite2D', () => {
 
     enrolledTarget.copy(standaloneSource)
     expect(enrolledTarget.matrixWorldAutoUpdate).toBe(false)
+    group.dispose()
+  })
+
+  it('caches the batch registry across hot-path mutations', () => {
+    const group = new SpriteGroup()
+    const world = group.world
+    const query = vi.spyOn(world, 'query')
+    const sprite = new Sprite2D({ texture })
+    group.add(sprite)
+    const enrollmentQueries = query.mock.calls.length
+
+    sprite.visible = false
+    sprite.visible = true
+    sprite.hitRadius = 24
+
+    expect(enrollmentQueries).toBeGreaterThan(0)
+    expect(query).toHaveBeenCalledTimes(enrollmentQueries)
     group.dispose()
   })
 

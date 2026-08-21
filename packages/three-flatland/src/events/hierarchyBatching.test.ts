@@ -880,6 +880,22 @@ describe('auto batching preserves the source hierarchy', () => {
 })
 
 describe('SpriteGroup clipRect', () => {
+  it('skips redundant clip-plane projection until the group transform changes', () => {
+    const scene = new Scene()
+    const group = new SpriteGroup({ clipRect: [0, 0, 50, 50] })
+    scene.add(group)
+    scene.updateMatrixWorld(true)
+    const copy = vi.spyOn(group.clippingPlanes[0]!, 'copy')
+
+    scene.updateMatrixWorld(true)
+    expect(copy).not.toHaveBeenCalled()
+
+    group.position.x = 100
+    scene.updateMatrixWorld(true)
+    expect(copy).toHaveBeenCalledOnce()
+    group.dispose()
+  })
+
   it('uses nested WebGPU clipping groups and filters pointer hits', () => {
     const scene = new Scene()
     const outer = new SpriteGroup({ clipRect: [0, -100, 40, 200] })

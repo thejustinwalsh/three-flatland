@@ -575,10 +575,25 @@ export class Sprite2D extends Mesh {
   }
 
   /** Resolve this sprite's world-scoped batch registry, if assigned. */
+  private _registryCacheWorld: World | null = null
+  private _registryCache: RegistryData | undefined
+
   private _registryData(): RegistryData | undefined {
-    if (!this._flatlandWorld) return undefined
-    const registries = this._flatlandWorld.query(BatchRegistry)
-    return registries[0]?.get(BatchRegistry) as RegistryData | undefined
+    const world = this._flatlandWorld
+    if (!world) {
+      this._registryCacheWorld = null
+      this._registryCache = undefined
+      return undefined
+    }
+    if (this._registryCacheWorld === world && this._registryCache) return this._registryCache
+
+    const registries = world.query(BatchRegistry)
+    const registry = registries[0]?.get(BatchRegistry) as RegistryData | undefined
+    if (registry) {
+      this._registryCacheWorld = world
+      this._registryCache = registry
+    }
+    return registry
   }
 
   /** Invalidate projected transform and visibility state in the assigned world. */
@@ -2420,13 +2435,8 @@ export class Sprite2D extends Mesh {
     this._zIndexArr = resolveStore(w, SpriteZIndex)['zIndex']!
 
     // Register in the spriteArr for O(1) lookup by entity SoA index.
-    const registryEntities = w.query(BatchRegistry)
-    if (registryEntities.length > 0) {
-      const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-      if (registry) {
-        registry.spriteArr[eid] = this
-      }
-    }
+    const registry = this._registryData()
+    if (registry) registry.spriteArr[eid] = this
 
     // Add effect traits for active effects
     for (const effect of this._effects) {

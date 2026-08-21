@@ -105,6 +105,8 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
 
   private _clipRect: ClipRect | null = null
   private readonly _localClipPlanes = [new Plane(), new Plane(), new Plane(), new Plane()]
+  private readonly _clipMatrixWorld = new Matrix4()
+  private _clipPlanesDirty = true
 
   /** Local-space clip rectangle, exposed as a property for R3F props. */
   get clipRect(): ClipRect | null {
@@ -113,6 +115,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
 
   set clipRect(value: ClipRect | null) {
     this._clipRect = value ? ([...value] as ClipRect) : null
+    this._clipPlanesDirty = true
     this._updateLocalClipPlanes()
     this._syncWorldClipPlanes()
   }
@@ -237,8 +240,12 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   /** Project local clipping planes into world space for Three.js clipping. */
   private _syncWorldClipPlanes(): void {
     if (!this._clipRect) return
+    if (!this._clipPlanesDirty && this._clipMatrixWorld.equals(this.matrixWorld)) return
+
+    this._clipMatrixWorld.copy(this.matrixWorld)
+    this._clipPlanesDirty = false
     for (let i = 0; i < 4; i++) {
-      this.clippingPlanes[i]!.copy(this._localClipPlanes[i]!).applyMatrix4(this.matrixWorld)
+      this.clippingPlanes[i]!.copy(this._localClipPlanes[i]!).applyMatrix4(this._clipMatrixWorld)
     }
   }
 
