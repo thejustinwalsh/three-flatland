@@ -1,5 +1,25 @@
-import { attribute, texture, vec2, vec4, float, If, Discard, select } from 'three/tsl'
-import { type Texture, FrontSide, NormalBlending, CustomBlending, OneFactor, OneMinusSrcAlphaFactor } from 'three'
+import {
+  attribute,
+  texture,
+  vec2,
+  vec4,
+  float,
+  If,
+  Discard,
+  select,
+  positionLocal,
+  instancedMesh,
+  subBuild,
+} from 'three/tsl'
+import {
+  type Texture,
+  type InstancedMesh,
+  FrontSide,
+  NormalBlending,
+  CustomBlending,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
+} from 'three'
 import type { NodeBuilder } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
 import { uv } from 'three/tsl'
@@ -233,6 +253,29 @@ export class Sprite2DMaterial extends EffectMaterial {
   override setupHardwareClipping(builder: NodeBuilder): void {
     const clippingBuilder = builder as NodeBuilder & { hardwareClipping: boolean }
     clippingBuilder.hardwareClipping = false
+  }
+
+  /**
+   * Three r185 applies its built-in instance transform before assigning a
+   * custom `positionNode`. The synthesized quad uses `positionNode`, so the
+   * default order would overwrite the transformed position and collapse every
+   * instance back to the shared unit quad. Assign the synthesized corner first,
+   * then apply the instance matrix. Tight-mesh materials keep Three's default
+   * setup path because they read their position from geometry.
+   *
+   * @internal
+   */
+  override setupPosition(builder: NodeBuilder): Node<'vec3'> {
+    if (this.positionNode === null) return super.setupPosition(builder) as unknown as Node<'vec3'>
+
+    positionLocal.assign(subBuild(this.positionNode, 'POSITION', 'vec3'))
+
+    const object = builder.object as InstancedMesh
+    if (object.isInstancedMesh && object.instanceMatrix.isInstancedBufferAttribute) {
+      instancedMesh(object)
+    }
+
+    return positionLocal
   }
 
   /**

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { Texture } from 'three'
+import { BufferGeometry, InstancedMesh, Texture } from 'three'
+import { getCurrentStack, setCurrentStack, stack } from 'three/tsl'
 import { createWorld, universe } from 'koota'
 import { MaterialEffect, createMaterialEffect } from './MaterialEffect'
 import type { EffectNodeContext } from './MaterialEffect'
@@ -1270,5 +1271,29 @@ describe('Sprite2DMaterial clipping', () => {
     material.setupHardwareClipping(builder as never)
 
     expect(builder.hardwareClipping).toBe(false)
+  })
+})
+
+describe('Sprite2DMaterial synthesized positions', () => {
+  it('applies the r185 instance transform after assigning the synthesized corner', () => {
+    const material = new Sprite2DMaterial()
+    const mesh = new InstancedMesh(new BufferGeometry(), undefined, 1)
+    const nodeStack = stack()
+    const previousStack = getCurrentStack()
+
+    setCurrentStack(nodeStack)
+    try {
+      material.setupPosition({ object: mesh } as never)
+    } finally {
+      setCurrentStack(previousStack)
+    }
+
+    const assignIndex = nodeStack.nodes.findIndex((node) => 'isAssignNode' in node && node.isAssignNode)
+    const instanceIndex = nodeStack.nodes.findIndex(
+      (node) => 'isShaderCallNodeInternal' in node && node.isShaderCallNodeInternal
+    )
+
+    expect(assignIndex).toBeGreaterThanOrEqual(0)
+    expect(instanceIndex).toBeGreaterThan(assignIndex)
   })
 })
