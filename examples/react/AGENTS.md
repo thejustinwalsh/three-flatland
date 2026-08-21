@@ -50,7 +50,7 @@ The stats graph cycles `fps → ms → gpu → mem` on click. The `gpu` mode sho
 ## useThree Selectors
 Prefer individual selectors to avoid unnecessary re-renders:
 ```tsx
-const gl = useThree((s) => s.gl)
+const renderer = useThree((s) => s.renderer)
 const camera = useThree((s) => s.camera)
 ```
 

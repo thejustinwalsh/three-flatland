@@ -65,7 +65,7 @@ import { useLoader } from '@react-three/fiber/webgpu'
 import { SkiaCanvas, SkiaRect, SkiaFontLoader, attachSkiaTexture } from '@three-flatland/skia/react'
 
 function SkiaPanel() {
-  const renderer = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   return (
     <mesh>
       <meshBasicMaterial transparent premultipliedAlpha>

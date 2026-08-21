@@ -135,7 +135,7 @@ Schema fields become typed properties on instances with zero-cost uniform update
 
     function Scene() {
       const flatlandRef = useRef(null)
-      const gl = useThree((s) => s.gl)
+      const renderer = useThree((s) => s.renderer)
 
       useEffect(() => {
         const flatland = flatlandRef.current
@@ -148,7 +148,7 @@ Schema fields become typed properties on instances with zero-cost uniform update
       }, [])
 
       useFrame(() => {
-        flatlandRef.current?.render(gl as unknown as WebGPURenderer)
+        flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
       }, { phase: 'render' })
 
       return (

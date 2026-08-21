@@ -113,9 +113,9 @@ Flatland users have nothing to wire up. When `DEVTOOLS_BUNDLED` is true (Vite se
 
     function Scene() {
       const flatlandRef = useRef(null)
-      const gl = useThree((s) => s.gl)
+      const renderer = useThree((s) => s.renderer)
       useFrame(() => {
-        flatlandRef.current?.render(gl as unknown as WebGPURenderer)
+        flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
       }, { phase: 'render' })
       return <flatland ref={flatlandRef} viewSize={80}>{/* ... */}</flatland>
     }

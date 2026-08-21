@@ -66,7 +66,7 @@ function tick(delta: number) {
 import { usePane, useFpsGraph, useStatsMonitor } from '@three-flatland/tweakpane/react'
 
 function DevPanel() {
-  const renderer = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   const scene = useThree((s) => s.scene)
   const pane = usePane({ title: 'Scene' })
   useFpsGraph(pane, { label: 'FPS' })
