@@ -1,34 +1,21 @@
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
+import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parse as parseGLSL } from '@shaderfrog/glsl-parser'
-import ts from 'typescript'
-import { afterAll, describe, expect, it, vi } from 'vitest'
 import {
-  DataTexture,
-  LinearFilter,
-  Mesh,
-  NoColorSpace,
-  PCFShadowMap,
-  PerspectiveCamera,
-  PlaneGeometry,
-  RGBAFormat,
-  Scene,
-  SRGBColorSpace,
-  UnsignedByteType,
-  WebGLCoordinateSystem,
-  WebGPUCoordinateSystem,
-} from 'three'
-import { GLSLNodeBuilder, NodeMaterial, WGSLNodeBuilder } from 'three/webgpu'
-import { bool, context, float, Fn, texture as sampleTexture, vec2, vec3, vec4 } from 'three/tsl'
+  compileFragmentNode,
+  countShaderCalls,
+  createShaderTexture,
+  shaderSources,
+  validateShaderSources,
+  type ShaderBackend,
+  type ShaderSource,
+} from '@three-flatland/tsl-test'
+import ts from 'typescript'
+import { afterAll, describe, expect, it } from 'vitest'
+import { bool, float, texture as sampleTexture, vec2, vec3, vec4 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { oklabToOklchNode, oklchToOklabNode } from './color/oklch'
 import * as publicNodes from './index'
-
-type ShaderBackend = 'glsl' | 'wgsl'
 
 interface ParameterSpec {
   name: string
@@ -47,37 +34,12 @@ interface ShaderInvocation {
   spec: ShaderFunctionSpec
 }
 
-interface CompiledShader {
-  backend: ShaderBackend
-  label: string
-  output: string
-  stage: 'fragment' | 'vertex'
-}
-
 type PublicNodeFunction = (...args: unknown[]) => unknown
-type TestNodeBuilder = {
-  build(): void
-  camera: PerspectiveCamera
-  fragmentShader: string | null
-  scene: Scene
-  vertexShader: string | null
-}
 
 const sourceRoot = dirname(fileURLToPath(import.meta.url))
-const require = createRequire(import.meta.url)
 const deepPublicNodes = { oklabToOklchNode, oklchToOklabNode }
-const compiledShaders = new Map<string, CompiledShader>()
-const texture = new DataTexture(
-  new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]),
-  2,
-  2,
-  RGBAFormat,
-  UnsignedByteType
-)
-texture.colorSpace = NoColorSpace
-texture.magFilter = LinearFilter
-texture.minFilter = LinearFilter
-texture.needsUpdate = true
+const compiledShaders = new Map<string, ShaderSource>()
+const texture = createShaderTexture()
 
 function collectSourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -249,6 +211,12 @@ function shaderVariants(spec: ShaderFunctionSpec): ShaderInvocation[] {
       ]
     case 'palettizeNearest':
       return [{ args: [color, texture, 16], label: 'maximum palette', spec }]
+    case 'phosphorMask':
+      return (['slot', 'shadow'] as const).map((maskType) => ({
+        args: [color, uv, maskType, 320, 0.4],
+        label: maskType,
+        spec,
+      }))
     default:
       return []
   }
@@ -270,66 +238,14 @@ function normalizeShaderResult(name: string, result: unknown): Node {
   throw new Error(`${name} did not return a TSL node or supported node result`)
 }
 
-function createMockRenderer(backend: ShaderBackend) {
-  return {
-    backend: {
-      capabilities: { getUniformBufferLimit: () => 65_536 },
-      isWebGLBackend: backend === 'glsl',
-      isWebGPUBackend: backend === 'wgsl',
-      utils: {
-        getTextureSampleData: () => ({ isMSAA: false, primarySamples: 1, samples: 1 }),
-      },
-    },
-    contextNode: context({}),
-    coordinateSystem: backend === 'wgsl' ? WebGPUCoordinateSystem : WebGLCoordinateSystem,
-    currentSamples: 1,
-    depth: true,
-    getMRT: () => null,
-    getRenderTarget: () => null,
-    hasCompatibility: () => false,
-    hasFeature: (feature: string) => feature === 'float32-filterable',
-    highPrecision: false,
-    library: { fromMaterial: (material: NodeMaterial) => material },
-    lighting: { enabled: true },
-    logarithmicDepthBuffer: false,
-    outputColorSpace: SRGBColorSpace,
-    reversedDepthBuffer: false,
-    shadowMap: { enabled: false, transmitted: false, type: PCFShadowMap },
-  }
-}
-
 function compileShader(spec: ShaderFunctionSpec, backend: ShaderBackend, args = requiredArguments(spec)) {
   const publicFunction = resolveShaderFunction(spec.name)
-
-  const material = new NodeMaterial()
-  material.fragmentNode = Fn(() => normalizeShaderResult(spec.name, publicFunction(...args)))()
-
-  const mesh = new Mesh(new PlaneGeometry(1, 1), material)
-  const renderer = createMockRenderer(backend)
-  const builder = (backend === 'wgsl'
-    ? new WGSLNodeBuilder(mesh, renderer as never)
-    : new GLSLNodeBuilder(mesh, renderer as never)) as unknown as TestNodeBuilder
-  builder.camera = new PerspectiveCamera()
-  builder.scene = new Scene()
-  const codegenErrors: unknown[][] = []
-  const errorSpy = vi.spyOn(console, 'error').mockImplementation((...error) => codegenErrors.push(error))
-  try {
-    builder.build()
-  } finally {
-    errorSpy.mockRestore()
+  const program = compileFragmentNode(() => normalizeShaderResult(spec.name, publicFunction(...args)), backend)
+  expect(program.diagnostics, `${backend} ${spec.name} logged shader code-generation errors`).toEqual([])
+  for (const shader of shaderSources(program, spec.name)) {
+    compiledShaders.set(`${shader.backend}:${shader.stage}:${shader.output}`, shader)
   }
-  expect(codegenErrors, `${backend} ${spec.name} logged shader code-generation errors`).toEqual([])
-
-  const shader = {
-    fragment: builder.fragmentShader,
-    vertex: builder.vertexShader,
-  }
-  for (const [stage, output] of Object.entries(shader) as Array<['fragment' | 'vertex', string | null]>) {
-    if (output) {
-      compiledShaders.set(`${backend}:${stage}:${output}`, { backend, label: spec.name, output, stage })
-    }
-  }
-  return shader
+  return program
 }
 
 function expectValidShaderOutput(backend: ShaderBackend, stage: 'fragment' | 'vertex', output: string | null) {
@@ -350,78 +266,25 @@ function expectScalerSampleBudget(name: string, backend: ShaderBackend, fragment
   const sampleBudget: Record<string, number> = { eagle: 12, scale2x: 8 }
   const expectedSamples = sampleBudget[name]
   if (expectedSamples === undefined) return
-  expect(fragment.match(/\btextureSample\(/g) ?? [], `${name} duplicated texture samples`).toHaveLength(expectedSamples)
-}
-
-function validateGLSL(shaders: CompiledShader[]) {
-  for (const shader of shaders) {
-    const warningSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    try {
-      parseGLSL(shader.output, { stage: shader.stage })
-    } catch (error) {
-      throw new Error(`GLSL parser rejected ${shader.label} ${shader.stage}`, { cause: error })
-    } finally {
-      warningSpy.mockRestore()
-    }
-  }
-}
-
-function validateWGSL(shaders: CompiledShader[]) {
-  const shaderDirectory = mkdtempSync(join(tmpdir(), 'three-flatland-wgsl-'))
-  const nagaPackage = require.resolve('naga-wasi-cli/package.json')
-  const nagaBin = join(dirname(nagaPackage), 'bin/naga.mjs')
-
-  try {
-    const filenames = shaders.map((shader, index) => {
-      const filename = `${String(index).padStart(3, '0')}-${shader.label}-${shader.stage}.wgsl`
-      writeFileSync(join(shaderDirectory, filename), shader.output)
-      return filename
-    })
-    execFileSync(process.execPath, [nagaBin, '--bulk-validate', ...filenames], {
-      cwd: shaderDirectory,
-      encoding: 'utf8',
-      env: { ...process.env, NODE_NO_WARNINGS: '1' },
-      stdio: 'pipe',
-    })
-  } catch (error) {
-    const output =
-      typeof error === 'object' && error !== null && 'stderr' in error ? String(error.stderr) : String(error)
-    throw new Error(`Naga rejected emitted WGSL:\n${output}`, { cause: error })
-  } finally {
-    rmSync(shaderDirectory, { force: true, recursive: true })
-  }
+  expect(countShaderCalls(fragment, 'textureSample'), `${name} duplicated texture samples`).toBe(expectedSamples)
 }
 
 const shaderFunctions = collectPublicShaderFunctions()
 const shaderInvocations = shaderFunctions.flatMap(shaderVariants)
 
 afterAll(() => {
-  const shaders = [...compiledShaders.values()]
-  const glslShaders = shaders.filter((shader) => shader.backend === 'glsl')
-  const wgslShaders = shaders.filter((shader) => shader.backend === 'wgsl')
+  try {
+    const shaders = [...compiledShaders.values()]
+    const wgslShaders = shaders.filter((shader) => shader.backend === 'wgsl')
 
-  expect(wgslShaders.some((shader) => shader.output.includes('textureSample'))).toBe(true)
-  validateGLSL(glslShaders)
-  validateWGSL(wgslShaders)
-})
+    expect(wgslShaders.some((shader) => shader.output.includes('textureSample'))).toBe(true)
+    validateShaderSources(shaders)
+  } finally {
+    texture.dispose()
+  }
+}, 60_000)
 
 describe('public TSL shader compiler compatibility', () => {
-  it('rejects invalid emitted shader source', () => {
-    expect(() =>
-      validateGLSL([{ backend: 'glsl', label: 'invalid', output: '#version 300 es\nvoid main( {', stage: 'fragment' }])
-    ).toThrow()
-    expect(() =>
-      validateWGSL([
-        {
-          backend: 'wgsl',
-          label: 'invalid',
-          output: '@fragment fn main() { retrn; }',
-          stage: 'fragment',
-        },
-      ])
-    ).toThrow()
-  })
-
   it('keeps every public function in the compiler matrix', () => {
     const publishedExports = Object.entries({ ...publicNodes, ...deepPublicNodes })
       .filter(([, value]) => isPublicNodeFunction(value))
@@ -435,15 +298,15 @@ describe('public TSL shader compiler compatibility', () => {
   describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s', (backend) => {
     it.each(shaderFunctions)('$name', (spec) => {
       const shader = compileShader(spec, backend)
-      expectValidShaderOutput(backend, 'vertex', shader.vertex)
-      expectValidShaderOutput(backend, 'fragment', shader.fragment)
-      expectScalerSampleBudget(spec.name, backend, shader.fragment)
+      expectValidShaderOutput(backend, 'vertex', shader.vertexShader)
+      expectValidShaderOutput(backend, 'fragment', shader.fragmentShader)
+      expectScalerSampleBudget(spec.name, backend, shader.fragmentShader)
     })
 
     it.each(shaderInvocations)('$spec.name ($label)', (invocation) => {
       const shader = compileShader(invocation.spec, backend, invocation.args)
-      expectValidShaderOutput(backend, 'vertex', shader.vertex)
-      expectValidShaderOutput(backend, 'fragment', shader.fragment)
+      expectValidShaderOutput(backend, 'vertex', shader.vertexShader)
+      expectValidShaderOutput(backend, 'fragment', shader.fragmentShader)
     })
   })
 })

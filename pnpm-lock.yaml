@@ -1689,15 +1689,12 @@ importers:
 
   packages/nodes:
     devDependencies:
-      '@shaderfrog/glsl-parser':
-        specifier: 7.0.1
-        version: 7.0.1
+      '@three-flatland/tsl-test':
+        specifier: workspace:*
+        version: link:../../tools/tsl-test
       '@types/three':
         specifier: 'catalog:'
         version: 0.185.4
-      naga-wasi-cli:
-        specifier: 0.1.0
-        version: 0.1.0
       three:
         specifier: 'catalog:'
         version: 0.185.1
@@ -1736,6 +1733,9 @@ importers:
       '@react-three/fiber':
         specifier: 'catalog:'
         version: 10.0.0-alpha.3(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.185.1)
+      '@three-flatland/tsl-test':
+        specifier: workspace:*
+        version: link:../../tools/tsl-test
       '@types/three':
         specifier: 'catalog:'
         version: 0.185.4
@@ -1811,6 +1811,9 @@ importers:
       '@react-three/fiber':
         specifier: 'catalog:'
         version: 10.0.0-alpha.3(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.185.1)
+      '@three-flatland/tsl-test':
+        specifier: workspace:*
+        version: link:../../tools/tsl-test
       '@types/opentype.js':
         specifier: ^1.3.9
         version: 1.3.9
@@ -1878,6 +1881,9 @@ importers:
       '@three-flatland/atlas':
         specifier: workspace:*
         version: link:../atlas
+      '@three-flatland/tsl-test':
+        specifier: workspace:*
+        version: link:../../tools/tsl-test
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.9
@@ -1993,6 +1999,31 @@ importers:
       three-flatland:
         specifier: workspace:*
         version: link:../../packages/three-flatland
+
+  tools/tsl-test:
+    dependencies:
+      '@shaderfrog/glsl-parser':
+        specifier: 7.0.1
+        version: 7.0.1
+      naga-wasi-cli:
+        specifier: 0.1.0
+        version: 0.1.0
+      wgsl_reflect:
+        specifier: 1.5.0
+        version: 1.5.0
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.7
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.185.4
+      three:
+        specifier: 'catalog:'
+        version: 0.185.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
 
   tools/vscode:
     dependencies:
@@ -9300,6 +9331,9 @@ packages:
 
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
+
+  wgsl_reflect@1.5.0:
+    resolution: {integrity: sha512-ntYNHZgzBHs+pzmVCsSiRqyye3Ey1xdKEX0Ls8PiDBKIiGFwUOef0PdBbYvUyGTGFwLKkqTZOGmPAed70mquTw==}
 
   whatwg-encoding@3.1.1:
     resolution: {integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==}
@@ -17728,6 +17762,8 @@ snapshots:
   webidl-conversions@8.0.1: {}
 
   webpack-virtual-modules@0.6.2: {}
+
+  wgsl_reflect@1.5.0: {}
 
   whatwg-encoding@3.1.1:
     dependencies:

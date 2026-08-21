@@ -196,9 +196,8 @@
     "three": "catalog:"
   },
   "devDependencies": {
-    "@shaderfrog/glsl-parser": "7.0.1",
+    "@three-flatland/tsl-test": "workspace:*",
     "@types/three": "catalog:",
-    "naga-wasi-cli": "0.1.0",
     "three": "catalog:"
   },
   "keywords": [
