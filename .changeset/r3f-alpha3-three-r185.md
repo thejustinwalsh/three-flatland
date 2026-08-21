@@ -6,13 +6,14 @@
 '@three-flatland/slug': minor
 '@three-flatland/image': minor
 '@three-flatland/devtools': minor
+'@three-flatland/normals': patch
 'create-three-flatland': patch
 ---
 
 **BREAKING CHANGES**
 
 - Raise the supported Three.js runtime to `^0.185.1` and align development types on `@types/three ^0.185.4`.
-- Raise the React Three Fiber integration to the exact `10.0.0-alpha.3` release. React integrations now require React `^19.2.0`.
+- Raise the React Three Fiber integration to the exact `10.0.0-alpha.3` release. React integrations now require React `~19.2.0`, matching R3F alpha.3's `<19.3` peer window.
 
 Migrate Flatland's TSL, clipping, disposal, and instanced-buffer compatibility paths to Three.js r185. The r185 instancing event regression is handled before geometry upload, matching the upstream fix, so newly visible batched instances do not flash for one frame.
 
