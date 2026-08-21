@@ -56,6 +56,7 @@ async function main() {
       loader.removeAttribute('data-loaded')
       loader.removeAttribute('aria-label')
       loader.setAttribute('role', 'status')
+      loader.style.color = '#9aa4b2'
       loader.textContent = 'This app could not initialize WebGPU or WebGL 2 rendering.'
     }
     return

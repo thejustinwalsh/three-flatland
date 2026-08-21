@@ -33,6 +33,13 @@ test('replaces the loading overlay when no renderer backend initializes', async 
   await expect(loader).toContainText('This app could not initialize WebGPU or WebGL 2 rendering.')
   await expect(loader).toHaveAttribute('role', 'status')
   await expect(loader).not.toHaveAttribute('aria-label')
+  await expect(loader).toHaveCSS('color', 'rgb(154, 164, 178)')
+
+  const hiddenFallback = page.locator('#root [aria-hidden="true"]').filter({
+    hasText: 'This app could not initialize WebGPU or WebGL 2 rendering.',
+  })
+  await expect(hiddenFallback).toHaveCount(1)
+  await expect(hiddenFallback).not.toHaveAttribute('role')
   await expect(page.locator('canvas')).toHaveCount(0)
 })
 
