@@ -28,6 +28,12 @@ import { readFlip, readRotatedFrameFlag } from './instanceAttributes'
 import { synthQuadNodes } from './synthQuadNodes'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { GlobalUniforms } from '../GlobalUniforms'
+import { installInstanceEventUpdateBeforePatch } from '../pipeline/_instanceEventUpdateBeforePatch'
+
+// Public material/tilemap subpaths can be consumed without importing
+// SpriteBatch. Install the idempotent r185 instance-upload timing patch here
+// too so custom InstancedMesh + Sprite2DMaterial users get the same behavior.
+installInstanceEventUpdateBeforePatch()
 
 // Re-export types that moved to EffectMaterial for backwards compatibility
 export type { ColorTransformContext, ColorTransformFn } from './EffectMaterial'
