@@ -26,7 +26,8 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
         cam.right = (viewSize * aspect) / 2
         cam.top = viewSize / 2
         cam.bottom = -viewSize / 2
-        ;(cam as any).manual = true
+        const manualCamera = cam as ThreeOrthographicCamera & { manual?: boolean }
+        manualCamera.manual = true
         cam.updateProjectionMatrix()
         set({ camera: cam })
       }}
