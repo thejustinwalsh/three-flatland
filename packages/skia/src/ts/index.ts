@@ -1,3 +1,5 @@
+/// <reference types="@webgpu/types" preserve="true" />
+
 /**
  * @three-flatland/skia
  *
