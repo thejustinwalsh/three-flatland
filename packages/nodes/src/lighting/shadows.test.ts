@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { Texture, Vector2 } from 'three'
-import { float, uniform, vec2 } from 'three/tsl'
+import { float, uniform, vec2, vec3 } from 'three/tsl'
 import { shadow2D, shadowDrop, shadowDropSoft, shadowSDF2D, shadowSoft2D } from './shadows'
 
 // Node instances expose `.toVar()` — used as a smoke check for a
@@ -76,7 +76,7 @@ describe('shadowDrop', () => {
     const tex = new Texture()
     const uv = vec2(0.5, 0.5)
 
-    const result = shadowDrop(tex, uv, vec2(0.02, -0.02), vec2(0, 0, 0), float(0.5))
+    const result = shadowDrop(tex, uv, vec2(0.02, -0.02), vec3(0, 0, 0), float(0.5))
     expect(result).toBeDefined()
     expect(isNodeShaped(result)).toBe(true)
   })
@@ -105,7 +105,7 @@ describe('shadowDropSoft', () => {
     const tex = new Texture()
     const uv = vec2(0.5, 0.5)
 
-    const result = shadowDropSoft(tex, uv, vec2(0.02, -0.02), vec2(0, 0, 0), float(0.5), uniform(0.01), 6)
+    const result = shadowDropSoft(tex, uv, vec2(0.02, -0.02), vec3(0, 0, 0), float(0.5), uniform(0.01), 6)
     expect(result).toBeDefined()
     expect(isNodeShaped(result)).toBe(true)
   })

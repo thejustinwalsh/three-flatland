@@ -4,14 +4,15 @@ import { DataTexture, RGBAFormat, UnsignedByteType, NearestFilter } from 'three'
 import { palettize, palettizeDithered, palettizeNearest } from './palettize'
 
 // Create a simple test palette texture
-function createTestPalette(colors: number[][]): DataTexture {
+function createTestPalette(colors: Array<[number, number, number]>): DataTexture {
   const width = colors.length
   const data = new Uint8Array(width * 4)
 
   for (let i = 0; i < width; i++) {
-    data[i * 4] = Math.floor(colors[i][0] * 255)
-    data[i * 4 + 1] = Math.floor(colors[i][1] * 255)
-    data[i * 4 + 2] = Math.floor(colors[i][2] * 255)
+    const color = colors[i]!
+    data[i * 4] = Math.floor(color[0] * 255)
+    data[i * 4 + 1] = Math.floor(color[1] * 255)
+    data[i * 4 + 2] = Math.floor(color[2] * 255)
     data[i * 4 + 3] = 255
   }
 
