@@ -119,6 +119,7 @@
     "dev": "tsdown --watch",
     "test": "vitest run",
     "test:gl": "vitest run --project gl",
+    "test:react": "vitest run --project react",
     "test:wgpu": "vitest run --project wgpu",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
