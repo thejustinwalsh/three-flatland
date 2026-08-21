@@ -223,17 +223,19 @@ await openCommand('threeFlatland.merge.openMergeTool', [
 
 ### `webviewFrame(panelTitle)`
 
-Waits for the panel's editor tab to be visible (`workbox.getByRole('tab',
-{ name: panelTitle })`) — so a panel that never opened fails with a clear
-timeout on the tab, not a confusing failure two steps later trying to
-find an iframe that isn't there — then drills through VS Code's
-double-iframe webview structure:
+Waits for the panel's editor tab to be selected and visible
+(`workbox.getByRole('tab', { name: panelTitle, selected: true })`) — so a
+panel that never opened or is not the active editor fails with a clear timeout
+on the tab, not a confusing failure two steps later trying to find an iframe
+that belongs to another panel — then drills through VS Code's double-iframe
+webview structure:
 
-1. **Outer host iframe** — `iframe.webview.ready`. One per webview panel;
-   VS Code sets `className = "webview " + customClasses` on creation and
-   adds the `ready` class once the webview's internal service-worker page
-   has booted (`webviewElement.ts`). `.last()` is defensive against a
-   previous panel's iframe still mid-teardown.
+1. **Outer host iframe** — `iframe.webview.ready:visible`. One per active
+   webview panel; VS Code sets `className = "webview " + customClasses` on
+   creation and adds the `ready` class once the webview's internal
+   service-worker page has booted (`webviewElement.ts`). A previous panel's
+   ready iframe can remain hidden while VS Code disposes it, so the fixture
+   requires exactly one visible iframe before selecting it.
 2. **Inner content iframe** — `#active-frame` inside the outer frame's
    document. This is the extension's actual document — our Vite-built
    React app (`webview/<tool>/index.html`) — swapped in once loaded
