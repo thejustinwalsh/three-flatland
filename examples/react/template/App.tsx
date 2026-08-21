@@ -3,7 +3,7 @@ import { useLayoutEffect } from 'react'
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneInput } from '@three-flatland/devtools/react'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 
 extend({ Sprite2D })
 

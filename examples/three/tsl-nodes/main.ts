@@ -1,5 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { initializeRenderer } from '../../_shared/rendererFallback'
+import { initializeRenderer } from './rendererFallback'
 import { texture as sampleTexture, uv, attribute, vec2, vec4, float } from 'three/tsl'
 import { Scene, OrthographicCamera, NearestFilter, CanvasTexture, RepeatWrapping } from 'three'
 import { gemGradientNode } from './GemBackground'

@@ -2,7 +2,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, NearestFilter } from 'three'
 import { gemClearColor } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from '../../_shared/rendererFallback'
+import { initializeRenderer } from './rendererFallback'
 import {
   AnimatedSprite2D,
   Sprite2DMaterial,

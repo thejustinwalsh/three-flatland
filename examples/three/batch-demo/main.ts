@@ -12,7 +12,7 @@ import {
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from '../../_shared/rendererFallback'
+import { initializeRenderer } from './rendererFallback'
 
 // Configuration
 const TILE_SIZE = 64

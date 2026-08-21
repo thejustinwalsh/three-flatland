@@ -5,7 +5,7 @@ import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
 import { Flatland, Sprite2D, TextureLoader, createPassEffect } from 'three-flatland'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from '../../_shared/rendererFallback'
+import { initializeRenderer } from './rendererFallback'
 import type { PassEffect } from 'three-flatland'
 import {
   // CRT display nodes

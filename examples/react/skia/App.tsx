@@ -12,7 +12,7 @@ import {
   useSkiaContext,
   attachSkiaTexture,
 } from '@three-flatland/skia/react'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 import { SkiaPaint, SkiaPath } from '@three-flatland/skia'
 import type { SkiaCanvas as SkiaCanvasInstance } from '@three-flatland/skia/three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'

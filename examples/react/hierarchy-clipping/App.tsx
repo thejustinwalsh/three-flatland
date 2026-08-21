@@ -3,7 +3,7 @@ import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import { DataTexture, NearestFilter, RGBAFormat, type Group, type OrthographicCamera } from 'three'
 import { Sprite2D, SpriteGroup } from 'three-flatland/react'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 

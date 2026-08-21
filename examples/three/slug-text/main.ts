@@ -6,7 +6,7 @@ import type { SlugFont, StyleSpan } from '@three-flatland/slug'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from '../../_shared/rendererFallback'
+import { initializeRenderer } from './rendererFallback'
 
 // --- Lorem ipsum generator ---
 

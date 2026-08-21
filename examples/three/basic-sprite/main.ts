@@ -4,7 +4,7 @@ import { Sprite2D, TextureLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from '../../_shared/rendererFallback'
+import { initializeRenderer } from './rendererFallback'
 
 // HMR cleanup — stop the old animate loop + dispose the old renderer
 // when Vite reloads this module. Without this, every dev save stacks a

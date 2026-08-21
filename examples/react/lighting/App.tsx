@@ -16,7 +16,7 @@ import {
   attachEffect,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'

@@ -5,7 +5,7 @@ import type { WebGPURenderer } from 'three/webgpu'
 import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
 import { Flatland, Sprite2D, TextureLoader, createPassEffect } from 'three-flatland/react'
 import type { PassEffect } from 'three-flatland/react'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 import {

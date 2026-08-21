@@ -1,5 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { initializeRenderer } from '../../_shared/rendererFallback'
+import { initializeRenderer } from './rendererFallback'
 import {
   Scene,
   OrthographicCamera,

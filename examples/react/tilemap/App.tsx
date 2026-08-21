@@ -3,7 +3,7 @@ import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { DataTexture, RGBAFormat, NearestFilter, SRGBColorSpace, type OrthographicCamera } from 'three'
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/devtools/react'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 

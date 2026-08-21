@@ -12,7 +12,7 @@ import {
   type MaterialEffect,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 import { tintAdditive, hueShift, saturate, outline8, pixelate, dissolvePixelated, tint } from '@three-flatland/nodes'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 import { GemBackground } from './GemBackground'

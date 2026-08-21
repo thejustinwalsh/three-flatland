@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Vector2 } from 'three'
-import { initializeRenderer } from '../../_shared/rendererFallback'
+import { initializeRenderer } from './rendererFallback'
 import {
   Flatland,
   Light2D,

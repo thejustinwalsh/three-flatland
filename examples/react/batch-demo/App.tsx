@@ -12,7 +12,7 @@ import {
   type SpriteSheet,
   type RenderStats,
 } from 'three-flatland/react'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import type { Pane } from 'tweakpane'
 import { GemBackground } from './GemBackground'

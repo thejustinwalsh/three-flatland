@@ -10,7 +10,7 @@ import {
   usePaneInput,
   usePaneRadioGrid,
 } from '@three-flatland/devtools/react'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 import { GemBackground, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
 

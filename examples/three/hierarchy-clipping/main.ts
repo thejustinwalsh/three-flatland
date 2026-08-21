@@ -4,7 +4,7 @@ import { createPane } from '@three-flatland/devtools'
 import { Sprite2D, SpriteGroup, createDevtoolsProvider } from 'three-flatland'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from '../../_shared/rendererFallback'
+import { initializeRenderer } from './rendererFallback'
 
 const palette = [0x55, 0xd6, 0xbe, 0xff, 0xb4, 0x8e, 0xff, 0xff, 0xff, 0xc8, 0x57, 0xff, 0xff, 0x73, 0xa8, 0xff]
 const texture = new DataTexture(new Uint8Array(palette), 4, 1, RGBAFormat)

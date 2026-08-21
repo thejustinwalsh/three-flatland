@@ -11,7 +11,7 @@ import {
 import { usePane, DevtoolsProvider } from '@three-flatland/devtools/react'
 import { Color, Vector3 } from 'three'
 import type { ThreeEvent } from '@react-three/fiber/webgpu'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 

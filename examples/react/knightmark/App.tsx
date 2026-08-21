@@ -15,7 +15,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import { WebGPUFallback } from '../../_shared/WebGPUFallback'
+import { WebGPUFallback } from './WebGPUFallback'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 // Knightmark doesn't render any gem-background layer — its sprites
 // fill the viewport. The body bg (#16191e) shows through during

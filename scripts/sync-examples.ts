@@ -1,7 +1,7 @@
 /**
- * Syncs the gem-background helper into every example, generates each
- * example's `gem.ts`, and regenerates the docs `example-gems.ts` lookup
- * table consumed by GalleryGrid.
+ * Syncs the canonical example helpers into every standalone example,
+ * generates each example's `gem.ts`, and regenerates the docs
+ * `example-gems.ts` lookup table consumed by GalleryGrid.
  *
  * Usage: pnpm sync:examples
  *
@@ -11,6 +11,8 @@
  * What gets synced:
  *   examples/three/template/GemBackground.ts → examples/three/<slug>/GemBackground.ts
  *   examples/react/template/GemBackground.tsx → examples/react/<slug>/GemBackground.tsx
+ *   examples/_shared/rendererFallback.ts → every example directory
+ *   examples/_shared/WebGPUFallback.tsx → every React example directory
  *
  * What gets generated:
  *   examples/three/<slug>/gem.ts   — `export const GEM = '<gem>' as const`
@@ -39,9 +41,22 @@ const ROOT = resolve(__dirname, '..')
 const VARIANTS = ['three', 'react'] as const
 type Variant = (typeof VARIANTS)[number]
 
-const TEMPLATE_FILES: Record<Variant, string> = {
-  three: 'GemBackground.ts',
-  react: 'GemBackground.tsx',
+type SyncedFile = {
+  source: string
+  target: string
+  exclude?: readonly string[]
+}
+
+const SYNCED_FILES: Record<Variant, readonly SyncedFile[]> = {
+  three: [
+    { source: 'examples/three/template/GemBackground.ts', target: 'GemBackground.ts' },
+    { source: 'examples/_shared/rendererFallback.ts', target: 'rendererFallback.ts', exclude: ['skia'] },
+  ],
+  react: [
+    { source: 'examples/react/template/GemBackground.tsx', target: 'GemBackground.tsx' },
+    { source: 'examples/_shared/rendererFallback.ts', target: 'rendererFallback.ts' },
+    { source: 'examples/_shared/WebGPUFallback.tsx', target: 'WebGPUFallback.tsx' },
+  ],
 }
 
 const GENERATED_BANNER =
@@ -97,14 +112,6 @@ function readSortFrontmatter(slug: string): number | null {
   const match = block.match(/^\s*sort:\s*(\d+)\s*$/m)
   if (!match) return null
   return Number(match[1])
-}
-
-/**
- * Read the canonical helper body from the template directory.
- */
-function readTemplate(variant: Variant): string {
-  const path = join(ROOT, 'examples', variant, 'template', TEMPLATE_FILES[variant])
-  return readFileSync(path, 'utf-8')
 }
 
 /**
@@ -175,7 +182,7 @@ function docsModuleSource(map: Record<string, Gem | null>): string {
 
 function main(): void {
   const action = verify ? 'Verifying' : 'Syncing'
-  console.log(`${action} gem-background helpers + per-example gem.ts...`)
+  console.log(`${action} standalone example helpers + per-example gem.ts...`)
   console.log(`Order: [${GEM_ORDER.join(', ')}]`)
   if (Object.keys(GEM_OVERRIDES).length > 0) {
     console.log(`Overrides: ${JSON.stringify(GEM_OVERRIDES)}`)
@@ -207,7 +214,17 @@ function main(): void {
   const docsMap: Record<string, Gem | null> = {}
 
   for (const variant of VARIANTS) {
-    const template = readTemplate(variant)
+    const syncedFiles = SYNCED_FILES[variant].map((file) => ({
+      ...file,
+      body: readFileSync(join(ROOT, file.source), 'utf-8'),
+    }))
+    const templateDir = join(ROOT, 'examples', variant, 'template')
+    for (const file of syncedFiles) {
+      const templateTarget = join(templateDir, file.target)
+      if (templateTarget !== join(ROOT, file.source)) {
+        syncFile(templateTarget, file.body, `${variant}/template ${file.target}`)
+      }
+    }
     const variantSlugs = listExamples(variant)
     console.log(`[${variant}] ${variantSlugs.length} examples`)
 
@@ -221,7 +238,10 @@ function main(): void {
       if (variant === 'three') docsMap[slug] = gem
 
       const exampleDir = join(ROOT, 'examples', variant, slug)
-      syncFile(join(exampleDir, TEMPLATE_FILES[variant]), template, `${variant}/${slug} helper`)
+      for (const file of syncedFiles) {
+        if (file.exclude?.includes(slug)) continue
+        syncFile(join(exampleDir, file.target), file.body, `${variant}/${slug} ${file.target}`)
+      }
       syncFile(join(exampleDir, 'gem.ts'), gemModuleSource(gem), `${variant}/${slug} gem.ts`)
     }
   }
@@ -240,7 +260,7 @@ function main(): void {
       process.exit(1)
     }
     console.log('')
-    console.log('✓ All gem-background files in sync.')
+    console.log('✓ All standalone example helpers are in sync.')
     return
   }
   console.log('')
