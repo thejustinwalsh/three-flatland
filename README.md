@@ -27,7 +27,7 @@
 npm install three-flatland three koota
 
 # For React Three Fiber
-npm install three-flatland @react-three/fiber@alpha react react-dom
+npm install three-flatland @react-three/fiber@10.0.0-alpha.3 react react-dom
 
 # TSL shader nodes
 npm install @three-flatland/nodes
@@ -178,8 +178,8 @@ flash.intensity = 0.8 // Animate per frame
 ## Requirements
 
 - **three** ^0.185.1 (TSL/WebGPU support)
-- **koota** >= 0.6.5 (ECS for batch rendering)
-- **React** >= 19.0.0 (for `three-flatland/react`, uses `use()` hook)
+- **koota** ^0.6.5 (ECS for batch rendering)
+- **React** ^19.2.0 (for `three-flatland/react`, uses `use()` hook)
 - **@react-three/fiber** 10.0.0-alpha.3 (for React, WebGPU support)
 
 ## Documentation
