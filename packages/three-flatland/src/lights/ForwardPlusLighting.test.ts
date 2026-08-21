@@ -130,6 +130,7 @@ describe('ForwardPlusLighting', () => {
     expect(fp.tileTexture.image.width).toBe(TILE_TEXTURE_DIM)
     expect(fp.tileTexture.image.height).toBe(TILE_TEXTURE_DIM)
     expect(fp.tileCountX).toBe(0)
+    expect(fp.tileCountXNode.nodeType).toBe('int')
   })
 
   it('should init with screen dimensions', () => {
