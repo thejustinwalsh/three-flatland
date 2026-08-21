@@ -16,9 +16,9 @@ const primaryTexture = createShaderTexture()
 const compareTexture = createShaderTexture()
 Object.assign(compareTexture, { isCompressedTexture: true })
 
-afterAll(() => {
+afterAll(async () => {
   try {
-    validateShaderSources([...shaders.values()])
+    await validateShaderSources([...shaders.values()])
   } finally {
     primaryTexture.dispose()
     compareTexture.dispose()

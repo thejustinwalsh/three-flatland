@@ -325,14 +325,14 @@ describe('emitted shader semantics', () => {
   describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s', (backend) => {
     it.each(semanticShardIndexes)(
       'validates shard %i',
-      (shardIndex) => {
+      async (shardIndex) => {
         const shaders = [...compiledShaders.values()].filter((shader) => shader.backend === backend)
         const shardSize = Math.ceil(shaders.length / semanticShardIndexes.length)
         const shard = shaders.slice(shardIndex * shardSize, (shardIndex + 1) * shardSize)
 
         expect(shard.length).toBeGreaterThan(0)
         if (backend === 'wgsl') validateWGSL(shard)
-        else validateGLSL(shard)
+        else await validateGLSL(shard)
       },
       30_000
     )

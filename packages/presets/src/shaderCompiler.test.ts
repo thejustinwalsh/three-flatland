@@ -67,9 +67,9 @@ function lightingNode(withOptionalBranches: boolean) {
   return lightFn(context)
 }
 
-afterAll(() => {
+afterAll(async () => {
   try {
-    validateShaderSources([...shaders.values()])
+    await validateShaderSources([...shaders.values()])
   } finally {
     texture.dispose()
   }

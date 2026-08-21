@@ -6,11 +6,11 @@ function shader(output: string, backend: 'glsl' | 'wgsl'): ShaderSource {
 }
 
 describe('shader validators', () => {
-  it('accepts empty and single-backend batches', () => {
+  it('accepts empty and single-backend batches', async () => {
     expect(() => validateWGSL([])).not.toThrow()
-    expect(() =>
+    await expect(
       validateShaderSources([shader('#version 300 es\nprecision highp float;\nvoid main() {}', 'glsl')])
-    ).not.toThrow()
+    ).resolves.toBeUndefined()
   })
 
   it('accepts current-spec unsigned textureLoad mip levels despite Naga 24', () => {
@@ -42,7 +42,7 @@ describe('shader validators', () => {
     expect(() => validateWGSL([shader('@fragment fn main(', 'wgsl')])).toThrow(/WGSL parser rejected/)
   })
 
-  it('accepts valid GLSL and rejects malformed GLSL', () => {
+  it('accepts valid GLSL and rejects malformed GLSL', async () => {
     const valid = `#version 300 es
       precision highp float;
       layout(std140) uniform render {
@@ -55,28 +55,28 @@ describe('shader validators', () => {
       void main() { fragColor = cameraViewMatrix * instanceMatrix[0] * vec4(1.0); }
     `
 
-    expect(() => validateGLSL([shader(valid, 'glsl')])).not.toThrow()
-    expect(() => validateGLSL([shader('void main( {', 'glsl')])).toThrow(/GLSL parser rejected/)
+    await expect(validateGLSL([shader(valid, 'glsl')])).resolves.toBeUndefined()
+    await expect(validateGLSL([shader('void main( {', 'glsl')])).rejects.toThrow(/GLSL parser rejected/)
   })
 
-  it('rejects GLSL semantic warnings', () => {
+  it('rejects GLSL semantic warnings', async () => {
     const output = `#version 300 es
       precision highp float;
       out vec4 fragColor;
       void main() { fragColor = missingColor; }
     `
 
-    expect(() => validateGLSL([shader(output, 'glsl')])).toThrow(/GLSL parser rejected/)
+    await expect(validateGLSL([shader(output, 'glsl')])).rejects.toThrow(/GLSL parser rejected/)
   })
 
-  it.runIf(hasSemanticGLSLCompiler())('rejects type-invalid GLSL with the reference compiler', () => {
+  it.runIf(hasSemanticGLSLCompiler())('rejects type-invalid GLSL with the reference compiler', async () => {
     const output = `#version 300 es
       precision highp float;
       out vec4 fragColor;
       void main() { fragColor = vec4(1.0 - 1); }
     `
 
-    expect(() => validateGLSL([shader(output, 'glsl')])).toThrow(
+    await expect(validateGLSL([shader(output, 'glsl')])).rejects.toThrow(
       /GLSL compiler rejected emitted shaders:\n[\s\S]*validator-fixture\.frag[\s\S]*ERROR:/
     )
   })

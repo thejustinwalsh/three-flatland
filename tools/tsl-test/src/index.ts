@@ -1,9 +1,10 @@
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFile, execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { parse as parseGLSL } from '@shaderfrog/glsl-parser'
 // The package's `main` points at CommonJS syntax in a `.js` file while declaring
 // `type: module`. Import its actual ESM build explicitly so every Vitest consumer
@@ -64,6 +65,7 @@ type TestNodeBuilder = {
 }
 
 const require = createRequire(import.meta.url)
+const execFileAsync = promisify(execFile)
 // CI configures this explicitly so a missing compiler is a hard failure. Local
 // runs auto-detect Khronos glslang and otherwise retain portable parse/scope
 // validation; set the variable to an empty string to exercise that fallback.
@@ -202,7 +204,7 @@ function normalizeUniformBlocksForShaderfrog(source: string): string {
   )
 }
 
-export function validateGLSL(shaders: ShaderSource[]): void {
+export async function validateGLSL(shaders: ShaderSource[]): Promise<void> {
   for (const shader of shaders) {
     try {
       parseGLSL(normalizeUniformBlocksForShaderfrog(shader.output), {
@@ -230,14 +232,17 @@ export function validateGLSL(shaders: ShaderSource[]): void {
       writeFileSync(join(shaderDirectory, filename), shader.output)
       return filename
     })
-    output = execFileSync(glslCompiler, filenames, {
+    // Keep this subprocess asynchronous: glslang can spend tens of seconds on
+    // a large matrix under CI load, and a synchronous wait starves Vitest's
+    // worker-control channel even though every shader ultimately passes.
+    const result = await execFileAsync(glslCompiler, filenames, {
       cwd: shaderDirectory,
       encoding: 'utf8',
       killSignal: 'SIGKILL',
       maxBuffer: 16 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'pipe'],
       timeout: SHADER_COMPILER_TIMEOUT_MS,
     })
+    output = result.stdout
   } catch (error) {
     throw new Error(`GLSL compiler rejected emitted shaders:\n${glslCompilerFailure(error)}`, { cause: error })
   } finally {
@@ -270,7 +275,10 @@ function conciseGLSLDiagnostics(output: string): string {
 
 function glslCompilerFailure(error: unknown): string {
   if (typeof error !== 'object' || error === null) return String(error)
-  if ('code' in error && error.code === 'ETIMEDOUT')
+  if (
+    ('code' in error && error.code === 'ETIMEDOUT') ||
+    ('killed' in error && error.killed === true && 'signal' in error && error.signal === 'SIGKILL')
+  )
     return `glslangValidator timed out after ${SHADER_COMPILER_TIMEOUT_MS}ms`
 
   const output = ['stdout', 'stderr']
@@ -511,8 +519,8 @@ function nagaFailure(error: unknown): string {
     : 'Naga failed without diagnostic output'
 }
 
-export function validateShaderSources(shaders: ShaderSource[]): void {
-  validateGLSL(shaders.filter((shader) => shader.backend === 'glsl'))
+export async function validateShaderSources(shaders: ShaderSource[]): Promise<void> {
+  await validateGLSL(shaders.filter((shader) => shader.backend === 'glsl'))
   validateWGSL(shaders.filter((shader) => shader.backend === 'wgsl'))
 }
 

@@ -63,9 +63,9 @@ function capture(label: string, backend: ShaderBackend, material: NodeMaterial) 
   }
 }
 
-afterAll(() => {
+afterAll(async () => {
   try {
-    validateShaderSources([...shaders.values()])
+    await validateShaderSources([...shaders.values()])
   } finally {
     for (const [, material] of materials) material.dispose()
     curveTexture.dispose()

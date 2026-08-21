@@ -100,9 +100,9 @@ function occlusionGeometry() {
   return geometry
 }
 
-afterAll(() => {
+afterAll(async () => {
   try {
-    validateShaderSources([...shaders.values()])
+    await validateShaderSources([...shaders.values()])
   } finally {
     sdfGenerator.dispose()
     occlusionPass.dispose()
