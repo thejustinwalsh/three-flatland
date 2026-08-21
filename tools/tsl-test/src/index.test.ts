@@ -55,6 +55,7 @@ describe('shader validators', () => {
     expect(glslCompilerFailure({ code: null, killed: true, signal: 'SIGKILL' })).toBe(
       'glslangValidator timed out after 25000ms'
     )
+    expect(nagaFailure({ code: 'ETIMEDOUT' })).toBe('Naga timed out after 25000ms')
     expect(nagaFailure({ code: null, killed: true, signal: 'SIGKILL' })).toBe('Naga timed out after 25000ms')
   })
 
