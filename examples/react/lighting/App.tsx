@@ -313,10 +313,11 @@ function FlatlandScene(props: SceneProps) {
     () => [...fixedLightPositions, ...switchPositions],
     [fixedLightPositions, switchPositions]
   )
+  const torchCount = allTorchPositions.length
 
   useEffect(() => {
-    setTorchEnabled(allTorchPositions.map(() => true))
-  }, [allTorchPositions.length])
+    setTorchEnabled(Array.from({ length: torchCount }, () => true))
+  }, [torchCount])
 
   const heroRef = useRef<AnimatedSprite2D | null>(null)
   const heroPos = useRef(new Vector2(0, 0))
