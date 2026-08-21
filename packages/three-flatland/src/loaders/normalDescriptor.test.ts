@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { framesToRegions, wholeTextureRegion, tileToRegions, tilesetToRegions } from './normalDescriptor'
+import {
+  buildTilesetGrid,
+  framesToRegions,
+  wholeTextureRegion,
+  tileToRegions,
+  tilesetToRegions,
+} from './normalDescriptor'
 
 describe('framesToRegions', () => {
   it('emits one region per frame with the same rect', () => {
@@ -386,5 +392,30 @@ describe('tilesetToRegions', () => {
     expect(regions[1]).toMatchObject({ direction: 'south' })
     // Untagged cell: full-cell flat
     expect(regions[2]).toMatchObject({ x: 16, y: 0, w: 16, h: 16 })
+  })
+})
+
+describe('buildTilesetGrid', () => {
+  it('derives grid dimensions independently of spacing and applies spaced origins', () => {
+    const grid = buildTilesetGrid(
+      {
+        imageWidth: 32,
+        imageHeight: 16,
+        tileWidth: 16,
+        tileHeight: 16,
+        spacing: 2,
+        padding: 1,
+      },
+      (tileId) => (tileId === 1 ? { tileElevation: 0.5 } : undefined)
+    )
+
+    expect(grid).toEqual({
+      columns: 2,
+      rows: 1,
+      cells: [
+        { x: 1, y: 1, w: 16, h: 16, meta: undefined },
+        { x: 19, y: 1, w: 16, h: 16, meta: { tileElevation: 0.5 } },
+      ],
+    })
   })
 })

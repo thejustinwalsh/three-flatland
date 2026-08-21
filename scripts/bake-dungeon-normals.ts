@@ -15,7 +15,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { bakeNormalMapFile } from '@three-flatland/normals/node'
 import type { NormalSourceDescriptor } from '@three-flatland/normals'
-import { tilesetToRegions, type TileNormalCustomData, type TilesetCell } from 'three-flatland/loaders/normalDescriptor'
+import { buildTilesetGrid, tilesetToRegions, type TileNormalCustomData } from 'three-flatland/loaders/normalDescriptor'
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url)
 const __dirname = dirname(SCRIPT_PATH)
@@ -45,11 +45,6 @@ export function buildDungeonNormalDescriptor(project: LDtkProject): NormalSource
   if (!tileset) throw new Error('Dungeon_Tileset not found in LDtk project')
 
   const { pxWid, pxHei, tileGridSize, spacing, padding, customData } = tileset
-  // Match LDtkLoader.parseTileset exactly. Spacing affects cell origins,
-  // but LDtk's atlas dimensions already encode the logical grid count.
-  const cols = Math.floor(pxWid / tileGridSize)
-  const rows = Math.floor(pxHei / tileGridSize)
-
   // Parse customData into a map keyed by tileId.
   const metaById = new Map<number, TileNormalCustomData>()
   for (const entry of customData) {
@@ -60,22 +55,17 @@ export function buildDungeonNormalDescriptor(project: LDtkProject): NormalSource
     }
   }
 
-  // Walk the grid, emit a cell per tile with (optional) meta.
-  const cells: TilesetCell[] = []
-  for (let gy = 0; gy < rows; gy++) {
-    for (let gx = 0; gx < cols; gx++) {
-      const tileId = gy * cols + gx
-      const x = padding + gx * (tileGridSize + spacing)
-      const y = padding + gy * (tileGridSize + spacing)
-      cells.push({
-        x,
-        y,
-        w: tileGridSize,
-        h: tileGridSize,
-        meta: metaById.get(tileId),
-      })
-    }
-  }
+  const { cells } = buildTilesetGrid(
+    {
+      imageWidth: pxWid,
+      imageHeight: pxHei,
+      tileWidth: tileGridSize,
+      tileHeight: tileGridSize,
+      spacing,
+      padding,
+    },
+    (tileId) => metaById.get(tileId)
+  )
 
   return { regions: tilesetToRegions(cells) }
 }

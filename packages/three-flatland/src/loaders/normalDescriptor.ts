@@ -140,6 +140,51 @@ export interface TilesetCell {
   meta?: TileNormalCustomData
 }
 
+export interface TilesetGridOptions {
+  imageWidth: number
+  imageHeight: number
+  tileWidth: number
+  tileHeight: number
+  spacing: number
+  padding: number
+}
+
+export interface TilesetGrid {
+  columns: number
+  rows: number
+  cells: TilesetCell[]
+}
+
+/**
+ * Build the logical tile grid shared by runtime loaders and offline bakers.
+ * Atlas dimensions determine the grid count; spacing and padding affect only
+ * each cell's pixel origin, matching LDtk's exported geometry contract.
+ */
+export function buildTilesetGrid(
+  options: TilesetGridOptions,
+  metaForTile?: (tileId: number) => TileNormalCustomData | undefined
+): TilesetGrid {
+  const { imageWidth, imageHeight, tileWidth, tileHeight, spacing, padding } = options
+  const columns = Math.floor(imageWidth / tileWidth)
+  const rows = Math.floor(imageHeight / tileHeight)
+  const cells: TilesetCell[] = []
+
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < columns; gx++) {
+      const tileId = gy * columns + gx
+      cells.push({
+        x: padding + gx * (tileWidth + spacing),
+        y: padding + gy * (tileHeight + spacing),
+        w: tileWidth,
+        h: tileHeight,
+        meta: metaForTile?.(tileId),
+      })
+    }
+  }
+
+  return { columns, rows, cells }
+}
+
 /**
  * Build regions for a whole tileset. Each cell becomes one or more
  * regions depending on its custom data — untagged cells emit a single
