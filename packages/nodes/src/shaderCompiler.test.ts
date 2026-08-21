@@ -1,12 +1,18 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse as parseGLSL } from '@shaderfrog/glsl-parser'
 import ts from 'typescript'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import {
   DataTexture,
+  LinearFilter,
   Mesh,
   NoColorSpace,
+  PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
   RGBAFormat,
@@ -19,6 +25,7 @@ import {
 import { GLSLNodeBuilder, NodeMaterial, WGSLNodeBuilder } from 'three/webgpu'
 import { bool, context, float, Fn, texture as sampleTexture, vec2, vec3, vec4 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
+import { oklabToOklchNode, oklchToOklabNode } from './color/oklch'
 import * as publicNodes from './index'
 
 type ShaderBackend = 'glsl' | 'wgsl'
@@ -34,9 +41,32 @@ interface ShaderFunctionSpec {
   parameters: ParameterSpec[]
 }
 
+interface ShaderInvocation {
+  args: unknown[]
+  label: string
+  spec: ShaderFunctionSpec
+}
+
+interface CompiledShader {
+  backend: ShaderBackend
+  label: string
+  output: string
+  stage: 'fragment' | 'vertex'
+}
+
 type PublicNodeFunction = (...args: unknown[]) => unknown
+type TestNodeBuilder = {
+  build(): void
+  camera: PerspectiveCamera
+  fragmentShader: string | null
+  scene: Scene
+  vertexShader: string | null
+}
 
 const sourceRoot = dirname(fileURLToPath(import.meta.url))
+const require = createRequire(import.meta.url)
+const deepPublicNodes = { oklabToOklchNode, oklchToOklabNode }
+const compiledShaders = new Map<string, CompiledShader>()
 const texture = new DataTexture(
   new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]),
   2,
@@ -45,6 +75,8 @@ const texture = new DataTexture(
   UnsignedByteType
 )
 texture.colorSpace = NoColorSpace
+texture.magFilter = LinearFilter
+texture.minFilter = LinearFilter
 texture.needsUpdate = true
 
 function collectSourceFiles(directory: string): string[] {
@@ -88,6 +120,13 @@ function isNode(value: unknown): value is Node {
 
 function isPublicNodeFunction(value: unknown): value is PublicNodeFunction {
   return typeof value === 'function'
+}
+
+function resolveShaderFunction(name: string): PublicNodeFunction {
+  const publicFunction = Reflect.get(publicNodes, name) ?? Reflect.get(deepPublicNodes, name)
+  if (!isPublicNodeFunction(publicFunction))
+    throw new Error(`${name} is not reachable through a published package path`)
+  return publicFunction
 }
 
 function lightFixture() {
@@ -135,16 +174,96 @@ function requiredArguments(spec: ShaderFunctionSpec): unknown[] {
     .map((parameter) => (parameter.required ? requiredArgument(parameter) : undefined))
 }
 
+function shaderVariants(spec: ShaderFunctionSpec): ShaderInvocation[] {
+  const color = vec4(0.2, 0.4, 0.6, 0.8)
+  const normal = vec3(0, 0, 1)
+  const uv = vec2(0.25, 0.75)
+
+  switch (spec.name) {
+    case 'colorReplaceMultiple':
+      return [
+        {
+          args: [
+            color,
+            [
+              [0.2, 0.4, 0.6],
+              [0.8, 0.6, 0.4],
+            ],
+            [
+              [0.9, 0.1, 0.2],
+              [0.1, 0.8, 0.3],
+            ],
+          ],
+          label: 'multiple replacements',
+          spec,
+        },
+      ]
+    case 'dissolveDirectional':
+      return (['left', 'up', 'down'] as const).map((direction) => ({
+        args: [color, uv, 0.5, texture, direction, 0.4],
+        label: direction,
+        spec,
+      }))
+    case 'ghost':
+      return [
+        {
+          args: [
+            texture,
+            uv,
+            [
+              [0.02, 0],
+              [0.04, 0.01],
+              [0.06, 0.02],
+            ],
+            0.3,
+            false,
+          ],
+          label: 'multiple fixed-opacity samples',
+          spec,
+        },
+      ]
+    case 'litSprite':
+      return [
+        {
+          args: [normal, color, lightFixture(), lightFixture(), { rim: true, specular: true }],
+          label: 'ambient specular rim',
+          spec,
+        },
+      ]
+    case 'litSpriteMulti':
+      return [
+        {
+          args: [normal, color, [lightFixture(), lightFixture()], lightFixture(), { rim: true, specular: true }],
+          label: 'multiple lights with ambient specular rim',
+          spec,
+        },
+      ]
+    case 'outline':
+    case 'outline8':
+      return [
+        {
+          args: [color, uv, texture, { textureSize: [256, 128], thickness: 2 }],
+          label: 'texture-size thickness',
+          spec,
+        },
+      ]
+    case 'palettizeNearest':
+      return [{ args: [color, texture, 16], label: 'maximum palette', spec }]
+    default:
+      return []
+  }
+}
+
 function normalizeShaderResult(name: string, result: unknown): Node {
   if (isNode(result)) return result
 
   if (typeof result === 'object' && result !== null) {
     if ('color' in result && 'attenuation' in result && isNode(result.color) && isNode(result.attenuation)) {
-      return vec4(result.color, result.attenuation)
+      return vec4(result.color as Node<'vec3'>, result.attenuation as Node<'float'>)
     }
 
     if ('uv' in result && 'cornerMask' in result && isNode(result.uv) && isNode(result.cornerMask)) {
-      return vec4(result.uv, result.cornerMask, 1)
+      return vec4(result.uv as Node<'vec2'>, result.cornerMask as Node<'float'>, 1)
     }
   }
 
@@ -168,36 +287,49 @@ function createMockRenderer(backend: ShaderBackend) {
     getMRT: () => null,
     getRenderTarget: () => null,
     hasCompatibility: () => false,
-    hasFeature: () => false,
-    highPrecision: true,
+    hasFeature: (feature: string) => feature === 'float32-filterable',
+    highPrecision: false,
     library: { fromMaterial: (material: NodeMaterial) => material },
-    lighting: { enabled: false },
+    lighting: { enabled: true },
     logarithmicDepthBuffer: false,
     outputColorSpace: SRGBColorSpace,
     reversedDepthBuffer: false,
-    shadowMap: { enabled: false, type: 0 },
+    shadowMap: { enabled: false, transmitted: false, type: PCFShadowMap },
   }
 }
 
-function compileShader(spec: ShaderFunctionSpec, backend: ShaderBackend) {
-  const publicFunction = Reflect.get(publicNodes, spec.name)
-  if (!isPublicNodeFunction(publicFunction)) throw new Error(`${spec.name} is not exported from the package root`)
+function compileShader(spec: ShaderFunctionSpec, backend: ShaderBackend, args = requiredArguments(spec)) {
+  const publicFunction = resolveShaderFunction(spec.name)
 
   const material = new NodeMaterial()
-  material.fragmentNode = Fn(() => normalizeShaderResult(spec.name, publicFunction(...requiredArguments(spec))))()
+  material.fragmentNode = Fn(() => normalizeShaderResult(spec.name, publicFunction(...args)))()
 
   const mesh = new Mesh(new PlaneGeometry(1, 1), material)
   const renderer = createMockRenderer(backend)
-  const builder =
-    backend === 'wgsl' ? new WGSLNodeBuilder(mesh, renderer as never) : new GLSLNodeBuilder(mesh, renderer as never)
+  const builder = (backend === 'wgsl'
+    ? new WGSLNodeBuilder(mesh, renderer as never)
+    : new GLSLNodeBuilder(mesh, renderer as never)) as unknown as TestNodeBuilder
   builder.camera = new PerspectiveCamera()
   builder.scene = new Scene()
-  builder.build()
+  const codegenErrors: unknown[][] = []
+  const errorSpy = vi.spyOn(console, 'error').mockImplementation((...error) => codegenErrors.push(error))
+  try {
+    builder.build()
+  } finally {
+    errorSpy.mockRestore()
+  }
+  expect(codegenErrors, `${backend} ${spec.name} logged shader code-generation errors`).toEqual([])
 
-  return {
+  const shader = {
     fragment: builder.fragmentShader,
     vertex: builder.vertexShader,
   }
+  for (const [stage, output] of Object.entries(shader) as Array<['fragment' | 'vertex', string | null]>) {
+    if (output) {
+      compiledShaders.set(`${backend}:${stage}:${output}`, { backend, label: spec.name, output, stage })
+    }
+  }
+  return shader
 }
 
 function expectValidShaderOutput(backend: ShaderBackend, stage: 'fragment' | 'vertex', output: string | null) {
@@ -213,24 +345,103 @@ function expectValidShaderOutput(backend: ShaderBackend, stage: 'fragment' | 've
   }
 }
 
-const shaderFunctions = collectPublicShaderFunctions().filter(({ name }) =>
-  isPublicNodeFunction(Reflect.get(publicNodes, name))
-)
+function expectScalerSampleBudget(name: string, backend: ShaderBackend, fragment: string | null) {
+  if (backend !== 'wgsl' || fragment === null) return
+  const sampleBudget: Record<string, number> = { eagle: 12, scale2x: 8 }
+  const expectedSamples = sampleBudget[name]
+  if (expectedSamples === undefined) return
+  expect(fragment.match(/\btextureSample\(/g) ?? [], `${name} duplicated texture samples`).toHaveLength(expectedSamples)
+}
+
+function validateGLSL(shaders: CompiledShader[]) {
+  for (const shader of shaders) {
+    const warningSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      parseGLSL(shader.output, { stage: shader.stage })
+    } catch (error) {
+      throw new Error(`GLSL parser rejected ${shader.label} ${shader.stage}`, { cause: error })
+    } finally {
+      warningSpy.mockRestore()
+    }
+  }
+}
+
+function validateWGSL(shaders: CompiledShader[]) {
+  const shaderDirectory = mkdtempSync(join(tmpdir(), 'three-flatland-wgsl-'))
+  const nagaPackage = require.resolve('naga-wasi-cli/package.json')
+  const nagaBin = join(dirname(nagaPackage), 'bin/naga.mjs')
+
+  try {
+    const filenames = shaders.map((shader, index) => {
+      const filename = `${String(index).padStart(3, '0')}-${shader.label}-${shader.stage}.wgsl`
+      writeFileSync(join(shaderDirectory, filename), shader.output)
+      return filename
+    })
+    execFileSync(process.execPath, [nagaBin, '--bulk-validate', ...filenames], {
+      cwd: shaderDirectory,
+      encoding: 'utf8',
+      env: { ...process.env, NODE_NO_WARNINGS: '1' },
+      stdio: 'pipe',
+    })
+  } catch (error) {
+    const output =
+      typeof error === 'object' && error !== null && 'stderr' in error ? String(error.stderr) : String(error)
+    throw new Error(`Naga rejected emitted WGSL:\n${output}`, { cause: error })
+  } finally {
+    rmSync(shaderDirectory, { force: true, recursive: true })
+  }
+}
+
+const shaderFunctions = collectPublicShaderFunctions()
+const shaderInvocations = shaderFunctions.flatMap(shaderVariants)
+
+afterAll(() => {
+  const shaders = [...compiledShaders.values()]
+  const glslShaders = shaders.filter((shader) => shader.backend === 'glsl')
+  const wgslShaders = shaders.filter((shader) => shader.backend === 'wgsl')
+
+  expect(wgslShaders.some((shader) => shader.output.includes('textureSample'))).toBe(true)
+  validateGLSL(glslShaders)
+  validateWGSL(wgslShaders)
+})
 
 describe('public TSL shader compiler compatibility', () => {
+  it('rejects invalid emitted shader source', () => {
+    expect(() =>
+      validateGLSL([{ backend: 'glsl', label: 'invalid', output: '#version 300 es\nvoid main( {', stage: 'fragment' }])
+    ).toThrow()
+    expect(() =>
+      validateWGSL([
+        {
+          backend: 'wgsl',
+          label: 'invalid',
+          output: '@fragment fn main() { retrn; }',
+          stage: 'fragment',
+        },
+      ])
+    ).toThrow()
+  })
+
   it('keeps every public function in the compiler matrix', () => {
-    const runtimeExports = Object.entries(publicNodes)
+    const publishedExports = Object.entries({ ...publicNodes, ...deepPublicNodes })
       .filter(([, value]) => isPublicNodeFunction(value))
       .map(([name]) => name)
       .sort()
     const sourceExports = shaderFunctions.map(({ name }) => name)
 
-    expect(sourceExports).toEqual(runtimeExports)
+    expect(sourceExports).toEqual(publishedExports)
   })
 
   describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s', (backend) => {
     it.each(shaderFunctions)('$name', (spec) => {
       const shader = compileShader(spec, backend)
+      expectValidShaderOutput(backend, 'vertex', shader.vertex)
+      expectValidShaderOutput(backend, 'fragment', shader.fragment)
+      expectScalerSampleBudget(spec.name, backend, shader.fragment)
+    })
+
+    it.each(shaderInvocations)('$spec.name ($label)', (invocation) => {
+      const shader = compileShader(invocation.spec, backend, invocation.args)
       expectValidShaderOutput(backend, 'vertex', shader.vertex)
       expectValidShaderOutput(backend, 'fragment', shader.fragment)
     })
