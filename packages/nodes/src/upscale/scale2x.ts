@@ -1,4 +1,4 @@
-import { vec2, floor, texture as sampleTexture } from 'three/tsl'
+import { vec2, vec4, floor, texture as sampleTexture } from 'three/tsl'
 import type { Texture } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Vec2Input } from '../types'
@@ -67,18 +67,27 @@ export function scale2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [
   const _useBottomRight = isRight.and(isBottom)
 
   // E0: top-left
-  const e0 = canScale.and(DeqB).select(D, E)
+  const useE0 = canScale.and(DeqB)
+  const e0 = useE0.select(D.rgb, E.rgb)
+  const e0Alpha = useE0.select(D.a, E.a)
   // E1: top-right
-  const e1 = canScale.and(BeqF).select(F, E)
+  const useE1 = canScale.and(BeqF)
+  const e1 = useE1.select(F.rgb, E.rgb)
+  const e1Alpha = useE1.select(F.a, E.a)
   // E2: bottom-left
-  const e2 = canScale.and(DeqH).select(D, E)
+  const useE2 = canScale.and(DeqH)
+  const e2 = useE2.select(D.rgb, E.rgb)
+  const e2Alpha = useE2.select(D.a, E.a)
   // E3: bottom-right
-  const e3 = canScale.and(HeqF).select(F, E)
+  const useE3 = canScale.and(HeqF)
+  const e3 = useE3.select(F.rgb, E.rgb)
+  const e3Alpha = useE3.select(F.a, E.a)
 
   // Select final pixel
   const result = useTopLeft.select(e0, useTopRight.select(e1, useBottomLeft.select(e2, e3)))
+  const resultAlpha = useTopLeft.select(e0Alpha, useTopRight.select(e1Alpha, useBottomLeft.select(e2Alpha, e3Alpha)))
 
-  return result
+  return vec4(result, resultAlpha)
 }
 
 /**
@@ -120,7 +129,8 @@ export function scale3x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [
   const yPos = floor(localPos.y.mul(3))
 
   // Center pixel
-  let result: Node<'vec4'> = E
+  let result = E.rgb
+  let resultAlpha = E.a
 
   // Top row
   const isTop = yPos.lessThan(1)
@@ -129,15 +139,27 @@ export function scale3x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [
   const isBottom = yPos.greaterThan(1)
 
   // Corner and edge blending
-  const topLeft = isTop.and(isLeft).and(Beq(D, B)).select(D, E)
-  const topRight = isTop.and(isRight).and(Beq(B, F)).select(F, E)
-  const bottomLeft = isBottom.and(isLeft).and(Beq(D, H)).select(D, E)
-  const bottomRight = isBottom.and(isRight).and(Beq(H, F)).select(F, E)
+  const useTopLeft = isTop.and(isLeft).and(Beq(D, B))
+  const useTopRight = isTop.and(isRight).and(Beq(B, F))
+  const useBottomLeft = isBottom.and(isLeft).and(Beq(D, H))
+  const useBottomRight = isBottom.and(isRight).and(Beq(H, F))
+  const topLeft = useTopLeft.select(D.rgb, E.rgb)
+  const topRight = useTopRight.select(F.rgb, E.rgb)
+  const bottomLeft = useBottomLeft.select(D.rgb, E.rgb)
+  const bottomRight = useBottomRight.select(F.rgb, E.rgb)
+  const topLeftAlpha = useTopLeft.select(D.a, E.a)
+  const topRightAlpha = useTopRight.select(F.a, E.a)
+  const bottomLeftAlpha = useBottomLeft.select(D.a, E.a)
+  const bottomRightAlpha = useBottomRight.select(F.a, E.a)
 
   result = isTop.and(isLeft).select(topLeft, result)
+  resultAlpha = isTop.and(isLeft).select(topLeftAlpha, resultAlpha)
   result = isTop.and(isRight).select(topRight, result)
+  resultAlpha = isTop.and(isRight).select(topRightAlpha, resultAlpha)
   result = isBottom.and(isLeft).select(bottomLeft, result)
+  resultAlpha = isBottom.and(isLeft).select(bottomLeftAlpha, resultAlpha)
   result = isBottom.and(isRight).select(bottomRight, result)
+  resultAlpha = isBottom.and(isRight).select(bottomRightAlpha, resultAlpha)
 
-  return result
+  return vec4(result, resultAlpha)
 }

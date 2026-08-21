@@ -53,20 +53,31 @@ export function eagle(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 
   const isBottom = localPos.y.greaterThan(0.5)
 
   // Top-left: if S == T == V
-  const p1 = eq(S, T).and(eq(T, V)).select(S, C)
+  const useP1 = eq(S, T).and(eq(T, V))
+  const p1 = useP1.select(S.rgb, C.rgb)
+  const p1Alpha = useP1.select(S.a, C.a)
   // Top-right: if T == U == W
-  const p2 = eq(T, U).and(eq(U, W)).select(U, C)
+  const useP2 = eq(T, U).and(eq(U, W))
+  const p2 = useP2.select(U.rgb, C.rgb)
+  const p2Alpha = useP2.select(U.a, C.a)
   // Bottom-left: if V == X == Y
-  const p3 = eq(V, X).and(eq(X, Y)).select(X, C)
+  const useP3 = eq(V, X).and(eq(X, Y))
+  const p3 = useP3.select(X.rgb, C.rgb)
+  const p3Alpha = useP3.select(X.a, C.a)
   // Bottom-right: if W == Z == Y
-  const p4 = eq(W, Z).and(eq(Z, Y)).select(Z, C)
+  const useP4 = eq(W, Z).and(eq(Z, Y))
+  const p4 = useP4.select(Z.rgb, C.rgb)
+  const p4Alpha = useP4.select(Z.a, C.a)
 
   // Select based on position
   const topRow = isRight.select(p2, p1)
   const bottomRow = isRight.select(p4, p3)
   const result = isBottom.select(bottomRow, topRow)
+  const topRowAlpha = isRight.select(p2Alpha, p1Alpha)
+  const bottomRowAlpha = isRight.select(p4Alpha, p3Alpha)
+  const resultAlpha = isBottom.select(bottomRowAlpha, topRowAlpha)
 
-  return result
+  return vec4(result, resultAlpha)
 }
 
 /**
@@ -106,15 +117,25 @@ export function superEagle(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input 
   const _diag2 = eq(c2, c4).and(eq(c4, c6)) // Anti-diagonal
 
   // Blend based on diagonal detection
-  const blendTopLeft = eq(c0, c1).and(eq(c1, c3)).select(c0, c4)
-  const blendTopRight = eq(c1, c2).and(eq(c2, c5)).select(c2, c4)
-  const blendBottomLeft = eq(c3, c6).and(eq(c6, c7)).select(c6, c4)
-  const blendBottomRight = eq(c5, c7).and(eq(c7, c8)).select(c8, c4)
+  const useTopLeft = eq(c0, c1).and(eq(c1, c3))
+  const useTopRight = eq(c1, c2).and(eq(c2, c5))
+  const useBottomLeft = eq(c3, c6).and(eq(c6, c7))
+  const useBottomRight = eq(c5, c7).and(eq(c7, c8))
+  const blendTopLeft = useTopLeft.select(c0.rgb, c4.rgb)
+  const blendTopRight = useTopRight.select(c2.rgb, c4.rgb)
+  const blendBottomLeft = useBottomLeft.select(c6.rgb, c4.rgb)
+  const blendBottomRight = useBottomRight.select(c8.rgb, c4.rgb)
+  const blendTopLeftAlpha = useTopLeft.select(c0.a, c4.a)
+  const blendTopRightAlpha = useTopRight.select(c2.a, c4.a)
+  const blendBottomLeftAlpha = useBottomLeft.select(c6.a, c4.a)
+  const blendBottomRightAlpha = useBottomRight.select(c8.a, c4.a)
 
   const topRow = isRight.select(blendTopRight, blendTopLeft)
   const bottomRow = isRight.select(blendBottomRight, blendBottomLeft)
+  const topRowAlpha = isRight.select(blendTopRightAlpha, blendTopLeftAlpha)
+  const bottomRowAlpha = isRight.select(blendBottomRightAlpha, blendBottomLeftAlpha)
 
-  return isBottom.select(bottomRow, topRow)
+  return vec4(isBottom.select(bottomRow, topRow), isBottom.select(bottomRowAlpha, topRowAlpha))
 }
 
 /**
@@ -167,7 +188,7 @@ export function sai2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 
   const preferBC = BeqC.and(AeqD.not())
 
   // Select corners
-  const topLeft = A
+  const topLeft = A.rgb
   const topRight = preferBC.select(B.rgb.add(A.rgb).mul(0.5), B.rgb)
   const bottomLeft = preferBC.select(C.rgb.add(A.rgb).mul(0.5), C.rgb)
   const bottomRight = AeqD.and(BeqC).select(
@@ -175,8 +196,8 @@ export function sai2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 
     preferAD.select(A.rgb.add(D.rgb).mul(0.5), preferBC.select(B.rgb.add(C.rgb).mul(0.5), A.rgb))
   )
 
-  const topRow = isRight.select(vec4(topRight, A.a), topLeft)
-  const bottomRow = isRight.select(vec4(bottomRight, A.a), vec4(bottomLeft, A.a))
+  const topRow = isRight.select(topRight, topLeft)
+  const bottomRow = isRight.select(bottomRight, bottomLeft)
 
-  return isBottom.select(bottomRow, topRow)
+  return vec4(isBottom.select(bottomRow, topRow), A.a)
 }
