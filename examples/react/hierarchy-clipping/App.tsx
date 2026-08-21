@@ -3,6 +3,7 @@ import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import { DataTexture, NearestFilter, RGBAFormat, type Group, type OrthographicCamera } from 'three'
 import { Sprite2D, SpriteGroup } from 'three-flatland/react'
+import { WebGPUFallback } from '../../_shared/WebGPUFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -107,7 +108,13 @@ function Scene() {
 /** Mount the React hierarchy, Activity, and clipping demonstration. */
 export default function App() {
   return (
-    <Canvas orthographic dpr={[1, 2]} frameloop="always" camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}>
+    <Canvas
+      orthographic
+      dpr={[1, 2]}
+      frameloop="always"
+      camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
+      fallback={<WebGPUFallback />}
+    >
       <DevtoolsProvider name="react-hierarchy-clipping" />
       <GemBackground gem={GEM} />
       <Camera />

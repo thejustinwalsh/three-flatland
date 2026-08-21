@@ -12,6 +12,7 @@ import {
   type SpriteSheet,
   type RenderStats,
 } from 'three-flatland/react'
+import { WebGPUFallback } from '../../_shared/WebGPUFallback'
 import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import type { Pane } from 'tweakpane'
 import { GemBackground } from './GemBackground'
@@ -488,6 +489,7 @@ export default function App() {
         dpr={1}
         style={{ background: '#16191e' }}
         renderer={{ antialias: false }}
+        fallback={<WebGPUFallback />}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'
         }}

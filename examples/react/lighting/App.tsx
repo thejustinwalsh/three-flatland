@@ -16,6 +16,7 @@ import {
   attachEffect,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
+import { WebGPUFallback } from '../../_shared/WebGPUFallback'
 import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
@@ -1075,7 +1076,7 @@ export default function App() {
   const rimEnabled = rimIntensity > 0
 
   return (
-    <Canvas renderer={{ antialias: false }}>
+    <Canvas renderer={{ antialias: false }} fallback={<WebGPUFallback />}>
       <color attach="background" args={['#06060c']} />
       <Suspense fallback={null}>
         <FlatlandScene

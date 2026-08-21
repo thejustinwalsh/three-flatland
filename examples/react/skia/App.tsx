@@ -12,6 +12,7 @@ import {
   useSkiaContext,
   attachSkiaTexture,
 } from '@three-flatland/skia/react'
+import { WebGPUFallback } from '../../_shared/WebGPUFallback'
 import { SkiaPaint, SkiaPath } from '@three-flatland/skia'
 import type { SkiaCanvas as SkiaCanvasInstance } from '@three-flatland/skia/three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
@@ -676,6 +677,7 @@ export default function App() {
       <Canvas
         camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
         renderer={{ antialias: true }}
+        fallback={<WebGPUFallback />}
         onCreated={({ scene, renderer }) => {
           // Pure-black clear + fog so foreground 3D meshes (floor, panels)
           // fade to the same void the floor's distant edges dissolve into.

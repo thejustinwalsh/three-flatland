@@ -376,7 +376,10 @@ export default function MiniBreakout({
     >
       {world && (
         <WorldProvider world={world}>
-          <Canvas renderer={{ antialias: false, alpha: true }}>
+          <Canvas
+            renderer={{ antialias: false, alpha: true }}
+            fallback={<div role="note">This game requires WebGPU.</div>}
+          >
             <GameScene
               soundsRef={soundsRef}
               isVisible={isVisible}

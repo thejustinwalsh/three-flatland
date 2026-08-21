@@ -3,6 +3,7 @@ import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fibe
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { AnimatedSprite2D, SpriteSheetLoader, SortLayers, type AnimationSetDefinition } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
+import { WebGPUFallback } from '../../_shared/WebGPUFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -216,6 +217,7 @@ export default function App() {
       <Canvas
         orthographic
         dpr={1}
+        fallback={<WebGPUFallback />}
         camera={{
           position: [0, 0, 100],
           near: 0.1,

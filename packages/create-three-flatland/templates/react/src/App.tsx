@@ -89,7 +89,11 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <Canvas orthographic renderer={{ antialias: false }}>
+      <Canvas
+        orthographic
+        renderer={{ antialias: false }}
+        fallback={<div role="note">This scene requires WebGPU.</div>}
+      >
         <Suspense fallback={null}>
           <Scene />
         </Suspense>

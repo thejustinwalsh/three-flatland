@@ -8,6 +8,7 @@ export function DeckCanvas({ children }: { children: ReactNode }) {
       frameloop="always"
       camera={{ position: [0, 0, 10], fov: 50 }}
       renderer={{ antialias: false }}
+      fallback={<div role="note">This preview requires WebGPU.</div>}
     >
       {children}
     </Canvas>
