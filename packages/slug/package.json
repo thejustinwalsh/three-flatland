@@ -106,12 +106,14 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && node ../../scripts/verify-dist-no-test-artifacts.mjs dist && node ../../scripts/verify-dist-event-patch.mjs dist/index.js dist/react.js",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
+    "@react-three/fiber": "catalog:",
+    "react": "catalog:",
     "three": "catalog:"
   },
   "peerDependenciesMeta": {
@@ -129,6 +131,7 @@
   },
   "devDependencies": {
     "@react-three/fiber": "catalog:",
+    "@three-flatland/tsl-test": "workspace:*",
     "@types/opentype.js": "^1.3.9",
     "@types/react": "catalog:",
     "@types/three": "catalog:",

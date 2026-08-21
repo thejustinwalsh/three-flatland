@@ -55,7 +55,7 @@ function getPrimeState(scene: Scene): ScenePrimeState {
  * or already auto-registered are left alone.
  */
 export function flatlandPrime(scene: Scene, sprite: Sprite2D): void {
-  if (sprite._flatlandWorld || sprite._autoRegistry) return
+  if (sprite._disposed || sprite._flatlandWorld || sprite._autoRegistry) return
   const state = getPrimeState(scene)
   state.pending.add(sprite)
   sprite._pendingPrimeScene = scene
@@ -68,7 +68,7 @@ export function flatlandPrime(scene: Scene, sprite: Sprite2D): void {
  * frames' orchestration.
  */
 export function flatlandRegister(sprite: Sprite2D, renderer: RendererLike, scene: Scene): void {
-  if (sprite._flatlandWorld || sprite._autoRegistry) return
+  if (sprite._disposed || sprite._flatlandWorld || sprite._autoRegistry) return
   const state = getPrimeState(scene)
   installSceneHook(scene, state)
   const registry = getOrCreateRegistry(renderer, scene)
@@ -90,10 +90,12 @@ export function flatlandUnregister(sprite: Sprite2D): void {
     // Enrolled? Free the slot through the standard removal path and
     // resume own-mesh drawing (harmless if the sprite left the tree).
     if (sprite.entity) {
-      sprite._unenrollFromWorld()
+      registry.group._releaseDirectEnrollment(sprite)
     }
-    sprite._autoBatched = false
-    sprite.visible = true
+    // Auto ownership is scene-scoped. A later authored reparent may adopt
+    // this sprite into an explicit SpriteGroup with a different ECS world.
+    sprite._flatlandWorld = null
+    sprite._setBatchSuppressed(false)
   }
   // Not yet drained from a pending set? Clear it there too.
   const scene = sprite._pendingPrimeScene
@@ -196,7 +198,14 @@ export function evaluateAutoBatch(registry: Registry): void {
   const data = registry._registryData()
   const byRun = new Map<string, Sprite2D[]>()
   for (const sprite of registry.standalone) {
+    if (sprite._disposed) {
+      registry.standalone.delete(sprite)
+      registry.sprites.delete(sprite)
+      sprite._autoRegistry = null
+      continue
+    }
     if (sprite._renderOrderOverridden) continue // explicit escape hatch
+    if (sprite._batchEnrollmentBlockedMaterial === sprite.material) continue
     const key = computeRunKey(sprite.sortLayerValue, sprite.material.batchId, sprite.layers.mask)
     let bucket = byRun.get(key)
     if (!bucket) {
@@ -222,6 +231,7 @@ export function evaluateAutoBatch(registry: Registry): void {
  * flips on enrollment/threshold routing.
  */
 function registerSprite(registry: Registry, sprite: Sprite2D): void {
+  if (sprite._disposed) return
   if (sprite._autoRegistry === registry) return
   if (sprite._flatlandWorld && sprite._flatlandWorld !== registry.world) return
 

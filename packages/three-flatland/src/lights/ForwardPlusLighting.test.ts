@@ -1,7 +1,114 @@
 import { describe, it, expect } from 'vitest'
 import { Vector2 } from 'three'
-import { ForwardPlusLighting, TILE_SIZE, MAX_LIGHTS_PER_TILE, TILE_TEXTURE_DIM } from './ForwardPlusLighting'
+import { int } from 'three/tsl'
+import {
+  ForwardPlusLighting,
+  TILE_SIZE,
+  MAX_LIGHTS_PER_TILE,
+  TILE_STRIDE,
+  TILE_TEXTURE_DIM,
+} from './ForwardPlusLighting'
 import { Light2D } from './Light2D'
+
+type ConstantValue = number | number[]
+
+interface ConstantNodeGraph {
+  isArrayElementNode?: boolean
+  isConditionalNode?: boolean
+  isConstNode?: boolean
+  isOperatorNode?: boolean
+  isSplitNode?: boolean
+  isTextureNode?: boolean
+  isVarNode?: boolean
+  convertTo?: string
+  value?: number
+  op?: string
+  aNode?: unknown
+  bNode?: unknown
+  condNode?: unknown
+  ifNode?: unknown
+  elseNode?: unknown
+  indexNode?: unknown
+  node?: unknown
+  nodes?: unknown[]
+  components?: string
+  uvNode?: unknown
+  _value?: {
+    image: {
+      data: ArrayLike<number>
+      width: number
+    }
+  }
+}
+
+function numberValue(value: ConstantValue): number {
+  if (typeof value !== 'number') throw new TypeError('Expected a scalar constant node')
+  return value
+}
+
+function vectorValue(value: ConstantValue): number[] {
+  if (!Array.isArray(value)) throw new TypeError('Expected a vector constant node')
+  return value
+}
+
+/** Evaluate the constant subset of TSL emitted by createTileLookup(). */
+function evaluateConstantNode(input: unknown): ConstantValue {
+  const graph = input as ConstantNodeGraph
+
+  if (graph.isConstNode) return graph.value!
+
+  if (graph.isOperatorNode) {
+    const left = numberValue(evaluateConstantNode(graph.aNode))
+    const right = numberValue(evaluateConstantNode(graph.bNode))
+    switch (graph.op) {
+      case '+':
+        return left + right
+      case '*':
+        return left * right
+      case '/':
+        return Math.trunc(left / right)
+      case '%':
+        return left % right
+      case '==':
+        return left === right ? 1 : 0
+      default:
+        throw new TypeError(`Unsupported constant operator: ${graph.op}`)
+    }
+  }
+
+  if (graph.isTextureNode) {
+    const [x, y] = vectorValue(evaluateConstantNode(graph.uvNode))
+    const image = graph._value!.image
+    const offset = (y! * image.width + x!) * 4
+    return Array.from({ length: 4 }, (_, component) => image.data[offset + component]!)
+  }
+
+  if (graph.isArrayElementNode) {
+    const vector = vectorValue(evaluateConstantNode(graph.node))
+    const index = numberValue(evaluateConstantNode(graph.indexNode))
+    return vector[index]!
+  }
+
+  if (graph.isSplitNode) {
+    const vector = vectorValue(evaluateConstantNode(graph.node))
+    const component = 'xyzw'.indexOf(graph.components!)
+    return vector[component]!
+  }
+
+  if (graph.isConditionalNode || (graph.condNode !== undefined && graph.ifNode !== undefined)) {
+    const condition = numberValue(evaluateConstantNode(graph.condNode))
+    return evaluateConstantNode(condition ? graph.ifNode : graph.elseNode)
+  }
+
+  if (Array.isArray(graph.nodes)) return graph.nodes.map(evaluateConstantNode).flat()
+
+  if (graph.isVarNode || graph.convertTo !== undefined) {
+    const value = evaluateConstantNode(graph.node)
+    return graph.convertTo === 'int' && typeof value === 'number' ? Math.trunc(value) : value
+  }
+
+  throw new TypeError('Unsupported constant TSL node')
+}
 
 describe('ForwardPlusLighting constants', () => {
   it('should export TILE_SIZE', () => {
@@ -23,6 +130,7 @@ describe('ForwardPlusLighting', () => {
     expect(fp.tileTexture.image.width).toBe(TILE_TEXTURE_DIM)
     expect(fp.tileTexture.image.height).toBe(TILE_TEXTURE_DIM)
     expect(fp.tileCountX).toBe(0)
+    expect(fp.tileCountXNode.nodeType).toBe('int')
   })
 
   it('should init with screen dimensions', () => {
@@ -157,6 +265,24 @@ describe('ForwardPlusLighting', () => {
 
     const lookup = fp.createTileLookup()
     expect(typeof lookup).toBe('function')
+  })
+
+  it('looks up every packed RGBA slot across all four light-index blocks', () => {
+    const fp = new ForwardPlusLighting()
+    const lookup = fp.createTileLookup()
+    const tileIndex = 70 // crosses the fixed texture's first row
+    const data = fp.tileTexture.image.data as Float32Array
+    const tileBase = tileIndex * TILE_STRIDE * 4
+
+    for (let slot = 0; slot < MAX_LIGHTS_PER_TILE; slot++) {
+      data[tileBase + slot] = 101 + slot
+    }
+
+    const values = Array.from({ length: MAX_LIGHTS_PER_TILE }, (_, slot) =>
+      evaluateConstantNode(lookup(int(tileIndex), int(slot)))
+    )
+
+    expect(values).toEqual(Array.from({ length: MAX_LIGHTS_PER_TILE }, (_, slot) => 101 + slot))
   })
 
   it('should skip lights that do not reach a tile (distance cutoff)', () => {

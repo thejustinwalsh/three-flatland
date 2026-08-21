@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hierarchy and clipping - Three.js</title>
+    <style>
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #111418; }
+      canvas { display: block; }
+      #status { position: fixed; top: 16px; left: 50%; translate: -50% 0; color: #e7edf6; font: 13px/1.5 monospace; text-align: center; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <div id="status">Nested transforms · ancestor visibility · local clipRect</div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

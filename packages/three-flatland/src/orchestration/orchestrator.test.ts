@@ -162,6 +162,25 @@ describe('lazy materialization — dual-signal registration', () => {
     expect(sprite._autoRegistry).toBeNull()
   })
 
+  it('sprite disposed before any render call clears its pending prime permanently', () => {
+    const sprite = new Sprite2D({ texture })
+    scene.add(sprite)
+    sprite.dispose()
+
+    fireSceneHook(scene, renderer)
+    const registry = peekRegistry(renderer, scene)
+    expect(registry?.sprites.size ?? 0).toBe(0)
+    expect(sprite._autoRegistry).toBeNull()
+    expect(sprite.entity).toBeNull()
+    expect(sprite.isMesh).toBe(false)
+
+    scene.remove(sprite)
+    scene.add(sprite)
+    fireSceneHook(scene, renderer)
+    expect(peekRegistry(renderer, scene)?.sprites.size ?? 0).toBe(0)
+    expect(sprite._autoRegistry).toBeNull()
+  })
+
   it('SpriteGroup-managed sprites are never auto-registered', () => {
     const group = new SpriteGroup()
     scene.add(group)

@@ -64,6 +64,27 @@ vi.stubGlobal('cancelAnimationFrame', (id: number) => {
   clearTimeout(id)
 })
 
+// Three.js r185's WebGPU inspector reads persisted settings at module load.
+// Node has no Storage implementation, so provide the browser contract before
+// React Three Fiber's WebGPU entry imports the inspector.
+const storage = new Map<string, string>()
+vi.stubGlobal('localStorage', {
+  getItem: vi.fn((key: string) => storage.get(key) ?? null),
+  setItem: vi.fn((key: string, value: string) => {
+    storage.set(key, String(value))
+  }),
+  removeItem: vi.fn((key: string) => {
+    storage.delete(key)
+  }),
+  clear: vi.fn(() => {
+    storage.clear()
+  }),
+  key: vi.fn((index: number) => [...storage.keys()][index] ?? null),
+  get length() {
+    return storage.size
+  },
+})
+
 // Mock ResizeObserver
 vi.stubGlobal(
   'ResizeObserver',

@@ -5,6 +5,9 @@ import { SlugMaterial } from './SlugMaterial'
 import { SlugStrokeMaterial } from './SlugStrokeMaterial'
 import { SlugGeometry } from './SlugGeometry'
 import type { SlugOutlineOptions, SlugTextOptions, StyleSpan } from './types'
+import { installInstanceEventUpdateBeforePatch } from './_instanceEventUpdateBeforePatch'
+
+installInstanceEventUpdateBeforePatch()
 
 /**
  * High-level text rendering object using the Slug algorithm.
@@ -453,6 +456,7 @@ export class SlugText extends InstancedMesh {
     this._teardownOutline()
     this._slugGeometry.dispose()
     this._slugMaterial?.dispose()
-    return super.dispose()
+    super.dispose()
+    return this
   }
 }

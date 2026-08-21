@@ -11,7 +11,13 @@ import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
 import { resolveNormalMap, type NormalSourceDescriptor } from '@three-flatland/normals'
 import { type TexturePreset, type TextureOptions, resolveTextureOptions } from './texturePresets'
 import { TextureLoader } from './TextureLoader'
-import { tilesetToRegions, type TileNormalCustomData, type TilesetCell } from './normalDescriptor'
+import {
+  buildTilesetGrid,
+  tilesetCellAt,
+  tilesetToRegions,
+  type TileNormalCustomData,
+  type TilesetGridOptions,
+} from './normalDescriptor'
 
 /**
  * Option shape for the `normals` field on `LDtkLoaderOptions`.
@@ -63,6 +69,8 @@ interface LDtkTilesetDef {
   tileGridSize: number
   spacing: number
   padding: number
+  __cWid: number
+  __cHei: number
   customData: Array<{ tileId: number; data: string }>
   enumTags: Array<{ enumValueId: string; tileIds: number[] }>
 }
@@ -398,8 +406,18 @@ export class LDtkLoader extends Loader<TileMapData> {
       forceRuntime: boolean
     }
   ): Promise<TilesetData> {
-    const columns = Math.floor(def.pxWid / def.tileGridSize)
-    const rows = Math.floor(def.pxHei / def.tileGridSize)
+    const gridOptions: TilesetGridOptions = {
+      imageWidth: def.pxWid,
+      imageHeight: def.pxHei,
+      tileWidth: def.tileGridSize,
+      tileHeight: def.tileGridSize,
+      spacing: def.spacing,
+      padding: def.padding,
+      columns: def.__cWid,
+      rows: def.__cHei,
+    }
+    const columns = def.__cWid
+    const rows = def.__cHei
     const tileCount = columns * rows
 
     // Load texture
@@ -416,7 +434,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     for (const custom of def.customData) {
       const existing = tiles.get(custom.tileId) ?? {
         id: custom.tileId,
-        uv: this.calculateUV(custom.tileId, def),
+        uv: this.calculateUV(custom.tileId, gridOptions),
       }
       const merged: Record<string, unknown> = {
         ...existing.properties,
@@ -452,10 +470,8 @@ export class LDtkLoader extends Loader<TileMapData> {
     if (normalsContext.normals !== false) {
       tilesetData.normalMap = await this.resolveTilesetNormals(
         textureUrl,
-        def,
         tiles,
-        columns,
-        rows,
+        gridOptions,
         normalsContext.normals,
         normalsContext.forceRuntime,
         // The tilemap's instance UV layout is written assuming the
@@ -476,10 +492,8 @@ export class LDtkLoader extends Loader<TileMapData> {
    */
   private static async resolveTilesetNormals(
     textureUrl: string,
-    def: LDtkTilesetDef,
     tiles: Map<number, TileDefinition>,
-    columns: number,
-    rows: number,
+    gridOptions: TilesetGridOptions,
     optionDescriptor: true | NormalSourceDescriptor,
     forceRuntime: boolean,
     diffuseFlipY: boolean
@@ -487,17 +501,10 @@ export class LDtkLoader extends Loader<TileMapData> {
     // Walk the tile grid, pairing each cell with its custom data
     // (if any). `tilesetToRegions` carves cap/face regions for
     // tiles that declare `tileDir`; untagged cells become flat.
-    const cells: TilesetCell[] = []
-    for (let gy = 0; gy < rows; gy++) {
-      for (let gx = 0; gx < columns; gx++) {
-        const tileId = gy * columns + gx
-        const x = def.padding + gx * (def.tileGridSize + def.spacing)
-        const y = def.padding + gy * (def.tileGridSize + def.spacing)
-        const tile = tiles.get(tileId)
-        const meta = tile?.properties as TileNormalCustomData | undefined
-        cells.push({ x, y, w: def.tileGridSize, h: def.tileGridSize, meta })
-      }
-    }
+    const { cells } = buildTilesetGrid(
+      gridOptions,
+      (tileId) => tiles.get(tileId)?.properties as TileNormalCustomData | undefined
+    )
     const synthesized = tilesetToRegions(cells)
 
     const base: NormalSourceDescriptor = optionDescriptor === true ? {} : optionDescriptor
@@ -518,20 +525,15 @@ export class LDtkLoader extends Loader<TileMapData> {
    */
   private static calculateUV(
     tileId: number,
-    def: LDtkTilesetDef
+    options: TilesetGridOptions
   ): { x: number; y: number; width: number; height: number } {
-    const columns = Math.floor(def.pxWid / def.tileGridSize)
-    const col = tileId % columns
-    const row = Math.floor(tileId / columns)
-
-    const x = def.padding + col * (def.tileGridSize + def.spacing)
-    const y = def.padding + row * (def.tileGridSize + def.spacing)
+    const cell = tilesetCellAt(tileId, options)
 
     return {
-      x: x / def.pxWid,
-      y: y / def.pxHei,
-      width: def.tileGridSize / def.pxWid,
-      height: def.tileGridSize / def.pxHei,
+      x: cell.x / options.imageWidth,
+      y: cell.y / options.imageHeight,
+      width: cell.w / options.imageWidth,
+      height: cell.h / options.imageHeight,
     }
   }
 

@@ -1,5 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Vector2 } from 'three'
+import { initializeRenderer } from './rendererFallback'
 import {
   Flatland,
   Light2D,
@@ -175,7 +176,7 @@ async function main() {
   renderer.setPixelRatio(1)
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // ─── Flatland ───────────────────────────────────────────────────
   const flatland = new Flatland({
@@ -195,8 +196,8 @@ async function main() {
 
   // ─── Assets ─────────────────────────────────────────────────────
   const [knightSheet, slimeSheet, mapData] = await Promise.all([
-    SpriteSheetLoader.load('./sprites/knight.json', { normals: true }),
-    SpriteSheetLoader.load('./sprites/slime.json', { normals: true }),
+    SpriteSheetLoader.load('./sprites/knight.json', { normals: true, forceRuntime: true }),
+    SpriteSheetLoader.load('./sprites/slime.json', { normals: true, forceRuntime: true }),
     LDtkLoader.load('./maps/dungeon.ldtk', undefined, { normals: true }),
   ])
 

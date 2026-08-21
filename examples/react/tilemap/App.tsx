@@ -3,6 +3,7 @@ import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { DataTexture, RGBAFormat, NearestFilter, SRGBColorSpace, type OrthographicCamera } from 'three'
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/devtools/react'
+import { WebGPUFallback } from './WebGPUFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -112,7 +113,8 @@ interface BSPNode {
 function generateDungeon(
   width: number,
   height: number,
-  density: string
+  density: string,
+  seed: number
 ): {
   ground: Uint32Array
   walls: Uint32Array
@@ -121,6 +123,15 @@ function generateDungeon(
   const ground = new Uint32Array(width * height)
   const walls = new Uint32Array(width * height)
   const decor = new Uint32Array(width * height)
+  // Mulberry32 keeps identical pane seeds reproducible across browsers and reloads.
+  let randomState = seed >>> 0
+  const random = () => {
+    randomState = (randomState + 0x6d2b79f5) >>> 0
+    let value = randomState
+    value = Math.imul(value ^ (value >>> 15), value | 1)
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61)
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296
+  }
 
   const preset = DENSITY_PRESETS[density] ?? DENSITY_PRESETS['normal']!
   const MIN_PARTITION_SIZE = preset.minPartition
@@ -135,7 +146,7 @@ function generateDungeon(
     let splitHorizontal: boolean
     if (node.w > node.h * 1.25) splitHorizontal = false
     else if (node.h > node.w * 1.25) splitHorizontal = true
-    else splitHorizontal = Math.random() > 0.5
+    else splitHorizontal = random() > 0.5
 
     if (splitHorizontal && node.h < MIN_PARTITION_SIZE * 2) splitHorizontal = false
     if (!splitHorizontal && node.w < MIN_PARTITION_SIZE * 2) splitHorizontal = true
@@ -143,11 +154,11 @@ function generateDungeon(
     if (!splitHorizontal && node.w < MIN_PARTITION_SIZE * 2) return
 
     if (splitHorizontal) {
-      const splitY = node.y + MIN_PARTITION_SIZE + Math.floor(Math.random() * (node.h - MIN_PARTITION_SIZE * 2))
+      const splitY = node.y + MIN_PARTITION_SIZE + Math.floor(random() * (node.h - MIN_PARTITION_SIZE * 2))
       node.left = { x: node.x, y: node.y, w: node.w, h: splitY - node.y }
       node.right = { x: node.x, y: splitY, w: node.w, h: node.y + node.h - splitY }
     } else {
-      const splitX = node.x + MIN_PARTITION_SIZE + Math.floor(Math.random() * (node.w - MIN_PARTITION_SIZE * 2))
+      const splitX = node.x + MIN_PARTITION_SIZE + Math.floor(random() * (node.w - MIN_PARTITION_SIZE * 2))
       node.left = { x: node.x, y: node.y, w: splitX - node.x, h: node.h }
       node.right = { x: splitX, y: node.y, w: node.x + node.w - splitX, h: node.h }
     }
@@ -167,17 +178,17 @@ function generateDungeon(
     const maxRoomH = node.h - ROOM_PADDING * 2
     if (maxRoomW < MIN_ROOM_SIZE || maxRoomH < MIN_ROOM_SIZE) return
 
-    const roomW = MIN_ROOM_SIZE + Math.floor(Math.random() * (maxRoomW - MIN_ROOM_SIZE + 1))
-    const roomH = MIN_ROOM_SIZE + Math.floor(Math.random() * (maxRoomH - MIN_ROOM_SIZE + 1))
-    const roomX = node.x + ROOM_PADDING + Math.floor(Math.random() * (maxRoomW - roomW + 1))
-    const roomY = node.y + ROOM_PADDING + Math.floor(Math.random() * (maxRoomH - roomH + 1))
+    const roomW = MIN_ROOM_SIZE + Math.floor(random() * (maxRoomW - MIN_ROOM_SIZE + 1))
+    const roomH = MIN_ROOM_SIZE + Math.floor(random() * (maxRoomH - MIN_ROOM_SIZE + 1))
+    const roomX = node.x + ROOM_PADDING + Math.floor(random() * (maxRoomW - roomW + 1))
+    const roomY = node.y + ROOM_PADDING + Math.floor(random() * (maxRoomH - roomH + 1))
 
     node.room = { x: roomX, y: roomY, w: roomW, h: roomH }
   }
 
   function getRoom(node: BSPNode): { x: number; y: number; w: number; h: number } | undefined {
     if (node.room) return node.room
-    if (node.left && node.right) return Math.random() > 0.5 ? getRoom(node.left) : getRoom(node.right)
+    if (node.left && node.right) return random() > 0.5 ? getRoom(node.left) : getRoom(node.right)
     if (node.left) return getRoom(node.left)
     if (node.right) return getRoom(node.right)
     return undefined
@@ -196,13 +207,13 @@ function generateDungeon(
     const ay = roomA.y + Math.floor(roomA.h / 2)
     const bx = roomB.x + Math.floor(roomB.w / 2)
     const by = roomB.y + Math.floor(roomB.h / 2)
-    const midX = Math.random() > 0.5 ? ax : bx
+    const midX = random() > 0.5 ? ax : bx
 
     for (let x = Math.min(ax, midX); x <= Math.max(ax, midX); x++) {
       for (let dy = -Math.floor(CORRIDOR_WIDTH / 2); dy <= Math.floor(CORRIDOR_WIDTH / 2); dy++) {
         const ty = ay + dy
         if (ty >= 0 && ty < height && x >= 0 && x < width) {
-          ground[ty * width + x] = TILES.FLOOR_1 + Math.floor(Math.random() * 4)
+          ground[ty * width + x] = TILES.FLOOR_1 + Math.floor(random() * 4)
         }
       }
     }
@@ -211,7 +222,7 @@ function generateDungeon(
       for (let dx = -Math.floor(CORRIDOR_WIDTH / 2); dx <= Math.floor(CORRIDOR_WIDTH / 2); dx++) {
         const tx = midX + dx
         if (y >= 0 && y < height && tx >= 0 && tx < width) {
-          ground[y * width + tx] = TILES.FLOOR_1 + Math.floor(Math.random() * 4)
+          ground[y * width + tx] = TILES.FLOOR_1 + Math.floor(random() * 4)
         }
       }
     }
@@ -220,7 +231,7 @@ function generateDungeon(
       for (let dy = -Math.floor(CORRIDOR_WIDTH / 2); dy <= Math.floor(CORRIDOR_WIDTH / 2); dy++) {
         const ty = by + dy
         if (ty >= 0 && ty < height && x >= 0 && x < width) {
-          ground[ty * width + x] = TILES.FLOOR_1 + Math.floor(Math.random() * 4)
+          ground[ty * width + x] = TILES.FLOOR_1 + Math.floor(random() * 4)
         }
       }
     }
@@ -244,7 +255,7 @@ function generateDungeon(
     for (let y = room.y; y < room.y + room.h; y++) {
       for (let x = room.x; x < room.x + room.w; x++) {
         if (x >= 0 && x < width && y >= 0 && y < height) {
-          ground[y * width + x] = TILES.FLOOR_1 + Math.floor(Math.random() * 4)
+          ground[y * width + x] = TILES.FLOOR_1 + Math.floor(random() * 4)
         }
       }
     }
@@ -282,7 +293,7 @@ function generateDungeon(
       { x: room.x + room.w - 2, y: room.y + room.h - 2 },
     ]
     for (const corner of corners) {
-      if (Math.random() > 0.6) {
+      if (random() > 0.6) {
         const idx = corner.y * width + corner.x
         if (ground[idx] !== 0 && decor[idx] === 0) decor[idx] = TILES.TORCH
       }
@@ -291,11 +302,11 @@ function generateDungeon(
     const numDecorations = Math.floor((room.w * room.h) / 40) + 1
     for (let i = 0; i < numDecorations; i++) {
       if (room.w <= 4 || room.h <= 4) continue
-      const rx = room.x + 2 + Math.floor(Math.random() * (room.w - 4))
-      const ry = room.y + 2 + Math.floor(Math.random() * (room.h - 4))
+      const rx = room.x + 2 + Math.floor(random() * (room.w - 4))
+      const ry = room.y + 2 + Math.floor(random() * (room.h - 4))
       const idx = ry * width + rx
       if (ground[idx] !== 0 && decor[idx] === 0) {
-        const roll = Math.random()
+        const roll = random()
         if (roll < 0.3) decor[idx] = TILES.CHEST
         else if (roll < 0.6) decor[idx] = TILES.SKULL
         else decor[idx] = TILES.BONES
@@ -384,6 +395,8 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
     <orthographicCamera
       ref={(cam: OrthographicCamera | null) => {
         if (!cam) return
+        const manualCamera = cam as OrthographicCamera & { manual?: boolean }
+        manualCamera.manual = true
         cam.left = (-viewSize * aspect) / 2
         cam.right = (viewSize * aspect) / 2
         cam.top = viewSize / 2
@@ -394,7 +407,6 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
       position={[0, 0, 100]}
       near={0.1}
       far={1000}
-      manual
     />
   )
 }
@@ -412,7 +424,7 @@ function CameraController({
 }) {
   const zoomSliderRef = useRef(zoomSlider)
   zoomSliderRef.current = zoomSlider
-  const { camera, gl } = useThree()
+  const { camera, renderer } = useThree()
   const keys = useRef(new Set<string>())
   const isDragging = useRef(false)
   const dragStart = useRef({ x: 0, y: 0 })
@@ -425,7 +437,7 @@ function CameraController({
   }, [camera, mapSize])
 
   useEffect(() => {
-    const canvas = gl.domElement
+    const canvas = renderer.domElement
 
     const panKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'])
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -545,7 +557,7 @@ function CameraController({
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerCancel)
     }
-  }, [camera, gl, setZoomSlider])
+  }, [camera, renderer, setZoomSlider])
 
   const currentZoom = useRef(zoomRef.current)
 
@@ -673,7 +685,7 @@ export default function App() {
 
   // Generate map data (regenerates when mapSize, density, or seed changes)
   const mapData = useMemo(() => {
-    const layers = generateDungeon(mapSize, mapSize, density)
+    const layers = generateDungeon(mapSize, mapSize, density, seed)
     return createTileMapData(mapSize, mapSize, tileset, layers)
   }, [tileset, mapSize, density, seed])
 
@@ -681,9 +693,10 @@ export default function App() {
     <Canvas
       dpr={1}
       renderer={{ antialias: false }}
+      fallback={<WebGPUFallback />}
       style={{ touchAction: 'none' }}
-      onCreated={({ gl }) => {
-        gl.domElement.style.imageRendering = 'pixelated'
+      onCreated={({ renderer }) => {
+        renderer.domElement.style.imageRendering = 'pixelated'
       }}
     >
       <OrthoCamera viewSize={800} />

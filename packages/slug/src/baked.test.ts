@@ -6,6 +6,7 @@ import type { BakeInput } from './baked'
 import { SLUG_FONT_VERSION } from './format'
 import { packBaked } from './bake'
 import type { SlugGlyphData, QuadCurve } from './types'
+import { toArrayBuffer } from './test-utils/toArrayBuffer'
 
 describe('unpackBaked version gate', () => {
   const stub = (extObj: unknown): GlbView =>
@@ -120,7 +121,7 @@ function makeSyntheticInput(): BakeInput {
 async function bakeAndRead(input: BakeInput) {
   const glb = await packBaked(input)
   // readGlb needs a standalone ArrayBuffer (no offset)
-  const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+  const buf = toArrayBuffer(glb)
   const asset = readGlb(buf)
   const ext = asset.ext<Record<string, unknown>>('FL_slug_font')!
   const columns = ext['columns'] as Record<string, { accessor: number }>
@@ -357,7 +358,7 @@ describe('unpackBaked round-trip', () => {
   it('reconstructs glyph map with correct fields', async () => {
     const input = makeSyntheticInput()
     const glb = await packBaked(input)
-    const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const buf = toArrayBuffer(glb)
     const asset = readGlb(buf)
     const result = unpackBaked(asset)
 
@@ -388,7 +389,7 @@ describe('unpackBaked round-trip', () => {
   it('reconstructs hBands/vBands for each glyph', async () => {
     const input = makeSyntheticInput()
     const glb = await packBaked(input)
-    const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const buf = toArrayBuffer(glb)
     const result = unpackBaked(readGlb(buf))
 
     // Glyph 0: 1 hBand with indices [0, 1], 0 vBands
@@ -408,7 +409,7 @@ describe('unpackBaked round-trip', () => {
   it('reconstructs cmap (cmapCodes/cmapGlyphs)', async () => {
     const input = makeSyntheticInput()
     const glb = await packBaked(input)
-    const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const buf = toArrayBuffer(glb)
     const result = unpackBaked(readGlb(buf))
 
     expect(result.cmapCodes.length).toBe(1)
@@ -421,7 +422,7 @@ describe('unpackBaked round-trip', () => {
   it('reconstructs kern lookups', async () => {
     const input = makeSyntheticInput()
     const glb = await packBaked(input)
-    const buf = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength)
+    const buf = toArrayBuffer(glb)
     const result = unpackBaked(readGlb(buf))
 
     expect(result.kernCount).toBe(1)

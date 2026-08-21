@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
+import { useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import {
   LinearFilter,
   LinearMipmapLinearFilter,
@@ -11,8 +11,10 @@ import {
   type Texture,
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { texture, textureLevel, uv, screenUV, select, uniform, mix, vec2, vec3, vec4, float, dot } from 'three/tsl'
+import { uniform } from 'three/tsl'
 import type { ImageSource } from './ThreeLayer'
+import { PreviewCanvas } from './PreviewCanvas'
+import { configureCompareMaterial } from './compareMaterial'
 
 export type { ImageSource }
 
@@ -264,39 +266,14 @@ function CompareScene({
     // flipped; that left the primary side displaying upside-down whenever
     // the user passed a CompressedTexture as primary (inspect mode for
     // KTX2 — primary === compare === KTX2 — surfaced this).
-    const isPrimaryCompressed = !!(primaryTex as { isCompressedTexture?: boolean }).isCompressedTexture
-    const primaryUV = isPrimaryCompressed ? vec2(uv().x, float(1).sub(uv().y)) : uv()
-    const a = texture(primaryTex, primaryUV)
-    // For the compare texture, sample at the selected LOD using textureLevel().
-    // For non-CompressedTextures (CanvasTexture) the uniform is 0, so the
-    // result is equivalent to texture() at full resolution.
-    const isCompareCompressed = !!(compareTex as { isCompressedTexture?: boolean } | null)?.isCompressedTexture
-    const compareUV = isCompareCompressed ? vec2(uv().x, float(1).sub(uv().y)) : uv()
-    const compareSample = compareTex ? textureLevel(compareTex, compareUV, mipLevelBNode) : a
-
-    // Loading-state visualization: while a re-encode is in flight, force
-    // the right side to the primary texture and apply a desaturation +
-    // dim. Build that variant separately and `select` between the raw
-    // sample and the desat'd one — avoiding the rgb→vec3→vec4 round-trip
-    // for the non-loading case (the round-trip subtly shifts color-space
-    // metadata vs. the direct texture sample on the left side, leading to
-    // a visible "phantom" desaturation even at mix-factor 0).
-    const luma = dot(a.rgb, vec3(0.299, 0.587, 0.114))
-    const grey = vec3(luma).mul(0.55)
-    const desatRGB = mix(a.rgb, grey, 0.75)
-    const bLoading = vec4(desatRGB, a.a)
-
-    // When loadingNode === 1 → use the desat'd primary; else → raw compareSample.
-    const b = select(loadingNode.equal(1), bLoading, compareSample)
-
-    // Split decision uses screenUV (canvas-space), NOT uv() (geometry-relative).
-    // This keeps the shader split aligned with the HTML slider's screen-X
-    // regardless of letterbox / pillarbox / pan / zoom — the slider sits at
-    // `splitU * canvasWidth` and the shader splits at `screenUV.x === splitU`,
-    // so they always agree. Texture sampling still uses uv() so the image is
-    // mapped to the geometry correctly; only the SPLIT decision is screen-space.
-    material.colorNode = select(screenUV.x.lessThan(splitUNode), a, b)
-    material.needsUpdate = true
+    configureCompareMaterial({
+      compareLoading: loadingNode,
+      compareTexture: compareTex,
+      material,
+      mipLevel: mipLevelBNode,
+      primaryTexture: primaryTex,
+      split: splitUNode,
+    })
   }, [primaryTex, compareTex, splitUNode, mipLevelBNode, loadingNode, material])
 
   const dims = primaryTex ? resolveDims(primary, primaryTex) : null
@@ -363,7 +340,7 @@ export function CompareLayer({
     return <div style={{ position: 'absolute', inset: 0 }} />
   }
   return (
-    <Canvas
+    <PreviewCanvas
       dpr={1}
       // Continuous render loop — required for the useFrame-driven uniform
       // pushes inside CompareScene. With "demand" the canvas would freeze
@@ -393,6 +370,6 @@ export function CompareLayer({
           onPrimaryReady={onImageReady}
         />
       </Suspense>
-    </Canvas>
+    </PreviewCanvas>
   )
 }

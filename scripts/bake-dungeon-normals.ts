@@ -8,21 +8,24 @@
 // Usage:
 //   node scripts/bake-dungeon-normals.ts
 //
-// Output: examples/react/lighting/public/sprites/Dungeon_Tileset.normal.png
+// Output: the paired React and Three.js lighting-example normal sidecars
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { bakeNormalMapFile } from '@three-flatland/normals/node'
 import type { NormalSourceDescriptor } from '@three-flatland/normals'
-import { tilesetToRegions, type TileNormalCustomData, type TilesetCell } from 'three-flatland/loaders/normalDescriptor'
+import { buildTilesetGrid, tilesetToRegions, type TileNormalCustomData } from 'three-flatland/loaders/normalDescriptor'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+const SCRIPT_PATH = fileURLToPath(import.meta.url)
+const __dirname = dirname(SCRIPT_PATH)
 const ROOT = resolve(__dirname, '..')
 const LDTK_PATH = resolve(ROOT, 'examples/react/lighting/public/maps/dungeon.ldtk')
-const TILESET_PATH = resolve(ROOT, 'examples/react/lighting/public/sprites/Dungeon_Tileset.png')
+const TILESET_PATHS = ['react', 'three'].map((variant) =>
+  resolve(ROOT, `examples/${variant}/lighting/public/sprites/Dungeon_Tileset.png`)
+)
 
-interface LDtkTilesetDef {
+export interface LDtkTilesetDef {
   uid: number
   identifier: string
   pxWid: number
@@ -30,22 +33,20 @@ interface LDtkTilesetDef {
   tileGridSize: number
   spacing: number
   padding: number
+  __cWid: number
+  __cHei: number
   customData: Array<{ tileId: number; data: string }>
 }
 
-interface LDtkProject {
+export interface LDtkProject {
   defs: { tilesets: LDtkTilesetDef[] }
 }
 
-function main(): void {
-  const project = JSON.parse(readFileSync(LDTK_PATH, 'utf8')) as LDtkProject
+export function buildDungeonNormalDescriptor(project: LDtkProject): NormalSourceDescriptor {
   const tileset = project.defs.tilesets.find((t) => t.identifier === 'Dungeon_Tileset')
   if (!tileset) throw new Error('Dungeon_Tileset not found in LDtk project')
 
-  const { pxWid, pxHei, tileGridSize, spacing, padding, customData } = tileset
-  const cols = Math.floor((pxWid + spacing) / (tileGridSize + spacing))
-  const rows = Math.floor((pxHei + spacing) / (tileGridSize + spacing))
-
+  const { pxWid, pxHei, tileGridSize, spacing, padding, __cWid, __cHei, customData } = tileset
   // Parse customData into a map keyed by tileId.
   const metaById = new Map<number, TileNormalCustomData>()
   for (const entry of customData) {
@@ -56,38 +57,37 @@ function main(): void {
     }
   }
 
-  // Walk the grid, emit a cell per tile with (optional) meta.
-  const cells: TilesetCell[] = []
-  for (let gy = 0; gy < rows; gy++) {
-    for (let gx = 0; gx < cols; gx++) {
-      const tileId = gy * cols + gx
-      const x = padding + gx * (tileGridSize + spacing)
-      const y = padding + gy * (tileGridSize + spacing)
-      cells.push({
-        x,
-        y,
-        w: tileGridSize,
-        h: tileGridSize,
-        meta: metaById.get(tileId),
-      })
-    }
-  }
+  const { cells } = buildTilesetGrid(
+    {
+      imageWidth: pxWid,
+      imageHeight: pxHei,
+      tileWidth: tileGridSize,
+      tileHeight: tileGridSize,
+      spacing,
+      padding,
+      columns: __cWid,
+      rows: __cHei,
+    },
+    (tileId) => metaById.get(tileId)
+  )
 
-  const regions = tilesetToRegions(cells)
-  const descriptor: NormalSourceDescriptor = {
-    version: 1,
-    pitch: Math.PI / 4,
-    regions,
-  }
-
-  // Dump descriptor next to the tileset for inspection + reruns.
-  const descriptorPath = TILESET_PATH.replace(/\.png$/, '.normal.json')
-  writeFileSync(descriptorPath, JSON.stringify(descriptor, null, 2) + '\n')
-  console.log(`wrote ${descriptorPath} (${regions.length} regions)`)
-
-  // Bake.
-  const outPath = bakeNormalMapFile(TILESET_PATH, descriptor)
-  console.log(`baked ${outPath}`)
+  return { regions: tilesetToRegions(cells) }
 }
 
-main()
+function main(): void {
+  const project = JSON.parse(readFileSync(LDTK_PATH, 'utf8')) as LDtkProject
+  const descriptor = buildDungeonNormalDescriptor(project)
+  const regionCount = descriptor.regions?.length ?? 0
+
+  for (const tilesetPath of TILESET_PATHS) {
+    // Dump the descriptor next to each paired tileset for inspection + reruns.
+    const descriptorPath = tilesetPath.replace(/\.png$/, '.normal.json')
+    writeFileSync(descriptorPath, JSON.stringify(descriptor, null, 2) + '\n')
+    console.log(`wrote ${descriptorPath} (${regionCount} regions)`)
+
+    const outPath = bakeNormalMapFile(tilesetPath, descriptor)
+    console.log(`baked ${outPath}`)
+  }
+}
+
+if (resolve(process.argv[1] ?? '') === SCRIPT_PATH) main()

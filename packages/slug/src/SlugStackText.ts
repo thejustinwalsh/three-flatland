@@ -7,6 +7,9 @@ import { SlugGeometry } from './SlugGeometry'
 import { shapeStackText } from './pipeline/textShaperStack'
 import type { SlugFont } from './SlugFont'
 import type { PositionedGlyph, SlugOutlineOptions, StyleSpan } from './types'
+import { installInstanceEventUpdateBeforePatch } from './_instanceEventUpdateBeforePatch'
+
+installInstanceEventUpdateBeforePatch()
 
 export interface SlugStackTextOptions {
   font?: SlugFontStack

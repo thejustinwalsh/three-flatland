@@ -2,7 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist/ts",
-    "rootDir": "./src/ts"
+    "rootDir": "./src/ts",
+    "types": ["@types/node", "@webgpu/types"]
   },
   "include": ["src/ts/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]

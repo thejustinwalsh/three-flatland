@@ -3,6 +3,7 @@ import { useRef, useState, useCallback } from 'react'
 import { Color, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
+import { WebGPUFallback } from './WebGPUFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -26,7 +27,8 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
         cam.right = (viewSize * aspect) / 2
         cam.top = viewSize / 2
         cam.bottom = -viewSize / 2
-        ;(cam as any).manual = true
+        const manualCamera = cam as ThreeOrthographicCamera & { manual?: boolean }
+        manualCamera.manual = true
         cam.updateProjectionMatrix()
         set({ camera: cam })
       }}
@@ -156,8 +158,9 @@ export default function App() {
     <Canvas
       dpr={1}
       renderer={{ antialias: false }}
-      onCreated={({ gl }) => {
-        gl.domElement.style.imageRendering = 'pixelated'
+      fallback={<WebGPUFallback />}
+      onCreated={({ renderer }) => {
+        renderer.domElement.style.imageRendering = 'pixelated'
       }}
     >
       <OrthoCamera viewSize={400} />

@@ -1,5 +1,26 @@
-import { attribute, texture, vec2, vec4, float, If, Discard, select } from 'three/tsl'
-import { type Texture, FrontSide, NormalBlending, CustomBlending, OneFactor, OneMinusSrcAlphaFactor } from 'three'
+import {
+  attribute,
+  texture,
+  vec2,
+  vec4,
+  float,
+  If,
+  Discard,
+  select,
+  positionLocal,
+  instancedMesh,
+  subBuild,
+} from 'three/tsl'
+import {
+  type Texture,
+  type InstancedMesh,
+  FrontSide,
+  NormalBlending,
+  CustomBlending,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
+} from 'three'
+import type { NodeBuilder } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
 import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
@@ -7,6 +28,12 @@ import { readFlip, readRotatedFrameFlag } from './instanceAttributes'
 import { synthQuadNodes } from './synthQuadNodes'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { GlobalUniforms } from '../GlobalUniforms'
+import { installInstanceEventUpdateBeforePatch } from '../pipeline/_instanceEventUpdateBeforePatch'
+
+// Public material/tilemap subpaths can be consumed without importing
+// SpriteBatch. Install the idempotent r185 instance-upload timing patch here
+// too so custom InstancedMesh + Sprite2DMaterial users get the same behavior.
+installInstanceEventUpdateBeforePatch()
 
 // Re-export types that moved to EffectMaterial for backwards compatibility
 export type { ColorTransformContext, ColorTransformFn } from './EffectMaterial'
@@ -217,6 +244,44 @@ export class Sprite2DMaterial extends EffectMaterial {
     if (options.map) {
       this.setTexture(options.map)
     }
+  }
+
+  /**
+   * Sprite batches compose their instance transform in the custom
+   * `positionNode`. Three.js evaluates hardware clip distances before that
+   * position is available, so those distances describe the shared unit quad
+   * instead of the transformed sprite. Keep clipping in the fragment stage,
+   * where the view-position varying is produced after `positionNode` assigns
+   * the synthesized, instance-transformed local position.
+   *
+   * @internal
+   */
+  override setupHardwareClipping(builder: NodeBuilder): void {
+    const clippingBuilder = builder as NodeBuilder & { hardwareClipping: boolean }
+    clippingBuilder.hardwareClipping = false
+  }
+
+  /**
+   * Three r185 applies its built-in instance transform before assigning a
+   * custom `positionNode`. The synthesized quad uses `positionNode`, so the
+   * default order would overwrite the transformed position and collapse every
+   * instance back to the shared unit quad. Assign the synthesized corner first,
+   * then apply the instance matrix. Tight-mesh materials keep Three's default
+   * setup path because they read their position from geometry.
+   *
+   * @internal
+   */
+  override setupPosition(builder: NodeBuilder): Node<'vec3'> {
+    if (this.positionNode === null) return super.setupPosition(builder) as unknown as Node<'vec3'>
+
+    positionLocal.assign(subBuild(this.positionNode, 'POSITION', 'vec3'))
+
+    const object = builder.object as InstancedMesh
+    if (object.isInstancedMesh && object.instanceMatrix.isInstancedBufferAttribute) {
+      instancedMesh(object)
+    }
+
+    return positionLocal
   }
 
   /**

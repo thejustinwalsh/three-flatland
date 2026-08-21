@@ -288,6 +288,28 @@ flatland.render(renderer)
 renderer.render(scene3D, camera3D)
 ```
 
+Flatland defaults a render target with no color-space metadata to sRGB, which is
+the usual choice for 2D color output. It also keeps the pipeline write and the
+target metadata aligned, so sampling `flatland.texture` in another Flatland or
+Three.js scene preserves the source colors without a manual transfer function.
+
+Set the target's color space before its first GPU use (or pass a fresh target to
+Flatland). Changing color-space metadata after Three has allocated the target
+does not recreate its GPU attachment format.
+
+For linear or HDR output, declare that intent on the target. Flatland preserves
+explicit color-space and texture-type settings:
+
+```typescript
+import { HalfFloatType, LinearSRGBColorSpace, RenderTarget } from 'three'
+
+const hdrTarget = new RenderTarget(512, 512, {
+  type: HalfFloatType,
+  colorSpace: LinearSRGBColorSpace,
+})
+const hdrFlatland = new Flatland({ renderTarget: hdrTarget })
+```
+
 ## Disposal
 
 Clean up all resources when done:
@@ -304,4 +326,3 @@ This destroys the ECS world, sprite batches, render pipeline, and all pass effec
 - [Pass Effects](../pass-effects/) — Full-screen post-processing effects
 - [Batch Rendering](../batch-rendering/) — How sprite batching works under the hood
 - [TSL Nodes](../tsl-nodes/) — Per-sprite material effects and low-level TSL usage
-- [Breakout Showcase](../../showcases/breakout/) — A complete game built with Flatland

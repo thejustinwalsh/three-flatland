@@ -1,4 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
+import { initializeRenderer } from './rendererFallback'
 import {
   Scene,
   OrthographicCamera,
@@ -470,7 +471,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Create procedural tileset
   const tilesetTexture = createProceduralTileset(TILE_SIZE, TILESET_COLUMNS, TILESET_ROWS)

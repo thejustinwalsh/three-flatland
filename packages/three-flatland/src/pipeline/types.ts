@@ -63,11 +63,14 @@ export interface RenderStats {
   visibleSprites: number
 }
 
+/** A local-space clipping rectangle: [x, y, width, height]. */
+export type ClipRect = readonly [x: number, y: number, width: number, height: number]
+
 /**
  * Options for SpriteGroup.
  */
 export interface SpriteGroupOptions {
-  /** Maximum sprites per batch (default: 10000) */
+  /** Maximum sprites per batch. Omit to use 1024 → 4096 → 16384 capacity tiers; set a value to pin every batch. */
   maxBatchSize?: number
   /** Enable automatic sorting (default: true) */
   autoSort?: boolean
@@ -78,6 +81,8 @@ export interface SpriteGroupOptions {
    *  Disable for static UIs and call invalidateTransforms() manually.
    *  Note: Property changes (tint, alpha, etc.) don't need this - they write directly to buffers. */
   autoInvalidateTransforms?: boolean
+  /** Local-space clipping rectangle. WebGPU renderer only. */
+  clipRect?: ClipRect | null
 }
 
 /**

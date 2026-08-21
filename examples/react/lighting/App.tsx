@@ -16,6 +16,7 @@ import {
   attachEffect,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
+import { WebGPUFallback } from './WebGPUFallback'
 import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
@@ -156,7 +157,17 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
     cam.updateProjectionMatrix()
     set({ camera: cam })
   }, [viewSize, aspect, set])
-  return <orthographicCamera ref={camRef} position={[0, 0, 100]} near={0.1} far={1000} manual />
+  return (
+    <orthographicCamera
+      ref={(cam) => {
+        camRef.current = cam
+        if (cam) (cam as ThreeOrthographicCamera & { manual?: boolean }).manual = true
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+    />
+  )
 }
 
 // ============================================
@@ -256,15 +267,17 @@ interface SceneProps {
 function FlatlandScene(props: SceneProps) {
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
     l.normals = true
+    l.forceRuntime = true
   })
   const slimeSheet = useLoader(SpriteSheetLoader, './sprites/slime.json', (l) => {
     l.normals = true
+    l.forceRuntime = true
   })
   const mapData = useLoader(LDtkLoader, './maps/dungeon.ldtk', (l) => {
     l.normals = true
   })
 
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   const size = useThree((s) => s.size)
   const flatlandRef = useRef<Flatland>(null)
   const tilemapRef = useRef<TileMap2D>(null)
@@ -302,10 +315,11 @@ function FlatlandScene(props: SceneProps) {
     () => [...fixedLightPositions, ...switchPositions],
     [fixedLightPositions, switchPositions]
   )
+  const torchCount = allTorchPositions.length
 
   useEffect(() => {
-    setTorchEnabled(allTorchPositions.map(() => true))
-  }, [allTorchPositions.length])
+    setTorchEnabled(Array.from({ length: torchCount }, () => true))
+  }, [torchCount])
 
   const heroRef = useRef<AnimatedSprite2D | null>(null)
   const heroPos = useRef(new Vector2(0, 0))
@@ -544,7 +558,7 @@ function FlatlandScene(props: SceneProps) {
         e.preventDefault()
       }
     }
-    const canvas = (gl as unknown as { domElement: HTMLCanvasElement }).domElement
+    const canvas = (renderer as unknown as { domElement: HTMLCanvasElement }).domElement
     const click = (e: MouseEvent) => {
       if (!canvas) return
       const rect = canvas.getBoundingClientRect()
@@ -595,7 +609,7 @@ function FlatlandScene(props: SceneProps) {
       window.removeEventListener('keyup', up)
       canvas.removeEventListener('click', click)
     }
-  }, [gl, fixedLightPositions.length, switchPositions])
+  }, [renderer, fixedLightPositions.length, switchPositions])
 
   useFrame((_, rawDelta) => {
     // When paused, freeze the simulation. Rendering still happens, so the
@@ -857,7 +871,7 @@ function FlatlandScene(props: SceneProps) {
 
   useFrame(
     () => {
-      flatlandRef.current?.render(gl as unknown as WebGPURenderer)
+      flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
     },
     { phase: 'render' }
   )
@@ -1065,7 +1079,7 @@ export default function App() {
   const rimEnabled = rimIntensity > 0
 
   return (
-    <Canvas renderer={{ antialias: false }}>
+    <Canvas renderer={{ antialias: false }} fallback={<WebGPUFallback />}>
       <color attach="background" args={['#06060c']} />
       <Suspense fallback={null}>
         <FlatlandScene

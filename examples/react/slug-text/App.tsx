@@ -10,6 +10,7 @@ import {
   usePaneInput,
   usePaneRadioGrid,
 } from '@three-flatland/devtools/react'
+import { WebGPUFallback } from './WebGPUFallback'
 import { GemBackground, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
 
@@ -220,10 +221,10 @@ function PixelCamera() {
 
 /** Surfaces the WebGPU canvas element to the parent for pixel reads (diff mode). */
 function CanvasGrabber({ onReady }: { onReady: (canvas: HTMLCanvasElement) => void }) {
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   useEffect(() => {
-    onReady(gl.domElement as HTMLCanvasElement)
-  }, [gl, onReady])
+    onReady(renderer.domElement as HTMLCanvasElement)
+  }, [renderer, onReady])
   return null
 }
 
@@ -237,10 +238,10 @@ function CanvasGrabber({ onReady }: { onReady: (canvas: HTMLCanvasElement) => vo
  * onto the renderer whenever it changes.
  */
 function DprSync({ dpr }: { dpr: number }) {
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   useEffect(() => {
-    gl.setPixelRatio(Math.min(dpr, 2))
-  }, [gl, dpr])
+    renderer.setPixelRatio(Math.min(dpr, 2))
+  }, [renderer, dpr])
   return null
 }
 
@@ -287,7 +288,7 @@ function SlugTextScene({
     } else {
       mesh.outline = { width: outlineWidth, color: outlineColor }
     }
-  }, [outlineStyle])
+  }, [outlineStyle, outlineWidth, outlineColor])
 
   useEffect(() => {
     ref.current?.setOutlineWidth(outlineWidth)
@@ -359,7 +360,7 @@ function SlugStackTextScene({
     } else {
       mesh.outline = { width: outlineWidth, color: outlineColor }
     }
-  }, [outlineStyle])
+  }, [outlineStyle, outlineWidth, outlineColor])
 
   useEffect(() => {
     ref.current?.setOutlineWidth(outlineWidth)
@@ -1021,6 +1022,7 @@ export default function App() {
       <Canvas
         orthographic
         camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
+        fallback={<WebGPUFallback />}
         // Slug provides its own analytic anti-aliasing via per-fragment
         // coverage — MSAA adds 4× sample cost + a canvas-area resolve pass
         // for zero visual gain. Keep it off.

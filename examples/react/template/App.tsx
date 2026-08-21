@@ -3,6 +3,7 @@ import { useLayoutEffect } from 'react'
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneInput } from '@three-flatland/devtools/react'
+import { WebGPUFallback } from './WebGPUFallback'
 
 extend({ Sprite2D })
 
@@ -45,6 +46,7 @@ export default function App() {
     <Canvas
       orthographic
       dpr={1}
+      fallback={<WebGPUFallback />}
       camera={{
         position: [0, 0, 100],
         near: 0.1,
@@ -55,8 +57,8 @@ export default function App() {
         bottom: -1,
       }}
       renderer={{ antialias: false }}
-      onCreated={({ gl }) => {
-        gl.domElement.style.imageRendering = 'pixelated'
+      onCreated={({ renderer }) => {
+        renderer.domElement.style.imageRendering = 'pixelated'
       }}
     >
       <OrthoCamera viewSize={400} />

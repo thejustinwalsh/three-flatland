@@ -12,6 +12,7 @@ import {
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
+import { initializeRenderer } from './rendererFallback'
 
 // Configuration
 const TILE_SIZE = 64
@@ -85,7 +86,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Load textures (uses 'pixel-art' preset by default with NearestFilter + SRGBColorSpace)
   const [grassTex, shadowTex, spritesSheet] = await Promise.all([

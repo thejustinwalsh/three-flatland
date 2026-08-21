@@ -6,6 +6,8 @@ export default defineConfig([
       'src/**/*.ts',
       '!src/**/*.test.ts',
       '!src/**/*.test-d.ts',
+      '!src/**/*.type-test.ts',
+      '!src/test-utils/**',
       '!src/**/*.tsx',
       '!src/**/*.d.ts',
       '!src/cli.ts',

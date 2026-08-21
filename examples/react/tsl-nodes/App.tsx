@@ -12,6 +12,7 @@ import {
   type MaterialEffect,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
+import { WebGPUFallback } from './WebGPUFallback'
 import { tintAdditive, hueShift, saturate, outline8, pixelate, dissolvePixelated, tint } from '@three-flatland/nodes'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 import { GemBackground } from './GemBackground'
@@ -27,6 +28,8 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
     <orthographicCamera
       ref={(cam: OrthographicCamera | null) => {
         if (!cam) return
+        const manualCamera = cam as OrthographicCamera & { manual?: boolean }
+        manualCamera.manual = true
         cam.left = (-viewSize * aspect) / 2
         cam.right = (viewSize * aspect) / 2
         cam.top = viewSize / 2
@@ -37,7 +40,6 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
       position={[0, 0, 100]}
       near={0.1}
       far={1000}
-      manual
     />
   )
 }
@@ -453,8 +455,9 @@ export default function App() {
       <Canvas
         dpr={1}
         renderer={{ antialias: false }}
-        onCreated={({ gl }) => {
-          gl.domElement.style.imageRendering = 'pixelated'
+        fallback={<WebGPUFallback />}
+        onCreated={({ renderer }) => {
+          renderer.domElement.style.imageRendering = 'pixelated'
         }}
       >
         <OrthoCamera viewSize={200} />

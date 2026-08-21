@@ -11,7 +11,7 @@ import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
 import { resolveNormalMap, type NormalSourceDescriptor } from '@three-flatland/normals'
 import { type TexturePreset, type TextureOptions, resolveTextureOptions } from './texturePresets'
 import { TextureLoader } from './TextureLoader'
-import { tilesetToRegions, type TileNormalCustomData, type TilesetCell } from './normalDescriptor'
+import { buildTilesetGrid, tilesetCellAt, tilesetToRegions, type TileNormalCustomData } from './normalDescriptor'
 
 /**
  * Shape accepted by `TiledLoaderOptions.normals`. Same semantics as
@@ -414,17 +414,19 @@ export class TiledLoader extends Loader<TileMapData> {
     const margin = ts.margin ?? 0
     const spacing = ts.spacing ?? 0
     const rows = Math.floor(ts.tilecount / ts.columns)
-    const cells: TilesetCell[] = []
-    for (let gy = 0; gy < rows; gy++) {
-      for (let gx = 0; gx < ts.columns; gx++) {
-        const tileId = gy * ts.columns + gx
-        const x = margin + gx * (ts.tilewidth + spacing)
-        const y = margin + gy * (ts.tileheight + spacing)
-        const tile = tiles.get(tileId)
-        const meta = tile?.properties as TileNormalCustomData | undefined
-        cells.push({ x, y, w: ts.tilewidth, h: ts.tileheight, meta })
-      }
-    }
+    const { cells } = buildTilesetGrid(
+      {
+        imageWidth: ts.imagewidth,
+        imageHeight: ts.imageheight,
+        tileWidth: ts.tilewidth,
+        tileHeight: ts.tileheight,
+        spacing,
+        padding: margin,
+        columns: ts.columns,
+        rows,
+      },
+      (tileId) => tiles.get(tileId)?.properties as TileNormalCustomData | undefined
+    )
     const synthesized = tilesetToRegions(cells)
 
     const base: NormalSourceDescriptor = optionDescriptor === true ? {} : optionDescriptor
@@ -449,17 +451,21 @@ export class TiledLoader extends Loader<TileMapData> {
     const margin = ts.margin ?? 0
     const spacing = ts.spacing ?? 0
 
-    const col = localId % ts.columns
-    const row = Math.floor(localId / ts.columns)
-
-    const x = margin + col * (ts.tilewidth + spacing)
-    const y = margin + row * (ts.tileheight + spacing)
+    const cell = tilesetCellAt(localId, {
+      imageWidth: ts.imagewidth,
+      imageHeight: ts.imageheight,
+      tileWidth: ts.tilewidth,
+      tileHeight: ts.tileheight,
+      spacing,
+      padding: margin,
+      columns: ts.columns,
+    })
 
     return {
-      x: x / ts.imagewidth,
-      y: y / ts.imageheight,
-      width: ts.tilewidth / ts.imagewidth,
-      height: ts.tileheight / ts.imageheight,
+      x: cell.x / ts.imagewidth,
+      y: cell.y / ts.imageheight,
+      width: cell.w / ts.imagewidth,
+      height: cell.h / ts.imageheight,
     }
   }
 

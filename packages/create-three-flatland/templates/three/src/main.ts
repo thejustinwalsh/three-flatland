@@ -46,7 +46,21 @@ async function main() {
   activeFlatland = flatland
   container.appendChild(renderer.domElement)
 
-  await renderer.init()
+  try {
+    await renderer.init()
+  } catch (error) {
+    console.error('[three-flatland] Renderer initialization failed', error)
+    renderer.domElement.remove()
+    const loader = document.querySelector<HTMLElement>('#loader')
+    if (loader) {
+      loader.removeAttribute('data-loaded')
+      loader.removeAttribute('aria-label')
+      loader.setAttribute('role', 'status')
+      loader.style.color = '#9aa4b2'
+      loader.textContent = 'This app could not initialize WebGPU or WebGL 2 rendering.'
+    }
+    return
+  }
   const texture = await TextureLoader.load(`${import.meta.env.BASE_URL}sprite.svg`)
 
   // Renderer + texture ready — fade the loading overlay out, then drop it.

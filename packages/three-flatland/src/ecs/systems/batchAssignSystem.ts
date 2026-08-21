@@ -133,9 +133,8 @@ export function createBatchAssignSystem(): (
       // Auto-orchestrated sprites live in the user's scene tree — once a
       // batch draws them, their own Mesh must stop rendering. Explicit
       // SpriteGroup sprites were never tree children; leave them alone.
-      if (sprite._autoRegistry) {
-        sprite._autoBatched = true
-        sprite.visible = false
+      if (sprite._autoRegistry || sprite._hierarchyManaged) {
+        sprite._setBatchSuppressed(true)
       }
 
       // Signal that this batch needs sorting on the next pass — the new
@@ -156,6 +155,8 @@ export function createBatchAssignSystem(): (
     for (const mesh of dirtyMeshes) {
       mesh.syncCount()
     }
+
+    if (dirtyMeshes.size > 0) registry.transformsDirty = true
 
     return true
   }

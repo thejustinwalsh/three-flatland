@@ -833,11 +833,6 @@ const transitionName = `tile-examples-${slug}`
             const stackblitzLink = root.querySelector<HTMLAnchorElement>('a.stackblitz-btn')
             const STORAGE_VARIANT = 'flatland-example-type'
 
-            // Active variant — the StackBlitz click handler reads this
-            // to pick the right payload script. Captured here so the
-            // closure stays current as setVariant() runs.
-            let activeVariant: 'three' | 'react' = 'three'
-
             const restoreVariant = (): 'three' | 'react' => {
                 // URL param takes precedence — supports deep-linking
                 // (`/examples/<slug>/?pkg=react`) and lets smoke tests
@@ -859,7 +854,6 @@ const transitionName = `tile-examples-${slug}`
             }
 
             const setVariant = (variant: 'three' | 'react') => {
-                activeVariant = variant
                 root.dataset.variant = variant
                 toggleButtons.forEach((b) => {
                     b.setAttribute(

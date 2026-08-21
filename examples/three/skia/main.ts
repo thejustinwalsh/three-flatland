@@ -39,6 +39,7 @@ import {
 } from '@three-flatland/skia/three'
 import { createPane } from '@three-flatland/devtools'
 import { createDevtoolsProvider } from 'three-flatland'
+import { initializeRenderer } from './rendererFallback'
 
 function setStatus(msg: string, ok: boolean) {
   console.log(`[skia] ${msg}`)
@@ -117,7 +118,7 @@ async function main() {
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
   document.body.appendChild(renderer.domElement)
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Black clear so alpha-faded plane edges reveal the void at the
   // horizon. Fog is also black, fading foreground 3D meshes (floor,

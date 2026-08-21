@@ -1,17 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
+import type {} from './vscode-elements'
 import { useCompareController } from './CompareContext'
-
-// JSX intrinsic for the vscode-progress-ring web component.
-// The element must be registered by the consumer's entry (main.tsx) via:
-//   import '@vscode-elements/elements/dist/vscode-progress-ring/index.js'
-// The encode tool's main.tsx already does this.
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'vscode-progress-ring': Record<string, unknown>
-    }
-  }
-}
 
 const styles = stylex.create({
   // Positions the spinner in the center of the RIGHT half of the canvas

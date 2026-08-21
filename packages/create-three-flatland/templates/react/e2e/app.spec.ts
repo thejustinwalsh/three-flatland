@@ -21,6 +21,28 @@ import { expect, test, type Page } from '@playwright/test'
 
 const HOVER_TINT_DROP = 0.9 // hovering must pull red:green to under 90% of idle
 
+test('replaces the loading overlay when no renderer backend initializes', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined })
+    HTMLCanvasElement.prototype.getContext = () => null
+  })
+
+  await page.goto('/')
+
+  const loader = page.locator('#loader')
+  await expect(loader).toContainText('This app could not initialize WebGPU or WebGL 2 rendering.')
+  await expect(loader).toHaveAttribute('role', 'status')
+  await expect(loader).not.toHaveAttribute('aria-label')
+  await expect(loader).toHaveCSS('color', 'rgb(154, 164, 178)')
+
+  const hiddenFallback = page.locator('#root [aria-hidden="true"]').filter({
+    hasText: 'This app could not initialize WebGPU or WebGL 2 rendering.',
+  })
+  await expect(hiddenFallback).toHaveCount(1)
+  await expect(hiddenFallback).not.toHaveAttribute('role')
+  await expect(page.locator('canvas')).toHaveCount(0)
+})
+
 test('renders the sprite and responds to the pointer', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('pageerror', (e) => consoleErrors.push(String(e)))
@@ -45,10 +67,9 @@ test('renders the sprite and responds to the pointer', async ({ page }) => {
   await settle(page)
   const hovered = await sampleSprite(page)
 
-  expect(
-    hovered.redToGreen,
-    'hovering did not tint the sprite — pointer events are not reaching it'
-  ).toBeLessThan(idle.redToGreen * HOVER_TINT_DROP)
+  expect(hovered.redToGreen, 'hovering did not tint the sprite — pointer events are not reaching it').toBeLessThan(
+    idle.redToGreen * HOVER_TINT_DROP
+  )
 
   expect(consoleErrors, `console/page errors:\n${consoleErrors.join('\n')}`).toEqual([])
 })
@@ -110,9 +131,7 @@ async function sampleSprite(page: Page): Promise<FrameSample> {
       }
     }
     const mean = sum.map((s) => s / n)
-    const stdDev = Math.max(
-      ...mean.map((m, ch) => Math.sqrt(Math.max(0, (sumSq[ch] ?? 0) / n - m * m)))
-    )
+    const stdDev = Math.max(...mean.map((m, ch) => Math.sqrt(Math.max(0, (sumSq[ch] ?? 0) / n - m * m))))
     return {
       stdDev,
       // Guard the divisor: a fully unlit frame would otherwise divide by zero.

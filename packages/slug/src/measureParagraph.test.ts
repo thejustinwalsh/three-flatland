@@ -19,20 +19,7 @@ beforeAll(() => {
   const parsed = parseFont(arrayBuffer)
   const textures = packTextures(parsed.glyphs)
   const otFont = opentype.parse(arrayBuffer)
-  font = SlugFont._createRuntime(
-    parsed.glyphs,
-    textures,
-    {
-      unitsPerEm: parsed.unitsPerEm,
-      ascender: parsed.ascender,
-      descender: parsed.descender,
-      capHeight: parsed.capHeight,
-    },
-    otFont,
-    shapeText,
-    wrapLines,
-    measureText
-  )
+  font = SlugFont._createRuntime(parsed.glyphs, textures, parsed, otFont, shapeText, wrapLines, measureText)
 })
 
 describe('SlugFont.measureParagraph', () => {

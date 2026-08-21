@@ -126,8 +126,8 @@ useFrame((state) => {
 
 Without this, a hoverable sprite that slides under a stationary cursor will not receive `onPointerOver` until the user moves the mouse.
 
-:::caution[Batched sprites are not yet interactive]
-Sprites managed by `SpriteGroup` or the `Flatland` batching layer are not yet included in the raycast pipeline — batched geometry merges draw calls in ways that break per-object hit testing. Standalone `Sprite2D` and `AnimatedSprite2D` instances (added directly to the scene, as shown here) are fully interactive today. Raycasting for batched sprites is tracked in [issue #85](https://github.com/thejustinwalsh/three-flatland/issues/85) and lands with the orchestration overhaul.
+:::tip[Batched sprites use the same API]
+Sprites managed by `SpriteGroup` or `Flatland` stay individually interactive. The batch performs the broad-phase lookup and reports the original `Sprite2D` as `hit.object`; ancestor transforms, visibility, and `SpriteGroup.clipRect` are honored by both rendering and picking.
 :::
 
 ## Alpha mode and pixel-perfect picking
@@ -216,7 +216,6 @@ knight.hitTestMode = 'alpha'
 
 The raycast contract is the foundation; these build on it and are tracked separately:
 
-- **Batched-sprite picking** — interactivity for `SpriteGroup`/`Flatland`-batched sprites, once the orchestration overhaul makes them scene-graph citizens ([#127](https://github.com/thejustinwalsh/three-flatland/issues/127), depends on [#85](https://github.com/thejustinwalsh/three-flatland/issues/85)).
 - **`FlatlandTexture`** — render flatland to a texture with pointer events through the portal compute seam ([#126](https://github.com/thejustinwalsh/three-flatland/issues/126)).
 - **GPU ID-buffer picking** — the high-instance-count Phase 2 path behind the same `pick()` signature ([#128](https://github.com/thejustinwalsh/three-flatland/issues/128)).
 - **Drag helper** — an ergonomic drag primitive composed from the pointer events you already get ([#129](https://github.com/thejustinwalsh/three-flatland/issues/129)).

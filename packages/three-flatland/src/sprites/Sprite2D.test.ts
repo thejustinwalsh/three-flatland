@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture, BufferAttribute, InterleavedBufferAttribute } from 'three'
 import { createWorld, universe } from 'koota'
 import { Sprite2D } from './Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteColor, SpriteFlip, SpriteUV } from '../ecs/traits'
+import { SpriteGroup } from '../pipeline/SpriteGroup'
 
 describe('Sprite2D', () => {
   let texture: Texture
@@ -23,6 +24,39 @@ describe('Sprite2D', () => {
     expect(sprite.alpha).toBe(1)
     expect(sprite.sortLayer).toBe(0)
     expect(sprite.zIndex).toBe(0)
+  })
+
+  it('constructs visibility through the prototype accessor without an own-property shadow', () => {
+    const sprite = new Sprite2D({ texture })
+
+    expect(Object.hasOwn(sprite, 'visible')).toBe(false)
+    expect(sprite._isAuthoredVisible()).toBe(true)
+    expect(sprite.visible).toBe(true)
+    expect(sprite.isMesh).toBe(true)
+
+    sprite._setBatchSuppressed(true)
+    expect(sprite.visible).toBe(true)
+    expect(sprite._isAuthoredVisible()).toBe(true)
+    expect(sprite.isMesh).toBe(false)
+
+    sprite.visible = false
+    expect(sprite.visible).toBe(false)
+    sprite._setBatchSuppressed(false)
+    expect(sprite.visible).toBe(false)
+    expect(sprite._isAuthoredVisible()).toBe(false)
+    expect(sprite.isMesh).toBe(true)
+  })
+
+  it('reports authored visibility while content readiness controls only source rendering', () => {
+    const sprite = new Sprite2D()
+
+    expect(sprite.visible).toBe(true)
+    expect(sprite.isMesh).toBe(false)
+
+    sprite.visible = false
+    sprite.texture = texture
+    expect(sprite.visible).toBe(false)
+    expect(sprite.isMesh).toBe(true)
   })
 
   it('should set anchor correctly', () => {
@@ -102,6 +136,58 @@ describe('Sprite2D', () => {
     expect(cloned.sortLayer).toBe(sprite.sortLayer)
     expect(cloned.zIndex).toBe(sprite.zIndex)
     expect(cloned.position.equals(sprite.position)).toBe(true)
+  })
+
+  it('copy preserves authored visibility from a batch-suppressed source', () => {
+    const source = new Sprite2D({ texture })
+    source.visible = true
+    source._setBatchSuppressed(true)
+    const target = new Sprite2D({ texture })
+
+    target.copy(source)
+
+    expect(source.visible).toBe(true)
+    expect(source.isMesh).toBe(false)
+    expect(target._isAuthoredVisible()).toBe(true)
+    expect(target.visible).toBe(true)
+  })
+
+  it('copy preserves matrixWorld ownership from the target enrollment state', () => {
+    const group = new SpriteGroup()
+    const enrolledSource = new Sprite2D({ texture })
+    const enrolledTarget = new Sprite2D({ texture })
+    const standaloneSource = new Sprite2D({ texture })
+    const standaloneTarget = new Sprite2D({ texture })
+    group.add(enrolledSource, enrolledTarget)
+
+    expect(enrolledSource.matrixWorldAutoUpdate).toBe(false)
+    expect(enrolledTarget.matrixWorldAutoUpdate).toBe(false)
+    expect(standaloneSource.matrixWorldAutoUpdate).toBe(true)
+    expect(standaloneTarget.matrixWorldAutoUpdate).toBe(true)
+
+    standaloneTarget.copy(enrolledSource)
+    expect(standaloneTarget.matrixWorldAutoUpdate).toBe(true)
+
+    enrolledTarget.copy(standaloneSource)
+    expect(enrolledTarget.matrixWorldAutoUpdate).toBe(false)
+    group.dispose()
+  })
+
+  it('caches the batch registry across hot-path mutations', () => {
+    const group = new SpriteGroup()
+    const world = group.world
+    const query = vi.spyOn(world, 'query')
+    const sprite = new Sprite2D({ texture })
+    group.add(sprite)
+    const enrollmentQueries = query.mock.calls.length
+
+    sprite.visible = false
+    sprite.visible = true
+    sprite.hitRadius = 24
+
+    expect(enrollmentQueries).toBeGreaterThan(0)
+    expect(query).toHaveBeenCalledTimes(enrollmentQueries)
+    group.dispose()
   })
 
   it('should get world position 2D', () => {

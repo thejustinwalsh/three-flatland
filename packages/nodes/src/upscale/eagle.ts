@@ -29,15 +29,15 @@ export function eagle(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 
   // S T U
   // V C W
   // X Y Z
-  const S = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1))))
-  const T = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1))))
-  const U = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1))))
-  const V = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0))))
-  const C = sampleTexture(tex, srcUV)
-  const W = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0))))
-  const X = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1))))
-  const Y = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1))))
-  const Z = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1))))
+  const S = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1)))).toVar()
+  const T = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1)))).toVar()
+  const U = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1)))).toVar()
+  const V = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0)))).toVar()
+  const C = sampleTexture(tex, srcUV).toVar()
+  const W = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0)))).toVar()
+  const X = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1)))).toVar()
+  const Y = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1)))).toVar()
+  const Z = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1)))).toVar()
 
   // Color equality check
   const eq = (a: Node<'vec4'>, b: Node<'vec4'>) => a.rgb.sub(b.rgb).length().lessThan(0.01)
@@ -53,20 +53,19 @@ export function eagle(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 
   const isBottom = localPos.y.greaterThan(0.5)
 
   // Top-left: if S == T == V
-  const p1 = eq(S, T).and(eq(T, V)).select(S, C)
+  const p1 = eq(S, T).and(eq(T, V)).select(S, C).toVar()
   // Top-right: if T == U == W
-  const p2 = eq(T, U).and(eq(U, W)).select(U, C)
+  const p2 = eq(T, U).and(eq(U, W)).select(U, C).toVar()
   // Bottom-left: if V == X == Y
-  const p3 = eq(V, X).and(eq(X, Y)).select(X, C)
+  const p3 = eq(V, X).and(eq(X, Y)).select(X, C).toVar()
   // Bottom-right: if W == Z == Y
-  const p4 = eq(W, Z).and(eq(Z, Y)).select(Z, C)
+  const p4 = eq(W, Z).and(eq(Z, Y)).select(Z, C).toVar()
 
   // Select based on position
-  const topRow = isRight.select(p2, p1)
-  const bottomRow = isRight.select(p4, p3)
-  const result = isBottom.select(bottomRow, topRow)
+  const topRow = isRight.select(p2, p1).toVar()
+  const bottomRow = isRight.select(p4, p3).toVar()
 
-  return result
+  return isBottom.select(bottomRow, topRow)
 }
 
 /**
@@ -86,15 +85,15 @@ export function superEagle(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input 
   const localPos = uv.div(texel.mul(0.5)).sub(srcPixel)
 
   // Extended neighborhood for SuperEagle
-  const c0 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1))))
-  const c1 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1))))
-  const c2 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1))))
-  const c3 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0))))
-  const c4 = sampleTexture(tex, srcUV)
-  const c5 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0))))
-  const c6 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1))))
-  const c7 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1))))
-  const c8 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1))))
+  const c0 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1)))).toVar()
+  const c1 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1)))).toVar()
+  const c2 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1)))).toVar()
+  const c3 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0)))).toVar()
+  const c4 = sampleTexture(tex, srcUV).toVar()
+  const c5 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0)))).toVar()
+  const c6 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1)))).toVar()
+  const c7 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1)))).toVar()
+  const c8 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1)))).toVar()
 
   const eq = (a: Node<'vec4'>, b: Node<'vec4'>) => a.rgb.sub(b.rgb).length().lessThan(0.01)
 
@@ -106,13 +105,13 @@ export function superEagle(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input 
   const _diag2 = eq(c2, c4).and(eq(c4, c6)) // Anti-diagonal
 
   // Blend based on diagonal detection
-  const blendTopLeft = eq(c0, c1).and(eq(c1, c3)).select(c0, c4)
-  const blendTopRight = eq(c1, c2).and(eq(c2, c5)).select(c2, c4)
-  const blendBottomLeft = eq(c3, c6).and(eq(c6, c7)).select(c6, c4)
-  const blendBottomRight = eq(c5, c7).and(eq(c7, c8)).select(c8, c4)
+  const blendTopLeft = eq(c0, c1).and(eq(c1, c3)).select(c0, c4).toVar()
+  const blendTopRight = eq(c1, c2).and(eq(c2, c5)).select(c2, c4).toVar()
+  const blendBottomLeft = eq(c3, c6).and(eq(c6, c7)).select(c6, c4).toVar()
+  const blendBottomRight = eq(c5, c7).and(eq(c7, c8)).select(c8, c4).toVar()
 
-  const topRow = isRight.select(blendTopRight, blendTopLeft)
-  const bottomRow = isRight.select(blendBottomRight, blendBottomLeft)
+  const topRow = isRight.select(blendTopRight, blendTopLeft).toVar()
+  const bottomRow = isRight.select(blendBottomRight, blendBottomLeft).toVar()
 
   return isBottom.select(bottomRow, topRow)
 }
@@ -134,7 +133,7 @@ export function sai2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 
   const localPos = uv.div(texel.mul(0.5)).sub(srcPixel)
 
   // Sample 4x4 for 2xSaI
-  const getPixel = (ox: number, oy: number) => sampleTexture(tex, srcUV.add(texel.mul(vec2(ox, oy))))
+  const getPixel = (ox: number, oy: number) => sampleTexture(tex, srcUV.add(texel.mul(vec2(ox, oy)))).toVar()
 
   const _I = getPixel(-1, -1)
   const _E = getPixel(0, -1)
@@ -168,15 +167,15 @@ export function sai2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [1 
 
   // Select corners
   const topLeft = A
-  const topRight = preferBC.select(B.rgb.add(A.rgb).mul(0.5), B)
-  const bottomLeft = preferBC.select(C.rgb.add(A.rgb).mul(0.5), C)
+  const topRight = preferBC.select(B.rgb.add(A.rgb).mul(0.5), B.rgb)
+  const bottomLeft = preferBC.select(C.rgb.add(A.rgb).mul(0.5), C.rgb)
   const bottomRight = AeqD.and(BeqC).select(
     A.rgb.add(B.rgb).add(C.rgb).add(D.rgb).mul(0.25),
-    preferAD.select(A.rgb.add(D.rgb).mul(0.5), preferBC.select(B.rgb.add(C.rgb).mul(0.5), A))
+    preferAD.select(A.rgb.add(D.rgb).mul(0.5), preferBC.select(B.rgb.add(C.rgb).mul(0.5), A.rgb))
   )
 
-  const topRow = isRight.select(vec4(topRight, A.a), topLeft)
-  const bottomRow = isRight.select(vec4(bottomRight, A.a), vec4(bottomLeft, A.a))
+  const topRow = isRight.select(vec4(topRight, A.a), topLeft).toVar()
+  const bottomRow = isRight.select(vec4(bottomRight, A.a), vec4(bottomLeft, A.a)).toVar()
 
   return isBottom.select(bottomRow, topRow)
 }

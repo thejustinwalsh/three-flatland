@@ -221,6 +221,7 @@ export const BatchRegistry = trait(() => ({
   parentRemove: null as ((...objects: Object3D[]) => Group) | null,
   /** Whether auto-invalidate transforms is enabled. */
   autoInvalidateTransforms: true as boolean,
+  transformsDirty: true as boolean,
   /** The SystemSchedule for this world. */
   schedule: null as SystemSchedule | null,
   /**

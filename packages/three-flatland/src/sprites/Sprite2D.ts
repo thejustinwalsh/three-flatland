@@ -11,6 +11,7 @@ import {
   type Texture,
   type Raycaster,
   type Intersection,
+  type Object3D,
 } from 'three'
 import type { Entity, World } from 'koota'
 import type { MaterialEffect } from '../materials/MaterialEffect'
@@ -97,6 +98,14 @@ const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, ve
  * process-wide flag) so one misconfigured sprite's warning doesn't
  * suppress the same warning for every other sprite. Spec §7.1. */
 const _warnedMissingAlphaMap = new WeakSet<object>()
+const _clipWorldPoint = new Vector3()
+
+interface FlatlandClipAncestor extends Object3D {
+  _containsWorldPoint?(point: Vector3): boolean
+  _enrollHierarchySprite?(sprite: Sprite2D): void
+  _releaseHierarchySprite?(sprite: Sprite2D): void
+  _releaseDirectEnrollment?(sprite: Sprite2D): void
+}
 
 export class Sprite2D extends Mesh {
   declare geometry: BufferGeometry
@@ -135,6 +144,7 @@ export class Sprite2D extends Mesh {
    */
   private _setMaterialInternal(value: Sprite2DMaterial): void {
     this._materialRef = value
+    this._batchEnrollmentBlockedMaterial = null
   }
 
   /**
@@ -192,7 +202,14 @@ export class Sprite2D extends Mesh {
   }
 
   set hitRadius(value: number) {
+    if (this._hitRadius === value) return
     this._hitRadius = value
+    // Radius changes do not alter the Object3D matrix, so invalidate the
+    // inline hierarchy snapshot as well as the transform schedule. That
+    // guarantees the next pass reaches grid.update instead of taking the
+    // unchanged-matrix early-out.
+    this._batchHierarchyState = undefined
+    this._markTransformsDirty()
   }
 
   /** Pointer hit-testing strategy. Setting `'none'` nulls the instance `raycast` property. */
@@ -454,12 +471,34 @@ export class Sprite2D extends Mesh {
   /** Backing store for the intercepted `renderOrder` accessor. @internal */
   private _renderOrderValue?: number
 
+  /** Authored visibility, separate from the batcher's source-mesh suppression. @internal */
+  declare _visibleValue: boolean
+
+  /** Whether texture/frame setup has made this sprite drawable. @internal */
+  private _contentReady = false
+
+  /** Whether auto-batching is suppressing this sprite's own Mesh draw. @internal */
+  private _batchSuppressed = false
+
   /**
    * The auto-orchestration registry this sprite is tracked by, when it
    * was picked up from a vanilla scene (no SpriteGroup / Flatland).
    * @internal
    */
   _autoRegistry: Registry | null = null
+
+  /** Enrolled by the nearest SpriteGroup while retaining a real source parent. @internal */
+  _hierarchyManaged = false
+  /** SpriteGroup that enrolled this retained source descendant. @internal */
+  _hierarchyOwner: FlatlandClipAncestor | null = null
+  /** Schedule already composed matrixWorld before SpriteGroup traverses this retained source. @internal */
+  _batchWorldFresh = false
+  /** Inline hierarchy-tracker snapshot; avoids a WeakMap lookup for every sprite. @internal */
+  _batchHierarchyState?: unknown
+  /** User material whose disposal currently blocks automatic re-enrollment. @internal */
+  _batchEnrollmentBlockedMaterial: Sprite2DMaterial | null = null
+  /** Terminal object-disposal latch; disposed sprites cannot be re-enrolled. @internal */
+  _disposed = false
 
   /**
    * True while the material is the construction-time bootstrap default
@@ -507,13 +546,132 @@ export class Sprite2D extends Mesh {
   _pendingPrimeScene: Scene | null = null
 
   /**
-   * True while this auto-orchestrated sprite is drawn by a batch — its
-   * own Mesh stays hidden (`visible = false`) and setters that would
-   * normally reveal the sprite (setFrame, texture) must not flip it
-   * back on. Cleared on demotion/unregistration.
+   * True while this auto-orchestrated sprite is drawn by a batch. The
+   * source Mesh is suppressed independently from authored `visible`, so
+   * React Activity and user visibility survive promotion/demotion.
    * @internal
    */
   _autoBatched = false
+
+  /**
+   * Toggle the batcher's private source-mesh suppression without writing
+   * authored visibility. React's renderer owns `visible`; batching must not.
+   * @internal
+   */
+  _setBatchSuppressed(value: boolean): void {
+    this._batchSuppressed = value
+    this._autoBatched = value
+    this._syncSourceMeshParticipation()
+  }
+
+  /** Authored visibility before batch suppression is applied. @internal */
+  _isAuthoredVisible(): boolean {
+    return this._visibleValue ?? true
+  }
+
+  /** Visibility projected into a batch slot, excluding source-mesh suppression. @internal */
+  _batchVisibilityState(): boolean {
+    return this._isAuthoredVisible() && this._contentReady
+  }
+
+  /** Resolve this sprite's world-scoped batch registry, if assigned. */
+  private _registryCacheWorld: World | null = null
+  private _registryCache: RegistryData | undefined
+
+  private _registryData(): RegistryData | undefined {
+    const world = this._flatlandWorld
+    if (!world) {
+      this._registryCacheWorld = null
+      this._registryCache = undefined
+      return undefined
+    }
+    if (this._registryCacheWorld === world && this._registryCache) return this._registryCache
+
+    const registries = world.query(BatchRegistry)
+    const registry = registries[0]?.get(BatchRegistry) as RegistryData | undefined
+    if (registry) {
+      this._registryCacheWorld = world
+      this._registryCache = registry
+    }
+    return registry
+  }
+
+  /** Invalidate projected transform and visibility state in the assigned world. */
+  private _markTransformsDirty(): void {
+    const registry = this._registryData()
+    if (registry) registry.transformsDirty = true
+  }
+
+  /** Update internal draw readiness without taking ownership of authored visibility. @internal */
+  private _setContentReady(value: boolean): void {
+    if (this._contentReady === value) {
+      this._syncSourceMeshParticipation()
+      return
+    }
+    this._contentReady = value
+    this._syncSourceMeshParticipation()
+    this._markTransformsDirty()
+  }
+
+  /**
+   * Keep the logical Object3D's public visibility independent from whether
+   * its own Mesh participates in Three's render-list projection. A batched
+   * source remains a Mesh instance with authored geometry/material, but the
+   * batch is its physical draw representation. Clearing Three's runtime type
+   * discriminator prevents the duplicate source draw before render-list
+   * insertion without corrupting `visible`, ancestor traversal, or raycasts.
+   * @internal
+   */
+  private _syncSourceMeshParticipation(): void {
+    Reflect.set(this, 'isMesh', this._contentReady && !this._batchSuppressed)
+  }
+
+  /** Intercept an authored visibility write and invalidate its batch slot. @internal */
+  _setAuthoredVisible(value: boolean): void {
+    if (this._visibleValue === value) return
+    this._visibleValue = value
+    this._markTransformsDirty()
+  }
+
+  /**
+   * Resolve the scene-graph parent whose transform and visibility apply to
+   * this batched sprite. Auto sprites retain their real parent; explicitly
+   * managed sprites use their owning SpriteGroup as the graph boundary.
+   * @internal
+   */
+  _batchHierarchyParent(): Object3D | null {
+    if (this._autoRegistry) return this.parent
+    if (this._hierarchyManaged && this.parent) return this.parent
+    return this._registryData()?.parentGroup ?? this.parent
+  }
+
+  /** True when authored visibility and every source ancestor are visible. @internal */
+  _isHierarchyVisible(parentOverride?: Object3D | null): boolean {
+    if (!this._batchVisibilityState()) return false
+    let parent =
+      parentOverride === undefined ? (this._entity ? this._batchHierarchyParent() : this.parent) : parentOverride
+    while (parent) {
+      const candidate = parent as Sprite2D
+      if ('_isAuthoredVisible' in candidate) {
+        if (!candidate._isAuthoredVisible()) return false
+      } else if (!parent.visible) {
+        return false
+      }
+      parent = parent.parent
+    }
+    return true
+  }
+
+  /** Test a world point against every Flatland clip ancestor. @internal */
+  private _isInsideHierarchyClips(point: Vector3): boolean {
+    let parent = this._entity ? this._batchHierarchyParent() : this.parent
+    while (parent) {
+      const clip = parent as FlatlandClipAncestor
+      if (clip._containsWorldPoint && !clip._containsWorldPoint(point)) return false
+      parent = parent.parent
+    }
+    return true
+  }
 
   /**
    * Trimmed-frame placement, baked into the matrix by `updateMatrix`
@@ -702,8 +860,9 @@ export class Sprite2D extends Mesh {
     this.name = 'Sprite2D'
     this.frustumCulled = true
 
-    // Hide until properly configured (prevents flash on load)
-    this.visible = false
+    // Keep content internally dormant until texture/frame setup completes.
+    // This must not take ownership of the user's authored visibility.
+    this._setContentReady(false)
 
     // Wrap three's inherited `Layers` instance so mask mutations
     // (enable/disable/toggle/set or direct `mask =` writes) re-route the
@@ -748,7 +907,7 @@ export class Sprite2D extends Mesh {
       }
       this._updateOwnUV()
       this.updateSize()
-      this.visible = true
+      this._setContentReady(true)
     }
 
     if (options.anchor) {
@@ -848,9 +1007,7 @@ export class Sprite2D extends Mesh {
     if (!this._entity || !this._flatlandWorld) return
     const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
     if (!bs || bs.batchIdx < 0) return
-    const registryEntities = this._flatlandWorld.query(BatchRegistry)
-    if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as { batchSlots: readonly unknown[] } | undefined
+    const registry = this._registryData()
     if (!registry) return
     const mesh = registry.batchSlots[bs.batchIdx] as { writeShadowRadius(i: number, r: number): void } | undefined
     mesh?.writeShadowRadius(bs.slot, this._resolveShadowRadius())
@@ -867,8 +1024,7 @@ export class Sprite2D extends Mesh {
    */
   private _resolveWorldDefaultMaterial(texture: Texture): Sprite2DMaterial | null {
     if (this._flatlandWorld) {
-      const registryEntities = this._flatlandWorld.query(BatchRegistry)
-      const registry = registryEntities[0]?.get(BatchRegistry) as RegistryData | undefined
+      const registry = this._registryData()
       if (registry) return getWorldDefaultMaterial(this._flatlandWorld, registry, texture)
     }
     if (this._autoRegistry) {
@@ -889,8 +1045,7 @@ export class Sprite2D extends Mesh {
    */
   private _resolveWorldEffectVariant(texture: Texture, options: Sprite2DMaterialOptions): Sprite2DMaterial | null {
     if (this._flatlandWorld) {
-      const registryEntities = this._flatlandWorld.query(BatchRegistry)
-      const registry = registryEntities[0]?.get(BatchRegistry) as RegistryData | undefined
+      const registry = this._registryData()
       if (registry) return getWorldEffectVariant(this._flatlandWorld, registry, texture, options)
     }
     if (this._autoRegistry) {
@@ -962,8 +1117,8 @@ export class Sprite2D extends Mesh {
         if (!this._entity) this._updateOwnUV()
         this.updateSize()
       }
-      // Show sprite once texture is set — unless a batch draws it
-      if (!this._autoBatched) this.visible = true
+      // Mark drawable without overwriting user/React visibility.
+      this._setContentReady(true)
     }
   }
 
@@ -1164,9 +1319,8 @@ export class Sprite2D extends Mesh {
     if (isFirstFrame) {
       this.updateSize()
     }
-    // Show sprite once it has a valid frame — unless a batch draws it
-    // (an auto-batched sprite's own mesh must stay hidden).
-    if (!this._autoBatched) this.visible = true
+    // Mark drawable without overwriting user/React visibility.
+    this._setContentReady(true)
     return this
   }
 
@@ -1858,9 +2012,7 @@ export class Sprite2D extends Mesh {
     if (!this._entity || !this._flatlandWorld) return
     const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
     if (!bs || bs.batchIdx < 0) return
-    const registryEntities = this._flatlandWorld.query(BatchRegistry)
-    if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    const registry = this._registryData()
     if (!registry) return
     const batch = registry.batchSlots[bs.batchIdx] as
       | {
@@ -1881,8 +2033,20 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _onAddedToTree = (): void => {
+    if (this._disposed) return
+    // A custom renderOrder deliberately escapes batching. Demotion
+    // reparents the source mesh under the SpriteGroup with the base Group
+    // method; do not let the resulting `added` event enroll it again.
+    if (this._renderOrderOverridden) return
     let p = this.parent
-    while (p && !(p as Scene).isScene) p = p.parent
+    while (p && !(p as Scene).isScene) {
+      const owner = p as FlatlandClipAncestor
+      if (owner._enrollHierarchySprite) {
+        owner._enrollHierarchySprite(this)
+        return
+      }
+      p = p.parent
+    }
     if (p) flatlandPrime(p as Scene, this)
   }
 
@@ -1892,6 +2056,15 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _onRemovedFromTree = (): void => {
+    if (this._hierarchyManaged) {
+      this._hierarchyOwner?._releaseHierarchySprite?.(this)
+      return
+    }
+    flatlandUnregister(this)
+  }
+
+  /** Transfer hook used when an explicit SpriteGroup adopts an auto-batched source. @internal */
+  _releaseAutoOrchestration(): void {
     flatlandUnregister(this)
   }
 
@@ -1928,7 +2101,7 @@ export class Sprite2D extends Mesh {
     // `hitTestMode = 'none'` also nulls the instance `raycast` so R3F skips
     // this object at registration (the zero-cost path); this guard is
     // defense-in-depth for direct raycast() calls.
-    if (this._hitTestMode === 'none') return
+    if (this._hitTestMode === 'none' || !this._isHierarchyVisible()) return
     // Flatland's internal scene disables matrixWorldAutoUpdate — matrices are
     // refreshed once per frame inside render() — so a raycast from user code
     // would otherwise read an identity matrixWorld and test a half-unit disc.
@@ -1945,6 +2118,9 @@ export class Sprite2D extends Mesh {
     this.updateWorldMatrix(true, false)
     const hit = rayPlaneZ0(raycaster, this)
     if (!hit) return
+
+    _clipWorldPoint.set(hit.localX, hit.localY, 0).applyMatrix4(this.matrixWorld)
+    if (!this._isInsideHierarchyClips(_clipWorldPoint)) return
 
     const { localX, localY } = hit
     const mode = this._hitTestMode
@@ -2001,6 +2177,10 @@ export class Sprite2D extends Mesh {
 
   override updateMatrixWorld(force?: boolean): void {
     if (this._entity) {
+      if ((this._hierarchyManaged || this._autoRegistry) && this._batchWorldFresh) {
+        this._batchWorldFresh = false
+        return
+      }
       this._composeBatchedMatrixWorld()
       return
     }
@@ -2014,44 +2194,14 @@ export class Sprite2D extends Mesh {
    * `transformSyncSystem`. Called via the `updateWorldMatrix` override.
    * @internal
    */
-  private _composeBatchedMatrixWorld(): void {
+  _composeBatchedMatrixWorld(updateParents = true, parentOverride?: Object3D | null): void {
     // Local affine (anchor/trim/layer-depth baked) into this.matrix.
     this.updateMatrix()
-    this.matrixWorld.copy(this.matrix)
-
-    const registryEntities = this._flatlandWorld?.query(BatchRegistry)
-    const registry =
-      registryEntities && registryEntities.length > 0
-        ? (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined)
-        : undefined
-    const group = registry?.parentGroup
-    if (group) {
-      group.updateWorldMatrix(true, false)
-      const ge = group.matrixWorld.elements
-      const ga = ge[0]!
-      const gb = ge[1]!
-      const gc = ge[4]!
-      const gd = ge[5]!
-      const gtx = ge[12]!
-      const gty = ge[13]!
-      const gtz = ge[14]!
-      if (ga !== 1 || gb !== 0 || gc !== 0 || gd !== 1 || gtx !== 0 || gty !== 0 || gtz !== 0) {
-        const me = this.matrixWorld.elements
-        const l00 = me[0]!
-        const l10 = me[1]!
-        const l01 = me[4]!
-        const l11 = me[5]!
-        const px = me[12]!
-        const py = me[13]!
-        me[0] = ga * l00 + gc * l10
-        me[1] = gb * l00 + gd * l10
-        me[4] = ga * l01 + gc * l11
-        me[5] = gb * l01 + gd * l11
-        me[12] = ga * px + gc * py + gtx
-        me[13] = gb * px + gd * py + gty
-        me[14] = me[14]! + gtz
-      }
-    }
+    const parent = parentOverride === undefined ? this._batchHierarchyParent() : parentOverride
+    if (parent) {
+      if (updateParents) parent.updateWorldMatrix(true, false)
+      this.matrixWorld.multiplyMatrices(parent.matrixWorld, this.matrix)
+    } else this.matrixWorld.copy(this.matrix)
     this.matrixWorldNeedsUpdate = false
   }
 
@@ -2125,9 +2275,7 @@ export class Sprite2D extends Mesh {
    */
   _demoteToStandalone(): void {
     if (!this._entity || !this._flatlandWorld) return
-    const registryEntities = this._flatlandWorld.query(BatchRegistry)
-    const registry =
-      registryEntities.length > 0 ? (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined) : undefined
+    const registry = this._registryData()
     this._unenrollFromWorld()
     // SpriteGroup-managed sprites were never in the scene tree — parent
     // them under the group so their own Mesh draw resumes. Auto-managed
@@ -2142,8 +2290,7 @@ export class Sprite2D extends Mesh {
       this._autoRegistry.standalone.delete(this)
       this._autoRegistry._autoEvalDirty = true
     }
-    this._autoBatched = false
-    this.visible = true
+    this._setBatchSuppressed(false)
   }
 
   /**
@@ -2223,7 +2370,7 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _enrollInWorld(world?: World): void {
-    if (this._entity) return // Already enrolled
+    if (this._disposed || this._entity) return // Disposed or already enrolled
 
     const w = world ?? this._flatlandWorld ?? getGlobalWorld()
     this._flatlandWorld = w
@@ -2288,13 +2435,8 @@ export class Sprite2D extends Mesh {
     this._zIndexArr = resolveStore(w, SpriteZIndex)['zIndex']!
 
     // Register in the spriteArr for O(1) lookup by entity SoA index.
-    const registryEntities = w.query(BatchRegistry)
-    if (registryEntities.length > 0) {
-      const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-      if (registry) {
-        registry.spriteArr[eid] = this
-      }
-    }
+    const registry = this._registryData()
+    if (registry) registry.spriteArr[eid] = this
 
     // Add effect traits for active effects
     for (const effect of this._effects) {
@@ -2313,6 +2455,12 @@ export class Sprite2D extends Mesh {
    */
   _unenrollFromWorld(): void {
     if (!this._entity) return
+
+    // Every enrollment receives a freshly seeded batch slot. Retaining the
+    // previous hierarchy snapshot could make transform sync early-out and
+    // leave that new slot at the sprite's uncomposed local transform.
+    this._batchHierarchyState = undefined
+    this._batchWorldFresh = false
 
     // Read current values from SoA arrays before swapping refs back
     const eid = this._idx
@@ -2366,13 +2514,8 @@ export class Sprite2D extends Mesh {
 
     // Remove from spriteArr
     if (this._flatlandWorld) {
-      const registryEntities = this._flatlandWorld.query(BatchRegistry)
-      if (registryEntities.length > 0) {
-        const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-        if (registry) {
-          registry.spriteArr[eid] = null
-        }
-      }
+      const registry = this._registryData()
+      if (registry) registry.spriteArr[eid] = null
     }
 
     // Remove IsRenderable instead of destroying — this triggers Removed(IsRenderable)
@@ -2418,8 +2561,24 @@ export class Sprite2D extends Mesh {
    * Dispose of resources.
    */
   dispose() {
-    // Unenroll from ECS world
-    this._unenrollFromWorld()
+    if (this._disposed) return
+    this._disposed = true
+
+    // Release through the owning path so hierarchy/auto/direct bookkeeping
+    // and sprite counts stay coherent. A disposed source may remain in the
+    // authored Object3D tree, so the terminal latch above also prevents the
+    // next reconciliation or orchestration sweep from resurrecting it.
+    if (this._hierarchyOwner) {
+      this._hierarchyOwner._releaseHierarchySprite?.(this)
+    } else if (this._autoRegistry) {
+      flatlandUnregister(this)
+    } else {
+      const owner = this._registryData()?.parentGroup as FlatlandClipAncestor | undefined
+      if (owner?._releaseDirectEnrollment) owner._releaseDirectEnrollment(this)
+      else this._unenrollFromWorld()
+    }
+    if (this._pendingPrimeScene) flatlandUnregister(this)
+    this._setContentReady(false)
 
     // Detach effects
     for (const effect of this._effects) {
@@ -2433,6 +2592,20 @@ export class Sprite2D extends Mesh {
     }
     // Material is NOT disposed here — materials are shared resources.
     // Users/frameworks manage material lifecycle separately.
+  }
+
+  /**
+   * Copy Three.js object state while preserving authored visibility. A batched
+   * source is internally suppressed, but that implementation detail must not
+   * make the copied sprite authored-hidden.
+   */
+  override copy(source: this, recursive?: boolean): this {
+    super.copy(source, recursive)
+    // Object3D.copy transfers matrixWorldAutoUpdate from the source, but
+    // Flatland owns that flag according to the TARGET's enrollment state.
+    this.matrixWorldAutoUpdate = this._entity === null
+    this.visible = source._isAuthoredVisible()
+    return this
   }
 
   /**
@@ -2484,6 +2657,7 @@ export class Sprite2D extends Mesh {
     cloned.position.copy(this.position)
     cloned.rotation.copy(this.rotation)
     cloned.scale.copy(this.scale)
+    cloned.visible = this._isAuthoredVisible()
 
     // Carry hit-test configuration so a clone stays interactively identical.
     // alphaMap is shared by reference (read-only CPU data). hitTestMode goes
@@ -2513,6 +2687,19 @@ Object.defineProperty(Sprite2D.prototype, 'renderOrder', {
   configurable: true,
 })
 
+// Keep authored visibility independent from auto-batch source-mesh
+// suppression. R3F Activity uses this setter in hideInstance /
+// unhideInstance, so internal batching state must never overwrite it.
+Object.defineProperty(Sprite2D.prototype, 'visible', {
+  get(this: Sprite2D): boolean {
+    return this._isAuthoredVisible()
+  },
+  set(this: Sprite2D, value: boolean): void {
+    this._setAuthoredVisible(value)
+  },
+  configurable: true,
+})
+
 // Install the `material` interception as a prototype accessor. `Mesh`
 // declares `material` as a plain data property, and TypeScript disallows
 // shadowing a data property with a class accessor (ts2611) — same
@@ -2538,6 +2725,11 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
     this._materialRef = value
     this._materialIsBootstrapDefault = false
     this._materialWasRegistryDefault = false
+    this._batchEnrollmentBlockedMaterial = null
+    if (this._autoRegistry) {
+      this._autoRegistry.standalone.add(this)
+      this._autoRegistry._autoEvalDirty = true
+    }
   },
   configurable: true,
 })

@@ -19,7 +19,7 @@ npm install @three-flatland/normals @three-flatland/bake
 
 ### Requirements
 
-- **three** >= 0.183.1 (peer, WebGPU/TSL)
+- **three** >= 0.170.0 (peer; this standalone CLI/loader floor is intentionally independent of three-flatland core's r185 floor)
 - **[@three-flatland/bake](https://www.npmjs.com/package/@three-flatland/bake)** — CLI dispatcher that hosts the `normal` subcommand
 
 ## Quick Start

@@ -37,15 +37,15 @@ export function hq2x(
   // w1 w2 w3
   // w4 w5 w6
   // w7 w8 w9
-  const w1 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1))))
-  const w2 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1))))
-  const w3 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1))))
-  const w4 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0))))
-  const w5 = sampleTexture(tex, srcUV) // Center
-  const w6 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0))))
-  const w7 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1))))
-  const w8 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1))))
-  const w9 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1))))
+  const w1 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1)))).toVar()
+  const w2 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1)))).toVar()
+  const w3 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1)))).toVar()
+  const w4 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0)))).toVar()
+  const w5 = sampleTexture(tex, srcUV).toVar() // Center
+  const w6 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0)))).toVar()
+  const w7 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1)))).toVar()
+  const w8 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1)))).toVar()
+  const w9 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1)))).toVar()
 
   // YUV-like difference for better edge detection
   const yuv = (c: Node<'vec4'>) => {
@@ -128,15 +128,15 @@ export function hq3x(
   const localPos = uv.div(texel.div(3)).sub(srcPixel)
 
   // Sample neighborhood
-  const w1 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1))))
-  const w2 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1))))
-  const w3 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1))))
-  const w4 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0))))
-  const w5 = sampleTexture(tex, srcUV)
-  const w6 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0))))
-  const w7 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1))))
-  const w8 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1))))
-  const w9 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1))))
+  const w1 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1)))).toVar()
+  const w2 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1)))).toVar()
+  const w3 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1)))).toVar()
+  const w4 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0)))).toVar()
+  const w5 = sampleTexture(tex, srcUV).toVar()
+  const w6 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0)))).toVar()
+  const w7 = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1)))).toVar()
+  const w8 = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1)))).toVar()
+  const w9 = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1)))).toVar()
 
   const diff = (a: Node<'vec4'>, b: Node<'vec4'>) => a.rgb.sub(b.rgb).length()
   const eq = (a: Node<'vec4'>, b: Node<'vec4'>) => diff(a, b).lessThan(threshNode)

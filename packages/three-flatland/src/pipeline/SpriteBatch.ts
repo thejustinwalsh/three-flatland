@@ -19,6 +19,12 @@ import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
 import { BucketedDirtyTracker } from './BucketedDirtyTracker'
+import { installInstanceEventUpdateBeforePatch } from './_instanceEventUpdateBeforePatch'
+
+// SpriteBatch is retained by every batching entry, including tsdown's flattened
+// root/react builds and direct pipeline subpaths. Install the r185 compatibility
+// patch here instead of in a re-export barrel that production builds can bypass.
+installInstanceEventUpdateBeforePatch()
 
 /**
  * Fallback slot count when a batch is constructed without an explicit
@@ -607,24 +613,6 @@ export class SpriteBatch extends InstancedMesh {
     if (this.count > 0) {
       this.computeBoundingSphere()
     }
-  }
-
-  /**
-   * The instance slots carry each sprite's WORLD transform (the ECS
-   * transform pass folds the owning SpriteGroup's world affine in), so
-   * the batch mesh itself must stay pinned at identity — inheriting the
-   * group's transform through the normal parent-chain compose would
-   * double-apply it in the shader's `modelMatrix × instanceMatrix`.
-   */
-  override updateMatrixWorld(_force?: boolean): void {
-    this.matrixWorld.identity()
-    this.matrixWorldNeedsUpdate = false
-  }
-
-  /** See {@link SpriteBatch.updateMatrixWorld} — identity-pinned. */
-  override updateWorldMatrix(_updateParents?: boolean, _updateChildren?: boolean): void {
-    this.matrixWorld.identity()
-    this.matrixWorldNeedsUpdate = false
   }
 
   /**

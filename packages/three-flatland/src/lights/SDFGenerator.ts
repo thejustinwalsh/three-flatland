@@ -10,6 +10,7 @@ import {
 import { NodeMaterial, QuadMesh, RendererUtils, type WebGPURenderer } from 'three/webgpu'
 import { uniform, uv, vec2, vec4, float, Fn, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
+import type UniformNode from 'three/src/nodes/core/UniformNode.js'
 import { beginDebugPass, endDebugPass, registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
 
 /**
@@ -357,7 +358,7 @@ export class SDFGenerator {
    * on a rectangular RT would pick an anisotropic winner and squash the
    * SDF along one axis.
    */
-  private _buildJFAMaterial(sourceTex: Texture, jumpSize: ReturnType<typeof uniform>): NodeMaterial {
+  private _buildJFAMaterial(sourceTex: Texture, jumpSize: UniformNode<'float', number>): NodeMaterial {
     const worldSize = this._worldSizeNode
     const mat = new NodeMaterial()
     mat.fragmentNode = Fn(() => {

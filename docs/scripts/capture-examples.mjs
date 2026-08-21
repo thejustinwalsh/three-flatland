@@ -58,6 +58,7 @@ const EXAMPLES = [
   { slug: 'slug-text', surface: 'examples', path: 'three/slug-text' },
   { slug: 'lighting', surface: 'examples', path: 'three/lighting' },
   { slug: 'hit-test', surface: 'examples', path: 'three/hit-test' },
+  { slug: 'hierarchy-clipping', surface: 'examples', path: 'three/hierarchy-clipping' },
 ]
 
 const VIDEO_DURATION_MS = 6_000

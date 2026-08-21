@@ -123,14 +123,17 @@ useFrame((state) => {
 })
 ```
 
-## Known limitations and open work
+## Batched sprites, hierarchy, and clipping
 
-The raycast contract is solid for standalone sprites and tilemaps today, and we are working through the rough edges in the open. The honest current state:
+Batched sprites use the same per-sprite hit-test modes. `SpriteGroup` keeps a spatial index for each batch, then returns intersections against the original `Sprite2D`, so event handlers and `hit.object` do not change when a sprite becomes batched.
 
-- **Batched sprites are not interactive yet.** Sprites managed by `SpriteGroup` or the `Flatland` batching layer are merged into shared geometry, which breaks per-object hit testing. Standalone `Sprite2D` / `AnimatedSprite2D` added to the scene are fully interactive now; batched picking is tracked in [#127](https://github.com/thejustinwalsh/three-flatland/issues/127) and depends on the orchestration overhaul in [#85](https://github.com/thejustinwalsh/three-flatland/issues/85).
-- **Rotated and trimmed atlas frames are not honored** — anywhere. The renderer maps frame UVs without a 90° transpose or trim offset, and the alpha sampler mirrors that exactly, so hit-testing stays consistent with what is drawn. Until full atlas support lands ([#117](https://github.com/thejustinwalsh/three-flatland/pull/117)), disable rotation and trimming in your packer.
+Picking follows the same hierarchy as rendering: ancestor transforms affect the hit location, hidden ancestors reject hits, and a `SpriteGroup.clipRect` rejects hits outside its transformed local rectangle.
 
-Further out, each building on this same contract: pixel-perfect picking for batched sprites and a pointer-driven render-to-texture portal ([#126](https://github.com/thejustinwalsh/three-flatland/issues/126)), a GPU ID-buffer path for very high instance counts ([#128](https://github.com/thejustinwalsh/three-flatland/issues/128)), an ergonomic drag helper composed from these pointer events ([#129](https://github.com/thejustinwalsh/three-flatland/issues/129)), path-accurate Skia node picking ([#130](https://github.com/thejustinwalsh/three-flatland/issues/130)), and `meta.alpha` atlas-schema discovery for the sidecar ([#124](https://github.com/thejustinwalsh/three-flatland/issues/124)).
+## Known limitation
+
+**Alpha sampling for rotated or trimmed atlas frames** does not yet apply the frame's rotation and trim offset. Rendering is correct, but `hitTestMode: 'alpha'` can sample the wrong atlas pixel for those frames. Prefer `'bounds'` for affected sprites until atlas-aware alpha sampling lands.
+
+Further out, each building on this same contract: a pointer-driven render-to-texture portal ([#126](https://github.com/thejustinwalsh/three-flatland/issues/126)), a GPU ID-buffer path for very high instance counts ([#128](https://github.com/thejustinwalsh/three-flatland/issues/128)), an ergonomic drag helper composed from these pointer events ([#129](https://github.com/thejustinwalsh/three-flatland/issues/129)), path-accurate Skia node picking ([#130](https://github.com/thejustinwalsh/three-flatland/issues/130)), and `meta.alpha` atlas-schema discovery for the sidecar ([#124](https://github.com/thejustinwalsh/three-flatland/issues/124)).
 
 ## Next steps
 

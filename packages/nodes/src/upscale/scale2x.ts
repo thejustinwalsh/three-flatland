@@ -33,11 +33,11 @@ export function scale2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [
   //   A B C
   //   D E F
   //   G H I
-  const B = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1))))
-  const D = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0))))
-  const E = sampleTexture(tex, srcUV) // Center
-  const F = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0))))
-  const H = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1))))
+  const B = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1)))).toVar()
+  const D = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0)))).toVar()
+  const E = sampleTexture(tex, srcUV).toVar() // Center
+  const F = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0)))).toVar()
+  const H = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1)))).toVar()
 
   // Scale2x rules:
   // If B != H and D != F, then
@@ -67,18 +67,19 @@ export function scale2x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [
   const _useBottomRight = isRight.and(isBottom)
 
   // E0: top-left
-  const e0 = canScale.and(DeqB).select(D, E)
+  const e0 = canScale.and(DeqB).select(D, E).toVar()
   // E1: top-right
-  const e1 = canScale.and(BeqF).select(F, E)
+  const e1 = canScale.and(BeqF).select(F, E).toVar()
   // E2: bottom-left
-  const e2 = canScale.and(DeqH).select(D, E)
+  const e2 = canScale.and(DeqH).select(D, E).toVar()
   // E3: bottom-right
-  const e3 = canScale.and(HeqF).select(F, E)
+  const e3 = canScale.and(HeqF).select(F, E).toVar()
 
   // Select final pixel
-  const result = useTopLeft.select(e0, useTopRight.select(e1, useBottomLeft.select(e2, e3)))
+  const bottom = useBottomLeft.select(e2, e3).toVar()
+  const right = useTopRight.select(e1, bottom).toVar()
 
-  return result
+  return useTopLeft.select(e0, right)
 }
 
 /**
@@ -101,15 +102,15 @@ export function scale3x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [
   const localPos = uv.div(texel.div(3)).sub(srcPixel)
 
   // Sample neighborhood
-  const _A = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1))))
-  const B = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1))))
-  const _C = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1))))
-  const D = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0))))
-  const E = sampleTexture(tex, srcUV)
-  const F = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0))))
-  const _G = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1))))
-  const H = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1))))
-  const _I = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1))))
+  const _A = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, -1)))).toVar()
+  const B = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, -1)))).toVar()
+  const _C = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, -1)))).toVar()
+  const D = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 0)))).toVar()
+  const E = sampleTexture(tex, srcUV).toVar()
+  const F = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 0)))).toVar()
+  const _G = sampleTexture(tex, srcUV.add(texel.mul(vec2(-1, 1)))).toVar()
+  const H = sampleTexture(tex, srcUV.add(texel.mul(vec2(0, 1)))).toVar()
+  const _I = sampleTexture(tex, srcUV.add(texel.mul(vec2(1, 1)))).toVar()
 
   // For simplicity, return center pixel for edge cases
   // Full Scale3x implementation would check all 9 output positions
@@ -129,15 +130,15 @@ export function scale3x(tex: Texture, uv: Node<'vec2'>, texelSize: Vec2Input = [
   const isBottom = yPos.greaterThan(1)
 
   // Corner and edge blending
-  const topLeft = isTop.and(isLeft).and(Beq(D, B)).select(D, E)
-  const topRight = isTop.and(isRight).and(Beq(B, F)).select(F, E)
-  const bottomLeft = isBottom.and(isLeft).and(Beq(D, H)).select(D, E)
-  const bottomRight = isBottom.and(isRight).and(Beq(H, F)).select(F, E)
+  const topLeft = isTop.and(isLeft).and(Beq(D, B)).select(D, E).toVar()
+  const topRight = isTop.and(isRight).and(Beq(B, F)).select(F, E).toVar()
+  const bottomLeft = isBottom.and(isLeft).and(Beq(D, H)).select(D, E).toVar()
+  const bottomRight = isBottom.and(isRight).and(Beq(H, F)).select(F, E).toVar()
 
-  result = isTop.and(isLeft).select(topLeft, result)
-  result = isTop.and(isRight).select(topRight, result)
-  result = isBottom.and(isLeft).select(bottomLeft, result)
-  result = isBottom.and(isRight).select(bottomRight, result)
+  result = isTop.and(isLeft).select(topLeft, result).toVar()
+  result = isTop.and(isRight).select(topRight, result).toVar()
+  result = isBottom.and(isLeft).select(bottomLeft, result).toVar()
+  result = isBottom.and(isRight).select(bottomRight, result).toVar()
 
   return result
 }

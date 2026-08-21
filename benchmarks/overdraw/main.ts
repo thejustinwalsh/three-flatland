@@ -12,12 +12,14 @@ import {
   createDevtoolsProvider,
 } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
+import { RENDERER_FAILURE_COLOR } from '../../examples/_shared/rendererFallback'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
  * a fresh renderer + animate() loop while the previous one keeps
  * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
 let rafId = 0
 let activeRenderer: WebGPURenderer | null = null
+let activeRendererInitialized = false
 let activeResizeHandler: (() => void) | null = null
 
 const ASSET_BASE = './assets/'
@@ -27,6 +29,7 @@ const VIEW_SIZE = 900
 // Extra world-space margin beyond the visible frustum before a drifting
 // particle wraps to the opposite edge — keeps the wrap invisible.
 const MARGIN = 220
+const STARTUP_FAILURE_MESSAGE = 'The overdraw benchmark could not initialize. Check the console for details.'
 
 type Mode = 'tight' | 'quad'
 
@@ -41,6 +44,23 @@ interface ParticleState {
   frameIndex: number
   tint: string
   alpha: number
+}
+
+function showStartupFailure(): void {
+  const fallback = document.createElement('div')
+  fallback.setAttribute('role', 'status')
+  fallback.textContent = STARTUP_FAILURE_MESSAGE
+  Object.assign(fallback.style, {
+    width: '100%',
+    height: '100%',
+    display: 'grid',
+    placeItems: 'center',
+    padding: '2rem',
+    boxSizing: 'border-box',
+    textAlign: 'center',
+    color: RENDERER_FAILURE_COLOR,
+  })
+  document.body.replaceChildren(fallback)
 }
 
 function randomRange(min: number, max: number): number {
@@ -93,6 +113,7 @@ async function main() {
   document.body.appendChild(renderer.domElement)
 
   await renderer.init()
+  activeRendererInitialized = true
 
   // Load BOTH atlas variants up front. They pack pixel-identical pages,
   // but particles-quad.json carries no per-frame `mesh` field — loading
@@ -288,6 +309,17 @@ async function main() {
 
 main().catch((err) => {
   console.error('[overdraw-bench] failed to start:', err)
+  if (activeResizeHandler) {
+    window.removeEventListener('resize', activeResizeHandler)
+    activeResizeHandler = null
+  }
+  if (activeRenderer) {
+    if (activeRendererInitialized) activeRenderer.dispose()
+    activeRenderer.domElement.remove()
+    activeRenderer = null
+    activeRendererInitialized = false
+  }
+  showStartupFailure()
 })
 
 if (import.meta.hot) {
@@ -301,9 +333,10 @@ if (import.meta.hot) {
       activeResizeHandler = null
     }
     if (activeRenderer) {
-      activeRenderer.dispose?.()
+      if (activeRendererInitialized) activeRenderer.dispose()
       activeRenderer.domElement.remove()
       activeRenderer = null
+      activeRendererInitialized = false
     }
   })
 }

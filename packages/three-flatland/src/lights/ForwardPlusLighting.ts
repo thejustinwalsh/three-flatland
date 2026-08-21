@@ -1,5 +1,6 @@
 import { DataTexture, FloatType, RGBAFormat, NearestFilter, Vector2, Vector3 } from 'three'
 import { uniform, int, ivec2, textureLoad } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
 import type { Light2D } from './Light2D'
 import { categoryToBucket } from './categoryHash'
 import {
@@ -175,7 +176,7 @@ export class ForwardPlusLighting {
   private _worldSize = new Vector2()
   private _worldOffset = new Vector2()
 
-  readonly tileCountXNode = uniform(1)
+  readonly tileCountXNode = uniform(1, 'int')
   readonly screenSizeNode = uniform(new Vector2(1, 1))
   readonly worldSizeNode = uniform(new Vector2(1, 1))
   readonly worldOffsetNode = uniform(new Vector2(0, 0))
@@ -606,13 +607,22 @@ export class ForwardPlusLighting {
     // linear order — BLOCKS_PER_TILE light-index texels followed by
     // reserved texels. Convert `(tileIndex, slotIndex)` → linear texel
     // index → 2D `(x, y)` in the fixed TILE_TEXTURE_DIM² texture.
-    return (tileIndex: ReturnType<typeof int>, slotIndex: ReturnType<typeof int>) => {
+    return (tileIndex: Node<'int'>, slotIndex: Node<'int'>) => {
       const blockOffset = slotIndex.div(int(4))
       const elementOffset = slotIndex.mod(int(4))
       const linearTexel = tileIndex.mul(tileStride).add(blockOffset)
       const x = linearTexel.mod(texWidth)
       const y = linearTexel.div(texWidth)
-      return int(textureLoad(tileTexture, ivec2(x, y)).element(elementOffset))
+      const packedIndices = textureLoad(tileTexture, ivec2(x, y))
+      const packedIndex = elementOffset
+        .equal(0)
+        .select(
+          packedIndices.x,
+          elementOffset
+            .equal(1)
+            .select(packedIndices.y, elementOffset.equal(2).select(packedIndices.z, packedIndices.w))
+        )
+      return int(packedIndex)
     }
   }
 

@@ -15,6 +15,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
+import { WebGPUFallback } from './WebGPUFallback'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 // Knightmark doesn't render any gem-background layer — its sprites
 // fill the viewport. The body bg (#16191e) shows through during
@@ -31,6 +32,8 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
     <orthographicCamera
       ref={(cam: OrthographicCamera | null) => {
         if (!cam) return
+        const manualCamera = cam as OrthographicCamera & { manual?: boolean }
+        manualCamera.manual = true
         cam.left = (-viewSize * aspect) / 2
         cam.right = (viewSize * aspect) / 2
         cam.top = viewSize / 2
@@ -41,7 +44,6 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
       position={[0, 0, 100]}
       near={0.1}
       far={1000}
-      manual
     />
   )
 }
@@ -590,8 +592,9 @@ export default function App() {
       <Canvas
         dpr={1}
         renderer={{ antialias: false }}
-        onCreated={({ gl }) => {
-          gl.domElement.style.imageRendering = 'pixelated'
+        fallback={<WebGPUFallback />}
+        onCreated={({ renderer }) => {
+          renderer.domElement.style.imageRendering = 'pixelated'
         }}
       >
         <OrthoCamera viewSize={VIEW_SIZE} />

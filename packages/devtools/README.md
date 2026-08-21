@@ -21,9 +21,11 @@ npm install @three-flatland/devtools
 
 - **tweakpane** >= 4.0.5
 - **@tweakpane/plugin-essentials** >= 0.2.1
-- **three** >= 0.183.1
-- **React** >= 19.0.0 (for `@three-flatland/devtools/react`)
-- **@react-three/fiber** >= 10.0.0-alpha.2 (for React hooks)
+- **three** ^0.185.1
+- **React** ~19.2.0 (for `@three-flatland/devtools/react`)
+- **@react-three/fiber** 10.0.0-alpha.3 (for React hooks)
+
+The React entry is browser-only on R3F alpha.3 because the upstream Inspector reads `localStorage` during module evaluation. Import it only inside your framework's client boundary.
 
 ## What's in the box
 
@@ -64,7 +66,7 @@ function tick(delta: number) {
 import { usePane, useFpsGraph, useStatsMonitor } from '@three-flatland/tweakpane/react'
 
 function DevPanel() {
-  const renderer = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   const scene = useThree((s) => s.scene)
   const pane = usePane({ title: 'Scene' })
   useFpsGraph(pane, { label: 'FPS' })

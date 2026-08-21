@@ -1,8 +1,9 @@
-import { Group, type Object3D } from 'three'
+import { Group, Matrix4, Plane, Vector3, type Object3D } from 'three'
+import { ClippingGroup } from 'three/webgpu'
 import { createWorld, type World, type Entity, type Trait } from 'koota'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { MaterialEffect } from '../materials/MaterialEffect'
-import type { SpriteGroupOptions, RenderStats } from './types'
+import type { ClipRect, SpriteGroupOptions, RenderStats } from './types'
 import { assignWorld, type WorldProvider } from '../ecs/world'
 import { BatchRegistry, BatchMesh } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
@@ -25,7 +26,6 @@ import {
   createBatchSortSystem,
   createSceneGraphSyncSystem,
   deferredDestroySystem,
-  transformSyncSystem,
 } from '../ecs/systems'
 import { conditionalTransformSyncSystem } from '../ecs/systems/conditionalTransformSyncSystem'
 import { flushDirtyRangesSystem } from '../ecs/systems/flushDirtyRangesSystem'
@@ -60,7 +60,11 @@ declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
  * renderer.render(scene, camera)
  * ```
  */
-export class SpriteGroup extends Group implements WorldProvider {
+const _clipPoint = new Vector3()
+const _clipInverse = new Matrix4()
+
+export class SpriteGroup extends ClippingGroup implements WorldProvider {
+  readonly isSpriteGroup = true
   /**
    * ECS world for this renderer.
    * Lazily created on first access.
@@ -98,6 +102,23 @@ export class SpriteGroup extends Group implements WorldProvider {
    * explicit `maxBatchSize`, in which case every batch uses that size.
    */
   private _tierLadder: readonly number[] | null
+
+  private _clipRect: ClipRect | null = null
+  private readonly _localClipPlanes = [new Plane(), new Plane(), new Plane(), new Plane()]
+  private readonly _clipMatrixWorld = new Matrix4()
+  private _clipPlanesDirty = true
+
+  /** Local-space clip rectangle, exposed as a property for R3F props. */
+  get clipRect(): ClipRect | null {
+    return this._clipRect
+  }
+
+  set clipRect(value: ClipRect | null) {
+    this._clipRect = value ? ([...value] as ClipRect) : null
+    this._clipPlanesDirty = true
+    this._updateLocalClipPlanes()
+    this._syncWorldClipPlanes()
+  }
 
   /**
    * Maximum sprites per batch. Reads back whichever sizing mode is
@@ -169,6 +190,16 @@ export class SpriteGroup extends Group implements WorldProvider {
   private _parentAdd = Group.prototype.add.bind(this)
   private _parentRemove = Group.prototype.remove.bind(this)
 
+  /**
+   * Source sprites retained below ordinary Object3D parents. Three.js only
+   * dispatches `added` / `removed` on the directly-mutated node, so a whole
+   * subtree can enter or leave this group without any descendant sprite
+   * receiving an event. Reconcile the authored tree before each schedule run
+   * to keep ownership exact in those cases.
+   */
+  private readonly _hierarchySprites = new Set<Sprite2D>()
+  private readonly _hierarchySeen = new Set<Sprite2D>()
+
   constructor(options: SpriteGroupOptions = {}) {
     super()
 
@@ -183,6 +214,54 @@ export class SpriteGroup extends Group implements WorldProvider {
     this.autoSort = options.autoSort ?? true
     this.frustumCulling = options.frustumCulling ?? true
     this.autoInvalidateTransforms = options.autoInvalidateTransforms ?? true
+    this.clipRect = options.clipRect ?? null
+  }
+
+  /** Build parent-local clipping planes from the public rectangle property. */
+  private _updateLocalClipPlanes(): void {
+    const rect = this._clipRect
+    if (!rect) {
+      this.clippingPlanes.length = 0
+      return
+    }
+    const [x, y, width, height] = rect
+    const minX = Math.min(x, x + width)
+    const maxX = Math.max(x, x + width)
+    const minY = Math.min(y, y + height)
+    const maxY = Math.max(y, y + height)
+    this._localClipPlanes[0]!.setComponents(1, 0, 0, -minX)
+    this._localClipPlanes[1]!.setComponents(-1, 0, 0, maxX)
+    this._localClipPlanes[2]!.setComponents(0, 1, 0, -minY)
+    this._localClipPlanes[3]!.setComponents(0, -1, 0, maxY)
+    while (this.clippingPlanes.length < 4) this.clippingPlanes.push(new Plane())
+    this.clippingPlanes.length = 4
+  }
+
+  /** Project local clipping planes into world space for Three.js clipping. */
+  private _syncWorldClipPlanes(): void {
+    if (!this._clipRect) return
+    if (!this._clipPlanesDirty && this._clipMatrixWorld.equals(this.matrixWorld)) return
+
+    this._clipMatrixWorld.copy(this.matrixWorld)
+    this._clipPlanesDirty = false
+    for (let i = 0; i < 4; i++) {
+      this.clippingPlanes[i]!.copy(this._localClipPlanes[i]!).applyMatrix4(this._clipMatrixWorld)
+    }
+  }
+
+  /** CPU counterpart to the renderer's clip planes, used by picking. @internal */
+  _containsWorldPoint(point: Vector3): boolean {
+    const rect = this._clipRect
+    if (!rect) return true
+    this.updateWorldMatrix(true, false)
+    _clipInverse.copy(this.matrixWorld).invert()
+    _clipPoint.copy(point).applyMatrix4(_clipInverse)
+    const [x, y, width, height] = rect
+    const minX = Math.min(x, x + width)
+    const maxX = Math.max(x, x + width)
+    const minY = Math.min(y, y + height)
+    const maxY = Math.max(y, y + height)
+    return _clipPoint.x >= minX && _clipPoint.x <= maxX && _clipPoint.y >= minY && _clipPoint.y <= maxY
   }
 
   /**
@@ -249,7 +328,7 @@ export class SpriteGroup extends Group implements WorldProvider {
           (w) => {
             const lateAssigned = this._batchAssignSystem(w, this._effectTraits)
             if (lateAssigned) {
-              if (this.autoInvalidateTransforms) transformSyncSystem(w)
+              conditionalTransformSyncSystem(w)
               this._batchSortSystem(w)
               this._sceneGraphSyncSystem(w, this, this._parentAdd, this._parentRemove)
             }
@@ -295,6 +374,7 @@ export class SpriteGroup extends Group implements WorldProvider {
           parentAdd: this._parentAdd,
           parentRemove: this._parentRemove,
           autoInvalidateTransforms: this.autoInvalidateTransforms,
+          transformsDirty: true,
           schedule,
           scheduleRuns: 0,
           occludersDirty: true,
@@ -316,18 +396,164 @@ export class SpriteGroup extends Group implements WorldProvider {
     }
     // Check if it's a Sprite2D (has _enrollInWorld — duck typing)
     if ('_enrollInWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
+      if (spriteOrObject._disposed) return this
+      if (spriteOrObject._batchEnrollmentBlockedMaterial === spriteOrObject.material) return this
+      const targetWorld = this.world
       // Skip if already enrolled (R3F insertBefore re-adds during reconciliation)
-      if (spriteOrObject.entity) return this
+      if (spriteOrObject.entity && spriteOrObject._flatlandWorld === targetWorld) return this
+      if (spriteOrObject._autoRegistry && spriteOrObject._autoRegistry.group !== this) {
+        spriteOrObject._releaseAutoOrchestration()
+      }
+      if (spriteOrObject.entity) this._releasePreviousWorldEnrollment(spriteOrObject)
       // Assign ECS world, resolve world-scoped default material, enroll
-      assignWorld(spriteOrObject, this.world)
+      assignWorld(spriteOrObject, targetWorld)
       this._resolveDefaultMaterial(spriteOrObject)
-      spriteOrObject._enrollInWorld(this.world)
+      spriteOrObject._enrollInWorld(targetWorld)
       this._spriteCount++
       this._trackMaterial(spriteOrObject)
     } else {
       super.add(spriteOrObject)
+      spriteOrObject.traverse((object) => {
+        if ('_enrollInWorld' in object && '_flatlandWorld' in object) {
+          this._enrollHierarchySprite(object as Sprite2D)
+        }
+      })
     }
     return this
+  }
+
+  /** Enroll a sprite while leaving it under its authored Object3D parent. @internal */
+  _enrollHierarchySprite(sprite: Sprite2D): void {
+    if (
+      sprite._disposed ||
+      sprite._renderOrderOverridden ||
+      sprite._batchEnrollmentBlockedMaterial === sprite.material ||
+      !this._ownsHierarchySprite(sprite)
+    )
+      return
+
+    if (sprite._hierarchyOwner && sprite._hierarchyOwner !== this) {
+      sprite._hierarchyOwner._releaseHierarchySprite?.(sprite)
+    }
+    if (sprite._autoRegistry) sprite._releaseAutoOrchestration()
+
+    const targetWorld = this.world
+    if (sprite.entity && sprite._flatlandWorld !== targetWorld) {
+      this._releasePreviousWorldEnrollment(sprite)
+    }
+
+    // A sprite can already belong to this ECS world through the direct-add
+    // API, then later be parented below an ordinary Object3D. Convert that
+    // enrollment in-place so the authored ancestor chain starts contributing
+    // transforms and visibility without changing the sprite count.
+    if (sprite.entity) {
+      sprite._hierarchyManaged = true
+      sprite._hierarchyOwner = this
+      this._hierarchySprites.add(sprite)
+      const registry = this._getRegistry()
+      if (registry) registry.transformsDirty = true
+      return
+    }
+
+    assignWorld(sprite, targetWorld)
+    this._resolveDefaultMaterial(sprite)
+    sprite._hierarchyManaged = true
+    sprite._hierarchyOwner = this
+    this._hierarchySprites.add(sprite)
+    sprite._enrollInWorld(targetWorld)
+    this._spriteCount++
+    this._trackMaterial(sprite)
+  }
+
+  /** Release a retained source descendant from this group's world. @internal */
+  _releaseHierarchySprite(sprite: Sprite2D): void {
+    if (sprite._hierarchyOwner !== this) return
+    this._hierarchySprites.delete(sprite)
+    sprite._hierarchyManaged = false
+    sprite._hierarchyOwner = null
+    sprite._batchWorldFresh = false
+    sprite._batchHierarchyState = undefined
+    sprite._setBatchSuppressed(false)
+    sprite._unenrollFromWorld()
+    // Hierarchy ownership follows the authored scene graph. Once fully
+    // released, the sprite may be adopted by another SpriteGroup world.
+    sprite._flatlandWorld = null
+    this._spriteCount--
+  }
+
+  /** Release a direct (non-hierarchy) enrollment so another world can adopt it. @internal */
+  _releaseDirectEnrollment(sprite: Sprite2D): void {
+    // Match Object3D.remove(): a retained descendant is not this group's
+    // direct child. The hierarchy reconciler owns its enrollment lifecycle.
+    if (sprite._hierarchyOwner === this) return
+    if (!sprite.entity || sprite._flatlandWorld !== this._world) return
+    sprite._setBatchSuppressed(false)
+    sprite._unenrollFromWorld()
+    sprite._flatlandWorld = null
+    this._spriteCount--
+  }
+
+  /** Resolve and release the SpriteGroup that owns a sprite's previous ECS world. */
+  private _releasePreviousWorldEnrollment(sprite: Sprite2D): void {
+    const previousWorld = sprite._flatlandWorld
+    if (!previousWorld) return
+    const registryEntity = previousWorld.query(BatchRegistry)[0]
+    const registry = registryEntity?.get(BatchRegistry) as RegistryData | undefined
+    const previousGroup = registry?.parentGroup
+    if (previousGroup && 'isSpriteGroup' in previousGroup && previousGroup.isSpriteGroup === true) {
+      const previousSpriteGroup = previousGroup as SpriteGroup
+      if (sprite._hierarchyManaged && sprite._hierarchyOwner === previousSpriteGroup) {
+        previousSpriteGroup._releaseHierarchySprite(sprite)
+      } else {
+        previousSpriteGroup._releaseDirectEnrollment(sprite)
+      }
+      return
+    }
+    sprite._setBatchSuppressed(false)
+    sprite._unenrollFromWorld()
+    sprite._flatlandWorld = null
+  }
+
+  /** True when this is the first SpriteGroup above the source sprite. */
+  private _ownsHierarchySprite(sprite: Sprite2D): boolean {
+    let parent = sprite.parent
+    while (parent) {
+      if ('isSpriteGroup' in parent && parent.isSpriteGroup === true) return parent === this
+      parent = parent.parent
+    }
+    return false
+  }
+
+  /** Collect authored descendants without crossing a nested SpriteGroup boundary. */
+  private _collectHierarchySprites(object: Object3D): void {
+    if ('isSpriteGroup' in object && object.isSpriteGroup === true) return
+
+    if ('_enrollInWorld' in object && '_flatlandWorld' in object) {
+      const sprite = object as Sprite2D
+      if (
+        !sprite._disposed &&
+        !sprite._renderOrderOverridden &&
+        sprite._batchEnrollmentBlockedMaterial !== sprite.material
+      ) {
+        this._hierarchySeen.add(sprite)
+        if (sprite._hierarchyOwner !== this || !sprite.entity) this._enrollHierarchySprite(sprite)
+      }
+    }
+
+    for (const child of object.children) this._collectHierarchySprites(child)
+  }
+
+  /**
+   * Repair descendant ownership after subtree attach/detach/reparent mutations.
+   * The steady-state direct-sprite path visits only SpriteBatch children.
+   */
+  private _reconcileHierarchySprites(): void {
+    this._hierarchySeen.clear()
+    for (const child of this.children) this._collectHierarchySprites(child)
+
+    for (const sprite of this._hierarchySprites) {
+      if (!this._hierarchySeen.has(sprite)) this._releaseHierarchySprite(sprite)
+    }
   }
 
   /**
@@ -357,11 +583,7 @@ export class SpriteGroup extends Group implements WorldProvider {
    */
   addSprites(...sprites: Sprite2D[]): this {
     for (const sprite of sprites) {
-      assignWorld(sprite, this.world)
-      this._resolveDefaultMaterial(sprite)
-      sprite._enrollInWorld(this.world)
-      this._spriteCount++
-      this._trackMaterial(sprite)
+      this.add(sprite)
     }
     return this
   }
@@ -378,9 +600,22 @@ export class SpriteGroup extends Group implements WorldProvider {
     }
     // Check if it's a Sprite2D
     if ('_unenrollFromWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
-      spriteOrObject._unenrollFromWorld()
-      this._spriteCount--
+      if (spriteOrObject._hierarchyOwner === this) {
+        // Match Object3D.remove(): a retained descendant is not this
+        // group's direct child, so removing it from here is a no-op.
+        if (spriteOrObject.parent !== this) return this
+        this._releaseHierarchySprite(spriteOrObject)
+        super.remove(spriteOrObject)
+      } else {
+        this._releaseDirectEnrollment(spriteOrObject)
+        if (spriteOrObject.parent === this) super.remove(spriteOrObject)
+      }
     } else {
+      spriteOrObject.traverse((object) => {
+        if ('_hierarchyManaged' in object && (object as Sprite2D)._hierarchyManaged) {
+          this._releaseHierarchySprite(object as Sprite2D)
+        }
+      })
       super.remove(spriteOrObject)
     }
     return this
@@ -391,8 +626,7 @@ export class SpriteGroup extends Group implements WorldProvider {
    */
   removeSprites(...sprites: Sprite2D[]): this {
     for (const sprite of sprites) {
-      sprite._unenrollFromWorld()
-      this._spriteCount--
+      this._releaseDirectEnrollment(sprite)
     }
     return this
   }
@@ -420,7 +654,8 @@ export class SpriteGroup extends Group implements WorldProvider {
    * Note: With autoInvalidateTransforms=true (default), this happens every frame.
    */
   invalidateTransforms(): void {
-    // No-op: transformSyncSystem runs every frame when autoInvalidateTransforms=true
+    const registry = this._getRegistry()
+    if (registry) registry.transformsDirty = true
   }
 
   /**
@@ -442,6 +677,8 @@ export class SpriteGroup extends Group implements WorldProvider {
   private _inSystems = false
 
   override updateMatrixWorld(force?: boolean): void {
+    if (!this._inSystems) this._reconcileHierarchySprites()
+
     // Reentrancy guard: systems (e.g. shadowPipelineSystem) can trigger a
     // nested renderer.render() for offscreen passes, and three.js will call
     // scene.updateMatrixWorld inside it. Running the ECS schedule again from
@@ -474,6 +711,7 @@ export class SpriteGroup extends Group implements WorldProvider {
     }
 
     super.updateMatrixWorld(force)
+    this._syncWorldClipPlanes()
   }
 
   /**
@@ -494,6 +732,8 @@ export class SpriteGroup extends Group implements WorldProvider {
    * @internal
    */
   _runScheduleNow(): void {
+    if (this._inSystems) return
+    this._reconcileHierarchySprites()
     if (!this._world) return
     const registry = this._getRegistry()
     if (registry?.schedule) {
@@ -508,9 +748,14 @@ export class SpriteGroup extends Group implements WorldProvider {
       }
       registry.autoInvalidateTransforms = this.autoInvalidateTransforms
       registry.schedule.nextFrame()
-      registry.schedule.run(this._world)
-      registry.scheduleRuns++
-      this._lastRunSeen = registry.scheduleRuns
+      this._inSystems = true
+      try {
+        registry.schedule.run(this._world)
+        registry.scheduleRuns++
+        this._lastRunSeen = registry.scheduleRuns
+      } finally {
+        this._inSystems = false
+      }
     }
   }
 
@@ -650,6 +895,19 @@ export class SpriteGroup extends Group implements WorldProvider {
    * Clear all sprites.
    */
   override clear(): this {
+    for (const sprite of this._hierarchySprites) this._releaseHierarchySprite(sprite)
+
+    // Direct sprites are not Object3D children, so clearing the group tree
+    // cannot discover them. Release every remaining registry source before
+    // disposing its batches; otherwise sprites retain live entities and
+    // cached pointers into disposed batch meshes.
+    const registry = this._getRegistry()
+    if (registry) {
+      for (const sprite of registry.spriteArr) {
+        if (sprite) this._releaseDirectEnrollment(sprite)
+      }
+    }
+
     // Remove all batch children from scene graph
     while (this.children.length > 0) {
       const child = this.children[0]
@@ -659,7 +917,6 @@ export class SpriteGroup extends Group implements WorldProvider {
     }
 
     // Clear registry state
-    const registry = this._getRegistry()
     if (registry) {
       // Dispose all active batch meshes
       for (const batchEntity of registry.activeBatches) {
@@ -712,13 +969,14 @@ export class SpriteGroup extends Group implements WorldProvider {
    * Returns a Group containing cloned child meshes (the SpriteBatch instances).
    */
   override clone(recursive?: boolean): this {
-    const cloned = new Group()
+    const cloned = new ClippingGroup()
     cloned.name = this.name
     cloned.visible = this.visible
     cloned.frustumCulled = this.frustumCulled
     cloned.position.copy(this.position)
     cloned.rotation.copy(this.rotation)
     cloned.scale.copy(this.scale)
+    cloned.clippingPlanes = this.clippingPlanes.map((plane) => plane.clone())
     if (recursive !== false) {
       for (const child of this.children) {
         cloned.add(child.clone(true))

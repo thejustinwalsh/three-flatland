@@ -140,6 +140,69 @@ export interface TilesetCell {
   meta?: TileNormalCustomData
 }
 
+export interface TilesetGridOptions {
+  imageWidth: number
+  imageHeight: number
+  tileWidth: number
+  tileHeight: number
+  spacing: number
+  padding: number
+  /** Authoritative exported column count, when the source format provides it. */
+  columns?: number
+  /** Authoritative exported row count, when the source format provides it. */
+  rows?: number
+}
+
+export interface TilesetGrid {
+  columns: number
+  rows: number
+  cells: TilesetCell[]
+}
+
+function inferTilesetAxisCount(imageSize: number, tileSize: number, spacing: number, padding: number): number {
+  return Math.max(0, Math.floor((imageSize - padding * 2 + spacing) / (tileSize + spacing)))
+}
+
+/**
+ * Resolve a tile cell by its row-major index. Explicit source-format grid
+ * dimensions win; atlas dimensions are used only as a compatibility fallback.
+ */
+export function tilesetCellAt(tileId: number, options: TilesetGridOptions, meta?: TileNormalCustomData): TilesetCell {
+  const { imageWidth, tileWidth, tileHeight, spacing, padding } = options
+  const columns = options.columns ?? inferTilesetAxisCount(imageWidth, tileWidth, spacing, padding)
+  const col = tileId % columns
+  const row = Math.floor(tileId / columns)
+
+  return {
+    x: padding + col * (tileWidth + spacing),
+    y: padding + row * (tileHeight + spacing),
+    w: tileWidth,
+    h: tileHeight,
+    meta,
+  }
+}
+
+/** Build the logical tile grid shared by runtime loaders and offline bakers. */
+export function buildTilesetGrid(
+  options: TilesetGridOptions,
+  metaForTile?: (tileId: number) => TileNormalCustomData | undefined
+): TilesetGrid {
+  const { imageWidth, imageHeight, tileWidth, tileHeight, spacing, padding } = options
+  const columns = options.columns ?? inferTilesetAxisCount(imageWidth, tileWidth, spacing, padding)
+  const rows = options.rows ?? inferTilesetAxisCount(imageHeight, tileHeight, spacing, padding)
+  const resolvedOptions = { ...options, columns, rows }
+  const cells: TilesetCell[] = []
+
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < columns; gx++) {
+      const tileId = gy * columns + gx
+      cells.push(tilesetCellAt(tileId, resolvedOptions, metaForTile?.(tileId)))
+    }
+  }
+
+  return { columns, rows, cells }
+}
+
 /**
  * Build regions for a whole tileset. Each cell becomes one or more
  * regions depending on its custom data — untagged cells emit a single

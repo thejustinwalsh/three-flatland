@@ -192,7 +192,7 @@
     }
   },
   "scripts": {
-    "build": "NODE_OPTIONS=--max-old-space-size=8192 tsdown",
+    "build": "NODE_OPTIONS=--max-old-space-size=8192 tsdown && node ../../scripts/verify-dist-no-test-artifacts.mjs dist && node ../../scripts/verify-dist-event-patch.mjs dist/index.js dist/react.js dist/pipeline/SpriteBatch.js dist/materials/Sprite2DMaterial.js",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
@@ -202,7 +202,9 @@
     "@three-flatland/normals": "workspace:*"
   },
   "peerDependencies": {
+    "@react-three/fiber": "catalog:",
     "koota": "catalog:",
+    "react": "catalog:",
     "three": "catalog:"
   },
   "peerDependenciesMeta": {
@@ -216,6 +218,7 @@
   "devDependencies": {
     "@react-three/fiber": "catalog:",
     "@three-flatland/atlas": "workspace:*",
+    "@three-flatland/tsl-test": "workspace:*",
     "@types/react": "catalog:",
     "@types/three": "catalog:",
     "react": "catalog:",

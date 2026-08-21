@@ -6,6 +6,7 @@ import type { SlugFont, StyleSpan } from '@three-flatland/slug'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
+import { initializeRenderer } from './rendererFallback'
 
 // --- Lorem ipsum generator ---
 
@@ -218,7 +219,7 @@ async function main() {
   // capture-examples.mjs records 0 frames from canvas.captureStream.
   document.body.insertBefore(renderer.domElement, document.body.firstChild)
 
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   const fontUrl = './Inter-Regular.ttf'
   const maxWidthFraction = 0.8

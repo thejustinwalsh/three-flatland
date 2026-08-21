@@ -11,6 +11,7 @@ import {
 import { usePane, DevtoolsProvider } from '@three-flatland/devtools/react'
 import { Color, Vector3 } from 'three'
 import type { ThreeEvent } from '@react-three/fiber/webgpu'
+import { WebGPUFallback } from './WebGPUFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -163,7 +164,7 @@ function Knight({ target, pendingCoinId, onReachCoin, onDragStart }: KnightProps
   const sheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
   const anim = useRef<'idle' | 'run' | 'roll'>('idle')
   const camera = useThree((s) => s.camera)
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
 
   // Read the latest walk target/pending in useFrame without re-subscribing.
   const targetRef = useRef(target)
@@ -184,7 +185,7 @@ function Knight({ target, pendingCoinId, onReachCoin, onDragStart }: KnightProps
   // Unproject a DOM point to world XY on the knight's z-plane.
   const toWorld = useCallback(
     (clientX: number, clientY: number) => {
-      const rect = gl.domElement.getBoundingClientRect()
+      const rect = renderer.domElement.getBoundingClientRect()
       const v = new Vector3(
         ((clientX - rect.left) / rect.width) * 2 - 1,
         -((clientY - rect.top) / rect.height) * 2 + 1,
@@ -193,7 +194,7 @@ function Knight({ target, pendingCoinId, onReachCoin, onDragStart }: KnightProps
       v.unproject(camera)
       return v
     },
-    [camera, gl]
+    [camera, renderer]
   )
 
   useFrame((_, delta) => {
@@ -247,7 +248,7 @@ function Knight({ target, pendingCoinId, onReachCoin, onDragStart }: KnightProps
       play('roll')
       document.body.style.cursor = 'grabbing'
 
-      const el = gl.domElement
+      const el = renderer.domElement
       // Capture keeps moves flowing when the cursor outruns the sprite; it can
       // throw on synthetic/non-active pointers, so never let it abort the drag.
       try {
@@ -279,7 +280,7 @@ function Knight({ target, pendingCoinId, onReachCoin, onDragStart }: KnightProps
       el.addEventListener('pointermove', onMove)
       el.addEventListener('pointerup', onUp)
     },
-    [gl, onDragStart, play, toWorld]
+    [renderer, onDragStart, play, toWorld]
   )
 
   return (
@@ -589,8 +590,9 @@ export default function App() {
         dpr={1}
         camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
         renderer={{ antialias: false }}
-        onCreated={({ gl }) => {
-          gl.domElement.style.imageRendering = 'pixelated'
+        fallback={<WebGPUFallback />}
+        onCreated={({ renderer }) => {
+          renderer.domElement.style.imageRendering = 'pixelated'
         }}
       >
         <DevtoolsProvider name="hit-test" />

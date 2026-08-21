@@ -73,6 +73,20 @@ describe('batch-root broadphase picking', () => {
     expect(rc.intersectObjects(flatland.scene.children, true).length).toBe(0)
   })
 
+  it('re-indexes the broadphase when hitRadius expands without a matrix change', () => {
+    const flatland = fl()
+    const sprite = add(flatland, 120, 0, 1)
+    sprite.hitTestMode = 'radius'
+    flatland.scene.updateMatrixWorld(true)
+
+    const rc = new Raycaster(new Vector3(135, 0, 100), new Vector3(0, 0, -1))
+    expect(rc.intersectObjects(flatland.scene.children, true)).toHaveLength(0)
+
+    sprite.hitRadius = 20
+    flatland.scene.updateMatrixWorld(true)
+    expect(rc.intersectObjects(flatland.scene.children, true)[0]?.object).toBe(sprite)
+  })
+
   // Under a PERSPECTIVE camera the ray converges, so its (x,y) at the sprite's
   // world z differs from its (x,y) at z=0. Localizing the broadphase on a
   // single z=0 plane would query the wrong grid cell and miss. The batch must

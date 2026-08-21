@@ -1007,7 +1007,7 @@ export function CanvasStage({
         }
       },
     }
-  }, []) // stable — reads from refs, so deps are empty
+  }, [nearestSnap, stepSnap])
 
   // -------------------------------------------------------------------------
   // Render

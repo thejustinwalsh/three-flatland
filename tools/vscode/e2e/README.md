@@ -133,14 +133,16 @@ file boundaries included) reuses it:
   `e2e/fixtures/workspace/`. It **cannot** change without relaunching the
   window (it's a CLI arg), so isolation comes from **content** reset —
   `resetWindowWorkspace()` in `fixtures.ts`, run before every reused
-  test: `workbench.action.closeAllEditors` over the host-eval bridge (no
-  stale tab from the previous test can satisfy this test's `webviewFrame`
-  lookup), every workspace-level override of the extension's own
-  configuration keys cleared through the real config API (deterministic,
-  unlike waiting on the settings-file watcher — and it re-registers any
-  tool a failed settings spec left disabled), and `baseDir` wiped +
-  recopied from the pristine fixture workspace (no previous test's
-  sidecar/encode/merge output can leak forward).
+  test: `workbench.action.closeAllEditors` over the host-eval bridge; every
+  workspace-level override of the extension's own configuration keys
+  cleared through the real config API (deterministic, unlike waiting on
+  the settings-file watcher — and it re-registers any tool a failed
+  settings spec left disabled); the extension API reset; a wait for every
+  editor webview iframe to leave the workbench DOM (no stale tab or
+  still-tearing-down panel from the previous test can overlap this test's
+  workspace reset or satisfy its `webviewFrame` lookup); and `baseDir`
+  wiped + recopied from the pristine fixture workspace (no previous
+  test's sidecar/encode/merge output can leak forward).
 - `specs/activation.spec.ts`'s marker-file pair and `specs/atlas.spec.ts`'s
   "exactly one tab" test exist specifically to prove this reset actually
   works, not just that the window is reused — a broken reset could still
@@ -223,25 +225,34 @@ await openCommand('threeFlatland.merge.openMergeTool', [
 
 ### `webviewFrame(panelTitle)`
 
-Waits for the panel's editor tab to be visible (`workbox.getByRole('tab',
-{ name: panelTitle })`) — so a panel that never opened fails with a clear
-timeout on the tab, not a confusing failure two steps later trying to
-find an iframe that isn't there — then drills through VS Code's
-double-iframe webview structure:
+Waits for the panel's editor tab to be selected and visible
+(`workbox.getByRole('tab', { name: panelTitle, selected: true })`) — so a
+panel that never opened or is not the active editor fails with a clear timeout
+on the tab, not a confusing failure two steps later trying to find an iframe
+that belongs to another panel — then drills through VS Code's double-iframe
+webview structure:
 
-1. **Outer host iframe** — `iframe.webview.ready`. One per webview panel;
-   VS Code sets `className = "webview " + customClasses` on creation and
-   adds the `ready` class once the webview's internal service-worker page
-   has booted (`webviewElement.ts`). `.last()` is defensive against a
-   previous panel's iframe still mid-teardown.
+1. **Outer host iframe** — `iframe.webview.ready:visible`. One per active
+   webview panel; VS Code sets `className = "webview " + customClasses` on
+   creation and adds the `ready` class once the webview's internal
+   service-worker page has booted (`webviewElement.ts`). A previous panel's
+   ready iframe can remain hidden while VS Code disposes it, so the fixture
+   requires exactly one visible iframe before selecting it.
 2. **Inner content iframe** — `#active-frame` inside the outer frame's
    document. This is the extension's actual document — our Vite-built
    React app (`webview/<tool>/index.html`) — swapped in once loaded
    (`browser/webview/pre/index.html`, `getActiveFrame()`).
 
-Returns a `FrameLocator` scoped to `#active-frame`, after confirming
-`#root` (every tool's Vite mount point — see each `webview/<tool>/index.html`)
-is attached.
+Returns the concrete `Frame` behind `#active-frame`, after confirming that
+`#root` (every tool's Vite mount point — see each
+`webview/<tool>/index.html`) has a mounted child. The static shell contains
+an empty `#root` before the application script runs, so attachment of the
+mount point alone is not a readiness signal. Pinning the concrete frame is
+intentional: a live `FrameLocator` could retarget later assertions to a blank
+replacement `#active-frame` if VS Code swaps the iframe while its webview host
+settles. A pinned frame ends when its iframe does: after closing, reopening, or
+otherwise recreating a panel, call `webviewFrame` again instead of reusing the
+old frame.
 
 ```ts
 const frame = await webviewFrame('knight.png')

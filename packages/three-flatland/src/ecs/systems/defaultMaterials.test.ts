@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { Texture, CustomBlending, OneFactor } from 'three'
+import { Group, Scene, Texture, CustomBlending, OneFactor } from 'three'
 import { universe } from 'koota'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
@@ -113,6 +113,9 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     expect(registry.activeBatches.length).toBe(1)
     expect(a._batchMesh).not.toBeNull()
     expect(a._batchMesh!.spriteMaterial).toBe(a.material)
+    // Direct SpriteGroup sources are not scene children, so they retain the
+    // Mesh discriminator; hierarchy and auto sources suppress it instead.
+    expect(a.isMesh).toBe(true)
 
     group.dispose()
   })
@@ -129,10 +132,43 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     custom.dispose()
 
     expect(sprite.visible).toBe(true)
+    expect(sprite.isMesh).toBe(true)
     expect(sprite.entity).toBeNull() // unenrolled — three's standard semantics apply
     expect(sprite.material).toBe(custom) // we never swap user materials
+    expect(group.spriteCount).toBe(0)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
 
+    group.dispose()
+  })
+
+  it('keeps a hierarchy sprite unbatched after custom material disposal until replacement', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const custom = new Sprite2DMaterial({ map: texture })
+    const scene = new Scene()
+    const group = new SpriteGroup()
+    const host = new Group()
+    const sprite = new Sprite2D({ texture, material: custom })
+    host.add(sprite)
+    group.add(host)
+    scene.add(group)
+    scene.updateMatrixWorld(true)
+    expect(sprite.entity).not.toBeNull()
+
+    custom.dispose()
+    scene.updateMatrixWorld(true)
+    expect(sprite.entity).toBeNull()
+    expect(sprite.material).toBe(custom)
+    expect(sprite.visible).toBe(true)
+    expect(sprite.isMesh).toBe(true)
+    expect(group.spriteCount).toBe(0)
+
+    sprite.material = new Sprite2DMaterial({ map: texture })
+    scene.updateMatrixWorld(true)
+    expect(sprite.entity).not.toBeNull()
+    expect(sprite._hierarchyOwner).toBe(group)
+    expect(sprite.isMesh).toBe(false)
+    expect(group.spriteCount).toBe(1)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
     group.dispose()
   })
 

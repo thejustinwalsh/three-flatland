@@ -3,7 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron, test as base, expect } from '@playwright/test'
-import type { ElectronApplication, FrameLocator, Page } from '@playwright/test'
+import type { ElectronApplication, Frame, Page } from '@playwright/test'
 import { downloadAndUnzipVSCode } from '@vscode/test-electron'
 import { HostBridgeClient } from './host-bridge/client'
 
@@ -55,7 +55,7 @@ type Fixtures = {
    * document. Failing on a missing tab first gives a clear timeout instead
    * of silently resolving an unrelated iframe.
    */
-  webviewFrame: (panelTitle: string | RegExp) => Promise<FrameLocator>
+  webviewFrame: (panelTitle: string | RegExp) => Promise<Frame>
   /** Internal — see the comment on its implementation below. */
   _sharedWindow: CachedWindow
 }
@@ -64,6 +64,11 @@ type WorkerFixtures = {
   vscodeInstallPath: string
   /** Internal — a worker-lifetime mutable box `_sharedWindow` reads/writes into. */
   _windowCache: { current?: CachedWindow }
+}
+
+/** Remove an Electron fixture directory while tolerating late process writes. */
+export async function removeFixtureDirectory(directory: string): Promise<void> {
+  await fs.rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 }
 
 async function launchWindow(vscodeInstallPath: string): Promise<CachedWindow> {
@@ -142,10 +147,21 @@ async function teardownWindow(win: CachedWindow | undefined): Promise<void> {
     // already exited — nothing to kill
   }
   await Promise.all([
-    fs.rm(win.baseDir, { recursive: true, force: true }),
-    fs.rm(win.extensionsDir, { recursive: true, force: true }),
-    fs.rm(win.userDataDir, { recursive: true, force: true }),
+    removeFixtureDirectory(win.baseDir),
+    removeFixtureDirectory(win.extensionsDir),
+    removeFixtureDirectory(win.userDataDir),
   ])
+}
+
+/** Wait until editor webviews closed through VS Code finish renderer teardown. */
+export async function awaitWebviewTeardown(workbox: Page): Promise<void> {
+  // The current suite contributes and opens editor webviews only. If a future
+  // spec opens a persistent webview view or notebook output, scope this locator
+  // to the editor area rather than weakening the lifecycle assertion.
+  await expect(
+    workbox.locator('iframe.webview'),
+    'webview iframes from the previous editor failed to tear down'
+  ).toHaveCount(0)
 }
 
 /**
@@ -197,7 +213,15 @@ async function resetWindowWorkspace(win: CachedWindow): Promise<void> {
       await api.reset?.()
     }
   })
-  await fs.rm(win.baseDir, { recursive: true, force: true })
+  // `closeAllEditors` resolves in the extension host before the workbench has
+  // necessarily finished tearing down the corresponding webview elements.
+  // On a slower CI renderer, deleting/recreating the workspace (and then
+  // opening the next panel) during that tail can leave the replacement
+  // panel's active-frame as an empty document. Wait on the actual DOM
+  // lifecycle boundary so no prior editor teardown can overlap the next
+  // test's workspace or panel.
+  await awaitWebviewTeardown(win.workbox)
+  await removeFixtureDirectory(win.baseDir)
   await fs.mkdir(win.baseDir, { recursive: true })
   await fs.cp(FIXTURE_WORKSPACE, win.baseDir, { recursive: true })
 }
@@ -291,20 +315,76 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 
   webviewFrame: async ({ workbox }, use) => {
     await use(async (panelTitle) => {
-      const tab = workbox.getByRole('tab', { name: panelTitle })
+      const tab = workbox.getByRole('tab', { name: panelTitle, selected: true })
       await tab.waitFor({ state: 'visible' })
       // Outer host iframe: className = `webview ${customClasses}`, gains
       // the `ready` class once its service-worker page has booted
       // (vscode src/vs/workbench/contrib/webview/browser/webviewElement.ts
-      // WebviewElement.{_createElement,did-load handler}). `.last()` is
-      // defensive against a still-disposing previous panel's iframe.
-      const outer = workbox.frameLocator('iframe.webview.ready').last()
-      // Inner content iframe: id="active-frame" once loaded — this is the
-      // extension's actual document, e.g. our Vite-built React app
-      // (vscode src/vs/workbench/contrib/webview/browser/pre/index.html).
-      const inner = outer.frameLocator('#active-frame')
-      await inner.locator('#root').waitFor({ state: 'attached' })
-      return inner
+      // WebviewElement.{_createElement,did-load handler}). A previous panel's
+      // ready iframe can remain hidden while VS Code disposes it, so select the
+      // visible editor rather than relying on DOM order.
+      const visibleWebview = workbox.locator('iframe.webview.ready:visible')
+      // Resolve the iframe elements to concrete Frame objects instead of
+      // returning a FrameLocator. FrameLocator is deliberately live: if VS
+      // Code replaces #active-frame while its webview host settles, later
+      // assertions can silently retarget to the replacement blank document.
+      // A concrete Frame keeps every operation bound to the application
+      // document whose mounted root we verified below.
+      let lastReplacement: unknown
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        // Strict single-element resolution is intentional. Picking an
+        // arbitrary visible webview would silently bind a test to the wrong
+        // selected editor if a future multi-panel flow violates this fixture's
+        // contract.
+        await expect(visibleWebview).toHaveCount(1)
+        const outerElement = await visibleWebview.elementHandle()
+        let innerElement
+        let outer: Frame | null = null
+        let inner: Frame | null = null
+        try {
+          outer = (await outerElement?.contentFrame()) ?? null
+          if (!outer) {
+            lastReplacement = new Error('Visible VS Code webview did not expose a content frame')
+            // The DOM node can arrive just before its frame-tree entry. Give
+            // that protocol handoff a bounded chance to complete instead of
+            // burning all three attempts in the same event-loop turn.
+            await workbox.waitForTimeout(250)
+            continue
+          }
+          // Inner content iframe: id="active-frame" once loaded — this is the
+          // extension's actual document, e.g. our Vite-built React app
+          // (vscode src/vs/workbench/contrib/webview/browser/pre/index.html).
+          innerElement = await outer.locator('#active-frame').elementHandle()
+          inner = (await innerElement?.contentFrame()) ?? null
+          if (!inner) {
+            lastReplacement = new Error('VS Code webview active-frame did not expose a content frame')
+            await workbox.waitForTimeout(250)
+            continue
+          }
+          // The static Vite shell contains an empty #root before the application
+          // script runs. Require a mounted child so an empty active-frame cannot
+          // be handed to the test as a ready application.
+          await inner.locator('#root > *').first().waitFor({ state: 'attached' })
+          if (outer.isDetached() || inner.isDetached()) {
+            lastReplacement = new Error('VS Code replaced the webview frame while its application was mounting')
+            continue
+          }
+          return inner
+        } catch (error) {
+          // The rejection and frameDetached protocol event normally arrive in
+          // order, but do not make retryability depend on the client-side flag
+          // having updated before this catch runs.
+          const isDetachError = error instanceof Error && /frame (?:was |has been )?detached/i.test(error.message)
+          if (!outer?.isDetached() && !inner?.isDetached() && !isDetachError) throw error
+          lastReplacement = error
+        } finally {
+          await innerElement?.dispose()
+          await outerElement?.dispose()
+        }
+      }
+      throw new Error('VS Code replaced the webview frame during all three mount attempts', {
+        cause: lastReplacement,
+      })
     })
   },
 })

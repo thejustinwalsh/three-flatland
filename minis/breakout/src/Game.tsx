@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState, type Dispatch, type SetStateAction } from 'react'
+import { useRef, useEffect, useLayoutEffect, useCallback, useState, type Dispatch, type SetStateAction } from 'react'
 import { Canvas, useFrame, extend, useThree } from '@react-three/fiber/webgpu'
 import {
   Sprite2D,
@@ -20,6 +20,17 @@ declare module '@react-three/fiber' {
     flashEffect: EffectElement<typeof FlashEffect>
     blockDissolveEffect: EffectElement<typeof BlockDissolveEffect>
   }
+}
+
+function RendererFallback() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [isVisible, setIsVisible] = useState(false)
+  useLayoutEffect(() => setIsVisible(ref.current?.parentElement?.tagName !== 'CANVAS'), [])
+  return (
+    <div ref={ref} role={isVisible ? 'status' : undefined} aria-hidden={isVisible ? undefined : true}>
+      This game could not initialize WebGPU or WebGL 2 rendering.
+    </div>
+  )
 }
 import { WorldProvider, useWorld } from 'koota/react'
 import { getWorld } from './world'
@@ -92,7 +103,7 @@ interface GameSceneProps {
 function GameScene({ soundsRef, isVisible, onGameStateChange, onStatsChange }: GameSceneProps) {
   const world = useWorld()
   const flatlandRef = useRef<FlatlandType>(null)
-  const gl = useThree((s) => s.gl)
+  const renderer = useThree((s) => s.renderer)
   const size = useThree((s) => s.size)
   const fpsRef = useRef({ frames: 0, time: 0, current: 60 })
 
@@ -230,7 +241,7 @@ function GameScene({ soundsRef, isVisible, onGameStateChange, onStatsChange }: G
       const flatland = flatlandRef.current
       if (!flatland) return
       flatland.resize(size.width, size.height)
-      flatland.render(gl as unknown as WebGPURenderer)
+      flatland.render(renderer as unknown as WebGPURenderer)
     },
     { phase: 'render' }
   )
@@ -376,7 +387,7 @@ export default function MiniBreakout({
     >
       {world && (
         <WorldProvider world={world}>
-          <Canvas renderer={{ antialias: false, alpha: true }}>
+          <Canvas renderer={{ antialias: false, alpha: true }} fallback={<RendererFallback />}>
             <GameScene
               soundsRef={soundsRef}
               isVisible={isVisible}
