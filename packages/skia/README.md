@@ -20,8 +20,10 @@ npm install @three-flatland/skia
 ### Requirements
 
 - **three** ^0.185.1 (WebGPU/TSL support)
-- **React** ^19.2.0 (for `@three-flatland/skia/react`)
+- **React** ~19.2.0 (for `@three-flatland/skia/react`)
 - **@react-three/fiber** 10.0.0-alpha.3 (for React)
+
+The React entry is browser-only on R3F alpha.3 because the upstream Inspector reads `localStorage` during module evaluation. Import it only inside your framework's client boundary.
 
 ## Features
 

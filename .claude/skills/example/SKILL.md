@@ -82,7 +82,7 @@ examples/
 }
 ```
 
-**React example** adds: `@react-three/fiber@10.0.0-alpha.3`, `react@^19.2.0`, `react-dom@^19.2.0`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`.
+**React example** adds: `@react-three/fiber@10.0.0-alpha.3`, `react@~19.2.0`, `react-dom@~19.2.0`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`.
 
 Real version strings — never `catalog:` or `workspace:*`. `pnpm sync:pack examples` keeps these in sync with the workspace catalog.
 

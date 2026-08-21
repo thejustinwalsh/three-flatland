@@ -210,7 +210,9 @@ The examples in this repo consume `@three-flatland/devtools` via workspace linki
   </TabItem>
 </Tabs>
 
-Peer dependencies: `three ^0.185.1`, `tweakpane ^4.0.5`, `@tweakpane/plugin-essentials ^0.2.1`. For the React entry: `@react-three/fiber 10.0.0-alpha.3`, `react ^19.2.0`.
+Peer dependencies: `three ^0.185.1`, `tweakpane ^4.0.5`, `@tweakpane/plugin-essentials ^0.2.1`. For the React entry: `@react-three/fiber 10.0.0-alpha.3`, `react ~19.2.0`.
+
+`@three-flatland/devtools/react` is browser-only on R3F alpha.3. Its upstream Inspector reads `localStorage` during module evaluation, so place the import behind your framework's client boundary rather than evaluating it during SSR.
 
 Two entry points:
 

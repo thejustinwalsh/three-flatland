@@ -179,7 +179,7 @@ flash.intensity = 0.8 // Animate per frame
 
 - **three** ^0.185.1 (TSL/WebGPU support)
 - **koota** ^0.6.5 (ECS for batch rendering)
-- **React** ^19.2.0 (for `three-flatland/react`, uses `use()` hook)
+- **React** ~19.2.0 (for `three-flatland/react`, capped below 19.3 by R3F alpha.3)
 - **@react-three/fiber** 10.0.0-alpha.3 (for React, WebGPU support)
 
 ## Documentation

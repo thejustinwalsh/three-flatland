@@ -82,7 +82,9 @@ Includes a native WebGPU backend (Graphite/Dawn) — CanvasKit's npm package shi
   </TabItem>
 </Tabs>
 
-Peer dependencies: `three ^0.185.1`. For React: `@react-three/fiber 10.0.0-alpha.3` and `react ^19.2.0`.
+Peer dependencies: `three ^0.185.1`. For React: `@react-three/fiber 10.0.0-alpha.3` and `react ~19.2.0`.
+
+`@three-flatland/skia/react` is browser-only on R3F alpha.3. Its upstream Inspector reads `localStorage` during module evaluation, so place the import behind your framework's client boundary rather than evaluating it during SSR.
 
 ### WASM Setup
 
