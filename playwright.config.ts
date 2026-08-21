@@ -37,7 +37,10 @@ const PORT = 4321
 // that `page.goto('examples/foo/')` and `request.get('examples/foo/')`
 // resolve under it via URL composition. A leading `/` in a path is
 // absolute-to-host and would strip the base segment, returning 404s.
-const BASE_URL = `http://localhost:${PORT}/three-flatland/`
+// Match the explicit IPv4 host used by the preview command below. Using
+// `localhost` here can resolve to ::1 while Astro is listening on 127.0.0.1,
+// causing Playwright's health check to time out before the suite starts.
+const BASE_URL = `http://127.0.0.1:${PORT}/three-flatland/`
 // Astro returns 404 at the base root with `base` set — use a real example
 // URL so Playwright's webServer health check gets a 200 when deciding
 // whether to reuse an already-running preview server vs. spawning fresh.
