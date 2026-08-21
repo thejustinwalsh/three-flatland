@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { StrictMode, useRef } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { SkiaContextReady } from '../three/SkiaCanvas'
@@ -14,7 +14,13 @@ vi.mock('../three/SkiaCanvas', () => ({
 
 const readyContext = { backend: 'wgpu' } as SkiaContextReady
 
-function EagerContextProbe({ onContextCreate }: { onContextCreate: (ctx: SkiaContextReady) => void }) {
+function EagerContextProbe({
+  onContextCreate,
+  onEagerReturn,
+}: {
+  onContextCreate: (ctx: SkiaContextReady) => void
+  onEagerReturn: () => void
+}) {
   const invokedRef = useRef(false)
   const [ctx, handleContextCreate] = useSkiaCanvasContext(onContextCreate)
 
@@ -24,6 +30,7 @@ function EagerContextProbe({ onContextCreate }: { onContextCreate: (ctx: SkiaCon
   if (!invokedRef.current) {
     invokedRef.current = true
     handleContextCreate(readyContext)
+    onEagerReturn()
   }
 
   return <div data-testid="status">{ctx ? 'ready' : 'pending'}</div>
@@ -32,11 +39,22 @@ function EagerContextProbe({ onContextCreate }: { onContextCreate: (ctx: SkiaCon
 describe('useSkiaCanvasContext', () => {
   it('defers an eager context callback until the wrapper has mounted', async () => {
     const onContextCreate = vi.fn()
+    let deliveryCountAtEagerReturn = -1
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    render(<EagerContextProbe onContextCreate={onContextCreate} />)
+    render(
+      <StrictMode>
+        <EagerContextProbe
+          onContextCreate={onContextCreate}
+          onEagerReturn={() => {
+            deliveryCountAtEagerReturn = onContextCreate.mock.calls.length
+          }}
+        />
+      </StrictMode>
+    )
 
     await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('ready'))
+    expect(deliveryCountAtEagerReturn).toBe(0)
     expect(onContextCreate).toHaveBeenCalledOnce()
     expect(onContextCreate).toHaveBeenCalledWith(readyContext)
     expect(consoleError).not.toHaveBeenCalledWith(
