@@ -3,7 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist/ts",
     "rootDir": "./src/ts",
-    "types": ["@webgpu/types"]
+    "types": ["@types/node", "@webgpu/types"]
   },
   "include": ["src/ts/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
