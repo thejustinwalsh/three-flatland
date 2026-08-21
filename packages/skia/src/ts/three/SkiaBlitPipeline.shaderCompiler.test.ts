@@ -5,7 +5,7 @@ import { SkiaBlitPipeline } from './SkiaBlitPipeline'
 describe('SkiaBlitPipeline shader compatibility', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('validates the production WGSL module without a renderer', () => {
+  it('validates the production WGSL module without a renderer', async () => {
     vi.stubGlobal('GPUShaderStage', { FRAGMENT: 2 })
     let shaderSource = ''
     const device = {
@@ -22,7 +22,7 @@ describe('SkiaBlitPipeline shader compatibility', () => {
     expect(shaderSource).toContain('@vertex fn vsFlip')
     expect(shaderSource).toContain('@vertex fn vsNoFlip')
     expect(shaderSource).toContain('@fragment fn fs')
-    validateWGSL([
+    await validateWGSL([
       {
         backend: 'wgsl',
         label: 'skia-blit-pipeline',
