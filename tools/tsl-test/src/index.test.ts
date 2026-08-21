@@ -49,8 +49,11 @@ describe('shader validators', () => {
       layout(std140) uniform render {
         mat4 cameraViewMatrix;
       };
+      uniform InstanceBuffer {
+        mat4 instanceMatrix[1];
+      };
       out vec4 fragColor;
-      void main() { fragColor = cameraViewMatrix * vec4(1.0); }
+      void main() { fragColor = cameraViewMatrix * instanceMatrix[0] * vec4(1.0); }
     `
 
     expect(() => validateGLSL([shader(valid, 'glsl')])).not.toThrow()

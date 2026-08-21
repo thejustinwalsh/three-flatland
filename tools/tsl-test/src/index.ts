@@ -97,6 +97,7 @@ export function createMockRenderer(backend: ShaderBackend) {
     currentSamples: 1,
     depth: true,
     getMRT: () => null,
+    getOutputBufferType: () => UnsignedByteType,
     getRenderTarget: () => null,
     hasCompatibility: () => false,
     hasFeature: (feature: string) => feature === 'float32-filterable',
@@ -115,7 +116,8 @@ export function compileMaterial(
   backend: ShaderBackend,
   options: CompileMaterialOptions = {}
 ): CompiledProgram {
-  const object = options.object ?? new Mesh(options.geometry ?? new PlaneGeometry(1, 1), material)
+  const ownedGeometry = options.object === undefined && options.geometry === undefined ? new PlaneGeometry(1, 1) : null
+  const object = options.object ?? new Mesh(options.geometry ?? ownedGeometry!, material)
   const renderer = createMockRenderer(backend)
   const builder = (backend === 'wgsl'
     ? new WGSLNodeBuilder(object, renderer as never)
@@ -132,6 +134,7 @@ export function compileMaterial(
     builder.build()
   } finally {
     console.error = originalError
+    ownedGeometry?.dispose()
   }
 
   return {
@@ -148,8 +151,12 @@ export function compileFragmentNode(
   options: CompileMaterialOptions = {}
 ): CompiledProgram {
   const material = new NodeMaterial()
-  material.fragmentNode = typeof fragmentNode === 'function' ? Fn(fragmentNode)() : fragmentNode
-  return compileMaterial(material, backend, options)
+  try {
+    material.fragmentNode = typeof fragmentNode === 'function' ? Fn(fragmentNode)() : fragmentNode
+    return compileMaterial(material, backend, options)
+  } finally {
+    material.dispose()
+  }
 }
 
 export function shaderSources(program: CompiledProgram, label: string): ShaderSource[] {
@@ -166,7 +173,7 @@ function normalizeUniformBlocksForShaderfrog(source: string): string {
   // block to the global scope. Three emits unnamed std140 blocks, so expand
   // only those declarations for semantic validation. The original shader is
   // still the source checked by Three and returned to callers.
-  return source.replace(/layout\s*\([^)]*\)\s*uniform\s+\w+\s*\{([\s\S]*?)\}\s*;/g, (_block, body: string) =>
+  return source.replace(/(?:layout\s*\([^)]*\)\s*)?uniform\s+\w+\s*\{([\s\S]*?)\}\s*;/g, (_block, body: string) =>
     body
       .split(';')
       .map((declaration) => declaration.trim())
