@@ -301,9 +301,10 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
       // Outer host iframe: className = `webview ${customClasses}`, gains
       // the `ready` class once its service-worker page has booted
       // (vscode src/vs/workbench/contrib/webview/browser/webviewElement.ts
-      // WebviewElement.{_createElement,did-load handler}). `.last()` is
-      // defensive against a still-disposing previous panel's iframe.
-      const outer = workbox.frameLocator('iframe.webview.ready').last()
+      // WebviewElement.{_createElement,did-load handler}). A previous panel's
+      // ready iframe can remain hidden while VS Code disposes it, so select the
+      // visible editor rather than relying on DOM order.
+      const outer = workbox.frameLocator('iframe.webview.ready:visible').last()
       // Inner content iframe: id="active-frame" once loaded — this is the
       // extension's actual document, e.g. our Vite-built React app
       // (vscode src/vs/workbench/contrib/webview/browser/pre/index.html).
