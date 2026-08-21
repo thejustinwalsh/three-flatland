@@ -19,7 +19,7 @@ npm install @three-flatland/nodes
 
 ### Requirements
 
-- **three** >= 0.183.1 (WebGPU/TSL support)
+- **three** >= 0.185.1 (WebGPU/TSL support)
 
 ## Node Categories
 

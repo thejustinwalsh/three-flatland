@@ -19,9 +19,9 @@ npm install @three-flatland/skia
 
 ### Requirements
 
-- **three** >= 0.183.1 (WebGPU/TSL support)
+- **three** >= 0.185.1 (WebGPU/TSL support)
 - **React** >= 19.0.0 (for `@three-flatland/skia/react`)
-- **@react-three/fiber** >= 10.0.0-alpha.2 (for React)
+- **@react-three/fiber** >= 10.0.0-alpha.3 (for React)
 
 ## Features
 

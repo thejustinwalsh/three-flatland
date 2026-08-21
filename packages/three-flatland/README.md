@@ -40,9 +40,9 @@ npm install three-flatland @react-three/fiber@alpha
 
 ### Requirements
 
-- **three** >= 0.183.1 (WebGPU/TSL support)
+- **three** >= 0.185.1 (WebGPU/TSL support)
 - **koota** >= 0.1.0 (ECS for batch rendering)
-- **React** >= 19 and **@react-three/fiber** >= 10.0.0-alpha.2 (optional, for R3F)
+- **React** >= 19 and **@react-three/fiber** >= 10.0.0-alpha.3 (optional, for R3F)
 
 ## Quick Start
 
