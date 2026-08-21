@@ -202,7 +202,9 @@
     "@three-flatland/normals": "workspace:*"
   },
   "peerDependencies": {
+    "@react-three/fiber": "catalog:",
     "koota": "catalog:",
+    "react": "catalog:",
     "three": "catalog:"
   },
   "peerDependenciesMeta": {

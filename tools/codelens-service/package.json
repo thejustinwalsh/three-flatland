@@ -44,7 +44,7 @@
     "clean": "rm -rf dist"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
+    "@types/node": "catalog:",
     "typescript": "catalog:"
   }
 }

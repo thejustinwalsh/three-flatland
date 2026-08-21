@@ -112,6 +112,8 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
+    "@react-three/fiber": "catalog:",
+    "react": "catalog:",
     "three": "catalog:"
   },
   "peerDependenciesMeta": {
