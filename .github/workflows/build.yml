@@ -38,6 +38,11 @@ jobs:
         with:
           version: 0.15.1
 
+      - name: Install GLSL reference compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes glslang-tools
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -122,4 +127,8 @@ jobs:
       # is affected (it's in the test graph and reads the committed lib/*.wasm), so
       # no separate skia test step is needed.
       - name: Test
+        env:
+          # Makes the semantic GLSL leg mandatory in CI. Local runs use it when
+          # glslangValidator is installed and otherwise retain parser coverage.
+          THREE_FLATLAND_GLSLANG_VALIDATOR: glslangValidator
         run: pnpm nx affected -t test --base=${{ steps.nxbase.outputs.base }}

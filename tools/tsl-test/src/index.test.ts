@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateGLSL, validateShaderSources, validateWGSL, type ShaderSource } from './index'
+import { hasSemanticGLSLCompiler, validateGLSL, validateShaderSources, validateWGSL, type ShaderSource } from './index'
 
 function shader(output: string, backend: 'glsl' | 'wgsl'): ShaderSource {
   return { backend, label: 'validator-fixture', output, stage: 'fragment' }
@@ -43,8 +43,7 @@ describe('shader validators', () => {
   })
 
   it('accepts valid GLSL and rejects malformed GLSL', () => {
-    const valid = `
-      #version 300 es
+    const valid = `#version 300 es
       precision highp float;
       layout(std140) uniform render {
         mat4 cameraViewMatrix;
@@ -61,13 +60,22 @@ describe('shader validators', () => {
   })
 
   it('rejects GLSL semantic warnings', () => {
-    const output = `
-      #version 300 es
+    const output = `#version 300 es
       precision highp float;
       out vec4 fragColor;
       void main() { fragColor = missingColor; }
     `
 
     expect(() => validateGLSL([shader(output, 'glsl')])).toThrow(/GLSL parser rejected/)
+  })
+
+  it.runIf(hasSemanticGLSLCompiler())('rejects type-invalid GLSL with the reference compiler', () => {
+    const output = `#version 300 es
+      precision highp float;
+      out vec4 fragColor;
+      void main() { fragColor = vec4(1.0 - 1); }
+    `
+
+    expect(() => validateGLSL([shader(output, 'glsl')])).toThrow(/GLSL compiler rejected/)
   })
 })

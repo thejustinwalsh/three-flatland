@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -64,6 +64,17 @@ type TestNodeBuilder = {
 }
 
 const require = createRequire(import.meta.url)
+// CI configures this explicitly so a missing compiler is a hard failure. Local
+// runs auto-detect Khronos glslang and otherwise retain portable parse/scope
+// validation; set the variable to an empty string to exercise that fallback.
+const configuredGLSLCompiler = process.env.THREE_FLATLAND_GLSLANG_VALIDATOR
+const glslCompiler =
+  configuredGLSLCompiler ??
+  (spawnSync('glslangValidator', ['--version'], { stdio: 'ignore' }).status === 0 ? 'glslangValidator' : null)
+
+export function hasSemanticGLSLCompiler(): boolean {
+  return Boolean(glslCompiler)
+}
 
 export function createShaderTexture(): DataTexture {
   const texture = new DataTexture(
@@ -192,6 +203,21 @@ export function validateGLSL(shaders: ShaderSource[]): void {
       })
     } catch (error) {
       throw new Error(`GLSL parser rejected ${shader.label} ${shader.stage}`, { cause: error })
+    }
+
+    if (glslCompiler) {
+      try {
+        const output = execFileSync(glslCompiler, ['--stdin', '-S', shader.stage === 'fragment' ? 'frag' : 'vert'], {
+          encoding: 'utf8',
+          input: shader.output,
+          maxBuffer: 4 * 1024 * 1024,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: 30_000,
+        })
+        if (/^WARNING:/m.test(output)) throw new Error(output.trim())
+      } catch (error) {
+        throw new Error(`GLSL compiler rejected ${shader.label} ${shader.stage}`, { cause: error })
+      }
     }
   }
 }
