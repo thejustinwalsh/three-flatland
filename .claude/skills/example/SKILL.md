@@ -68,23 +68,23 @@ examples/
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@three-flatland/devtools": "^0.1.0-alpha.1",
+    "@three-flatland/devtools": "^1.0.0-alpha.6",
     "@tweakpane/plugin-essentials": "^0.2.1",
-    "three-flatland": "^0.1.0-alpha.2",
-    "three": "^0.183.1",
+    "three-flatland": "^0.1.0-alpha.9",
+    "three": "^0.185.1",
     "tweakpane": "^4.0.5"
   },
   "devDependencies": {
-    "@types/three": "^0.183.1",
+    "@types/three": "^0.185.4",
     "typescript": "^5.7.3",
-    "vite": "^6.0.7"
+    "vite": "^7.3.6"
   }
 }
 ```
 
-**React example** adds: `@react-three/fiber@^10.0.0-alpha.2`, `react@^19.0.0`, `react-dom@^19.0.0`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`.
+**React example** adds: `@react-three/fiber@10.0.0-alpha.3`, `react@^19.2.0`, `react-dom@^19.2.0`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`.
 
-Real version strings — never `catalog:` or `workspace:*`. `pnpm syncpack:examples` keeps these in sync with the workspace catalog.
+Real version strings — never `catalog:` or `workspace:*`. `pnpm sync:pack examples` keeps these in sync with the workspace catalog.
 
 ## index.html
 
