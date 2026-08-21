@@ -12,12 +12,14 @@ import {
   createDevtoolsProvider,
 } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
+import { RENDERER_FAILURE_COLOR } from '../../examples/_shared/rendererFallback'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
  * a fresh renderer + animate() loop while the previous one keeps
  * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
 let rafId = 0
 let activeRenderer: WebGPURenderer | null = null
+let activeRendererInitialized = false
 let activeResizeHandler: (() => void) | null = null
 
 const ASSET_BASE = './assets/'
@@ -56,7 +58,7 @@ function showStartupFailure(): void {
     padding: '2rem',
     boxSizing: 'border-box',
     textAlign: 'center',
-    color: '#f4f7fb',
+    color: RENDERER_FAILURE_COLOR,
   })
   document.body.replaceChildren(fallback)
 }
@@ -111,6 +113,7 @@ async function main() {
   document.body.appendChild(renderer.domElement)
 
   await renderer.init()
+  activeRendererInitialized = true
 
   // Load BOTH atlas variants up front. They pack pixel-identical pages,
   // but particles-quad.json carries no per-frame `mesh` field — loading
@@ -311,9 +314,10 @@ main().catch((err) => {
     activeResizeHandler = null
   }
   if (activeRenderer) {
-    activeRenderer.dispose?.()
+    if (activeRendererInitialized) activeRenderer.dispose()
     activeRenderer.domElement.remove()
     activeRenderer = null
+    activeRendererInitialized = false
   }
   showStartupFailure()
 })
@@ -329,9 +333,10 @@ if (import.meta.hot) {
       activeResizeHandler = null
     }
     if (activeRenderer) {
-      activeRenderer.dispose?.()
+      if (activeRendererInitialized) activeRenderer.dispose()
       activeRenderer.domElement.remove()
       activeRenderer = null
+      activeRendererInitialized = false
     }
   })
 }
