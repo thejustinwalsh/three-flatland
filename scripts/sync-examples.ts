@@ -51,11 +51,13 @@ const SYNCED_FILES: Record<Variant, readonly SyncedFile[]> = {
   three: [
     { source: 'examples/three/template/GemBackground.ts', target: 'GemBackground.ts' },
     { source: 'examples/_shared/rendererColorManagement.ts', target: 'rendererColorManagement.ts' },
+    { source: 'examples/_shared/rendererFailure.ts', target: 'rendererFailure.ts' },
     { source: 'examples/_shared/renderStartupError.ts', target: 'renderStartupError.ts' },
   ],
   react: [
     { source: 'examples/react/template/GemBackground.tsx', target: 'GemBackground.tsx' },
     { source: 'examples/_shared/rendererColorManagement.ts', target: 'rendererColorManagement.ts' },
+    { source: 'examples/_shared/rendererFailure.ts', target: 'rendererFailure.ts' },
     { source: 'examples/_shared/ExampleFallback.tsx', target: 'ExampleFallback.tsx' },
   ],
 }

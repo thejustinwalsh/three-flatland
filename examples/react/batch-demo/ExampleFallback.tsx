@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactElement } from 'react'
+import { RENDERER_FAILURE_COLOR, RENDERER_FAILURE_MESSAGE } from './rendererFailure'
 
 /** Native R3F Canvas fallback after every renderer backend fails. */
 export function ExampleFallback(): ReactElement {
@@ -21,10 +22,12 @@ export function ExampleFallback(): ReactElement {
         display: 'grid',
         placeItems: 'center',
         padding: '2rem',
-        color: '#f4f7fb',
+        boxSizing: 'border-box',
+        textAlign: 'center',
+        color: RENDERER_FAILURE_COLOR,
       }}
     >
-      This example could not initialize rendering.
+      {RENDERER_FAILURE_MESSAGE}
     </div>
   )
 }

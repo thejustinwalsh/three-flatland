@@ -1,5 +1,4 @@
-export const RENDERER_FAILURE_MESSAGE = 'This example could not initialize rendering.'
-export const RENDERER_FAILURE_COLOR = '#f4f7fb'
+import { RENDERER_FAILURE_COLOR, RENDERER_FAILURE_MESSAGE } from './rendererFailure'
 
 /** Present a terminal startup failure after Three has exhausted its renderer backends. */
 export function renderStartupError(error: unknown): void {
