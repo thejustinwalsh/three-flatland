@@ -129,11 +129,24 @@ export interface FlatlandOptions {
    * Omit it to reveal additional world space and fill the available output.
    */
   viewWidth?: number
-  /** Clear before render (default: true) */
+  /**
+   * Clear before direct rendering (default: true). Three's post-processing
+   * scene pass always clears its private target so effects never sample stale
+   * frame data.
+   */
   autoClear?: boolean
-  /** Background color */
+  /**
+   * Background color used for Flatland-managed clears. A post-processing
+   * pipeline preserves an explicit {@link Scene.background}; direct rendering
+   * retains Flatland's historical managed-background behavior.
+   */
   clearColor?: ColorRepresentation
-  /** Background alpha (default: 1) */
+  /**
+   * Background alpha (default: 1). Direct rendering and post-processing both
+   * preserve it, including offscreen targets. Fractional alpha uses
+   * {@link clearColor}; alpha 0 clears to transparent black to prevent RGB
+   * bleed when the result is filtered.
+   */
   clearAlpha?: number
   /** Enable post-processing pipeline (default: false) */
   postProcessing?: boolean
@@ -314,6 +327,9 @@ export class Flatland extends Group implements WorldProvider {
   /** Clear alpha */
   clearAlpha: number
 
+  /** Last background value managed from Flatland's clear settings. */
+  private _managedSceneBackground: Color | null
+
   /** Cached renderer reference */
   private _renderer: WeakRef<WebGPURenderer> | null = null
 
@@ -333,6 +349,9 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Reusable physical drawing-buffer size for surface-dependent GPU resources. */
   private _drawingBufferSize = new Vector2()
+
+  /** Shared-renderer clear color restored after Flatland's internal passes. */
+  private _savedClearColor = new Color()
 
   /** Reusable physical canvas viewport inherited from the active renderer owner. */
   private _activeCanvasViewport = new Vector4()
@@ -445,6 +464,7 @@ export class Flatland extends Group implements WorldProvider {
 
     // Background — set in render() based on clearAlpha (R3F sets props after construction)
     this.scene.background = this.clearColor
+    this._managedSceneBackground = this.clearColor
 
     // Render pipeline
     this._renderPipelineEnabled = options.postProcessing ?? false
@@ -1527,6 +1547,14 @@ export class Flatland extends Group implements WorldProvider {
     // safe activation here. `start()` is idempotent — no-op every
     // subsequent frame.
     this._devtools?.start()
+
+    // Flatland can share a renderer with a host scene. Capture clear state
+    // before the ECS schedule because lighting pre-passes may change it before
+    // the main draw starts. The reusable Color keeps this per-frame guard
+    // allocation-free.
+    renderer.getClearColor(this._savedClearColor)
+    const savedClearAlpha = renderer.getClearAlpha()
+
     // Mark frame start before ANY renderer.render() calls this frame.
     // Flatland runs multiple internal render passes (SDF pass, occlusion
     // pass, main render, post-processing) — `beginFrame` + `endFrame`
@@ -1535,114 +1563,137 @@ export class Flatland extends Group implements WorldProvider {
     // multiplied by pass count.
     this._devtools?.beginFrame(performance.now(), renderer)
 
-    // Auto-sync global uniforms from renderer
-    this._syncGlobals(renderer)
-
-    // Keep render-surface dimensions current for the camera and lighting.
-    // A fixed aspect only pins the camera; an explicit resize() selects full
-    // manual surface control for both the camera and effects.
-    this._syncSurfaceSize(renderer)
-
-    // Update LightingContext runtime fields before systems run
-    const lctx = this._getLightingContext()
-    if (lctx) {
-      lctx.renderer = renderer
-      lctx.camera = this._camera
-      lctx.scene = this.scene
-      // worldSize/worldOffset are always live Vector2s (trait default +
-      // preserved across setLighting); lightEffectSystem mutates them in
-      // place each frame. No lazy allocation needed here.
-    }
-
-    // Sync the Flatland-owned world uniform nodes from the current camera
-    // bounds so shader-side shadow / radiance math has live values. Mutation
-    // on `.value` is free — no shader rebuild. The uniform references were
-    // captured by effect shaders at setLighting time.
-    const cam = this._camera
-    this._worldSizeUniform.value.set(cam.right - cam.left, cam.top - cam.bottom)
-    this._worldOffsetUniform.value.set(cam.left, cam.bottom)
-
-    // ONE canonical trigger for the ECS schedule + matrix update per
-    // frame. `scene.updateMatrixWorld(true)` walks into
-    // `SpriteGroup.updateMatrixWorld`, which runs the schedule (all
-    // lighting + sprite systems) exactly once, then recurses into
-    // three.js matrix propagation. `scene.matrixWorldAutoUpdate` is
-    // disabled at construction so internal passes (OcclusionPass, SDF)
-    // don't trigger extra schedule runs.
-    //
-    // The `scheduleRuns` counter on the registry is kept as a defensive
-    // guard — if any future path (user code, new internal pass) calls
-    // `scene.updateMatrixWorld` or `spriteGroup.update` again in the
-    // same frame, `SpriteGroup` observes the advanced counter and
-    // short-circuits.
-    this.scene.updateMatrixWorld(true)
-
-    // Store renderer reference
-    if (!this._renderer || this._renderer.deref() !== renderer) {
-      this._renderer = new WeakRef(renderer)
-    }
-
-    // Auto-initialize or rebuild render pipeline if needed
-    this._ensureRenderPipeline(renderer)
-
-    // Bind the centered integer viewport before any direct or post-processed
-    // draw. Canvas viewports are expressed in logical pixels; render-target
-    // viewports already use physical texels. Restore user renderer state after
-    // this Flatland render completes.
-    const restorePixelViewport = this._applyPixelViewport(renderer)
-    let currentRenderTarget: RenderTarget | null | undefined
-    let renderTargetChanged = false
-
     try {
-      // Bind Flatland's destination for both direct and post-processed
-      // rendering. Keep target lookup/binding inside the restoration boundary:
-      // a backend error here must not leak Flatland's pixel viewport.
-      currentRenderTarget = renderer.getRenderTarget()
-      renderTargetChanged = currentRenderTarget !== this._renderTarget
-      if (renderTargetChanged) renderer.setRenderTarget(this._renderTarget)
+      // Auto-sync global uniforms from renderer
+      this._syncGlobals(renderer)
 
-      if (this._renderPipeline && this._renderPipelineEnabled) {
-        beginDebugPass('main.post', renderer)
-        try {
-          this._renderPipeline.render()
-        } finally {
-          endDebugPass(renderer)
+      // Keep render-surface dimensions current for the camera and lighting.
+      // A fixed aspect only pins the camera; an explicit resize() selects full
+      // manual surface control for both the camera and effects.
+      this._syncSurfaceSize(renderer)
+
+      // Update LightingContext runtime fields before systems run
+      const lctx = this._getLightingContext()
+      if (lctx) {
+        lctx.renderer = renderer
+        lctx.camera = this._camera
+        lctx.scene = this.scene
+        // worldSize/worldOffset are always live Vector2s (trait default +
+        // preserved across setLighting); lightEffectSystem mutates them in
+        // place each frame. No lazy allocation needed here.
+      }
+
+      // Sync the Flatland-owned world uniform nodes from the current camera
+      // bounds so shader-side shadow / radiance math has live values. Mutation
+      // on `.value` is free — no shader rebuild. The uniform references were
+      // captured by effect shaders at setLighting time.
+      const cam = this._camera
+      this._worldSizeUniform.value.set(cam.right - cam.left, cam.top - cam.bottom)
+      this._worldOffsetUniform.value.set(cam.left, cam.bottom)
+
+      // ONE canonical trigger for the ECS schedule + matrix update per
+      // frame. `scene.updateMatrixWorld(true)` walks into
+      // `SpriteGroup.updateMatrixWorld`, which runs the schedule (all
+      // lighting + sprite systems) exactly once, then recurses into
+      // three.js matrix propagation. `scene.matrixWorldAutoUpdate` is
+      // disabled at construction so internal passes (OcclusionPass, SDF)
+      // don't trigger extra schedule runs.
+      //
+      // The `scheduleRuns` counter on the registry is kept as a defensive
+      // guard — if any future path (user code, new internal pass) calls
+      // `scene.updateMatrixWorld` or `spriteGroup.update` again in the
+      // same frame, `SpriteGroup` observes the advanced counter and
+      // short-circuits.
+      this.scene.updateMatrixWorld(true)
+
+      // Store renderer reference
+      if (!this._renderer || this._renderer.deref() !== renderer) {
+        this._renderer = new WeakRef(renderer)
+      }
+
+      // Auto-initialize or rebuild render pipeline if needed
+      this._ensureRenderPipeline(renderer)
+
+      // Bind the centered integer viewport before any direct or post-processed
+      // draw. Canvas viewports are expressed in logical pixels; render-target
+      // viewports already use physical texels. Restore user renderer state after
+      // this Flatland render completes.
+      const restorePixelViewport = this._applyPixelViewport(renderer)
+      let currentRenderTarget: RenderTarget | null | undefined
+      let renderTargetChanged = false
+
+      try {
+        // Bind Flatland's destination for both direct and post-processed
+        // rendering. Keep target lookup/binding inside the restoration boundary:
+        // a backend error here must not leak Flatland's pixel viewport.
+        currentRenderTarget = renderer.getRenderTarget()
+        renderTargetChanged = currentRenderTarget !== this._renderTarget
+        if (renderTargetChanged) renderer.setRenderTarget(this._renderTarget)
+
+        // R3F can assign clear props after construction, so synchronize them at
+        // the last possible point. A PassNode forces autoClear while drawing its
+        // private scene target, so an active pipeline always needs Flatland's
+        // clear color/alpha even when the public autoClear option is false.
+        const renderPipeline = this._renderPipeline
+        const pipelineActive = renderPipeline !== null && this._renderPipelineEnabled
+        const clearRequested = this.autoClear || pipelineActive
+        // A Color background forces a Three clear even when autoClear is false,
+        // so direct accumulation must leave the scene background unset. A
+        // pipeline preserves a user-authored background (for example a
+        // texture); Flatland only synchronizes the default background it owns.
+        if (!pipelineActive || this.scene.background === this._managedSceneBackground) {
+          this._managedSceneBackground = clearRequested && this.clearAlpha >= 1 ? this.clearColor : null
+          this.scene.background = this._managedSceneBackground
         }
-      } else {
-        // Sync scene.background based on clearAlpha (R3F sets props after construction)
-        this.scene.background = this.clearAlpha < 1 ? null : this.clearColor
-
-        // Configure renderer clear state and let render() handle clearing
         const prevAutoClear = renderer.autoClear
-        renderer.autoClear = this.autoClear
+        // Preserve the host's compositing choice for the pipeline's final
+        // fullscreen output. PassNode independently forces autoClear while it
+        // renders the scene into its private input target.
+        renderer.autoClear = pipelineActive ? prevAutoClear : this.autoClear
         try {
-          if (this.autoClear) {
-            renderer.setClearColor(this.clearAlpha < 1 ? 0x000000 : this.clearColor, this.clearAlpha)
+          if (clearRequested) {
+            // Fully transparent pixels use black to avoid RGB bleed during
+            // filtering. Fractional alpha preserves the authored clear color.
+            renderer.setClearColor(this.clearAlpha === 0 ? 0x000000 : this.clearColor, this.clearAlpha)
           }
-          beginDebugPass('main', renderer)
-          try {
-            renderer.render(this.scene, this._camera)
-          } finally {
-            endDebugPass(renderer)
+
+          if (pipelineActive) {
+            beginDebugPass('main.post', renderer)
+            try {
+              renderPipeline.render()
+            } finally {
+              endDebugPass(renderer)
+            }
+          } else {
+            beginDebugPass('main', renderer)
+            try {
+              renderer.render(this.scene, this._camera)
+            } finally {
+              endDebugPass(renderer)
+            }
           }
         } finally {
           renderer.autoClear = prevAutoClear
         }
+      } finally {
+        try {
+          if (renderTargetChanged && currentRenderTarget !== undefined) {
+            renderer.setRenderTarget(currentRenderTarget)
+          }
+        } finally {
+          restorePixelViewport?.()
+        }
       }
     } finally {
-      if (renderTargetChanged && currentRenderTarget !== undefined) {
-        renderer.setRenderTarget(currentRenderTarget)
+      try {
+        renderer.setClearColor(this._savedClearColor, savedClearAlpha)
+      } finally {
+        // Mark frame end after ALL renderer.render() calls have completed.
+        // This aggregates internal passes into one logical devtools frame and
+        // still balances beginFrame if renderer-state restoration throws.
+        this._devtools?.endFrame(renderer)
       }
-      restorePixelViewport?.()
     }
-
-    // Devtools: mark frame end after ALL renderer.render() calls have
-    // completed this frame. Aggregates draw calls / triangles across
-    // internal passes, computes real cpuMs and FPS at the logical
-    // frame boundary, emits the data packet (or idle ping). The batch
-    // registry snapshot is pulled via the sink source Flatland
-    // registered in its constructor — no explicit capture call needed.
-    this._devtools?.endFrame(renderer)
   }
 
   /**

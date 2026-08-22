@@ -1,6 +1,6 @@
 import { act, createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { OrthographicCamera, Vector2, Vector4 } from 'three'
+import { OrthographicCamera, Vector2, Vector4, type Color } from 'three'
 import { createRoot, extend } from '@react-three/fiber/webgpu'
 import { universe } from 'koota'
 import type { WebGPURenderer } from 'three/webgpu'
@@ -14,6 +14,7 @@ afterEach(() => {
   universe.reset()
 })
 
+/** Creates a headless R3F root with mutable renderer surface dimensions. */
 async function createTestRoot(width: number, height: number) {
   vi.stubGlobal('requestAnimationFrame', () => 0)
   vi.stubGlobal('cancelAnimationFrame', () => {})
@@ -35,6 +36,8 @@ async function createTestRoot(width: number, height: number) {
     },
     setPixelRatio() {},
     getPixelRatio: () => 1,
+    getClearAlpha: () => 1,
+    getClearColor: (target: Color) => target.set(0x000000),
     getRenderTarget: () => null,
     setRenderTarget() {},
     setClearColor() {},
@@ -51,6 +54,7 @@ async function createTestRoot(width: number, height: number) {
   return { renderer, root, surface }
 }
 
+/** Unmounts a test root inside React's asynchronous act boundary. */
 async function unmountTestRoot(root: ReturnType<typeof createRoot>): Promise<void> {
   await act(async () => {
     root.unmount()

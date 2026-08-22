@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { RenderTarget, Vector2 } from 'three'
+import { RenderTarget, Vector2, type Color } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland } from './Flatland'
 import { createLightEffect } from './lights/LightEffect'
@@ -27,11 +27,14 @@ function getPipeline(flatland: Flatland) {
   return entities.length > 0 ? entities[0]!.get(ShadowPipeline) : null
 }
 
+/** Creates the minimal renderer surface needed to advance shadow systems. */
 function mockRenderer(width: number, height: number) {
   return {
     getSize: (target: Vector2) => target.set(width, height),
     getDrawingBufferSize: (target: Vector2) => target.set(width, height),
     getPixelRatio: () => 1,
+    getClearAlpha: () => 1,
+    getClearColor: (target: Color) => target.set(0x000000),
     getRenderTarget: () => null,
     setRenderTarget: () => {},
     setClearColor: () => {},

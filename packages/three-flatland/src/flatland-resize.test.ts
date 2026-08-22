@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { OrthographicCamera, Vector2, Vector4 } from 'three'
+import { OrthographicCamera, Vector2, Vector4, type Color } from 'three'
 import { pass, vec4 } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland } from './Flatland'
@@ -30,6 +30,8 @@ function mockRenderer(width: number, height: number, pixelRatio = 1) {
       return target.set(Math.floor(state.width * pixelRatio), Math.floor(state.height * pixelRatio))
     },
     getPixelRatio: () => pixelRatio,
+    getClearAlpha: () => 1,
+    getClearColor: (target: Color) => target.set(0x000000),
     getViewport: (target: Vector4) => target.copy(viewport),
     setViewport: (x: number | Vector4, y?: number, viewportWidth?: number, viewportHeight?: number) => {
       if (x instanceof Vector4) viewport.copy(x)

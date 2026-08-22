@@ -211,10 +211,10 @@ export class OcclusionPass {
     this._hiddenMeshes.length = 0
     scene.traverse(this._collectAndSwap)
 
-    // Clear color/alpha are deliberately NOT restored — Flatland.render
-    // sets them per-frame immediately after the pre-pass, so round-tripping
-    // the Color4 (which isn't part of the public three type export) would
-    // add complexity without changing observable behaviour.
+    // Clear color/alpha are deliberately NOT restored here. Flatland.render
+    // captures the caller's clear state before the ECS schedule and restores
+    // it once the frame's passes are done. Clear-sensitive consumers within
+    // the same frame must still establish the state they require.
     try {
       scene.background = null
       renderer.setRenderTarget(this._rt)
