@@ -45,7 +45,7 @@ describe('synced renderer fallbacks', () => {
     const source = readFileSync(path, 'utf8')
 
     expect(source).toContain('fallback=')
-    expect(source).toContain('This example could not initialize rendering.')
+    expect(source).toContain('<ExampleFallback />')
     expect(source).not.toContain('WebGPUFallback')
   })
 })

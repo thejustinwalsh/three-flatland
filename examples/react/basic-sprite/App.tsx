@@ -4,6 +4,7 @@ import { Color } from 'three'
 import { Sprite2D, TextureLoader, usePixelPerfectCamera } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -134,21 +135,7 @@ export default function App() {
     <Canvas
       dpr={1}
       renderer={{ antialias: false, ...exampleRendererColorConfig }}
-      fallback={
-        <div
-          role="status"
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'grid',
-            placeItems: 'center',
-            padding: '2rem',
-            color: '#f4f7fb',
-          }}
-        >
-          This example could not initialize rendering.
-        </div>
-      }
+      fallback={<ExampleFallback />}
       onCreated={({ renderer }) => {
         renderer.domElement.style.imageRendering = 'pixelated'
       }}

@@ -4,6 +4,7 @@ import { DataTexture, RGBAFormat, NearestFilter, SRGBColorSpace, type Orthograph
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/devtools/react'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -693,21 +694,7 @@ export default function App() {
     <Canvas
       dpr={1}
       renderer={{ antialias: false, ...exampleRendererColorConfig }}
-      fallback={
-        <div
-          role="status"
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'grid',
-            placeItems: 'center',
-            padding: '2rem',
-            color: '#f4f7fb',
-          }}
-        >
-          This example could not initialize rendering.
-        </div>
-      }
+      fallback={<ExampleFallback />}
       style={{ touchAction: 'none' }}
       onCreated={({ renderer }) => {
         renderer.domElement.style.imageRendering = 'pixelated'

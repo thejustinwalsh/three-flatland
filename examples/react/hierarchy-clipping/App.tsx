@@ -4,6 +4,7 @@ import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import { DataTexture, NearestFilter, RGBAFormat, type Group } from 'three'
 import { Sprite2D, SpriteGroup, usePixelPerfectCamera } from 'three-flatland/react'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -105,21 +106,7 @@ export default function App() {
       renderer={{ ...exampleRendererColorConfig }}
       frameloop="always"
       camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
-      fallback={
-        <div
-          role="status"
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'grid',
-            placeItems: 'center',
-            padding: '2rem',
-            color: '#f4f7fb',
-          }}
-        >
-          This example could not initialize rendering.
-        </div>
-      }
+      fallback={<ExampleFallback />}
     >
       <DevtoolsProvider name="react-hierarchy-clipping" />
       <GemBackground gem={GEM} />

@@ -12,6 +12,7 @@ import { usePane, DevtoolsProvider } from '@three-flatland/devtools/react'
 import { Color, Vector3 } from 'three'
 import type { ThreeEvent } from '@react-three/fiber/webgpu'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -581,21 +582,7 @@ export default function App() {
         dpr={1}
         camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
         renderer={{ antialias: false, ...exampleRendererColorConfig }}
-        fallback={
-          <div
-            role="status"
-            style={{
-              width: '100%',
-              height: '100%',
-              display: 'grid',
-              placeItems: 'center',
-              padding: '2rem',
-              color: '#f4f7fb',
-            }}
-          >
-            This example could not initialize rendering.
-          </div>
-        }
+        fallback={<ExampleFallback />}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'
         }}

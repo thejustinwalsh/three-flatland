@@ -17,6 +17,7 @@ import {
   type AnimationSetDefinition,
 } from 'three-flatland/react'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
@@ -974,25 +975,7 @@ export default function App() {
   const rimEnabled = rimIntensity > 0
 
   return (
-    <Canvas
-      dpr={1}
-      renderer={{ antialias: false, ...exampleRendererColorConfig }}
-      fallback={
-        <div
-          role="status"
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'grid',
-            placeItems: 'center',
-            padding: '2rem',
-            color: '#f4f7fb',
-          }}
-        >
-          This example could not initialize rendering.
-        </div>
-      }
-    >
+    <Canvas dpr={1} renderer={{ antialias: false, ...exampleRendererColorConfig }} fallback={<ExampleFallback />}>
       <color attach="background" args={['#06060c']} />
       <Suspense fallback={null}>
         <FlatlandScene

@@ -13,6 +13,7 @@
  *   examples/react/template/GemBackground.tsx → examples/react/<slug>/GemBackground.tsx
  *   examples/_shared/rendererColorManagement.ts → every example directory
  *   examples/_shared/renderStartupError.ts → every plain Three example directory
+ *   examples/_shared/ExampleFallback.tsx → every React example directory
  *
  * What gets generated:
  *   examples/three/<slug>/gem.ts   — `export const GEM = '<gem>' as const`
@@ -55,6 +56,7 @@ const SYNCED_FILES: Record<Variant, readonly SyncedFile[]> = {
   react: [
     { source: 'examples/react/template/GemBackground.tsx', target: 'GemBackground.tsx' },
     { source: 'examples/_shared/rendererColorManagement.ts', target: 'rendererColorManagement.ts' },
+    { source: 'examples/_shared/ExampleFallback.tsx', target: 'ExampleFallback.tsx' },
   ],
 }
 

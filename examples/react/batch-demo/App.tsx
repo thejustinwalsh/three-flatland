@@ -14,6 +14,7 @@ import {
   type RenderStats,
 } from 'three-flatland/react'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import type { Pane } from 'tweakpane'
 import { GemBackground } from './GemBackground'
@@ -461,21 +462,7 @@ export default function App() {
         dpr={1}
         style={{ background: '#16191e' }}
         renderer={{ antialias: false, ...exampleRendererColorConfig }}
-        fallback={
-          <div
-            role="status"
-            style={{
-              width: '100%',
-              height: '100%',
-              display: 'grid',
-              placeItems: 'center',
-              padding: '2rem',
-              color: '#f4f7fb',
-            }}
-          >
-            This example could not initialize rendering.
-          </div>
-        }
+        fallback={<ExampleFallback />}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'
         }}
