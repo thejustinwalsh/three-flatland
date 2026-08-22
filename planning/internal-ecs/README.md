@@ -1,6 +1,6 @@
 # Internal ECS design gate
 
-Status: **approved — evidence harness complete, production implementation in progress**
+Status: **approved — initial kernel evidence captured, full production validation pending**
 
 Date: 2026-08-22
 
@@ -95,7 +95,6 @@ Against the currently installed Koota 0.6.5:
 | Measurement                                            |                                                 Current result |
 | ------------------------------------------------------ | -------------------------------------------------------------: |
 | Installed Koota package                                |                                                 496 kB on disk |
-| Koota core ESM chunk                                   |                           98,396 bytes raw / 17,310 bytes gzip |
 | Tree-shaken bundle of Flatland's seven runtime imports | 34,910 bytes minified / 10,584 bytes gzip / 9,362 bytes Brotli |
 
 The seven imports are `createWorld`, `trait`, `relation`, `createAdded`, `createChanged`, `createRemoved`, and `getStore`. Type-only imports are excluded from the bundle measurement.

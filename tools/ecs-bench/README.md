@@ -13,6 +13,8 @@ published package entrypoints.
   tree shaking and minification.
 - The benchmark records raw observations, median, p95, operation counts, warm-ups, tool versions,
   machine details, and the tested base commit.
+- A separate numeric-storage harness compares ordinary arrays, fixed typed arrays, and typed arrays
+  behind a stable growable wrapper, including reference-stability and growth behavior.
 
 The candidates are evidence prototypes. The selected production runtime is implemented separately
 inside `packages/three-flatland/src/ecs/runtime` and must pass the same contract before migration.
@@ -27,11 +29,12 @@ pnpm nx run @three-flatland/ecs-bench:typecheck
 pnpm nx run @three-flatland/ecs-bench:baseline:size
 pnpm nx run @three-flatland/ecs-bench:benchmark --args='--quick'
 pnpm nx run @three-flatland/ecs-bench:benchmark
+pnpm nx run @three-flatland/ecs-bench:benchmark:storage
 ```
 
 Use `--adapter=koota`, `--adapter=sparse-persistent`, `--adapter=signature-persistent`, or
-`--adapter=anchored-scan` to isolate one implementation. Use `--output=<path>` to preserve the raw
-JSON report.
+`--adapter=anchored-scan` to isolate one implementation. Both benchmark commands accept
+`--output=<path>` to preserve the raw JSON report.
 
 Wall-clock results are comparative evidence, not a deterministic CI test. The scenario suite,
 type checks, and later bundle budgets are deterministic gates.

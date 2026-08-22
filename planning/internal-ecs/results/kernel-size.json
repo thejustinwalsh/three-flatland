@@ -1,5 +1,19 @@
 {
+  "schemaVersion": 2,
   "esbuild": "0.28.1",
+  "harnessSha256": "b1c9615aba9b219d52822a999d099a0023eed5bd69521116d036dc6340fabaae",
+  "harnessSources": [
+    "adapter.ts",
+    "candidates/anchored-scan.ts",
+    "candidates/shared.ts",
+    "candidates/signature-persistent.ts",
+    "candidates/sparse-persistent.ts",
+    "fixtures/anchored-scan-size-entry.ts",
+    "fixtures/koota-size-entry.ts",
+    "fixtures/signature-persistent-size-entry.ts",
+    "fixtures/sparse-persistent-size-entry.ts",
+    "measure-kernels-size.ts"
+  ],
   "koota": "0.6.5",
   "measurements": [
     {
@@ -10,22 +24,28 @@
     },
     {
       "artifact": "Sparse membership with persistent selector views",
-      "brotliBytes": 2710,
-      "gzipBytes": 2956,
-      "minifiedBytes": 7962
+      "brotliBytes": 2897,
+      "gzipBytes": 3184,
+      "minifiedBytes": 8484
     },
     {
       "artifact": "Signature membership with persistent selector views",
-      "brotliBytes": 2706,
-      "gzipBytes": 2953,
-      "minifiedBytes": 7968
+      "brotliBytes": 2893,
+      "gzipBytes": 3181,
+      "minifiedBytes": 8490
     },
     {
       "artifact": "Sparse membership with anchored selector scans",
-      "brotliBytes": 2702,
-      "gzipBytes": 2952,
-      "minifiedBytes": 7954
+      "brotliBytes": 2895,
+      "gzipBytes": 3179,
+      "minifiedBytes": 8476
     }
   ],
+  "mergeBase": "6868ff18d65ae5cb0edc75abef00d8f02e860ac6",
+  "methodology": {
+    "brotli": "node:zlib brotliCompressSync defaults",
+    "bundle": "esbuild browser ESM bundle with minification and tree shaking",
+    "gzip": "node:zlib gzipSync defaults"
+  },
   "target": "es2022"
 }

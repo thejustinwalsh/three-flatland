@@ -1,6 +1,6 @@
 # Internal ECS benchmark and validation plan
 
-Status: baseline and kernel gate complete; production, consumer, and live gates pending
+Status: initial kernel baseline captured; expanded kernel, production, consumer, and live gates pending
 
 Date: 2026-08-22
 

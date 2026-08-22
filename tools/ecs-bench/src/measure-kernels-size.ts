@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
@@ -5,6 +7,25 @@ import { brotliCompressSync, gzipSync } from 'node:zlib'
 import { build } from 'esbuild'
 
 const require = createRequire(import.meta.url)
+
+const harnessSources = [
+  'adapter.ts',
+  'candidates/anchored-scan.ts',
+  'candidates/shared.ts',
+  'candidates/signature-persistent.ts',
+  'candidates/sparse-persistent.ts',
+  'fixtures/anchored-scan-size-entry.ts',
+  'fixtures/koota-size-entry.ts',
+  'fixtures/signature-persistent-size-entry.ts',
+  'fixtures/sparse-persistent-size-entry.ts',
+  'measure-kernels-size.ts',
+] as const
+
+const harnessHash = createHash('sha256')
+for (const source of harnessSources) {
+  harnessHash.update(source)
+  harnessHash.update(readFileSync(resolve(import.meta.dirname, source)))
+}
 
 function packageVersion(name: string): string {
   const entry = require.resolve(name)
@@ -58,9 +79,18 @@ for (const artifact of artifacts) {
 }
 
 const report = {
+  schemaVersion: 2,
   esbuild: packageVersion('esbuild'),
+  harnessSha256: harnessHash.digest('hex'),
+  harnessSources,
   koota: packageVersion('koota'),
   measurements,
+  mergeBase: execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { encoding: 'utf8' }).trim(),
+  methodology: {
+    brotli: 'node:zlib brotliCompressSync defaults',
+    bundle: 'esbuild browser ESM bundle with minification and tree shaking',
+    gzip: 'node:zlib gzipSync defaults',
+  },
   target: 'es2022',
 }
 

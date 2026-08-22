@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { arch, platform, release } from 'node:os'
+import { arch, cpus, platform, release } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { component, type AdapterWorld, type EcsAdapter, type Entity } from './adapter.ts'
@@ -30,9 +31,17 @@ interface AdapterResult {
 }
 
 interface MemoryResult {
-  readonly activeHeapDeltaBytes: number
+  readonly activeHeapDeltaBytes: MemorySamples
   readonly entityCount: number
-  readonly retainedHeapDeltaBytes: number
+  readonly retainedHeapDeltaBytes: MemorySamples
+  readonly samples: number
+  readonly warmups: number
+}
+
+interface MemorySamples {
+  readonly median: number
+  readonly observations: readonly number[]
+  readonly p95: number
 }
 
 const quick = process.argv.includes('--quick')
@@ -44,18 +53,28 @@ function percentile(sorted: readonly number[], fraction: number): number {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)]!
 }
 
+function summarizeMemory(values: readonly number[]): MemorySamples {
+  const sorted = [...values].sort((left, right) => left - right)
+  return {
+    median: percentile(sorted, 0.5),
+    observations: values,
+    p95: percentile(sorted, 0.95),
+  }
+}
+
 function measure(
   run: (sample: number) => number,
   { samples, warmups }: { readonly samples: number; readonly warmups: number }
 ): TimingResult {
-  let checksum = 0
-  for (let index = 0; index < warmups; index++) checksum ^= run(-(index + 1))
+  let checksum = 2_166_136_261
+  for (let index = 0; index < warmups; index++) run(-(index + 1))
 
   const observations: number[] = []
   for (let index = 0; index < samples; index++) {
     const start = performance.now()
-    checksum ^= run(index)
+    const value = run(index)
     observations.push(performance.now() - start)
+    checksum = Math.imul(checksum ^ value, 16_777_619) >>> 0
   }
 
   const sorted = [...observations].sort((left, right) => left - right)
@@ -106,23 +125,34 @@ function benchmarkAdapter(adapter: EcsAdapter): AdapterResult {
   const workloads: Record<string, WorkloadResult> = {}
 
   const memoryCount = quick ? 2_048 : 60_000
-  globalThis.gc?.()
-  const heapBefore = process.memoryUsage().heapUsed
+  const memoryPolicy = { samples: quick ? 3 : 7, warmups: quick ? 1 : 2 }
 
-  function captureActiveHeap(): number {
+  function captureActiveMemory(): { active: number; heapBefore: number } {
+    globalThis.gc?.()
+    const heapBefore = process.memoryUsage().heapUsed
     const memoryWorld = adapter.createWorld()
     spawnBase(memoryWorld, memoryCount)
     memoryWorld.view(BatchedSprites)
     globalThis.gc?.()
-    const activeHeap = process.memoryUsage().heapUsed
+    const active = process.memoryUsage().heapUsed - heapBefore
     memoryWorld.dispose()
-    return activeHeap
+    return { active, heapBefore }
   }
 
-  const activeHeapDeltaBytes = captureActiveHeap() - heapBefore
-  globalThis.gc?.()
-  const retainedHeapDeltaBytes = process.memoryUsage().heapUsed - heapBefore
-  const memory = { activeHeapDeltaBytes, entityCount: memoryCount, retainedHeapDeltaBytes }
+  function captureMemory(): { active: number; retained: number } {
+    const { active, heapBefore } = captureActiveMemory()
+    globalThis.gc?.()
+    return { active, retained: process.memoryUsage().heapUsed - heapBefore }
+  }
+
+  for (let index = 0; index < memoryPolicy.warmups; index++) captureMemory()
+  const memoryObservations = Array.from({ length: memoryPolicy.samples }, captureMemory)
+  const memory = {
+    activeHeapDeltaBytes: summarizeMemory(memoryObservations.map(({ active }) => active)),
+    entityCount: memoryCount,
+    retainedHeapDeltaBytes: summarizeMemory(memoryObservations.map(({ retained }) => retained)),
+    ...memoryPolicy,
+  }
 
   const record = (
     name: string,
@@ -182,10 +212,23 @@ function benchmarkAdapter(adapter: EcsAdapter): AdapterResult {
     const iterations = quick ? 100 : 1_000
     const world = adapter.createWorld()
     spawnBase(world, count)
-    record('stable-query', count * iterations, () => {
-      let checksum = 0
-      for (let index = 0; index < iterations; index++) checksum += world.view(BatchedSprites).length
-      return checksum
+    record('stable-query-retrieval', iterations, () => {
+      let total = 0
+      for (let index = 0; index < iterations; index++) total += world.view(BatchedSprites).length
+      if (total !== count * iterations) throw new Error('Stable selector retrieval returned the wrong entity count')
+      return total
+    })
+    record('stable-query-iteration', count * iterations, () => {
+      let total = 0
+      let visited = 0
+      for (let iteration = 0; iteration < iterations; iteration++) {
+        for (const entity of world.view(BatchedSprites)) {
+          total = (total + entity) | 0
+          visited++
+        }
+      }
+      if (visited !== count * iterations) throw new Error('Stable selector iteration visited the wrong entity count')
+      return total | 0
     })
     world.dispose()
   }
@@ -198,6 +241,9 @@ function benchmarkAdapter(adapter: EcsAdapter): AdapterResult {
       for (const entity of entities) world.add(entity, component(DynamicEffect))
       const afterAdd = world.view(DynamicSprites).length
       for (const entity of entities) world.remove(entity, DynamicEffect)
+      if (afterAdd !== count || world.view(DynamicSprites).length !== 0) {
+        throw new Error('Dynamic selector membership did not track structural churn')
+      }
       return afterAdd
     })
     world.dispose()
@@ -214,7 +260,9 @@ function benchmarkAdapter(adapter: EcsAdapter): AdapterResult {
         world.patch(entity, SpriteMaterialRef, { value: sample + 1 })
         world.patch(entity, CameraLayersMask, { value: sample + 2 })
       }
-      return world.drain(RoutingChanges).length
+      const routed = world.drain(RoutingChanges).length
+      if (routed !== count) throw new Error('Routing changes were not deduplicated to one event per entity')
+      return routed
     })
     world.dispose()
   }
@@ -230,8 +278,13 @@ function benchmarkAdapter(adapter: EcsAdapter): AdapterResult {
       const target = sample % 2 === 0 ? firstBatch : secondBatch
       for (const entity of entities) {
         world.assign(entity, AssignedTo, target)
-        checksum ^= world.target(entity, AssignedTo) ?? 0
+        const assigned = world.target(entity, AssignedTo)
+        if (assigned !== target) throw new Error('Exclusive assignment did not retain its target')
+        checksum ^= assigned
         world.unassign(entity, AssignedTo)
+        if (world.target(entity, AssignedTo) !== undefined) {
+          throw new Error('Exclusive assignment did not clear its target')
+        }
       }
       return checksum
     })
@@ -249,10 +302,28 @@ const kootaPackage = JSON.parse(
   readFileSync(resolve(dirname(require.resolve('koota')), '../package.json'), 'utf8')
 ) as { version: string }
 
+const harnessSources = [
+  'adapter.ts',
+  'adapters/koota.ts',
+  'candidates/anchored-scan.ts',
+  'candidates/shared.ts',
+  'candidates/signature-persistent.ts',
+  'candidates/sparse-persistent.ts',
+  'benchmark.ts',
+] as const
+const harnessHash = createHash('sha256')
+for (const source of harnessSources) {
+  harnessHash.update(source)
+  harnessHash.update(readFileSync(resolve(import.meta.dirname, source)))
+}
+
 const environment = {
   architecture: arch(),
-  commit: execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim(),
+  cpu: cpus()[0]?.model ?? 'unknown',
+  harnessSha256: harnessHash.digest('hex'),
+  harnessSources,
   koota: kootaPackage.version,
+  mergeBase: execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { encoding: 'utf8' }).trim(),
   node: process.version,
   operatingSystem: `${platform()} ${release()}`,
   packageManager: rootPackage.packageManager,
@@ -276,16 +347,72 @@ function isolatedResult(name: string): AdapterResult {
   return result
 }
 
+function aggregateAdapterResults(runs: readonly AdapterResult[]): AdapterResult {
+  const first = runs[0]
+  if (first === undefined) throw new Error('Cannot aggregate an empty adapter run set')
+
+  const workloads: Record<string, WorkloadResult> = {}
+  for (const [name, firstWorkload] of Object.entries(first.workloads)) {
+    const runWorkloads = runs.map((run) => run.workloads[name]!)
+    const observations = runWorkloads.flatMap((workload) => workload.observationsMs)
+    const sorted = [...observations].sort((left, right) => left - right)
+    let checksum = 2_166_136_261
+    for (const workload of runWorkloads) {
+      checksum = Math.imul(checksum ^ workload.checksum, 16_777_619) >>> 0
+    }
+    workloads[name] = {
+      checksum,
+      medianMs: percentile(sorted, 0.5),
+      observationsMs: observations,
+      operationsPerSample: firstWorkload.operationsPerSample,
+      p95Ms: percentile(sorted, 0.95),
+      samples: runWorkloads.reduce((sum, workload) => sum + workload.samples, 0),
+      warmups: runWorkloads.reduce((sum, workload) => sum + workload.warmups, 0),
+    }
+  }
+
+  const activeObservations = runs.flatMap((run) => run.memory.activeHeapDeltaBytes.observations)
+  const retainedObservations = runs.flatMap((run) => run.memory.retainedHeapDeltaBytes.observations)
+  return {
+    memory: {
+      activeHeapDeltaBytes: summarizeMemory(activeObservations),
+      entityCount: first.memory.entityCount,
+      retainedHeapDeltaBytes: summarizeMemory(retainedObservations),
+      samples: runs.reduce((sum, run) => sum + run.memory.samples, 0),
+      warmups: runs.reduce((sum, run) => sum + run.memory.warmups, 0),
+    },
+    name: first.name,
+    workloads,
+  }
+}
+
 let results: AdapterResult[]
+const processesPerAdapter = requestedAdapter === undefined && !quick ? 3 : 1
 if (requestedAdapter === undefined) {
-  results = Object.keys(adapterFactories).map(isolatedResult)
+  results = Object.keys(adapterFactories).map((name) =>
+    aggregateAdapterResults(Array.from({ length: processesPerAdapter }, () => isolatedResult(name)))
+  )
 } else {
   const factory = adapterFactories[requestedAdapter]
   if (factory === undefined) throw new Error(`Unknown adapter: ${requestedAdapter}`)
   results = [benchmarkAdapter(factory())]
 }
 
-const serialized = `${JSON.stringify({ environment, mode: quick ? 'quick' : 'full', results }, null, 2)}\n`
+const report = {
+  schemaVersion: 2,
+  environment,
+  methodology: {
+    adapterIsolation: `${processesPerAdapter} fresh Node process${processesPerAdapter === 1 ? '' : 'es'} per adapter with explicit garbage collection available.`,
+    checksumPolicy: 'Every timed sample contributes to a non-cancelling aggregate checksum.',
+    memory:
+      'Each observation measures a fresh world; active heap is sampled before disposal and retained heap after the capture frame returns and garbage collection runs.',
+    timing: 'performance.now() wall-clock milliseconds; raw observations, median, and p95 are retained.',
+  },
+  mode: quick ? 'quick' : 'full',
+  processesPerAdapter,
+  results,
+}
+const serialized = `${JSON.stringify(report, null, 2)}\n`
 if (outputPath === undefined) {
   process.stdout.write(serialized)
 } else {

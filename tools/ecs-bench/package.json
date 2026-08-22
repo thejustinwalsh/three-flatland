@@ -34,12 +34,21 @@
           "command": "node --experimental-strip-types src/measure-kernels-size.ts",
           "cwd": "{projectRoot}"
         }
+      },
+      "benchmark:storage": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "options": {
+          "command": "node --experimental-strip-types src/numeric-storage.ts",
+          "cwd": "{projectRoot}"
+        }
       }
     }
   },
   "scripts": {
     "baseline:size": "node --experimental-strip-types src/measure-kernels-size.ts",
     "benchmark": "node --expose-gc --experimental-strip-types src/benchmark.ts",
+    "benchmark:storage": "node --experimental-strip-types src/numeric-storage.ts",
     "lint": "oxlint --type-aware .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
