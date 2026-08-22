@@ -1,4 +1,15 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import ts from 'typescript'
@@ -17,8 +28,8 @@ export function hasBareR3FRuntimeReference(source: string): boolean {
     if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
       if (statement.moduleSpecifier.text !== BARE_R3F) continue
       const clause = statement.importClause
+      if (clause?.isTypeOnly) continue
       if (!clause || clause.name || (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings))) return true
-      if (clause.isTypeOnly) continue
       if (clause.namedBindings?.elements.some((element) => !element.isTypeOnly)) return true
     }
 
@@ -35,11 +46,14 @@ export function hasBareR3FRuntimeReference(source: string): boolean {
 
   let dynamicRuntimeReference = false
   const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0]!)) {
+    if (ts.isCallExpression(node) && node.arguments.length >= 1) {
+      const specifier = node.arguments[0]!
       const runtimeLoader =
         node.expression.kind === ts.SyntaxKind.ImportKeyword ||
         (ts.isIdentifier(node.expression) && node.expression.text === 'require')
-      if (runtimeLoader && node.arguments[0]!.text === BARE_R3F) dynamicRuntimeReference = true
+      const bareSpecifier =
+        (ts.isStringLiteral(specifier) || ts.isNoSubstitutionTemplateLiteral(specifier)) && specifier.text === BARE_R3F
+      if (runtimeLoader && bareSpecifier) dynamicRuntimeReference = true
     }
     if (!dynamicRuntimeReference) ts.forEachChild(node, visit)
   }
@@ -47,12 +61,20 @@ export function hasBareR3FRuntimeReference(source: string): boolean {
   return dynamicRuntimeReference
 }
 
-function sourceFiles(directory: string): string[] {
+export function sourceFiles(directory: string, visitedDirectories = new Set<string>()): string[] {
   if (SKIPPED_DIRECTORIES.has(directory.split('/').at(-1)!)) return []
+  const realDirectory = realpathSync(directory)
+  if (visitedDirectories.has(realDirectory)) return []
+  visitedDirectories.add(realDirectory)
+
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name)
-    if (entry.isDirectory()) return sourceFiles(path)
-    if (!entry.isFile()) return []
+    if (entry.isDirectory()) return sourceFiles(path, visitedDirectories)
+    if (entry.isSymbolicLink()) {
+      const target = statSync(path)
+      if (target.isDirectory()) return sourceFiles(path, visitedDirectories)
+      if (!target.isFile()) return []
+    } else if (!entry.isFile()) return []
     if (!/\.[cm]?[jt]sx?$/.test(path) || /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path)) return []
     return [path]
   })
@@ -67,13 +89,18 @@ describe('R3F runtime entrypoints', () => {
     "export { useFrame } from '@react-three/fiber'",
     "export * from '@react-three/fiber'",
     "import('@react-three/fiber')",
+    'import(`@react-three/fiber`)',
+    "import('@react-three/fiber', { with: { type: 'json' } })",
     "require('@react-three/fiber')",
+    "require('@react-three/fiber', {})",
   ])('detects runtime form %s', (source) => {
     expect(hasBareR3FRuntimeReference(source)).toBe(true)
   })
 
   it.each([
     "import type { RootState } from '@react-three/fiber'",
+    "import type * as Fiber from '@react-three/fiber'",
+    "import type Fiber from '@react-three/fiber'",
     "import { type RootState } from '@react-three/fiber'",
     "export type { RootState } from '@react-three/fiber'",
     "import { useFrame } from '@react-three/fiber/webgpu'",
@@ -87,5 +114,21 @@ describe('R3F runtime entrypoints', () => {
     )
 
     expect(violations).toEqual([])
+  })
+
+  it('follows source symlinks without recursing through directory cycles', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'flatland-r3f-entrypoints-'))
+    const source = join(fixture, 'source')
+    const linked = join(fixture, 'linked')
+    mkdirSync(source)
+    writeFileSync(join(source, 'runtime.ts'), "import { useFrame } from '@react-three/fiber'")
+    symlinkSync(source, linked)
+    symlinkSync(fixture, join(source, 'cycle'))
+
+    try {
+      expect(sourceFiles(linked)).toEqual([join(linked, 'runtime.ts')])
+    } finally {
+      rmSync(fixture, { recursive: true, force: true })
+    }
   })
 })
