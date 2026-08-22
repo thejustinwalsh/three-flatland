@@ -63,34 +63,40 @@ export function createFlatlandCompute(getFlatland: () => Flatland | null) {
     }
 
     const targetCamera = flatland.camera
-    if (targetCamera instanceof PixelPerfectCamera && previous.size && previous.viewport) {
-      const dpr = previous.viewport.dpr
-      let surfaceX: number
-      let surfaceY: number
+    const parentPixelCamera = previous.camera instanceof PixelPerfectCamera ? previous.camera : null
+    const parentPointerUsesPixelViewport = parentPixelCamera !== null && isPixelPerfectCompute(previous.events?.compute)
+    let surfaceX: number | undefined
+    let surfaceY: number | undefined
 
-      if (previous.camera instanceof PixelPerfectCamera && isPixelPerfectCompute(previous.events?.compute)) {
-        const physicalViewport = previous.camera.viewport
-        const parentViewport = _flatlandParentViewport
-          .set(
-            physicalViewport.x,
-            previous.camera.drawingBufferHeight - physicalViewport.y - physicalViewport.height,
-            physicalViewport.width,
-            physicalViewport.height
-          )
-          .divideScalar(dpr)
-        surfaceX = parentViewport.x + ((previous.pointer.x + 1) / 2) * parentViewport.z
-        surfaceY = parentViewport.y + ((1 - previous.pointer.y) / 2) * parentViewport.w
-      } else {
+    if (parentPointerUsesPixelViewport && previous.size && previous.viewport) {
+      const dpr = previous.viewport.dpr
+      const physicalViewport = parentPixelCamera.viewport
+      const parentViewport = _flatlandParentViewport
+        .set(
+          physicalViewport.x,
+          parentPixelCamera.drawingBufferHeight - physicalViewport.y - physicalViewport.height,
+          physicalViewport.width,
+          physicalViewport.height
+        )
+        .divideScalar(dpr)
+      surfaceX = parentViewport.x + ((previous.pointer.x + 1) / 2) * parentViewport.z
+      surfaceY = parentViewport.y + ((1 - previous.pointer.y) / 2) * parentViewport.w
+    }
+
+    if (targetCamera instanceof PixelPerfectCamera && previous.size && previous.viewport) {
+      if (surfaceX === undefined || surfaceY === undefined) {
         surfaceX = ((previous.pointer.x + 1) / 2) * previous.size.width
         surfaceY = ((1 - previous.pointer.y) / 2) * previous.size.height
       }
 
-      targetCamera.getNormalizedDeviceCoordinates(surfaceX, surfaceY, dpr, _flatlandPointer)
+      targetCamera.getNormalizedDeviceCoordinates(surfaceX, surfaceY, previous.viewport.dpr, _flatlandPointer)
       state.pointer.set(_flatlandPointer.x, _flatlandPointer.y)
       if (Math.abs(_flatlandPointer.x) > 1 || Math.abs(_flatlandPointer.y) > 1) {
         state.raycaster.camera = undefined
         return
       }
+    } else if (surfaceX !== undefined && surfaceY !== undefined && previous.size) {
+      state.pointer.set((surfaceX / previous.size.width) * 2 - 1, 1 - (surfaceY / previous.size.height) * 2)
     } else {
       state.pointer.set(previous.pointer.x, previous.pointer.y)
     }
