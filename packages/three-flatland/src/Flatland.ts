@@ -274,9 +274,15 @@ export class Flatland extends Group implements WorldProvider {
   private _lastSyncedWidth = 0
   private _lastSyncedHeight = 0
 
+  /** Force the next sync without discarding the last known physical surface. */
+  private _surfaceSizeDirty = true
+
   /** Manual logical canvas size (or render-target texels) selected by resize(). */
   private _manualSurfaceWidth = 0
   private _manualSurfaceHeight = 0
+
+  /** Whether resize() authored CSS pixels rather than render-target texels. */
+  private _manualSizeIsLogical = true
 
   /** Whether the active camera is Flatland's managed internal camera. */
   private _ownsCamera: boolean
@@ -667,10 +673,10 @@ export class Flatland extends Group implements WorldProvider {
       this._autoSurfaceSize = true
       this._manualSurfaceWidth = 0
       this._manualSurfaceHeight = 0
+      this._manualSizeIsLogical = true
       // Force one fresh surface sync even when its dimensions happen to match
       // the previous manual size; the camera may still have a pinned ratio.
-      this._lastSyncedWidth = 0
-      this._lastSyncedHeight = 0
+      this._surfaceSizeDirty = true
       return
     }
     if (!Number.isFinite(value) || value <= 0) return
@@ -678,11 +684,11 @@ export class Flatland extends Group implements WorldProvider {
     this._autoSurfaceSize = true
     this._manualSurfaceWidth = 0
     this._manualSurfaceHeight = 0
+    this._manualSizeIsLogical = true
     // A numeric aspect pins only the camera. If resize() previously selected
     // full manual surface control, resume physical surface tracking for GPU
     // resources and force a fresh sample on the next render.
-    this._lastSyncedWidth = 0
-    this._lastSyncedHeight = 0
+    this._surfaceSizeDirty = true
     this._aspect = value
     this._updateCameraFrustum()
   }
@@ -700,9 +706,12 @@ export class Flatland extends Group implements WorldProvider {
   set renderTarget(value: RenderTarget | null) {
     this._renderTarget = this._prepareRenderTarget(value)
     if (!this._autoSurfaceSize) {
-      this._lastSyncedWidth = 0
-      this._lastSyncedHeight = 0
-      if (this._renderTarget && this._isValidSize(this._manualSurfaceWidth, this._manualSurfaceHeight)) {
+      this._surfaceSizeDirty = true
+      if (
+        this._renderTarget &&
+        !this._manualSizeIsLogical &&
+        this._isValidSize(this._manualSurfaceWidth, this._manualSurfaceHeight)
+      ) {
         this._renderTarget.setSize(this._manualSurfaceWidth, this._manualSurfaceHeight)
       }
     }
@@ -1824,6 +1833,7 @@ export class Flatland extends Group implements WorldProvider {
     if (!this._isValidSize(width, height)) return
     this._autoAspect = false
     this._autoSurfaceSize = false
+    this._manualSizeIsLogical = this._renderTarget === null
     this._applyResize(width, height)
   }
 
@@ -1845,8 +1855,7 @@ export class Flatland extends Group implements WorldProvider {
     this._manualSurfaceHeight = height
     // The physical size depends on the next renderer DPR (or target), so force
     // one synchronization even when the authored dimensions did not change.
-    this._lastSyncedWidth = 0
-    this._lastSyncedHeight = 0
+    this._surfaceSizeDirty = true
     this._aspect = width / height
     if (!(this._camera instanceof PixelPerfectCamera)) this._updateCameraFrustum()
 
@@ -1854,7 +1863,6 @@ export class Flatland extends Group implements WorldProvider {
     if (this._renderTarget) {
       this._renderTarget.setSize(width, height)
     }
-
   }
 
   /**
@@ -1883,7 +1891,7 @@ export class Flatland extends Group implements WorldProvider {
     let height: number
     if (!this._autoSurfaceSize) {
       if (!this._isValidSize(this._manualSurfaceWidth, this._manualSurfaceHeight)) return
-      if (this._renderTarget) {
+      if (!this._manualSizeIsLogical) {
         width = this._manualSurfaceWidth
         height = this._manualSurfaceHeight
       } else {
@@ -1891,6 +1899,9 @@ export class Flatland extends Group implements WorldProvider {
         if (!Number.isFinite(pixelRatio) || pixelRatio <= 0) return
         width = Math.floor(this._manualSurfaceWidth * pixelRatio)
         height = Math.floor(this._manualSurfaceHeight * pixelRatio)
+      }
+      if (this._renderTarget && (this._renderTarget.width !== width || this._renderTarget.height !== height)) {
+        this._renderTarget.setSize(width, height)
       }
     } else if (this._renderTarget) {
       width = this._renderTarget.width
@@ -1905,10 +1916,11 @@ export class Flatland extends Group implements WorldProvider {
     // frames where nothing changed — LightEffect.resize can reallocate
     // GPU tile buffers, so it must only fire on real size changes.
     if (!this._isValidSize(width, height)) return
-    if (width === this._lastSyncedWidth && height === this._lastSyncedHeight) return
+    if (!this._surfaceSizeDirty && width === this._lastSyncedWidth && height === this._lastSyncedHeight) return
 
     this._lastSyncedWidth = width
     this._lastSyncedHeight = height
+    this._surfaceSizeDirty = false
     if (this._autoAspect) {
       this._aspect = width / height
     }

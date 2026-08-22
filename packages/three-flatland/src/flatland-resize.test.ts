@@ -161,6 +161,55 @@ describe('Flatland — pixel-perfect camera', () => {
     expect(renderedViewports[0]?.height).toBeCloseTo(360)
   })
 
+  it('keeps the last physical camera size until a manual resize is rendered', () => {
+    const flatland = new Flatland({ pixelPerfect: true, viewSize: 240 })
+    const { renderer } = mockRenderer(640, 360, 2)
+
+    flatland.render(renderer)
+    flatland.resize(320, 180)
+    flatland.viewSize = 180
+
+    const camera = flatland.camera as PixelPerfectCamera
+    expect(camera.drawingBufferWidth).toBe(1280)
+    expect(camera.drawingBufferHeight).toBe(720)
+
+    flatland.render(renderer)
+    expect(camera.drawingBufferWidth).toBe(640)
+    expect(camera.drawingBufferHeight).toBe(360)
+  })
+
+  it('preserves a manual canvas size in physical pixels across target swaps', () => {
+    const flatland = new Flatland({ pixelPerfect: true, viewSize: 240 })
+    const { renderer } = mockRenderer(640, 360, 2)
+    const setSize = vi.fn<(width: number, height: number) => void>()
+    const target = {
+      width: 1,
+      height: 1,
+      viewport: new Vector4(0, 0, 1, 1),
+      texture: { colorSpace: '' },
+      setSize(width: number, height: number) {
+        setSize(width, height)
+        this.width = width
+        this.height = height
+        this.viewport.set(0, 0, width, height)
+      },
+    }
+
+    flatland.resize(640, 360)
+    flatland.renderTarget = target as never
+    flatland.render(renderer)
+
+    const camera = flatland.camera as PixelPerfectCamera
+    expect(setSize).toHaveBeenCalledWith(1280, 720)
+    expect(camera.drawingBufferWidth).toBe(1280)
+    expect(camera.drawingBufferHeight).toBe(720)
+
+    flatland.renderTarget = null
+    flatland.render(renderer)
+    expect(camera.drawingBufferWidth).toBe(1280)
+    expect(camera.drawingBufferHeight).toBe(720)
+  })
+
   it('keeps manual render-target dimensions in physical texels', () => {
     const flatland = new Flatland({ pixelPerfect: true, viewSize: 128 })
     const { renderer } = mockRenderer(640, 360, 2)
@@ -182,6 +231,44 @@ describe('Flatland — pixel-perfect camera', () => {
     expect(camera.drawingBufferWidth).toBe(513)
     expect(camera.drawingBufferHeight).toBe(257)
     expect(camera.viewport.toArray()).toEqual([0, 0, 512, 256])
+  })
+
+  it('preserves manual render-target texels when swapping targets and returning to the canvas', () => {
+    const flatland = new Flatland({ pixelPerfect: true, viewSize: 128 })
+    const { renderer } = mockRenderer(640, 360, 2)
+    const firstSetSize = vi.fn()
+    const secondSetSize = vi.fn()
+    const firstTarget = {
+      width: 513,
+      height: 257,
+      viewport: new Vector4(0, 0, 513, 257),
+      texture: { colorSpace: '' },
+      setSize: firstSetSize,
+    }
+    const secondTarget = {
+      width: 64,
+      height: 64,
+      viewport: new Vector4(0, 0, 64, 64),
+      texture: { colorSpace: '' },
+      setSize: secondSetSize,
+    }
+
+    flatland.renderTarget = firstTarget as never
+    flatland.resize(513, 257)
+    flatland.render(renderer)
+    flatland.renderTarget = secondTarget as never
+    flatland.render(renderer)
+
+    const camera = flatland.camera as PixelPerfectCamera
+    expect(firstSetSize).toHaveBeenCalledWith(513, 257)
+    expect(secondSetSize).toHaveBeenCalledWith(513, 257)
+    expect(camera.drawingBufferWidth).toBe(513)
+    expect(camera.drawingBufferHeight).toBe(257)
+
+    flatland.renderTarget = null
+    flatland.render(renderer)
+    expect(camera.drawingBufferWidth).toBe(513)
+    expect(camera.drawingBufferHeight).toBe(257)
   })
 
   it('letterboxes a fixed two-dimensional design extent', () => {
