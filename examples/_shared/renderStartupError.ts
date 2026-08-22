@@ -1,7 +1,7 @@
 import { RENDERER_FAILURE_COLOR, RENDERER_FAILURE_MESSAGE } from './rendererFailure'
 
 interface InitializableRenderer {
-  init(): Promise<void>
+  init(): Promise<unknown>
 }
 
 /** Initialize Three's one renderer and present UI only if every backend fails. */
