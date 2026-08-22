@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { NoToneMapping, SRGBColorSpace } from 'three'
@@ -6,7 +6,7 @@ import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
 // Pure scene maths, extracted so it can be unit-tested without a GPU or a
 // React renderer. See src/interaction.test.ts — `npm run test`.
-import { approach, SPRITE_SCALE, targetScale, tintFor } from './interaction'
+import { approach, removeStartupLoader, SPRITE_SCALE, targetScale, tintFor } from './interaction'
 
 // R3F requires registration before Flatland classes appear as JSX elements.
 extend({ Flatland, Sprite2D })
@@ -90,17 +90,26 @@ export default function App() {
       <Canvas
         orthographic
         renderer={{ antialias: false, outputColorSpace: SRGBColorSpace, toneMapping: NoToneMapping }}
-        fallback={
-          <div className="renderer-unavailable" role="status">
-            This app could not initialize rendering.
-          </div>
-        }
+        fallback={<RendererUnavailable />}
       >
         <Suspense fallback={null}>
           <Scene />
         </Suspense>
       </Canvas>
       <FullscreenButton containerRef={containerRef} />
+    </div>
+  )
+}
+
+/** Replace the startup status instead of leaving two live announcements. */
+function RendererUnavailable() {
+  useLayoutEffect(() => {
+    removeStartupLoader(document.querySelector<HTMLElement>('#loader'))
+  }, [])
+
+  return (
+    <div className="renderer-unavailable" role="status">
+      This app could not initialize rendering.
     </div>
   )
 }

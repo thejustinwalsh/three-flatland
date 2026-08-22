@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { approach, SPRITE_SCALE, SPRITE_TINT, targetScale, tintFor } from './interaction'
+import { vi } from 'vitest'
+import { approach, removeStartupLoader, SPRITE_SCALE, SPRITE_TINT, targetScale, tintFor } from './interaction'
+
+describe('removeStartupLoader', () => {
+  it('removes the static status when the renderer fallback takes over', () => {
+    const remove = vi.fn()
+
+    removeStartupLoader({ remove })
+
+    expect(remove).toHaveBeenCalledOnce()
+  })
+
+  it('is safe when the static status is already gone', () => {
+    expect(() => removeStartupLoader(null)).not.toThrow()
+  })
+})
 
 describe('targetScale', () => {
   it('rests at the idle scale', () => {

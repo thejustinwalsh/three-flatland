@@ -30,6 +30,11 @@ export interface PointerState {
   pressed: boolean
 }
 
+/** Remove the static startup status once a terminal renderer state owns it. */
+export function removeStartupLoader(loader: { remove(): void } | null | undefined): void {
+  loader?.remove()
+}
+
 /** The scale the sprite is easing toward. Press wins over hover. */
 export function targetScale(state: PointerState): number {
   if (state.pressed) return SPRITE_SCALE.press
