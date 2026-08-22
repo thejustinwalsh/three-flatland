@@ -20,8 +20,10 @@ jobs:
     uses: ./.github/workflows/changes.yml
 
   security-audit:
-    needs: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -29,6 +31,7 @@ jobs:
         with:
           node-version: lts/*
       - name: Audit dependency graph
+        # Fail closed on registry errors: green means the advisory query completed.
         run: pnpm audit --audit-level=moderate
 
   # Which projects does this PR affect, per the nx graph (transitively)? Lets the

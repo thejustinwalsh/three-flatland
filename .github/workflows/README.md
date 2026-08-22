@@ -10,14 +10,22 @@ graph TD
 
     subgraph CIOrch ["ci.yml (orchestrator)"]
         CIChanges["changes.yml"]
+        CIAudit["security-audit"]
+        CIChanges --> CIAffected["affected"]
         CIChanges --> CIBuild["build.yml (matrix: lts/*, lts/-1)"]
         CIChanges --> CISmoke["smoke.yml"]
         CIChanges --> CISize["size.yml (PRs only)"]
         CIChanges --> CIVscodeE2E["vscode-e2e.yml (xvfb)"]
-        CIBuild --> Gate["ci-passed (gate)"]
+        CIBuild --> CIConsumerSmoke["consumer-smoke.yml"]
+        CIAffected --> CIConsumerSmoke
+        CIChanges --> Gate["ci-passed (gate)"]
+        CIAudit --> Gate
+        CIAffected --> Gate
+        CIBuild --> Gate
         CISmoke --> Gate
         CISize --> Gate
         CIVscodeE2E --> Gate
+        CIConsumerSmoke --> Gate
     end
 
     subgraph DocsOrch ["docs.yml (orchestrator)"]
@@ -65,7 +73,7 @@ The matrix lives at the orchestrator layer (`ci.yml`) — `build.yml` is single-
 
 ## Repository Ruleset
 
-Branch protection is a **repository ruleset** with a single required status check: **`CI passed`** (the `ci-passed` job in `ci.yml`). That job runs after `changes`, `security-audit`, `build`, `smoke`, `size`, and `vscode-e2e`, and succeeds when each upstream job is either `success` or `skipped` — only `failure` or `cancelled` makes it fail.
+Branch protection is a **repository ruleset** with a single required status check: **`CI passed`** (the `ci-passed` job in `ci.yml`). That job runs after `changes`, `security-audit`, `affected`, `build`, `smoke`, `size`, `vscode-e2e`, and `consumer-smoke`, and succeeds when each upstream job is either `success` or `skipped` — only `failure` or `cancelled` makes it fail.
 
 Doc-only or meta-only PRs (where build / smoke / size / vscode-e2e are skipped via paths-filter gating) still produce a passing `CI passed` check and can merge. Code-changing PRs wait for the real jobs to complete before `CI passed` resolves.
 
