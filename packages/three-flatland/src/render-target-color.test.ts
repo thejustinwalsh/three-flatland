@@ -42,6 +42,7 @@ function createPassNode() {
   } as unknown as PassNode
 }
 
+/** Creates a stateful renderer double for color-space and viewport tests. */
 function createRenderer(initialTarget: RenderTarget | null = null, width = 640, height = 360) {
   let currentTarget = initialTarget
   const clearColor = new Color('#123456')

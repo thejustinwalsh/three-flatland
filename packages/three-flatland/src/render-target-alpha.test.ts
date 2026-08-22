@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Flatland } from './Flatland'
 import { createPassEffect } from './pipeline/PassEffect'
 
+/** Creates a minimal manual RenderPipeline whose render hook is observable. */
 function createPipeline(render = vi.fn()): RenderPipeline {
   return {
     outputNode: vec4(0, 0, 0, 0),
@@ -23,6 +24,7 @@ function createPipeline(render = vi.fn()): RenderPipeline {
   } as unknown as RenderPipeline
 }
 
+/** Creates the sizing surface Flatland requires for a manual scene pass. */
 function createPassNode(): PassNode {
   return {
     setSize: vi.fn(),
@@ -30,6 +32,7 @@ function createPassNode(): PassNode {
   } as unknown as PassNode
 }
 
+/** Creates a stateful renderer double that models clear and target restoration. */
 function createRenderer(
   initialTarget: RenderTarget | null = null,
   initialClearColor: ColorRepresentation = '#123456',
@@ -69,11 +72,13 @@ function createRenderer(
   return renderer
 }
 
+/** Asserts the renderer's live clear state without exposing the test double. */
 function expectClearState(renderer: WebGPURenderer, color: string, alpha: number): void {
   expect(renderer.getClearColor(new Color()).getHexString()).toBe(color)
   expect(renderer.getClearAlpha()).toBe(alpha)
 }
 
+/** Installs a caller-owned pipeline and its paired scene pass. */
 function installManualPipeline(flatland: Flatland, render = vi.fn()): RenderPipeline {
   const pipeline = createPipeline(render)
   flatland.setRenderPipeline(pipeline, createPassNode())
@@ -86,6 +91,7 @@ const IdentityPass = createPassEffect({
   pass: () => (input) => input,
 })
 
+/** Materializes Flatland's automatic pipeline from one identity effect. */
 function installAutomaticPipeline(flatland: Flatland, renderer: WebGPURenderer): RenderPipeline {
   const effect = new IdentityPass()
   flatland.addPass(effect)

@@ -14,6 +14,7 @@ afterEach(() => {
   universe.reset()
 })
 
+/** Creates a headless R3F root with mutable renderer surface dimensions. */
 async function createTestRoot(width: number, height: number) {
   vi.stubGlobal('requestAnimationFrame', () => 0)
   vi.stubGlobal('cancelAnimationFrame', () => {})
@@ -53,6 +54,7 @@ async function createTestRoot(width: number, height: number) {
   return { renderer, root, surface }
 }
 
+/** Unmounts a test root inside React's asynchronous act boundary. */
 async function unmountTestRoot(root: ReturnType<typeof createRoot>): Promise<void> {
   await act(async () => {
     root.unmount()

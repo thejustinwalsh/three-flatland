@@ -27,6 +27,7 @@ function getPipeline(flatland: Flatland) {
   return entities.length > 0 ? entities[0]!.get(ShadowPipeline) : null
 }
 
+/** Creates the minimal renderer surface needed to advance shadow systems. */
 function mockRenderer(width: number, height: number) {
   return {
     getSize: (target: Vector2) => target.set(width, height),
