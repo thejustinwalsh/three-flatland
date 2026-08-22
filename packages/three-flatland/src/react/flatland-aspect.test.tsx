@@ -14,38 +14,50 @@ afterEach(() => {
   universe.reset()
 })
 
+async function createTestRoot(width: number, height: number) {
+  vi.stubGlobal('requestAnimationFrame', () => 0)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const surface = { width, height }
+  const renderer = {
+    render() {},
+    setSize(nextWidth: number, nextHeight: number) {
+      surface.width = nextWidth
+      surface.height = nextHeight
+    },
+    getSize(target: Vector2) {
+      return target.set(surface.width, surface.height)
+    },
+    getDrawingBufferSize(target: Vector2) {
+      return target.set(surface.width, surface.height)
+    },
+    setPixelRatio() {},
+    getPixelRatio: () => 1,
+    getRenderTarget: () => null,
+    setRenderTarget() {},
+    setClearColor() {},
+    autoClear: true,
+    hasInitialized: () => true,
+  }
+  const canvas = { width: 0, height: 0 } as OffscreenCanvas
+  const root = createRoot(canvas)
+  await root.configure({
+    renderer,
+    frameloop: 'never',
+    size: { width, height, top: 0, left: 0 },
+  })
+  return { renderer, root, surface }
+}
+
+async function unmountTestRoot(root: ReturnType<typeof createRoot>): Promise<void> {
+  await act(async () => {
+    root.unmount()
+    await Promise.resolve()
+  })
+}
+
 describe('React Flatland surface sizing', () => {
   it('restores the auto sentinel when an aspect prop is removed and survives a 0x0 first commit', async () => {
-    vi.stubGlobal('requestAnimationFrame', () => 0)
-    vi.stubGlobal('cancelAnimationFrame', () => {})
-    const surface = { width: 0, height: 0 }
-    const renderer = {
-      render() {},
-      setSize(width: number, height: number) {
-        surface.width = width
-        surface.height = height
-      },
-      getSize(target: Vector2) {
-        return target.set(surface.width, surface.height)
-      },
-      getDrawingBufferSize(target: Vector2) {
-        return target.set(surface.width, surface.height)
-      },
-      setPixelRatio() {},
-      getPixelRatio: () => 1,
-      getRenderTarget: () => null,
-      setRenderTarget() {},
-      setClearColor() {},
-      autoClear: true,
-      hasInitialized: () => true,
-    }
-    const canvas = { width: 0, height: 0 } as OffscreenCanvas
-    const root = createRoot(canvas)
-    await root.configure({
-      renderer,
-      frameloop: 'never',
-      size: { width: 0, height: 0, top: 0, left: 0 },
-    })
+    const { renderer, root, surface } = await createTestRoot(0, 0)
 
     const flatlandRef = createRef<Flatland>()
     await act(async () => {
@@ -73,43 +85,11 @@ describe('React Flatland surface sizing', () => {
     expect(flatlandRef.current!.resolvedAspect).toBeCloseTo(1280 / 720)
     expect(flatlandRef.current!.camera.right).toBeCloseTo((800 * (1280 / 720)) / 2)
 
-    await act(async () => {
-      root.unmount()
-      await Promise.resolve()
-    })
+    await unmountTestRoot(root)
   })
 
   it('restores its managed camera when a custom camera prop is removed', async () => {
-    vi.stubGlobal('requestAnimationFrame', () => 0)
-    vi.stubGlobal('cancelAnimationFrame', () => {})
-    const surface = { width: 1280, height: 720 }
-    const renderer = {
-      render() {},
-      setSize(width: number, height: number) {
-        surface.width = width
-        surface.height = height
-      },
-      getSize(target: Vector2) {
-        return target.set(surface.width, surface.height)
-      },
-      getDrawingBufferSize(target: Vector2) {
-        return target.set(surface.width, surface.height)
-      },
-      setPixelRatio() {},
-      getPixelRatio: () => 1,
-      getRenderTarget: () => null,
-      setRenderTarget() {},
-      setClearColor() {},
-      autoClear: true,
-      hasInitialized: () => true,
-    }
-    const canvas = { width: 0, height: 0 } as OffscreenCanvas
-    const root = createRoot(canvas)
-    await root.configure({
-      renderer,
-      frameloop: 'never',
-      size: { width: 1280, height: 720, top: 0, left: 0 },
-    })
+    const { renderer, root } = await createTestRoot(1280, 720)
 
     const customCamera = new OrthographicCamera(-10, 10, 10, -10)
     const flatlandRef = createRef<Flatland>()
@@ -129,9 +109,6 @@ describe('React Flatland surface sizing', () => {
     expect(flatlandRef.current!.resolvedAspect).toBeCloseTo(1280 / 720)
     expect(flatlandRef.current!.camera.right).toBeCloseTo((800 * (1280 / 720)) / 2)
 
-    await act(async () => {
-      root.unmount()
-      await Promise.resolve()
-    })
+    await unmountTestRoot(root)
   })
 })
