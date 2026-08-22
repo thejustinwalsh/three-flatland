@@ -12,15 +12,24 @@ import {
   normalLocal,
   property,
   vec3,
-  instancedMesh,
   subBuild,
   cameraProjectionMatrix,
   modelViewMatrix,
   viewport,
+  buffer,
+  storage,
+  instanceIndex,
+  instancedBufferAttribute,
+  instancedDynamicBufferAttribute,
+  mat4,
+  transformNormal,
 } from 'three/tsl'
 import {
   type Texture,
   type InstancedMesh,
+  InstancedBufferAttribute,
+  InstancedInterleavedBuffer,
+  DynamicDrawUsage,
   FrontSide,
   NormalBlending,
   CustomBlending,
@@ -28,7 +37,10 @@ import {
   OneMinusSrcAlphaFactor,
 } from 'three'
 import type { NodeBuilder } from 'three/webgpu'
+import type { StorageInstancedBufferAttribute } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
+import { instanceColor } from 'three/src/nodes/accessors/Instance.js'
+import { OnFrameUpdate, OnObjectUpdate } from 'three/src/nodes/utils/EventNode.js'
 import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
 import { readFlip, readPixelPerfectFlag, readRotatedFrameFlag } from './instanceAttributes'
@@ -46,8 +58,114 @@ installInstanceEventUpdateBeforePatch()
 // methods, although Three's own TSL nodes use both. Keep the compatibility
 // cast local so the material can follow Three's canonical instance path.
 type SpriteNodeBuilder = NodeBuilder & {
+  getUniformBufferLimit(): number
   hasGeometryAttribute(name: string): boolean
   needsPreviousData(): boolean
+}
+
+const instanceMatrixBuffers = new WeakMap<InstancedBufferAttribute, InstancedInterleavedBuffer>()
+const instanceColorBuffers = new WeakMap<InstancedBufferAttribute, InstancedBufferAttribute>()
+const previousInstanceMatrices = new WeakMap<InstancedMesh, { matrix: InstancedBufferAttribute; node: Node<'mat4'> }>()
+
+/**
+ * Build Three's canonical instance-matrix source once so both the transformed
+ * vertex and its translation column share one GPU binding. Three r185's public
+ * `instancedMesh()` helper applies the matrix but does not return its node;
+ * calling it a second time creates a second full matrix buffer.
+ */
+function createInstanceMatrixNode(builder: SpriteNodeBuilder, matrix: InstancedBufferAttribute): Node<'mat4'> {
+  const count = Math.max(matrix.count, 1)
+  if ('isStorageInstancedBufferAttribute' in matrix && matrix.isStorageInstancedBufferAttribute) {
+    return storage(matrix as StorageInstancedBufferAttribute, 'mat4', count).element(instanceIndex) as Node<'mat4'>
+  }
+  if (count * 16 * 4 <= builder.getUniformBufferLimit()) {
+    const matrixBuffer = buffer(matrix.array, 'mat4', count) as unknown as {
+      element(index: Node<'uint'>): Node<'mat4'>
+    }
+    return matrixBuffer.element(instanceIndex)
+  }
+
+  let interleaved = instanceMatrixBuffers.get(matrix)
+  if (!interleaved) {
+    interleaved = new InstancedInterleavedBuffer(matrix.array as Float32Array, 16, 1)
+    instanceMatrixBuffers.set(matrix, interleaved)
+  }
+
+  const matrixBuffer = interleaved
+  OnFrameUpdate(() => {
+    matrixBuffer.clearUpdateRanges()
+    matrixBuffer.updateRanges.push(...matrix.updateRanges)
+    if (matrix.version !== matrixBuffer.version) matrixBuffer.version = matrix.version
+  })
+
+  const attribute = matrix.usage === DynamicDrawUsage ? instancedDynamicBufferAttribute : instancedBufferAttribute
+  return mat4(
+    attribute(matrixBuffer, 'vec4', 16, 0),
+    attribute(matrixBuffer, 'vec4', 16, 4),
+    attribute(matrixBuffer, 'vec4', 16, 8),
+    attribute(matrixBuffer, 'vec4', 16, 12)
+  ) as Node<'mat4'>
+}
+
+/** Apply one shared instance matrix to position, pivot, normal, and motion data. */
+function applyInstanceTransform(builder: SpriteNodeBuilder, object: InstancedMesh): void {
+  const matrix = object.instanceMatrix
+  const matrixNode = createInstanceMatrixNode(builder, matrix)
+  const matrixColumns = matrixNode as Node<'mat4'> & Record<number, Node<'vec4'>>
+
+  spritePixelPivot.assign(matrixColumns[3]!.xyz)
+  positionLocal.assign(matrixNode.mul(positionLocal).xyz)
+
+  if (builder.needsPreviousData()) {
+    let previous = previousInstanceMatrices.get(object)
+    if (!previous) {
+      const previousMatrix = matrix.clone() as InstancedBufferAttribute
+      const created = {
+        matrix: previousMatrix,
+        node: createInstanceMatrixNode(builder, previousMatrix),
+      }
+      previousInstanceMatrices.set(object, created)
+      previous = created
+    }
+    OnObjectUpdate(() => {
+      previous!.matrix.array.set(matrix.array)
+    })
+    positionPrevious.assign(previous.node.mul(positionPrevious).xyz)
+  }
+
+  if (builder.hasGeometryAttribute('normal')) {
+    normalLocal.assign(transformNormal(normalLocal, matrixNode))
+  }
+
+  if (object.instanceColor) {
+    let colorAttribute: Node<'vec3'>
+    if (
+      'isStorageInstancedBufferAttribute' in object.instanceColor &&
+      object.instanceColor.isStorageInstancedBufferAttribute
+    ) {
+      colorAttribute = storage(
+        object.instanceColor as StorageInstancedBufferAttribute,
+        'vec3',
+        Math.max(object.instanceColor.count, 1)
+      ).element(instanceIndex) as Node<'vec3'>
+    } else {
+      let colorBuffer = instanceColorBuffers.get(object.instanceColor)
+      if (!colorBuffer) {
+        colorBuffer = new InstancedBufferAttribute(object.instanceColor.array, 3)
+        instanceColorBuffers.set(object.instanceColor, colorBuffer)
+      }
+      const sourceColor = object.instanceColor
+      OnFrameUpdate(() => {
+        colorBuffer!.clearUpdateRanges()
+        colorBuffer!.updateRanges.push(...sourceColor.updateRanges)
+        if (sourceColor.version !== colorBuffer!.version) colorBuffer!.version = sourceColor.version
+      })
+      const attribute =
+        object.instanceColor.usage === DynamicDrawUsage ? instancedDynamicBufferAttribute : instancedBufferAttribute
+      colorAttribute = attribute(colorBuffer, 'vec3', 3, 0) as Node<'vec3'>
+    }
+    instanceColor.assign(colorAttribute)
+  }
 }
 
 // Re-export types that moved to EffectMaterial for backwards compatibility
@@ -294,34 +412,15 @@ export class Sprite2DMaterial extends EffectMaterial {
     spritePixelPivot.assign(vec3(0))
     const object = builder.object as InstancedMesh
     const spriteBuilder = builder as SpriteNodeBuilder
+    const isInstanced = object.isInstancedMesh && object.instanceMatrix.isInstancedBufferAttribute
 
-    if (this.positionNode === null) {
+    if (!isInstanced && this.positionNode === null) {
       super.setupPosition(builder)
-    } else {
+    } else if (this.positionNode !== null) {
       positionLocal.assign(subBuild(this.positionNode, 'POSITION', 'vec3'))
-      if (object.isInstancedMesh && object.instanceMatrix.isInstancedBufferAttribute) instancedMesh(object)
     }
 
-    if (object.isInstancedMesh && object.instanceMatrix.isInstancedBufferAttribute) {
-      // Let Three perform its canonical instance transform, then probe the same
-      // cached matrix from a zero local position to obtain its translation.
-      // Restoring normal/previous state ensures those transforms still apply
-      // exactly once. No extra CPU upload or vertex binding is introduced.
-      const transformedPosition = positionLocal.toVar('spriteInstancePosition')
-      const transformedNormal = spriteBuilder.hasGeometryAttribute('normal')
-        ? normalLocal.toVar('spriteInstanceNormal')
-        : null
-      const transformedPrevious = spriteBuilder.needsPreviousData()
-        ? positionPrevious.toVar('spriteInstancePrevious')
-        : null
-
-      positionLocal.assign(vec3(0))
-      instancedMesh(object)
-      spritePixelPivot.assign(positionLocal)
-      positionLocal.assign(transformedPosition)
-      if (transformedNormal) normalLocal.assign(transformedNormal)
-      if (transformedPrevious) positionPrevious.assign(transformedPrevious)
-    }
+    if (isInstanced) applyInstanceTransform(spriteBuilder, object)
 
     return positionLocal
   }

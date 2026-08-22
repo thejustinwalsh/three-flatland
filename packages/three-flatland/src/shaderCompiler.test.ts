@@ -58,6 +58,24 @@ function capture(label: string, backend: ShaderBackend, material: NodeMaterial, 
   return program
 }
 
+/** Guard the one-matrix-source contract on the production WebGPU backend. */
+function expectSingleInstanceMatrixBinding(backend: ShaderBackend, vertexShader: string): void {
+  if (backend !== 'wgsl') return
+  const matrixArrays = vertexShader.match(/array<\s*mat4x4<f32>/g) ?? []
+  expect(matrixArrays, 'sprite instancing must bind its current matrix buffer exactly once').toHaveLength(1)
+}
+
+/** Guard the large-batch vertex-attribute path against duplicated matrix columns. */
+function expectSingleInstanceMatrixAttributeSet(backend: ShaderBackend, vertexShader: string): void {
+  if (backend !== 'wgsl') return
+  const matrixColumns = vertexShader.match(/nodeAttribute\d+\s*:\s*vec4<f32>/g) ?? []
+  const matrixConstruction = vertexShader.match(
+    /mat4x4<f32>\(\s*nodeAttribute\d+,\s*nodeAttribute\d+,\s*nodeAttribute\d+,\s*nodeAttribute\d+\s*\)/g
+  )
+  expect(matrixColumns, 'large sprite batches must expose one four-column matrix attribute set').toHaveLength(4)
+  expect(matrixConstruction, 'large sprite batches must construct the instance matrix exactly once').toHaveLength(1)
+}
+
 function registerCompilerAtlas(texture: Texture): void {
   const frame: SpriteFrame = {
     name: 'compiler-diamond',
@@ -162,6 +180,20 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
       const program = capture('sprite-batch-material', backend, material, batch)
       expect(program.vertexShader).toContain('spritePixelPivot')
       expect(program.vertexShader).toContain('floor')
+      expectSingleInstanceMatrixBinding(backend, program.vertexShader)
+    } finally {
+      batch.dispose()
+    }
+  })
+
+  it('compiles the large-batch matrix attribute path without duplicate columns', () => {
+    const material = trackMaterial(new Sprite2DMaterial({ map: shaderTexture() }))
+    const batch = new SpriteBatch(material, 2048)
+
+    try {
+      const program = capture('sprite-batch-large-matrix-attributes', backend, material, batch)
+      expect(program.vertexShader).toContain('spritePixelPivot')
+      expectSingleInstanceMatrixAttributeSet(backend, program.vertexShader)
     } finally {
       batch.dispose()
     }
@@ -178,6 +210,7 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
       const program = capture('sprite-batch-tight-mesh-pixel-snap', backend, material, batch)
       expect(program.vertexShader).toContain('spritePixelPivot')
       expect(program.vertexShader).toContain('floor')
+      expectSingleInstanceMatrixBinding(backend, program.vertexShader)
     } finally {
       batch.dispose()
     }

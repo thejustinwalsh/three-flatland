@@ -1281,7 +1281,7 @@ describe('Sprite2DMaterial clipping', () => {
 })
 
 describe('Sprite2DMaterial synthesized positions', () => {
-  it('applies the r185 instance transform after assigning the synthesized corner', () => {
+  it('builds the synthesized corner and shared instance transform without a second helper call', () => {
     const material = new Sprite2DMaterial()
     const mesh = new InstancedMesh(new BufferGeometry(), undefined, 1)
     const nodeStack = stack()
@@ -1289,17 +1289,22 @@ describe('Sprite2DMaterial synthesized positions', () => {
 
     setCurrentStack(nodeStack)
     try {
-      material.setupPosition({ object: mesh } as never)
+      material.setupPosition({
+        object: mesh,
+        getUniformBufferLimit: () => Number.POSITIVE_INFINITY,
+        hasGeometryAttribute: () => false,
+        needsPreviousData: () => false,
+      } as never)
     } finally {
       setCurrentStack(previousStack)
     }
 
-    const assignIndex = nodeStack.nodes.findIndex((node) => 'isAssignNode' in node && node.isAssignNode)
-    const instanceIndex = nodeStack.nodes.findIndex(
+    const assignments = nodeStack.nodes.filter((node) => 'isAssignNode' in node && node.isAssignNode)
+    const helperCalls = nodeStack.nodes.filter(
       (node) => 'isShaderCallNodeInternal' in node && node.isShaderCallNodeInternal
     )
 
-    expect(assignIndex).toBeGreaterThanOrEqual(0)
-    expect(instanceIndex).toBeGreaterThan(assignIndex)
+    expect(assignments.length).toBeGreaterThanOrEqual(3)
+    expect(helperCalls).toHaveLength(0)
   })
 })
