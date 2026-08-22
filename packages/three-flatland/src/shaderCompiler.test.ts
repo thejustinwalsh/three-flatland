@@ -85,6 +85,17 @@ function expectSingleInstanceMatrixAttributeSet(backend: ShaderBackend, vertexSh
   expect(matrixConstruction, 'large sprite batches must construct the instance matrix exactly once').toHaveLength(1)
 }
 
+/** Guard opted-out sprites from paying the projected-pivot matrix multiply. */
+function expectPixelPivotTransformGuarded(vertexShader: string): void {
+  const pivotAssignment = vertexShader.indexOf('spritePivotClip =')
+  const enclosingBranch = vertexShader.lastIndexOf('if', pivotAssignment)
+  expect(pivotAssignment, 'projected pivot transform must be emitted').toBeGreaterThanOrEqual(0)
+  expect(enclosingBranch, 'pivot transform must be emitted inside a branch').toBeGreaterThanOrEqual(0)
+  expect(vertexShader.slice(enclosingBranch, pivotAssignment), 'pivot branch must test the pixel-perfect flag').toContain(
+    '& 16'
+  )
+}
+
 function registerCompilerAtlas(texture: Texture): void {
   const frame: SpriteFrame = {
     name: 'compiler-diamond',
@@ -189,6 +200,7 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
       const program = capture('sprite-batch-material', backend, material, batch)
       expect(program.vertexShader).toContain('spritePixelPivot')
       expect(program.vertexShader).toContain('floor')
+      expectPixelPivotTransformGuarded(program.vertexShader)
       expectSingleInstanceMatrixBinding(backend, program.vertexShader)
     } finally {
       batch.dispose()

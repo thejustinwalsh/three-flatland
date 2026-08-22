@@ -1,9 +1,10 @@
 import type * as THREE from 'three'
-import { Vector2 } from 'three'
+import { Vector2, Vector4 } from 'three'
 import type { Flatland } from '../Flatland'
 import { PixelPerfectCamera } from '../cameras/PixelPerfectCamera'
 
 const _flatlandPointer = new Vector2()
+const _flatlandParentViewport = new Vector4()
 
 /**
  * Minimal structural slice of R3F's RootState that compute touches.
@@ -56,7 +57,7 @@ export function createFlatlandCompute(getFlatland: () => Flatland | null) {
       let surfaceY: number
 
       if (previous.camera instanceof PixelPerfectCamera) {
-        const parentViewport = previous.camera.getLogicalViewport(dpr)
+        const parentViewport = previous.camera.getLogicalViewport(dpr, _flatlandParentViewport)
         surfaceX = parentViewport.x + ((previous.pointer.x + 1) / 2) * parentViewport.z
         surfaceY = parentViewport.y + ((1 - previous.pointer.y) / 2) * parentViewport.w
       } else {

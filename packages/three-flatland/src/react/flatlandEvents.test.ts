@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { OrthographicCamera, Raycaster, Vector2 } from 'three'
 import { Flatland } from '../Flatland'
 import { PixelPerfectCamera } from '../cameras/PixelPerfectCamera'
@@ -45,23 +45,31 @@ describe('createFlatlandCompute', () => {
   it('does not double-apply a parent pixel camera viewport', () => {
     const parentCamera = new PixelPerfectCamera({ viewSize: 240 })
     parentCamera.setDrawingBufferSize(1280, 720)
+    const viewportSpy = vi.spyOn(parentCamera, 'getLogicalViewport')
     const flatland = new Flatland({ viewSize: 240 })
     flatland.resize(1280, 720)
     const portalState = { pointer: new Vector2(), raycaster: new Raycaster() }
 
-    createFlatlandCompute(() => flatland)(
+    const compute = createFlatlandCompute(() => flatland)
+    const parentState = {
+      camera: parentCamera,
+      pointer: new Vector2(0.25, -0.5),
+      size: { width: 640, height: 360 },
+      viewport: { dpr: 2 },
+    }
+
+    compute(
       {} as never,
       portalState as never,
-      {
-        camera: parentCamera,
-        pointer: new Vector2(0.25, -0.5),
-        size: { width: 640, height: 360 },
-        viewport: { dpr: 2 },
-      } as never
+      parentState as never
     )
+
+    compute({} as never, portalState as never, parentState as never)
 
     expect(portalState.pointer.x).toBeCloseTo(0.25)
     expect(portalState.pointer.y).toBeCloseTo(-0.5)
+    expect(viewportSpy.mock.calls[0]![1]).toBeDefined()
+    expect(viewportSpy.mock.calls[1]![1]).toBe(viewportSpy.mock.calls[0]![1])
   })
 
   it('leaves raycaster.camera unset when flatland is not ready (R3F skips the root)', () => {
