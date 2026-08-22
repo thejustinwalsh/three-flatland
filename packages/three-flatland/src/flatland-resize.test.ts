@@ -143,6 +143,47 @@ describe('Flatland — pixel-perfect camera', () => {
     expect(viewport.toArray()).toEqual([0, 0, 640, 360])
   })
 
+  it('converts a manual canvas size from CSS pixels through renderer DPR', () => {
+    const flatland = new Flatland({ pixelPerfect: true, viewSize: 240 })
+    const { renderer, renderedViewports } = mockRenderer(640, 360, 2)
+
+    flatland.resize(640, 360)
+    flatland.render(renderer)
+
+    const camera = flatland.camera as PixelPerfectCamera
+    expect(camera.drawingBufferWidth).toBe(1280)
+    expect(camera.drawingBufferHeight).toBe(720)
+    expect(camera.resolvedPixelScale).toBe(3)
+    expect(camera.viewport.toArray()).toEqual([1, 0, 1278, 720])
+    expect(renderedViewports[0]?.x).toBeCloseTo(0.5)
+    expect(renderedViewports[0]?.y).toBeCloseTo(0)
+    expect(renderedViewports[0]?.width).toBeCloseTo(639)
+    expect(renderedViewports[0]?.height).toBeCloseTo(360)
+  })
+
+  it('keeps manual render-target dimensions in physical texels', () => {
+    const flatland = new Flatland({ pixelPerfect: true, viewSize: 128 })
+    const { renderer } = mockRenderer(640, 360, 2)
+    const setSize = vi.fn()
+    const target = {
+      width: 513,
+      height: 257,
+      viewport: new Vector4(0, 0, 513, 257),
+      texture: { colorSpace: '' },
+      setSize,
+    }
+    flatland.renderTarget = target as never
+
+    flatland.resize(513, 257)
+    flatland.render(renderer)
+
+    const camera = flatland.camera as PixelPerfectCamera
+    expect(setSize).toHaveBeenCalledWith(513, 257)
+    expect(camera.drawingBufferWidth).toBe(513)
+    expect(camera.drawingBufferHeight).toBe(257)
+    expect(camera.viewport.toArray()).toEqual([0, 0, 512, 256])
+  })
+
   it('letterboxes a fixed two-dimensional design extent', () => {
     const flatland = new Flatland({ viewSize: 180, viewWidth: 320 })
     const { renderer } = mockRenderer(800, 720)
@@ -218,6 +259,8 @@ describe('Flatland — pixel-perfect camera', () => {
     flatland.resize(1281, 801)
     flatland.addPass(new TestPass())
 
+    const syncSurfaceSize = Reflect.get(flatland, '_syncSurfaceSize') as (renderer: WebGPURenderer) => void
+    syncSurfaceSize.call(flatland, renderer)
     const ensurePipeline = Reflect.get(flatland, '_ensureRenderPipeline') as (renderer: WebGPURenderer) => void
     ensurePipeline.call(flatland, renderer)
 
@@ -617,6 +660,18 @@ describe('Flatland — LightEffect surface sizing', () => {
     flatland.render(renderer)
 
     expect(events).toEqual(['init', 'resize:800x800', 'update'])
+  })
+
+  it('uses physical pixels for manually-sized canvas effects at HiDPI', () => {
+    const events: string[] = []
+    const flatland = new Flatland()
+    const { renderer } = mockRenderer(800, 800, 2)
+    flatland.setLighting(lifecycleEffect(events))
+    flatland.resize(800, 800)
+
+    flatland.render(renderer)
+
+    expect(events).toEqual(['init', 'resize:1600x1600', 'update'])
   })
 
   it('delivers a resize missed while an effect was disabled before updating again', () => {

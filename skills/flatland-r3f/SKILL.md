@@ -213,7 +213,7 @@ function ManualPostProcessing() {
 | `renderer.setSize(w, h)` | `<Canvas>` owns renderer size; do not add a Flatland resize bridge |
 | `new Flatland({ aspect: 1 })` | `<flatland aspect={1}>` pins camera framing while effects follow the real surface |
 | `flatland.aspect = locked ? 1 : 'auto'` | `<flatland aspect={locked ? 1 : 'auto'}>` restores auto mode declaratively |
-| `flatland.resize(w, h)` | `flatlandRef.current?.resize(w, h)` is the explicit manual-sizing escape hatch |
+| `flatland.resize(w, h)` with logical canvas pixels | `flatlandRef.current?.resize(size.width, size.height)` is the explicit manual-sizing escape hatch; renderer DPR is applied during render |
 | `lighting.resolutionScale = 0.5` | `<defaultLightEffect resolutionScale={0.5}>` lowers only effect-owned processing resources |
 
 ---

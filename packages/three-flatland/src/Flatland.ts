@@ -274,6 +274,10 @@ export class Flatland extends Group implements WorldProvider {
   private _lastSyncedWidth = 0
   private _lastSyncedHeight = 0
 
+  /** Manual logical canvas size (or render-target texels) selected by resize(). */
+  private _manualSurfaceWidth = 0
+  private _manualSurfaceHeight = 0
+
   /** Whether the active camera is Flatland's managed internal camera. */
   private _ownsCamera: boolean
 
@@ -661,6 +665,8 @@ export class Flatland extends Group implements WorldProvider {
     if (value === 'auto') {
       this._autoAspect = true
       this._autoSurfaceSize = true
+      this._manualSurfaceWidth = 0
+      this._manualSurfaceHeight = 0
       // Force one fresh surface sync even when its dimensions happen to match
       // the previous manual size; the camera may still have a pinned ratio.
       this._lastSyncedWidth = 0
@@ -670,6 +676,8 @@ export class Flatland extends Group implements WorldProvider {
     if (!Number.isFinite(value) || value <= 0) return
     this._autoAspect = false
     this._autoSurfaceSize = true
+    this._manualSurfaceWidth = 0
+    this._manualSurfaceHeight = 0
     // A numeric aspect pins only the camera. If resize() previously selected
     // full manual surface control, resume physical surface tracking for GPU
     // resources and force a fresh sample on the next render.
@@ -691,6 +699,13 @@ export class Flatland extends Group implements WorldProvider {
    */
   set renderTarget(value: RenderTarget | null) {
     this._renderTarget = this._prepareRenderTarget(value)
+    if (!this._autoSurfaceSize) {
+      this._lastSyncedWidth = 0
+      this._lastSyncedHeight = 0
+      if (this._renderTarget && this._isValidSize(this._manualSurfaceWidth, this._manualSurfaceHeight)) {
+        this._renderTarget.setSize(this._manualSurfaceWidth, this._manualSurfaceHeight)
+      }
+    }
     this._syncRenderPipelineOutputTransform()
   }
 
@@ -1794,8 +1809,11 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
-   * Resize the rendering area, taking manual control of the aspect
-   * ratio (the automatic per-render sync is disabled from here on).
+   * Resize the rendering area, taking manual control of the aspect ratio and
+   * surface size (the automatic per-render sync is disabled from here on).
+   * Canvas dimensions are logical CSS pixels and are converted through the
+   * renderer's pixel ratio on the next render. Render-target dimensions are
+   * physical texels, matching `RenderTarget.setSize()`.
    *
    * Zero, negative, or non-finite dimensions are ignored — a transient
    * unmeasured layout (R3F's first commit reports a 0×0 canvas) must
@@ -1823,17 +1841,20 @@ export class Flatland extends Group implements WorldProvider {
    * Apply an explicit manual surface size. Dimensions are pre-validated.
    */
   private _applyResize(width: number, height: number): void {
-    this._lastSyncedWidth = width
-    this._lastSyncedHeight = height
+    this._manualSurfaceWidth = width
+    this._manualSurfaceHeight = height
+    // The physical size depends on the next renderer DPR (or target), so force
+    // one synchronization even when the authored dimensions did not change.
+    this._lastSyncedWidth = 0
+    this._lastSyncedHeight = 0
     this._aspect = width / height
-    this._updateCameraFrustum()
+    if (!(this._camera instanceof PixelPerfectCamera)) this._updateCameraFrustum()
 
     // Resize render target if needed
     if (this._renderTarget) {
       this._renderTarget.setSize(width, height)
     }
 
-    this._queueLightEffectResize(width, height)
   }
 
   /**
@@ -1858,11 +1879,20 @@ export class Flatland extends Group implements WorldProvider {
    * tile buffers remain surface-dependent when only camera aspect is pinned.
    */
   private _syncSurfaceSize(renderer: WebGPURenderer): void {
-    if (!this._autoSurfaceSize) return
-
     let width: number
     let height: number
-    if (this._renderTarget) {
+    if (!this._autoSurfaceSize) {
+      if (!this._isValidSize(this._manualSurfaceWidth, this._manualSurfaceHeight)) return
+      if (this._renderTarget) {
+        width = this._manualSurfaceWidth
+        height = this._manualSurfaceHeight
+      } else {
+        const pixelRatio = renderer.getPixelRatio()
+        if (!Number.isFinite(pixelRatio) || pixelRatio <= 0) return
+        width = Math.floor(this._manualSurfaceWidth * pixelRatio)
+        height = Math.floor(this._manualSurfaceHeight * pixelRatio)
+      }
+    } else if (this._renderTarget) {
       width = this._renderTarget.width
       height = this._renderTarget.height
     } else {
