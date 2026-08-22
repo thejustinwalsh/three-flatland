@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { RenderTarget, Vector2 } from 'three'
+import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland } from './Flatland'
 import { createLightEffect } from './lights/LightEffect'
 import { ShadowPipeline, LightingContext } from './ecs/traits'
@@ -23,6 +25,19 @@ const LitWithShadows = createLightEffect({
 function getPipeline(flatland: Flatland) {
   const entities = flatland.world.query(ShadowPipeline)
   return entities.length > 0 ? entities[0]!.get(ShadowPipeline) : null
+}
+
+function mockRenderer(width: number, height: number) {
+  return {
+    getSize: (target: Vector2) => target.set(width, height),
+    getDrawingBufferSize: (target: Vector2) => target.set(width, height),
+    getPixelRatio: () => 1,
+    getRenderTarget: () => null,
+    setRenderTarget: () => {},
+    setClearColor: () => {},
+    render: () => {},
+    autoClear: true,
+  } as unknown as WebGPURenderer
 }
 
 describe('shadowPipelineSystem + ShadowPipeline trait', () => {
@@ -65,10 +80,40 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
         return t
       },
     } as unknown as typeof lctx.renderer
+    lctx.surfaceSize.set(1920, 1080)
     lctx.camera = flatland.camera
     lctx.scene = null
     shadowPipelineSystem(flatland.world)
     expect(pipeline!.sdfGenerator).toBe(sdfBefore)
+  })
+
+  it('resizes the live shadow pipeline when render() observes render-target swaps', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const flatland = new Flatland()
+    flatland.setLighting(new LitWithShadows())
+    const pipeline = getPipeline(flatland)!
+    const sdfInit = vi.spyOn(pipeline.sdfGenerator!, 'init').mockImplementation(() => {})
+    const sdfResize = vi.spyOn(pipeline.sdfGenerator!, 'resize').mockImplementation(() => {})
+    vi.spyOn(pipeline.sdfGenerator!, 'generate').mockImplementation(() => {})
+    const occlusionResize = vi.spyOn(pipeline.occlusionPass!, 'resize').mockImplementation(() => {})
+    vi.spyOn(pipeline.occlusionPass!, 'render').mockImplementation(() => {})
+    const renderer = mockRenderer(1280, 720)
+
+    flatland.renderTarget = new RenderTarget(512, 256)
+    flatland.render(renderer)
+
+    expect(sdfInit).toHaveBeenCalledWith(256, 128)
+    expect(occlusionResize).toHaveBeenCalledWith(512, 256)
+    expect(pipeline.width).toBe(256)
+    expect(pipeline.height).toBe(128)
+
+    flatland.renderTarget = new RenderTarget(300, 600)
+    flatland.render(renderer)
+
+    expect(sdfResize).toHaveBeenCalledWith(150, 300)
+    expect(occlusionResize).toHaveBeenLastCalledWith(300, 600)
+    expect(pipeline.width).toBe(150)
+    expect(pipeline.height).toBe(300)
   })
 
   it('switching from shadow → no-shadow tears down on next system tick', () => {
@@ -84,6 +129,7 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
         return t
       },
     } as unknown as typeof lctx.renderer
+    lctx.surfaceSize.set(256, 256)
     lctx.camera = flatland.camera
     lctx.scene = null
     shadowPipelineSystem(flatland.world)
@@ -117,6 +163,7 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
         return t
       },
     } as unknown as typeof lctx.renderer
+    lctx.surfaceSize.set(256, 256)
     lctx.camera = flatland.camera
     lctx.scene = null
 
@@ -144,6 +191,7 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
         return t
       },
     } as unknown as typeof lctx.renderer
+    lctx.surfaceSize.set(256, 256)
     lctx.camera = flatland.camera
     lctx.scene = null
     shadowPipelineSystem(flatland.world)

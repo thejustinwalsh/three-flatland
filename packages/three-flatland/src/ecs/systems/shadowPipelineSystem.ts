@@ -10,7 +10,7 @@ import type { LightEffect } from '../../lights/LightEffect'
  *
  * Reads the active effect from `LightingContext`; if its class declares
  * `needsShadows`, allocates the JFA SDF generator + occluder pre-pass,
- * sizes them to the renderer, runs the pre-pass each frame, and writes
+ * sizes them to Flatland's canonical render surface, runs the pre-pass each frame, and writes
  * the resulting SDFGenerator handle back to `LightingContext.sdfGenerator`
  * so consumer systems (future shadow-sampling shaders, GI effects, etc.)
  * pick it up via the existing trait field.
@@ -30,13 +30,10 @@ import type { LightEffect } from '../../lights/LightEffect'
  *   object reference — no allocation, no cloning. Mutations happen in
  *   place (`pipeline.initialized = true`), bypassing `entity.set`'s
  *   `Changed()` wakeup since nothing queries this trait with Changed().
- * - A scratch `Vector2` is allocated once at module load for size
- *   reads, reused every frame.
  * - The fast path when shadows are active and size hasn't changed is
  *   two branch predictions, then the two render calls — no CPU work
  *   in JS beyond that.
  */
-const _sizeScratch = new Vector2()
 const _worldSizeScratch = new Vector2()
 
 export function shadowPipelineSystem(world: World): void {
@@ -99,24 +96,26 @@ export function shadowPipelineSystem(world: World): void {
     pipeline.occlusionPass = new OcclusionPass()
   }
 
-  // Size sync. `renderer.getSize(scratch)` avoids allocation; we only
-  // call init()/resize() on dimension change so the hot path is a
-  // compare-and-return.
-  renderer.getSize(_sizeScratch)
+  // Size from the active LightEffect processing surface (the physical render
+  // surface multiplied by effect.resolutionScale). Using the trait keeps shadow
+  // buffers in the same coordinate space as the effect-owned resources.
+  const surfaceWidth = ctx.surfaceSize.x
+  const surfaceHeight = ctx.surfaceSize.y
+  if (surfaceWidth <= 0 || surfaceHeight <= 0) return
   const scale = pipeline.occlusionPass.resolutionScale
-  const sdfW = Math.max(1, Math.floor(_sizeScratch.x * scale))
-  const sdfH = Math.max(1, Math.floor(_sizeScratch.y * scale))
+  const sdfW = Math.max(1, Math.floor(surfaceWidth * scale))
+  const sdfH = Math.max(1, Math.floor(surfaceHeight * scale))
 
   if (!pipeline.initialized) {
     pipeline.sdfGenerator.init(sdfW, sdfH)
-    pipeline.occlusionPass.resize(_sizeScratch.x, _sizeScratch.y)
+    pipeline.occlusionPass.resize(surfaceWidth, surfaceHeight)
     pipeline.width = sdfW
     pipeline.height = sdfH
     pipeline.initialized = true
     mustRegen = true
   } else if (sdfW !== pipeline.width || sdfH !== pipeline.height) {
     pipeline.sdfGenerator.resize(sdfW, sdfH)
-    pipeline.occlusionPass.resize(_sizeScratch.x, _sizeScratch.y)
+    pipeline.occlusionPass.resize(surfaceWidth, surfaceHeight)
     pipeline.width = sdfW
     pipeline.height = sdfH
     mustRegen = true

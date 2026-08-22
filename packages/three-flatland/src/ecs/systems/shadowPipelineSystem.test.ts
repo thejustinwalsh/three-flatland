@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { OrthographicCamera, Scene, NearestFilter, LinearFilter } from 'three'
+import { OrthographicCamera, Scene, NearestFilter, LinearFilter, Vector2 } from 'three'
 import { createWorld, universe } from 'koota'
 import type { World } from 'koota'
 import { shadowPipelineSystem } from './shadowPipelineSystem'
@@ -97,6 +97,7 @@ function setup(world: World, opts: SetupOpts = {}) {
   world.spawn(
     LightingContext({
       effect,
+      surfaceSize: new Vector2(800, 600),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       renderer: renderer as any,
       camera,
@@ -138,6 +139,19 @@ describe('shadowPipelineSystem — occluder-dirty gate', () => {
 
     expect(occlusionPass.render).toHaveBeenCalledTimes(1)
     expect(sdfGenerator.generate).toHaveBeenCalledTimes(1)
+  })
+
+  it('sizes shadows from the canonical surface without querying the renderer', () => {
+    const { sdfGenerator, occlusionPass } = setup(world)
+    const ctx = world.query(LightingContext)[0]!.get(LightingContext)!
+    ctx.surfaceSize.set(320, 180)
+    const renderer = ctx.renderer as unknown as ReturnType<typeof makeRenderer>
+
+    shadowPipelineSystem(world)
+
+    expect(renderer.getSize).not.toHaveBeenCalled()
+    expect(sdfGenerator.init).toHaveBeenCalledWith(160, 90)
+    expect(occlusionPass.resize).toHaveBeenCalledWith(320, 180)
   })
 
   it('skips regen when occludersDirty=false and camera unchanged', () => {

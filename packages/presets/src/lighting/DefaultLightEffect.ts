@@ -1,4 +1,3 @@
-import { Vector2 } from 'three'
 import { vec2, vec3, vec4, float, int, Fn, Loop, If, Break } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import {
@@ -402,10 +401,6 @@ const _DefaultLightEffect = createLightEffect({
         return vec4(litColor, ctx.color.a)
       })() as Node<'vec4'>
     }
-  },
-  init(ctx) {
-    const size = ctx.renderer.getSize(new Vector2())
-    this.forwardPlus.init(size.x, size.y)
   },
   update(ctx) {
     this.forwardPlus.setWorldBounds(ctx.worldSize, ctx.worldOffset)
