@@ -66,8 +66,10 @@ const TEMPLATES = ['three', 'react']
 
 // Leak guard lists — single source of truth, shared with the scaffolder's own
 // unit test so the two can never drift.
-import { BANNED_AS_DEPENDENCY as BANNED_AS_SCAFFOLD_DEPENDENCY, BANNED_EVERYWHERE as BANNED_IN_SCAFFOLD }
-  from '../packages/create-three-flatland/src/leak-guard.ts'
+import {
+  BANNED_AS_DEPENDENCY as BANNED_AS_SCAFFOLD_DEPENDENCY,
+  BANNED_EVERYWHERE as BANNED_IN_SCAFFOLD,
+} from '../packages/create-three-flatland/src/leak-guard.ts'
 
 // Assertions that aren't about one consumer building — tarball shape, scaffolded
 // tree hygiene. Collected so a single failure doesn't abort the sweep, and folded
@@ -541,11 +543,17 @@ for (const ex of CONSUMERS) {
     console.log(`• [${id}] npm run build…`)
     run('npm', ['run', 'build'], dest)
     if (!existsSync(join(dest, 'dist', 'index.html'))) throw new Error('build produced no dist/index.html')
-    results.push({ id, dest, kind: ex.kind, build: 'ok' })
-    console.log(`  ✓ [${id}] built against the published packages`)
     // Run AFTER the build: an install can materialize wiring the CLI didn't emit
     // (a stray lockfile entry, a postinstall-written file), and that counts.
-    if (ex.kind === 'scaffold') checkScaffoldedTree(dest, ex.slug)
+    if (ex.kind === 'scaffold') {
+      checkScaffoldedTree(dest, ex.slug)
+      console.log(`• [${id}] npm run test…`)
+      run('npm', ['run', 'test'], dest)
+      console.log(`• [${id}] npm run test:e2e…`)
+      run('npm', ['run', 'test:e2e'], dest)
+    }
+    results.push({ id, dest, kind: ex.kind, build: 'ok' })
+    console.log(`  ✓ [${id}] built and verified against the published packages`)
   } catch (err) {
     const msg = (err.stdout || '') + (err.stderr || '') || err.message
     results.push({ id, build: 'fail', error: msg.slice(-1500) })
@@ -688,7 +696,8 @@ async function probe(browser, scratch, url, { waitUntil }) {
   }
 }
 
-const fmtStats = (s) => (s ? `distinct=${s.distinct} maxStd=${s.maxStd} (${s.w}×${s.h}, ${s.sampled} px sampled)` : 'n/a')
+const fmtStats = (s) =>
+  s ? `distinct=${s.distinct} maxStd=${s.maxStd} (${s.w}×${s.h}, ${s.sampled} px sampled)` : 'n/a'
 
 async function renderCheck(built) {
   const { chromium } = await import('@playwright/test')
@@ -716,8 +725,7 @@ async function renderCheck(built) {
       r.render = res.ok ? 'ok' : 'fail'
       if (!res.ok) r.error = res.error
       console.log(
-        `  ${res.ok ? '✓' : '✗'} [${r.id}] render — ${fmtStats(res.stats)}` +
-          `${res.ok ? '' : `\n      ${res.error}`}`
+        `  ${res.ok ? '✓' : '✗'} [${r.id}] render — ${fmtStats(res.stats)}` + `${res.ok ? '' : `\n      ${res.error}`}`
       )
     }
 
