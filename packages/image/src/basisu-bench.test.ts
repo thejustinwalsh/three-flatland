@@ -28,13 +28,12 @@ describe('BasisU latency benchmark (Path B)', () => {
     // Correctness: the encode must produce a non-empty KTX2 everywhere.
     expect(ktx2.length).toBeGreaterThan(0)
 
-    // The absolute-ms budget is an internal local gate to iterate against — it
-    // is NOT meaningful on CI's shared runners (2–3× slower and high variance,
-    // ~11s observed vs ~4s local). The real signal we care about is "our
-    // custom encoder still beats the baseline library" — a same-runner ratio
-    // comparison that needs a baseline encoder wired up (follow-up). Until
-    // then, enforce the wall-clock budget only outside CI.
-    if (!process.env.CI) {
+    // The absolute-ms budget is useful only in an explicitly isolated local
+    // run. Ordinary workspace tests execute projects concurrently, so host
+    // contention can turn the same encode into a false regression. CI is also
+    // too variable for an absolute wall-clock threshold. Keep correctness in
+    // every run and opt into this machine-local gate when profiling Path B.
+    if (process.env.FL_IMAGE_ABSOLUTE_PERF_GATE === '1') {
       expect(ms).toBeLessThan(PATH_B_THRESHOLD_MS)
     }
   }, 180_000)
