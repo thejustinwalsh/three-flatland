@@ -5,6 +5,11 @@
 
 ## Build & Test
 
+- `pnpm install` is an exclusive workspace mutation. Wait for it to exit successfully before starting Nx, dev,
+  build, test, or review commands in that worktree. Never overlap an install with workspace tasks: pnpm rewrites
+  `node_modules` in place, so a concurrent Nx process can lose its own executor mid-run.
+- Run parallel validation through one Nx invocation per worktree. Do not launch independent Nx processes that
+  build the same projects concurrently; their declared outputs are shared directories.
 - `pnpm dev` — docs (port 4000) + examples MPA (port 5174) behind microfrontends proxy at http://localhost:5173
 - `pnpm --filter=example-react-tilemap dev` — run a single example
 - `pnpm sync:pack` — sync example/mini package.json deps with the workspace catalog after editing `pnpm-workspace.yaml`
