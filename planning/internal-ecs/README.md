@@ -87,10 +87,10 @@ The benchmark plan selects the smallest kernel that wins the actual Flatland wor
 
 Against the currently installed Koota 0.6.5:
 
-| Measurement | Current result |
-| --- | ---: |
-| Installed Koota package | 496 kB on disk |
-| Koota core ESM chunk | 98,396 bytes raw / 17,310 bytes gzip |
+| Measurement                                            |                                                 Current result |
+| ------------------------------------------------------ | -------------------------------------------------------------: |
+| Installed Koota package                                |                                                 496 kB on disk |
+| Koota core ESM chunk                                   |                           98,396 bytes raw / 17,310 bytes gzip |
 | Tree-shaken bundle of Flatland's seven runtime imports | 34,846 bytes minified / 10,522 bytes gzip / 9,368 bytes Brotli |
 
 The seven imports are `createWorld`, `trait`, `relation`, `createAdded`, `createChanged`, `createRemoved`, and `getStore`. Type-only imports are excluded from the bundle measurement.
