@@ -57,7 +57,15 @@ export function createFlatlandCompute(getFlatland: () => Flatland | null) {
       let surfaceY: number
 
       if (previous.camera instanceof PixelPerfectCamera) {
-        const parentViewport = previous.camera.getLogicalViewport(dpr, _flatlandParentViewport)
+        const physicalViewport = previous.camera.viewport
+        const parentViewport = _flatlandParentViewport
+          .set(
+            physicalViewport.x,
+            previous.camera.drawingBufferHeight - physicalViewport.y - physicalViewport.height,
+            physicalViewport.width,
+            physicalViewport.height
+          )
+          .divideScalar(dpr)
         surfaceX = parentViewport.x + ((previous.pointer.x + 1) / 2) * parentViewport.z
         surfaceY = parentViewport.y + ((1 - previous.pointer.y) / 2) * parentViewport.w
       } else {

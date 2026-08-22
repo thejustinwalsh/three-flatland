@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { OrthographicCamera, Raycaster, Vector2 } from 'three'
+import { OrthographicCamera, Raycaster, Vector2, Vector4 } from 'three'
 import { Flatland } from '../Flatland'
 import { PixelPerfectCamera } from '../cameras/PixelPerfectCamera'
 import { createFlatlandCompute } from './flatlandEvents'
@@ -23,7 +23,8 @@ describe('createFlatlandCompute', () => {
 
   it('maps a full-canvas parent pointer into Flatland letterboxing', () => {
     const flatland = new Flatland({ viewSize: 240 })
-    flatland.resize(1280, 720)
+    const flatlandCamera = flatland.camera as PixelPerfectCamera
+    flatlandCamera.setDrawingBufferSize(1280, 720)
     const compute = createFlatlandCompute(() => flatland)
     const portalState = { pointer: new Vector2(), raycaster: new Raycaster() }
     const parentState = {
@@ -42,20 +43,21 @@ describe('createFlatlandCompute', () => {
     expect(portalState.raycaster.camera).toBeUndefined()
   })
 
-  it('does not double-apply a parent pixel camera viewport', () => {
+  it('does not double-apply a parent pixel camera viewport with an odd spare row', () => {
     const parentCamera = new PixelPerfectCamera({ viewSize: 240 })
-    parentCamera.setDrawingBufferSize(1280, 720)
-    const viewportSpy = vi.spyOn(parentCamera, 'getLogicalViewport')
+    parentCamera.setDrawingBufferSize(800, 485)
+    const viewportSetSpy = vi.spyOn(Vector4.prototype, 'set')
     const flatland = new Flatland({ viewSize: 240 })
-    flatland.resize(1280, 720)
+    const flatlandCamera = flatland.camera as PixelPerfectCamera
+    flatlandCamera.setDrawingBufferSize(800, 485)
     const portalState = { pointer: new Vector2(), raycaster: new Raycaster() }
 
     const compute = createFlatlandCompute(() => flatland)
     const parentState = {
       camera: parentCamera,
       pointer: new Vector2(0.25, -0.5),
-      size: { width: 640, height: 360 },
-      viewport: { dpr: 2 },
+      size: { width: 800, height: 485 },
+      viewport: { dpr: 1 },
     }
 
     compute(
@@ -68,8 +70,11 @@ describe('createFlatlandCompute', () => {
 
     expect(portalState.pointer.x).toBeCloseTo(0.25)
     expect(portalState.pointer.y).toBeCloseTo(-0.5)
-    expect(viewportSpy.mock.calls[0]![1]).toBeDefined()
-    expect(viewportSpy.mock.calls[1]![1]).toBe(viewportSpy.mock.calls[0]![1])
+    const parentViewportWrites = viewportSetSpy.mock.calls
+      .map((args, index) => ({ args, context: viewportSetSpy.mock.contexts[index] }))
+      .filter(({ args }) => args[0] === 0 && args[1] === 1 && args[2] === 800 && args[3] === 484)
+    expect(parentViewportWrites).toHaveLength(2)
+    expect(parentViewportWrites[1]!.context).toBe(parentViewportWrites[0]!.context)
   })
 
   it('leaves raycaster.camera unset when flatland is not ready (R3F skips the root)', () => {
