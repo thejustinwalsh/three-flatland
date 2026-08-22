@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { OrthographicCamera, Vector2, Vector4 } from 'three'
-import { vec4 } from 'three/tsl'
+import { pass, vec4 } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland } from './Flatland'
 import { createLightEffect } from './lights/LightEffect'
@@ -388,6 +388,52 @@ describe('Flatland — pixel-perfect camera', () => {
     flatland.dispose()
   })
 
+  it('resets automatic crop sampling before a manual or cleared pipeline takes ownership', () => {
+    const TestPass = createPassEffect({
+      name: 'autoManualCropOwnershipTest',
+      schema: {},
+      pass: () => (input) => input,
+    })
+    const flatland = new Flatland({ viewSize: 240, viewWidth: 320 })
+    const { renderer } = mockRenderer(1280, 720)
+    flatland.addPass(new TestPass())
+
+    const syncSurfaceSize = Reflect.get(flatland, '_syncSurfaceSize') as (renderer: WebGPURenderer) => void
+    syncSurfaceSize.call(flatland, renderer)
+    const ensurePipeline = Reflect.get(flatland, '_ensureRenderPipeline') as (renderer: WebGPURenderer) => void
+    ensurePipeline.call(flatland, renderer)
+    const uvScale = Reflect.get(flatland, '_passViewportUvScale') as { value: Vector2 }
+    const uvOffset = Reflect.get(flatland, '_passViewportUvOffset') as { value: Vector2 }
+    expect(uvScale.value.toArray()).toEqual([0.75, 1])
+    expect(uvOffset.value.toArray()).toEqual([0.125, 0])
+
+    const manualPass = pass(flatland.scene, flatland.camera)
+    flatland.setRenderPipeline(
+      {
+        outputNode: manualPass,
+        outputColorTransform: true,
+        needsUpdate: false,
+        render: vi.fn(),
+      } as never,
+      manualPass
+    )
+    expect(uvScale.value.toArray()).toEqual([1, 1])
+    expect(uvOffset.value.toArray()).toEqual([0, 0])
+
+    flatland.clearPasses()
+    ensurePipeline.call(flatland, renderer)
+    expect(uvScale.value.toArray()).toEqual([1, 1])
+    expect(uvOffset.value.toArray()).toEqual([0, 0])
+
+    uvScale.value.set(0.5, 0.5)
+    uvOffset.value.set(0.25, 0.25)
+    flatland.clearRenderPipeline()
+    expect(uvScale.value.toArray()).toEqual([1, 1])
+    expect(uvOffset.value.toArray()).toEqual([0, 0])
+
+    flatland.dispose()
+  })
+
   it('ignores invalid view sizes without corrupting the managed projection', () => {
     const flatland = new Flatland({ viewSize: 0 })
 
@@ -504,6 +550,60 @@ describe('Flatland — automatic aspect sync in render()', () => {
     expect(flatland.aspect).toBe('auto')
     expect(flatland.resolvedAspect).toBeCloseTo(aspect)
     expect(flatland.camera.right).toBeCloseTo((800 * aspect) / 2)
+  })
+
+  it('inherits an active canvas viewport for ordinary camera and effect sizing', () => {
+    const events: string[] = []
+    const flatland = new Flatland({ viewSize: 800, pixelPerfect: false })
+    const { renderer, viewport } = mockRenderer(1280, 720, 2)
+    viewport.set(160, 0, 960, 720)
+    flatland.setLighting(lifecycleEffect(events))
+
+    flatland.render(renderer)
+
+    expect(flatland.resolvedAspect).toBeCloseTo(4 / 3)
+    expect(flatland.camera.right).toBeCloseTo((800 * 4) / (3 * 2))
+    expect(events).toEqual(['init', 'resize:1920x1440', 'update'])
+
+    const manualPass = pass(flatland.scene, flatland.camera)
+    const originalSetSize = vi.spyOn(manualPass, 'setSize')
+    flatland.setRenderPipeline(
+      {
+        outputNode: manualPass,
+        outputColorTransform: true,
+        needsUpdate: false,
+        render: vi.fn(),
+      } as never,
+      manualPass
+    )
+    manualPass.setSize(2560, 1440)
+    expect(originalSetSize).toHaveBeenLastCalledWith(1920, 1440)
+  })
+
+  it('crops an ordinary auto pass to an inherited canvas viewport', () => {
+    const TestPass = createPassEffect({
+      name: 'inheritedCanvasViewportTest',
+      schema: {},
+      pass: () => (input) => input,
+    })
+    const flatland = new Flatland({ pixelPerfect: false })
+    const { renderer, viewport } = mockRenderer(1280, 720, 2)
+    viewport.set(160, 0, 960, 720)
+    flatland.addPass(new TestPass())
+
+    const syncSurfaceSize = Reflect.get(flatland, '_syncSurfaceSize') as (renderer: WebGPURenderer) => void
+    syncSurfaceSize.call(flatland, renderer)
+    const ensurePipeline = Reflect.get(flatland, '_ensureRenderPipeline') as (renderer: WebGPURenderer) => void
+    ensurePipeline.call(flatland, renderer)
+
+    const passNode = Reflect.get(flatland, '_passNode') as { _viewport: Vector4 | null }
+    const uvScale = Reflect.get(flatland, '_passViewportUvScale') as { value: Vector2 }
+    const uvOffset = Reflect.get(flatland, '_passViewportUvOffset') as { value: Vector2 }
+    expect(passNode._viewport?.toArray()).toEqual([320, 0, 1920, 1440])
+    expect(uvScale.value.toArray()).toEqual([0.75, 1])
+    expect(uvOffset.value.toArray()).toEqual([0.125, 0])
+
+    flatland.dispose()
   })
 
   it('samples logical globals and the physical drawing buffer once per frame', () => {

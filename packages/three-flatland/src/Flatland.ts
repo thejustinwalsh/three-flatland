@@ -334,6 +334,9 @@ export class Flatland extends Group implements WorldProvider {
   /** Reusable physical drawing-buffer size for surface-dependent GPU resources. */
   private _drawingBufferSize = new Vector2()
 
+  /** Reusable physical canvas viewport inherited from the active renderer owner. */
+  private _activeCanvasViewport = new Vector4()
+
   /** Saved output viewport while a PixelPerfectCamera owns one render. */
   private _savedViewport = new Vector4()
 
@@ -911,6 +914,7 @@ export class Flatland extends Group implements WorldProvider {
     this._outputNode = renderPipeline.outputNode
     this._renderPipelineEnabled = true
     this._autoRenderPipeline = false
+    this._resetPassViewportSampling()
     this._installManagedPassSize(passNode)
   }
 
@@ -924,6 +928,7 @@ export class Flatland extends Group implements WorldProvider {
     this._outputNode = null
     this._renderPipelineEnabled = false
     this._autoRenderPipeline = false
+    this._resetPassViewportSampling()
   }
 
   /**
@@ -1685,15 +1690,15 @@ export class Flatland extends Group implements WorldProvider {
       }
     }
 
-    this._syncAutoPassViewport(renderer)
+    this._syncPassSamplingViewport(renderer)
 
     this._syncRenderPipelineOutputTransform()
 
     // Run postPassSystem to get sorted passes (returns null if not dirty)
     const sortedPasses = postPassSystem(this.world)
     if (sortedPasses && this._renderPipeline && this._passNode) {
-      // PassNode's target stays full-surface sized, so sample only its active
-      // pixel viewport. The uniforms are (1,1)/(0,0) for ordinary cameras.
+      // PassNode's target stays full-surface sized, so sample only the active
+      // canvas or pixel-camera viewport. Full-surface paths retain (1,1)/(0,0).
       const uvCoord = uvNode()
       let node: Node<'vec4'> = convertToTexture(this._passNode).sample(
         uvCoord.mul(this._passViewportUvScale).add(this._passViewportUvOffset)
@@ -1710,9 +1715,12 @@ export class Flatland extends Group implements WorldProvider {
     }
   }
 
-  /** Keep an auto scene pass and its sampling window on the pixel viewport. */
-  private _syncAutoPassViewport(renderer: WebGPURenderer): void {
-    if (!this._autoRenderPipeline || !this._passNode) return
+  /** Keep an auto scene pass and its sampling window on the active output viewport. */
+  private _syncPassSamplingViewport(renderer: WebGPURenderer): void {
+    if (!this._autoRenderPipeline || !this._passNode) {
+      this._resetPassViewportSampling()
+      return
+    }
 
     if (this._camera instanceof PixelPerfectCamera) {
       const viewport = this._camera.viewport
@@ -1733,9 +1741,31 @@ export class Flatland extends Group implements WorldProvider {
       return
     }
 
+    if (!this._renderTarget) {
+      const viewport = this._getPhysicalCanvasViewport(renderer)
+      renderer.getDrawingBufferSize(this._drawingBufferSize)
+      const passWidth = this._drawingBufferSize.x
+      const passHeight = this._drawingBufferSize.y
+      if (viewport && this._isValidSize(passWidth, passHeight)) {
+        const isFullSurface =
+          viewport.x === 0 && viewport.y === 0 && viewport.width === passWidth && viewport.height === passHeight
+        if (!isFullSurface) {
+          this._passNode.setViewport(viewport)
+          this._passViewportUvScale.value.set(viewport.width / passWidth, viewport.height / passHeight)
+          this._passViewportUvOffset.value.set(viewport.x / passWidth, viewport.y / passHeight)
+          return
+        }
+      }
+    }
+
     // Three r185 explicitly supports `null` to restore automatic sizing; the
     // matching @types/three release omitted that documented overload.
     ;(this._passNode as PassNode & { setViewport(viewport: Vector4 | null): void }).setViewport(null)
+    this._resetPassViewportSampling()
+  }
+
+  /** Restore full-texture sampling when Flatland does not own an auto crop. */
+  private _resetPassViewportSampling(): void {
     this._passViewportUvScale.value.set(1, 1)
     this._passViewportUvOffset.value.set(0, 0)
   }
@@ -1744,8 +1774,8 @@ export class Flatland extends Group implements WorldProvider {
    * PassNode normally allocates from the canvas drawing buffer even while the
    * renderer targets an offscreen surface. Keep its public `setSize` contract,
    * but substitute Flatland's destination dimensions. A user-supplied pass is
-   * viewport-sized under a pixel camera; an auto pass remains full-surface so
-   * Flatland's generated output can crop it through `_passViewportUv*`.
+   * destination-viewport-sized; an auto pass remains full-surface so Flatland's
+   * generated output can crop it through `_passViewportUv*`.
    */
   private _installManagedPassSize(passNode: PassNode): void {
     this._restoreManagedPassSize()
@@ -1754,6 +1784,14 @@ export class Flatland extends Group implements WorldProvider {
     const wrapped: PassNode['setSize'] = (width, height) => {
       if (!this._autoRenderPipeline && this._camera instanceof PixelPerfectCamera) {
         original.call(passNode, this._camera.viewport.width, this._camera.viewport.height)
+        return
+      }
+      if (
+        !this._autoRenderPipeline &&
+        !this._renderTarget &&
+        this._isValidSize(this._lastSyncedWidth, this._lastSyncedHeight)
+      ) {
+        original.call(passNode, this._lastSyncedWidth, this._lastSyncedHeight)
         return
       }
       const target = this._renderTarget
@@ -1899,8 +1937,9 @@ export class Flatland extends Group implements WorldProvider {
 
   /**
    * Track the physical render surface every frame: the render target's texel
-   * dimensions when rendering to texture, otherwise the renderer's drawing
-   * buffer size (logical canvas size multiplied by pixel ratio).
+   * dimensions when rendering to texture, the full drawing buffer for a pixel
+   * camera that owns its viewport, or the inherited active canvas viewport for
+   * an ordinary camera.
    * Camera aspect follows while auto mode is active; LightEffect sizing
    * follows unless resize() selected full manual size control because GPU
    * tile buffers remain surface-dependent when only camera aspect is pinned.
@@ -1925,10 +1964,15 @@ export class Flatland extends Group implements WorldProvider {
     } else if (this._renderTarget) {
       width = this._renderTarget.width
       height = this._renderTarget.height
-    } else {
+    } else if (this._camera instanceof PixelPerfectCamera) {
       renderer.getDrawingBufferSize(this._drawingBufferSize)
       width = this._drawingBufferSize.x
       height = this._drawingBufferSize.y
+    } else {
+      const viewport = this._getPhysicalCanvasViewport(renderer)
+      if (!viewport) return
+      width = viewport.width
+      height = viewport.height
     }
 
     // Skip unmeasured/invalid surfaces (0×0 first R3F commit, NaN) and
@@ -1949,6 +1993,17 @@ export class Flatland extends Group implements WorldProvider {
     // without fractional scaling or renderer-level letterboxing.
     if (this._autoAspect || this._camera instanceof PixelPerfectCamera) this._updateCameraFrustum()
     this._queueLightEffectResize(width, height)
+  }
+
+  /** Read Three's logical canvas viewport in the physical pixels used by GPU resources. */
+  private _getPhysicalCanvasViewport(renderer: WebGPURenderer): Vector4 | null {
+    const pixelRatio = renderer.getPixelRatio()
+    if (!Number.isFinite(pixelRatio) || pixelRatio <= 0) return null
+    renderer.getViewport(this._activeCanvasViewport)
+    this._activeCanvasViewport.multiplyScalar(pixelRatio).floor()
+    return this._isValidSize(this._activeCanvasViewport.width, this._activeCanvasViewport.height)
+      ? this._activeCanvasViewport
+      : null
   }
 
   /**
