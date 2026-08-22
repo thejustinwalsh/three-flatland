@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
-import { NodeUpdateType } from 'three/tsl'
+import { getCurrentStack, NodeUpdateType, setCurrentStack, stack } from 'three/tsl'
 import { EventNode } from 'three/webgpu'
+import { BufferGeometry, InstancedMesh } from 'three'
+import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import {
   installInstanceEventUpdateBeforePatch,
   matchesInstanceBufferSyncCallbackSource,
@@ -112,5 +114,33 @@ describe('r185 instance event timing patch', () => {
 
     expect(event.getUpdateType()).toBe(NodeUpdateType.FRAME)
     expect(event.getUpdateBeforeType()).toBe(NodeUpdateType.NONE)
+  })
+
+  it('classifies the live large-batch event created by Sprite2DMaterial', () => {
+    const material = new Sprite2DMaterial()
+    const mesh = new InstancedMesh(new BufferGeometry(), material, 2048)
+    const nodeStack = stack()
+    const previousStack = getCurrentStack()
+
+    setCurrentStack(nodeStack)
+    try {
+      material.setupPosition({
+        object: mesh,
+        getUniformBufferLimit: () => 65_536,
+        hasGeometryAttribute: () => false,
+        needsPreviousData: () => false,
+      } as never)
+    } finally {
+      setCurrentStack(previousStack)
+    }
+
+    const event = nodeStack.nodes.find(
+      (node): node is EventNode => node instanceof EventNode && node.eventType === EventNode.FRAME
+    )
+    expect(event, 'large Sprite2DMaterial batches must register a frame sync event').toBeDefined()
+    expect(event!.getUpdateBeforeType()).toBe(NodeUpdateType.FRAME)
+
+    material.dispose()
+    mesh.geometry.dispose()
   })
 })

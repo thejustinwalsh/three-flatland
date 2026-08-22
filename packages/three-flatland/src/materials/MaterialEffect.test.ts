@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { BufferGeometry, InstancedMesh, Texture } from 'three'
 import { getCurrentStack, setCurrentStack, stack } from 'three/tsl'
+import { EventNode } from 'three/webgpu'
 import { createWorld, universe } from 'koota'
 import { MaterialEffect, createMaterialEffect } from './MaterialEffect'
 import type { EffectNodeContext } from './MaterialEffect'
@@ -1306,5 +1307,34 @@ describe('Sprite2DMaterial synthesized positions', () => {
 
     expect(assignments.length).toBeGreaterThanOrEqual(3)
     expect(helperCalls).toHaveLength(0)
+  })
+
+  it('updates motion history from the rendered object rather than a captured mesh', () => {
+    const material = new Sprite2DMaterial()
+    const mesh = new InstancedMesh(new BufferGeometry(), material, 1)
+    const nodeStack = stack()
+    const previousStack = getCurrentStack()
+
+    setCurrentStack(nodeStack)
+    try {
+      material.setupPosition({
+        object: mesh,
+        getUniformBufferLimit: () => Number.POSITIVE_INFINITY,
+        hasGeometryAttribute: () => false,
+        needsPreviousData: () => true,
+      } as never)
+    } finally {
+      setCurrentStack(previousStack)
+    }
+
+    const event = nodeStack.nodes.find(
+      (node): node is EventNode => node instanceof EventNode && node.eventType === EventNode.OBJECT
+    )
+    expect(event, 'motion history must register a canonical object update').toBeDefined()
+    expect(Function.prototype.toString.call(event!.callback)).toContain('renderedObject')
+    expect(() => event!.update({ object: mesh } as never)).not.toThrow()
+
+    material.dispose()
+    mesh.geometry.dispose()
   })
 })

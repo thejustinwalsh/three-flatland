@@ -24,9 +24,37 @@ for (const entry of entries) {
       setItem: (key, value) => storage.set(String(key), String(value)),
     }
     const { EventNode } = await import('three/webgpu')
-    await import(${JSON.stringify(entryUrl)})
+    const entryModule = await import(${JSON.stringify(entryUrl)})
     if (!EventNode.prototype.__instanceEventPhaseSplitPatched__) {
       throw new Error(${JSON.stringify(`r185 EventNode patch missing after importing ${entry}`)})
+    }
+
+    if (${JSON.stringify(entry)}.endsWith('/materials/Sprite2DMaterial.js')) {
+      const { BufferGeometry, InstancedMesh } = await import('three')
+      const { getCurrentStack, NodeUpdateType, setCurrentStack, stack } = await import('three/tsl')
+      const material = new entryModule.Sprite2DMaterial()
+      const mesh = new InstancedMesh(new BufferGeometry(), material, 2048)
+      const nodeStack = stack()
+      const previousStack = getCurrentStack()
+      setCurrentStack(nodeStack)
+      try {
+        material.setupPosition({
+          object: mesh,
+          getUniformBufferLimit: () => 65_536,
+          hasGeometryAttribute: () => false,
+          needsPreviousData: () => false,
+        })
+      } finally {
+        setCurrentStack(previousStack)
+      }
+      const event = nodeStack.nodes.find(
+        (node) => node instanceof EventNode && node.eventType === EventNode.FRAME
+      )
+      if (!event || event.getUpdateBeforeType() !== NodeUpdateType.FRAME) {
+        throw new Error('Built Sprite2DMaterial large-batch sync event did not enter the pre-upload phase')
+      }
+      material.dispose()
+      mesh.geometry.dispose()
     }
   `
   const result = spawnSync(process.execPath, ['--input-type=module', '--eval', verification], {

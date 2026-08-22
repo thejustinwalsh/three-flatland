@@ -1,4 +1,13 @@
-import { BufferAttribute, Mesh, PlaneGeometry, RenderTarget, type Material, type Texture } from 'three'
+import {
+  BufferAttribute,
+  InstancedBufferAttribute,
+  InstancedMesh,
+  Mesh,
+  PlaneGeometry,
+  RenderTarget,
+  type Material,
+  type Texture,
+} from 'three'
 import { vec4 } from 'three/tsl'
 import type { NodeMaterial, WebGPURenderer } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
@@ -196,6 +205,32 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
       expectSingleInstanceMatrixAttributeSet(backend, program.vertexShader)
     } finally {
       batch.dispose()
+    }
+  })
+
+  it('preserves canonical instance color on custom instanced meshes', () => {
+    const material = trackMaterial(new Sprite2DMaterial({ map: shaderTexture() }))
+    material.positionNode = null
+    const mesh = new InstancedMesh(new PlaneGeometry(1, 1), material, 2)
+    mesh.instanceColor = new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0, 1, 0]), 3)
+    mesh.geometry.setAttribute(
+      'instanceUV',
+      new InstancedBufferAttribute(new Float32Array([0, 0, 1, 1, 0, 0, 1, 1]), 4)
+    )
+    mesh.geometry.setAttribute(
+      'instanceColor',
+      new InstancedBufferAttribute(new Float32Array([1, 1, 1, 1, 1, 1, 1, 1]), 4)
+    )
+    mesh.geometry.setAttribute(
+      'instanceSystem',
+      new InstancedBufferAttribute(new Float32Array([1, 1, 0, 0, 1, 1, 0, 0]), 4)
+    )
+
+    try {
+      const program = capture('sprite-custom-instanced-color', backend, material, mesh)
+      expect(program.vertexShader).toContain('vInstanceColor')
+    } finally {
+      mesh.geometry.dispose()
     }
   })
 

@@ -23,6 +23,12 @@ import {
   instancedDynamicBufferAttribute,
   mat4,
   transformNormal,
+  varyingProperty,
+  morphReference,
+  skinning,
+  materialReference,
+  batch,
+  OnObjectUpdate,
 } from 'three/tsl'
 import {
   type Texture,
@@ -36,11 +42,8 @@ import {
   OneFactor,
   OneMinusSrcAlphaFactor,
 } from 'three'
-import type { NodeBuilder } from 'three/webgpu'
-import type { StorageInstancedBufferAttribute } from 'three/webgpu'
+import { EventNode, type NodeBuilder, type StorageInstancedBufferAttribute } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
-import { instanceColor } from 'three/src/nodes/accessors/Instance.js'
-import { OnFrameUpdate, OnObjectUpdate } from 'three/src/nodes/utils/EventNode.js'
 import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
 import { readFlip, readPixelPerfectFlag, readRotatedFrameFlag } from './instanceAttributes'
@@ -65,7 +68,21 @@ type SpriteNodeBuilder = NodeBuilder & {
 
 const instanceMatrixBuffers = new WeakMap<InstancedBufferAttribute, InstancedInterleavedBuffer>()
 const instanceColorBuffers = new WeakMap<InstancedBufferAttribute, InstancedBufferAttribute>()
-const previousInstanceMatrices = new WeakMap<InstancedMesh, { matrix: InstancedBufferAttribute; node: Node<'mat4'> }>()
+const previousInstanceMatrices = new WeakMap<
+  InstancedMesh,
+  { matrix: InstancedBufferAttribute; node: Node<'mat4'>; interleaved: InstancedInterleavedBuffer | null }
+>()
+const canonicalInstanceColor = varyingProperty('vec3', 'vInstanceColor')
+
+interface InstanceMatrixSource {
+  node: Node<'mat4'>
+  interleaved: InstancedInterleavedBuffer | null
+}
+
+interface InstanceColorSource {
+  node: Node<'vec3'>
+  interleaved: InstancedBufferAttribute | null
+}
 
 /**
  * Build Three's canonical instance-matrix source once so both the transformed
@@ -73,16 +90,19 @@ const previousInstanceMatrices = new WeakMap<InstancedMesh, { matrix: InstancedB
  * `instancedMesh()` helper applies the matrix but does not return its node;
  * calling it a second time creates a second full matrix buffer.
  */
-function createInstanceMatrixNode(builder: SpriteNodeBuilder, matrix: InstancedBufferAttribute): Node<'mat4'> {
+function createInstanceMatrixNode(builder: SpriteNodeBuilder, matrix: InstancedBufferAttribute): InstanceMatrixSource {
   const count = Math.max(matrix.count, 1)
   if ('isStorageInstancedBufferAttribute' in matrix && matrix.isStorageInstancedBufferAttribute) {
-    return storage(matrix as StorageInstancedBufferAttribute, 'mat4', count).element(instanceIndex) as Node<'mat4'>
+    return {
+      node: storage(matrix as StorageInstancedBufferAttribute, 'mat4', count).element(instanceIndex) as Node<'mat4'>,
+      interleaved: null,
+    }
   }
   if (count * 16 * 4 <= builder.getUniformBufferLimit()) {
     const matrixBuffer = buffer(matrix.array, 'mat4', count) as unknown as {
       element(index: Node<'uint'>): Node<'mat4'>
     }
-    return matrixBuffer.element(instanceIndex)
+    return { node: matrixBuffer.element(instanceIndex), interleaved: null }
   }
 
   let interleaved = instanceMatrixBuffers.get(matrix)
@@ -91,27 +111,76 @@ function createInstanceMatrixNode(builder: SpriteNodeBuilder, matrix: InstancedB
     instanceMatrixBuffers.set(matrix, interleaved)
   }
 
-  const matrixBuffer = interleaved
-  OnFrameUpdate(() => {
-    matrixBuffer.clearUpdateRanges()
-    matrixBuffer.updateRanges.push(...matrix.updateRanges)
-    if (matrix.version !== matrixBuffer.version) matrixBuffer.version = matrix.version
-  })
-
   const attribute = matrix.usage === DynamicDrawUsage ? instancedDynamicBufferAttribute : instancedBufferAttribute
-  return mat4(
-    attribute(matrixBuffer, 'vec4', 16, 0),
-    attribute(matrixBuffer, 'vec4', 16, 4),
-    attribute(matrixBuffer, 'vec4', 16, 8),
-    attribute(matrixBuffer, 'vec4', 16, 12)
-  ) as Node<'mat4'>
+  return {
+    node: mat4(
+      attribute(interleaved, 'vec4', 16, 0),
+      attribute(interleaved, 'vec4', 16, 4),
+      attribute(interleaved, 'vec4', 16, 8),
+      attribute(interleaved, 'vec4', 16, 12)
+    ) as Node<'mat4'>,
+    interleaved,
+  }
+}
+
+/** Build Three's canonical optional instance-color source without deep imports. */
+function createInstanceColorNode(colors: InstancedBufferAttribute): InstanceColorSource {
+  if ('isStorageInstancedBufferAttribute' in colors && colors.isStorageInstancedBufferAttribute) {
+    return {
+      node: storage(colors as StorageInstancedBufferAttribute, 'vec3', Math.max(colors.count, 1)).element(
+        instanceIndex
+      ) as Node<'vec3'>,
+      interleaved: null,
+    }
+  }
+
+  let interleaved = instanceColorBuffers.get(colors)
+  if (!interleaved) {
+    interleaved = new InstancedBufferAttribute(colors.array, 3)
+    instanceColorBuffers.set(colors, interleaved)
+  }
+  const attribute = colors.usage === DynamicDrawUsage ? instancedDynamicBufferAttribute : instancedBufferAttribute
+  return {
+    node: attribute(interleaved, 'vec3', 3, 0) as Node<'vec3'>,
+    interleaved,
+  }
+}
+
+/**
+ * Register the same combined callback shape as Three r185 so the local timing
+ * patch moves these range/version copies ahead of geometry upload.
+ */
+function installInstanceBufferSync(
+  matrices: InstancedBufferAttribute,
+  interleavedMatrix: InstancedInterleavedBuffer | null,
+  colors: InstancedBufferAttribute | null,
+  interleavedColor: InstancedBufferAttribute | null
+): void {
+  if (interleavedMatrix === null && interleavedColor === null) return
+
+  new EventNode(EventNode.FRAME as typeof EventNode.OBJECT, () => {
+    if (interleavedMatrix !== null) {
+      interleavedMatrix.clearUpdateRanges()
+      interleavedMatrix.updateRanges.push(...matrices.updateRanges)
+      if (matrices.version !== interleavedMatrix.version) interleavedMatrix.version = matrices.version
+    }
+    if (colors !== null && interleavedColor !== null) {
+      interleavedColor.clearUpdateRanges()
+      interleavedColor.updateRanges.push(...colors.updateRanges)
+      if (colors.version !== interleavedColor.version) interleavedColor.version = colors.version
+    }
+  }).toStack()
 }
 
 /** Apply one shared instance matrix to position, pivot, normal, and motion data. */
 function applyInstanceTransform(builder: SpriteNodeBuilder, object: InstancedMesh): void {
   const matrix = object.instanceMatrix
-  const matrixNode = createInstanceMatrixNode(builder, matrix)
+  const matrixSource = createInstanceMatrixNode(builder, matrix)
+  const matrixNode = matrixSource.node
   const matrixColumns = matrixNode as Node<'mat4'> & Record<number, Node<'vec4'>>
+  const colorSource = object.instanceColor ? createInstanceColorNode(object.instanceColor) : null
+
+  installInstanceBufferSync(matrix, matrixSource.interleaved, object.instanceColor, colorSource?.interleaved ?? null)
 
   spritePixelPivot.assign(matrixColumns[3]!.xyz)
   positionLocal.assign(matrixNode.mul(positionLocal).xyz)
@@ -120,15 +189,22 @@ function applyInstanceTransform(builder: SpriteNodeBuilder, object: InstancedMes
     let previous = previousInstanceMatrices.get(object)
     if (!previous) {
       const previousMatrix = matrix.clone() as InstancedBufferAttribute
+      const previousSource = createInstanceMatrixNode(builder, previousMatrix)
       const created = {
         matrix: previousMatrix,
-        node: createInstanceMatrixNode(builder, previousMatrix),
+        node: previousSource.node,
+        interleaved: previousSource.interleaved,
       }
       previousInstanceMatrices.set(object, created)
       previous = created
     }
-    OnObjectUpdate(() => {
-      previous!.matrix.array.set(matrix.array)
+    OnObjectUpdate(({ object: renderedObject }) => {
+      const renderedMesh = renderedObject as InstancedMesh
+      const renderedPrevious = previousInstanceMatrices.get(renderedMesh)
+      if (!renderedPrevious) return
+      renderedPrevious.matrix.array.set(renderedMesh.instanceMatrix.array)
+      renderedPrevious.matrix.needsUpdate = true
+      if (renderedPrevious.interleaved) renderedPrevious.interleaved.needsUpdate = true
     })
     positionPrevious.assign(previous.node.mul(positionPrevious).xyz)
   }
@@ -137,35 +213,7 @@ function applyInstanceTransform(builder: SpriteNodeBuilder, object: InstancedMes
     normalLocal.assign(transformNormal(normalLocal, matrixNode))
   }
 
-  if (object.instanceColor) {
-    let colorAttribute: Node<'vec3'>
-    if (
-      'isStorageInstancedBufferAttribute' in object.instanceColor &&
-      object.instanceColor.isStorageInstancedBufferAttribute
-    ) {
-      colorAttribute = storage(
-        object.instanceColor as StorageInstancedBufferAttribute,
-        'vec3',
-        Math.max(object.instanceColor.count, 1)
-      ).element(instanceIndex) as Node<'vec3'>
-    } else {
-      let colorBuffer = instanceColorBuffers.get(object.instanceColor)
-      if (!colorBuffer) {
-        colorBuffer = new InstancedBufferAttribute(object.instanceColor.array, 3)
-        instanceColorBuffers.set(object.instanceColor, colorBuffer)
-      }
-      const sourceColor = object.instanceColor
-      OnFrameUpdate(() => {
-        colorBuffer!.clearUpdateRanges()
-        colorBuffer!.updateRanges.push(...sourceColor.updateRanges)
-        if (sourceColor.version !== colorBuffer!.version) colorBuffer!.version = sourceColor.version
-      })
-      const attribute =
-        object.instanceColor.usage === DynamicDrawUsage ? instancedDynamicBufferAttribute : instancedBufferAttribute
-      colorAttribute = attribute(colorBuffer, 'vec3', 3, 0) as Node<'vec3'>
-    }
-    instanceColor.assign(colorAttribute)
-  }
+  if (colorSource) canonicalInstanceColor.assign(colorSource.node)
 }
 
 // Re-export types that moved to EffectMaterial for backwards compatibility
@@ -416,6 +464,33 @@ export class Sprite2DMaterial extends EffectMaterial {
 
     if (!isInstanced && this.positionNode === null) {
       super.setupPosition(builder)
+    } else if (isInstanced && this.positionNode === null) {
+      const geometry = builder.geometry
+      if (geometry.morphAttributes.position || geometry.morphAttributes.normal || geometry.morphAttributes.color) {
+        morphReference(object)
+      }
+      if ((object as InstancedMesh & { isSkinnedMesh?: boolean }).isSkinnedMesh === true) {
+        skinning(object as never)
+      }
+      const displacement = this as Sprite2DMaterial & {
+        displacementMap?: Texture | null
+        displacementScale?: number
+        displacementBias?: number
+      }
+      if (displacement.displacementMap) {
+        // Three's public TSL factory types do not currently expose
+        // MaterialReferenceNode as a vec4/scalar input even though the node
+        // builder supports these canonical conversions at runtime.
+        const displacementMap = vec4(materialReference('displacementMap', 'texture') as never)
+        const displacementScale = float(materialReference('displacementScale', 'float') as never)
+        const displacementBias = float(materialReference('displacementBias', 'float') as never)
+        positionLocal.addAssign(
+          normalLocal.normalize().mul(displacementMap.x.mul(displacementScale).add(displacementBias))
+        )
+      }
+      if ((object as InstancedMesh & { isBatchedMesh?: boolean }).isBatchedMesh === true) {
+        batch(object as never)
+      }
     } else if (this.positionNode !== null) {
       positionLocal.assign(subBuild(this.positionNode, 'POSITION', 'vec3'))
     }
