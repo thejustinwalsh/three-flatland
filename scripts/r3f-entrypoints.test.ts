@@ -29,7 +29,14 @@ export function hasBareR3FRuntimeReference(source: string): boolean {
       if (statement.moduleSpecifier.text !== BARE_R3F) continue
       const clause = statement.importClause
       if (clause?.isTypeOnly) continue
-      if (!clause || clause.name || (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings))) return true
+      if (
+        !clause ||
+        clause.name ||
+        (clause.namedBindings &&
+          (ts.isNamespaceImport(clause.namedBindings) || clause.namedBindings.elements.length === 0))
+      ) {
+        return true
+      }
       if (clause.namedBindings?.elements.some((element) => !element.isTypeOnly)) return true
     }
 
@@ -40,6 +47,7 @@ export function hasBareR3FRuntimeReference(source: string): boolean {
     ) {
       if (statement.moduleSpecifier.text !== BARE_R3F || statement.isTypeOnly) continue
       if (!statement.exportClause || ts.isNamespaceExport(statement.exportClause)) return true
+      if (statement.exportClause.elements.length === 0) return true
       if (statement.exportClause.elements.some((element) => !element.isTypeOnly)) return true
     }
   }
@@ -71,7 +79,8 @@ export function sourceFiles(directory: string, visitedDirectories = new Set<stri
     const path = join(directory, entry.name)
     if (entry.isDirectory()) return sourceFiles(path, visitedDirectories)
     if (entry.isSymbolicLink()) {
-      const target = statSync(path)
+      const target = statSync(path, { throwIfNoEntry: false })
+      if (!target) return []
       if (target.isDirectory()) return sourceFiles(path, visitedDirectories)
       if (!target.isFile()) return []
     } else if (!entry.isFile()) return []
@@ -86,7 +95,9 @@ describe('R3F runtime entrypoints', () => {
     "import {\n  useFrame,\n} from '@react-three/fiber'",
     "import * as Fiber from '@react-three/fiber'",
     "import '@react-three/fiber'",
+    "import {} from '@react-three/fiber'",
     "export { useFrame } from '@react-three/fiber'",
+    "export {} from '@react-three/fiber'",
     "export * from '@react-three/fiber'",
     "import('@react-three/fiber')",
     'import(`@react-three/fiber`)',
@@ -124,6 +135,7 @@ describe('R3F runtime entrypoints', () => {
     writeFileSync(join(source, 'runtime.ts'), "import { useFrame } from '@react-three/fiber'")
     symlinkSync(source, linked)
     symlinkSync(fixture, join(source, 'cycle'))
+    symlinkSync(join(fixture, 'missing'), join(source, 'dangling'))
 
     try {
       expect(sourceFiles(linked)).toEqual([join(linked, 'runtime.ts')])
