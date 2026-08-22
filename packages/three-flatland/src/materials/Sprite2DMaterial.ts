@@ -8,6 +8,7 @@ import {
   Discard,
   select,
   positionLocal,
+  positionView,
   positionPrevious,
   normalLocal,
   property,
@@ -510,7 +511,7 @@ export class Sprite2DMaterial extends EffectMaterial {
    * @internal
    */
   override setupModelViewProjection(): Node<'vec4'> {
-    const clipPosition = cameraProjectionMatrix.mul(modelViewMatrix.mul(positionLocal)).toVar('spriteClipPosition')
+    const clipPosition = cameraProjectionMatrix.mul(positionView).toVar('spriteClipPosition')
 
     If(readPixelPerfectFlag(), () => {
       const pivotClip = cameraProjectionMatrix.mul(modelViewMatrix.mul(spritePixelPivot)).toVar('spritePivotClip')
