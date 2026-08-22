@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { BufferGeometry, InstancedMesh, Texture } from 'three'
+import { BufferGeometry, InstancedInterleavedBuffer, InstancedMesh, Texture } from 'three'
 import { getCurrentStack, setCurrentStack, stack } from 'three/tsl'
 import { EventNode } from 'three/webgpu'
 import { createWorld, universe } from 'koota'
@@ -1311,7 +1311,7 @@ describe('Sprite2DMaterial synthesized positions', () => {
 
   it('updates motion history from the rendered object rather than a captured mesh', () => {
     const material = new Sprite2DMaterial()
-    const mesh = new InstancedMesh(new BufferGeometry(), material, 1)
+    const mesh = new InstancedMesh(new BufferGeometry(), material, 2048)
     const nodeStack = stack()
     const previousStack = getCurrentStack()
 
@@ -1319,7 +1319,7 @@ describe('Sprite2DMaterial synthesized positions', () => {
     try {
       material.setupPosition({
         object: mesh,
-        getUniformBufferLimit: () => Number.POSITIVE_INFINITY,
+        getUniformBufferLimit: () => 65_536,
         hasGeometryAttribute: () => false,
         needsPreviousData: () => true,
       } as never)
@@ -1332,7 +1332,25 @@ describe('Sprite2DMaterial synthesized positions', () => {
     )
     expect(event, 'motion history must register a canonical object update').toBeDefined()
     expect(Function.prototype.toString.call(event!.callback)).toContain('renderedObject')
+
+    const interleavedBuffers = new Set<InstancedInterleavedBuffer>()
+    const visited = new WeakSet<object>()
+    const visit = (value: unknown): void => {
+      if (typeof value !== 'object' || value === null || visited.has(value)) return
+      visited.add(value)
+      if (value instanceof InstancedInterleavedBuffer) interleavedBuffers.add(value)
+      for (const child of Object.values(value)) visit(child)
+    }
+    visit(nodeStack)
+
+    expect(interleavedBuffers.size, 'current and previous matrices must both use the large-batch path').toBe(2)
+    const previousBuffer = [...interleavedBuffers].find((buffer) => buffer.array !== mesh.instanceMatrix.array)
+    expect(previousBuffer).toBeDefined()
+    const previousVersion = previousBuffer!.version
+    mesh.instanceMatrix.array[12] = 42
     expect(() => event!.update({ object: mesh } as never)).not.toThrow()
+    expect(previousBuffer!.array[12]).toBe(42)
+    expect(previousBuffer!.version).toBe(previousVersion + 1)
 
     material.dispose()
     mesh.geometry.dispose()
