@@ -49,11 +49,8 @@ export function RegistryPanel() {
     }
   }, [client])
 
-  const entries = useMemo(() => {
-    const arr = Array.from(state.registry.values())
-    arr.sort((a, b) => a.name.localeCompare(b.name))
-    return arr
-  }, [state.registry, state.registry.size])
+  const entries = Array.from(state.registry.values())
+  entries.sort((a, b) => a.name.localeCompare(b.name))
 
   const needle = filter.trim().toLowerCase()
   const visible =
@@ -119,6 +116,16 @@ export function RegistryPanel() {
   )
 }
 
+/**
+ * Freeze the client's mutable in-place entry at its explicit revision.
+ * This keeps effects and derived values coherent while preserving the
+ * client's allocation-free steady-state updates.
+ */
+function useRegistryEntrySnapshot(entry: RegistryEntrySnapshot): RegistryEntrySnapshot {
+  const { name, kind, version, count, sample, label } = entry
+  return useMemo(() => ({ name, kind, version, count, sample, label }), [name, kind, version, count, sample, label])
+}
+
 function RegistrySparkline({
   entry,
   width,
@@ -128,6 +135,7 @@ function RegistrySparkline({
   width: number
   height: number
 }): preact.JSX.Element {
+  const snapshot = useRegistryEntrySnapshot(entry)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   // Gate redraw on version bumps — the shared rAF fires on every frame
   // but most entries don't change every frame. Redrawing a 10k-sample
@@ -144,21 +152,22 @@ function RegistrySparkline({
     }
     const ctx = canvas.getContext('2d')
     if (ctx === null) return
-    drawVisualizer(ctx, w, h, entry)
-  }, [entry.version, entry.name, width, height])
+    drawVisualizer(ctx, w, h, snapshot)
+  }, [snapshot, width, height])
   return <canvas class="registry-sparkline" ref={canvasRef} style={{ width: `${width}px`, height: `${height}px` }} />
 }
 
 function RegistryDetail({ entry }: { entry: RegistryEntrySnapshot }): preact.JSX.Element {
-  const { name, kind, count, sample, label, version } = entry
+  const snapshot = useRegistryEntrySnapshot(entry)
+  const { name, kind, count, sample, label, version } = snapshot
   const isFloat = sample instanceof Float32Array
-  const stats = useMemo(() => computeStats(entry), [entry, entry.version])
+  const stats = useMemo(() => computeStats(snapshot), [snapshot])
 
   // Element count on the visualizer axis — for vectors this is the
   // number of vectors, for bits it's total bit count, for scalars it's
   // sample.length. The graph cursor and data-viewer highlight both
   // index into this space.
-  const axisLen = axisLength(entry)
+  const axisLen = axisLength(snapshot)
 
   // Cursor is purely a mirror of the data-view's scroll position —
   // initialised to 0 so the graph always shows an anchor line on
@@ -172,8 +181,8 @@ function RegistryDetail({ entry }: { entry: RegistryEntrySnapshot }): preact.JSX
   const scrollGridToAxisIdx = (idx: number): void => {
     const el = gridScrollerRef.current
     if (el === null) return
-    const perAxisIdx = entry.kind === 'float2' ? 2 : entry.kind === 'float3' ? 3 : entry.kind === 'float4' ? 4 : 1
-    const scalarIdx = entry.kind === 'bits' ? idx : idx * perAxisIdx
+    const perAxisIdx = kind === 'float2' ? 2 : kind === 'float3' ? 3 : kind === 'float4' ? 4 : 1
+    const scalarIdx = kind === 'bits' ? idx : idx * perAxisIdx
     const rowIdx = Math.floor(scalarIdx / ROW_STRIDE)
     const top = rowIdx * SAMPLE_ROW_HEIGHT
     const target = Math.max(0, top - el.clientHeight / 2 + SAMPLE_ROW_HEIGHT / 2)
@@ -202,8 +211,8 @@ function RegistryDetail({ entry }: { entry: RegistryEntrySnapshot }): preact.JSX
     }
     const ctx = canvas.getContext('2d')
     if (ctx === null) return
-    drawVisualizer(ctx, w, h, entry, null)
-  }, [entry.version, entry.name, resizeTick])
+    drawVisualizer(ctx, w, h, snapshot, null)
+  }, [snapshot, resizeTick])
 
   // Imperative hover-tracking: mousemove updates a `style.left` on the
   // cursor <div> directly without going through React. State only
@@ -288,7 +297,7 @@ function RegistryDetail({ entry }: { entry: RegistryEntrySnapshot }): preact.JSX
           <div class="panel-empty">No sample yet.</div>
         ) : (
           <SampleGrid
-            entry={entry}
+            entry={snapshot}
             stride={ROW_STRIDE}
             float={isFloat}
             pinnedIdx={pinnedIdx}

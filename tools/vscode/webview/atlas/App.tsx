@@ -833,7 +833,7 @@ export function App() {
     didAutoExpandRef.current = true
     if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
     if (activeAnimation == null) setActiveAnimation(Object.keys(animations)[0] ?? null)
-  }, [animations, prefs.animDrawerExpanded, activeAnimation])
+  }, [animations, prefs.animDrawerExpanded, activeAnimation, setActiveAnimation])
 
   // Clear the manual animation-frame highlight on any context shift
   // the user wouldn't expect to carry over: switching the active
@@ -1002,19 +1002,25 @@ export function App() {
     void handleSave()
   }, [outputFormat, detectedFormat, formatSwitchArmed, handleSave])
 
-  const handleRectCreate = useCallback((r: Rect) => {
-    setRects((prev) => [...prev, r])
-    setSelectedIds(new Set([r.id]))
-  }, [])
+  const handleRectCreate = useCallback(
+    (r: Rect) => {
+      setRects((prev) => [...prev, r])
+      setSelectedIds(new Set([r.id]))
+    },
+    [setRects, setSelectedIds]
+  )
 
-  const handleRectChange = useCallback((id: string, next: { x: number; y: number; w: number; h: number }) => {
-    setRects((prev) => prev.map((r) => (r.id === id ? { ...r, ...next } : r)))
-    // The rect's frame geometry just changed — any loaded rotation/trim/
-    // pivot/polygon-mesh passthrough for it no longer describes the new
-    // rect, and there's no editing UI to keep it consistent. See
-    // RectPassthrough's doc comment in atlasStore.ts.
-    atlasActions.clearPassthrough(id)
-  }, [])
+  const handleRectChange = useCallback(
+    (id: string, next: { x: number; y: number; w: number; h: number }) => {
+      setRects((prev) => prev.map((r) => (r.id === id ? { ...r, ...next } : r)))
+      // The rect's frame geometry just changed — any loaded rotation/trim/
+      // pivot/polygon-mesh passthrough for it no longer describes the new
+      // rect, and there's no editing UI to keep it consistent. See
+      // RectPassthrough's doc comment in atlasStore.ts.
+      atlasActions.clearPassthrough(id)
+    },
+    [setRects]
+  )
 
   // ── Animation handlers ──────────────────────────────────────────────────
   const animationNames = useMemo(() => Object.keys(animations).sort(), [animations])
@@ -1075,7 +1081,7 @@ export function App() {
       if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
       return name
     },
-    [animations, deduceAnimationName, prefs.animDrawerExpanded]
+    [animations, deduceAnimationName, prefs.animDrawerExpanded, setActiveAnimation, setAnimations]
   )
 
   const handleCreateAnimation = useCallback(() => {
@@ -1108,20 +1114,23 @@ export function App() {
         return remaining[0] ?? null
       })
     },
-    [animations]
+    [animations, setActiveAnimation, setAnimations]
   )
 
-  const handleRenameAnimation = useCallback((oldName: string, newName: string) => {
-    setAnimations((prev) => {
-      if (!prev[oldName] || prev[newName]) return prev
-      const next: Record<string, Animation> = {}
-      for (const [k, v] of Object.entries(prev)) {
-        next[k === oldName ? newName : k] = v
-      }
-      return next
-    })
-    setActiveAnimation((cur) => (cur === oldName ? newName : cur))
-  }, [])
+  const handleRenameAnimation = useCallback(
+    (oldName: string, newName: string) => {
+      setAnimations((prev) => {
+        if (!prev[oldName] || prev[newName]) return prev
+        const next: Record<string, Animation> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          next[k === oldName ? newName : k] = v
+        }
+        return next
+      })
+      setActiveAnimation((cur) => (cur === oldName ? newName : cur))
+    },
+    [setActiveAnimation, setAnimations]
+  )
 
   const updateActiveAnimation = useCallback(
     (patch: Partial<Animation>) => {
@@ -1130,7 +1139,7 @@ export function App() {
         return { ...prev, [activeAnimation]: { ...prev[activeAnimation]!, ...patch } }
       })
     },
-    [activeAnimation]
+    [activeAnimation, setAnimations]
   )
 
   // ── Animation playback ──────────────────────────────────────────────────
@@ -1207,7 +1216,7 @@ export function App() {
       }))
       if (newPlayhead !== oldPlayhead) animationStore.seek(newPlayhead)
     },
-    [activeAnimation, animations, animationStore]
+    [activeAnimation, animations, animationStore, setAnimations]
   )
 
   // Remove a group from the active animation (cell-level delete via
@@ -1227,7 +1236,7 @@ export function App() {
         return { ...prev, [activeAnimation]: { ...anim, frames: nextFrames } }
       })
     },
-    [activeAnimation]
+    [activeAnimation, setAnimations]
   )
 
   // Wraps the store's togglePlay with two ergonomic side effects:
@@ -1272,7 +1281,7 @@ export function App() {
         return { ...prev, [activeAnimation]: { ...anim, frames: next } }
       })
     },
-    [activeAnimation]
+    [activeAnimation, setAnimations]
   )
 
   // Set or clear an event tag at a specific post-duplication frame
@@ -1292,7 +1301,7 @@ export function App() {
         return { ...prev, [activeAnimation]: { ...anim, events: cleaned } }
       })
     },
-    [activeAnimation]
+    [activeAnimation, setAnimations]
   )
 
   // Reorder a group within the active animation: remove the group
@@ -1317,7 +1326,7 @@ export function App() {
         return { ...prev, [activeAnimation]: { ...anim, frames: nextFrames } }
       })
     },
-    [activeAnimation]
+    [activeAnimation, setAnimations]
   )
 
   // Convenience: append (Add-to-anim button). Equivalent to
@@ -1376,10 +1385,10 @@ export function App() {
         }
       }
     },
-    [tool]
+    [tool, setTool]
   )
 
-  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [setSelectedIds])
 
   const deleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return
@@ -1404,11 +1413,11 @@ export function App() {
           }
     )
     setSelectedIds(new Set())
-  }, [rects, selectedIds])
+  }, [rects, selectedIds, setSelectedIds])
 
   const selectAll = useCallback(() => {
     setSelectedIds(new Set(rects.map((r) => r.id)))
-  }, [rects])
+  }, [rects, setSelectedIds])
 
   const renameRect = useCallback(
     (id: string, name: string) => {
@@ -1521,7 +1530,7 @@ export function App() {
     setMode({ kind: 'slicing', state: initial })
     setSelectedIds(new Set())
     setRenameMode({ kind: 'none' })
-  }, [imageSize, regenerateGrid])
+  }, [imageSize, regenerateGrid, setSelectedIds])
 
   const exitSlice = useCallback(() => {
     setMode({ kind: 'normal' })
@@ -1586,7 +1595,7 @@ export function App() {
         return { ...prev, picked: next }
       })
     },
-    [updateSlice, mode, selectedIds]
+    [updateSlice, mode, selectedIds, setSelectedIds]
   )
 
   const setSliceGrid = useCallback(
@@ -1625,7 +1634,7 @@ export function App() {
     setRects((prev) => [...prev, ...newRects])
     setSelectedIds(new Set(newRects.map((r) => r.id)))
     updateSlice((prev) => ({ ...prev, picked: new Set() }))
-  }, [mode, updateSlice])
+  }, [mode, updateSlice, setRects, setSelectedIds])
 
   const slicing = mode.kind === 'slicing'
   const sliceCanCommit = mode.kind === 'slicing' && mode.state.picked.size > 0 && mode.state.prefix.trim() !== ''
@@ -1651,7 +1660,7 @@ export function App() {
     })
     setSelectedIds(new Set())
     setRenameMode({ kind: 'none' })
-  }, [imageSize])
+  }, [imageSize, setSelectedIds])
 
   const exitAutoDetect = useCallback(() => {
     setMode({ kind: 'normal' })
@@ -1706,7 +1715,7 @@ export function App() {
     setRects((prev) => [...prev, ...newRects])
     setSelectedIds(new Set(newRects.map((r) => r.id)))
     updateAutoDetect((prev) => ({ ...prev, picked: new Set() }))
-  }, [mode, updateAutoDetect])
+  }, [mode, updateAutoDetect, setRects, setSelectedIds])
 
   const autoDetectCanCommit =
     mode.kind === 'autodetect' && mode.state.picked.size > 0 && mode.state.prefix.trim() !== ''
@@ -1897,6 +1906,8 @@ export function App() {
     folderSelectionPrefix,
     manualAnimHighlight,
     imageSize,
+    setRects,
+    setTool,
   ])
 
   return (
