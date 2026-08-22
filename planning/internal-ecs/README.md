@@ -1,6 +1,6 @@
 # Internal ECS design gate
 
-Status: **proposal — implementation is blocked on review**
+Status: **approved — initial kernel evidence captured, full production validation pending**
 
 Date: 2026-08-22
 
@@ -25,6 +25,7 @@ The replacement must prove all of the following before Koota is removed:
 3. [Proposed runtime](./02-proposed-runtime.md) — scope, API, storage, query, event, and entity-lifecycle design.
 4. [Benchmark and validation plan](./03-benchmark-validation-plan.md) — baselines, workloads, acceptance thresholds, and CI gates.
 5. [Migration and rollout plan](./04-migration-rollout-plan.md) — atomic implementation phases, rollback boundary, documentation, and review sequence.
+6. [Baseline and kernel decision](./05-baseline-and-kernel-decision.md) — raw-evidence links, Koota behavior findings, isolated size results, and the selected production direction.
 
 ## Proposed decision in one page
 
@@ -81,7 +82,11 @@ The implementation phase begins with three small, API-equivalent kernels:
 2. Entity signatures with incrementally maintained query sets.
 3. Anchored sparse-set scans with compiled selectors.
 
-The benchmark plan selects the smallest kernel that wins the actual Flatland workloads. The architecture document expresses the preferred API and semantics, not an unchangeable storage bet.
+The first evidence gate selects entity signatures with incrementally maintained query views as the
+production direction. It used 68.5% less active heap than Koota at 60,000 entities and won the
+principal lifecycle, stable-query, structural, routing-event, and assignment microbenchmarks. That
+selection remains subject to the end-to-end renderer gates; the architecture document expresses the
+preferred API and semantics, not an unchangeable storage bet.
 
 ## Current measured cost
 
@@ -90,8 +95,7 @@ Against the currently installed Koota 0.6.5:
 | Measurement                                            |                                                 Current result |
 | ------------------------------------------------------ | -------------------------------------------------------------: |
 | Installed Koota package                                |                                                 496 kB on disk |
-| Koota core ESM chunk                                   |                           98,396 bytes raw / 17,310 bytes gzip |
-| Tree-shaken bundle of Flatland's seven runtime imports | 34,846 bytes minified / 10,522 bytes gzip / 9,368 bytes Brotli |
+| Tree-shaken bundle of Flatland's seven runtime imports | 34,910 bytes minified / 10,584 bytes gzip / 9,362 bytes Brotli |
 
 The seven imports are `createWorld`, `trait`, `relation`, `createAdded`, `createChanged`, `createRemoved`, and `getStore`. Type-only imports are excluded from the bundle measurement.
 
@@ -99,7 +103,8 @@ The proposed shipped-runtime gate is at most **12 kB minified / 4 kB gzip**, wit
 
 ## Approval boundary
 
-No implementation, peer-dependency removal, or application migration should begin until this package is accepted. Review can approve the whole proposal or request changes to:
+The proposal was approved on 2026-08-22. Production migration may proceed only while the evidence
+gates remain green. Review can still request changes to:
 
 - the public/private boundary,
 - the schema API,

@@ -1,6 +1,6 @@
 # Internal ECS migration and rollout plan
 
-Status: design approved; evidence follows in the review stack
+Status: implementation in progress — design and first evidence gate approved
 
 Date: 2026-08-22
 

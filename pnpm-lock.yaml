@@ -1977,6 +1977,25 @@ importers:
         specifier: 'catalog:'
         version: 19.2.3(react@19.2.3)
 
+  tools/ecs-bench:
+    dependencies:
+      koota:
+        specifier: 'catalog:'
+        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.7
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.7(@types/debug@4.1.12)(@types/node@22.19.7)(happy-dom@20.10.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
+
   tools/io:
     devDependencies:
       '@three-flatland/schemas':

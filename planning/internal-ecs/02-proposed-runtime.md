@@ -1,6 +1,6 @@
 # Proposed private entity runtime
 
-Status: architecture proposal
+Status: approved; signature-backed persistent selectors selected by the first evidence gate
 
 Date: 2026-08-22
 
@@ -236,6 +236,11 @@ Exact edge cases are specified by the differential tests, not left to incidental
 
 The API above is independent of the internal kernel. Three candidates must be prototyped behind the same test adapter.
 
+The completed comparison selected candidate B. See
+[`05-baseline-and-kernel-decision.md`](./05-baseline-and-kernel-decision.md) for raw-evidence links
+and the disposition of the other candidates. The end-to-end renderer gates can still reject or
+revise that choice before Koota is removed.
+
 ### A. Sparse trait sets + persistent selector sets
 
 - Each trait has dense/sparse membership.
@@ -302,7 +307,8 @@ It is not required to justify removing Koota because the relation engine and gen
 
 Development builds should detect:
 
-- stale entity handles and, where an owning object is available, mismatched world ownership,
+- stale entity handles,
+- wrong-world ownership at the internal object boundary where the owner is available,
 - reading or patching a missing trait,
 - duplicate trait addition where replacement was not requested,
 - selector mutation of its required structure during iteration,

@@ -1,6 +1,6 @@
 # Internal ECS benchmark and validation plan
 
-Status: pre-implementation gate plan
+Status: initial kernel baseline captured; expanded kernel, production, consumer, and live gates pending
 
 Date: 2026-08-22
 
@@ -20,15 +20,17 @@ Capture baselines from the exact merge base used for implementation and record:
 - median, p95, and dispersion,
 - raw observations, not only summarized numbers.
 
-The current preliminary size baseline is:
+The merge-base size baseline is:
 
 | Metric                          |       Koota 0.6.5 |
 | ------------------------------- | ----------------: |
-| Seven-import tree-shaken kernel | 34,846 B minified |
-| Gzip                            |          10,522 B |
-| Brotli                          |           9,368 B |
+| Seven-import tree-shaken kernel | 34,910 B minified |
+| Gzip                            |          10,584 B |
+| Brotli                          |           9,362 B |
 
-These numbers must be recaptured after rebasing onto the implementation merge base.
+These numbers were recaptured after rebasing onto implementation merge base `4824c475` with
+esbuild 0.28.1. Raw results are in
+[`results/kernel-size.json`](./results/kernel-size.json).
 
 ## Kernel microbenchmarks
 
