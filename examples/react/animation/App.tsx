@@ -4,6 +4,7 @@ import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { AnimatedSprite2D, SpriteSheetLoader, SortLayers, type AnimationSetDefinition } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -227,7 +228,7 @@ export default function App() {
           top: 1,
           bottom: -1,
         }}
-        renderer={{ antialias: false }}
+        renderer={{ antialias: false, ...exampleRendererColorConfig }}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'
         }}

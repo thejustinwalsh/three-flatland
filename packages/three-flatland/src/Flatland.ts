@@ -71,12 +71,20 @@ interface LightingContextData {
   materials: Set<Sprite2DMaterial>
   dirty: boolean
   initialized: boolean
+  surfaceSize: Vector2
+  resizePending: boolean
   renderer: WebGPURenderer | null
   camera: OrthographicCamera | null
   scene: Scene | null
   worldSize: Vector2
   worldOffset: Vector2
 }
+
+// R3F restores a removed JSX property from a no-arg instance of the class.
+// Remember every camera created for that default state so assigning one back
+// can restore this instance's own managed camera instead of adopting a foreign
+// default camera and permanently disabling automatic frustum updates.
+const _flatlandInternalCameras = new WeakMap<OrthographicCamera, Flatland>()
 
 /**
  * Options for creating a Flatland instance.
@@ -96,7 +104,10 @@ export interface FlatlandOptions {
    * attachment format.
    */
   renderTarget?: RenderTarget | null
-  /** Camera to use (null = use internal orthographic camera) */
+  /**
+   * Camera to use (null = use the internal orthographic camera). Flatland never
+   * rewrites a supplied camera's frustum; its owner remains responsible for it.
+   */
   camera?: OrthographicCamera | null
   /** Orthographic view size in pixels (default: 400) */
   viewSize?: number
@@ -108,8 +119,15 @@ export interface FlatlandOptions {
   clearAlpha?: number
   /** Enable post-processing pipeline (default: false) */
   postProcessing?: boolean
-  /** Initial aspect ratio (default: 1, use resize() to update) */
-  aspect?: number
+  /**
+   * Fixed aspect ratio. When omitted or set to `'auto'`, Flatland derives the aspect from
+   * the renderer's viewport (or the render target) when its dimensions
+   * change. Passing a value pins the internal camera aspect while lighting
+   * still follows the surface. A camera supplied through `camera` keeps its
+   * authored frustum. Calling resize() takes full manual size control;
+   * assigning `aspect = 'auto'` restores automatic sizing.
+   */
+  aspect?: number | 'auto'
 }
 
 /**
@@ -213,8 +231,25 @@ export class Flatland extends Group implements WorldProvider {
   /** Current aspect ratio */
   private _aspect: number
 
-  /** Whether we own the camera (for disposal) */
+  /**
+   * Whether the camera aspect is derived from renderer/render-target size.
+   * An explicit `aspect` option, property assignment, or `resize()` call
+   * switches the camera to manual aspect control.
+   */
+  private _autoAspect: boolean
+
+  /** Whether renderer/render-target dimensions are sampled each frame. */
+  private _autoSurfaceSize = true
+
+  /** Last valid render-surface size — skips redundant per-frame resize work */
+  private _lastSyncedWidth = 0
+  private _lastSyncedHeight = 0
+
+  /** Whether the active camera is Flatland's managed internal camera. */
   private _ownsCamera: boolean
+
+  /** Stable internal camera restored when R3F removes a custom camera prop. */
+  private _internalCamera: OrthographicCamera
 
   /** Render target (null = viewport) */
   private _renderTarget: RenderTarget | null = null
@@ -251,6 +286,9 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Reusable Vector2 to avoid per-frame allocations */
   private _tempVec2 = new Vector2()
+
+  /** Reusable physical drawing-buffer size for surface-dependent GPU resources. */
+  private _drawingBufferSize = new Vector2()
 
   /**
    * Camera frustum bounds as TSL uniform nodes. Created once per Flatland
@@ -313,16 +351,24 @@ export class Flatland extends Group implements WorldProvider {
     this.spriteGroup = new SpriteGroup()
     this.scene.add(this.spriteGroup)
 
-    // Store view size and aspect
+    // Store view size and aspect. Omitted/invalid aspect = auto-derive from
+    // the renderer (or render target) each render; valid explicit aspect = manual.
+    const fixedAspect = options.aspect
+    const hasFixedAspect = typeof fixedAspect === 'number' && Number.isFinite(fixedAspect) && fixedAspect > 0
     this._viewSize = options.viewSize ?? 400
-    this._aspect = options.aspect ?? 1
+    this._aspect = hasFixedAspect ? fixedAspect : 1
+    this._autoAspect = !hasFixedAspect
+
+    // Always retain an instance-owned camera so R3F can restore the no-arg
+    // constructor default after a conditional custom camera prop is removed.
+    this._internalCamera = this._createCamera()
 
     // Create or use provided camera
     if (options.camera) {
       this._camera = options.camera
       this._ownsCamera = false
     } else {
-      this._camera = this._createCamera()
+      this._camera = this._internalCamera
       this._ownsCamera = true
     }
 
@@ -385,6 +431,7 @@ export class Flatland extends Group implements WorldProvider {
 
     const camera = new OrthographicCamera(-halfWidth, halfWidth, halfHeight, -halfHeight, 0.1, 1000)
     camera.position.z = 100
+    _flatlandInternalCameras.set(camera, this)
     return camera
   }
 
@@ -414,9 +461,28 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
-   * Set a custom camera.
+   * Set a custom camera. Assigning the default camera read from a no-arg
+   * Flatland instance restores this instance's own managed camera; this is the
+   * property-removal path used by React Three Fiber.
    */
   set camera(value: OrthographicCamera) {
+    const internalOwner = _flatlandInternalCameras.get(value)
+    const thisIsR3FManaged = '__r3f' in (this as Flatland & { __r3f?: unknown })
+    const ownerIsR3FManaged =
+      internalOwner !== undefined && '__r3f' in (internalOwner as Flatland & { __r3f?: unknown })
+    // R3F restores a removed property from its memoized no-arg prototype,
+    // whose Flatland instance is never reconciled or rendered. Only interpret
+    // that camera as a sentinel while assigning to an R3F-managed instance;
+    // vanilla Flatland instances can share an internal camera before either
+    // one renders.
+    const isR3FPrototypeCamera =
+      thisIsR3FManaged && internalOwner !== undefined && !ownerIsR3FManaged && internalOwner._lastRenderTime < 0
+    if (internalOwner === this || isR3FPrototypeCamera) {
+      this._camera = this._internalCamera
+      this._ownsCamera = true
+      this._updateCameraFrustum()
+      return
+    }
     this._camera = value
     this._ownsCamera = false
   }
@@ -433,6 +499,61 @@ export class Flatland extends Group implements WorldProvider {
    */
   set viewSize(value: number) {
     this._viewSize = value
+    this._updateCameraFrustum()
+  }
+
+  /**
+   * Get the configured aspect mode. Returns `'auto'` while Flatland's internal
+   * camera follows the render surface; use {@link resolvedAspect} for the
+   * camera's current numeric ratio. A user-supplied camera keeps its authored
+   * frustum regardless of this mode.
+   */
+  get aspect(): number | 'auto' {
+    return this._autoAspect ? 'auto' : this._aspect
+  }
+
+  /**
+   * Current numeric camera aspect. For Flatland's internal camera this includes
+   * the ratio resolved in auto mode; for a user-supplied camera it is derived
+   * directly from that camera's authored orthographic frustum.
+   */
+  get resolvedAspect(): number {
+    if (!this._ownsCamera) {
+      const width = Math.abs(this._camera.right - this._camera.left)
+      const height = Math.abs(this._camera.top - this._camera.bottom)
+      if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+        return width / height
+      }
+    }
+    return this._aspect
+  }
+
+  /**
+   * A number pins the internal camera ratio manually. Assigning `'auto'`
+   * restores automatic internal-camera and effect sizing, including after
+   * `resize()`. User-supplied cameras keep their authored frustum. The explicit
+   * sentinel also lets R3F restore constructor defaults when an `aspect` JSX
+   * prop is removed. Invalid numeric values are ignored.
+   */
+  set aspect(value: number | 'auto') {
+    if (value === 'auto') {
+      this._autoAspect = true
+      this._autoSurfaceSize = true
+      // Force one fresh surface sync even when its dimensions happen to match
+      // the previous manual size; the camera may still have a pinned ratio.
+      this._lastSyncedWidth = 0
+      this._lastSyncedHeight = 0
+      return
+    }
+    if (!Number.isFinite(value) || value <= 0) return
+    this._autoAspect = false
+    this._autoSurfaceSize = true
+    // A numeric aspect pins only the camera. If resize() previously selected
+    // full manual surface control, resume physical surface tracking for GPU
+    // resources and force a fresh sample on the next render.
+    this._lastSyncedWidth = 0
+    this._lastSyncedHeight = 0
+    this._aspect = value
     this._updateCameraFrustum()
   }
 
@@ -809,6 +930,12 @@ export class Flatland extends Group implements WorldProvider {
    * Set the lighting effect for this Flatland instance.
    * The LightEffect produces a ColorTransformFn that is applied to all lit sprites.
    *
+   * Flatland owns the active effect's lifecycle while attached. Replacing it
+   * or passing `null` calls `dispose()` before detachment so GPU resources are
+   * released promptly. The effect instance remains reusable and will receive
+   * a fresh `init → resize → update` sequence when reattached; callers should
+   * not use effect-owned GPU resource handles while the effect is detached.
+   *
    * @param lightEffect - LightEffect instance (or null to disable lighting)
    * @returns this (for chaining)
    *
@@ -822,8 +949,14 @@ export class Flatland extends Group implements WorldProvider {
    * ```
    */
   setLighting(lightEffect: LightEffect | null): this {
+    if (this._lightEffect === lightEffect) return this
+
     // Detach previous
     if (this._lightEffect) {
+      // Flatland owns the active effect lifecycle. Release any GPU resources
+      // before detaching so reusing the same instance later can safely init
+      // against its next renderer without leaking the previous allocation.
+      this._lightEffect.dispose()
       if (this._lightEffect._entity) {
         this._lightEffect._entity.destroy()
       }
@@ -912,12 +1045,17 @@ export class Flatland extends Group implements WorldProvider {
         materials: this._spriteMaterials,
         dirty: true,
         initialized: false,
+        surfaceSize: existingCtx?.surfaceSize ?? new Vector2(),
+        resizePending: false,
         renderer: existingCtx?.renderer ?? null,
         camera: existingCtx?.camera ?? null,
         scene: existingCtx?.scene ?? null,
         worldSize: existingCtx?.worldSize ?? new Vector2(),
         worldOffset: existingCtx?.worldOffset ?? new Vector2(),
       })
+      if (this._lastSyncedWidth > 0 && this._lastSyncedHeight > 0) {
+        this._queueLightEffectResize(this._lastSyncedWidth, this._lastSyncedHeight)
+      }
 
       // Register lighting systems on the schedule (before sprite systems)
       this._ensureLightingSystems()
@@ -940,6 +1078,8 @@ export class Flatland extends Group implements WorldProvider {
           materials: existingCtx?.materials ?? new Set(),
           dirty: true,
           initialized: false,
+          surfaceSize: existingCtx?.surfaceSize ?? new Vector2(this._lastSyncedWidth, this._lastSyncedHeight),
+          resizePending: false,
           renderer: existingCtx?.renderer ?? null,
           camera: existingCtx?.camera ?? null,
           scene: existingCtx?.scene ?? null,
@@ -962,6 +1102,13 @@ export class Flatland extends Group implements WorldProvider {
       if (lctx) {
         lctx.dirty = true
       }
+    }
+  }
+
+  /** @internal Re-apply the active effect resolution scale. */
+  _markLightingResizeDirty(): void {
+    if (this._lastSyncedWidth > 0 && this._lastSyncedHeight > 0) {
+      this._queueLightEffectResize(this._lastSyncedWidth, this._lastSyncedHeight)
     }
   }
 
@@ -1034,6 +1181,8 @@ export class Flatland extends Group implements WorldProvider {
           materials: new Set(),
           dirty: false,
           initialized: false,
+          surfaceSize: new Vector2(this._lastSyncedWidth, this._lastSyncedHeight),
+          resizePending: false,
           renderer: null,
           camera: null,
           scene: null,
@@ -1232,6 +1381,11 @@ export class Flatland extends Group implements WorldProvider {
     // Auto-sync global uniforms from renderer
     this._syncGlobals(renderer)
 
+    // Keep render-surface dimensions current for the camera and lighting.
+    // A fixed aspect only pins the camera; an explicit resize() selects full
+    // manual surface control for both the camera and effects.
+    this._syncSurfaceSize(renderer)
+
     // Update LightingContext runtime fields before systems run
     const lctx = this._getLightingContext()
     if (lctx) {
@@ -1411,16 +1565,42 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Apply Flatland's 2D-friendly default without overriding authored output. */
   private _prepareRenderTarget(renderTarget: RenderTarget | null): RenderTarget | null {
-    if (renderTarget?.texture.colorSpace === NoColorSpace) {
-      renderTarget.texture.colorSpace = SRGBColorSpace
+    if (renderTarget) {
+      const textures = renderTarget.textures?.length ? renderTarget.textures : [renderTarget.texture]
+      for (const texture of textures) {
+        if (texture.colorSpace === NoColorSpace) texture.colorSpace = SRGBColorSpace
+      }
     }
     return renderTarget
   }
 
   /**
-   * Resize the rendering area.
+   * Resize the rendering area, taking manual control of the aspect
+   * ratio (the automatic per-render sync is disabled from here on).
+   *
+   * Zero, negative, or non-finite dimensions are ignored — a transient
+   * unmeasured layout (R3F's first commit reports a 0×0 canvas) must
+   * not latch a NaN/Infinity frustum, and must not disable the
+   * automatic sync that will pick up the real size once it exists.
    */
   resize(width: number, height: number): void {
+    if (!this._isValidSize(width, height)) return
+    this._autoAspect = false
+    this._autoSurfaceSize = false
+    this._applyResize(width, height)
+  }
+
+  /** Guard against zero/negative/NaN dimensions. */
+  private _isValidSize(width: number, height: number): boolean {
+    return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+  }
+
+  /**
+   * Apply an explicit manual surface size. Dimensions are pre-validated.
+   */
+  private _applyResize(width: number, height: number): void {
+    this._lastSyncedWidth = width
+    this._lastSyncedHeight = height
     this._aspect = width / height
     this._updateCameraFrustum()
 
@@ -1429,10 +1609,57 @@ export class Flatland extends Group implements WorldProvider {
       this._renderTarget.setSize(width, height)
     }
 
-    // Forward resize to LightEffect (Forward+, etc.)
-    if (this._lightEffect?.enabled) {
-      this._lightEffect.resize(width, height)
+    this._queueLightEffectResize(width, height)
+  }
+
+  /**
+   * Queue a LightEffect resize for the lighting lifecycle system. Keeping
+   * resize in the system guarantees init() runs first and preserves the
+   * current surface size for effects attached after the first frame.
+   */
+  private _queueLightEffectResize(width: number, height: number): void {
+    const lctx = this._getLightingContext()
+    if (!lctx) return
+    const scale = this._lightEffect?.resolutionScale ?? 1
+    lctx.surfaceSize.set(Math.max(1, Math.floor(width * scale)), Math.max(1, Math.floor(height * scale)))
+    lctx.resizePending = true
+  }
+
+  /**
+   * Track the physical render surface every frame: the render target's texel
+   * dimensions when rendering to texture, otherwise the renderer's drawing
+   * buffer size (logical canvas size multiplied by pixel ratio).
+   * Camera aspect follows while auto mode is active; LightEffect sizing
+   * follows unless resize() selected full manual size control because GPU
+   * tile buffers remain surface-dependent when only camera aspect is pinned.
+   */
+  private _syncSurfaceSize(renderer: WebGPURenderer): void {
+    if (!this._autoSurfaceSize) return
+
+    let width: number
+    let height: number
+    if (this._renderTarget) {
+      width = this._renderTarget.width
+      height = this._renderTarget.height
+    } else {
+      renderer.getDrawingBufferSize(this._drawingBufferSize)
+      width = this._drawingBufferSize.x
+      height = this._drawingBufferSize.y
     }
+
+    // Skip unmeasured/invalid surfaces (0×0 first R3F commit, NaN) and
+    // frames where nothing changed — LightEffect.resize can reallocate
+    // GPU tile buffers, so it must only fire on real size changes.
+    if (!this._isValidSize(width, height)) return
+    if (width === this._lastSyncedWidth && height === this._lastSyncedHeight) return
+
+    this._lastSyncedWidth = width
+    this._lastSyncedHeight = height
+    if (this._autoAspect) {
+      this._aspect = width / height
+      this._updateCameraFrustum()
+    }
+    this._queueLightEffectResize(width, height)
   }
 
   /**

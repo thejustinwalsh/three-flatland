@@ -1,12 +1,13 @@
 import { Canvas, extend, useLoader, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useLayoutEffect } from 'react'
 import { convertToTexture } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
 import { Flatland, Sprite2D, TextureLoader, createPassEffect } from 'three-flatland/react'
 import type { PassEffect } from 'three-flatland/react'
 import { WebGPUFallback } from './WebGPUFallback'
-import { GemBackground } from './GemBackground'
+import { exampleRendererColorConfig } from './rendererColorManagement'
+import { useGemGradient } from './GemBackground'
 import { GEM } from './gem'
 import {
   crtComplete,
@@ -232,6 +233,20 @@ function FlatlandScene({ preset }: { preset: PresetName }) {
   const renderer = useThree((s) => s.renderer)
   const presetRef = useRef<ActivePreset>({ passes: [], timeDriven: [] })
   const elapsedRef = useRef(0)
+  const gemBackground = useGemGradient(GEM)
+
+  // Flatland owns and renders an internal scene. Writing backgroundNode to
+  // R3F's outer scene is invisible because the render-phase callback below
+  // deliberately presents Flatland's scene instead.
+  useLayoutEffect(() => {
+    const scene = flatlandRef.current?.scene as unknown as { backgroundNode?: unknown }
+    if (!scene) return
+    const previous = scene.backgroundNode
+    scene.backgroundNode = gemBackground
+    return () => {
+      scene.backgroundNode = previous
+    }
+  }, [gemBackground])
 
   // Apply preset when it changes (effect fires after mount, flatlandRef is ready)
   useEffect(() => {
@@ -253,19 +268,17 @@ function FlatlandScene({ preset }: { preset: PresetName }) {
   })
 
   // Render in the 'render' phase so R3F skips its own render.
-  const size = useThree((s) => s.size)
   useFrame(
     () => {
       const flatland = flatlandRef.current
       if (!flatland) return
-      flatland.resize(size.width, size.height)
       flatland.render(renderer as unknown as WebGPURenderer)
     },
     { phase: 'render' }
   )
 
   return (
-    <flatland ref={flatlandRef} viewSize={400} clearColor={0x1a1a2e}>
+    <flatland ref={flatlandRef} viewSize={400} clearColor={0x16191e}>
       <SpriteScene />
     </flatland>
   )
@@ -292,13 +305,12 @@ export default function App() {
       orthographic
       dpr={1}
       camera={{ zoom: 5, position: [0, 0, 100] }}
-      renderer={{ antialias: false }}
+      renderer={{ antialias: false, ...exampleRendererColorConfig }}
       fallback={<WebGPUFallback />}
       onCreated={({ renderer }) => {
         renderer.domElement.style.imageRendering = 'pixelated'
       }}
     >
-      <GemBackground gem={GEM} />
       <FlatlandScene preset={preset as PresetName} />
     </Canvas>
   )

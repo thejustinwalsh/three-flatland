@@ -13,6 +13,7 @@ import {
   type RenderStats,
 } from 'three-flatland/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import type { Pane } from 'tweakpane'
 import { GemBackground } from './GemBackground'
@@ -488,7 +489,7 @@ export default function App() {
       <Canvas
         dpr={1}
         style={{ background: '#16191e' }}
-        renderer={{ antialias: false }}
+        renderer={{ antialias: false, ...exampleRendererColorConfig }}
         fallback={<WebGPUFallback />}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'

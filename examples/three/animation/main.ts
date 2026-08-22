@@ -5,6 +5,7 @@ import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 import { initializeRenderer } from './rendererFallback'
+import { configureExampleRendererColor } from './rendererColorManagement'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
  * a fresh renderer + animate() loop while the previous one keeps
@@ -31,6 +32,7 @@ async function main() {
 
   // WebGPU Renderer (required for TSL materials)
   const renderer = new WebGPURenderer({ antialias: false })
+  configureExampleRendererColor(renderer)
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art

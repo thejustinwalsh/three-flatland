@@ -33,13 +33,18 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
     await renderer.init()
     document.body.appendChild(renderer.domElement)
 
+    function resizeRenderer() {
+      renderer.setSize(window.innerWidth, window.innerHeight)
+    }
+    resizeRenderer()
+    window.addEventListener('resize', resizeRenderer)
+
     const flatland = new Flatland({ viewSize: 400, clearColor: 0x1a1a2e })
     const texture = await new TextureLoader().loadAsync('/sprites/hero.png')
 
     flatland.add(new Sprite2D({ texture }))
 
     function animate() {
-      flatland.resize(window.innerWidth, window.innerHeight)
       flatland.render(renderer)
       requestAnimationFrame(animate)
     }
@@ -48,7 +53,7 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
   </TabItem>
   <TabItem label="React" icon="simple-icons:react">
     ```tsx
-    import { useRef, useEffect } from 'react'
+    import { useRef } from 'react'
     import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
     import { Flatland, Sprite2D, Sprite2DMaterial } from 'three-flatland/react'
     import type { Flatland as FlatlandType } from 'three-flatland/react'
@@ -58,11 +63,7 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
 
     function Scene() {
       const flatlandRef = useRef<FlatlandType>(null)
-      const { renderer, size } = useThree()
-
-      useEffect(() => {
-        flatlandRef.current?.resize(size.width, size.height)
-      }, [size.width, size.height])
+      const renderer = useThree((state) => state.renderer)
 
       // Render in the 'render' phase so R3F skips its own render
       useFrame(() => {
@@ -100,7 +101,7 @@ const flatland = new Flatland({
   clearAlpha: 1,          // Background alpha (< 1 for transparent)
   autoClear: true,        // Clear before each render
   postProcessing: false,  // Enable post-processing pipeline
-  aspect: 1,              // Initial aspect ratio (use resize() to update)
+  aspect: undefined,      // Auto-sync from the render surface; set a number to pin it
   camera: null,           // Custom OrthographicCamera (null = internal)
   renderTarget: null,     // RenderTarget (null = render to viewport)
 })
@@ -139,7 +140,9 @@ Flatland manages 2D lighting with `Light2D` sources and a `LightEffect` pipeline
 ```typescript
 import { DefaultLightEffect } from '@three-flatland/presets'
 
-flatland.setLighting(new DefaultLightEffect())
+const lighting = new DefaultLightEffect()
+lighting.resolutionScale = 0.5 // Optional: half-resolution effect resources
+flatland.setLighting(lighting)
 ```
 
 All sprites receive lighting by default. Set `lit: false` to opt out:
@@ -153,6 +156,11 @@ const indicator = new Sprite2D({ texture, lit: false }) // always full brightnes
 | `setLighting(effect)` | Set the active LightEffect (or `null` to disable) |
 | `lighting` | Current LightEffect (read-only) |
 | `lights` | All tracked Light2D instances (read-only) |
+| `effect.resolutionScale` | Processing resolution relative to the physical surface (default: `1`) |
+
+`resolutionScale` belongs to the effect that owns the surface-dependent resources. A value of `0.5` receives half-width and half-height dimensions in `LightEffect.resize()`, reducing area to one quarter while leaving camera framing, canvas resolution, renderer DPR, and logical viewport uniforms unchanged. Change Three.js `renderer.setPixelRatio()` or R3F `<Canvas dpr={...}>` instead when the entire frame should render at a lower resolution.
+
+Flatland owns an attached effect's lifecycle. Replacing the active effect or calling `setLighting(null)` disposes its GPU resources before detaching it. The effect instance can be attached again and will receive a fresh `init → resize → update` sequence, but effect-owned GPU resource handles must not be used while it is detached.
 
 See the [2D Lighting guide](../lighting/) for preset comparisons, Light2D types, and custom effects.
 
@@ -163,17 +171,22 @@ import framePipeline from '../../../assets/diagrams/frame-pipeline.svg?raw';
 
 <Diagram caption="Per-frame render pipeline" src={framePipeline} />
 
-Each frame, call `resize()` to sync the aspect ratio, then `render()` to draw:
+Each frame, call `render()`. `Flatland` reads the renderer drawing buffer or active render target size and updates its camera aspect when the surface dimensions change:
 
 ```typescript
 function animate() {
-  flatland.resize(canvas.width, canvas.height)
   flatland.render(renderer)
   requestAnimationFrame(animate)
 }
 ```
 
-`resize()` updates the internal camera frustum and render target dimensions. `render()` syncs global uniforms (time, viewport), updates sprite batches, and draws everything.
+`render()` syncs the camera, global uniforms, lighting buffers, and sprite batches before drawing. Surface-dependent GPU resources use physical drawing-buffer pixels so canvas DPR and render-target texels stay in the same coordinate space; `globals.viewportSize` remains the renderer's logical size and is paired with `globals.pixelRatio`. To keep a fixed camera aspect, pass `aspect` or assign `flatland.aspect`. Calling `resize(width, height)` opts into manual surface sizing and keeps the previous explicit-resize behavior, including resizing the current render target with `setSize()`. Automatic sizing only observes user-owned render targets; it never resizes them. Assigning either a numeric `aspect` or `'auto'` after `resize()` resumes automatic effect sizing; `'auto'` also resumes automatic camera framing. The explicit sentinel works for conditional R3F props such as `aspect={locked ? 1 : 'auto'}`. Read `flatland.resolvedAspect` when you need the current numeric ratio.
+
+When you supply a camera through `camera`, Flatland preserves its authored frustum. The aspect controls above apply to the internal camera; `resolvedAspect` reports the supplied camera's actual frustum ratio.
+
+:::caution[Breaking default]
+`Flatland` previously kept `aspect = 1` until `resize()` was called. Pass `aspect: 1` when that fixed square frustum was intentional. Remove per-frame or `useThree(state => state.size)` resize bridges when the camera should follow the render surface.
+:::
 
 ## Global Uniforms
 
@@ -183,7 +196,7 @@ Every Flatland instance exposes a `globals` object with shared uniforms. These u
 |---------|-------------|
 | `time` | Elapsed seconds (`undefined` = auto) |
 | `globalTint` | Color tint for all sprites |
-| `viewportSize` | Viewport size in pixels |
+| `viewportSize` | Logical viewport size in pixels |
 | `pixelRatio` | Device pixel ratio |
 | `wind` | Wind direction and strength |
 | `fogColor` | Fog color |

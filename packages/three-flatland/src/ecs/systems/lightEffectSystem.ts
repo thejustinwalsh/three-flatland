@@ -18,7 +18,7 @@ const _runtimeCtx = {
 } as unknown as LightEffectRuntimeContext
 
 /**
- * Run LightEffect lifecycle: lazy init + per-frame update.
+ * Run LightEffect lifecycle: lazy init, ordered surface resize, and update.
  *
  * Self-gating: no-ops if LightingContext doesn't exist, effect is disabled,
  * or runtime context (renderer/camera) is not yet available.
@@ -61,7 +61,16 @@ export function lightEffectSystem(world: World): void {
   // Lazy init on first render
   if (!ctx.initialized) {
     ctx.effect.init(_runtimeCtx)
+    ctx.effect._initialized = true
     ctx.initialized = true
+    ctx.resizePending = true
+  }
+
+  // Resize only after init. The pending bit also covers effects attached
+  // after the surface was measured and effects re-enabled after a resize.
+  if (ctx.resizePending && ctx.surfaceSize.x > 0 && ctx.surfaceSize.y > 0) {
+    ctx.effect.resize(ctx.surfaceSize.x, ctx.surfaceSize.y)
+    ctx.resizePending = false
   }
 
   // Per-frame update (tiling, SDF shadows, radiance cascades, etc.)

@@ -104,7 +104,6 @@ function GameScene({ soundsRef, isVisible, onGameStateChange, onStatsChange }: G
   const world = useWorld()
   const flatlandRef = useRef<FlatlandType>(null)
   const renderer = useThree((s) => s.renderer)
-  const size = useThree((s) => s.size)
   const fpsRef = useRef({ frames: 0, time: 0, current: 60 })
 
   // Create materials with TSL effects
@@ -240,7 +239,6 @@ function GameScene({ soundsRef, isVisible, onGameStateChange, onStatsChange }: G
       if (!isVisible) return
       const flatland = flatlandRef.current
       if (!flatland) return
-      flatland.resize(size.width, size.height)
       flatland.render(renderer as unknown as WebGPURenderer)
     },
     { phase: 'render' }

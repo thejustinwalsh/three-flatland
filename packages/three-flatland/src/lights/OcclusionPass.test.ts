@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { OcclusionPass } from './OcclusionPass'
 import { NearestFilter, LinearFilter } from 'three'
 
@@ -43,6 +43,19 @@ describe('OcclusionPass', () => {
     pass.resize(800, 600)
     // Same reference guaranteed because no setSize was issued.
     expect(pass.renderTarget).toBe(rt1)
+    pass.dispose()
+  })
+
+  it('is a no-op when a surface change rounds to the same physical size', () => {
+    const pass = new OcclusionPass()
+    pass.resize(512, 512)
+    const setSize = vi.spyOn(pass.renderTarget, 'setSize')
+
+    pass.resize(513, 513)
+
+    expect(pass.width).toBe(256)
+    expect(pass.height).toBe(256)
+    expect(setSize).not.toHaveBeenCalled()
     pass.dispose()
   })
 

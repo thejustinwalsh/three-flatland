@@ -5,6 +5,7 @@ import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 import { initializeRenderer } from './rendererFallback'
+import { configureExampleRendererColor } from './rendererColorManagement'
 
 // HMR cleanup — stop the old animate loop + dispose the old renderer
 // when Vite reloads this module. Without this, every dev save stacks a
@@ -83,6 +84,7 @@ async function main() {
 
   // WebGPU Renderer (required for TSL materials)
   const renderer = new WebGPURenderer({ antialias: false })
+  configureExampleRendererColor(renderer)
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art

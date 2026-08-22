@@ -43,6 +43,7 @@ function createRenderer(initialTarget: RenderTarget | null = null) {
     getPixelRatio: () => 1,
     getRenderTarget: () => currentTarget,
     getSize: (target: Vector2) => target.set(640, 360),
+    getDrawingBufferSize: (target: Vector2) => target.set(640, 360),
     render: vi.fn((_scene: Scene, _camera: Camera) => undefined),
     setClearColor: vi.fn(),
     setRenderTarget,
@@ -68,6 +69,15 @@ describe('Flatland render-target color management', () => {
     new Flatland({ renderTarget: target })
 
     expect(target.texture.colorSpace).toBe(SRGBColorSpace)
+  })
+
+  it('defaults every untagged MRT attachment to sRGB', () => {
+    const target = new RenderTarget(64, 64, { count: 2 })
+
+    new Flatland({ renderTarget: target })
+
+    expect(target.textures).toHaveLength(2)
+    expect(target.textures.every((texture) => texture.colorSpace === SRGBColorSpace)).toBe(true)
   })
 
   it('preserves an explicit linear HDR target', () => {

@@ -4,6 +4,7 @@ import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneInput } from '@three-flatland/devtools/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 
 extend({ Sprite2D })
 
@@ -56,7 +57,7 @@ export default function App() {
         top: 1,
         bottom: -1,
       }}
-      renderer={{ antialias: false }}
+      renderer={{ antialias: false, ...exampleRendererColorConfig }}
       onCreated={({ renderer }) => {
         renderer.domElement.style.imageRendering = 'pixelated'
       }}

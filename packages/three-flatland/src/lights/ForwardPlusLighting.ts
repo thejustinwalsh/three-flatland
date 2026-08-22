@@ -628,6 +628,12 @@ export class ForwardPlusLighting {
 
   dispose(): void {
     this._tileTexture.dispose()
+    // A disposed instance may be attached again at the same dimensions.
+    // Reset the active grid so resize() re-runs init(), republishes the
+    // devtools views, and update() stays inert until that happens.
+    this._tileCountX = 0
+    this._tileCountY = 0
+    this._tileCount = 0
     unregisterDebugArray('forwardPlus.lightCounts')
     unregisterDebugArray('forwardPlus.tileScores')
     unregisterDebugTexture('forwardPlus.tiles')

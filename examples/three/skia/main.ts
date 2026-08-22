@@ -40,6 +40,7 @@ import {
 import { createPane } from '@three-flatland/devtools'
 import { createDevtoolsProvider } from 'three-flatland'
 import { initializeRenderer } from './rendererFallback'
+import { configureExampleRendererColor } from './rendererColorManagement'
 
 function setStatus(msg: string, ok: boolean) {
   console.log(`[skia] ${msg}`)
@@ -114,6 +115,7 @@ async function main() {
 
   // ── Three.js setup (3D perspective) ──
   const renderer = new WebGPURenderer({ antialias: true })
+  configureExampleRendererColor(renderer)
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)

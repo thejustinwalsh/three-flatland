@@ -174,7 +174,7 @@ Setting `castsShadow: false` on cosmetic fill lights (slime auras, particle glow
 :::
 
 - Per-sprite `castsShadow` controls the silhouette mask, which is rendered once per frame regardless of light count. Adding more caster sprites grows the mask render cost; adding more lights grows the trace cost.
-- The OcclusionPass defaults to `resolutionScale: 0.5` (half-res silhouette mask). Drop to `0.25` on low-end mobile if shadow cost dominates and a blockier silhouette is acceptable.
+- The OcclusionPass renders its silhouette mask at half of the active `LightEffect` processing surface. Set `lighting.resolutionScale = 0.5` to halve all effect-owned surface dimensions; the shadow mask then becomes one quarter of the physical drawing-buffer dimensions. This can improve low-end performance or deliberately produce a blockier result without changing camera framing or canvas DPR.
 
 ## Next Steps
 

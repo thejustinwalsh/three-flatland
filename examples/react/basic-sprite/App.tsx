@@ -4,6 +4,7 @@ import { Color, type OrthographicCamera as ThreeOrthographicCamera } from 'three
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -157,7 +158,7 @@ export default function App() {
   return (
     <Canvas
       dpr={1}
-      renderer={{ antialias: false }}
+      renderer={{ antialias: false, ...exampleRendererColorConfig }}
       fallback={<WebGPUFallback />}
       onCreated={({ renderer }) => {
         renderer.domElement.style.imageRendering = 'pixelated'

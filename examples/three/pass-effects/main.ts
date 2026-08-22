@@ -6,6 +6,7 @@ import { Flatland, Sprite2D, TextureLoader, createPassEffect } from 'three-flatl
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 import { initializeRenderer } from './rendererFallback'
+import { configureExampleRendererColor } from './rendererColorManagement'
 import type { PassEffect } from 'three-flatland'
 import {
   // CRT display nodes
@@ -304,6 +305,7 @@ async function main() {
   ;(flatland.scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
   const renderer = new WebGPURenderer({ antialias: false })
+  configureExampleRendererColor(renderer)
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
@@ -311,8 +313,6 @@ async function main() {
   document.body.appendChild(renderer.domElement)
 
   if (!(await initializeRenderer(renderer))) return
-
-  flatland.resize(window.innerWidth, window.innerHeight)
 
   // Load texture and create sprite scene
   const texture = await TextureLoader.load('./icon.svg')
@@ -486,7 +486,6 @@ async function main() {
 
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight)
-    flatland.resize(window.innerWidth, window.innerHeight)
   })
 
   // ─── Render Loop ────────────────────────────────────────────────────────

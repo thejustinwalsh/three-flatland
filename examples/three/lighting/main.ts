@@ -1,6 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Vector2 } from 'three'
 import { initializeRenderer } from './rendererFallback'
+import { configureExampleRendererColor } from './rendererColorManagement'
 import {
   Flatland,
   Light2D,
@@ -172,6 +173,7 @@ function newSlime(mapHalfW: number, mapHalfH: number): SlimeState {
 async function main() {
   // ─── Renderer ───────────────────────────────────────────────────
   const renderer = new WebGPURenderer({ antialias: false })
+  configureExampleRendererColor(renderer)
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1)
   renderer.domElement.style.imageRendering = 'pixelated'
@@ -182,13 +184,11 @@ async function main() {
   const flatland = new Flatland({
     viewSize: VIEW_SIZE,
     clearColor: 0x06060c,
-    aspect: window.innerWidth / window.innerHeight,
   })
-  flatland.resize(window.innerWidth, window.innerHeight)
 
   // ─── Lighting ───────────────────────────────────────────────────
   const lightEffect = new DefaultLightEffect()
-  flatland.setLighting(lightEffect)
+  lightEffect.resolutionScale = 0.5
   // Per-category quota: cap how many slime lights any single tile may
   // accumulate before falling back to compensation. Keeps hero/torch
   // lights from being crowded out in dense slime clusters.
@@ -207,7 +207,6 @@ async function main() {
   // Now that the map's world size is known, frame it to the canvas.
   const refitView = () => {
     flatland.viewSize = fitViewSize(window.innerWidth, window.innerHeight, mapHalfW * 2, mapHalfH * 2)
-    flatland.resize(window.innerWidth, window.innerHeight)
   }
   refitView()
 
@@ -473,6 +472,10 @@ async function main() {
   lightingConstants.glowEnabled = prevGlowEnabled
   lightingConstants.rimEnabled = prevRimEnabled
   pushUniforms()
+  // Attach only after the initial compile-time options are configured.
+  // Once attached, changing those options intentionally rebuilds the
+  // shader graph and emits a development warning.
+  flatland.setLighting(lightEffect)
 
   // ─── Tweakpane UI ───────────────────────────────────────────────
   const paneBundle = createPane({ driver: 'manual' })

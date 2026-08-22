@@ -1,5 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { initializeRenderer } from './rendererFallback'
+import { configureExampleRendererColor } from './rendererColorManagement'
 import {
   Scene,
   OrthographicCamera,
@@ -465,6 +466,7 @@ async function main() {
 
   // WebGPU Renderer
   const renderer = new WebGPURenderer({ antialias: false })
+  configureExampleRendererColor(renderer)
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art

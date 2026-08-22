@@ -5,6 +5,7 @@ import { Sprite2D, SpriteGroup, createDevtoolsProvider } from 'three-flatland'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 import { initializeRenderer } from './rendererFallback'
+import { configureExampleRendererColor } from './rendererColorManagement'
 
 const palette = [0x55, 0xd6, 0xbe, 0xff, 0xb4, 0x8e, 0xff, 0xff, 0xff, 0xc8, 0x57, 0xff, 0xff, 0x73, 0xa8, 0xff]
 const texture = new DataTexture(new Uint8Array(palette), 4, 1, RGBAFormat)
@@ -51,6 +52,7 @@ viewport.add(firstView, secondView)
 
 async function main() {
   const renderer = new WebGPURenderer({ antialias: false })
+  configureExampleRendererColor(renderer)
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.setSize(innerWidth, innerHeight)
   document.body.appendChild(renderer.domElement)

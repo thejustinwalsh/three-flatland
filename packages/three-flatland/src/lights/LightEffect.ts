@@ -79,6 +79,7 @@ export interface LightEffectRuntimeContext {
 // Forward-declare Flatland to avoid circular import
 interface FlatlandLike {
   _markLightingDirty(): void
+  _markLightingResizeDirty?(): void
   /**
    * Re-run the attached LightEffect's `_buildLightFn` to capture
    * fresh constant values, re-wrap the result, and push it to every
@@ -246,6 +247,9 @@ export abstract class LightEffect {
   /** @internal Whether this effect is enabled. */
   private _enabled = true
 
+  /** @internal Scale applied to the physical surface before resize(). */
+  private _resolutionScale = 1
+
   /** @internal Whether init() has been called. */
   _initialized = false
 
@@ -326,6 +330,7 @@ export abstract class LightEffect {
           get: () => this._constants[name],
           set: (v: unknown) => {
             if (this._constants[name] === v) return
+            const requiresShaderRebuild = this._lightFn !== null
             this._constants[name] = v
             this._dirty = true
             // Cached `_lightFn` captures the previous constants by
@@ -342,7 +347,7 @@ export abstract class LightEffect {
             // flood the console — the source is still traceable from the
             // first occurrence.
             const warnKey = `${ctor.lightName}.${name}`
-            if (!_warnedConstantSetters.has(warnKey)) {
+            if (requiresShaderRebuild && !_warnedConstantSetters.has(warnKey)) {
               _warnedConstantSetters.add(warnKey)
               console.warn(`[three-flatland] ${warnKey} changed at runtime — triggers shader rebuild`)
             }
@@ -378,6 +383,22 @@ export abstract class LightEffect {
     }
   }
 
+  /**
+   * Processing-resolution multiplier for resources owned by this effect.
+   * The default `1` receives the full physical drawing-buffer size; `0.5`
+   * receives half-width/half-height dimensions while camera framing and the
+   * renderer output stay unchanged. Values must be finite and greater than 0.
+   */
+  get resolutionScale(): number {
+    return this._resolutionScale
+  }
+
+  set resolutionScale(value: number) {
+    if (!Number.isFinite(value) || value <= 0 || value === this._resolutionScale) return
+    this._resolutionScale = value
+    this._flatland?._markLightingResizeDirty?.()
+  }
+
   /** Whether this effect has been marked dirty since last clearDirty(). */
   get dirty(): boolean {
     return this._dirty
@@ -392,13 +413,18 @@ export abstract class LightEffect {
   // Lifecycle methods (overridden by subclasses that own GPU resources)
   // ============================================
 
-  /** Initialize GPU resources. Called lazily on first render. */
+  /** Initialize GPU resources. Called lazily before the first resize and update. */
   init(_ctx: LightEffectRuntimeContext): void {}
 
   /** Per-frame GPU passes (tiling, SDF, radiance cascades). */
   update(_ctx: LightEffectRuntimeContext): void {}
 
-  /** Handle resize. */
+  /**
+   * Handle processing-surface resize. Flatland derives this from the physical
+   * render surface multiplied by {@link resolutionScale}. Once a valid size
+   * exists, this is called after init and before the next update. An initial
+   * update may run first while a newly mounted canvas still reports 0×0.
+   */
   resize(_width: number, _height: number): void {}
 
   // ============================================

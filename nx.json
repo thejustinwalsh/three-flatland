@@ -49,8 +49,9 @@
       "cache": false
     },
     "lint": {
+      "dependsOn": ["^build"],
       "cache": true,
-      "inputs": ["default", "{workspaceRoot}/.oxlintrc.json"],
+      "inputs": ["default", "^production", "{workspaceRoot}/.oxlintrc.json"],
       "outputs": []
     }
   }

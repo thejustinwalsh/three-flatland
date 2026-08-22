@@ -1,6 +1,6 @@
 ---
 name: flatland-r3f
-description: Use when integrating three-flatland with React Three Fiber — registering classes with extend(), rendering sprites declaratively in JSX, Flatland child routing, post-processing via addEffect, resize/render wiring in useFrame/useThree, or avoiding imperative R3F anti-patterns
+description: Use when integrating three-flatland with React Three Fiber — registering classes with extend(), rendering sprites declaratively in JSX, Flatland child routing, post-processing via addEffect, automatic render-surface sizing and fixed-aspect overrides, or avoiding imperative R3F anti-patterns
 ---
 
 # Flatland R3F Integration Skill
@@ -33,7 +33,7 @@ All classes in Flatland extend three.js base classes, so they can be registered 
 ### 1. Register with extend()
 
 ```tsx
-import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
+import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { Flatland, Sprite2D } from 'three-flatland/react'
 
 // Register Flatland and its children with R3F
@@ -45,17 +45,12 @@ extend({ Flatland, Sprite2D })
 ```tsx
 function Scene() {
   const flatlandRef = useRef<Flatland>(null)
-  const { gl, size } = useThree()
+  const renderer = useThree((state) => state.renderer)
 
-  // Handle resize
-  useEffect(() => {
-    flatlandRef.current?.resize(size.width, size.height)
-  }, [size.width, size.height])
-
-  // Render loop — Flatland.render() handles everything
+  // Flatland.render() derives camera and effect dimensions from the physical drawing buffer.
   useFrame(() => {
-    flatlandRef.current?.render(gl)
-  })
+    flatlandRef.current?.render(renderer)
+  }, { phase: 'render' })
 
   return (
     <flatland
@@ -72,7 +67,7 @@ function Scene() {
 ### 3. Complete Example
 
 ```tsx
-import { Suspense, useRef, useEffect } from 'react'
+import { Suspense, useRef } from 'react'
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
 
@@ -82,15 +77,11 @@ extend({ Flatland, Sprite2D })
 function Scene() {
   const texture = useLoader(TextureLoader, '/sprites/knight.png')
   const flatlandRef = useRef<Flatland>(null)
-  const { gl, size } = useThree()
-
-  useEffect(() => {
-    flatlandRef.current?.resize(size.width, size.height)
-  }, [size.width, size.height])
+  const renderer = useThree((state) => state.renderer)
 
   useFrame(() => {
-    flatlandRef.current?.render(gl)
-  })
+    flatlandRef.current?.render(renderer)
+  }, { phase: 'render' })
 
   return (
     <flatland ref={flatlandRef} viewSize={300} clearColor={0x1a1a2e}>
@@ -101,7 +92,7 @@ function Scene() {
 
 export default function App() {
   return (
-    <Canvas gl={{ antialias: false }}>
+    <Canvas renderer={{ antialias: false }}>
       <Suspense fallback={null}>
         <Scene />
       </Suspense>
@@ -149,12 +140,8 @@ For post-processing effects, use `addEffect()`:
 import { crtComplete, vignette } from 'three-flatland/react'
 
 function PostProcessingScene() {
-  const { gl, size } = useThree()
+  const renderer = useThree((state) => state.renderer)
   const flatlandRef = useRef<Flatland>(null)
-
-  useEffect(() => {
-    flatlandRef.current?.resize(size.width, size.height)
-  }, [size.width, size.height])
 
   // Add effects once
   useEffect(() => {
@@ -166,8 +153,8 @@ function PostProcessingScene() {
   }, [])
 
   useFrame(() => {
-    flatlandRef.current?.render(gl)
-  })
+    flatlandRef.current?.render(renderer)
+  }, { phase: 'render' })
 
   return (
     <flatland ref={flatlandRef} viewSize={300} clearColor={0x1a1a2e}>
@@ -184,14 +171,14 @@ import { PostProcessing } from 'three/webgpu'
 import { pass, uv } from 'three/tsl'
 
 function ManualPostProcessing() {
-  const { gl } = useThree()
+  const renderer = useThree((state) => state.renderer)
   const flatlandRef = useRef<Flatland>(null)
 
   useEffect(() => {
     const flatland = flatlandRef.current
     if (!flatland) return
 
-    const postProcessing = new PostProcessing(gl)
+    const postProcessing = new PostProcessing(renderer)
     const scenePass = pass(flatland.scene, flatland.camera)
     postProcessing.outputNode = crtComplete(scenePass, uv(), { curvature: 0.15 })
 
@@ -200,11 +187,11 @@ function ManualPostProcessing() {
     return () => {
       postProcessing.dispose?.()
     }
-  }, [gl])
+  }, [renderer])
 
   useFrame(() => {
-    flatlandRef.current?.render(gl)
-  }, 1)
+    flatlandRef.current?.render(renderer)
+  }, { phase: 'render' })
 
   return (
     <flatland ref={flatlandRef} viewSize={300} clearColor={0x1a1a2e}>
@@ -223,7 +210,11 @@ function ManualPostProcessing() {
 | `new Flatland({...})` | `<flatland viewSize={300}>` |
 | `flatland.add(sprite)` | `<sprite2D>` as child of `<flatland>` |
 | `flatland.render(renderer)` | Manual via `useFrame` |
-| `flatland.resize(w, h)` | Manual via `useEffect` + `useThree().size` |
+| `renderer.setSize(w, h)` | `<Canvas>` owns renderer size; do not add a Flatland resize bridge |
+| `new Flatland({ aspect: 1 })` | `<flatland aspect={1}>` pins camera framing while effects follow the real surface |
+| `flatland.aspect = locked ? 1 : 'auto'` | `<flatland aspect={locked ? 1 : 'auto'}>` restores auto mode declaratively |
+| `flatland.resize(w, h)` | `flatlandRef.current?.resize(w, h)` is the explicit manual-sizing escape hatch |
+| `lighting.resolutionScale = 0.5` | `<defaultLightEffect resolutionScale={0.5}>` lowers only effect-owned processing resources |
 
 ---
 
@@ -234,6 +225,7 @@ function ManualPostProcessing() {
 ```tsx
 // BAD: Creates Flatland imperatively, bypasses R3F's scene graph
 function Bad() {
+  const renderer = useThree((state) => state.renderer)
   const flatland = useMemo(() => {
     const fl = new Flatland({ viewSize: 300 })
     const sprite = new Sprite2D({ texture })
@@ -242,7 +234,7 @@ function Bad() {
   }, [])
 
   useFrame(() => {
-    flatland.render(gl)
+    flatland.render(renderer)
   })
 
   return null  // Nothing in the JSX tree
@@ -257,15 +249,11 @@ extend({ Flatland, Sprite2D })
 
 function Good() {
   const flatlandRef = useRef<Flatland>(null)
-  const { gl, size } = useThree()
-
-  useEffect(() => {
-    flatlandRef.current?.resize(size.width, size.height)
-  }, [size.width, size.height])
+  const renderer = useThree((state) => state.renderer)
 
   useFrame(() => {
-    flatlandRef.current?.render(gl)
-  })
+    flatlandRef.current?.render(renderer)
+  }, { phase: 'render' })
 
   return (
     <flatland ref={flatlandRef} viewSize={300}>

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { LightEffect, createLightEffect } from './LightEffect'
 import type { LightEffectBuildContext } from './LightEffect'
 import type { ColorTransformFn } from '../materials/Sprite2DMaterial'
@@ -177,6 +177,44 @@ describe('LightEffect instances', () => {
 
     instance.enabled = false
     expect(instance.enabled).toBe(false)
+  })
+
+  it('should not report a runtime rebuild when constants are assigned before the shader is built', () => {
+    const Effect = createLightEffect({
+      name: 'constantBeforeBuild',
+      schema: { featureEnabled: () => false },
+      light: () => stubLightFn,
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    try {
+      const instance = new Effect()
+      instance.featureEnabled = true
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('should report a runtime rebuild after a constant has been captured by the shader', () => {
+    const Effect = createLightEffect({
+      name: 'constantAfterBuild',
+      schema: { featureEnabled: () => false },
+      light: () => stubLightFn,
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    try {
+      const instance = new Effect()
+      instance._buildLightFn(null as never, null as never, null as never, null)
+      instance.featureEnabled = true
+      expect(warn).toHaveBeenCalledOnce()
+      expect(warn).toHaveBeenCalledWith(
+        '[three-flatland] constantAfterBuild.featureEnabled changed at runtime — triggers shader rebuild'
+      )
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
 

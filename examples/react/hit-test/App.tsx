@@ -12,6 +12,7 @@ import { usePane, DevtoolsProvider } from '@three-flatland/devtools/react'
 import { Color, Vector3 } from 'three'
 import type { ThreeEvent } from '@react-three/fiber/webgpu'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -589,7 +590,7 @@ export default function App() {
         orthographic
         dpr={1}
         camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
-        renderer={{ antialias: false }}
+        renderer={{ antialias: false, ...exampleRendererColorConfig }}
         fallback={<WebGPUFallback />}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'

@@ -341,6 +341,10 @@ export const LightingContext = trait(() => ({
   dirty: false as boolean,
   /** Whether the effect has been initialized (init() called). */
   initialized: false as boolean,
+  /** Effect processing dimensions after applying LightEffect.resolutionScale. */
+  surfaceSize: new Vector2(),
+  /** Whether the active effect needs a resize before its next update. */
+  resizePending: false as boolean,
   // Runtime context (set each frame before systems run)
   /** Renderer reference for GPU passes. */
   renderer: null as WebGPURenderer | null,

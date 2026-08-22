@@ -13,6 +13,7 @@ import {
   type AnimationSetDefinition,
 } from 'three-flatland/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { tintAdditive, hueShift, saturate, outline8, pixelate, dissolvePixelated, tint } from '@three-flatland/nodes'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 import { GemBackground } from './GemBackground'
@@ -454,7 +455,7 @@ export default function App() {
       {/* Three.js Canvas */}
       <Canvas
         dpr={1}
-        renderer={{ antialias: false }}
+        renderer={{ antialias: false, ...exampleRendererColorConfig }}
         fallback={<WebGPUFallback />}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'

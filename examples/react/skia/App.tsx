@@ -13,6 +13,7 @@ import {
   attachSkiaTexture,
 } from '@three-flatland/skia/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { SkiaPaint, SkiaPath } from '@three-flatland/skia'
 import type { SkiaCanvas as SkiaCanvasInstance } from '@three-flatland/skia/three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
@@ -676,7 +677,7 @@ export default function App() {
     <SkiaErrorBoundary>
       <Canvas
         camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
-        renderer={{ antialias: true }}
+        renderer={{ antialias: true, ...exampleRendererColorConfig }}
         fallback={<WebGPUFallback />}
         onCreated={({ scene, renderer }) => {
           // Pure-black clear + fog so foreground 3D meshes (floor, panels)

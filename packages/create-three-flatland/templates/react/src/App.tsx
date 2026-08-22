@@ -1,6 +1,7 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
+import { NoToneMapping, SRGBColorSpace } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
 // Pure scene maths, extracted so it can be unit-tested without a GPU or a
@@ -50,7 +51,6 @@ function Scene() {
   }, [])
   const flatlandRef = useRef<Flatland>(null)
   const set = useThree((s) => s.set)
-  const size = useThree((s) => s.size)
 
   // Flatland renders to the screen with its own camera, so hand that camera to
   // R3F as the default — pointer events then raycast through the same object
@@ -59,13 +59,11 @@ function Scene() {
     (instance: Flatland | null) => {
       flatlandRef.current = instance
       if (!instance) return
-      instance.resize(size.width, size.height)
       // `manual` is read by R3F but not declared on three's camera type.
       ;(instance.camera as typeof instance.camera & { manual?: boolean }).manual = true
-      instance.camera.updateProjectionMatrix()
       set({ camera: instance.camera })
     },
-    [set, size.width, size.height]
+    [set]
   )
   const spriteRef = useRef<Sprite2D>(null)
   const renderer = useThree((s) => s.renderer as WebGPURenderer)
@@ -113,7 +111,11 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <Canvas orthographic renderer={{ antialias: false }} fallback={<RendererFallback />}>
+      <Canvas
+        orthographic
+        renderer={{ antialias: false, outputColorSpace: SRGBColorSpace, toneMapping: NoToneMapping }}
+        fallback={<RendererFallback />}
+      >
         <Suspense fallback={null}>
           <Scene />
         </Suspense>

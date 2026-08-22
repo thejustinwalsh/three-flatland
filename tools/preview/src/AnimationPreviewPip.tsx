@@ -288,9 +288,7 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
   const currentName = frames[currentFrameIndex]
   const rect = currentName ? rectsByName[currentName] : undefined
   const frame =
-    rect && atlasSize
-      ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h, atlasW: atlasSize.w, atlasH: atlasSize.h }
-      : null
+    rect && atlasSize ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h, atlasW: atlasSize.w, atlasH: atlasSize.h } : null
   // Event tag for the current playhead frame, if any. Keyed by frame
   // index (as string, matching the sidecar storage shape). The
   // editor's timeline uses the same lookup pattern.

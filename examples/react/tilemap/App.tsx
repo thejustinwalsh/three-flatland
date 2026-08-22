@@ -4,6 +4,7 @@ import { DataTexture, RGBAFormat, NearestFilter, SRGBColorSpace, type Orthograph
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/devtools/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -692,7 +693,7 @@ export default function App() {
   return (
     <Canvas
       dpr={1}
-      renderer={{ antialias: false }}
+      renderer={{ antialias: false, ...exampleRendererColorConfig }}
       fallback={<WebGPUFallback />}
       style={{ touchAction: 'none' }}
       onCreated={({ renderer }) => {

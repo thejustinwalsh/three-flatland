@@ -142,6 +142,18 @@ describe('ForwardPlusLighting', () => {
     expect(fp.tileCountXNode.value).toBe(Math.ceil(160 / TILE_SIZE))
   })
 
+  it('reinitializes when resized to the same dimensions after disposal', () => {
+    const fp = new ForwardPlusLighting()
+    fp.init(160, 160)
+
+    fp.dispose()
+    expect(fp.tileCountX).toBe(0)
+
+    fp.resize(160, 160)
+    expect(fp.tileCountX).toBe(Math.ceil(160 / TILE_SIZE))
+    expect(fp.tileCountXNode.value).toBe(Math.ceil(160 / TILE_SIZE))
+  })
+
   it('keeps the tile texture at TILE_TEXTURE_DIM² regardless of viewport', () => {
     // init() only updates uniforms + CPU bookkeeping — it never changes
     // the DataTexture's dimensions. Tile-in-texture indexing stays linear
