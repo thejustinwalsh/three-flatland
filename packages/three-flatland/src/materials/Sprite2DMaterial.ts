@@ -8,6 +8,10 @@ import {
   Discard,
   select,
   positionLocal,
+  positionPrevious,
+  normalLocal,
+  property,
+  vec3,
   instancedMesh,
   subBuild,
   cameraProjectionMatrix,
@@ -27,7 +31,7 @@ import type { NodeBuilder } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
 import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
-import { readFlip, readPixelPerfectFlag, readPixelPivot, readRotatedFrameFlag } from './instanceAttributes'
+import { readFlip, readPixelPerfectFlag, readRotatedFrameFlag } from './instanceAttributes'
 import { synthQuadNodes } from './synthQuadNodes'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { GlobalUniforms } from '../GlobalUniforms'
@@ -78,6 +82,10 @@ export interface Sprite2DMaterialOptions {
 
 // Global material ID counter for batching
 let nextMaterialId = 0
+
+// Vertex-stage local populated by setupPosition. It is derived from Three's
+// canonical instance transform rather than duplicated in a second upload.
+const spritePixelPivot = property('vec3', 'spritePixelPivot')
 
 // WeakMap to assign stable numeric IDs to colorTransform functions
 const colorTransformIds = new WeakMap<ColorTransformFn, number>()
@@ -275,13 +283,33 @@ export class Sprite2DMaterial extends EffectMaterial {
    * @internal
    */
   override setupPosition(builder: NodeBuilder): Node<'vec3'> {
-    if (this.positionNode === null) return super.setupPosition(builder) as unknown as Node<'vec3'>
-
-    positionLocal.assign(subBuild(this.positionNode, 'POSITION', 'vec3'))
-
+    spritePixelPivot.assign(vec3(0))
     const object = builder.object as InstancedMesh
+
+    if (this.positionNode === null) {
+      super.setupPosition(builder)
+    } else {
+      positionLocal.assign(subBuild(this.positionNode, 'POSITION', 'vec3'))
+      if (object.isInstancedMesh && object.instanceMatrix.isInstancedBufferAttribute) instancedMesh(object)
+    }
+
     if (object.isInstancedMesh && object.instanceMatrix.isInstancedBufferAttribute) {
+      // Let Three perform its canonical instance transform, then probe the same
+      // cached matrix from a zero local position to obtain its translation.
+      // Restoring normal/previous state ensures those transforms still apply
+      // exactly once. No extra CPU upload or vertex binding is introduced.
+      const transformedPosition = positionLocal.toVar('spriteInstancePosition')
+      const transformedNormal = builder.hasGeometryAttribute('normal')
+        ? normalLocal.toVar('spriteInstanceNormal')
+        : null
+      const transformedPrevious = builder.needsPreviousData() ? positionPrevious.toVar('spriteInstancePrevious') : null
+
+      positionLocal.assign(vec3(0))
       instancedMesh(object)
+      spritePixelPivot.assign(positionLocal)
+      positionLocal.assign(transformedPosition)
+      if (transformedNormal) normalLocal.assign(transformedNormal)
+      if (transformedPrevious) positionPrevious.assign(transformedPrevious)
     }
 
     return positionLocal
@@ -299,8 +327,8 @@ export class Sprite2DMaterial extends EffectMaterial {
   override setupModelViewProjection(): Node<'vec4'> {
     const clipPosition = cameraProjectionMatrix.mul(modelViewMatrix.mul(positionLocal)).toVar('spriteClipPosition')
 
-    If(readPixelPerfectFlag(), () => {
-      const pivotClip = cameraProjectionMatrix.mul(modelViewMatrix.mul(readPixelPivot()))
+    const pivotClip = cameraProjectionMatrix.mul(modelViewMatrix.mul(spritePixelPivot))
+    If(readPixelPerfectFlag().and(pivotClip.w.greaterThan(0)), () => {
       const pivotNdc = pivotClip.xy.div(pivotClip.w)
       const pivotPixels = pivotNdc.mul(0.5).add(0.5).mul(viewport.zw).add(viewport.xy)
       const snappedPixels = pivotPixels.add(0.5).floor()

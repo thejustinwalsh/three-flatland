@@ -23,8 +23,10 @@ import { Sprite2DMaterial } from './materials/Sprite2DMaterial'
 import { createPassEffect } from './pipeline/PassEffect'
 import { SpriteBatch } from './pipeline/SpriteBatch'
 import { Sprite2D } from './sprites/Sprite2D'
+import type { SpriteFrame } from './sprites/types'
 import { TileLayer } from './tilemap/TileLayer'
 import { Tileset } from './tilemap/Tileset'
+import { registerAtlasMesh } from './loaders/atlasMeshRegistry'
 
 const shaders = new Map<string, ShaderSource>()
 const disposableMaterials = new Set<Material>()
@@ -53,6 +55,27 @@ function capture(label: string, backend: ShaderBackend, material: NodeMaterial, 
   for (const shader of shaderSources(program, label)) {
     shaders.set(`${shader.backend}:${shader.stage}:${shader.output}`, shader)
   }
+  return program
+}
+
+function registerCompilerAtlas(texture: Texture): void {
+  const frame: SpriteFrame = {
+    name: 'compiler-diamond',
+    x: 0,
+    y: 0,
+    width: 2,
+    height: 2,
+    sourceWidth: 2,
+    sourceHeight: 2,
+    mesh: {
+      verts: new Float32Array([0, -0.5, 0.5, 0, 0.5, 0, 1, 0.5, 0, 0.5, 0.5, 1, -0.5, 0, 0, 0.5]),
+      indices: Uint16Array.from([0, 1, 2, 0, 2, 3]),
+      vertexCount: 4,
+      vertexOffset: 0,
+      indexOffset: 0,
+    },
+  }
+  registerAtlasMesh(texture, { frames: [frame], complete: true })
 }
 
 function captureNode(label: string, backend: ShaderBackend, node: Node) {
@@ -136,7 +159,25 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
     const batch = new SpriteBatch(material, 1)
 
     try {
-      capture('sprite-batch-material', backend, material, batch)
+      const program = capture('sprite-batch-material', backend, material, batch)
+      expect(program.vertexShader).toContain('spritePixelPivot')
+      expect(program.vertexShader).toContain('floor')
+    } finally {
+      batch.dispose()
+    }
+  })
+
+  it('compiles projected snapping through the tight-mesh batch path', () => {
+    const texture = shaderTexture()
+    registerCompilerAtlas(texture)
+    const material = trackMaterial(new Sprite2DMaterial({ map: texture, transparent: true }))
+    const batch = new SpriteBatch(material, 1)
+
+    try {
+      expect(batch.geometryKind).toBe('tight-mesh')
+      const program = capture('sprite-batch-tight-mesh-pixel-snap', backend, material, batch)
+      expect(program.vertexShader).toContain('spritePixelPivot')
+      expect(program.vertexShader).toContain('floor')
     } finally {
       batch.dispose()
     }

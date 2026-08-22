@@ -425,7 +425,7 @@ export class TileLayer extends Group {
       //                      don't currently use MaterialEffect uniforms)
       //   instanceExtras.x = per-tile shadow radius (all tiles in a
       //                      layer share tile dimensions → same radius)
-      //   instanceExtras.yzw = instance-transformed tile pivot
+      //   instanceExtras.yzw = reserved
       const flags = this._systemFlags
       const tileRadius = Math.max(this.tileWidth, this.tileHeight)
       for (let i = 0; i < count; i++) {
@@ -494,9 +494,6 @@ export class TileLayer extends Group {
         // the tile is actually flipped.
         if (tile.flipH) instanceData[base + 8] = -1
         if (tile.flipV) instanceData[base + 9] = -1
-        instanceData[base + 13] = tile.x + this.tileWidth / 2
-        instanceData[base + 14] = tile.y + this.tileHeight / 2
-        instanceData[base + 15] = 0
 
         // Per-tile effect attribute overrides from TileDefinition.properties.
         // Example: a tile with `{ normalKind: 1 }` in its properties sets

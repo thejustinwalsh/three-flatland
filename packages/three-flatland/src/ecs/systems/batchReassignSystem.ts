@@ -210,10 +210,6 @@ function syncAllBuffers(
   // Transform — use Sprite2D's updateMatrix for full 3D support
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
-  if (sprite.pixelPerfect) {
-    const elements = sprite.matrix.elements
-    mesh.writePixelPivot(slot, elements[12]!, elements[13]!, elements[14]!)
-  }
 
   // Picking broadphase: index at the local translation; the world-folded
   // position lands via transformSyncSystem — see batchAssignSystem.

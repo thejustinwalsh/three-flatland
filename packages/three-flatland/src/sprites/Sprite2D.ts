@@ -263,7 +263,6 @@ export class Sprite2D extends Mesh {
 
     if (this._entity) {
       this._syncEffectFlagsToBatch()
-      if (value) this._batchMesh?.writePixelPivotFromMatrix(this._batchSlot)
     } else {
       this._writeEffectDataOwn()
     }
@@ -769,7 +768,7 @@ export class Sprite2D extends Mesh {
    *   0..3   instanceUV      (x, y, w, h)
    *   4..7   instanceColor   (r, g, b, a)
    *   8..11  instanceSystem  (flipX, flipY, sysFlags, enableBits)
-   *  12..15  instanceExtras  (shadowRadius, pixelPivot.x/y/z)
+   *  12..15  instanceExtras  (shadowRadius, reserved×3)
    */
   private _instanceDataBuffer: Float32Array = (() => {
     const data = new Float32Array(4 * 16)
@@ -790,7 +789,7 @@ export class Sprite2D extends Mesh {
       data[base + 9] = 1
       data[base + 10] = 0
       data[base + 11] = 0
-      // Extras: shadowRadius=0, pixelPivot=(0, 0, 0)
+      // Extras: shadowRadius=0, remaining components reserved
       data[base + 12] = 0
       data[base + 13] = 0
       data[base + 14] = 0

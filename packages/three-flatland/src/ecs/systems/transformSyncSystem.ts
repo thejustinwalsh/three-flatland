@@ -231,10 +231,6 @@ export function transformSyncSystem(world: World): void {
     if (pathChanged) {
       writeInstanceSlot(buf, o, relativeMatrix, hierarchyVisible)
       mesh.markMatrixDirty(slot)
-      if (sprite.pixelPerfect) {
-        const elements = relativeMatrix.elements
-        mesh.writePixelPivot(slot, elements[12]!, elements[13]!, elements[14]!)
-      }
     } else if (syncInstanceSlot(buf, o, relativeMatrix, hierarchyVisible)) {
       // The shared root changed. Root motion normally leaves relative slots
       // byte-identical; root visibility is the exceptional case that writes.

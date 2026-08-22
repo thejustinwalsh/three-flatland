@@ -18,12 +18,6 @@ function instanceSlot(sprite: Sprite2D): Float32Array {
   return (sprite._batchMesh!.instanceMatrix.array as Float32Array).slice(offset, offset + 16)
 }
 
-function pixelPivot(sprite: Sprite2D): [number, number, number] {
-  expect(sprite._batchMesh).not.toBeNull()
-  const extras = sprite._batchMesh!.geometry.getAttribute('instanceExtras')
-  return [extras.getY(sprite._batchSlot), extras.getZ(sprite._batchSlot), extras.getW(sprite._batchSlot)]
-}
-
 function raycastAt(sprite: Sprite2D, x: number, y: number): number {
   const raycaster = new Raycaster(new Vector3(x, y, 100), new Vector3(0, 0, -1))
   return raycaster.intersectObject(sprite).length
@@ -123,7 +117,6 @@ describe('auto batching preserves the source hierarchy', () => {
     const slot = instanceSlot(first)
     expect(slot[12]).toBe(134)
     expect(slot[13]).toBe(31)
-    expect(pixelPivot(first)).toEqual([134, 31, 0])
     expect(raycastAt(first, 134, 31)).toBe(1)
     expect(raycastAt(first, 4, 6)).toBe(0)
 
@@ -241,7 +234,7 @@ describe('auto batching preserves the source hierarchy', () => {
     spriteGroup.dispose()
   })
 
-  it('refreshes nested parent transforms before the same render pass', () => {
+  it('refreshes nested parent transforms independently of pixel snapping', () => {
     const scene = new Scene()
     const spriteGroup = new SpriteGroup()
     const parent = new Group()
@@ -258,15 +251,18 @@ describe('auto batching preserves the source hierarchy', () => {
 
     expect(instanceSlot(first)[12]).toBe(75)
     expect(instanceSlot(first)[13]).toBe(25)
-    expect(pixelPivot(first)).toEqual([75, 25, 0])
 
     first.pixelPerfect = false
     parent.position.set(10, 20, 0)
     scene.updateMatrixWorld(true)
-    expect(pixelPivot(first)).toEqual([75, 25, 0])
+    expect(instanceSlot(first)[12]).toBe(10)
+    expect(instanceSlot(first)[13]).toBe(20)
 
     first.pixelPerfect = true
-    expect(pixelPivot(first)).toEqual([10, 20, 0])
+    const extras = first._batchMesh!.geometry.getAttribute('instanceExtras')
+    expect([extras.getY(first._batchSlot), extras.getZ(first._batchSlot), extras.getW(first._batchSlot)]).toEqual([
+      0, 0, 0,
+    ])
     spriteGroup.dispose()
   })
 

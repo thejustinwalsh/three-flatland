@@ -1,4 +1,4 @@
-import { int, attribute, vec2, vec3 } from 'three/tsl'
+import { int, attribute, vec2 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import {
   LIT_FLAG_MASK,
@@ -25,7 +25,7 @@ import {
  *
  *   instanceExtras  (vec4, interleaved offset 12..15)
  *     .x = per-instance shadow radius — readShadowRadius()
- *     .y/.z/.w = instance pivot after the instance transform
+ *     .y/.z/.w = reserved
  *
  * `instanceUV` and `instanceColor` stay raw — materials read them
  * directly via the usual `attribute(...)` calls since they're simple
@@ -76,16 +76,6 @@ export function readEnableBits(): Node<'int'> {
  */
 export function readShadowRadius(): Node<'float'> {
   return attribute<'vec4'>('instanceExtras', 'vec4').x
-}
-
-/**
- * Read the sprite pivot in mesh-local space after applying its instance
- * transform. Standalone sprites use `(0, 0, 0)` because their model matrix
- * already contains the complete sprite transform.
- */
-export function readPixelPivot(): Node<'vec3'> {
-  const extras = attribute<'vec4'>('instanceExtras', 'vec4')
-  return vec3(extras.y, extras.z, extras.w)
 }
 
 // ─── Typed bit readers ────────────────────────────────────────────

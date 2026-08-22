@@ -41,7 +41,7 @@ const FALLBACK_BATCH_SIZE = 16384
  *   offset  0..3   instanceUV       (uv.x, uv.y, uv.w, uv.h)
  *   offset  4..7   instanceColor    (r, g, b, a)
  *   offset  8..11  instanceSystem   (flipX, flipY, sysFlags, enableBits)
- *   offset 12..15  instanceExtras   (shadowRadius, pixelPivot.xyz)
+ *   offset 12..15  instanceExtras   (shadowRadius, reserved×3)
  *
  * Packing all four into one `InstancedInterleavedBuffer` collapses what
  * was previously 3 vertex-buffer bindings (instanceUV / instanceColor /
@@ -237,7 +237,7 @@ export class SpriteBatch extends InstancedMesh {
       interleavedData[base + OFFSET_SYSTEM + 1] = 1
       interleavedData[base + OFFSET_SYSTEM + 2] = 0
       interleavedData[base + OFFSET_SYSTEM + 3] = 0
-      // Extras: shadowRadius=0, pixelPivot=(0, 0, 0)
+      // Extras: shadowRadius=0, remaining components reserved
       interleavedData[base + OFFSET_EXTRAS + 0] = 0
       interleavedData[base + OFFSET_EXTRAS + 1] = 0
       interleavedData[base + OFFSET_EXTRAS + 2] = 0
@@ -400,30 +400,6 @@ export class SpriteBatch extends InstancedMesh {
     if (this._interleavedData[o] === radius) return
     this._interleavedData[o] = radius
     this._interleavedTracker.markDirty(index)
-  }
-
-  /**
-   * Write the instance-transformed sprite pivot into `instanceExtras.yzw`.
-   * This duplicates the matrix translation without another vertex binding so
-   * the material can snap the projected pivot without re-evaluating or
-   * importing Three's private instance-matrix node machinery.
-   */
-  writePixelPivot(index: number, x: number, y: number, z: number): void {
-    const o = index * INSTANCE_STRIDE + OFFSET_EXTRAS + 1
-    if (this._interleavedData[o] === x && this._interleavedData[o + 1] === y && this._interleavedData[o + 2] === z) {
-      return
-    }
-    this._interleavedData[o] = x
-    this._interleavedData[o + 1] = y
-    this._interleavedData[o + 2] = z
-    this._interleavedTracker.markDirty(index)
-  }
-
-  /** Refresh the pixel pivot from this batch slot's current instance matrix. */
-  writePixelPivotFromMatrix(index: number): void {
-    const o = index * 16
-    const matrix = this.instanceMatrix.array
-    this.writePixelPivot(index, matrix[o + 12]!, matrix[o + 13]!, matrix[o + 14]!)
   }
 
   writeMatrix(index: number, matrix: Matrix4): void {
