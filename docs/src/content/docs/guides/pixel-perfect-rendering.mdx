@@ -3,7 +3,7 @@ title: Render pixel art without fractional scaling
 description: Coordinate texture filtering, an integer-scaled orthographic camera, object snapping, and DPR.
 ---
 
-import { Tabs, TabItem } from 'starlight-theme/components';
+import { Tabs, TabItem } from 'starlight-theme/components'
 
 Pixel art shimmers when texture filtering, camera scale, and object placement use different pixel grids. The default `pixel-art` preset coordinates all three.
 
@@ -12,8 +12,8 @@ Pixel art shimmers when texture filtering, camera scale, and object placement us
 `Flatland` creates a managed `PixelPerfectCamera`. `Sprite2D` and `TileMap2D` snap their final projected pivots to the same physical-pixel grid, and Flatland loaders use nearest-neighbor filtering.
 
 ```typescript
-const flatland = new Flatland({ viewSize: 240 });
-flatland.render(renderer);
+const flatland = new Flatland({ viewSize: 240 })
+flatland.render(renderer)
 ```
 
 No preset assignment is required. `FlatlandConfig.options` defaults to `'pixel-art'`.
@@ -45,6 +45,7 @@ No preset assignment is required. `FlatlandConfig.options` defaults to `'pixel-a
     scene.add(new Sprite2D({ texture }));
     renderer.render(scene, camera);
     ```
+
   </TabItem>
   <TabItem label="React" icon="simple-icons:react">
     ```tsx
@@ -66,29 +67,51 @@ No preset assignment is required. `FlatlandConfig.options` defaults to `'pixel-a
       );
     }
     ```
+
   </TabItem>
 </Tabs>
 
 The React hook installs the camera as the R3F default, updates it after canvas or DPR changes, synchronizes R3F's derived viewport values, and restores the previous camera when it unmounts. Its event adapter excludes the letterbox region from pointer hits.
+
+When a `Flatland` instance owns the camera and renders its internal scene manually, bind that existing camera instead of creating another one:
+
+```tsx
+import { useCallback, useState } from 'react'
+import { Flatland, PixelPerfectCamera, usePixelPerfectCameraBinding } from 'three-flatland/react'
+
+function Scene() {
+  const [camera, setCamera] = useState<PixelPerfectCamera | null>(null)
+  usePixelPerfectCameraBinding(camera)
+
+  const bindFlatland = useCallback((flatland: Flatland | null) => {
+    const next = flatland?.camera
+    setCamera(next instanceof PixelPerfectCamera ? next : null)
+  }, [])
+
+  return <flatland ref={bindFlatland} viewSize={180} viewWidth={320} />
+}
+```
+
+This connects one camera to R3F's viewport and event state. It does not create a second camera or renderer.
 
 ## Keep manual picking aligned
 
 Convert canvas coordinates through the camera before calling a Three.js `Raycaster`:
 
 ```typescript
-const rect = renderer.domElement.getBoundingClientRect();
-const logicalWidth = renderer.domElement.width / renderer.getPixelRatio();
-const logicalHeight = renderer.domElement.height / renderer.getPixelRatio();
+const rect = renderer.domElement.getBoundingClientRect()
+const logicalWidth = renderer.domElement.width / renderer.getPixelRatio()
+const logicalHeight = renderer.domElement.height / renderer.getPixelRatio()
 
 camera.getNormalizedDeviceCoordinates(
   ((event.clientX - rect.left) / rect.width) * logicalWidth,
   ((event.clientY - rect.top) / rect.height) * logicalHeight,
   renderer.getPixelRatio(),
-  pointer,
-);
+  pointer
+)
 
 if (Math.abs(pointer.x) <= 1 && Math.abs(pointer.y) <= 1) {
-  raycaster.setFromCamera(pointer, camera);
+  raycaster.setFromCamera(pointer, camera)
 }
 ```
 
@@ -102,12 +125,12 @@ Add `viewWidth` when the whole design has a fixed width and height. The camera t
 const camera = new PixelPerfectCamera({
   viewSize: 180,
   viewWidth: 320,
-});
+})
 
 const flatland = new Flatland({
   viewSize: 180,
   viewWidth: 320,
-});
+})
 ```
 
 Automatic mode chooses the largest integer scale that fits. A 320 × 180 design in an 800 × 720 framebuffer renders at 2× inside a centered 640 × 360 viewport. A 3× scale is as exact as 2× or 4×; powers of two are an optional zoom style, not a pixel-accuracy requirement.
@@ -115,7 +138,7 @@ Automatic mode chooses the largest integer scale that fits. A 320 × 180 design 
 Set `pixelScale` when the scale itself is authored:
 
 ```typescript
-camera.pixelScale = 4;
+camera.pixelScale = 4
 ```
 
 Three.js controls can also assign `camera.zoom` and call `updateProjectionMatrix()`. `PixelPerfectCamera` preserves that API, but rounds the resulting physical-pixel scale to the nearest positive integer. Read `resolvedPixelScale` for the scale actually rendered; use `pixelScale` when an exact authored scale matters.
@@ -127,9 +150,9 @@ The minimum automatic scale is 1×. A framebuffer smaller than the design crops 
 Pixel-perfect math follows the physical drawing buffer. Renderer DPR remains under application control:
 
 ```typescript
-renderer.setPixelRatio(devicePixelRatio); // Native HiDPI buffer
-renderer.setPixelRatio(1);                // One buffer pixel per CSS pixel
-renderer.setPixelRatio(0.5);              // Half-size buffer
+renderer.setPixelRatio(devicePixelRatio) // Native HiDPI buffer
+renderer.setPixelRatio(1) // One buffer pixel per CSS pixel
+renderer.setPixelRatio(0.5) // Half-size buffer
 ```
 
 Use `<Canvas dpr={...}>` for the same control in React. An effect's `resolutionScale` changes only resources owned by that effect; it does not change camera framing. Flatland's automatic post-processing pipeline preserves the centered camera viewport. A `resolutionScale` below `1` is still an explicit resampling step, useful for performance or a coarser pixel effect rather than exact 1:1 post-processing.
@@ -141,14 +164,14 @@ For a render target, pass its texel dimensions to `setDrawingBufferSize`. `Flatl
 Use the `smooth` preset when continuous subpixel motion or arbitrary zoom matters more than source-pixel alignment:
 
 ```typescript
-FlatlandConfig.options = 'smooth';
+FlatlandConfig.options = 'smooth'
 ```
 
 To keep nearest-neighbor textures while disabling presentation snapping:
 
 ```typescript
-TextureConfig.options = 'pixel-art';
-RenderingConfig.options = 'smooth';
+TextureConfig.options = 'pixel-art'
+RenderingConfig.options = 'smooth'
 ```
 
 An individual sprite or tilemap can opt out with `pixelPerfect: false`. This is also the correct setting for sprites rendered through a perspective camera: their screen-space scale changes with depth, so a single scene-wide pixel grid cannot remain stable.
