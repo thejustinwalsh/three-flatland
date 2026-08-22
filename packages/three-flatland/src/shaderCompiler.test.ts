@@ -90,11 +90,10 @@ function expectPixelPivotTransformGuarded(vertexShader: string): void {
   const pivotAssignment = vertexShader.indexOf('spritePivotClip =')
   expect(pivotAssignment, 'projected pivot transform must be emitted').toBeGreaterThanOrEqual(0)
 
-  const flagTest = vertexShader.indexOf('& 16')
-  const branchStart = vertexShader.lastIndexOf('if', flagTest)
+  const flagTests = [...vertexShader.matchAll(/&\s*16(?!\d)/g)]
+  expect(flagTests, 'pixel-perfect flag test must be emitted exactly once').toHaveLength(1)
+  const flagTest = flagTests[0]!.index
   const branchOpen = vertexShader.indexOf('{', flagTest)
-  expect(flagTest, 'pixel-perfect flag test must be emitted').toBeGreaterThanOrEqual(0)
-  expect(branchStart, 'pixel-perfect flag test must belong to a branch').toBeGreaterThanOrEqual(0)
   expect(branchOpen, 'pixel-perfect branch must have a body').toBeGreaterThan(flagTest)
 
   let depth = 0
@@ -291,6 +290,7 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
       const program = capture('sprite-batch-tight-mesh-pixel-snap', backend, material, batch)
       expect(program.vertexShader).toContain('spritePixelPivot')
       expect(program.vertexShader).toContain('floor')
+      expectPixelPivotTransformGuarded(program.vertexShader)
       expectSingleInstanceMatrixBinding(backend, program.vertexShader)
     } finally {
       batch.dispose()
