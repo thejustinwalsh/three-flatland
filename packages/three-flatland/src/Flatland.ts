@@ -8,6 +8,7 @@ import {
   type ColorRepresentation,
   type Texture,
   Vector2,
+  Vector4,
   NoColorSpace,
   SRGBColorSpace,
 } from 'three'
@@ -57,6 +58,8 @@ import { isDevtoolsActive } from './debug-protocol'
 import { PERF_TRACK } from './debug/perf-track'
 import type { DevtoolsProvider } from './debug/DevtoolsProvider'
 import { beginDebugPass, endDebugPass } from './debug/debug-sink'
+import { PixelPerfectCamera } from './cameras/PixelPerfectCamera'
+import { resolvePixelPerfect, type RenderingSetting } from './config/RenderingConfig'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -109,6 +112,12 @@ export interface FlatlandOptions {
    * rewrites a supplied camera's frustum; its owner remains responsible for it.
    */
   camera?: OrthographicCamera | null
+  /**
+   * Use a managed {@link PixelPerfectCamera} when no custom camera is
+   * supplied. The camera follows the physical drawing buffer or render target
+   * and selects an integer world-to-pixel scale. Default: `true`.
+   */
+  pixelPerfect?: boolean
   /** Orthographic view size in pixels (default: 400) */
   viewSize?: number
   /** Clear before render (default: true) */
@@ -120,12 +129,14 @@ export interface FlatlandOptions {
   /** Enable post-processing pipeline (default: false) */
   postProcessing?: boolean
   /**
-   * Fixed aspect ratio. When omitted or set to `'auto'`, Flatland derives the aspect from
-   * the renderer's viewport (or the render target) when its dimensions
-   * change. Passing a value pins the internal camera aspect while lighting
-   * still follows the surface. A camera supplied through `camera` keeps its
-   * authored frustum. Calling resize() takes full manual size control;
-   * assigning `aspect = 'auto'` restores automatic sizing.
+   * Fixed aspect ratio for the regular managed camera. When omitted or set to
+   * `'auto'`, Flatland derives the aspect from the renderer's viewport (or the
+   * render target) when its dimensions change. A {@link PixelPerfectCamera}
+   * always follows the physical output shape so it can preserve integer
+   * scaling; letterbox at the renderer or layout level to pin that shape. A
+   * camera supplied through `camera` keeps its authored frustum. Calling
+   * resize() takes full manual size control; assigning `aspect = 'auto'`
+   * restores automatic sizing.
    */
   aspect?: number | 'auto'
 }
@@ -192,6 +203,9 @@ export interface FlatlandOptions {
  * ```
  */
 export class Flatland extends Group implements WorldProvider {
+  /** Class-level rendering defaults, resolved before {@link RenderingConfig}. */
+  static options: RenderingSetting | undefined = undefined
+
   /** Internal scene containing sprites */
   readonly scene: Scene
 
@@ -227,6 +241,9 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Orthographic view size */
   private _viewSize: number
+
+  /** Whether Flatland's managed camera uses integer pixel scaling. */
+  private _pixelPerfect: boolean
 
   /** Current aspect ratio */
   private _aspect: number
@@ -289,6 +306,12 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Reusable physical drawing-buffer size for surface-dependent GPU resources. */
   private _drawingBufferSize = new Vector2()
+
+  /** Saved output viewport while a PixelPerfectCamera owns one render. */
+  private _savedViewport = new Vector4()
+
+  /** Reusable logical canvas viewport derived from physical camera pixels. */
+  private _drawingBufferViewport = new Vector4()
 
   /**
    * Camera frustum bounds as TSL uniform nodes. Created once per Flatland
@@ -355,9 +378,11 @@ export class Flatland extends Group implements WorldProvider {
     // the renderer (or render target) each render; valid explicit aspect = manual.
     const fixedAspect = options.aspect
     const hasFixedAspect = typeof fixedAspect === 'number' && Number.isFinite(fixedAspect) && fixedAspect > 0
-    this._viewSize = options.viewSize ?? 400
+    this._viewSize = this._isValidViewSize(options.viewSize) ? options.viewSize : 400
     this._aspect = hasFixedAspect ? fixedAspect : 1
     this._autoAspect = !hasFixedAspect
+    const classOptions = (this.constructor as typeof Flatland).options
+    this._pixelPerfect = resolvePixelPerfect(options.pixelPerfect, classOptions)
 
     // Always retain an instance-owned camera so R3F can restore the no-arg
     // constructor default after a conditional custom camera prop is removed.
@@ -426,6 +451,13 @@ export class Flatland extends Group implements WorldProvider {
    * Create internal orthographic camera.
    */
   private _createCamera(): OrthographicCamera {
+    if (this._pixelPerfect) {
+      const camera = new PixelPerfectCamera({ viewSize: this._viewSize })
+      camera.setDrawingBufferSize(this._viewSize * this._aspect, this._viewSize)
+      _flatlandInternalCameras.set(camera, this)
+      return camera
+    }
+
     const halfWidth = (this._viewSize * this._aspect) / 2
     const halfHeight = this._viewSize / 2
 
@@ -440,6 +472,16 @@ export class Flatland extends Group implements WorldProvider {
    */
   private _updateCameraFrustum(): void {
     if (!this._ownsCamera) return
+
+    if (this._camera instanceof PixelPerfectCamera) {
+      this._camera.viewSize = this._viewSize
+      const hasSurface = this._isValidSize(this._lastSyncedWidth, this._lastSyncedHeight)
+      this._camera.setDrawingBufferSize(
+        hasSurface ? this._lastSyncedWidth : this._viewSize * this._aspect,
+        hasSurface ? this._lastSyncedHeight : this._viewSize
+      )
+      return
+    }
 
     const halfWidth = (this._viewSize * this._aspect) / 2
     const halfHeight = this._viewSize / 2
@@ -461,6 +503,33 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
+   * Whether Flatland manages a {@link PixelPerfectCamera}. Toggling this while
+   * a custom camera is active records the preferred internal-camera mode; the
+   * custom camera remains untouched until it is removed.
+   */
+  get pixelPerfect(): boolean {
+    return this._pixelPerfect
+  }
+
+  set pixelPerfect(value: boolean) {
+    if (value === this._pixelPerfect) return
+    const previous = this._internalCamera
+    this._pixelPerfect = value
+    const replacement = this._createCamera()
+    replacement.position.copy(previous.position)
+    replacement.quaternion.copy(previous.quaternion)
+    replacement.scale.copy(previous.scale)
+    replacement.up.copy(previous.up)
+    replacement.layers.mask = previous.layers.mask
+    replacement.name = previous.name
+    this._internalCamera = replacement
+    if (this._ownsCamera) {
+      this._setActiveCamera(this._internalCamera, true)
+      this._updateCameraFrustum()
+    }
+  }
+
+  /**
    * Set a custom camera. Assigning the default camera read from a no-arg
    * Flatland instance restores this instance's own managed camera; this is the
    * property-removal path used by React Three Fiber.
@@ -478,13 +547,20 @@ export class Flatland extends Group implements WorldProvider {
     const isR3FPrototypeCamera =
       thisIsR3FManaged && internalOwner !== undefined && !ownerIsR3FManaged && internalOwner._lastRenderTime < 0
     if (internalOwner === this || isR3FPrototypeCamera) {
-      this._camera = this._internalCamera
-      this._ownsCamera = true
+      this._setActiveCamera(this._internalCamera, true)
       this._updateCameraFrustum()
       return
     }
-    this._camera = value
-    this._ownsCamera = false
+    this._setActiveCamera(value, false)
+  }
+
+  /** Keep the auto post-processing pass in sync when the active camera changes. */
+  private _setActiveCamera(camera: OrthographicCamera, ownsCamera: boolean): void {
+    this._camera = camera
+    this._ownsCamera = ownsCamera
+    if (this._autoRenderPipeline && this._passNode) {
+      this._passNode.camera = camera
+    }
   }
 
   /**
@@ -498,15 +574,17 @@ export class Flatland extends Group implements WorldProvider {
    * Set the view size.
    */
   set viewSize(value: number) {
+    if (!this._isValidViewSize(value)) return
     this._viewSize = value
     this._updateCameraFrustum()
   }
 
   /**
-   * Get the configured aspect mode. Returns `'auto'` while Flatland's internal
-   * camera follows the render surface; use {@link resolvedAspect} for the
-   * camera's current numeric ratio. A user-supplied camera keeps its authored
-   * frustum regardless of this mode.
+   * Get the configured aspect mode. Returns `'auto'` while Flatland follows
+   * the render surface; use {@link resolvedAspect} for the camera's current
+   * numeric ratio. A {@link PixelPerfectCamera} follows the physical output
+   * shape even when this property retains a numeric regular-camera setting. A
+   * user-supplied camera keeps its authored frustum regardless of this mode.
    */
   get aspect(): number | 'auto' {
     return this._autoAspect ? 'auto' : this._aspect
@@ -518,7 +596,7 @@ export class Flatland extends Group implements WorldProvider {
    * directly from that camera's authored orthographic frustum.
    */
   get resolvedAspect(): number {
-    if (!this._ownsCamera) {
+    if (!this._ownsCamera || this._camera instanceof PixelPerfectCamera) {
       const width = Math.abs(this._camera.right - this._camera.left)
       const height = Math.abs(this._camera.top - this._camera.bottom)
       if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
@@ -529,11 +607,13 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
-   * A number pins the internal camera ratio manually. Assigning `'auto'`
-   * restores automatic internal-camera and effect sizing, including after
-   * `resize()`. User-supplied cameras keep their authored frustum. The explicit
-   * sentinel also lets R3F restore constructor defaults when an `aspect` JSX
-   * prop is removed. Invalid numeric values are ignored.
+   * A number pins the regular managed camera ratio manually. A
+   * {@link PixelPerfectCamera} continues following the physical output shape;
+   * the numeric value is retained in case `pixelPerfect` is later disabled.
+   * Assigning `'auto'` restores automatic internal-camera and effect sizing,
+   * including after `resize()`. User-supplied cameras keep their authored
+   * frustum. The explicit sentinel also lets R3F restore constructor defaults
+   * when an `aspect` JSX prop is removed. Invalid numeric values are ignored.
    */
   set aspect(value: number | 'auto') {
     if (value === 'auto') {
@@ -1428,6 +1508,12 @@ export class Flatland extends Group implements WorldProvider {
     // Auto-initialize or rebuild render pipeline if needed
     this._ensureRenderPipeline(renderer)
 
+    // Bind the centered integer viewport before any direct or post-processed
+    // draw. Canvas viewports are expressed in logical pixels; render-target
+    // viewports already use physical texels. Restore user renderer state after
+    // this Flatland render completes.
+    const restorePixelViewport = this._applyPixelViewport(renderer)
+
     // Bind Flatland's destination for both direct and post-processed
     // rendering. RenderPipeline draws its final full-screen quad into the
     // renderer's current target, so it does not manage this state itself.
@@ -1470,6 +1556,7 @@ export class Flatland extends Group implements WorldProvider {
       if (renderTargetChanged) {
         renderer.setRenderTarget(currentRenderTarget)
       }
+      restorePixelViewport?.()
     }
 
     // Devtools: mark frame end after ALL renderer.render() calls have
@@ -1563,6 +1650,28 @@ export class Flatland extends Group implements WorldProvider {
     }
   }
 
+  /** Apply and later restore the active pixel camera's centered viewport. */
+  private _applyPixelViewport(renderer: WebGPURenderer): (() => void) | null {
+    if (!(this._camera instanceof PixelPerfectCamera)) return null
+
+    const viewport = this._camera.viewport
+    if (this._renderTarget) {
+      const renderTarget = this._renderTarget
+      this._savedViewport.copy(renderTarget.viewport)
+      renderTarget.viewport.copy(viewport)
+      return () => {
+        renderTarget.viewport.copy(this._savedViewport)
+      }
+    }
+
+    renderer.getViewport(this._savedViewport)
+    const pixelRatio = renderer.getPixelRatio()
+    renderer.setViewport(this._camera.getLogicalViewport(pixelRatio, this._drawingBufferViewport))
+    return () => {
+      renderer.setViewport(this._savedViewport)
+    }
+  }
+
   /** Apply Flatland's 2D-friendly default without overriding authored output. */
   private _prepareRenderTarget(renderTarget: RenderTarget | null): RenderTarget | null {
     if (renderTarget) {
@@ -1593,6 +1702,11 @@ export class Flatland extends Group implements WorldProvider {
   /** Guard against zero/negative/NaN dimensions. */
   private _isValidSize(width: number, height: number): boolean {
     return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+  }
+
+  /** Guard the authored vertical world span independently from surface size. */
+  private _isValidViewSize(value: number | undefined): value is number {
+    return value !== undefined && Number.isFinite(value) && value > 0
   }
 
   /**
@@ -1657,8 +1771,12 @@ export class Flatland extends Group implements WorldProvider {
     this._lastSyncedHeight = height
     if (this._autoAspect) {
       this._aspect = width / height
-      this._updateCameraFrustum()
     }
+    // PixelPerfectCamera always follows the physical surface even when an
+    // authored numeric aspect is retained for the regular-camera fallback.
+    // A fixed projection ratio cannot fill a differently-shaped framebuffer
+    // without fractional scaling or renderer-level letterboxing.
+    if (this._autoAspect || this._camera instanceof PixelPerfectCamera) this._updateCameraFrustum()
     this._queueLightEffectResize(width, height)
   }
 

@@ -10,6 +10,9 @@ import {
   positionLocal,
   instancedMesh,
   subBuild,
+  cameraProjectionMatrix,
+  modelViewMatrix,
+  viewport,
 } from 'three/tsl'
 import {
   type Texture,
@@ -24,7 +27,7 @@ import type { NodeBuilder } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
 import { uv } from 'three/tsl'
 import { EffectMaterial } from './EffectMaterial'
-import { readFlip, readRotatedFrameFlag } from './instanceAttributes'
+import { readFlip, readPixelPerfectFlag, readPixelPivot, readRotatedFrameFlag } from './instanceAttributes'
 import { synthQuadNodes } from './synthQuadNodes'
 import { getAtlasMesh } from '../loaders/atlasMeshRegistry'
 import type { GlobalUniforms } from '../GlobalUniforms'
@@ -282,6 +285,30 @@ export class Sprite2DMaterial extends EffectMaterial {
     }
 
     return positionLocal
+  }
+
+  /**
+   * Snap only the final projected sprite pivot to the physical framebuffer
+   * grid. The same clip-space delta is applied to every vertex, preserving
+   * authored scale and rotation and leaving CPU simulation transforms intact.
+   * A dynamic branch keeps the opt-out path to a flag test without creating a
+   * separate material or batch variant.
+   *
+   * @internal
+   */
+  override setupModelViewProjection(): Node<'vec4'> {
+    const clipPosition = cameraProjectionMatrix.mul(modelViewMatrix.mul(positionLocal)).toVar('spriteClipPosition')
+
+    If(readPixelPerfectFlag(), () => {
+      const pivotClip = cameraProjectionMatrix.mul(modelViewMatrix.mul(readPixelPivot()))
+      const pivotNdc = pivotClip.xy.div(pivotClip.w)
+      const pivotPixels = pivotNdc.mul(0.5).add(0.5).mul(viewport.zw).add(viewport.xy)
+      const snappedPixels = pivotPixels.add(0.5).floor()
+      const deltaNdc = snappedPixels.sub(pivotPixels).div(viewport.zw).mul(2)
+      clipPosition.xy.addAssign(deltaNdc.mul(clipPosition.w))
+    })
+
+    return clipPosition
   }
 
   /**

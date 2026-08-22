@@ -1,6 +1,12 @@
-import { int, attribute, vec2 } from 'three/tsl'
+import { int, attribute, vec2, vec3 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, ROTATED_FRAME_MASK } from './effectFlagBits'
+import {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+  ROTATED_FRAME_MASK,
+  PIXEL_PERFECT_MASK,
+} from './effectFlagBits'
 
 /**
  * TSL accessors for the per-instance data packed into `SpriteBatch`'s
@@ -19,7 +25,7 @@ import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, ROTATED_FRAME_MA
  *
  *   instanceExtras  (vec4, interleaved offset 12..15)
  *     .x = per-instance shadow radius — readShadowRadius()
- *     .y/.z/.w reserved for future per-instance shadow / system data
+ *     .y/.z/.w = instance pivot after the instance transform
  *
  * `instanceUV` and `instanceColor` stay raw — materials read them
  * directly via the usual `attribute(...)` calls since they're simple
@@ -72,6 +78,16 @@ export function readShadowRadius(): Node<'float'> {
   return attribute<'vec4'>('instanceExtras', 'vec4').x
 }
 
+/**
+ * Read the sprite pivot in mesh-local space after applying its instance
+ * transform. Standalone sprites use `(0, 0, 0)` because their model matrix
+ * already contains the complete sprite transform.
+ */
+export function readPixelPivot(): Node<'vec3'> {
+  const extras = attribute<'vec4'>('instanceExtras', 'vec4')
+  return vec3(extras.y, extras.z, extras.w)
+}
+
 // ─── Typed bit readers ────────────────────────────────────────────
 
 /**
@@ -110,4 +126,9 @@ export function readCastShadowFlag(): Node<'bool'> {
  */
 export function readRotatedFrameFlag(): Node<'bool'> {
   return readSystemFlags().bitAnd(int(ROTATED_FRAME_MASK)).greaterThan(int(0))
+}
+
+/** Read the projected-translation snapping flag (bit 4). */
+export function readPixelPerfectFlag(): Node<'bool'> {
+  return readSystemFlags().bitAnd(int(PIXEL_PERFECT_MASK)).greaterThan(int(0))
 }

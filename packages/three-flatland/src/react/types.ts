@@ -10,6 +10,7 @@ import type { TileLayer } from '../tilemap/TileLayer'
 import type { Light2D } from '../lights/Light2D'
 import type { MaterialEffectClass, EffectSchema, EffectValues } from '../materials/MaterialEffect'
 import type { LightEffectClass } from '../lights/LightEffect'
+import type { PixelPerfectCamera } from '../cameras/PixelPerfectCamera'
 
 /**
  * JSX element type for a MaterialEffect with schema-derived props.
@@ -50,11 +51,12 @@ export type LightEffectElement<T extends LightEffectClass<any>> = ThreeElement<T
  * - <sprite2DMaterial />
  * - <animatedSprite2D spriteSheet={...} />
  *
- * Users must call extend() from '@react-three/fiber' before using these elements:
+ * Users must call `extend()` from the WebGPU R3F entry point before using
+ * these elements:
  *
  * @example
  * ```tsx
- * import { extend } from '@react-three/fiber'
+ * import { extend } from '@react-three/fiber/webgpu'
  * import { Sprite2D, Sprite2DMaterial, AnimatedSprite2D } from 'three-flatland'
  *
  * // Register only what you need (tree-shakeable)
@@ -73,5 +75,6 @@ declare module '@react-three/fiber' {
     tileMap2D: ThreeElement<typeof TileMap2D>
     tileLayer: ThreeElement<typeof TileLayer>
     light2D: ThreeElement<typeof Light2D>
+    pixelPerfectCamera: ThreeElement<typeof PixelPerfectCamera>
   }
 }

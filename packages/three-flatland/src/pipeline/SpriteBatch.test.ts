@@ -123,6 +123,20 @@ describe('SpriteBatch', () => {
     expect(array[slot * 16 + 9]).toBe(1) // y normal
   })
 
+  it('stores the pixel-snap pivot in the reserved core attribute', () => {
+    const batch = new SpriteBatch(material)
+    const slot = batch.allocateSlot()
+    const matrix = new Matrix4().makeTranslation(12.25, -7.5, 3)
+
+    batch.writeMatrix(slot, matrix)
+    batch.writePixelPivotFromMatrix(slot)
+
+    const extras = batch.geometry.getAttribute('instanceExtras')
+    expect(extras.getY(slot)).toBeCloseTo(12.25)
+    expect(extras.getZ(slot)).toBeCloseTo(-7.5)
+    expect(extras.getW(slot)).toBeCloseTo(3)
+  })
+
   it('should reset all slots', () => {
     const batch = new SpriteBatch(material)
 

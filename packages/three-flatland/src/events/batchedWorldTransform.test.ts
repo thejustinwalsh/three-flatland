@@ -25,6 +25,13 @@ function instanceSlot(sprite: Sprite2D): Float32Array {
   return (mesh!.instanceMatrix.array as Float32Array).slice(o, o + 16)
 }
 
+function pixelPivot(sprite: Sprite2D): [number, number, number] {
+  const mesh = sprite._batchMesh
+  expect(mesh).not.toBeNull()
+  const extras = mesh!.geometry.getAttribute('instanceExtras')
+  return [extras.getY(sprite._batchSlot), extras.getZ(sprite._batchSlot), extras.getW(sprite._batchSlot)]
+}
+
 describe('batched sprite world transform under a translated SpriteGroup', () => {
   it('keeps the slot root-relative while matrixWorld and raycasts stay world-space', () => {
     const scene = new Scene()
@@ -44,6 +51,9 @@ describe('batched sprite world transform under a translated SpriteGroup', () => 
     expect(slot[0]).toBe(100)
     expect(slot[5]).toBe(100)
     expect(sprite.matrixWorld.elements[12]).toBe(500)
+    // The pivot stays relative to the shared draw root; the batch model
+    // matrix contributes the root translation exactly once in the shader.
+    expect(pixelPivot(sprite)).toEqual([0, 0, 0])
     const composite = new Matrix4().fromArray(slot).premultiply(sprite._batchMesh!.matrixWorld)
     expect(composite.elements[12]).toBe(500)
 
@@ -77,6 +87,8 @@ describe('batched sprite world transform under a translated SpriteGroup', () => 
     const slot = instanceSlot(sprite)
     expect(slot[12]).toBeCloseTo(200, 10)
     expect(slot[13]).toBeCloseTo(0, 10)
+    expect(pixelPivot(sprite)[0]).toBeCloseTo(200, 10)
+    expect(pixelPivot(sprite)[1]).toBeCloseTo(0, 10)
     const composite = new Matrix4().fromArray(slot).premultiply(sprite._batchMesh!.matrixWorld)
     expect(composite.elements[12]).toBeCloseTo(0, 10)
     expect(composite.elements[13]).toBeCloseTo(200, 10)

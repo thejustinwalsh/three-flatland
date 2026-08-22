@@ -77,7 +77,7 @@ export interface Sprite2DOptions {
   sortLayer?: SortLayerValue
   /** Z-index within sortLayer */
   zIndex?: number
-  /** Pixel-perfect rendering (snap to pixels) */
+  /** Snap final projected translation to physical pixels (default: true) */
   pixelPerfect?: boolean
   /** Whether this sprite receives lighting from Flatland's LightEffect (default: true) */
   lit?: boolean

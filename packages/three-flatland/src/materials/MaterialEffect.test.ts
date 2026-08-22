@@ -5,10 +5,16 @@ import { createWorld, universe } from 'koota'
 import { MaterialEffect, createMaterialEffect } from './MaterialEffect'
 import type { EffectNodeContext } from './MaterialEffect'
 import { Sprite2DMaterial } from './Sprite2DMaterial'
-import { Sprite2D, LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, EFFECT_BIT_OFFSET } from '../sprites/Sprite2D'
+import {
+  Sprite2D,
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  PIXEL_PERFECT_MASK,
+  EFFECT_BIT_OFFSET,
+} from '../sprites/Sprite2D'
 
-// Default low bits (lit + receiveShadows) that are always set on new Sprite2D instances.
-const DEFAULT_FLAGS = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
+// Default low bits set by the coordinated pixel-art preset.
+const DEFAULT_FLAGS = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK | PIXEL_PERFECT_MASK
 
 // MaterialEffect enable bits are assigned starting at EFFECT_BIT_OFFSET.
 // Express per-effect masks in terms of the offset so a future bump of the

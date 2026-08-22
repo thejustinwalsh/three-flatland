@@ -44,6 +44,7 @@ import { unproxyPickFromBatch } from '../react/batchPicking'
 import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
 import { flatlandPrime, flatlandRegister, flatlandUnregister } from '../orchestration/orchestrator'
 import type { Registry } from '../orchestration/registry'
+import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
 
 // Types the build-time `process.env` read without requiring @types/node
 // (shadows the global where present; erased at compile).
@@ -61,9 +62,16 @@ export {
   RECEIVE_SHADOWS_MASK,
   CAST_SHADOW_MASK,
   ROTATED_FRAME_MASK,
+  PIXEL_PERFECT_MASK,
   EFFECT_BIT_OFFSET,
 } from '../materials/effectFlagBits'
-import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, ROTATED_FRAME_MASK } from '../materials/effectFlagBits'
+import {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+  ROTATED_FRAME_MASK,
+  PIXEL_PERFECT_MASK,
+} from '../materials/effectFlagBits'
 
 /** Size in floats for each attribute type. */
 const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
@@ -108,6 +116,9 @@ interface FlatlandClipAncestor extends Object3D {
 }
 
 export class Sprite2D extends Mesh {
+  /** Class-level rendering defaults, resolved before {@link RenderingConfig}. */
+  static options: RenderingSetting | undefined = undefined
+
   declare geometry: BufferGeometry
   declare material: Sprite2DMaterial
 
@@ -235,8 +246,28 @@ export class Sprite2D extends Mesh {
     }
   }
 
-  /** Pixel-perfect mode */
-  pixelPerfect: boolean = false
+  /** Whether this sprite's final projected translation snaps to physical pixels. */
+  get pixelPerfect(): boolean {
+    return (this._systemFlags & PIXEL_PERFECT_MASK) !== 0
+  }
+
+  set pixelPerfect(value: boolean) {
+    const was = (this._systemFlags & PIXEL_PERFECT_MASK) !== 0
+    if (was === value) return
+
+    if (value) {
+      this._systemFlags |= PIXEL_PERFECT_MASK
+    } else {
+      this._systemFlags &= ~PIXEL_PERFECT_MASK
+    }
+
+    if (this._entity) {
+      this._syncEffectFlagsToBatch()
+      if (value) this._batchMesh?.writePixelPivotFromMatrix(this._batchSlot)
+    } else {
+      this._writeEffectDataOwn()
+    }
+  }
 
   /**
    * Whether this sprite receives lighting from Flatland's LightEffect.
@@ -738,7 +769,7 @@ export class Sprite2D extends Mesh {
    *   0..3   instanceUV      (x, y, w, h)
    *   4..7   instanceColor   (r, g, b, a)
    *   8..11  instanceSystem  (flipX, flipY, sysFlags, enableBits)
-   *  12..15  instanceExtras  (shadowRadius, reserved, reserved, reserved)
+   *  12..15  instanceExtras  (shadowRadius, pixelPivot.x/y/z)
    */
   private _instanceDataBuffer: Float32Array = (() => {
     const data = new Float32Array(4 * 16)
@@ -759,7 +790,7 @@ export class Sprite2D extends Mesh {
       data[base + 9] = 1
       data[base + 10] = 0
       data[base + 11] = 0
-      // Extras: shadowRadius=0, reserved=0
+      // Extras: shadowRadius=0, pixelPivot=(0, 0, 0)
       data[base + 12] = 0
       data[base + 13] = 0
       data[base + 14] = 0
@@ -853,6 +884,11 @@ export class Sprite2D extends Mesh {
       this.matrixWorldNeedsUpdate = true
     })
 
+    const classOptions = (this.constructor as typeof Sprite2D).options
+    if (resolvePixelPerfect(options?.pixelPerfect, classOptions)) {
+      this._systemFlags |= PIXEL_PERFECT_MASK
+    }
+
     // Set up instance attributes on the geometry
     this._setupInstanceAttributes()
 
@@ -880,6 +916,7 @@ export class Sprite2D extends Mesh {
 
     // If no options, we're being created by R3F - properties will be set via setters
     if (!options) {
+      this._writeEffectDataOwn()
       this._interceptionArmed = true
       return
     }
@@ -941,10 +978,6 @@ export class Sprite2D extends Mesh {
       this.zIndex = options.zIndex
     }
 
-    if (options.pixelPerfect !== undefined) {
-      this.pixelPerfect = options.pixelPerfect
-    }
-
     if (options.lit === false) {
       this._systemFlags &= ~LIT_FLAG_MASK
     }
@@ -963,6 +996,10 @@ export class Sprite2D extends Mesh {
 
     this._updateOwnFlip()
     this._updateOwnShadowRadius()
+    // Constructor options above may have changed system bits after the first
+    // attribute initialization. Keep standalone rendering in lockstep with
+    // the batched assignment path before the object can render.
+    this._writeEffectDataOwn()
     this._interceptionArmed = true
   }
 
@@ -2605,6 +2642,7 @@ export class Sprite2D extends Mesh {
     // Flatland owns that flag according to the TARGET's enrollment state.
     this.matrixWorldAutoUpdate = this._entity === null
     this.visible = source._isAuthoredVisible()
+    this.pixelPerfect = source.pixelPerfect
     return this
   }
 

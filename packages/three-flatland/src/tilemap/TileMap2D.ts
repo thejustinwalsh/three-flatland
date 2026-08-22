@@ -13,6 +13,7 @@ import type {
   CollisionShape,
 } from './types'
 import { rayPlaneZ0, createIntersection } from '../events/raycastHelpers'
+import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
 
 const _tileInvMatrix = new Matrix4()
 const _tileLocalPoint = new Vector3()
@@ -52,6 +53,9 @@ const _tileLocalPoint = new Vector3()
  * ```
  */
 export class TileMap2D extends Group {
+  /** Class-level rendering defaults, resolved before {@link RenderingConfig}. */
+  static options: RenderingSetting | undefined = undefined
+
   /** Map data */
   private _data: TileMapData | null = null
 
@@ -72,6 +76,9 @@ export class TileMap2D extends Group {
 
   /** Enable collision extraction */
   private _enableCollision: boolean = true
+
+  /** Snap tile pivots to physical pixels. */
+  private _pixelPerfect = false
 
   /** Tilesets */
   private tilesets: Tileset[] = []
@@ -97,6 +104,8 @@ export class TileMap2D extends Group {
   constructor(options?: TileMap2DOptions) {
     super()
     this.name = 'TileMap2D'
+    const classOptions = (this.constructor as typeof TileMap2D).options
+    this._pixelPerfect = resolvePixelPerfect(options?.pixelPerfect, classOptions)
 
     // Early return for R3F path (no options)
     if (!options) return
@@ -166,6 +175,17 @@ export class TileMap2D extends Group {
     }
   }
 
+  /** Whether every rendered tile snaps its projected pivot to physical pixels. */
+  get pixelPerfect(): boolean {
+    return this._pixelPerfect
+  }
+
+  set pixelPerfect(value: boolean) {
+    if (value === this._pixelPerfect) return
+    this._pixelPerfect = value
+    for (const layer of this.tileLayers) layer.pixelPerfect = value
+  }
+
   // Read-only accessors
   get widthInTiles(): number {
     return this._widthInTiles
@@ -213,6 +233,7 @@ export class TileMap2D extends Group {
 
       if (tileset) {
         const layer = new TileLayer(layerData, tileset, this._tileWidth, this._tileHeight, this._chunkSize)
+        layer.pixelPerfect = this._pixelPerfect
 
         // Position layer in Z for proper ordering
         layer.position.z = i * 0.001

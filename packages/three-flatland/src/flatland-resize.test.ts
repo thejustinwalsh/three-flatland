@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { OrthographicCamera, Vector2 } from 'three'
+import { OrthographicCamera, Vector2, Vector4 } from 'three'
 import { vec4 } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland } from './Flatland'
 import { createLightEffect } from './lights/LightEffect'
+import { PixelPerfectCamera } from './cameras/PixelPerfectCamera'
 
 /**
  * Minimal renderer stub for exercising Flatland.render() headlessly.
@@ -13,6 +14,9 @@ import { createLightEffect } from './lights/LightEffect'
  */
 function mockRenderer(width: number, height: number, pixelRatio = 1) {
   const state = { width, height }
+  const viewport = new Vector4(0, 0, width, height)
+  let renderTarget: { viewport?: Vector4 } | null = null
+  const renderedViewports: Vector4[] = []
   let getSizeCalls = 0
   let getDrawingBufferSizeCalls = 0
   const renderer = {
@@ -25,10 +29,19 @@ function mockRenderer(width: number, height: number, pixelRatio = 1) {
       return target.set(Math.floor(state.width * pixelRatio), Math.floor(state.height * pixelRatio))
     },
     getPixelRatio: () => pixelRatio,
-    getRenderTarget: () => null,
-    setRenderTarget: () => {},
+    getViewport: (target: Vector4) => target.copy(viewport),
+    setViewport: (x: number | Vector4, y?: number, viewportWidth?: number, viewportHeight?: number) => {
+      if (x instanceof Vector4) viewport.copy(x)
+      else viewport.set(x, y!, viewportWidth!, viewportHeight!)
+    },
+    getRenderTarget: () => renderTarget,
+    setRenderTarget: (target: { viewport?: Vector4 } | null) => {
+      renderTarget = target
+    },
     setClearColor: () => {},
-    render: () => {},
+    render: () => {
+      renderedViewports.push((renderTarget?.viewport ?? viewport).clone())
+    },
     autoClear: true,
   } as unknown as WebGPURenderer
   return {
@@ -36,6 +49,8 @@ function mockRenderer(width: number, height: number, pixelRatio = 1) {
     state,
     getSizeCalls: () => getSizeCalls,
     getDrawingBufferSizeCalls: () => getDrawingBufferSizeCalls,
+    viewport,
+    renderedViewports,
   }
 }
 
@@ -62,7 +77,7 @@ function lifecycleEffect(events: string[]) {
 
 describe('Flatland — resize()', () => {
   it('sets the frustum from a non-square size: halfWidth === viewSize * aspect / 2', () => {
-    const flatland = new Flatland({ viewSize: 800 })
+    const flatland = new Flatland({ viewSize: 800, pixelPerfect: false })
     flatland.resize(1280, 720)
 
     const aspect = 1280 / 720
@@ -74,7 +89,7 @@ describe('Flatland — resize()', () => {
   })
 
   it('ignores zero dimensions instead of latching a NaN aspect', () => {
-    const flatland = new Flatland({ viewSize: 800 })
+    const flatland = new Flatland({ viewSize: 800, pixelPerfect: false })
     flatland.resize(0, 0)
 
     expect(flatland.aspect).toBe('auto')
@@ -87,7 +102,7 @@ describe('Flatland — resize()', () => {
   })
 
   it('ignores NaN and negative dimensions', () => {
-    const flatland = new Flatland({ viewSize: 800 })
+    const flatland = new Flatland({ viewSize: 800, pixelPerfect: false })
     flatland.resize(NaN, 720)
     flatland.resize(1280, NaN)
     flatland.resize(-1280, 720)
@@ -99,9 +114,110 @@ describe('Flatland — resize()', () => {
   })
 })
 
+describe('Flatland — pixel-perfect camera', () => {
+  it('uses PixelPerfectCamera by default', () => {
+    const flatland = new Flatland({ viewSize: 240 })
+
+    expect(flatland.pixelPerfect).toBe(true)
+    expect(flatland.camera).toBeInstanceOf(PixelPerfectCamera)
+  })
+
+  it('fits the managed camera to the physical drawing buffer', () => {
+    const flatland = new Flatland({ pixelPerfect: true, viewSize: 240 })
+    const { renderer, renderedViewports, viewport } = mockRenderer(640, 360, 2)
+
+    flatland.render(renderer)
+
+    const camera = flatland.camera as PixelPerfectCamera
+    expect(camera.drawingBufferWidth).toBe(1280)
+    expect(camera.drawingBufferHeight).toBe(720)
+    expect(camera.resolvedPixelScale).toBe(3)
+    expect(camera.viewport.toArray()).toEqual([1, 0, 1278, 720])
+    expect(flatland.resolvedAspect).toBeCloseTo(426 / 240)
+    expect(renderedViewports[0]?.toArray()).toEqual([0.5, 0, 639, 360])
+    expect(viewport.toArray()).toEqual([0, 0, 640, 360])
+  })
+
+  it('uses render-target texels without applying renderer DPR', () => {
+    const flatland = new Flatland({ pixelPerfect: true, viewSize: 128 })
+    const { renderer, renderedViewports } = mockRenderer(640, 360, 2)
+    const target = {
+      width: 513,
+      height: 257,
+      viewport: new Vector4(0, 0, 513, 257),
+      texture: { colorSpace: '' },
+      setSize: () => {},
+    }
+    flatland.renderTarget = target as never
+
+    flatland.render(renderer)
+
+    const camera = flatland.camera as PixelPerfectCamera
+    expect(camera.drawingBufferWidth).toBe(513)
+    expect(camera.drawingBufferHeight).toBe(257)
+    expect(camera.resolvedPixelScale).toBe(2)
+    expect(camera.viewport.toArray()).toEqual([0, 0, 512, 256])
+    expect(renderedViewports[0]?.toArray()).toEqual([0, 0, 512, 256])
+    expect(target.viewport.toArray()).toEqual([0, 0, 513, 257])
+  })
+
+  it('switches managed camera modes through the R3F-settable property', () => {
+    const flatland = new Flatland({ viewSize: 240 })
+    flatland.camera.position.set(12, 34, 56)
+    flatland.camera.rotation.set(0.1, 0.2, 0.3)
+    flatland.camera.layers.enable(4)
+
+    flatland.pixelPerfect = true
+    expect(flatland.camera).toBeInstanceOf(PixelPerfectCamera)
+
+    flatland.pixelPerfect = false
+    expect(flatland.camera).toBeInstanceOf(OrthographicCamera)
+    expect(flatland.camera).not.toBeInstanceOf(PixelPerfectCamera)
+    expect(flatland.camera.position.toArray()).toEqual([12, 34, 56])
+    expect(flatland.camera.rotation.x).toBeCloseTo(0.1)
+    expect(flatland.camera.rotation.y).toBeCloseTo(0.2)
+    expect(flatland.camera.rotation.z).toBeCloseTo(0.3)
+    expect(flatland.camera.layers.isEnabled(4)).toBe(true)
+  })
+
+  it('ignores invalid view sizes without corrupting the managed projection', () => {
+    const flatland = new Flatland({ viewSize: 0 })
+
+    expect(flatland.viewSize).toBe(400)
+    flatland.viewSize = NaN
+    flatland.viewSize = -1
+
+    expect(flatland.viewSize).toBe(400)
+    expect(Number.isFinite(flatland.camera.projectionMatrix.elements[0])).toBe(true)
+  })
+
+  it('never replaces or rewrites a custom camera', () => {
+    const custom = new OrthographicCamera(-30, 30, 15, -15)
+    const flatland = new Flatland({ camera: custom })
+
+    flatland.pixelPerfect = true
+    flatland.resize(1280, 720)
+
+    expect(flatland.camera).toBe(custom)
+    expect(custom.left).toBe(-30)
+    expect(custom.right).toBe(30)
+  })
+
+  it('restores the requested managed camera after a custom camera is removed', () => {
+    const custom = new OrthographicCamera(-30, 30, 15, -15)
+    const flatland = new Flatland({ camera: custom })
+    flatland.pixelPerfect = true
+
+    const internalCamera = Reflect.get(flatland, '_internalCamera') as OrthographicCamera
+    flatland.camera = internalCamera
+
+    expect(flatland.camera).toBeInstanceOf(PixelPerfectCamera)
+  })
+})
+
 describe('Flatland — aspect property', () => {
   it('pins the aspect and updates the frustum', () => {
-    const flatland = new Flatland({ viewSize: 800 })
+    const flatland = new Flatland({ viewSize: 800, pixelPerfect: false })
     flatland.aspect = 2
 
     expect(flatland.camera.right).toBe(800)
@@ -109,7 +225,7 @@ describe('Flatland — aspect property', () => {
   })
 
   it('rejects non-finite and non-positive values', () => {
-    const flatland = new Flatland({ viewSize: 800 })
+    const flatland = new Flatland({ viewSize: 800, pixelPerfect: false })
     flatland.aspect = NaN
     flatland.aspect = 0
     flatland.aspect = -1
@@ -120,7 +236,7 @@ describe('Flatland — aspect property', () => {
   })
 
   it('treats an invalid constructor aspect as automatic instead of latching it', () => {
-    const flatland = new Flatland({ viewSize: 800, aspect: 0 })
+    const flatland = new Flatland({ viewSize: 800, aspect: 0, pixelPerfect: false })
     const { renderer } = mockRenderer(1280, 720)
 
     flatland.render(renderer)
@@ -132,14 +248,14 @@ describe('Flatland — aspect property', () => {
 
   it('returns to automatic sizing after a fixed aspect or manual resize', () => {
     const events: string[] = []
-    const flatland = new Flatland({ viewSize: 800, aspect: 2 })
+    const flatland = new Flatland({ viewSize: 800, aspect: 2, pixelPerfect: false })
     const { renderer } = mockRenderer(1280, 720)
     flatland.setLighting(lifecycleEffect(events))
 
     flatland.resize(800, 800)
     // R3F restores a removed prop from a fresh no-arg instance. Flatland's
     // default getter must therefore expose the explicit auto sentinel.
-    flatland.aspect = new Flatland().aspect
+    flatland.aspect = new Flatland({ pixelPerfect: false }).aspect
     flatland.render(renderer)
 
     expect(flatland.aspect).toBe('auto')
@@ -171,7 +287,7 @@ describe('Flatland — aspect property', () => {
 
 describe('Flatland — automatic aspect sync in render()', () => {
   it('derives the aspect from the renderer size when never told otherwise', () => {
-    const flatland = new Flatland({ viewSize: 800 })
+    const flatland = new Flatland({ viewSize: 800, pixelPerfect: false })
     const { renderer } = mockRenderer(1280, 720)
 
     flatland.render(renderer)
@@ -202,7 +318,9 @@ describe('Flatland — automatic aspect sync in render()', () => {
     state.width = 1920
     state.height = 1080
     flatland.render(renderer)
-    expect(flatland.resolvedAspect).toBeCloseTo(1920 / 1080)
+    // 800 authored rows fit at 1×, so the camera centers a 1920 × 800
+    // physical viewport instead of stretching those rows across 1080 pixels.
+    expect(flatland.resolvedAspect).toBeCloseTo(1920 / 800)
   })
 
   it('does not latch a bad aspect from a 0x0 first commit (R3F pre-measure)', () => {
@@ -262,6 +380,7 @@ describe('Flatland — automatic aspect sync in render()', () => {
     flatland.renderTarget = {
       width: 512,
       height: 256,
+      viewport: new Vector4(0, 0, 512, 256),
       texture: { colorSpace: '' },
       setSize: () => {},
     } as never
@@ -280,6 +399,7 @@ describe('Flatland — automatic aspect sync in render()', () => {
     flatland.renderTarget = {
       width: 512,
       height: 256,
+      viewport: new Vector4(0, 0, 512, 256),
       texture: { colorSpace: '' },
       setSize: firstSetSize,
     } as never
@@ -290,6 +410,7 @@ describe('Flatland — automatic aspect sync in render()', () => {
     flatland.renderTarget = {
       width: 300,
       height: 600,
+      viewport: new Vector4(0, 0, 300, 600),
       texture: { colorSpace: '' },
       setSize: secondSetSize,
     } as never
@@ -368,6 +489,7 @@ describe('Flatland — LightEffect surface sizing', () => {
     flatland.renderTarget = {
       width: 2560,
       height: 1440,
+      viewport: new Vector4(0, 0, 2560, 1440),
       texture: { colorSpace: '' },
       textures: [{ colorSpace: '' }],
       setSize: () => {},
@@ -387,7 +509,10 @@ describe('Flatland — LightEffect surface sizing', () => {
 
     flatland.render(renderer)
 
-    expect(flatland.resolvedAspect).toBeCloseTo(1280 / 720)
+    // DPR 2 produces a 2560 × 1440 framebuffer. The 400-row design
+    // resolves to a centered 2559 × 1200 viewport at 3×; the effect's
+    // own half-resolution resources do not alter that camera framing.
+    expect(flatland.resolvedAspect).toBeCloseTo(2559 / 1200)
     expect(events).toEqual(['init', 'resize:1280x720', 'update'])
   })
 

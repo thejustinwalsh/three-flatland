@@ -10,3 +10,7 @@ export { attachEffect, attachLighting } from './attach'
 
 // Event integration
 export { createFlatlandCompute } from './flatlandEvents'
+
+// Camera integration
+export { usePixelPerfectCamera } from './usePixelPerfectCamera'
+export type { UsePixelPerfectCameraOptions } from './usePixelPerfectCamera'

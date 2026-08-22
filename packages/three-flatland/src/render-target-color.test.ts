@@ -4,6 +4,7 @@ import {
   RenderTarget,
   SRGBColorSpace,
   Vector2,
+  Vector4,
   type Scene,
   type Camera,
 } from 'three'
@@ -34,6 +35,7 @@ function createPipeline(render = vi.fn()): RenderPipeline {
 
 function createRenderer(initialTarget: RenderTarget | null = null) {
   let currentTarget = initialTarget
+  const viewport = new Vector4(0, 0, 640, 360)
   const setRenderTarget = vi.fn((target: RenderTarget | null) => {
     currentTarget = target
   })
@@ -42,11 +44,13 @@ function createRenderer(initialTarget: RenderTarget | null = null) {
     autoClear: true,
     getPixelRatio: () => 1,
     getRenderTarget: () => currentTarget,
+    getViewport: (target: Vector4) => target.copy(viewport),
     getSize: (target: Vector2) => target.set(640, 360),
     getDrawingBufferSize: (target: Vector2) => target.set(640, 360),
     render: vi.fn((_scene: Scene, _camera: Camera) => undefined),
     setClearColor: vi.fn(),
     setRenderTarget,
+    setViewport: (value: Vector4) => viewport.copy(value),
   } as unknown as WebGPURenderer
 
   return { renderer, setRenderTarget }

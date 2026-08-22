@@ -61,14 +61,14 @@ describe('React Flatland surface sizing', () => {
 
     const flatlandRef = createRef<Flatland>()
     await act(async () => {
-      root.render(<flatland ref={flatlandRef} viewSize={800} aspect={2} />)
+      root.render(<flatland ref={flatlandRef} viewSize={800} aspect={2} pixelPerfect={false} />)
       await Promise.resolve()
     })
     expect(flatlandRef.current!.aspect).toBe(2)
     expect(flatlandRef.current!.camera.right).toBe(800)
 
     await act(async () => {
-      root.render(<flatland ref={flatlandRef} viewSize={800} />)
+      root.render(<flatland ref={flatlandRef} viewSize={800} pixelPerfect={false} />)
       await Promise.resolve()
     })
     expect(flatlandRef.current!.aspect).toBe('auto')
@@ -94,13 +94,13 @@ describe('React Flatland surface sizing', () => {
     const customCamera = new OrthographicCamera(-10, 10, 10, -10)
     const flatlandRef = createRef<Flatland>()
     await act(async () => {
-      root.render(<flatland ref={flatlandRef} camera={customCamera} viewSize={800} />)
+      root.render(<flatland ref={flatlandRef} camera={customCamera} viewSize={800} pixelPerfect={false} />)
       await Promise.resolve()
     })
     expect(flatlandRef.current!.camera).toBe(customCamera)
 
     await act(async () => {
-      root.render(<flatland ref={flatlandRef} viewSize={800} />)
+      root.render(<flatland ref={flatlandRef} viewSize={800} pixelPerfect={false} />)
       await Promise.resolve()
     })
     flatlandRef.current!.render(renderer as unknown as WebGPURenderer)

@@ -84,6 +84,34 @@
         "default": "./dist/loaders/*.js"
       }
     },
+    "./cameras": {
+      "source": "./src/cameras/index.ts",
+      "import": {
+        "types": "./dist/cameras/index.d.ts",
+        "default": "./dist/cameras/index.js"
+      }
+    },
+    "./cameras/*": {
+      "source": "./src/cameras/*.ts",
+      "import": {
+        "types": "./dist/cameras/*.d.ts",
+        "default": "./dist/cameras/*.js"
+      }
+    },
+    "./config": {
+      "source": "./src/config/index.ts",
+      "import": {
+        "types": "./dist/config/index.d.ts",
+        "default": "./dist/config/index.js"
+      }
+    },
+    "./config/*": {
+      "source": "./src/config/*.ts",
+      "import": {
+        "types": "./dist/config/*.d.ts",
+        "default": "./dist/config/*.js"
+      }
+    },
     "./pipeline": {
       "source": "./src/pipeline/index.ts",
       "import": {
@@ -306,6 +334,30 @@
         "import": {
           "types": "./dist/loaders/*.d.ts",
           "default": "./dist/loaders/*.js"
+        }
+      },
+      "./cameras": {
+        "import": {
+          "types": "./dist/cameras/index.d.ts",
+          "default": "./dist/cameras/index.js"
+        }
+      },
+      "./cameras/*": {
+        "import": {
+          "types": "./dist/cameras/*.d.ts",
+          "default": "./dist/cameras/*.js"
+        }
+      },
+      "./config": {
+        "import": {
+          "types": "./dist/config/index.d.ts",
+          "default": "./dist/config/index.js"
+        }
+      },
+      "./config/*": {
+        "import": {
+          "types": "./dist/config/*.d.ts",
+          "default": "./dist/config/*.js"
         }
       },
       "./pipeline": {

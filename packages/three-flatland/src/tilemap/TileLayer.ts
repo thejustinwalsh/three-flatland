@@ -16,7 +16,7 @@ import {
   type MeshBatchEntry,
   type MeshBatchSourceFn,
 } from '../debug/debug-sink'
-import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK } from '../materials/effectFlagBits'
+import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, PIXEL_PERFECT_MASK } from '../materials/effectFlagBits'
 import type { Tileset } from './Tileset'
 import type { TileLayerData } from './types'
 
@@ -152,6 +152,21 @@ export class TileLayer extends Group {
     this._syncEffectFlagsToChunks()
   }
 
+  get pixelPerfect(): boolean {
+    return (this._systemFlags & PIXEL_PERFECT_MASK) !== 0
+  }
+
+  set pixelPerfect(value: boolean) {
+    const was = (this._systemFlags & PIXEL_PERFECT_MASK) !== 0
+    if (was === value) return
+    if (value) {
+      this._systemFlags |= PIXEL_PERFECT_MASK
+    } else {
+      this._systemFlags &= ~PIXEL_PERFECT_MASK
+    }
+    this._syncEffectFlagsToChunks()
+  }
+
   /**
    * Set castsShadow on a specific tile by its data-array index.
    * Use with IntGrid data to mark wall tiles as shadow casters.
@@ -187,7 +202,7 @@ export class TileLayer extends Group {
     // would silently un-mark them. Mask carves out the layer's
     // bits and merges them into each tile's existing flag word so
     // per-tile state survives layer-level toggles.
-    const layerMask = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
+    const layerMask = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK | PIXEL_PERFECT_MASK
     const layerBits = this._systemFlags & layerMask
     const preserveMask = ~layerMask
     for (const chunk of this.chunks.values()) {
@@ -410,6 +425,7 @@ export class TileLayer extends Group {
       //                      don't currently use MaterialEffect uniforms)
       //   instanceExtras.x = per-tile shadow radius (all tiles in a
       //                      layer share tile dimensions → same radius)
+      //   instanceExtras.yzw = instance-transformed tile pivot
       const flags = this._systemFlags
       const tileRadius = Math.max(this.tileWidth, this.tileHeight)
       for (let i = 0; i < count; i++) {
@@ -478,6 +494,9 @@ export class TileLayer extends Group {
         // the tile is actually flipped.
         if (tile.flipH) instanceData[base + 8] = -1
         if (tile.flipV) instanceData[base + 9] = -1
+        instanceData[base + 13] = tile.x + this.tileWidth / 2
+        instanceData[base + 14] = tile.y + this.tileHeight / 2
+        instanceData[base + 15] = 0
 
         // Per-tile effect attribute overrides from TileDefinition.properties.
         // Example: a tile with `{ normalKind: 1 }` in its properties sets
