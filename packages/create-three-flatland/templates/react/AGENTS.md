@@ -24,7 +24,7 @@ Two corollaries: never add a `WebGLRenderer` fallback path (the fallback already
 
 ## The opinionated default: a `Flatland` root
 
-A `Flatland` instance is the front door. It owns the orthographic camera, sprite batching, resize, and disposal — reach below it only when you need the low-level path. The core of `src/App.tsx`:
+A `Flatland` instance is the front door. It owns the orthographic camera, sprite batching, render-surface sizing, and disposal — reach below it only when you need the low-level path. The core of `src/App.tsx`:
 
 ```tsx
 extend({ Flatland, Sprite2D }) // once, at module scope
@@ -36,11 +36,11 @@ extend({ Flatland, Sprite2D }) // once, at module scope
 </Canvas>
 ```
 
-`Flatland` owns an internal scene and camera, so it renders manually: `useFrame(() => flatlandRef.current?.render(gl), { phase: 'render' })` makes R3F skip its own render pass.
+`Flatland` owns an internal scene and camera, so it renders manually: `useFrame(() => flatlandRef.current?.render(renderer), { phase: 'render' })` makes R3F skip its own render pass.
 
 **Pointer events depend on which camera R3F raycasts with, and that differs by mode:**
 
-- **To the screen** (this template) — hand Flatland's camera to R3F as the default: `set({ camera: flatland.camera })` from a callback ref on `<flatland>`, with `camera.manual = true` so R3F leaves the frustum to `flatland.resize()`. One camera, nothing to keep in sync. Keep the `Canvas` `orthographic`.
+- **To the screen** (this template) — hand Flatland's camera to R3F as the default: `set({ camera: flatland.camera })` from a callback ref on `<flatland>`, with `camera.manual = true` so R3F leaves the frustum to `flatland.render()`. Flatland derives the frustum from the render surface, so no resize effect is needed. One camera, nothing to keep in sync. Keep the `Canvas` `orthographic`.
 - **To a texture, or children portalled into `flatland.scene`** — R3F's default camera is the wrong one, so re-cast the pointer with `createFlatlandCompute` from `three-flatland/react`:
   ```tsx
   createPortal(children, flatland.scene, {
@@ -55,7 +55,7 @@ Two R3F rules this project follows everywhere:
 1. **Register classes with `extend()` before using them as JSX.** `extend({ Flatland, Sprite2D })` is what makes `<flatland>` and `<sprite2D>` valid elements.
 2. **Import from `three-flatland/react` and `@react-three/fiber/webgpu`** — never bare `@react-three/fiber`. The `/react` subpath carries the JSX type augmentations; the `/webgpu` subpath is the renderer rule applied to R3F.
 
-The `flatland-r3f` skill (see Skills below) is the full integration guide — extend patterns, child routing, post-processing, resize wiring, and the imperative anti-patterns to avoid.
+The `flatland-r3f` skill (see Skills below) is the full integration guide — extend patterns, child routing, post-processing, automatic surface sizing, and the imperative anti-patterns to avoid.
 
 ## Package routing map
 

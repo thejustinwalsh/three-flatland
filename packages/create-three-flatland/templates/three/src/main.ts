@@ -1,5 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Color, Raycaster, Vector2 } from 'three'
+import { Color, NoToneMapping, Raycaster, SRGBColorSpace, Vector2 } from 'three'
 import { Flatland, Sprite2D, TextureLoader } from 'three-flatland'
 // Pure scene maths, extracted so it can be unit-tested without a GPU.
 // See src/interaction.test.ts — `npm run test`.
@@ -42,6 +42,8 @@ async function main() {
   // Always WebGPURenderer — it selects the backend itself (WebGPU where
   // supported, WebGL2 fallback where not). Never construct WebGLRenderer.
   const renderer = new WebGPURenderer({ antialias: false })
+  renderer.outputColorSpace = SRGBColorSpace
+  renderer.toneMapping = NoToneMapping
   activeRenderer = renderer
   activeFlatland = flatland
   container.appendChild(renderer.domElement)
@@ -112,7 +114,6 @@ async function main() {
   }
 
   const resize = () => {
-    flatland.resize(container.clientWidth, container.clientHeight)
     renderer.setSize(container.clientWidth, container.clientHeight)
   }
   on(window, 'resize', resize)
