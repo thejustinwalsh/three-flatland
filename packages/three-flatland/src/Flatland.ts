@@ -467,11 +467,17 @@ export class Flatland extends Group implements WorldProvider {
    */
   set camera(value: OrthographicCamera) {
     const internalOwner = _flatlandInternalCameras.get(value)
+    const thisIsR3FManaged = '__r3f' in (this as Flatland & { __r3f?: unknown })
+    const ownerIsR3FManaged =
+      internalOwner !== undefined && '__r3f' in (internalOwner as Flatland & { __r3f?: unknown })
     // R3F restores a removed property from its memoized no-arg prototype,
-    // whose Flatland instance never renders. Restore this instance's managed
-    // camera for that sentinel, but allow cameras from another live Flatland
-    // to be deliberately shared between views.
-    if (internalOwner === this || (internalOwner && internalOwner._lastRenderTime < 0)) {
+    // whose Flatland instance is never reconciled or rendered. Only interpret
+    // that camera as a sentinel while assigning to an R3F-managed instance;
+    // vanilla Flatland instances can share an internal camera before either
+    // one renders.
+    const isR3FPrototypeCamera =
+      thisIsR3FManaged && internalOwner !== undefined && !ownerIsR3FManaged && internalOwner._lastRenderTime < 0
+    if (internalOwner === this || isR3FPrototypeCamera) {
       this._camera = this._internalCamera
       this._ownsCamera = true
       this._updateCameraFrustum()

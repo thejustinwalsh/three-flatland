@@ -493,12 +493,10 @@ describe('Flatland — LightEffect surface sizing', () => {
     expect(events).toEqual(['init', 'resize:1280x720', 'update', 'update'])
   })
 
-  it('allows two live Flatland instances to share an internal camera', () => {
+  it('allows vanilla Flatland instances to share an internal camera before rendering', () => {
     const source = new Flatland()
     const consumer = new Flatland()
-    const { renderer } = mockRenderer(1280, 720)
 
-    source.render(renderer)
     consumer.camera = source.camera
 
     expect(consumer.camera).toBe(source.camera)
