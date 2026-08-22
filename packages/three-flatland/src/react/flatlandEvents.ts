@@ -5,6 +5,17 @@ import { PixelPerfectCamera } from '../cameras/PixelPerfectCamera'
 
 const _flatlandPointer = new Vector2()
 const _flatlandParentViewport = new Vector4()
+const _pixelPerfectComputes = new WeakSet<object>()
+
+/** @internal Mark a compute callback whose NDC already uses a pixel-camera viewport. */
+export function markPixelPerfectCompute<T extends object>(compute: T): T {
+  _pixelPerfectComputes.add(compute)
+  return compute
+}
+
+function isPixelPerfectCompute(compute: unknown): boolean {
+  return typeof compute === 'function' && _pixelPerfectComputes.has(compute)
+}
 
 /**
  * Minimal structural slice of R3F's RootState that compute touches.
@@ -16,6 +27,7 @@ interface ComputeState {
   camera?: THREE.Camera
   size?: { width: number; height: number }
   viewport?: { dpr: number }
+  events?: { compute?: unknown }
   raycaster: {
     setFromCamera(pointer: { x: number; y: number }, camera: THREE.Camera): void
   }
@@ -56,7 +68,7 @@ export function createFlatlandCompute(getFlatland: () => Flatland | null) {
       let surfaceX: number
       let surfaceY: number
 
-      if (previous.camera instanceof PixelPerfectCamera) {
+      if (previous.camera instanceof PixelPerfectCamera && isPixelPerfectCompute(previous.events?.compute)) {
         const physicalViewport = previous.camera.viewport
         const parentViewport = _flatlandParentViewport
           .set(

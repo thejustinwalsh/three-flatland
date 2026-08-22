@@ -73,6 +73,7 @@ describe('usePixelPerfectCamera', () => {
     expect(mountedState.viewport.getCurrentViewport(camera!).width).toBe(426)
     expect(mountedState.viewport.getCurrentViewport(camera!).height).toBe(240)
     expect(mountedState.viewport.getCurrentViewport(camera!).factor).toBe(1.5)
+    const cloneCamera = vi.spyOn(camera!, 'clone')
     const measuredLargerViewport = mountedState.viewport.getCurrentViewport(camera!, undefined, {
       width: 800,
       height: 450,
@@ -82,6 +83,13 @@ describe('usePixelPerfectCamera', () => {
     expect(measuredLargerViewport.width).toBe(533)
     expect(measuredLargerViewport.height).toBe(300)
     expect(measuredLargerViewport.factor).toBe(1.5)
+    mountedState.viewport.getCurrentViewport(camera!, undefined, {
+      width: 1024,
+      height: 576,
+      top: 0,
+      left: 0,
+    })
+    expect(cloneCamera).toHaveBeenCalledOnce()
     const setFromCamera = vi.spyOn(mountedState.raycaster, 'setFromCamera')
     mountedState.events.compute?.({ offsetX: 0.5, offsetY: 180 } as PointerEvent, mountedState)
     expect(mountedState.pointer.toArray()).toEqual([-1, 0])

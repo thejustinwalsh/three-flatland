@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { OrthographicCamera, Raycaster, Vector2, Vector4 } from 'three'
 import { Flatland } from '../Flatland'
 import { PixelPerfectCamera } from '../cameras/PixelPerfectCamera'
-import { createFlatlandCompute } from './flatlandEvents'
+import { createFlatlandCompute, markPixelPerfectCompute } from './flatlandEvents'
 
 describe('createFlatlandCompute', () => {
   it('re-casts the parent pointer from the flatland camera', () => {
@@ -58,6 +58,7 @@ describe('createFlatlandCompute', () => {
       pointer: new Vector2(0.25, -0.5),
       size: { width: 800, height: 485 },
       viewport: { dpr: 1 },
+      events: { compute: markPixelPerfectCompute(() => undefined) },
     }
 
     compute({} as never, portalState as never, parentState as never)
@@ -71,6 +72,25 @@ describe('createFlatlandCompute', () => {
       .filter(({ args }) => args[0] === 0 && args[1] === 1 && args[2] === 800 && args[3] === 484)
     expect(parentViewportWrites).toHaveLength(2)
     expect(parentViewportWrites[1]!.context).toBe(parentViewportWrites[0]!.context)
+  })
+
+  it('does not assume an unmarked pixel-camera pointer is already viewport-relative', () => {
+    const parentCamera = new PixelPerfectCamera({ viewSize: 240 })
+    parentCamera.setDrawingBufferSize(800, 485)
+    const flatland = new Flatland({ viewSize: 240 })
+    ;(flatland.camera as PixelPerfectCamera).setDrawingBufferSize(800, 485)
+    const portalState = { pointer: new Vector2(), raycaster: new Raycaster() }
+    const parentState = {
+      camera: parentCamera,
+      pointer: new Vector2(0, 1),
+      size: { width: 800, height: 485 },
+      viewport: { dpr: 1 },
+      events: { compute: () => undefined },
+    }
+
+    createFlatlandCompute(() => flatland)({} as never, portalState as never, parentState as never)
+
+    expect(portalState.raycaster.camera).toBeUndefined()
   })
 
   it('leaves raycaster.camera unset when flatland is not ready (R3F skips the root)', () => {

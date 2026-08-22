@@ -3,6 +3,7 @@ import { useFrame, useThree, type ComputeFunction, type FilterFunction } from '@
 import { Vector2, Vector4 } from 'three'
 import { PixelPerfectCamera, type PixelPerfectCameraOptions } from '../cameras/PixelPerfectCamera'
 import { getRendererViewportDepthRange, setRendererViewport } from '../cameras/rendererViewport'
+import { markPixelPerfectCompute } from './flatlandEvents'
 
 /** Options for {@link usePixelPerfectCamera}. */
 export interface UsePixelPerfectCameraOptions extends PixelPerfectCameraOptions {
@@ -33,6 +34,7 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
     cameraRef.current = new PixelPerfectCamera(options)
   }
   const camera = cameraRef.current
+  const measuredCameraRef = useRef<PixelPerfectCamera | null>(null)
   const logicalPixelViewportRef = useRef<Vector4 | null>(null)
   if (logicalPixelViewportRef.current === null) logicalPixelViewportRef.current = new Vector4()
   const logicalPixelViewport = logicalPixelViewportRef.current
@@ -84,7 +86,9 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
       const currentSize = get().size
       let measuredCamera = requestedCamera
       if (requestedSize.width !== currentSize.width || requestedSize.height !== currentSize.height) {
-        measuredCamera = requestedCamera.clone()
+        if (measuredCameraRef.current === null) measuredCameraRef.current = requestedCamera.clone()
+        else measuredCameraRef.current.copy(requestedCamera)
+        measuredCamera = measuredCameraRef.current
         measuredCamera.setViewportSize(requestedSize.width, requestedSize.height, get().viewport.dpr)
       }
       const worldWidth = measuredCamera.right - measuredCamera.left
@@ -181,7 +185,7 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
       if (!makeDefault) return
       setRendererViewport(renderer, camera.getLogicalViewport(dpr, logicalPixelViewport), viewportDepthRange)
     },
-    { priority: Number.NEGATIVE_INFINITY }
+    { priority: Number.MIN_SAFE_INTEGER }
   )
 
   useLayoutEffect(() => {
@@ -190,7 +194,7 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
     const previousCompute = get().events.compute
     const previousFilter = get().events.filter
 
-    const compute: ComputeFunction = (event, state, previousState) => {
+    const compute: ComputeFunction = markPixelPerfectCompute((event, state, previousState) => {
       if (previousCompute) {
         previousCompute(event, state, previousState)
       } else {
@@ -201,7 +205,7 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
       const surfaceY = ((1 - state.pointer.y) / 2) * state.size.height
       camera.getNormalizedDeviceCoordinates(surfaceX, surfaceY, state.viewport.dpr, state.pointer)
       state.raycaster.setFromCamera(state.pointer, state.camera)
-    }
+    })
 
     const filter: FilterFunction = (items, state) => {
       if (Math.abs(state.pointer.x) > 1 || Math.abs(state.pointer.y) > 1) return []
