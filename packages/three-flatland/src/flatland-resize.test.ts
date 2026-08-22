@@ -362,6 +362,32 @@ describe('Flatland — pixel-perfect camera', () => {
     flatland.dispose()
   })
 
+  it('crops an auto pass against the renderer when manual logical size differs', () => {
+    const TestPass = createPassEffect({
+      name: 'manualLogicalPixelViewportTest',
+      schema: {},
+      pass: () => (input) => input,
+    })
+    const flatland = new Flatland({ viewSize: 400 })
+    const { renderer } = mockRenderer(1280, 800)
+    flatland.resize(640, 400)
+    flatland.addPass(new TestPass())
+
+    const syncSurfaceSize = Reflect.get(flatland, '_syncSurfaceSize') as (renderer: WebGPURenderer) => void
+    syncSurfaceSize.call(flatland, renderer)
+    const ensurePipeline = Reflect.get(flatland, '_ensureRenderPipeline') as (renderer: WebGPURenderer) => void
+    ensurePipeline.call(flatland, renderer)
+
+    const passNode = Reflect.get(flatland, '_passNode') as { _viewport: Vector4 | null }
+    const uvScale = Reflect.get(flatland, '_passViewportUvScale') as { value: Vector2 }
+    const uvOffset = Reflect.get(flatland, '_passViewportUvOffset') as { value: Vector2 }
+    expect(passNode._viewport?.toArray()).toEqual([0, 0, 640, 400])
+    expect(uvScale.value.toArray()).toEqual([0.5, 0.5])
+    expect(uvOffset.value.toArray()).toEqual([0, 0])
+
+    flatland.dispose()
+  })
+
   it('ignores invalid view sizes without corrupting the managed projection', () => {
     const flatland = new Flatland({ viewSize: 0 })
 

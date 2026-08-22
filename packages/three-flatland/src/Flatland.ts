@@ -1685,7 +1685,7 @@ export class Flatland extends Group implements WorldProvider {
       }
     }
 
-    this._syncAutoPassViewport()
+    this._syncAutoPassViewport(renderer)
 
     this._syncRenderPipelineOutputTransform()
 
@@ -1711,20 +1711,25 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /** Keep an auto scene pass and its sampling window on the pixel viewport. */
-  private _syncAutoPassViewport(): void {
+  private _syncAutoPassViewport(renderer: WebGPURenderer): void {
     if (!this._autoRenderPipeline || !this._passNode) return
 
     if (this._camera instanceof PixelPerfectCamera) {
       const viewport = this._camera.viewport
+      let passWidth: number
+      let passHeight: number
+      if (this._renderTarget) {
+        passWidth = this._renderTarget.width
+        passHeight = this._renderTarget.height
+      } else {
+        renderer.getDrawingBufferSize(this._drawingBufferSize)
+        passWidth = this._drawingBufferSize.x
+        passHeight = this._drawingBufferSize.y
+      }
+      if (!this._isValidSize(passWidth, passHeight)) return
       this._passNode.setViewport(viewport)
-      this._passViewportUvScale.value.set(
-        viewport.width / this._camera.drawingBufferWidth,
-        viewport.height / this._camera.drawingBufferHeight
-      )
-      this._passViewportUvOffset.value.set(
-        viewport.x / this._camera.drawingBufferWidth,
-        viewport.y / this._camera.drawingBufferHeight
-      )
+      this._passViewportUvScale.value.set(viewport.width / passWidth, viewport.height / passHeight)
+      this._passViewportUvOffset.value.set(viewport.x / passWidth, viewport.y / passHeight)
       return
     }
 
