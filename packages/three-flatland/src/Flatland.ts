@@ -1676,10 +1676,13 @@ export class Flatland extends Group implements WorldProvider {
           renderer.autoClear = prevAutoClear
         }
       } finally {
-        if (renderTargetChanged && currentRenderTarget !== undefined) {
-          renderer.setRenderTarget(currentRenderTarget)
+        try {
+          if (renderTargetChanged && currentRenderTarget !== undefined) {
+            renderer.setRenderTarget(currentRenderTarget)
+          }
+        } finally {
+          restorePixelViewport?.()
         }
-        restorePixelViewport?.()
       }
     } finally {
       try {

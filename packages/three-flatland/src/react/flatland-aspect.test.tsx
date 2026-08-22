@@ -1,6 +1,6 @@
 import { act, createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Color, OrthographicCamera, Vector2, Vector4 } from 'three'
+import { OrthographicCamera, Vector2, Vector4, type Color } from 'three'
 import { createRoot, extend } from '@react-three/fiber/webgpu'
 import { universe } from 'koota'
 import type { WebGPURenderer } from 'three/webgpu'

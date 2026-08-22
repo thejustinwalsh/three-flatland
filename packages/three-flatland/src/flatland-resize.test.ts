@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { Color, OrthographicCamera, Vector2, Vector4 } from 'three'
+import { OrthographicCamera, Vector2, Vector4, type Color } from 'three'
 import { pass, vec4 } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland } from './Flatland'

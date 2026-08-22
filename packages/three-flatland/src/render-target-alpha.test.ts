@@ -8,8 +8,7 @@ import {
   type ColorRepresentation,
   type Scene,
 } from 'three'
-import type { RenderPipeline, WebGPURenderer } from 'three/webgpu'
-import type PassNode from 'three/src/nodes/display/PassNode.js'
+import type { PassNode, RenderPipeline, WebGPURenderer } from 'three/webgpu'
 import { pass as scenePass, vec4 } from 'three/tsl'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Flatland } from './Flatland'

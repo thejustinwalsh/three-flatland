@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { Color, RenderTarget, Vector2 } from 'three'
+import { RenderTarget, Vector2, type Color } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland } from './Flatland'
 import { createLightEffect } from './lights/LightEffect'
