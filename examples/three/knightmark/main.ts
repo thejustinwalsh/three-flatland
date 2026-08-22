@@ -3,6 +3,7 @@ import { Scene, OrthographicCamera, NearestFilter } from 'three'
 import { gemClearColor } from './GemBackground'
 import { GEM } from './gem'
 import { initializeRenderer } from './rendererFallback'
+import { configureExampleRendererColor } from './rendererColorManagement'
 import {
   AnimatedSprite2D,
   Sprite2DMaterial,
@@ -203,6 +204,7 @@ let activeRenderer: WebGPURenderer | null = null
 async function main() {
   // WebGPU renderer
   const renderer = new WebGPURenderer({ antialias: false })
+  configureExampleRendererColor(renderer)
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art

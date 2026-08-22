@@ -16,6 +16,7 @@ import {
   type TileLayerData,
 } from 'three-flatland/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 // Knightmark doesn't render any gem-background layer — its sprites
 // fill the viewport. The body bg (#16191e) shows through during
@@ -591,7 +592,7 @@ export default function App() {
     <>
       <Canvas
         dpr={1}
-        renderer={{ antialias: false }}
+        renderer={{ antialias: false, ...exampleRendererColorConfig }}
         fallback={<WebGPUFallback />}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'

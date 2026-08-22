@@ -1,5 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { initializeRenderer } from './rendererFallback'
+import { configureExampleRendererColor } from './rendererColorManagement'
 import { texture as sampleTexture, uv, attribute, vec2, vec4, float } from 'three/tsl'
 import { Scene, OrthographicCamera, NearestFilter, CanvasTexture, RepeatWrapping } from 'three'
 import { gemGradientNode } from './GemBackground'
@@ -164,6 +165,7 @@ async function main() {
 
   // WebGPU Renderer (required for TSL materials)
   const renderer = new WebGPURenderer({ antialias: false })
+  configureExampleRendererColor(renderer)
   activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art

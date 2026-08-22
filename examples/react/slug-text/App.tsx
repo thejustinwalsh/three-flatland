@@ -11,6 +11,7 @@ import {
   usePaneRadioGrid,
 } from '@three-flatland/devtools/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { GemBackground, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
 
@@ -1026,7 +1027,7 @@ export default function App() {
         // Slug provides its own analytic anti-aliasing via per-fragment
         // coverage — MSAA adds 4× sample cost + a canvas-area resolve pass
         // for zero visual gain. Keep it off.
-        renderer={{ antialias: false }}
+        renderer={{ antialias: false, ...exampleRendererColorConfig }}
       >
         <GemBackground gem={GEM} />
         <PixelCamera />

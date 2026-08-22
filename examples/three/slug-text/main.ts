@@ -7,6 +7,7 @@ import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
 import { initializeRenderer } from './rendererFallback'
+import { configureExampleRendererColor } from './rendererColorManagement'
 
 // --- Lorem ipsum generator ---
 
@@ -208,6 +209,7 @@ async function main() {
   // Slug's shader is analytically antialiased per-fragment; MSAA would add
   // 4× sample cost + a canvas-area resolve for zero visual gain.
   const renderer = new WebGPURenderer({ antialias: false })
+  configureExampleRendererColor(renderer)
   activeRenderer = renderer
   renderer.setSize(w, h)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))

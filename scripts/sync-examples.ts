@@ -11,6 +11,7 @@
  * What gets synced:
  *   examples/three/template/GemBackground.ts → examples/three/<slug>/GemBackground.ts
  *   examples/react/template/GemBackground.tsx → examples/react/<slug>/GemBackground.tsx
+ *   examples/_shared/rendererColorManagement.ts → every example directory
  *   examples/_shared/rendererFallback.ts → every example directory
  *   examples/_shared/WebGPUFallback.tsx → every React example directory
  *
@@ -49,10 +50,12 @@ type SyncedFile = {
 const SYNCED_FILES: Record<Variant, readonly SyncedFile[]> = {
   three: [
     { source: 'examples/three/template/GemBackground.ts', target: 'GemBackground.ts' },
+    { source: 'examples/_shared/rendererColorManagement.ts', target: 'rendererColorManagement.ts' },
     { source: 'examples/_shared/rendererFallback.ts', target: 'rendererFallback.ts' },
   ],
   react: [
     { source: 'examples/react/template/GemBackground.tsx', target: 'GemBackground.tsx' },
+    { source: 'examples/_shared/rendererColorManagement.ts', target: 'rendererColorManagement.ts' },
     { source: 'examples/_shared/rendererFallback.ts', target: 'rendererFallback.ts' },
     { source: 'examples/_shared/WebGPUFallback.tsx', target: 'WebGPUFallback.tsx' },
   ],

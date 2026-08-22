@@ -17,6 +17,7 @@ import {
   type AnimationSetDefinition,
 } from 'three-flatland/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
@@ -281,7 +282,6 @@ function FlatlandScene(props: SceneProps) {
   const size = useThree((s) => s.size)
   const flatlandRef = useRef<Flatland>(null)
   const tilemapRef = useRef<TileMap2D>(null)
-  const defaultLightRef = useRef<InstanceType<typeof DefaultLightEffect>>(null)
 
   const torchLightRefs = useRef<(Light2D | null)[]>([])
   const [torchEnabled, setTorchEnabled] = useState<boolean[]>([])
@@ -406,84 +406,12 @@ function FlatlandScene(props: SceneProps) {
     if (slimesRef.current.length > props.slimeCount) slimesRef.current.length = props.slimeCount
   }
 
-  // Push uniform values each frame via refs — effect instance updates
-  // for *uniform* fields are zero-cost `.value =` writes on the
-  // underlying TSL uniform nodes. The compile-time toggles
-  // (`*Enabled`) below are different: assigning them re-runs the
-  // LightEffect's `_buildLightFn` and triggers a shader recompile.
-  useEffect(() => {
-    const e = defaultLightRef.current as unknown as {
-      bands: number
-      shadowStrength: number
-      shadowBias: number
-      shadowStartOffsetScale: number
-      shadowMaxDistance: number
-      shadowPixelSize: number
-      pixelSize: number
-      lightHeight: number
-      glowRadius: number
-      glowIntensity: number
-      rimIntensity: number
-    } | null
-    if (!e) return
-    e.bands = props.bands
-    e.shadowStrength = props.shadowStrength
-    e.shadowBias = props.shadowBias
-    e.shadowStartOffsetScale = props.shadowStartOffsetScale
-    e.shadowMaxDistance = props.shadowMaxDistance
-    e.shadowPixelSize = props.shadowPixelSize
-    e.pixelSize = props.pixelSize
-    e.lightHeight = props.lightHeight
-    e.glowRadius = props.glowRadius
-    e.glowIntensity = props.glowIntensity
-    e.rimIntensity = props.rimIntensity
-  }, [
-    props.bands,
-    props.shadowStrength,
-    props.shadowBias,
-    props.shadowStartOffsetScale,
-    props.shadowMaxDistance,
-    props.shadowPixelSize,
-    props.pixelSize,
-    props.lightHeight,
-    props.glowRadius,
-    props.glowIntensity,
-    props.rimIntensity,
-  ])
-
-  // Compile-time toggle pushes — separate from the uniform pushes
-  // above so a uniform tweak never accidentally bumps a constant.
-  // Each setter call here triggers `_rebuildLightFn` if the value
-  // actually changed (early-out on identity).
-  useEffect(() => {
-    const e = defaultLightRef.current as unknown as {
-      bandsEnabled: boolean
-      pixelSnapEnabled: boolean
-      shadowPixelSnapEnabled: boolean
-      glowEnabled: boolean
-      rimEnabled: boolean
-    } | null
-    if (!e) return
-    e.bandsEnabled = props.bandsEnabled
-    e.pixelSnapEnabled = props.pixelSnapEnabled
-    e.shadowPixelSnapEnabled = props.shadowPixelSnapEnabled
-    e.glowEnabled = props.glowEnabled
-    e.rimEnabled = props.rimEnabled
-  }, [props.bandsEnabled, props.pixelSnapEnabled, props.shadowPixelSnapEnabled, props.glowEnabled, props.rimEnabled])
-
   useEffect(() => {
     // torch_switch tiles hold a torch Light2D at their center — treating
     // them as shadow casters would self-shadow their own light. They remain
     // collision for the hero (handled separately), just not occluders.
     tilemapRef.current?.markOccluders(['collision'])
   }, [mapData])
-
-  useEffect(() => {
-    const fl = flatlandRef.current
-    if (!fl) return
-    fl.viewSize = viewSize
-    fl.resize(size.width, size.height)
-  }, [size.width, size.height, viewSize])
 
   // Hero input
   useEffect(() => {
@@ -882,8 +810,8 @@ function FlatlandScene(props: SceneProps) {
       <flatland ref={flatlandRef} viewSize={viewSize} clearColor={0x06060c}>
         {props.lightingEnabled && (
           <defaultLightEffect
-            ref={defaultLightRef}
             attach={attachLighting}
+            resolutionScale={0.5}
             bands={props.bands}
             shadowStrength={props.shadowStrength}
             shadowBias={props.shadowBias}
@@ -891,6 +819,15 @@ function FlatlandScene(props: SceneProps) {
             shadowMaxDistance={props.shadowMaxDistance}
             shadowPixelSize={props.shadowPixelSize}
             pixelSize={props.pixelSize}
+            lightHeight={props.lightHeight}
+            glowRadius={props.glowRadius}
+            glowIntensity={props.glowIntensity}
+            rimIntensity={props.rimIntensity}
+            bandsEnabled={props.bandsEnabled}
+            pixelSnapEnabled={props.pixelSnapEnabled}
+            shadowPixelSnapEnabled={props.shadowPixelSnapEnabled}
+            glowEnabled={props.glowEnabled}
+            rimEnabled={props.rimEnabled}
             categoryQuotas={{ slime: props.slimeQuota }}
           />
         )}
@@ -1079,7 +1016,7 @@ export default function App() {
   const rimEnabled = rimIntensity > 0
 
   return (
-    <Canvas renderer={{ antialias: false }} fallback={<WebGPUFallback />}>
+    <Canvas dpr={1} renderer={{ antialias: false, ...exampleRendererColorConfig }} fallback={<WebGPUFallback />}>
       <color attach="background" args={['#06060c']} />
       <Suspense fallback={null}>
         <FlatlandScene

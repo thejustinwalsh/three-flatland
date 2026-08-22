@@ -4,6 +4,7 @@ import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import { DataTexture, NearestFilter, RGBAFormat, type Group, type OrthographicCamera } from 'three'
 import { Sprite2D, SpriteGroup } from 'three-flatland/react'
 import { WebGPUFallback } from './WebGPUFallback'
+import { exampleRendererColorConfig } from './rendererColorManagement'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -111,6 +112,7 @@ export default function App() {
     <Canvas
       orthographic
       dpr={[1, 2]}
+      renderer={{ ...exampleRendererColorConfig }}
       frameloop="always"
       camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
       fallback={<WebGPUFallback />}
