@@ -4,7 +4,7 @@ import { PixelPerfectCamera, Sprite2D, TextureLoader, createDevtoolsProvider } f
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { renderStartupError } from './renderStartupError'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 // HMR cleanup — stop the old animate loop + dispose the old renderer
@@ -36,7 +36,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   const texture = await TextureLoader.load('./icon.svg')
 
@@ -173,7 +173,7 @@ async function main() {
   animate()
 }
 
-void main().catch(renderStartupError)
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

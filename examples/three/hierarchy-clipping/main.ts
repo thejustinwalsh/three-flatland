@@ -4,7 +4,7 @@ import { createPane } from '@three-flatland/devtools'
 import { PixelPerfectCamera, Sprite2D, SpriteGroup, createDevtoolsProvider } from 'three-flatland'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { renderStartupError } from './renderStartupError'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 const palette = [0x55, 0xd6, 0xbe, 0xff, 0xb4, 0x8e, 0xff, 0xff, 0xff, 0xc8, 0x57, 0xff, 0xff, 0x73, 0xa8, 0xff]
@@ -57,7 +57,7 @@ async function main() {
   camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
   renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
   document.body.appendChild(renderer.domElement)
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   const paneBundle = createPane({ driver: 'manual' })
   const devtools = createDevtoolsProvider({ name: 'three-hierarchy-clipping' })
@@ -110,4 +110,4 @@ async function main() {
   }
 }
 
-void main().catch(renderStartupError)
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))

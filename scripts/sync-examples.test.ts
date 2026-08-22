@@ -72,4 +72,16 @@ describe('synced renderer fallbacks', () => {
     expect(source).toContain("textAlign: 'center'")
     expect(source).not.toContain("color: '#f4f7fb'")
   })
+
+  it.each(
+    readdirSync(join(ROOT, 'examples', 'three'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(ROOT, 'examples', 'three', entry.name, 'main.ts'))
+  )('scopes the terminal renderer message to renderer initialization in %s', (path) => {
+    const source = readFileSync(path, 'utf8')
+
+    expect(source).toContain("import { initializeRenderer } from './renderStartupError'")
+    expect(source).toContain('if (!(await initializeRenderer(renderer))) return')
+    expect(source).not.toContain('.catch(renderStartupError)')
+  })
 })

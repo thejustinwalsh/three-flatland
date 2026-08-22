@@ -1,5 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { renderStartupError } from './renderStartupError'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 import { texture as sampleTexture, uv, attribute, vec2, vec4, float } from 'three/tsl'
 import { Scene, NearestFilter, CanvasTexture, RepeatWrapping } from 'three'
@@ -165,7 +165,7 @@ async function main() {
   document.body.appendChild(renderer.domElement)
 
   // Wait for renderer to initialize
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Load the knight spritesheet
   const spriteSheet = await SpriteSheetLoader.load('./sprites/knight.json')
@@ -411,7 +411,7 @@ async function main() {
   animate()
 }
 
-void main().catch(renderStartupError)
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

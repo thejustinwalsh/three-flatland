@@ -2,7 +2,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, NearestFilter } from 'three'
 import { gemClearColor } from './GemBackground'
 import { GEM } from './gem'
-import { renderStartupError } from './renderStartupError'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 import {
   AnimatedSprite2D,
@@ -211,7 +211,7 @@ async function main() {
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Scene
   // L1-only gem clear color — knightmark's sprites fill the viewport, so
@@ -529,7 +529,7 @@ async function main() {
   }
   animate()
 }
-void main().catch(renderStartupError)
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

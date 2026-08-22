@@ -6,7 +6,7 @@ import type { SlugFont, StyleSpan } from '@three-flatland/slug'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
-import { renderStartupError } from './renderStartupError'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 // --- Lorem ipsum generator ---
@@ -221,7 +221,7 @@ async function main() {
   // capture-examples.mjs records 0 frames from canvas.captureStream.
   document.body.insertBefore(renderer.domElement, document.body.firstChild)
 
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   const fontUrl = './Inter-Regular.ttf'
   const maxWidthFraction = 0.8
@@ -905,7 +905,7 @@ async function main() {
   animate()
 }
 
-void main().catch(renderStartupError)
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

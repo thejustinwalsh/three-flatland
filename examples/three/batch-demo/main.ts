@@ -13,7 +13,7 @@ import {
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { renderStartupError } from './renderStartupError'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 // Configuration
@@ -87,7 +87,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Load textures (uses 'pixel-art' preset by default with NearestFilter + SRGBColorSpace)
   const [grassTex, shadowTex, spritesSheet] = await Promise.all([
@@ -354,7 +354,7 @@ async function main() {
   animate()
 }
 
-void main().catch(renderStartupError)
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

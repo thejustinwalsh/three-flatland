@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Vector2 } from 'three'
-import { renderStartupError } from './renderStartupError'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 import {
   Flatland,
@@ -178,7 +178,7 @@ async function main() {
   renderer.setPixelRatio(1)
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // ─── Flatland ───────────────────────────────────────────────────
   const flatland = new Flatland({
@@ -998,4 +998,4 @@ async function main() {
   }
 }
 
-void main().catch(renderStartupError)
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))

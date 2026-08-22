@@ -1,5 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { renderStartupError } from './renderStartupError'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 import {
   Scene,
@@ -473,7 +473,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Create procedural tileset
   const tilesetTexture = createProceduralTileset(TILE_SIZE, TILESET_COLUMNS, TILESET_ROWS)
@@ -825,7 +825,7 @@ async function main() {
   animate()
 }
 
-void main().catch(renderStartupError)
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

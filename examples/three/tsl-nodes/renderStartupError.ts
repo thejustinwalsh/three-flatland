@@ -1,8 +1,23 @@
 import { RENDERER_FAILURE_COLOR, RENDERER_FAILURE_MESSAGE } from './rendererFailure'
 
+interface InitializableRenderer {
+  init(): Promise<void>
+}
+
+/** Initialize Three's one renderer and present UI only if every backend fails. */
+export async function initializeRenderer(renderer: InitializableRenderer): Promise<boolean> {
+  try {
+    await renderer.init()
+    return true
+  } catch (error) {
+    renderStartupError(error)
+    return false
+  }
+}
+
 /** Present a terminal startup failure after Three has exhausted its renderer backends. */
 export function renderStartupError(error: unknown): void {
-  console.error('[three-flatland] Example startup failed', error)
+  console.error('[three-flatland] Renderer initialization failed', error)
   document.querySelector('canvas')?.remove()
 
   const message = document.createElement('div')

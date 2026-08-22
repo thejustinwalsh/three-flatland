@@ -39,7 +39,7 @@ import {
 } from '@three-flatland/skia/three'
 import { createPane } from '@three-flatland/devtools'
 import { createDevtoolsProvider } from 'three-flatland'
-import { renderStartupError } from './renderStartupError'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 function setStatus(msg: string, ok: boolean) {
@@ -120,7 +120,7 @@ async function main() {
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
   document.body.appendChild(renderer.domElement)
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   // Black clear so alpha-faded plane edges reveal the void at the
   // horizon. Fog is also black, fading foreground 3D meshes (floor,
@@ -626,5 +626,4 @@ void main().catch((err: unknown) => {
     setStatus('Skia WASM not built — run: pnpm --filter @three-flatland/skia build', false)
     return
   }
-  renderStartupError(err)
 })
