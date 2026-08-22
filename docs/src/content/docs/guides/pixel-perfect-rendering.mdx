@@ -113,6 +113,8 @@ Set `pixelScale` when the scale itself is authored:
 camera.pixelScale = 4;
 ```
 
+Three.js controls can also assign `camera.zoom` and call `updateProjectionMatrix()`. `PixelPerfectCamera` preserves that API, but rounds the resulting physical-pixel scale to the nearest positive integer. Read `resolvedPixelScale` for the scale actually rendered; use `pixelScale` when an exact authored scale matters.
+
 The minimum automatic scale is 1×. A framebuffer smaller than the design crops the edges instead of downsampling source pixels.
 
 ## Control the drawing-buffer resolution
@@ -125,7 +127,7 @@ renderer.setPixelRatio(1);                // One buffer pixel per CSS pixel
 renderer.setPixelRatio(0.5);              // Half-size buffer
 ```
 
-Use `<Canvas dpr={...}>` for the same control in React. An effect's `resolutionScale` changes only resources owned by that effect; it does not change camera framing.
+Use `<Canvas dpr={...}>` for the same control in React. An effect's `resolutionScale` changes only resources owned by that effect; it does not change camera framing. Flatland's automatic post-processing pipeline preserves the centered camera viewport. A `resolutionScale` below `1` is still an explicit resampling step, useful for performance or a coarser pixel effect rather than exact 1:1 post-processing.
 
 For a render target, pass its texel dimensions to `setDrawingBufferSize`. `Flatland` does this automatically for its own render target.
 
@@ -144,10 +146,12 @@ TextureConfig.options = 'pixel-art';
 RenderingConfig.options = 'smooth';
 ```
 
-An individual sprite or tilemap can opt out with `pixelPerfect: false`.
+An individual sprite or tilemap can opt out with `pixelPerfect: false`. This is also the correct setting for sprites rendered through a perspective camera: their screen-space scale changes with depth, so a single scene-wide pixel grid cannot remain stable.
 
 ## Limitations
 
-Perspective scale changes with depth, so one camera cannot keep every plane on a single pixel grid. `PixelPerfectCamera` is orthographic. Continuous eased zoom also introduces fractional scale; switch presentation to `smooth` for that interaction.
+Perspective scale changes with depth, so one camera cannot keep every plane on a single pixel grid. `PixelPerfectCamera` is orthographic. Its zoom is intentionally quantized; switch presentation to `smooth` for continuous eased zoom.
+
+Centered sprites with an odd physical width or height place their outer edges on half-pixel boundaries. Prefer even dimensions for a centered anchor. If an odd-sized asset must retain a centered pivot, opt that sprite out of projected snapping and author its half-pixel placement explicitly.
 
 See the [`PixelPerfectCamera` API reference](/three-flatland/api/three-flatland/src/classes/pixelperfectcamera/), [`FlatlandOptions`](/three-flatland/api/interfaces/flatlandoptions/), and [`Sprite2D`](/three-flatland/api/three-flatland/src/classes/sprite2d/) for the complete option and property surfaces.
