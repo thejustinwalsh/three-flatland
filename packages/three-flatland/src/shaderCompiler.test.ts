@@ -233,7 +233,8 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
   it('compiles standalone sprite materials', () => {
     const sprite = new Sprite2D({ texture: shaderTexture() })
     trackMaterial(sprite.material)
-    capture('sprite-material', backend, sprite.material, sprite)
+    const program = capture('sprite-material', backend, sprite.material, sprite)
+    expectInstanceTransformBeforeProjection(program.vertexShader)
   })
 
   it('compiles opaque premultiplied sprite variants', () => {
@@ -258,6 +259,25 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
       expect(program.vertexShader).toContain('spritePixelPivot')
       expect(program.vertexShader).toContain('floor')
       expectPixelPivotTransformGuarded(program.vertexShader)
+      expectInstanceTransformBeforeProjection(program.vertexShader)
+      expectSingleInstanceMatrixBinding(backend, program.vertexShader)
+    } finally {
+      batch.dispose()
+    }
+  })
+
+  it('preserves projection ordering when a batch color transform reads world position', () => {
+    const material = trackMaterial(
+      new Sprite2DMaterial({
+        map: shaderTexture(),
+        colorTransform: ({ color, worldPosition }) =>
+          vec4(color.rgb.mul(worldPosition.x.add(1)), color.a) as Node<'vec4'>,
+      })
+    )
+    const batch = new SpriteBatch(material, 1)
+
+    try {
+      const program = capture('sprite-batch-world-position-color-transform', backend, material, batch)
       expectInstanceTransformBeforeProjection(program.vertexShader)
       expectSingleInstanceMatrixBinding(backend, program.vertexShader)
     } finally {
